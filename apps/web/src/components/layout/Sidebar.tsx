@@ -54,6 +54,7 @@ export default function Sidebar() {
               )}
               <NavLink
                 to={item.path}
+                end={item.path === '/'}
                 className={({ isActive }) =>
                   clsx(
                     'block px-4 py-2.5 rounded-lg text-sm font-medium transition-colors mb-1',

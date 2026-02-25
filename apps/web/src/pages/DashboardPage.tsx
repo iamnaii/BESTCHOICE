@@ -1,5 +1,6 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 
@@ -65,6 +66,7 @@ const statusColors: Record<string, string> = {
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   const { data: kpis } = useQuery<KPIs>({
     queryKey: ['dashboard-kpis'],
@@ -102,12 +104,12 @@ export default function DashboardPage() {
       {/* KPI Cards */}
       {kpis && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white rounded-lg border p-4">
+          <div className="bg-white rounded-lg border p-4 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/contracts')}>
             <div className="text-sm text-gray-500">สัญญาทั้งหมด</div>
             <div className="text-2xl font-bold text-gray-900">{kpis.totalContracts}</div>
             <div className="text-xs text-green-600 mt-1">ปกติ {kpis.activeContracts}</div>
           </div>
-          <div className="bg-white rounded-lg border p-4">
+          <div className="bg-white rounded-lg border p-4 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/overdue')}>
             <div className="text-sm text-gray-500">ค้างชำระ / ผิดนัด</div>
             <div className="text-2xl font-bold text-red-600">
               {kpis.overdueContracts + kpis.defaultContracts}
@@ -116,26 +118,26 @@ export default function DashboardPage() {
               อัตรา {(kpis.overdueRate * 100).toFixed(1)}%
             </div>
           </div>
-          <div className="bg-white rounded-lg border p-4">
+          <div className="bg-white rounded-lg border p-4 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/payments')}>
             <div className="text-sm text-gray-500">ยอดรับชำระวันนี้</div>
             <div className="text-2xl font-bold text-green-600">
               {kpis.todayPayments.toLocaleString()}
             </div>
             <div className="text-xs text-gray-500 mt-1">บาท</div>
           </div>
-          <div className="bg-white rounded-lg border p-4">
+          <div className="bg-white rounded-lg border p-4 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/contracts')}>
             <div className="text-sm text-gray-500">ลูกหนี้คงค้าง</div>
             <div className="text-2xl font-bold text-blue-600">
               {kpis.totalReceivable.toLocaleString()}
             </div>
             <div className="text-xs text-gray-500 mt-1">บาท</div>
           </div>
-          <div className="bg-white rounded-lg border p-4">
+          <div className="bg-white rounded-lg border p-4 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/products')}>
             <div className="text-sm text-gray-500">สินค้าในสต็อก</div>
             <div className="text-2xl font-bold text-purple-600">{kpis.inStockProducts}</div>
             <div className="text-xs text-gray-500 mt-1">จาก {kpis.totalProducts} ชิ้น</div>
           </div>
-          <div className="bg-white rounded-lg border p-4">
+          <div className="bg-white rounded-lg border p-4 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/contracts')}>
             <div className="text-sm text-gray-500">ปิดสัญญาแล้ว</div>
             <div className="text-2xl font-bold text-blue-500">{kpis.completedContracts}</div>
           </div>
@@ -146,7 +148,7 @@ export default function DashboardPage() {
             </div>
             <div className="text-xs text-gray-500 mt-1">บาท</div>
           </div>
-          <div className="bg-white rounded-lg border p-4">
+          <div className="bg-white rounded-lg border p-4 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/overdue')}>
             <div className="text-sm text-gray-500">ค้างชำระ</div>
             <div className="text-2xl font-bold text-yellow-600">{kpis.overdueContracts}</div>
             <div className="text-xs text-red-600 mt-1">ผิดนัด {kpis.defaultContracts}</div>

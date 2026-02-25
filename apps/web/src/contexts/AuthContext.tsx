@@ -46,8 +46,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         branchId: data.branchId,
         branchName: data.branch?.name || null,
       });
-    } catch {
-      logout();
+    } catch (error: unknown) {
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      if (status === 401) {
+        logout();
+      }
+      // Don't logout on 429 (rate limit) or network errors - keep current session
     } finally {
       setIsLoading(false);
     }

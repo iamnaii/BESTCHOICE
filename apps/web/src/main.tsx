@@ -10,8 +10,14 @@ import './index.css';
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: 1,
+      retry: (failureCount, error: unknown) => {
+        const status = (error as { response?: { status?: number } })?.response?.status;
+        // Don't retry on 429 rate limit or 401 unauthorized
+        if (status === 429 || status === 401) return false;
+        return failureCount < 1;
+      },
       refetchOnWindowFocus: false,
+      staleTime: 30 * 1000, // 30 seconds - prevent excessive refetching
     },
   },
 });

@@ -7,6 +7,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BranchesModule } from './modules/branches/branches.module';
 import { SuppliersModule } from './modules/suppliers/suppliers.module';
+import { ProductsModule } from './modules/products/products.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { SuppliersModule } from './modules/suppliers/suppliers.module';
     AuthModule,
     BranchesModule,
     SuppliersModule,
+    ProductsModule,
   ],
   controllers: [AppController],
   providers: [

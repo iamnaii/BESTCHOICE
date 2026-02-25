@@ -7,6 +7,10 @@ import DashboardPage from '@/pages/DashboardPage';
 import BranchesPage from '@/pages/BranchesPage';
 import SuppliersPage from '@/pages/SuppliersPage';
 import SupplierDetailPage from '@/pages/SupplierDetailPage';
+import ProductsPage from '@/pages/ProductsPage';
+import ProductCreatePage from '@/pages/ProductCreatePage';
+import ProductDetailPage from '@/pages/ProductDetailPage';
+import StockPage from '@/pages/StockPage';
 
 function App() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -43,6 +47,10 @@ function App() {
         />
         <Route path="/suppliers" element={<SuppliersPage />} />
         <Route path="/suppliers/:id" element={<SupplierDetailPage />} />
+        <Route path="/products" element={<ProductsPage />} />
+        <Route path="/products/create" element={<ProductCreatePage />} />
+        <Route path="/products/:id" element={<ProductDetailPage />} />
+        <Route path="/stock" element={<StockPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

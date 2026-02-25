@@ -5,6 +5,10 @@ import MainLayout from '@/components/layout/MainLayout';
 import LoginPage from '@/pages/LoginPage';
 import DashboardPage from '@/pages/DashboardPage';
 import BranchesPage from '@/pages/BranchesPage';
+import OverduePage from '@/pages/OverduePage';
+import RepossessionsPage from '@/pages/RepossessionsPage';
+import PurchaseOrdersPage from '@/pages/PurchaseOrdersPage';
+import NotificationsPage from '@/pages/NotificationsPage';
 
 function App() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -36,6 +40,31 @@ function App() {
           element={
             <ProtectedRoute roles={['OWNER']}>
               <BranchesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="/overdue" element={<OverduePage />} />
+        <Route
+          path="/repossessions"
+          element={
+            <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}>
+              <RepossessionsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/purchase-orders"
+          element={
+            <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}>
+              <PurchaseOrdersPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/notifications"
+          element={
+            <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}>
+              <NotificationsPage />
             </ProtectedRoute>
           }
         />

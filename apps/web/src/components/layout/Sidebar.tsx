@@ -6,6 +6,7 @@ interface NavItem {
   label: string;
   path: string;
   roles?: string[];
+  section?: string;
 }
 
 const navItems: NavItem[] = [
@@ -15,6 +16,10 @@ const navItems: NavItem[] = [
   { label: 'ลูกค้า', path: '/customers' },
   { label: 'สัญญาผ่อน', path: '/contracts' },
   { label: 'ชำระเงิน', path: '/payments' },
+  { label: 'ติดตามหนี้', path: '/overdue', section: 'operations' },
+  { label: 'ยึดคืน & ขายต่อ', path: '/repossessions', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'operations' },
+  { label: 'ใบสั่งซื้อ (PO)', path: '/purchase-orders', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'operations' },
+  { label: 'แจ้งเตือน', path: '/notifications', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'communication' },
   { label: 'รายงาน', path: '/reports', roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
 ];
 
@@ -32,22 +37,34 @@ export default function Sidebar() {
         <p className="text-xs text-gray-400 mt-1">ระบบผ่อนชำระ</p>
       </div>
       <nav className="p-2">
-        {filteredItems.map((item) => (
-          <NavLink
-            key={item.path}
-            to={item.path}
-            className={({ isActive }) =>
-              clsx(
-                'block px-4 py-2.5 rounded-lg text-sm font-medium transition-colors mb-1',
-                isActive
-                  ? 'bg-primary-50 text-primary-700'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
-              )
-            }
-          >
-            {item.label}
-          </NavLink>
-        ))}
+        {filteredItems.map((item, idx) => {
+          const prevItem = filteredItems[idx - 1];
+          const showSectionLabel =
+            item.section && (!prevItem || prevItem.section !== item.section);
+
+          return (
+            <div key={item.path}>
+              {showSectionLabel && (
+                <div className="px-4 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                  {item.section === 'operations' ? 'ปฏิบัติการ' : item.section === 'communication' ? 'การสื่อสาร' : item.section}
+                </div>
+              )}
+              <NavLink
+                to={item.path}
+                className={({ isActive }) =>
+                  clsx(
+                    'block px-4 py-2.5 rounded-lg text-sm font-medium transition-colors mb-1',
+                    isActive
+                      ? 'bg-primary-50 text-primary-700'
+                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
+                  )
+                }
+              >
+                {item.label}
+              </NavLink>
+            </div>
+          );
+        })}
       </nav>
     </aside>
   );

@@ -9,6 +9,8 @@ import OverduePage from '@/pages/OverduePage';
 import RepossessionsPage from '@/pages/RepossessionsPage';
 import PurchaseOrdersPage from '@/pages/PurchaseOrdersPage';
 import NotificationsPage from '@/pages/NotificationsPage';
+import ReportsPage from '@/pages/ReportsPage';
+import MigrationPage from '@/pages/MigrationPage';
 
 function App() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -65,6 +67,22 @@ function App() {
           element={
             <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}>
               <NotificationsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports"
+          element={
+            <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT']}>
+              <ReportsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/migration"
+          element={
+            <ProtectedRoute roles={['OWNER']}>
+              <MigrationPage />
             </ProtectedRoute>
           }
         />

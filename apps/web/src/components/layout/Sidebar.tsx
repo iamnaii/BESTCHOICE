@@ -20,7 +20,8 @@ const navItems: NavItem[] = [
   { label: 'ยึดคืน & ขายต่อ', path: '/repossessions', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'operations' },
   { label: 'ใบสั่งซื้อ (PO)', path: '/purchase-orders', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'operations' },
   { label: 'แจ้งเตือน', path: '/notifications', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'communication' },
-  { label: 'รายงาน', path: '/reports', roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
+  { label: 'รายงาน', path: '/reports', roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'], section: 'intelligence' },
+  { label: 'นำเข้าข้อมูล', path: '/migration', roles: ['OWNER'], section: 'settings' },
 ];
 
 export default function Sidebar() {
@@ -46,7 +47,7 @@ export default function Sidebar() {
             <div key={item.path}>
               {showSectionLabel && (
                 <div className="px-4 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-                  {item.section === 'operations' ? 'ปฏิบัติการ' : item.section === 'communication' ? 'การสื่อสาร' : item.section}
+                  {item.section === 'operations' ? 'ปฏิบัติการ' : item.section === 'communication' ? 'การสื่อสาร' : item.section === 'intelligence' ? 'ข้อมูลเชิงลึก' : item.section === 'settings' ? 'ตั้งค่า' : item.section}
                 </div>
               )}
               <NavLink

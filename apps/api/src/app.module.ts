@@ -8,6 +8,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { BranchesModule } from './modules/branches/branches.module';
 import { SuppliersModule } from './modules/suppliers/suppliers.module';
 import { ProductsModule } from './modules/products/products.module';
+import { InspectionsModule } from './modules/inspections/inspections.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { ProductsModule } from './modules/products/products.module';
     BranchesModule,
     SuppliersModule,
     ProductsModule,
+    InspectionsModule,
   ],
   controllers: [AppController],
   providers: [

@@ -5,6 +5,8 @@ import MainLayout from '@/components/layout/MainLayout';
 import LoginPage from '@/pages/LoginPage';
 import DashboardPage from '@/pages/DashboardPage';
 import BranchesPage from '@/pages/BranchesPage';
+import SuppliersPage from '@/pages/SuppliersPage';
+import SupplierDetailPage from '@/pages/SupplierDetailPage';
 
 function App() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -39,6 +41,8 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route path="/suppliers" element={<SuppliersPage />} />
+        <Route path="/suppliers/:id" element={<SupplierDetailPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

@@ -11,6 +11,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { label: 'หน้าหลัก', path: '/' },
   { label: 'สาขา', path: '/branches', roles: ['OWNER'] },
+  { label: 'Supplier', path: '/suppliers', roles: ['OWNER', 'BRANCH_MANAGER'] },
   { label: 'สินค้า', path: '/products' },
   { label: 'ลูกค้า', path: '/customers' },
   { label: 'สัญญาผ่อน', path: '/contracts' },

@@ -151,6 +151,350 @@ async function main() {
 
   console.log('Inspection template created:', phoneTemplate.name);
 
+  // ============================================================
+  // SAMPLE PRODUCTS
+  // ============================================================
+  const products = [
+    {
+      id: 'prod-001',
+      name: 'iPhone 15 Pro Max 256GB',
+      brand: 'Apple',
+      model: 'iPhone 15 Pro Max',
+      imeiSerial: '354567890123456',
+      category: 'PHONE_NEW' as const,
+      costPrice: 42900,
+      branchId: branch1.id,
+      status: 'IN_STOCK' as const,
+      conditionGrade: null,
+    },
+    {
+      id: 'prod-002',
+      name: 'iPhone 14 Pro 128GB',
+      brand: 'Apple',
+      model: 'iPhone 14 Pro',
+      imeiSerial: '354567890123457',
+      category: 'PHONE_USED' as const,
+      costPrice: 28500,
+      branchId: branch1.id,
+      status: 'IN_STOCK' as const,
+      conditionGrade: 'A' as const,
+    },
+    {
+      id: 'prod-003',
+      name: 'Samsung Galaxy S24 Ultra 256GB',
+      brand: 'Samsung',
+      model: 'Galaxy S24 Ultra',
+      imeiSerial: '354567890123458',
+      category: 'PHONE_NEW' as const,
+      costPrice: 39900,
+      branchId: branch1.id,
+      status: 'SOLD_INSTALLMENT' as const,
+      conditionGrade: null,
+    },
+    {
+      id: 'prod-004',
+      name: 'Samsung Galaxy A55 128GB',
+      brand: 'Samsung',
+      model: 'Galaxy A55',
+      imeiSerial: '354567890123459',
+      category: 'PHONE_NEW' as const,
+      costPrice: 12900,
+      branchId: branch2.id,
+      status: 'IN_STOCK' as const,
+      conditionGrade: null,
+    },
+    {
+      id: 'prod-005',
+      name: 'iPhone 13 128GB',
+      brand: 'Apple',
+      model: 'iPhone 13',
+      imeiSerial: '354567890123460',
+      category: 'PHONE_USED' as const,
+      costPrice: 15500,
+      branchId: branch2.id,
+      status: 'SOLD_INSTALLMENT' as const,
+      conditionGrade: 'B' as const,
+    },
+    {
+      id: 'prod-006',
+      name: 'OPPO Reno 11 Pro 256GB',
+      brand: 'OPPO',
+      model: 'Reno 11 Pro',
+      imeiSerial: '354567890123461',
+      category: 'PHONE_NEW' as const,
+      costPrice: 16990,
+      branchId: branch1.id,
+      status: 'IN_STOCK' as const,
+      conditionGrade: null,
+    },
+    {
+      id: 'prod-007',
+      name: 'Xiaomi 14 Ultra 512GB',
+      brand: 'Xiaomi',
+      model: '14 Ultra',
+      imeiSerial: '354567890123462',
+      category: 'PHONE_NEW' as const,
+      costPrice: 34900,
+      branchId: branch3.id,
+      status: 'IN_STOCK' as const,
+      conditionGrade: null,
+    },
+    {
+      id: 'prod-008',
+      name: 'iPad Pro M4 11" 256GB',
+      brand: 'Apple',
+      model: 'iPad Pro M4',
+      imeiSerial: '354567890123463',
+      category: 'TABLET' as const,
+      costPrice: 36900,
+      branchId: branch3.id,
+      status: 'IN_STOCK' as const,
+      conditionGrade: null,
+    },
+    {
+      id: 'prod-009',
+      name: 'Samsung Galaxy Tab S9 128GB',
+      brand: 'Samsung',
+      model: 'Galaxy Tab S9',
+      imeiSerial: '354567890123464',
+      category: 'TABLET' as const,
+      costPrice: 24900,
+      branchId: branch1.id,
+      status: 'SOLD_INSTALLMENT' as const,
+      conditionGrade: null,
+    },
+    {
+      id: 'prod-010',
+      name: 'iPhone 12 64GB',
+      brand: 'Apple',
+      model: 'iPhone 12',
+      imeiSerial: '354567890123465',
+      category: 'PHONE_USED' as const,
+      costPrice: 9500,
+      branchId: branch2.id,
+      status: 'RESERVED' as const,
+      conditionGrade: 'C' as const,
+    },
+  ];
+
+  for (const p of products) {
+    await prisma.product.upsert({
+      where: { id: p.id },
+      update: {},
+      create: p,
+    });
+  }
+  console.log('Products created:', products.length, 'items');
+
+  // ============================================================
+  // SAMPLE CUSTOMERS
+  // ============================================================
+  const customers = [
+    {
+      id: 'cust-001',
+      nationalId: 'ENC_1100100100001',
+      name: 'สมชาย ใจดี',
+      phone: '081-111-1111',
+      phoneSecondary: '02-111-1112',
+      lineId: 'somchai_j',
+      addressIdCard: '11 ซ.ลาดพร้าว 15 แขวงจอมพล เขตจตุจักร กทม. 10900',
+      addressCurrent: '11 ซ.ลาดพร้าว 15 แขวงจอมพล เขตจตุจักร กทม. 10900',
+      occupation: 'พนักงานบริษัท',
+      workplace: 'บจก. ไทยพาณิชย์',
+    },
+    {
+      id: 'cust-002',
+      nationalId: 'ENC_1100100100002',
+      name: 'สมหญิง รักเรียน',
+      phone: '082-222-2222',
+      lineId: 'somying_r',
+      addressIdCard: '22 ถ.รามคำแหง แขวงหัวหมาก เขตบางกะปิ กทม. 10240',
+      addressCurrent: '22 ถ.รามคำแหง แขวงหัวหมาก เขตบางกะปิ กทม. 10240',
+      occupation: 'ค้าขาย',
+      workplace: 'ร้านค้าส่ง ตลาดนัด',
+    },
+    {
+      id: 'cust-003',
+      nationalId: 'ENC_1100100100003',
+      name: 'วิชัย มั่งมี',
+      phone: '083-333-3333',
+      addressIdCard: '33 ถ.เพชรเกษม แขวงบางแค เขตบางแค กทม. 10160',
+      occupation: 'รับราชการ',
+      workplace: 'กรมสรรพากร',
+    },
+    {
+      id: 'cust-004',
+      nationalId: 'ENC_1100100100004',
+      name: 'นภา แก้วใส',
+      phone: '084-444-4444',
+      lineId: 'napa_k',
+      addressIdCard: '44 ซ.สุขุมวิท 71 แขวงคลองตัน เขตวัฒนา กทม. 10110',
+      addressCurrent: '44 ซ.สุขุมวิท 71 แขวงคลองตัน เขตวัฒนา กทม. 10110',
+      occupation: 'ฟรีแลนซ์',
+    },
+    {
+      id: 'cust-005',
+      nationalId: 'ENC_1100100100005',
+      name: 'ประเสริฐ ทองคำ',
+      phone: '085-555-5555',
+      addressIdCard: '55 ถ.พหลโยธิน แขวงจตุจักร เขตจตุจักร กทม. 10900',
+      occupation: 'พนักงานโรงงาน',
+      workplace: 'บมจ. ปูนซิเมนต์ไทย',
+    },
+  ];
+
+  for (const c of customers) {
+    await prisma.customer.upsert({
+      where: { id: c.id },
+      update: {},
+      create: c,
+    });
+  }
+  console.log('Customers created:', customers.length, 'people');
+
+  // ============================================================
+  // SAMPLE CONTRACTS + PAYMENTS
+  // ============================================================
+  // Contract 1: Samsung Galaxy S24 Ultra - สมชาย (ACTIVE, 10 months)
+  const contract1 = await prisma.contract.upsert({
+    where: { id: 'cont-001' },
+    update: {},
+    create: {
+      id: 'cont-001',
+      contractNumber: 'BC-2025-0001',
+      customerId: 'cust-001',
+      productId: 'prod-003',
+      branchId: branch1.id,
+      salespersonId: sales.id,
+      planType: 'STORE_DIRECT',
+      sellingPrice: 49900,
+      downPayment: 9900,
+      interestRate: 0.08,
+      totalMonths: 10,
+      financedAmount: 40000,
+      interestTotal: 32000,
+      monthlyPayment: 7200,
+      status: 'ACTIVE',
+    },
+  });
+
+  // Generate payments for contract 1 (3 paid, 7 pending)
+  for (let i = 1; i <= 10; i++) {
+    const dueDate = new Date(2025, i, 15); // 15th of each month starting Feb 2025
+    const isPaid = i <= 3;
+    await prisma.payment.upsert({
+      where: { id: `pay-001-${String(i).padStart(2, '0')}` },
+      update: {},
+      create: {
+        id: `pay-001-${String(i).padStart(2, '0')}`,
+        contractId: contract1.id,
+        installmentNo: i,
+        dueDate,
+        amountDue: 7200,
+        amountPaid: isPaid ? 7200 : 0,
+        paidDate: isPaid ? new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate() - 2) : null,
+        paymentMethod: isPaid ? 'BANK_TRANSFER' : null,
+        status: isPaid ? 'PAID' : (dueDate < new Date() ? 'OVERDUE' : 'PENDING'),
+        recordedById: isPaid ? sales.id : null,
+      },
+    });
+  }
+  console.log('Contract 1 created:', contract1.contractNumber, '(ACTIVE, 3/10 paid)');
+
+  // Contract 2: iPhone 13 - สมหญิง (ACTIVE, 6 months)
+  const contract2 = await prisma.contract.upsert({
+    where: { id: 'cont-002' },
+    update: {},
+    create: {
+      id: 'cont-002',
+      contractNumber: 'BC-2025-0002',
+      customerId: 'cust-002',
+      productId: 'prod-005',
+      branchId: branch2.id,
+      salespersonId: sales.id,
+      planType: 'STORE_DIRECT',
+      sellingPrice: 19900,
+      downPayment: 3900,
+      interestRate: 0.08,
+      totalMonths: 6,
+      financedAmount: 16000,
+      interestTotal: 7680,
+      monthlyPayment: 3947,
+      status: 'ACTIVE',
+    },
+  });
+
+  // Generate payments for contract 2 (5 paid, 1 pending)
+  for (let i = 1; i <= 6; i++) {
+    const dueDate = new Date(2025, i - 1, 1); // 1st of each month starting Jan 2025
+    const isPaid = i <= 5;
+    await prisma.payment.upsert({
+      where: { id: `pay-002-${String(i).padStart(2, '0')}` },
+      update: {},
+      create: {
+        id: `pay-002-${String(i).padStart(2, '0')}`,
+        contractId: contract2.id,
+        installmentNo: i,
+        dueDate,
+        amountDue: 3947,
+        amountPaid: isPaid ? 3947 : 0,
+        paidDate: isPaid ? new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate()) : null,
+        paymentMethod: isPaid ? 'CASH' : null,
+        status: isPaid ? 'PAID' : 'PENDING',
+        recordedById: isPaid ? sales.id : null,
+      },
+    });
+  }
+  console.log('Contract 2 created:', contract2.contractNumber, '(ACTIVE, 5/6 paid)');
+
+  // Contract 3: Samsung Galaxy Tab S9 - วิชัย (OVERDUE, 8 months)
+  const contract3 = await prisma.contract.upsert({
+    where: { id: 'cont-003' },
+    update: {},
+    create: {
+      id: 'cont-003',
+      contractNumber: 'BC-2025-0003',
+      customerId: 'cust-003',
+      productId: 'prod-009',
+      branchId: branch1.id,
+      salespersonId: sales.id,
+      planType: 'STORE_WITH_INTEREST',
+      sellingPrice: 29900,
+      downPayment: 5900,
+      interestRate: 0.08,
+      totalMonths: 8,
+      financedAmount: 24000,
+      interestTotal: 15360,
+      monthlyPayment: 4920,
+      status: 'OVERDUE',
+    },
+  });
+
+  // Generate payments for contract 3 (2 paid, 6 pending with some overdue)
+  for (let i = 1; i <= 8; i++) {
+    const dueDate = new Date(2025, i, 10); // 10th of each month
+    const isPaid = i <= 2;
+    const isOverdue = !isPaid && dueDate < new Date();
+    await prisma.payment.upsert({
+      where: { id: `pay-003-${String(i).padStart(2, '0')}` },
+      update: {},
+      create: {
+        id: `pay-003-${String(i).padStart(2, '0')}`,
+        contractId: contract3.id,
+        installmentNo: i,
+        dueDate,
+        amountDue: 4920,
+        amountPaid: isPaid ? 4920 : 0,
+        paidDate: isPaid ? new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate() + 1) : null,
+        paymentMethod: isPaid ? 'QR_EWALLET' : null,
+        lateFee: isOverdue ? 200 : 0,
+        status: isPaid ? 'PAID' : (isOverdue ? 'OVERDUE' : 'PENDING'),
+        recordedById: isPaid ? sales.id : null,
+      },
+    });
+  }
+  console.log('Contract 3 created:', contract3.contractNumber, '(OVERDUE, 2/8 paid)');
+
   console.log('Seeding completed!');
 }
 

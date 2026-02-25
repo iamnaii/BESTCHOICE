@@ -19,6 +19,8 @@ import CustomerDetailPage from '@/pages/CustomerDetailPage';
 import ContractsPage from '@/pages/ContractsPage';
 import ContractCreatePage from '@/pages/ContractCreatePage';
 import ContractDetailPage from '@/pages/ContractDetailPage';
+import ContractSignPage from '@/pages/ContractSignPage';
+import ContractTemplatesPage from '@/pages/ContractTemplatesPage';
 
 function App() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -67,6 +69,15 @@ function App() {
         <Route path="/contracts" element={<ContractsPage />} />
         <Route path="/contracts/create" element={<ContractCreatePage />} />
         <Route path="/contracts/:id" element={<ContractDetailPage />} />
+        <Route path="/contracts/:id/sign" element={<ContractSignPage />} />
+        <Route
+          path="/contract-templates"
+          element={
+            <ProtectedRoute roles={['OWNER']}>
+              <ContractTemplatesPage />
+            </ProtectedRoute>
+          }
+        />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

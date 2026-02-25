@@ -150,6 +150,9 @@ export default function ContractDetailPage() {
         subtitle="รายละเอียดสัญญาผ่อนชำระ"
         action={
           <div className="flex gap-2">
+            <button onClick={() => navigate(`/contracts/${id}/sign`)} className="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700">
+              ลงนาม/เอกสาร
+            </button>
             {contract.status === 'DRAFT' && (
               <button onClick={() => activateMutation.mutate()} disabled={activateMutation.isPending} className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50">
                 {activateMutation.isPending ? 'กำลังเปิด...' : 'เปิดใช้งานสัญญา'}

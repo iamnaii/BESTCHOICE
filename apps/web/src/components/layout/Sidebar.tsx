@@ -13,6 +13,7 @@ const navItems: NavItem[] = [
   { label: 'หน้าหลัก', path: '/' },
   { label: 'สาขา', path: '/branches', roles: ['OWNER'] },
   { label: 'สินค้า', path: '/products' },
+  { label: '+ เพิ่มสินค้า', path: '/products/add', roles: ['OWNER', 'BRANCH_MANAGER'] },
   { label: 'ลูกค้า', path: '/customers' },
   { label: 'สัญญาผ่อน', path: '/contracts' },
   { label: 'ชำระเงิน', path: '/payments' },

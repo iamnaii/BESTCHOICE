@@ -12,6 +12,7 @@ import NotificationsPage from '@/pages/NotificationsPage';
 import ReportsPage from '@/pages/ReportsPage';
 import MigrationPage from '@/pages/MigrationPage';
 import ProductsPage from '@/pages/ProductsPage';
+import AddProductPage from '@/pages/AddProductPage';
 import CustomersPage from '@/pages/CustomersPage';
 import ContractsPage from '@/pages/ContractsPage';
 import PaymentsPage from '@/pages/PaymentsPage';
@@ -52,6 +53,14 @@ function App() {
           }
         />
         <Route path="/products" element={<ProductsPage />} />
+        <Route
+          path="/products/add"
+          element={
+            <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}>
+              <AddProductPage />
+            </ProtectedRoute>
+          }
+        />
         <Route path="/customers" element={<CustomersPage />} />
         <Route path="/contracts" element={<ContractsPage />} />
         <Route path="/payments" element={<PaymentsPage />} />

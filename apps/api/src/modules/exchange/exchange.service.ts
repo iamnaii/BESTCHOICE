@@ -179,7 +179,7 @@ export class ExchangeService {
 
       // Create payment schedule
       const now = new Date();
-      const payments = [];
+      const payments: { contractId: string; installmentNo: number; dueDate: Date; amountDue: number }[] = [];
       for (let i = 1; i <= totalMonths; i++) {
         const dueDate = new Date(now.getFullYear(), now.getMonth() + i, 1);
         payments.push({

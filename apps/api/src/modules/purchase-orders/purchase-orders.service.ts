@@ -139,7 +139,7 @@ export class PurchaseOrdersService {
         throw new BadRequestException('PO นี้ไม่อยู่ในสถานะที่สามารถรับสินค้าได้');
       }
 
-      const receivedProducts = [];
+      const receivedProducts: any[] = [];
 
       for (const receiveItem of dto.items) {
         const poItem = po.items.find((i) => i.id === receiveItem.poItemId);

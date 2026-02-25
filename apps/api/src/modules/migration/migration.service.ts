@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ImportCustomerDto, ImportContractDto, BulkImportDto } from './dto/import.dto';
 
-interface ImportResult {
+export interface ImportResult {
   success: number;
   failed: number;
   errors: { row: number; field?: string; message: string }[];
@@ -203,7 +203,7 @@ export class MigrationService {
         } else {
           // Auto-generate payment schedule
           const createdAt = c.createdAt ? new Date(c.createdAt) : new Date();
-          const payments = [];
+          const payments: { contractId: string; installmentNo: number; dueDate: Date; amountDue: number }[] = [];
           for (let m = 1; m <= c.totalMonths; m++) {
             const dueDate = new Date(createdAt.getFullYear(), createdAt.getMonth() + m, 1);
             payments.push({

@@ -78,13 +78,15 @@ export class PaymentsService {
     const amountDue = Number(payment.amountDue);
     const newStatus = dto.amountPaid >= amountDue ? 'PAID' : 'PARTIALLY_PAID';
 
-    // Calculate late fee
+    // Calculate late fee from system config
     let lateFee = 0;
     const now = new Date();
     if (now > payment.dueDate) {
       const diffDays = Math.floor((now.getTime() - payment.dueDate.getTime()) / (1000 * 60 * 60 * 24));
-      const feePerDay = 100; // default from system config
-      const feeCap = 200;
+      const feePerDayConfig = await this.prisma.systemConfig.findUnique({ where: { key: 'late_fee_per_day' } });
+      const feeCapConfig = await this.prisma.systemConfig.findUnique({ where: { key: 'late_fee_cap' } });
+      const feePerDay = feePerDayConfig ? Number(feePerDayConfig.value) : 100;
+      const feeCap = feeCapConfig ? Number(feeCapConfig.value) : 200;
       lateFee = Math.min(diffDays * feePerDay, feeCap);
     }
 

@@ -152,6 +152,45 @@ async function main() {
   console.log('Inspection template created:', phoneTemplate.name);
 
   // ============================================================
+  // SAMPLE SUPPLIERS
+  // ============================================================
+  const suppliers = [
+    {
+      id: 'sup-001',
+      name: 'ABC Mobile Supply',
+      contactName: 'คุณสมศรี',
+      phone: '089-999-1111',
+      address: '100 ถ.เจริญกรุง เขตบางรัก กทม. 10500',
+      notes: 'Supplier หลัก Apple',
+    },
+    {
+      id: 'sup-002',
+      name: 'Thai Phone Distributor',
+      contactName: 'คุณวิทยา',
+      phone: '089-999-2222',
+      address: '200 ถ.พระราม 4 เขตคลองเตย กทม. 10110',
+      notes: 'Supplier Samsung/Android',
+    },
+    {
+      id: 'sup-003',
+      name: 'Mobile Accessories Plus',
+      contactName: 'คุณนิดา',
+      phone: '089-999-3333',
+      address: '300 ถ.สีลม เขตบางรัก กทม. 10500',
+      notes: 'อุปกรณ์เสริม/เคส',
+    },
+  ];
+
+  for (const s of suppliers) {
+    await prisma.supplier.upsert({
+      where: { id: s.id },
+      update: {},
+      create: s,
+    });
+  }
+  console.log('Suppliers created:', suppliers.length, 'items');
+
+  // ============================================================
   // SAMPLE PRODUCTS
   // ============================================================
   const products = [

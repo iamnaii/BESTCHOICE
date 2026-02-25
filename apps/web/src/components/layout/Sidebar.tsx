@@ -21,6 +21,8 @@ const navItems: NavItem[] = [
   { label: 'ใบสั่งซื้อ (PO)', path: '/purchase-orders', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'operations' },
   { label: 'แจ้งเตือน', path: '/notifications', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'communication' },
   { label: 'รายงาน', path: '/reports', roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'], section: 'intelligence' },
+  { label: 'จัดการผู้ใช้', path: '/users', roles: ['OWNER'], section: 'settings' },
+  { label: 'ตั้งค่าระบบ', path: '/settings', roles: ['OWNER'], section: 'settings' },
   { label: 'นำเข้าข้อมูล', path: '/migration', roles: ['OWNER'], section: 'settings' },
 ];
 

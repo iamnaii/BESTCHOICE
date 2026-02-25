@@ -67,6 +67,11 @@ export default function PurchaseOrdersPage() {
   });
   const [items, setItems] = useState<ItemForm[]>([{ brand: '', model: '', quantity: '1', unitPrice: '' }]);
 
+  const { data: suppliers = [] } = useQuery<{ id: string; name: string; contactName: string }[]>({
+    queryKey: ['suppliers'],
+    queryFn: async () => (await api.get('/suppliers')).data,
+  });
+
   const { data: pos = [], isLoading } = useQuery<PurchaseOrder[]>({
     queryKey: ['purchase-orders', statusFilter],
     queryFn: async () => {
@@ -263,14 +268,18 @@ export default function PurchaseOrdersPage() {
       <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="สร้างใบสั่งซื้อ" size="lg">
         <form onSubmit={handleCreate} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Supplier ID *</label>
-            <input
-              type="text"
+            <label className="block text-sm font-medium text-gray-700 mb-1">Supplier *</label>
+            <select
               value={form.supplierId}
               onChange={(e) => setForm({ ...form, supplierId: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
               required
-            />
+            >
+              <option value="">-- เลือก Supplier --</option>
+              {suppliers.map((s) => (
+                <option key={s.id} value={s.id}>{s.name} ({s.contactName})</option>
+              ))}
+            </select>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>

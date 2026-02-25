@@ -69,6 +69,18 @@ export default function RepossessionsPage() {
     notes: '',
   });
 
+  // Fetch contracts that can be repossessed (OVERDUE or DEFAULT)
+  const { data: overdueContracts = [] } = useQuery<{ id: string; contractNumber: string; customer: { name: string }; product: { name: string } }[]>({
+    queryKey: ['contracts-for-repo'],
+    queryFn: async () => {
+      const [overdue, defaulted] = await Promise.all([
+        api.get('/contracts?status=OVERDUE'),
+        api.get('/contracts?status=DEFAULT'),
+      ]);
+      return [...overdue.data, ...defaulted.data];
+    },
+  });
+
   const { data: repos = [], isLoading } = useQuery<Repossession[]>({
     queryKey: ['repossessions', statusFilter],
     queryFn: async () => {
@@ -277,15 +289,20 @@ export default function RepossessionsPage() {
       <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="บันทึกการยึดคืน" size="lg">
         <form onSubmit={handleCreate} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">รหัสสัญญา *</label>
-            <input
-              type="text"
+            <label className="block text-sm font-medium text-gray-700 mb-1">เลือกสัญญา (OVERDUE/DEFAULT) *</label>
+            <select
               value={createForm.contractId}
               onChange={(e) => setCreateForm({ ...createForm, contractId: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
-              placeholder="Contract ID"
               required
-            />
+            >
+              <option value="">-- เลือกสัญญา --</option>
+              {overdueContracts.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.contractNumber} - {c.customer.name} ({c.product.name})
+                </option>
+              ))}
+            </select>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>

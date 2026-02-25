@@ -19,6 +19,9 @@ import { ProductsModule } from './modules/products/products.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { ContractsModule } from './modules/contracts/contracts.module';
 import { PaymentsModule } from './modules/payments/payments.module';
+import { UsersModule } from './modules/users/users.module';
+import { SettingsModule } from './modules/settings/settings.module';
+import { SuppliersModule } from './modules/suppliers/suppliers.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
 
@@ -61,6 +64,10 @@ import { SecurityMiddleware } from './modules/audit/security.middleware';
     // Phase 6: Polish
     MigrationModule,
     AuditModule,
+    // Management
+    UsersModule,
+    SettingsModule,
+    SuppliersModule,
   ],
   controllers: [AppController],
   providers: [

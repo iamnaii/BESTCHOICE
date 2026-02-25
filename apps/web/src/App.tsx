@@ -15,6 +15,8 @@ import ProductsPage from '@/pages/ProductsPage';
 import CustomersPage from '@/pages/CustomersPage';
 import ContractsPage from '@/pages/ContractsPage';
 import PaymentsPage from '@/pages/PaymentsPage';
+import UsersPage from '@/pages/UsersPage';
+import SettingsPage from '@/pages/SettingsPage';
 
 function App() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -83,6 +85,22 @@ function App() {
           element={
             <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT']}>
               <ReportsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/users"
+          element={
+            <ProtectedRoute roles={['OWNER']}>
+              <UsersPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <ProtectedRoute roles={['OWNER']}>
+              <SettingsPage />
             </ProtectedRoute>
           }
         />

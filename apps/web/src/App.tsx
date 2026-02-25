@@ -13,6 +13,7 @@ import ProductDetailPage from '@/pages/ProductDetailPage';
 import StockPage from '@/pages/StockPage';
 import InspectionPage from '@/pages/InspectionPage';
 import InspectionDetailPage from '@/pages/InspectionDetailPage';
+import StickerPrintPage from '@/pages/StickerPrintPage';
 
 function App() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -55,6 +56,7 @@ function App() {
         <Route path="/stock" element={<StockPage />} />
         <Route path="/inspections" element={<InspectionPage />} />
         <Route path="/inspections/:id" element={<InspectionDetailPage />} />
+        <Route path="/stickers" element={<StickerPrintPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

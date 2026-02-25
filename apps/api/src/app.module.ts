@@ -9,6 +9,7 @@ import { BranchesModule } from './modules/branches/branches.module';
 import { SuppliersModule } from './modules/suppliers/suppliers.module';
 import { ProductsModule } from './modules/products/products.module';
 import { InspectionsModule } from './modules/inspections/inspections.module';
+import { StickersModule } from './modules/stickers/stickers.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { InspectionsModule } from './modules/inspections/inspections.module';
     SuppliersModule,
     ProductsModule,
     InspectionsModule,
+    StickersModule,
   ],
   controllers: [AppController],
   providers: [

@@ -2,7 +2,7 @@
 set -e
 
 echo "Running database migrations..."
-npx prisma migrate deploy --schema=./apps/api/prisma/schema.prisma
+./node_modules/.bin/prisma migrate deploy --schema=./apps/api/prisma/schema.prisma
 
 echo "Seeding database..."
 node apps/api/dist/prisma/seed.js || echo "Seed skipped (may already exist)"

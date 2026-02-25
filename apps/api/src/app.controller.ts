@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, HttpCode } from '@nestjs/common';
 import { PrismaService } from './prisma/prisma.service';
 
 @Controller()
@@ -17,6 +17,7 @@ export class AppController {
   }
 
   @Get('health')
+  @HttpCode(200)
   async deepHealthCheck() {
     const checks: Record<string, string> = {};
 

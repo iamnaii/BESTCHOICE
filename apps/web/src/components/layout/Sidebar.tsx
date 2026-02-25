@@ -18,6 +18,7 @@ const navItems: NavItem[] = [
   { label: 'สัญญาผ่อน', path: '/contracts' },
   { label: 'ชำระเงิน', path: '/payments' },
   { label: 'ติดตามหนี้', path: '/overdue', section: 'operations' },
+  { label: 'เปลี่ยนเครื่อง', path: '/exchange', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'operations' },
   { label: 'ยึดคืน & ขายต่อ', path: '/repossessions', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'operations' },
   { label: 'ใบสั่งซื้อ (PO)', path: '/purchase-orders', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'operations' },
   { label: 'แจ้งเตือน', path: '/notifications', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'communication' },

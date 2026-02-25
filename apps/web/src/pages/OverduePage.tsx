@@ -54,10 +54,19 @@ const resultLabels: Record<string, string> = {
   REFUSED: 'ปฏิเสธ',
 };
 
+interface PaginatedResponse {
+  data: OverdueContract[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
 export default function OverduePage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [page, setPage] = useState(1);
   const [selectedContract, setSelectedContract] = useState<OverdueContract | null>(null);
   const [isCallLogModalOpen, setIsCallLogModalOpen] = useState(false);
   const [callLogForm, setCallLogForm] = useState({
@@ -70,15 +79,21 @@ export default function OverduePage() {
     queryFn: async () => (await api.get('/overdue/summary')).data,
   });
 
-  const { data: contracts = [], isLoading } = useQuery<OverdueContract[]>({
-    queryKey: ['overdue', search, statusFilter],
+  const { data: paginatedData, isLoading } = useQuery<PaginatedResponse>({
+    queryKey: ['overdue', search, statusFilter, page],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (search) params.set('search', search);
       if (statusFilter) params.set('status', statusFilter);
+      params.set('page', String(page));
+      params.set('limit', '50');
       return (await api.get(`/overdue?${params}`)).data;
     },
   });
+
+  const contracts = paginatedData?.data || [];
+  const totalPages = paginatedData?.totalPages || 1;
+  const total = paginatedData?.total || 0;
 
   const createCallLogMutation = useMutation({
     mutationFn: async (data: { contractId: string; result: string; notes: string }) =>
@@ -248,6 +263,31 @@ export default function OverduePage() {
       </div>
 
       <DataTable columns={columns} data={contracts} isLoading={isLoading} emptyMessage="ไม่มีสัญญาค้างชำระ" />
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-4">
+          <div className="text-sm text-gray-500">
+            ทั้งหมด {total} รายการ (หน้า {page}/{totalPages})
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="px-3 py-1.5 text-sm border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              ก่อนหน้า
+            </button>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+              className="px-3 py-1.5 text-sm border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              ถัดไป
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Call Log Modal */}
       <Modal

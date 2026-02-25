@@ -245,25 +245,76 @@ export default function RepossessionsPage() {
       />
 
       {/* Profit/Loss Summary */}
-      {profitLoss && (
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
+      {profitLoss?.summary && (
+        <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 mb-6">
           <div className="bg-white rounded-lg border p-4">
             <div className="text-sm text-gray-500">เครื่องที่ขายแล้ว</div>
-            <div className="text-2xl font-bold">{profitLoss.count}</div>
+            <div className="text-2xl font-bold">{profitLoss.summary.count}</div>
           </div>
           <div className="bg-white rounded-lg border p-4">
             <div className="text-sm text-gray-500">ราคาตีรวม</div>
-            <div className="text-lg font-bold">{profitLoss.totalAppraisal?.toLocaleString()} บาท</div>
+            <div className="text-lg font-bold">{profitLoss.summary.totalAppraisal?.toLocaleString()} บาท</div>
+          </div>
+          <div className="bg-white rounded-lg border p-4">
+            <div className="text-sm text-gray-500">ค่าซ่อมรวม</div>
+            <div className="text-lg font-bold">{profitLoss.summary.totalRepairCost?.toLocaleString()} บาท</div>
           </div>
           <div className="bg-white rounded-lg border p-4">
             <div className="text-sm text-gray-500">ราคาขายรวม</div>
-            <div className="text-lg font-bold">{profitLoss.totalResellPrice?.toLocaleString()} บาท</div>
+            <div className="text-lg font-bold">{profitLoss.summary.totalResellPrice?.toLocaleString()} บาท</div>
           </div>
           <div className="bg-white rounded-lg border p-4">
             <div className="text-sm text-gray-500">กำไร/ขาดทุน</div>
-            <div className={`text-lg font-bold ${profitLoss.totalProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {profitLoss.totalProfit?.toLocaleString()} บาท
+            <div className={`text-lg font-bold ${profitLoss.summary.totalProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {profitLoss.summary.totalProfit?.toLocaleString()} บาท
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Itemized P&L Table */}
+      {profitLoss?.items?.length > 0 && (
+        <div className="bg-white rounded-lg border mb-6 overflow-hidden">
+          <div className="px-4 py-3 border-b bg-gray-50">
+            <h3 className="text-sm font-medium text-gray-700">รายละเอียดกำไร/ขาดทุน</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-gray-50 text-gray-600 text-xs">
+                <tr>
+                  <th className="px-4 py-2 text-left">สัญญา</th>
+                  <th className="px-4 py-2 text-left">ลูกค้า</th>
+                  <th className="px-4 py-2 text-left">สินค้า</th>
+                  <th className="px-4 py-2 text-center">เกรด</th>
+                  <th className="px-4 py-2 text-right">ราคาตี</th>
+                  <th className="px-4 py-2 text-right">ค่าซ่อม</th>
+                  <th className="px-4 py-2 text-right">ราคาขาย</th>
+                  <th className="px-4 py-2 text-right">กำไร</th>
+                  <th className="px-4 py-2 text-right">Margin</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {profitLoss.items.map((item: { id: string; contract: string; customer: string; product: string; conditionGrade: string; appraisalPrice: number; repairCost: number; resellPrice: number; profit: number; marginPct: string }) => (
+                  <tr key={item.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-2 font-medium text-primary-600">{item.contract}</td>
+                    <td className="px-4 py-2">{item.customer}</td>
+                    <td className="px-4 py-2">{item.product}</td>
+                    <td className="px-4 py-2 text-center">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${gradeColors[item.conditionGrade] || ''}`}>
+                        {item.conditionGrade}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2 text-right">{item.appraisalPrice.toLocaleString()}</td>
+                    <td className="px-4 py-2 text-right">{item.repairCost.toLocaleString()}</td>
+                    <td className="px-4 py-2 text-right">{item.resellPrice.toLocaleString()}</td>
+                    <td className={`px-4 py-2 text-right font-medium ${item.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {item.profit.toLocaleString()}
+                    </td>
+                    <td className="px-4 py-2 text-right text-gray-500">{item.marginPct}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

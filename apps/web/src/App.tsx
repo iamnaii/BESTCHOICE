@@ -18,6 +18,7 @@ import ContractsPage from '@/pages/ContractsPage';
 import PaymentsPage from '@/pages/PaymentsPage';
 import UsersPage from '@/pages/UsersPage';
 import SettingsPage from '@/pages/SettingsPage';
+import ExchangePage from '@/pages/ExchangePage';
 
 function App() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -65,6 +66,14 @@ function App() {
         <Route path="/contracts" element={<ContractsPage />} />
         <Route path="/payments" element={<PaymentsPage />} />
         <Route path="/overdue" element={<OverduePage />} />
+        <Route
+          path="/exchange"
+          element={
+            <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}>
+              <ExchangePage />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/repossessions"
           element={

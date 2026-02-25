@@ -534,6 +534,99 @@ async function main() {
   }
   console.log('Contract 3 created:', contract3.contractNumber, '(OVERDUE, 2/8 paid)');
 
+  // ============================================================
+  // DEFAULT NOTIFICATION TEMPLATES
+  // ============================================================
+  const notificationTemplates = [
+    {
+      key: 'notification_template_payment_reminder_line',
+      value: JSON.stringify({
+        name: 'แจ้งเตือนชำระเงิน (LINE)',
+        eventType: 'PAYMENT_REMINDER',
+        channel: 'LINE',
+        subject: 'แจ้งเตือนค่างวด',
+        messageTemplate: 'สวัสดีค่ะ คุณ{customer_name}\nแจ้งเตือน: ค่างวดสัญญา {contract_number}\nจำนวน {amount} บาท\nครบกำหนดชำระ {due_date}\nกรุณาชำระตามกำหนด ขอบคุณค่ะ - Best Choice',
+        description: 'ส่งเตือนผ่าน LINE ก่อนครบกำหนดชำระ 1-3 วัน',
+        isActive: true,
+      }),
+      label: 'Template: แจ้งเตือนชำระเงิน (LINE)',
+    },
+    {
+      key: 'notification_template_payment_reminder_sms',
+      value: JSON.stringify({
+        name: 'แจ้งเตือนชำระเงิน (SMS)',
+        eventType: 'PAYMENT_REMINDER',
+        channel: 'SMS',
+        subject: 'แจ้งเตือนค่างวด',
+        messageTemplate: 'BestChoice: คุณ{customer_name} ค่างวดสัญญา {contract_number} จำนวน {amount} บาท ครบกำหนด {due_date} กรุณาชำระตามกำหนด',
+        description: 'ส่งเตือนผ่าน SMS สำหรับลูกค้าที่ไม่มี LINE',
+        isActive: true,
+      }),
+      label: 'Template: แจ้งเตือนชำระเงิน (SMS)',
+    },
+    {
+      key: 'notification_template_overdue_notice_line',
+      value: JSON.stringify({
+        name: 'แจ้งค้างชำระ (LINE)',
+        eventType: 'OVERDUE_NOTICE',
+        channel: 'LINE',
+        subject: 'แจ้งค้างชำระ',
+        messageTemplate: 'แจ้งเตือน: คุณ{customer_name}\nค่างวดสัญญา {contract_number} เลยกำหนดชำระ {days_overdue} วัน\nยอมค้างชำระ {amount} บาท (รวมค่าปรับ)\nกรุณาชำระโดยเร็ว - Best Choice',
+        description: 'แจ้งเตือนค้างชำระผ่าน LINE วันที่ 1, 3, 7 หลังเลยกำหนด',
+        isActive: true,
+      }),
+      label: 'Template: แจ้งค้างชำระ (LINE)',
+    },
+    {
+      key: 'notification_template_overdue_notice_sms',
+      value: JSON.stringify({
+        name: 'แจ้งค้างชำระ (SMS)',
+        eventType: 'OVERDUE_NOTICE',
+        channel: 'SMS',
+        subject: 'แจ้งค้างชำระ',
+        messageTemplate: 'BestChoice: คุณ{customer_name} ค่างวดสัญญา {contract_number} เลยกำหนด {days_overdue} วัน ค้างชำระ {amount} บาท กรุณาชำระโดยเร็ว',
+        description: 'แจ้งเตือนค้างชำระผ่าน SMS',
+        isActive: true,
+      }),
+      label: 'Template: แจ้งค้างชำระ (SMS)',
+    },
+    {
+      key: 'notification_template_payment_success_line',
+      value: JSON.stringify({
+        name: 'ยืนยันการชำระเงิน (LINE)',
+        eventType: 'PAYMENT_SUCCESS',
+        channel: 'LINE',
+        subject: 'ชำระเงินสำเร็จ',
+        messageTemplate: 'ขอบคุณค่ะ คุณ{customer_name}\nรับชำระค่างวดสัญญา {contract_number}\nจำนวน {amount} บาท เรียบร้อยแล้ว\nงวมคงเหลือ {remaining_installments} งวด\nขอบคุณที่ชำระตรงเวลาค่ะ - Best Choice',
+        description: 'ยืนยันการชำระเงินสำเร็จผ่าน LINE',
+        isActive: true,
+      }),
+      label: 'Template: ยืนยันการชำระเงิน (LINE)',
+    },
+    {
+      key: 'notification_template_contract_default_line',
+      value: JSON.stringify({
+        name: 'แจ้งผิดนัดสัญญา (LINE)',
+        eventType: 'CONTRACT_DEFAULT',
+        channel: 'LINE',
+        subject: 'แจ้งผิดนัดชำระ',
+        messageTemplate: 'แจ้งเตือนสำคัญ: คุณ{customer_name}\nสัญญา {contract_number} ถูกเปลี่ยนสถานะเป็นผิดนัดชำระ\nเนื่องจากค้างชำระติดต่อกันเกิน 2 งวด\nกรุณาติดต่อสาขาเพื่อชำระ หรือโทร {branch_phone}\n- Best Choice',
+        description: 'แจ้งเตือนเมื่อสัญญาเปลี่ยนเป็นสถานะ DEFAULT',
+        isActive: true,
+      }),
+      label: 'Template: แจ้งผิดนัดสัญญา (LINE)',
+    },
+  ];
+
+  for (const t of notificationTemplates) {
+    await prisma.systemConfig.upsert({
+      where: { key: t.key },
+      update: { value: t.value, label: t.label },
+      create: t,
+    });
+  }
+  console.log('Notification templates created:', notificationTemplates.length, 'templates');
+
   console.log('Seeding completed!');
 }
 

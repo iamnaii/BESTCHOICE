@@ -58,6 +58,7 @@ export default function ProductsPage() {
   const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [viewingProduct, setViewingProduct] = useState<Product | null>(null);
   const [statusFilter, setStatusFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [search, setSearch] = useState('');
@@ -153,7 +154,7 @@ export default function ProductsPage() {
     {
       key: 'actions', label: '',
       render: (p: Product) => canEdit ? (
-        <button onClick={() => openEdit(p)} className="text-primary-600 hover:text-primary-700 text-sm font-medium">แก้ไข</button>
+        <button onClick={(e) => { e.stopPropagation(); openEdit(p); }} className="text-primary-600 hover:text-primary-700 text-sm font-medium">แก้ไข</button>
       ) : null,
     },
   ];
@@ -188,7 +189,70 @@ export default function ProductsPage() {
         </select>
       </div>
 
-      <DataTable columns={columns} data={products} isLoading={isLoading} />
+      <DataTable columns={columns} data={products} isLoading={isLoading} onRowClick={(p) => setViewingProduct(p)} />
+
+      <Modal isOpen={!!viewingProduct} onClose={() => setViewingProduct(null)} title="รายละเอียดสินค้า">
+        {viewingProduct && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <div className="text-xs text-gray-500">ชื่อสินค้า</div>
+                <div className="font-medium text-gray-900">{viewingProduct.name}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500">ยี่ห้อ / รุ่น</div>
+                <div className="font-medium text-gray-900">{viewingProduct.brand} {viewingProduct.model}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500">IMEI/Serial</div>
+                <div className="font-medium text-gray-900">{viewingProduct.imeiSerial || '-'}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500">ประเภท</div>
+                <div className="font-medium text-gray-900">{categoryLabels[viewingProduct.category] || viewingProduct.category}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500">ราคาทุน</div>
+                <div className="font-medium text-gray-900">{Number(viewingProduct.costPrice).toLocaleString('th-TH', { minimumFractionDigits: 2 })} ฿</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500">สาขา</div>
+                <div className="font-medium text-gray-900">{viewingProduct.branch.name}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500">สถานะ</div>
+                <div>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[viewingProduct.status] || 'bg-gray-100 text-gray-700'}`}>
+                    {statusLabels[viewingProduct.status] || viewingProduct.status}
+                  </span>
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500">เกรดสภาพ</div>
+                <div className="font-medium text-gray-900">{viewingProduct.conditionGrade || '-'}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500">ซัพพลายเออร์</div>
+                <div className="font-medium text-gray-900">{viewingProduct.supplier?.name || '-'}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500">วันที่เพิ่ม</div>
+                <div className="font-medium text-gray-900">{new Date(viewingProduct.createdAt).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
+              </div>
+            </div>
+            {canEdit && (
+              <div className="flex justify-end pt-2 border-t">
+                <button
+                  onClick={() => { setViewingProduct(null); openEdit(viewingProduct); }}
+                  className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
+                >
+                  แก้ไขสินค้า
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
 
       <Modal isOpen={isModalOpen} onClose={closeModal} title={editingProduct ? 'แก้ไขสินค้า' : 'เพิ่มสินค้าใหม่'}>
         <form onSubmit={handleSubmit} className="space-y-4">

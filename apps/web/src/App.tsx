@@ -21,6 +21,7 @@ import ContractCreatePage from '@/pages/ContractCreatePage';
 import ContractDetailPage from '@/pages/ContractDetailPage';
 import ContractSignPage from '@/pages/ContractSignPage';
 import ContractTemplatesPage from '@/pages/ContractTemplatesPage';
+import PaymentsPage from '@/pages/PaymentsPage';
 
 function App() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -78,6 +79,7 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route path="/payments" element={<PaymentsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

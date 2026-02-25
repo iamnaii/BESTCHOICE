@@ -13,6 +13,7 @@ import { StickersModule } from './modules/stickers/stickers.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { ContractsModule } from './modules/contracts/contracts.module';
 import { DocumentsModule } from './modules/documents/documents.module';
+import { PaymentsModule } from './modules/payments/payments.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { DocumentsModule } from './modules/documents/documents.module';
     CustomersModule,
     ContractsModule,
     DocumentsModule,
+    PaymentsModule,
   ],
   controllers: [AppController],
   providers: [

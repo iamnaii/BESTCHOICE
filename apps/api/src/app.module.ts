@@ -11,6 +11,7 @@ import { ProductsModule } from './modules/products/products.module';
 import { InspectionsModule } from './modules/inspections/inspections.module';
 import { StickersModule } from './modules/stickers/stickers.module';
 import { CustomersModule } from './modules/customers/customers.module';
+import { ContractsModule } from './modules/contracts/contracts.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { CustomersModule } from './modules/customers/customers.module';
     InspectionsModule,
     StickersModule,
     CustomersModule,
+    ContractsModule,
   ],
   controllers: [AppController],
   providers: [

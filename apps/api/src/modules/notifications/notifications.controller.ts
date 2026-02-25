@@ -4,6 +4,7 @@ import {
   SendNotificationDto,
   CreateNotificationTemplateDto,
   UpdateNotificationTemplateDto,
+  BulkNotificationDto,
 } from './dto/create-notification.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -91,6 +92,12 @@ export class NotificationsController {
   @Roles('OWNER')
   deleteTemplate(@Param('id') id: string) {
     return this.notificationsService.deleteTemplate(id);
+  }
+
+  @Post('bulk')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  sendBulk(@Body() dto: BulkNotificationDto) {
+    return this.notificationsService.sendBulk(dto.templateId, dto.contractIds);
   }
 
   // ============================================================

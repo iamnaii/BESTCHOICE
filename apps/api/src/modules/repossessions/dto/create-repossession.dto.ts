@@ -42,4 +42,8 @@ export class UpdateRepossessionDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  @IsString()
+  @IsOptional()
+  soldContractId?: string; // Link to resell contract when SOLD
 }

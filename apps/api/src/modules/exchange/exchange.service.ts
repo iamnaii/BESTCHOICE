@@ -1,10 +1,12 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateExchangeDto } from './dto/create-exchange.dto';
 import { Decimal } from '@prisma/client/runtime/library';
 
 @Injectable()
 export class ExchangeService {
+  private readonly logger = new Logger(ExchangeService.name);
+
   constructor(private prisma: PrismaService) {}
 
   /**
@@ -111,17 +113,31 @@ export class ExchangeService {
       const newPrice = newProduct.prices.find((p) => p.id === dto.newPriceId);
       if (!newPrice) throw new NotFoundException('ไม่พบราคาที่เลือก');
 
-      // Get interest rate
+      // Get interest rate and min down payment config
       let interestRate = dto.newInterestRate;
       if (!interestRate) {
         const config = await tx.systemConfig.findUnique({ where: { key: 'interest_rate' } });
         interestRate = config ? Number(config.value) : 0.08;
       }
+      const minDownConfig = await tx.systemConfig.findUnique({ where: { key: 'min_down_payment_pct' } });
+      const minDownPct = minDownConfig ? Number(minDownConfig.value) : 0.15;
 
       // Calculate new contract
       const sellingPrice = Number(newPrice.amount);
       const downPayment = dto.newDownPayment;
       const totalMonths = dto.newTotalMonths;
+
+      // Validate down payment >= minimum percentage
+      if (downPayment < sellingPrice * minDownPct) {
+        throw new BadRequestException(
+          `เงินดาวน์ต้องไม่น้อยกว่า ${(minDownPct * 100).toFixed(0)}% ของราคาสินค้า (ขั้นต่ำ ${(sellingPrice * minDownPct).toLocaleString()} บาท)`,
+        );
+      }
+
+      // Validate total months
+      if (totalMonths < 6 || totalMonths > 12) {
+        throw new BadRequestException('จำนวนงวดต้องอยู่ระหว่าง 6-12 เดือน');
+      }
 
       const interestTotal = sellingPrice * interestRate * totalMonths;
       const financedAmount = sellingPrice - downPayment + interestTotal;
@@ -177,11 +193,15 @@ export class ExchangeService {
         },
       });
 
-      // Create payment schedule
+      // Create payment schedule with proper date handling (avoids month overflow bug)
       const now = new Date();
       const payments: { contractId: string; installmentNo: number; dueDate: Date; amountDue: number }[] = [];
       for (let i = 1; i <= totalMonths; i++) {
         const dueDate = new Date(now.getFullYear(), now.getMonth() + i, 1);
+        // Ensure the date is correct even when month overflows (e.g., month 13+ wraps to next year)
+        // JavaScript's Date constructor handles this automatically, but we normalize to 1st of month
+        dueDate.setDate(1);
+        dueDate.setHours(0, 0, 0, 0);
         payments.push({
           contractId: newContract.id,
           installmentNo: i,
@@ -197,6 +217,29 @@ export class ExchangeService {
         where: { id: dto.newProductId },
         data: { status: 'SOLD_INSTALLMENT' },
       });
+
+      // Audit log for exchange
+      await tx.auditLog.create({
+        data: {
+          userId,
+          action: 'EXCHANGE',
+          entity: 'contract',
+          entityId: newContract.id,
+          newValue: {
+            oldContractId: oldContract.id,
+            oldContractNumber: oldContract.contractNumber,
+            newContractId: newContract.id,
+            newContractNumber: contractNumber,
+            newProductId: dto.newProductId,
+            downPayment,
+            totalMonths,
+            monthlyPayment,
+          },
+          ipAddress: '',
+        },
+      });
+
+      this.logger.log(`Exchange completed: ${oldContract.contractNumber} → ${contractNumber}`);
 
       return {
         oldContract: { id: oldContract.id, contractNumber: oldContract.contractNumber, status: 'EXCHANGED' },

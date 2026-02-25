@@ -18,6 +18,10 @@ export class SendNotificationDto {
   @IsString()
   @IsOptional()
   relatedId?: string;
+
+  @IsString()
+  @IsOptional()
+  fallbackPhone?: string; // SMS fallback if LINE fails
 }
 
 export class CreateNotificationTemplateDto {

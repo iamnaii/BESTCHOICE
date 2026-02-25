@@ -1,14 +1,16 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCallLogDto } from './dto/create-call-log.dto';
 import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class OverdueService {
+  private readonly logger = new Logger(OverdueService.name);
+
   constructor(private prisma: PrismaService) {}
 
   /**
-   * Get all overdue/default contracts with filters
+   * Get all overdue/default contracts with filters and pagination
    */
   async findOverdueContracts(filters: {
     branchId?: string;
@@ -16,7 +18,13 @@ export class OverdueService {
     search?: string;
     userRole: string;
     userBranchId?: string;
+    page?: number;
+    limit?: number;
   }) {
+    const page = filters.page || 1;
+    const limit = filters.limit || 50;
+    const skip = (page - 1) * limit;
+
     const where: Prisma.ContractWhereInput = {
       status: { in: ['OVERDUE', 'DEFAULT'] },
       deletedAt: null,
@@ -43,25 +51,38 @@ export class OverdueService {
       ];
     }
 
-    return this.prisma.contract.findMany({
-      where,
-      include: {
-        customer: { select: { id: true, name: true, phone: true, lineId: true } },
-        product: { select: { id: true, name: true, brand: true, model: true, imeiSerial: true } },
-        branch: { select: { id: true, name: true } },
-        salesperson: { select: { id: true, name: true } },
-        payments: {
-          where: { status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] } },
-          orderBy: { installmentNo: 'asc' },
+    const [data, total] = await Promise.all([
+      this.prisma.contract.findMany({
+        where,
+        include: {
+          customer: { select: { id: true, name: true, phone: true, lineId: true } },
+          product: { select: { id: true, name: true, brand: true, model: true, imeiSerial: true } },
+          branch: { select: { id: true, name: true } },
+          salesperson: { select: { id: true, name: true } },
+          payments: {
+            where: { status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] } },
+            orderBy: { installmentNo: 'asc' },
+          },
+          callLogs: {
+            orderBy: { calledAt: 'desc' },
+            take: 3,
+            include: { caller: { select: { id: true, name: true } } },
+          },
         },
-        callLogs: {
-          orderBy: { calledAt: 'desc' },
-          take: 3,
-          include: { caller: { select: { id: true, name: true } } },
-        },
-      },
-      orderBy: { updatedAt: 'desc' },
-    });
+        orderBy: { updatedAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.contract.count({ where }),
+    ]);
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
   /**
@@ -126,7 +147,7 @@ export class OverdueService {
   }
 
   /**
-   * Create a call log entry
+   * Create a call log entry with audit trail
    */
   async createCallLog(dto: CreateCallLogDto, callerId: string) {
     const contract = await this.prisma.contract.findUnique({
@@ -134,7 +155,7 @@ export class OverdueService {
     });
     if (!contract) throw new NotFoundException('ไม่พบสัญญา');
 
-    return this.prisma.callLog.create({
+    const callLog = await this.prisma.callLog.create({
       data: {
         contractId: dto.contractId,
         callerId,
@@ -149,6 +170,25 @@ export class OverdueService {
         },
       },
     });
+
+    // Audit log for call
+    await this.prisma.auditLog.create({
+      data: {
+        userId: callerId,
+        action: 'CREATE_CALL_LOG',
+        entity: 'call_log',
+        entityId: callLog.id,
+        newValue: {
+          contractId: dto.contractId,
+          contractNumber: contract.contractNumber,
+          result: dto.result,
+          calledAt: dto.calledAt,
+        },
+        ipAddress: '',
+      },
+    });
+
+    return callLog;
   }
 
   /**
@@ -171,12 +211,10 @@ export class OverdueService {
     const now = new Date();
 
     // Get late fee config
-    const lateFeeConfig = await this.prisma.systemConfig.findUnique({
-      where: { key: 'late_fee_per_day' },
-    });
-    const lateFeeCapConfig = await this.prisma.systemConfig.findUnique({
-      where: { key: 'late_fee_cap' },
-    });
+    const [lateFeeConfig, lateFeeCapConfig] = await Promise.all([
+      this.prisma.systemConfig.findUnique({ where: { key: 'late_fee_per_day' } }),
+      this.prisma.systemConfig.findUnique({ where: { key: 'late_fee_cap' } }),
+    ]);
 
     const lateFeePerDay = lateFeeConfig ? Number(lateFeeConfig.value) : 100;
     const lateFeeCap = lateFeeCapConfig ? Number(lateFeeCapConfig.value) : 200;
@@ -208,6 +246,7 @@ export class OverdueService {
       updated++;
     }
 
+    this.logger.log(`Late fees calculated: ${updated} payments updated`);
     return { updated, timestamp: now };
   }
 
@@ -218,6 +257,13 @@ export class OverdueService {
     const now = new Date();
     let overdueUpdated = 0;
     let defaultUpdated = 0;
+
+    // Get system user for audit logs (first OWNER)
+    const systemUser = await this.prisma.user.findFirst({
+      where: { role: 'OWNER', isActive: true },
+      select: { id: true },
+    });
+    const systemUserId = systemUser?.id || 'system';
 
     // Find contracts with overdue payments > 7 days → OVERDUE
     const activeContracts = await this.prisma.contract.findMany({
@@ -238,6 +284,19 @@ export class OverdueService {
         where: { id: contract.id },
         data: { status: 'OVERDUE' },
       });
+
+      // Audit log for status change
+      await this.prisma.auditLog.create({
+        data: {
+          userId: systemUserId,
+          action: 'STATUS_CHANGE',
+          entity: 'contract',
+          entityId: contract.id,
+          newValue: { from: 'ACTIVE', to: 'OVERDUE', reason: 'Payment overdue > 7 days' },
+          ipAddress: 'system-cron',
+        },
+      });
+
       overdueUpdated++;
     }
 
@@ -273,10 +332,24 @@ export class OverdueService {
           where: { id: contract.id },
           data: { status: 'DEFAULT' },
         });
+
+        // Audit log for status change
+        await this.prisma.auditLog.create({
+          data: {
+            userId: systemUserId,
+            action: 'STATUS_CHANGE',
+            entity: 'contract',
+            entityId: contract.id,
+            newValue: { from: 'OVERDUE', to: 'DEFAULT', reason: `${maxConsecutive} consecutive missed payments` },
+            ipAddress: 'system-cron',
+          },
+        });
+
         defaultUpdated++;
       }
     }
 
+    this.logger.log(`Contract status update: ${overdueUpdated} overdue, ${defaultUpdated} default`);
     return { overdueUpdated, defaultUpdated, timestamp: now };
   }
 }

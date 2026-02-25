@@ -24,6 +24,7 @@
     "@nestjs/jwt": "^10.2.0",
     "@nestjs/passport": "^10.0.3",
     "@nestjs/platform-express": "^10.4.0",
+    "@nestjs/schedule": "^6.1.1",
     "@nestjs/throttler": "^6.0.0",
     "@prisma/client": "^6.0.0",
     "bcrypt": "^5.1.1",
@@ -57,13 +58,22 @@
     "seed": "ts-node prisma/seed.ts"
   },
   "jest": {
-    "moduleFileExtensions": ["js", "json", "ts"],
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
       "^.+\\.ts$": "ts-jest"
     },
-    "collectCoverageFrom": ["**/*.ts", "!**/*.spec.ts", "!**/*.module.ts", "!main.ts"],
+    "collectCoverageFrom": [
+      "**/*.ts",
+      "!**/*.spec.ts",
+      "!**/*.module.ts",
+      "!main.ts"
+    ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
   }

@@ -53,12 +53,21 @@ interface ItemForm {
   unitPrice: string;
 }
 
+interface ReceiveItemForm {
+  poItemId: string;
+  receivedQty: string;
+  maxQty: number;
+  label: string;
+}
+
 export default function PurchaseOrdersPage() {
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState('');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
+  const [receiveItems, setReceiveItems] = useState<ReceiveItemForm[]>([]);
   const [form, setForm] = useState({
     supplierId: '',
     orderDate: new Date().toISOString().split('T')[0],
@@ -110,6 +119,20 @@ export default function PurchaseOrdersPage() {
     onError: () => toast.error('เกิดข้อผิดพลาด'),
   });
 
+  const receiveMutation = useMutation({
+    mutationFn: async ({ poId, items }: { poId: string; items: { poItemId: string; receivedQty: number }[] }) =>
+      api.post(`/purchase-orders/${poId}/receive`, { items }),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      const data = res.data;
+      toast.success(`รับสินค้าสำเร็จ ${data.receivedProducts} ชิ้น (สถานะ: ${statusLabels[data.status] || data.status})`);
+      setIsReceiveModalOpen(false);
+      setIsDetailModalOpen(false);
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) =>
+      toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาดในการรับสินค้า'),
+  });
+
   const resetForm = () => {
     setForm({ supplierId: '', orderDate: new Date().toISOString().split('T')[0], expectedDate: '', notes: '' });
     setItems([{ brand: '', model: '', quantity: '1', unitPrice: '' }]);
@@ -135,6 +158,40 @@ export default function PurchaseOrdersPage() {
         unitPrice: Number(i.unitPrice),
       })),
     });
+  };
+
+  const openReceiveModal = (po: PurchaseOrder) => {
+    setSelectedPO(po);
+    setReceiveItems(
+      po.items
+        .filter((item) => item.receivedQty < item.quantity)
+        .map((item) => ({
+          poItemId: item.id,
+          receivedQty: String(item.quantity - item.receivedQty),
+          maxQty: item.quantity - item.receivedQty,
+          label: `${item.brand} ${item.model}`,
+        })),
+    );
+    setIsReceiveModalOpen(true);
+  };
+
+  const handleReceive = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedPO) return;
+
+    const validItems = receiveItems
+      .filter((i) => Number(i.receivedQty) > 0)
+      .map((i) => ({
+        poItemId: i.poItemId,
+        receivedQty: Number(i.receivedQty),
+      }));
+
+    if (validItems.length === 0) {
+      toast.error('กรุณาระบุจำนวนที่รับอย่างน้อย 1 รายการ');
+      return;
+    }
+
+    receiveMutation.mutate({ poId: selectedPO.id, items: validItems });
   };
 
   const totalAmount = items.reduce((sum, i) => sum + Number(i.quantity || 0) * Number(i.unitPrice || 0), 0);
@@ -199,9 +256,19 @@ export default function PurchaseOrdersPage() {
         const totalOrdered = po.items.reduce((s, i) => s + i.quantity, 0);
         const totalReceived = po.items.reduce((s, i) => s + i.receivedQty, 0);
         return (
-          <span className="text-sm">
-            {totalReceived}/{totalOrdered}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-sm">
+              {totalReceived}/{totalOrdered}
+            </span>
+            {totalOrdered > 0 && (
+              <div className="w-16 bg-gray-200 rounded-full h-1.5">
+                <div
+                  className="bg-green-500 h-1.5 rounded-full"
+                  style={{ width: `${Math.min((totalReceived / totalOrdered) * 100, 100)}%` }}
+                />
+              </div>
+            )}
+          </div>
         );
       },
     },
@@ -225,6 +292,14 @@ export default function PurchaseOrdersPage() {
                 ยกเลิก
               </button>
             </>
+          )}
+          {['APPROVED', 'PARTIALLY_RECEIVED'].includes(po.status) && (
+            <button
+              onClick={() => openReceiveModal(po)}
+              className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+            >
+              รับสินค้า
+            </button>
           )}
         </div>
       ),
@@ -437,6 +512,7 @@ export default function PurchaseOrdersPage() {
                     <th className="px-3 py-2 text-right">จำนวน</th>
                     <th className="px-3 py-2 text-right">ราคา/ชิ้น</th>
                     <th className="px-3 py-2 text-right">รับแล้ว</th>
+                    <th className="px-3 py-2 text-right">คงเหลือ</th>
                     <th className="px-3 py-2 text-right">รวม</th>
                   </tr>
                 </thead>
@@ -448,8 +524,13 @@ export default function PurchaseOrdersPage() {
                       <td className="px-3 py-2 text-right">{item.quantity}</td>
                       <td className="px-3 py-2 text-right">{Number(item.unitPrice).toLocaleString()}</td>
                       <td className="px-3 py-2 text-right">
-                        <span className={item.receivedQty >= item.quantity ? 'text-green-600' : 'text-yellow-600'}>
+                        <span className={item.receivedQty >= item.quantity ? 'text-green-600 font-medium' : 'text-yellow-600'}>
                           {item.receivedQty}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <span className={item.quantity - item.receivedQty > 0 ? 'text-red-600' : 'text-green-600'}>
+                          {item.quantity - item.receivedQty}
                         </span>
                       </td>
                       <td className="px-3 py-2 text-right">
@@ -466,7 +547,85 @@ export default function PurchaseOrdersPage() {
                 <span className="text-gray-500">หมายเหตุ:</span> {selectedPO.notes}
               </div>
             )}
+
+            {/* Receive button in detail modal */}
+            {['APPROVED', 'PARTIALLY_RECEIVED'].includes(selectedPO.status) && (
+              <div className="flex justify-end pt-2 border-t">
+                <button
+                  onClick={() => openReceiveModal(selectedPO)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                >
+                  รับสินค้า
+                </button>
+              </div>
+            )}
           </div>
+        )}
+      </Modal>
+
+      {/* Receive Items Modal */}
+      <Modal
+        isOpen={isReceiveModalOpen}
+        onClose={() => setIsReceiveModalOpen(false)}
+        title={`รับสินค้า - ${selectedPO?.poNumber || ''}`}
+        size="lg"
+      >
+        {selectedPO && (
+          <form onSubmit={handleReceive} className="space-y-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-700">
+              ระบุจำนวนสินค้าที่ต้องการรับในแต่ละรายการ ระบบจะสร้างสินค้าเข้าสต็อกให้อัตโนมัติ
+            </div>
+
+            <div className="space-y-3">
+              {receiveItems.map((item, idx) => (
+                <div key={item.poItemId} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                  <div className="flex-1">
+                    <div className="font-medium text-sm">{item.label}</div>
+                    <div className="text-xs text-gray-500">คงเหลือ {item.maxQty} ชิ้น</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm text-gray-600">รับ:</label>
+                    <input
+                      type="number"
+                      value={item.receivedQty}
+                      onChange={(e) => {
+                        const newItems = [...receiveItems];
+                        newItems[idx] = { ...newItems[idx], receivedQty: e.target.value };
+                        setReceiveItems(newItems);
+                      }}
+                      className="w-20 px-3 py-2 border border-gray-300 rounded-lg text-sm text-center focus:ring-2 focus:ring-blue-500 outline-none"
+                      min="0"
+                      max={item.maxQty}
+                    />
+                    <span className="text-sm text-gray-500">/ {item.maxQty}</span>
+                  </div>
+                </div>
+              ))}
+
+              {receiveItems.length === 0 && (
+                <div className="text-center py-4 text-gray-500 text-sm">
+                  ไม่มีรายการที่รอรับสินค้า
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2 border-t">
+              <button
+                type="button"
+                onClick={() => setIsReceiveModalOpen(false)}
+                className="px-4 py-2 text-sm text-gray-600"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="submit"
+                disabled={receiveMutation.isPending || receiveItems.length === 0}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              >
+                {receiveMutation.isPending ? 'กำลังรับสินค้า...' : 'ยืนยันรับสินค้า'}
+              </button>
+            </div>
+          </form>
         )}
       </Modal>
     </div>

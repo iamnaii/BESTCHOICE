@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SendNotificationDto, CreateNotificationTemplateDto, UpdateNotificationTemplateDto } from './dto/create-notification.dto';
 import { NotificationChannel } from '@prisma/client';
@@ -6,39 +7,75 @@ import { NotificationChannel } from '@prisma/client';
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
+  private readonly lineChannelAccessToken: string | undefined;
+  private readonly smsApiKey: string | undefined;
+  private readonly smsApiSecret: string | undefined;
+  private readonly smsSender: string | undefined;
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private configService: ConfigService,
+  ) {
+    this.lineChannelAccessToken = this.configService.get<string>('LINE_CHANNEL_ACCESS_TOKEN');
+    this.smsApiKey = this.configService.get<string>('SMS_API_KEY');
+    this.smsApiSecret = this.configService.get<string>('SMS_API_SECRET');
+    this.smsSender = this.configService.get<string>('SMS_SENDER') || 'BESTCHOICE';
+  }
 
   // ============================================================
   // NOTIFICATION SENDING
   // ============================================================
 
   /**
-   * Send a notification via LINE, SMS, or IN_APP
+   * Send a notification via LINE, SMS, or IN_APP with retry support
    */
   async send(dto: SendNotificationDto): Promise<{ id: string; status: string }> {
     let status = 'PENDING';
     let errorMsg: string | null = null;
     let sentAt: Date | null = null;
+    let retryCount = 0;
+    const maxRetries = 2;
 
-    try {
+    const attemptSend = async (): Promise<void> => {
       if (dto.channel === 'LINE') {
         await this.sendLine(dto.recipient, dto.message);
-        status = 'SENT';
-        sentAt = new Date();
       } else if (dto.channel === 'SMS') {
         await this.sendSms(dto.recipient, dto.message);
-        status = 'SENT';
-        sentAt = new Date();
-      } else {
-        // IN_APP - just log it
-        status = 'SENT';
-        sentAt = new Date();
       }
-    } catch (err) {
-      status = 'FAILED';
-      errorMsg = err instanceof Error ? err.message : 'Unknown error';
-      this.logger.error(`Notification failed: ${errorMsg}`);
+      // IN_APP requires no external call
+    };
+
+    while (retryCount <= maxRetries) {
+      try {
+        await attemptSend();
+        status = 'SENT';
+        sentAt = new Date();
+        break;
+      } catch (err) {
+        retryCount++;
+        errorMsg = err instanceof Error ? err.message : 'Unknown error';
+
+        if (retryCount <= maxRetries) {
+          this.logger.warn(`Notification retry ${retryCount}/${maxRetries}: ${errorMsg}`);
+          await new Promise((resolve) => setTimeout(resolve, 1000 * retryCount));
+        } else {
+          status = 'FAILED';
+          this.logger.error(`Notification failed after ${maxRetries} retries: ${errorMsg}`);
+
+          // Fallback: if LINE failed, try SMS
+          if (dto.channel === 'LINE' && dto.fallbackPhone) {
+            this.logger.log(`Attempting SMS fallback for failed LINE notification`);
+            try {
+              await this.sendSms(dto.fallbackPhone, dto.message);
+              status = 'SENT';
+              sentAt = new Date();
+              errorMsg = `LINE failed, sent via SMS fallback`;
+            } catch (fallbackErr) {
+              this.logger.error(`SMS fallback also failed: ${fallbackErr instanceof Error ? fallbackErr.message : 'Unknown'}`);
+            }
+          }
+        }
+      }
     }
 
     const log = await this.prisma.notificationLog.create({
@@ -58,27 +95,85 @@ export class NotificationsService {
   }
 
   /**
-   * Send LINE message (placeholder - requires LINE Messaging API setup)
+   * Send LINE message via LINE Messaging API (Push Message)
    */
   private async sendLine(recipient: string, message: string): Promise<void> {
-    // TODO: Implement LINE Messaging API integration
-    // For now, log the message
-    this.logger.log(`[LINE] To: ${recipient}, Message: ${message.substring(0, 50)}...`);
+    if (!this.lineChannelAccessToken) {
+      this.logger.warn(`[LINE] No channel access token configured. Message logged but not delivered.`);
+      this.logger.log(`[LINE] To: ${recipient}, Message: ${message.substring(0, 100)}...`);
+      return;
+    }
 
-    // In production, this would use:
-    // const client = new messagingApi.MessagingApiClient({ channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN });
-    // await client.pushMessage({ to: recipient, messages: [{ type: 'text', text: message }] });
+    const url = 'https://api.line.me/v2/bot/message/push';
+    const body = {
+      to: recipient,
+      messages: [{ type: 'text', text: message }],
+    };
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.lineChannelAccessToken}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(`LINE API error ${response.status}: ${errorBody}`);
+    }
+
+    this.logger.log(`[LINE] Message sent to ${recipient}`);
   }
 
   /**
-   * Send SMS (placeholder - requires SMS provider setup)
+   * Send SMS via ThaiBulkSMS API (or compatible provider)
+   * Supports both ThaiBulkSMS and Twilio-compatible APIs
    */
   private async sendSms(recipient: string, message: string): Promise<void> {
-    // TODO: Implement SMS provider (ThaiBulkSMS/Twilio) integration
-    this.logger.log(`[SMS] To: ${recipient}, Message: ${message.substring(0, 50)}...`);
+    if (!this.smsApiKey) {
+      this.logger.warn(`[SMS] No API key configured. Message logged but not delivered.`);
+      this.logger.log(`[SMS] To: ${recipient}, Message: ${message.substring(0, 100)}...`);
+      return;
+    }
 
-    // In production, this would use:
-    // await twilioClient.messages.create({ body: message, to: recipient, from: process.env.SMS_FROM_NUMBER });
+    // Clean phone number: ensure +66 format for Thai numbers
+    const cleanPhone = this.formatThaiPhone(recipient);
+
+    // ThaiBulkSMS API
+    const url = 'https://bulk.thaibulksms.com/sms.php';
+    const params = new URLSearchParams({
+      username: this.smsApiKey,
+      password: this.smsApiSecret || '',
+      msisdn: cleanPhone,
+      message,
+      sender: this.smsSender || 'BESTCHOICE',
+      force: 'standard',
+    });
+
+    const response = await fetch(`${url}?${params.toString()}`);
+    const responseText = await response.text();
+
+    if (!response.ok || responseText.includes('error')) {
+      throw new Error(`SMS API error: ${responseText}`);
+    }
+
+    this.logger.log(`[SMS] Message sent to ${cleanPhone}`);
+  }
+
+  /**
+   * Format Thai phone number to international format
+   */
+  private formatThaiPhone(phone: string): string {
+    const cleaned = phone.replace(/\D/g, '');
+    if (cleaned.startsWith('0')) {
+      return '66' + cleaned.substring(1);
+    }
+    if (cleaned.startsWith('66')) {
+      return cleaned;
+    }
+    return cleaned;
   }
 
   /**
@@ -97,6 +192,13 @@ export class NotificationsService {
     if (!template) throw new NotFoundException('ไม่พบ template');
 
     const templateData = JSON.parse(template.value);
+
+    // Check if template is active
+    if (templateData.isActive === false) {
+      this.logger.warn(`Template ${templateId} is inactive, skipping`);
+      return { id: null, status: 'SKIPPED', reason: 'Template is inactive' };
+    }
+
     let message = templateData.messageTemplate as string;
 
     // Replace placeholders
@@ -111,6 +213,39 @@ export class NotificationsService {
       message,
       relatedId,
     });
+  }
+
+  /**
+   * Bulk send notifications to multiple contracts
+   */
+  async sendBulk(templateId: string, contractIds: string[]) {
+    const results: { contractId: string; status: string }[] = [];
+
+    for (const contractId of contractIds) {
+      const contract = await this.prisma.contract.findUnique({
+        where: { id: contractId },
+        include: { customer: { select: { name: true, phone: true, lineId: true } } },
+      });
+
+      if (!contract) continue;
+
+      const customer = contract.customer;
+      const data: Record<string, string> = {
+        customer_name: customer.name,
+        contract_number: contract.contractNumber,
+      };
+
+      const recipient = customer.lineId || customer.phone;
+      if (!recipient) {
+        results.push({ contractId, status: 'SKIPPED' });
+        continue;
+      }
+
+      const result = await this.sendFromTemplate(templateId, data, recipient, contractId);
+      results.push({ contractId, status: result.status });
+    }
+
+    return { total: contractIds.length, results };
   }
 
   // ============================================================
@@ -251,7 +386,6 @@ export class NotificationsService {
    */
   async sendPaymentReminders() {
     const now = new Date();
-    const in1Day = new Date(now.getTime() + 1 * 24 * 60 * 60 * 1000);
     const in3Days = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
 
     const upcomingPayments = await this.prisma.payment.findMany({
@@ -279,6 +413,9 @@ export class NotificationsService {
         (new Date(payment.dueDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
       );
 
+      // Only send on day 1 and 3 before due
+      if (![1, 3].includes(daysUntil)) continue;
+
       const message = `สวัสดีค่ะ คุณ${customer.name}\nแจ้งเตือน: ค่างวดที่ ${payment.installmentNo} สัญญา ${payment.contract.contractNumber}\nจำนวน ${Number(payment.amountDue).toLocaleString()} บาท\nครบกำหนดชำระอีก ${daysUntil} วัน (${new Date(payment.dueDate).toLocaleDateString('th-TH')})\nกรุณาชำระตามกำหนด ขอบคุณค่ะ`;
 
       // Try LINE first, fallback to SMS
@@ -288,6 +425,7 @@ export class NotificationsService {
           recipient: customer.lineId,
           message,
           relatedId: payment.contractId,
+          fallbackPhone: customer.phone || undefined,
         });
         sent++;
       } else if (customer.phone) {
@@ -301,6 +439,7 @@ export class NotificationsService {
       }
     }
 
+    this.logger.log(`Payment reminders sent: ${sent}/${upcomingPayments.length}`);
     return { sent, total: upcomingPayments.length, timestamp: now };
   }
 
@@ -336,17 +475,18 @@ export class NotificationsService {
       if (![1, 3, 7].includes(daysOverdue)) continue;
 
       const outstanding = Number(payment.amountDue) - Number(payment.amountPaid) + Number(payment.lateFee);
-      const message = `แจ้งเตือน: คุณ${customer.name}\nค่างวดที่ ${payment.installmentNo} สัญญา ${payment.contract.contractNumber}\nเลยกำหนดชำระ ${daysOverdue} วัน\nยอมค้างชำระ ${outstanding.toLocaleString()} บาท (รวมค่าปรับ)\nกรุณาชำระโดยเร็ว`;
+      const message = `แจ้งเตือน: คุณ${customer.name}\nค่างวดที่ ${payment.installmentNo} สัญญา ${payment.contract.contractNumber}\nเลยกำหนดชำระ ${daysOverdue} วัน\nยอดค้างชำระ ${outstanding.toLocaleString()} บาท (รวมค่าปรับ)\nกรุณาชำระโดยเร็ว`;
 
+      // Send via both channels if available
       if (customer.lineId) {
         await this.send({
           channel: 'LINE',
           recipient: customer.lineId,
           message,
           relatedId: payment.contractId,
+          fallbackPhone: customer.phone || undefined,
         });
-      }
-      if (customer.phone) {
+      } else if (customer.phone) {
         await this.send({
           channel: 'SMS',
           recipient: customer.phone,
@@ -357,6 +497,7 @@ export class NotificationsService {
       sent++;
     }
 
+    this.logger.log(`Overdue notices sent: ${sent}/${overduePayments.length}`);
     return { sent, total: overduePayments.length, timestamp: now };
   }
 
@@ -385,17 +526,28 @@ export class NotificationsService {
     });
 
     let sent = 0;
+    // Group by branch to send one summary per manager
+    const branchGroups = new Map<string, { manager: { name: string; email: string }; contracts: string[] }>();
     for (const contract of overdueContracts) {
       for (const manager of contract.branch.users) {
-        await this.send({
-          channel: 'IN_APP',
-          recipient: manager.email,
-          subject: 'สัญญาค้างชำระ',
-          message: `สัญญา ${contract.contractNumber} (${contract.customer.name}) ที่สาขา ${contract.branch.name} มีสถานะค้างชำระ กรุณาติดตาม`,
-          relatedId: contract.id,
-        });
-        sent++;
+        const key = manager.email;
+        if (!branchGroups.has(key)) {
+          branchGroups.set(key, { manager, contracts: [] });
+        }
+        branchGroups.get(key)!.contracts.push(
+          `${contract.contractNumber}: ${contract.customer.name}`,
+        );
       }
+    }
+
+    for (const [, { manager, contracts }] of branchGroups) {
+      await this.send({
+        channel: 'IN_APP',
+        recipient: manager.email,
+        subject: `สัญญาค้างชำระ ${contracts.length} รายการ`,
+        message: `สัญญาค้างชำระที่ต้องติดตาม:\n${contracts.map((c) => `- ${c}`).join('\n')}`,
+      });
+      sent++;
     }
 
     return { sent, contracts: overdueContracts.length };

@@ -11,6 +11,10 @@ import PurchaseOrdersPage from '@/pages/PurchaseOrdersPage';
 import NotificationsPage from '@/pages/NotificationsPage';
 import ReportsPage from '@/pages/ReportsPage';
 import MigrationPage from '@/pages/MigrationPage';
+import ProductsPage from '@/pages/ProductsPage';
+import CustomersPage from '@/pages/CustomersPage';
+import ContractsPage from '@/pages/ContractsPage';
+import PaymentsPage from '@/pages/PaymentsPage';
 
 function App() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -45,6 +49,10 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route path="/products" element={<ProductsPage />} />
+        <Route path="/customers" element={<CustomersPage />} />
+        <Route path="/contracts" element={<ContractsPage />} />
+        <Route path="/payments" element={<PaymentsPage />} />
         <Route path="/overdue" element={<OverduePage />} />
         <Route
           path="/repossessions"

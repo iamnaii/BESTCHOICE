@@ -15,6 +15,10 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { MigrationModule } from './modules/migration/migration.module';
 import { AuditModule } from './modules/audit/audit.module';
+import { ProductsModule } from './modules/products/products.module';
+import { CustomersModule } from './modules/customers/customers.module';
+import { ContractsModule } from './modules/contracts/contracts.module';
+import { PaymentsModule } from './modules/payments/payments.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
 
@@ -39,6 +43,11 @@ import { SecurityMiddleware } from './modules/audit/security.middleware';
     PrismaModule,
     AuthModule,
     BranchesModule,
+    // Phase 2: Core CRUD
+    ProductsModule,
+    CustomersModule,
+    ContractsModule,
+    PaymentsModule,
     // Phase 3: Operations
     OverdueModule,
     ExchangeModule,

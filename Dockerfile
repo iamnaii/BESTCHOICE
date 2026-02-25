@@ -52,11 +52,15 @@ COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
 # Copy Frontend build
 COPY --from=frontend-builder /app/apps/web/dist ./apps/web/dist
 
+# Copy entrypoint script
+COPY docker-entrypoint.sh ./
+RUN chmod +x docker-entrypoint.sh
+
 USER appuser
 
 EXPOSE 3000
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=5 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1
 
-CMD ["node", "apps/api/dist/src/main"]
+ENTRYPOINT ["./docker-entrypoint.sh"]

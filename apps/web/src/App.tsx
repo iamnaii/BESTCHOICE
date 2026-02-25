@@ -22,6 +22,7 @@ import ContractDetailPage from '@/pages/ContractDetailPage';
 import ContractSignPage from '@/pages/ContractSignPage';
 import ContractTemplatesPage from '@/pages/ContractTemplatesPage';
 import PaymentsPage from '@/pages/PaymentsPage';
+import OverduePage from '@/pages/OverduePage';
 
 function App() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -80,6 +81,7 @@ function App() {
           }
         />
         <Route path="/payments" element={<PaymentsPage />} />
+        <Route path="/overdue" element={<OverduePage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

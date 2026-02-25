@@ -14,6 +14,7 @@ import { CustomersModule } from './modules/customers/customers.module';
 import { ContractsModule } from './modules/contracts/contracts.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { PaymentsModule } from './modules/payments/payments.module';
+import { CronModule } from './modules/cron/cron.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
     ContractsModule,
     DocumentsModule,
     PaymentsModule,
+    CronModule,
   ],
   controllers: [AppController],
   providers: [

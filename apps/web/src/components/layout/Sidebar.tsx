@@ -17,6 +17,7 @@ const navItems: NavItem[] = [
   { label: 'ลูกค้า', path: '/customers' },
   { label: 'สัญญาผ่อน', path: '/contracts' },
   { label: 'ชำระเงิน', path: '/payments' },
+  { label: 'ค่าปรับ/ค้างชำระ', path: '/overdue', roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
   { label: 'รายงาน', path: '/reports', roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
 ];
 

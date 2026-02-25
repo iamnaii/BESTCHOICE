@@ -5,6 +5,7 @@ FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package.json yarn.lock* package-lock.json* pnpm-lock.yaml* ./
 COPY apps/api/package.json apps/api/
+COPY apps/web/package.json apps/web/
 COPY packages/ packages/
 RUN npm install --frozen-lockfile 2>/dev/null || npm install
 

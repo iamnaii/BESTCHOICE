@@ -6,16 +6,9 @@ import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 
 interface KPIs {
-  totalContracts: number;
-  activeContracts: number;
-  overdueContracts: number;
-  defaultContracts: number;
-  completedContracts: number;
-  totalProducts: number;
-  inStockProducts: number;
-  totalReceivable: number;
-  totalLateFees: number;
-  todayPayments: number;
+  contracts: { total: number; active: number; overdue: number; default: number; completed: number };
+  products: { total: number; inStock: number };
+  financial: { totalReceivable: number; totalLateFees: number; todayPayments: number; todayPaymentCount: number };
   overdueRate: number;
 }
 
@@ -27,10 +20,9 @@ interface MonthlyTrend {
 
 interface TopOverdue {
   contractNumber: string;
-  customerName: string;
-  outstandingAmount: number;
+  customer: { id: string; name: string; phone: string };
+  totalOutstanding: number;
   daysOverdue: number;
-  phone: string;
 }
 
 interface StatusDistribution {
@@ -39,11 +31,12 @@ interface StatusDistribution {
 }
 
 interface BranchComparison {
-  branchName: string;
+  id: string;
+  name: string;
   contracts: number;
   products: number;
   users: number;
-  overdueCount: number;
+  overdueContracts: number;
   monthlyPayments: number;
 }
 
@@ -114,52 +107,52 @@ export default function DashboardPage() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-lg border p-4 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/contracts')}>
             <div className="text-sm text-gray-500">สัญญาทั้งหมด</div>
-            <div className="text-2xl font-bold text-gray-900">{kpis.totalContracts}</div>
-            <div className="text-xs text-green-600 mt-1">ปกติ {kpis.activeContracts}</div>
+            <div className="text-2xl font-bold text-gray-900">{kpis.contracts.total}</div>
+            <div className="text-xs text-green-600 mt-1">ปกติ {kpis.contracts.active}</div>
           </div>
           <div className="bg-white rounded-lg border p-4 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/overdue')}>
             <div className="text-sm text-gray-500">ค้างชำระ / ผิดนัด</div>
             <div className="text-2xl font-bold text-red-600">
-              {kpis.overdueContracts + kpis.defaultContracts}
+              {kpis.contracts.overdue + kpis.contracts.default}
             </div>
             <div className="text-xs text-gray-500 mt-1">
-              อัตรา {(kpis.overdueRate * 100).toFixed(1)}%
+              อัตรา {kpis.overdueRate.toFixed(1)}%
             </div>
           </div>
           <div className="bg-white rounded-lg border p-4 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/payments')}>
             <div className="text-sm text-gray-500">ยอดรับชำระวันนี้</div>
             <div className="text-2xl font-bold text-green-600">
-              {kpis.todayPayments.toLocaleString()}
+              {kpis.financial.todayPayments.toLocaleString()}
             </div>
             <div className="text-xs text-gray-500 mt-1">บาท</div>
           </div>
           <div className="bg-white rounded-lg border p-4 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/contracts')}>
             <div className="text-sm text-gray-500">ลูกหนี้คงค้าง</div>
             <div className="text-2xl font-bold text-blue-600">
-              {kpis.totalReceivable.toLocaleString()}
+              {kpis.financial.totalReceivable.toLocaleString()}
             </div>
             <div className="text-xs text-gray-500 mt-1">บาท</div>
           </div>
           <div className="bg-white rounded-lg border p-4 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/products')}>
             <div className="text-sm text-gray-500">สินค้าในสต็อก</div>
-            <div className="text-2xl font-bold text-purple-600">{kpis.inStockProducts}</div>
-            <div className="text-xs text-gray-500 mt-1">จาก {kpis.totalProducts} ชิ้น</div>
+            <div className="text-2xl font-bold text-purple-600">{kpis.products.inStock}</div>
+            <div className="text-xs text-gray-500 mt-1">จาก {kpis.products.total} ชิ้น</div>
           </div>
           <div className="bg-white rounded-lg border p-4 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/contracts')}>
             <div className="text-sm text-gray-500">ปิดสัญญาแล้ว</div>
-            <div className="text-2xl font-bold text-blue-500">{kpis.completedContracts}</div>
+            <div className="text-2xl font-bold text-blue-500">{kpis.contracts.completed}</div>
           </div>
           <div className="bg-white rounded-lg border p-4">
             <div className="text-sm text-gray-500">ค่าปรับรวม</div>
             <div className="text-2xl font-bold text-orange-600">
-              {kpis.totalLateFees.toLocaleString()}
+              {kpis.financial.totalLateFees.toLocaleString()}
             </div>
             <div className="text-xs text-gray-500 mt-1">บาท</div>
           </div>
           <div className="bg-white rounded-lg border p-4 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/overdue')}>
             <div className="text-sm text-gray-500">ค้างชำระ</div>
-            <div className="text-2xl font-bold text-yellow-600">{kpis.overdueContracts}</div>
-            <div className="text-xs text-red-600 mt-1">ผิดนัด {kpis.defaultContracts}</div>
+            <div className="text-2xl font-bold text-yellow-600">{kpis.contracts.overdue}</div>
+            <div className="text-xs text-red-600 mt-1">ผิดนัด {kpis.contracts.default}</div>
           </div>
         </div>
       )}
@@ -253,10 +246,10 @@ export default function DashboardPage() {
                 {topOverdue.map((item) => (
                   <tr key={item.contractNumber} className="border-b last:border-0">
                     <td className="py-2 font-medium text-primary-600">{item.contractNumber}</td>
-                    <td className="py-2">{item.customerName}</td>
-                    <td className="py-2 text-gray-500">{item.phone}</td>
+                    <td className="py-2">{item.customer.name}</td>
+                    <td className="py-2 text-gray-500">{item.customer.phone}</td>
                     <td className="py-2 text-right text-red-600 font-medium">
-                      {item.outstandingAmount.toLocaleString()}
+                      {item.totalOutstanding.toLocaleString()}
                     </td>
                     <td className="py-2 text-right">
                       <span
@@ -297,14 +290,14 @@ export default function DashboardPage() {
               </thead>
               <tbody>
                 {branchData.map((b) => (
-                  <tr key={b.branchName} className="border-b last:border-0">
-                    <td className="py-2 font-medium">{b.branchName}</td>
+                  <tr key={b.name} className="border-b last:border-0">
+                    <td className="py-2 font-medium">{b.name}</td>
                     <td className="py-2 text-right">{b.contracts}</td>
                     <td className="py-2 text-right">{b.products}</td>
                     <td className="py-2 text-right">{b.users}</td>
                     <td className="py-2 text-right">
-                      <span className={b.overdueCount > 0 ? 'text-red-600 font-medium' : ''}>
-                        {b.overdueCount}
+                      <span className={b.overdueContracts > 0 ? 'text-red-600 font-medium' : ''}>
+                        {b.overdueContracts}
                       </span>
                     </td>
                     <td className="py-2 text-right text-green-600">

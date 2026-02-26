@@ -13,7 +13,7 @@ services:
     dockerfile_path: Dockerfile
     http_port: 3000
     instance_count: 1
-    instance_size_slug: basic-xxs
+    instance_size_slug: basic-xs
     health_check:
       http_path: /api/health
       initial_delay_seconds: 60

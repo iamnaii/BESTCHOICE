@@ -37,7 +37,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsLoading(false);
         return;
       }
-      const { data } = await api.get('/auth/me');
+      const { data } = await api.get('/auth/me', { timeout: 10000 });
       setUser({
         id: data.id,
         email: data.email,
@@ -47,11 +47,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         branchName: data.branch?.name || null,
       });
     } catch (error: unknown) {
-      const status = (error as { response?: { status?: number } })?.response?.status;
-      if (status === 401) {
+      const axiosError = error as { response?: { status?: number }; code?: string };
+      if (axiosError.response?.status === 401) {
         logout();
       }
-      // Don't logout on 429 (rate limit) or network errors - keep current session
+      // On timeout or network error, clear loading so the app doesn't hang
+      // User will see login page and can try again
+      if (axiosError.code === 'ECONNABORTED' || !axiosError.response) {
+        logout();
+      }
     } finally {
       setIsLoading(false);
     }

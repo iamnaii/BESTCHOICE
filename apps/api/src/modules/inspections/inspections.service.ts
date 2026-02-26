@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CreateTemplateDto, UpdateTemplateDto,
@@ -50,7 +51,7 @@ export class InspectionsService {
   async addTemplateItem(templateId: string, dto: CreateTemplateItemDto) {
     await this.findOneTemplate(templateId);
     return this.prisma.inspectionTemplateItem.create({
-      data: { templateId, ...dto },
+      data: { templateId, ...dto } as Prisma.InspectionTemplateItemUncheckedCreateInput,
     });
   }
 
@@ -59,7 +60,7 @@ export class InspectionsService {
       where: { id: itemId, templateId },
     });
     if (!item) throw new NotFoundException('ไม่พบหัวข้อตรวจ');
-    return this.prisma.inspectionTemplateItem.update({ where: { id: itemId }, data: dto });
+    return this.prisma.inspectionTemplateItem.update({ where: { id: itemId }, data: dto as Prisma.InspectionTemplateItemUncheckedUpdateInput });
   }
 
   async deleteTemplateItem(templateId: string, itemId: string) {
@@ -141,11 +142,11 @@ export class InspectionsService {
       if (existing) {
         await this.prisma.inspectionResult.update({
           where: { id: existing.id },
-          data: result,
+          data: result as Prisma.InspectionResultUncheckedUpdateInput,
         });
       } else {
         await this.prisma.inspectionResult.create({
-          data: { inspectionId: id, ...result },
+          data: { inspectionId: id, ...result } as Prisma.InspectionResultUncheckedCreateInput,
         });
       }
     }

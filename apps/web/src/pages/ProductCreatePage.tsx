@@ -119,7 +119,7 @@ export default function ProductCreatePage() {
     if (field === 'isDefault' && value === true) {
       newPrices.forEach((p) => (p.isDefault = false));
     }
-    (newPrices[index] as Record<string, unknown>)[field] = value;
+    (newPrices[index] as unknown as Record<string, unknown>)[field] = value;
     setPrices(newPrices);
   };
 

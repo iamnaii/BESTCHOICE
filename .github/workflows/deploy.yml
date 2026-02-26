@@ -42,32 +42,32 @@ jobs:
         run: npm ci
 
       - name: Generate Prisma Client
-        run: cd apps/api && npx prisma generate
+        run: npx prisma generate --schema=apps/api/prisma/schema.prisma
 
       - name: Run DB migrations
-        run: cd apps/api && npx prisma migrate deploy
+        run: npx prisma migrate deploy --schema=apps/api/prisma/schema.prisma
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/test_db?schema=public
 
       - name: Lint API
-        run: cd apps/api && npm run lint
+        run: npm run lint --workspace=apps/api
         continue-on-error: true
 
       - name: Lint Web
-        run: cd apps/web && npm run lint
+        run: npm run lint --workspace=apps/web
         continue-on-error: true
 
       - name: Test API
-        run: cd apps/api && npm run test
+        run: npm run test --workspace=apps/api
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/test_db?schema=public
           JWT_SECRET: test-secret
 
       - name: Build API
-        run: cd apps/api && npm run build
+        run: npm run build --workspace=apps/api
 
       - name: Build Web
-        run: cd apps/web && npm run build
+        run: npm run build --workspace=apps/web
 
   build-and-push:
     name: Build & Push Docker Image

@@ -195,12 +195,12 @@ export default function SupplierDetailPage() {
           </span>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          <InfoField label="ผู้ติดต่อ" value={supplier.contactName} />
+          <InfoField label="ชื่อ - นามสกุล (ผู้ติดต่อ)" value={supplier.contactName} />
           <InfoField label="ชื่อเล่น" value={supplier.nickname} />
           <InfoField label="เบอร์โทร" value={supplier.phone} />
           <InfoField label="เบอร์สำรอง" value={supplier.phoneSecondary} />
           <InfoField label="LINE ID" value={supplier.lineId} />
-          <InfoField label="Tax ID" value={supplier.taxId} />
+          <InfoField label="เลขประจำตัวผู้เสียภาษี (Tax ID Number)" value={supplier.taxId} />
           <InfoField
             label="วันที่เพิ่ม"
             value={new Date(supplier.createdAt).toLocaleDateString('th-TH')}

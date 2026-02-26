@@ -11,6 +11,7 @@ export interface AuditEntry {
   newValue?: Record<string, unknown>;
   ipAddress?: string;
   userAgent?: string;
+  duration?: number;
 }
 
 @Injectable()
@@ -31,7 +32,9 @@ export class AuditService {
           entityId: entry.entityId || '',
           oldValue: (entry.oldValue as Prisma.InputJsonValue) ?? Prisma.JsonNull,
           newValue: (entry.newValue as Prisma.InputJsonValue) ?? Prisma.JsonNull,
-          ipAddress: entry.ipAddress,
+          ipAddress: entry.ipAddress || null,
+          userAgent: entry.userAgent || null,
+          duration: entry.duration || null,
         },
       });
     } catch (err) {
@@ -47,14 +50,15 @@ export class AuditService {
     to?: string;
     page?: number;
     limit?: number;
+    search?: string;
   }) {
     const page = filters.page || 1;
-    const limit = filters.limit || 50;
+    const limit = Math.min(filters.limit || 50, 100);
 
-    const where: Record<string, unknown> = {};
+    const where: Prisma.AuditLogWhereInput = {};
     if (filters.userId) where.userId = filters.userId;
-    if (filters.entity) where.entity = filters.entity;
-    if (filters.action) where.action = filters.action;
+    if (filters.entity) where.entity = { contains: filters.entity, mode: 'insensitive' };
+    if (filters.action) where.action = { contains: filters.action, mode: 'insensitive' };
     if (filters.from || filters.to) {
       where.createdAt = {
         ...(filters.from ? { gte: new Date(filters.from) } : {}),
@@ -76,5 +80,26 @@ export class AuditService {
     ]);
 
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
+
+  async getAuditStats() {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const thisWeek = new Date(today);
+    thisWeek.setDate(thisWeek.getDate() - 7);
+
+    const [todayCount, weekCount, totalCount, recentErrors] = await Promise.all([
+      this.prisma.auditLog.count({ where: { createdAt: { gte: today } } }),
+      this.prisma.auditLog.count({ where: { createdAt: { gte: thisWeek } } }),
+      this.prisma.auditLog.count(),
+      this.prisma.auditLog.count({
+        where: {
+          action: { endsWith: '_ERROR' },
+          createdAt: { gte: thisWeek },
+        },
+      }),
+    ]);
+
+    return { todayCount, weekCount, totalCount, recentErrors };
   }
 }

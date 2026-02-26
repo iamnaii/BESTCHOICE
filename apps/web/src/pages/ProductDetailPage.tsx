@@ -19,7 +19,10 @@ interface Product {
   name: string;
   brand: string;
   model: string;
+  color: string | null;
+  storage: string | null;
   imeiSerial: string | null;
+  serialNumber: string | null;
   category: string;
   costPrice: string;
   status: string;
@@ -203,6 +206,20 @@ export default function ProductDetailPage() {
         }
       />
 
+      {/* Product Photos */}
+      {product.photos && product.photos.length > 0 && (
+        <div className="bg-white rounded-lg border p-6 mb-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-3">รูปถ่ายสินค้า</h2>
+          <div className="flex flex-wrap gap-3">
+            {product.photos.map((photo, i) => (
+              <div key={i} className="w-28 h-28 rounded-lg overflow-hidden border">
+                <img src={photo} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Product Info */}
       <div className="bg-white rounded-lg border p-6 mb-6">
         <div className="flex items-start justify-between mb-4">
@@ -212,7 +229,10 @@ export default function ProductDetailPage() {
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           <InfoField label="ยี่ห้อ" value={product.brand} />
           <InfoField label="รุ่น" value={product.model} />
-          <InfoField label="IMEI/Serial" value={product.imeiSerial} mono />
+          <InfoField label="สี" value={product.color} />
+          <InfoField label="ความจุ" value={product.storage} />
+          <InfoField label="IMEI" value={product.imeiSerial} mono />
+          <InfoField label="Serial Number" value={product.serialNumber} mono />
           <InfoField label="ประเภท" value={categoryLabels[product.category] || product.category} />
           <InfoField label="เกรดสภาพ" value={product.conditionGrade} />
           <InfoField label="สาขา" value={product.branch.name} />

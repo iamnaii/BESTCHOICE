@@ -26,6 +26,7 @@ const navItems: NavItem[] = [
   { label: 'รายงาน', path: '/reports', roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'], section: 'intelligence' },
   { label: 'จัดการผู้ใช้', path: '/users', roles: ['OWNER'], section: 'settings' },
   { label: 'ตั้งค่าระบบ', path: '/settings', roles: ['OWNER'], section: 'settings' },
+  { label: 'Audit Logs', path: '/audit-logs', roles: ['OWNER'], section: 'settings' },
   { label: 'นำเข้าข้อมูล', path: '/migration', roles: ['OWNER'], section: 'settings' },
 ];
 

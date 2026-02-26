@@ -34,6 +34,7 @@ const MigrationPage = lazy(() => import('@/pages/MigrationPage'));
 const UsersPage = lazy(() => import('@/pages/UsersPage'));
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
 const ExchangePage = lazy(() => import('@/pages/ExchangePage'));
+const AuditLogsPage = lazy(() => import('@/pages/AuditLogsPage'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -153,6 +154,14 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER']}>
                 <SettingsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/audit-logs"
+            element={
+              <ProtectedRoute roles={['OWNER']}>
+                <AuditLogsPage />
               </ProtectedRoute>
             }
           />

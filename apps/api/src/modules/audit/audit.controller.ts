@@ -19,6 +19,7 @@ export class AuditController {
     @Query('to') to?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('search') search?: string,
   ) {
     return this.auditService.getAuditLogs({
       userId,
@@ -28,6 +29,12 @@ export class AuditController {
       to,
       page: page ? parseInt(page) : undefined,
       limit: limit ? parseInt(limit) : undefined,
+      search,
     });
+  }
+
+  @Get('stats')
+  getStats() {
+    return this.auditService.getAuditStats();
   }
 }

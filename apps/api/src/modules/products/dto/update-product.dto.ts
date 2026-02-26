@@ -15,7 +15,19 @@ export class UpdateProductDto {
 
   @IsString()
   @IsOptional()
+  color?: string;
+
+  @IsString()
+  @IsOptional()
+  storage?: string;
+
+  @IsString()
+  @IsOptional()
   imeiSerial?: string;
+
+  @IsString()
+  @IsOptional()
+  serialNumber?: string;
 
   @IsString()
   @IsOptional()

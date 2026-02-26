@@ -322,7 +322,10 @@ model Product {
   name           String
   brand          String
   model          String
+  color          String?
+  storage        String?
   imeiSerial     String?         @unique @map("imei_serial")
+  serialNumber   String?         @map("serial_number")
   category       ProductCategory
   costPrice      Decimal         @map("cost_price") @db.Decimal(12, 2)
   supplierId     String?         @map("supplier_id")
@@ -594,18 +597,21 @@ model CallLog {
 model AuditLog {
   id         String   @id @default(uuid())
   userId     String   @map("user_id")
-  action     String   // CREATE, UPDATE, DELETE
-  entity     String   // e.g. Contract, Payment, Product
+  action     String   // CREATE, UPDATE, DELETE, EXCHANGE, REPOSSESSION, etc.
+  entity     String   // e.g. contract, payment, product
   entityId   String   @map("entity_id")
   oldValue   Json?    @map("old_value")
   newValue   Json?    @map("new_value")
   ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
+  duration   Int?     // request duration in ms
   createdAt  DateTime @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id])
 
   @@index([entity, entityId])
   @@index([userId])
+  @@index([createdAt])
   @@map("audit_logs")
 }
 

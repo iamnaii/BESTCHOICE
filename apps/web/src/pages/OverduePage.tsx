@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -49,17 +49,21 @@ export default function OverduePage() {
     onError: (err: any) => toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด'),
   });
 
-  // Calculate summary stats
-  const totalLateFees = overduePayments.reduce((sum, p) => sum + parseFloat(p.lateFee), 0);
-  const totalOutstanding = overduePayments.reduce((sum, p) => sum + (parseFloat(p.amountDue) - parseFloat(p.amountPaid)), 0);
-  const uniqueContracts = new Set(overduePayments.map((p) => p.contract.id)).size;
+  // Calculate summary stats (memoized to avoid recomputing on every render)
+  const { totalLateFees, totalOutstanding, uniqueContracts } = useMemo(() => ({
+    totalLateFees: overduePayments.reduce((sum, p) => sum + parseFloat(p.lateFee), 0),
+    totalOutstanding: overduePayments.reduce((sum, p) => sum + (parseFloat(p.amountDue) - parseFloat(p.amountPaid)), 0),
+    uniqueContracts: new Set(overduePayments.map((p) => p.contract.id)).size,
+  }), [overduePayments]);
 
-  const columns = [
+  const navigateToContract = useCallback((id: string) => navigate(`/contracts/${id}`), [navigate]);
+
+  const columns = useMemo(() => [
     {
       key: 'contract',
       label: 'สัญญา',
       render: (p: OverduePayment) => (
-        <button onClick={() => navigate(`/contracts/${p.contract.id}`)} className="text-left">
+        <button onClick={() => navigateToContract(p.contract.id)} className="text-left">
           <div className="font-mono text-sm text-primary-600 hover:underline">{p.contract.contractNumber}</div>
           <div className="text-xs text-gray-500">{p.contract.customer.name}</div>
         </button>
@@ -123,7 +127,7 @@ export default function OverduePage() {
       label: 'สาขา',
       render: (p: OverduePayment) => <span className="text-xs">{p.contract.branch.name}</span>,
     },
-  ];
+  ], [navigateToContract]);
 
   return (
     <div>

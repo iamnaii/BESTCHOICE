@@ -1,3 +1,4 @@
+import { useMemo, memo } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import clsx from 'clsx';
@@ -30,12 +31,12 @@ const navItems: NavItem[] = [
   { label: 'นำเข้าข้อมูล', path: '/migration', roles: ['OWNER'], section: 'settings' },
 ];
 
-export default function Sidebar() {
+function Sidebar() {
   const { user } = useAuth();
 
-  const filteredItems = navItems.filter(
+  const filteredItems = useMemo(() => navItems.filter(
     (item) => !item.roles || (user && item.roles.includes(user.role)),
-  );
+  ), [user]);
 
   return (
     <aside className="w-64 bg-white border-r border-gray-200 min-h-screen">
@@ -77,3 +78,5 @@ export default function Sidebar() {
     </aside>
   );
 }
+
+export default memo(Sidebar);

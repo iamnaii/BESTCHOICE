@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -68,34 +69,41 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
+  const dashboardStaleTime = 5 * 60 * 1000; // 5 minutes - dashboard data cached in RAM
+
   const { data: kpis } = useQuery<KPIs>({
     queryKey: ['dashboard-kpis'],
     queryFn: async () => (await api.get('/dashboard/kpis')).data,
+    staleTime: dashboardStaleTime,
   });
 
   const { data: trend = [] } = useQuery<MonthlyTrend[]>({
     queryKey: ['dashboard-trend'],
     queryFn: async () => (await api.get('/dashboard/monthly-trend')).data,
+    staleTime: dashboardStaleTime,
   });
 
   const { data: topOverdue = [] } = useQuery<TopOverdue[]>({
     queryKey: ['dashboard-top-overdue'],
     queryFn: async () => (await api.get('/dashboard/top-overdue')).data,
+    staleTime: dashboardStaleTime,
   });
 
   const { data: statusDist = [] } = useQuery<StatusDistribution[]>({
     queryKey: ['dashboard-status-dist'],
     queryFn: async () => (await api.get('/dashboard/status-distribution')).data,
+    staleTime: dashboardStaleTime,
   });
 
   const { data: branchData = [] } = useQuery<BranchComparison[]>({
     queryKey: ['dashboard-branches'],
     queryFn: async () => (await api.get('/dashboard/branch-comparison')).data,
     enabled: user?.role === 'OWNER',
+    staleTime: dashboardStaleTime,
   });
 
-  const totalStatusCount = statusDist.reduce((sum, s) => sum + s.count, 0);
-  const trendMax = Math.max(...trend.map((t) => Math.max(t.newContracts, t.paymentsReceived)), 1);
+  const totalStatusCount = useMemo(() => statusDist.reduce((sum, s) => sum + s.count, 0), [statusDist]);
+  const trendMax = useMemo(() => Math.max(...trend.map((t) => Math.max(t.newContracts, t.paymentsReceived)), 1), [trend]);
 
   return (
     <div>

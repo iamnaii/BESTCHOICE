@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, memo } from 'react';
 
 interface Column<T> {
   key: string;
@@ -22,7 +22,7 @@ interface DataTableProps<T> {
   pagination?: PaginationInfo;
 }
 
-export default function DataTable<T extends { id: string }>({
+function DataTable<T extends { id: string }>({
   columns,
   data,
   isLoading,
@@ -107,3 +107,5 @@ export default function DataTable<T extends { id: string }>({
     </div>
   );
 }
+
+export default memo(DataTable) as typeof DataTable;

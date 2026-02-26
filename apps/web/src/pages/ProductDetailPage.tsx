@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
@@ -173,10 +173,13 @@ export default function ProductDetailPage() {
   }
 
   const s = statusLabels[product.status] || { label: product.status, className: 'bg-gray-100 text-gray-700' };
-  const defaultPrice = product.prices.find((p) => p.isDefault);
-  const profit = defaultPrice
-    ? parseFloat(defaultPrice.amount) - parseFloat(product.costPrice)
-    : null;
+  const { defaultPrice, profit } = useMemo(() => {
+    const dp = product.prices.find((p) => p.isDefault);
+    return {
+      defaultPrice: dp,
+      profit: dp ? parseFloat(dp.amount) - parseFloat(product.costPrice) : null,
+    };
+  }, [product.prices, product.costPrice]);
 
   return (
     <div>

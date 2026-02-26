@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -67,12 +67,14 @@ export default function CustomersPage() {
     },
   });
 
-  const columns = [
+  const navigateToCustomer = useCallback((id: string) => navigate(`/customers/${id}`), [navigate]);
+
+  const columns = useMemo(() => [
     {
       key: 'name',
       label: 'ชื่อ',
       render: (c: Customer) => (
-        <button onClick={() => navigate(`/customers/${c.id}`)} className="text-primary-600 font-medium hover:underline text-left">{c.name}</button>
+        <button onClick={() => navigateToCustomer(c.id)} className="text-primary-600 font-medium hover:underline text-left">{c.name}</button>
       ),
     },
     { key: 'phone', label: 'เบอร์โทร' },
@@ -91,7 +93,7 @@ export default function CustomersPage() {
       label: 'วันที่เพิ่ม',
       render: (c: Customer) => <span className="text-xs">{new Date(c.createdAt).toLocaleDateString('th-TH')}</span>,
     },
-  ];
+  ], [navigateToCustomer]);
 
   return (
     <div>

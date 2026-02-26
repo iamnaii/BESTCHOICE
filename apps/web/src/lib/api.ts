@@ -29,13 +29,6 @@ api.interceptors.response.use(
         window.location.href = '/login';
       }
     }
-    // On 429 rate limit, wait before rejecting so React Query backoff works properly
-    if (error.response?.status === 429) {
-      const retryAfter = error.response.headers['retry-after'];
-      if (retryAfter) {
-        await new Promise((resolve) => setTimeout(resolve, Number(retryAfter) * 1000));
-      }
-    }
     return Promise.reject(error);
   },
 );

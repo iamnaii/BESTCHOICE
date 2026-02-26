@@ -61,7 +61,7 @@ export default function SuppliersPage() {
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [search, setSearch] = useState('');
-  const [filterActive, setFilterActive] = useState<string>('all');
+  const [filterActive, setFilterActive] = useState<string>('true');
   const [supplierAddress, setSupplierAddress] = useState<AddressData>(emptyAddress);
   const [page, setPage] = useState(1);
   const debouncedSearch = useDebounce(search);

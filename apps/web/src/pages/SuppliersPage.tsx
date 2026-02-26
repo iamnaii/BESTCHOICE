@@ -61,7 +61,7 @@ export default function SuppliersPage() {
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [search, setSearch] = useState('');
-  const [filterActive, setFilterActive] = useState<string>('all');
+  const [filterActive, setFilterActive] = useState<string>('true');
   const [supplierAddress, setSupplierAddress] = useState<AddressData>(emptyAddress);
   const [page, setPage] = useState(1);
   const debouncedSearch = useDebounce(search);
@@ -85,19 +85,19 @@ export default function SuppliersPage() {
   const suppliers = result?.data ?? [];
 
   const saveMutation = useMutation({
-    mutationFn: async (data: typeof emptyForm) => {
-      const serializedAddress = serializeAddress(supplierAddress);
+    mutationFn: async ({ formData, addressData, editId }: { formData: typeof emptyForm; addressData: AddressData; editId?: string }) => {
+      const serializedAddress = serializeAddress(addressData);
       const payload = {
-        ...data,
-        nickname: data.nickname || undefined,
-        phoneSecondary: data.phoneSecondary || undefined,
-        lineId: data.lineId || undefined,
+        ...formData,
+        nickname: formData.nickname || undefined,
+        phoneSecondary: formData.phoneSecondary || undefined,
+        lineId: formData.lineId || undefined,
         address: serializedAddress || undefined,
-        taxId: data.taxId || undefined,
-        notes: data.notes || undefined,
+        taxId: formData.taxId || undefined,
+        notes: formData.notes || undefined,
       };
-      if (editingSupplier) {
-        return api.patch(`/suppliers/${editingSupplier.id}`, payload);
+      if (editId) {
+        return api.patch(`/suppliers/${editId}`, payload);
       }
       return api.post('/suppliers', payload);
     },
@@ -167,7 +167,7 @@ export default function SuppliersPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    saveMutation.mutate(form);
+    saveMutation.mutate({ formData: form, addressData: supplierAddress, editId: editingSupplier?.id });
   };
 
   const columns = [

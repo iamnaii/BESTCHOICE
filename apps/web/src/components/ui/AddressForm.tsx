@@ -1,6 +1,21 @@
-import { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import api from '@/lib/api';
+import { useState, useEffect, useMemo } from 'react';
+
+// Lazy-loaded address data (loaded only when AddressForm mounts, ~400KB separate chunk)
+let cachedData: [string, string, string, string][] | null = null;
+
+function useAddressData() {
+  const [data, setData] = useState<[string, string, string, string][]>(cachedData || []);
+
+  useEffect(() => {
+    if (cachedData) return;
+    import('@/data/thai-address-data').then((m) => {
+      cachedData = m.THAI_ADDRESS_DATA;
+      setData(cachedData);
+    });
+  }, []);
+
+  return data;
+}
 
 export interface AddressData {
   houseNo: string;
@@ -47,6 +62,7 @@ interface Props {
 }
 
 export default function AddressForm({ value, onChange, label }: Props) {
+  const addressData = useAddressData();
   const [selectedProvince, setSelectedProvince] = useState(value.province);
   const [selectedDistrict, setSelectedDistrict] = useState(value.district);
 
@@ -55,27 +71,26 @@ export default function AddressForm({ value, onChange, label }: Props) {
     setSelectedDistrict(value.district);
   }, [value.province, value.district]);
 
-  const { data: provinces = [] } = useQuery<string[]>({
-    queryKey: ['address-provinces'],
-    queryFn: async () => (await api.get('/address/provinces')).data,
-    staleTime: Infinity,
-  });
+  const provinces = useMemo(() => {
+    return [...new Set(addressData.map(([p]) => p))].sort();
+  }, [addressData]);
 
-  const { data: districts = [] } = useQuery<string[]>({
-    queryKey: ['address-districts', selectedProvince],
-    queryFn: async () =>
-      (await api.get('/address/districts', { params: { province: selectedProvince } })).data,
-    enabled: !!selectedProvince,
-    staleTime: Infinity,
-  });
+  const districts = useMemo(() => {
+    if (!selectedProvince) return [];
+    return [
+      ...new Set(
+        addressData.filter(([p]) => p === selectedProvince).map(([, d]) => d),
+      ),
+    ].sort();
+  }, [addressData, selectedProvince]);
 
-  const { data: subdistricts = [] } = useQuery<{ name: string; zipcode: string }[]>({
-    queryKey: ['address-subdistricts', selectedDistrict],
-    queryFn: async () =>
-      (await api.get('/address/subdistricts', { params: { district: selectedDistrict } })).data,
-    enabled: !!selectedDistrict,
-    staleTime: Infinity,
-  });
+  const subdistricts = useMemo(() => {
+    if (!selectedDistrict) return [];
+    return addressData
+      .filter(([, d]) => d === selectedDistrict)
+      .map(([, , s, z]) => ({ name: s, zipcode: z }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [addressData, selectedDistrict]);
 
   const update = (field: keyof AddressData, val: string) => {
     onChange({ ...value, [field]: val });

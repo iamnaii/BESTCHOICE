@@ -66,7 +66,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [fetchMe]);
 
   const login = async (email: string, password: string) => {
-    const { data } = await api.post('/auth/login', { email, password });
+    const doLogin = () => api.post('/auth/login', { email, password }, { timeout: 30000 });
+    let res;
+    try {
+      res = await doLogin();
+    } catch (err: unknown) {
+      const axErr = err as { code?: string };
+      // Auto-retry once on timeout (server cold start)
+      if (axErr.code === 'ECONNABORTED') {
+        res = await doLogin();
+      } else {
+        throw err;
+      }
+    }
+    const { data } = res;
     localStorage.setItem('access_token', data.accessToken);
     localStorage.setItem('refresh_token', data.refreshToken);
     setUser(data.user);

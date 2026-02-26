@@ -1,138 +1,222 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { RecordPaymentDto } from './dto/record-payment.dto';
 
 @Injectable()
 export class PaymentsService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(user: { role: string; branchId: string | null }, query: { status?: string; search?: string; contractId?: string }) {
-    const where: any = {};
+  // ─── Record a single payment ─────────────────────────
+  async recordPayment(
+    contractId: string,
+    installmentNo: number,
+    amount: number,
+    paymentMethod: string,
+    recordedById: string,
+    evidenceUrl?: string,
+    notes?: string,
+  ) {
+    const payment = await this.prisma.payment.findFirst({
+      where: { contractId, installmentNo },
+    });
+    if (!payment) throw new NotFoundException('ไม่พบงวดที่ต้องการ');
+    if (payment.status === 'PAID') throw new BadRequestException('งวดนี้ชำระแล้ว');
 
-    if (query.contractId) {
-      where.contractId = query.contractId;
+    const amountDue = Number(payment.amountDue) + Number(payment.lateFee);
+    const prevPaid = Number(payment.amountPaid);
+    const totalPaid = prevPaid + amount;
+
+    const isPaidInFull = totalPaid >= amountDue;
+
+    const updated = await this.prisma.payment.update({
+      where: { id: payment.id },
+      data: {
+        amountPaid: totalPaid,
+        paidDate: isPaidInFull ? new Date() : null,
+        paymentMethod: paymentMethod as any,
+        status: isPaidInFull ? 'PAID' : 'PARTIALLY_PAID',
+        recordedById,
+        evidenceUrl: evidenceUrl || payment.evidenceUrl,
+        notes: notes || payment.notes,
+      },
+    });
+
+    // Check if all payments are completed → update contract status
+    if (isPaidInFull) {
+      await this.checkContractCompletion(contractId);
     }
 
-    if (query.status) {
-      where.status = query.status;
+    return updated;
+  }
+
+  // ─── Auto-allocate payment to next pending installment ─
+  async autoAllocatePayment(
+    contractId: string,
+    amount: number,
+    paymentMethod: string,
+    recordedById: string,
+    notes?: string,
+  ) {
+    const contract = await this.prisma.contract.findUnique({
+      where: { id: contractId },
+      include: { payments: { orderBy: { installmentNo: 'asc' } } },
+    });
+    if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+
+    let remaining = amount;
+    const results = [];
+
+    // Get unpaid payments in order
+    const unpaid = contract.payments.filter((p) => p.status !== 'PAID');
+    if (unpaid.length === 0) throw new BadRequestException('ไม่มีงวดค้างชำระ');
+
+    for (const payment of unpaid) {
+      if (remaining <= 0) break;
+
+      const amountDue = Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid);
+      const payAmount = Math.min(remaining, amountDue);
+
+      const updated = await this.recordPayment(
+        contractId,
+        payment.installmentNo,
+        payAmount,
+        paymentMethod,
+        recordedById,
+        undefined,
+        notes,
+      );
+      results.push(updated);
+      remaining -= payAmount;
     }
 
-    if (query.search) {
-      where.contract = {
-        OR: [
-          { contractNumber: { contains: query.search, mode: 'insensitive' } },
-          { customer: { name: { contains: query.search, mode: 'insensitive' } } },
-        ],
+    return {
+      allocatedPayments: results,
+      totalAllocated: amount - remaining,
+      overpayment: remaining > 0 ? remaining : 0,
+    };
+  }
+
+  // ─── Get payments for a contract ──────────────────────
+  async getContractPayments(contractId: string) {
+    const contract = await this.prisma.contract.findUnique({ where: { id: contractId } });
+    if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+
+    return this.prisma.payment.findMany({
+      where: { contractId },
+      orderBy: { installmentNo: 'asc' },
+      include: {
+        recordedBy: { select: { id: true, name: true } },
+      },
+    });
+  }
+
+  // ─── Get all pending payments (for payment queue view) ─
+  async getPendingPayments(filters: { branchId?: string; date?: string; status?: string }) {
+    const where: Record<string, unknown> = {};
+
+    if (filters.status) {
+      where.status = filters.status;
+    } else {
+      where.status = { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] };
+    }
+
+    if (filters.branchId) {
+      where.contract = { branchId: filters.branchId };
+    }
+
+    if (filters.date) {
+      const d = new Date(filters.date);
+      where.dueDate = {
+        gte: new Date(d.getFullYear(), d.getMonth(), d.getDate()),
+        lt: new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1),
       };
-    }
-
-    if (user.role !== 'OWNER' && user.role !== 'ACCOUNTANT' && user.branchId) {
-      where.contract = { ...where.contract, branchId: user.branchId };
     }
 
     return this.prisma.payment.findMany({
       where,
+      orderBy: [{ dueDate: 'asc' }, { installmentNo: 'asc' }],
       include: {
         contract: {
           select: {
             id: true,
             contractNumber: true,
             customer: { select: { id: true, name: true, phone: true } },
-            product: { select: { id: true, name: true, brand: true, model: true } },
             branch: { select: { id: true, name: true } },
           },
         },
-        recordedBy: { select: { id: true, name: true } },
       },
-      orderBy: [{ dueDate: 'asc' }],
     });
   }
 
-  async findOne(id: string) {
-    const payment = await this.prisma.payment.findUnique({
-      where: { id },
+  // ─── Daily summary ────────────────────────────────────
+  async getDailySummary(date: string, branchId?: string) {
+    const d = new Date(date);
+    const startOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const endOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+
+    const where: Record<string, unknown> = {
+      paidDate: { gte: startOfDay, lt: endOfDay },
+      status: 'PAID',
+    };
+
+    if (branchId) {
+      where.contract = { branchId };
+    }
+
+    const payments = await this.prisma.payment.findMany({
+      where,
       include: {
         contract: {
-          include: {
-            customer: true,
-            product: { select: { id: true, name: true, brand: true, model: true } },
+          select: {
+            contractNumber: true,
+            customer: { select: { name: true } },
+            branch: { select: { name: true } },
           },
         },
-        recordedBy: { select: { id: true, name: true } },
+        recordedBy: { select: { name: true } },
       },
+      orderBy: { paidDate: 'asc' },
     });
-    if (!payment) throw new NotFoundException('ไม่พบข้อมูลการชำระ');
-    return payment;
+
+    const totalAmount = payments.reduce((sum, p) => sum + Number(p.amountPaid), 0);
+    const totalLateFees = payments.reduce((sum, p) => sum + Number(p.lateFee), 0);
+
+    const byMethod: Record<string, number> = {};
+    payments.forEach((p) => {
+      const method = p.paymentMethod || 'UNKNOWN';
+      byMethod[method] = (byMethod[method] || 0) + Number(p.amountPaid);
+    });
+
+    return {
+      date,
+      totalPayments: payments.length,
+      totalAmount: Math.round(totalAmount),
+      totalLateFees: Math.round(totalLateFees),
+      byMethod,
+      payments,
+    };
   }
 
-  async recordPayment(paymentId: string, dto: RecordPaymentDto, userId: string) {
-    const payment = await this.prisma.payment.findUnique({
-      where: { id: paymentId },
-      include: { contract: true },
+  // ─── Check if contract is fully paid ──────────────────
+  private async checkContractCompletion(contractId: string) {
+    const unpaid = await this.prisma.payment.count({
+      where: { contractId, status: { not: 'PAID' } },
     });
-    if (!payment) throw new NotFoundException('ไม่พบงวดที่ต้องชำระ');
-    if (payment.status === 'PAID') {
-      throw new BadRequestException('งวดนี้ชำระแล้ว');
-    }
 
-    const amountDue = Number(payment.amountDue);
-    const newStatus = dto.amountPaid >= amountDue ? 'PAID' : 'PARTIALLY_PAID';
-
-    // Calculate late fee from system config
-    let lateFee = 0;
-    const now = new Date();
-    if (now > payment.dueDate) {
-      const diffDays = Math.floor((now.getTime() - payment.dueDate.getTime()) / (1000 * 60 * 60 * 24));
-      const feePerDayConfig = await this.prisma.systemConfig.findUnique({ where: { key: 'late_fee_per_day' } });
-      const feeCapConfig = await this.prisma.systemConfig.findUnique({ where: { key: 'late_fee_cap' } });
-      const feePerDay = feePerDayConfig ? Number(feePerDayConfig.value) : 100;
-      const feeCap = feeCapConfig ? Number(feeCapConfig.value) : 200;
-      lateFee = Math.min(diffDays * feePerDay, feeCap);
-    }
-
-    return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.payment.update({
-        where: { id: paymentId },
-        data: {
-          amountPaid: dto.amountPaid,
-          paidDate: new Date(),
-          paymentMethod: dto.paymentMethod as any,
-          status: newStatus as any,
-          lateFee,
-          evidenceUrl: dto.evidenceUrl,
-          notes: dto.notes,
-          recordedById: userId,
-        },
-        include: {
-          contract: {
-            select: {
-              id: true,
-              contractNumber: true,
-              customer: { select: { name: true } },
-            },
-          },
-        },
+    if (unpaid === 0) {
+      // All installments paid → mark contract as COMPLETED
+      await this.prisma.contract.update({
+        where: { id: contractId },
+        data: { status: 'COMPLETED' },
       });
 
-      // Check if all payments are completed → update contract status
-      if (newStatus === 'PAID') {
-        const pendingPayments = await tx.payment.count({
-          where: {
-            contractId: payment.contractId,
-            status: { not: 'PAID' },
-            id: { not: paymentId },
-          },
+      // Update product status to SOLD
+      const contract = await this.prisma.contract.findUnique({ where: { id: contractId } });
+      if (contract) {
+        await this.prisma.product.update({
+          where: { id: contract.productId },
+          data: { status: 'SOLD' },
         });
-
-        if (pendingPayments === 0) {
-          await tx.contract.update({
-            where: { id: payment.contractId },
-            data: { status: 'COMPLETED' },
-          });
-        }
       }
-
-      return updated;
-    });
+    }
   }
 }

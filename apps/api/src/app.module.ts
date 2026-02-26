@@ -7,6 +7,17 @@ import { AppController } from './app.controller';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BranchesModule } from './modules/branches/branches.module';
+// Supplier Management (Phase 2 step-by-step modules)
+import { SuppliersModule } from './modules/suppliers/suppliers.module';
+import { ProductsModule } from './modules/products/products.module';
+import { InspectionsModule } from './modules/inspections/inspections.module';
+import { StickersModule } from './modules/stickers/stickers.module';
+import { CustomersModule } from './modules/customers/customers.module';
+import { ContractsModule } from './modules/contracts/contracts.module';
+import { DocumentsModule } from './modules/documents/documents.module';
+import { PaymentsModule } from './modules/payments/payments.module';
+import { CronModule } from './modules/cron/cron.module';
+// MASTER-only modules
 import { OverdueModule } from './modules/overdue/overdue.module';
 import { ExchangeModule } from './modules/exchange/exchange.module';
 import { RepossessionsModule } from './modules/repossessions/repossessions.module';
@@ -16,13 +27,8 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { MigrationModule } from './modules/migration/migration.module';
 import { AuditModule } from './modules/audit/audit.module';
-import { ProductsModule } from './modules/products/products.module';
-import { CustomersModule } from './modules/customers/customers.module';
-import { ContractsModule } from './modules/contracts/contracts.module';
-import { PaymentsModule } from './modules/payments/payments.module';
 import { UsersModule } from './modules/users/users.module';
 import { SettingsModule } from './modules/settings/settings.module';
-import { SuppliersModule } from './modules/suppliers/suppliers.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
 
@@ -48,28 +54,32 @@ import { SecurityMiddleware } from './modules/audit/security.middleware';
     PrismaModule,
     AuthModule,
     BranchesModule,
-    // Phase 2: Core CRUD
+    // Supplier Management (Phase 2 step-by-step modules)
+    SuppliersModule,
     ProductsModule,
+    InspectionsModule,
+    StickersModule,
     CustomersModule,
     ContractsModule,
+    DocumentsModule,
     PaymentsModule,
-    // Phase 3: Operations
+    CronModule,
+    // MASTER: Operations
     OverdueModule,
     ExchangeModule,
     RepossessionsModule,
     PurchaseOrdersModule,
-    // Phase 4: Communication
+    // MASTER: Communication
     NotificationsModule,
-    // Phase 5: Intelligence
+    // MASTER: Intelligence
     DashboardModule,
     ReportsModule,
-    // Phase 6: Polish
+    // MASTER: Polish
     MigrationModule,
     AuditModule,
-    // Management
+    // MASTER: Management
     UsersModule,
     SettingsModule,
-    SuppliersModule,
   ],
   controllers: [AppController],
   providers: [

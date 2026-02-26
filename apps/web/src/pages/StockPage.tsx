@@ -4,9 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
-import { useAuth } from '@/contexts/AuthContext';
 
-interface Product {
+interface StockProduct {
   id: string;
   name: string;
   brand: string;
@@ -16,10 +15,16 @@ interface Product {
   costPrice: string;
   status: string;
   conditionGrade: string | null;
-  createdAt: string;
   branch: { id: string; name: string };
   supplier: { id: string; name: string } | null;
   prices: { id: string; label: string; amount: string; isDefault: boolean }[];
+}
+
+interface BranchSummary {
+  branch: { id: string; name: string };
+  total: number;
+  inStock: number;
+  totalValue: number;
 }
 
 const statusLabels: Record<string, { label: string; className: string }> = {
@@ -41,86 +46,71 @@ const categoryLabels: Record<string, string> = {
   ACCESSORY: 'อุปกรณ์เสริม',
 };
 
-export default function ProductsPage() {
-  const { user } = useAuth();
+export default function StockPage() {
   const navigate = useNavigate();
-  const [search, setSearch] = useState('');
+  const [filterBranch, setFilterBranch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
-  const [filterBranch, setFilterBranch] = useState('');
 
-  const isManager = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
-
-  const { data: products = [], isLoading } = useQuery<Product[]>({
-    queryKey: ['products', search, filterStatus, filterCategory, filterBranch],
+  const { data, isLoading } = useQuery<{ products: StockProduct[]; summary: BranchSummary[] }>({
+    queryKey: ['stock', filterBranch, filterStatus, filterCategory],
     queryFn: async () => {
       const params: Record<string, string> = {};
-      if (search) params.search = search;
+      if (filterBranch) params.branchId = filterBranch;
       if (filterStatus) params.status = filterStatus;
       if (filterCategory) params.category = filterCategory;
-      if (filterBranch) params.branchId = filterBranch;
-      const { data } = await api.get('/products', { params });
+      const { data } = await api.get('/products/stock', { params });
       return data;
     },
   });
 
-  const { data: branches = [] } = useQuery<{ id: string; name: string }[]>({
-    queryKey: ['branches'],
-    queryFn: async () => {
-      const { data } = await api.get('/branches');
-      return data;
-    },
-  });
+  const products = data?.products || [];
+  const summary = data?.summary || [];
+  const totalInStock = summary.reduce((sum, s) => sum + s.inStock, 0);
+  const totalValue = summary.reduce((sum, s) => sum + s.totalValue, 0);
 
   const columns = [
     {
       key: 'name',
       label: 'สินค้า',
-      render: (p: Product) => (
+      render: (p: StockProduct) => (
         <button
           onClick={() => navigate(`/products/${p.id}`)}
           className="text-left hover:underline"
         >
           <div className="text-primary-600 font-medium">{p.brand} {p.model}</div>
-          <div className="text-xs text-gray-400">{p.name}</div>
+          {p.imeiSerial && <div className="text-xs text-gray-400 font-mono">{p.imeiSerial}</div>}
         </button>
-      ),
-    },
-    {
-      key: 'imeiSerial',
-      label: 'IMEI/Serial',
-      render: (p: Product) => (
-        <span className="font-mono text-xs">{p.imeiSerial || '-'}</span>
       ),
     },
     {
       key: 'category',
       label: 'ประเภท',
-      render: (p: Product) => (
-        <span className="text-sm">{categoryLabels[p.category] || p.category}</span>
+      render: (p: StockProduct) => <span className="text-xs">{categoryLabels[p.category] || p.category}</span>,
+    },
+    {
+      key: 'costPrice',
+      label: 'ราคาทุน',
+      render: (p: StockProduct) => (
+        <span className="text-sm">{parseFloat(p.costPrice).toLocaleString()} ฿</span>
       ),
     },
     {
-      key: 'prices',
-      label: 'ราคา',
-      render: (p: Product) => {
-        const defaultPrice = p.prices.find((pr) => pr.isDefault);
-        return (
-          <div>
-            {defaultPrice ? (
-              <div className="font-medium">{parseFloat(defaultPrice.amount).toLocaleString()} ฿</div>
-            ) : (
-              <span className="text-gray-400">-</span>
-            )}
-            <div className="text-xs text-gray-400">ทุน: {parseFloat(p.costPrice).toLocaleString()} ฿</div>
-          </div>
+      key: 'sellingPrice',
+      label: 'ราคาขาย',
+      render: (p: StockProduct) => {
+        const defaultPrice = p.prices?.[0];
+        return defaultPrice ? (
+          <span className="text-sm font-medium">{parseFloat(defaultPrice.amount).toLocaleString()} ฿</span>
+        ) : (
+          <span className="text-gray-400">-</span>
         );
       },
     },
     {
       key: 'status',
       label: 'สถานะ',
-      render: (p: Product) => {
+      render: (p: StockProduct) => {
         const s = statusLabels[p.status] || { label: p.status, className: 'bg-gray-100 text-gray-700' };
         return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.className}`}>{s.label}</span>;
       },
@@ -128,45 +118,41 @@ export default function ProductsPage() {
     {
       key: 'conditionGrade',
       label: 'เกรด',
-      render: (p: Product) => (
-        <span className={`text-sm font-medium ${p.conditionGrade ? '' : 'text-gray-400'}`}>
-          {p.conditionGrade || '-'}
-        </span>
-      ),
+      render: (p: StockProduct) => <span className="text-sm">{p.conditionGrade || '-'}</span>,
     },
     {
       key: 'branch',
       label: 'สาขา',
-      render: (p: Product) => <span className="text-xs">{p.branch.name}</span>,
+      render: (p: StockProduct) => <span className="text-xs font-medium">{p.branch.name}</span>,
     },
   ];
 
   return (
     <div>
-      <PageHeader
-        title="สินค้า"
-        subtitle={`ทั้งหมด ${products.length} รายการ`}
-        action={
-          isManager ? (
-            <button
-              onClick={() => navigate('/products/create')}
-              className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
-            >
-              + เพิ่มสินค้า
-            </button>
-          ) : undefined
-        }
-      />
+      <PageHeader title="สต็อกสินค้า" subtitle={`พร้อมขาย ${totalInStock} ชิ้น | มูลค่ารวม ${totalValue.toLocaleString()} ฿`} />
+
+      {/* Branch Summary Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        {summary.map((s) => (
+          <button
+            key={s.branch.id}
+            onClick={() => setFilterBranch(filterBranch === s.branch.id ? '' : s.branch.id)}
+            className={`bg-white rounded-lg border p-4 text-left transition-colors ${
+              filterBranch === s.branch.id ? 'border-primary-500 ring-2 ring-primary-100' : 'hover:border-gray-300'
+            }`}
+          >
+            <div className="text-sm font-medium text-gray-900 mb-2">{s.branch.name}</div>
+            <div className="flex justify-between text-xs text-gray-500">
+              <span>พร้อมขาย: {s.inStock}</span>
+              <span>ทั้งหมด: {s.total}</span>
+            </div>
+            <div className="text-xs text-gray-400 mt-1">มูลค่า: {s.totalValue.toLocaleString()} ฿</div>
+          </button>
+        ))}
+      </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3 mb-4">
-        <input
-          type="text"
-          placeholder="ค้นหาชื่อ, ยี่ห้อ, รุ่น, IMEI..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 min-w-[200px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-        />
+      <div className="flex gap-3 mb-4">
         <select
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
@@ -187,19 +173,17 @@ export default function ProductsPage() {
             <option key={key} value={key}>{val}</option>
           ))}
         </select>
-        <select
-          value={filterBranch}
-          onChange={(e) => setFilterBranch(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-        >
-          <option value="">ทุกสาขา</option>
-          {branches.map((b) => (
-            <option key={b.id} value={b.id}>{b.name}</option>
-          ))}
-        </select>
+        {filterBranch && (
+          <button
+            onClick={() => setFilterBranch('')}
+            className="px-3 py-2 text-sm text-primary-600 hover:text-primary-700"
+          >
+            ดูทุกสาขา
+          </button>
+        )}
       </div>
 
-      <DataTable columns={columns} data={products} isLoading={isLoading} emptyMessage="ไม่พบสินค้า" />
+      <DataTable columns={columns} data={products} isLoading={isLoading} emptyMessage="ไม่พบสินค้าในสต็อก" />
     </div>
   );
 }

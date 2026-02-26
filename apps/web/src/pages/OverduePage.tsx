@@ -1,375 +1,191 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import toast from 'react-hot-toast';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
-import Modal from '@/components/ui/Modal';
+import toast from 'react-hot-toast';
 
-interface OverdueContract {
+interface OverduePayment {
   id: string;
-  contractNumber: string;
+  installmentNo: number;
+  dueDate: string;
+  amountDue: string;
+  amountPaid: string;
+  lateFee: string;
   status: string;
-  sellingPrice: string;
-  financedAmount: string;
-  monthlyPayment: string;
-  customer: { id: string; name: string; phone: string; lineId: string | null };
-  product: { id: string; name: string; brand: string; model: string; imeiSerial: string | null };
-  branch: { id: string; name: string };
-  salesperson: { id: string; name: string };
-  payments: Array<{
+  contract: {
     id: string;
-    installmentNo: number;
-    dueDate: string;
-    amountDue: string;
-    amountPaid: string;
-    lateFee: string;
-    status: string;
-  }>;
-  callLogs: Array<{
-    id: string;
-    calledAt: string;
-    result: string;
-    notes: string | null;
-    caller: { id: string; name: string };
-  }>;
-}
-
-interface OverdueSummary {
-  overdueCount: number;
-  defaultCount: number;
-  totalOverdueAmount: number;
-  totalLateFees: number;
-}
-
-const statusColors: Record<string, string> = {
-  OVERDUE: 'bg-yellow-100 text-yellow-700',
-  DEFAULT: 'bg-red-100 text-red-700',
-};
-
-const resultLabels: Record<string, string> = {
-  ANSWERED: 'รับสาย',
-  NO_ANSWER: 'ไม่รับสาย',
-  PROMISED: 'สัญญาจะจ่าย',
-  REFUSED: 'ปฏิเสธ',
-};
-
-interface PaginatedResponse {
-  data: OverdueContract[];
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
+    contractNumber: string;
+    customer: { id: string; name: string; phone: string };
+    branch: { id: string; name: string };
+  };
 }
 
 export default function OverduePage() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [page, setPage] = useState(1);
-  const [selectedContract, setSelectedContract] = useState<OverdueContract | null>(null);
-  const [isCallLogModalOpen, setIsCallLogModalOpen] = useState(false);
-  const [callLogForm, setCallLogForm] = useState({
-    result: 'ANSWERED',
-    notes: '',
-  });
+  const [filter, setFilter] = useState<'OVERDUE' | 'all'>('OVERDUE');
 
-  const { data: summary } = useQuery<OverdueSummary>({
-    queryKey: ['overdue-summary'],
-    queryFn: async () => (await api.get('/overdue/summary')).data,
-  });
-
-  const { data: paginatedData, isLoading } = useQuery<PaginatedResponse>({
-    queryKey: ['overdue', search, statusFilter, page],
+  const { data: overduePayments = [], isLoading } = useQuery<OverduePayment[]>({
+    queryKey: ['overdue-payments', filter],
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (search) params.set('search', search);
-      if (statusFilter) params.set('status', statusFilter);
-      params.set('page', String(page));
-      params.set('limit', '50');
-      return (await api.get(`/overdue?${params}`)).data;
+      if (filter !== 'all') params.set('status', filter);
+      const { data } = await api.get(`/payments/pending?${params}`);
+      return data;
     },
   });
 
-  const contracts = paginatedData?.data || [];
-  const totalPages = paginatedData?.totalPages || 1;
-  const total = paginatedData?.total || 0;
-
-  const createCallLogMutation = useMutation({
-    mutationFn: async (data: { contractId: string; result: string; notes: string }) =>
-      api.post('/overdue/call-logs', {
-        ...data,
-        calledAt: new Date().toISOString(),
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['overdue'] });
-      toast.success('บันทึก call log สำเร็จ');
-      setIsCallLogModalOpen(false);
-      setCallLogForm({ result: 'ANSWERED', notes: '' });
+  const runCronMutation = useMutation({
+    mutationFn: async () => {
+      const { data } = await api.post('/cron/run-daily');
+      return data;
     },
-    onError: () => toast.error('เกิดข้อผิดพลาด'),
+    onSuccess: (data) => {
+      toast.success(`คำนวณค่าปรับเสร็จ: ${data.lateFees.updated} รายการ, สถานะ: ${data.statuses.overdueCount} OVERDUE, ${data.statuses.defaultCount} DEFAULT`);
+      queryClient.invalidateQueries({ queryKey: ['overdue-payments'] });
+    },
+    onError: (err: any) => toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด'),
   });
 
-  const openCallLogModal = (contract: OverdueContract) => {
-    setSelectedContract(contract);
-    setIsCallLogModalOpen(true);
-  };
-
-  const handleCallLogSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedContract) return;
-    createCallLogMutation.mutate({
-      contractId: selectedContract.id,
-      result: callLogForm.result,
-      notes: callLogForm.notes,
-    });
-  };
+  // Calculate summary stats
+  const totalLateFees = overduePayments.reduce((sum, p) => sum + parseFloat(p.lateFee), 0);
+  const totalOutstanding = overduePayments.reduce((sum, p) => sum + (parseFloat(p.amountDue) - parseFloat(p.amountPaid)), 0);
+  const uniqueContracts = new Set(overduePayments.map((p) => p.contract.id)).size;
 
   const columns = [
     {
-      key: 'contractNumber',
-      label: 'เลขสัญญา',
-      render: (c: OverdueContract) => (
-        <span className="font-medium text-primary-600">{c.contractNumber}</span>
+      key: 'contract',
+      label: 'สัญญา',
+      render: (p: OverduePayment) => (
+        <button onClick={() => navigate(`/contracts/${p.contract.id}`)} className="text-left">
+          <div className="font-mono text-sm text-primary-600 hover:underline">{p.contract.contractNumber}</div>
+          <div className="text-xs text-gray-500">{p.contract.customer.name}</div>
+        </button>
       ),
     },
     {
       key: 'customer',
-      label: 'ลูกค้า',
-      render: (c: OverdueContract) => (
-        <div>
-          <div className="font-medium">{c.customer.name}</div>
-          <div className="text-xs text-gray-500">{c.customer.phone}</div>
-        </div>
-      ),
+      label: 'เบอร์โทร',
+      render: (p: OverduePayment) => <span className="text-sm">{p.contract.customer.phone}</span>,
     },
     {
-      key: 'product',
-      label: 'สินค้า',
-      render: (c: OverdueContract) => (
-        <div className="text-xs">
-          {c.product.brand} {c.product.model}
-        </div>
-      ),
+      key: 'installmentNo',
+      label: 'งวดที่',
+      render: (p: OverduePayment) => <span className="font-medium">{p.installmentNo}</span>,
     },
     {
-      key: 'status',
-      label: 'สถานะ',
-      render: (c: OverdueContract) => (
-        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[c.status] || ''}`}>
-          {c.status === 'OVERDUE' ? 'ค้างชำระ' : 'ผิดนัด'}
-        </span>
-      ),
-    },
-    {
-      key: 'overduePayments',
-      label: 'งวดค้าง',
-      render: (c: OverdueContract) => {
-        const overduePayments = c.payments.filter((p) => ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'].includes(p.status));
-        const totalOutstanding = overduePayments.reduce(
-          (sum, p) => sum + Number(p.amountDue) - Number(p.amountPaid) + Number(p.lateFee),
-          0,
-        );
+      key: 'dueDate',
+      label: 'วันครบกำหนด',
+      render: (p: OverduePayment) => {
+        const due = new Date(p.dueDate);
+        const now = new Date();
+        const daysLate = Math.floor((now.getTime() - due.getTime()) / (1000 * 60 * 60 * 24));
         return (
           <div>
-            <div className="text-sm font-medium text-red-600">
-              {overduePayments.length} งวด
-            </div>
-            <div className="text-xs text-gray-500">
-              {totalOutstanding.toLocaleString()} บาท
-            </div>
+            <div className="text-sm">{due.toLocaleDateString('th-TH')}</div>
+            <div className="text-xs text-red-600 font-medium">เกินกำหนด {daysLate} วัน</div>
           </div>
         );
       },
     },
     {
-      key: 'lastCall',
-      label: 'ติดตามล่าสุด',
-      render: (c: OverdueContract) => {
-        const lastCall = c.callLogs[0];
-        if (!lastCall) return <span className="text-xs text-gray-400">ยังไม่มี</span>;
-        return (
-          <div className="text-xs">
-            <div>{new Date(lastCall.calledAt).toLocaleDateString('th-TH')}</div>
-            <div className="text-gray-500">{resultLabels[lastCall.result] || lastCall.result}</div>
-          </div>
+      key: 'amountDue',
+      label: 'ยอดค้าง',
+      render: (p: OverduePayment) => {
+        const outstanding = parseFloat(p.amountDue) - parseFloat(p.amountPaid);
+        return <span className="text-sm font-medium">{outstanding.toLocaleString()} ฿</span>;
+      },
+    },
+    {
+      key: 'lateFee',
+      label: 'ค่าปรับ',
+      render: (p: OverduePayment) => {
+        const fee = parseFloat(p.lateFee);
+        return fee > 0 ? (
+          <span className="text-sm font-medium text-red-600">{fee.toLocaleString()} ฿</span>
+        ) : (
+          <span className="text-xs text-gray-400">-</span>
         );
       },
     },
     {
-      key: 'actions',
-      label: '',
-      render: (c: OverdueContract) => (
-        <div className="flex gap-2">
-          <button
-            onClick={() => openCallLogModal(c)}
-            className="text-primary-600 hover:text-primary-700 text-sm font-medium"
-          >
-            บันทึกการโทร
-          </button>
-        </div>
-      ),
+      key: 'total',
+      label: 'ยอดรวม',
+      render: (p: OverduePayment) => {
+        const total = parseFloat(p.amountDue) + parseFloat(p.lateFee) - parseFloat(p.amountPaid);
+        return <span className="text-sm font-bold text-red-700">{total.toLocaleString()} ฿</span>;
+      },
+    },
+    {
+      key: 'branch',
+      label: 'สาขา',
+      render: (p: OverduePayment) => <span className="text-xs">{p.contract.branch.name}</span>,
     },
   ];
 
   return (
     <div>
-      <PageHeader title="ติดตามหนี้" subtitle="รายการสัญญาค้างชำระและผิดนัด" />
+      <PageHeader
+        title="ค่าปรับ & ค้างชำระ"
+        subtitle="ระบบคำนวณค่าปรับล่าช้าและติดตามการค้างชำระ"
+        action={
+          <button
+            onClick={() => runCronMutation.mutate()}
+            disabled={runCronMutation.isPending}
+            className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 disabled:opacity-50"
+          >
+            {runCronMutation.isPending ? 'กำลังคำนวณ...' : 'คำนวณค่าปรับ'}
+          </button>
+        }
+      />
 
       {/* Summary Cards */}
-      {summary && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white rounded-lg border p-4">
-            <div className="text-sm text-gray-500">สัญญาค้างชำระ</div>
-            <div className="text-2xl font-bold text-yellow-600">{summary.overdueCount}</div>
-          </div>
-          <div className="bg-white rounded-lg border p-4">
-            <div className="text-sm text-gray-500">สัญญาผิดนัด</div>
-            <div className="text-2xl font-bold text-red-600">{summary.defaultCount}</div>
-          </div>
-          <div className="bg-white rounded-lg border p-4">
-            <div className="text-sm text-gray-500">ยอมค้างชำระรวม</div>
-            <div className="text-2xl font-bold text-gray-900">
-              {summary.totalOverdueAmount.toLocaleString()} <span className="text-sm font-normal">บาท</span>
-            </div>
-          </div>
-          <div className="bg-white rounded-lg border p-4">
-            <div className="text-sm text-gray-500">ค่าปรับรวม</div>
-            <div className="text-2xl font-bold text-orange-600">
-              {summary.totalLateFees.toLocaleString()} <span className="text-sm font-normal">บาท</span>
-            </div>
-          </div>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className="bg-white rounded-lg border p-4">
+          <div className="text-xs text-gray-500 mb-1">สัญญาค้างชำระ</div>
+          <div className="text-2xl font-bold text-red-600">{uniqueContracts}</div>
         </div>
-      )}
+        <div className="bg-white rounded-lg border p-4">
+          <div className="text-xs text-gray-500 mb-1">รายการค้างชำระ</div>
+          <div className="text-2xl font-bold">{overduePayments.length}</div>
+        </div>
+        <div className="bg-white rounded-lg border p-4">
+          <div className="text-xs text-gray-500 mb-1">ยอดค้างรวม</div>
+          <div className="text-2xl font-bold">{totalOutstanding.toLocaleString()} ฿</div>
+        </div>
+        <div className="bg-white rounded-lg border p-4">
+          <div className="text-xs text-gray-500 mb-1">ค่าปรับรวม</div>
+          <div className="text-2xl font-bold text-red-600">{totalLateFees.toLocaleString()} ฿</div>
+        </div>
+      </div>
 
-      {/* Filters */}
+      {/* Info box */}
+      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+        <div className="text-sm text-yellow-800">
+          <strong>กฎค่าปรับ:</strong> 100 บาท/วัน สูงสุด 200 บาท/งวด |
+          ค้าง &gt; 7 วัน → สถานะ OVERDUE |
+          ค้าง 2 งวดติดต่อกัน → สถานะ DEFAULT
+        </div>
+      </div>
+
       <div className="flex gap-3 mb-4">
-        <input
-          type="text"
-          placeholder="ค้นหา เลขสัญญา / ชื่อ / เบอร์โทร..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 max-w-sm px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-        />
         <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value as 'OVERDUE' | 'all')}
+          className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
         >
-          <option value="">ทุกสถานะ</option>
-          <option value="OVERDUE">ค้างชำระ</option>
-          <option value="DEFAULT">ผิดนัด</option>
+          <option value="OVERDUE">เฉพาะเกินกำหนด</option>
+          <option value="all">ทั้งหมด</option>
         </select>
       </div>
 
-      <DataTable columns={columns} data={contracts} isLoading={isLoading} emptyMessage="ไม่มีสัญญาค้างชำระ" />
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between mt-4">
-          <div className="text-sm text-gray-500">
-            ทั้งหมด {total} รายการ (หน้า {page}/{totalPages})
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1}
-              className="px-3 py-1.5 text-sm border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-            >
-              ก่อนหน้า
-            </button>
-            <button
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page >= totalPages}
-              className="px-3 py-1.5 text-sm border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-            >
-              ถัดไป
-            </button>
-          </div>
-        </div>
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div></div>
+      ) : (
+        <DataTable columns={columns} data={overduePayments} emptyMessage="ไม่มีรายการค้างชำระ" />
       )}
-
-      {/* Call Log Modal */}
-      <Modal
-        isOpen={isCallLogModalOpen}
-        onClose={() => setIsCallLogModalOpen(false)}
-        title={`บันทึกการโทร - ${selectedContract?.contractNumber || ''}`}
-      >
-        {selectedContract && (
-          <div>
-            <div className="bg-gray-50 rounded-lg p-3 mb-4 text-sm">
-              <div><strong>ลูกค้า:</strong> {selectedContract.customer.name}</div>
-              <div><strong>เบอร์โทร:</strong> {selectedContract.customer.phone}</div>
-              {selectedContract.customer.lineId && (
-                <div><strong>LINE:</strong> {selectedContract.customer.lineId}</div>
-              )}
-            </div>
-
-            {/* Recent Call Logs */}
-            {selectedContract.callLogs.length > 0 && (
-              <div className="mb-4">
-                <h4 className="text-sm font-medium text-gray-700 mb-2">ประวัติการโทรล่าสุด</h4>
-                <div className="space-y-2">
-                  {selectedContract.callLogs.map((log) => (
-                    <div key={log.id} className="text-xs bg-gray-50 rounded p-2">
-                      <div className="flex justify-between">
-                        <span className="font-medium">{resultLabels[log.result] || log.result}</span>
-                        <span className="text-gray-400">
-                          {new Date(log.calledAt).toLocaleString('th-TH')}
-                        </span>
-                      </div>
-                      {log.notes && <div className="text-gray-600 mt-1">{log.notes}</div>}
-                      <div className="text-gray-400">โดย: {log.caller.name}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <form onSubmit={handleCallLogSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">ผลการโทร *</label>
-                <select
-                  value={callLogForm.result}
-                  onChange={(e) => setCallLogForm({ ...callLogForm, result: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
-                >
-                  <option value="ANSWERED">รับสาย</option>
-                  <option value="NO_ANSWER">ไม่รับสาย</option>
-                  <option value="PROMISED">สัญญาจะจ่าย</option>
-                  <option value="REFUSED">ปฏิเสธ</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ</label>
-                <textarea
-                  value={callLogForm.notes}
-                  onChange={(e) => setCallLogForm({ ...callLogForm, notes: e.target.value })}
-                  rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
-                  placeholder="บันทึกรายละเอียดการสนทนา..."
-                />
-              </div>
-              <div className="flex justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsCallLogModalOpen(false)}
-                  className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  type="submit"
-                  disabled={createCallLogMutation.isPending}
-                  className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
-                >
-                  {createCallLogMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
-      </Modal>
     </div>
   );
 }

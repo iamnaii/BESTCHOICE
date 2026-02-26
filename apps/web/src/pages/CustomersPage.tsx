@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
-import { useAuth } from '@/contexts/AuthContext';
 
 interface Customer {
   id: string;
@@ -14,214 +14,126 @@ interface Customer {
   phone: string;
   phoneSecondary: string | null;
   lineId: string | null;
-  addressCurrent: string | null;
-  occupation: string | null;
-  workplace: string | null;
-  contracts: { id: string; contractNumber: string; status: string; sellingPrice: number }[];
   createdAt: string;
+  _count: { contracts: number };
 }
 
-const contractStatusLabels: Record<string, string> = {
-  DRAFT: 'ร่าง', ACTIVE: 'ใช้งาน', OVERDUE: 'เกินกำหนด', DEFAULT: 'ผิดนัด',
-  EARLY_PAYOFF: 'ปิดก่อน', COMPLETED: 'เสร็จสิ้น', EXCHANGED: 'เปลี่ยนเครื่อง', CLOSED_BAD_DEBT: 'หนี้สูญ',
-};
+const emptyForm = { nationalId: '', name: '', phone: '', phoneSecondary: '', lineId: '', addressIdCard: '', addressCurrent: '', occupation: '', workplace: '' };
 
 export default function CustomersPage() {
-  const { user } = useAuth();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [detailCustomer, setDetailCustomer] = useState<Customer | null>(null);
-  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [search, setSearch] = useState('');
-  const [form, setForm] = useState({
-    nationalId: '', name: '', phone: '', phoneSecondary: '', lineId: '',
-    addressIdCard: '', addressCurrent: '', occupation: '', workplace: '',
-  });
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [form, setForm] = useState(emptyForm);
 
   const { data: customers = [], isLoading } = useQuery<Customer[]>({
     queryKey: ['customers', search],
     queryFn: async () => {
-      const params = search ? `?search=${encodeURIComponent(search)}` : '';
-      const { data } = await api.get(`/customers${params}`);
+      const params: Record<string, string> = {};
+      if (search) params.search = search;
+      const { data } = await api.get('/customers', { params });
       return data;
     },
   });
 
-  const saveMutation = useMutation({
-    mutationFn: async (data: typeof form) => {
-      const payload = Object.fromEntries(Object.entries(data).filter(([, v]) => v !== ''));
-      if (editingCustomer) return api.patch(`/customers/${editingCustomer.id}`, payload);
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const payload = { ...form };
+      Object.keys(payload).forEach((k) => { if (!(payload as Record<string, string>)[k]) delete (payload as Record<string, string>)[k]; });
       return api.post('/customers', payload);
     },
-    onSuccess: () => {
+    onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
-      toast.success(editingCustomer ? 'แก้ไขลูกค้าสำเร็จ' : 'เพิ่มลูกค้าสำเร็จ');
-      closeModal();
+      toast.success('เพิ่มลูกค้าสำเร็จ');
+      setIsModalOpen(false);
+      navigate(`/customers/${res.data.id}`);
     },
-    onError: (err: any) => toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด'),
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด');
+    },
   });
-
-  const openCreate = () => {
-    setEditingCustomer(null);
-    setForm({ nationalId: '', name: '', phone: '', phoneSecondary: '', lineId: '', addressIdCard: '', addressCurrent: '', occupation: '', workplace: '' });
-    setIsModalOpen(true);
-  };
-
-  const openEdit = (c: Customer) => {
-    setEditingCustomer(c);
-    setForm({
-      nationalId: c.nationalId, name: c.name, phone: c.phone,
-      phoneSecondary: c.phoneSecondary || '', lineId: c.lineId || '',
-      addressIdCard: '', addressCurrent: c.addressCurrent || '',
-      occupation: c.occupation || '', workplace: c.workplace || '',
-    });
-    setIsModalOpen(true);
-  };
-
-  const closeModal = () => { setIsModalOpen(false); setEditingCustomer(null); };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    saveMutation.mutate(form);
-  };
 
   const columns = [
     {
-      key: 'name', label: 'ชื่อ-นามสกุล',
+      key: 'name',
+      label: 'ชื่อ',
       render: (c: Customer) => (
-        <button onClick={() => setDetailCustomer(c)} className="text-left hover:text-primary-600">
-          <div className="font-medium text-gray-900">{c.name}</div>
-          <div className="text-xs text-gray-500">{c.nationalId.replace(/(\d{1})(\d{4})(\d{5})(\d{2})(\d{1})/, '$1-$2-$3-$4-$5')}</div>
-        </button>
+        <button onClick={() => navigate(`/customers/${c.id}`)} className="text-primary-600 font-medium hover:underline text-left">{c.name}</button>
       ),
     },
-    { key: 'phone', label: 'โทรศัพท์', render: (c: Customer) => (
-      <div>
-        <div>{c.phone}</div>
-        {c.phoneSecondary && <div className="text-xs text-gray-500">{c.phoneSecondary}</div>}
-      </div>
-    )},
-    { key: 'occupation', label: 'อาชีพ', render: (c: Customer) => c.occupation || '-' },
+    { key: 'phone', label: 'เบอร์โทร' },
     {
-      key: 'contracts', label: 'สัญญา',
-      render: (c: Customer) => (
-        <div className="text-xs">
-          {c.contracts.length === 0 ? <span className="text-gray-400">ยังไม่มี</span> :
-            <span className="font-medium">{c.contracts.length} สัญญา</span>}
-        </div>
-      ),
+      key: 'nationalId',
+      label: 'เลขบัตร ปชช.',
+      render: (c: Customer) => <span className="font-mono text-xs">{c.nationalId.replace(/(\d{1})(\d{4})(\d{5})(\d{2})(\d{1})/, '$1-$2-$3-$4-$5')}</span>,
     },
     {
-      key: 'actions', label: '',
-      render: (c: Customer) => (
-        <button onClick={() => openEdit(c)} className="text-primary-600 hover:text-primary-700 text-sm font-medium">แก้ไข</button>
-      ),
+      key: 'contracts',
+      label: 'สัญญา',
+      render: (c: Customer) => <span className="text-sm">{c._count.contracts} สัญญา</span>,
+    },
+    {
+      key: 'createdAt',
+      label: 'วันที่เพิ่ม',
+      render: (c: Customer) => <span className="text-xs">{new Date(c.createdAt).toLocaleDateString('th-TH')}</span>,
     },
   ];
 
   return (
     <div>
       <PageHeader
-        title="จัดการลูกค้า"
+        title="ลูกค้า"
         subtitle={`ทั้งหมด ${customers.length} ราย`}
         action={
-          <button onClick={openCreate} className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors">
+          <button onClick={() => { setForm(emptyForm); setIsModalOpen(true); }} className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700">
             + เพิ่มลูกค้า
           </button>
         }
       />
 
       <div className="mb-4">
-        <input
-          type="text" placeholder="ค้นหาชื่อ, โทรศัพท์, เลขบัตร..."
-          value={search} onChange={(e) => setSearch(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-80 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-        />
+        <input type="text" placeholder="ค้นหาชื่อ, เบอร์โทร, เลขบัตร ปชช..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none" />
       </div>
 
-      <DataTable columns={columns} data={customers} isLoading={isLoading} />
+      <DataTable columns={columns} data={customers} isLoading={isLoading} emptyMessage="ไม่พบลูกค้า" />
 
-      {/* Detail Modal */}
-      <Modal isOpen={!!detailCustomer} onClose={() => setDetailCustomer(null)} title={`ข้อมูลลูกค้า: ${detailCustomer?.name || ''}`}>
-        {detailCustomer && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div><span className="text-gray-500">เลขบัตร:</span> <span className="font-medium">{detailCustomer.nationalId}</span></div>
-              <div><span className="text-gray-500">โทรศัพท์:</span> <span className="font-medium">{detailCustomer.phone}</span></div>
-              {detailCustomer.lineId && <div><span className="text-gray-500">LINE:</span> <span className="font-medium">{detailCustomer.lineId}</span></div>}
-              {detailCustomer.occupation && <div><span className="text-gray-500">อาชีพ:</span> <span className="font-medium">{detailCustomer.occupation}</span></div>}
-              {detailCustomer.workplace && <div><span className="text-gray-500">ที่ทำงาน:</span> <span className="font-medium">{detailCustomer.workplace}</span></div>}
-              {detailCustomer.addressCurrent && <div className="col-span-2"><span className="text-gray-500">ที่อยู่:</span> <span className="font-medium">{detailCustomer.addressCurrent}</span></div>}
-            </div>
-            {detailCustomer.contracts.length > 0 && (
-              <div>
-                <h4 className="text-sm font-semibold text-gray-700 mb-2">สัญญาผ่อน</h4>
-                <div className="space-y-2">
-                  {detailCustomer.contracts.map((c) => (
-                    <div key={c.id} className="flex justify-between items-center bg-gray-50 px-3 py-2 rounded-lg text-sm">
-                      <span className="font-medium">{c.contractNumber}</span>
-                      <span>{Number(c.sellingPrice).toLocaleString()} ฿</span>
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">{contractStatusLabels[c.status] || c.status}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </Modal>
-
-      {/* Create/Edit Modal */}
-      <Modal isOpen={isModalOpen} onClose={closeModal} title={editingCustomer ? 'แก้ไขลูกค้า' : 'เพิ่มลูกค้าใหม่'}>
-        <form onSubmit={handleSubmit} className="space-y-4">
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="เพิ่มลูกค้าใหม่" size="lg">
+        <form onSubmit={(e) => { e.preventDefault(); createMutation.mutate(); }} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">เลขบัตรประชาชน *</label>
-              <input type="text" value={form.nationalId} onChange={(e) => setForm({ ...form, nationalId: e.target.value })}
-                required disabled={!!editingCustomer} maxLength={13}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none disabled:bg-gray-100" />
+              <label className="block text-sm font-medium text-gray-700 mb-1">เลขบัตร ปชช. (13 หลัก) *</label>
+              <input type="text" maxLength={13} value={form.nationalId} onChange={(e) => setForm({ ...form, nationalId: e.target.value })} className="w-full px-3 py-2 border rounded-lg outline-none font-mono" required />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อ-นามสกุล *</label>
-              <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none" />
+              <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full px-3 py-2 border rounded-lg outline-none" required />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">โทรศัพท์ *</label>
-              <input type="text" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} required
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none" />
+              <label className="block text-sm font-medium text-gray-700 mb-1">เบอร์โทร *</label>
+              <input type="text" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="w-full px-3 py-2 border rounded-lg outline-none" required />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">โทรศัพท์สำรอง</label>
-              <input type="text" value={form.phoneSecondary} onChange={(e) => setForm({ ...form, phoneSecondary: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none" />
+              <label className="block text-sm font-medium text-gray-700 mb-1">เบอร์สำรอง</label>
+              <input type="text" value={form.phoneSecondary} onChange={(e) => setForm({ ...form, phoneSecondary: e.target.value })} className="w-full px-3 py-2 border rounded-lg outline-none" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">LINE ID</label>
-              <input type="text" value={form.lineId} onChange={(e) => setForm({ ...form, lineId: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none" />
+              <input type="text" value={form.lineId} onChange={(e) => setForm({ ...form, lineId: e.target.value })} className="w-full px-3 py-2 border rounded-lg outline-none" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">อาชีพ</label>
-              <input type="text" value={form.occupation} onChange={(e) => setForm({ ...form, occupation: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none" />
+              <input type="text" value={form.occupation} onChange={(e) => setForm({ ...form, occupation: e.target.value })} className="w-full px-3 py-2 border rounded-lg outline-none" />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">ที่ทำงาน</label>
-              <input type="text" value={form.workplace} onChange={(e) => setForm({ ...form, workplace: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none" />
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">ที่อยู่ตามบัตร</label>
+              <textarea value={form.addressIdCard} onChange={(e) => setForm({ ...form, addressIdCard: e.target.value })} rows={2} className="w-full px-3 py-2 border rounded-lg outline-none resize-none" />
             </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">ที่อยู่ปัจจุบัน</label>
-            <textarea value={form.addressCurrent} onChange={(e) => setForm({ ...form, addressCurrent: e.target.value })} rows={2}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none" />
           </div>
           <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={closeModal} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">ยกเลิก</button>
-            <button type="submit" disabled={saveMutation.isPending}
-              className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
-              {saveMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
+            <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm text-gray-600">ยกเลิก</button>
+            <button type="submit" disabled={createMutation.isPending} className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium disabled:opacity-50">
+              {createMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
             </button>
           </div>
         </form>

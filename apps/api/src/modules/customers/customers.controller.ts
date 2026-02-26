@@ -1,7 +1,6 @@
 import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards } from '@nestjs/common';
 import { CustomersService } from './customers.service';
-import { CreateCustomerDto } from './dto/create-customer.dto';
-import { UpdateCustomerDto } from './dto/update-customer.dto';
+import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -13,12 +12,27 @@ export class CustomersController {
 
   @Get()
   findAll(@Query('search') search?: string) {
-    return this.customersService.findAll({ search });
+    return this.customersService.findAll(search);
+  }
+
+  @Get('search')
+  search(@Query('q') q: string) {
+    return this.customersService.search(q || '');
   }
 
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.customersService.findOne(id);
+  }
+
+  @Get(':id/contracts')
+  getContracts(@Param('id') id: string) {
+    return this.customersService.getContracts(id);
+  }
+
+  @Get(':id/risk-flag')
+  getRiskFlag(@Param('id') id: string) {
+    return this.customersService.getRiskFlag(id);
   }
 
   @Post()

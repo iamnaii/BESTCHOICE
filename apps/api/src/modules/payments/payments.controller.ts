@@ -1,8 +1,9 @@
 import { Controller, Get, Post, Param, Body, Query, UseGuards } from '@nestjs/common';
 import { PaymentsService } from './payments.service';
-import { RecordPaymentDto } from './dto/record-payment.dto';
+import { RecordPaymentDto, BulkRecordPaymentDto } from './dto/payment.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @Controller('payments')
@@ -10,27 +11,51 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 export class PaymentsController {
   constructor(private paymentsService: PaymentsService) {}
 
-  @Get()
-  findAll(
-    @CurrentUser() user: { role: string; branchId: string | null },
+  @Get('pending')
+  getPendingPayments(
+    @Query('branchId') branchId?: string,
+    @Query('date') date?: string,
     @Query('status') status?: string,
-    @Query('search') search?: string,
-    @Query('contractId') contractId?: string,
   ) {
-    return this.paymentsService.findAll(user, { status, search, contractId });
+    return this.paymentsService.getPendingPayments({ branchId, date, status });
   }
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.paymentsService.findOne(id);
+  @Get('daily-summary')
+  getDailySummary(
+    @Query('date') date: string,
+    @Query('branchId') branchId?: string,
+  ) {
+    return this.paymentsService.getDailySummary(date || new Date().toISOString().split('T')[0], branchId);
   }
 
-  @Post(':id/pay')
-  recordPayment(
-    @Param('id') id: string,
-    @Body() dto: RecordPaymentDto,
-    @CurrentUser('id') userId: string,
-  ) {
-    return this.paymentsService.recordPayment(id, dto, userId);
+  @Get('contract/:contractId')
+  getContractPayments(@Param('contractId') contractId: string) {
+    return this.paymentsService.getContractPayments(contractId);
+  }
+
+  @Post('record')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'ACCOUNTANT')
+  recordPayment(@Body() dto: RecordPaymentDto, @CurrentUser() user: { id: string }) {
+    return this.paymentsService.recordPayment(
+      dto.contractId,
+      dto.installmentNo,
+      dto.amount,
+      dto.paymentMethod,
+      user.id,
+      dto.evidenceUrl,
+      dto.notes,
+    );
+  }
+
+  @Post('auto-allocate')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'ACCOUNTANT')
+  autoAllocatePayment(@Body() dto: BulkRecordPaymentDto, @CurrentUser() user: { id: string }) {
+    return this.paymentsService.autoAllocatePayment(
+      dto.contractId,
+      dto.amount,
+      dto.paymentMethod,
+      user.id,
+      dto.notes,
+    );
   }
 }

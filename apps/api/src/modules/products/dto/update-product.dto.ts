@@ -1,43 +1,47 @@
-import { IsString, IsOptional, IsEnum, IsNumber, IsArray } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsArray } from 'class-validator';
 
 export class UpdateProductDto {
-  @IsOptional()
   @IsString()
+  @IsOptional()
   name?: string;
 
-  @IsOptional()
   @IsString()
+  @IsOptional()
   brand?: string;
 
-  @IsOptional()
   @IsString()
+  @IsOptional()
   model?: string;
 
-  @IsOptional()
   @IsString()
+  @IsOptional()
   imeiSerial?: string;
 
+  @IsString()
   @IsOptional()
-  @IsEnum(['PHONE_NEW', 'PHONE_USED', 'TABLET', 'ACCESSORY'])
   category?: string;
 
-  @IsOptional()
   @IsNumber()
+  @IsOptional()
   costPrice?: number;
 
-  @IsOptional()
   @IsString()
+  @IsOptional()
+  supplierId?: string;
+
+  @IsString()
+  @IsOptional()
   branchId?: string;
 
+  @IsString()
   @IsOptional()
-  @IsEnum(['PO_RECEIVED', 'INSPECTION', 'IN_STOCK', 'RESERVED', 'SOLD_INSTALLMENT', 'SOLD_CASH', 'REPOSSESSED', 'REFURBISHED', 'SOLD_RESELL'])
   status?: string;
 
+  @IsString()
   @IsOptional()
-  @IsEnum(['A', 'B', 'C', 'D'])
   conditionGrade?: string;
 
-  @IsOptional()
   @IsArray()
+  @IsOptional()
   photos?: string[];
 }

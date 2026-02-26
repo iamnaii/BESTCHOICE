@@ -1,4 +1,17 @@
-import { IsString, IsOptional, IsEnum, IsNumber, IsArray } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsEnum, IsArray, ValidateNested, IsBoolean } from 'class-validator';
+import { Type } from 'class-transformer';
+
+export class CreatePriceDto {
+  @IsString()
+  label: string;
+
+  @IsNumber()
+  amount: number;
+
+  @IsBoolean()
+  @IsOptional()
+  isDefault?: boolean;
+}
 
 export class CreateProductDto {
   @IsString()
@@ -10,28 +23,42 @@ export class CreateProductDto {
   @IsString()
   model: string;
 
-  @IsOptional()
   @IsString()
+  @IsOptional()
   imeiSerial?: string;
 
-  @IsEnum(['PHONE_NEW', 'PHONE_USED', 'TABLET', 'ACCESSORY'])
+  @IsString()
   category: string;
 
   @IsNumber()
   costPrice: number;
 
-  @IsOptional()
   @IsString()
+  @IsOptional()
   supplierId?: string;
+
+  @IsString()
+  @IsOptional()
+  poId?: string;
 
   @IsString()
   branchId: string;
 
+  @IsString()
   @IsOptional()
-  @IsEnum(['A', 'B', 'C', 'D'])
+  status?: string;
+
+  @IsString()
+  @IsOptional()
   conditionGrade?: string;
 
-  @IsOptional()
   @IsArray()
+  @IsOptional()
   photos?: string[];
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreatePriceDto)
+  @IsOptional()
+  prices?: CreatePriceDto[];
 }

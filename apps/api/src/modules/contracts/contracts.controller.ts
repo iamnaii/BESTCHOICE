@@ -1,7 +1,6 @@
-import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, Query, UseGuards } from '@nestjs/common';
 import { ContractsService } from './contracts.service';
-import { CreateContractDto } from './dto/create-contract.dto';
-import { UpdateContractDto } from './dto/update-contract.dto';
+import { CreateContractDto, EarlyPayoffDto } from './dto/contract.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -14,11 +13,12 @@ export class ContractsController {
 
   @Get()
   findAll(
-    @CurrentUser() user: { role: string; branchId: string | null },
     @Query('status') status?: string,
+    @Query('branchId') branchId?: string,
+    @Query('customerId') customerId?: string,
     @Query('search') search?: string,
   ) {
-    return this.contractsService.findAll(user, { status, search });
+    return this.contractsService.findAll({ status, branchId, customerId, search });
   }
 
   @Get(':id')
@@ -26,17 +26,31 @@ export class ContractsController {
     return this.contractsService.findOne(id);
   }
 
-  @Post()
-  create(
-    @Body() dto: CreateContractDto,
-    @CurrentUser('id') userId: string,
-  ) {
-    return this.contractsService.create(dto, userId);
+  @Get(':id/schedule')
+  getSchedule(@Param('id') id: string) {
+    return this.contractsService.getSchedule(id);
   }
 
-  @Patch(':id')
+  @Get(':id/early-payoff-quote')
+  getEarlyPayoffQuote(@Param('id') id: string) {
+    return this.contractsService.getEarlyPayoffQuote(id);
+  }
+
+  @Post()
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
+  create(@Body() dto: CreateContractDto, @CurrentUser() user: { id: string }) {
+    return this.contractsService.create(dto, user.id);
+  }
+
+  @Post(':id/activate')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
+  activate(@Param('id') id: string) {
+    return this.contractsService.activate(id);
+  }
+
+  @Post(':id/early-payoff')
   @Roles('OWNER', 'BRANCH_MANAGER')
-  update(@Param('id') id: string, @Body() dto: UpdateContractDto) {
-    return this.contractsService.update(id, dto);
+  earlyPayoff(@Param('id') id: string, @Body() dto: EarlyPayoffDto, @CurrentUser() user: { id: string }) {
+    return this.contractsService.earlyPayoff(id, user.id, dto.paymentMethod);
   }
 }

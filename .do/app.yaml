@@ -36,11 +36,11 @@ services:
       - key: JWT_SECRET
         scope: RUN_TIME
         type: SECRET
-        value: CHANGE_ME_USE_RANDOM_64_CHARS
+        value: 30ef909c11ae6569824c50851ce129fedf81072aed43858a11c79643e70f1801
       - key: JWT_REFRESH_SECRET
         scope: RUN_TIME
         type: SECRET
-        value: CHANGE_ME_USE_RANDOM_64_CHARS
+        value: a409b6e706724f657520a9c9d4e21a0523624e4561739c0426bebed402c7df68
       - key: JWT_EXPIRATION
         scope: RUN_TIME
         value: "15m"
@@ -50,7 +50,7 @@ services:
       - key: ENCRYPTION_KEY
         scope: RUN_TIME
         type: SECRET
-        value: CHANGE_ME_USE_RANDOM_32_CHARS
+        value: 570def0a8f1b9fa778eabb55d107a07f
       - key: FRONTEND_URL
         scope: RUN_TIME
         value: ${APP_URL}

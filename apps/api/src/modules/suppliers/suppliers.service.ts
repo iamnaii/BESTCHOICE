@@ -8,23 +8,40 @@ export class SuppliersService {
   constructor(private prisma: PrismaService) {}
 
   async findAll(search?: string, isActive?: string, page = 1, limit = 50) {
-    const where: Record<string, unknown> = {};
+    const andConditions: Record<string, unknown>[] = [];
 
     if (isActive === 'true') {
-      where.isActive = true;
+      andConditions.push({ isActive: true });
     } else if (isActive === 'false') {
-      where.isActive = false;
+      andConditions.push({ isActive: false });
     }
 
     if (search) {
-      where.OR = [
+      const orConditions: Record<string, unknown>[] = [
         { name: { contains: search, mode: 'insensitive' } },
         { contactName: { contains: search, mode: 'insensitive' } },
         { nickname: { contains: search, mode: 'insensitive' } },
         { phone: { contains: search } },
         { taxId: { contains: search } },
       ];
+
+      // If search is digits-only, also match against formatted phone/taxId
+      const digits = search.replace(/\D/g, '');
+      if (digits.length >= 3 && digits !== search) {
+        const formatted =
+          digits.length <= 3
+            ? digits
+            : digits.length <= 6
+              ? `${digits.slice(0, 3)}-${digits.slice(3)}`
+              : `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
+        orConditions.push({ phone: { contains: formatted } });
+      }
+
+      andConditions.push({ OR: orConditions });
     }
+
+    const where =
+      andConditions.length > 0 ? { AND: andConditions } : {};
 
     const [data, total] = await Promise.all([
       this.prisma.supplier.findMany({

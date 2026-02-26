@@ -20,6 +20,12 @@ export const productCatalog: BrandCatalog[] = [
 
       // === Galaxy S25 Series (2025) ===
       {
+        name: 'Galaxy S25 Edge',
+        category: 'PHONE_NEW',
+        colors: ['Titanium Icy Blue', 'Titanium Silver', 'Titanium Jet Black'],
+        storage: ['256GB', '512GB'],
+      },
+      {
         name: 'Galaxy S25 Ultra',
         category: 'PHONE_NEW',
         colors: ['Titanium Silverblue', 'Titanium Black', 'Titanium Whitesilver', 'Titanium Gray', 'Titanium Jetblack', 'Titanium Jadegreen', 'Titanium Pinkgold'],
@@ -437,6 +443,34 @@ export const productCatalog: BrandCatalog[] = [
       },
 
       // =============================================
+      // === Galaxy A20 Series (Low-end) =============
+      // =============================================
+
+      // === Galaxy A22 5G (2021) ===
+      {
+        name: 'Galaxy A22 5G',
+        category: 'PHONE_NEW',
+        colors: ['Gray', 'White', 'Mint', 'Violet'],
+        storage: ['64GB', '128GB'],
+      },
+
+      // === Galaxy A22 (2021) ===
+      {
+        name: 'Galaxy A22',
+        category: 'PHONE_NEW',
+        colors: ['Black', 'White', 'Mint', 'Violet'],
+        storage: ['64GB', '128GB'],
+      },
+
+      // === Galaxy A21s (2020) ===
+      {
+        name: 'Galaxy A21s',
+        category: 'PHONE_NEW',
+        colors: ['Black', 'White', 'Blue', 'Red'],
+        storage: ['32GB', '64GB', '128GB'],
+      },
+
+      // =============================================
       // === Galaxy A10 Series ======================
       // =============================================
 
@@ -461,6 +495,78 @@ export const productCatalog: BrandCatalog[] = [
         name: 'Galaxy A14',
         category: 'PHONE_NEW',
         colors: ['Black', 'Silver', 'Dark Red', 'Light Green'],
+        storage: ['64GB', '128GB'],
+      },
+
+      // === Galaxy A13 5G (2022) ===
+      {
+        name: 'Galaxy A13 5G',
+        category: 'PHONE_NEW',
+        colors: ['Black', 'White', 'Light Blue', 'Orange'],
+        storage: ['64GB', '128GB'],
+      },
+
+      // === Galaxy A13 (2022) ===
+      {
+        name: 'Galaxy A13',
+        category: 'PHONE_NEW',
+        colors: ['Black', 'White', 'Blue', 'Peach'],
+        storage: ['32GB', '64GB', '128GB'],
+      },
+
+      // === Galaxy A12 (2021) ===
+      {
+        name: 'Galaxy A12',
+        category: 'PHONE_NEW',
+        colors: ['Black', 'White', 'Blue', 'Red'],
+        storage: ['32GB', '64GB', '128GB'],
+      },
+
+      // =============================================
+      // === Galaxy A0x Series (Budget) ==============
+      // =============================================
+
+      // === Galaxy A06 (2024) ===
+      {
+        name: 'Galaxy A06',
+        category: 'PHONE_NEW',
+        colors: ['Black', 'Light Blue', 'Light Green', 'Gold'],
+        storage: ['64GB', '128GB'],
+      },
+
+      // === Galaxy A05s (2023) ===
+      {
+        name: 'Galaxy A05s',
+        category: 'PHONE_NEW',
+        colors: ['Black', 'Silver', 'Light Violet', 'Light Green'],
+        storage: ['64GB', '128GB'],
+      },
+
+      // === Galaxy A05 (2023) ===
+      {
+        name: 'Galaxy A05',
+        category: 'PHONE_NEW',
+        colors: ['Black', 'Silver', 'Light Green'],
+        storage: ['64GB', '128GB'],
+      },
+
+      // =============================================
+      // === Galaxy A Other Series ===================
+      // =============================================
+
+      // === Galaxy A42 5G (2020) ===
+      {
+        name: 'Galaxy A42 5G',
+        category: 'PHONE_NEW',
+        colors: ['Prism Dot Black', 'Prism Dot White', 'Prism Dot Gray'],
+        storage: ['128GB'],
+      },
+
+      // === Galaxy A31 (2020) ===
+      {
+        name: 'Galaxy A31',
+        category: 'PHONE_NEW',
+        colors: ['Prism Crush Black', 'Prism Crush White', 'Prism Crush Blue', 'Prism Crush Red'],
         storage: ['64GB', '128GB'],
       },
 
@@ -505,6 +611,12 @@ export const productCatalog: BrandCatalog[] = [
         name: 'Galaxy Tab S9',
         category: 'TABLET',
         colors: ['Graphite', 'Beige'],
+        storage: ['128GB', '256GB'],
+      },
+      {
+        name: 'Galaxy Tab S9 FE+',
+        category: 'TABLET',
+        colors: ['Silver', 'Gray', 'Lavender', 'Mint'],
         storage: ['128GB', '256GB'],
       },
       {
@@ -600,6 +712,14 @@ export const productCatalog: BrandCatalog[] = [
   {
     brand: 'Apple',
     models: [
+      // === iPhone 16e (2025) ===
+      {
+        name: 'iPhone 16e',
+        category: 'PHONE_NEW',
+        colors: ['Black', 'White'],
+        storage: ['128GB', '256GB', '512GB'],
+      },
+
       // === iPhone 16 Series (2024) ===
       {
         name: 'iPhone 16 Pro Max',
@@ -700,7 +820,7 @@ export const productCatalog: BrandCatalog[] = [
         colors: ['Pink', 'Blue', 'Midnight', 'Starlight', '(PRODUCT)RED', 'Green'],
         storage: ['128GB', '256GB', '512GB'],
       },
-      // === iPhone 12 Series (2020) ===
+      // === iPhone 12 Series (2020-2021) ===
       {
         name: 'iPhone 12 Pro Max',
         category: 'PHONE_NEW',
@@ -723,6 +843,25 @@ export const productCatalog: BrandCatalog[] = [
         name: 'iPhone 12 mini',
         category: 'PHONE_NEW',
         colors: ['Black', 'White', 'Blue', 'Green', '(PRODUCT)RED', 'Purple'],
+        storage: ['64GB', '128GB', '256GB'],
+      },
+      // === iPhone 11 Series (2019-2020) ===
+      {
+        name: 'iPhone 11 Pro Max',
+        category: 'PHONE_NEW',
+        colors: ['Gold', 'Silver', 'Space Gray', 'Midnight Green'],
+        storage: ['64GB', '256GB', '512GB'],
+      },
+      {
+        name: 'iPhone 11 Pro',
+        category: 'PHONE_NEW',
+        colors: ['Gold', 'Silver', 'Space Gray', 'Midnight Green'],
+        storage: ['64GB', '256GB', '512GB'],
+      },
+      {
+        name: 'iPhone 11',
+        category: 'PHONE_NEW',
+        colors: ['Purple', 'Yellow', 'Green', 'Black', 'White', '(PRODUCT)RED'],
         storage: ['64GB', '128GB', '256GB'],
       },
       // === iPhone SE ===
@@ -774,6 +913,19 @@ export const productCatalog: BrandCatalog[] = [
         category: 'TABLET',
         colors: ['Silver', 'Space Gray'],
         storage: ['128GB', '256GB', '512GB', '1TB', '2TB'],
+      },
+      // === iPad Pro (2020) ===
+      {
+        name: 'iPad Pro 12.9" (4th gen)',
+        category: 'TABLET',
+        colors: ['Silver', 'Space Gray'],
+        storage: ['128GB', '256GB', '512GB', '1TB'],
+      },
+      {
+        name: 'iPad Pro 11" (2nd gen)',
+        category: 'TABLET',
+        colors: ['Silver', 'Space Gray'],
+        storage: ['128GB', '256GB', '512GB', '1TB'],
       },
       // === iPad Air Series ===
       {

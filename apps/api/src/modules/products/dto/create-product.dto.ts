@@ -25,7 +25,19 @@ export class CreateProductDto {
 
   @IsString()
   @IsOptional()
+  color?: string;
+
+  @IsString()
+  @IsOptional()
+  storage?: string;
+
+  @IsString()
+  @IsOptional()
   imeiSerial?: string;
+
+  @IsString()
+  @IsOptional()
+  serialNumber?: string;
 
   @IsString()
   category: string;

@@ -45,11 +45,6 @@ import { SecurityMiddleware } from './modules/audit/security.middleware';
         ttl: 1000,
         limit: 30, // Allow 30 req/sec (dashboard fires many parallel queries)
       },
-      {
-        name: 'login',
-        ttl: 900000, // 15 minutes
-        limit: 5,
-      },
     ]),
     PrismaModule,
     AuthModule,

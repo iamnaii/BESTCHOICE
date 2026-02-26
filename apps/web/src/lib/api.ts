@@ -2,6 +2,7 @@ import axios from 'axios';
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
+  timeout: 15000, // 15 second timeout to prevent hanging forever
   headers: {
     'Content-Type': 'application/json',
   },
@@ -23,7 +24,10 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem('access_token');
       localStorage.removeItem('refresh_token');
-      window.location.href = '/login';
+      // Only redirect if not already on login page (prevent redirect loop)
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
     }
     // On 429 rate limit, wait before rejecting so React Query backoff works properly
     if (error.response?.status === 429) {

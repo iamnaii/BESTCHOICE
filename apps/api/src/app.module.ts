@@ -43,7 +43,7 @@ import { SecurityMiddleware } from './modules/audit/security.middleware';
       {
         name: 'short',
         ttl: 1000,
-        limit: 10,
+        limit: 30, // Allow 30 req/sec (dashboard fires many parallel queries)
       },
       {
         name: 'login',

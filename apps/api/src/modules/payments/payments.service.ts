@@ -63,7 +63,7 @@ export class PaymentsService {
     if (!contract) throw new NotFoundException('ไม่พบสัญญา');
 
     let remaining = amount;
-    const results = [];
+    const results: Awaited<ReturnType<typeof this.recordPayment>>[] = [];
 
     // Get unpaid payments in order
     const unpaid = contract.payments.filter((p) => p.status !== 'PAID');
@@ -209,12 +209,12 @@ export class PaymentsService {
         data: { status: 'COMPLETED' },
       });
 
-      // Update product status to SOLD
+      // Update product status to SOLD_INSTALLMENT
       const contract = await this.prisma.contract.findUnique({ where: { id: contractId } });
       if (contract) {
         await this.prisma.product.update({
           where: { id: contract.productId },
-          data: { status: 'SOLD' },
+          data: { status: 'SOLD_INSTALLMENT' },
         });
       }
     }

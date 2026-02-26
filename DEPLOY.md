@@ -1,87 +1,190 @@
-# Deploy to DigitalOcean App Platform
+# Deploy BESTCHOICE
 
-## Prerequisites
+## วิธีที่ 1: DigitalOcean App Platform (แนะนำ - ง่ายที่สุด)
 
-- DigitalOcean account
-- GitHub repo connected to DigitalOcean
-- `doctl` CLI installed (optional)
+ไม่ต้องจัดการ server เอง, ไม่ต้อง SSH, มี SSL อัตโนมัติ, deploy อัตโนมัติเมื่อ push code
 
-## Option A: Deploy via Console (UI)
+**ค่าใช้จ่าย: ~$12/เดือน (~430 THB)**
 
-1. Go to [DigitalOcean App Platform](https://cloud.digitalocean.com/apps)
-2. Click **Create App**
-3. Select your GitHub repository and branch
-4. DigitalOcean will detect `.do/app.yaml` automatically
-5. **Update secrets** before deploying:
-   - `JWT_SECRET` - generate with `openssl rand -hex 32`
-   - `JWT_REFRESH_SECRET` - generate with `openssl rand -hex 32`
-   - `ENCRYPTION_KEY` - generate with `openssl rand -hex 16` (32 chars)
-6. Click **Create Resources**
+### ขั้นตอนที่ 1: สร้างบัญชี DigitalOcean
 
-## Option B: Deploy via CLI (`doctl`)
+1. เปิด https://cloud.digitalocean.com/registrations/new
+2. สมัครบัญชี (ใช้ Email หรือ Google/GitHub ก็ได้)
+3. ใส่บัตรเครดิต/เดบิต หรือ PayPal
+
+### ขั้นตอนที่ 2: สร้าง App
+
+1. เปิด https://cloud.digitalocean.com/apps
+2. กด **Create App**
+3. เลือก **GitHub** → เชื่อมต่อบัญชี GitHub
+4. เลือก repository **iamnaii/BESTCHOICE** สาขา **main**
+5. DigitalOcean จะตรวจจับ `.do/app.yaml` อัตโนมัติ
+6. กด **Next**
+
+### ขั้นตอนที่ 3: ตั้งค่า Secrets
+
+ก่อนกด Deploy ให้แก้ค่า secret เหล่านี้:
+
+| ตัวแปร | วิธีสร้าง | คำอธิบาย |
+|--------|----------|---------|
+| `JWT_SECRET` | `openssl rand -hex 32` | กุญแจสำหรับ login token |
+| `JWT_REFRESH_SECRET` | `openssl rand -hex 32` | กุญแจสำหรับ refresh token |
+| `ENCRYPTION_KEY` | `openssl rand -hex 16` | กุญแจเข้ารหัสเลขบัตร (32 ตัวอักษร) |
+
+> ถ้าไม่มี terminal ให้เปิด https://generate-random.org/api-key-generator เลือก 64 characters แล้ว copy มาใส่ได้เลย
+
+### ขั้นตอนที่ 4: เลือก Region
+
+- เลือก **Singapore (sgp)** เพื่อให้ใกล้ประเทศไทยที่สุด
+
+### ขั้นตอนที่ 5: กด Create Resources
+
+- กด **Create Resources** แล้วรอ 5-10 นาที
+- DigitalOcean จะสร้าง API + Database + Frontend ให้อัตโนมัติ
+- เมื่อเสร็จจะได้ URL เช่น `https://bestchoice-installment-xxxxx.ondigitalocean.app`
+
+### ขั้นตอนที่ 6: ทดสอบ
+
+1. เปิด URL ที่ได้จากขั้นตอนที่ 5
+2. Login ด้วย:
+   - Email: `admin@bestchoice.com`
+   - Password: `admin1234`
+3. **เปลี่ยนรหัสผ่าน admin ทันที!**
+
+### การ Deploy ครั้งถัดไป
+
+ไม่ต้องทำอะไร! แค่ `git push` ไปที่ main branch → DigitalOcean จะ deploy ให้อัตโนมัติ
+
+### ค่าใช้จ่ายโดยประมาณ
+
+| รายการ | ขนาด | ราคา/เดือน |
+|--------|------|-----------|
+| API | basic-xs (1 GB RAM) | ~$7 |
+| Frontend | Static Site | ฟรี |
+| Database | PostgreSQL dev | ~$7 |
+| **รวม** | | **~$14/เดือน (~500 THB)** |
+
+---
+
+## วิธีที่ 2: DigitalOcean Droplet + Docker (ถูกกว่า แต่ต้อง SSH)
+
+จัดการ server เอง, ใช้ Docker Compose, เหมาะกับคนที่มีพื้นฐาน Linux
+
+**ค่าใช้จ่าย: ~$6-12/เดือน (~215-430 THB)**
+
+### ขั้นตอนที่ 1: สร้าง Droplet
+
+1. เปิด https://cloud.digitalocean.com/droplets
+2. กด **Create Droplet**
+3. ตั้งค่า:
+   - **Region**: Singapore (SGP1)
+   - **Image**: Ubuntu 24.04 LTS
+   - **Size**: Regular → $12/เดือน (2 vCPU, 2 GB RAM, 60 GB SSD)
+   - **Authentication**: เลือก Password (ง่ายกว่า) หรือ SSH Key (ปลอดภัยกว่า)
+4. กด **Create Droplet**
+5. จดจำ IP Address ที่ได้ (เช่น `167.71.xxx.xxx`)
+
+### ขั้นตอนที่ 2: Deploy อัตโนมัติ (1 คำสั่ง)
+
+เปิด terminal (Mac/Linux) หรือ PowerShell (Windows) แล้วรัน:
 
 ```bash
-# Install doctl
-# https://docs.digitalocean.com/reference/doctl/how-to/install/
+# SSH เข้า server
+ssh root@YOUR_DROPLET_IP
 
-# Login
-doctl auth init
-
-# Create app from spec
-doctl apps create --spec .do/app.yaml
-
-# Update app
-doctl apps update <app-id> --spec .do/app.yaml
+# รัน deploy script อัตโนมัติ
+curl -sL https://raw.githubusercontent.com/iamnaii/BESTCHOICE/main/scripts/deploy-digitalocean.sh | bash
 ```
 
-## After First Deploy
+สคริปต์จะทำทุกอย่างให้อัตโนมัติ:
+- ติดตั้ง Docker + Git
+- Clone โปรเจค
+- สร้าง .env พร้อม random secrets
+- Build + Start ทุก service
+- ตั้งค่า Firewall
+- ตั้ง Auto-backup ทุกวันตี 2
 
-Run database migration manually (first time only):
+### ขั้นตอนที่ 3: ทดสอบ
 
-```bash
-# Via App Console > API service > Console tab:
-npx prisma migrate deploy --schema=./apps/api/prisma/schema.prisma
-node apps/api/dist/prisma/seed.js
-```
+1. เปิด `http://YOUR_DROPLET_IP` ในเบราว์เซอร์
+2. Login ด้วย:
+   - Email: `admin@bestchoice.com`
+   - Password: `admin1234`
+3. **เปลี่ยนรหัสผ่าน admin ทันที!**
 
-## Environment Variables
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `DATABASE_URL` | PostgreSQL connection string | Auto (managed DB) |
-| `JWT_SECRET` | JWT signing key | Yes (secret) |
-| `JWT_REFRESH_SECRET` | Refresh token signing key | Yes (secret) |
-| `ENCRYPTION_KEY` | 32-char encryption key | Yes (secret) |
-| `FRONTEND_URL` | Frontend URL for CORS | Auto (${APP_URL}) |
-
-## Estimated Cost
-
-| Component | Size | Cost/month |
-|-----------|------|------------|
-| API | basic-xxs (512MB) | ~$5 |
-| Web | Static site | Free |
-| Database | db-s-dev | ~$7 |
-| **Total** | | **~$12/month** |
-
-## Deploy to Droplet (Alternative)
-
-If you prefer a VPS, use `docker-compose.prod.yml`:
+### ขั้นตอนที่ 4: ตั้งค่า Domain (ถ้ามี)
 
 ```bash
-# On your Droplet:
-git clone <repo> /opt/bestchoice
+# ถ้ามี domain name ให้ชี้ DNS A record มาที่ IP ของ Droplet
+# แล้วตั้ง SSL ด้วย:
+ssh root@YOUR_DROPLET_IP
+apt install -y certbot
+certbot certonly --standalone -d yourdomain.com
+
+# Copy certificates
+cp /etc/letsencrypt/live/yourdomain.com/fullchain.pem /opt/bestchoice/nginx/ssl/
+cp /etc/letsencrypt/live/yourdomain.com/privkey.pem /opt/bestchoice/nginx/ssl/
+
+# Restart
 cd /opt/bestchoice
-
-# Create .env
-cat > .env << 'EOF'
-DB_USER=installment
-DB_PASSWORD=your_strong_password
-DB_NAME=installment_db
-JWT_SECRET=$(openssl rand -hex 32)
-JWT_REFRESH_SECRET=$(openssl rand -hex 32)
-FRONTEND_URL=https://yourdomain.com
-EOF
-
-# Start everything
-docker compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml restart nginx
 ```
+
+---
+
+## การจัดการหลัง Deploy
+
+### ดู Logs
+
+```bash
+# App Platform: ดูผ่าน DigitalOcean Console > Apps > api > Runtime Logs
+
+# Droplet:
+ssh root@YOUR_IP
+cd /opt/bestchoice
+docker compose -f docker-compose.prod.yml logs -f
+docker compose -f docker-compose.prod.yml logs -f api    # เฉพาะ API
+docker compose -f docker-compose.prod.yml logs -f db     # เฉพาะ Database
+```
+
+### อัปเดตระบบ (Droplet)
+
+```bash
+ssh root@YOUR_IP
+cd /opt/bestchoice
+git pull origin main
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+### Backup Database (Droplet)
+
+```bash
+# Manual backup
+/opt/bestchoice/scripts/backup.sh
+
+# Backup ไฟล์อยู่ที่: /opt/backups/installment/
+ls -la /opt/backups/installment/
+```
+
+### Restore Database (Droplet)
+
+```bash
+# Restore จาก backup
+gunzip -c /opt/backups/installment/installment_YYYYMMDD_HHMMSS.sql.gz \
+  | docker compose -f docker-compose.prod.yml exec -T db \
+    psql -U installment installment_db
+```
+
+---
+
+## เปรียบเทียบสองวิธี
+
+| | App Platform | Droplet + Docker |
+|---|---|---|
+| **ความง่าย** | ง่ายมาก (กดๆ ในเว็บ) | ต้องใช้ terminal |
+| **ราคา** | ~$14/เดือน (~500 THB) | ~$12/เดือน (~430 THB) |
+| **SSL** | อัตโนมัติ | ต้องตั้งเอง (Certbot) |
+| **Auto Deploy** | git push แล้วจบ | ต้อง SSH เข้าไป pull |
+| **Scaling** | กดเพิ่มใน UI | ต้อง upgrade Droplet |
+| **Backup** | อัตโนมัติ (Managed DB) | ตั้ง cron เอง |
+| **แนะนำสำหรับ** | มือใหม่ / ไม่อยากจัดการ server | คนมีพื้นฐาน / อยากประหยัด |

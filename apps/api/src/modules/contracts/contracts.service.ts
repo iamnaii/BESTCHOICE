@@ -107,7 +107,13 @@ export class ContractsService {
 
       // Create payment schedule
       const now = new Date();
-      const payments = [];
+      const payments: Array<{
+        contractId: string;
+        installmentNo: number;
+        dueDate: Date;
+        amountDue: number;
+        status: 'PENDING';
+      }> = [];
       for (let i = 1; i <= dto.totalMonths; i++) {
         const dueDate = new Date(now.getFullYear(), now.getMonth() + i, 1);
         payments.push({

@@ -31,7 +31,6 @@ import { UsersModule } from './modules/users/users.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
-import { AddressModule } from './modules/address/address.module';
 
 @Module({
   imports: [
@@ -76,7 +75,6 @@ import { AddressModule } from './modules/address/address.module';
     // MASTER: Management
     UsersModule,
     SettingsModule,
-    AddressModule,
   ],
   controllers: [AppController],
   providers: [

@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
+import { displayAddress } from '@/components/ui/AddressForm';
 
 interface Supplier {
   id: string;
@@ -205,7 +206,7 @@ export default function SupplierDetailPage() {
             label="วันที่เพิ่ม"
             value={new Date(supplier.createdAt).toLocaleDateString('th-TH')}
           />
-          <InfoField label="ที่อยู่" value={supplier.address} />
+          <InfoField label="ที่อยู่" value={displayAddress(supplier.address)} />
           {supplier.notes && <InfoField label="หมายเหตุ" value={supplier.notes} />}
         </div>
       </div>

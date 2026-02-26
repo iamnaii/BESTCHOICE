@@ -55,6 +55,48 @@ export function composeAddress(addr: AddressData): string {
   return parts.join(' ');
 }
 
+export function serializeAddress(addr: AddressData): string {
+  const hasData = Object.values(addr).some((v) => v.trim() !== '');
+  if (!hasData) return '';
+  return JSON.stringify(addr);
+}
+
+export function deserializeAddress(str: string | null | undefined): AddressData {
+  if (!str) return { ...emptyAddress };
+  try {
+    const parsed = JSON.parse(str);
+    if (typeof parsed === 'object' && parsed !== null && 'province' in parsed) {
+      return {
+        houseNo: parsed.houseNo || '',
+        moo: parsed.moo || '',
+        village: parsed.village || '',
+        soi: parsed.soi || '',
+        road: parsed.road || '',
+        province: parsed.province || '',
+        district: parsed.district || '',
+        subdistrict: parsed.subdistrict || '',
+        postalCode: parsed.postalCode || '',
+      };
+    }
+  } catch {
+    // Not JSON - legacy composed address format
+  }
+  return { ...emptyAddress };
+}
+
+export function displayAddress(str: string | null | undefined): string {
+  if (!str) return '';
+  try {
+    const parsed = JSON.parse(str);
+    if (typeof parsed === 'object' && parsed !== null && 'province' in parsed) {
+      return composeAddress(parsed);
+    }
+  } catch {
+    // Not JSON - legacy format, return as-is
+  }
+  return str;
+}
+
 interface Props {
   value: AddressData;
   onChange: (addr: AddressData) => void;

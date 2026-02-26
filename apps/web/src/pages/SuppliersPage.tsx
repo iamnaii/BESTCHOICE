@@ -8,7 +8,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
-import AddressForm, { AddressData, emptyAddress, composeAddress } from '@/components/ui/AddressForm';
+import AddressForm, { AddressData, emptyAddress, serializeAddress, deserializeAddress } from '@/components/ui/AddressForm';
 
 interface Supplier {
   id: string;
@@ -86,13 +86,13 @@ export default function SuppliersPage() {
 
   const saveMutation = useMutation({
     mutationFn: async (data: typeof emptyForm) => {
-      const composedAddress = composeAddress(supplierAddress);
+      const serializedAddress = serializeAddress(supplierAddress);
       const payload = {
         ...data,
         nickname: data.nickname || undefined,
         phoneSecondary: data.phoneSecondary || undefined,
         lineId: data.lineId || undefined,
-        address: composedAddress || undefined,
+        address: serializedAddress || undefined,
         taxId: data.taxId || undefined,
         notes: data.notes || undefined,
       };
@@ -156,7 +156,7 @@ export default function SuppliersPage() {
       taxId: supplier.taxId || '',
       notes: supplier.notes || '',
     });
-    setSupplierAddress(emptyAddress);
+    setSupplierAddress(deserializeAddress(supplier.address));
     setIsModalOpen(true);
   };
 

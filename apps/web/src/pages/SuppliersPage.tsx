@@ -105,6 +105,19 @@ export default function SuppliersPage() {
     },
   });
 
+  const toggleActiveMutation = useMutation({
+    mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
+      return api.patch(`/suppliers/${id}`, { isActive });
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+      toast.success(variables.isActive ? 'เปิดใช้งาน Supplier สำเร็จ' : 'ปิดใช้งาน Supplier สำเร็จ');
+    },
+    onError: (err: unknown) => {
+      toast.error(getErrorMessage(err));
+    },
+  });
+
   const openCreate = () => {
     setEditingSupplier(null);
     setForm(emptyForm);
@@ -142,15 +155,16 @@ export default function SuppliersPage() {
       key: 'name',
       label: 'ชื่อ Supplier',
       render: (s: Supplier) => (
-        <button
-          onClick={() => navigate(`/suppliers/${s.id}`)}
-          className="text-primary-600 hover:text-primary-700 font-medium hover:underline text-left"
-        >
-          {s.name}
-        </button>
+        <span className="font-medium text-gray-900">{s.name}</span>
       ),
     },
-    { key: 'contactName', label: 'ผู้ติดต่อ' },
+    {
+      key: 'contactName',
+      label: 'ผู้ติดต่อ (ชื่อเล่น)',
+      render: (s: Supplier) => (
+        <span className="text-gray-700">{s.contactName || '-'}</span>
+      ),
+    },
     {
       key: 'phone',
       label: 'เบอร์โทร',
@@ -162,9 +176,11 @@ export default function SuppliersPage() {
       ),
     },
     {
-      key: 'lineId',
-      label: 'LINE ID',
-      render: (s: Supplier) => <span className="text-gray-500">{s.lineId || '-'}</span>,
+      key: 'notes',
+      label: 'หมายเหตุ',
+      render: (s: Supplier) => (
+        <span className="text-gray-500 text-sm">{s.notes || '-'}</span>
+      ),
     },
     {
       key: 'isActive',
@@ -180,44 +196,62 @@ export default function SuppliersPage() {
       ),
     },
     {
-      key: '_count',
+      key: 'detail',
       label: 'ข้อมูล',
       render: (s: Supplier) => (
-        <div className="text-xs text-gray-500">
-          {s._count.products} สินค้า | {s._count.purchaseOrders} PO
-        </div>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            navigate(`/suppliers/${s.id}`);
+          }}
+          className="text-primary-600 hover:text-primary-700 text-sm font-medium hover:underline"
+        >
+          ดูข้อมูล
+        </button>
       ),
     },
     {
-      key: 'actions',
-      label: '',
+      key: 'edit',
+      label: 'แก้ไข',
       render: (s: Supplier) =>
         isManager ? (
-          <div className="flex gap-2">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                openEdit(s);
-              }}
-              className="text-primary-600 hover:text-primary-700 text-sm font-medium"
-            >
-              แก้ไข
-            </button>
-            {s.isActive && user?.role === 'OWNER' && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (confirm('ต้องการปิดใช้งาน Supplier นี้?')) {
-                    deleteMutation.mutate(s.id);
-                  }
-                }}
-                className="text-red-500 hover:text-red-700 text-sm font-medium"
-              >
-                ปิดใช้งาน
-              </button>
-            )}
-          </div>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              openEdit(s);
+            }}
+            className="text-primary-600 hover:text-primary-700 text-sm font-medium hover:underline"
+          >
+            แก้ไข
+          </button>
         ) : null,
+    },
+    {
+      key: 'toggle',
+      label: 'เปิด/ปิดการใช้งาน',
+      render: (s: Supplier) =>
+        isManager ? (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              const action = s.isActive ? 'ปิด' : 'เปิด';
+              if (confirm(`ต้องการ${action}ใช้งาน Supplier "${s.name}" ?`)) {
+                toggleActiveMutation.mutate({ id: s.id, isActive: !s.isActive });
+              }
+            }}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              s.isActive ? 'bg-green-500' : 'bg-gray-300'
+            }`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                s.isActive ? 'translate-x-6' : 'translate-x-1'
+              }`}
+            />
+          </button>
+        ) : (
+          <span className="text-xs text-gray-400">{s.isActive ? 'เปิด' : 'ปิด'}</span>
+        ),
     },
   ];
 

@@ -14,6 +14,32 @@ export const productCatalog: BrandCatalog[] = [
   {
     brand: 'Apple',
     models: [
+      // === iPhone 17 Series (2025) ===
+      {
+        name: 'iPhone 17 Pro Max',
+        category: 'PHONE_NEW',
+        colors: ['Silver', 'Cosmic Orange', 'Deep Blue'],
+        storage: ['256GB', '512GB', '1TB', '2TB'],
+      },
+      {
+        name: 'iPhone 17 Pro',
+        category: 'PHONE_NEW',
+        colors: ['Silver', 'Cosmic Orange', 'Deep Blue'],
+        storage: ['256GB', '512GB', '1TB'],
+      },
+      {
+        name: 'iPhone Air',
+        category: 'PHONE_NEW',
+        colors: ['Space Black', 'Cloud White', 'Light Gold', 'Sky Blue'],
+        storage: ['256GB', '512GB', '1TB'],
+      },
+      {
+        name: 'iPhone 17',
+        category: 'PHONE_NEW',
+        colors: ['Black', 'Lavender', 'Mist Blue', 'Sage', 'White'],
+        storage: ['256GB', '512GB'],
+      },
+
       // === iPhone 16e (2025) ===
       {
         name: 'iPhone 16e',

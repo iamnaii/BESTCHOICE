@@ -1,0 +1,86 @@
+name: bestchoice-installment
+region: sgp
+
+# ============================================
+# API Service (NestJS + Prisma)
+# ============================================
+services:
+  - name: api
+    github:
+      repo: iamnaii/BESTCHOICE
+      branch: main
+      deploy_on_push: true
+    dockerfile_path: Dockerfile
+    http_port: 3000
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    health_check:
+      http_path: /api/health
+      initial_delay_seconds: 60
+      period_seconds: 30
+      timeout_seconds: 10
+      failure_threshold: 5
+    routes:
+      - path: /api
+        preserve_path_prefix: true
+    envs:
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        value: ${db.DATABASE_URL}
+      - key: NODE_ENV
+        scope: RUN_AND_BUILD_TIME
+        value: production
+      - key: PORT
+        scope: RUN_TIME
+        value: "3000"
+      - key: JWT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+        value: CHANGE_ME_USE_RANDOM_64_CHARS
+      - key: JWT_REFRESH_SECRET
+        scope: RUN_TIME
+        type: SECRET
+        value: CHANGE_ME_USE_RANDOM_64_CHARS
+      - key: JWT_EXPIRATION
+        scope: RUN_TIME
+        value: "15m"
+      - key: JWT_REFRESH_EXPIRATION
+        scope: RUN_TIME
+        value: "7d"
+      - key: ENCRYPTION_KEY
+        scope: RUN_TIME
+        type: SECRET
+        value: CHANGE_ME_USE_RANDOM_32_CHARS
+      - key: FRONTEND_URL
+        scope: RUN_TIME
+        value: ${APP_URL}
+
+# ============================================
+# Web Frontend (Static Site)
+# ============================================
+static_sites:
+  - name: web
+    github:
+      repo: iamnaii/BESTCHOICE
+      branch: main
+      deploy_on_push: true
+    source_dir: apps/web
+    build_command: npm install && npx vite build
+    output_dir: dist
+    catchall_document: index.html
+    routes:
+      - path: /
+    envs:
+      - key: VITE_API_URL
+        scope: BUILD_TIME
+        value: ${API_URL}
+
+# ============================================
+# Managed Database (PostgreSQL 16)
+# ============================================
+databases:
+  - name: db
+    engine: PG
+    version: "16"
+    size: db-s-dev-database
+    num_nodes: 1

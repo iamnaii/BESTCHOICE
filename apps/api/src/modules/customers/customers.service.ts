@@ -1,0 +1,155 @@
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
+import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer.dto';
+
+@Injectable()
+export class CustomersService {
+  constructor(private prisma: PrismaService) {}
+
+  async findAll(search?: string) {
+    const where: Record<string, unknown> = { deletedAt: null };
+
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { phone: { contains: search } },
+        { nationalId: { contains: search } },
+      ];
+    }
+
+    return this.prisma.customer.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        _count: { select: { contracts: true } },
+      },
+    });
+  }
+
+  async findOne(id: string) {
+    const customer = await this.prisma.customer.findUnique({
+      where: { id },
+      include: {
+        contracts: {
+          select: {
+            id: true,
+            contractNumber: true,
+            status: true,
+            sellingPrice: true,
+            monthlyPayment: true,
+            totalMonths: true,
+            createdAt: true,
+            product: { select: { id: true, name: true, brand: true, model: true } },
+            branch: { select: { id: true, name: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+        _count: { select: { contracts: true } },
+      },
+    });
+    if (!customer || customer.deletedAt) throw new NotFoundException('ไม่พบลูกค้า');
+    return customer;
+  }
+
+  async search(q: string) {
+    return this.prisma.customer.findMany({
+      where: {
+        deletedAt: null,
+        OR: [
+          { name: { contains: q, mode: 'insensitive' } },
+          { phone: { contains: q } },
+          { nationalId: { contains: q } },
+        ],
+      },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        nationalId: true,
+        _count: { select: { contracts: true } },
+      },
+      take: 10,
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  async create(dto: CreateCustomerDto) {
+    // Check duplicate national ID
+    const existing = await this.prisma.customer.findUnique({
+      where: { nationalId: dto.nationalId },
+    });
+    if (existing && !existing.deletedAt) {
+      throw new ConflictException({
+        message: 'ลูกค้าที่มีเลขบัตรประชาชนนี้มีอยู่แล้ว',
+        existingCustomer: { id: existing.id, name: existing.name },
+      });
+    }
+
+    // Validate Thai national ID checksum
+    if (!this.validateNationalId(dto.nationalId)) {
+      throw new ConflictException('เลขบัตรประชาชนไม่ถูกต้อง');
+    }
+
+    return this.prisma.customer.create({ data: dto });
+  }
+
+  async update(id: string, dto: UpdateCustomerDto) {
+    await this.findOne(id);
+    return this.prisma.customer.update({
+      where: { id },
+      data: dto,
+    });
+  }
+
+  async remove(id: string) {
+    await this.findOne(id);
+    return this.prisma.customer.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+  }
+
+  async getContracts(id: string) {
+    await this.findOne(id);
+    return this.prisma.contract.findMany({
+      where: { customerId: id },
+      include: {
+        product: { select: { id: true, name: true, brand: true, model: true } },
+        branch: { select: { id: true, name: true } },
+        _count: { select: { payments: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async getRiskFlag(id: string) {
+    const overdueContracts = await this.prisma.contract.findMany({
+      where: {
+        customerId: id,
+        status: { in: ['OVERDUE', 'DEFAULT'] },
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        contractNumber: true,
+        status: true,
+      },
+    });
+
+    return {
+      hasRisk: overdueContracts.length > 0,
+      riskLevel: overdueContracts.some((c) => c.status === 'DEFAULT') ? 'HIGH' : overdueContracts.length > 0 ? 'MEDIUM' : 'NONE',
+      overdueContracts,
+    };
+  }
+
+  private validateNationalId(id: string): boolean {
+    if (!/^\d{13}$/.test(id)) return false;
+    let sum = 0;
+    for (let i = 0; i < 12; i++) {
+      sum += parseInt(id[i]) * (13 - i);
+    }
+    const check = (11 - (sum % 11)) % 10;
+    return check === parseInt(id[12]);
+  }
+}

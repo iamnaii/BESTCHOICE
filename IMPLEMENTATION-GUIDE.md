@@ -3,10 +3,15 @@
 ## สถานะปัจจุบัน
 
 ```
-✅ SPEC-installment.md (24 Sections, 992 บรรทัด)
-   │
-   ▼
-⬜ คุณอยู่ตรงนี้ → เริ่มเขียนโค้ดด้วย Claude Code
+✅ Phase 1: Foundation (Step 1-4)   — Project Setup, DB Schema, Auth/RBAC, Branch CRUD
+✅ Phase 2: Core Business (Step 5-13) — Supplier, Product, Inspection, Sticker, Customer,
+                                         Contract, E-Signature, Payment, Late Fee
+✅ Phase 3: Operations (Step 14-17)  — Overdue Tracking, Exchange, Repossession, Purchase Order
+✅ Phase 4: Communication (Step 18-19) — Notifications (LINE + SMS templates)
+✅ Phase 5: Intelligence (Step 20-21)  — Dashboard, Reports
+✅ Phase 6: Polish (Step 22-24)        — Data Migration, Security (Audit), Deployment (Docker + DO)
+
+🎉 ระบบสมบูรณ์ — ทุก Phase ถูก implement แล้ว (merged from all branches)
 ```
 
 ---

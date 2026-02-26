@@ -8,6 +8,10 @@ export class CreateSupplierDto {
   contactName: string;
 
   @IsString()
+  @IsOptional()
+  nickname?: string;
+
+  @IsString()
   phone: string;
 
   @IsString()

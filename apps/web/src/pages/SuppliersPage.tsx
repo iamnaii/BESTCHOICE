@@ -14,6 +14,7 @@ interface Supplier {
   id: string;
   name: string;
   contactName: string;
+  nickname: string | null;
   phone: string;
   phoneSecondary: string | null;
   lineId: string | null;
@@ -28,6 +29,7 @@ interface Supplier {
 const emptyForm = {
   name: '',
   contactName: '',
+  nickname: '',
   phone: '',
   phoneSecondary: '',
   lineId: '',
@@ -71,6 +73,7 @@ export default function SuppliersPage() {
       const composedAddress = composeAddress(supplierAddress);
       const payload = {
         ...data,
+        nickname: data.nickname || undefined,
         phoneSecondary: data.phoneSecondary || undefined,
         lineId: data.lineId || undefined,
         address: composedAddress || undefined,
@@ -130,6 +133,7 @@ export default function SuppliersPage() {
     setForm({
       name: supplier.name,
       contactName: supplier.contactName,
+      nickname: supplier.nickname || '',
       phone: supplier.phone,
       phoneSecondary: supplier.phoneSecondary || '',
       lineId: supplier.lineId || '',
@@ -160,9 +164,12 @@ export default function SuppliersPage() {
     },
     {
       key: 'contactName',
-      label: 'ผู้ติดต่อ (ชื่อเล่น)',
+      label: 'ผู้ติดต่อ',
       render: (s: Supplier) => (
-        <span className="text-gray-700">{s.contactName || '-'}</span>
+        <div>
+          <div className="text-gray-700">{s.contactName || '-'}</div>
+          {s.nickname && <div className="text-xs text-gray-400">({s.nickname})</div>}
+        </div>
       ),
     },
     {
@@ -332,6 +339,15 @@ export default function SuppliersPage() {
                 onChange={(e) => setForm({ ...form, contactName: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
                 required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อเล่น</label>
+              <input
+                type="text"
+                value={form.nickname}
+                onChange={(e) => setForm({ ...form, nickname: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
               />
             </div>
             <div>

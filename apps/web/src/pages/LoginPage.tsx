@@ -18,8 +18,19 @@ export default function LoginPage() {
       await login(email, password);
       toast.success('เข้าสู่ระบบสำเร็จ');
       navigate('/');
-    } catch {
-      toast.error('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
+    } catch (error: unknown) {
+      const err = error as { response?: { status?: number; data?: { message?: string } }; code?: string };
+      if (err.code === 'ECONNABORTED') {
+        toast.error('เซิร์ฟเวอร์ไม่ตอบสนอง กรุณาลองใหม่');
+      } else if (!err.response) {
+        toast.error('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้');
+      } else if (err.response.status === 429) {
+        toast.error('ลองเข้าสู่ระบบบ่อยเกินไป กรุณารอสักครู่');
+      } else if (err.response.status === 401) {
+        toast.error('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
+      } else {
+        toast.error(err.response.data?.message || 'เกิดข้อผิดพลาด กรุณาลองใหม่');
+      }
     } finally {
       setIsSubmitting(false);
     }

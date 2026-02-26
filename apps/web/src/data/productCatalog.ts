@@ -61,7 +61,7 @@ export const productCatalog: BrandCatalog[] = [
         name: 'Galaxy S24 FE',
         category: 'PHONE_NEW',
         colors: ['Blue', 'Graphite', 'Gray', 'Mint', 'Yellow'],
-        storage: ['128GB', '256GB'],
+        storage: ['128GB', '256GB', '512GB'],
       },
 
       // === Galaxy S23 Series (2023) ===
@@ -233,7 +233,7 @@ export const productCatalog: BrandCatalog[] = [
         name: 'Galaxy Z Flip6',
         category: 'PHONE_NEW',
         colors: ['Blue', 'Mint', 'Silver Shadow', 'Yellow', 'Crafted Black', 'White', 'Peach'],
-        storage: ['256GB', '512GB'],
+        storage: ['128GB', '256GB', '512GB'],
       },
 
       // === Galaxy Z Flip5 (2023) ===
@@ -266,6 +266,34 @@ export const productCatalog: BrandCatalog[] = [
         category: 'PHONE_NEW',
         colors: ['Mirror Black', 'Mirror Gold', 'Mirror Purple'],
         storage: ['256GB'],
+      },
+
+      // =============================================
+      // === Galaxy A70 Series ======================
+      // =============================================
+
+      // === Galaxy A73 5G (2022) ===
+      {
+        name: 'Galaxy A73 5G',
+        category: 'PHONE_NEW',
+        colors: ['Awesome Mint', 'Awesome Gray', 'Awesome White'],
+        storage: ['128GB', '256GB'],
+      },
+
+      // === Galaxy A72 (2021) ===
+      {
+        name: 'Galaxy A72',
+        category: 'PHONE_NEW',
+        colors: ['Awesome Black', 'Awesome White', 'Awesome Violet', 'Awesome Blue'],
+        storage: ['128GB', '256GB'],
+      },
+
+      // === Galaxy A71 (2020) ===
+      {
+        name: 'Galaxy A71',
+        category: 'PHONE_NEW',
+        colors: ['Prism Crush Black', 'Prism Crush Silver', 'Prism Crush Blue', 'Prism Crush Pink'],
+        storage: ['128GB'],
       },
 
       // =============================================
@@ -336,7 +364,7 @@ export const productCatalog: BrandCatalog[] = [
       {
         name: 'Galaxy A36 5G',
         category: 'PHONE_NEW',
-        colors: ['Awesome Lavender', 'Awesome Black', 'Awesome White', 'Awesome Lime'],
+        colors: ['Awesome Black', 'Awesome Lavender', 'Awesome White', 'Awesome Lime'],
         storage: ['128GB', '256GB'],
       },
 
@@ -396,7 +424,7 @@ export const productCatalog: BrandCatalog[] = [
       {
         name: 'Galaxy A24',
         category: 'PHONE_NEW',
-        colors: ['Black', 'Dark Red', 'Light Green'],
+        colors: ['Black', 'Dark Red', 'Light Green', 'Silver'],
         storage: ['128GB'],
       },
 

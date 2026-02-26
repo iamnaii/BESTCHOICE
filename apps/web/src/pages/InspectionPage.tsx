@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
@@ -60,7 +60,7 @@ export default function InspectionPage() {
       setIsNewModalOpen(false);
       navigate(`/inspections/${res.data.id}`);
     },
-    onError: () => toast.error('เกิดข้อผิดพลาด'),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const columns = [

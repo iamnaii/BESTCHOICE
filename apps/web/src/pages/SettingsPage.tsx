@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 
 interface ConfigItem {
@@ -73,7 +73,7 @@ export default function SettingsPage() {
       toast.success('บันทึกการตั้งค่าสำเร็จ');
       setHasChanges(false);
     },
-    onError: () => toast.error('เกิดข้อผิดพลาด'),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const handleChange = (key: string, value: string) => {

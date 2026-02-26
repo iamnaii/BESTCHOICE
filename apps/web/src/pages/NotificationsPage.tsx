@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
@@ -120,7 +120,7 @@ export default function NotificationsPage() {
       toast.success(editingTemplate ? 'อัพเดท template สำเร็จ' : 'สร้าง template สำเร็จ');
       setIsTemplateModalOpen(false);
     },
-    onError: () => toast.error('เกิดข้อผิดพลาด'),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   // Cron actions
@@ -131,7 +131,7 @@ export default function NotificationsPage() {
       queryClient.invalidateQueries({ queryKey: ['notification-logs'] });
       queryClient.invalidateQueries({ queryKey: ['notification-stats'] });
     },
-    onError: () => toast.error('เกิดข้อผิดพลาด'),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const sendOverdueMutation = useMutation({
@@ -141,7 +141,7 @@ export default function NotificationsPage() {
       queryClient.invalidateQueries({ queryKey: ['notification-logs'] });
       queryClient.invalidateQueries({ queryKey: ['notification-stats'] });
     },
-    onError: () => toast.error('เกิดข้อผิดพลาด'),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const openCreateTemplate = () => {

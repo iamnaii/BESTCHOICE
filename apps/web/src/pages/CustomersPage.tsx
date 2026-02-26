@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
+import AddressForm, { AddressData, emptyAddress, composeAddress } from '@/components/ui/AddressForm';
 
 interface Customer {
   id: string;
@@ -18,7 +19,7 @@ interface Customer {
   _count: { contracts: number };
 }
 
-const emptyForm = { nationalId: '', name: '', phone: '', phoneSecondary: '', lineId: '', addressIdCard: '', addressCurrent: '', occupation: '', workplace: '' };
+const emptyForm = { nationalId: '', name: '', phone: '', phoneSecondary: '', lineId: '', occupation: '', workplace: '' };
 
 export default function CustomersPage() {
   const navigate = useNavigate();
@@ -26,6 +27,8 @@ export default function CustomersPage() {
   const [search, setSearch] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
+  const [addressIdCard, setAddressIdCard] = useState<AddressData>(emptyAddress);
+  const [addressCurrent, setAddressCurrent] = useState<AddressData>(emptyAddress);
 
   const { data: customers = [], isLoading } = useQuery<Customer[]>({
     queryKey: ['customers', search],
@@ -39,8 +42,10 @@ export default function CustomersPage() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const payload = { ...form };
-      Object.keys(payload).forEach((k) => { if (!(payload as Record<string, string>)[k]) delete (payload as Record<string, string>)[k]; });
+      const payload: Record<string, string | undefined> = { ...form };
+      payload.addressIdCard = composeAddress(addressIdCard) || undefined;
+      payload.addressCurrent = composeAddress(addressCurrent) || undefined;
+      Object.keys(payload).forEach((k) => { if (!payload[k]) delete payload[k]; });
       return api.post('/customers', payload);
     },
     onSuccess: (res) => {
@@ -49,8 +54,8 @@ export default function CustomersPage() {
       setIsModalOpen(false);
       navigate(`/customers/${res.data.id}`);
     },
-    onError: (err: { response?: { data?: { message?: string } } }) => {
-      toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด');
+    onError: (err: unknown) => {
+      toast.error(getErrorMessage(err));
     },
   });
 
@@ -86,7 +91,7 @@ export default function CustomersPage() {
         title="ลูกค้า"
         subtitle={`ทั้งหมด ${customers.length} ราย`}
         action={
-          <button onClick={() => { setForm(emptyForm); setIsModalOpen(true); }} className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700">
+          <button onClick={() => { setForm(emptyForm); setAddressIdCard(emptyAddress); setAddressCurrent(emptyAddress); setIsModalOpen(true); }} className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700">
             + เพิ่มลูกค้า
           </button>
         }
@@ -126,8 +131,10 @@ export default function CustomersPage() {
               <input type="text" value={form.occupation} onChange={(e) => setForm({ ...form, occupation: e.target.value })} className="w-full px-3 py-2 border rounded-lg outline-none" />
             </div>
             <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">ที่อยู่ตามบัตร</label>
-              <textarea value={form.addressIdCard} onChange={(e) => setForm({ ...form, addressIdCard: e.target.value })} rows={2} className="w-full px-3 py-2 border rounded-lg outline-none resize-none" />
+              <AddressForm value={addressIdCard} onChange={setAddressIdCard} label="ที่อยู่ตามบัตร" />
+            </div>
+            <div className="col-span-2">
+              <AddressForm value={addressCurrent} onChange={setAddressCurrent} label="ที่อยู่ปัจจุบัน" />
             </div>
           </div>
           <div className="flex justify-end gap-3 pt-2">

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import Modal from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
@@ -94,7 +94,7 @@ export default function InspectionDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['inspection', id] });
       toast.success('บันทึกผลตรวจสำเร็จ');
     },
-    onError: () => toast.error('เกิดข้อผิดพลาด'),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const completeMutation = useMutation({
@@ -103,7 +103,7 @@ export default function InspectionDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['inspection', id] });
       toast.success('ส่งผลตรวจเสร็จ');
     },
-    onError: () => toast.error('เกิดข้อผิดพลาด'),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const overrideMutation = useMutation({
@@ -113,7 +113,7 @@ export default function InspectionDetailPage() {
       toast.success('เปลี่ยนเกรดสำเร็จ');
       setIsOverrideModalOpen(false);
     },
-    onError: () => toast.error('เกิดข้อผิดพลาด'),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const updateResult = (itemId: string, field: string, value: unknown) => {

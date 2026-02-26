@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import Modal from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
@@ -97,7 +97,7 @@ export default function ProductDetailPage() {
       toast.success(editingPrice ? 'แก้ไขราคาสำเร็จ' : 'เพิ่มราคาสำเร็จ');
       setIsPriceModalOpen(false);
     },
-    onError: () => toast.error('เกิดข้อผิดพลาด'),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const deletePriceMutation = useMutation({

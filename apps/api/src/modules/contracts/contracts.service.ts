@@ -6,7 +6,7 @@ import { CreateContractDto } from './dto/contract.dto';
 export class ContractsService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(filters: { status?: string; branchId?: string; customerId?: string; search?: string }) {
+  async findAll(filters: { status?: string; branchId?: string; customerId?: string; search?: string; page?: number; limit?: number }) {
     const where: Record<string, unknown> = { deletedAt: null };
     if (filters.status) where.status = filters.status;
     if (filters.branchId) where.branchId = filters.branchId;
@@ -18,17 +18,27 @@ export class ContractsService {
       ];
     }
 
-    return this.prisma.contract.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        customer: { select: { id: true, name: true, phone: true } },
-        product: { select: { id: true, name: true, brand: true, model: true } },
-        branch: { select: { id: true, name: true } },
-        salesperson: { select: { id: true, name: true } },
-        _count: { select: { payments: true } },
-      },
-    });
+    const page = filters.page || 1;
+    const limit = filters.limit || 50;
+
+    const [data, total] = await Promise.all([
+      this.prisma.contract.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+        include: {
+          customer: { select: { id: true, name: true, phone: true } },
+          product: { select: { id: true, name: true, brand: true, model: true } },
+          branch: { select: { id: true, name: true } },
+          salesperson: { select: { id: true, name: true } },
+          _count: { select: { payments: true } },
+        },
+      }),
+      this.prisma.contract.count({ where }),
+    ]);
+
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   async findOne(id: string) {

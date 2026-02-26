@@ -12,8 +12,13 @@ export class SuppliersController {
   constructor(private suppliersService: SuppliersService) {}
 
   @Get()
-  findAll(@Query('search') search?: string, @Query('isActive') isActive?: string) {
-    return this.suppliersService.findAll(search, isActive);
+  findAll(
+    @Query('search') search?: string,
+    @Query('isActive') isActive?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.suppliersService.findAll(search, isActive, page ? parseInt(page) : 1, limit ? parseInt(limit) : 50);
   }
 
   @Get(':id')

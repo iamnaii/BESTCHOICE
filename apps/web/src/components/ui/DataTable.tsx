@@ -6,12 +6,20 @@ interface Column<T> {
   render?: (item: T) => ReactNode;
 }
 
+interface PaginationInfo {
+  page: number;
+  totalPages: number;
+  total: number;
+  onPageChange: (page: number) => void;
+}
+
 interface DataTableProps<T> {
   columns: Column<T>[];
   data: T[];
   isLoading?: boolean;
   emptyMessage?: string;
   onRowClick?: (item: T) => void;
+  pagination?: PaginationInfo;
 }
 
 export default function DataTable<T extends { id: string }>({
@@ -20,6 +28,7 @@ export default function DataTable<T extends { id: string }>({
   isLoading,
   emptyMessage = 'ไม่พบข้อมูล',
   onRowClick,
+  pagination,
 }: DataTableProps<T>) {
   if (isLoading) {
     return (
@@ -69,6 +78,32 @@ export default function DataTable<T extends { id: string }>({
           </tbody>
         </table>
       </div>
+      {pagination && pagination.totalPages > 1 && (
+        <div className="flex items-center justify-between px-4 py-3 border-t bg-gray-50">
+          <span className="text-sm text-gray-600">
+            ทั้งหมด {pagination.total.toLocaleString()} รายการ
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => pagination.onPageChange(pagination.page - 1)}
+              disabled={pagination.page <= 1}
+              className="px-3 py-1 text-sm border rounded-md hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              ก่อนหน้า
+            </button>
+            <span className="px-3 py-1 text-sm text-gray-600">
+              {pagination.page} / {pagination.totalPages}
+            </span>
+            <button
+              onClick={() => pagination.onPageChange(pagination.page + 1)}
+              disabled={pagination.page >= pagination.totalPages}
+              className="px-3 py-1 text-sm border rounded-md hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              ถัดไป
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

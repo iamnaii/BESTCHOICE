@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 export interface AuditEntry {
@@ -20,13 +21,17 @@ export class AuditService {
 
   async log(entry: AuditEntry) {
     try {
-      await this.prisma.systemConfig.create({
+      if (!entry.userId) return;
+
+      await this.prisma.auditLog.create({
         data: {
-          key: `audit_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-          value: JSON.stringify({
-            ...entry,
-            timestamp: new Date().toISOString(),
-          }),
+          userId: entry.userId,
+          action: entry.action,
+          entity: entry.entity,
+          entityId: entry.entityId || '',
+          oldValue: (entry.oldValue as Prisma.InputJsonValue) ?? Prisma.JsonNull,
+          newValue: (entry.newValue as Prisma.InputJsonValue) ?? Prisma.JsonNull,
+          ipAddress: entry.ipAddress,
         },
       });
     } catch (err) {
@@ -46,34 +51,30 @@ export class AuditService {
     const page = filters.page || 1;
     const limit = filters.limit || 50;
 
-    const logs = await this.prisma.systemConfig.findMany({
-      where: {
-        key: { startsWith: 'audit_' },
-      },
-      orderBy: { updatedAt: 'desc' },
-      skip: (page - 1) * limit,
-      take: limit,
-    });
+    const where: Record<string, unknown> = {};
+    if (filters.userId) where.userId = filters.userId;
+    if (filters.entity) where.entity = filters.entity;
+    if (filters.action) where.action = filters.action;
+    if (filters.from || filters.to) {
+      where.createdAt = {
+        ...(filters.from ? { gte: new Date(filters.from) } : {}),
+        ...(filters.to ? { lte: new Date(filters.to) } : {}),
+      };
+    }
 
-    const parsed = logs
-      .map((l) => {
-        try {
-          const data = JSON.parse(l.value);
-          return { id: l.id, ...data };
-        } catch {
-          return null;
-        }
-      })
-      .filter(Boolean)
-      .filter((log) => {
-        if (filters.userId && log.userId !== filters.userId) return false;
-        if (filters.entity && log.entity !== filters.entity) return false;
-        if (filters.action && log.action !== filters.action) return false;
-        if (filters.from && log.timestamp < filters.from) return false;
-        if (filters.to && log.timestamp > filters.to) return false;
-        return true;
-      });
+    const [data, total] = await Promise.all([
+      this.prisma.auditLog.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+        include: {
+          user: { select: { id: true, name: true, email: true } },
+        },
+      }),
+      this.prisma.auditLog.count({ where }),
+    ]);
 
-    return { data: parsed, page, limit };
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 }

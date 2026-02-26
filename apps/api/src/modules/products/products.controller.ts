@@ -22,8 +22,14 @@ export class ProductsController {
     @Query('category') category?: string,
     @Query('brand') brand?: string,
     @Query('supplierId') supplierId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
-    return this.productsService.findAll({ search, branchId, status, category, brand, supplierId });
+    return this.productsService.findAll({
+      search, branchId, status, category, brand, supplierId,
+      page: page ? parseInt(page) : undefined,
+      limit: limit ? parseInt(limit) : undefined,
+    });
   }
 
   @Get('stock')

@@ -7,7 +7,7 @@ import { UpdateSupplierDto } from './dto/update-supplier.dto';
 export class SuppliersService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(search?: string, isActive?: string) {
+  async findAll(search?: string, isActive?: string, page = 1, limit = 50) {
     const where: Record<string, unknown> = {};
 
     if (isActive === 'true') {
@@ -25,13 +25,20 @@ export class SuppliersService {
       ];
     }
 
-    return this.prisma.supplier.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        _count: { select: { products: true, purchaseOrders: true } },
-      },
-    });
+    const [data, total] = await Promise.all([
+      this.prisma.supplier.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+        include: {
+          _count: { select: { products: true, purchaseOrders: true } },
+        },
+      }),
+      this.prisma.supplier.count({ where }),
+    ]);
+
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   async findOne(id: string) {

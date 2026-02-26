@@ -206,6 +206,7 @@ export class OverdueService {
 
   /**
    * Calculate late fees for all overdue payments (cron job)
+   * Uses a single SQL UPDATE for efficiency instead of N+1 queries
    */
   async calculateLateFees() {
     const now = new Date();
@@ -219,44 +220,34 @@ export class OverdueService {
     const lateFeePerDay = lateFeeConfig ? Number(lateFeeConfig.value) : 100;
     const lateFeeCap = lateFeeCapConfig ? Number(lateFeeCapConfig.value) : 200;
 
-    // Find all overdue payments
-    const overduePayments = await this.prisma.payment.findMany({
-      where: {
-        status: { in: ['PENDING', 'PARTIALLY_PAID', 'OVERDUE'] },
-        dueDate: { lt: now },
-        contract: { status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] }, deletedAt: null },
-      },
-      include: { contract: true },
-    });
+    // Single bulk UPDATE: calculate late fees and set status in one query
+    const result = await this.prisma.$executeRaw`
+      UPDATE "Payment"
+      SET
+        "lateFee" = LEAST(
+          EXTRACT(DAY FROM (${now}::timestamp - "dueDate"))::int * ${lateFeePerDay},
+          ${lateFeeCap}
+        ),
+        "status" = 'OVERDUE'
+      WHERE "status" IN ('PENDING', 'PARTIALLY_PAID', 'OVERDUE')
+        AND "dueDate" < ${now}
+        AND "contractId" IN (
+          SELECT "id" FROM "Contract"
+          WHERE "status" IN ('ACTIVE', 'OVERDUE', 'DEFAULT')
+            AND "deletedAt" IS NULL
+        )
+    `;
 
-    let updated = 0;
-    for (const payment of overduePayments) {
-      const daysOverdue = Math.floor(
-        (now.getTime() - new Date(payment.dueDate).getTime()) / (1000 * 60 * 60 * 24),
-      );
-      const lateFee = Math.min(daysOverdue * lateFeePerDay, lateFeeCap);
-
-      await this.prisma.payment.update({
-        where: { id: payment.id },
-        data: {
-          lateFee,
-          status: 'OVERDUE',
-        },
-      });
-      updated++;
-    }
-
-    this.logger.log(`Late fees calculated: ${updated} payments updated`);
-    return { updated, timestamp: now };
+    this.logger.log(`Late fees calculated: ${result} payments updated`);
+    return { updated: result, timestamp: now };
   }
 
   /**
    * Update contract statuses based on overdue rules (cron job)
+   * Uses bulk updates and batched transactions for efficiency
    */
   async updateContractStatuses() {
     const now = new Date();
-    let overdueUpdated = 0;
-    let defaultUpdated = 0;
 
     // Get system user for audit logs (first OWNER)
     const systemUser = await this.prisma.user.findFirst({
@@ -265,7 +256,8 @@ export class OverdueService {
     });
     const systemUserId = systemUser?.id || 'system';
 
-    // Find contracts with overdue payments > 7 days → OVERDUE
+    // Step 1: ACTIVE → OVERDUE (payments overdue > 7 days)
+    // Get only the IDs we need to update
     const activeContracts = await this.prisma.contract.findMany({
       where: {
         status: 'ACTIVE',
@@ -277,76 +269,88 @@ export class OverdueService {
           },
         },
       },
+      select: { id: true },
     });
 
-    for (const contract of activeContracts) {
-      await this.prisma.contract.update({
-        where: { id: contract.id },
-        data: { status: 'OVERDUE' },
-      });
+    const activeIds = activeContracts.map((c) => c.id);
+    let overdueUpdated = 0;
 
-      // Audit log for status change
-      await this.prisma.auditLog.create({
-        data: {
-          userId: systemUserId,
-          action: 'STATUS_CHANGE',
-          entity: 'contract',
-          entityId: contract.id,
-          newValue: { from: 'ACTIVE', to: 'OVERDUE', reason: 'Payment overdue > 7 days' },
-          ipAddress: 'system-cron',
-        },
-      });
-
-      overdueUpdated++;
-    }
-
-    // Find contracts with 2+ consecutive missed payments → DEFAULT
-    const overdueContracts = await this.prisma.contract.findMany({
-      where: {
-        status: 'OVERDUE',
-        deletedAt: null,
-      },
-      include: {
-        payments: { orderBy: { installmentNo: 'asc' } },
-      },
-    });
-
-    for (const contract of overdueContracts) {
-      let consecutiveMissed = 0;
-      let maxConsecutive = 0;
-
-      for (const payment of contract.payments) {
-        if (
-          ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'].includes(payment.status) &&
-          new Date(payment.dueDate) < now
-        ) {
-          consecutiveMissed++;
-          maxConsecutive = Math.max(maxConsecutive, consecutiveMissed);
-        } else if (payment.status === 'PAID') {
-          consecutiveMissed = 0;
-        }
-      }
-
-      if (maxConsecutive >= 2) {
-        await this.prisma.contract.update({
-          where: { id: contract.id },
-          data: { status: 'DEFAULT' },
-        });
-
-        // Audit log for status change
-        await this.prisma.auditLog.create({
-          data: {
+    if (activeIds.length > 0) {
+      // Batch update + audit logs in a single transaction
+      await this.prisma.$transaction([
+        this.prisma.contract.updateMany({
+          where: { id: { in: activeIds } },
+          data: { status: 'OVERDUE' },
+        }),
+        this.prisma.auditLog.createMany({
+          data: activeIds.map((id) => ({
             userId: systemUserId,
             action: 'STATUS_CHANGE',
             entity: 'contract',
-            entityId: contract.id,
-            newValue: { from: 'OVERDUE', to: 'DEFAULT', reason: `${maxConsecutive} consecutive missed payments` },
+            entityId: id,
+            newValue: { from: 'ACTIVE', to: 'OVERDUE', reason: 'Payment overdue > 7 days' },
             ipAddress: 'system-cron',
-          },
-        });
+          })),
+        }),
+      ]);
+      overdueUpdated = activeIds.length;
+    }
 
-        defaultUpdated++;
-      }
+    // Step 2: OVERDUE → DEFAULT (2+ consecutive missed payments)
+    // Use raw SQL to find contracts with consecutive missed payments
+    const defaultCandidates: { id: string; consecutive: number }[] = await this.prisma.$queryRaw`
+      WITH payment_streaks AS (
+        SELECT
+          p."contractId",
+          p."installmentNo",
+          p."status",
+          p."dueDate",
+          ROW_NUMBER() OVER (PARTITION BY p."contractId" ORDER BY p."installmentNo") -
+          ROW_NUMBER() OVER (PARTITION BY p."contractId",
+            CASE WHEN p."status" IN ('PENDING', 'OVERDUE', 'PARTIALLY_PAID') AND p."dueDate" < ${now}
+                 THEN 1 ELSE 0 END
+            ORDER BY p."installmentNo") AS grp
+        FROM "Payment" p
+        JOIN "Contract" c ON c."id" = p."contractId"
+        WHERE c."status" = 'OVERDUE' AND c."deletedAt" IS NULL
+      ),
+      max_consecutive AS (
+        SELECT
+          "contractId" AS id,
+          MAX(cnt) AS consecutive
+        FROM (
+          SELECT "contractId", grp, COUNT(*) AS cnt
+          FROM payment_streaks
+          WHERE "status" IN ('PENDING', 'OVERDUE', 'PARTIALLY_PAID')
+            AND "dueDate" < ${now}
+          GROUP BY "contractId", grp
+        ) sub
+        GROUP BY "contractId"
+      )
+      SELECT id, consecutive::int FROM max_consecutive WHERE consecutive >= 2
+    `;
+
+    let defaultUpdated = 0;
+    const defaultIds = defaultCandidates.map((c) => c.id);
+
+    if (defaultIds.length > 0) {
+      await this.prisma.$transaction([
+        this.prisma.contract.updateMany({
+          where: { id: { in: defaultIds } },
+          data: { status: 'DEFAULT' },
+        }),
+        this.prisma.auditLog.createMany({
+          data: defaultCandidates.map((c) => ({
+            userId: systemUserId,
+            action: 'STATUS_CHANGE',
+            entity: 'contract',
+            entityId: c.id,
+            newValue: { from: 'OVERDUE', to: 'DEFAULT', reason: `${c.consecutive} consecutive missed payments` },
+            ipAddress: 'system-cron',
+          })),
+        }),
+      ]);
+      defaultUpdated = defaultIds.length;
     }
 
     this.logger.log(`Contract status update: ${overdueUpdated} overdue, ${defaultUpdated} default`);

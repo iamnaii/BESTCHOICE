@@ -3,6 +3,16 @@ import { Request, Response, NextFunction } from 'express';
 
 @Injectable()
 export class SecurityMiddleware implements NestMiddleware {
+  // Pre-compile regex patterns once at class level
+  private static readonly suspiciousPatterns = [
+    /<script\b[^>]*>/i,
+    /javascript:/i,
+    /on\w+\s*=/i,
+    /union\s+select/i,
+    /;\s*drop\s+table/i,
+    /--\s*$/,
+  ];
+
   use(req: Request, res: Response, next: NextFunction) {
     // Security headers
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -25,15 +35,7 @@ export class SecurityMiddleware implements NestMiddleware {
     // Block suspicious payloads (basic XSS/injection prevention)
     if (req.body && typeof req.body === 'object') {
       const bodyStr = JSON.stringify(req.body);
-      const suspiciousPatterns = [
-        /<script\b[^>]*>/i,
-        /javascript:/i,
-        /on\w+\s*=/i,
-        /union\s+select/i,
-        /;\s*drop\s+table/i,
-        /--\s*$/,
-      ];
-      for (const pattern of suspiciousPatterns) {
+      for (const pattern of SecurityMiddleware.suspiciousPatterns) {
         if (pattern.test(bodyStr)) {
           throw new HttpException(
             'Invalid request payload',

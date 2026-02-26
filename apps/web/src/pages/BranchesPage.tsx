@@ -6,6 +6,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
+import AddressForm, { AddressData, emptyAddress, composeAddress } from '@/components/ui/AddressForm';
 
 interface Branch {
   id: string;
@@ -21,7 +22,8 @@ export default function BranchesPage() {
   const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
-  const [form, setForm] = useState({ name: '', location: '', phone: '' });
+  const [form, setForm] = useState({ name: '', phone: '' });
+  const [address, setAddress] = useState<AddressData>(emptyAddress);
 
   const { data: branches = [], isLoading } = useQuery<Branch[]>({
     queryKey: ['branches'],
@@ -32,10 +34,11 @@ export default function BranchesPage() {
   });
 
   const saveMutation = useMutation({
-    mutationFn: async (data: { name: string; location: string; phone: string }) => {
+    mutationFn: async (data: { name: string; phone: string; address: AddressData }) => {
+      const location = composeAddress(data.address) || undefined;
       const payload = {
         name: data.name,
-        location: data.location || undefined,
+        location,
         phone: data.phone || undefined,
       };
       if (editingBranch) {
@@ -55,13 +58,15 @@ export default function BranchesPage() {
 
   const openCreate = () => {
     setEditingBranch(null);
-    setForm({ name: '', location: '', phone: '' });
+    setForm({ name: '', phone: '' });
+    setAddress(emptyAddress);
     setIsModalOpen(true);
   };
 
   const openEdit = (branch: Branch) => {
     setEditingBranch(branch);
-    setForm({ name: branch.name, location: branch.location || '', phone: branch.phone || '' });
+    setForm({ name: branch.name, phone: branch.phone || '' });
+    setAddress(emptyAddress);
     setIsModalOpen(true);
   };
 
@@ -72,7 +77,7 @@ export default function BranchesPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    saveMutation.mutate(form);
+    saveMutation.mutate({ ...form, address });
   };
 
   const columns = [
@@ -151,15 +156,7 @@ export default function BranchesPage() {
               required
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">ที่ตั้ง</label>
-            <input
-              type="text"
-              value={form.location}
-              onChange={(e) => setForm({ ...form, location: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-            />
-          </div>
+          <AddressForm value={address} onChange={setAddress} label="ที่ตั้ง" />
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">โทรศัพท์</label>
             <input

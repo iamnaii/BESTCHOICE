@@ -7,6 +7,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
+import AddressForm, { AddressData, emptyAddress, composeAddress } from '@/components/ui/AddressForm';
 
 interface Supplier {
   id: string;
@@ -29,7 +30,6 @@ const emptyForm = {
   phone: '',
   phoneSecondary: '',
   lineId: '',
-  address: '',
   taxId: '',
   notes: '',
 };
@@ -43,6 +43,7 @@ export default function SuppliersPage() {
   const [form, setForm] = useState(emptyForm);
   const [search, setSearch] = useState('');
   const [filterActive, setFilterActive] = useState<string>('all');
+  const [supplierAddress, setSupplierAddress] = useState<AddressData>(emptyAddress);
 
   const isManager = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
 
@@ -59,11 +60,12 @@ export default function SuppliersPage() {
 
   const saveMutation = useMutation({
     mutationFn: async (data: typeof emptyForm) => {
+      const composedAddress = composeAddress(supplierAddress);
       const payload = {
         ...data,
         phoneSecondary: data.phoneSecondary || undefined,
         lineId: data.lineId || undefined,
-        address: data.address || undefined,
+        address: composedAddress || undefined,
         taxId: data.taxId || undefined,
         notes: data.notes || undefined,
       };
@@ -98,6 +100,7 @@ export default function SuppliersPage() {
   const openCreate = () => {
     setEditingSupplier(null);
     setForm(emptyForm);
+    setSupplierAddress(emptyAddress);
     setIsModalOpen(true);
   };
 
@@ -109,10 +112,10 @@ export default function SuppliersPage() {
       phone: supplier.phone,
       phoneSecondary: supplier.phoneSecondary || '',
       lineId: supplier.lineId || '',
-      address: supplier.address || '',
       taxId: supplier.taxId || '',
       notes: supplier.notes || '',
     });
+    setSupplierAddress(emptyAddress);
     setIsModalOpen(true);
   };
 
@@ -316,13 +319,7 @@ export default function SuppliersPage() {
               />
             </div>
             <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">ที่อยู่</label>
-              <textarea
-                value={form.address}
-                onChange={(e) => setForm({ ...form, address: e.target.value })}
-                rows={2}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none resize-none"
-              />
+              <AddressForm value={supplierAddress} onChange={setSupplierAddress} label="ที่อยู่" />
             </div>
             <div className="col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ</label>

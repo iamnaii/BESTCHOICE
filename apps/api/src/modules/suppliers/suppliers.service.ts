@@ -25,16 +25,18 @@ export class SuppliersService {
         { taxId: { contains: search } },
       ];
 
-      // If search is digits-only, also match against formatted phone/taxId
+      // Also match phone with/without dash formatting
       const digits = search.replace(/\D/g, '');
-      if (digits.length >= 3 && digits !== search) {
+      if (digits.length >= 3) {
         const formatted =
           digits.length <= 3
             ? digits
             : digits.length <= 6
               ? `${digits.slice(0, 3)}-${digits.slice(3)}`
               : `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
-        orConditions.push({ phone: { contains: formatted } });
+        if (formatted !== search) {
+          orConditions.push({ phone: { contains: formatted } });
+        }
       }
 
       andConditions.push({ OR: orConditions });

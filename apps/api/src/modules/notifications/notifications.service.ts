@@ -382,19 +382,25 @@ export class NotificationsService {
 
   /**
    * Send payment reminders for upcoming due dates (run daily)
-   * Sends reminders 3 days and 1 day before due date
+   * Sends reminders exactly 3 days and 1 day before due date
    */
   async sendPaymentReminders() {
     const now = new Date();
-    const in3Days = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+    const today = new Date(now.toISOString().split('T')[0]);
+
+    // Only fetch payments due in exactly 1 or 3 days (filter at DB level)
+    const day1 = new Date(today.getTime() + 1 * 24 * 60 * 60 * 1000);
+    const day1End = new Date(day1.getTime() + 24 * 60 * 60 * 1000);
+    const day3 = new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000);
+    const day3End = new Date(day3.getTime() + 24 * 60 * 60 * 1000);
 
     const upcomingPayments = await this.prisma.payment.findMany({
       where: {
         status: 'PENDING',
-        dueDate: {
-          gte: new Date(now.toISOString().split('T')[0]),
-          lte: in3Days,
-        },
+        OR: [
+          { dueDate: { gte: day1, lt: day1End } },
+          { dueDate: { gte: day3, lt: day3End } },
+        ],
         contract: { status: 'ACTIVE', deletedAt: null },
       },
       include: {
@@ -412,9 +418,6 @@ export class NotificationsService {
       const daysUntil = Math.ceil(
         (new Date(payment.dueDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
       );
-
-      // Only send on day 1 and 3 before due
-      if (![1, 3].includes(daysUntil)) continue;
 
       const message = `สวัสดีค่ะ คุณ${customer.name}\nแจ้งเตือน: ค่างวดที่ ${payment.installmentNo} สัญญา ${payment.contract.contractNumber}\nจำนวน ${Number(payment.amountDue).toLocaleString()} บาท\nครบกำหนดชำระอีก ${daysUntil} วัน (${new Date(payment.dueDate).toLocaleDateString('th-TH')})\nกรุณาชำระตามกำหนด ขอบคุณค่ะ`;
 
@@ -445,14 +448,23 @@ export class NotificationsService {
 
   /**
    * Send overdue notices (run daily)
-   * Sends notices 1, 3, and 7 days after due date
+   * Sends notices exactly 1, 3, and 7 days after due date
    */
   async sendOverdueNotices() {
     const now = new Date();
+    const today = new Date(now.toISOString().split('T')[0]);
+
+    // Only fetch payments overdue by exactly 1, 3, or 7 days (filter at DB level)
+    const dueDates = [1, 3, 7].map((days) => {
+      const start = new Date(today.getTime() - days * 24 * 60 * 60 * 1000);
+      const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+      return { gte: start, lt: end };
+    });
+
     const overduePayments = await this.prisma.payment.findMany({
       where: {
         status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] },
-        dueDate: { lt: now },
+        OR: dueDates.map((dueDate) => ({ dueDate })),
         contract: { status: { in: ['ACTIVE', 'OVERDUE'] }, deletedAt: null },
       },
       include: {
@@ -470,9 +482,6 @@ export class NotificationsService {
       const daysOverdue = Math.floor(
         (now.getTime() - new Date(payment.dueDate).getTime()) / (1000 * 60 * 60 * 24),
       );
-
-      // Only send on day 1, 3, 7
-      if (![1, 3, 7].includes(daysOverdue)) continue;
 
       const outstanding = Number(payment.amountDue) - Number(payment.amountPaid) + Number(payment.lateFee);
       const message = `แจ้งเตือน: คุณ${customer.name}\nค่างวดที่ ${payment.installmentNo} สัญญา ${payment.contract.contractNumber}\nเลยกำหนดชำระ ${daysOverdue} วัน\nยอดค้างชำระ ${outstanding.toLocaleString()} บาท (รวมค่าปรับ)\nกรุณาชำระโดยเร็ว`;

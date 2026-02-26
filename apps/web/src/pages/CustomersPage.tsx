@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api, { getErrorMessage } from '@/lib/api';
+import { useDebounce } from '@/hooks/useDebounce';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
@@ -25,20 +26,27 @@ export default function CustomersPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const debouncedSearch = useDebounce(search);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [addressIdCard, setAddressIdCard] = useState<AddressData>(emptyAddress);
   const [addressCurrent, setAddressCurrent] = useState<AddressData>(emptyAddress);
 
-  const { data: customers = [], isLoading } = useQuery<Customer[]>({
-    queryKey: ['customers', search],
+  useEffect(() => { setPage(1); }, [debouncedSearch]);
+
+  const { data: result, isLoading } = useQuery<{ data: Customer[]; total: number; page: number; totalPages: number }>({
+    queryKey: ['customers', debouncedSearch, page],
     queryFn: async () => {
       const params: Record<string, string> = {};
-      if (search) params.search = search;
+      if (debouncedSearch) params.search = debouncedSearch;
+      params.page = String(page);
       const { data } = await api.get('/customers', { params });
       return data;
     },
   });
+
+  const customers = result?.data ?? [];
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -89,7 +97,7 @@ export default function CustomersPage() {
     <div>
       <PageHeader
         title="ลูกค้า"
-        subtitle={`ทั้งหมด ${customers.length} ราย`}
+        subtitle={`ทั้งหมด ${result?.total ?? 0} ราย`}
         action={
           <button onClick={() => { setForm(emptyForm); setAddressIdCard(emptyAddress); setAddressCurrent(emptyAddress); setIsModalOpen(true); }} className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700">
             + เพิ่มลูกค้า
@@ -101,7 +109,18 @@ export default function CustomersPage() {
         <input type="text" placeholder="ค้นหาชื่อ, เบอร์โทร, เลขบัตร ปชช..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none" />
       </div>
 
-      <DataTable columns={columns} data={customers} isLoading={isLoading} emptyMessage="ไม่พบลูกค้า" />
+      <DataTable
+        columns={columns}
+        data={customers}
+        isLoading={isLoading}
+        emptyMessage="ไม่พบลูกค้า"
+        pagination={result ? {
+          page: result.page,
+          totalPages: result.totalPages,
+          total: result.total,
+          onPageChange: setPage,
+        } : undefined}
+      />
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="เพิ่มลูกค้าใหม่" size="lg">
         <form onSubmit={(e) => { e.preventDefault(); createMutation.mutate(); }} className="space-y-4">

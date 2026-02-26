@@ -1,10 +1,9 @@
 import { Module } from '@nestjs/common';
 import { CronController } from './cron.controller';
-import { CronService } from './cron.service';
+import { OverdueModule } from '../overdue/overdue.module';
 
 @Module({
+  imports: [OverdueModule],
   controllers: [CronController],
-  providers: [CronService],
-  exports: [CronService],
 })
 export class CronModule {}

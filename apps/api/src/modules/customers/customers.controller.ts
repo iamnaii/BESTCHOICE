@@ -11,8 +11,12 @@ export class CustomersController {
   constructor(private customersService: CustomersService) {}
 
   @Get()
-  findAll(@Query('search') search?: string) {
-    return this.customersService.findAll(search);
+  findAll(
+    @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.customersService.findAll(search, page ? parseInt(page) : 1, limit ? parseInt(limit) : 50);
   }
 
   @Get('search')

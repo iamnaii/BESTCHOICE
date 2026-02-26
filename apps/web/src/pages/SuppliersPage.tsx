@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api, { getErrorMessage } from '@/lib/api';
+import { useDebounce } from '@/hooks/useDebounce';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
@@ -44,19 +45,26 @@ export default function SuppliersPage() {
   const [search, setSearch] = useState('');
   const [filterActive, setFilterActive] = useState<string>('all');
   const [supplierAddress, setSupplierAddress] = useState<AddressData>(emptyAddress);
+  const [page, setPage] = useState(1);
+  const debouncedSearch = useDebounce(search);
 
   const isManager = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
 
-  const { data: suppliers = [], isLoading } = useQuery<Supplier[]>({
-    queryKey: ['suppliers', search, filterActive],
+  useEffect(() => { setPage(1); }, [debouncedSearch, filterActive]);
+
+  const { data: result, isLoading } = useQuery<{ data: Supplier[]; total: number; page: number; totalPages: number }>({
+    queryKey: ['suppliers', debouncedSearch, filterActive, page],
     queryFn: async () => {
       const params: Record<string, string> = {};
-      if (search) params.search = search;
+      if (debouncedSearch) params.search = debouncedSearch;
       if (filterActive !== 'all') params.isActive = filterActive;
+      params.page = String(page);
       const { data } = await api.get('/suppliers', { params });
       return data;
     },
   });
+
+  const suppliers = result?.data ?? [];
 
   const saveMutation = useMutation({
     mutationFn: async (data: typeof emptyForm) => {
@@ -217,7 +225,7 @@ export default function SuppliersPage() {
     <div>
       <PageHeader
         title="จัดการ Supplier"
-        subtitle={`ทั้งหมด ${suppliers.length} ราย`}
+        subtitle={`ทั้งหมด ${result?.total ?? 0} ราย`}
         action={
           isManager ? (
             <button
@@ -250,7 +258,18 @@ export default function SuppliersPage() {
         </select>
       </div>
 
-      <DataTable columns={columns} data={suppliers} isLoading={isLoading} emptyMessage="ไม่พบ Supplier" />
+      <DataTable
+        columns={columns}
+        data={suppliers}
+        isLoading={isLoading}
+        emptyMessage="ไม่พบ Supplier"
+        pagination={result ? {
+          page: result.page,
+          totalPages: result.totalPages,
+          total: result.total,
+          onPageChange: setPage,
+        } : undefined}
+      />
 
       {/* Create/Edit Modal */}
       <Modal

@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { useDebounce } from '@/hooks/useDebounce';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 
@@ -32,21 +33,35 @@ const statusLabels: Record<string, { label: string; className: string }> = {
   CLOSED_BAD_DEBT: { label: 'หนี้สูญ', className: 'bg-red-200 text-red-800' },
 };
 
+interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  page: number;
+  totalPages: number;
+}
+
 export default function ContractsPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [page, setPage] = useState(1);
+  const debouncedSearch = useDebounce(search);
 
-  const { data: contracts = [], isLoading } = useQuery<Contract[]>({
-    queryKey: ['contracts', search, statusFilter],
+  useEffect(() => { setPage(1); }, [debouncedSearch, statusFilter]);
+
+  const { data: result, isLoading } = useQuery<PaginatedResponse<Contract>>({
+    queryKey: ['contracts', debouncedSearch, statusFilter, page],
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (search) params.set('search', search);
+      if (debouncedSearch) params.set('search', debouncedSearch);
       if (statusFilter) params.set('status', statusFilter);
+      params.set('page', String(page));
       const { data } = await api.get(`/contracts?${params}`);
       return data;
     },
   });
+
+  const contracts = result?.data ?? [];
 
   const columns = [
     {
@@ -133,11 +148,18 @@ export default function ContractsPage() {
         </select>
       </div>
 
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div></div>
-      ) : (
-        <DataTable columns={columns} data={contracts} emptyMessage="ยังไม่มีสัญญา" />
-      )}
+      <DataTable
+        columns={columns}
+        data={contracts}
+        isLoading={isLoading}
+        emptyMessage="ยังไม่มีสัญญา"
+        pagination={result ? {
+          page: result.page,
+          totalPages: result.totalPages,
+          total: result.total,
+          onPageChange: setPage,
+        } : undefined}
+      />
     </div>
   );
 }

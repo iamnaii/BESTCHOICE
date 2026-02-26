@@ -17,8 +17,14 @@ export class ContractsController {
     @Query('branchId') branchId?: string,
     @Query('customerId') customerId?: string,
     @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
-    return this.contractsService.findAll({ status, branchId, customerId, search });
+    return this.contractsService.findAll({
+      status, branchId, customerId, search,
+      page: page ? parseInt(page) : undefined,
+      limit: limit ? parseInt(limit) : undefined,
+    });
   }
 
   @Get(':id')

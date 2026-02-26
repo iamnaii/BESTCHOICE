@@ -217,6 +217,9 @@ model Contract {
   @@index([branchId])
   @@index([status])
   @@index([salespersonId])
+  @@index([createdAt])
+  @@index([deletedAt])
+  @@index([status, deletedAt, branchId])
   @@map("contracts")
 }
 
@@ -243,6 +246,8 @@ model Payment {
   @@index([contractId])
   @@index([dueDate])
   @@index([status])
+  @@index([paidDate])
+  @@index([status, dueDate])
   @@map("payments")
 }
 
@@ -344,6 +349,9 @@ model Product {
   @@index([status])
   @@index([category])
   @@index([brand, model])
+  @@index([supplierId])
+  @@index([deletedAt])
+  @@index([createdAt])
   @@map("products")
 }
 

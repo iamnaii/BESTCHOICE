@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
+import { useDebounce } from '@/hooks/useDebounce';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import { useAuth } from '@/contexts/AuthContext';
@@ -48,21 +49,28 @@ export default function ProductsPage() {
   const [filterStatus, setFilterStatus] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
   const [filterBranch, setFilterBranch] = useState('');
+  const [page, setPage] = useState(1);
+  const debouncedSearch = useDebounce(search);
 
   const isManager = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
 
-  const { data: products = [], isLoading } = useQuery<Product[]>({
-    queryKey: ['products', search, filterStatus, filterCategory, filterBranch],
+  useEffect(() => { setPage(1); }, [debouncedSearch, filterStatus, filterCategory, filterBranch]);
+
+  const { data: result, isLoading } = useQuery<{ data: Product[]; total: number; page: number; totalPages: number }>({
+    queryKey: ['products', debouncedSearch, filterStatus, filterCategory, filterBranch, page],
     queryFn: async () => {
       const params: Record<string, string> = {};
-      if (search) params.search = search;
+      if (debouncedSearch) params.search = debouncedSearch;
       if (filterStatus) params.status = filterStatus;
       if (filterCategory) params.category = filterCategory;
       if (filterBranch) params.branchId = filterBranch;
+      params.page = String(page);
       const { data } = await api.get('/products', { params });
       return data;
     },
   });
+
+  const products = result?.data ?? [];
 
   const { data: branches = [] } = useQuery<{ id: string; name: string }[]>({
     queryKey: ['branches'],
@@ -145,7 +153,7 @@ export default function ProductsPage() {
     <div>
       <PageHeader
         title="สินค้า"
-        subtitle={`ทั้งหมด ${products.length} รายการ`}
+        subtitle={`ทั้งหมด ${result?.total ?? 0} รายการ`}
         action={
           isManager ? (
             <button
@@ -199,7 +207,18 @@ export default function ProductsPage() {
         </select>
       </div>
 
-      <DataTable columns={columns} data={products} isLoading={isLoading} emptyMessage="ไม่พบสินค้า" />
+      <DataTable
+        columns={columns}
+        data={products}
+        isLoading={isLoading}
+        emptyMessage="ไม่พบสินค้า"
+        pagination={result ? {
+          page: result.page,
+          totalPages: result.totalPages,
+          total: result.total,
+          onPageChange: setPage,
+        } : undefined}
+      />
     </div>
   );
 }

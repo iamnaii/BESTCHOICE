@@ -6,7 +6,7 @@ import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer.dto';
 export class CustomersService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(search?: string) {
+  async findAll(search?: string, page = 1, limit = 50) {
     const where: Record<string, unknown> = { deletedAt: null };
 
     if (search) {
@@ -17,13 +17,20 @@ export class CustomersService {
       ];
     }
 
-    return this.prisma.customer.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        _count: { select: { contracts: true } },
-      },
-    });
+    const [data, total] = await Promise.all([
+      this.prisma.customer.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+        include: {
+          _count: { select: { contracts: true } },
+        },
+      }),
+      this.prisma.customer.count({ where }),
+    ]);
+
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   async findOne(id: string) {

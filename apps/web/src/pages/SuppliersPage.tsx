@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
@@ -77,8 +77,8 @@ export default function SuppliersPage() {
       toast.success(editingSupplier ? 'แก้ไข Supplier สำเร็จ' : 'สร้าง Supplier สำเร็จ');
       closeModal();
     },
-    onError: () => {
-      toast.error('เกิดข้อผิดพลาด');
+    onError: (err: unknown) => {
+      toast.error(getErrorMessage(err));
     },
   });
 
@@ -90,8 +90,8 @@ export default function SuppliersPage() {
       queryClient.invalidateQueries({ queryKey: ['suppliers'] });
       toast.success('ปิดใช้งาน Supplier สำเร็จ');
     },
-    onError: () => {
-      toast.error('เกิดข้อผิดพลาด');
+    onError: (err: unknown) => {
+      toast.error(getErrorMessage(err));
     },
   });
 

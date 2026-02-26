@@ -33,4 +33,13 @@ api.interceptors.response.use(
   },
 );
 
+export function getErrorMessage(error: unknown): string {
+  const err = error as { response?: { status?: number; data?: { message?: string | string[] } }; code?: string };
+  if (err.code === 'ECONNABORTED') return 'เซิร์ฟเวอร์ไม่ตอบสนอง กรุณาลองใหม่';
+  if (!err.response) return 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้';
+  if (err.response.status === 429) return 'คำขอถี่เกินไป กรุณารอสักครู่';
+  const msg = err.response.data?.message;
+  return (Array.isArray(msg) ? msg[0] : msg) || 'เกิดข้อผิดพลาด';
+}
+
 export default api;

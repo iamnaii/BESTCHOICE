@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
@@ -33,18 +33,23 @@ export default function BranchesPage() {
 
   const saveMutation = useMutation({
     mutationFn: async (data: { name: string; location: string; phone: string }) => {
+      const payload = {
+        name: data.name,
+        location: data.location || undefined,
+        phone: data.phone || undefined,
+      };
       if (editingBranch) {
-        return api.patch(`/branches/${editingBranch.id}`, data);
+        return api.patch(`/branches/${editingBranch.id}`, payload);
       }
-      return api.post('/branches', data);
+      return api.post('/branches', payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['branches'] });
       toast.success(editingBranch ? 'แก้ไขสาขาสำเร็จ' : 'สร้างสาขาสำเร็จ');
       closeModal();
     },
-    onError: () => {
-      toast.error('เกิดข้อผิดพลาด');
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error));
     },
   });
 

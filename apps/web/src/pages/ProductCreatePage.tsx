@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 
 interface PriceRow {
@@ -95,8 +95,8 @@ export default function ProductCreatePage() {
       toast.success('เพิ่มสินค้าสำเร็จ');
       navigate(`/products/${res.data.id}`);
     },
-    onError: () => {
-      toast.error('เกิดข้อผิดพลาด');
+    onError: (err: unknown) => {
+      toast.error(getErrorMessage(err));
     },
   });
 

@@ -14,6 +14,7 @@ interface Supplier {
   id: string;
   name: string;
   contactName: string;
+  nickname: string | null;
   phone: string;
   phoneSecondary: string | null;
   lineId: string | null;
@@ -28,12 +29,29 @@ interface Supplier {
 const emptyForm = {
   name: '',
   contactName: '',
+  nickname: '',
   phone: '',
   phoneSecondary: '',
   lineId: '',
   taxId: '',
   notes: '',
 };
+
+function formatPhone(value: string): string {
+  const digits = value.replace(/\D/g, '').slice(0, 10);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+  return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
+}
+
+function formatTaxId(value: string): string {
+  const digits = value.replace(/\D/g, '').slice(0, 13);
+  if (digits.length <= 1) return digits;
+  if (digits.length <= 5) return `${digits.slice(0, 1)}-${digits.slice(1)}`;
+  if (digits.length <= 10) return `${digits.slice(0, 1)}-${digits.slice(1, 5)}-${digits.slice(5)}`;
+  if (digits.length <= 12) return `${digits.slice(0, 1)}-${digits.slice(1, 5)}-${digits.slice(5, 10)}-${digits.slice(10)}`;
+  return `${digits.slice(0, 1)}-${digits.slice(1, 5)}-${digits.slice(5, 10)}-${digits.slice(10, 12)}-${digits.slice(12)}`;
+}
 
 export default function SuppliersPage() {
   const { user } = useAuth();
@@ -71,6 +89,7 @@ export default function SuppliersPage() {
       const composedAddress = composeAddress(supplierAddress);
       const payload = {
         ...data,
+        nickname: data.nickname || undefined,
         phoneSecondary: data.phoneSecondary || undefined,
         lineId: data.lineId || undefined,
         address: composedAddress || undefined,
@@ -130,6 +149,7 @@ export default function SuppliersPage() {
     setForm({
       name: supplier.name,
       contactName: supplier.contactName,
+      nickname: supplier.nickname || '',
       phone: supplier.phone,
       phoneSecondary: supplier.phoneSecondary || '',
       lineId: supplier.lineId || '',
@@ -160,9 +180,12 @@ export default function SuppliersPage() {
     },
     {
       key: 'contactName',
-      label: 'ผู้ติดต่อ (ชื่อเล่น)',
+      label: 'ผู้ติดต่อ',
       render: (s: Supplier) => (
-        <span className="text-gray-700">{s.contactName || '-'}</span>
+        <div>
+          <div className="text-gray-700">{s.contactName || '-'}</div>
+          {s.nickname && <div className="text-xs text-gray-400">({s.nickname})</div>}
+        </div>
       ),
     },
     {
@@ -276,7 +299,7 @@ export default function SuppliersPage() {
       <div className="flex gap-3 mb-4">
         <input
           type="text"
-          placeholder="ค้นหาชื่อ, ผู้ติดต่อ, เบอร์โทร, Tax ID..."
+          placeholder="ค้นหาชื่อ, ผู้ติดต่อ, ชื่อเล่น, เบอร์โทร, Tax ID..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
@@ -325,7 +348,7 @@ export default function SuppliersPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อผู้ติดต่อ *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อ - นามสกุล (ผู้ติดต่อ) *</label>
               <input
                 type="text"
                 value={form.contactName}
@@ -335,11 +358,22 @@ export default function SuppliersPage() {
               />
             </div>
             <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อเล่น</label>
+              <input
+                type="text"
+                value={form.nickname}
+                onChange={(e) => setForm({ ...form, nickname: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+              />
+            </div>
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">เบอร์โทรศัพท์ *</label>
               <input
                 type="text"
                 value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                onChange={(e) => setForm({ ...form, phone: formatPhone(e.target.value) })}
+                placeholder="0XX-XXX-XXXX"
+                maxLength={12}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
                 required
               />
@@ -349,7 +383,9 @@ export default function SuppliersPage() {
               <input
                 type="text"
                 value={form.phoneSecondary}
-                onChange={(e) => setForm({ ...form, phoneSecondary: e.target.value })}
+                onChange={(e) => setForm({ ...form, phoneSecondary: formatPhone(e.target.value) })}
+                placeholder="0XX-XXX-XXXX"
+                maxLength={12}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
               />
             </div>
@@ -363,11 +399,13 @@ export default function SuppliersPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">เลข Tax ID</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">เลขประจำตัวผู้เสียภาษี (Tax ID Number)</label>
               <input
                 type="text"
                 value={form.taxId}
-                onChange={(e) => setForm({ ...form, taxId: e.target.value })}
+                onChange={(e) => setForm({ ...form, taxId: formatTaxId(e.target.value) })}
+                placeholder="X-XXXX-XXXXX-XX-X"
+                maxLength={17}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
               />
             </div>

@@ -259,6 +259,7 @@ model Supplier {
   id          String   @id @default(uuid())
   name        String
   contactName String   @map("contact_name")
+  nickname    String?
   phone       String
   phoneSecondary String? @map("phone_secondary")
   lineId      String?  @map("line_id")

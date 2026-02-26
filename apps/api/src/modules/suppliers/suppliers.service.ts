@@ -20,6 +20,7 @@ export class SuppliersService {
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
         { contactName: { contains: search, mode: 'insensitive' } },
+        { nickname: { contains: search, mode: 'insensitive' } },
         { phone: { contains: search } },
         { taxId: { contains: search } },
       ];

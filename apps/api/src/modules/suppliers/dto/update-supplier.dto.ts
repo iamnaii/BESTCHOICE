@@ -11,6 +11,10 @@ export class UpdateSupplierDto {
 
   @IsString()
   @IsOptional()
+  nickname?: string;
+
+  @IsString()
+  @IsOptional()
   phone?: string;
 
   @IsString()

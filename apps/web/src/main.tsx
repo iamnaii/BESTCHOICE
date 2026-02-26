@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from '@/contexts/AuthContext';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import App from './App';
 import './index.css';
 
@@ -17,20 +18,24 @@ const queryClient = new QueryClient({
         return failureCount < 1;
       },
       refetchOnWindowFocus: false,
-      staleTime: 30 * 1000, // 30 seconds - prevent excessive refetching
+      staleTime: 2 * 60 * 1000, // 2 minutes - serve from RAM cache, reduce CPU/network
+      gcTime: 10 * 60 * 1000, // 10 minutes - keep data in memory longer
+      refetchOnMount: 'always', // still refresh on mount but serve stale data immediately
     },
   },
 });
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <AuthProvider>
-          <App />
-          <Toaster position="top-right" />
-        </AuthProvider>
-      </BrowserRouter>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <AuthProvider>
+            <App />
+            <Toaster position="top-right" />
+          </AuthProvider>
+        </BrowserRouter>
+      </QueryClientProvider>
+    </ErrorBoundary>
   </React.StrictMode>,
 );

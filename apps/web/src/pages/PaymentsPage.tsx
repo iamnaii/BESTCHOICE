@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
@@ -90,12 +90,12 @@ export default function PaymentsPage() {
     onError: (err: any) => toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด'),
   });
 
-  const openPayModal = (payment: PendingPayment) => {
+  const openPayModal = useCallback((payment: PendingPayment) => {
     setSelectedPayment(payment);
     const remaining = parseFloat(payment.amountDue) + parseFloat(payment.lateFee) - parseFloat(payment.amountPaid);
     setPayForm({ amount: Math.round(remaining), paymentMethod: 'CASH', notes: '' });
     setShowPayModal(true);
-  };
+  }, []);
 
   const handlePay = () => {
     if (!selectedPayment || payForm.amount <= 0) return;
@@ -108,7 +108,7 @@ export default function PaymentsPage() {
     });
   };
 
-  const pendingColumns = [
+  const pendingColumns = useMemo(() => [
     {
       key: 'contract',
       label: 'สัญญา',
@@ -154,7 +154,7 @@ export default function PaymentsPage() {
         </button>
       ),
     },
-  ];
+  ], [openPayModal]);
 
   return (
     <div>

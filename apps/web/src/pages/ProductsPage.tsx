@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
@@ -80,13 +80,15 @@ export default function ProductsPage() {
     },
   });
 
-  const columns = [
+  const navigateToProduct = useCallback((id: string) => navigate(`/products/${id}`), [navigate]);
+
+  const columns = useMemo(() => [
     {
       key: 'name',
       label: 'สินค้า',
       render: (p: Product) => (
         <button
-          onClick={() => navigate(`/products/${p.id}`)}
+          onClick={() => navigateToProduct(p.id)}
           className="text-left hover:underline"
         >
           <div className="text-primary-600 font-medium">{p.brand} {p.model}</div>
@@ -147,7 +149,7 @@ export default function ProductsPage() {
       label: 'สาขา',
       render: (p: Product) => <span className="text-xs">{p.branch.name}</span>,
     },
-  ];
+  ], [navigateToProduct]);
 
   return (
     <div>

@@ -7,7 +7,15 @@
     <title>ระบบผ่อนชำระ - Best Choice</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f9fafb">
+        <div style="text-align:center">
+          <div style="width:40px;height:40px;border:3px solid #e5e7eb;border-top-color:#4f46e5;border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto"></div>
+          <p style="margin-top:12px;color:#6b7280;font-size:14px;font-family:sans-serif">กำลังโหลด...</p>
+        </div>
+      </div>
+      <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

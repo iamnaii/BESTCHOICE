@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -63,12 +63,14 @@ export default function ContractsPage() {
 
   const contracts = result?.data ?? [];
 
-  const columns = [
+  const navigateToContract = useCallback((id: string) => navigate(`/contracts/${id}`), [navigate]);
+
+  const columns = useMemo(() => [
     {
       key: 'contractNumber',
       label: 'เลขสัญญา',
       render: (c: Contract) => (
-        <button onClick={() => navigate(`/contracts/${c.id}`)} className="font-mono text-sm text-primary-600 hover:underline">
+        <button onClick={() => navigateToContract(c.id)} className="font-mono text-sm text-primary-600 hover:underline">
           {c.contractNumber}
         </button>
       ),
@@ -115,7 +117,7 @@ export default function ContractsPage() {
       label: 'วันที่สร้าง',
       render: (c: Contract) => <span className="text-xs">{new Date(c.createdAt).toLocaleDateString('th-TH')}</span>,
     },
-  ];
+  ], [navigateToContract]);
 
   return (
     <div>

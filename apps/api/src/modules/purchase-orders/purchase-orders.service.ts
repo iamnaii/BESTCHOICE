@@ -14,7 +14,7 @@ export class PurchaseOrdersService {
     return this.prisma.purchaseOrder.findMany({
       where,
       include: {
-        supplier: { select: { id: true, name: true, contactName: true, phone: true } },
+        supplier: { select: { id: true, name: true, contactName: true, phone: true, hasVat: true } },
         createdBy: { select: { id: true, name: true } },
         approvedBy: { select: { id: true, name: true } },
         items: true,
@@ -57,6 +57,13 @@ export class PurchaseOrdersService {
   }
 
   async create(dto: CreatePODto, userId: string) {
+    // Validate supplier exists
+    const supplier = await this.prisma.supplier.findUnique({
+      where: { id: dto.supplierId },
+      select: { hasVat: true },
+    });
+    if (!supplier) throw new NotFoundException('ไม่พบ Supplier');
+
     // Generate PO number: YYYYMMDD-NNN format
     const today = new Date();
     const datePrefix = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
@@ -107,7 +114,7 @@ export class PurchaseOrdersService {
         },
       },
       include: {
-        supplier: { select: { id: true, name: true } },
+        supplier: { select: { id: true, name: true, hasVat: true } },
         items: true,
       },
     });

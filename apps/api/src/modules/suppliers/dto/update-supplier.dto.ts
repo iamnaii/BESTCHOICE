@@ -33,6 +33,10 @@ export class UpdateSupplierDto {
   @IsOptional()
   taxId?: string;
 
+  @IsBoolean()
+  @IsOptional()
+  hasVat?: boolean;
+
   @IsString()
   @IsOptional()
   notes?: string;

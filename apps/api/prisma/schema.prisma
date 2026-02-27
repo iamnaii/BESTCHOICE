@@ -288,6 +288,7 @@ model Supplier {
   lineId      String?  @map("line_id")
   address     String?
   taxId       String?  @map("tax_id")
+  hasVat      Boolean  @default(false) @map("has_vat")
   notes       String?
   isActive    Boolean  @default(true) @map("is_active")
   createdAt   DateTime @default(now()) @map("created_at")

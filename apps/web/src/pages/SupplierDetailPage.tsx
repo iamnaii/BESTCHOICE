@@ -17,6 +17,7 @@ interface Supplier {
   lineId: string | null;
   address: string | null;
   taxId: string | null;
+  hasVat: boolean;
   notes: string | null;
   isActive: boolean;
   createdAt: string;
@@ -242,6 +243,16 @@ export default function SupplierDetailPage() {
           <InfoField label="เบอร์สำรอง" value={supplier.phoneSecondary} />
           <InfoField label="LINE ID" value={supplier.lineId} />
           <InfoField label="เลขประจำตัวผู้เสียภาษี (Tax ID Number)" value={supplier.taxId} />
+          <div>
+            <div className="text-xs text-gray-500 mb-0.5">สถานะ VAT</div>
+            <span
+              className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                supplier.hasVat ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
+              }`}
+            >
+              {supplier.hasVat ? 'มี VAT (7%)' : 'ไม่มี VAT'}
+            </span>
+          </div>
           <InfoField
             label="วันที่เพิ่ม"
             value={new Date(supplier.createdAt).toLocaleDateString('th-TH')}

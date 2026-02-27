@@ -204,8 +204,12 @@ export class ContractsService {
     const contract = await this.findOne(id);
 
     await this.prisma.$transaction(async (tx) => {
-      // Mark all pending payments as paid with their due amounts
-      const unpaidPayments = contract.payments.filter((p) => p.status !== 'PAID');
+      // Get all unpaid payments and record actual amountDue for each
+      const unpaidPayments = await tx.payment.findMany({
+        where: { contractId: id, status: { not: 'PAID' } },
+        orderBy: { installmentNo: 'asc' },
+      });
+
       for (const payment of unpaidPayments) {
         await tx.payment.update({
           where: { id: payment.id },

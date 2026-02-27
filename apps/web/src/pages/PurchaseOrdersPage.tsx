@@ -43,9 +43,10 @@ interface PurchaseOrder {
   orderDate: string;
   expectedDate: string | null;
   status: string;
+  subtotal: string;
+  vatAmount: string;
   totalAmount: string;
   discount: string;
-  vatAmount: string;
   netAmount: string;
   paymentStatus: string;
   paymentMethod: string | null;
@@ -53,7 +54,7 @@ interface PurchaseOrder {
   paymentNotes: string | null;
   attachments: string[];
   notes: string | null;
-  supplier: { id: string; name: string; contactName: string; phone: string };
+  supplier: { id: string; name: string; contactName: string; phone: string; hasVat: boolean };
   createdBy: { id: string; name: string };
   approvedBy: { id: string; name: string } | null;
   items: POItem[];
@@ -151,7 +152,7 @@ export default function PurchaseOrdersPage() {
   });
   const [items, setItems] = useState<ItemForm[]>([{ ...emptyItem }]);
 
-  const { data: suppliersRes } = useQuery<{ data: { id: string; name: string; contactName: string }[] }>({
+  const { data: suppliersRes } = useQuery<{ data: { id: string; name: string; contactName: string; hasVat: boolean }[] }>({
     queryKey: ['suppliers-for-po'],
     queryFn: async () => (await api.get('/suppliers?limit=999&isActive=true')).data,
   });
@@ -376,7 +377,11 @@ export default function PurchaseOrdersPage() {
     });
   };
 
-  const totalAmount = items.reduce((sum, i) => sum + Number(i.quantity || 0) * Number(i.unitPrice || 0), 0);
+  const subtotal = items.reduce((sum, i) => sum + Number(i.quantity || 0) * Number(i.unitPrice || 0), 0);
+  const selectedSupplier = suppliers.find((s) => s.id === form.supplierId);
+  const supplierHasVat = selectedSupplier?.hasVat ?? false;
+  const vatAmount = supplierHasVat ? Math.round(subtotal * 0.07 * 100) / 100 : 0;
+  const totalAmount = subtotal + vatAmount;
 
   const selectClass = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none';
   const inputClass = selectClass;
@@ -422,7 +427,12 @@ export default function PurchaseOrdersPage() {
       key: 'totalAmount',
       label: 'ยอดรวม',
       render: (po: PurchaseOrder) => (
-        <span className="text-sm font-medium">{Number(po.totalAmount).toLocaleString()} บาท</span>
+        <div>
+          <span className="text-sm font-medium">{Number(po.totalAmount).toLocaleString()} บาท</span>
+          {Number(po.vatAmount) > 0 && (
+            <div className="text-xs text-blue-600">รวม VAT {Number(po.vatAmount).toLocaleString()}</div>
+          )}
+        </div>
       ),
     },
     {
@@ -548,9 +558,20 @@ export default function PurchaseOrdersPage() {
             >
               <option value="">-- เลือก Supplier --</option>
               {suppliers.map((s) => (
-                <option key={s.id} value={s.id}>{s.name} ({s.contactName})</option>
+                <option key={s.id} value={s.id}>{s.name} ({s.contactName}){s.hasVat ? ' [VAT]' : ''}</option>
               ))}
             </select>
+            {selectedSupplier && (
+              <div className="mt-1">
+                <span
+                  className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                    supplierHasVat ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
+                  }`}
+                >
+                  {supplierHasVat ? 'Supplier มี VAT - จะคำนวณ VAT 7% อัตโนมัติ' : 'Supplier ไม่มี VAT'}
+                </span>
+              </div>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>

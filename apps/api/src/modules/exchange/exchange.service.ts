@@ -141,7 +141,7 @@ export class ExchangeService {
 
       const interestTotal = sellingPrice * interestRate * totalMonths;
       const financedAmount = sellingPrice - downPayment + interestTotal;
-      const monthlyPayment = financedAmount / totalMonths;
+      const monthlyPayment = Math.ceil(financedAmount / totalMonths);
 
       // Generate new contract number
       const lastContract = await tx.contract.findFirst({

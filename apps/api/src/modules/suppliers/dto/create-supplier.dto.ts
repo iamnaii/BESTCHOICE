@@ -30,6 +30,10 @@ export class CreateSupplierDto {
   @IsOptional()
   taxId?: string;
 
+  @IsBoolean()
+  @IsOptional()
+  hasVat?: boolean;
+
   @IsString()
   @IsOptional()
   notes?: string;

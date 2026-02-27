@@ -85,8 +85,9 @@ export class ContractsService {
     }
 
     // Calculate installment (SPEC Section 3.3)
-    const interestTotal = dto.sellingPrice * interestRate * dto.totalMonths;
-    const financedAmount = (dto.sellingPrice - dto.downPayment) + interestTotal;
+    const principal = dto.sellingPrice - dto.downPayment;
+    const interestTotal = principal * interestRate * dto.totalMonths;
+    const financedAmount = principal + interestTotal;
     const monthlyPayment = Math.ceil(financedAmount / dto.totalMonths);
 
     // Generate contract number
@@ -211,12 +212,13 @@ export class ContractsService {
       });
 
       for (const payment of unpaidPayments) {
+        const remaining = Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid);
         await tx.payment.update({
           where: { id: payment.id },
           data: {
             status: 'PAID',
             paidDate: new Date(),
-            amountPaid: Number(payment.amountDue) + Number(payment.lateFee),
+            amountPaid: Number(payment.amountPaid) + remaining,
             paymentMethod: paymentMethod as any,
           },
         });

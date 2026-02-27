@@ -139,8 +139,9 @@ export class ExchangeService {
         throw new BadRequestException('จำนวนงวดต้องอยู่ระหว่าง 6-12 เดือน');
       }
 
-      const interestTotal = sellingPrice * interestRate * totalMonths;
-      const financedAmount = sellingPrice - downPayment + interestTotal;
+      const principal = sellingPrice - downPayment;
+      const interestTotal = principal * interestRate * totalMonths;
+      const financedAmount = principal + interestTotal;
       const monthlyPayment = Math.ceil(financedAmount / totalMonths);
 
       // Generate new contract number

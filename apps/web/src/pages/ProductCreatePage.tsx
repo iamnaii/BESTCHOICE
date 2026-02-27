@@ -27,6 +27,11 @@ const accessoryTypes = [
   { value: 'อื่นๆ', label: 'อื่นๆ' },
 ];
 
+const chargerConnectorTypes = [
+  { value: 'Lightning', label: 'Lightning' },
+  { value: 'Type-C', label: 'Type-C' },
+];
+
 const statusOptions = [
   { value: 'IN_STOCK', label: 'พร้อมขาย' },
   { value: 'PO_RECEIVED', label: 'รับจาก PO' },
@@ -107,8 +112,16 @@ export default function ProductCreatePage() {
   const createMutation = useMutation({
     mutationFn: async () => {
       const isAccessory = form.category === 'ACCESSORY';
+      const isCharger = isAccessory && form.accessoryType === 'ชุดชาร์จ';
       const autoName = isAccessory
-        ? [form.accessoryType, form.accessoryBrand, form.model ? `สำหรับ ${form.model}` : ''].filter(Boolean).join(' ')
+        ? (isCharger
+            ? [form.accessoryType, form.accessoryBrand, form.model].filter(Boolean).join(' ')
+            : (() => {
+                const accParts = [form.accessoryType, form.accessoryBrand].filter(Boolean);
+                return form.model
+                  ? `${accParts.join(' ')} สำหรับ ${form.model}`
+                  : accParts.join(' ');
+              })())
         : [form.brand, form.model, form.color, form.storage].filter(Boolean).join(' ');
       const payload = {
         name: form.name || autoName,
@@ -212,14 +225,30 @@ export default function ProductCreatePage() {
   };
 
   const handleCategoryChange = (newCategory: string) => {
-    setForm({ ...form, category: newCategory, model: '', color: '', storage: '', accessoryType: '', accessoryBrand: '' });
+    setForm({ ...form, category: newCategory, brand: '', model: '', color: '', storage: '', accessoryType: '', accessoryBrand: '' });
+  };
+
+  const handleAccessoryTypeChange = (newType: string) => {
+    setForm({ ...form, accessoryType: newType, brand: '', model: '', accessoryBrand: '' });
+  };
+
+  // Toggle model for multi-select (accessories)
+  const toggleModel = (modelName: string) => {
+    const current = form.model ? form.model.split(', ').filter(Boolean) : [];
+    const newModels = current.includes(modelName)
+      ? current.filter((m) => m !== modelName)
+      : [...current, modelName];
+    setForm({ ...form, model: newModels.join(', ') });
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.brand) { toast.error('กรุณาเลือกยี่ห้อ'); return; }
-    if (!form.model) { toast.error('กรุณาเลือกรุ่น'); return; }
-    if (form.category === 'ACCESSORY' && !form.accessoryType) { toast.error('กรุณาเลือกประเภทอุปกรณ์'); return; }
+    const isAccessory = form.category === 'ACCESSORY';
+    const isCharger = isAccessory && form.accessoryType === 'ชุดชาร์จ';
+    if (!isAccessory && !form.brand) { toast.error('กรุณาเลือกยี่ห้อ'); return; }
+    if (!isCharger && !isAccessory && !form.model) { toast.error('กรุณาเลือกรุ่น'); return; }
+    if (isAccessory && !form.accessoryType) { toast.error('กรุณาเลือกประเภทอุปกรณ์'); return; }
+    if (isCharger && !form.model) { toast.error('กรุณาเลือกชนิดชุดชาร์จ'); return; }
     if (!form.branchId) { toast.error('กรุณาเลือกสาขา'); return; }
     if (!form.costPrice) { toast.error('กรุณาระบุราคาทุน'); return; }
     if (prices.filter((p) => p.label && p.amount).length === 0) {
@@ -246,18 +275,7 @@ export default function ProductCreatePage() {
         <div className="bg-white rounded-lg border p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">ข้อมูลสินค้า</h2>
           <div className="grid grid-cols-2 gap-4">
-            {/* ยี่ห้อ / สำหรับยี่ห้อ */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                {form.category === 'ACCESSORY' ? 'สำหรับยี่ห้อ *' : 'ยี่ห้อ *'}
-              </label>
-              <select value={form.brand} onChange={(e) => handleBrandChange(e.target.value)} className={inputCls} required>
-                <option value="">{form.category === 'ACCESSORY' ? 'เลือกยี่ห้อโทรศัพท์' : 'เลือกยี่ห้อ'}</option>
-                {brands.map((b) => <option key={b} value={b}>{b}</option>)}
-              </select>
-            </div>
-
-            {/* ประเภท */}
+            {/* ประเภท - FIRST */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">ประเภท *</label>
               <select value={form.category} onChange={(e) => handleCategoryChange(e.target.value)} className={inputCls}>
@@ -265,30 +283,66 @@ export default function ProductCreatePage() {
               </select>
             </div>
 
-            {/* รุ่น / สำหรับรุ่น */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                {form.category === 'ACCESSORY' ? 'สำหรับรุ่น *' : 'รุ่น *'}
-              </label>
-              <select value={form.model} onChange={(e) => handleModelChange(e.target.value)} className={inputCls} required disabled={!form.brand}>
-                <option value="">{form.category === 'ACCESSORY' ? 'เลือกรุ่นโทรศัพท์' : 'เลือกรุ่น'}</option>
-                {availableModels.map((m) => <option key={m.name} value={m.name}>{m.name}</option>)}
-              </select>
-              {form.brand && availableModels.length === 0 && (
-                <p className="text-xs text-gray-400 mt-1">ไม่พบรุ่นสำหรับประเภทนี้</p>
-              )}
-            </div>
-
             {form.category === 'ACCESSORY' ? (
               <>
                 {/* ประเภทอุปกรณ์ */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">ประเภทอุปกรณ์ *</label>
-                  <select value={form.accessoryType} onChange={(e) => setForm({ ...form, accessoryType: e.target.value })} className={inputCls} required>
+                  <select value={form.accessoryType} onChange={(e) => handleAccessoryTypeChange(e.target.value)} className={inputCls} required>
                     <option value="">เลือกประเภทอุปกรณ์</option>
                     {accessoryTypes.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
+
+                {form.accessoryType === 'ชุดชาร์จ' ? (
+                  /* Charger: connector type */
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">ชนิด *</label>
+                    <select value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} className={inputCls} required>
+                      <option value="">เลือกชนิด</option>
+                      {chargerConnectorTypes.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                    </select>
+                  </div>
+                ) : form.accessoryType ? (
+                  /* Non-charger: compatible phone brand */
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">สำหรับยี่ห้อ</label>
+                    <select value={form.brand} onChange={(e) => handleBrandChange(e.target.value)} className={inputCls}>
+                      <option value="">เลือกยี่ห้อโทรศัพท์</option>
+                      {brands.map((b) => <option key={b} value={b}>{b}</option>)}
+                    </select>
+                  </div>
+                ) : null}
+
+                {/* Multi-model selection for non-charger accessories */}
+                {form.accessoryType && form.accessoryType !== 'ชุดชาร์จ' && form.brand && availableModels.length > 0 && (
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">สำหรับรุ่น (เลือกได้หลายรุ่น)</label>
+                    <div className="flex flex-wrap gap-1.5 p-2 border border-gray-300 rounded-lg bg-gray-50 max-h-40 overflow-y-auto">
+                      {availableModels.map((m) => {
+                        const selectedModels = form.model ? form.model.split(', ').filter(Boolean) : [];
+                        const isSelected = selectedModels.includes(m.name);
+                        return (
+                          <button
+                            key={m.name}
+                            type="button"
+                            onClick={() => toggleModel(m.name)}
+                            className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                              isSelected
+                                ? 'bg-purple-600 text-white border-purple-600'
+                                : 'bg-white text-gray-600 border-gray-300 hover:border-purple-400 hover:text-purple-600'
+                            }`}
+                          >
+                            {m.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {form.model && (
+                      <div className="text-xs text-purple-500 mt-1">เลือกแล้ว {form.model.split(', ').filter(Boolean).length} รุ่น</div>
+                    )}
+                  </div>
+                )}
 
                 {/* ยี่ห้ออุปกรณ์ */}
                 <div>
@@ -304,6 +358,27 @@ export default function ProductCreatePage() {
               </>
             ) : (
               <>
+                {/* ยี่ห้อ */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">ยี่ห้อ *</label>
+                  <select value={form.brand} onChange={(e) => handleBrandChange(e.target.value)} className={inputCls} required>
+                    <option value="">เลือกยี่ห้อ</option>
+                    {brands.map((b) => <option key={b} value={b}>{b}</option>)}
+                  </select>
+                </div>
+
+                {/* รุ่น */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">รุ่น *</label>
+                  <select value={form.model} onChange={(e) => handleModelChange(e.target.value)} className={inputCls} required disabled={!form.brand}>
+                    <option value="">เลือกรุ่น</option>
+                    {availableModels.map((m) => <option key={m.name} value={m.name}>{m.name}</option>)}
+                  </select>
+                  {form.brand && availableModels.length === 0 && (
+                    <p className="text-xs text-gray-400 mt-1">ไม่พบรุ่นสำหรับประเภทนี้</p>
+                  )}
+                </div>
+
                 {/* สี */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">สี</label>
@@ -387,7 +462,12 @@ export default function ProductCreatePage() {
           {/* Accessory auto name preview */}
           {form.category === 'ACCESSORY' && (form.accessoryType || form.accessoryBrand) && (
             <div className="mt-3 text-sm text-purple-600 bg-purple-50 border border-purple-200 rounded-lg px-3 py-2">
-              ชื่อสินค้าอัตโนมัติ: {[form.accessoryType, form.accessoryBrand, form.model ? `สำหรับ ${form.model}` : ''].filter(Boolean).join(' ')}
+              ชื่อสินค้าอัตโนมัติ: {(() => {
+                const isCharger = form.accessoryType === 'ชุดชาร์จ';
+                if (isCharger) return [form.accessoryType, form.accessoryBrand, form.model].filter(Boolean).join(' ');
+                const accParts = [form.accessoryType, form.accessoryBrand].filter(Boolean);
+                return form.model ? `${accParts.join(' ')} สำหรับ ${form.model}` : accParts.join(' ');
+              })()}
             </div>
           )}
 

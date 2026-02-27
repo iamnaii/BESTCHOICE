@@ -234,15 +234,23 @@ export default function ProductDetailPage() {
           <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${s.className}`}>{s.label}</span>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          <InfoField label={product.category === 'ACCESSORY' ? 'สำหรับยี่ห้อ' : 'ยี่ห้อ'} value={product.brand} />
-          <InfoField label={product.category === 'ACCESSORY' ? 'สำหรับรุ่น' : 'รุ่น'} value={product.model} />
           {product.category === 'ACCESSORY' ? (
             <>
               <InfoField label="ประเภทอุปกรณ์" value={product.accessoryType} />
+              {product.accessoryType === 'ชุดชาร์จ' ? (
+                <InfoField label="ชนิด" value={product.model} />
+              ) : (
+                <>
+                  <InfoField label="สำหรับยี่ห้อ" value={product.brand} />
+                  <InfoField label="สำหรับรุ่น" value={product.model} />
+                </>
+              )}
               <InfoField label="ยี่ห้ออุปกรณ์" value={product.accessoryBrand} />
             </>
           ) : (
             <>
+              <InfoField label="ยี่ห้อ" value={product.brand} />
+              <InfoField label="รุ่น" value={product.model} />
               <InfoField label="สี" value={product.color} />
               <InfoField label="ความจุ" value={product.storage} />
               <InfoField label="IMEI" value={product.imeiSerial} mono />

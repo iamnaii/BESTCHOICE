@@ -116,7 +116,7 @@ export default function ContractCreatePage() {
   const canNext = () => {
     if (step === 0) return !!selectedProduct;
     if (step === 1) return !!selectedCustomer;
-    if (step === 2) return downPayment > 0 && totalMonths >= 6;
+    if (step === 2) return downPayment >= sellingPrice * 0.15 && totalMonths >= 6;
     return true;
   };
 

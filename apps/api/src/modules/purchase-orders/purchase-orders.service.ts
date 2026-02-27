@@ -55,12 +55,13 @@ export class PurchaseOrdersService {
       where: { id: dto.supplierId },
       select: { hasVat: true },
     });
+    if (!supplier) throw new NotFoundException('ไม่พบ Supplier');
 
     // Calculate subtotal
     const subtotal = dto.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
 
     // Calculate VAT if supplier has VAT (7%)
-    const hasVat = supplier?.hasVat ?? false;
+    const hasVat = supplier.hasVat;
     const vatAmount = hasVat ? Math.round(subtotal * 0.07 * 100) / 100 : 0;
     const totalAmount = subtotal + vatAmount;
 

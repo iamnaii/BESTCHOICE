@@ -203,19 +203,22 @@ export class PaymentsService {
     });
 
     if (unpaid === 0) {
-      // All installments paid → mark contract as COMPLETED
-      await this.prisma.contract.update({
-        where: { id: contractId },
-        data: { status: 'COMPLETED' },
-      });
-
-      // Update product status to SOLD_INSTALLMENT
       const contract = await this.prisma.contract.findUnique({ where: { id: contractId } });
       if (contract) {
-        await this.prisma.product.update({
-          where: { id: contract.productId },
-          data: { status: 'SOLD_INSTALLMENT' },
+        // All installments paid → mark contract as COMPLETED
+        await this.prisma.contract.update({
+          where: { id: contractId },
+          data: { status: 'COMPLETED' },
         });
+
+        // Only update product status if it's currently RESERVED or SOLD_INSTALLMENT
+        const product = await this.prisma.product.findUnique({ where: { id: contract.productId } });
+        if (product && ['RESERVED', 'SOLD_INSTALLMENT'].includes(product.status)) {
+          await this.prisma.product.update({
+            where: { id: contract.productId },
+            data: { status: 'SOLD_INSTALLMENT' },
+          });
+        }
       }
     }
   }

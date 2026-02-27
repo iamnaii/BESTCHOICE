@@ -88,10 +88,12 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div className="mt-6 p-3 bg-gray-50 rounded-lg text-sm text-gray-500">
-            <p className="font-medium mb-1">บัญชีทดสอบ:</p>
-            <p>admin@bestchoice.com / admin1234</p>
-          </div>
+          {import.meta.env.DEV && (
+            <div className="mt-6 p-3 bg-gray-50 rounded-lg text-sm text-gray-500">
+              <p className="font-medium mb-1">บัญชีทดสอบ:</p>
+              <p>admin@bestchoice.com / admin1234</p>
+            </div>
+          )}
         </div>
       </div>
     </div>

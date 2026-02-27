@@ -19,6 +19,11 @@ export class PurchaseOrdersController {
     return this.purchaseOrdersService.findAll({ status, supplierId });
   }
 
+  @Get('accounts-payable')
+  accountsPayable() {
+    return this.purchaseOrdersService.getAccountsPayable();
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.purchaseOrdersService.findOne(id);

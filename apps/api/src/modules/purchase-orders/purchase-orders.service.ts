@@ -64,17 +64,18 @@ export class PurchaseOrdersService {
     });
     if (!supplier) throw new NotFoundException('ไม่พบ Supplier');
 
-    // Generate PO number: YYYYMMDD-NNN format
+    // Generate PO number: PO-YYYY-MM-NNN format (monthly sequence)
     const today = new Date();
-    const datePrefix = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
-    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    const todayEnd = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
-    const todayCount = await this.prisma.purchaseOrder.count({
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const monthStart = new Date(year, today.getMonth(), 1);
+    const monthEnd = new Date(year, today.getMonth() + 1, 1);
+    const monthCount = await this.prisma.purchaseOrder.count({
       where: {
-        createdAt: { gte: todayStart, lt: todayEnd },
+        createdAt: { gte: monthStart, lt: monthEnd },
       },
     });
-    const poNumber = `${datePrefix}${String(todayCount + 1).padStart(3, '0')}`;
+    const poNumber = `PO-${year}-${month}-${String(monthCount + 1).padStart(3, '0')}`;
 
     // Calculate total with discount & VAT (only if supplier has VAT)
     const totalAmount = dto.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
@@ -187,6 +188,89 @@ export class PurchaseOrdersService {
         items: true,
       },
     });
+  }
+
+  async getAccountsPayable() {
+    // Get all non-cancelled POs that are not fully paid
+    const pos = await this.prisma.purchaseOrder.findMany({
+      where: {
+        status: { not: 'CANCELLED' },
+        paymentStatus: { not: 'FULLY_PAID' },
+      },
+      include: {
+        supplier: { select: { id: true, name: true, contactName: true, phone: true } },
+        items: { select: { brand: true, model: true, category: true, quantity: true, unitPrice: true, accessoryType: true } },
+      },
+      orderBy: { orderDate: 'asc' },
+    });
+
+    // Group by supplier
+    const supplierMap = new Map<string, {
+      supplier: { id: string; name: string; contactName: string; phone: string };
+      totalNet: number;
+      totalPaid: number;
+      totalRemaining: number;
+      poCount: number;
+      pos: {
+        id: string;
+        poNumber: string;
+        orderDate: string;
+        netAmount: number;
+        paidAmount: number;
+        remaining: number;
+        paymentStatus: string;
+        status: string;
+        itemsSummary: string;
+      }[];
+    }>();
+
+    for (const po of pos) {
+      const net = Number(po.netAmount);
+      const paid = Number(po.paidAmount);
+      const remaining = net - paid;
+
+      if (remaining <= 0) continue;
+
+      const entry = supplierMap.get(po.supplierId) || {
+        supplier: po.supplier as any,
+        totalNet: 0,
+        totalPaid: 0,
+        totalRemaining: 0,
+        poCount: 0,
+        pos: [] as { id: string; poNumber: string; orderDate: string; netAmount: number; paidAmount: number; remaining: number; paymentStatus: string; status: string; itemsSummary: string }[],
+      };
+
+      entry.totalNet += net;
+      entry.totalPaid += paid;
+      entry.totalRemaining += remaining;
+      entry.poCount++;
+
+      // Build items summary
+      const itemsSummary = po.items.map((i) =>
+        i.category === 'ACCESSORY'
+          ? `${i.accessoryType || ''} x${i.quantity}`
+          : `${i.brand} ${i.model} x${i.quantity}`
+      ).join(', ');
+
+      entry.pos.push({
+        id: po.id,
+        poNumber: po.poNumber,
+        orderDate: po.orderDate.toISOString(),
+        netAmount: net,
+        paidAmount: paid,
+        remaining,
+        paymentStatus: po.paymentStatus,
+        status: po.status,
+        itemsSummary,
+      });
+
+      supplierMap.set(po.supplierId, entry);
+    }
+
+    const suppliers = Array.from(supplierMap.values()).sort((a, b) => b.totalRemaining - a.totalRemaining);
+    const grandTotal = suppliers.reduce((sum, s) => sum + s.totalRemaining, 0);
+
+    return { grandTotal, suppliers };
   }
 
   /**

@@ -457,7 +457,6 @@ export class ProductsService {
   async getStockDashboard(branchId?: string) {
     const branchFilter: Record<string, unknown> = branchId ? { branchId } : {};
     const baseWhere = { deletedAt: null, ...branchFilter };
-    const inStockWhere = { ...baseWhere, status: 'IN_STOCK' as const };
     const now = new Date();
 
     // --- Parallel batch queries ---
@@ -480,7 +479,7 @@ export class ProductsService {
       this.prisma.stockTransfer.count({
         where: { status: 'PENDING', ...(branchId ? { toBranchId: branchId } : {}) },
       }),
-      // Products created in last 6 months (stock in = newly created products)
+      // Products created in last 6 months (stock in — includes soft-deleted to track total received volume)
       this.prisma.product.findMany({
         where: {
           createdAt: { gte: new Date(now.getFullYear(), now.getMonth() - 5, 1) },

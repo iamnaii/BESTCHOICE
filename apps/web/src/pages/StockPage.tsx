@@ -156,11 +156,6 @@ export default function StockPage() {
           className="text-left hover:underline"
         >
           <div className="text-primary-600 font-medium">{p.brand} {p.model}</div>
-          <div className="text-xs text-gray-500">
-            {p.color && <span>{p.color}</span>}
-            {p.color && p.storage && <span> / </span>}
-            {p.storage && <span>{p.storage}</span>}
-          </div>
           {p.imeiSerial && <div className="text-xs text-gray-400 font-mono">{p.imeiSerial}</div>}
         </button>
       ),
@@ -380,9 +375,9 @@ export default function StockPage() {
                   <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-400 inline-block" /> รับเข้า</span>
                   <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-indigo-400 inline-block" /> ขายออก</span>
                 </div>
-                {dashboard.stockMovement.map((m) => {
+                {(() => {
                   const maxVal = Math.max(...dashboard.stockMovement.map((x) => Math.max(x.in, x.out)), 1);
-                  return (
+                  return dashboard.stockMovement.map((m) => (
                     <div key={m.month} className="space-y-1">
                       <div className="text-xs text-gray-500 font-medium">{m.month}</div>
                       <div className="flex items-center gap-2">
@@ -398,8 +393,8 @@ export default function StockPage() {
                         </div>
                       </div>
                     </div>
-                  );
-                })}
+                  ));
+                })()}
               </div>
             </div>
           </div>

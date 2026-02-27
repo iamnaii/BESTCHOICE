@@ -66,6 +66,7 @@ const statusLabels: Record<string, { label: string; className: string }> = {
 
 const poStatusLabels: Record<string, { label: string; className: string }> = {
   DRAFT: { label: 'ร่าง', className: 'bg-gray-100 text-gray-700' },
+  PENDING: { label: 'รอรับสินค้า', className: 'bg-orange-100 text-orange-700' },
   APPROVED: { label: 'อนุมัติ', className: 'bg-blue-100 text-blue-700' },
   PARTIALLY_RECEIVED: { label: 'รับบางส่วน', className: 'bg-yellow-100 text-yellow-700' },
   FULLY_RECEIVED: { label: 'รับครบ', className: 'bg-green-100 text-green-700' },

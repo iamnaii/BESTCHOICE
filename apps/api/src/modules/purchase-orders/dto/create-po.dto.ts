@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsDateString, IsArray, ValidateNested } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsDateString, IsArray, ValidateNested, IsIn } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class POItemDto {
@@ -63,4 +63,40 @@ export class ReceivePODto {
   @ValidateNested({ each: true })
   @Type(() => ReceiveItemDto)
   items: ReceiveItemDto[];
+}
+
+// New goods receiving DTOs
+export class GoodsReceivingItemDto {
+  @IsString()
+  poItemId: string;
+
+  @IsString()
+  @IsOptional()
+  imeiSerial?: string;
+
+  @IsString()
+  @IsOptional()
+  serialNumber?: string;
+
+  @IsArray()
+  @IsOptional()
+  photos?: string[];
+
+  @IsIn(['PASS', 'REJECT'])
+  status: 'PASS' | 'REJECT';
+
+  @IsString()
+  @IsOptional()
+  rejectReason?: string;
+}
+
+export class GoodsReceivingDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => GoodsReceivingItemDto)
+  items: GoodsReceivingItemDto[];
+
+  @IsString()
+  @IsOptional()
+  notes?: string;
 }

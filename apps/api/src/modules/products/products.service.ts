@@ -201,24 +201,117 @@ export class ProductsService {
     const toBranch = await this.prisma.branch.findUnique({ where: { id: dto.toBranchId } });
     if (!toBranch) throw new NotFoundException('ไม่พบสาขาปลายทาง');
 
-    // Create transfer record and update product branch
-    const [transfer] = await this.prisma.$transaction([
-      this.prisma.stockTransfer.create({
+    // Create transfer record with PENDING status (product doesn't move yet)
+    const transfer = await this.prisma.stockTransfer.create({
+      data: {
+        productId,
+        fromBranchId: product.branchId,
+        toBranchId: dto.toBranchId,
+        transferredBy: userId,
+        notes: dto.notes,
+        status: 'PENDING',
+      },
+      include: {
+        fromBranch: { select: { id: true, name: true } },
+        toBranch: { select: { id: true, name: true } },
+      },
+    });
+
+    return transfer;
+  }
+
+  async getPendingTransfers(branchId?: string) {
+    const where: Record<string, unknown> = { status: 'PENDING' };
+    if (branchId) where.toBranchId = branchId;
+
+    return this.prisma.stockTransfer.findMany({
+      where,
+      include: {
+        fromBranch: { select: { id: true, name: true } },
+        toBranch: { select: { id: true, name: true } },
+        confirmedBy: { select: { id: true, name: true } },
+        product: { select: { id: true, name: true, brand: true, model: true, imeiSerial: true, serialNumber: true, photos: true, status: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async getTransferHistory(filters: { branchId?: string; status?: string }) {
+    const where: Record<string, unknown> = {};
+    if (filters.status) where.status = filters.status;
+    if (filters.branchId) {
+      where.OR = [
+        { fromBranchId: filters.branchId },
+        { toBranchId: filters.branchId },
+      ];
+    }
+
+    return this.prisma.stockTransfer.findMany({
+      where,
+      include: {
+        fromBranch: { select: { id: true, name: true } },
+        toBranch: { select: { id: true, name: true } },
+        confirmedBy: { select: { id: true, name: true } },
+        product: { select: { id: true, name: true, brand: true, model: true, imeiSerial: true, serialNumber: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+  }
+
+  async confirmTransfer(transferId: string, userId: string) {
+    const transfer = await this.prisma.stockTransfer.findUnique({
+      where: { id: transferId },
+    });
+    if (!transfer) throw new NotFoundException('ไม่พบรายการโอน');
+    if (transfer.status !== 'PENDING') {
+      throw new BadRequestException('รายการโอนนี้ไม่อยู่ในสถานะรอยืนยัน');
+    }
+
+    // Confirm transfer: move product to destination branch
+    const [updatedTransfer] = await this.prisma.$transaction([
+      this.prisma.stockTransfer.update({
+        where: { id: transferId },
         data: {
-          productId,
-          fromBranchId: product.branchId,
-          toBranchId: dto.toBranchId,
-          transferredBy: userId,
-          notes: dto.notes,
+          status: 'CONFIRMED',
+          confirmedById: userId,
+          confirmedAt: new Date(),
+        },
+        include: {
+          fromBranch: { select: { id: true, name: true } },
+          toBranch: { select: { id: true, name: true } },
         },
       }),
       this.prisma.product.update({
-        where: { id: productId },
-        data: { branchId: dto.toBranchId },
+        where: { id: transfer.productId },
+        data: { branchId: transfer.toBranchId },
       }),
     ]);
 
-    return transfer;
+    return updatedTransfer;
+  }
+
+  async rejectTransfer(transferId: string, userId: string) {
+    const transfer = await this.prisma.stockTransfer.findUnique({
+      where: { id: transferId },
+    });
+    if (!transfer) throw new NotFoundException('ไม่พบรายการโอน');
+    if (transfer.status !== 'PENDING') {
+      throw new BadRequestException('รายการโอนนี้ไม่อยู่ในสถานะรอยืนยัน');
+    }
+
+    return this.prisma.stockTransfer.update({
+      where: { id: transferId },
+      data: {
+        status: 'REJECTED',
+        confirmedById: userId,
+        confirmedAt: new Date(),
+      },
+      include: {
+        fromBranch: { select: { id: true, name: true } },
+        toBranch: { select: { id: true, name: true } },
+      },
+    });
   }
 
   // === Stock Overview ===

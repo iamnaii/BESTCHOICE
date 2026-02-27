@@ -152,7 +152,7 @@ export default function PurchaseOrdersPage() {
   });
   const [items, setItems] = useState<ItemForm[]>([{ ...emptyItem }]);
 
-  const { data: suppliersRes } = useQuery<{ data: { id: string; name: string; contactName: string; hasVat: boolean; paymentMethod: string | null }[] }>({
+  const { data: suppliersRes } = useQuery<{ data: { id: string; name: string; contactName: string; hasVat: boolean; paymentMethods: { paymentMethod: string; isDefault: boolean }[] }[] }>({
     queryKey: ['suppliers-for-po'],
     queryFn: async () => (await api.get('/suppliers?limit=999&isActive=true')).data,
   });
@@ -555,10 +555,11 @@ export default function PurchaseOrdersPage() {
               onChange={(e) => {
                 const sid = e.target.value;
                 const sup = suppliers.find((s) => s.id === sid);
+                const defaultPm = sup?.paymentMethods?.find((pm) => pm.isDefault) || sup?.paymentMethods?.[0];
                 setForm({
                   ...form,
                   supplierId: sid,
-                  paymentMethod: sup?.paymentMethod || form.paymentMethod,
+                  paymentMethod: defaultPm?.paymentMethod || form.paymentMethod,
                 });
               }}
               className={selectClass}
@@ -578,9 +579,12 @@ export default function PurchaseOrdersPage() {
                 >
                   {supplierHasVat ? 'Supplier มี VAT - จะคำนวณ VAT 7% อัตโนมัติ' : 'Supplier ไม่มี VAT'}
                 </span>
-                {selectedSupplier.paymentMethod && (
+                {selectedSupplier.paymentMethods?.length > 0 && (
                   <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
-                    ชำระ: {selectedSupplier.paymentMethod === 'CASH' ? 'เงินสด' : selectedSupplier.paymentMethod === 'BANK_TRANSFER' ? 'โอนธนาคาร' : selectedSupplier.paymentMethod === 'CHECK' ? 'เช็ค' : selectedSupplier.paymentMethod === 'CREDIT' ? 'เครดิต' : selectedSupplier.paymentMethod}
+                    ชำระ: {selectedSupplier.paymentMethods.map((pm) => {
+                      const labels: Record<string, string> = { CASH: 'เงินสด', BANK_TRANSFER: 'โอนธนาคาร', CHECK: 'เช็ค', CREDIT: 'เครดิต' };
+                      return labels[pm.paymentMethod] || pm.paymentMethod;
+                    }).join(', ')}
                   </span>
                 )}
               </div>

@@ -289,11 +289,6 @@ model Supplier {
   address     String?
   taxId       String?  @map("tax_id")
   hasVat      Boolean  @default(false) @map("has_vat")
-  paymentMethod     String?  @map("payment_method")       // CASH, BANK_TRANSFER, CHECK, CREDIT
-  bankName          String?  @map("bank_name")
-  bankAccountName   String?  @map("bank_account_name")
-  bankAccountNumber String?  @map("bank_account_number")
-  creditTermDays    Int?     @map("credit_term_days")      // เครดิตกี่วัน
   notes       String?
   isActive    Boolean  @default(true) @map("is_active")
   createdAt   DateTime @default(now()) @map("created_at")
@@ -301,8 +296,27 @@ model Supplier {
 
   products       Product[]
   purchaseOrders PurchaseOrder[]
+  paymentMethods SupplierPaymentMethod[]
 
   @@map("suppliers")
+}
+
+model SupplierPaymentMethod {
+  id                String   @id @default(uuid())
+  supplierId        String   @map("supplier_id")
+  paymentMethod     String   @map("payment_method")       // CASH, BANK_TRANSFER, CHECK, CREDIT
+  bankName          String?  @map("bank_name")
+  bankAccountName   String?  @map("bank_account_name")
+  bankAccountNumber String?  @map("bank_account_number")
+  creditTermDays    Int?     @map("credit_term_days")
+  isDefault         Boolean  @default(false) @map("is_default")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@index([supplierId])
+  @@map("supplier_payment_methods")
 }
 
 model PurchaseOrder {

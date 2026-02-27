@@ -7,6 +7,16 @@ import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import { displayAddress } from '@/components/ui/AddressForm';
 
+interface SupplierPaymentMethod {
+  id: string;
+  paymentMethod: string;
+  bankName: string | null;
+  bankAccountName: string | null;
+  bankAccountNumber: string | null;
+  creditTermDays: number | null;
+  isDefault: boolean;
+}
+
 interface Supplier {
   id: string;
   name: string;
@@ -18,11 +28,7 @@ interface Supplier {
   address: string | null;
   taxId: string | null;
   hasVat: boolean;
-  paymentMethod: string | null;
-  bankName: string | null;
-  bankAccountName: string | null;
-  bankAccountNumber: string | null;
-  creditTermDays: number | null;
+  paymentMethods: SupplierPaymentMethod[];
   notes: string | null;
   isActive: boolean;
   createdAt: string;
@@ -297,27 +303,37 @@ export default function SupplierDetailPage() {
         </div>
       </div>
 
-      {/* Payment Info Card */}
+      {/* Payment Methods Card */}
       <div className="bg-white rounded-lg border p-6 mb-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">ข้อมูลการชำระเงิน</h2>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          <div>
-            <div className="text-xs text-gray-500 mb-0.5">วิธีชำระเงิน</div>
-            {supplier.paymentMethod ? (
-              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
-                {paymentMethodLabels[supplier.paymentMethod] || supplier.paymentMethod}
-              </span>
-            ) : (
-              <span className="text-sm text-gray-400">ไม่ระบุ</span>
-            )}
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">ข้อมูลการชำระเงิน ({supplier.paymentMethods?.length || 0} วิธี)</h2>
+        {supplier.paymentMethods?.length ? (
+          <div className="space-y-3">
+            {supplier.paymentMethods.map((pm) => (
+              <div key={pm.id} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
+                    {paymentMethodLabels[pm.paymentMethod] || pm.paymentMethod}
+                  </span>
+                  {pm.isDefault && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-yellow-100 text-yellow-700">
+                      ค่าเริ่มต้น
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {pm.creditTermDays != null && (
+                    <InfoField label="เครดิต" value={`${pm.creditTermDays} วัน`} />
+                  )}
+                  <InfoField label="ธนาคาร" value={pm.bankName} />
+                  <InfoField label="ชื่อบัญชี" value={pm.bankAccountName} />
+                  <InfoField label="เลขบัญชี" value={pm.bankAccountNumber} />
+                </div>
+              </div>
+            ))}
           </div>
-          {supplier.creditTermDays != null && (
-            <InfoField label="เครดิต" value={`${supplier.creditTermDays} วัน`} />
-          )}
-          <InfoField label="ธนาคาร" value={supplier.bankName} />
-          <InfoField label="ชื่อบัญชี" value={supplier.bankAccountName} />
-          <InfoField label="เลขบัญชี" value={supplier.bankAccountNumber} />
-        </div>
+        ) : (
+          <p className="text-sm text-gray-400">ยังไม่มีข้อมูลการชำระเงิน</p>
+        )}
       </div>
 
       {/* Summary Stats */}

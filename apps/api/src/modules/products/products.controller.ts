@@ -48,6 +48,11 @@ export class ProductsController {
     });
   }
 
+  @Get('stock/dashboard')
+  getStockDashboard(@Query('branchId') branchId?: string) {
+    return this.productsService.getStockDashboard(branchId);
+  }
+
   @Get('brands')
   getBrands() {
     return this.productsService.getBrands();

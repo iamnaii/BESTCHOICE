@@ -452,6 +452,177 @@ export class ProductsService {
     return { products, total, page, limit, totalPages: Math.ceil(total / limit), summary };
   }
 
+  // === Stock Dashboard ===
+
+  async getStockDashboard(branchId?: string) {
+    const branchFilter: Record<string, unknown> = branchId ? { branchId } : {};
+    const baseWhere = { deletedAt: null, ...branchFilter };
+    const inStockWhere = { ...baseWhere, status: 'IN_STOCK' as const };
+    const now = new Date();
+
+    // --- Parallel batch queries ---
+    const [
+      allProducts,
+      pendingTransfers,
+      newProducts,
+      soldProducts,
+    ] = await Promise.all([
+      // All active products (for aging, breakdowns, condition grade)
+      this.prisma.product.findMany({
+        where: baseWhere as any,
+        select: {
+          id: true, status: true, category: true, brand: true,
+          color: true, storage: true, costPrice: true, conditionGrade: true,
+          createdAt: true,
+        },
+      }),
+      // Pending transfers count
+      this.prisma.stockTransfer.count({
+        where: { status: 'PENDING', ...(branchId ? { toBranchId: branchId } : {}) },
+      }),
+      // Products created in last 6 months (stock in = newly created products)
+      this.prisma.product.findMany({
+        where: {
+          createdAt: { gte: new Date(now.getFullYear(), now.getMonth() - 5, 1) },
+          ...branchFilter,
+        },
+        select: { createdAt: true },
+      }),
+      // Sold products last 6 months (stock out)
+      this.prisma.product.findMany({
+        where: {
+          status: { in: ['SOLD_INSTALLMENT', 'SOLD_CASH', 'SOLD_RESELL'] },
+          updatedAt: { gte: new Date(now.getFullYear(), now.getMonth() - 5, 1) },
+          ...branchFilter,
+        },
+        select: { updatedAt: true },
+      }),
+    ]);
+
+    // --- 1. Stock Aging (only IN_STOCK products) ---
+    const inStockProducts = allProducts.filter((p) => p.status === 'IN_STOCK');
+    const agingBuckets = [
+      { label: '0-30 วัน', min: 0, max: 30, count: 0, value: 0 },
+      { label: '31-60 วัน', min: 31, max: 60, count: 0, value: 0 },
+      { label: '61-90 วัน', min: 61, max: 90, count: 0, value: 0 },
+      { label: '90+ วัน', min: 91, max: Infinity, count: 0, value: 0 },
+    ];
+    for (const p of inStockProducts) {
+      const days = Math.floor((now.getTime() - new Date(p.createdAt).getTime()) / (1000 * 60 * 60 * 24));
+      const bucket = agingBuckets.find((b) => days >= b.min && days <= b.max);
+      if (bucket) {
+        bucket.count++;
+        bucket.value += Number(p.costPrice);
+      }
+    }
+
+    // --- 2. Action Required ---
+    const actionRequired = {
+      inspection: allProducts.filter((p) => p.status === 'INSPECTION').length,
+      pendingTransfers,
+      repossessed: allProducts.filter((p) => p.status === 'REPOSSESSED').length,
+      agingOver90: agingBuckets[3].count,
+    };
+
+    // --- 3. Value by Status ---
+    const statusMap = new Map<string, { count: number; value: number }>();
+    for (const p of allProducts) {
+      const entry = statusMap.get(p.status) || { count: 0, value: 0 };
+      entry.count++;
+      entry.value += Number(p.costPrice);
+      statusMap.set(p.status, entry);
+    }
+    const valueByStatus = Array.from(statusMap.entries())
+      .map(([status, data]) => ({ status, ...data }))
+      .sort((a, b) => b.value - a.value);
+
+    // --- 4. Category + Brand + Color + Storage Breakdown (only IN_STOCK) ---
+    const groupBy = (items: typeof inStockProducts, key: 'category' | 'brand' | 'color' | 'storage') => {
+      const map = new Map<string, { count: number; value: number }>();
+      for (const p of items) {
+        const val = p[key] || 'ไม่ระบุ';
+        const entry = map.get(val) || { count: 0, value: 0 };
+        entry.count++;
+        entry.value += Number(p.costPrice);
+        map.set(val, entry);
+      }
+      return Array.from(map.entries())
+        .map(([name, data]) => ({ name, ...data }))
+        .sort((a, b) => b.count - a.count);
+    };
+
+    const byCategory = groupBy(inStockProducts, 'category');
+    const byBrand = groupBy(inStockProducts, 'brand');
+    const byColor = groupBy(inStockProducts, 'color');
+    const byStorage = groupBy(inStockProducts, 'storage');
+
+    // --- 5. Stock Movement (last 6 months) ---
+    const stockMovement: { month: string; in: number; out: number }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
+      const monthLabel = start.toLocaleDateString('th-TH', { year: '2-digit', month: 'short' });
+
+      const monthIn = newProducts.filter((p) => {
+        const d = new Date(p.createdAt);
+        return d >= start && d < end;
+      }).length;
+
+      const monthOut = soldProducts.filter((p) => {
+        const d = new Date(p.updatedAt);
+        return d >= start && d < end;
+      }).length;
+
+      stockMovement.push({ month: monthLabel, in: monthIn, out: monthOut });
+    }
+
+    // --- 6. Condition Grade Distribution (IN_STOCK only) ---
+    const gradeMap = new Map<string, { count: number; value: number }>();
+    for (const p of inStockProducts) {
+      const grade = p.conditionGrade || 'N/A';
+      const entry = gradeMap.get(grade) || { count: 0, value: 0 };
+      entry.count++;
+      entry.value += Number(p.costPrice);
+      gradeMap.set(grade, entry);
+    }
+    const conditionGrade = Array.from(gradeMap.entries())
+      .map(([grade, data]) => ({ grade, ...data }))
+      .sort((a, b) => b.count - a.count);
+
+    // --- 7. Stock Turnover ---
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const soldThisMonth = soldProducts.filter((p) => new Date(p.updatedAt) >= thisMonthStart).length;
+    const soldLastMonth = soldProducts.filter((p) => {
+      const d = new Date(p.updatedAt);
+      return d >= lastMonthStart && d < thisMonthStart;
+    }).length;
+
+    // Average days in stock for sold products (approximate from all IN_STOCK)
+    const totalDays = inStockProducts.reduce((sum, p) => {
+      return sum + Math.floor((now.getTime() - new Date(p.createdAt).getTime()) / (1000 * 60 * 60 * 24));
+    }, 0);
+    const avgDaysInStock = inStockProducts.length > 0 ? Math.round(totalDays / inStockProducts.length) : 0;
+
+    return {
+      stockAging: agingBuckets,
+      actionRequired,
+      valueByStatus,
+      byCategory,
+      byBrand,
+      byColor,
+      byStorage,
+      stockMovement,
+      conditionGrade,
+      stockTurnover: {
+        avgDaysInStock,
+        soldThisMonth,
+        soldLastMonth,
+        currentStock: inStockProducts.length,
+      },
+    };
+  }
+
   // === Get available brands for filter ===
   async getBrands() {
     const brands = await this.prisma.product.findMany({

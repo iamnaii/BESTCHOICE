@@ -64,7 +64,7 @@ const paymentStatusLabels: Record<string, { label: string; className: string }> 
   PENDING: { label: 'รอชำระ', className: 'bg-gray-100 text-gray-700' },
   PAID: { label: 'ชำระแล้ว', className: 'bg-green-100 text-green-700' },
   OVERDUE: { label: 'เกินกำหนด', className: 'bg-red-100 text-red-700' },
-  PARTIAL: { label: 'ชำระบางส่วน', className: 'bg-yellow-100 text-yellow-700' },
+  PARTIALLY_PAID: { label: 'ชำระบางส่วน', className: 'bg-yellow-100 text-yellow-700' },
 };
 
 export default function ContractDetailPage() {

@@ -246,7 +246,7 @@ export class RepossessionsService {
 
     await this.prisma.product.update({
       where: { id: repo.product.id },
-      data: { status: 'IN_STOCK' },
+      data: { status: 'REFURBISHED' },
     });
 
     return this.prisma.repossession.update({

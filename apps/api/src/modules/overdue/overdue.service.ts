@@ -90,8 +90,8 @@ export class OverdueService {
    */
   async getOverdueSummary(userRole: string, userBranchId?: string) {
     const branchFilter: Prisma.ContractWhereInput =
-      userRole === 'SALES' || userRole === 'BRANCH_MANAGER'
-        ? { branchId: userBranchId || '' }
+      (userRole === 'SALES' || userRole === 'BRANCH_MANAGER') && userBranchId
+        ? { branchId: userBranchId }
         : {};
 
     const [overdueCount, defaultCount, totalOverdueAmount] = await Promise.all([

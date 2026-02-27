@@ -21,6 +21,11 @@ interface Supplier {
   address: string | null;
   taxId: string | null;
   hasVat: boolean;
+  paymentMethod: string | null;
+  bankName: string | null;
+  bankAccountName: string | null;
+  bankAccountNumber: string | null;
+  creditTermDays: number | null;
   notes: string | null;
   isActive: boolean;
   createdAt: string;
@@ -36,7 +41,19 @@ const emptyForm = {
   lineId: '',
   taxId: '',
   hasVat: false,
+  paymentMethod: '',
+  bankName: '',
+  bankAccountName: '',
+  bankAccountNumber: '',
+  creditTermDays: '' as string | number,
   notes: '',
+};
+
+const paymentMethodLabels: Record<string, string> = {
+  CASH: 'เงินสด',
+  BANK_TRANSFER: 'โอนธนาคาร',
+  CHECK: 'เช็ค',
+  CREDIT: 'เครดิต',
 };
 
 function formatPhone(value: string): string {
@@ -97,6 +114,11 @@ export default function SuppliersPage() {
         address: serializedAddress || undefined,
         taxId: formData.taxId || undefined,
         hasVat: formData.hasVat,
+        paymentMethod: formData.paymentMethod || undefined,
+        bankName: formData.bankName || undefined,
+        bankAccountName: formData.bankAccountName || undefined,
+        bankAccountNumber: formData.bankAccountNumber || undefined,
+        creditTermDays: formData.creditTermDays ? Number(formData.creditTermDays) : undefined,
         notes: formData.notes || undefined,
       };
       if (editId) {
@@ -158,6 +180,11 @@ export default function SuppliersPage() {
       lineId: supplier.lineId || '',
       taxId: supplier.taxId || '',
       hasVat: supplier.hasVat ?? false,
+      paymentMethod: supplier.paymentMethod || '',
+      bankName: supplier.bankName || '',
+      bankAccountName: supplier.bankAccountName || '',
+      bankAccountNumber: supplier.bankAccountNumber || '',
+      creditTermDays: supplier.creditTermDays ?? '',
       notes: supplier.notes || '',
     });
     setSupplierAddress(deserializeAddress(supplier.address));
@@ -216,10 +243,13 @@ export default function SuppliersPage() {
       ),
     },
     {
-      key: 'notes',
-      label: 'หมายเหตุ',
+      key: 'paymentMethod',
+      label: 'วิธีชำระ',
       render: (s: Supplier) => (
-        <span className="text-gray-500 text-sm">{s.notes || '-'}</span>
+        <div>
+          <span className="text-sm">{s.paymentMethod ? (paymentMethodLabels[s.paymentMethod] || s.paymentMethod) : '-'}</span>
+          {s.bankName && <div className="text-xs text-gray-400">{s.bankName}</div>}
+        </div>
       ),
     },
     {
@@ -447,6 +477,68 @@ export default function SuppliersPage() {
                 </span>
               </label>
             </div>
+            {/* Payment Information */}
+            <div className="col-span-2 border-t pt-4 mt-2">
+              <h3 className="text-sm font-semibold text-gray-800 mb-3">ข้อมูลการชำระเงิน</h3>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">วิธีชำระเงิน</label>
+              <select
+                value={form.paymentMethod}
+                onChange={(e) => setForm({ ...form, paymentMethod: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+              >
+                <option value="">-- ไม่ระบุ --</option>
+                <option value="CASH">เงินสด</option>
+                <option value="BANK_TRANSFER">โอนธนาคาร</option>
+                <option value="CHECK">เช็ค</option>
+                <option value="CREDIT">เครดิต</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">เครดิต (วัน)</label>
+              <input
+                type="number"
+                value={form.creditTermDays}
+                onChange={(e) => setForm({ ...form, creditTermDays: e.target.value })}
+                placeholder="เช่น 30"
+                min={0}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+              />
+            </div>
+            {(form.paymentMethod === 'BANK_TRANSFER' || form.paymentMethod === '') && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">ธนาคาร</label>
+                  <input
+                    type="text"
+                    value={form.bankName}
+                    onChange={(e) => setForm({ ...form, bankName: e.target.value })}
+                    placeholder="เช่น กสิกรไทย, กรุงเทพ"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อบัญชี</label>
+                  <input
+                    type="text"
+                    value={form.bankAccountName}
+                    onChange={(e) => setForm({ ...form, bankAccountName: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">เลขบัญชี</label>
+                  <input
+                    type="text"
+                    value={form.bankAccountNumber}
+                    onChange={(e) => setForm({ ...form, bankAccountNumber: e.target.value })}
+                    placeholder="XXX-X-XXXXX-X"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                  />
+                </div>
+              </>
+            )}
             <div className="col-span-2">
               <AddressForm value={supplierAddress} onChange={setSupplierAddress} label="ที่อยู่" />
             </div>

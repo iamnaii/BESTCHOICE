@@ -18,11 +18,23 @@ interface Supplier {
   address: string | null;
   taxId: string | null;
   hasVat: boolean;
+  paymentMethod: string | null;
+  bankName: string | null;
+  bankAccountName: string | null;
+  bankAccountNumber: string | null;
+  creditTermDays: number | null;
   notes: string | null;
   isActive: boolean;
   createdAt: string;
   _count: { products: number; purchaseOrders: number };
 }
+
+const paymentMethodLabels: Record<string, string> = {
+  CASH: 'เงินสด',
+  BANK_TRANSFER: 'โอนธนาคาร',
+  CHECK: 'เช็ค',
+  CREDIT: 'เครดิต',
+};
 
 interface ProductRecord {
   id: string;
@@ -46,6 +58,9 @@ interface PORecord {
   expectedDate: string | null;
   status: string;
   totalAmount: string;
+  paymentStatus: string | null;
+  paymentMethod: string | null;
+  paidAmount: string | null;
   notes: string | null;
   createdAt: string;
   createdBy: { id: string; name: string };
@@ -184,6 +199,26 @@ export default function SupplierDetailPage() {
     { key: 'totalAmount', label: 'ยอดรวม', render: (po: PORecord) => (
       <span className="font-medium">{parseFloat(po.totalAmount).toLocaleString()} ฿</span>
     )},
+    { key: 'paymentStatus', label: 'การจ่ายเงิน', render: (po: PORecord) => {
+      const psLabels: Record<string, { label: string; className: string }> = {
+        UNPAID: { label: 'ยังไม่จ่าย', className: 'bg-red-100 text-red-700' },
+        DEPOSIT_PAID: { label: 'จ่ายมัดจำ', className: 'bg-yellow-100 text-yellow-700' },
+        PARTIALLY_PAID: { label: 'จ่ายบางส่วน', className: 'bg-orange-100 text-orange-700' },
+        FULLY_PAID: { label: 'จ่ายครบ', className: 'bg-green-100 text-green-700' },
+      };
+      const ps = psLabels[po.paymentStatus || 'UNPAID'] || { label: po.paymentStatus || '-', className: 'bg-gray-100 text-gray-700' };
+      return (
+        <div>
+          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ps.className}`}>{ps.label}</span>
+          {po.paymentMethod && (
+            <div className="text-xs text-gray-400 mt-0.5">{paymentMethodLabels[po.paymentMethod] || po.paymentMethod}</div>
+          )}
+          {po.paidAmount && Number(po.paidAmount) > 0 && (
+            <div className="text-xs text-gray-500 mt-0.5">{Number(po.paidAmount).toLocaleString()} ฿</div>
+          )}
+        </div>
+      );
+    }},
     { key: 'createdBy', label: 'ผู้สร้าง', render: (po: PORecord) => (
       <span className="text-xs">{po.createdBy.name}</span>
     )},
@@ -259,6 +294,29 @@ export default function SupplierDetailPage() {
           />
           <InfoField label="ที่อยู่" value={displayAddress(supplier.address)} />
           {supplier.notes && <InfoField label="หมายเหตุ" value={supplier.notes} />}
+        </div>
+      </div>
+
+      {/* Payment Info Card */}
+      <div className="bg-white rounded-lg border p-6 mb-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">ข้อมูลการชำระเงิน</h2>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <div>
+            <div className="text-xs text-gray-500 mb-0.5">วิธีชำระเงิน</div>
+            {supplier.paymentMethod ? (
+              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
+                {paymentMethodLabels[supplier.paymentMethod] || supplier.paymentMethod}
+              </span>
+            ) : (
+              <span className="text-sm text-gray-400">ไม่ระบุ</span>
+            )}
+          </div>
+          {supplier.creditTermDays != null && (
+            <InfoField label="เครดิต" value={`${supplier.creditTermDays} วัน`} />
+          )}
+          <InfoField label="ธนาคาร" value={supplier.bankName} />
+          <InfoField label="ชื่อบัญชี" value={supplier.bankAccountName} />
+          <InfoField label="เลขบัญชี" value={supplier.bankAccountNumber} />
         </div>
       </div>
 

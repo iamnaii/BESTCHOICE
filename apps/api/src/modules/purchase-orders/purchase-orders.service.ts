@@ -295,6 +295,83 @@ export class PurchaseOrdersService {
     return { grandTotal, suppliers };
   }
 
+  // === Goods Receiving History ===
+
+  async getGoodsReceivings(poId: string) {
+    const po = await this.prisma.purchaseOrder.findUnique({ where: { id: poId } });
+    if (!po) throw new NotFoundException('ไม่พบใบสั่งซื้อ');
+
+    return this.prisma.goodsReceiving.findMany({
+      where: { poId },
+      include: {
+        receivedBy: { select: { id: true, name: true } },
+        items: {
+          include: {
+            poItem: { select: { id: true, brand: true, model: true, color: true, storage: true, category: true, accessoryType: true } },
+            product: { select: { id: true, name: true, imeiSerial: true, status: true, branchId: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async getGoodsReceivingById(poId: string, receivingId: string) {
+    const receiving = await this.prisma.goodsReceiving.findFirst({
+      where: { id: receivingId, poId },
+      include: {
+        po: { select: { id: true, poNumber: true, supplierId: true, supplier: { select: { id: true, name: true } } } },
+        receivedBy: { select: { id: true, name: true } },
+        items: {
+          include: {
+            poItem: { select: { id: true, brand: true, model: true, color: true, storage: true, category: true, accessoryType: true, accessoryBrand: true, quantity: true, receivedQty: true } },
+            product: { select: { id: true, name: true, imeiSerial: true, serialNumber: true, status: true, branchId: true, photos: true } },
+          },
+        },
+      },
+    });
+    if (!receiving) throw new NotFoundException('ไม่พบรายการรับเข้า');
+    return receiving;
+  }
+
+  async getReceivingSummary(poId: string) {
+    const po = await this.prisma.purchaseOrder.findUnique({
+      where: { id: poId },
+      include: { items: true },
+    });
+    if (!po) throw new NotFoundException('ไม่พบใบสั่งซื้อ');
+
+    const receivingItems = await this.prisma.goodsReceivingItem.findMany({
+      where: { receiving: { poId } },
+      select: { status: true, rejectReason: true, poItemId: true },
+    });
+
+    const totalOrdered = po.items.reduce((sum, item) => sum + item.quantity, 0);
+    const totalReceived = po.items.reduce((sum, item) => sum + item.receivedQty, 0);
+    const passedCount = receivingItems.filter((i) => i.status === 'PASS').length;
+    const rejectedCount = receivingItems.filter((i) => i.status === 'REJECT').length;
+    const remaining = totalOrdered - totalReceived;
+
+    // Group rejection reasons
+    const rejectReasons: Record<string, number> = {};
+    for (const item of receivingItems) {
+      if (item.status === 'REJECT' && item.rejectReason) {
+        rejectReasons[item.rejectReason] = (rejectReasons[item.rejectReason] || 0) + 1;
+      }
+    }
+
+    return {
+      poId,
+      poStatus: po.status,
+      totalOrdered,
+      totalReceived,
+      remaining,
+      passedCount,
+      rejectedCount,
+      rejectReasons,
+    };
+  }
+
   /**
    * Legacy receive - kept for backward compatibility
    */
@@ -452,6 +529,27 @@ export class PurchaseOrdersService {
           throw new BadRequestException(
             `จำนวนรับเกิน: ${poItem.brand} ${poItem.model} (สั่ง ${poItem.quantity}, รับแล้ว ${poItem.receivedQty}, กำลังรับ ${passCount})`,
           );
+        }
+      }
+
+      // Validate duplicate IMEI/Serial in this batch
+      const imeiList = dto.items
+        .filter((i) => i.status === 'PASS' && i.imeiSerial)
+        .map((i) => i.imeiSerial!);
+      const uniqueImeis = new Set(imeiList);
+      if (uniqueImeis.size !== imeiList.length) {
+        throw new BadRequestException('พบ IMEI ซ้ำกันในรายการที่กำลังรับเข้า');
+      }
+
+      // Validate IMEI not already exists in system
+      if (imeiList.length > 0) {
+        const existingProducts = await tx.product.findMany({
+          where: { imeiSerial: { in: imeiList }, deletedAt: null },
+          select: { imeiSerial: true, name: true },
+        });
+        if (existingProducts.length > 0) {
+          const dupes = existingProducts.map((p) => `${p.imeiSerial} (${p.name})`).join(', ');
+          throw new BadRequestException(`IMEI ซ้ำกับสินค้าที่มีในระบบแล้ว: ${dupes}`);
         }
       }
 

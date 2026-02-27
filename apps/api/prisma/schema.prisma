@@ -126,6 +126,15 @@ enum RepossessionStatus {
   SOLD
 }
 
+enum StockAdjustmentReason {
+  DAMAGED
+  LOST
+  FOUND
+  CORRECTION
+  WRITE_OFF
+  OTHER
+}
+
 // ============================================================
 // CORE ENTITIES
 // ============================================================
@@ -141,11 +150,12 @@ model Branch {
 
   isMainWarehouse Boolean @default(false) @map("is_main_warehouse")
 
-  users          User[]
-  products       Product[]
-  contracts      Contract[]
-  stockFroms     StockTransfer[] @relation("TransferFrom")
-  stockTos       StockTransfer[] @relation("TransferTo")
+  users            User[]
+  products         Product[]
+  contracts        Contract[]
+  stockFroms       StockTransfer[] @relation("TransferFrom")
+  stockTos         StockTransfer[] @relation("TransferTo")
+  stockAdjustments StockAdjustment[]
 
   @@map("branches")
 }
@@ -173,6 +183,7 @@ model User {
   repossessionsAppraised Repossession[]    @relation("AppraisedBy")
   goodsReceivings        GoodsReceiving[]  @relation("GoodsReceivedBy")
   transfersConfirmed     StockTransfer[]   @relation("TransferConfirmedBy")
+  stockAdjustments       StockAdjustment[] @relation("StockAdjustedBy")
 
   @@index([branchId])
   @@map("users")
@@ -410,11 +421,12 @@ model Product {
   branch     Branch         @relation(fields: [branchId], references: [id])
   inspection Inspection?    @relation(fields: [inspectionId], references: [id])
 
-  prices         ProductPrice[]
-  contracts      Contract[]
-  repossession   Repossession?
-  receivingItem  GoodsReceivingItem?
-  stockTransfers StockTransfer[]
+  prices           ProductPrice[]
+  contracts        Contract[]
+  repossession     Repossession?
+  receivingItem    GoodsReceivingItem?
+  stockTransfers   StockTransfer[]
+  stockAdjustments StockAdjustment[]
 
   @@index([branchId])
   @@index([status])
@@ -501,6 +513,28 @@ model GoodsReceivingItem {
   @@index([receivingId])
   @@index([poItemId])
   @@map("goods_receiving_items")
+}
+
+model StockAdjustment {
+  id            String                @id @default(uuid())
+  productId     String                @map("product_id")
+  branchId      String                @map("branch_id")
+  reason        StockAdjustmentReason
+  previousStatus ProductStatus        @map("previous_status")
+  notes         String?
+  photos        String[]              @default([])
+  adjustedById  String                @map("adjusted_by_id")
+  createdAt     DateTime              @default(now()) @map("created_at")
+
+  product    Product @relation(fields: [productId], references: [id])
+  branch     Branch  @relation(fields: [branchId], references: [id])
+  adjustedBy User    @relation("StockAdjustedBy", fields: [adjustedById], references: [id])
+
+  @@index([productId])
+  @@index([branchId])
+  @@index([reason])
+  @@index([createdAt])
+  @@map("stock_adjustments")
 }
 
 // ============================================================

@@ -30,13 +30,30 @@ export class PurchaseOrdersController {
   }
 
   @Get(':id/goods-receivings')
-  getGoodsReceivings(@Param('id') id: string) {
-    return this.purchaseOrdersService.getGoodsReceivings(id);
+  getGoodsReceivings(
+    @Param('id') id: string,
+    @Query('status') status?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.purchaseOrdersService.getGoodsReceivings(id, {
+      status,
+      startDate,
+      endDate,
+      page: page ? parseInt(page) : undefined,
+      limit: limit ? parseInt(limit) : undefined,
+    });
   }
 
   @Get(':id/goods-receivings/summary')
-  getReceivingSummary(@Param('id') id: string) {
-    return this.purchaseOrdersService.getReceivingSummary(id);
+  getReceivingSummary(
+    @Param('id') id: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.purchaseOrdersService.getReceivingSummary(id, { startDate, endDate });
   }
 
   @Get(':id/goods-receivings/:receivingId')

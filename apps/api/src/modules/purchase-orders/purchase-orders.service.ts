@@ -297,23 +297,53 @@ export class PurchaseOrdersService {
 
   // === Goods Receiving History ===
 
-  async getGoodsReceivings(poId: string) {
+  async getGoodsReceivings(poId: string, filters: {
+    status?: string;
+    startDate?: string;
+    endDate?: string;
+    page?: number;
+    limit?: number;
+  } = {}) {
     const po = await this.prisma.purchaseOrder.findUnique({ where: { id: poId } });
     if (!po) throw new NotFoundException('ไม่พบใบสั่งซื้อ');
 
-    return this.prisma.goodsReceiving.findMany({
-      where: { poId },
-      include: {
-        receivedBy: { select: { id: true, name: true } },
-        items: {
-          include: {
-            poItem: { select: { id: true, brand: true, model: true, color: true, storage: true, category: true, accessoryType: true } },
-            product: { select: { id: true, name: true, imeiSerial: true, status: true, branchId: true } },
+    const page = filters.page || 1;
+    const limit = filters.limit || 50;
+
+    // Build item-level filter for status (PASS/REJECT)
+    const itemFilter: Record<string, unknown> = {};
+    if (filters.status) itemFilter.status = filters.status;
+
+    // Build date filter
+    const where: Record<string, unknown> = { poId };
+    if (filters.startDate || filters.endDate) {
+      const dateFilter: Record<string, Date> = {};
+      if (filters.startDate) dateFilter.gte = new Date(filters.startDate);
+      if (filters.endDate) dateFilter.lte = new Date(filters.endDate);
+      where.createdAt = dateFilter;
+    }
+
+    const [data, total] = await Promise.all([
+      this.prisma.goodsReceiving.findMany({
+        where,
+        include: {
+          receivedBy: { select: { id: true, name: true } },
+          items: {
+            where: Object.keys(itemFilter).length > 0 ? itemFilter : undefined,
+            include: {
+              poItem: { select: { id: true, brand: true, model: true, color: true, storage: true, category: true, accessoryType: true } },
+              product: { select: { id: true, name: true, imeiSerial: true, status: true, branchId: true } },
+            },
           },
         },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.goodsReceiving.count({ where }),
+    ]);
+
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   async getGoodsReceivingById(poId: string, receivingId: string) {
@@ -334,15 +364,27 @@ export class PurchaseOrdersService {
     return receiving;
   }
 
-  async getReceivingSummary(poId: string) {
+  async getReceivingSummary(poId: string, filters: {
+    startDate?: string;
+    endDate?: string;
+  } = {}) {
     const po = await this.prisma.purchaseOrder.findUnique({
       where: { id: poId },
       include: { items: true },
     });
     if (!po) throw new NotFoundException('ไม่พบใบสั่งซื้อ');
 
+    // Build date filter for receiving records
+    const receivingWhere: Record<string, unknown> = { poId };
+    if (filters.startDate || filters.endDate) {
+      const dateFilter: Record<string, Date> = {};
+      if (filters.startDate) dateFilter.gte = new Date(filters.startDate);
+      if (filters.endDate) dateFilter.lte = new Date(filters.endDate);
+      receivingWhere.createdAt = dateFilter;
+    }
+
     const receivingItems = await this.prisma.goodsReceivingItem.findMany({
-      where: { receiving: { poId } },
+      where: { receiving: receivingWhere },
       select: { status: true, rejectReason: true, poItemId: true },
     });
 

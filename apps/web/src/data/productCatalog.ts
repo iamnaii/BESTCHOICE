@@ -337,6 +337,10 @@ export function getModels(brand: string, categoryFilter?: string): ModelInfo[] {
   if (categoryFilter === 'PHONE_NEW' || categoryFilter === 'PHONE_USED') {
     return catalog.models.filter((m) => m.category === 'PHONE_NEW');
   }
+  if (categoryFilter === 'ACCESSORY') {
+    // For accessories, show all phone + tablet models as compatible models
+    return catalog.models;
+  }
   return catalog.models.filter((m) => m.category === categoryFilter);
 }
 

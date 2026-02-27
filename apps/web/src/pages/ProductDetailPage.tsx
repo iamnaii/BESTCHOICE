@@ -27,6 +27,12 @@ interface Product {
   costPrice: string;
   status: string;
   conditionGrade: string | null;
+  batteryHealth: number | null;
+  warrantyExpired: boolean | null;
+  warrantyExpireDate: string | null;
+  hasBox: boolean | null;
+  accessoryType: string | null;
+  accessoryBrand: string | null;
   photos: string[];
   createdAt: string;
   branch: { id: string; name: string };
@@ -228,14 +234,32 @@ export default function ProductDetailPage() {
           <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${s.className}`}>{s.label}</span>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          <InfoField label="ยี่ห้อ" value={product.brand} />
-          <InfoField label="รุ่น" value={product.model} />
-          <InfoField label="สี" value={product.color} />
-          <InfoField label="ความจุ" value={product.storage} />
-          <InfoField label="IMEI" value={product.imeiSerial} mono />
-          <InfoField label="Serial Number" value={product.serialNumber} mono />
+          <InfoField label={product.category === 'ACCESSORY' ? 'สำหรับยี่ห้อ' : 'ยี่ห้อ'} value={product.brand} />
+          <InfoField label={product.category === 'ACCESSORY' ? 'สำหรับรุ่น' : 'รุ่น'} value={product.model} />
+          {product.category === 'ACCESSORY' ? (
+            <>
+              <InfoField label="ประเภทอุปกรณ์" value={product.accessoryType} />
+              <InfoField label="ยี่ห้ออุปกรณ์" value={product.accessoryBrand} />
+            </>
+          ) : (
+            <>
+              <InfoField label="สี" value={product.color} />
+              <InfoField label="ความจุ" value={product.storage} />
+              <InfoField label="IMEI" value={product.imeiSerial} mono />
+              <InfoField label="Serial Number" value={product.serialNumber} mono />
+            </>
+          )}
           <InfoField label="ประเภท" value={categoryLabels[product.category] || product.category} />
-          <InfoField label="เกรดสภาพ" value={product.conditionGrade} />
+          {product.category !== 'ACCESSORY' && (
+            <InfoField label="เกรดสภาพ" value={product.conditionGrade} />
+          )}
+          {product.category === 'PHONE_USED' && (
+            <>
+              <InfoField label="แบตเตอรี่" value={product.batteryHealth != null ? `${product.batteryHealth}%` : null} />
+              <InfoField label="ประกันศูนย์" value={product.warrantyExpired ? 'หมดประกันแล้ว' : product.warrantyExpireDate ? `ถึง ${new Date(product.warrantyExpireDate).toLocaleDateString('th-TH')}` : null} />
+              <InfoField label="กล่อง" value={product.hasBox != null ? (product.hasBox ? 'มีกล่อง' : 'ไม่มีกล่อง') : null} />
+            </>
+          )}
           <InfoField label="สาขา" value={product.branch.name} />
           <InfoField label="Supplier" value={product.supplier?.name} />
           <InfoField label="PO" value={product.po?.poNumber} mono />

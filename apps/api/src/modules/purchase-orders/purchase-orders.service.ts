@@ -108,6 +108,8 @@ export class PurchaseOrdersService {
             color: item.color || null,
             storage: item.storage || null,
             category: item.category || null,
+            accessoryType: item.accessoryType || null,
+            accessoryBrand: item.accessoryBrand || null,
             quantity: item.quantity,
             unitPrice: item.unitPrice,
           })),
@@ -223,11 +225,21 @@ export class PurchaseOrdersService {
         });
 
         for (let i = 0; i < receiveItem.receivedQty; i++) {
-          const nameParts = [poItem.brand, poItem.model, poItem.color, poItem.storage].filter(Boolean);
           const productCategory = (poItem.category as any) || 'PHONE_NEW';
+          let productName: string;
+          if (productCategory === 'ACCESSORY') {
+            const accParts = [poItem.accessoryType, poItem.accessoryBrand].filter(Boolean);
+            const phoneParts = [poItem.brand, poItem.model].filter(Boolean);
+            productName = phoneParts.length > 0
+              ? `${accParts.join(' ')} สำหรับ ${phoneParts.join(' ')}`
+              : accParts.join(' ');
+          } else {
+            const nameParts = [poItem.brand, poItem.model, poItem.color, poItem.storage].filter(Boolean);
+            productName = nameParts.join(' ');
+          }
           const product = await tx.product.create({
             data: {
-              name: nameParts.join(' '),
+              name: productName,
               brand: poItem.brand,
               model: poItem.model,
               color: poItem.color || null,
@@ -238,6 +250,8 @@ export class PurchaseOrdersService {
               poId: po.id,
               branchId,
               status: 'PO_RECEIVED',
+              accessoryType: poItem.accessoryType || null,
+              accessoryBrand: poItem.accessoryBrand || null,
             },
           });
           receivedProducts.push(product);
@@ -336,13 +350,24 @@ export class PurchaseOrdersService {
 
         if (item.status === 'PASS') {
           // Build product name from PO item details
-          const nameParts = [poItem.brand, poItem.model, poItem.color, poItem.storage].filter(Boolean);
           const productCategory = (poItem.category as any) || 'PHONE_NEW';
+          let productName: string;
+          if (productCategory === 'ACCESSORY') {
+            // Accessory name: e.g. "เคส Spigen สำหรับ iPhone 16 Pro"
+            const accParts = [poItem.accessoryType, poItem.accessoryBrand].filter(Boolean);
+            const phoneParts = [poItem.brand, poItem.model].filter(Boolean);
+            productName = phoneParts.length > 0
+              ? `${accParts.join(' ')} สำหรับ ${phoneParts.join(' ')}`
+              : accParts.join(' ');
+          } else {
+            const nameParts = [poItem.brand, poItem.model, poItem.color, poItem.storage].filter(Boolean);
+            productName = nameParts.join(' ');
+          }
 
           // Create product for passed items → goes to main warehouse with IN_STOCK
           const product = await tx.product.create({
             data: {
-              name: nameParts.join(' '),
+              name: productName,
               brand: poItem.brand,
               model: poItem.model,
               color: poItem.color || null,
@@ -356,6 +381,12 @@ export class PurchaseOrdersService {
               imeiSerial: item.imeiSerial || null,
               serialNumber: item.serialNumber || null,
               photos: item.photos || [],
+              batteryHealth: item.batteryHealth ?? null,
+              warrantyExpired: item.warrantyExpired ?? null,
+              warrantyExpireDate: item.warrantyExpireDate ? new Date(item.warrantyExpireDate) : null,
+              hasBox: item.hasBox ?? null,
+              accessoryType: poItem.accessoryType || null,
+              accessoryBrand: poItem.accessoryBrand || null,
             },
           });
 
@@ -369,6 +400,10 @@ export class PurchaseOrdersService {
               photos: item.photos || [],
               status: 'PASS',
               productId: product.id,
+              batteryHealth: item.batteryHealth ?? null,
+              warrantyExpired: item.warrantyExpired ?? null,
+              warrantyExpireDate: item.warrantyExpireDate ? new Date(item.warrantyExpireDate) : null,
+              hasBox: item.hasBox ?? null,
             },
           });
 

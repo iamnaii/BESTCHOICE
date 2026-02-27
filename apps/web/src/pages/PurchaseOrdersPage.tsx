@@ -17,6 +17,8 @@ interface POItem {
   quantity: number;
   unitPrice: string;
   receivedQty: number;
+  accessoryType: string | null;
+  accessoryBrand: string | null;
 }
 
 interface GoodsReceivingItem {
@@ -104,6 +106,14 @@ const categoryLabels: Record<string, string> = {
   ACCESSORY: 'อุปกรณ์เสริม',
 };
 
+const accessoryTypes = [
+  { value: 'ฟิล์ม', label: 'ฟิล์ม' },
+  { value: 'ชุดชาร์จ', label: 'ชุดชาร์จ' },
+  { value: 'หูฟัง', label: 'หูฟัง' },
+  { value: 'เคส', label: 'เคส' },
+  { value: 'อื่นๆ', label: 'อื่นๆ' },
+];
+
 interface ItemForm {
   brand: string;
   category: string;
@@ -112,18 +122,25 @@ interface ItemForm {
   storage: string;
   quantity: string;
   unitPrice: string;
+  accessoryType: string;
+  accessoryBrand: string;
 }
 
 interface ReceivingUnitForm {
   poItemId: string;
   label: string;
+  category: string;
   imeiSerial: string;
   serialNumber: string;
   status: 'PASS' | 'REJECT';
   rejectReason: string;
+  batteryHealth: string;
+  warrantyExpired: boolean;
+  warrantyExpireDate: string;
+  hasBox: boolean;
 }
 
-const emptyItem: ItemForm = { brand: '', category: '', model: '', color: '', storage: '', quantity: '1', unitPrice: '' };
+const emptyItem: ItemForm = { brand: '', category: '', model: '', color: '', storage: '', quantity: '1', unitPrice: '', accessoryType: '', accessoryBrand: '' };
 
 export default function PurchaseOrdersPage() {
   const queryClient = useQueryClient();
@@ -189,13 +206,22 @@ export default function PurchaseOrdersPage() {
   const goodsReceivingMutation = useMutation({
     mutationFn: async ({ poId, items, notes }: { poId: string; items: ReceivingUnitForm[]; notes: string }) =>
       api.post(`/purchase-orders/${poId}/goods-receiving`, {
-        items: items.map((i) => ({
-          poItemId: i.poItemId,
-          imeiSerial: i.imeiSerial || undefined,
-          serialNumber: i.serialNumber || undefined,
-          status: i.status,
-          rejectReason: i.status === 'REJECT' ? i.rejectReason || undefined : undefined,
-        })),
+        items: items.map((i) => {
+          const isUsed = i.category === 'PHONE_USED';
+          return {
+            poItemId: i.poItemId,
+            imeiSerial: i.imeiSerial || undefined,
+            serialNumber: i.serialNumber || undefined,
+            status: i.status,
+            rejectReason: i.status === 'REJECT' ? i.rejectReason || undefined : undefined,
+            ...(isUsed && i.status === 'PASS' ? {
+              batteryHealth: i.batteryHealth ? Number(i.batteryHealth) : undefined,
+              warrantyExpired: i.warrantyExpired,
+              warrantyExpireDate: !i.warrantyExpired && i.warrantyExpireDate ? i.warrantyExpireDate : undefined,
+              hasBox: i.hasBox,
+            } : {}),
+          };
+        }),
         notes: notes || undefined,
       }),
     onSuccess: (res) => {
@@ -249,10 +275,14 @@ export default function PurchaseOrdersPage() {
       item.model = '';
       item.color = '';
       item.storage = '';
+      item.accessoryType = '';
+      item.accessoryBrand = '';
     } else if (field === 'category') {
       item.model = '';
       item.color = '';
       item.storage = '';
+      item.accessoryType = '';
+      item.accessoryBrand = '';
     } else if (field === 'model') {
       item.color = '';
       item.storage = '';
@@ -283,6 +313,10 @@ export default function PurchaseOrdersPage() {
         category: i.category || undefined,
         quantity: Number(i.quantity),
         unitPrice: Number(i.unitPrice),
+        ...(i.category === 'ACCESSORY' ? {
+          accessoryType: i.accessoryType || undefined,
+          accessoryBrand: i.accessoryBrand || undefined,
+        } : {}),
       })),
     });
   };
@@ -305,15 +339,23 @@ export default function PurchaseOrdersPage() {
     const units: ReceivingUnitForm[] = [];
     for (const item of po.items) {
       const remaining = item.quantity - item.receivedQty;
-      const nameParts = [item.brand, item.model, item.color, item.storage].filter(Boolean);
+      const isAccessory = item.category === 'ACCESSORY';
+      const nameParts = isAccessory
+        ? [item.accessoryType, item.accessoryBrand, item.model ? `สำหรับ ${item.model}` : ''].filter(Boolean)
+        : [item.brand, item.model, item.color, item.storage].filter(Boolean);
       for (let i = 0; i < remaining; i++) {
         units.push({
           poItemId: item.id,
           label: `${nameParts.join(' ')} #${item.receivedQty + i + 1}`,
+          category: item.category || '',
           imeiSerial: '',
           serialNumber: '',
           status: 'PASS',
           rejectReason: '',
+          batteryHealth: '',
+          warrantyExpired: false,
+          warrantyExpireDate: '',
+          hasBox: true,
         });
       }
     }
@@ -336,7 +378,9 @@ export default function PurchaseOrdersPage() {
 
   const updateReceivingUnit = (idx: number, field: string, value: string) => {
     const newUnits = [...receivingUnits];
-    newUnits[idx] = { ...newUnits[idx], [field]: value };
+    const boolFields = ['hasBox', 'warrantyExpired'];
+    const parsed = boolFields.includes(field) ? value === 'true' : value;
+    newUnits[idx] = { ...newUnits[idx], [field]: parsed };
     setReceivingUnits(newUnits);
   };
 
@@ -511,6 +555,10 @@ export default function PurchaseOrdersPage() {
 
   // Helper to get item description for detail view
   const getItemDesc = (item: POItem) => {
+    if (item.category === 'ACCESSORY') {
+      const parts = [item.accessoryType, item.accessoryBrand].filter(Boolean);
+      return parts.length > 0 ? parts.join(' / ') : '-';
+    }
     const parts = [item.color, item.storage].filter(Boolean);
     return parts.length > 0 ? parts.join(' / ') : '-';
   };
@@ -624,13 +672,15 @@ export default function PurchaseOrdersPage() {
             </div>
             <div className="space-y-4">
               {items.map((item, idx) => {
-                const availableModels = item.brand ? getModels(item.brand, item.category || undefined) : [];
+                const isAccessory = item.category === 'ACCESSORY';
+                // For accessories, show all phone/tablet models for "compatible model"
+                const availableModels = item.brand ? getModels(item.brand, isAccessory ? 'PHONE_NEW' : (item.category || undefined)) : [];
                 const modelInfo = item.brand && item.model ? getModelInfo(item.brand, item.model) : undefined;
                 const availableColors = modelInfo?.colors || [];
                 const availableStorage = modelInfo?.storage || [];
 
                 return (
-                  <div key={idx} className="border border-gray-200 rounded-lg p-3 space-y-2 bg-gray-50 relative">
+                  <div key={idx} className={`border rounded-lg p-3 space-y-2 relative ${isAccessory ? 'border-purple-200 bg-purple-50' : 'border-gray-200 bg-gray-50'}`}>
                     {items.length > 1 && (
                       <button
                         type="button"
@@ -640,19 +690,22 @@ export default function PurchaseOrdersPage() {
                         &times;
                       </button>
                     )}
-                    <div className="text-xs font-medium text-gray-500 mb-1">รายการ #{idx + 1}</div>
+                    <div className="text-xs font-medium text-gray-500 mb-1">
+                      รายการ #{idx + 1}
+                      {isAccessory && <span className="ml-2 px-1.5 py-0.5 bg-purple-200 text-purple-700 rounded text-xs">อุปกรณ์เสริม</span>}
+                    </div>
 
-                    {/* Row 1: Brand, Category, Model */}
+                    {/* Row 1: Brand, Category, Model/AccessoryType */}
                     <div className="grid grid-cols-3 gap-2">
                       <div>
-                        <label className="block text-xs text-gray-500 mb-0.5">ยี่ห้อ *</label>
+                        <label className="block text-xs text-gray-500 mb-0.5">{isAccessory ? 'สำหรับยี่ห้อ *' : 'ยี่ห้อ *'}</label>
                         <select
                           value={item.brand}
                           onChange={(e) => updateItem(idx, 'brand', e.target.value)}
                           className={selectClass}
                           required
                         >
-                          <option value="">-- เลือกยี่ห้อ --</option>
+                          <option value="">{isAccessory ? '-- เลือกยี่ห้อโทรศัพท์ --' : '-- เลือกยี่ห้อ --'}</option>
                           {brands.map((b) => (
                             <option key={b} value={b}>{b}</option>
                           ))}
@@ -674,7 +727,7 @@ export default function PurchaseOrdersPage() {
                         </select>
                       </div>
                       <div>
-                        <label className="block text-xs text-gray-500 mb-0.5">รุ่น *</label>
+                        <label className="block text-xs text-gray-500 mb-0.5">{isAccessory ? 'สำหรับรุ่น *' : 'รุ่น *'}</label>
                         <select
                           value={item.model}
                           onChange={(e) => updateItem(idx, 'model', e.target.value)}
@@ -682,7 +735,7 @@ export default function PurchaseOrdersPage() {
                           required
                           disabled={!item.brand}
                         >
-                          <option value="">-- เลือกรุ่น --</option>
+                          <option value="">{isAccessory ? '-- เลือกรุ่นโทรศัพท์ --' : '-- เลือกรุ่น --'}</option>
                           {availableModels.map((m) => (
                             <option key={m.name} value={m.name}>{m.name}</option>
                           ))}
@@ -690,58 +743,117 @@ export default function PurchaseOrdersPage() {
                       </div>
                     </div>
 
-                    {/* Row 2: Color, Storage, Quantity, Price */}
-                    <div className="grid grid-cols-4 gap-2">
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-0.5">สี</label>
-                        <select
-                          value={item.color}
-                          onChange={(e) => updateItem(idx, 'color', e.target.value)}
-                          className={selectClass}
-                          disabled={availableColors.length === 0}
-                        >
-                          <option value="">-- เลือกสี --</option>
-                          {availableColors.map((c) => (
-                            <option key={c} value={c}>{c}</option>
-                          ))}
-                        </select>
+                    {isAccessory ? (
+                      <>
+                        {/* Accessory Row 2: Accessory Type, Accessory Brand, Quantity, Price */}
+                        <div className="grid grid-cols-4 gap-2">
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-0.5">ประเภทอุปกรณ์ *</label>
+                            <select
+                              value={item.accessoryType}
+                              onChange={(e) => updateItem(idx, 'accessoryType', e.target.value)}
+                              className={selectClass}
+                              required
+                            >
+                              <option value="">-- เลือก --</option>
+                              {accessoryTypes.map((t) => (
+                                <option key={t.value} value={t.value}>{t.label}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-0.5">ยี่ห้ออุปกรณ์</label>
+                            <input
+                              type="text"
+                              value={item.accessoryBrand}
+                              onChange={(e) => updateItem(idx, 'accessoryBrand', e.target.value)}
+                              className={inputClass}
+                              placeholder="เช่น Spigen, Anker"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-0.5">จำนวน *</label>
+                            <input
+                              type="number"
+                              value={item.quantity}
+                              onChange={(e) => updateItem(idx, 'quantity', e.target.value)}
+                              className={inputClass}
+                              min="1"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-0.5">ราคา/ชิ้น *</label>
+                            <input
+                              type="number"
+                              value={item.unitPrice}
+                              onChange={(e) => updateItem(idx, 'unitPrice', e.target.value)}
+                              className={inputClass}
+                              required
+                            />
+                          </div>
+                        </div>
+                        {/* Auto name preview */}
+                        {(item.accessoryType || item.accessoryBrand) && (
+                          <div className="text-xs text-purple-600 bg-purple-100 rounded px-2 py-1">
+                            ชื่อสินค้า: {[item.accessoryType, item.accessoryBrand, item.model ? `สำหรับ ${item.model}` : ''].filter(Boolean).join(' ')}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      /* Normal Row 2: Color, Storage, Quantity, Price */
+                      <div className="grid grid-cols-4 gap-2">
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-0.5">สี</label>
+                          <select
+                            value={item.color}
+                            onChange={(e) => updateItem(idx, 'color', e.target.value)}
+                            className={selectClass}
+                            disabled={availableColors.length === 0}
+                          >
+                            <option value="">-- เลือกสี --</option>
+                            {availableColors.map((c) => (
+                              <option key={c} value={c}>{c}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-0.5">ความจุ</label>
+                          <select
+                            value={item.storage}
+                            onChange={(e) => updateItem(idx, 'storage', e.target.value)}
+                            className={selectClass}
+                            disabled={availableStorage.length === 0}
+                          >
+                            <option value="">-- เลือกความจุ --</option>
+                            {availableStorage.map((s) => (
+                              <option key={s} value={s}>{s}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-0.5">จำนวน *</label>
+                          <input
+                            type="number"
+                            value={item.quantity}
+                            onChange={(e) => updateItem(idx, 'quantity', e.target.value)}
+                            className={inputClass}
+                            min="1"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-0.5">ราคา/ชิ้น *</label>
+                          <input
+                            type="number"
+                            value={item.unitPrice}
+                            onChange={(e) => updateItem(idx, 'unitPrice', e.target.value)}
+                            className={inputClass}
+                            required
+                          />
+                        </div>
                       </div>
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-0.5">ความจุ</label>
-                        <select
-                          value={item.storage}
-                          onChange={(e) => updateItem(idx, 'storage', e.target.value)}
-                          className={selectClass}
-                          disabled={availableStorage.length === 0}
-                        >
-                          <option value="">-- เลือกความจุ --</option>
-                          {availableStorage.map((s) => (
-                            <option key={s} value={s}>{s}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-0.5">จำนวน *</label>
-                        <input
-                          type="number"
-                          value={item.quantity}
-                          onChange={(e) => updateItem(idx, 'quantity', e.target.value)}
-                          className={inputClass}
-                          min="1"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-0.5">ราคา/ชิ้น *</label>
-                        <input
-                          type="number"
-                          value={item.unitPrice}
-                          onChange={(e) => updateItem(idx, 'unitPrice', e.target.value)}
-                          className={inputClass}
-                          required
-                        />
-                      </div>
-                    </div>
+                    )}
                   </div>
                 );
               })}
@@ -1040,7 +1152,7 @@ export default function PurchaseOrdersPage() {
                   <tr className="bg-gray-50">
                     <th className="px-3 py-2 text-left">ยี่ห้อ</th>
                     <th className="px-3 py-2 text-left">รุ่น</th>
-                    <th className="px-3 py-2 text-left">สี / ความจุ</th>
+                    <th className="px-3 py-2 text-left">รายละเอียด</th>
                     <th className="px-3 py-2 text-right">จำนวน</th>
                     <th className="px-3 py-2 text-right">ราคา/ชิ้น</th>
                     <th className="px-3 py-2 text-right">รับแล้ว</th>
@@ -1051,7 +1163,12 @@ export default function PurchaseOrdersPage() {
                 <tbody>
                   {selectedPO.items.map((item) => (
                     <tr key={item.id} className="border-b">
-                      <td className="px-3 py-2">{item.brand}</td>
+                      <td className="px-3 py-2">
+                        {item.brand}
+                        {item.category === 'ACCESSORY' && (
+                          <div className="text-xs text-purple-600">(อุปกรณ์เสริม)</div>
+                        )}
+                      </td>
                       <td className="px-3 py-2">{item.model}</td>
                       <td className="px-3 py-2 text-gray-600">{getItemDesc(item)}</td>
                       <td className="px-3 py-2 text-right">{item.quantity}</td>
@@ -1353,7 +1470,7 @@ export default function PurchaseOrdersPage() {
                             : 'bg-gray-100 text-gray-600 hover:bg-green-100'
                         }`}
                       >
-                        PASS
+                        ผ่าน
                       </button>
                       <button
                         type="button"
@@ -1364,10 +1481,11 @@ export default function PurchaseOrdersPage() {
                             : 'bg-gray-100 text-gray-600 hover:bg-red-100'
                         }`}
                       >
-                        REJECT
+                        ไม่ผ่าน
                       </button>
                     </div>
                   </div>
+                  {unit.category !== 'ACCESSORY' && (
                   <div className="grid grid-cols-2 gap-2">
                     <input
                       type="text"
@@ -1384,6 +1502,67 @@ export default function PurchaseOrdersPage() {
                       className="px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none font-mono"
                     />
                   </div>
+                  )}
+                  {unit.category === 'PHONE_USED' && unit.status === 'PASS' && (
+                    <div className="mt-2 border border-orange-200 bg-orange-50 rounded-lg p-3 space-y-2">
+                      <div className="text-xs font-medium text-orange-700 mb-1">ข้อมูลมือสอง</div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-0.5">% แบตเตอรี่</label>
+                          <input
+                            type="number"
+                            placeholder="เช่น 87"
+                            value={unit.batteryHealth}
+                            onChange={(e) => updateReceivingUnit(idx, 'batteryHealth', e.target.value)}
+                            className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-orange-500 outline-none"
+                            min="0"
+                            max="100"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-0.5">กล่อง</label>
+                          <div className="flex gap-2 mt-1">
+                            <button
+                              type="button"
+                              onClick={() => updateReceivingUnit(idx, 'hasBox', 'true')}
+                              className={`px-3 py-1 rounded text-xs font-medium transition-colors ${unit.hasBox ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-green-100'}`}
+                            >
+                              มีกล่อง
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateReceivingUnit(idx, 'hasBox', 'false')}
+                              className={`px-3 py-1 rounded text-xs font-medium transition-colors ${!unit.hasBox ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-red-100'}`}
+                            >
+                              ไม่มีกล่อง
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-0.5">ประกันศูนย์</label>
+                        <div className="flex items-center gap-3">
+                          <label className="flex items-center gap-1.5 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={unit.warrantyExpired}
+                              onChange={(e) => updateReceivingUnit(idx, 'warrantyExpired', e.target.checked ? 'true' : 'false')}
+                              className="rounded"
+                            />
+                            <span className="text-xs text-gray-600">หมดประกันแล้ว</span>
+                          </label>
+                          {!unit.warrantyExpired && (
+                            <input
+                              type="date"
+                              value={unit.warrantyExpireDate}
+                              onChange={(e) => updateReceivingUnit(idx, 'warrantyExpireDate', e.target.value)}
+                              className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-orange-500 outline-none"
+                            />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   {unit.status === 'REJECT' && (
                     <input
                       type="text"

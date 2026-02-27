@@ -19,6 +19,14 @@ const categoryOptions = [
   { value: 'ACCESSORY', label: 'อุปกรณ์เสริม' },
 ];
 
+const accessoryTypes = [
+  { value: 'ฟิล์ม', label: 'ฟิล์ม' },
+  { value: 'ชุดชาร์จ', label: 'ชุดชาร์จ' },
+  { value: 'หูฟัง', label: 'หูฟัง' },
+  { value: 'เคส', label: 'เคส' },
+  { value: 'อื่นๆ', label: 'อื่นๆ' },
+];
+
 const statusOptions = [
   { value: 'IN_STOCK', label: 'พร้อมขาย' },
   { value: 'PO_RECEIVED', label: 'รับจาก PO' },
@@ -50,6 +58,12 @@ export default function ProductCreatePage() {
     branchId: '',
     status: 'IN_STOCK',
     conditionGrade: '',
+    batteryHealth: '',
+    warrantyExpired: false,
+    warrantyExpireDate: '',
+    hasBox: true,
+    accessoryType: '',
+    accessoryBrand: '',
   });
 
   const [prices, setPrices] = useState<PriceRow[]>([
@@ -92,13 +106,16 @@ export default function ProductCreatePage() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const autoName = [form.brand, form.model, form.color, form.storage].filter(Boolean).join(' ');
+      const isAccessory = form.category === 'ACCESSORY';
+      const autoName = isAccessory
+        ? [form.accessoryType, form.accessoryBrand, form.model ? `สำหรับ ${form.model}` : ''].filter(Boolean).join(' ')
+        : [form.brand, form.model, form.color, form.storage].filter(Boolean).join(' ');
       const payload = {
         name: form.name || autoName,
         brand: form.brand,
         model: form.model,
-        color: form.color || undefined,
-        storage: form.storage || undefined,
+        color: isAccessory ? undefined : (form.color || undefined),
+        storage: isAccessory ? undefined : (form.storage || undefined),
         imeiSerial: form.imeiSerial || undefined,
         serialNumber: form.serialNumber || undefined,
         category: form.category,
@@ -107,6 +124,16 @@ export default function ProductCreatePage() {
         branchId: form.branchId,
         status: form.status,
         conditionGrade: form.conditionGrade || undefined,
+        ...(form.category === 'PHONE_USED' ? {
+          batteryHealth: form.batteryHealth ? Number(form.batteryHealth) : undefined,
+          warrantyExpired: form.warrantyExpired,
+          warrantyExpireDate: !form.warrantyExpired && form.warrantyExpireDate ? form.warrantyExpireDate : undefined,
+          hasBox: form.hasBox,
+        } : {}),
+        ...(isAccessory ? {
+          accessoryType: form.accessoryType || undefined,
+          accessoryBrand: form.accessoryBrand || undefined,
+        } : {}),
         photos: photoPreviews.length > 0 ? photoPreviews : undefined,
         prices: prices
           .filter((p) => p.label && p.amount)
@@ -185,13 +212,14 @@ export default function ProductCreatePage() {
   };
 
   const handleCategoryChange = (newCategory: string) => {
-    setForm({ ...form, category: newCategory, model: '', color: '', storage: '' });
+    setForm({ ...form, category: newCategory, model: '', color: '', storage: '', accessoryType: '', accessoryBrand: '' });
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.brand) { toast.error('กรุณาเลือกยี่ห้อ'); return; }
     if (!form.model) { toast.error('กรุณาเลือกรุ่น'); return; }
+    if (form.category === 'ACCESSORY' && !form.accessoryType) { toast.error('กรุณาเลือกประเภทอุปกรณ์'); return; }
     if (!form.branchId) { toast.error('กรุณาเลือกสาขา'); return; }
     if (!form.costPrice) { toast.error('กรุณาระบุราคาทุน'); return; }
     if (prices.filter((p) => p.label && p.amount).length === 0) {
@@ -218,11 +246,13 @@ export default function ProductCreatePage() {
         <div className="bg-white rounded-lg border p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">ข้อมูลสินค้า</h2>
           <div className="grid grid-cols-2 gap-4">
-            {/* ยี่ห้อ */}
+            {/* ยี่ห้อ / สำหรับยี่ห้อ */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">ยี่ห้อ *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {form.category === 'ACCESSORY' ? 'สำหรับยี่ห้อ *' : 'ยี่ห้อ *'}
+              </label>
               <select value={form.brand} onChange={(e) => handleBrandChange(e.target.value)} className={inputCls} required>
-                <option value="">เลือกยี่ห้อ</option>
+                <option value="">{form.category === 'ACCESSORY' ? 'เลือกยี่ห้อโทรศัพท์' : 'เลือกยี่ห้อ'}</option>
                 {brands.map((b) => <option key={b} value={b}>{b}</option>)}
               </select>
             </div>
@@ -235,11 +265,13 @@ export default function ProductCreatePage() {
               </select>
             </div>
 
-            {/* รุ่น */}
+            {/* รุ่น / สำหรับรุ่น */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">รุ่น *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {form.category === 'ACCESSORY' ? 'สำหรับรุ่น *' : 'รุ่น *'}
+              </label>
               <select value={form.model} onChange={(e) => handleModelChange(e.target.value)} className={inputCls} required disabled={!form.brand}>
-                <option value="">เลือกรุ่น</option>
+                <option value="">{form.category === 'ACCESSORY' ? 'เลือกรุ่นโทรศัพท์' : 'เลือกรุ่น'}</option>
                 {availableModels.map((m) => <option key={m.name} value={m.name}>{m.name}</option>)}
               </select>
               {form.brand && availableModels.length === 0 && (
@@ -247,23 +279,50 @@ export default function ProductCreatePage() {
               )}
             </div>
 
-            {/* สี */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">สี</label>
-              <select value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} className={inputCls} disabled={!form.model}>
-                <option value="">เลือกสี</option>
-                {availableColors.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
+            {form.category === 'ACCESSORY' ? (
+              <>
+                {/* ประเภทอุปกรณ์ */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">ประเภทอุปกรณ์ *</label>
+                  <select value={form.accessoryType} onChange={(e) => setForm({ ...form, accessoryType: e.target.value })} className={inputCls} required>
+                    <option value="">เลือกประเภทอุปกรณ์</option>
+                    {accessoryTypes.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </div>
 
-            {/* ความจุ */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">ความจุ</label>
-              <select value={form.storage} onChange={(e) => setForm({ ...form, storage: e.target.value })} className={inputCls} disabled={!form.model}>
-                <option value="">เลือกความจุ</option>
-                {availableStorage.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
+                {/* ยี่ห้ออุปกรณ์ */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">ยี่ห้ออุปกรณ์</label>
+                  <input
+                    type="text"
+                    value={form.accessoryBrand}
+                    onChange={(e) => setForm({ ...form, accessoryBrand: e.target.value })}
+                    placeholder="เช่น Spigen, Anker, Samsung"
+                    className={inputCls}
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                {/* สี */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">สี</label>
+                  <select value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} className={inputCls} disabled={!form.model}>
+                    <option value="">เลือกสี</option>
+                    {availableColors.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+
+                {/* ความจุ */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">ความจุ</label>
+                  <select value={form.storage} onChange={(e) => setForm({ ...form, storage: e.target.value })} className={inputCls} disabled={!form.model}>
+                    <option value="">เลือกความจุ</option>
+                    {availableStorage.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+              </>
+            )}
 
             {/* ชื่อสินค้า */}
             <div>
@@ -272,35 +331,39 @@ export default function ProductCreatePage() {
                 type="text"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="อัตโนมัติจาก ยี่ห้อ + รุ่น + สี + ความจุ"
+                placeholder={form.category === 'ACCESSORY' ? 'อัตโนมัติจาก ประเภท + ยี่ห้ออุปกรณ์ + รุ่น' : 'อัตโนมัติจาก ยี่ห้อ + รุ่น + สี + ความจุ'}
                 className={inputCls}
               />
             </div>
 
-            {/* IMEI */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">IMEI</label>
-              <input
-                type="text"
-                value={form.imeiSerial}
-                onChange={(e) => setForm({ ...form, imeiSerial: e.target.value })}
-                placeholder="เลข IMEI 15 หลัก"
-                className={`${inputCls} font-mono`}
-                maxLength={15}
-              />
-            </div>
+            {form.category !== 'ACCESSORY' && (
+              <>
+                {/* IMEI */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">IMEI</label>
+                  <input
+                    type="text"
+                    value={form.imeiSerial}
+                    onChange={(e) => setForm({ ...form, imeiSerial: e.target.value })}
+                    placeholder="เลข IMEI 15 หลัก"
+                    className={`${inputCls} font-mono`}
+                    maxLength={15}
+                  />
+                </div>
 
-            {/* Serial Number */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Serial Number</label>
-              <input
-                type="text"
-                value={form.serialNumber}
-                onChange={(e) => setForm({ ...form, serialNumber: e.target.value })}
-                placeholder="หมายเลข Serial"
-                className={`${inputCls} font-mono`}
-              />
-            </div>
+                {/* Serial Number */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Serial Number</label>
+                  <input
+                    type="text"
+                    value={form.serialNumber}
+                    onChange={(e) => setForm({ ...form, serialNumber: e.target.value })}
+                    placeholder="หมายเลข Serial"
+                    className={`${inputCls} font-mono`}
+                  />
+                </div>
+              </>
+            )}
 
             {/* สถานะ */}
             <div>
@@ -310,14 +373,85 @@ export default function ProductCreatePage() {
               </select>
             </div>
 
-            {/* เกรดสภาพ */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">เกรดสภาพ</label>
-              <select value={form.conditionGrade} onChange={(e) => setForm({ ...form, conditionGrade: e.target.value })} className={inputCls}>
-                {gradeOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-              </select>
-            </div>
+            {form.category !== 'ACCESSORY' && (
+              /* เกรดสภาพ */
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">เกรดสภาพ</label>
+                <select value={form.conditionGrade} onChange={(e) => setForm({ ...form, conditionGrade: e.target.value })} className={inputCls}>
+                  {gradeOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                </select>
+              </div>
+            )}
           </div>
+
+          {/* Accessory auto name preview */}
+          {form.category === 'ACCESSORY' && (form.accessoryType || form.accessoryBrand) && (
+            <div className="mt-3 text-sm text-purple-600 bg-purple-50 border border-purple-200 rounded-lg px-3 py-2">
+              ชื่อสินค้าอัตโนมัติ: {[form.accessoryType, form.accessoryBrand, form.model ? `สำหรับ ${form.model}` : ''].filter(Boolean).join(' ')}
+            </div>
+          )}
+
+          {/* Used phone fields */}
+          {form.category === 'PHONE_USED' && (
+            <div className="col-span-2 mt-2 border border-orange-200 bg-orange-50 rounded-lg p-4 space-y-4">
+              <h3 className="text-sm font-semibold text-orange-700">ข้อมูลมือสอง</h3>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">% แบตเตอรี่</label>
+                  <input
+                    type="number"
+                    value={form.batteryHealth}
+                    onChange={(e) => setForm({ ...form, batteryHealth: e.target.value })}
+                    placeholder="เช่น 87"
+                    className={inputCls}
+                    min="0"
+                    max="100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">ประกันศูนย์</label>
+                  <div className="flex items-center gap-3 mt-1">
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={form.warrantyExpired}
+                        onChange={(e) => setForm({ ...form, warrantyExpired: e.target.checked, warrantyExpireDate: e.target.checked ? '' : form.warrantyExpireDate })}
+                        className="rounded"
+                      />
+                      <span className="text-sm text-gray-600">หมดประกันแล้ว</span>
+                    </label>
+                  </div>
+                  {!form.warrantyExpired && (
+                    <input
+                      type="date"
+                      value={form.warrantyExpireDate}
+                      onChange={(e) => setForm({ ...form, warrantyExpireDate: e.target.value })}
+                      className={`${inputCls} mt-2`}
+                    />
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">กล่อง</label>
+                  <div className="flex gap-2 mt-1">
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, hasBox: true })}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${form.hasBox ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-green-100'}`}
+                    >
+                      มีกล่อง
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, hasBox: false })}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${!form.hasBox ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-red-100'}`}
+                    >
+                      ไม่มีกล่อง
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Photos */}

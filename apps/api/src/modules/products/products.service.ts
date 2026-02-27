@@ -72,12 +72,13 @@ export class ProductsService {
   }
 
   async create(dto: CreateProductDto) {
-    const { prices, costPrice, ...data } = dto;
+    const { prices, costPrice, warrantyExpireDate, ...data } = dto;
 
     const product = await this.prisma.product.create({
       data: {
         ...data,
         costPrice,
+        warrantyExpireDate: warrantyExpireDate ? new Date(warrantyExpireDate) : null,
         ...(prices && prices.length > 0
           ? {
               prices: {
@@ -98,10 +99,14 @@ export class ProductsService {
 
   async update(id: string, dto: UpdateProductDto) {
     await this.findOne(id);
-    const { costPrice, ...data } = dto;
+    const { costPrice, warrantyExpireDate, ...data } = dto;
     return this.prisma.product.update({
       where: { id },
-      data: { ...data, ...(costPrice !== undefined ? { costPrice } : {}) } as Prisma.ProductUncheckedUpdateInput,
+      data: {
+        ...data,
+        ...(costPrice !== undefined ? { costPrice } : {}),
+        ...(warrantyExpireDate !== undefined ? { warrantyExpireDate: warrantyExpireDate ? new Date(warrantyExpireDate) : null } : {}),
+      } as Prisma.ProductUncheckedUpdateInput,
       include: productInclude,
     });
   }

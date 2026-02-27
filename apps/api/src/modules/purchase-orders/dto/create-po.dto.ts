@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsDateString, IsArray, ValidateNested, IsIn } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsDateString, IsArray, ValidateNested, IsIn, IsBoolean } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class POItemDto {
@@ -19,6 +19,14 @@ export class POItemDto {
   @IsString()
   @IsOptional()
   category?: string;
+
+  @IsString()
+  @IsOptional()
+  accessoryType?: string;
+
+  @IsString()
+  @IsOptional()
+  accessoryBrand?: string;
 
   @IsNumber()
   quantity: number;
@@ -144,6 +152,22 @@ export class GoodsReceivingItemDto {
   @IsString()
   @IsOptional()
   rejectReason?: string;
+
+  @IsNumber()
+  @IsOptional()
+  batteryHealth?: number;
+
+  @IsBoolean()
+  @IsOptional()
+  warrantyExpired?: boolean;
+
+  @IsString()
+  @IsOptional()
+  warrantyExpireDate?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  hasBox?: boolean;
 }
 
 export class GoodsReceivingDto {

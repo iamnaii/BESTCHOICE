@@ -241,7 +241,14 @@ export class ProductsService {
     });
   }
 
-  async getTransferHistory(filters: { branchId?: string; status?: string }) {
+  async getTransferHistory(filters: {
+    branchId?: string;
+    status?: string;
+    startDate?: string;
+    endDate?: string;
+    page?: number;
+    limit?: number;
+  }) {
     const where: Record<string, unknown> = {};
     if (filters.status) where.status = filters.status;
     if (filters.branchId) {
@@ -250,18 +257,53 @@ export class ProductsService {
         { toBranchId: filters.branchId },
       ];
     }
+    if (filters.startDate || filters.endDate) {
+      const dateFilter: Record<string, Date> = {};
+      if (filters.startDate) dateFilter.gte = new Date(filters.startDate);
+      if (filters.endDate) dateFilter.lte = new Date(filters.endDate);
+      where.createdAt = dateFilter;
+    }
 
-    return this.prisma.stockTransfer.findMany({
-      where,
+    const page = filters.page || 1;
+    const limit = filters.limit || 50;
+
+    const [data, total] = await Promise.all([
+      this.prisma.stockTransfer.findMany({
+        where,
+        include: {
+          fromBranch: { select: { id: true, name: true } },
+          toBranch: { select: { id: true, name: true } },
+          confirmedBy: { select: { id: true, name: true } },
+          product: { select: { id: true, name: true, brand: true, model: true, imeiSerial: true, serialNumber: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.stockTransfer.count({ where }),
+    ]);
+
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
+
+  async getTransferById(transferId: string) {
+    const transfer = await this.prisma.stockTransfer.findUnique({
+      where: { id: transferId },
       include: {
         fromBranch: { select: { id: true, name: true } },
         toBranch: { select: { id: true, name: true } },
         confirmedBy: { select: { id: true, name: true } },
-        product: { select: { id: true, name: true, brand: true, model: true, imeiSerial: true, serialNumber: true } },
+        product: {
+          select: {
+            id: true, name: true, brand: true, model: true,
+            imeiSerial: true, serialNumber: true, color: true, storage: true,
+            costPrice: true, category: true, photos: true, status: true,
+          },
+        },
       },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
     });
+    if (!transfer) throw new NotFoundException('ไม่พบรายการโอน');
+    return transfer;
   }
 
   async confirmTransfer(transferId: string, userId: string) {
@@ -321,45 +363,62 @@ export class ProductsService {
 
   // === Stock Overview ===
 
-  async getStock(filters: { branchId?: string; status?: string; category?: string; brand?: string }) {
+  async getStock(filters: {
+    branchId?: string;
+    status?: string;
+    category?: string;
+    brand?: string;
+    page?: number;
+    limit?: number;
+  }) {
     const where: Record<string, unknown> = { deletedAt: null };
     if (filters.branchId) where.branchId = filters.branchId;
     if (filters.status) where.status = filters.status;
     if (filters.category) where.category = filters.category;
     if (filters.brand) where.brand = filters.brand;
 
-    const products = await this.prisma.product.findMany({
-      where,
-      include: {
-        branch: { select: { id: true, name: true } },
-        supplier: { select: { id: true, name: true } },
-        prices: { where: { isDefault: true }, take: 1 },
-      },
-      orderBy: [{ branch: { name: 'asc' } }, { createdAt: 'desc' }],
-    });
+    const page = filters.page || 1;
+    const limit = filters.limit || 50;
 
-    // Aggregate summary by branch
+    const [products, total] = await Promise.all([
+      this.prisma.product.findMany({
+        where,
+        include: {
+          branch: { select: { id: true, name: true } },
+          supplier: { select: { id: true, name: true } },
+          prices: { where: { isDefault: true }, take: 1 },
+        },
+        orderBy: [{ branch: { name: 'asc' } }, { createdAt: 'desc' }],
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.product.count({ where }),
+    ]);
+
+    // Aggregate summary by branch (from DB, not from paginated results)
     const branches = await this.prisma.branch.findMany({
       where: { isActive: true },
       select: { id: true, name: true },
       orderBy: { name: 'asc' },
     });
 
-    const summary = branches.map((branch) => {
-      const branchProducts = products.filter((p) => p.branchId === branch.id);
-      const inStock = branchProducts.filter((p) => p.status === 'IN_STOCK').length;
-      const totalValue = branchProducts
-        .filter((p) => p.status === 'IN_STOCK')
-        .reduce((sum, p) => sum + Number(p.costPrice), 0);
-      return {
-        branch,
-        total: branchProducts.length,
-        inStock,
-        totalValue,
-      };
+    const summaryData = await this.prisma.product.groupBy({
+      by: ['branchId', 'status'],
+      where: { deletedAt: null, ...(filters.category ? { category: filters.category as any } : {}), ...(filters.brand ? { brand: filters.brand } : {}) },
+      _count: true,
+      _sum: { costPrice: true },
     });
 
-    return { products, summary };
+    const summary = branches.map((branch) => {
+      const branchRows = summaryData.filter((r) => r.branchId === branch.id);
+      const totalCount = branchRows.reduce((sum, r) => sum + r._count, 0);
+      const inStockRow = branchRows.find((r) => r.status === 'IN_STOCK');
+      const inStock = inStockRow?._count || 0;
+      const totalValue = Number(inStockRow?._sum?.costPrice || 0);
+      return { branch, total: totalCount, inStock, totalValue };
+    });
+
+    return { products, total, page, limit, totalPages: Math.ceil(total / limit), summary };
   }
 
   // === Get available brands for filter ===

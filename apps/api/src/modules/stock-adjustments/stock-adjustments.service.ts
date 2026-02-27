@@ -75,6 +75,9 @@ export class StockAdjustmentsService {
     branchId?: string;
     reason?: string;
     productId?: string;
+    search?: string;
+    startDate?: string;
+    endDate?: string;
     page?: number;
     limit?: number;
   }) {
@@ -82,6 +85,22 @@ export class StockAdjustmentsService {
     if (filters.branchId) where.branchId = filters.branchId;
     if (filters.reason) where.reason = filters.reason;
     if (filters.productId) where.productId = filters.productId;
+    if (filters.search) {
+      where.product = {
+        OR: [
+          { name: { contains: filters.search, mode: 'insensitive' } },
+          { brand: { contains: filters.search, mode: 'insensitive' } },
+          { model: { contains: filters.search, mode: 'insensitive' } },
+          { imeiSerial: { contains: filters.search } },
+        ],
+      };
+    }
+    if (filters.startDate || filters.endDate) {
+      const dateFilter: Record<string, Date> = {};
+      if (filters.startDate) dateFilter.gte = new Date(filters.startDate);
+      if (filters.endDate) dateFilter.lte = new Date(filters.endDate);
+      where.createdAt = dateFilter;
+    }
 
     const page = filters.page || 1;
     const limit = filters.limit || 50;

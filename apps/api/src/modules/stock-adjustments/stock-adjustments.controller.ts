@@ -25,6 +25,9 @@ export class StockAdjustmentsController {
     @Query('branchId') branchId?: string,
     @Query('reason') reason?: string,
     @Query('productId') productId?: string,
+    @Query('search') search?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
@@ -32,6 +35,9 @@ export class StockAdjustmentsController {
       branchId,
       reason,
       productId,
+      search,
+      startDate,
+      endDate,
       page: page ? parseInt(page) : undefined,
       limit: limit ? parseInt(limit) : undefined,
     });

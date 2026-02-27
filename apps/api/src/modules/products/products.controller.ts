@@ -38,8 +38,14 @@ export class ProductsController {
     @Query('status') status?: string,
     @Query('category') category?: string,
     @Query('brand') brand?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
-    return this.productsService.getStock({ branchId, status, category, brand });
+    return this.productsService.getStock({
+      branchId, status, category, brand,
+      page: page ? parseInt(page) : undefined,
+      limit: limit ? parseInt(limit) : undefined,
+    });
   }
 
   @Get('brands')
@@ -57,8 +63,21 @@ export class ProductsController {
   getTransferHistory(
     @Query('branchId') branchId?: string,
     @Query('status') status?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
-    return this.productsService.getTransferHistory({ branchId, status });
+    return this.productsService.getTransferHistory({
+      branchId, status, startDate, endDate,
+      page: page ? parseInt(page) : undefined,
+      limit: limit ? parseInt(limit) : undefined,
+    });
+  }
+
+  @Get('transfers/:transferId')
+  getTransferById(@Param('transferId') transferId: string) {
+    return this.productsService.getTransferById(transferId);
   }
 
   @Get(':id')

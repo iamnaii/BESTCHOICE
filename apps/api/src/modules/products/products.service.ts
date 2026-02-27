@@ -45,8 +45,8 @@ export class ProductsService {
       ];
     }
 
-    const page = filters.page || 1;
-    const limit = filters.limit || 50;
+    const page = Math.max(1, filters.page || 1);
+    const limit = Math.min(100, Math.max(1, filters.limit || 50));
 
     const [data, total] = await Promise.all([
       this.prisma.product.findMany({
@@ -124,73 +124,79 @@ export class ProductsService {
   async addPrice(productId: string, dto: CreateProductPriceDto) {
     await this.findOne(productId);
 
-    // If new price is default, unset other defaults
-    if (dto.isDefault) {
-      await this.prisma.productPrice.updateMany({
-        where: { productId, isDefault: true },
-        data: { isDefault: false },
-      });
-    }
+    return this.prisma.$transaction(async (tx) => {
+      // If new price is default, unset other defaults
+      if (dto.isDefault) {
+        await tx.productPrice.updateMany({
+          where: { productId, isDefault: true },
+          data: { isDefault: false },
+        });
+      }
 
-    return this.prisma.productPrice.create({
-      data: {
-        productId,
-        label: dto.label,
-        amount: dto.amount,
-        isDefault: dto.isDefault ?? false,
-      },
+      return tx.productPrice.create({
+        data: {
+          productId,
+          label: dto.label,
+          amount: dto.amount,
+          isDefault: dto.isDefault ?? false,
+        },
+      });
     });
   }
 
   async updatePrice(productId: string, priceId: string, dto: UpdateProductPriceDto) {
-    const price = await this.prisma.productPrice.findFirst({
-      where: { id: priceId, productId },
-    });
-    if (!price) throw new NotFoundException('ไม่พบราคาขาย');
-
-    // If updating to default, unset other defaults
-    if (dto.isDefault) {
-      await this.prisma.productPrice.updateMany({
-        where: { productId, isDefault: true, id: { not: priceId } },
-        data: { isDefault: false },
+    return this.prisma.$transaction(async (tx) => {
+      const price = await tx.productPrice.findFirst({
+        where: { id: priceId, productId },
       });
-    }
+      if (!price) throw new NotFoundException('ไม่พบราคาขาย');
 
-    return this.prisma.productPrice.update({
-      where: { id: priceId },
-      data: dto,
+      // If updating to default, unset other defaults
+      if (dto.isDefault) {
+        await tx.productPrice.updateMany({
+          where: { productId, isDefault: true, id: { not: priceId } },
+          data: { isDefault: false },
+        });
+      }
+
+      return tx.productPrice.update({
+        where: { id: priceId },
+        data: dto,
+      });
     });
   }
 
   async removePrice(productId: string, priceId: string) {
-    const price = await this.prisma.productPrice.findFirst({
-      where: { id: priceId, productId },
-    });
-    if (!price) throw new NotFoundException('ไม่พบราคาขาย');
-
-    // Check at least 1 price remains
-    const count = await this.prisma.productPrice.count({ where: { productId } });
-    if (count <= 1) {
-      throw new BadRequestException('ต้องมีอย่างน้อย 1 ราคาขาย');
-    }
-
-    await this.prisma.productPrice.delete({ where: { id: priceId } });
-
-    // If deleted price was default, set first remaining as default
-    if (price.isDefault) {
-      const first = await this.prisma.productPrice.findFirst({
-        where: { productId },
-        orderBy: { createdAt: 'asc' },
+    return this.prisma.$transaction(async (tx) => {
+      const price = await tx.productPrice.findFirst({
+        where: { id: priceId, productId },
       });
-      if (first) {
-        await this.prisma.productPrice.update({
-          where: { id: first.id },
-          data: { isDefault: true },
-        });
-      }
-    }
+      if (!price) throw new NotFoundException('ไม่พบราคาขาย');
 
-    return { message: 'ลบราคาขายสำเร็จ' };
+      // Check at least 1 price remains
+      const count = await tx.productPrice.count({ where: { productId } });
+      if (count <= 1) {
+        throw new BadRequestException('ต้องมีอย่างน้อย 1 ราคาขาย');
+      }
+
+      await tx.productPrice.delete({ where: { id: priceId } });
+
+      // If deleted price was default, set first remaining as default
+      if (price.isDefault) {
+        const first = await tx.productPrice.findFirst({
+          where: { productId },
+          orderBy: { createdAt: 'asc' },
+        });
+        if (first) {
+          await tx.productPrice.update({
+            where: { id: first.id },
+            data: { isDefault: true },
+          });
+        }
+      }
+
+      return { message: 'ลบราคาขายสำเร็จ' };
+    });
   }
 
   // === Stock Transfer ===
@@ -198,8 +204,21 @@ export class ProductsService {
   async transfer(productId: string, dto: TransferProductDto, userId: string) {
     const product = await this.findOne(productId);
 
+    // Only allow transfer for products in stock
+    if (!['IN_STOCK', 'PO_RECEIVED'].includes(product.status)) {
+      throw new BadRequestException('ไม่สามารถโอนสินค้าที่ไม่ได้อยู่ในสต๊อคได้');
+    }
+
     if (product.branchId === dto.toBranchId) {
       throw new BadRequestException('สาขาปลายทางต้องไม่ใช่สาขาเดียวกับสาขาต้นทาง');
+    }
+
+    // Check for existing pending transfer for this product
+    const existingTransfer = await this.prisma.stockTransfer.findFirst({
+      where: { productId, status: 'PENDING' },
+    });
+    if (existingTransfer) {
+      throw new BadRequestException('สินค้านี้มีรายการโอนที่รออยู่แล้ว');
     }
 
     // Verify destination branch exists
@@ -241,7 +260,14 @@ export class ProductsService {
     });
   }
 
-  async getTransferHistory(filters: { branchId?: string; status?: string }) {
+  async getTransferHistory(filters: {
+    branchId?: string;
+    status?: string;
+    startDate?: string;
+    endDate?: string;
+    page?: number;
+    limit?: number;
+  }) {
     const where: Record<string, unknown> = {};
     if (filters.status) where.status = filters.status;
     if (filters.branchId) {
@@ -250,32 +276,71 @@ export class ProductsService {
         { toBranchId: filters.branchId },
       ];
     }
+    if (filters.startDate || filters.endDate) {
+      const dateFilter: Record<string, Date> = {};
+      if (filters.startDate) dateFilter.gte = new Date(filters.startDate);
+      if (filters.endDate) {
+        const end = new Date(filters.endDate);
+        end.setHours(23, 59, 59, 999);
+        dateFilter.lte = end;
+      }
+      where.createdAt = dateFilter;
+    }
 
-    return this.prisma.stockTransfer.findMany({
-      where,
+    const page = Math.max(1, filters.page || 1);
+    const limit = Math.min(100, Math.max(1, filters.limit || 50));
+
+    const [data, total] = await Promise.all([
+      this.prisma.stockTransfer.findMany({
+        where,
+        include: {
+          fromBranch: { select: { id: true, name: true } },
+          toBranch: { select: { id: true, name: true } },
+          confirmedBy: { select: { id: true, name: true } },
+          product: { select: { id: true, name: true, brand: true, model: true, imeiSerial: true, serialNumber: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.stockTransfer.count({ where }),
+    ]);
+
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
+
+  async getTransferById(transferId: string) {
+    const transfer = await this.prisma.stockTransfer.findUnique({
+      where: { id: transferId },
       include: {
         fromBranch: { select: { id: true, name: true } },
         toBranch: { select: { id: true, name: true } },
         confirmedBy: { select: { id: true, name: true } },
-        product: { select: { id: true, name: true, brand: true, model: true, imeiSerial: true, serialNumber: true } },
+        product: {
+          select: {
+            id: true, name: true, brand: true, model: true,
+            imeiSerial: true, serialNumber: true, color: true, storage: true,
+            costPrice: true, category: true, photos: true, status: true,
+          },
+        },
       },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
     });
+    if (!transfer) throw new NotFoundException('ไม่พบรายการโอน');
+    return transfer;
   }
 
   async confirmTransfer(transferId: string, userId: string) {
-    const transfer = await this.prisma.stockTransfer.findUnique({
-      where: { id: transferId },
-    });
-    if (!transfer) throw new NotFoundException('ไม่พบรายการโอน');
-    if (transfer.status !== 'PENDING') {
-      throw new BadRequestException('รายการโอนนี้ไม่อยู่ในสถานะรอยืนยัน');
-    }
+    return this.prisma.$transaction(async (tx) => {
+      const transfer = await tx.stockTransfer.findUnique({
+        where: { id: transferId },
+      });
+      if (!transfer) throw new NotFoundException('ไม่พบรายการโอน');
+      if (transfer.status !== 'PENDING') {
+        throw new BadRequestException('รายการโอนนี้ไม่อยู่ในสถานะรอยืนยัน');
+      }
 
-    // Confirm transfer: move product to destination branch
-    const [updatedTransfer] = await this.prisma.$transaction([
-      this.prisma.stockTransfer.update({
+      // Confirm transfer: move product to destination branch
+      const updatedTransfer = await tx.stockTransfer.update({
         where: { id: transferId },
         data: {
           status: 'CONFIRMED',
@@ -286,80 +351,105 @@ export class ProductsService {
           fromBranch: { select: { id: true, name: true } },
           toBranch: { select: { id: true, name: true } },
         },
-      }),
-      this.prisma.product.update({
+      });
+
+      await tx.product.update({
         where: { id: transfer.productId },
         data: { branchId: transfer.toBranchId },
-      }),
-    ]);
+      });
 
-    return updatedTransfer;
+      return updatedTransfer;
+    });
   }
 
   async rejectTransfer(transferId: string, userId: string) {
-    const transfer = await this.prisma.stockTransfer.findUnique({
-      where: { id: transferId },
-    });
-    if (!transfer) throw new NotFoundException('ไม่พบรายการโอน');
-    if (transfer.status !== 'PENDING') {
-      throw new BadRequestException('รายการโอนนี้ไม่อยู่ในสถานะรอยืนยัน');
-    }
+    return this.prisma.$transaction(async (tx) => {
+      const transfer = await tx.stockTransfer.findUnique({
+        where: { id: transferId },
+      });
+      if (!transfer) throw new NotFoundException('ไม่พบรายการโอน');
+      if (transfer.status !== 'PENDING') {
+        throw new BadRequestException('รายการโอนนี้ไม่อยู่ในสถานะรอยืนยัน');
+      }
 
-    return this.prisma.stockTransfer.update({
-      where: { id: transferId },
-      data: {
-        status: 'REJECTED',
-        confirmedById: userId,
-        confirmedAt: new Date(),
-      },
-      include: {
-        fromBranch: { select: { id: true, name: true } },
-        toBranch: { select: { id: true, name: true } },
-      },
+      return tx.stockTransfer.update({
+        where: { id: transferId },
+        data: {
+          status: 'REJECTED',
+          confirmedById: userId,
+          confirmedAt: new Date(),
+        },
+        include: {
+          fromBranch: { select: { id: true, name: true } },
+          toBranch: { select: { id: true, name: true } },
+        },
+      });
     });
   }
 
   // === Stock Overview ===
 
-  async getStock(filters: { branchId?: string; status?: string; category?: string; brand?: string }) {
+  async getStock(filters: {
+    branchId?: string;
+    status?: string;
+    category?: string;
+    brand?: string;
+    page?: number;
+    limit?: number;
+  }) {
     const where: Record<string, unknown> = { deletedAt: null };
     if (filters.branchId) where.branchId = filters.branchId;
     if (filters.status) where.status = filters.status;
     if (filters.category) where.category = filters.category;
     if (filters.brand) where.brand = filters.brand;
 
-    const products = await this.prisma.product.findMany({
-      where,
-      include: {
-        branch: { select: { id: true, name: true } },
-        supplier: { select: { id: true, name: true } },
-        prices: { where: { isDefault: true }, take: 1 },
-      },
-      orderBy: [{ branch: { name: 'asc' } }, { createdAt: 'desc' }],
-    });
+    const page = Math.max(1, filters.page || 1);
+    const limit = Math.min(100, Math.max(1, filters.limit || 50));
 
-    // Aggregate summary by branch
+    const [products, total] = await Promise.all([
+      this.prisma.product.findMany({
+        where,
+        include: {
+          branch: { select: { id: true, name: true } },
+          supplier: { select: { id: true, name: true } },
+          prices: { where: { isDefault: true }, take: 1 },
+        },
+        orderBy: [{ branch: { name: 'asc' } }, { createdAt: 'desc' }],
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.product.count({ where }),
+    ]);
+
+    // Aggregate summary by branch (from DB, not from paginated results)
     const branches = await this.prisma.branch.findMany({
       where: { isActive: true },
       select: { id: true, name: true },
       orderBy: { name: 'asc' },
     });
 
-    const summary = branches.map((branch) => {
-      const branchProducts = products.filter((p) => p.branchId === branch.id);
-      const inStock = branchProducts.filter((p) => p.status === 'IN_STOCK').length;
-      const totalValue = branchProducts
-        .filter((p) => p.status === 'IN_STOCK')
-        .reduce((sum, p) => sum + Number(p.costPrice), 0);
-      return {
-        branch,
-        total: branchProducts.length,
-        inStock,
-        totalValue,
-      };
+    const summaryWhere: Record<string, unknown> = { deletedAt: null };
+    if (filters.branchId) summaryWhere.branchId = filters.branchId;
+    if (filters.category) summaryWhere.category = filters.category;
+    if (filters.brand) summaryWhere.brand = filters.brand;
+
+    const summaryData = await this.prisma.product.groupBy({
+      by: ['branchId', 'status'],
+      where: summaryWhere as any,
+      _count: true,
+      _sum: { costPrice: true },
     });
 
-    return { products, summary };
+    const summary = branches.map((branch) => {
+      const branchRows = summaryData.filter((r) => r.branchId === branch.id);
+      const totalCount = branchRows.reduce((sum, r) => sum + r._count, 0);
+      const inStockRow = branchRows.find((r) => r.status === 'IN_STOCK');
+      const inStock = inStockRow?._count || 0;
+      const totalValue = Number(inStockRow?._sum?.costPrice || 0);
+      return { branch, total: totalCount, inStock, totalValue };
+    });
+
+    return { products, total, page, limit, totalPages: Math.ceil(total / limit), summary };
   }
 
   // === Get available brands for filter ===

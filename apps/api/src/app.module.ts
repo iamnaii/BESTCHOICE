@@ -29,6 +29,7 @@ import { MigrationModule } from './modules/migration/migration.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { UsersModule } from './modules/users/users.module';
 import { SettingsModule } from './modules/settings/settings.module';
+import { StockAdjustmentsModule } from './modules/stock-adjustments/stock-adjustments.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
 
@@ -64,6 +65,7 @@ import { SecurityMiddleware } from './modules/audit/security.middleware';
     ExchangeModule,
     RepossessionsModule,
     PurchaseOrdersModule,
+    StockAdjustmentsModule,
     // MASTER: Communication
     NotificationsModule,
     // MASTER: Intelligence

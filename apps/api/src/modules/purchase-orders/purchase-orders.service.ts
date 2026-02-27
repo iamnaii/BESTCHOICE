@@ -69,19 +69,6 @@ export class PurchaseOrdersService {
     });
     if (!supplier) throw new NotFoundException('ไม่พบ Supplier');
 
-    // Generate PO number: PO-YYYY-MM-NNN format (monthly sequence)
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const monthStart = new Date(year, today.getMonth(), 1);
-    const monthEnd = new Date(year, today.getMonth() + 1, 1);
-    const monthCount = await this.prisma.purchaseOrder.count({
-      where: {
-        createdAt: { gte: monthStart, lt: monthEnd },
-      },
-    });
-    const poNumber = `PO-${year}-${month}-${String(monthCount + 1).padStart(3, '0')}`;
-
     // Calculate total with discount & VAT (only if supplier has VAT)
     const totalAmount = dto.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
     const discount = dto.discount || 0;
@@ -100,43 +87,59 @@ export class PurchaseOrdersService {
       dueDate.setDate(dueDate.getDate() + selectedPm.creditTermDays);
     }
 
-    return this.prisma.purchaseOrder.create({
-      data: {
-        poNumber,
-        supplierId: dto.supplierId,
-        orderDate: orderDateObj,
-        expectedDate: dto.expectedDate ? new Date(dto.expectedDate) : null,
-        dueDate,
-        totalAmount,
-        discount,
-        vatAmount,
-        netAmount,
-        notes: dto.notes,
-        createdById: userId,
-        status: 'PENDING',
-        paymentStatus: (dto.paymentStatus as any) || 'UNPAID',
-        paymentMethod: dto.paymentMethod || null,
-        paidAmount: dto.paidAmount || 0,
-        paymentNotes: dto.paymentNotes || null,
-        attachments: dto.attachments || [],
-        items: {
-          create: dto.items.map((item) => ({
-            brand: item.brand,
-            model: item.model,
-            color: item.color || null,
-            storage: item.storage || null,
-            category: item.category || null,
-            accessoryType: item.accessoryType || null,
-            accessoryBrand: item.accessoryBrand || null,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-          })),
+    // Use transaction to prevent PO number race condition
+    return this.prisma.$transaction(async (tx) => {
+      // Generate PO number inside transaction: PO-YYYY-MM-NNN format (monthly sequence)
+      const today = new Date();
+      const year = today.getFullYear();
+      const month = String(today.getMonth() + 1).padStart(2, '0');
+      const monthStart = new Date(year, today.getMonth(), 1);
+      const monthEnd = new Date(year, today.getMonth() + 1, 1);
+      const monthCount = await tx.purchaseOrder.count({
+        where: {
+          createdAt: { gte: monthStart, lt: monthEnd },
         },
-      },
-      include: {
-        supplier: { select: { id: true, name: true, hasVat: true } },
-        items: true,
-      },
+      });
+      const poNumber = `PO-${year}-${month}-${String(monthCount + 1).padStart(3, '0')}`;
+
+      return tx.purchaseOrder.create({
+        data: {
+          poNumber,
+          supplierId: dto.supplierId,
+          orderDate: orderDateObj,
+          expectedDate: dto.expectedDate ? new Date(dto.expectedDate) : null,
+          dueDate,
+          totalAmount,
+          discount,
+          vatAmount,
+          netAmount,
+          notes: dto.notes,
+          createdById: userId,
+          status: 'PENDING',
+          paymentStatus: (dto.paymentStatus as any) || 'UNPAID',
+          paymentMethod: dto.paymentMethod || null,
+          paidAmount: dto.paidAmount || 0,
+          paymentNotes: dto.paymentNotes || null,
+          attachments: dto.attachments || [],
+          items: {
+            create: dto.items.map((item) => ({
+              brand: item.brand,
+              model: item.model,
+              color: item.color || null,
+              storage: item.storage || null,
+              category: item.category || null,
+              accessoryType: item.accessoryType || null,
+              accessoryBrand: item.accessoryBrand || null,
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+            })),
+          },
+        },
+        include: {
+          supplier: { select: { id: true, name: true, hasVat: true } },
+          items: true,
+        },
+      });
     });
   }
 
@@ -159,8 +162,8 @@ export class PurchaseOrdersService {
 
   async approve(id: string, userId: string) {
     const po = await this.findOne(id);
-    if (po.status !== 'DRAFT') {
-      throw new BadRequestException('อนุมัติได้เฉพาะ PO สถานะ DRAFT เท่านั้น');
+    if (!['DRAFT', 'PENDING'].includes(po.status)) {
+      throw new BadRequestException('อนุมัติได้เฉพาะ PO สถานะ DRAFT หรือ PENDING เท่านั้น');
     }
 
     return this.prisma.purchaseOrder.update({
@@ -198,10 +201,10 @@ export class PurchaseOrdersService {
       where: { id },
       data: {
         paymentStatus: dto.paymentStatus as any,
-        paymentMethod: dto.paymentMethod || null,
+        ...(dto.paymentMethod !== undefined ? { paymentMethod: dto.paymentMethod || null } : {}),
         paidAmount: dto.paidAmount,
-        paymentNotes: dto.paymentNotes || null,
-        ...(dto.attachments !== undefined && { attachments: dto.attachments }),
+        ...(dto.paymentNotes !== undefined ? { paymentNotes: dto.paymentNotes || null } : {}),
+        ...(dto.attachments !== undefined ? { attachments: dto.attachments } : {}),
       },
       include: {
         supplier: { select: { id: true, name: true } },
@@ -293,6 +296,133 @@ export class PurchaseOrdersService {
     const grandTotal = suppliers.reduce((sum, s) => sum + s.totalRemaining, 0);
 
     return { grandTotal, suppliers };
+  }
+
+  // === Goods Receiving History ===
+
+  async getGoodsReceivings(poId: string, filters: {
+    status?: string;
+    startDate?: string;
+    endDate?: string;
+    page?: number;
+    limit?: number;
+  } = {}) {
+    const po = await this.prisma.purchaseOrder.findUnique({ where: { id: poId } });
+    if (!po) throw new NotFoundException('ไม่พบใบสั่งซื้อ');
+
+    // Build item-level filter for status (PASS/REJECT)
+    const itemFilter: Record<string, unknown> = {};
+    if (filters.status) itemFilter.status = filters.status;
+
+    // Build date filter
+    const where: Record<string, unknown> = { poId };
+    if (filters.startDate || filters.endDate) {
+      const dateFilter: Record<string, Date> = {};
+      if (filters.startDate) dateFilter.gte = new Date(filters.startDate);
+      if (filters.endDate) {
+        const end = new Date(filters.endDate);
+        end.setHours(23, 59, 59, 999);
+        dateFilter.lte = end;
+      }
+      where.createdAt = dateFilter;
+    }
+
+    const page = Math.max(1, filters.page || 1);
+    const limit = Math.min(100, Math.max(1, filters.limit || 50));
+
+    const [data, total] = await Promise.all([
+      this.prisma.goodsReceiving.findMany({
+        where,
+        include: {
+          receivedBy: { select: { id: true, name: true } },
+          items: {
+            where: Object.keys(itemFilter).length > 0 ? itemFilter : undefined,
+            include: {
+              poItem: { select: { id: true, brand: true, model: true, color: true, storage: true, category: true, accessoryType: true } },
+              product: { select: { id: true, name: true, imeiSerial: true, status: true, branchId: true } },
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.goodsReceiving.count({ where }),
+    ]);
+
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
+
+  async getGoodsReceivingById(poId: string, receivingId: string) {
+    const receiving = await this.prisma.goodsReceiving.findFirst({
+      where: { id: receivingId, poId },
+      include: {
+        po: { select: { id: true, poNumber: true, supplierId: true, supplier: { select: { id: true, name: true } } } },
+        receivedBy: { select: { id: true, name: true } },
+        items: {
+          include: {
+            poItem: { select: { id: true, brand: true, model: true, color: true, storage: true, category: true, accessoryType: true, accessoryBrand: true, quantity: true, receivedQty: true } },
+            product: { select: { id: true, name: true, imeiSerial: true, serialNumber: true, status: true, branchId: true, photos: true } },
+          },
+        },
+      },
+    });
+    if (!receiving) throw new NotFoundException('ไม่พบรายการรับเข้า');
+    return receiving;
+  }
+
+  async getReceivingSummary(poId: string, filters: {
+    startDate?: string;
+    endDate?: string;
+  } = {}) {
+    const po = await this.prisma.purchaseOrder.findUnique({
+      where: { id: poId },
+      include: { items: true },
+    });
+    if (!po) throw new NotFoundException('ไม่พบใบสั่งซื้อ');
+
+    // Build date filter for receiving records
+    const receivingWhere: Record<string, unknown> = { poId };
+    if (filters.startDate || filters.endDate) {
+      const dateFilter: Record<string, Date> = {};
+      if (filters.startDate) dateFilter.gte = new Date(filters.startDate);
+      if (filters.endDate) {
+        const end = new Date(filters.endDate);
+        end.setHours(23, 59, 59, 999);
+        dateFilter.lte = end;
+      }
+      receivingWhere.createdAt = dateFilter;
+    }
+
+    const receivingItems = await this.prisma.goodsReceivingItem.findMany({
+      where: { receiving: receivingWhere },
+      select: { status: true, rejectReason: true, poItemId: true },
+    });
+
+    const totalOrdered = po.items.reduce((sum, item) => sum + item.quantity, 0);
+    const totalReceived = po.items.reduce((sum, item) => sum + item.receivedQty, 0);
+    const passedCount = receivingItems.filter((i) => i.status === 'PASS').length;
+    const rejectedCount = receivingItems.filter((i) => i.status === 'REJECT').length;
+    const remaining = totalOrdered - totalReceived;
+
+    // Group rejection reasons
+    const rejectReasons: Record<string, number> = {};
+    for (const item of receivingItems) {
+      if (item.status === 'REJECT' && item.rejectReason) {
+        rejectReasons[item.rejectReason] = (rejectReasons[item.rejectReason] || 0) + 1;
+      }
+    }
+
+    return {
+      poId,
+      poStatus: po.status,
+      totalOrdered,
+      totalReceived,
+      remaining,
+      passedCount,
+      rejectedCount,
+      rejectReasons,
+    };
   }
 
   /**
@@ -452,6 +582,30 @@ export class PurchaseOrdersService {
           throw new BadRequestException(
             `จำนวนรับเกิน: ${poItem.brand} ${poItem.model} (สั่ง ${poItem.quantity}, รับแล้ว ${poItem.receivedQty}, กำลังรับ ${passCount})`,
           );
+        }
+      }
+
+      // Validate duplicate IMEI/Serial in this batch
+      const imeiList = dto.items
+        .filter((i) => i.status === 'PASS' && i.imeiSerial)
+        .map((i) => i.imeiSerial!);
+      const uniqueImeis = new Set(imeiList);
+      if (uniqueImeis.size !== imeiList.length) {
+        throw new BadRequestException('พบ IMEI ซ้ำกันในรายการที่กำลังรับเข้า');
+      }
+
+      // Validate IMEI not already exists in system (include soft-deleted due to DB unique constraint)
+      if (imeiList.length > 0) {
+        const existingProducts = await tx.product.findMany({
+          where: { imeiSerial: { in: imeiList } },
+          select: { imeiSerial: true, name: true, deletedAt: true },
+        });
+        if (existingProducts.length > 0) {
+          const dupes = existingProducts.map((p) => {
+            const suffix = p.deletedAt ? ' [ตัดจำหน่ายแล้ว]' : '';
+            return `${p.imeiSerial} (${p.name}${suffix})`;
+          }).join(', ');
+          throw new BadRequestException(`IMEI ซ้ำกับสินค้าที่มีในระบบแล้ว: ${dupes}`);
         }
       }
 

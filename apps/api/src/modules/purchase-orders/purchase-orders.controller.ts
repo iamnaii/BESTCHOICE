@@ -29,6 +29,41 @@ export class PurchaseOrdersController {
     return this.purchaseOrdersService.findOne(id);
   }
 
+  @Get(':id/goods-receivings')
+  getGoodsReceivings(
+    @Param('id') id: string,
+    @Query('status') status?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.purchaseOrdersService.getGoodsReceivings(id, {
+      status,
+      startDate,
+      endDate,
+      page: page ? parseInt(page) : undefined,
+      limit: limit ? parseInt(limit) : undefined,
+    });
+  }
+
+  @Get(':id/goods-receivings/summary')
+  getReceivingSummary(
+    @Param('id') id: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.purchaseOrdersService.getReceivingSummary(id, { startDate, endDate });
+  }
+
+  @Get(':id/goods-receivings/:receivingId')
+  getGoodsReceivingById(
+    @Param('id') id: string,
+    @Param('receivingId') receivingId: string,
+  ) {
+    return this.purchaseOrdersService.getGoodsReceivingById(id, receivingId);
+  }
+
   @Post()
   @Roles('OWNER', 'BRANCH_MANAGER')
   create(

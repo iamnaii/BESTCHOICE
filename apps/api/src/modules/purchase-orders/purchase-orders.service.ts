@@ -356,6 +356,10 @@ export class PurchaseOrdersService {
               imeiSerial: item.imeiSerial || null,
               serialNumber: item.serialNumber || null,
               photos: item.photos || [],
+              batteryHealth: item.batteryHealth ?? null,
+              warrantyExpired: item.warrantyExpired ?? null,
+              warrantyExpireDate: item.warrantyExpireDate ? new Date(item.warrantyExpireDate) : null,
+              hasBox: item.hasBox ?? null,
             },
           });
 
@@ -369,6 +373,10 @@ export class PurchaseOrdersService {
               photos: item.photos || [],
               status: 'PASS',
               productId: product.id,
+              batteryHealth: item.batteryHealth ?? null,
+              warrantyExpired: item.warrantyExpired ?? null,
+              warrantyExpireDate: item.warrantyExpireDate ? new Date(item.warrantyExpireDate) : null,
+              hasBox: item.hasBox ?? null,
             },
           });
 

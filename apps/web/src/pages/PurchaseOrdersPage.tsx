@@ -117,10 +117,15 @@ interface ItemForm {
 interface ReceivingUnitForm {
   poItemId: string;
   label: string;
+  category: string;
   imeiSerial: string;
   serialNumber: string;
   status: 'PASS' | 'REJECT';
   rejectReason: string;
+  batteryHealth: string;
+  warrantyExpired: boolean;
+  warrantyExpireDate: string;
+  hasBox: boolean;
 }
 
 const emptyItem: ItemForm = { brand: '', category: '', model: '', color: '', storage: '', quantity: '1', unitPrice: '' };
@@ -189,13 +194,22 @@ export default function PurchaseOrdersPage() {
   const goodsReceivingMutation = useMutation({
     mutationFn: async ({ poId, items, notes }: { poId: string; items: ReceivingUnitForm[]; notes: string }) =>
       api.post(`/purchase-orders/${poId}/goods-receiving`, {
-        items: items.map((i) => ({
-          poItemId: i.poItemId,
-          imeiSerial: i.imeiSerial || undefined,
-          serialNumber: i.serialNumber || undefined,
-          status: i.status,
-          rejectReason: i.status === 'REJECT' ? i.rejectReason || undefined : undefined,
-        })),
+        items: items.map((i) => {
+          const isUsed = i.category === 'PHONE_USED';
+          return {
+            poItemId: i.poItemId,
+            imeiSerial: i.imeiSerial || undefined,
+            serialNumber: i.serialNumber || undefined,
+            status: i.status,
+            rejectReason: i.status === 'REJECT' ? i.rejectReason || undefined : undefined,
+            ...(isUsed && i.status === 'PASS' ? {
+              batteryHealth: i.batteryHealth ? Number(i.batteryHealth) : undefined,
+              warrantyExpired: i.warrantyExpired,
+              warrantyExpireDate: !i.warrantyExpired && i.warrantyExpireDate ? i.warrantyExpireDate : undefined,
+              hasBox: i.hasBox,
+            } : {}),
+          };
+        }),
         notes: notes || undefined,
       }),
     onSuccess: (res) => {
@@ -310,10 +324,15 @@ export default function PurchaseOrdersPage() {
         units.push({
           poItemId: item.id,
           label: `${nameParts.join(' ')} #${item.receivedQty + i + 1}`,
+          category: item.category || '',
           imeiSerial: '',
           serialNumber: '',
           status: 'PASS',
           rejectReason: '',
+          batteryHealth: '',
+          warrantyExpired: false,
+          warrantyExpireDate: '',
+          hasBox: true,
         });
       }
     }
@@ -336,7 +355,9 @@ export default function PurchaseOrdersPage() {
 
   const updateReceivingUnit = (idx: number, field: string, value: string) => {
     const newUnits = [...receivingUnits];
-    newUnits[idx] = { ...newUnits[idx], [field]: value };
+    const boolFields = ['hasBox', 'warrantyExpired'];
+    const parsed = boolFields.includes(field) ? value === 'true' : value;
+    newUnits[idx] = { ...newUnits[idx], [field]: parsed };
     setReceivingUnits(newUnits);
   };
 
@@ -1353,7 +1374,7 @@ export default function PurchaseOrdersPage() {
                             : 'bg-gray-100 text-gray-600 hover:bg-green-100'
                         }`}
                       >
-                        PASS
+                        ผ่าน
                       </button>
                       <button
                         type="button"
@@ -1364,7 +1385,7 @@ export default function PurchaseOrdersPage() {
                             : 'bg-gray-100 text-gray-600 hover:bg-red-100'
                         }`}
                       >
-                        REJECT
+                        ไม่ผ่าน
                       </button>
                     </div>
                   </div>
@@ -1384,6 +1405,66 @@ export default function PurchaseOrdersPage() {
                       className="px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none font-mono"
                     />
                   </div>
+                  {unit.category === 'PHONE_USED' && unit.status === 'PASS' && (
+                    <div className="mt-2 border border-orange-200 bg-orange-50 rounded-lg p-3 space-y-2">
+                      <div className="text-xs font-medium text-orange-700 mb-1">ข้อมูลมือสอง</div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-0.5">% แบตเตอรี่</label>
+                          <input
+                            type="number"
+                            placeholder="เช่น 87"
+                            value={unit.batteryHealth}
+                            onChange={(e) => updateReceivingUnit(idx, 'batteryHealth', e.target.value)}
+                            className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-orange-500 outline-none"
+                            min="0"
+                            max="100"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-0.5">กล่อง</label>
+                          <div className="flex gap-2 mt-1">
+                            <button
+                              type="button"
+                              onClick={() => updateReceivingUnit(idx, 'hasBox', 'true')}
+                              className={`px-3 py-1 rounded text-xs font-medium transition-colors ${unit.hasBox ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-green-100'}`}
+                            >
+                              มีกล่อง
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateReceivingUnit(idx, 'hasBox', 'false')}
+                              className={`px-3 py-1 rounded text-xs font-medium transition-colors ${!unit.hasBox ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-red-100'}`}
+                            >
+                              ไม่มีกล่อง
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-0.5">ประกันศูนย์</label>
+                        <div className="flex items-center gap-3">
+                          <label className="flex items-center gap-1.5 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={unit.warrantyExpired}
+                              onChange={(e) => updateReceivingUnit(idx, 'warrantyExpired', e.target.checked ? 'true' : 'false')}
+                              className="rounded"
+                            />
+                            <span className="text-xs text-gray-600">หมดประกันแล้ว</span>
+                          </label>
+                          {!unit.warrantyExpired && (
+                            <input
+                              type="date"
+                              value={unit.warrantyExpireDate}
+                              onChange={(e) => updateReceivingUnit(idx, 'warrantyExpireDate', e.target.value)}
+                              className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-orange-500 outline-none"
+                            />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   {unit.status === 'REJECT' && (
                     <input
                       type="text"

@@ -390,6 +390,10 @@ model Product {
   branchId       String          @map("branch_id")
   status         ProductStatus   @default(IN_STOCK)
   conditionGrade ConditionGrade? @map("condition_grade")
+  batteryHealth  Int?            @map("battery_health")
+  warrantyExpired Boolean?       @map("warranty_expired")
+  warrantyExpireDate DateTime?   @map("warranty_expire_date")
+  hasBox         Boolean?        @map("has_box")
   inspectionId   String?         @map("inspection_id")
   photos         String[]        @default([])
   createdAt      DateTime        @default(now()) @map("created_at")
@@ -478,6 +482,10 @@ model GoodsReceivingItem {
   photos       String[]            @default([])
   status       ReceivingItemStatus
   rejectReason String?             @map("reject_reason")
+  batteryHealth  Int?              @map("battery_health")
+  warrantyExpired Boolean?         @map("warranty_expired")
+  warrantyExpireDate DateTime?     @map("warranty_expire_date")
+  hasBox         Boolean?          @map("has_box")
   productId    String?             @unique @map("product_id")
   createdAt    DateTime            @default(now()) @map("created_at")
 

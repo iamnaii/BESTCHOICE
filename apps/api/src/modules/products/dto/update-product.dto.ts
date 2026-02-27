@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsNumber, IsArray } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsArray, IsBoolean } from 'class-validator';
 
 export class UpdateProductDto {
   @IsString()
@@ -56,4 +56,20 @@ export class UpdateProductDto {
   @IsArray()
   @IsOptional()
   photos?: string[];
+
+  @IsNumber()
+  @IsOptional()
+  batteryHealth?: number;
+
+  @IsBoolean()
+  @IsOptional()
+  warrantyExpired?: boolean;
+
+  @IsString()
+  @IsOptional()
+  warrantyExpireDate?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  hasBox?: boolean;
 }

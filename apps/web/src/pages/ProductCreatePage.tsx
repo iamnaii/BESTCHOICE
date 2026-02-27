@@ -50,6 +50,10 @@ export default function ProductCreatePage() {
     branchId: '',
     status: 'IN_STOCK',
     conditionGrade: '',
+    batteryHealth: '',
+    warrantyExpired: false,
+    warrantyExpireDate: '',
+    hasBox: true,
   });
 
   const [prices, setPrices] = useState<PriceRow[]>([
@@ -107,6 +111,12 @@ export default function ProductCreatePage() {
         branchId: form.branchId,
         status: form.status,
         conditionGrade: form.conditionGrade || undefined,
+        ...(form.category === 'PHONE_USED' ? {
+          batteryHealth: form.batteryHealth ? Number(form.batteryHealth) : undefined,
+          warrantyExpired: form.warrantyExpired,
+          warrantyExpireDate: !form.warrantyExpired && form.warrantyExpireDate ? form.warrantyExpireDate : undefined,
+          hasBox: form.hasBox,
+        } : {}),
         photos: photoPreviews.length > 0 ? photoPreviews : undefined,
         prices: prices
           .filter((p) => p.label && p.amount)
@@ -318,6 +328,68 @@ export default function ProductCreatePage() {
               </select>
             </div>
           </div>
+
+          {/* Used phone fields */}
+          {form.category === 'PHONE_USED' && (
+            <div className="col-span-2 mt-2 border border-orange-200 bg-orange-50 rounded-lg p-4 space-y-4">
+              <h3 className="text-sm font-semibold text-orange-700">ข้อมูลมือสอง</h3>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">% แบตเตอรี่</label>
+                  <input
+                    type="number"
+                    value={form.batteryHealth}
+                    onChange={(e) => setForm({ ...form, batteryHealth: e.target.value })}
+                    placeholder="เช่น 87"
+                    className={inputCls}
+                    min="0"
+                    max="100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">ประกันศูนย์</label>
+                  <div className="flex items-center gap-3 mt-1">
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={form.warrantyExpired}
+                        onChange={(e) => setForm({ ...form, warrantyExpired: e.target.checked, warrantyExpireDate: e.target.checked ? '' : form.warrantyExpireDate })}
+                        className="rounded"
+                      />
+                      <span className="text-sm text-gray-600">หมดประกันแล้ว</span>
+                    </label>
+                  </div>
+                  {!form.warrantyExpired && (
+                    <input
+                      type="date"
+                      value={form.warrantyExpireDate}
+                      onChange={(e) => setForm({ ...form, warrantyExpireDate: e.target.value })}
+                      className={`${inputCls} mt-2`}
+                    />
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">กล่อง</label>
+                  <div className="flex gap-2 mt-1">
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, hasBox: true })}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${form.hasBox ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-green-100'}`}
+                    >
+                      มีกล่อง
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, hasBox: false })}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${!form.hasBox ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-red-100'}`}
+                    >
+                      ไม่มีกล่อง
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Photos */}

@@ -27,6 +27,10 @@ interface Product {
   costPrice: string;
   status: string;
   conditionGrade: string | null;
+  batteryHealth: number | null;
+  warrantyExpired: boolean | null;
+  warrantyExpireDate: string | null;
+  hasBox: boolean | null;
   photos: string[];
   createdAt: string;
   branch: { id: string; name: string };
@@ -236,6 +240,13 @@ export default function ProductDetailPage() {
           <InfoField label="Serial Number" value={product.serialNumber} mono />
           <InfoField label="ประเภท" value={categoryLabels[product.category] || product.category} />
           <InfoField label="เกรดสภาพ" value={product.conditionGrade} />
+          {product.category === 'PHONE_USED' && (
+            <>
+              <InfoField label="แบตเตอรี่" value={product.batteryHealth != null ? `${product.batteryHealth}%` : null} />
+              <InfoField label="ประกันศูนย์" value={product.warrantyExpired ? 'หมดประกันแล้ว' : product.warrantyExpireDate ? `ถึง ${new Date(product.warrantyExpireDate).toLocaleDateString('th-TH')}` : null} />
+              <InfoField label="กล่อง" value={product.hasBox != null ? (product.hasBox ? 'มีกล่อง' : 'ไม่มีกล่อง') : null} />
+            </>
+          )}
           <InfoField label="สาขา" value={product.branch.name} />
           <InfoField label="Supplier" value={product.supplier?.name} />
           <InfoField label="PO" value={product.po?.poNumber} mono />

@@ -68,6 +68,22 @@ export class CreateProductDto {
   @IsOptional()
   photos?: string[];
 
+  @IsNumber()
+  @IsOptional()
+  batteryHealth?: number;
+
+  @IsBoolean()
+  @IsOptional()
+  warrantyExpired?: boolean;
+
+  @IsString()
+  @IsOptional()
+  warrantyExpireDate?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  hasBox?: boolean;
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreatePriceDto)

@@ -44,9 +44,14 @@ interface PurchaseOrder {
   expectedDate: string | null;
   status: string;
   totalAmount: string;
+  discount: string;
+  vatAmount: string;
+  netAmount: string;
   paymentStatus: string;
+  paymentMethod: string | null;
   paidAmount: string;
   paymentNotes: string | null;
+  attachments: string[];
   notes: string | null;
   supplier: { id: string; name: string; contactName: string; phone: string };
   createdBy: { id: string; name: string };
@@ -130,13 +135,17 @@ export default function PurchaseOrdersPage() {
   const [poDetail, setPODetail] = useState<PODetail | null>(null);
   const [receivingUnits, setReceivingUnits] = useState<ReceivingUnitForm[]>([]);
   const [receivingNotes, setReceivingNotes] = useState('');
-  const [paymentForm, setPaymentForm] = useState({ paymentStatus: '', paidAmount: '', paymentNotes: '' });
+  const [paymentForm, setPaymentForm] = useState({ paymentStatus: '', paymentMethod: '', paidAmount: '', paymentNotes: '' });
+  const [paymentAttachments, setPaymentAttachments] = useState<string[]>([]);
+  const [paymentAttachmentUrl, setPaymentAttachmentUrl] = useState('');
   const [form, setForm] = useState({
     supplierId: '',
     orderDate: new Date().toISOString().split('T')[0],
     expectedDate: '',
     notes: '',
+    discount: '',
     paymentStatus: 'UNPAID',
+    paymentMethod: '',
     paidAmount: '',
     paymentNotes: '',
   });
@@ -216,9 +225,14 @@ export default function PurchaseOrdersPage() {
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
+  const [attachmentUrl, setAttachmentUrl] = useState('');
+  const [formAttachments, setFormAttachments] = useState<string[]>([]);
+
   const resetForm = () => {
-    setForm({ supplierId: '', orderDate: new Date().toISOString().split('T')[0], expectedDate: '', notes: '', paymentStatus: 'UNPAID', paidAmount: '', paymentNotes: '' });
+    setForm({ supplierId: '', orderDate: new Date().toISOString().split('T')[0], expectedDate: '', notes: '', discount: '', paymentStatus: 'UNPAID', paymentMethod: '', paidAmount: '', paymentNotes: '' });
     setItems([{ ...emptyItem }]);
+    setFormAttachments([]);
+    setAttachmentUrl('');
   };
 
   const addItem = () => setItems([...items, { ...emptyItem }]);
@@ -254,9 +268,12 @@ export default function PurchaseOrdersPage() {
       orderDate: form.orderDate,
       expectedDate: form.expectedDate || undefined,
       notes: form.notes || undefined,
+      discount: form.discount ? Number(form.discount) : undefined,
       paymentStatus: form.paymentStatus !== 'UNPAID' ? form.paymentStatus : undefined,
+      paymentMethod: form.paymentMethod || undefined,
       paidAmount: form.paidAmount ? Number(form.paidAmount) : undefined,
       paymentNotes: form.paymentNotes || undefined,
+      attachments: formAttachments.length > 0 ? formAttachments : undefined,
       items: items.map((i) => ({
         brand: i.brand,
         model: i.model,
@@ -307,9 +324,12 @@ export default function PurchaseOrdersPage() {
     setSelectedPO(po);
     setPaymentForm({
       paymentStatus: po.paymentStatus || 'UNPAID',
+      paymentMethod: po.paymentMethod || '',
       paidAmount: po.paidAmount ? String(Number(po.paidAmount)) : '0',
       paymentNotes: po.paymentNotes || '',
     });
+    setPaymentAttachments(po.attachments || []);
+    setPaymentAttachmentUrl('');
     setIsPaymentModalOpen(true);
   };
 
@@ -348,8 +368,10 @@ export default function PurchaseOrdersPage() {
       poId: selectedPO.id,
       data: {
         paymentStatus: paymentForm.paymentStatus,
+        paymentMethod: paymentForm.paymentMethod || undefined,
         paidAmount: Number(paymentForm.paidAmount),
         paymentNotes: paymentForm.paymentNotes || undefined,
+        attachments: paymentAttachments,
       },
     });
   };
@@ -684,25 +706,68 @@ export default function PurchaseOrdersPage() {
                 );
               })}
             </div>
-            <div className="text-right mt-2 text-sm font-medium">
-              ยอดรวม: {totalAmount.toLocaleString()} บาท
+          </div>
+
+          {/* Summary Section */}
+          <div className="border-t pt-4">
+            <h4 className="text-sm font-medium text-gray-700 mb-2">สรุปยอด</h4>
+            <div className="bg-gray-50 rounded-lg p-3 space-y-1 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-500">ยอดรวมสินค้า (Subtotal)</span>
+                <span className="font-medium">{totalAmount.toLocaleString()} บาท</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-gray-500">ส่วนลด</span>
+                <input
+                  type="number"
+                  value={form.discount}
+                  onChange={(e) => setForm({ ...form, discount: e.target.value })}
+                  className="w-32 px-2 py-1 border border-gray-300 rounded text-sm text-right focus:ring-2 focus:ring-primary-500 outline-none"
+                  min="0"
+                  placeholder="0"
+                />
+              </div>
+              {(() => {
+                const disc = Number(form.discount) || 0;
+                const afterDiscount = totalAmount - disc;
+                const vat = Math.round(afterDiscount * 0.07 * 100) / 100;
+                const net = afterDiscount + vat;
+                return (
+                  <>
+                    <div className="flex justify-between text-gray-500">
+                      <span>หลังหักส่วนลด</span>
+                      <span>{afterDiscount.toLocaleString()} บาท</span>
+                    </div>
+                    <div className="flex justify-between text-gray-500">
+                      <span>VAT 7%</span>
+                      <span>{vat.toLocaleString()} บาท</span>
+                    </div>
+                    <div className="flex justify-between border-t pt-1 mt-1 font-semibold text-base">
+                      <span>ยอดสุทธิ</span>
+                      <span className="text-primary-700">{net.toLocaleString()} บาท</span>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           </div>
 
           {/* Payment Section */}
           <div className="border-t pt-4">
             <h4 className="text-sm font-medium text-gray-700 mb-2">การจ่ายเงิน</h4>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className="block text-xs text-gray-500 mb-0.5">สถานะการจ่ายเงิน</label>
+                <label className="block text-xs text-gray-500 mb-0.5">สถานะ</label>
                 <select
                   value={form.paymentStatus}
                   onChange={(e) => {
                     const newStatus = e.target.value;
+                    const disc = Number(form.discount) || 0;
+                    const net = (totalAmount - disc) * 1.07;
                     setForm({
                       ...form,
                       paymentStatus: newStatus,
-                      paidAmount: newStatus === 'FULLY_PAID' ? String(totalAmount) : newStatus === 'UNPAID' ? '' : form.paidAmount,
+                      paidAmount: newStatus === 'FULLY_PAID' ? String(Math.round(net)) : newStatus === 'UNPAID' ? '' : form.paidAmount,
                     });
                   }}
                   className={selectClass}
@@ -714,7 +779,22 @@ export default function PurchaseOrdersPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-0.5">จำนวนเงินที่จ่าย (บาท)</label>
+                <label className="block text-xs text-gray-500 mb-0.5">วิธีจ่ายเงิน</label>
+                <select
+                  value={form.paymentMethod}
+                  onChange={(e) => setForm({ ...form, paymentMethod: e.target.value })}
+                  className={selectClass}
+                  disabled={form.paymentStatus === 'UNPAID'}
+                >
+                  <option value="">-- เลือก --</option>
+                  <option value="CASH">เงินสด</option>
+                  <option value="BANK_TRANSFER">โอนธนาคาร</option>
+                  <option value="CHECK">เช็ค</option>
+                  <option value="CREDIT">เครดิต</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-0.5">จำนวนที่จ่าย (บาท)</label>
                 <input
                   type="number"
                   value={form.paidAmount}
@@ -727,20 +807,8 @@ export default function PurchaseOrdersPage() {
                 />
                 {form.paymentStatus !== 'UNPAID' && form.paymentStatus !== 'FULLY_PAID' && totalAmount > 0 && (
                   <div className="flex gap-2 mt-1">
-                    <button
-                      type="button"
-                      onClick={() => setForm({ ...form, paidAmount: String(Math.round(totalAmount * 0.3)) })}
-                      className="text-xs text-blue-600 hover:underline"
-                    >
-                      30%
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setForm({ ...form, paidAmount: String(Math.round(totalAmount * 0.5)) })}
-                      className="text-xs text-blue-600 hover:underline"
-                    >
-                      50%
-                    </button>
+                    <button type="button" onClick={() => setForm({ ...form, paidAmount: String(Math.round(totalAmount * 0.3)) })} className="text-xs text-blue-600 hover:underline">30%</button>
+                    <button type="button" onClick={() => setForm({ ...form, paidAmount: String(Math.round(totalAmount * 0.5)) })} className="text-xs text-blue-600 hover:underline">50%</button>
                   </div>
                 )}
               </div>
@@ -753,8 +821,45 @@ export default function PurchaseOrdersPage() {
                   value={form.paymentNotes}
                   onChange={(e) => setForm({ ...form, paymentNotes: e.target.value })}
                   className={inputClass}
-                  placeholder="เช่น โอนผ่านธนาคาร xxx, เลขอ้างอิง xxx"
+                  placeholder="เช่น เลขอ้างอิง, ชื่อบัญชี"
                 />
+              </div>
+            )}
+            {/* Attachments */}
+            {form.paymentStatus !== 'UNPAID' && (
+              <div className="mt-3">
+                <label className="block text-xs text-gray-500 mb-0.5">แนบสลิป/เอกสาร</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={attachmentUrl}
+                    onChange={(e) => setAttachmentUrl(e.target.value)}
+                    className={inputClass}
+                    placeholder="วาง URL รูปสลิป หรือ link เอกสาร"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (attachmentUrl.trim()) {
+                        setFormAttachments([...formAttachments, attachmentUrl.trim()]);
+                        setAttachmentUrl('');
+                      }
+                    }}
+                    className="px-3 py-2 bg-gray-200 rounded-lg text-sm hover:bg-gray-300 whitespace-nowrap"
+                  >
+                    + เพิ่ม
+                  </button>
+                </div>
+                {formAttachments.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {formAttachments.map((url, idx) => (
+                      <div key={idx} className="flex items-center gap-2 text-xs bg-blue-50 rounded px-2 py-1">
+                        <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline truncate flex-1">{url}</a>
+                        <button type="button" onClick={() => setFormAttachments(formAttachments.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-600">&times;</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -812,19 +917,34 @@ export default function PurchaseOrdersPage() {
                 <span className="text-gray-500">ผู้สร้าง:</span> {selectedPO.createdBy.name}
               </div>
               <div>
-                <span className="text-gray-500">ยอดรวม:</span>{' '}
-                <span className="font-medium">{Number(selectedPO.totalAmount).toLocaleString()} บาท</span>
+                <span className="text-gray-500">ยอดสุทธิ:</span>{' '}
+                <span className="font-medium">{Number(selectedPO.netAmount || selectedPO.totalAmount).toLocaleString()} บาท</span>
               </div>
               <div>
                 <span className="text-gray-500">การจ่ายเงิน:</span>{' '}
                 <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${paymentStatusColors[selectedPO.paymentStatus] || 'bg-gray-100 text-gray-700'}`}>
                   {paymentStatusLabels[selectedPO.paymentStatus] || 'ยังไม่จ่าย'}
                 </span>
+                {selectedPO.paymentMethod && (
+                  <span className="ml-1 text-xs text-gray-500">
+                    ({selectedPO.paymentMethod === 'CASH' ? 'เงินสด' : selectedPO.paymentMethod === 'BANK_TRANSFER' ? 'โอน' : selectedPO.paymentMethod === 'CHECK' ? 'เช็ค' : selectedPO.paymentMethod === 'CREDIT' ? 'เครดิต' : selectedPO.paymentMethod})
+                  </span>
+                )}
                 {Number(selectedPO.paidAmount) > 0 && (
-                  <span className="ml-2 text-gray-600">({Number(selectedPO.paidAmount).toLocaleString()} บาท)</span>
+                  <span className="ml-1 text-gray-600">({Number(selectedPO.paidAmount).toLocaleString()} บาท)</span>
                 )}
               </div>
             </div>
+
+            {/* Summary */}
+            {(Number(selectedPO.discount) > 0 || Number(selectedPO.vatAmount) > 0) && (
+              <div className="bg-gray-50 rounded-lg p-3 text-sm space-y-1">
+                <div className="flex justify-between"><span className="text-gray-500">ยอดรวมสินค้า</span><span>{Number(selectedPO.totalAmount).toLocaleString()} บาท</span></div>
+                {Number(selectedPO.discount) > 0 && <div className="flex justify-between"><span className="text-gray-500">ส่วนลด</span><span className="text-red-600">-{Number(selectedPO.discount).toLocaleString()} บาท</span></div>}
+                {Number(selectedPO.vatAmount) > 0 && <div className="flex justify-between"><span className="text-gray-500">VAT 7%</span><span>{Number(selectedPO.vatAmount).toLocaleString()} บาท</span></div>}
+                <div className="flex justify-between font-semibold border-t pt-1"><span>ยอดสุทธิ</span><span>{Number(selectedPO.netAmount).toLocaleString()} บาท</span></div>
+              </div>
+            )}
 
             {/* Payment info bar */}
             {selectedPO.status !== 'CANCELLED' && (
@@ -832,12 +952,12 @@ export default function PurchaseOrdersPage() {
                 <div className="text-sm">
                   <span className="text-gray-500">จ่ายแล้ว:</span>{' '}
                   <span className="font-medium text-lg">{Number(selectedPO.paidAmount || 0).toLocaleString()}</span>
-                  <span className="text-gray-400"> / {Number(selectedPO.totalAmount).toLocaleString()} บาท</span>
-                  {Number(selectedPO.totalAmount) > 0 && (
+                  <span className="text-gray-400"> / {Number(selectedPO.netAmount || selectedPO.totalAmount).toLocaleString()} บาท</span>
+                  {Number(selectedPO.netAmount || selectedPO.totalAmount) > 0 && (
                     <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
                       <div
                         className="bg-green-500 h-1.5 rounded-full"
-                        style={{ width: `${Math.min((Number(selectedPO.paidAmount || 0) / Number(selectedPO.totalAmount)) * 100, 100)}%` }}
+                        style={{ width: `${Math.min((Number(selectedPO.paidAmount || 0) / Number(selectedPO.netAmount || selectedPO.totalAmount)) * 100, 100)}%` }}
                       />
                     </div>
                   )}
@@ -854,6 +974,18 @@ export default function PurchaseOrdersPage() {
             {selectedPO.paymentNotes && (
               <div className="text-sm">
                 <span className="text-gray-500">หมายเหตุการจ่ายเงิน:</span> {selectedPO.paymentNotes}
+              </div>
+            )}
+
+            {/* Attachments in detail */}
+            {selectedPO.attachments && selectedPO.attachments.length > 0 && (
+              <div className="text-sm">
+                <span className="text-gray-500">เอกสารแนบ:</span>
+                <div className="mt-1 space-y-1">
+                  {selectedPO.attachments.map((url, idx) => (
+                    <a key={idx} href={url} target="_blank" rel="noopener noreferrer" className="block text-xs text-blue-600 hover:underline truncate">{url}</a>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -985,33 +1117,66 @@ export default function PurchaseOrdersPage() {
       >
         {selectedPO && (
           <form onSubmit={handlePaymentUpdate} className="space-y-4">
-            <div className="bg-gray-50 rounded-lg p-3 text-sm">
+            <div className="bg-gray-50 rounded-lg p-3 text-sm space-y-1">
               <div className="flex justify-between">
-                <span className="text-gray-500">ยอดรวม PO:</span>
-                <span className="font-medium">{Number(selectedPO.totalAmount).toLocaleString()} บาท</span>
+                <span className="text-gray-500">ยอดรวมสินค้า:</span>
+                <span>{Number(selectedPO.totalAmount).toLocaleString()} บาท</span>
+              </div>
+              {Number(selectedPO.discount) > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">ส่วนลด:</span>
+                  <span className="text-red-600">-{Number(selectedPO.discount).toLocaleString()} บาท</span>
+                </div>
+              )}
+              {Number(selectedPO.vatAmount) > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">VAT 7%:</span>
+                  <span>{Number(selectedPO.vatAmount).toLocaleString()} บาท</span>
+                </div>
+              )}
+              <div className="flex justify-between font-medium border-t pt-1">
+                <span>ยอดสุทธิ:</span>
+                <span>{Number(selectedPO.netAmount || selectedPO.totalAmount).toLocaleString()} บาท</span>
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">สถานะการจ่ายเงิน *</label>
-              <select
-                value={paymentForm.paymentStatus}
-                onChange={(e) => {
-                  const newStatus = e.target.value;
-                  setPaymentForm({
-                    ...paymentForm,
-                    paymentStatus: newStatus,
-                    paidAmount: newStatus === 'FULLY_PAID' ? String(Number(selectedPO.totalAmount)) : newStatus === 'UNPAID' ? '0' : paymentForm.paidAmount,
-                  });
-                }}
-                className={selectClass}
-                required
-              >
-                <option value="UNPAID">ยังไม่จ่าย</option>
-                <option value="DEPOSIT_PAID">จ่ายมัดจำ</option>
-                <option value="PARTIALLY_PAID">จ่ายบางส่วน</option>
-                <option value="FULLY_PAID">จ่ายครบแล้ว</option>
-              </select>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">สถานะ *</label>
+                <select
+                  value={paymentForm.paymentStatus}
+                  onChange={(e) => {
+                    const newStatus = e.target.value;
+                    const netAmt = Number(selectedPO.netAmount || selectedPO.totalAmount);
+                    setPaymentForm({
+                      ...paymentForm,
+                      paymentStatus: newStatus,
+                      paidAmount: newStatus === 'FULLY_PAID' ? String(netAmt) : newStatus === 'UNPAID' ? '0' : paymentForm.paidAmount,
+                    });
+                  }}
+                  className={selectClass}
+                  required
+                >
+                  <option value="UNPAID">ยังไม่จ่าย</option>
+                  <option value="DEPOSIT_PAID">จ่ายมัดจำ</option>
+                  <option value="PARTIALLY_PAID">จ่ายบางส่วน</option>
+                  <option value="FULLY_PAID">จ่ายครบแล้ว</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">วิธีจ่ายเงิน</label>
+                <select
+                  value={paymentForm.paymentMethod}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, paymentMethod: e.target.value })}
+                  className={selectClass}
+                >
+                  <option value="">-- เลือก --</option>
+                  <option value="CASH">เงินสด</option>
+                  <option value="BANK_TRANSFER">โอนธนาคาร</option>
+                  <option value="CHECK">เช็ค</option>
+                  <option value="CREDIT">เครดิต</option>
+                </select>
+              </div>
             </div>
 
             <div>
@@ -1025,26 +1190,10 @@ export default function PurchaseOrdersPage() {
                 step="0.01"
                 required
               />
-              {Number(selectedPO.totalAmount) > 0 && (
+              {Number(selectedPO.netAmount || selectedPO.totalAmount) > 0 && paymentForm.paymentStatus !== 'UNPAID' && paymentForm.paymentStatus !== 'FULLY_PAID' && (
                 <div className="flex gap-2 mt-1">
-                  {paymentForm.paymentStatus !== 'UNPAID' && paymentForm.paymentStatus !== 'FULLY_PAID' && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => setPaymentForm({ ...paymentForm, paidAmount: String(Math.round(Number(selectedPO.totalAmount) * 0.3)) })}
-                        className="text-xs text-blue-600 hover:underline"
-                      >
-                        30%
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setPaymentForm({ ...paymentForm, paidAmount: String(Math.round(Number(selectedPO.totalAmount) * 0.5)) })}
-                        className="text-xs text-blue-600 hover:underline"
-                      >
-                        50%
-                      </button>
-                    </>
-                  )}
+                  <button type="button" onClick={() => setPaymentForm({ ...paymentForm, paidAmount: String(Math.round(Number(selectedPO.netAmount || selectedPO.totalAmount) * 0.3)) })} className="text-xs text-blue-600 hover:underline">30%</button>
+                  <button type="button" onClick={() => setPaymentForm({ ...paymentForm, paidAmount: String(Math.round(Number(selectedPO.netAmount || selectedPO.totalAmount) * 0.5)) })} className="text-xs text-blue-600 hover:underline">50%</button>
                 </div>
               )}
             </div>
@@ -1056,8 +1205,44 @@ export default function PurchaseOrdersPage() {
                 onChange={(e) => setPaymentForm({ ...paymentForm, paymentNotes: e.target.value })}
                 rows={2}
                 className={inputClass}
-                placeholder="เช่น โอนผ่านธนาคาร xxx, เลขอ้างอิง xxx"
+                placeholder="เช่น เลขอ้างอิง, ชื่อบัญชี"
               />
+            </div>
+
+            {/* Attachments */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">แนบสลิป/เอกสาร</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={paymentAttachmentUrl}
+                  onChange={(e) => setPaymentAttachmentUrl(e.target.value)}
+                  className={inputClass}
+                  placeholder="วาง URL รูปสลิป หรือ link เอกสาร"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (paymentAttachmentUrl.trim()) {
+                      setPaymentAttachments([...paymentAttachments, paymentAttachmentUrl.trim()]);
+                      setPaymentAttachmentUrl('');
+                    }
+                  }}
+                  className="px-3 py-2 bg-gray-200 rounded-lg text-sm hover:bg-gray-300 whitespace-nowrap"
+                >
+                  + เพิ่ม
+                </button>
+              </div>
+              {paymentAttachments.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {paymentAttachments.map((url, idx) => (
+                    <div key={idx} className="flex items-center gap-2 text-xs bg-blue-50 rounded px-2 py-1">
+                      <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline truncate flex-1">{url}</a>
+                      <button type="button" onClick={() => setPaymentAttachments(paymentAttachments.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-600">&times;</button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end gap-3 pt-2 border-t">

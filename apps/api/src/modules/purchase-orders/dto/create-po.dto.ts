@@ -47,9 +47,17 @@ export class CreatePODto {
   @Type(() => POItemDto)
   items: POItemDto[];
 
+  @IsNumber()
+  @IsOptional()
+  discount?: number;
+
   @IsIn(['UNPAID', 'DEPOSIT_PAID', 'PARTIALLY_PAID', 'FULLY_PAID'])
   @IsOptional()
   paymentStatus?: string;
+
+  @IsString()
+  @IsOptional()
+  paymentMethod?: string;
 
   @IsNumber()
   @IsOptional()
@@ -58,6 +66,10 @@ export class CreatePODto {
   @IsString()
   @IsOptional()
   paymentNotes?: string;
+
+  @IsArray()
+  @IsOptional()
+  attachments?: string[];
 }
 
 export class UpdatePODto {
@@ -93,12 +105,20 @@ export class UpdatePaymentDto {
   @IsIn(['UNPAID', 'DEPOSIT_PAID', 'PARTIALLY_PAID', 'FULLY_PAID'])
   paymentStatus: string;
 
+  @IsString()
+  @IsOptional()
+  paymentMethod?: string;
+
   @IsNumber()
   paidAmount: number;
 
   @IsString()
   @IsOptional()
   paymentNotes?: string;
+
+  @IsArray()
+  @IsOptional()
+  attachments?: string[];
 }
 
 // New goods receiving DTOs

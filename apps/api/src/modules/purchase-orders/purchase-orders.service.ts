@@ -57,16 +57,24 @@ export class PurchaseOrdersService {
   }
 
   async create(dto: CreatePODto, userId: string) {
-    // Generate PO number
-    const lastPO = await this.prisma.purchaseOrder.findFirst({
-      orderBy: { poNumber: 'desc' },
-      select: { poNumber: true },
+    // Generate PO number: YYYYMMDD-NNN format
+    const today = new Date();
+    const datePrefix = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const todayEnd = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+    const todayCount = await this.prisma.purchaseOrder.count({
+      where: {
+        createdAt: { gte: todayStart, lt: todayEnd },
+      },
     });
-    const nextNum = lastPO ? parseInt(lastPO.poNumber.replace(/\D/g, '')) + 1 : 1;
-    const poNumber = `PO${String(nextNum).padStart(6, '0')}`;
+    const poNumber = `${datePrefix}${String(todayCount + 1).padStart(3, '0')}`;
 
-    // Calculate total
+    // Calculate total with discount & VAT
     const totalAmount = dto.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+    const discount = dto.discount || 0;
+    const subtotalAfterDiscount = totalAmount - discount;
+    const vatAmount = Math.round(subtotalAfterDiscount * 0.07 * 100) / 100;
+    const netAmount = subtotalAfterDiscount + vatAmount;
 
     return this.prisma.purchaseOrder.create({
       data: {
@@ -75,12 +83,17 @@ export class PurchaseOrdersService {
         orderDate: new Date(dto.orderDate),
         expectedDate: dto.expectedDate ? new Date(dto.expectedDate) : null,
         totalAmount,
+        discount,
+        vatAmount,
+        netAmount,
         notes: dto.notes,
         createdById: userId,
         status: 'PENDING',
         paymentStatus: (dto.paymentStatus as any) || 'UNPAID',
+        paymentMethod: dto.paymentMethod || null,
         paidAmount: dto.paidAmount || 0,
         paymentNotes: dto.paymentNotes || null,
+        attachments: dto.attachments || [],
         items: {
           create: dto.items.map((item) => ({
             brand: item.brand,
@@ -155,8 +168,10 @@ export class PurchaseOrdersService {
       where: { id },
       data: {
         paymentStatus: dto.paymentStatus as any,
+        paymentMethod: dto.paymentMethod || null,
         paidAmount: dto.paidAmount,
         paymentNotes: dto.paymentNotes || null,
+        ...(dto.attachments !== undefined && { attachments: dto.attachments }),
       },
       include: {
         supplier: { select: { id: true, name: true } },

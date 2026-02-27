@@ -1,8 +1,11 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import api from '@/lib/api';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
+import api, { getErrorMessage } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
+import { displayAddress } from '@/components/ui/AddressForm';
 
 interface Supplier {
   id: string;
@@ -64,6 +67,7 @@ const statusLabels: Record<string, { label: string; className: string }> = {
 
 const poStatusLabels: Record<string, { label: string; className: string }> = {
   DRAFT: { label: 'ร่าง', className: 'bg-gray-100 text-gray-700' },
+  PENDING: { label: 'รอรับสินค้า', className: 'bg-orange-100 text-orange-700' },
   APPROVED: { label: 'อนุมัติ', className: 'bg-blue-100 text-blue-700' },
   PARTIALLY_RECEIVED: { label: 'รับบางส่วน', className: 'bg-yellow-100 text-yellow-700' },
   FULLY_RECEIVED: { label: 'รับครบ', className: 'bg-green-100 text-green-700' },
@@ -80,12 +84,29 @@ const categoryLabels: Record<string, string> = {
 export default function SupplierDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const isManager = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
 
   const { data: supplier, isLoading: supplierLoading } = useQuery<Supplier>({
     queryKey: ['supplier', id],
     queryFn: async () => {
       const { data } = await api.get(`/suppliers/${id}`);
       return data;
+    },
+  });
+
+  const toggleActiveMutation = useMutation({
+    mutationFn: async ({ supplierId, isActive }: { supplierId: string; isActive: boolean }) => {
+      return api.patch(`/suppliers/${supplierId}`, { isActive });
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['supplier', id] });
+      queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+      toast.success(variables.isActive ? 'เปิดใช้งาน Supplier สำเร็จ' : 'ซ่อน Supplier สำเร็จ');
+    },
+    onError: (err: unknown) => {
+      toast.error(getErrorMessage(err));
     },
   });
 
@@ -174,12 +195,32 @@ export default function SupplierDetailPage() {
         title={supplier.name}
         subtitle="รายละเอียด Supplier"
         action={
-          <button
-            onClick={() => navigate('/suppliers')}
-            className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg"
-          >
-            กลับ
-          </button>
+          <div className="flex gap-2">
+            {isManager && (
+              <button
+                onClick={() => {
+                  const action = supplier.isActive ? 'ซ่อน' : 'เปิดใช้งาน';
+                  if (confirm(`ต้องการ${action} Supplier "${supplier.name}" ?`)) {
+                    toggleActiveMutation.mutate({ supplierId: supplier.id, isActive: !supplier.isActive });
+                  }
+                }}
+                disabled={toggleActiveMutation.isPending}
+                className={`px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${
+                  supplier.isActive
+                    ? 'text-red-600 border-red-300 hover:bg-red-50'
+                    : 'text-green-600 border-green-300 hover:bg-green-50'
+                }`}
+              >
+                {supplier.isActive ? 'ซ่อน Supplier' : 'เปิดใช้งาน'}
+              </button>
+            )}
+            <button
+              onClick={() => navigate('/suppliers')}
+              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg"
+            >
+              กลับ
+            </button>
+          </div>
         }
       />
 
@@ -216,7 +257,7 @@ export default function SupplierDetailPage() {
             label="วันที่เพิ่ม"
             value={new Date(supplier.createdAt).toLocaleDateString('th-TH')}
           />
-          <InfoField label="ที่อยู่" value={supplier.address} />
+          <InfoField label="ที่อยู่" value={displayAddress(supplier.address)} />
           {supplier.notes && <InfoField label="หมายเหตุ" value={supplier.notes} />}
         </div>
       </div>

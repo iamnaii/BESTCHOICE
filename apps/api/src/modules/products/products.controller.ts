@@ -47,6 +47,20 @@ export class ProductsController {
     return this.productsService.getBrands();
   }
 
+  @Get('transfers/pending')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  getPendingTransfers(@Query('branchId') branchId?: string) {
+    return this.productsService.getPendingTransfers(branchId);
+  }
+
+  @Get('transfers/history')
+  getTransferHistory(
+    @Query('branchId') branchId?: string,
+    @Query('status') status?: string,
+  ) {
+    return this.productsService.getTransferHistory({ branchId, status });
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.productsService.findOne(id);
@@ -94,7 +108,7 @@ export class ProductsController {
     return this.productsService.removePrice(id, priceId);
   }
 
-  // === Transfer Endpoint ===
+  // === Transfer Endpoints ===
 
   @Post(':id/transfer')
   @Roles('OWNER', 'BRANCH_MANAGER')
@@ -104,5 +118,23 @@ export class ProductsController {
     @CurrentUser() user: { id: string },
   ) {
     return this.productsService.transfer(id, dto, user.id);
+  }
+
+  @Post('transfers/:transferId/confirm')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  confirmTransfer(
+    @Param('transferId') transferId: string,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.productsService.confirmTransfer(transferId, user.id);
+  }
+
+  @Post('transfers/:transferId/reject')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  rejectTransfer(
+    @Param('transferId') transferId: string,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.productsService.rejectTransfer(transferId, user.id);
   }
 }

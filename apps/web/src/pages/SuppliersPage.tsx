@@ -8,7 +8,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
-import AddressForm, { AddressData, emptyAddress, composeAddress } from '@/components/ui/AddressForm';
+import AddressForm, { AddressData, emptyAddress, serializeAddress, deserializeAddress } from '@/components/ui/AddressForm';
 
 interface Supplier {
   id: string;
@@ -63,7 +63,7 @@ export default function SuppliersPage() {
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [search, setSearch] = useState('');
-  const [filterActive, setFilterActive] = useState<string>('all');
+  const [filterActive, setFilterActive] = useState<string>('true');
   const [supplierAddress, setSupplierAddress] = useState<AddressData>(emptyAddress);
   const [page, setPage] = useState(1);
   const debouncedSearch = useDebounce(search);
@@ -87,20 +87,20 @@ export default function SuppliersPage() {
   const suppliers = result?.data ?? [];
 
   const saveMutation = useMutation({
-    mutationFn: async (data: typeof emptyForm) => {
-      const composedAddress = composeAddress(supplierAddress);
+    mutationFn: async ({ formData, addressData, editId }: { formData: typeof emptyForm; addressData: AddressData; editId?: string }) => {
+      const serializedAddress = serializeAddress(addressData);
       const payload = {
-        ...data,
-        nickname: data.nickname || undefined,
-        phoneSecondary: data.phoneSecondary || undefined,
-        lineId: data.lineId || undefined,
-        address: composedAddress || undefined,
-        taxId: data.taxId || undefined,
-        hasVat: data.hasVat,
-        notes: data.notes || undefined,
+        ...formData,
+        nickname: formData.nickname || undefined,
+        phoneSecondary: formData.phoneSecondary || undefined,
+        lineId: formData.lineId || undefined,
+        address: serializedAddress || undefined,
+        taxId: formData.taxId || undefined,
+        hasVat: formData.hasVat,
+        notes: formData.notes || undefined,
       };
-      if (editingSupplier) {
-        return api.patch(`/suppliers/${editingSupplier.id}`, payload);
+      if (editId) {
+        return api.patch(`/suppliers/${editId}`, payload);
       }
       return api.post('/suppliers', payload);
     },
@@ -160,7 +160,7 @@ export default function SuppliersPage() {
       hasVat: supplier.hasVat ?? false,
       notes: supplier.notes || '',
     });
-    setSupplierAddress(emptyAddress);
+    setSupplierAddress(deserializeAddress(supplier.address));
     setIsModalOpen(true);
   };
 
@@ -171,7 +171,7 @@ export default function SuppliersPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    saveMutation.mutate(form);
+    saveMutation.mutate({ formData: form, addressData: supplierAddress, editId: editingSupplier?.id });
   };
 
   const columns = [

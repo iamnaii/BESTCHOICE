@@ -201,7 +201,7 @@ export class DocumentsService {
       '{product_name}': contract.product?.name || '',
       '{brand}': contract.product?.brand || '',
       '{model}': contract.product?.model || '',
-      '{imei}': contract.product?.imei || '-',
+      '{imei}': contract.product?.imeiSerial || '-',
       '{serial_number}': contract.product?.serialNumber || '-',
       '{selling_price}': Number(contract.sellingPrice).toLocaleString(),
       '{down_payment}': Number(contract.downPayment).toLocaleString(),

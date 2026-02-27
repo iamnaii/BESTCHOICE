@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreatePODto, UpdatePODto, ReceivePODto } from './dto/create-po.dto';
+import { CreatePODto, UpdatePODto, ReceivePODto, GoodsReceivingDto, UpdatePaymentDto } from './dto/create-po.dto';
 
 @Injectable()
 export class PurchaseOrdersService {
@@ -31,9 +31,24 @@ export class PurchaseOrdersService {
         supplier: true,
         createdBy: { select: { id: true, name: true } },
         approvedBy: { select: { id: true, name: true } },
-        items: true,
+        items: {
+          include: {
+            receivingItems: {
+              include: {
+                product: { select: { id: true, name: true, imeiSerial: true, serialNumber: true, status: true, branchId: true } },
+              },
+            },
+          },
+        },
         products: {
-          select: { id: true, name: true, brand: true, model: true, imeiSerial: true, status: true, costPrice: true },
+          select: { id: true, name: true, brand: true, model: true, imeiSerial: true, serialNumber: true, photos: true, status: true, costPrice: true, branchId: true },
+        },
+        goodsReceivings: {
+          include: {
+            receivedBy: { select: { id: true, name: true } },
+            items: true,
+          },
+          orderBy: { createdAt: 'desc' },
         },
       },
     });
@@ -42,28 +57,31 @@ export class PurchaseOrdersService {
   }
 
   async create(dto: CreatePODto, userId: string) {
-    // Generate PO number with PO- prefix
-    const lastPO = await this.prisma.purchaseOrder.findFirst({
-      orderBy: { poNumber: 'desc' },
-      select: { poNumber: true },
-    });
-    const nextNum = lastPO ? parseInt(lastPO.poNumber.replace(/\D/g, '')) + 1 : 1;
-    const poNumber = `PO-${String(nextNum).padStart(6, '0')}`;
-
-    // Look up supplier VAT status
+    // Validate supplier exists
     const supplier = await this.prisma.supplier.findUnique({
       where: { id: dto.supplierId },
       select: { hasVat: true },
     });
     if (!supplier) throw new NotFoundException('ไม่พบ Supplier');
 
-    // Calculate subtotal
-    const subtotal = dto.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+    // Generate PO number: YYYYMMDD-NNN format
+    const today = new Date();
+    const datePrefix = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const todayEnd = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+    const todayCount = await this.prisma.purchaseOrder.count({
+      where: {
+        createdAt: { gte: todayStart, lt: todayEnd },
+      },
+    });
+    const poNumber = `${datePrefix}${String(todayCount + 1).padStart(3, '0')}`;
 
-    // Calculate VAT if supplier has VAT (7%)
-    const hasVat = supplier.hasVat;
-    const vatAmount = hasVat ? Math.round(subtotal * 0.07 * 100) / 100 : 0;
-    const totalAmount = subtotal + vatAmount;
+    // Calculate total with discount & VAT
+    const totalAmount = dto.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+    const discount = dto.discount || 0;
+    const subtotalAfterDiscount = totalAmount - discount;
+    const vatAmount = Math.round(subtotalAfterDiscount * 0.07 * 100) / 100;
+    const netAmount = subtotalAfterDiscount + vatAmount;
 
     return this.prisma.purchaseOrder.create({
       data: {
@@ -71,17 +89,25 @@ export class PurchaseOrdersService {
         supplierId: dto.supplierId,
         orderDate: new Date(dto.orderDate),
         expectedDate: dto.expectedDate ? new Date(dto.expectedDate) : null,
-        subtotal,
-        vatAmount,
         totalAmount,
-        hasVat,
+        discount,
+        vatAmount,
+        netAmount,
         notes: dto.notes,
         createdById: userId,
-        status: 'DRAFT',
+        status: 'PENDING',
+        paymentStatus: (dto.paymentStatus as any) || 'UNPAID',
+        paymentMethod: dto.paymentMethod || null,
+        paidAmount: dto.paidAmount || 0,
+        paymentNotes: dto.paymentNotes || null,
+        attachments: dto.attachments || [],
         items: {
           create: dto.items.map((item) => ({
             brand: item.brand,
             model: item.model,
+            color: item.color || null,
+            storage: item.storage || null,
+            category: item.category || null,
             quantity: item.quantity,
             unitPrice: item.unitPrice,
           })),
@@ -96,8 +122,8 @@ export class PurchaseOrdersService {
 
   async update(id: string, dto: UpdatePODto) {
     const po = await this.findOne(id);
-    if (po.status !== 'DRAFT') {
-      throw new BadRequestException('แก้ไขได้เฉพาะ PO สถานะ DRAFT เท่านั้น');
+    if (!['DRAFT', 'PENDING'].includes(po.status)) {
+      throw new BadRequestException('แก้ไขได้เฉพาะ PO สถานะร่างหรือรอรับสินค้าเท่านั้น');
     }
 
     const data: Record<string, unknown> = {};
@@ -129,8 +155,8 @@ export class PurchaseOrdersService {
 
   async cancel(id: string) {
     const po = await this.findOne(id);
-    if (!['DRAFT', 'APPROVED'].includes(po.status)) {
-      throw new BadRequestException('ยกเลิกได้เฉพาะ PO สถานะ DRAFT หรือ APPROVED เท่านั้น');
+    if (!['DRAFT', 'APPROVED', 'PENDING'].includes(po.status)) {
+      throw new BadRequestException('ยกเลิกได้เฉพาะ PO ที่ยังไม่ได้รับสินค้าเท่านั้น');
     }
 
     return this.prisma.purchaseOrder.update({
@@ -139,8 +165,30 @@ export class PurchaseOrdersService {
     });
   }
 
+  async updatePayment(id: string, dto: UpdatePaymentDto) {
+    const po = await this.findOne(id);
+    if (po.status === 'CANCELLED') {
+      throw new BadRequestException('ไม่สามารถอัปเดตการจ่ายเงินของ PO ที่ยกเลิกแล้วได้');
+    }
+
+    return this.prisma.purchaseOrder.update({
+      where: { id },
+      data: {
+        paymentStatus: dto.paymentStatus as any,
+        paymentMethod: dto.paymentMethod || null,
+        paidAmount: dto.paidAmount,
+        paymentNotes: dto.paymentNotes || null,
+        ...(dto.attachments !== undefined && { attachments: dto.attachments }),
+      },
+      include: {
+        supplier: { select: { id: true, name: true } },
+        items: true,
+      },
+    });
+  }
+
   /**
-   * Receive items from PO (partial or full)
+   * Legacy receive - kept for backward compatibility
    */
   async receive(id: string, dto: ReceivePODto, userId: string, branchId: string) {
     return this.prisma.$transaction(async (tx) => {
@@ -169,20 +217,22 @@ export class PurchaseOrdersService {
           );
         }
 
-        // Update PO item received qty
         await tx.pOItem.update({
           where: { id: receiveItem.poItemId },
           data: { receivedQty: totalReceived },
         });
 
-        // Create products for received items
         for (let i = 0; i < receiveItem.receivedQty; i++) {
+          const nameParts = [poItem.brand, poItem.model, poItem.color, poItem.storage].filter(Boolean);
+          const productCategory = (poItem.category as any) || 'PHONE_NEW';
           const product = await tx.product.create({
             data: {
-              name: `${poItem.brand} ${poItem.model}`,
+              name: nameParts.join(' '),
               brand: poItem.brand,
               model: poItem.model,
-              category: 'PHONE_NEW',
+              color: poItem.color || null,
+              storage: poItem.storage || null,
+              category: productCategory,
               costPrice: Number(poItem.unitPrice),
               supplierId: po.supplierId,
               poId: po.id,
@@ -194,7 +244,6 @@ export class PurchaseOrdersService {
         }
       }
 
-      // Check if all items fully received
       const updatedPO = await tx.purchaseOrder.findUnique({
         where: { id },
         include: { items: true },
@@ -213,6 +262,166 @@ export class PurchaseOrdersService {
         status: newStatus,
         receivedProducts: receivedProducts.length,
         products: receivedProducts,
+      };
+    });
+  }
+
+  /**
+   * New goods receiving flow with IMEI/Serial/photos/pass-reject per unit
+   */
+  async goodsReceiving(id: string, dto: GoodsReceivingDto, userId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const po = await tx.purchaseOrder.findUnique({
+        where: { id },
+        include: { items: true, supplier: true },
+      });
+
+      if (!po) throw new NotFoundException('ไม่พบใบสั่งซื้อ');
+      if (!['PENDING', 'APPROVED', 'PARTIALLY_RECEIVED'].includes(po.status)) {
+        throw new BadRequestException('PO นี้ไม่อยู่ในสถานะที่สามารถรับสินค้าได้');
+      }
+
+      // Find main warehouse branch
+      let mainWarehouse = await tx.branch.findFirst({
+        where: { isMainWarehouse: true, isActive: true },
+      });
+      if (!mainWarehouse) {
+        // Fallback: use first active branch
+        mainWarehouse = await tx.branch.findFirst({
+          where: { isActive: true },
+          orderBy: { createdAt: 'asc' },
+        });
+      }
+      if (!mainWarehouse) {
+        throw new BadRequestException('ไม่พบคลังกลาง กรุณาตั้งค่าสาขาคลังกลางก่อน');
+      }
+
+      // Create goods receiving record
+      const receiving = await tx.goodsReceiving.create({
+        data: {
+          poId: id,
+          receivedById: userId,
+          notes: dto.notes,
+        },
+      });
+
+      const passedProducts: any[] = [];
+      const rejectedItems: any[] = [];
+
+      // Group items by poItemId to count per PO item
+      const countByPoItem: Record<string, number> = {};
+      for (const item of dto.items) {
+        if (item.status === 'PASS') {
+          countByPoItem[item.poItemId] = (countByPoItem[item.poItemId] || 0) + 1;
+        }
+      }
+
+      // Validate quantities
+      for (const [poItemId, passCount] of Object.entries(countByPoItem)) {
+        const poItem = po.items.find((i) => i.id === poItemId);
+        if (!poItem) throw new NotFoundException(`ไม่พบรายการ PO: ${poItemId}`);
+
+        const totalReceived = poItem.receivedQty + passCount;
+        if (totalReceived > poItem.quantity) {
+          throw new BadRequestException(
+            `จำนวนรับเกิน: ${poItem.brand} ${poItem.model} (สั่ง ${poItem.quantity}, รับแล้ว ${poItem.receivedQty}, กำลังรับ ${passCount})`,
+          );
+        }
+      }
+
+      // Process each item
+      for (const item of dto.items) {
+        const poItem = po.items.find((i) => i.id === item.poItemId);
+        if (!poItem) throw new NotFoundException(`ไม่พบรายการ PO: ${item.poItemId}`);
+
+        if (item.status === 'PASS') {
+          // Build product name from PO item details
+          const nameParts = [poItem.brand, poItem.model, poItem.color, poItem.storage].filter(Boolean);
+          const productCategory = (poItem.category as any) || 'PHONE_NEW';
+
+          // Create product for passed items → goes to main warehouse with IN_STOCK
+          const product = await tx.product.create({
+            data: {
+              name: nameParts.join(' '),
+              brand: poItem.brand,
+              model: poItem.model,
+              color: poItem.color || null,
+              storage: poItem.storage || null,
+              category: productCategory,
+              costPrice: Number(poItem.unitPrice),
+              supplierId: po.supplierId,
+              poId: po.id,
+              branchId: mainWarehouse!.id,
+              status: 'IN_STOCK',
+              imeiSerial: item.imeiSerial || null,
+              serialNumber: item.serialNumber || null,
+              photos: item.photos || [],
+            },
+          });
+
+          // Create receiving item linked to product
+          await tx.goodsReceivingItem.create({
+            data: {
+              receivingId: receiving.id,
+              poItemId: item.poItemId,
+              imeiSerial: item.imeiSerial,
+              serialNumber: item.serialNumber,
+              photos: item.photos || [],
+              status: 'PASS',
+              productId: product.id,
+            },
+          });
+
+          passedProducts.push(product);
+        } else {
+          // Create receiving item for rejected items (no product created)
+          const rejectedItem = await tx.goodsReceivingItem.create({
+            data: {
+              receivingId: receiving.id,
+              poItemId: item.poItemId,
+              imeiSerial: item.imeiSerial,
+              serialNumber: item.serialNumber,
+              photos: item.photos || [],
+              status: 'REJECT',
+              rejectReason: item.rejectReason,
+            },
+          });
+
+          rejectedItems.push(rejectedItem);
+        }
+      }
+
+      // Update PO item received quantities (only passed items count)
+      for (const [poItemId, passCount] of Object.entries(countByPoItem)) {
+        const poItem = po.items.find((i) => i.id === poItemId)!;
+        await tx.pOItem.update({
+          where: { id: poItemId },
+          data: { receivedQty: poItem.receivedQty + passCount },
+        });
+      }
+
+      // Check if all items fully received
+      const updatedPO = await tx.purchaseOrder.findUnique({
+        where: { id },
+        include: { items: true },
+      });
+
+      const allReceived = updatedPO!.items.every((item) => item.receivedQty >= item.quantity);
+      const newStatus = allReceived ? 'FULLY_RECEIVED' : 'PARTIALLY_RECEIVED';
+
+      await tx.purchaseOrder.update({
+        where: { id },
+        data: { status: newStatus },
+      });
+
+      return {
+        receivingId: receiving.id,
+        poId: id,
+        status: newStatus,
+        passed: passedProducts.length,
+        rejected: rejectedItems.length,
+        products: passedProducts,
+        mainWarehouse: mainWarehouse!.name,
       };
     });
   }

@@ -77,7 +77,7 @@ export default function RepossessionsPage() {
         api.get('/contracts?status=OVERDUE'),
         api.get('/contracts?status=DEFAULT'),
       ]);
-      return [...overdue.data, ...defaulted.data];
+      return [...(overdue.data.data || []), ...(defaulted.data.data || [])];
     },
   });
 

@@ -289,6 +289,11 @@ model Supplier {
   address     String?
   taxId       String?  @map("tax_id")
   hasVat      Boolean  @default(false) @map("has_vat")
+  paymentMethod     String?  @map("payment_method")       // CASH, BANK_TRANSFER, CHECK, CREDIT
+  bankName          String?  @map("bank_name")
+  bankAccountName   String?  @map("bank_account_name")
+  bankAccountNumber String?  @map("bank_account_number")
+  creditTermDays    Int?     @map("credit_term_days")      // เครดิตกี่วัน
   notes       String?
   isActive    Boolean  @default(true) @map("is_active")
   createdAt   DateTime @default(now()) @map("created_at")

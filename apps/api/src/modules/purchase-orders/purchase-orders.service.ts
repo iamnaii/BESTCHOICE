@@ -76,11 +76,11 @@ export class PurchaseOrdersService {
     });
     const poNumber = `${datePrefix}${String(todayCount + 1).padStart(3, '0')}`;
 
-    // Calculate total with discount & VAT
+    // Calculate total with discount & VAT (only if supplier has VAT)
     const totalAmount = dto.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
     const discount = dto.discount || 0;
     const subtotalAfterDiscount = totalAmount - discount;
-    const vatAmount = Math.round(subtotalAfterDiscount * 0.07 * 100) / 100;
+    const vatAmount = supplier.hasVat ? Math.round(subtotalAfterDiscount * 0.07 * 100) / 100 : 0;
     const netAmount = subtotalAfterDiscount + vatAmount;
 
     return this.prisma.purchaseOrder.create({

@@ -216,7 +216,7 @@ export class ContractsService {
           data: {
             status: 'PAID',
             paidDate: new Date(),
-            amountPaid: payment.amountDue,
+            amountPaid: Number(payment.amountDue) + Number(payment.lateFee),
             paymentMethod: paymentMethod as any,
           },
         });

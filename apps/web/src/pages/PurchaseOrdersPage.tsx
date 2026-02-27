@@ -152,7 +152,7 @@ export default function PurchaseOrdersPage() {
   });
   const [items, setItems] = useState<ItemForm[]>([{ ...emptyItem }]);
 
-  const { data: suppliersRes } = useQuery<{ data: { id: string; name: string; contactName: string; hasVat: boolean }[] }>({
+  const { data: suppliersRes } = useQuery<{ data: { id: string; name: string; contactName: string; hasVat: boolean; paymentMethod: string | null }[] }>({
     queryKey: ['suppliers-for-po'],
     queryFn: async () => (await api.get('/suppliers?limit=999&isActive=true')).data,
   });
@@ -552,7 +552,15 @@ export default function PurchaseOrdersPage() {
             <label className="block text-sm font-medium text-gray-700 mb-1">Supplier *</label>
             <select
               value={form.supplierId}
-              onChange={(e) => setForm({ ...form, supplierId: e.target.value })}
+              onChange={(e) => {
+                const sid = e.target.value;
+                const sup = suppliers.find((s) => s.id === sid);
+                setForm({
+                  ...form,
+                  supplierId: sid,
+                  paymentMethod: sup?.paymentMethod || form.paymentMethod,
+                });
+              }}
               className={selectClass}
               required
             >
@@ -562,7 +570,7 @@ export default function PurchaseOrdersPage() {
               ))}
             </select>
             {selectedSupplier && (
-              <div className="mt-1">
+              <div className="mt-1 flex gap-2 flex-wrap">
                 <span
                   className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                     supplierHasVat ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
@@ -570,6 +578,11 @@ export default function PurchaseOrdersPage() {
                 >
                   {supplierHasVat ? 'Supplier มี VAT - จะคำนวณ VAT 7% อัตโนมัติ' : 'Supplier ไม่มี VAT'}
                 </span>
+                {selectedSupplier.paymentMethod && (
+                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
+                    ชำระ: {selectedSupplier.paymentMethod === 'CASH' ? 'เงินสด' : selectedSupplier.paymentMethod === 'BANK_TRANSFER' ? 'โอนธนาคาร' : selectedSupplier.paymentMethod === 'CHECK' ? 'เช็ค' : selectedSupplier.paymentMethod === 'CREDIT' ? 'เครดิต' : selectedSupplier.paymentMethod}
+                  </span>
+                )}
               </div>
             )}
           </div>

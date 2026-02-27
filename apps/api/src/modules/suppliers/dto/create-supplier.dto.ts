@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsBoolean } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsInt, Min } from 'class-validator';
 
 export class CreateSupplierDto {
   @IsString()
@@ -33,6 +33,27 @@ export class CreateSupplierDto {
   @IsBoolean()
   @IsOptional()
   hasVat?: boolean;
+
+  @IsString()
+  @IsOptional()
+  paymentMethod?: string;
+
+  @IsString()
+  @IsOptional()
+  bankName?: string;
+
+  @IsString()
+  @IsOptional()
+  bankAccountName?: string;
+
+  @IsString()
+  @IsOptional()
+  bankAccountNumber?: string;
+
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  creditTermDays?: number;
 
   @IsString()
   @IsOptional()

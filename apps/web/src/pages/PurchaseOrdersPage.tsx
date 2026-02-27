@@ -1616,11 +1616,11 @@ export default function PurchaseOrdersPage() {
                 </>
               )}
               {selectedPO.dueDate && (
-                <div className={`flex justify-between border-t pt-1 ${new Date(selectedPO.dueDate) < new Date() ? 'text-red-600 font-semibold' : 'text-gray-600'}`}>
+                <div className={`flex justify-between border-t pt-1 ${new Date(selectedPO.dueDate) < new Date() && paymentForm.paymentStatus !== 'FULLY_PAID' ? 'text-red-600 font-semibold' : 'text-gray-600'}`}>
                   <span>ครบกำหนดชำระ:</span>
                   <span>
                     {new Date(selectedPO.dueDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
-                    {new Date(selectedPO.dueDate) < new Date() && ' (เลยกำหนด)'}
+                    {new Date(selectedPO.dueDate) < new Date() && paymentForm.paymentStatus !== 'FULLY_PAID' && ' (เลยกำหนด)'}
                   </span>
                 </div>
               )}

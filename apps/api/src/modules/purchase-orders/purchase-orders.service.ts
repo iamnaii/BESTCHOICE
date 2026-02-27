@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreatePODto, UpdatePODto, ReceivePODto, GoodsReceivingDto } from './dto/create-po.dto';
+import { CreatePODto, UpdatePODto, ReceivePODto, GoodsReceivingDto, UpdatePaymentDto } from './dto/create-po.dto';
 
 @Injectable()
 export class PurchaseOrdersService {
@@ -82,6 +82,9 @@ export class PurchaseOrdersService {
           create: dto.items.map((item) => ({
             brand: item.brand,
             model: item.model,
+            color: item.color || null,
+            storage: item.storage || null,
+            category: item.category || null,
             quantity: item.quantity,
             unitPrice: item.unitPrice,
           })),
@@ -139,6 +142,26 @@ export class PurchaseOrdersService {
     });
   }
 
+  async updatePayment(id: string, dto: UpdatePaymentDto) {
+    const po = await this.findOne(id);
+    if (po.status === 'CANCELLED') {
+      throw new BadRequestException('ไม่สามารถอัปเดตการจ่ายเงินของ PO ที่ยกเลิกแล้วได้');
+    }
+
+    return this.prisma.purchaseOrder.update({
+      where: { id },
+      data: {
+        paymentStatus: dto.paymentStatus as any,
+        paidAmount: dto.paidAmount,
+        paymentNotes: dto.paymentNotes || null,
+      },
+      include: {
+        supplier: { select: { id: true, name: true } },
+        items: true,
+      },
+    });
+  }
+
   /**
    * Legacy receive - kept for backward compatibility
    */
@@ -175,12 +198,16 @@ export class PurchaseOrdersService {
         });
 
         for (let i = 0; i < receiveItem.receivedQty; i++) {
+          const nameParts = [poItem.brand, poItem.model, poItem.color, poItem.storage].filter(Boolean);
+          const productCategory = (poItem.category as any) || 'PHONE_NEW';
           const product = await tx.product.create({
             data: {
-              name: `${poItem.brand} ${poItem.model}`,
+              name: nameParts.join(' '),
               brand: poItem.brand,
               model: poItem.model,
-              category: 'PHONE_NEW',
+              color: poItem.color || null,
+              storage: poItem.storage || null,
+              category: productCategory,
               costPrice: Number(poItem.unitPrice),
               supplierId: po.supplierId,
               poId: po.id,
@@ -283,13 +310,19 @@ export class PurchaseOrdersService {
         if (!poItem) throw new NotFoundException(`ไม่พบรายการ PO: ${item.poItemId}`);
 
         if (item.status === 'PASS') {
+          // Build product name from PO item details
+          const nameParts = [poItem.brand, poItem.model, poItem.color, poItem.storage].filter(Boolean);
+          const productCategory = (poItem.category as any) || 'PHONE_NEW';
+
           // Create product for passed items → goes to main warehouse with IN_STOCK
           const product = await tx.product.create({
             data: {
-              name: `${poItem.brand} ${poItem.model}`,
+              name: nameParts.join(' '),
               brand: poItem.brand,
               model: poItem.model,
-              category: 'PHONE_NEW',
+              color: poItem.color || null,
+              storage: poItem.storage || null,
+              category: productCategory,
               costPrice: Number(poItem.unitPrice),
               supplierId: po.supplierId,
               poId: po.id,

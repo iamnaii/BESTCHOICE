@@ -15,6 +15,16 @@ export class PaymentsService {
     evidenceUrl?: string,
     notes?: string,
   ) {
+    if (!amount || amount <= 0) {
+      throw new BadRequestException('จำนวนเงินต้องมากกว่า 0');
+    }
+
+    const contract = await this.prisma.contract.findUnique({ where: { id: contractId } });
+    if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+    if (!['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status)) {
+      throw new BadRequestException('ไม่สามารถชำระเงินได้ สัญญาต้องอยู่ในสถานะ ACTIVE, OVERDUE หรือ DEFAULT');
+    }
+
     const payment = await this.prisma.payment.findFirst({
       where: { contractId, installmentNo },
     });
@@ -56,11 +66,18 @@ export class PaymentsService {
     recordedById: string,
     notes?: string,
   ) {
+    if (!amount || amount <= 0) {
+      throw new BadRequestException('จำนวนเงินต้องมากกว่า 0');
+    }
+
     const contract = await this.prisma.contract.findUnique({
       where: { id: contractId },
       include: { payments: { orderBy: { installmentNo: 'asc' } } },
     });
     if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+    if (!['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status)) {
+      throw new BadRequestException('ไม่สามารถชำระเงินได้ สัญญาต้องอยู่ในสถานะ ACTIVE, OVERDUE หรือ DEFAULT');
+    }
 
     let remaining = amount;
     const results: Awaited<ReturnType<typeof this.recordPayment>>[] = [];

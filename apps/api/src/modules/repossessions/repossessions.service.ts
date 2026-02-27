@@ -84,7 +84,7 @@ export class RepossessionsService {
         include: { product: true, payments: true },
       });
 
-      if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+      if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
       if (!['DEFAULT', 'OVERDUE'].includes(contract.status)) {
         throw new BadRequestException('สัญญานี้ไม่อยู่ในสถานะที่สามารถยึดคืนได้');
       }

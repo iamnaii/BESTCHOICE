@@ -190,6 +190,9 @@ export class PurchaseOrdersService {
     if (po.status === 'CANCELLED') {
       throw new BadRequestException('ไม่สามารถอัปเดตการจ่ายเงินของ PO ที่ยกเลิกแล้วได้');
     }
+    if (dto.paidAmount !== undefined && dto.paidAmount > Number(po.netAmount)) {
+      throw new BadRequestException(`ยอดจ่ายเกินกว่ายอดสุทธิ (${Number(po.netAmount).toLocaleString()} บาท)`);
+    }
 
     return this.prisma.purchaseOrder.update({
       where: { id },

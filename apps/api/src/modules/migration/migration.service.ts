@@ -204,7 +204,7 @@ export class MigrationService {
         } else {
           // Auto-generate payment schedule
           const createdAt = c.createdAt ? new Date(c.createdAt) : new Date();
-          const payments: { contractId: string; installmentNo: number; dueDate: Date; amountDue: number }[] = [];
+          const payments: { contractId: string; installmentNo: number; dueDate: Date; amountDue: number; status: 'PENDING' }[] = [];
           for (let m = 1; m <= c.totalMonths; m++) {
             const dueDate = new Date(createdAt.getFullYear(), createdAt.getMonth() + m, 1);
             payments.push({
@@ -212,6 +212,7 @@ export class MigrationService {
               installmentNo: m,
               dueDate,
               amountDue: monthlyPayment,
+              status: 'PENDING' as const,
             });
           }
           await this.prisma.payment.createMany({ data: payments });

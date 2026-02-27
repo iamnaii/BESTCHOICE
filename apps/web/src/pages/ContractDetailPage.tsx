@@ -34,7 +34,7 @@ interface ContractDetail {
   notes: string | null;
   createdAt: string;
   customer: { id: string; name: string; phone: string; nationalId: string };
-  product: { id: string; name: string; brand: string; model: string; serialNumber: string | null; imei: string | null };
+  product: { id: string; name: string; brand: string; model: string; serialNumber: string | null; imeiSerial: string | null };
   branch: { id: string; name: string };
   salesperson: { id: string; name: string };
   payments: Payment[];
@@ -224,7 +224,7 @@ export default function ContractDetailPage() {
               <Info label="สินค้า" value={`${contract.product.brand} ${contract.product.model}`} />
               <Info label="ชื่อ" value={contract.product.name} />
               {contract.product.serialNumber && <Info label="S/N" value={contract.product.serialNumber} />}
-              {contract.product.imei && <Info label="IMEI" value={contract.product.imei} />}
+              {contract.product.imeiSerial && <Info label="IMEI" value={contract.product.imeiSerial} />}
             </div>
             <button onClick={() => navigate(`/products/${contract.product.id}`)} className="mt-3 text-xs text-primary-600 hover:underline">ดูรายละเอียดสินค้า</button>
           </div>

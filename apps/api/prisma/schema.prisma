@@ -325,6 +325,7 @@ model PurchaseOrder {
   supplierId      String          @map("supplier_id")
   orderDate       DateTime        @map("order_date")
   expectedDate    DateTime?       @map("expected_date")
+  dueDate         DateTime?       @map("due_date")
   status          POStatus        @default(DRAFT)
   totalAmount     Decimal         @map("total_amount") @db.Decimal(12, 2)
   discount        Decimal         @default(0) @db.Decimal(12, 2)

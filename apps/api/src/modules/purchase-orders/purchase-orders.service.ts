@@ -57,10 +57,15 @@ export class PurchaseOrdersService {
   }
 
   async create(dto: CreatePODto, userId: string) {
-    // Validate supplier exists
+    // Validate supplier exists & get credit terms
     const supplier = await this.prisma.supplier.findUnique({
       where: { id: dto.supplierId },
-      select: { hasVat: true },
+      select: {
+        hasVat: true,
+        paymentMethods: {
+          select: { paymentMethod: true, creditTermDays: true, isDefault: true },
+        },
+      },
     });
     if (!supplier) throw new NotFoundException('ไม่พบ Supplier');
 
@@ -84,12 +89,24 @@ export class PurchaseOrdersService {
     const vatAmount = supplier.hasVat ? Math.round(subtotalAfterDiscount * 0.07 * 100) / 100 : 0;
     const netAmount = subtotalAfterDiscount + vatAmount;
 
+    // Calculate due date from supplier credit terms
+    const orderDateObj = new Date(dto.orderDate);
+    let dueDate: Date | null = null;
+    const selectedPm = dto.paymentMethod
+      ? supplier.paymentMethods.find((pm) => pm.paymentMethod === dto.paymentMethod)
+      : supplier.paymentMethods.find((pm) => pm.isDefault) || supplier.paymentMethods[0];
+    if (selectedPm?.creditTermDays) {
+      dueDate = new Date(orderDateObj);
+      dueDate.setDate(dueDate.getDate() + selectedPm.creditTermDays);
+    }
+
     return this.prisma.purchaseOrder.create({
       data: {
         poNumber,
         supplierId: dto.supplierId,
-        orderDate: new Date(dto.orderDate),
+        orderDate: orderDateObj,
         expectedDate: dto.expectedDate ? new Date(dto.expectedDate) : null,
+        dueDate,
         totalAmount,
         discount,
         vatAmount,
@@ -215,6 +232,7 @@ export class PurchaseOrdersService {
         id: string;
         poNumber: string;
         orderDate: string;
+        dueDate: string | null;
         netAmount: number;
         paidAmount: number;
         remaining: number;
@@ -237,7 +255,7 @@ export class PurchaseOrdersService {
         totalPaid: 0,
         totalRemaining: 0,
         poCount: 0,
-        pos: [] as { id: string; poNumber: string; orderDate: string; netAmount: number; paidAmount: number; remaining: number; paymentStatus: string; status: string; itemsSummary: string }[],
+        pos: [] as { id: string; poNumber: string; orderDate: string; dueDate: string | null; netAmount: number; paidAmount: number; remaining: number; paymentStatus: string; status: string; itemsSummary: string }[],
       };
 
       entry.totalNet += net;
@@ -256,6 +274,7 @@ export class PurchaseOrdersService {
         id: po.id,
         poNumber: po.poNumber,
         orderDate: po.orderDate.toISOString(),
+        dueDate: po.dueDate ? po.dueDate.toISOString() : null,
         netAmount: net,
         paidAmount: paid,
         remaining,

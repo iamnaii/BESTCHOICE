@@ -44,6 +44,7 @@ interface PurchaseOrder {
   poNumber: string;
   orderDate: string;
   expectedDate: string | null;
+  dueDate: string | null;
   status: string;
   subtotal: string;
   vatAmount: string;
@@ -697,6 +698,7 @@ export default function PurchaseOrdersPage() {
                   <tr className="text-xs text-gray-500 border-b">
                     <th className="px-4 py-2 text-left">เลข PO</th>
                     <th className="px-4 py-2 text-left">วันที่สั่ง</th>
+                    <th className="px-4 py-2 text-left">ครบกำหนด</th>
                     <th className="px-4 py-2 text-left">รายการ</th>
                     <th className="px-4 py-2 text-right">ยอดสุทธิ</th>
                     <th className="px-4 py-2 text-right">จ่ายแล้ว</th>
@@ -713,6 +715,16 @@ export default function PurchaseOrdersPage() {
                         </button>
                       </td>
                       <td className="px-4 py-2 text-gray-600">{new Date(po.orderDate).toLocaleDateString('th-TH')}</td>
+                      <td className="px-4 py-2">
+                        {po.dueDate ? (
+                          <span className={`text-sm ${new Date(po.dueDate) < new Date() ? 'text-red-600 font-semibold' : 'text-gray-600'}`}>
+                            {new Date(po.dueDate).toLocaleDateString('th-TH')}
+                            {new Date(po.dueDate) < new Date() && <span className="ml-1 text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full">เลยกำหนด</span>}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400 text-xs">-</span>
+                        )}
+                      </td>
                       <td className="px-4 py-2 text-gray-600 truncate max-w-[200px]" title={po.itemsSummary}>{po.itemsSummary}</td>
                       <td className="px-4 py-2 text-right">{po.netAmount.toLocaleString()}</td>
                       <td className="px-4 py-2 text-right text-green-600">{po.paidAmount.toLocaleString()}</td>
@@ -1329,6 +1341,15 @@ export default function PurchaseOrdersPage() {
                 <span className="text-gray-500">วันที่สั่ง:</span>{' '}
                 {new Date(selectedPO.orderDate).toLocaleDateString('th-TH')}
               </div>
+              {selectedPO.dueDate && (
+                <div>
+                  <span className="text-gray-500">ครบกำหนดชำระ:</span>{' '}
+                  <span className={new Date(selectedPO.dueDate) < new Date() && selectedPO.paymentStatus !== 'FULLY_PAID' ? 'text-red-600 font-semibold' : ''}>
+                    {new Date(selectedPO.dueDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    {new Date(selectedPO.dueDate) < new Date() && selectedPO.paymentStatus !== 'FULLY_PAID' && ' (เลยกำหนด!)'}
+                  </span>
+                </div>
+              )}
               <div>
                 <span className="text-gray-500">ผู้สร้าง:</span> {selectedPO.createdBy.name}
               </div>
@@ -1593,6 +1614,15 @@ export default function PurchaseOrdersPage() {
                     <span>{(Number(selectedPO.netAmount || selectedPO.totalAmount) - Number(selectedPO.paidAmount)).toLocaleString()} บาท</span>
                   </div>
                 </>
+              )}
+              {selectedPO.dueDate && (
+                <div className={`flex justify-between border-t pt-1 ${new Date(selectedPO.dueDate) < new Date() ? 'text-red-600 font-semibold' : 'text-gray-600'}`}>
+                  <span>ครบกำหนดชำระ:</span>
+                  <span>
+                    {new Date(selectedPO.dueDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    {new Date(selectedPO.dueDate) < new Date() && ' (เลยกำหนด)'}
+                  </span>
+                </div>
               )}
             </div>
 

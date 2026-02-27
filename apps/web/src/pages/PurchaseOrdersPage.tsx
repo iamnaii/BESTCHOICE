@@ -152,6 +152,7 @@ export default function PurchaseOrdersPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'list' | 'payable'>('list');
   const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
@@ -179,6 +180,22 @@ export default function PurchaseOrdersPage() {
     queryFn: async () => (await api.get('/suppliers?limit=999&isActive=true')).data,
   });
   const suppliers = suppliersRes?.data || [];
+
+  const { data: payableData } = useQuery<{
+    grandTotal: number;
+    suppliers: {
+      supplier: { id: string; name: string; contactName: string; phone: string };
+      totalNet: number;
+      totalPaid: number;
+      totalRemaining: number;
+      poCount: number;
+      pos: { id: string; poNumber: string; orderDate: string; netAmount: number; paidAmount: number; remaining: number; paymentStatus: string; status: string; itemsSummary: string }[];
+    }[];
+  }>({
+    queryKey: ['accounts-payable'],
+    queryFn: async () => (await api.get('/purchase-orders/accounts-payable')).data,
+    enabled: activeTab === 'payable',
+  });
 
   const { data: pos = [], isLoading } = useQuery<PurchaseOrder[]>({
     queryKey: ['purchase-orders', statusFilter],
@@ -244,6 +261,7 @@ export default function PurchaseOrdersPage() {
       api.patch(`/purchase-orders/${poId}/payment`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['accounts-payable'] });
       toast.success('อัปเดตสถานะการจ่ายเงินสำเร็จ');
       setIsPaymentModalOpen(false);
       // Refresh detail if open
@@ -607,22 +625,115 @@ export default function PurchaseOrdersPage() {
         }
       />
 
-      {/* Filter */}
-      <div className="mb-4">
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+      {/* Tabs */}
+      <div className="flex gap-1 mb-4 border-b">
+        <button
+          onClick={() => setActiveTab('list')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'list' ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
         >
-          <option value="">ทุกสถานะ</option>
-          <option value="PENDING">รอรับสินค้า</option>
-          <option value="PARTIALLY_RECEIVED">รับบางส่วน</option>
-          <option value="FULLY_RECEIVED">รับครบแล้ว</option>
-          <option value="CANCELLED">ยกเลิก</option>
-        </select>
+          รายการ PO
+        </button>
+        <button
+          onClick={() => setActiveTab('payable')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'payable' ? 'border-red-600 text-red-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+        >
+          ยอดค้างจ่าย Supplier
+          {payableData && payableData.grandTotal > 0 && (
+            <span className="ml-1.5 px-1.5 py-0.5 bg-red-100 text-red-700 rounded-full text-xs">{payableData.grandTotal.toLocaleString()}</span>
+          )}
+        </button>
       </div>
 
-      <DataTable columns={columns} data={pos} isLoading={isLoading} emptyMessage="ยังไม่มีใบสั่งซื้อ" />
+      {activeTab === 'list' ? (
+        <>
+          {/* Filter */}
+          <div className="mb-4">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+            >
+              <option value="">ทุกสถานะ</option>
+              <option value="PENDING">รอรับสินค้า</option>
+              <option value="PARTIALLY_RECEIVED">รับบางส่วน</option>
+              <option value="FULLY_RECEIVED">รับครบแล้ว</option>
+              <option value="CANCELLED">ยกเลิก</option>
+            </select>
+          </div>
+
+          <DataTable columns={columns} data={pos} isLoading={isLoading} emptyMessage="ยังไม่มีใบสั่งซื้อ" />
+        </>
+      ) : (
+        /* Accounts Payable Tab */
+        <div className="space-y-4">
+          {/* Grand Total */}
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center justify-between">
+            <div>
+              <div className="text-sm text-red-600 font-medium">ยอดค้างจ่ายทั้งหมด</div>
+              <div className="text-2xl font-bold text-red-700">{(payableData?.grandTotal || 0).toLocaleString()} บาท</div>
+            </div>
+            <div className="text-sm text-red-500">
+              {payableData?.suppliers.length || 0} Supplier, {payableData?.suppliers.reduce((sum, s) => sum + s.poCount, 0) || 0} ใบ PO
+            </div>
+          </div>
+
+          {/* Per-Supplier Breakdown */}
+          {payableData?.suppliers.map((entry) => (
+            <div key={entry.supplier.id} className="bg-white border rounded-xl overflow-hidden">
+              {/* Supplier Header */}
+              <div className="px-4 py-3 bg-gray-50 border-b flex items-center justify-between">
+                <div>
+                  <div className="font-medium text-gray-900">{entry.supplier.name}</div>
+                  <div className="text-xs text-gray-500">{entry.supplier.contactName} | {entry.supplier.phone}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-lg font-bold text-red-600">{entry.totalRemaining.toLocaleString()} บาท</div>
+                  <div className="text-xs text-gray-500">จาก {entry.totalNet.toLocaleString()} (จ่ายแล้ว {entry.totalPaid.toLocaleString()})</div>
+                </div>
+              </div>
+              {/* PO List */}
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-gray-500 border-b">
+                    <th className="px-4 py-2 text-left">เลข PO</th>
+                    <th className="px-4 py-2 text-left">วันที่สั่ง</th>
+                    <th className="px-4 py-2 text-left">รายการ</th>
+                    <th className="px-4 py-2 text-right">ยอดสุทธิ</th>
+                    <th className="px-4 py-2 text-right">จ่ายแล้ว</th>
+                    <th className="px-4 py-2 text-right">คงค้าง</th>
+                    <th className="px-4 py-2 text-center">สถานะจ่าย</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {entry.pos.map((po) => (
+                    <tr key={po.id} className="border-b last:border-0 hover:bg-gray-50">
+                      <td className="px-4 py-2">
+                        <button onClick={async () => { try { const { data } = await api.get(`/purchase-orders/${po.id}`); setSelectedPO(data); setPODetail(data); setIsDetailModalOpen(true); } catch {} }} className="text-primary-600 hover:underline font-medium">
+                          {po.poNumber}
+                        </button>
+                      </td>
+                      <td className="px-4 py-2 text-gray-600">{new Date(po.orderDate).toLocaleDateString('th-TH')}</td>
+                      <td className="px-4 py-2 text-gray-600 truncate max-w-[200px]" title={po.itemsSummary}>{po.itemsSummary}</td>
+                      <td className="px-4 py-2 text-right">{po.netAmount.toLocaleString()}</td>
+                      <td className="px-4 py-2 text-right text-green-600">{po.paidAmount.toLocaleString()}</td>
+                      <td className="px-4 py-2 text-right font-medium text-red-600">{po.remaining.toLocaleString()}</td>
+                      <td className="px-4 py-2 text-center">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${paymentStatusColors[po.paymentStatus] || 'bg-gray-100 text-gray-700'}`}>
+                          {paymentStatusLabels[po.paymentStatus] || po.paymentStatus}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+
+          {payableData && payableData.suppliers.length === 0 && (
+            <div className="text-center py-12 text-gray-500">ไม่มียอดค้างจ่าย - จ่ายครบทุก PO แล้ว</div>
+          )}
+        </div>
+      )}
 
       {/* Create PO Modal */}
       <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="สร้างใบสั่งซื้อ" size="xl">
@@ -1102,12 +1213,33 @@ export default function PurchaseOrdersPage() {
               <div className="mt-3">
                 <label className="block text-xs text-gray-500 mb-0.5">แนบสลิป/เอกสาร</label>
                 <div className="flex gap-2">
+                  <label className="flex items-center gap-1 px-3 py-2 bg-purple-50 text-purple-700 border border-purple-200 rounded-lg text-xs cursor-pointer hover:bg-purple-100 whitespace-nowrap">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    เลือกรูป
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files || []);
+                        files.forEach((file) => {
+                          const reader = new FileReader();
+                          reader.onload = () => {
+                            setFormAttachments((prev) => [...prev, reader.result as string]);
+                          };
+                          reader.readAsDataURL(file);
+                        });
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
                   <input
                     type="text"
                     value={attachmentUrl}
                     onChange={(e) => setAttachmentUrl(e.target.value)}
                     className={inputClass}
-                    placeholder="วาง URL รูปสลิป หรือ link เอกสาร"
+                    placeholder="หรือวาง URL"
                   />
                   <button
                     type="button"
@@ -1123,11 +1255,23 @@ export default function PurchaseOrdersPage() {
                   </button>
                 </div>
                 {formAttachments.length > 0 && (
-                  <div className="mt-2 space-y-1">
-                    {formAttachments.map((url, idx) => (
-                      <div key={idx} className="flex items-center gap-2 text-xs bg-blue-50 rounded px-2 py-1">
-                        <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline truncate flex-1">{url}</a>
-                        <button type="button" onClick={() => setFormAttachments(formAttachments.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-600">&times;</button>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {formAttachments.map((att, idx) => (
+                      <div key={idx} className="relative group">
+                        {att.startsWith('data:image') ? (
+                          <img src={att} alt={`แนบ ${idx + 1}`} className="h-16 w-16 object-cover rounded-lg border" />
+                        ) : (
+                          <div className="h-16 w-16 flex items-center justify-center bg-blue-50 rounded-lg border text-[10px] text-blue-600 p-1 break-all overflow-hidden">
+                            <a href={att} target="_blank" rel="noopener noreferrer" className="hover:underline">{att.length > 20 ? att.slice(0, 20) + '...' : att}</a>
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setFormAttachments(formAttachments.filter((_, i) => i !== idx))}
+                          className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          &times;
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -1253,10 +1397,16 @@ export default function PurchaseOrdersPage() {
             {selectedPO.attachments && selectedPO.attachments.length > 0 && (
               <div className="text-sm">
                 <span className="text-gray-500">เอกสารแนบ:</span>
-                <div className="mt-1 space-y-1">
-                  {selectedPO.attachments.map((url, idx) => (
-                    <a key={idx} href={url} target="_blank" rel="noopener noreferrer" className="block text-xs text-blue-600 hover:underline truncate">{url}</a>
-                  ))}
+                <div className="mt-1 flex flex-wrap gap-2">
+                  {selectedPO.attachments.map((att, idx) =>
+                    att.startsWith('data:image') ? (
+                      <a key={idx} href={att} target="_blank" rel="noopener noreferrer">
+                        <img src={att} alt={`สลิป ${idx + 1}`} className="h-20 w-20 object-cover rounded-lg border hover:opacity-80 transition-opacity" />
+                      </a>
+                    ) : (
+                      <a key={idx} href={att} target="_blank" rel="noopener noreferrer" className="block text-xs text-blue-600 hover:underline truncate max-w-[200px]">{att}</a>
+                    )
+                  )}
                 </div>
               </div>
             )}
@@ -1504,16 +1654,37 @@ export default function PurchaseOrdersPage() {
               />
             </div>
 
-            {/* Attachments */}
+            {/* Attachments - File upload + URL */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">แนบสลิป/เอกสาร</label>
               <div className="flex gap-2">
+                <label className="flex items-center gap-1.5 px-3 py-2 bg-purple-50 text-purple-700 border border-purple-200 rounded-lg text-sm cursor-pointer hover:bg-purple-100 whitespace-nowrap">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                  เลือกรูป
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files || []);
+                      files.forEach((file) => {
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                          setPaymentAttachments((prev) => [...prev, reader.result as string]);
+                        };
+                        reader.readAsDataURL(file);
+                      });
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
                 <input
                   type="text"
                   value={paymentAttachmentUrl}
                   onChange={(e) => setPaymentAttachmentUrl(e.target.value)}
                   className={inputClass}
-                  placeholder="วาง URL รูปสลิป หรือ link เอกสาร"
+                  placeholder="หรือวาง URL"
                 />
                 <button
                   type="button"
@@ -1529,11 +1700,23 @@ export default function PurchaseOrdersPage() {
                 </button>
               </div>
               {paymentAttachments.length > 0 && (
-                <div className="mt-2 space-y-1">
-                  {paymentAttachments.map((url, idx) => (
-                    <div key={idx} className="flex items-center gap-2 text-xs bg-blue-50 rounded px-2 py-1">
-                      <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline truncate flex-1">{url}</a>
-                      <button type="button" onClick={() => setPaymentAttachments(paymentAttachments.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-600">&times;</button>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {paymentAttachments.map((att, idx) => (
+                    <div key={idx} className="relative group">
+                      {att.startsWith('data:image') ? (
+                        <img src={att} alt={`สลิป ${idx + 1}`} className="h-20 w-20 object-cover rounded-lg border" />
+                      ) : (
+                        <div className="h-20 w-20 flex items-center justify-center bg-blue-50 rounded-lg border text-xs text-blue-600 p-1 break-all overflow-hidden">
+                          <a href={att} target="_blank" rel="noopener noreferrer" className="hover:underline">{att.length > 30 ? att.slice(0, 30) + '...' : att}</a>
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setPaymentAttachments(paymentAttachments.filter((_, i) => i !== idx))}
+                        className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        &times;
+                      </button>
                     </div>
                   ))}
                 </div>

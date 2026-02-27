@@ -228,11 +228,17 @@ export class PurchaseOrdersService {
           const productCategory = (poItem.category as any) || 'PHONE_NEW';
           let productName: string;
           if (productCategory === 'ACCESSORY') {
-            const accParts = [poItem.accessoryType, poItem.accessoryBrand].filter(Boolean);
-            const phoneParts = [poItem.brand, poItem.model].filter(Boolean);
-            productName = phoneParts.length > 0
-              ? `${accParts.join(' ')} สำหรับ ${phoneParts.join(' ')}`
-              : accParts.join(' ');
+            const isCharger = poItem.accessoryType === 'ชุดชาร์จ';
+            if (isCharger) {
+              // Charger: "ชุดชาร์จ Anker Type-C" (model = connector type)
+              productName = [poItem.accessoryType, poItem.accessoryBrand, poItem.model].filter(Boolean).join(' ');
+            } else {
+              // Other accessories: "เคส Spigen สำหรับ iPhone 16 Pro, iPhone 16 Pro Max"
+              const accParts = [poItem.accessoryType, poItem.accessoryBrand].filter(Boolean);
+              productName = poItem.model
+                ? `${accParts.join(' ')} สำหรับ ${poItem.model}`
+                : accParts.join(' ');
+            }
           } else {
             const nameParts = [poItem.brand, poItem.model, poItem.color, poItem.storage].filter(Boolean);
             productName = nameParts.join(' ');
@@ -353,12 +359,15 @@ export class PurchaseOrdersService {
           const productCategory = (poItem.category as any) || 'PHONE_NEW';
           let productName: string;
           if (productCategory === 'ACCESSORY') {
-            // Accessory name: e.g. "เคส Spigen สำหรับ iPhone 16 Pro"
-            const accParts = [poItem.accessoryType, poItem.accessoryBrand].filter(Boolean);
-            const phoneParts = [poItem.brand, poItem.model].filter(Boolean);
-            productName = phoneParts.length > 0
-              ? `${accParts.join(' ')} สำหรับ ${phoneParts.join(' ')}`
-              : accParts.join(' ');
+            const isCharger = poItem.accessoryType === 'ชุดชาร์จ';
+            if (isCharger) {
+              productName = [poItem.accessoryType, poItem.accessoryBrand, poItem.model].filter(Boolean).join(' ');
+            } else {
+              const accParts = [poItem.accessoryType, poItem.accessoryBrand].filter(Boolean);
+              productName = poItem.model
+                ? `${accParts.join(' ')} สำหรับ ${poItem.model}`
+                : accParts.join(' ');
+            }
           } else {
             const nameParts = [poItem.brand, poItem.model, poItem.color, poItem.storage].filter(Boolean);
             productName = nameParts.join(' ');

@@ -114,6 +114,11 @@ const accessoryTypes = [
   { value: 'อื่นๆ', label: 'อื่นๆ' },
 ];
 
+const chargerConnectorTypes = [
+  { value: 'Lightning', label: 'Lightning' },
+  { value: 'Type-C', label: 'Type-C' },
+];
+
 interface ItemForm {
   brand: string;
   category: string;
@@ -269,25 +274,41 @@ export default function PurchaseOrdersPage() {
     const newItems = [...items];
     const item = { ...newItems[idx], [field]: value };
 
-    // Cascade reset when parent changes
-    if (field === 'brand') {
-      item.category = '';
+    // Cascade reset when parent changes (Category is first)
+    if (field === 'category') {
+      item.brand = '';
       item.model = '';
       item.color = '';
       item.storage = '';
       item.accessoryType = '';
       item.accessoryBrand = '';
-    } else if (field === 'category') {
+    } else if (field === 'accessoryType') {
+      // Reset compatible brand/model when accessory type changes
+      item.brand = '';
+      item.model = '';
+    } else if (field === 'brand') {
       item.model = '';
       item.color = '';
       item.storage = '';
-      item.accessoryType = '';
-      item.accessoryBrand = '';
     } else if (field === 'model') {
       item.color = '';
       item.storage = '';
     }
 
+    newItems[idx] = item;
+    setItems(newItems);
+  };
+
+  // Toggle model for multi-select (accessories)
+  const toggleModel = (idx: number, modelName: string) => {
+    const newItems = [...items];
+    const item = { ...newItems[idx] };
+    const current = item.model ? item.model.split(', ').filter(Boolean) : [];
+    if (current.includes(modelName)) {
+      item.model = current.filter((m) => m !== modelName).join(', ');
+    } else {
+      item.model = [...current, modelName].join(', ');
+    }
     newItems[idx] = item;
     setItems(newItems);
   };
@@ -306,8 +327,8 @@ export default function PurchaseOrdersPage() {
       paymentNotes: form.paymentNotes || undefined,
       attachments: formAttachments.length > 0 ? formAttachments : undefined,
       items: items.map((i) => ({
-        brand: i.brand,
-        model: i.model,
+        brand: i.brand || undefined,
+        model: i.model || undefined,
         color: i.color || undefined,
         storage: i.storage || undefined,
         category: i.category || undefined,
@@ -340,8 +361,11 @@ export default function PurchaseOrdersPage() {
     for (const item of po.items) {
       const remaining = item.quantity - item.receivedQty;
       const isAccessory = item.category === 'ACCESSORY';
+      const isCharger = isAccessory && item.accessoryType === 'ชุดชาร์จ';
       const nameParts = isAccessory
-        ? [item.accessoryType, item.accessoryBrand, item.model ? `สำหรับ ${item.model}` : ''].filter(Boolean)
+        ? (isCharger
+            ? [item.accessoryType, item.accessoryBrand, item.model].filter(Boolean)
+            : [item.accessoryType, item.accessoryBrand, item.model ? `สำหรับ ${item.model}` : ''].filter(Boolean))
         : [item.brand, item.model, item.color, item.storage].filter(Boolean);
       for (let i = 0; i < remaining; i++) {
         units.push({
@@ -556,7 +580,11 @@ export default function PurchaseOrdersPage() {
   // Helper to get item description for detail view
   const getItemDesc = (item: POItem) => {
     if (item.category === 'ACCESSORY') {
-      const parts = [item.accessoryType, item.accessoryBrand].filter(Boolean);
+      const isCharger = item.accessoryType === 'ชุดชาร์จ';
+      const parts: string[] = [];
+      if (item.accessoryType) parts.push(item.accessoryType);
+      if (item.accessoryBrand) parts.push(item.accessoryBrand);
+      if (item.model) parts.push(isCharger ? item.model : `สำหรับ ${item.model}`);
       return parts.length > 0 ? parts.join(' / ') : '-';
     }
     const parts = [item.color, item.storage].filter(Boolean);
@@ -673,11 +701,26 @@ export default function PurchaseOrdersPage() {
             <div className="space-y-4">
               {items.map((item, idx) => {
                 const isAccessory = item.category === 'ACCESSORY';
+                const isCharger = isAccessory && item.accessoryType === 'ชุดชาร์จ';
                 // For accessories, show all phone/tablet models for "compatible model"
-                const availableModels = item.brand ? getModels(item.brand, isAccessory ? 'PHONE_NEW' : (item.category || undefined)) : [];
+                const availableModels = item.brand ? getModels(item.brand, isAccessory ? 'ACCESSORY' : (item.category || undefined)) : [];
                 const modelInfo = item.brand && item.model ? getModelInfo(item.brand, item.model) : undefined;
                 const availableColors = modelInfo?.colors || [];
                 const availableStorage = modelInfo?.storage || [];
+                // For multi-select: parse comma-separated model string
+                const selectedModels = isAccessory && item.model ? item.model.split(', ').filter(Boolean) : [];
+
+                // Auto name for accessories
+                const accessoryAutoName = isAccessory ? (() => {
+                  if (isCharger) {
+                    return [item.accessoryType, item.accessoryBrand, item.model].filter(Boolean).join(' ');
+                  }
+                  const accParts = [item.accessoryType, item.accessoryBrand].filter(Boolean);
+                  const modelStr = item.model;
+                  return modelStr
+                    ? `${accParts.join(' ')} สำหรับ ${modelStr}`
+                    : accParts.join(' ');
+                })() : '';
 
                 return (
                   <div key={idx} className={`border rounded-lg p-3 space-y-2 relative ${isAccessory ? 'border-purple-200 bg-purple-50' : 'border-gray-200 bg-gray-50'}`}>
@@ -695,58 +738,26 @@ export default function PurchaseOrdersPage() {
                       {isAccessory && <span className="ml-2 px-1.5 py-0.5 bg-purple-200 text-purple-700 rounded text-xs">อุปกรณ์เสริม</span>}
                     </div>
 
-                    {/* Row 1: Brand, Category, Model/AccessoryType */}
-                    <div className="grid grid-cols-3 gap-2">
+                    {/* Row 1: Category FIRST, then Brand/Model or AccessoryType */}
+                    <div className={`grid ${isAccessory ? 'grid-cols-3' : 'grid-cols-3'} gap-2`}>
                       <div>
-                        <label className="block text-xs text-gray-500 mb-0.5">{isAccessory ? 'สำหรับยี่ห้อ *' : 'ยี่ห้อ *'}</label>
-                        <select
-                          value={item.brand}
-                          onChange={(e) => updateItem(idx, 'brand', e.target.value)}
-                          className={selectClass}
-                          required
-                        >
-                          <option value="">{isAccessory ? '-- เลือกยี่ห้อโทรศัพท์ --' : '-- เลือกยี่ห้อ --'}</option>
-                          {brands.map((b) => (
-                            <option key={b} value={b}>{b}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-0.5">ประเภท</label>
+                        <label className="block text-xs text-gray-500 mb-0.5">ประเภท *</label>
                         <select
                           value={item.category}
                           onChange={(e) => updateItem(idx, 'category', e.target.value)}
                           className={selectClass}
-                          disabled={!item.brand}
                         >
-                          <option value="">-- ทั้งหมด --</option>
+                          <option value="">-- เลือกประเภท --</option>
                           <option value="PHONE_NEW">โทรศัพท์ (ใหม่)</option>
                           <option value="PHONE_USED">โทรศัพท์ (มือสอง)</option>
                           <option value="TABLET">แท็บเล็ต</option>
                           <option value="ACCESSORY">อุปกรณ์เสริม</option>
                         </select>
                       </div>
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-0.5">{isAccessory ? 'สำหรับรุ่น *' : 'รุ่น *'}</label>
-                        <select
-                          value={item.model}
-                          onChange={(e) => updateItem(idx, 'model', e.target.value)}
-                          className={selectClass}
-                          required
-                          disabled={!item.brand}
-                        >
-                          <option value="">{isAccessory ? '-- เลือกรุ่นโทรศัพท์ --' : '-- เลือกรุ่น --'}</option>
-                          {availableModels.map((m) => (
-                            <option key={m.name} value={m.name}>{m.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
 
-                    {isAccessory ? (
-                      <>
-                        {/* Accessory Row 2: Accessory Type, Accessory Brand, Quantity, Price */}
-                        <div className="grid grid-cols-4 gap-2">
+                      {isAccessory ? (
+                        <>
+                          {/* Accessory Type */}
                           <div>
                             <label className="block text-xs text-gray-500 mb-0.5">ประเภทอุปกรณ์ *</label>
                             <select
@@ -761,6 +772,110 @@ export default function PurchaseOrdersPage() {
                               ))}
                             </select>
                           </div>
+
+                          {isCharger ? (
+                            /* Charger: connector type */
+                            <div>
+                              <label className="block text-xs text-gray-500 mb-0.5">ชนิด *</label>
+                              <select
+                                value={item.model}
+                                onChange={(e) => { const ni = [...items]; ni[idx] = { ...ni[idx], model: e.target.value }; setItems(ni); }}
+                                className={selectClass}
+                                required
+                              >
+                                <option value="">-- เลือก --</option>
+                                {chargerConnectorTypes.map((t) => (
+                                  <option key={t.value} value={t.value}>{t.label}</option>
+                                ))}
+                              </select>
+                            </div>
+                          ) : (
+                            /* Non-charger accessory: compatible phone brand */
+                            <div>
+                              <label className="block text-xs text-gray-500 mb-0.5">สำหรับยี่ห้อ</label>
+                              <select
+                                value={item.brand}
+                                onChange={(e) => updateItem(idx, 'brand', e.target.value)}
+                                className={selectClass}
+                              >
+                                <option value="">-- เลือกยี่ห้อโทรศัพท์ --</option>
+                                {brands.map((b) => (
+                                  <option key={b} value={b}>{b}</option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          {/* Normal: Brand, Model */}
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-0.5">ยี่ห้อ *</label>
+                            <select
+                              value={item.brand}
+                              onChange={(e) => updateItem(idx, 'brand', e.target.value)}
+                              className={selectClass}
+                              required
+                              disabled={!item.category}
+                            >
+                              <option value="">-- เลือกยี่ห้อ --</option>
+                              {brands.map((b) => (
+                                <option key={b} value={b}>{b}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-0.5">รุ่น *</label>
+                            <select
+                              value={item.model}
+                              onChange={(e) => updateItem(idx, 'model', e.target.value)}
+                              className={selectClass}
+                              required
+                              disabled={!item.brand}
+                            >
+                              <option value="">-- เลือกรุ่น --</option>
+                              {availableModels.map((m) => (
+                                <option key={m.name} value={m.name}>{m.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Multi-model selection for accessories (non-charger) */}
+                    {isAccessory && !isCharger && item.accessoryType && item.brand && availableModels.length > 0 && (
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">สำหรับรุ่น (เลือกได้หลายรุ่น)</label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {availableModels.map((m) => {
+                            const isSelected = selectedModels.includes(m.name);
+                            return (
+                              <button
+                                key={m.name}
+                                type="button"
+                                onClick={() => toggleModel(idx, m.name)}
+                                className={`px-2 py-0.5 rounded-full text-xs font-medium border transition-colors ${
+                                  isSelected
+                                    ? 'bg-purple-600 text-white border-purple-600'
+                                    : 'bg-white text-gray-600 border-gray-300 hover:border-purple-400 hover:text-purple-600'
+                                }`}
+                              >
+                                {m.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {selectedModels.length > 0 && (
+                          <div className="text-xs text-purple-500 mt-1">เลือกแล้ว {selectedModels.length} รุ่น</div>
+                        )}
+                      </div>
+                    )}
+
+                    {isAccessory ? (
+                      <>
+                        {/* Accessory Row: Accessory Brand, Quantity, Price */}
+                        <div className="grid grid-cols-3 gap-2">
                           <div>
                             <label className="block text-xs text-gray-500 mb-0.5">ยี่ห้ออุปกรณ์</label>
                             <input
@@ -794,9 +909,9 @@ export default function PurchaseOrdersPage() {
                           </div>
                         </div>
                         {/* Auto name preview */}
-                        {(item.accessoryType || item.accessoryBrand) && (
+                        {accessoryAutoName && (
                           <div className="text-xs text-purple-600 bg-purple-100 rounded px-2 py-1">
-                            ชื่อสินค้า: {[item.accessoryType, item.accessoryBrand, item.model ? `สำหรับ ${item.model}` : ''].filter(Boolean).join(' ')}
+                            ชื่อสินค้า: {accessoryAutoName}
                           </div>
                         )}
                       </>

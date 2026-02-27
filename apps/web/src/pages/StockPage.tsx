@@ -62,6 +62,16 @@ interface StockDashboard {
     soldLastMonth: number;
     currentStock: number;
   };
+  topSellers: { name: string; count: number }[];
+  slowMovers: { name: string; days: number; costPrice: number }[];
+  marginOverview: {
+    totalCost: number;
+    totalSell: number;
+    totalMargin: number;
+    avgMarginPct: number;
+    avgMarginPerUnit: number;
+    itemsWithPrice: number;
+  };
 }
 
 const statusLabels: Record<string, { label: string; className: string }> = {
@@ -495,6 +505,90 @@ export default function StockPage() {
               </div>
             </div>
           )}
+
+          {/* Row 6: Margin Overview */}
+          <div className="bg-white rounded-lg border p-5">
+            <SectionTitle>กำไรเฉลี่ย (Margin Overview) - สินค้าพร้อมขาย</SectionTitle>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <StatCard
+                label="มูลค่าทุนรวม"
+                value={`${dashboard.marginOverview.totalCost.toLocaleString()} ฿`}
+                accent="border-l-gray-400"
+              />
+              <StatCard
+                label="มูลค่าขายรวม"
+                value={`${dashboard.marginOverview.totalSell.toLocaleString()} ฿`}
+                accent="border-l-blue-500"
+              />
+              <StatCard
+                label="กำไรรวม (ถ้าขายหมด)"
+                value={`${dashboard.marginOverview.totalMargin.toLocaleString()} ฿`}
+                sub={`Margin ${dashboard.marginOverview.avgMarginPct}%`}
+                accent="border-l-green-500"
+              />
+              <StatCard
+                label="กำไรเฉลี่ย/ชิ้น"
+                value={`${dashboard.marginOverview.avgMarginPerUnit.toLocaleString()} ฿`}
+                sub={`จาก ${dashboard.marginOverview.itemsWithPrice} ชิ้นที่มีราคาขาย`}
+                accent="border-l-indigo-500"
+              />
+            </div>
+          </div>
+
+          {/* Row 7: Top Sellers + Slow Movers */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Top Sellers */}
+            <div className="bg-white rounded-lg border p-5">
+              <SectionTitle>สินค้าขายดี (6 เดือนล่าสุด)</SectionTitle>
+              {dashboard.topSellers.length > 0 ? (
+                <div className="space-y-2">
+                  {dashboard.topSellers.map((item, i) => (
+                    <div key={item.name} className="flex items-center gap-3">
+                      <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                        i === 0 ? 'bg-yellow-100 text-yellow-700' :
+                        i === 1 ? 'bg-gray-100 text-gray-600' :
+                        i === 2 ? 'bg-orange-100 text-orange-700' :
+                        'bg-gray-50 text-gray-500'
+                      }`}>{i + 1}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-gray-900 truncate">{item.name}</div>
+                      </div>
+                      <span className="text-sm font-bold text-indigo-600">{item.count} ชิ้น</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-sm text-gray-400 text-center py-4">ยังไม่มีข้อมูลการขาย</div>
+              )}
+            </div>
+
+            {/* Slow Movers */}
+            <div className="bg-white rounded-lg border p-5">
+              <SectionTitle>สินค้าค้างสต๊อคนานสุด</SectionTitle>
+              {dashboard.slowMovers.length > 0 ? (
+                <div className="space-y-2">
+                  {dashboard.slowMovers.map((item, i) => (
+                    <div key={`${item.name}-${i}`} className="flex items-center gap-3">
+                      <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                        item.days > 90 ? 'bg-red-100 text-red-700' :
+                        item.days > 60 ? 'bg-orange-100 text-orange-700' :
+                        'bg-yellow-100 text-yellow-700'
+                      }`}>{i + 1}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-gray-900 truncate">{item.name}</div>
+                        <div className="text-xs text-gray-400">{item.costPrice.toLocaleString()} ฿</div>
+                      </div>
+                      <span className={`text-sm font-bold ${item.days > 90 ? 'text-red-600' : item.days > 60 ? 'text-orange-600' : 'text-yellow-600'}`}>
+                        {item.days} วัน
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-sm text-gray-400 text-center py-4">ไม่มีสินค้าในสต๊อค</div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

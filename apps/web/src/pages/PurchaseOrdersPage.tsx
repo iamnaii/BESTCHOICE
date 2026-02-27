@@ -339,7 +339,10 @@ export default function PurchaseOrdersPage() {
     const units: ReceivingUnitForm[] = [];
     for (const item of po.items) {
       const remaining = item.quantity - item.receivedQty;
-      const nameParts = [item.brand, item.model, item.color, item.storage].filter(Boolean);
+      const isAccessory = item.category === 'ACCESSORY';
+      const nameParts = isAccessory
+        ? [item.accessoryType, item.accessoryBrand, item.model ? `สำหรับ ${item.model}` : ''].filter(Boolean)
+        : [item.brand, item.model, item.color, item.storage].filter(Boolean);
       for (let i = 0; i < remaining; i++) {
         units.push({
           poItemId: item.id,
@@ -1482,6 +1485,7 @@ export default function PurchaseOrdersPage() {
                       </button>
                     </div>
                   </div>
+                  {unit.category !== 'ACCESSORY' && (
                   <div className="grid grid-cols-2 gap-2">
                     <input
                       type="text"
@@ -1498,6 +1502,7 @@ export default function PurchaseOrdersPage() {
                       className="px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none font-mono"
                     />
                   </div>
+                  )}
                   {unit.category === 'PHONE_USED' && unit.status === 'PASS' && (
                     <div className="mt-2 border border-orange-200 bg-orange-50 rounded-lg p-3 space-y-2">
                       <div className="text-xs font-medium text-orange-700 mb-1">ข้อมูลมือสอง</div>

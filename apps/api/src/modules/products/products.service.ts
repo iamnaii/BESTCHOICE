@@ -466,13 +466,14 @@ export class ProductsService {
       newProducts,
       soldProducts,
     ] = await Promise.all([
-      // All active products (for aging, breakdowns, condition grade)
+      // All active products (for aging, breakdowns, condition grade, margin)
       this.prisma.product.findMany({
         where: baseWhere as any,
         select: {
-          id: true, status: true, category: true, brand: true,
+          id: true, status: true, category: true, brand: true, model: true,
           color: true, storage: true, costPrice: true, conditionGrade: true,
           createdAt: true,
+          prices: { where: { isDefault: true }, take: 1, select: { amount: true } },
         },
       }),
       // Pending transfers count
@@ -494,7 +495,7 @@ export class ProductsService {
           updatedAt: { gte: new Date(now.getFullYear(), now.getMonth() - 5, 1) },
           ...branchFilter,
         },
-        select: { updatedAt: true },
+        select: { updatedAt: true, brand: true, model: true, costPrice: true },
       }),
     ]);
 
@@ -603,6 +604,50 @@ export class ProductsService {
     }, 0);
     const avgDaysInStock = inStockProducts.length > 0 ? Math.round(totalDays / inStockProducts.length) : 0;
 
+    // --- 8. Top Sellers (last 6 months, grouped by brand+model) ---
+    const sellerMap = new Map<string, number>();
+    for (const p of soldProducts) {
+      const key = `${p.brand} ${p.model}`;
+      sellerMap.set(key, (sellerMap.get(key) || 0) + 1);
+    }
+    const topSellers = Array.from(sellerMap.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    // --- 9. Slow Movers (IN_STOCK products with longest days) ---
+    const slowMovers = inStockProducts
+      .map((p) => ({
+        name: `${p.brand} ${p.model}`,
+        days: Math.floor((now.getTime() - new Date(p.createdAt).getTime()) / (1000 * 60 * 60 * 24)),
+        costPrice: Number(p.costPrice),
+      }))
+      .sort((a, b) => b.days - a.days)
+      .slice(0, 5);
+
+    // --- 10. Margin Overview (IN_STOCK products with default selling price) ---
+    const marginItems = inStockProducts
+      .filter((p) => p.prices.length > 0)
+      .map((p) => {
+        const cost = Number(p.costPrice);
+        const sell = Number(p.prices[0].amount);
+        return { cost, sell, margin: sell - cost };
+      });
+
+    const totalCost = marginItems.reduce((s, m) => s + m.cost, 0);
+    const totalSell = marginItems.reduce((s, m) => s + m.sell, 0);
+    const totalMargin = marginItems.reduce((s, m) => s + m.margin, 0);
+    const avgMarginPct = totalCost > 0 ? Math.round((totalMargin / totalCost) * 100) : 0;
+
+    const marginOverview = {
+      totalCost,
+      totalSell,
+      totalMargin,
+      avgMarginPct,
+      avgMarginPerUnit: marginItems.length > 0 ? Math.round(totalMargin / marginItems.length) : 0,
+      itemsWithPrice: marginItems.length,
+    };
+
     return {
       stockAging: agingBuckets,
       actionRequired,
@@ -619,6 +664,9 @@ export class ProductsService {
         soldLastMonth,
         currentStock: inStockProducts.length,
       },
+      topSellers,
+      slowMovers,
+      marginOverview,
     };
   }
 

@@ -241,10 +241,11 @@ export class InspectionsService {
           itemScore = result.passFail ? 100 : 0;
           if (!result.passFail && result.templateItem.isRequired) hasRequiredFail = true;
           break;
-        case 'GRADE':
+        case 'GRADE': {
           const gradeScores: Record<string, number> = { A: 100, B: 75, C: 50, D: 25 };
           itemScore = gradeScores[result.grade || 'D'] || 0;
           break;
+        }
         case 'SCORE_1_5':
           itemScore = ((Number(result.score) || 0) / 5) * 100;
           break;

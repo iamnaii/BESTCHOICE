@@ -44,6 +44,7 @@ interface PurchaseOrder {
   poNumber: string;
   orderDate: string;
   expectedDate: string | null;
+  dueDate: string | null;
   status: string;
   subtotal: string;
   vatAmount: string;
@@ -189,7 +190,7 @@ export default function PurchaseOrdersPage() {
       totalPaid: number;
       totalRemaining: number;
       poCount: number;
-      pos: { id: string; poNumber: string; orderDate: string; netAmount: number; paidAmount: number; remaining: number; paymentStatus: string; status: string; itemsSummary: string }[];
+      pos: { id: string; poNumber: string; orderDate: string; dueDate: string | null; netAmount: number; paidAmount: number; remaining: number; paymentStatus: string; status: string; itemsSummary: string }[];
     }[];
   }>({
     queryKey: ['accounts-payable'],
@@ -697,6 +698,7 @@ export default function PurchaseOrdersPage() {
                   <tr className="text-xs text-gray-500 border-b">
                     <th className="px-4 py-2 text-left">เลข PO</th>
                     <th className="px-4 py-2 text-left">วันที่สั่ง</th>
+                    <th className="px-4 py-2 text-left">ครบกำหนด</th>
                     <th className="px-4 py-2 text-left">รายการ</th>
                     <th className="px-4 py-2 text-right">ยอดสุทธิ</th>
                     <th className="px-4 py-2 text-right">จ่ายแล้ว</th>
@@ -713,6 +715,16 @@ export default function PurchaseOrdersPage() {
                         </button>
                       </td>
                       <td className="px-4 py-2 text-gray-600">{new Date(po.orderDate).toLocaleDateString('th-TH')}</td>
+                      <td className="px-4 py-2">
+                        {po.dueDate ? (
+                          <span className={`text-sm ${new Date(po.dueDate) < new Date() ? 'text-red-600 font-semibold' : 'text-gray-600'}`}>
+                            {new Date(po.dueDate).toLocaleDateString('th-TH')}
+                            {new Date(po.dueDate) < new Date() && <span className="ml-1 text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full">เลยกำหนด</span>}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400 text-xs">-</span>
+                        )}
+                      </td>
                       <td className="px-4 py-2 text-gray-600 truncate max-w-[200px]" title={po.itemsSummary}>{po.itemsSummary}</td>
                       <td className="px-4 py-2 text-right">{po.netAmount.toLocaleString()}</td>
                       <td className="px-4 py-2 text-right text-green-600">{po.paidAmount.toLocaleString()}</td>
@@ -1329,6 +1341,15 @@ export default function PurchaseOrdersPage() {
                 <span className="text-gray-500">วันที่สั่ง:</span>{' '}
                 {new Date(selectedPO.orderDate).toLocaleDateString('th-TH')}
               </div>
+              {selectedPO.dueDate && (
+                <div>
+                  <span className="text-gray-500">ครบกำหนดชำระ:</span>{' '}
+                  <span className={new Date(selectedPO.dueDate) < new Date() && selectedPO.paymentStatus !== 'FULLY_PAID' ? 'text-red-600 font-semibold' : ''}>
+                    {new Date(selectedPO.dueDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    {new Date(selectedPO.dueDate) < new Date() && selectedPO.paymentStatus !== 'FULLY_PAID' && ' (เลยกำหนด!)'}
+                  </span>
+                </div>
+              )}
               <div>
                 <span className="text-gray-500">ผู้สร้าง:</span> {selectedPO.createdBy.name}
               </div>
@@ -1365,10 +1386,27 @@ export default function PurchaseOrdersPage() {
             {/* Payment info bar */}
             {selectedPO.status !== 'CANCELLED' && (
               <div className="bg-gray-50 border rounded-lg p-3 flex items-center justify-between">
-                <div className="text-sm">
-                  <span className="text-gray-500">จ่ายแล้ว:</span>{' '}
-                  <span className="font-medium text-lg">{Number(selectedPO.paidAmount || 0).toLocaleString()}</span>
-                  <span className="text-gray-400"> / {Number(selectedPO.netAmount || selectedPO.totalAmount).toLocaleString()} บาท</span>
+                <div className="text-sm flex-1">
+                  <div className="flex items-baseline gap-3 flex-wrap">
+                    <span>
+                      <span className="text-gray-500">จ่ายแล้ว:</span>{' '}
+                      <span className="font-medium text-lg text-green-700">{Number(selectedPO.paidAmount || 0).toLocaleString()}</span>
+                      <span className="text-gray-400"> / {Number(selectedPO.netAmount || selectedPO.totalAmount).toLocaleString()} บาท</span>
+                    </span>
+                    {(() => {
+                      const net = Number(selectedPO.netAmount || selectedPO.totalAmount);
+                      const paid = Number(selectedPO.paidAmount || 0);
+                      const remaining = net - paid;
+                      if (remaining > 0 && paid > 0) {
+                        return (
+                          <span className="text-amber-700 font-semibold">
+                            คงเหลือ {remaining.toLocaleString()} บาท
+                          </span>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </div>
                   {Number(selectedPO.netAmount || selectedPO.totalAmount) > 0 && (
                     <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
                       <div
@@ -1565,6 +1603,27 @@ export default function PurchaseOrdersPage() {
                 <span>ยอดสุทธิ:</span>
                 <span>{Number(selectedPO.netAmount || selectedPO.totalAmount).toLocaleString()} บาท</span>
               </div>
+              {Number(selectedPO.paidAmount) > 0 && (
+                <>
+                  <div className="flex justify-between text-green-700">
+                    <span>จ่ายแล้วก่อนหน้า:</span>
+                    <span>{Number(selectedPO.paidAmount).toLocaleString()} บาท</span>
+                  </div>
+                  <div className="flex justify-between font-semibold text-amber-700">
+                    <span>คงเหลือ:</span>
+                    <span>{(Number(selectedPO.netAmount || selectedPO.totalAmount) - Number(selectedPO.paidAmount)).toLocaleString()} บาท</span>
+                  </div>
+                </>
+              )}
+              {selectedPO.dueDate && (
+                <div className={`flex justify-between border-t pt-1 ${new Date(selectedPO.dueDate) < new Date() && paymentForm.paymentStatus !== 'FULLY_PAID' ? 'text-red-600 font-semibold' : 'text-gray-600'}`}>
+                  <span>ครบกำหนดชำระ:</span>
+                  <span>
+                    {new Date(selectedPO.dueDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    {new Date(selectedPO.dueDate) < new Date() && paymentForm.paymentStatus !== 'FULLY_PAID' && ' (เลยกำหนด)'}
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -1641,6 +1700,29 @@ export default function PurchaseOrdersPage() {
                   <button type="button" onClick={() => setPaymentForm({ ...paymentForm, paidAmount: String(Math.round(Number(selectedPO.netAmount || selectedPO.totalAmount) * 0.5)) })} className="text-xs text-blue-600 hover:underline">50%</button>
                 </div>
               )}
+              {(() => {
+                const netAmt = Number(selectedPO.netAmount || selectedPO.totalAmount);
+                const paid = Number(paymentForm.paidAmount) || 0;
+                const remaining = netAmt - paid;
+                if (paid > 0 && remaining > 0) {
+                  return (
+                    <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-lg text-sm">
+                      <div className="flex justify-between text-amber-800">
+                        <span>ยอดคงเหลือที่ต้องจ่าย:</span>
+                        <span className="font-semibold">{remaining.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท</span>
+                      </div>
+                    </div>
+                  );
+                }
+                if (paid > netAmt && netAmt > 0) {
+                  return (
+                    <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg text-sm">
+                      <span className="text-red-600">จำนวนที่จ่ายเกินยอดสุทธิ {(paid - netAmt).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท</span>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
             </div>
 
             <div>

@@ -42,7 +42,7 @@ export class ExchangeService {
 
     // Calculate outstanding balance
     let remainingPrincipal = new Decimal(0);
-    let remainingInterest = new Decimal(0);
+    const remainingInterest = new Decimal(0);
     let totalLateFees = new Decimal(0);
 
     for (const payment of oldContract.payments) {

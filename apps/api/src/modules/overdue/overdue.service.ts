@@ -254,10 +254,14 @@ export class OverdueService {
       where: { role: 'OWNER', isActive: true },
       select: { id: true },
     });
-    const systemUserId = systemUser?.id || 'system';
 
-    // Step 1: ACTIVE → OVERDUE (payments overdue > 7 days)
-    // Get only the IDs we need to update
+    // Read overdue threshold from config
+    const overdueConfig = await this.prisma.systemConfig.findUnique({
+      where: { key: 'overdue_days_threshold' },
+    });
+    const overdueDays = overdueConfig ? Number(overdueConfig.value) : 7;
+
+    // Step 1: ACTIVE → OVERDUE (payments overdue > threshold days)
     const activeContracts = await this.prisma.contract.findMany({
       where: {
         status: 'ACTIVE',
@@ -265,7 +269,7 @@ export class OverdueService {
         payments: {
           some: {
             status: { in: ['PENDING', 'PARTIALLY_PAID', 'OVERDUE'] },
-            dueDate: { lt: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) },
+            dueDate: { lt: new Date(now.getTime() - overdueDays * 24 * 60 * 60 * 1000) },
           },
         },
       },
@@ -277,22 +281,28 @@ export class OverdueService {
 
     if (activeIds.length > 0) {
       // Batch update + audit logs in a single transaction
-      await this.prisma.$transaction([
+      const txOps: any[] = [
         this.prisma.contract.updateMany({
           where: { id: { in: activeIds } },
           data: { status: 'OVERDUE' },
         }),
-        this.prisma.auditLog.createMany({
-          data: activeIds.map((id) => ({
-            userId: systemUserId,
-            action: 'STATUS_CHANGE',
-            entity: 'contract',
-            entityId: id,
-            newValue: { from: 'ACTIVE', to: 'OVERDUE', reason: 'Payment overdue > 7 days' },
-            ipAddress: 'system-cron',
-          })),
-        }),
-      ]);
+      ];
+      // Only create audit logs if system user exists (avoid FK violation)
+      if (systemUser) {
+        txOps.push(
+          this.prisma.auditLog.createMany({
+            data: activeIds.map((id) => ({
+              userId: systemUser.id,
+              action: 'STATUS_CHANGE',
+              entity: 'contract',
+              entityId: id,
+              newValue: { from: 'ACTIVE', to: 'OVERDUE', reason: `Payment overdue > ${overdueDays} days` },
+              ipAddress: 'system-cron',
+            })),
+          }),
+        );
+      }
+      await this.prisma.$transaction(txOps);
       overdueUpdated = activeIds.length;
     }
 
@@ -334,22 +344,27 @@ export class OverdueService {
     const defaultIds = defaultCandidates.map((c) => c.id);
 
     if (defaultIds.length > 0) {
-      await this.prisma.$transaction([
+      const txOps: any[] = [
         this.prisma.contract.updateMany({
           where: { id: { in: defaultIds } },
           data: { status: 'DEFAULT' },
         }),
-        this.prisma.auditLog.createMany({
-          data: defaultCandidates.map((c) => ({
-            userId: systemUserId,
-            action: 'STATUS_CHANGE',
-            entity: 'contract',
-            entityId: c.id,
-            newValue: { from: 'OVERDUE', to: 'DEFAULT', reason: `${c.consecutive} consecutive missed payments` },
-            ipAddress: 'system-cron',
-          })),
-        }),
-      ]);
+      ];
+      if (systemUser) {
+        txOps.push(
+          this.prisma.auditLog.createMany({
+            data: defaultCandidates.map((c) => ({
+              userId: systemUser.id,
+              action: 'STATUS_CHANGE',
+              entity: 'contract',
+              entityId: c.id,
+              newValue: { from: 'OVERDUE', to: 'DEFAULT', reason: `${c.consecutive} consecutive missed payments` },
+              ipAddress: 'system-cron',
+            })),
+          }),
+        );
+      }
+      await this.prisma.$transaction(txOps);
       defaultUpdated = defaultIds.length;
     }
 

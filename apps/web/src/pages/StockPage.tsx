@@ -196,7 +196,7 @@ export default function StockPage() {
       key: 'sellingPrice',
       label: 'ราคาขาย',
       render: (p: StockProduct) => {
-        const defaultPrice = p.prices?.[0];
+        const defaultPrice = p.prices?.find((pr) => pr.isDefault) || p.prices?.[0];
         return defaultPrice ? (
           <span className="text-sm font-medium">{parseFloat(defaultPrice.amount).toLocaleString()} ฿</span>
         ) : (

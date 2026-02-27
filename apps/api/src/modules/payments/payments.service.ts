@@ -37,23 +37,28 @@ export class PaymentsService {
 
     const isPaidInFull = totalPaid >= amountDue;
 
-    const updated = await this.prisma.payment.update({
-      where: { id: payment.id },
-      data: {
-        amountPaid: totalPaid,
-        paidDate: isPaidInFull ? new Date() : null,
-        paymentMethod: paymentMethod as any,
-        status: isPaidInFull ? 'PAID' : 'PARTIALLY_PAID',
-        recordedById,
-        evidenceUrl: evidenceUrl || payment.evidenceUrl,
-        notes: notes || payment.notes,
-      },
-    });
+    // Wrap payment update + contract completion check in a transaction
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.payment.update({
+        where: { id: payment.id },
+        data: {
+          amountPaid: totalPaid,
+          paidDate: isPaidInFull ? new Date() : null,
+          paymentMethod: paymentMethod as any,
+          status: isPaidInFull ? 'PAID' : 'PARTIALLY_PAID',
+          recordedById,
+          evidenceUrl: evidenceUrl || payment.evidenceUrl,
+          notes: notes || payment.notes,
+        },
+      });
 
-    // Check if all payments are completed → update contract status
-    if (isPaidInFull) {
-      await this.checkContractCompletion(contractId);
-    }
+      // Check if all payments are completed → update contract status
+      if (isPaidInFull) {
+        await this.checkContractCompletion(contractId, tx);
+      }
+
+      return result;
+    });
 
     return updated;
   }
@@ -214,29 +219,19 @@ export class PaymentsService {
   }
 
   // ─── Check if contract is fully paid ──────────────────
-  private async checkContractCompletion(contractId: string) {
-    const unpaid = await this.prisma.payment.count({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private async checkContractCompletion(contractId: string, tx?: any) {
+    const db = tx || this.prisma;
+    const unpaid = await db.payment.count({
       where: { contractId, status: { not: 'PAID' } },
     });
 
     if (unpaid === 0) {
-      const contract = await this.prisma.contract.findUnique({ where: { id: contractId } });
-      if (contract) {
-        // All installments paid → mark contract as COMPLETED
-        await this.prisma.contract.update({
-          where: { id: contractId },
-          data: { status: 'COMPLETED' },
-        });
-
-        // Only update product status if it's currently RESERVED or SOLD_INSTALLMENT
-        const product = await this.prisma.product.findUnique({ where: { id: contract.productId } });
-        if (product && ['RESERVED', 'SOLD_INSTALLMENT'].includes(product.status)) {
-          await this.prisma.product.update({
-            where: { id: contract.productId },
-            data: { status: 'SOLD_INSTALLMENT' },
-          });
-        }
-      }
+      // All installments paid → mark contract as COMPLETED
+      await db.contract.update({
+        where: { id: contractId },
+        data: { status: 'COMPLETED' },
+      });
     }
   }
 }

@@ -495,6 +495,7 @@ export class NotificationsService {
           relatedId: payment.contractId,
           fallbackPhone: customer.phone || undefined,
         });
+        sent++;
       } else if (customer.phone) {
         await this.send({
           channel: 'SMS',
@@ -502,8 +503,8 @@ export class NotificationsService {
           message,
           relatedId: payment.contractId,
         });
+        sent++;
       }
-      sent++;
     }
 
     this.logger.log(`Overdue notices sent: ${sent}/${overduePayments.length}`);

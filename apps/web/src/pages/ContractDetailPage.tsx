@@ -254,7 +254,7 @@ export default function ContractDetailPage() {
 
       {/* Early Payoff Modal */}
       {showPayoffModal && payoffQuote && (
-        <Modal title="ปิดสัญญาก่อนกำหนด" onClose={() => setShowPayoffModal(false)}>
+        <Modal isOpen title="ปิดสัญญาก่อนกำหนด" onClose={() => setShowPayoffModal(false)}>
           <div className="space-y-4">
             <div className="bg-blue-50 rounded-lg p-4">
               <div className="text-sm">ยอดที่ต้องชำระ</div>

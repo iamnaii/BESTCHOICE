@@ -141,7 +141,7 @@ export default function ContractTemplatesPage() {
 
       {/* Create/Edit Modal */}
       {showModal && (
-        <Modal title={editing ? 'แก้ไขเทมเพลต' : 'สร้างเทมเพลตใหม่'} onClose={closeModal}>
+        <Modal isOpen title={editing ? 'แก้ไขเทมเพลต' : 'สร้างเทมเพลตใหม่'} onClose={closeModal}>
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อเทมเพลต</label>
@@ -201,7 +201,7 @@ export default function ContractTemplatesPage() {
 
       {/* Preview Modal */}
       {showPreview && (
-        <Modal title="ตัวอย่างเทมเพลต" onClose={() => setShowPreview(false)}>
+        <Modal isOpen title="ตัวอย่างเทมเพลต" onClose={() => setShowPreview(false)}>
           <div className="border rounded-lg p-4 max-h-[60vh] overflow-auto" dangerouslySetInnerHTML={{ __html: previewHtml }} />
         </Modal>
       )}

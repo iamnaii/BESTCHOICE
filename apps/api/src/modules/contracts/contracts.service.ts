@@ -90,12 +90,18 @@ export class ContractsService {
     const financedAmount = principal + interestTotal;
     const monthlyPayment = Math.ceil(financedAmount / dto.totalMonths);
 
-    // Generate contract number
-    const count = await this.prisma.contract.count();
-    const contractNumber = `CT${String(count + 1).padStart(6, '0')}`;
-
     // Create contract + payment schedule in transaction
     const contract = await this.prisma.$transaction(async (tx) => {
+      // Generate contract number inside transaction to avoid race condition
+      const lastContract = await tx.contract.findFirst({
+        orderBy: { contractNumber: 'desc' },
+        select: { contractNumber: true },
+      });
+      const nextNum = lastContract
+        ? parseInt(lastContract.contractNumber.replace(/\D/g, '')) + 1
+        : 1;
+      const contractNumber = `CT${String(nextNum).padStart(6, '0')}`;
+
       const newContract = await tx.contract.create({
         data: {
           contractNumber,
@@ -202,23 +208,27 @@ export class ContractsService {
 
   async earlyPayoff(id: string, userId: string, paymentMethod: string) {
     const quote = await this.getEarlyPayoffQuote(id);
-    const contract = await this.findOne(id);
 
     await this.prisma.$transaction(async (tx) => {
-      // Get all unpaid payments and record actual amountDue for each
+      // Get all unpaid payments
       const unpaidPayments = await tx.payment.findMany({
         where: { contractId: id, status: { not: 'PAID' } },
         orderBy: { installmentNo: 'asc' },
       });
 
+      // Distribute the discounted totalPayoff across unpaid installments
+      let remainingPayoff = quote.totalPayoff;
       for (const payment of unpaidPayments) {
-        const remaining = Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid);
+        const owed = Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid);
+        const payAmount = Math.min(remainingPayoff, owed);
+        remainingPayoff -= payAmount;
+
         await tx.payment.update({
           where: { id: payment.id },
           data: {
             status: 'PAID',
             paidDate: new Date(),
-            amountPaid: Number(payment.amountPaid) + remaining,
+            amountPaid: Number(payment.amountPaid) + payAmount,
             paymentMethod: paymentMethod as any,
           },
         });

@@ -238,7 +238,7 @@ export default function SuppliersPage() {
     const updated = paymentMethods.filter((_, i) => i !== index);
     // If removed the default, make the first one default
     if (updated.length > 0 && !updated.some((pm) => pm.isDefault)) {
-      updated[0].isDefault = true;
+      updated[0] = { ...updated[0], isDefault: true };
     }
     setPaymentMethods(updated);
   };

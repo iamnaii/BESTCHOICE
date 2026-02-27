@@ -32,6 +32,9 @@ export class AuditInterceptor implements NestInterceptor {
     return next.handle().pipe(
       tap({
         next: (responseBody) => {
+          // Skip audit for unauthenticated requests (login, register) to avoid FK violation
+          if (!user?.id) return;
+
           const duration = Date.now() - startTime;
           // Try to extract entityId from response for POST (create) operations
           let entityId = this.extractEntityId(url);
@@ -40,7 +43,7 @@ export class AuditInterceptor implements NestInterceptor {
           }
 
           this.auditService.log({
-            userId: user?.id,
+            userId: user.id,
             action: method,
             entity: this.extractEntity(url),
             entityId,
@@ -51,9 +54,12 @@ export class AuditInterceptor implements NestInterceptor {
           });
         },
         error: (err) => {
+          // Skip audit for unauthenticated requests to avoid FK violation
+          if (!user?.id) return;
+
           const duration = Date.now() - startTime;
           this.auditService.log({
-            userId: user?.id,
+            userId: user.id,
             action: `${method}_ERROR`,
             entity: this.extractEntity(url),
             entityId: this.extractEntityId(url),
@@ -110,15 +116,16 @@ export class AuditInterceptor implements NestInterceptor {
         sanitized[field] = '[REDACTED]';
       }
     }
-    // Remove any base64 image data to keep logs small
     for (const [key, value] of Object.entries(sanitized)) {
       if (typeof value === 'string' && value.startsWith('data:image/')) {
         sanitized[key] = '[IMAGE_DATA]';
-      }
-      if (Array.isArray(value)) {
+      } else if (Array.isArray(value)) {
         sanitized[key] = value.map((v) =>
           typeof v === 'string' && v.startsWith('data:image/') ? '[IMAGE_DATA]' : v,
         );
+      } else if (value && typeof value === 'object' && !Array.isArray(value)) {
+        // Recurse into nested objects to sanitize sensitive fields
+        sanitized[key] = this.sanitizeBody(value as Record<string, unknown>);
       }
     }
     return sanitized;

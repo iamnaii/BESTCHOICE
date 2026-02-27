@@ -89,7 +89,7 @@ export default function OverduePage() {
         return (
           <div>
             <div className="text-sm">{due.toLocaleDateString('th-TH')}</div>
-            <div className="text-xs text-red-600 font-medium">เกินกำหนด {daysLate} วัน</div>
+            {daysLate > 0 && <div className="text-xs text-red-600 font-medium">เกินกำหนด {daysLate} วัน</div>}
           </div>
         );
       },

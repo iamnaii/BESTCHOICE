@@ -269,7 +269,7 @@ export default function PaymentsPage() {
 
       {/* Record Payment Modal */}
       {showPayModal && selectedPayment && (
-        <Modal title="บันทึกการรับชำระ" onClose={() => { setShowPayModal(false); setSelectedPayment(null); }}>
+        <Modal isOpen title="บันทึกการรับชำระ" onClose={() => { setShowPayModal(false); setSelectedPayment(null); }}>
           <div className="space-y-4">
             <div className="bg-gray-50 rounded-lg p-4">
               <div className="text-sm"><span className="text-gray-500">สัญญา: </span><span className="font-mono font-medium">{selectedPayment.contract.contractNumber}</span></div>

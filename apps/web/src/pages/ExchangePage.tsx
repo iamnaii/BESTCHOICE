@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
@@ -46,6 +46,7 @@ interface ExchangeQuote {
 }
 
 export default function ExchangePage() {
+  const queryClient = useQueryClient();
   const [step, setStep] = useState<'select' | 'quote' | 'confirm' | 'done'>('select');
   const [selectedContractId, setSelectedContractId] = useState('');
   const [selectedProductId, setSelectedProductId] = useState('');
@@ -111,6 +112,8 @@ export default function ExchangePage() {
     onSuccess: (data) => {
       setExchangeResult(data);
       setStep('done');
+      queryClient.invalidateQueries({ queryKey: ['exchange-contracts'] });
+      queryClient.invalidateQueries({ queryKey: ['exchange-products'] });
       toast.success('เปลี่ยนเครื่องสำเร็จ');
     },
     onError: (err: { response?: { data?: { message?: string } } }) =>

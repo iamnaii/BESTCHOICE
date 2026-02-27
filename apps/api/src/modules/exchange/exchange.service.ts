@@ -122,6 +122,14 @@ export class ExchangeService {
       const minDownConfig = await tx.systemConfig.findUnique({ where: { key: 'min_down_payment_pct' } });
       const minDownPct = minDownConfig ? Number(minDownConfig.value) : 0.15;
 
+      // Calculate outstanding balance from old contract
+      let outstandingBalance = 0;
+      for (const payment of oldContract.payments) {
+        if (payment.status !== 'PAID') {
+          outstandingBalance += Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid);
+        }
+      }
+
       // Calculate new contract
       const sellingPrice = Number(newPrice.amount);
       const downPayment = dto.newDownPayment;
@@ -134,12 +142,20 @@ export class ExchangeService {
         );
       }
 
-      // Validate total months
-      if (totalMonths < 6 || totalMonths > 12) {
-        throw new BadRequestException('จำนวนงวดต้องอยู่ระหว่าง 6-12 เดือน');
+      // Read min/max months from config
+      const [minMonthsConfig, maxMonthsConfig] = await Promise.all([
+        tx.systemConfig.findUnique({ where: { key: 'min_installment_months' } }),
+        tx.systemConfig.findUnique({ where: { key: 'max_installment_months' } }),
+      ]);
+      const minMonths = minMonthsConfig ? Number(minMonthsConfig.value) : 6;
+      const maxMonths = maxMonthsConfig ? Number(maxMonthsConfig.value) : 12;
+
+      if (totalMonths < minMonths || totalMonths > maxMonths) {
+        throw new BadRequestException(`จำนวนงวดต้องอยู่ระหว่าง ${minMonths}-${maxMonths} เดือน`);
       }
 
-      const principal = sellingPrice - downPayment;
+      // Include outstanding balance from old contract in the new principal
+      const principal = sellingPrice - downPayment + outstandingBalance;
       const interestTotal = principal * interestRate * totalMonths;
       const financedAmount = principal + interestTotal;
       const monthlyPayment = Math.ceil(financedAmount / totalMonths);
@@ -232,6 +248,7 @@ export class ExchangeService {
             newContractId: newContract.id,
             newContractNumber: contractNumber,
             newProductId: dto.newProductId,
+            outstandingBalance,
             downPayment,
             totalMonths,
             monthlyPayment,

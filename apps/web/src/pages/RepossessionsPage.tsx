@@ -110,6 +110,7 @@ export default function RepossessionsPage() {
       api.patch(`/repossessions/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['repossessions'] });
+      queryClient.invalidateQueries({ queryKey: ['repossessions-pl'] });
       toast.success('อัพเดทสำเร็จ');
       setIsUpdateModalOpen(false);
     },

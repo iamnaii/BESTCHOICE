@@ -28,7 +28,7 @@ export class CronService {
       where: {
         dueDate: { lt: now },
         status: { in: ['PENDING', 'PARTIALLY_PAID', 'OVERDUE'] },
-        contract: { status: { in: ['ACTIVE', 'OVERDUE'] } },
+        contract: { status: { in: ['ACTIVE', 'OVERDUE'] }, deletedAt: null },
       },
       include: {
         contract: { select: { id: true, status: true } },
@@ -80,9 +80,9 @@ export class CronService {
     const overdueDaysThreshold = getConfig('overdue_days_threshold', 7);
     const defaultConsecutiveMonths = getConfig('default_consecutive_months', 2);
 
-    // Get all ACTIVE contracts
+    // Get all ACTIVE contracts (exclude soft-deleted)
     const activeContracts = await this.prisma.contract.findMany({
-      where: { status: 'ACTIVE' },
+      where: { status: 'ACTIVE', deletedAt: null },
       include: {
         payments: { orderBy: { installmentNo: 'asc' } },
       },
@@ -138,7 +138,7 @@ export class CronService {
 
     // Also check OVERDUE contracts for DEFAULT escalation
     const overdueContracts = await this.prisma.contract.findMany({
-      where: { status: 'OVERDUE' },
+      where: { status: 'OVERDUE', deletedAt: null },
       include: {
         payments: { orderBy: { installmentNo: 'asc' } },
       },

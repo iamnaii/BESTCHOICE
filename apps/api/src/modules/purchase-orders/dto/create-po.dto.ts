@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsDateString, IsArray, ValidateNested, IsEnum } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsDateString, IsArray, ValidateNested, IsIn } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class POItemDto {
@@ -82,7 +82,7 @@ export class GoodsReceivingItemDto {
   @IsOptional()
   photos?: string[];
 
-  @IsEnum(['PASS', 'REJECT'])
+  @IsIn(['PASS', 'REJECT'])
   status: 'PASS' | 'REJECT';
 
   @IsString()

@@ -104,10 +104,11 @@ export default function PurchaseOrdersPage() {
   });
   const [items, setItems] = useState<ItemForm[]>([{ brand: '', model: '', quantity: '1', unitPrice: '' }]);
 
-  const { data: suppliers = [] } = useQuery<{ id: string; name: string; contactName: string }[]>({
-    queryKey: ['suppliers'],
-    queryFn: async () => (await api.get('/suppliers')).data,
+  const { data: suppliersRes } = useQuery<{ data: { id: string; name: string; contactName: string }[] }>({
+    queryKey: ['suppliers-for-po'],
+    queryFn: async () => (await api.get('/suppliers?limit=999&isActive=true')).data,
   });
+  const suppliers = suppliersRes?.data || [];
 
   const { data: pos = [], isLoading } = useQuery<PurchaseOrder[]>({
     queryKey: ['purchase-orders', statusFilter],

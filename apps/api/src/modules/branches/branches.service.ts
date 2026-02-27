@@ -41,6 +41,15 @@ export class BranchesService {
 
   async update(id: string, dto: UpdateBranchDto) {
     await this.findOne(id);
+
+    // If setting as main warehouse, unset any existing main warehouse first
+    if (dto.isMainWarehouse) {
+      await this.prisma.branch.updateMany({
+        where: { isMainWarehouse: true, id: { not: id } },
+        data: { isMainWarehouse: false },
+      });
+    }
+
     return this.prisma.branch.update({ where: { id }, data: dto });
   }
 

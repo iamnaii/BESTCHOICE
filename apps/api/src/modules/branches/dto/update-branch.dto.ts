@@ -16,4 +16,8 @@ export class UpdateBranchDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  isMainWarehouse?: boolean;
 }

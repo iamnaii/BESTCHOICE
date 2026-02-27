@@ -14,6 +14,7 @@ interface Branch {
   location: string | null;
   phone: string | null;
   isActive: boolean;
+  isMainWarehouse: boolean;
   _count: { users: number; products: number; contracts: number };
 }
 
@@ -80,8 +81,28 @@ export default function BranchesPage() {
     saveMutation.mutate({ ...form, address });
   };
 
+  const setMainWarehouseMutation = useMutation({
+    mutationFn: async (branchId: string) => api.patch(`/branches/${branchId}`, { isMainWarehouse: true }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['branches'] });
+      toast.success('ตั้งเป็นคลังกลางสำเร็จ');
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
   const columns = [
-    { key: 'name', label: 'ชื่อสาขา' },
+    {
+      key: 'name',
+      label: 'ชื่อสาขา',
+      render: (b: Branch) => (
+        <div className="flex items-center gap-2">
+          <span>{b.name}</span>
+          {b.isMainWarehouse && (
+            <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-xs rounded font-medium">คลังกลาง</span>
+          )}
+        </div>
+      ),
+    },
     { key: 'location', label: 'ที่ตั้ง' },
     { key: 'phone', label: 'โทรศัพท์' },
     {
@@ -111,12 +132,26 @@ export default function BranchesPage() {
       label: '',
       render: (b: Branch) =>
         user?.role === 'OWNER' ? (
-          <button
-            onClick={() => openEdit(b)}
-            className="text-primary-600 hover:text-primary-700 text-sm font-medium"
-          >
-            แก้ไข
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => openEdit(b)}
+              className="text-primary-600 hover:text-primary-700 text-sm font-medium"
+            >
+              แก้ไข
+            </button>
+            {!b.isMainWarehouse && (
+              <button
+                onClick={() => {
+                  if (confirm(`ตั้ง "${b.name}" เป็นคลังกลาง?`)) {
+                    setMainWarehouseMutation.mutate(b.id);
+                  }
+                }}
+                className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+              >
+                ตั้งเป็นคลังกลาง
+              </button>
+            )}
+          </div>
         ) : null,
     },
   ];

@@ -86,12 +86,13 @@ export default function ProductCreatePage() {
     },
   });
 
-  const { data: supplierResult } = useQuery<{ data: { id: string; name: string }[] }>({
+  const { data: supplierResult, isLoading: suppliersLoading, isError: suppliersError } = useQuery<{ data: { id: string; name: string }[] }>({
     queryKey: ['suppliers-active'],
     queryFn: async () => {
       const { data } = await api.get('/suppliers', { params: { isActive: 'true' } });
       return data;
     },
+    retry: 2,
   });
   const suppliers = supplierResult?.data ?? [];
 
@@ -573,7 +574,7 @@ export default function ProductCreatePage() {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Supplier</label>
               <select value={form.supplierId} onChange={(e) => setForm({ ...form, supplierId: e.target.value })} className={inputCls}>
-                <option value="">ไม่ระบุ</option>
+                <option value="">{suppliersLoading ? 'กำลังโหลด...' : suppliersError ? '⚠ โหลดข้อมูลไม่ได้' : 'ไม่ระบุ'}</option>
                 {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>

@@ -143,7 +143,10 @@ export class DashboardService {
         (sum, p) => sum + Number(p.amountDue) - Number(p.amountPaid) + Number(p.lateFee), 0,
       );
       const oldestDue = c.payments.length > 0
-        ? c.payments.reduce((oldest, p) => (new Date(p.dueDate) < oldest ? new Date(p.dueDate) : oldest), new Date())
+        ? c.payments.reduce((oldest, p) => {
+            const d = new Date(p.dueDate);
+            return d < oldest ? d : oldest;
+          }, new Date(c.payments[0].dueDate))
         : new Date();
       const daysOverdue = Math.max(0, Math.floor((Date.now() - oldestDue.getTime()) / (1000 * 60 * 60 * 24)));
 

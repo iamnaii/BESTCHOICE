@@ -361,7 +361,9 @@ model POItem {
   model       String
   color       String?
   storage     String?
-  category    String?
+  category       String?
+  accessoryType  String?  @map("accessory_type")
+  accessoryBrand String?  @map("accessory_brand")
   quantity    Int
   unitPrice   Decimal @map("unit_price") @db.Decimal(12, 2)
   receivedQty Int     @default(0) @map("received_qty")
@@ -394,6 +396,8 @@ model Product {
   warrantyExpired Boolean?       @map("warranty_expired")
   warrantyExpireDate DateTime?   @map("warranty_expire_date")
   hasBox         Boolean?        @map("has_box")
+  accessoryType  String?         @map("accessory_type")
+  accessoryBrand String?         @map("accessory_brand")
   inspectionId   String?         @map("inspection_id")
   photos         String[]        @default([])
   createdAt      DateTime        @default(now()) @map("created_at")

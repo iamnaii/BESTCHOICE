@@ -72,4 +72,12 @@ export class UpdateProductDto {
   @IsBoolean()
   @IsOptional()
   hasBox?: boolean;
+
+  @IsString()
+  @IsOptional()
+  accessoryType?: string;
+
+  @IsString()
+  @IsOptional()
+  accessoryBrand?: string;
 }

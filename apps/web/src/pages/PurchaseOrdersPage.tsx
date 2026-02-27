@@ -17,6 +17,8 @@ interface POItem {
   quantity: number;
   unitPrice: string;
   receivedQty: number;
+  accessoryType: string | null;
+  accessoryBrand: string | null;
 }
 
 interface GoodsReceivingItem {
@@ -104,6 +106,14 @@ const categoryLabels: Record<string, string> = {
   ACCESSORY: 'อุปกรณ์เสริม',
 };
 
+const accessoryTypes = [
+  { value: 'ฟิล์ม', label: 'ฟิล์ม' },
+  { value: 'ชุดชาร์จ', label: 'ชุดชาร์จ' },
+  { value: 'หูฟัง', label: 'หูฟัง' },
+  { value: 'เคส', label: 'เคส' },
+  { value: 'อื่นๆ', label: 'อื่นๆ' },
+];
+
 interface ItemForm {
   brand: string;
   category: string;
@@ -112,6 +122,8 @@ interface ItemForm {
   storage: string;
   quantity: string;
   unitPrice: string;
+  accessoryType: string;
+  accessoryBrand: string;
 }
 
 interface ReceivingUnitForm {
@@ -128,7 +140,7 @@ interface ReceivingUnitForm {
   hasBox: boolean;
 }
 
-const emptyItem: ItemForm = { brand: '', category: '', model: '', color: '', storage: '', quantity: '1', unitPrice: '' };
+const emptyItem: ItemForm = { brand: '', category: '', model: '', color: '', storage: '', quantity: '1', unitPrice: '', accessoryType: '', accessoryBrand: '' };
 
 export default function PurchaseOrdersPage() {
   const queryClient = useQueryClient();
@@ -263,10 +275,14 @@ export default function PurchaseOrdersPage() {
       item.model = '';
       item.color = '';
       item.storage = '';
+      item.accessoryType = '';
+      item.accessoryBrand = '';
     } else if (field === 'category') {
       item.model = '';
       item.color = '';
       item.storage = '';
+      item.accessoryType = '';
+      item.accessoryBrand = '';
     } else if (field === 'model') {
       item.color = '';
       item.storage = '';
@@ -297,6 +313,10 @@ export default function PurchaseOrdersPage() {
         category: i.category || undefined,
         quantity: Number(i.quantity),
         unitPrice: Number(i.unitPrice),
+        ...(i.category === 'ACCESSORY' ? {
+          accessoryType: i.accessoryType || undefined,
+          accessoryBrand: i.accessoryBrand || undefined,
+        } : {}),
       })),
     });
   };
@@ -532,6 +552,10 @@ export default function PurchaseOrdersPage() {
 
   // Helper to get item description for detail view
   const getItemDesc = (item: POItem) => {
+    if (item.category === 'ACCESSORY') {
+      const parts = [item.accessoryType, item.accessoryBrand].filter(Boolean);
+      return parts.length > 0 ? parts.join(' / ') : '-';
+    }
     const parts = [item.color, item.storage].filter(Boolean);
     return parts.length > 0 ? parts.join(' / ') : '-';
   };
@@ -645,13 +669,15 @@ export default function PurchaseOrdersPage() {
             </div>
             <div className="space-y-4">
               {items.map((item, idx) => {
-                const availableModels = item.brand ? getModels(item.brand, item.category || undefined) : [];
+                const isAccessory = item.category === 'ACCESSORY';
+                // For accessories, show all phone/tablet models for "compatible model"
+                const availableModels = item.brand ? getModels(item.brand, isAccessory ? 'PHONE_NEW' : (item.category || undefined)) : [];
                 const modelInfo = item.brand && item.model ? getModelInfo(item.brand, item.model) : undefined;
                 const availableColors = modelInfo?.colors || [];
                 const availableStorage = modelInfo?.storage || [];
 
                 return (
-                  <div key={idx} className="border border-gray-200 rounded-lg p-3 space-y-2 bg-gray-50 relative">
+                  <div key={idx} className={`border rounded-lg p-3 space-y-2 relative ${isAccessory ? 'border-purple-200 bg-purple-50' : 'border-gray-200 bg-gray-50'}`}>
                     {items.length > 1 && (
                       <button
                         type="button"
@@ -661,19 +687,22 @@ export default function PurchaseOrdersPage() {
                         &times;
                       </button>
                     )}
-                    <div className="text-xs font-medium text-gray-500 mb-1">รายการ #{idx + 1}</div>
+                    <div className="text-xs font-medium text-gray-500 mb-1">
+                      รายการ #{idx + 1}
+                      {isAccessory && <span className="ml-2 px-1.5 py-0.5 bg-purple-200 text-purple-700 rounded text-xs">อุปกรณ์เสริม</span>}
+                    </div>
 
-                    {/* Row 1: Brand, Category, Model */}
+                    {/* Row 1: Brand, Category, Model/AccessoryType */}
                     <div className="grid grid-cols-3 gap-2">
                       <div>
-                        <label className="block text-xs text-gray-500 mb-0.5">ยี่ห้อ *</label>
+                        <label className="block text-xs text-gray-500 mb-0.5">{isAccessory ? 'สำหรับยี่ห้อ *' : 'ยี่ห้อ *'}</label>
                         <select
                           value={item.brand}
                           onChange={(e) => updateItem(idx, 'brand', e.target.value)}
                           className={selectClass}
                           required
                         >
-                          <option value="">-- เลือกยี่ห้อ --</option>
+                          <option value="">{isAccessory ? '-- เลือกยี่ห้อโทรศัพท์ --' : '-- เลือกยี่ห้อ --'}</option>
                           {brands.map((b) => (
                             <option key={b} value={b}>{b}</option>
                           ))}
@@ -695,7 +724,7 @@ export default function PurchaseOrdersPage() {
                         </select>
                       </div>
                       <div>
-                        <label className="block text-xs text-gray-500 mb-0.5">รุ่น *</label>
+                        <label className="block text-xs text-gray-500 mb-0.5">{isAccessory ? 'สำหรับรุ่น *' : 'รุ่น *'}</label>
                         <select
                           value={item.model}
                           onChange={(e) => updateItem(idx, 'model', e.target.value)}
@@ -703,7 +732,7 @@ export default function PurchaseOrdersPage() {
                           required
                           disabled={!item.brand}
                         >
-                          <option value="">-- เลือกรุ่น --</option>
+                          <option value="">{isAccessory ? '-- เลือกรุ่นโทรศัพท์ --' : '-- เลือกรุ่น --'}</option>
                           {availableModels.map((m) => (
                             <option key={m.name} value={m.name}>{m.name}</option>
                           ))}
@@ -711,58 +740,117 @@ export default function PurchaseOrdersPage() {
                       </div>
                     </div>
 
-                    {/* Row 2: Color, Storage, Quantity, Price */}
-                    <div className="grid grid-cols-4 gap-2">
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-0.5">สี</label>
-                        <select
-                          value={item.color}
-                          onChange={(e) => updateItem(idx, 'color', e.target.value)}
-                          className={selectClass}
-                          disabled={availableColors.length === 0}
-                        >
-                          <option value="">-- เลือกสี --</option>
-                          {availableColors.map((c) => (
-                            <option key={c} value={c}>{c}</option>
-                          ))}
-                        </select>
+                    {isAccessory ? (
+                      <>
+                        {/* Accessory Row 2: Accessory Type, Accessory Brand, Quantity, Price */}
+                        <div className="grid grid-cols-4 gap-2">
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-0.5">ประเภทอุปกรณ์ *</label>
+                            <select
+                              value={item.accessoryType}
+                              onChange={(e) => updateItem(idx, 'accessoryType', e.target.value)}
+                              className={selectClass}
+                              required
+                            >
+                              <option value="">-- เลือก --</option>
+                              {accessoryTypes.map((t) => (
+                                <option key={t.value} value={t.value}>{t.label}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-0.5">ยี่ห้ออุปกรณ์</label>
+                            <input
+                              type="text"
+                              value={item.accessoryBrand}
+                              onChange={(e) => updateItem(idx, 'accessoryBrand', e.target.value)}
+                              className={inputClass}
+                              placeholder="เช่น Spigen, Anker"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-0.5">จำนวน *</label>
+                            <input
+                              type="number"
+                              value={item.quantity}
+                              onChange={(e) => updateItem(idx, 'quantity', e.target.value)}
+                              className={inputClass}
+                              min="1"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-0.5">ราคา/ชิ้น *</label>
+                            <input
+                              type="number"
+                              value={item.unitPrice}
+                              onChange={(e) => updateItem(idx, 'unitPrice', e.target.value)}
+                              className={inputClass}
+                              required
+                            />
+                          </div>
+                        </div>
+                        {/* Auto name preview */}
+                        {(item.accessoryType || item.accessoryBrand) && (
+                          <div className="text-xs text-purple-600 bg-purple-100 rounded px-2 py-1">
+                            ชื่อสินค้า: {[item.accessoryType, item.accessoryBrand, item.model ? `สำหรับ ${item.model}` : ''].filter(Boolean).join(' ')}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      /* Normal Row 2: Color, Storage, Quantity, Price */
+                      <div className="grid grid-cols-4 gap-2">
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-0.5">สี</label>
+                          <select
+                            value={item.color}
+                            onChange={(e) => updateItem(idx, 'color', e.target.value)}
+                            className={selectClass}
+                            disabled={availableColors.length === 0}
+                          >
+                            <option value="">-- เลือกสี --</option>
+                            {availableColors.map((c) => (
+                              <option key={c} value={c}>{c}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-0.5">ความจุ</label>
+                          <select
+                            value={item.storage}
+                            onChange={(e) => updateItem(idx, 'storage', e.target.value)}
+                            className={selectClass}
+                            disabled={availableStorage.length === 0}
+                          >
+                            <option value="">-- เลือกความจุ --</option>
+                            {availableStorage.map((s) => (
+                              <option key={s} value={s}>{s}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-0.5">จำนวน *</label>
+                          <input
+                            type="number"
+                            value={item.quantity}
+                            onChange={(e) => updateItem(idx, 'quantity', e.target.value)}
+                            className={inputClass}
+                            min="1"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-0.5">ราคา/ชิ้น *</label>
+                          <input
+                            type="number"
+                            value={item.unitPrice}
+                            onChange={(e) => updateItem(idx, 'unitPrice', e.target.value)}
+                            className={inputClass}
+                            required
+                          />
+                        </div>
                       </div>
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-0.5">ความจุ</label>
-                        <select
-                          value={item.storage}
-                          onChange={(e) => updateItem(idx, 'storage', e.target.value)}
-                          className={selectClass}
-                          disabled={availableStorage.length === 0}
-                        >
-                          <option value="">-- เลือกความจุ --</option>
-                          {availableStorage.map((s) => (
-                            <option key={s} value={s}>{s}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-0.5">จำนวน *</label>
-                        <input
-                          type="number"
-                          value={item.quantity}
-                          onChange={(e) => updateItem(idx, 'quantity', e.target.value)}
-                          className={inputClass}
-                          min="1"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-0.5">ราคา/ชิ้น *</label>
-                        <input
-                          type="number"
-                          value={item.unitPrice}
-                          onChange={(e) => updateItem(idx, 'unitPrice', e.target.value)}
-                          className={inputClass}
-                          required
-                        />
-                      </div>
-                    </div>
+                    )}
                   </div>
                 );
               })}
@@ -1061,7 +1149,7 @@ export default function PurchaseOrdersPage() {
                   <tr className="bg-gray-50">
                     <th className="px-3 py-2 text-left">ยี่ห้อ</th>
                     <th className="px-3 py-2 text-left">รุ่น</th>
-                    <th className="px-3 py-2 text-left">สี / ความจุ</th>
+                    <th className="px-3 py-2 text-left">รายละเอียด</th>
                     <th className="px-3 py-2 text-right">จำนวน</th>
                     <th className="px-3 py-2 text-right">ราคา/ชิ้น</th>
                     <th className="px-3 py-2 text-right">รับแล้ว</th>
@@ -1072,7 +1160,12 @@ export default function PurchaseOrdersPage() {
                 <tbody>
                   {selectedPO.items.map((item) => (
                     <tr key={item.id} className="border-b">
-                      <td className="px-3 py-2">{item.brand}</td>
+                      <td className="px-3 py-2">
+                        {item.brand}
+                        {item.category === 'ACCESSORY' && (
+                          <div className="text-xs text-purple-600">(อุปกรณ์เสริม)</div>
+                        )}
+                      </td>
                       <td className="px-3 py-2">{item.model}</td>
                       <td className="px-3 py-2 text-gray-600">{getItemDesc(item)}</td>
                       <td className="px-3 py-2 text-right">{item.quantity}</td>

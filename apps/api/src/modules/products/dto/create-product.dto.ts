@@ -84,6 +84,14 @@ export class CreateProductDto {
   @IsOptional()
   hasBox?: boolean;
 
+  @IsString()
+  @IsOptional()
+  accessoryType?: string;
+
+  @IsString()
+  @IsOptional()
+  accessoryBrand?: string;
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreatePriceDto)

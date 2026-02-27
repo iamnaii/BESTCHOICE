@@ -20,6 +20,14 @@ export class POItemDto {
   @IsOptional()
   category?: string;
 
+  @IsString()
+  @IsOptional()
+  accessoryType?: string;
+
+  @IsString()
+  @IsOptional()
+  accessoryBrand?: string;
+
   @IsNumber()
   quantity: number;
 

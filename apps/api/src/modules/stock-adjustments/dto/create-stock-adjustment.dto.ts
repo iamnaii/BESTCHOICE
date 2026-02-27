@@ -1,7 +1,8 @@
-import { IsString, IsOptional, IsArray, IsIn } from 'class-validator';
+import { IsString, IsOptional, IsArray, IsIn, IsNotEmpty } from 'class-validator';
 
 export class CreateStockAdjustmentDto {
   @IsString()
+  @IsNotEmpty()
   productId: string;
 
   @IsIn(['DAMAGED', 'LOST', 'FOUND', 'CORRECTION', 'WRITE_OFF', 'OTHER'])

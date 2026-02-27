@@ -307,9 +307,6 @@ export class PurchaseOrdersService {
     const po = await this.prisma.purchaseOrder.findUnique({ where: { id: poId } });
     if (!po) throw new NotFoundException('ไม่พบใบสั่งซื้อ');
 
-    const page = filters.page || 1;
-    const limit = filters.limit || 50;
-
     // Build item-level filter for status (PASS/REJECT)
     const itemFilter: Record<string, unknown> = {};
     if (filters.status) itemFilter.status = filters.status;
@@ -319,9 +316,16 @@ export class PurchaseOrdersService {
     if (filters.startDate || filters.endDate) {
       const dateFilter: Record<string, Date> = {};
       if (filters.startDate) dateFilter.gte = new Date(filters.startDate);
-      if (filters.endDate) dateFilter.lte = new Date(filters.endDate);
+      if (filters.endDate) {
+        const end = new Date(filters.endDate);
+        end.setHours(23, 59, 59, 999);
+        dateFilter.lte = end;
+      }
       where.createdAt = dateFilter;
     }
+
+    const page = Math.max(1, filters.page || 1);
+    const limit = Math.min(100, Math.max(1, filters.limit || 50));
 
     const [data, total] = await Promise.all([
       this.prisma.goodsReceiving.findMany({
@@ -379,7 +383,11 @@ export class PurchaseOrdersService {
     if (filters.startDate || filters.endDate) {
       const dateFilter: Record<string, Date> = {};
       if (filters.startDate) dateFilter.gte = new Date(filters.startDate);
-      if (filters.endDate) dateFilter.lte = new Date(filters.endDate);
+      if (filters.endDate) {
+        const end = new Date(filters.endDate);
+        end.setHours(23, 59, 59, 999);
+        dateFilter.lte = end;
+      }
       receivingWhere.createdAt = dateFilter;
     }
 

@@ -45,8 +45,8 @@ export class ProductsService {
       ];
     }
 
-    const page = filters.page || 1;
-    const limit = filters.limit || 50;
+    const page = Math.max(1, filters.page || 1);
+    const limit = Math.min(100, Math.max(1, filters.limit || 50));
 
     const [data, total] = await Promise.all([
       this.prisma.product.findMany({
@@ -198,8 +198,21 @@ export class ProductsService {
   async transfer(productId: string, dto: TransferProductDto, userId: string) {
     const product = await this.findOne(productId);
 
+    // Only allow transfer for products in stock
+    if (!['IN_STOCK', 'PO_RECEIVED'].includes(product.status)) {
+      throw new BadRequestException('ไม่สามารถโอนสินค้าที่ไม่ได้อยู่ในสต๊อคได้');
+    }
+
     if (product.branchId === dto.toBranchId) {
       throw new BadRequestException('สาขาปลายทางต้องไม่ใช่สาขาเดียวกับสาขาต้นทาง');
+    }
+
+    // Check for existing pending transfer for this product
+    const existingTransfer = await this.prisma.stockTransfer.findFirst({
+      where: { productId, status: 'PENDING' },
+    });
+    if (existingTransfer) {
+      throw new BadRequestException('สินค้านี้มีรายการโอนที่รออยู่แล้ว');
     }
 
     // Verify destination branch exists
@@ -260,12 +273,16 @@ export class ProductsService {
     if (filters.startDate || filters.endDate) {
       const dateFilter: Record<string, Date> = {};
       if (filters.startDate) dateFilter.gte = new Date(filters.startDate);
-      if (filters.endDate) dateFilter.lte = new Date(filters.endDate);
+      if (filters.endDate) {
+        const end = new Date(filters.endDate);
+        end.setHours(23, 59, 59, 999);
+        dateFilter.lte = end;
+      }
       where.createdAt = dateFilter;
     }
 
-    const page = filters.page || 1;
-    const limit = filters.limit || 50;
+    const page = Math.max(1, filters.page || 1);
+    const limit = Math.min(100, Math.max(1, filters.limit || 50));
 
     const [data, total] = await Promise.all([
       this.prisma.stockTransfer.findMany({
@@ -307,17 +324,17 @@ export class ProductsService {
   }
 
   async confirmTransfer(transferId: string, userId: string) {
-    const transfer = await this.prisma.stockTransfer.findUnique({
-      where: { id: transferId },
-    });
-    if (!transfer) throw new NotFoundException('ไม่พบรายการโอน');
-    if (transfer.status !== 'PENDING') {
-      throw new BadRequestException('รายการโอนนี้ไม่อยู่ในสถานะรอยืนยัน');
-    }
+    return this.prisma.$transaction(async (tx) => {
+      const transfer = await tx.stockTransfer.findUnique({
+        where: { id: transferId },
+      });
+      if (!transfer) throw new NotFoundException('ไม่พบรายการโอน');
+      if (transfer.status !== 'PENDING') {
+        throw new BadRequestException('รายการโอนนี้ไม่อยู่ในสถานะรอยืนยัน');
+      }
 
-    // Confirm transfer: move product to destination branch
-    const [updatedTransfer] = await this.prisma.$transaction([
-      this.prisma.stockTransfer.update({
+      // Confirm transfer: move product to destination branch
+      const updatedTransfer = await tx.stockTransfer.update({
         where: { id: transferId },
         data: {
           status: 'CONFIRMED',
@@ -328,36 +345,39 @@ export class ProductsService {
           fromBranch: { select: { id: true, name: true } },
           toBranch: { select: { id: true, name: true } },
         },
-      }),
-      this.prisma.product.update({
+      });
+
+      await tx.product.update({
         where: { id: transfer.productId },
         data: { branchId: transfer.toBranchId },
-      }),
-    ]);
+      });
 
-    return updatedTransfer;
+      return updatedTransfer;
+    });
   }
 
   async rejectTransfer(transferId: string, userId: string) {
-    const transfer = await this.prisma.stockTransfer.findUnique({
-      where: { id: transferId },
-    });
-    if (!transfer) throw new NotFoundException('ไม่พบรายการโอน');
-    if (transfer.status !== 'PENDING') {
-      throw new BadRequestException('รายการโอนนี้ไม่อยู่ในสถานะรอยืนยัน');
-    }
+    return this.prisma.$transaction(async (tx) => {
+      const transfer = await tx.stockTransfer.findUnique({
+        where: { id: transferId },
+      });
+      if (!transfer) throw new NotFoundException('ไม่พบรายการโอน');
+      if (transfer.status !== 'PENDING') {
+        throw new BadRequestException('รายการโอนนี้ไม่อยู่ในสถานะรอยืนยัน');
+      }
 
-    return this.prisma.stockTransfer.update({
-      where: { id: transferId },
-      data: {
-        status: 'REJECTED',
-        confirmedById: userId,
-        confirmedAt: new Date(),
-      },
-      include: {
-        fromBranch: { select: { id: true, name: true } },
-        toBranch: { select: { id: true, name: true } },
-      },
+      return tx.stockTransfer.update({
+        where: { id: transferId },
+        data: {
+          status: 'REJECTED',
+          confirmedById: userId,
+          confirmedAt: new Date(),
+        },
+        include: {
+          fromBranch: { select: { id: true, name: true } },
+          toBranch: { select: { id: true, name: true } },
+        },
+      });
     });
   }
 
@@ -377,8 +397,8 @@ export class ProductsService {
     if (filters.category) where.category = filters.category;
     if (filters.brand) where.brand = filters.brand;
 
-    const page = filters.page || 1;
-    const limit = filters.limit || 50;
+    const page = Math.max(1, filters.page || 1);
+    const limit = Math.min(100, Math.max(1, filters.limit || 50));
 
     const [products, total] = await Promise.all([
       this.prisma.product.findMany({
@@ -402,9 +422,14 @@ export class ProductsService {
       orderBy: { name: 'asc' },
     });
 
+    const summaryWhere: Record<string, unknown> = { deletedAt: null };
+    if (filters.branchId) summaryWhere.branchId = filters.branchId;
+    if (filters.category) summaryWhere.category = filters.category;
+    if (filters.brand) summaryWhere.brand = filters.brand;
+
     const summaryData = await this.prisma.product.groupBy({
       by: ['branchId', 'status'],
-      where: { deletedAt: null, ...(filters.category ? { category: filters.category as any } : {}), ...(filters.brand ? { brand: filters.brand } : {}) },
+      where: summaryWhere as any,
       _count: true,
       _sum: { costPrice: true },
     });

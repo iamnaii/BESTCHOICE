@@ -59,13 +59,14 @@ export class StockAdjustmentsService {
           where: { id: dto.productId },
           data: { status: 'IN_STOCK', deletedAt: null },
         });
-      } else {
+      } else if (['DAMAGED', 'LOST', 'WRITE_OFF'].includes(dto.reason)) {
         // DAMAGED, LOST, WRITE_OFF → soft delete (remove from active stock)
         await tx.product.update({
           where: { id: dto.productId },
           data: { deletedAt: new Date() },
         });
       }
+      // CORRECTION, OTHER → record only, no status/deletion change
 
       return adjustment;
     });
@@ -87,23 +88,29 @@ export class StockAdjustmentsService {
     if (filters.productId) where.productId = filters.productId;
     if (filters.search) {
       where.product = {
-        OR: [
-          { name: { contains: filters.search, mode: 'insensitive' } },
-          { brand: { contains: filters.search, mode: 'insensitive' } },
-          { model: { contains: filters.search, mode: 'insensitive' } },
-          { imeiSerial: { contains: filters.search } },
-        ],
+        is: {
+          OR: [
+            { name: { contains: filters.search, mode: 'insensitive' } },
+            { brand: { contains: filters.search, mode: 'insensitive' } },
+            { model: { contains: filters.search, mode: 'insensitive' } },
+            { imeiSerial: { contains: filters.search } },
+          ],
+        },
       };
     }
     if (filters.startDate || filters.endDate) {
       const dateFilter: Record<string, Date> = {};
       if (filters.startDate) dateFilter.gte = new Date(filters.startDate);
-      if (filters.endDate) dateFilter.lte = new Date(filters.endDate);
+      if (filters.endDate) {
+        const end = new Date(filters.endDate);
+        end.setHours(23, 59, 59, 999);
+        dateFilter.lte = end;
+      }
       where.createdAt = dateFilter;
     }
 
-    const page = filters.page || 1;
-    const limit = filters.limit || 50;
+    const page = Math.max(1, filters.page || 1);
+    const limit = Math.min(100, Math.max(1, filters.limit || 50));
 
     const [data, total] = await Promise.all([
       this.prisma.stockAdjustment.findMany({
@@ -148,27 +155,39 @@ export class StockAdjustmentsService {
     if (filters.startDate || filters.endDate) {
       const dateFilter: Record<string, Date> = {};
       if (filters.startDate) dateFilter.gte = new Date(filters.startDate);
-      if (filters.endDate) dateFilter.lte = new Date(filters.endDate);
+      if (filters.endDate) {
+        const end = new Date(filters.endDate);
+        end.setHours(23, 59, 59, 999);
+        dateFilter.lte = end;
+      }
       where.createdAt = dateFilter;
     }
 
+    // Use groupBy for efficient DB-level aggregation
+    const grouped = await this.prisma.stockAdjustment.groupBy({
+      by: ['reason'],
+      where: where as any,
+      _count: true,
+    });
+
+    // Get cost values per reason via a separate query (join with product)
     const adjustments = await this.prisma.stockAdjustment.findMany({
       where,
-      include: {
-        product: { select: { costPrice: true } },
-      },
+      select: { reason: true, product: { select: { costPrice: true } } },
     });
 
     const byReason: Record<string, { count: number; totalValue: number }> = {};
+    for (const g of grouped) {
+      byReason[g.reason] = { count: g._count, totalValue: 0 };
+    }
     for (const adj of adjustments) {
-      const reason = adj.reason;
-      if (!byReason[reason]) byReason[reason] = { count: 0, totalValue: 0 };
-      byReason[reason].count++;
-      byReason[reason].totalValue += Number(adj.product.costPrice);
+      if (byReason[adj.reason]) {
+        byReason[adj.reason].totalValue += Number(adj.product?.costPrice || 0);
+      }
     }
 
-    const totalCount = adjustments.length;
-    const totalValue = adjustments.reduce((sum, a) => sum + Number(a.product.costPrice), 0);
+    const totalCount = grouped.reduce((sum, g) => sum + g._count, 0);
+    const totalValue = Object.values(byReason).reduce((sum, r) => sum + r.totalValue, 0);
 
     return { byReason, totalCount, totalValue };
   }

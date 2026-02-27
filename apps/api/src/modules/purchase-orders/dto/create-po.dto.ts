@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsDateString, IsArray, ValidateNested, IsIn, IsBoolean } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsDateString, IsArray, ValidateNested, IsIn, IsBoolean, ArrayMinSize, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class POItemDto {
@@ -29,9 +29,11 @@ export class POItemDto {
   accessoryBrand?: string;
 
   @IsNumber()
+  @Min(1)
   quantity: number;
 
   @IsNumber()
+  @Min(0)
   unitPrice: number;
 }
 
@@ -51,6 +53,7 @@ export class CreatePODto {
   notes?: string;
 
   @IsArray()
+  @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => POItemDto)
   items: POItemDto[];
@@ -172,6 +175,7 @@ export class GoodsReceivingItemDto {
 
 export class GoodsReceivingDto {
   @IsArray()
+  @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => GoodsReceivingItemDto)
   items: GoodsReceivingItemDto[];

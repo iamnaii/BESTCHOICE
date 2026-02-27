@@ -13,6 +13,7 @@ export class CreateStockAdjustmentDto {
   notes?: string;
 
   @IsArray()
+  @IsString({ each: true })
   @IsOptional()
   photos?: string[];
 }

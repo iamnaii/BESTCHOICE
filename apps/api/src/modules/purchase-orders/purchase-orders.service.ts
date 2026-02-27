@@ -69,19 +69,6 @@ export class PurchaseOrdersService {
     });
     if (!supplier) throw new NotFoundException('ไม่พบ Supplier');
 
-    // Generate PO number: PO-YYYY-MM-NNN format (monthly sequence)
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const monthStart = new Date(year, today.getMonth(), 1);
-    const monthEnd = new Date(year, today.getMonth() + 1, 1);
-    const monthCount = await this.prisma.purchaseOrder.count({
-      where: {
-        createdAt: { gte: monthStart, lt: monthEnd },
-      },
-    });
-    const poNumber = `PO-${year}-${month}-${String(monthCount + 1).padStart(3, '0')}`;
-
     // Calculate total with discount & VAT (only if supplier has VAT)
     const totalAmount = dto.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
     const discount = dto.discount || 0;
@@ -100,43 +87,59 @@ export class PurchaseOrdersService {
       dueDate.setDate(dueDate.getDate() + selectedPm.creditTermDays);
     }
 
-    return this.prisma.purchaseOrder.create({
-      data: {
-        poNumber,
-        supplierId: dto.supplierId,
-        orderDate: orderDateObj,
-        expectedDate: dto.expectedDate ? new Date(dto.expectedDate) : null,
-        dueDate,
-        totalAmount,
-        discount,
-        vatAmount,
-        netAmount,
-        notes: dto.notes,
-        createdById: userId,
-        status: 'PENDING',
-        paymentStatus: (dto.paymentStatus as any) || 'UNPAID',
-        paymentMethod: dto.paymentMethod || null,
-        paidAmount: dto.paidAmount || 0,
-        paymentNotes: dto.paymentNotes || null,
-        attachments: dto.attachments || [],
-        items: {
-          create: dto.items.map((item) => ({
-            brand: item.brand,
-            model: item.model,
-            color: item.color || null,
-            storage: item.storage || null,
-            category: item.category || null,
-            accessoryType: item.accessoryType || null,
-            accessoryBrand: item.accessoryBrand || null,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-          })),
+    // Use transaction to prevent PO number race condition
+    return this.prisma.$transaction(async (tx) => {
+      // Generate PO number inside transaction: PO-YYYY-MM-NNN format (monthly sequence)
+      const today = new Date();
+      const year = today.getFullYear();
+      const month = String(today.getMonth() + 1).padStart(2, '0');
+      const monthStart = new Date(year, today.getMonth(), 1);
+      const monthEnd = new Date(year, today.getMonth() + 1, 1);
+      const monthCount = await tx.purchaseOrder.count({
+        where: {
+          createdAt: { gte: monthStart, lt: monthEnd },
         },
-      },
-      include: {
-        supplier: { select: { id: true, name: true, hasVat: true } },
-        items: true,
-      },
+      });
+      const poNumber = `PO-${year}-${month}-${String(monthCount + 1).padStart(3, '0')}`;
+
+      return tx.purchaseOrder.create({
+        data: {
+          poNumber,
+          supplierId: dto.supplierId,
+          orderDate: orderDateObj,
+          expectedDate: dto.expectedDate ? new Date(dto.expectedDate) : null,
+          dueDate,
+          totalAmount,
+          discount,
+          vatAmount,
+          netAmount,
+          notes: dto.notes,
+          createdById: userId,
+          status: 'PENDING',
+          paymentStatus: (dto.paymentStatus as any) || 'UNPAID',
+          paymentMethod: dto.paymentMethod || null,
+          paidAmount: dto.paidAmount || 0,
+          paymentNotes: dto.paymentNotes || null,
+          attachments: dto.attachments || [],
+          items: {
+            create: dto.items.map((item) => ({
+              brand: item.brand,
+              model: item.model,
+              color: item.color || null,
+              storage: item.storage || null,
+              category: item.category || null,
+              accessoryType: item.accessoryType || null,
+              accessoryBrand: item.accessoryBrand || null,
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+            })),
+          },
+        },
+        include: {
+          supplier: { select: { id: true, name: true, hasVat: true } },
+          items: true,
+        },
+      });
     });
   }
 
@@ -159,8 +162,8 @@ export class PurchaseOrdersService {
 
   async approve(id: string, userId: string) {
     const po = await this.findOne(id);
-    if (po.status !== 'DRAFT') {
-      throw new BadRequestException('อนุมัติได้เฉพาะ PO สถานะ DRAFT เท่านั้น');
+    if (!['DRAFT', 'PENDING'].includes(po.status)) {
+      throw new BadRequestException('อนุมัติได้เฉพาะ PO สถานะ DRAFT หรือ PENDING เท่านั้น');
     }
 
     return this.prisma.purchaseOrder.update({
@@ -198,10 +201,10 @@ export class PurchaseOrdersService {
       where: { id },
       data: {
         paymentStatus: dto.paymentStatus as any,
-        paymentMethod: dto.paymentMethod || null,
+        ...(dto.paymentMethod !== undefined ? { paymentMethod: dto.paymentMethod || null } : {}),
         paidAmount: dto.paidAmount,
-        paymentNotes: dto.paymentNotes || null,
-        ...(dto.attachments !== undefined && { attachments: dto.attachments }),
+        ...(dto.paymentNotes !== undefined ? { paymentNotes: dto.paymentNotes || null } : {}),
+        ...(dto.attachments !== undefined ? { attachments: dto.attachments } : {}),
       },
       include: {
         supplier: { select: { id: true, name: true } },

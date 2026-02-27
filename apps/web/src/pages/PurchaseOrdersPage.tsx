@@ -21,9 +21,12 @@ interface PurchaseOrder {
   orderDate: string;
   expectedDate: string | null;
   status: string;
+  subtotal: string;
+  vatAmount: string;
   totalAmount: string;
+  hasVat: boolean;
   notes: string | null;
-  supplier: { id: string; name: string; contactName: string; phone: string };
+  supplier: { id: string; name: string; contactName: string; phone: string; hasVat: boolean };
   createdBy: { id: string; name: string };
   approvedBy: { id: string; name: string } | null;
   items: POItem[];
@@ -76,10 +79,11 @@ export default function PurchaseOrdersPage() {
   });
   const [items, setItems] = useState<ItemForm[]>([{ brand: '', model: '', quantity: '1', unitPrice: '' }]);
 
-  const { data: suppliers = [] } = useQuery<{ id: string; name: string; contactName: string }[]>({
-    queryKey: ['suppliers'],
-    queryFn: async () => (await api.get('/suppliers')).data,
+  const { data: suppliersResult } = useQuery<{ data: { id: string; name: string; contactName: string; hasVat: boolean }[] }>({
+    queryKey: ['suppliers-for-po'],
+    queryFn: async () => (await api.get('/suppliers?isActive=true&limit=200')).data,
   });
+  const suppliers = suppliersResult?.data ?? [];
 
   const { data: pos = [], isLoading } = useQuery<PurchaseOrder[]>({
     queryKey: ['purchase-orders', statusFilter],
@@ -194,7 +198,11 @@ export default function PurchaseOrdersPage() {
     receiveMutation.mutate({ poId: selectedPO.id, items: validItems });
   };
 
-  const totalAmount = items.reduce((sum, i) => sum + Number(i.quantity || 0) * Number(i.unitPrice || 0), 0);
+  const subtotal = items.reduce((sum, i) => sum + Number(i.quantity || 0) * Number(i.unitPrice || 0), 0);
+  const selectedSupplier = suppliers.find((s) => s.id === form.supplierId);
+  const supplierHasVat = selectedSupplier?.hasVat ?? false;
+  const vatAmount = supplierHasVat ? Math.round(subtotal * 0.07 * 100) / 100 : 0;
+  const totalAmount = subtotal + vatAmount;
 
   const columns = [
     {
@@ -237,7 +245,12 @@ export default function PurchaseOrdersPage() {
       key: 'totalAmount',
       label: 'ยอดรวม',
       render: (po: PurchaseOrder) => (
-        <span className="text-sm font-medium">{Number(po.totalAmount).toLocaleString()} บาท</span>
+        <div>
+          <span className="text-sm font-medium">{Number(po.totalAmount).toLocaleString()} บาท</span>
+          {po.hasVat && (
+            <div className="text-xs text-blue-600">รวม VAT {Number(po.vatAmount).toLocaleString()}</div>
+          )}
+        </div>
       ),
     },
     {
@@ -352,9 +365,20 @@ export default function PurchaseOrdersPage() {
             >
               <option value="">-- เลือก Supplier --</option>
               {suppliers.map((s) => (
-                <option key={s.id} value={s.id}>{s.name} ({s.contactName})</option>
+                <option key={s.id} value={s.id}>{s.name} ({s.contactName}){s.hasVat ? ' [VAT]' : ''}</option>
               ))}
             </select>
+            {selectedSupplier && (
+              <div className="mt-1">
+                <span
+                  className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                    supplierHasVat ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
+                  }`}
+                >
+                  {supplierHasVat ? 'Supplier มี VAT - จะคำนวณ VAT 7% อัตโนมัติ' : 'Supplier ไม่มี VAT'}
+                </span>
+              </div>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -434,8 +458,12 @@ export default function PurchaseOrdersPage() {
                 </div>
               ))}
             </div>
-            <div className="text-right mt-2 text-sm font-medium">
-              ยอดรวม: {totalAmount.toLocaleString()} บาท
+            <div className="mt-2 text-sm text-right space-y-1">
+              <div className="text-gray-600">ยอดก่อน VAT: {subtotal.toLocaleString()} บาท</div>
+              {supplierHasVat && (
+                <div className="text-blue-600">VAT 7%: {vatAmount.toLocaleString()} บาท</div>
+              )}
+              <div className="font-semibold text-gray-900">ยอดรวมสุทธิ: {totalAmount.toLocaleString()} บาท</div>
             </div>
           </div>
 
@@ -497,8 +525,18 @@ export default function PurchaseOrdersPage() {
                 </div>
               )}
               <div>
-                <span className="text-gray-500">ยอดรวม:</span>{' '}
-                <span className="font-medium">{Number(selectedPO.totalAmount).toLocaleString()} บาท</span>
+                <span className="text-gray-500">ยอดก่อน VAT:</span>{' '}
+                <span className="font-medium">{Number(selectedPO.subtotal || selectedPO.totalAmount).toLocaleString()} บาท</span>
+              </div>
+              {selectedPO.hasVat && (
+                <div>
+                  <span className="text-gray-500">VAT 7%:</span>{' '}
+                  <span className="font-medium text-blue-600">{Number(selectedPO.vatAmount).toLocaleString()} บาท</span>
+                </div>
+              )}
+              <div>
+                <span className="text-gray-500">ยอดรวมสุทธิ:</span>{' '}
+                <span className="font-semibold">{Number(selectedPO.totalAmount).toLocaleString()} บาท</span>
               </div>
             </div>
 

@@ -20,6 +20,7 @@ interface Supplier {
   lineId: string | null;
   address: string | null;
   taxId: string | null;
+  hasVat: boolean;
   notes: string | null;
   isActive: boolean;
   createdAt: string;
@@ -34,6 +35,7 @@ const emptyForm = {
   phoneSecondary: '',
   lineId: '',
   taxId: '',
+  hasVat: false,
   notes: '',
 };
 
@@ -94,6 +96,7 @@ export default function SuppliersPage() {
         lineId: data.lineId || undefined,
         address: composedAddress || undefined,
         taxId: data.taxId || undefined,
+        hasVat: data.hasVat,
         notes: data.notes || undefined,
       };
       if (editingSupplier) {
@@ -154,6 +157,7 @@ export default function SuppliersPage() {
       phoneSecondary: supplier.phoneSecondary || '',
       lineId: supplier.lineId || '',
       taxId: supplier.taxId || '',
+      hasVat: supplier.hasVat ?? false,
       notes: supplier.notes || '',
     });
     setSupplierAddress(emptyAddress);
@@ -196,6 +200,19 @@ export default function SuppliersPage() {
           <div>{s.phone}</div>
           {s.phoneSecondary && <div className="text-xs text-gray-400">{s.phoneSecondary}</div>}
         </div>
+      ),
+    },
+    {
+      key: 'hasVat',
+      label: 'VAT',
+      render: (s: Supplier) => (
+        <span
+          className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+            s.hasVat ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
+          }`}
+        >
+          {s.hasVat ? 'มี VAT' : 'ไม่มี VAT'}
+        </span>
       ),
     },
     {
@@ -408,6 +425,27 @@ export default function SuppliersPage() {
                 maxLength={17}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
               />
+            </div>
+            <div className="col-span-2">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <span className="text-sm font-medium text-gray-700">จดทะเบียน VAT</span>
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, hasVat: !form.hasVat })}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                    form.hasVat ? 'bg-blue-600' : 'bg-gray-300'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      form.hasVat ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+                <span className={`text-sm font-medium ${form.hasVat ? 'text-blue-600' : 'text-gray-400'}`}>
+                  {form.hasVat ? 'มี VAT (7%)' : 'ไม่มี VAT'}
+                </span>
+              </label>
             </div>
             <div className="col-span-2">
               <AddressForm value={supplierAddress} onChange={setSupplierAddress} label="ที่อยู่" />

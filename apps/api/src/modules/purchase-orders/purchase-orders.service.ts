@@ -14,7 +14,7 @@ export class PurchaseOrdersService {
     return this.prisma.purchaseOrder.findMany({
       where,
       include: {
-        supplier: { select: { id: true, name: true, contactName: true, phone: true } },
+        supplier: { select: { id: true, name: true, contactName: true, phone: true, hasVat: true } },
         createdBy: { select: { id: true, name: true } },
         approvedBy: { select: { id: true, name: true } },
         items: true,
@@ -42,16 +42,27 @@ export class PurchaseOrdersService {
   }
 
   async create(dto: CreatePODto, userId: string) {
-    // Generate PO number
+    // Generate PO number with PO- prefix
     const lastPO = await this.prisma.purchaseOrder.findFirst({
       orderBy: { poNumber: 'desc' },
       select: { poNumber: true },
     });
     const nextNum = lastPO ? parseInt(lastPO.poNumber.replace(/\D/g, '')) + 1 : 1;
-    const poNumber = `PO${String(nextNum).padStart(6, '0')}`;
+    const poNumber = `PO-${String(nextNum).padStart(6, '0')}`;
 
-    // Calculate total
-    const totalAmount = dto.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+    // Look up supplier VAT status
+    const supplier = await this.prisma.supplier.findUnique({
+      where: { id: dto.supplierId },
+      select: { hasVat: true },
+    });
+
+    // Calculate subtotal
+    const subtotal = dto.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+
+    // Calculate VAT if supplier has VAT (7%)
+    const hasVat = supplier?.hasVat ?? false;
+    const vatAmount = hasVat ? Math.round(subtotal * 0.07 * 100) / 100 : 0;
+    const totalAmount = subtotal + vatAmount;
 
     return this.prisma.purchaseOrder.create({
       data: {
@@ -59,7 +70,10 @@ export class PurchaseOrdersService {
         supplierId: dto.supplierId,
         orderDate: new Date(dto.orderDate),
         expectedDate: dto.expectedDate ? new Date(dto.expectedDate) : null,
+        subtotal,
+        vatAmount,
         totalAmount,
+        hasVat,
         notes: dto.notes,
         createdById: userId,
         status: 'DRAFT',
@@ -73,7 +87,7 @@ export class PurchaseOrdersService {
         },
       },
       include: {
-        supplier: { select: { id: true, name: true } },
+        supplier: { select: { id: true, name: true, hasVat: true } },
         items: true,
       },
     });

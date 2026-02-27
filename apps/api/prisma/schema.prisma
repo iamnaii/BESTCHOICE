@@ -265,6 +265,7 @@ model Supplier {
   lineId      String?  @map("line_id")
   address     String?
   taxId       String?  @map("tax_id")
+  hasVat      Boolean  @default(false) @map("has_vat")
   notes       String?
   isActive    Boolean  @default(true) @map("is_active")
   createdAt   DateTime @default(now()) @map("created_at")
@@ -283,7 +284,10 @@ model PurchaseOrder {
   orderDate    DateTime @map("order_date")
   expectedDate DateTime? @map("expected_date")
   status       POStatus @default(DRAFT)
+  subtotal     Decimal  @default(0) @map("subtotal") @db.Decimal(12, 2)
+  vatAmount    Decimal  @default(0) @map("vat_amount") @db.Decimal(12, 2)
   totalAmount  Decimal  @map("total_amount") @db.Decimal(12, 2)
+  hasVat       Boolean  @default(false) @map("has_vat")
   notes        String?
   createdById  String   @map("created_by_id")
   approvedById String?  @map("approved_by_id")

@@ -10,6 +10,16 @@ import Modal from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
 import AddressForm, { AddressData, emptyAddress, serializeAddress, deserializeAddress } from '@/components/ui/AddressForm';
 
+interface PaymentMethod {
+  id?: string;
+  paymentMethod: string;
+  bankName: string;
+  bankAccountName: string;
+  bankAccountNumber: string;
+  creditTermDays: string | number;
+  isDefault: boolean;
+}
+
 interface Supplier {
   id: string;
   name: string;
@@ -21,11 +31,7 @@ interface Supplier {
   address: string | null;
   taxId: string | null;
   hasVat: boolean;
-  paymentMethod: string | null;
-  bankName: string | null;
-  bankAccountName: string | null;
-  bankAccountNumber: string | null;
-  creditTermDays: number | null;
+  paymentMethods: PaymentMethod[];
   notes: string | null;
   isActive: boolean;
   createdAt: string;
@@ -41,12 +47,16 @@ const emptyForm = {
   lineId: '',
   taxId: '',
   hasVat: false,
+  notes: '',
+};
+
+const emptyPaymentMethod: PaymentMethod = {
   paymentMethod: '',
   bankName: '',
   bankAccountName: '',
   bankAccountNumber: '',
-  creditTermDays: '' as string | number,
-  notes: '',
+  creditTermDays: '',
+  isDefault: false,
 };
 
 const paymentMethodLabels: Record<string, string> = {
@@ -79,6 +89,7 @@ export default function SuppliersPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [search, setSearch] = useState('');
   const [filterActive, setFilterActive] = useState<string>('true');
   const [supplierAddress, setSupplierAddress] = useState<AddressData>(emptyAddress);
@@ -104,22 +115,31 @@ export default function SuppliersPage() {
   const suppliers = result?.data ?? [];
 
   const saveMutation = useMutation({
-    mutationFn: async ({ formData, addressData, editId }: { formData: typeof emptyForm; addressData: AddressData; editId?: string }) => {
+    mutationFn: async ({ formData, addressData, pmList, editId }: { formData: typeof emptyForm; addressData: AddressData; pmList: PaymentMethod[]; editId?: string }) => {
       const serializedAddress = serializeAddress(addressData);
+      const validPaymentMethods = pmList
+        .filter((pm) => pm.paymentMethod !== '')
+        .map((pm) => ({
+          paymentMethod: pm.paymentMethod,
+          bankName: pm.bankName || undefined,
+          bankAccountName: pm.bankAccountName || undefined,
+          bankAccountNumber: pm.bankAccountNumber || undefined,
+          creditTermDays: pm.creditTermDays ? Number(pm.creditTermDays) : undefined,
+          isDefault: pm.isDefault,
+        }));
+
       const payload = {
-        ...formData,
+        name: formData.name,
+        contactName: formData.contactName,
         nickname: formData.nickname || undefined,
+        phone: formData.phone,
         phoneSecondary: formData.phoneSecondary || undefined,
         lineId: formData.lineId || undefined,
         address: serializedAddress || undefined,
         taxId: formData.taxId || undefined,
         hasVat: formData.hasVat,
-        paymentMethod: formData.paymentMethod || undefined,
-        bankName: formData.bankName || undefined,
-        bankAccountName: formData.bankAccountName || undefined,
-        bankAccountNumber: formData.bankAccountNumber || undefined,
-        creditTermDays: formData.creditTermDays ? Number(formData.creditTermDays) : undefined,
         notes: formData.notes || undefined,
+        paymentMethods: validPaymentMethods,
       };
       if (editId) {
         return api.patch(`/suppliers/${editId}`, payload);
@@ -165,6 +185,7 @@ export default function SuppliersPage() {
   const openCreate = () => {
     setEditingSupplier(null);
     setForm(emptyForm);
+    setPaymentMethods([]);
     setSupplierAddress(emptyAddress);
     setIsModalOpen(true);
   };
@@ -180,13 +201,21 @@ export default function SuppliersPage() {
       lineId: supplier.lineId || '',
       taxId: supplier.taxId || '',
       hasVat: supplier.hasVat ?? false,
-      paymentMethod: supplier.paymentMethod || '',
-      bankName: supplier.bankName || '',
-      bankAccountName: supplier.bankAccountName || '',
-      bankAccountNumber: supplier.bankAccountNumber || '',
-      creditTermDays: supplier.creditTermDays ?? '',
       notes: supplier.notes || '',
     });
+    setPaymentMethods(
+      supplier.paymentMethods?.length
+        ? supplier.paymentMethods.map((pm) => ({
+            id: pm.id,
+            paymentMethod: pm.paymentMethod || '',
+            bankName: pm.bankName || '',
+            bankAccountName: pm.bankAccountName || '',
+            bankAccountNumber: pm.bankAccountNumber || '',
+            creditTermDays: pm.creditTermDays ?? '',
+            isDefault: pm.isDefault ?? false,
+          }))
+        : []
+    );
     setSupplierAddress(deserializeAddress(supplier.address));
     setIsModalOpen(true);
   };
@@ -198,7 +227,32 @@ export default function SuppliersPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    saveMutation.mutate({ formData: form, addressData: supplierAddress, editId: editingSupplier?.id });
+    saveMutation.mutate({ formData: form, addressData: supplierAddress, pmList: paymentMethods, editId: editingSupplier?.id });
+  };
+
+  const addPaymentMethod = () => {
+    setPaymentMethods([...paymentMethods, { ...emptyPaymentMethod, isDefault: paymentMethods.length === 0 }]);
+  };
+
+  const removePaymentMethod = (index: number) => {
+    const updated = paymentMethods.filter((_, i) => i !== index);
+    // If removed the default, make the first one default
+    if (updated.length > 0 && !updated.some((pm) => pm.isDefault)) {
+      updated[0].isDefault = true;
+    }
+    setPaymentMethods(updated);
+  };
+
+  const updatePaymentMethod = (index: number, field: keyof PaymentMethod, value: string | number | boolean) => {
+    const updated = [...paymentMethods];
+    if (field === 'isDefault' && value === true) {
+      // Only one default
+      updated.forEach((pm, i) => { pm.isDefault = i === index; });
+    } else {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (updated[index] as any)[field] = value;
+    }
+    setPaymentMethods(updated);
   };
 
   const columns = [
@@ -243,12 +297,21 @@ export default function SuppliersPage() {
       ),
     },
     {
-      key: 'paymentMethod',
+      key: 'paymentMethods',
       label: 'วิธีชำระ',
       render: (s: Supplier) => (
-        <div>
-          <span className="text-sm">{s.paymentMethod ? (paymentMethodLabels[s.paymentMethod] || s.paymentMethod) : '-'}</span>
-          {s.bankName && <div className="text-xs text-gray-400">{s.bankName}</div>}
+        <div className="space-y-0.5">
+          {s.paymentMethods?.length ? (
+            s.paymentMethods.map((pm, i) => (
+              <div key={i} className="flex items-center gap-1">
+                <span className="text-sm">{paymentMethodLabels[pm.paymentMethod] || pm.paymentMethod}</span>
+                {pm.isDefault && <span className="text-[10px] bg-yellow-100 text-yellow-700 px-1 rounded">หลัก</span>}
+                {pm.bankName && <span className="text-xs text-gray-400">({pm.bankName})</span>}
+              </div>
+            ))
+          ) : (
+            <span className="text-sm text-gray-400">-</span>
+          )}
         </div>
       ),
     },
@@ -477,68 +540,113 @@ export default function SuppliersPage() {
                 </span>
               </label>
             </div>
-            {/* Payment Information */}
+
+            {/* Payment Methods Section */}
             <div className="col-span-2 border-t pt-4 mt-2">
-              <h3 className="text-sm font-semibold text-gray-800 mb-3">ข้อมูลการชำระเงิน</h3>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">วิธีชำระเงิน</label>
-              <select
-                value={form.paymentMethod}
-                onChange={(e) => setForm({ ...form, paymentMethod: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-              >
-                <option value="">-- ไม่ระบุ --</option>
-                <option value="CASH">เงินสด</option>
-                <option value="BANK_TRANSFER">โอนธนาคาร</option>
-                <option value="CHECK">เช็ค</option>
-                <option value="CREDIT">เครดิต</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">เครดิต (วัน)</label>
-              <input
-                type="number"
-                value={form.creditTermDays}
-                onChange={(e) => setForm({ ...form, creditTermDays: e.target.value })}
-                placeholder="เช่น 30"
-                min={0}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-              />
-            </div>
-            {(form.paymentMethod === 'BANK_TRANSFER' || form.paymentMethod === '') && (
-              <>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">ธนาคาร</label>
-                  <input
-                    type="text"
-                    value={form.bankName}
-                    onChange={(e) => setForm({ ...form, bankName: e.target.value })}
-                    placeholder="เช่น กสิกรไทย, กรุงเทพ"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-                  />
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-800">ข้อมูลการชำระเงิน</h3>
+                <button
+                  type="button"
+                  onClick={addPaymentMethod}
+                  className="px-3 py-1 text-xs bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors font-medium"
+                >
+                  + เพิ่มวิธีชำระเงิน
+                </button>
+              </div>
+
+              {paymentMethods.length === 0 && (
+                <p className="text-sm text-gray-400 text-center py-3 bg-gray-50 rounded-lg">ยังไม่มีข้อมูลการชำระเงิน กดปุ่ม "เพิ่มวิธีชำระเงิน" เพื่อเพิ่ม</p>
+              )}
+
+              {paymentMethods.map((pm, index) => (
+                <div key={index} className="border border-gray-200 rounded-lg p-3 mb-3 bg-gray-50">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-gray-500">วิธีที่ {index + 1}</span>
+                      <label className="flex items-center gap-1 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="defaultPayment"
+                          checked={pm.isDefault}
+                          onChange={() => updatePaymentMethod(index, 'isDefault', true)}
+                          className="text-blue-600"
+                        />
+                        <span className="text-xs text-gray-500">ค่าเริ่มต้น</span>
+                      </label>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removePaymentMethod(index)}
+                      className="text-red-400 hover:text-red-600 text-xs font-medium"
+                    >
+                      ลบ
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">วิธีชำระเงิน *</label>
+                      <select
+                        value={pm.paymentMethod}
+                        onChange={(e) => updatePaymentMethod(index, 'paymentMethod', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none text-sm"
+                        required
+                      >
+                        <option value="">-- เลือก --</option>
+                        <option value="CASH">เงินสด</option>
+                        <option value="BANK_TRANSFER">โอนธนาคาร</option>
+                        <option value="CHECK">เช็ค</option>
+                        <option value="CREDIT">เครดิต</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">เครดิต (วัน)</label>
+                      <input
+                        type="number"
+                        value={pm.creditTermDays}
+                        onChange={(e) => updatePaymentMethod(index, 'creditTermDays', e.target.value)}
+                        placeholder="เช่น 30"
+                        min={0}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none text-sm"
+                      />
+                    </div>
+                    {(pm.paymentMethod === 'BANK_TRANSFER' || pm.paymentMethod === 'CHECK') && (
+                      <>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">ธนาคาร</label>
+                          <input
+                            type="text"
+                            value={pm.bankName}
+                            onChange={(e) => updatePaymentMethod(index, 'bankName', e.target.value)}
+                            placeholder="เช่น กสิกรไทย, กรุงเทพ"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">ชื่อบัญชี</label>
+                          <input
+                            type="text"
+                            value={pm.bankAccountName}
+                            onChange={(e) => updatePaymentMethod(index, 'bankAccountName', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none text-sm"
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <label className="block text-xs text-gray-500 mb-1">เลขบัญชี</label>
+                          <input
+                            type="text"
+                            value={pm.bankAccountNumber}
+                            onChange={(e) => updatePaymentMethod(index, 'bankAccountNumber', e.target.value)}
+                            placeholder="XXX-X-XXXXX-X"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none text-sm"
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อบัญชี</label>
-                  <input
-                    type="text"
-                    value={form.bankAccountName}
-                    onChange={(e) => setForm({ ...form, bankAccountName: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-                  />
-                </div>
-                <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">เลขบัญชี</label>
-                  <input
-                    type="text"
-                    value={form.bankAccountNumber}
-                    onChange={(e) => setForm({ ...form, bankAccountNumber: e.target.value })}
-                    placeholder="XXX-X-XXXXX-X"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-                  />
-                </div>
-              </>
-            )}
+              ))}
+            </div>
+
             <div className="col-span-2">
               <AddressForm value={supplierAddress} onChange={setSupplierAddress} label="ที่อยู่" />
             </div>

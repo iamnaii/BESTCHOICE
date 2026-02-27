@@ -1,4 +1,35 @@
-import { IsString, IsOptional, IsBoolean, IsInt, Min } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsArray, ValidateNested, IsInt, Min } from 'class-validator';
+import { Type } from 'class-transformer';
+
+export class PaymentMethodUpdateDto {
+  @IsString()
+  @IsOptional()
+  id?: string;
+
+  @IsString()
+  paymentMethod: string;
+
+  @IsString()
+  @IsOptional()
+  bankName?: string;
+
+  @IsString()
+  @IsOptional()
+  bankAccountName?: string;
+
+  @IsString()
+  @IsOptional()
+  bankAccountNumber?: string;
+
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  creditTermDays?: number;
+
+  @IsBoolean()
+  @IsOptional()
+  isDefault?: boolean;
+}
 
 export class UpdateSupplierDto {
   @IsString()
@@ -39,30 +70,15 @@ export class UpdateSupplierDto {
 
   @IsString()
   @IsOptional()
-  paymentMethod?: string;
-
-  @IsString()
-  @IsOptional()
-  bankName?: string;
-
-  @IsString()
-  @IsOptional()
-  bankAccountName?: string;
-
-  @IsString()
-  @IsOptional()
-  bankAccountNumber?: string;
-
-  @IsInt()
-  @Min(0)
-  @IsOptional()
-  creditTermDays?: number;
-
-  @IsString()
-  @IsOptional()
   notes?: string;
 
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PaymentMethodUpdateDto)
+  @IsOptional()
+  paymentMethods?: PaymentMethodUpdateDto[];
 }

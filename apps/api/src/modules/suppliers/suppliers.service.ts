@@ -53,6 +53,7 @@ export class SuppliersService {
         take: limit,
         include: {
           _count: { select: { products: true, purchaseOrders: true } },
+          paymentMethods: { orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }] },
         },
       }),
       this.prisma.supplier.count({ where }),
@@ -66,6 +67,7 @@ export class SuppliersService {
       where: { id },
       include: {
         _count: { select: { products: true, purchaseOrders: true } },
+        paymentMethods: { orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }] },
       },
     });
     if (!supplier) throw new NotFoundException('ไม่พบ Supplier');
@@ -73,12 +75,72 @@ export class SuppliersService {
   }
 
   async create(dto: CreateSupplierDto) {
-    return this.prisma.supplier.create({ data: dto });
+    const { paymentMethods, ...supplierData } = dto;
+    return this.prisma.supplier.create({
+      data: {
+        ...supplierData,
+        paymentMethods: paymentMethods?.length
+          ? {
+              create: paymentMethods.map((pm, index) => ({
+                paymentMethod: pm.paymentMethod,
+                bankName: pm.bankName,
+                bankAccountName: pm.bankAccountName,
+                bankAccountNumber: pm.bankAccountNumber,
+                creditTermDays: pm.creditTermDays,
+                isDefault: pm.isDefault ?? index === 0,
+              })),
+            }
+          : undefined,
+      },
+      include: {
+        paymentMethods: true,
+      },
+    });
   }
 
   async update(id: string, dto: UpdateSupplierDto) {
     await this.findOne(id);
-    return this.prisma.supplier.update({ where: { id }, data: dto });
+    const { paymentMethods, ...supplierData } = dto;
+
+    return this.prisma.$transaction(async (tx) => {
+      // Update supplier fields
+      const supplier = await tx.supplier.update({
+        where: { id },
+        data: supplierData,
+      });
+
+      // If paymentMethods is provided, replace all payment methods
+      if (paymentMethods !== undefined) {
+        // Delete existing payment methods
+        await tx.supplierPaymentMethod.deleteMany({
+          where: { supplierId: id },
+        });
+
+        // Create new payment methods
+        if (paymentMethods.length > 0) {
+          await tx.supplierPaymentMethod.createMany({
+            data: paymentMethods.map((pm, index) => ({
+              supplierId: id,
+              paymentMethod: pm.paymentMethod,
+              bankName: pm.bankName,
+              bankAccountName: pm.bankAccountName,
+              bankAccountNumber: pm.bankAccountNumber,
+              creditTermDays: pm.creditTermDays,
+              isDefault: pm.isDefault ?? index === 0,
+            })),
+          });
+        }
+      }
+
+      // Return with payment methods
+      return tx.supplier.findUnique({
+        where: { id: supplier.id },
+        include: {
+          _count: { select: { products: true, purchaseOrders: true } },
+          paymentMethods: { orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }] },
+        },
+      });
+    });
   }
 
   async remove(id: string) {

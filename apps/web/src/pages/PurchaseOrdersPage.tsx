@@ -152,7 +152,7 @@ export default function PurchaseOrdersPage() {
   });
   const [items, setItems] = useState<ItemForm[]>([{ ...emptyItem }]);
 
-  const { data: suppliersRes } = useQuery<{ data: { id: string; name: string; contactName: string; hasVat: boolean; paymentMethods: { paymentMethod: string; isDefault: boolean }[] }[] }>({
+  const { data: suppliersRes } = useQuery<{ data: { id: string; name: string; contactName: string; hasVat: boolean; paymentMethods: { paymentMethod: string; bankName?: string; bankAccountName?: string; bankAccountNumber?: string; creditTermDays?: number; isDefault: boolean }[] }[] }>({
     queryKey: ['suppliers-for-po'],
     queryFn: async () => (await api.get('/suppliers?limit=999&isActive=true')).data,
   });
@@ -380,8 +380,10 @@ export default function PurchaseOrdersPage() {
   const subtotal = items.reduce((sum, i) => sum + Number(i.quantity || 0) * Number(i.unitPrice || 0), 0);
   const selectedSupplier = suppliers.find((s) => s.id === form.supplierId);
   const supplierHasVat = selectedSupplier?.hasVat ?? false;
-  const vatAmount = supplierHasVat ? Math.round(subtotal * 0.07 * 100) / 100 : 0;
-  const totalAmount = subtotal + vatAmount;
+  const discountNum = Number(form.discount) || 0;
+  const subtotalAfterDiscount = subtotal - discountNum;
+  const vatAmount = supplierHasVat ? Math.round(subtotalAfterDiscount * 0.07 * 100) / 100 : 0;
+  const netAmount = subtotalAfterDiscount + vatAmount;
 
   const selectClass = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none';
   const inputClass = selectClass;
@@ -752,7 +754,7 @@ export default function PurchaseOrdersPage() {
             <div className="bg-gray-50 rounded-lg p-3 space-y-1 text-sm">
               <div className="flex justify-between">
                 <span className="text-gray-500">ยอดรวมสินค้า (Subtotal)</span>
-                <span className="font-medium">{totalAmount.toLocaleString()} บาท</span>
+                <span className="font-medium">{subtotal.toLocaleString()} บาท</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-gray-500">ส่วนลด</span>
@@ -765,28 +767,22 @@ export default function PurchaseOrdersPage() {
                   placeholder="0"
                 />
               </div>
-              {(() => {
-                const disc = Number(form.discount) || 0;
-                const afterDiscount = totalAmount - disc;
-                const vat = Math.round(afterDiscount * 0.07 * 100) / 100;
-                const net = afterDiscount + vat;
-                return (
-                  <>
-                    <div className="flex justify-between text-gray-500">
-                      <span>หลังหักส่วนลด</span>
-                      <span>{afterDiscount.toLocaleString()} บาท</span>
-                    </div>
-                    <div className="flex justify-between text-gray-500">
-                      <span>VAT 7%</span>
-                      <span>{vat.toLocaleString()} บาท</span>
-                    </div>
-                    <div className="flex justify-between border-t pt-1 mt-1 font-semibold text-base">
-                      <span>ยอดสุทธิ</span>
-                      <span className="text-primary-700">{net.toLocaleString()} บาท</span>
-                    </div>
-                  </>
-                );
-              })()}
+              {discountNum > 0 && (
+                <div className="flex justify-between text-gray-500">
+                  <span>หลังหักส่วนลด</span>
+                  <span>{subtotalAfterDiscount.toLocaleString()} บาท</span>
+                </div>
+              )}
+              {supplierHasVat && (
+                <div className="flex justify-between text-gray-500">
+                  <span>VAT 7%</span>
+                  <span>{vatAmount.toLocaleString()} บาท</span>
+                </div>
+              )}
+              <div className="flex justify-between border-t pt-1 mt-1 font-semibold text-base">
+                <span>ยอดสุทธิ</span>
+                <span className="text-primary-700">{netAmount.toLocaleString()} บาท</span>
+              </div>
             </div>
           </div>
 
@@ -800,12 +796,10 @@ export default function PurchaseOrdersPage() {
                   value={form.paymentStatus}
                   onChange={(e) => {
                     const newStatus = e.target.value;
-                    const disc = Number(form.discount) || 0;
-                    const net = (totalAmount - disc) * 1.07;
                     setForm({
                       ...form,
                       paymentStatus: newStatus,
-                      paidAmount: newStatus === 'FULLY_PAID' ? String(Math.round(net)) : newStatus === 'UNPAID' ? '' : form.paidAmount,
+                      paidAmount: newStatus === 'FULLY_PAID' ? String(Math.round(netAmount * 100) / 100) : newStatus === 'UNPAID' ? '' : form.paidAmount,
                     });
                   }}
                   className={selectClass}
@@ -825,10 +819,22 @@ export default function PurchaseOrdersPage() {
                   disabled={form.paymentStatus === 'UNPAID'}
                 >
                   <option value="">-- เลือก --</option>
-                  <option value="CASH">เงินสด</option>
-                  <option value="BANK_TRANSFER">โอนธนาคาร</option>
-                  <option value="CHECK">เช็ค</option>
-                  <option value="CREDIT">เครดิต</option>
+                  {selectedSupplier?.paymentMethods?.length ? (
+                    selectedSupplier.paymentMethods.map((pm, idx) => {
+                      const labels: Record<string, string> = { CASH: 'เงินสด', BANK_TRANSFER: 'โอนธนาคาร', CHECK: 'เช็ค', CREDIT: 'เครดิต' };
+                      const label = labels[pm.paymentMethod] || pm.paymentMethod;
+                      const detail = pm.bankName ? ` - ${pm.bankName}${pm.bankAccountNumber ? ` (${pm.bankAccountNumber})` : ''}` : '';
+                      const credit = pm.creditTermDays ? ` ${pm.creditTermDays} วัน` : '';
+                      return <option key={idx} value={pm.paymentMethod}>{label}{detail}{credit}{pm.isDefault ? ' (ค่าเริ่มต้น)' : ''}</option>;
+                    })
+                  ) : (
+                    <>
+                      <option value="CASH">เงินสด</option>
+                      <option value="BANK_TRANSFER">โอนธนาคาร</option>
+                      <option value="CHECK">เช็ค</option>
+                      <option value="CREDIT">เครดิต</option>
+                    </>
+                  )}
                 </select>
               </div>
               <div>
@@ -843,10 +849,10 @@ export default function PurchaseOrdersPage() {
                   disabled={form.paymentStatus === 'UNPAID'}
                   placeholder={form.paymentStatus === 'UNPAID' ? '-' : '0'}
                 />
-                {form.paymentStatus !== 'UNPAID' && form.paymentStatus !== 'FULLY_PAID' && totalAmount > 0 && (
+                {form.paymentStatus !== 'UNPAID' && form.paymentStatus !== 'FULLY_PAID' && netAmount > 0 && (
                   <div className="flex gap-2 mt-1">
-                    <button type="button" onClick={() => setForm({ ...form, paidAmount: String(Math.round(totalAmount * 0.3)) })} className="text-xs text-blue-600 hover:underline">30%</button>
-                    <button type="button" onClick={() => setForm({ ...form, paidAmount: String(Math.round(totalAmount * 0.5)) })} className="text-xs text-blue-600 hover:underline">50%</button>
+                    <button type="button" onClick={() => setForm({ ...form, paidAmount: String(Math.round(netAmount * 0.3)) })} className="text-xs text-blue-600 hover:underline">30%</button>
+                    <button type="button" onClick={() => setForm({ ...form, paidAmount: String(Math.round(netAmount * 0.5)) })} className="text-xs text-blue-600 hover:underline">50%</button>
                   </div>
                 )}
               </div>
@@ -1203,17 +1209,35 @@ export default function PurchaseOrdersPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">วิธีจ่ายเงิน</label>
-                <select
-                  value={paymentForm.paymentMethod}
-                  onChange={(e) => setPaymentForm({ ...paymentForm, paymentMethod: e.target.value })}
-                  className={selectClass}
-                >
-                  <option value="">-- เลือก --</option>
-                  <option value="CASH">เงินสด</option>
-                  <option value="BANK_TRANSFER">โอนธนาคาร</option>
-                  <option value="CHECK">เช็ค</option>
-                  <option value="CREDIT">เครดิต</option>
-                </select>
+                {(() => {
+                  const poSupplier = suppliers.find((s) => s.id === selectedPO?.supplier.id);
+                  const pmList = poSupplier?.paymentMethods;
+                  return (
+                    <select
+                      value={paymentForm.paymentMethod}
+                      onChange={(e) => setPaymentForm({ ...paymentForm, paymentMethod: e.target.value })}
+                      className={selectClass}
+                    >
+                      <option value="">-- เลือก --</option>
+                      {pmList?.length ? (
+                        pmList.map((pm, idx) => {
+                          const labels: Record<string, string> = { CASH: 'เงินสด', BANK_TRANSFER: 'โอนธนาคาร', CHECK: 'เช็ค', CREDIT: 'เครดิต' };
+                          const label = labels[pm.paymentMethod] || pm.paymentMethod;
+                          const detail = pm.bankName ? ` - ${pm.bankName}${pm.bankAccountNumber ? ` (${pm.bankAccountNumber})` : ''}` : '';
+                          const credit = pm.creditTermDays ? ` ${pm.creditTermDays} วัน` : '';
+                          return <option key={idx} value={pm.paymentMethod}>{label}{detail}{credit}{pm.isDefault ? ' (ค่าเริ่มต้น)' : ''}</option>;
+                        })
+                      ) : (
+                        <>
+                          <option value="CASH">เงินสด</option>
+                          <option value="BANK_TRANSFER">โอนธนาคาร</option>
+                          <option value="CHECK">เช็ค</option>
+                          <option value="CREDIT">เครดิต</option>
+                        </>
+                      )}
+                    </select>
+                  );
+                })()}
               </div>
             </div>
 

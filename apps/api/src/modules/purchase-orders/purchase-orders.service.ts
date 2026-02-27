@@ -541,14 +541,17 @@ export class PurchaseOrdersService {
         throw new BadRequestException('พบ IMEI ซ้ำกันในรายการที่กำลังรับเข้า');
       }
 
-      // Validate IMEI not already exists in system
+      // Validate IMEI not already exists in system (include soft-deleted due to DB unique constraint)
       if (imeiList.length > 0) {
         const existingProducts = await tx.product.findMany({
-          where: { imeiSerial: { in: imeiList }, deletedAt: null },
-          select: { imeiSerial: true, name: true },
+          where: { imeiSerial: { in: imeiList } },
+          select: { imeiSerial: true, name: true, deletedAt: true },
         });
         if (existingProducts.length > 0) {
-          const dupes = existingProducts.map((p) => `${p.imeiSerial} (${p.name})`).join(', ');
+          const dupes = existingProducts.map((p) => {
+            const suffix = p.deletedAt ? ' [ตัดจำหน่ายแล้ว]' : '';
+            return `${p.imeiSerial} (${p.name}${suffix})`;
+          }).join(', ');
           throw new BadRequestException(`IMEI ซ้ำกับสินค้าที่มีในระบบแล้ว: ${dupes}`);
         }
       }

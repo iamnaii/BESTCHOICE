@@ -7,30 +7,34 @@ export class StockAdjustmentsService {
   constructor(private prisma: PrismaService) {}
 
   async create(dto: CreateStockAdjustmentDto, userId: string) {
-    const product = await this.prisma.product.findUnique({
-      where: { id: dto.productId },
-      include: { branch: { select: { id: true, name: true } } },
-    });
-    if (!product || product.deletedAt) {
-      throw new NotFoundException('ไม่พบสินค้า');
-    }
-
-    // FOUND: product is coming back → must be soft-deleted or already adjusted out
-    if (dto.reason === 'FOUND') {
-      if (product.status === 'IN_STOCK') {
-        throw new BadRequestException('สินค้านี้อยู่ในสต๊อคอยู่แล้ว ไม่สามารถใช้เหตุผล "พบคืน" ได้');
-      }
-    } else {
-      // DAMAGED, LOST, WRITE_OFF, CORRECTION, OTHER: product must be in stock
-      const adjustableStatuses = ['IN_STOCK', 'PO_RECEIVED', 'INSPECTION'];
-      if (!adjustableStatuses.includes(product.status)) {
-        throw new BadRequestException(
-          `ไม่สามารถปรับสต๊อคสินค้าสถานะ "${product.status}" ได้ (ต้องเป็น IN_STOCK, PO_RECEIVED, หรือ INSPECTION)`,
-        );
-      }
-    }
-
     return this.prisma.$transaction(async (tx) => {
+      // Find product inside transaction to prevent race conditions
+      const product = await tx.product.findUnique({
+        where: { id: dto.productId },
+        include: { branch: { select: { id: true, name: true } } },
+      });
+
+      // FOUND: allow soft-deleted products (they need to be restored)
+      if (dto.reason === 'FOUND') {
+        if (!product) {
+          throw new NotFoundException('ไม่พบสินค้า');
+        }
+        if (!product.deletedAt && product.status === 'IN_STOCK') {
+          throw new BadRequestException('สินค้านี้อยู่ในสต๊อคอยู่แล้ว ไม่สามารถใช้เหตุผล "พบคืน" ได้');
+        }
+      } else {
+        // DAMAGED, LOST, WRITE_OFF, CORRECTION, OTHER: product must exist and be in stock
+        if (!product || product.deletedAt) {
+          throw new NotFoundException('ไม่พบสินค้า');
+        }
+        const adjustableStatuses = ['IN_STOCK', 'PO_RECEIVED', 'INSPECTION'];
+        if (!adjustableStatuses.includes(product.status)) {
+          throw new BadRequestException(
+            `ไม่สามารถปรับสต๊อคสินค้าสถานะ "${product.status}" ได้ (ต้องเป็น IN_STOCK, PO_RECEIVED, หรือ INSPECTION)`,
+          );
+        }
+      }
+
       // Create adjustment record
       const adjustment = await tx.stockAdjustment.create({
         data: {

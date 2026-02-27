@@ -46,6 +46,18 @@ export class CreatePODto {
   @ValidateNested({ each: true })
   @Type(() => POItemDto)
   items: POItemDto[];
+
+  @IsIn(['UNPAID', 'DEPOSIT_PAID', 'PARTIALLY_PAID', 'FULLY_PAID'])
+  @IsOptional()
+  paymentStatus?: string;
+
+  @IsNumber()
+  @IsOptional()
+  paidAmount?: number;
+
+  @IsString()
+  @IsOptional()
+  paymentNotes?: string;
 }
 
 export class UpdatePODto {

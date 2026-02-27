@@ -136,6 +136,9 @@ export default function PurchaseOrdersPage() {
     orderDate: new Date().toISOString().split('T')[0],
     expectedDate: '',
     notes: '',
+    paymentStatus: 'UNPAID',
+    paidAmount: '',
+    paymentNotes: '',
   });
   const [items, setItems] = useState<ItemForm[]>([{ ...emptyItem }]);
 
@@ -214,7 +217,7 @@ export default function PurchaseOrdersPage() {
   });
 
   const resetForm = () => {
-    setForm({ supplierId: '', orderDate: new Date().toISOString().split('T')[0], expectedDate: '', notes: '' });
+    setForm({ supplierId: '', orderDate: new Date().toISOString().split('T')[0], expectedDate: '', notes: '', paymentStatus: 'UNPAID', paidAmount: '', paymentNotes: '' });
     setItems([{ ...emptyItem }]);
   };
 
@@ -247,8 +250,13 @@ export default function PurchaseOrdersPage() {
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
     createMutation.mutate({
-      ...form,
+      supplierId: form.supplierId,
+      orderDate: form.orderDate,
       expectedDate: form.expectedDate || undefined,
+      notes: form.notes || undefined,
+      paymentStatus: form.paymentStatus !== 'UNPAID' ? form.paymentStatus : undefined,
+      paidAmount: form.paidAmount ? Number(form.paidAmount) : undefined,
+      paymentNotes: form.paymentNotes || undefined,
       items: items.map((i) => ({
         brand: i.brand,
         model: i.model,
@@ -679,6 +687,76 @@ export default function PurchaseOrdersPage() {
             <div className="text-right mt-2 text-sm font-medium">
               ยอดรวม: {totalAmount.toLocaleString()} บาท
             </div>
+          </div>
+
+          {/* Payment Section */}
+          <div className="border-t pt-4">
+            <h4 className="text-sm font-medium text-gray-700 mb-2">การจ่ายเงิน</h4>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-gray-500 mb-0.5">สถานะการจ่ายเงิน</label>
+                <select
+                  value={form.paymentStatus}
+                  onChange={(e) => {
+                    const newStatus = e.target.value;
+                    setForm({
+                      ...form,
+                      paymentStatus: newStatus,
+                      paidAmount: newStatus === 'FULLY_PAID' ? String(totalAmount) : newStatus === 'UNPAID' ? '' : form.paidAmount,
+                    });
+                  }}
+                  className={selectClass}
+                >
+                  <option value="UNPAID">ยังไม่จ่าย</option>
+                  <option value="DEPOSIT_PAID">จ่ายมัดจำ</option>
+                  <option value="PARTIALLY_PAID">จ่ายบางส่วน</option>
+                  <option value="FULLY_PAID">จ่ายครบแล้ว</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-0.5">จำนวนเงินที่จ่าย (บาท)</label>
+                <input
+                  type="number"
+                  value={form.paidAmount}
+                  onChange={(e) => setForm({ ...form, paidAmount: e.target.value })}
+                  className={inputClass}
+                  min="0"
+                  step="0.01"
+                  disabled={form.paymentStatus === 'UNPAID'}
+                  placeholder={form.paymentStatus === 'UNPAID' ? '-' : '0'}
+                />
+                {form.paymentStatus !== 'UNPAID' && form.paymentStatus !== 'FULLY_PAID' && totalAmount > 0 && (
+                  <div className="flex gap-2 mt-1">
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, paidAmount: String(Math.round(totalAmount * 0.3)) })}
+                      className="text-xs text-blue-600 hover:underline"
+                    >
+                      30%
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, paidAmount: String(Math.round(totalAmount * 0.5)) })}
+                      className="text-xs text-blue-600 hover:underline"
+                    >
+                      50%
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+            {form.paymentStatus !== 'UNPAID' && (
+              <div className="mt-2">
+                <label className="block text-xs text-gray-500 mb-0.5">หมายเหตุการจ่ายเงิน</label>
+                <input
+                  type="text"
+                  value={form.paymentNotes}
+                  onChange={(e) => setForm({ ...form, paymentNotes: e.target.value })}
+                  className={inputClass}
+                  placeholder="เช่น โอนผ่านธนาคาร xxx, เลขอ้างอิง xxx"
+                />
+              </div>
+            )}
           </div>
 
           <div>

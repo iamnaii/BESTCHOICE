@@ -78,6 +78,9 @@ export class PurchaseOrdersService {
         notes: dto.notes,
         createdById: userId,
         status: 'PENDING',
+        paymentStatus: (dto.paymentStatus as any) || 'UNPAID',
+        paidAmount: dto.paidAmount || 0,
+        paymentNotes: dto.paymentNotes || null,
         items: {
           create: dto.items.map((item) => ({
             brand: item.brand,

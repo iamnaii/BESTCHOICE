@@ -229,7 +229,7 @@ export default function ProductCreatePage() {
   };
 
   const handleAccessoryTypeChange = (newType: string) => {
-    setForm({ ...form, accessoryType: newType, brand: '', model: '' });
+    setForm({ ...form, accessoryType: newType, brand: '', model: '', accessoryBrand: '' });
   };
 
   // Toggle model for multi-select (accessories)
@@ -312,7 +312,7 @@ export default function ProductCreatePage() {
                       {brands.map((b) => <option key={b} value={b}>{b}</option>)}
                     </select>
                   </div>
-                ) : <div />}
+                ) : null}
 
                 {/* Multi-model selection for non-charger accessories */}
                 {form.accessoryType && form.accessoryType !== 'ชุดชาร์จ' && form.brand && availableModels.length > 0 && (

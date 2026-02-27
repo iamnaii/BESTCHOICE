@@ -41,7 +41,7 @@ export class PurchaseOrdersService {
           },
         },
         products: {
-          select: { id: true, name: true, brand: true, model: true, imeiSerial: true, serialNumber: true, photos: true, status: true, costPrice: true, branchId: true },
+          select: { id: true, name: true, brand: true, model: true, imeiSerial: true, serialNumber: true, photos: true, status: true, costPrice: true, branchId: true, accessoryType: true, accessoryBrand: true },
         },
         goodsReceivings: {
           include: {

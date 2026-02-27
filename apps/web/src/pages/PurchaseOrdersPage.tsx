@@ -283,9 +283,10 @@ export default function PurchaseOrdersPage() {
       item.accessoryType = '';
       item.accessoryBrand = '';
     } else if (field === 'accessoryType') {
-      // Reset compatible brand/model when accessory type changes
+      // Reset compatible brand/model/accessoryBrand when accessory type changes
       item.brand = '';
       item.model = '';
+      item.accessoryBrand = '';
     } else if (field === 'brand') {
       item.model = '';
       item.color = '';

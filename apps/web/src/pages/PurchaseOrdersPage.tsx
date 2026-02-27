@@ -261,6 +261,7 @@ export default function PurchaseOrdersPage() {
       api.patch(`/purchase-orders/${poId}/payment`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['accounts-payable'] });
       toast.success('อัปเดตสถานะการจ่ายเงินสำเร็จ');
       setIsPaymentModalOpen(false);
       // Refresh detail if open
@@ -707,7 +708,7 @@ export default function PurchaseOrdersPage() {
                   {entry.pos.map((po) => (
                     <tr key={po.id} className="border-b last:border-0 hover:bg-gray-50">
                       <td className="px-4 py-2">
-                        <button onClick={() => { const found = pos.find((p) => p.id === po.id); if (found) openDetailModal(found); }} className="text-primary-600 hover:underline font-medium">
+                        <button onClick={async () => { try { const { data } = await api.get(`/purchase-orders/${po.id}`); setSelectedPO(data); setPODetail(data); setIsDetailModalOpen(true); } catch {} }} className="text-primary-600 hover:underline font-medium">
                           {po.poNumber}
                         </button>
                       </td>

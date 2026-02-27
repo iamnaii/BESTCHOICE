@@ -194,7 +194,7 @@ export class PurchaseOrdersService {
     // Get all non-cancelled POs that are not fully paid
     const pos = await this.prisma.purchaseOrder.findMany({
       where: {
-        status: { not: 'CANCELLED' },
+        status: { notIn: ['CANCELLED', 'DRAFT'] },
         paymentStatus: { not: 'FULLY_PAID' },
       },
       include: {

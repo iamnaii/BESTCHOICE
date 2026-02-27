@@ -190,7 +190,7 @@ export default function PurchaseOrdersPage() {
       totalPaid: number;
       totalRemaining: number;
       poCount: number;
-      pos: { id: string; poNumber: string; orderDate: string; netAmount: number; paidAmount: number; remaining: number; paymentStatus: string; status: string; itemsSummary: string }[];
+      pos: { id: string; poNumber: string; orderDate: string; dueDate: string | null; netAmount: number; paidAmount: number; remaining: number; paymentStatus: string; status: string; itemsSummary: string }[];
     }[];
   }>({
     queryKey: ['accounts-payable'],

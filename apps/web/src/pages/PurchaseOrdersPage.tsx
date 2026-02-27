@@ -5,11 +5,15 @@ import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
+import { brands, getModels, getModelInfo } from '@/data/productCatalog';
 
 interface POItem {
   id: string;
   brand: string;
   model: string;
+  color: string | null;
+  storage: string | null;
+  category: string | null;
   quantity: number;
   unitPrice: string;
   receivedQty: number;
@@ -40,6 +44,9 @@ interface PurchaseOrder {
   expectedDate: string | null;
   status: string;
   totalAmount: string;
+  paymentStatus: string;
+  paidAmount: string;
+  paymentNotes: string | null;
   notes: string | null;
   supplier: { id: string; name: string; contactName: string; phone: string };
   createdBy: { id: string; name: string };
@@ -70,9 +77,33 @@ const statusColors: Record<string, string> = {
   CANCELLED: 'bg-red-100 text-red-700',
 };
 
+const paymentStatusLabels: Record<string, string> = {
+  UNPAID: 'ยังไม่จ่าย',
+  DEPOSIT_PAID: 'จ่ายมัดจำ',
+  PARTIALLY_PAID: 'จ่ายบางส่วน',
+  FULLY_PAID: 'จ่ายครบแล้ว',
+};
+
+const paymentStatusColors: Record<string, string> = {
+  UNPAID: 'bg-red-100 text-red-700',
+  DEPOSIT_PAID: 'bg-yellow-100 text-yellow-700',
+  PARTIALLY_PAID: 'bg-blue-100 text-blue-700',
+  FULLY_PAID: 'bg-green-100 text-green-700',
+};
+
+const categoryLabels: Record<string, string> = {
+  PHONE_NEW: 'โทรศัพท์ (ใหม่)',
+  PHONE_USED: 'โทรศัพท์ (มือสอง)',
+  TABLET: 'แท็บเล็ต',
+  ACCESSORY: 'อุปกรณ์เสริม',
+};
+
 interface ItemForm {
   brand: string;
+  category: string;
   model: string;
+  color: string;
+  storage: string;
   quantity: string;
   unitPrice: string;
 }
@@ -86,23 +117,27 @@ interface ReceivingUnitForm {
   rejectReason: string;
 }
 
+const emptyItem: ItemForm = { brand: '', category: '', model: '', color: '', storage: '', quantity: '1', unitPrice: '' };
+
 export default function PurchaseOrdersPage() {
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState('');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
   const [poDetail, setPODetail] = useState<PODetail | null>(null);
   const [receivingUnits, setReceivingUnits] = useState<ReceivingUnitForm[]>([]);
   const [receivingNotes, setReceivingNotes] = useState('');
+  const [paymentForm, setPaymentForm] = useState({ paymentStatus: '', paidAmount: '', paymentNotes: '' });
   const [form, setForm] = useState({
     supplierId: '',
     orderDate: new Date().toISOString().split('T')[0],
     expectedDate: '',
     notes: '',
   });
-  const [items, setItems] = useState<ItemForm[]>([{ brand: '', model: '', quantity: '1', unitPrice: '' }]);
+  const [items, setItems] = useState<ItemForm[]>([{ ...emptyItem }]);
 
   const { data: suppliersRes } = useQuery<{ data: { id: string; name: string; contactName: string }[] }>({
     queryKey: ['suppliers-for-po'],
@@ -160,16 +195,52 @@ export default function PurchaseOrdersPage() {
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
+  const paymentMutation = useMutation({
+    mutationFn: async ({ poId, data }: { poId: string; data: Record<string, unknown> }) =>
+      api.patch(`/purchase-orders/${poId}/payment`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      toast.success('อัปเดตสถานะการจ่ายเงินสำเร็จ');
+      setIsPaymentModalOpen(false);
+      // Refresh detail if open
+      if (selectedPO) {
+        api.get(`/purchase-orders/${selectedPO.id}`).then(({ data }) => {
+          setPODetail(data);
+          setSelectedPO(data);
+        });
+      }
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
   const resetForm = () => {
     setForm({ supplierId: '', orderDate: new Date().toISOString().split('T')[0], expectedDate: '', notes: '' });
-    setItems([{ brand: '', model: '', quantity: '1', unitPrice: '' }]);
+    setItems([{ ...emptyItem }]);
   };
 
-  const addItem = () => setItems([...items, { brand: '', model: '', quantity: '1', unitPrice: '' }]);
+  const addItem = () => setItems([...items, { ...emptyItem }]);
   const removeItem = (idx: number) => setItems(items.filter((_, i) => i !== idx));
+
   const updateItem = (idx: number, field: string, value: string) => {
     const newItems = [...items];
-    newItems[idx] = { ...newItems[idx], [field]: value };
+    const item = { ...newItems[idx], [field]: value };
+
+    // Cascade reset when parent changes
+    if (field === 'brand') {
+      item.category = '';
+      item.model = '';
+      item.color = '';
+      item.storage = '';
+    } else if (field === 'category') {
+      item.model = '';
+      item.color = '';
+      item.storage = '';
+    } else if (field === 'model') {
+      item.color = '';
+      item.storage = '';
+    }
+
+    newItems[idx] = item;
     setItems(newItems);
   };
 
@@ -181,6 +252,9 @@ export default function PurchaseOrdersPage() {
       items: items.map((i) => ({
         brand: i.brand,
         model: i.model,
+        color: i.color || undefined,
+        storage: i.storage || undefined,
+        category: i.category || undefined,
         quantity: Number(i.quantity),
         unitPrice: Number(i.unitPrice),
       })),
@@ -190,10 +264,10 @@ export default function PurchaseOrdersPage() {
   const openDetailModal = async (po: PurchaseOrder) => {
     setSelectedPO(po);
     setIsDetailModalOpen(true);
-    // Fetch full detail with goods receivings
     try {
       const { data } = await api.get(`/purchase-orders/${po.id}`);
       setPODetail(data);
+      setSelectedPO(data);
     } catch {
       setPODetail(null);
     }
@@ -202,14 +276,14 @@ export default function PurchaseOrdersPage() {
   const openReceiveModal = (po: PurchaseOrder) => {
     setSelectedPO(po);
     setReceivingNotes('');
-    // Build per-unit receiving forms for remaining items
     const units: ReceivingUnitForm[] = [];
     for (const item of po.items) {
       const remaining = item.quantity - item.receivedQty;
+      const nameParts = [item.brand, item.model, item.color, item.storage].filter(Boolean);
       for (let i = 0; i < remaining; i++) {
         units.push({
           poItemId: item.id,
-          label: `${item.brand} ${item.model} #${item.receivedQty + i + 1}`,
+          label: `${nameParts.join(' ')} #${item.receivedQty + i + 1}`,
           imeiSerial: '',
           serialNumber: '',
           status: 'PASS',
@@ -219,6 +293,16 @@ export default function PurchaseOrdersPage() {
     }
     setReceivingUnits(units);
     setIsReceiveModalOpen(true);
+  };
+
+  const openPaymentModal = (po: PurchaseOrder) => {
+    setSelectedPO(po);
+    setPaymentForm({
+      paymentStatus: po.paymentStatus || 'UNPAID',
+      paidAmount: po.paidAmount ? String(Number(po.paidAmount)) : '0',
+      paymentNotes: po.paymentNotes || '',
+    });
+    setIsPaymentModalOpen(true);
   };
 
   const updateReceivingUnit = (idx: number, field: string, value: string) => {
@@ -236,7 +320,6 @@ export default function PurchaseOrdersPage() {
       return;
     }
 
-    // Check that rejected items have reasons
     const missingReasons = receivingUnits.filter((u) => u.status === 'REJECT' && !u.rejectReason.trim());
     if (missingReasons.length > 0) {
       toast.error('กรุณาระบุเหตุผลสำหรับรายการที่ไม่ผ่าน');
@@ -250,7 +333,23 @@ export default function PurchaseOrdersPage() {
     });
   };
 
+  const handlePaymentUpdate = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedPO) return;
+    paymentMutation.mutate({
+      poId: selectedPO.id,
+      data: {
+        paymentStatus: paymentForm.paymentStatus,
+        paidAmount: Number(paymentForm.paidAmount),
+        paymentNotes: paymentForm.paymentNotes || undefined,
+      },
+    });
+  };
+
   const totalAmount = items.reduce((sum, i) => sum + Number(i.quantity || 0) * Number(i.unitPrice || 0), 0);
+
+  const selectClass = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none';
+  const inputClass = selectClass;
 
   const columns = [
     {
@@ -306,6 +405,18 @@ export default function PurchaseOrdersPage() {
       ),
     },
     {
+      key: 'paymentStatus',
+      label: 'การจ่ายเงิน',
+      render: (po: PurchaseOrder) => (
+        <button
+          onClick={() => openPaymentModal(po)}
+          className={`px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer hover:opacity-80 ${paymentStatusColors[po.paymentStatus] || 'bg-gray-100 text-gray-700'}`}
+        >
+          {paymentStatusLabels[po.paymentStatus] || po.paymentStatus || 'ยังไม่จ่าย'}
+        </button>
+      ),
+    },
+    {
       key: 'received',
       label: 'รับสินค้า',
       render: (po: PurchaseOrder) => {
@@ -356,6 +467,12 @@ export default function PurchaseOrdersPage() {
     },
   ];
 
+  // Helper to get item description for detail view
+  const getItemDesc = (item: POItem) => {
+    const parts = [item.color, item.storage].filter(Boolean);
+    return parts.length > 0 ? parts.join(' / ') : '-';
+  };
+
   return (
     <div>
       <PageHeader
@@ -389,14 +506,14 @@ export default function PurchaseOrdersPage() {
       <DataTable columns={columns} data={pos} isLoading={isLoading} emptyMessage="ยังไม่มีใบสั่งซื้อ" />
 
       {/* Create PO Modal */}
-      <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="สร้างใบสั่งซื้อ" size="lg">
+      <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="สร้างใบสั่งซื้อ" size="xl">
         <form onSubmit={handleCreate} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Supplier *</label>
             <select
               value={form.supplierId}
               onChange={(e) => setForm({ ...form, supplierId: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+              className={selectClass}
               required
             >
               <option value="">-- เลือก Supplier --</option>
@@ -412,7 +529,7 @@ export default function PurchaseOrdersPage() {
                 type="date"
                 value={form.orderDate}
                 onChange={(e) => setForm({ ...form, orderDate: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+                className={inputClass}
                 required
               />
             </div>
@@ -422,12 +539,12 @@ export default function PurchaseOrdersPage() {
                 type="date"
                 value={form.expectedDate}
                 onChange={(e) => setForm({ ...form, expectedDate: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+                className={inputClass}
               />
             </div>
           </div>
 
-          {/* Items */}
+          {/* Items with cascade dropdowns */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-sm font-medium text-gray-700">รายการสินค้า</label>
@@ -435,53 +552,129 @@ export default function PurchaseOrdersPage() {
                 + เพิ่มรายการ
               </button>
             </div>
-            <div className="space-y-3">
-              {items.map((item, idx) => (
-                <div key={idx} className="flex gap-2 items-start">
-                  <input
-                    type="text"
-                    placeholder="ยี่ห้อ"
-                    value={item.brand}
-                    onChange={(e) => updateItem(idx, 'brand', e.target.value)}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
-                    required
-                  />
-                  <input
-                    type="text"
-                    placeholder="รุ่น"
-                    value={item.model}
-                    onChange={(e) => updateItem(idx, 'model', e.target.value)}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
-                    required
-                  />
-                  <input
-                    type="number"
-                    placeholder="จำนวน"
-                    value={item.quantity}
-                    onChange={(e) => updateItem(idx, 'quantity', e.target.value)}
-                    className="w-20 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
-                    min="1"
-                    required
-                  />
-                  <input
-                    type="number"
-                    placeholder="ราคา/ชิ้น"
-                    value={item.unitPrice}
-                    onChange={(e) => updateItem(idx, 'unitPrice', e.target.value)}
-                    className="w-28 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
-                    required
-                  />
-                  {items.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => removeItem(idx)}
-                      className="text-red-500 hover:text-red-700 px-2 py-2"
-                    >
-                      &times;
-                    </button>
-                  )}
-                </div>
-              ))}
+            <div className="space-y-4">
+              {items.map((item, idx) => {
+                const availableModels = item.brand ? getModels(item.brand, item.category || undefined) : [];
+                const modelInfo = item.brand && item.model ? getModelInfo(item.brand, item.model) : undefined;
+                const availableColors = modelInfo?.colors || [];
+                const availableStorage = modelInfo?.storage || [];
+
+                return (
+                  <div key={idx} className="border border-gray-200 rounded-lg p-3 space-y-2 bg-gray-50 relative">
+                    {items.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeItem(idx)}
+                        className="absolute top-2 right-2 text-red-400 hover:text-red-600 text-lg leading-none"
+                      >
+                        &times;
+                      </button>
+                    )}
+                    <div className="text-xs font-medium text-gray-500 mb-1">รายการ #{idx + 1}</div>
+
+                    {/* Row 1: Brand, Category, Model */}
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-0.5">ยี่ห้อ *</label>
+                        <select
+                          value={item.brand}
+                          onChange={(e) => updateItem(idx, 'brand', e.target.value)}
+                          className={selectClass}
+                          required
+                        >
+                          <option value="">-- เลือกยี่ห้อ --</option>
+                          {brands.map((b) => (
+                            <option key={b} value={b}>{b}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-0.5">ประเภท</label>
+                        <select
+                          value={item.category}
+                          onChange={(e) => updateItem(idx, 'category', e.target.value)}
+                          className={selectClass}
+                          disabled={!item.brand}
+                        >
+                          <option value="">-- ทั้งหมด --</option>
+                          <option value="PHONE_NEW">โทรศัพท์ (ใหม่)</option>
+                          <option value="PHONE_USED">โทรศัพท์ (มือสอง)</option>
+                          <option value="TABLET">แท็บเล็ต</option>
+                          <option value="ACCESSORY">อุปกรณ์เสริม</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-0.5">รุ่น *</label>
+                        <select
+                          value={item.model}
+                          onChange={(e) => updateItem(idx, 'model', e.target.value)}
+                          className={selectClass}
+                          required
+                          disabled={!item.brand}
+                        >
+                          <option value="">-- เลือกรุ่น --</option>
+                          {availableModels.map((m) => (
+                            <option key={m.name} value={m.name}>{m.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Row 2: Color, Storage, Quantity, Price */}
+                    <div className="grid grid-cols-4 gap-2">
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-0.5">สี</label>
+                        <select
+                          value={item.color}
+                          onChange={(e) => updateItem(idx, 'color', e.target.value)}
+                          className={selectClass}
+                          disabled={availableColors.length === 0}
+                        >
+                          <option value="">-- เลือกสี --</option>
+                          {availableColors.map((c) => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-0.5">ความจุ</label>
+                        <select
+                          value={item.storage}
+                          onChange={(e) => updateItem(idx, 'storage', e.target.value)}
+                          className={selectClass}
+                          disabled={availableStorage.length === 0}
+                        >
+                          <option value="">-- เลือกความจุ --</option>
+                          {availableStorage.map((s) => (
+                            <option key={s} value={s}>{s}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-0.5">จำนวน *</label>
+                        <input
+                          type="number"
+                          value={item.quantity}
+                          onChange={(e) => updateItem(idx, 'quantity', e.target.value)}
+                          className={inputClass}
+                          min="1"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-0.5">ราคา/ชิ้น *</label>
+                        <input
+                          type="number"
+                          value={item.unitPrice}
+                          onChange={(e) => updateItem(idx, 'unitPrice', e.target.value)}
+                          className={inputClass}
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
             <div className="text-right mt-2 text-sm font-medium">
               ยอดรวม: {totalAmount.toLocaleString()} บาท
@@ -494,7 +687,7 @@ export default function PurchaseOrdersPage() {
               value={form.notes}
               onChange={(e) => setForm({ ...form, notes: e.target.value })}
               rows={2}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+              className={inputClass}
             />
           </div>
 
@@ -544,7 +737,47 @@ export default function PurchaseOrdersPage() {
                 <span className="text-gray-500">ยอดรวม:</span>{' '}
                 <span className="font-medium">{Number(selectedPO.totalAmount).toLocaleString()} บาท</span>
               </div>
+              <div>
+                <span className="text-gray-500">การจ่ายเงิน:</span>{' '}
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${paymentStatusColors[selectedPO.paymentStatus] || 'bg-gray-100 text-gray-700'}`}>
+                  {paymentStatusLabels[selectedPO.paymentStatus] || 'ยังไม่จ่าย'}
+                </span>
+                {Number(selectedPO.paidAmount) > 0 && (
+                  <span className="ml-2 text-gray-600">({Number(selectedPO.paidAmount).toLocaleString()} บาท)</span>
+                )}
+              </div>
             </div>
+
+            {/* Payment info bar */}
+            {selectedPO.status !== 'CANCELLED' && (
+              <div className="bg-gray-50 border rounded-lg p-3 flex items-center justify-between">
+                <div className="text-sm">
+                  <span className="text-gray-500">จ่ายแล้ว:</span>{' '}
+                  <span className="font-medium text-lg">{Number(selectedPO.paidAmount || 0).toLocaleString()}</span>
+                  <span className="text-gray-400"> / {Number(selectedPO.totalAmount).toLocaleString()} บาท</span>
+                  {Number(selectedPO.totalAmount) > 0 && (
+                    <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
+                      <div
+                        className="bg-green-500 h-1.5 rounded-full"
+                        style={{ width: `${Math.min((Number(selectedPO.paidAmount || 0) / Number(selectedPO.totalAmount)) * 100, 100)}%` }}
+                      />
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => openPaymentModal(selectedPO)}
+                  className="px-3 py-1.5 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors"
+                >
+                  อัปเดตการจ่ายเงิน
+                </button>
+              </div>
+            )}
+
+            {selectedPO.paymentNotes && (
+              <div className="text-sm">
+                <span className="text-gray-500">หมายเหตุการจ่ายเงิน:</span> {selectedPO.paymentNotes}
+              </div>
+            )}
 
             <div>
               <h4 className="text-sm font-medium text-gray-700 mb-2">รายการสินค้า</h4>
@@ -553,6 +786,7 @@ export default function PurchaseOrdersPage() {
                   <tr className="bg-gray-50">
                     <th className="px-3 py-2 text-left">ยี่ห้อ</th>
                     <th className="px-3 py-2 text-left">รุ่น</th>
+                    <th className="px-3 py-2 text-left">สี / ความจุ</th>
                     <th className="px-3 py-2 text-right">จำนวน</th>
                     <th className="px-3 py-2 text-right">ราคา/ชิ้น</th>
                     <th className="px-3 py-2 text-right">รับแล้ว</th>
@@ -565,6 +799,7 @@ export default function PurchaseOrdersPage() {
                     <tr key={item.id} className="border-b">
                       <td className="px-3 py-2">{item.brand}</td>
                       <td className="px-3 py-2">{item.model}</td>
+                      <td className="px-3 py-2 text-gray-600">{getItemDesc(item)}</td>
                       <td className="px-3 py-2 text-right">{item.quantity}</td>
                       <td className="px-3 py-2 text-right">{Number(item.unitPrice).toLocaleString()}</td>
                       <td className="px-3 py-2 text-right">
@@ -660,6 +895,106 @@ export default function PurchaseOrdersPage() {
               </div>
             )}
           </div>
+        )}
+      </Modal>
+
+      {/* Payment Status Modal */}
+      <Modal
+        isOpen={isPaymentModalOpen}
+        onClose={() => setIsPaymentModalOpen(false)}
+        title={`อัปเดตการจ่ายเงิน - ${selectedPO?.poNumber || ''}`}
+        size="md"
+      >
+        {selectedPO && (
+          <form onSubmit={handlePaymentUpdate} className="space-y-4">
+            <div className="bg-gray-50 rounded-lg p-3 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-500">ยอดรวม PO:</span>
+                <span className="font-medium">{Number(selectedPO.totalAmount).toLocaleString()} บาท</span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">สถานะการจ่ายเงิน *</label>
+              <select
+                value={paymentForm.paymentStatus}
+                onChange={(e) => {
+                  const newStatus = e.target.value;
+                  setPaymentForm({
+                    ...paymentForm,
+                    paymentStatus: newStatus,
+                    paidAmount: newStatus === 'FULLY_PAID' ? String(Number(selectedPO.totalAmount)) : newStatus === 'UNPAID' ? '0' : paymentForm.paidAmount,
+                  });
+                }}
+                className={selectClass}
+                required
+              >
+                <option value="UNPAID">ยังไม่จ่าย</option>
+                <option value="DEPOSIT_PAID">จ่ายมัดจำ</option>
+                <option value="PARTIALLY_PAID">จ่ายบางส่วน</option>
+                <option value="FULLY_PAID">จ่ายครบแล้ว</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนเงินที่จ่ายแล้ว (บาท) *</label>
+              <input
+                type="number"
+                value={paymentForm.paidAmount}
+                onChange={(e) => setPaymentForm({ ...paymentForm, paidAmount: e.target.value })}
+                className={inputClass}
+                min="0"
+                step="0.01"
+                required
+              />
+              {Number(selectedPO.totalAmount) > 0 && (
+                <div className="flex gap-2 mt-1">
+                  {paymentForm.paymentStatus !== 'UNPAID' && paymentForm.paymentStatus !== 'FULLY_PAID' && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setPaymentForm({ ...paymentForm, paidAmount: String(Math.round(Number(selectedPO.totalAmount) * 0.3)) })}
+                        className="text-xs text-blue-600 hover:underline"
+                      >
+                        30%
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPaymentForm({ ...paymentForm, paidAmount: String(Math.round(Number(selectedPO.totalAmount) * 0.5)) })}
+                        className="text-xs text-blue-600 hover:underline"
+                      >
+                        50%
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ</label>
+              <textarea
+                value={paymentForm.paymentNotes}
+                onChange={(e) => setPaymentForm({ ...paymentForm, paymentNotes: e.target.value })}
+                rows={2}
+                className={inputClass}
+                placeholder="เช่น โอนผ่านธนาคาร xxx, เลขอ้างอิง xxx"
+              />
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2 border-t">
+              <button type="button" onClick={() => setIsPaymentModalOpen(false)} className="px-4 py-2 text-sm text-gray-600">
+                ยกเลิก
+              </button>
+              <button
+                type="submit"
+                disabled={paymentMutation.isPending}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50 transition-colors"
+              >
+                {paymentMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
+              </button>
+            </div>
+          </form>
         )}
       </Modal>
 

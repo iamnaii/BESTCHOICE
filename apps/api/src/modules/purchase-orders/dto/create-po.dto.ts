@@ -8,6 +8,18 @@ export class POItemDto {
   @IsString()
   model: string;
 
+  @IsString()
+  @IsOptional()
+  color?: string;
+
+  @IsString()
+  @IsOptional()
+  storage?: string;
+
+  @IsString()
+  @IsOptional()
+  category?: string;
+
   @IsNumber()
   quantity: number;
 
@@ -63,6 +75,18 @@ export class ReceivePODto {
   @ValidateNested({ each: true })
   @Type(() => ReceiveItemDto)
   items: ReceiveItemDto[];
+}
+
+export class UpdatePaymentDto {
+  @IsIn(['UNPAID', 'DEPOSIT_PAID', 'PARTIALLY_PAID', 'FULLY_PAID'])
+  paymentStatus: string;
+
+  @IsNumber()
+  paidAmount: number;
+
+  @IsString()
+  @IsOptional()
+  paymentNotes?: string;
 }
 
 // New goods receiving DTOs

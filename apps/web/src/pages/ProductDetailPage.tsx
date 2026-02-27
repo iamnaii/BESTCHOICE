@@ -126,12 +126,10 @@ export default function ProductDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['product', id] });
-      toast.success('โอนสินค้าสำเร็จ');
+      toast.success('สร้างรายการโอนสำเร็จ (รอสาขาปลายทางยืนยัน)');
       setIsTransferModalOpen(false);
     },
-    onError: (err: { response?: { data?: { message?: string } } }) => {
-      toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด');
-    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const openAddPrice = () => {

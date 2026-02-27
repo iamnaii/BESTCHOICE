@@ -14,6 +14,7 @@ const ProductsPage = lazy(() => import('@/pages/ProductsPage'));
 const ProductCreatePage = lazy(() => import('@/pages/ProductCreatePage'));
 const ProductDetailPage = lazy(() => import('@/pages/ProductDetailPage'));
 const StockPage = lazy(() => import('@/pages/StockPage'));
+const StockTransfersPage = lazy(() => import('@/pages/StockTransfersPage'));
 const InspectionPage = lazy(() => import('@/pages/InspectionPage'));
 const InspectionDetailPage = lazy(() => import('@/pages/InspectionDetailPage'));
 const StickerPrintPage = lazy(() => import('@/pages/StickerPrintPage'));
@@ -85,6 +86,14 @@ function App() {
           <Route path="/products/create" element={<ProductCreatePage />} />
           <Route path="/products/:id" element={<ProductDetailPage />} />
           <Route path="/stock" element={<StockPage />} />
+          <Route
+            path="/stock/transfers"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}>
+                <StockTransfersPage />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/inspections" element={<InspectionPage />} />
           <Route path="/inspections/:id" element={<InspectionDetailPage />} />
           <Route path="/stickers" element={<StickerPrintPage />} />

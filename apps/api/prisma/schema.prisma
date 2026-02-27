@@ -70,9 +70,21 @@ enum PaymentStatus {
 enum POStatus {
   DRAFT
   APPROVED
+  PENDING
   PARTIALLY_RECEIVED
   FULLY_RECEIVED
   CANCELLED
+}
+
+enum ReceivingItemStatus {
+  PASS
+  REJECT
+}
+
+enum TransferStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
 }
 
 enum InspectionScoreType {
@@ -120,6 +132,8 @@ model Branch {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  isMainWarehouse Boolean @default(false) @map("is_main_warehouse")
+
   users          User[]
   products       Product[]
   contracts      Contract[]
@@ -150,6 +164,8 @@ model User {
   purchaseOrdersCreated  PurchaseOrder[]   @relation("POCreatedBy")
   purchaseOrdersApproved PurchaseOrder[]   @relation("POApprovedBy")
   repossessionsAppraised Repossession[]    @relation("AppraisedBy")
+  goodsReceivings        GoodsReceiving[]  @relation("GoodsReceivedBy")
+  transfersConfirmed     StockTransfer[]   @relation("TransferConfirmedBy")
 
   @@index([branchId])
   @@map("users")
@@ -294,8 +310,9 @@ model PurchaseOrder {
   createdBy  User     @relation("POCreatedBy", fields: [createdById], references: [id])
   approvedBy User?    @relation("POApprovedBy", fields: [approvedById], references: [id])
 
-  items    POItem[]
-  products Product[]
+  items           POItem[]
+  products        Product[]
+  goodsReceivings GoodsReceiving[]
 
   @@index([supplierId])
   @@index([status])
@@ -313,7 +330,8 @@ model POItem {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  purchaseOrder PurchaseOrder @relation(fields: [poId], references: [id])
+  purchaseOrder  PurchaseOrder       @relation(fields: [poId], references: [id])
+  receivingItems GoodsReceivingItem[]
 
   @@map("po_items")
 }
@@ -345,9 +363,11 @@ model Product {
   branch     Branch         @relation(fields: [branchId], references: [id])
   inspection Inspection?    @relation(fields: [inspectionId], references: [id])
 
-  prices       ProductPrice[]
-  contracts    Contract[]
-  repossession Repossession?
+  prices         ProductPrice[]
+  contracts      Contract[]
+  repossession   Repossession?
+  receivingItem  GoodsReceivingItem?
+  stockTransfers StockTransfer[]
 
   @@index([branchId])
   @@index([status])
@@ -375,18 +395,61 @@ model ProductPrice {
 }
 
 model StockTransfer {
+  id            String         @id @default(uuid())
+  productId     String         @map("product_id")
+  fromBranchId  String         @map("from_branch_id")
+  toBranchId    String         @map("to_branch_id")
+  transferredBy String         @map("transferred_by")
+  notes         String?
+  status        TransferStatus @default(PENDING)
+  confirmedById String?        @map("confirmed_by_id")
+  confirmedAt   DateTime?      @map("confirmed_at")
+  createdAt     DateTime       @default(now()) @map("created_at")
+
+  product     Product @relation(fields: [productId], references: [id])
+  fromBranch  Branch  @relation("TransferFrom", fields: [fromBranchId], references: [id])
+  toBranch    Branch  @relation("TransferTo", fields: [toBranchId], references: [id])
+  confirmedBy User?   @relation("TransferConfirmedBy", fields: [confirmedById], references: [id])
+
+  @@index([productId])
+  @@index([status])
+  @@map("stock_transfers")
+}
+
+model GoodsReceiving {
   id           String   @id @default(uuid())
-  productId    String   @map("product_id")
-  fromBranchId String   @map("from_branch_id")
-  toBranchId   String   @map("to_branch_id")
-  transferredBy String  @map("transferred_by")
+  poId         String   @map("po_id")
+  receivedById String   @map("received_by_id")
   notes        String?
   createdAt    DateTime @default(now()) @map("created_at")
 
-  fromBranch Branch @relation("TransferFrom", fields: [fromBranchId], references: [id])
-  toBranch   Branch @relation("TransferTo", fields: [toBranchId], references: [id])
+  po         PurchaseOrder @relation(fields: [poId], references: [id])
+  receivedBy User          @relation("GoodsReceivedBy", fields: [receivedById], references: [id])
+  items      GoodsReceivingItem[]
 
-  @@map("stock_transfers")
+  @@index([poId])
+  @@map("goods_receivings")
+}
+
+model GoodsReceivingItem {
+  id           String              @id @default(uuid())
+  receivingId  String              @map("receiving_id")
+  poItemId     String              @map("po_item_id")
+  imeiSerial   String?             @map("imei_serial")
+  serialNumber String?             @map("serial_number")
+  photos       String[]            @default([])
+  status       ReceivingItemStatus
+  rejectReason String?             @map("reject_reason")
+  productId    String?             @unique @map("product_id")
+  createdAt    DateTime            @default(now()) @map("created_at")
+
+  receiving GoodsReceiving @relation(fields: [receivingId], references: [id])
+  poItem    POItem         @relation(fields: [poItemId], references: [id])
+  product   Product?       @relation(fields: [productId], references: [id])
+
+  @@index([receivingId])
+  @@index([poItemId])
+  @@map("goods_receiving_items")
 }
 
 // ============================================================

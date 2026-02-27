@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { PurchaseOrdersService } from './purchase-orders.service';
-import { CreatePODto, UpdatePODto, ReceivePODto } from './dto/create-po.dto';
+import { CreatePODto, UpdatePODto, ReceivePODto, GoodsReceivingDto } from './dto/create-po.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -62,5 +62,15 @@ export class PurchaseOrdersController {
     @CurrentUser() user: { id: string; branchId: string },
   ) {
     return this.purchaseOrdersService.receive(id, dto, user.id, user.branchId);
+  }
+
+  @Post(':id/goods-receiving')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  goodsReceiving(
+    @Param('id') id: string,
+    @Body() dto: GoodsReceivingDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.purchaseOrdersService.goodsReceiving(id, dto, user.id);
   }
 }

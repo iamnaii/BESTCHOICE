@@ -23,6 +23,7 @@ const navItems: NavItem[] = [
   { label: 'เปลี่ยนเครื่อง', path: '/exchange', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'operations' },
   { label: 'ยึดคืน & ขายต่อ', path: '/repossessions', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'operations' },
   { label: 'ใบสั่งซื้อ (PO)', path: '/purchase-orders', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'operations' },
+  { label: 'โอนสินค้า', path: '/stock/transfers', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'operations' },
   { label: 'แจ้งเตือน', path: '/notifications', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'communication' },
   { label: 'รายงาน', path: '/reports', roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'], section: 'intelligence' },
   { label: 'จัดการผู้ใช้', path: '/users', roles: ['OWNER'], section: 'settings' },

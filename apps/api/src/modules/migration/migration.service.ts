@@ -161,8 +161,9 @@ export class MigrationService {
         const contractNumber = `CT${String(nextNum).padStart(6, '0')}`;
 
         // Calculate financials
-        const interestTotal = c.sellingPrice * c.interestRate * c.totalMonths;
-        const financedAmount = (c.sellingPrice - c.downPayment) + interestTotal;
+        const principal = c.sellingPrice - c.downPayment;
+        const interestTotal = principal * c.interestRate * c.totalMonths;
+        const financedAmount = principal + interestTotal;
         const monthlyPayment = financedAmount / c.totalMonths;
 
         const contract = await this.prisma.contract.create({

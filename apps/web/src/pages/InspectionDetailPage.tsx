@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
@@ -61,26 +61,33 @@ export default function InspectionDetailPage() {
   const [isOverrideModalOpen, setIsOverrideModalOpen] = useState(false);
   const [overrideForm, setOverrideForm] = useState({ grade: '', reason: '' });
   const [resultValues, setResultValues] = useState<Record<string, Record<string, unknown>>>({});
+  const [initialized, setInitialized] = useState(false);
 
   const { data: inspection, isLoading } = useQuery<InspectionDetail>({
     queryKey: ['inspection', id],
     queryFn: async () => {
       const { data } = await api.get(`/inspections/${id}`);
-      // Initialize result values
+      return data;
+    },
+  });
+
+  // Initialize result values only once when data first loads
+  useEffect(() => {
+    if (inspection && !initialized) {
       const values: Record<string, Record<string, unknown>> = {};
-      data.results.forEach((r: Result) => {
+      inspection.results.forEach((r: Result) => {
         values[r.templateItemId] = {
           passFail: r.passFail,
           grade: r.grade,
-          score: r.score ? parseFloat(r.score) : null,
-          numberValue: r.numberValue ? parseFloat(r.numberValue) : null,
+          score: r.score ? parseFloat(r.score as string) : null,
+          numberValue: r.numberValue ? parseFloat(r.numberValue as string) : null,
           notes: r.notes,
         };
       });
       setResultValues(values);
-      return data;
-    },
-  });
+      setInitialized(true);
+    }
+  }, [inspection, initialized]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {

@@ -127,12 +127,12 @@ export default function AddressForm({ value, onChange, label }: Props) {
   }, [addressData, selectedProvince]);
 
   const subdistricts = useMemo(() => {
-    if (!selectedDistrict) return [];
+    if (!selectedProvince || !selectedDistrict) return [];
     return addressData
-      .filter(([, d]) => d === selectedDistrict)
+      .filter(([p, d]) => p === selectedProvince && d === selectedDistrict)
       .map(([, , s, z]) => ({ name: s, zipcode: z }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [addressData, selectedDistrict]);
+  }, [addressData, selectedProvince, selectedDistrict]);
 
   const update = (field: keyof AddressData, val: string) => {
     onChange({ ...value, [field]: val });

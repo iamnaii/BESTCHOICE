@@ -6,7 +6,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
-import AddressForm, { AddressData, emptyAddress, composeAddress } from '@/components/ui/AddressForm';
+import AddressForm, { AddressData, emptyAddress, composeAddress, deserializeAddress } from '@/components/ui/AddressForm';
 
 interface Branch {
   id: string;
@@ -67,7 +67,7 @@ export default function BranchesPage() {
   const openEdit = (branch: Branch) => {
     setEditingBranch(branch);
     setForm({ name: branch.name, phone: branch.phone || '' });
-    setAddress(emptyAddress);
+    setAddress(deserializeAddress(branch.location));
     setIsModalOpen(true);
   };
 

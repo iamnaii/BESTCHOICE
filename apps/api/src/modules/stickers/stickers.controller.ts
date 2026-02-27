@@ -15,6 +15,11 @@ export class StickersController {
     return this.stickersService.findAll();
   }
 
+  @Get('product/:productId/data')
+  getStickerData(@Param('productId') productId: string) {
+    return this.stickersService.getStickerData(productId);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.stickersService.findOne(id);
@@ -36,10 +41,5 @@ export class StickersController {
   @Roles('OWNER')
   remove(@Param('id') id: string) {
     return this.stickersService.remove(id);
-  }
-
-  @Get('product/:productId/data')
-  getStickerData(@Param('productId') productId: string) {
-    return this.stickersService.getStickerData(productId);
   }
 }

@@ -222,19 +222,19 @@ export class OverdueService {
 
     // Single bulk UPDATE: calculate late fees and set status in one query
     const result = await this.prisma.$executeRaw`
-      UPDATE "Payment"
+      UPDATE "payments"
       SET
-        "lateFee" = LEAST(
-          EXTRACT(DAY FROM (${now}::timestamp - "dueDate"))::int * ${lateFeePerDay},
+        "late_fee" = LEAST(
+          EXTRACT(DAY FROM (${now}::timestamp - "due_date"))::int * ${lateFeePerDay},
           ${lateFeeCap}
         ),
         "status" = 'OVERDUE'
       WHERE "status" IN ('PENDING', 'PARTIALLY_PAID', 'OVERDUE')
-        AND "dueDate" < ${now}
-        AND "contractId" IN (
-          SELECT "id" FROM "Contract"
+        AND "due_date" < ${now}
+        AND "contract_id" IN (
+          SELECT "id" FROM "contracts"
           WHERE "status" IN ('ACTIVE', 'OVERDUE', 'DEFAULT')
-            AND "deletedAt" IS NULL
+            AND "deleted_at" IS NULL
         )
     `;
 
@@ -301,31 +301,31 @@ export class OverdueService {
     const defaultCandidates: { id: string; consecutive: number }[] = await this.prisma.$queryRaw`
       WITH payment_streaks AS (
         SELECT
-          p."contractId",
-          p."installmentNo",
+          p."contract_id",
+          p."installment_no",
           p."status",
-          p."dueDate",
-          ROW_NUMBER() OVER (PARTITION BY p."contractId" ORDER BY p."installmentNo") -
-          ROW_NUMBER() OVER (PARTITION BY p."contractId",
-            CASE WHEN p."status" IN ('PENDING', 'OVERDUE', 'PARTIALLY_PAID') AND p."dueDate" < ${now}
+          p."due_date",
+          ROW_NUMBER() OVER (PARTITION BY p."contract_id" ORDER BY p."installment_no") -
+          ROW_NUMBER() OVER (PARTITION BY p."contract_id",
+            CASE WHEN p."status" IN ('PENDING', 'OVERDUE', 'PARTIALLY_PAID') AND p."due_date" < ${now}
                  THEN 1 ELSE 0 END
-            ORDER BY p."installmentNo") AS grp
-        FROM "Payment" p
-        JOIN "Contract" c ON c."id" = p."contractId"
-        WHERE c."status" = 'OVERDUE' AND c."deletedAt" IS NULL
+            ORDER BY p."installment_no") AS grp
+        FROM "payments" p
+        JOIN "contracts" c ON c."id" = p."contract_id"
+        WHERE c."status" = 'OVERDUE' AND c."deleted_at" IS NULL
       ),
       max_consecutive AS (
         SELECT
-          "contractId" AS id,
+          "contract_id" AS id,
           MAX(cnt) AS consecutive
         FROM (
-          SELECT "contractId", grp, COUNT(*) AS cnt
+          SELECT "contract_id", grp, COUNT(*) AS cnt
           FROM payment_streaks
           WHERE "status" IN ('PENDING', 'OVERDUE', 'PARTIALLY_PAID')
-            AND "dueDate" < ${now}
-          GROUP BY "contractId", grp
+            AND "due_date" < ${now}
+          GROUP BY "contract_id", grp
         ) sub
-        GROUP BY "contractId"
+        GROUP BY "contract_id"
       )
       SELECT id, consecutive::int FROM max_consecutive WHERE consecutive >= 2
     `;

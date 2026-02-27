@@ -51,8 +51,8 @@ export default function ContractCreatePage() {
     queryFn: async () => {
       const params = new URLSearchParams({ status: 'IN_STOCK' });
       if (productSearch) params.set('search', productSearch);
-      const { data } = await api.get(`/products?${params}`);
-      return data;
+      const { data } = await api.get(`/products?${params}&limit=999`);
+      return data.data || [];
     },
   });
 
@@ -62,7 +62,7 @@ export default function ContractCreatePage() {
       const params = new URLSearchParams();
       if (customerSearch) params.set('search', customerSearch);
       const { data } = await api.get(`/customers?${params}`);
-      return data;
+      return data.data || [];
     },
     enabled: step >= 1,
   });

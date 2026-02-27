@@ -204,11 +204,19 @@ export class ContractsService {
     const contract = await this.findOne(id);
 
     await this.prisma.$transaction(async (tx) => {
-      // Mark all pending payments as paid
-      await tx.payment.updateMany({
-        where: { contractId: id, status: { not: 'PAID' } },
-        data: { status: 'PAID', paidDate: new Date(), amountPaid: 0, paymentMethod: paymentMethod as any },
-      });
+      // Mark all pending payments as paid with their due amounts
+      const unpaidPayments = contract.payments.filter((p) => p.status !== 'PAID');
+      for (const payment of unpaidPayments) {
+        await tx.payment.update({
+          where: { id: payment.id },
+          data: {
+            status: 'PAID',
+            paidDate: new Date(),
+            amountPaid: payment.amountDue,
+            paymentMethod: paymentMethod as any,
+          },
+        });
+      }
 
       // Update contract status
       await tx.contract.update({

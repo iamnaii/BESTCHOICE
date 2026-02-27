@@ -67,14 +67,14 @@ export default function ExchangePage() {
         api.get('/contracts?status=ACTIVE'),
         api.get('/contracts?status=OVERDUE'),
       ]);
-      return [...active.data, ...overdue.data];
+      return [...(active.data.data || []), ...(overdue.data.data || [])];
     },
   });
 
   // Fetch available products (IN_STOCK)
   const { data: products = [] } = useQuery<Product[]>({
     queryKey: ['exchange-products'],
-    queryFn: async () => (await api.get('/products?status=IN_STOCK')).data,
+    queryFn: async () => (await api.get('/products?status=IN_STOCK&limit=999')).data.data || [],
   });
 
   const selectedProduct = products.find((p) => p.id === selectedProductId);

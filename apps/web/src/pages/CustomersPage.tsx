@@ -7,7 +7,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
-import AddressForm, { AddressData, emptyAddress, composeAddress, serializeAddress } from '@/components/ui/AddressForm';
+import AddressForm, { AddressData, emptyAddress, serializeAddress } from '@/components/ui/AddressForm';
 
 interface Customer {
   id: string;
@@ -112,7 +112,7 @@ export default function CustomersPage() {
       if (form.googleMapLink) payload.googleMapLink = form.googleMapLink;
       if (form.occupation) payload.occupation = form.occupation;
       if (form.occupationDetail) payload.occupationDetail = form.occupationDetail;
-      if (form.salary) payload.salary = parseFloat(form.salary);
+      if (form.salary && !isNaN(parseFloat(form.salary))) payload.salary = parseFloat(form.salary);
       if (form.workplace) payload.workplace = form.workplace;
 
       const addrIdCard = serializeAddress(addressIdCard);

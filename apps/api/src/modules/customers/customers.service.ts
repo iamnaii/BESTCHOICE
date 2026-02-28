@@ -93,8 +93,8 @@ export class CustomersService {
       });
     }
 
-    // Validate Thai national ID checksum
-    if (!this.validateNationalId(dto.nationalId)) {
+    // Validate Thai national ID checksum (skip for foreigners)
+    if (!dto.isForeigner && !this.validateNationalId(dto.nationalId)) {
       throw new ConflictException('เลขบัตรประชาชนไม่ถูกต้อง');
     }
 

@@ -87,7 +87,7 @@ export default function POSPage() {
   const [financeAmount, setFinanceAmount] = useState('');
 
   // Product search query
-  const { data: products } = useQuery<Product[]>({
+  const { data: products, isFetching: productsFetching } = useQuery<Product[]>({
     queryKey: ['pos-products', debouncedProductSearch],
     queryFn: async () => {
       if (!debouncedProductSearch || debouncedProductSearch.length < 2) return [];
@@ -100,7 +100,7 @@ export default function POSPage() {
   });
 
   // Customer search query
-  const { data: customers } = useQuery<Customer[]>({
+  const { data: customers, isFetching: customersFetching } = useQuery<Customer[]>({
     queryKey: ['pos-customers', debouncedCustomerSearch],
     queryFn: async () => {
       if (!debouncedCustomerSearch || debouncedCustomerSearch.length < 2) return [];
@@ -288,29 +288,40 @@ export default function POSPage() {
                   type="text"
                   value={productSearch}
                   onChange={(e) => setProductSearch(e.target.value)}
-                  placeholder="ค้นหา IMEI, ชื่อ, รุ่น..."
+                  placeholder="พิมพ์อย่างน้อย 2 ตัวอักษร เช่น IMEI, ชื่อ, รุ่น..."
                   className={inputClass}
                 />
-                {productSearch.length >= 2 && products && products.length > 0 && (
-                  <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                    {products.map((p) => (
-                      <button
-                        key={p.id}
-                        onClick={() => handleSelectProduct(p)}
-                        className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b last:border-b-0"
-                      >
-                        <div className="text-sm font-medium">{p.brand} {p.model}</div>
-                        <div className="text-xs text-gray-500">
-                          {p.imeiSerial && <span className="font-mono">IMEI: {p.imeiSerial}</span>}
-                          <span className="ml-2">{p.branch?.name}</span>
-                          {p.prices.find(pr => pr.isDefault) && (
-                            <span className="ml-2 text-primary-600 font-medium">
-                              {parseFloat(p.prices.find(pr => pr.isDefault)!.amount).toLocaleString()} ฿
-                            </span>
-                          )}
-                        </div>
-                      </button>
-                    ))}
+                {productSearch.length >= 2 && (
+                  <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    {productsFetching ? (
+                      <div className="px-3 py-4 text-center text-sm text-gray-500">
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-600 mx-auto mb-2"></div>
+                        กำลังค้นหา...
+                      </div>
+                    ) : products && products.length > 0 ? (
+                      products.map((p) => (
+                        <button
+                          key={p.id}
+                          onClick={() => handleSelectProduct(p)}
+                          className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b last:border-b-0"
+                        >
+                          <div className="text-sm font-medium">{p.brand} {p.model}</div>
+                          <div className="text-xs text-gray-500">
+                            {p.imeiSerial && <span className="font-mono">IMEI: {p.imeiSerial}</span>}
+                            <span className="ml-2">{p.branch?.name}</span>
+                            {p.prices.find(pr => pr.isDefault) && (
+                              <span className="ml-2 text-primary-600 font-medium">
+                                {parseFloat(p.prices.find(pr => pr.isDefault)!.amount).toLocaleString()} ฿
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="px-3 py-4 text-center text-sm text-gray-500">
+                        ไม่พบสินค้าที่ตรงกับ &quot;{productSearch}&quot;
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -334,21 +345,32 @@ export default function POSPage() {
                   type="text"
                   value={customerSearch}
                   onChange={(e) => setCustomerSearch(e.target.value)}
-                  placeholder="ค้นหาชื่อ, เบอร์โทร, เลขบัตร..."
+                  placeholder="พิมพ์อย่างน้อย 2 ตัวอักษร เช่น ชื่อ, เบอร์โทร, เลขบัตร..."
                   className={inputClass}
                 />
-                {customerSearch.length >= 2 && customers && customers.length > 0 && (
-                  <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                    {customers.map((c) => (
-                      <button
-                        key={c.id}
-                        onClick={() => { setSelectedCustomer(c); setCustomerSearch(''); }}
-                        className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b last:border-b-0"
-                      >
-                        <div className="text-sm font-medium">{c.name}</div>
-                        <div className="text-xs text-gray-500">{c.phone}</div>
-                      </button>
-                    ))}
+                {customerSearch.length >= 2 && (
+                  <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    {customersFetching ? (
+                      <div className="px-3 py-4 text-center text-sm text-gray-500">
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-600 mx-auto mb-2"></div>
+                        กำลังค้นหา...
+                      </div>
+                    ) : customers && customers.length > 0 ? (
+                      customers.map((c) => (
+                        <button
+                          key={c.id}
+                          onClick={() => { setSelectedCustomer(c); setCustomerSearch(''); }}
+                          className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b last:border-b-0"
+                        >
+                          <div className="text-sm font-medium">{c.name}</div>
+                          <div className="text-xs text-gray-500">{c.phone}</div>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="px-3 py-4 text-center text-sm text-gray-500">
+                        ไม่พบลูกค้าที่ตรงกับ &quot;{customerSearch}&quot;
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

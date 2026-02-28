@@ -24,6 +24,7 @@ const navItems: NavItem[] = [
 
   // ขาย & ผ่อนชำระ — ใช้ทุกวัน
   { label: 'POS ขายสินค้า', path: '/pos', section: 'sales' },
+  { label: 'ประวัติการขาย', path: '/sales', section: 'sales' },
   { label: 'ลูกค้า', path: '/customers', section: 'sales' },
   { label: 'สัญญาผ่อน', path: '/contracts', section: 'sales' },
   { label: 'ชำระเงิน', path: '/payments', section: 'sales' },

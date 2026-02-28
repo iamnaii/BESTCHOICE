@@ -1,9 +1,13 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import api from '@/lib/api';
+import toast from 'react-hot-toast';
+import api, { getErrorMessage } from '@/lib/api';
+import { useDebounce } from '@/hooks/useDebounce';
+import { useAuth } from '@/contexts/AuthContext';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
+import Modal from '@/components/ui/Modal';
 
 interface StockProduct {
   id: string;
@@ -124,15 +128,65 @@ function BarInline({ label, count, total, color }: { label: string; count: numbe
 
 export default function StockPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const isManager = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search);
   const [filterBranch, setFilterBranch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
   const [activeTab, setActiveTab] = useState<'dashboard' | 'list'>('dashboard');
 
+  // Quick price edit modal state
+  const [editingProduct, setEditingProduct] = useState<StockProduct | null>(null);
+  const [priceForm, setPriceForm] = useState({ label: '', amount: '', isDefault: false });
+
+  const priceMutation = useMutation({
+    mutationFn: async ({ productId, priceId, data }: { productId: string; priceId?: string; data: { label: string; amount: number; isDefault: boolean } }) => {
+      if (priceId) {
+        return api.patch(`/products/${productId}/prices/${priceId}`, data);
+      }
+      return api.post(`/products/${productId}/prices`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['stock'] });
+      toast.success('บันทึกราคาสำเร็จ');
+      setEditingProduct(null);
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const openPriceEdit = (product: StockProduct) => {
+    setEditingProduct(product);
+    const defaultPrice = product.prices?.find((p) => p.isDefault) || product.prices?.[0];
+    if (defaultPrice) {
+      setPriceForm({ label: defaultPrice.label, amount: defaultPrice.amount, isDefault: defaultPrice.isDefault });
+    } else {
+      setPriceForm({ label: 'ราคาขาย', amount: '', isDefault: true });
+    }
+  };
+
+  const handlePriceSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProduct) return;
+    const defaultPrice = editingProduct.prices?.find((p) => p.isDefault) || editingProduct.prices?.[0];
+    priceMutation.mutate({
+      productId: editingProduct.id,
+      priceId: defaultPrice?.id,
+      data: {
+        label: priceForm.label,
+        amount: parseFloat(priceForm.amount),
+        isDefault: priceForm.isDefault,
+      },
+    });
+  };
+
   const { data, isLoading } = useQuery<{ products: StockProduct[]; summary: BranchSummary[] }>({
-    queryKey: ['stock', filterBranch, filterStatus, filterCategory],
+    queryKey: ['stock', debouncedSearch, filterBranch, filterStatus, filterCategory],
     queryFn: async () => {
       const params: Record<string, string> = {};
+      if (debouncedSearch) params.search = debouncedSearch;
       if (filterBranch) params.branchId = filterBranch;
       if (filterStatus) params.status = filterStatus;
       if (filterCategory) params.category = filterCategory;
@@ -197,10 +251,25 @@ export default function StockPage() {
       label: 'ราคาขาย',
       render: (p: StockProduct) => {
         const defaultPrice = p.prices?.find((pr) => pr.isDefault) || p.prices?.[0];
-        return defaultPrice ? (
-          <span className="text-sm font-medium">{parseFloat(defaultPrice.amount).toLocaleString()} ฿</span>
-        ) : (
-          <span className="text-gray-400">-</span>
+        return (
+          <div className="flex items-center gap-1.5">
+            {defaultPrice ? (
+              <span className="text-sm font-medium">{parseFloat(defaultPrice.amount).toLocaleString()} ฿</span>
+            ) : (
+              <span className="text-gray-400">-</span>
+            )}
+            {isManager && (
+              <button
+                onClick={(e) => { e.stopPropagation(); openPriceEdit(p); }}
+                className="text-gray-400 hover:text-primary-600 transition-colors"
+                title="แก้ไขราคา"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              </button>
+            )}
+          </div>
         );
       },
     },
@@ -602,7 +671,14 @@ export default function StockPage() {
       {activeTab === 'list' && (
         <>
           {/* Filters */}
-          <div className="flex gap-3 mb-4">
+          <div className="flex flex-wrap gap-3 mb-4">
+            <input
+              type="text"
+              placeholder="ค้นหาชื่อ, ยี่ห้อ, รุ่น, IMEI..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="flex-1 min-w-[200px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+            />
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
@@ -636,6 +712,60 @@ export default function StockPage() {
           <DataTable columns={columns} data={products} isLoading={isLoading} emptyMessage="ไม่พบสินค้าในสต็อก" />
         </>
       )}
+
+      {/* Quick Price Edit Modal */}
+      <Modal
+        isOpen={!!editingProduct}
+        onClose={() => setEditingProduct(null)}
+        title={editingProduct ? `แก้ไขราคา — ${editingProduct.brand} ${editingProduct.model}` : 'แก้ไขราคา'}
+        size="sm"
+      >
+        <form onSubmit={handlePriceSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อราคา</label>
+            <input
+              type="text"
+              value={priceForm.label}
+              onChange={(e) => setPriceForm({ ...priceForm, label: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">ราคาขาย (บาท)</label>
+            <input
+              type="number"
+              step="0.01"
+              value={priceForm.amount}
+              onChange={(e) => setPriceForm({ ...priceForm, amount: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+              required
+            />
+          </div>
+          {editingProduct && (
+            <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3">
+              ราคาทุน: {parseFloat(editingProduct.costPrice).toLocaleString()} ฿
+              {priceForm.amount && (
+                <span className={`ml-2 font-medium ${parseFloat(priceForm.amount) - parseFloat(editingProduct.costPrice) > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  (กำไร: {(parseFloat(priceForm.amount) - parseFloat(editingProduct.costPrice)).toLocaleString()} ฿)
+                </span>
+              )}
+            </div>
+          )}
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" onClick={() => setEditingProduct(null)} className="px-4 py-2 text-sm text-gray-600">
+              ยกเลิก
+            </button>
+            <button
+              type="submit"
+              disabled={priceMutation.isPending}
+              className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
+            >
+              {priceMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

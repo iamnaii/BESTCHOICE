@@ -390,6 +390,7 @@ export class ProductsService {
   // === Stock Overview ===
 
   async getStock(filters: {
+    search?: string;
     branchId?: string;
     status?: string;
     category?: string;
@@ -402,6 +403,14 @@ export class ProductsService {
     if (filters.status) where.status = filters.status;
     if (filters.category) where.category = filters.category;
     if (filters.brand) where.brand = filters.brand;
+    if (filters.search) {
+      where.OR = [
+        { name: { contains: filters.search, mode: 'insensitive' } },
+        { brand: { contains: filters.search, mode: 'insensitive' } },
+        { model: { contains: filters.search, mode: 'insensitive' } },
+        { imeiSerial: { contains: filters.search } },
+      ];
+    }
 
     const page = Math.max(1, filters.page || 1);
     const limit = Math.min(100, Math.max(1, filters.limit || 50));

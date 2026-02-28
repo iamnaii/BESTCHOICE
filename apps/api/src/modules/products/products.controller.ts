@@ -34,6 +34,7 @@ export class ProductsController {
 
   @Get('stock')
   getStock(
+    @Query('search') search?: string,
     @Query('branchId') branchId?: string,
     @Query('status') status?: string,
     @Query('category') category?: string,
@@ -42,7 +43,7 @@ export class ProductsController {
     @Query('limit') limit?: string,
   ) {
     return this.productsService.getStock({
-      branchId, status, category, brand,
+      search, branchId, status, category, brand,
       page: page ? parseInt(page) : undefined,
       limit: limit ? parseInt(limit) : undefined,
     });

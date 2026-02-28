@@ -64,12 +64,24 @@ function Sidebar() {
   ), [user]);
 
   return (
-    <aside className="w-64 bg-white border-r border-gray-200 min-h-screen">
-      <div className="p-4 border-b">
-        <h1 className="text-xl font-bold text-primary-700">Best Choice</h1>
-        <p className="text-xs text-gray-400 mt-1">ระบบจัดการร้าน</p>
+    <aside className="w-64 bg-primary-950 min-h-screen flex flex-col">
+      {/* Logo */}
+      <div className="p-5 border-b border-white/10">
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary-400 to-purple-500 flex items-center justify-center shadow-lg shadow-primary-500/20">
+            <span className="text-white font-bold text-sm">B</span>
+          </div>
+          <div>
+            <h1 className="text-lg font-bold text-white leading-tight">
+              best<span className="text-primary-400">choice</span>
+            </h1>
+            <p className="text-[10px] text-gray-500">ระบบจัดการร้าน</p>
+          </div>
+        </div>
       </div>
-      <nav className="p-2">
+
+      {/* Navigation */}
+      <nav className="flex-1 p-3 overflow-y-auto">
         {filteredItems.map((item, idx) => {
           const prevItem = filteredItems[idx - 1];
           const showSectionLabel =
@@ -78,7 +90,7 @@ function Sidebar() {
           return (
             <div key={item.path}>
               {showSectionLabel && (
-                <div className="px-4 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                <div className="px-3 pt-4 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
                   {sectionLabels[item.section!] ?? item.section}
                 </div>
               )}
@@ -87,10 +99,10 @@ function Sidebar() {
                 end={item.path === '/'}
                 className={({ isActive }) =>
                   clsx(
-                    'block px-4 py-2.5 rounded-lg text-sm font-medium transition-colors mb-1',
+                    'flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 mb-0.5',
                     isActive
-                      ? 'bg-primary-50 text-primary-700'
-                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
+                      ? 'bg-primary-600 text-white shadow-lg shadow-primary-600/20'
+                      : 'text-gray-400 hover:bg-white/5 hover:text-white',
                   )
                 }
               >
@@ -100,6 +112,21 @@ function Sidebar() {
           );
         })}
       </nav>
+
+      {/* User info at bottom */}
+      {user && (
+        <div className="p-4 border-t border-white/10">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-primary-700 flex items-center justify-center">
+              <span className="text-white text-xs font-bold">{user.name?.charAt(0)}</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-white truncate">{user.name}</p>
+              <p className="text-xs text-gray-500 truncate">{user.branchName}</p>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }

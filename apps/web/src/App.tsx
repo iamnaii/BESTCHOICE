@@ -5,6 +5,7 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 import MainLayout from '@/components/layout/MainLayout';
 
 // Lazy-load all pages (separate chunks, loaded on demand)
+const LandingPage = lazy(() => import('@/pages/LandingPage'));
 const LoginPage = lazy(() => import('@/pages/LoginPage'));
 const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
 const BranchesPage = lazy(() => import('@/pages/BranchesPage'));
@@ -62,10 +63,17 @@ function App() {
   return (
     <Suspense fallback={<PageLoader />}>
       <Routes>
+        {/* Public Routes */}
+        <Route
+          path="/landing"
+          element={<LandingPage />}
+        />
         <Route
           path="/login"
           element={isAuthenticated ? <Navigate to="/" replace /> : <LoginPage />}
         />
+
+        {/* Protected Admin Routes */}
         <Route
           element={
             <ProtectedRoute>

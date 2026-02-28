@@ -3,7 +3,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
-import PageHeader from '@/components/ui/PageHeader';
 
 interface KPIs {
   contracts: { total: number; active: number; overdue: number; default: number; completed: number };
@@ -62,7 +61,7 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const dashboardStaleTime = 5 * 60 * 1000; // 5 minutes - dashboard data cached in RAM
+  const dashboardStaleTime = 5 * 60 * 1000;
 
   const { data: kpis, isError: kpisError, refetch: refetchKpis } = useQuery<KPIs>({
     queryKey: ['dashboard-kpis'],
@@ -100,13 +99,19 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <PageHeader title="หน้าหลัก" subtitle={`ยินดีต้อนรับ ${user?.name}`} />
+      {/* Welcome Header */}
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-gray-900">
+          สวัสดี, {user?.name}
+        </h1>
+        <p className="text-sm text-gray-500 mt-1">ภาพรวมระบบจัดการร้านของคุณวันนี้</p>
+      </div>
 
       {/* Error State */}
       {kpisError && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 flex items-center justify-between">
+        <div className="bg-red-50 border border-red-100 rounded-2xl p-4 mb-6 flex items-center justify-between">
           <div className="text-sm text-red-700">ไม่สามารถโหลดข้อมูลได้ กรุณาลองใหม่</div>
-          <button onClick={() => refetchKpis()} className="px-3 py-1 bg-red-100 text-red-700 rounded text-sm hover:bg-red-200">
+          <button onClick={() => refetchKpis()} className="px-4 py-1.5 bg-red-100 text-red-700 rounded-lg text-sm font-medium hover:bg-red-200 transition-colors">
             ลองใหม่
           </button>
         </div>
@@ -114,92 +119,139 @@ export default function DashboardPage() {
 
       {/* KPI Cards */}
       {kpis && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white rounded-lg border p-4 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/contracts')}>
-            <div className="text-sm text-gray-500">สัญญาทั้งหมด</div>
-            <div className="text-2xl font-bold text-gray-900">{kpis.contracts.total}</div>
-            <div className="text-xs text-green-600 mt-1">ปกติ {kpis.contracts.active}</div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          <div
+            className="bg-gradient-to-br from-primary-600 to-primary-700 rounded-2xl p-5 cursor-pointer hover:shadow-xl hover:shadow-primary-600/20 transition-all duration-300 hover:-translate-y-0.5"
+            onClick={() => navigate('/contracts')}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+                <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+            </div>
+            <div className="text-2xl font-bold text-white">{kpis.contracts.total}</div>
+            <div className="text-sm text-primary-200 mt-1">สัญญาทั้งหมด</div>
+            <div className="text-xs text-primary-300 mt-1">ปกติ {kpis.contracts.active}</div>
           </div>
-          <div className="bg-white rounded-lg border p-4 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/overdue')}>
-            <div className="text-sm text-gray-500">ค้างชำระ / ผิดนัด</div>
-            <div className="text-2xl font-bold text-red-600">
+
+          <div
+            className="bg-gradient-to-br from-red-500 to-red-600 rounded-2xl p-5 cursor-pointer hover:shadow-xl hover:shadow-red-500/20 transition-all duration-300 hover:-translate-y-0.5"
+            onClick={() => navigate('/overdue')}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+                <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+              </div>
+            </div>
+            <div className="text-2xl font-bold text-white">
               {kpis.contracts.overdue + kpis.contracts.default}
             </div>
-            <div className="text-xs text-gray-500 mt-1">
-              อัตรา {kpis.overdueRate.toFixed(1)}%
-            </div>
+            <div className="text-sm text-red-200 mt-1">ค้างชำระ / ผิดนัด</div>
+            <div className="text-xs text-red-300 mt-1">อัตรา {kpis.overdueRate.toFixed(1)}%</div>
           </div>
-          <div className="bg-white rounded-lg border p-4 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/payments')}>
-            <div className="text-sm text-gray-500">ยอดรับชำระวันนี้</div>
-            <div className="text-2xl font-bold text-green-600">
+
+          <div
+            className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-2xl p-5 cursor-pointer hover:shadow-xl hover:shadow-emerald-500/20 transition-all duration-300 hover:-translate-y-0.5"
+            onClick={() => navigate('/payments')}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+                <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+            </div>
+            <div className="text-2xl font-bold text-white">
               {kpis.financial.todayPayments.toLocaleString()}
             </div>
-            <div className="text-xs text-gray-500 mt-1">บาท</div>
+            <div className="text-sm text-emerald-200 mt-1">ยอดรับชำระวันนี้ (฿)</div>
+            <div className="text-xs text-emerald-300 mt-1">{kpis.financial.todayPaymentCount} รายการ</div>
           </div>
-          <div className="bg-white rounded-lg border p-4 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/contracts')}>
+
+          <div
+            className="bg-gradient-to-br from-violet-500 to-violet-600 rounded-2xl p-5 cursor-pointer hover:shadow-xl hover:shadow-violet-500/20 transition-all duration-300 hover:-translate-y-0.5"
+            onClick={() => navigate('/products')}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+                <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                </svg>
+              </div>
+            </div>
+            <div className="text-2xl font-bold text-white">{kpis.products.inStock}</div>
+            <div className="text-sm text-violet-200 mt-1">สินค้าในสต็อก</div>
+            <div className="text-xs text-violet-300 mt-1">จาก {kpis.products.total} ชิ้น</div>
+          </div>
+        </div>
+      )}
+
+      {/* Secondary Stats */}
+      {kpis && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          <div className="bg-white rounded-2xl border border-gray-100 p-5 hover:shadow-md transition-all cursor-pointer" onClick={() => navigate('/contracts')}>
             <div className="text-sm text-gray-500">ลูกหนี้คงค้าง</div>
-            <div className="text-2xl font-bold text-blue-600">
-              {kpis.financial.totalReceivable.toLocaleString()}
-            </div>
-            <div className="text-xs text-gray-500 mt-1">บาท</div>
+            <div className="text-xl font-bold text-gray-900 mt-1">{kpis.financial.totalReceivable.toLocaleString()}</div>
+            <div className="text-xs text-gray-400 mt-1">บาท</div>
           </div>
-          <div className="bg-white rounded-lg border p-4 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/products')}>
-            <div className="text-sm text-gray-500">สินค้าในสต็อก</div>
-            <div className="text-2xl font-bold text-purple-600">{kpis.products.inStock}</div>
-            <div className="text-xs text-gray-500 mt-1">จาก {kpis.products.total} ชิ้น</div>
-          </div>
-          <div className="bg-white rounded-lg border p-4 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/contracts')}>
+          <div className="bg-white rounded-2xl border border-gray-100 p-5 hover:shadow-md transition-all cursor-pointer" onClick={() => navigate('/contracts')}>
             <div className="text-sm text-gray-500">ปิดสัญญาแล้ว</div>
-            <div className="text-2xl font-bold text-blue-500">{kpis.contracts.completed}</div>
+            <div className="text-xl font-bold text-blue-600 mt-1">{kpis.contracts.completed}</div>
+            <div className="text-xs text-gray-400 mt-1">สัญญา</div>
           </div>
-          <div className="bg-white rounded-lg border p-4">
+          <div className="bg-white rounded-2xl border border-gray-100 p-5 hover:shadow-md transition-all">
             <div className="text-sm text-gray-500">ค่าปรับรวม</div>
-            <div className="text-2xl font-bold text-orange-600">
-              {kpis.financial.totalLateFees.toLocaleString()}
-            </div>
-            <div className="text-xs text-gray-500 mt-1">บาท</div>
+            <div className="text-xl font-bold text-orange-600 mt-1">{kpis.financial.totalLateFees.toLocaleString()}</div>
+            <div className="text-xs text-gray-400 mt-1">บาท</div>
           </div>
-          <div className="bg-white rounded-lg border p-4 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/overdue')}>
-            <div className="text-sm text-gray-500">ค้างชำระ</div>
-            <div className="text-2xl font-bold text-yellow-600">{kpis.contracts.overdue}</div>
-            <div className="text-xs text-red-600 mt-1">ผิดนัด {kpis.contracts.default}</div>
+          <div className="bg-white rounded-2xl border border-gray-100 p-5 hover:shadow-md transition-all cursor-pointer" onClick={() => navigate('/overdue')}>
+            <div className="text-sm text-gray-500">ค้างชำระ / ผิดนัด</div>
+            <div className="text-xl font-bold text-yellow-600 mt-1">
+              {kpis.contracts.overdue}
+              <span className="text-red-500 ml-2 text-base">/ {kpis.contracts.default}</span>
+            </div>
+            <div className="text-xs text-gray-400 mt-1">ค้างชำระ / ผิดนัด</div>
           </div>
         </div>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         {/* Monthly Trend */}
-        <div className="bg-white rounded-lg border p-5">
-          <h3 className="text-sm font-semibold text-gray-700 mb-4">แนวโน้ม 12 เดือน</h3>
+        <div className="bg-white rounded-2xl border border-gray-100 p-6">
+          <h3 className="text-sm font-semibold text-gray-900 mb-5">แนวโน้ม 12 เดือน</h3>
           {trend.length > 0 ? (
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               {trend.map((t) => (
                 <div key={t.month} className="flex items-center gap-3 text-xs">
-                  <div className="w-16 text-gray-500 shrink-0">{t.month}</div>
+                  <div className="w-16 text-gray-500 shrink-0 font-medium">{t.month}</div>
                   <div className="flex-1 space-y-1">
                     <div className="flex items-center gap-2">
                       <div
-                        className="h-3 bg-blue-400 rounded-sm"
+                        className="h-3 bg-gradient-to-r from-primary-400 to-primary-600 rounded-full"
                         style={{ width: `${(t.newContracts / trendMax) * 100}%`, minWidth: '2px' }}
                       />
-                      <span className="text-gray-600">{t.newContracts}</span>
+                      <span className="text-gray-600 font-medium">{t.newContracts}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <div
-                        className="h-3 bg-green-400 rounded-sm"
+                        className="h-3 bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full"
                         style={{ width: `${(t.paymentsReceived / trendMax) * 100}%`, minWidth: '2px' }}
                       />
-                      <span className="text-gray-600">{t.paymentsReceived.toLocaleString()}</span>
+                      <span className="text-gray-600 font-medium">{t.paymentsReceived.toLocaleString()}</span>
                     </div>
                   </div>
                 </div>
               ))}
-              <div className="flex gap-4 text-xs text-gray-500 mt-3 pt-2 border-t">
-                <span className="flex items-center gap-1">
-                  <span className="w-3 h-3 bg-blue-400 rounded-sm inline-block" /> สัญญาใหม่
+              <div className="flex gap-4 text-xs text-gray-500 mt-4 pt-3 border-t border-gray-100">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 bg-gradient-to-r from-primary-400 to-primary-600 rounded-full inline-block" /> สัญญาใหม่
                 </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-3 h-3 bg-green-400 rounded-sm inline-block" /> ยอดชำระ (บาท)
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full inline-block" /> ยอดชำระ (บาท)
                 </span>
               </div>
             </div>
@@ -209,13 +261,13 @@ export default function DashboardPage() {
         </div>
 
         {/* Status Distribution */}
-        <div className="bg-white rounded-lg border p-5">
-          <h3 className="text-sm font-semibold text-gray-700 mb-4">สถานะสัญญา</h3>
+        <div className="bg-white rounded-2xl border border-gray-100 p-6">
+          <h3 className="text-sm font-semibold text-gray-900 mb-5">สถานะสัญญา</h3>
           {statusDist.length > 0 ? (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {statusDist.map((s) => (
                 <div key={s.status} className="flex items-center gap-3">
-                  <div className="w-24 text-xs text-gray-600">
+                  <div className="w-24 text-xs text-gray-600 font-medium">
                     {statusLabels[s.status] || s.status}
                   </div>
                   <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden">
@@ -227,7 +279,7 @@ export default function DashboardPage() {
                       }}
                     />
                   </div>
-                  <div className="w-12 text-right text-sm font-medium">{s.count}</div>
+                  <div className="w-12 text-right text-sm font-bold text-gray-700">{s.count}</div>
                 </div>
               ))}
             </div>
@@ -239,31 +291,31 @@ export default function DashboardPage() {
 
       {/* Top Overdue */}
       {topOverdue.length > 0 && (
-        <div className="bg-white rounded-lg border p-5 mb-6">
-          <h3 className="text-sm font-semibold text-gray-700 mb-4">สัญญาค้างชำระสูงสุด (Top 10)</h3>
+        <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-6">
+          <h3 className="text-sm font-semibold text-gray-900 mb-5">สัญญาค้างชำระสูงสุด (Top 10)</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b text-left text-gray-500">
-                  <th className="pb-2 font-medium">เลขสัญญา</th>
-                  <th className="pb-2 font-medium">ลูกค้า</th>
-                  <th className="pb-2 font-medium">เบอร์โทร</th>
-                  <th className="pb-2 font-medium text-right">ยอดค้าง (บาท)</th>
-                  <th className="pb-2 font-medium text-right">เกินกำหนด (วัน)</th>
+                <tr className="border-b border-gray-100 text-left text-gray-500">
+                  <th className="pb-3 font-medium">เลขสัญญา</th>
+                  <th className="pb-3 font-medium">ลูกค้า</th>
+                  <th className="pb-3 font-medium">เบอร์โทร</th>
+                  <th className="pb-3 font-medium text-right">ยอดค้าง (บาท)</th>
+                  <th className="pb-3 font-medium text-right">เกินกำหนด (วัน)</th>
                 </tr>
               </thead>
               <tbody>
                 {topOverdue.map((item) => (
-                  <tr key={item.contractNumber} className="border-b last:border-0">
-                    <td className="py-2 font-medium text-primary-600">{item.contractNumber}</td>
-                    <td className="py-2">{item.customer.name}</td>
-                    <td className="py-2 text-gray-500">{item.customer.phone}</td>
-                    <td className="py-2 text-right text-red-600 font-medium">
+                  <tr key={item.contractNumber} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors">
+                    <td className="py-3 font-medium text-primary-600">{item.contractNumber}</td>
+                    <td className="py-3">{item.customer.name}</td>
+                    <td className="py-3 text-gray-500">{item.customer.phone}</td>
+                    <td className="py-3 text-right text-red-600 font-bold">
                       {item.totalOutstanding.toLocaleString()}
                     </td>
-                    <td className="py-2 text-right">
+                    <td className="py-3 text-right">
                       <span
-                        className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                        className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
                           item.daysOverdue > 60
                             ? 'bg-red-100 text-red-700'
                             : item.daysOverdue > 30
@@ -284,33 +336,33 @@ export default function DashboardPage() {
 
       {/* Branch Comparison (OWNER only) */}
       {user?.role === 'OWNER' && branchData.length > 0 && (
-        <div className="bg-white rounded-lg border p-5">
-          <h3 className="text-sm font-semibold text-gray-700 mb-4">เปรียบเทียบสาขา</h3>
+        <div className="bg-white rounded-2xl border border-gray-100 p-6">
+          <h3 className="text-sm font-semibold text-gray-900 mb-5">เปรียบเทียบสาขา</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b text-left text-gray-500">
-                  <th className="pb-2 font-medium">สาขา</th>
-                  <th className="pb-2 font-medium text-right">สัญญา</th>
-                  <th className="pb-2 font-medium text-right">สินค้า</th>
-                  <th className="pb-2 font-medium text-right">พนักงาน</th>
-                  <th className="pb-2 font-medium text-right">ค้างชำระ</th>
-                  <th className="pb-2 font-medium text-right">ยอดชำระ/เดือน</th>
+                <tr className="border-b border-gray-100 text-left text-gray-500">
+                  <th className="pb-3 font-medium">สาขา</th>
+                  <th className="pb-3 font-medium text-right">สัญญา</th>
+                  <th className="pb-3 font-medium text-right">สินค้า</th>
+                  <th className="pb-3 font-medium text-right">พนักงาน</th>
+                  <th className="pb-3 font-medium text-right">ค้างชำระ</th>
+                  <th className="pb-3 font-medium text-right">ยอดชำระ/เดือน</th>
                 </tr>
               </thead>
               <tbody>
                 {branchData.map((b) => (
-                  <tr key={b.name} className="border-b last:border-0">
-                    <td className="py-2 font-medium">{b.name}</td>
-                    <td className="py-2 text-right">{b.contracts}</td>
-                    <td className="py-2 text-right">{b.products}</td>
-                    <td className="py-2 text-right">{b.users}</td>
-                    <td className="py-2 text-right">
-                      <span className={b.overdueContracts > 0 ? 'text-red-600 font-medium' : ''}>
+                  <tr key={b.name} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors">
+                    <td className="py-3 font-medium">{b.name}</td>
+                    <td className="py-3 text-right">{b.contracts}</td>
+                    <td className="py-3 text-right">{b.products}</td>
+                    <td className="py-3 text-right">{b.users}</td>
+                    <td className="py-3 text-right">
+                      <span className={b.overdueContracts > 0 ? 'text-red-600 font-bold' : ''}>
                         {b.overdueContracts}
                       </span>
                     </td>
-                    <td className="py-2 text-right text-green-600">
+                    <td className="py-3 text-right text-emerald-600 font-medium">
                       {b.monthlyPayments.toLocaleString()}
                     </td>
                   </tr>

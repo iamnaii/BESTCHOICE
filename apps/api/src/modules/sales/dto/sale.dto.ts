@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsNumber, IsEnum } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsEnum, IsIn } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateSaleDto {
@@ -24,7 +24,7 @@ export class CreateSaleDto {
   discount?: number;
 
   // Payment (for CASH and EXTERNAL_FINANCE)
-  @IsString()
+  @IsIn(['CASH', 'BANK_TRANSFER', 'QR_EWALLET'])
   @IsOptional()
   paymentMethod?: string;
 
@@ -34,7 +34,7 @@ export class CreateSaleDto {
   amountReceived?: number;
 
   // Installment fields
-  @IsString()
+  @IsIn(['STORE_DIRECT', 'CREDIT_CARD', 'STORE_WITH_INTEREST'])
   @IsOptional()
   planType?: string;
 

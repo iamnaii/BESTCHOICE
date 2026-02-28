@@ -8,6 +8,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
+import { statusLabels, categoryLabels } from '@/lib/constants';
 
 interface Product {
   id: string;
@@ -24,25 +25,6 @@ interface Product {
   supplier: { id: string; name: string } | null;
   prices: { id: string; label: string; amount: string; isDefault: boolean }[];
 }
-
-const statusLabels: Record<string, { label: string; className: string }> = {
-  PO_RECEIVED: { label: 'รับจาก PO', className: 'bg-blue-100 text-blue-700' },
-  INSPECTION: { label: 'กำลังตรวจ', className: 'bg-yellow-100 text-yellow-700' },
-  IN_STOCK: { label: 'พร้อมขาย', className: 'bg-green-100 text-green-700' },
-  RESERVED: { label: 'จอง', className: 'bg-purple-100 text-purple-700' },
-  SOLD_INSTALLMENT: { label: 'ขายผ่อน', className: 'bg-indigo-100 text-indigo-700' },
-  SOLD_CASH: { label: 'ขายสด', className: 'bg-teal-100 text-teal-700' },
-  REPOSSESSED: { label: 'ยึดคืน', className: 'bg-red-100 text-red-700' },
-  REFURBISHED: { label: 'ซ่อมแล้ว', className: 'bg-orange-100 text-orange-700' },
-  SOLD_RESELL: { label: 'ขายต่อ', className: 'bg-cyan-100 text-cyan-700' },
-};
-
-const categoryLabels: Record<string, string> = {
-  PHONE_NEW: 'มือถือใหม่',
-  PHONE_USED: 'มือถือมือสอง',
-  TABLET: 'แท็บเล็ต',
-  ACCESSORY: 'อุปกรณ์เสริม',
-};
 
 export default function ProductsPage() {
   const { user } = useAuth();
@@ -86,9 +68,7 @@ export default function ProductsPage() {
       queryClient.invalidateQueries({ queryKey: ['products'] });
       toast.success('ลบราคาสำเร็จ');
     },
-    onError: (err: { response?: { data?: { message?: string } } }) => {
-      toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด');
-    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const openPriceEdit = useCallback((product: Product) => {

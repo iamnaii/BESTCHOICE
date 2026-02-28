@@ -59,6 +59,7 @@ export default function ProductsPage() {
 
   // Quick price edit modal state
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
   const [priceForm, setPriceForm] = useState({ label: '', amount: '', isDefault: false });
 
   const priceMutation = useMutation({
@@ -71,28 +72,52 @@ export default function ProductsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
       toast.success('บันทึกราคาสำเร็จ');
-      setEditingProduct(null);
+      setEditingPriceId(null);
+      setPriceForm({ label: '', amount: '', isDefault: false });
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
+  const deletePriceMutation = useMutation({
+    mutationFn: async ({ productId, priceId }: { productId: string; priceId: string }) => {
+      return api.delete(`/products/${productId}/prices/${priceId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      toast.success('ลบราคาสำเร็จ');
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด');
+    },
+  });
+
   const openPriceEdit = useCallback((product: Product) => {
     setEditingProduct(product);
-    const defaultPrice = product.prices.find((p) => p.isDefault);
-    if (defaultPrice) {
-      setPriceForm({ label: defaultPrice.label, amount: defaultPrice.amount, isDefault: defaultPrice.isDefault });
-    } else {
-      setPriceForm({ label: 'ราคาขาย', amount: '', isDefault: true });
-    }
+    setEditingPriceId(null);
+    setPriceForm({ label: '', amount: '', isDefault: false });
   }, []);
+
+  const startEditPrice = (price: { id: string; label: string; amount: string; isDefault: boolean }) => {
+    setEditingPriceId(price.id);
+    setPriceForm({ label: price.label, amount: price.amount, isDefault: price.isDefault });
+  };
+
+  const startAddPrice = () => {
+    setEditingPriceId('new');
+    setPriceForm({ label: '', amount: '', isDefault: false });
+  };
+
+  const cancelEditPrice = () => {
+    setEditingPriceId(null);
+    setPriceForm({ label: '', amount: '', isDefault: false });
+  };
 
   const handlePriceSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingProduct) return;
-    const defaultPrice = editingProduct.prices.find((p) => p.isDefault);
     priceMutation.mutate({
       productId: editingProduct.id,
-      priceId: defaultPrice?.id,
+      priceId: editingPriceId === 'new' ? undefined : editingPriceId || undefined,
       data: {
         label: priceForm.label,
         amount: parseFloat(priceForm.amount),
@@ -118,6 +143,14 @@ export default function ProductsPage() {
   });
 
   const products = result?.data ?? [];
+
+  // Keep editingProduct in sync when product data refreshes after mutations
+  useEffect(() => {
+    if (editingProduct && products.length > 0) {
+      const updated = products.find(p => p.id === editingProduct.id);
+      if (updated) setEditingProduct(updated);
+    }
+  }, [products]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data: branches = [] } = useQuery<{ id: string; name: string }[]>({
     queryKey: ['branches'],
@@ -286,54 +319,188 @@ export default function ProductsPage() {
       <Modal
         isOpen={!!editingProduct}
         onClose={() => setEditingProduct(null)}
-        title={editingProduct ? `แก้ไขราคา — ${editingProduct.brand} ${editingProduct.model}` : 'แก้ไขราคา'}
+        title={editingProduct ? `จัดการราคา — ${editingProduct.brand} ${editingProduct.model}` : 'จัดการราคา'}
         size="sm"
       >
-        <form onSubmit={handlePriceSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อราคา</label>
-            <input
-              type="text"
-              value={priceForm.label}
-              onChange={(e) => setPriceForm({ ...priceForm, label: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">ราคาขาย (บาท)</label>
-            <input
-              type="number"
-              step="0.01"
-              value={priceForm.amount}
-              onChange={(e) => setPriceForm({ ...priceForm, amount: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-              required
-            />
-          </div>
-          {editingProduct && (
+        {editingProduct && (
+          <div className="space-y-4">
+            {/* Cost price reference */}
             <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3">
-              ราคาทุน: {parseFloat(editingProduct.costPrice).toLocaleString()} ฿
-              {priceForm.amount && (
-                <span className={`ml-2 font-medium ${parseFloat(priceForm.amount) - parseFloat(editingProduct.costPrice) > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  (กำไร: {(parseFloat(priceForm.amount) - parseFloat(editingProduct.costPrice)).toLocaleString()} ฿)
-                </span>
+              ราคาทุน: <span className="font-medium text-gray-700">{parseFloat(editingProduct.costPrice).toLocaleString()} ฿</span>
+            </div>
+
+            {/* Existing prices list */}
+            <div className="space-y-2">
+              {editingProduct.prices.map((price) => (
+                <div key={price.id}>
+                  {editingPriceId === price.id ? (
+                    /* Inline edit form */
+                    <form onSubmit={handlePriceSubmit} className="border-2 border-primary-200 rounded-lg p-3 bg-primary-50 space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="text"
+                          value={priceForm.label}
+                          onChange={(e) => setPriceForm({ ...priceForm, label: e.target.value })}
+                          placeholder="ชื่อราคา"
+                          className="px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                          required
+                        />
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={priceForm.amount}
+                          onChange={(e) => setPriceForm({ ...priceForm, amount: e.target.value })}
+                          placeholder="ราคา (บาท)"
+                          className="px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                          required
+                        />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={priceForm.isDefault}
+                            onChange={(e) => setPriceForm({ ...priceForm, isDefault: e.target.checked })}
+                            className="rounded text-primary-600"
+                          />
+                          ค่าเริ่มต้น
+                        </label>
+                        <div className="flex gap-2">
+                          <button type="button" onClick={cancelEditPrice} className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700">
+                            ยกเลิก
+                          </button>
+                          <button
+                            type="submit"
+                            disabled={priceMutation.isPending}
+                            className="px-3 py-1 bg-primary-600 text-white rounded text-xs font-medium hover:bg-primary-700 disabled:opacity-50"
+                          >
+                            {priceMutation.isPending ? 'บันทึก...' : 'บันทึก'}
+                          </button>
+                        </div>
+                      </div>
+                      {priceForm.amount && (
+                        <div className={`text-xs ${parseFloat(priceForm.amount) - parseFloat(editingProduct.costPrice) > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          กำไร: {(parseFloat(priceForm.amount) - parseFloat(editingProduct.costPrice)).toLocaleString()} ฿
+                        </div>
+                      )}
+                    </form>
+                  ) : (
+                    /* Display row */
+                    <div className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-gray-50 border border-transparent hover:border-gray-200">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-gray-900">{price.label}</span>
+                        {price.isDefault && (
+                          <span className="px-1.5 py-0.5 bg-primary-100 text-primary-700 text-xs rounded font-medium">
+                            ค่าเริ่มต้น
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm font-semibold">{parseFloat(price.amount).toLocaleString()} ฿</span>
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => startEditPrice(price)}
+                            className="p-1 text-gray-400 hover:text-primary-600 transition-colors"
+                            title="แก้ไข"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (confirm('ต้องการลบราคานี้?')) {
+                                deletePriceMutation.mutate({ productId: editingProduct.id, priceId: price.id });
+                              }
+                            }}
+                            className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                            title="ลบ"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {editingProduct.prices.length === 0 && !editingPriceId && (
+                <p className="text-sm text-gray-400 text-center py-3">ยังไม่มีราคาขาย</p>
               )}
             </div>
-          )}
-          <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={() => setEditingProduct(null)} className="px-4 py-2 text-sm text-gray-600">
-              ยกเลิก
-            </button>
-            <button
-              type="submit"
-              disabled={priceMutation.isPending}
-              className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
-            >
-              {priceMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
-            </button>
+
+            {/* Add new price form */}
+            {editingPriceId === 'new' ? (
+              <form onSubmit={handlePriceSubmit} className="border-2 border-green-200 rounded-lg p-3 bg-green-50 space-y-2">
+                <div className="text-xs font-medium text-green-700 mb-1">เพิ่มราคาใหม่</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    value={priceForm.label}
+                    onChange={(e) => setPriceForm({ ...priceForm, label: e.target.value })}
+                    placeholder='เช่น "ราคาเงินสด"'
+                    className="px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                    required
+                  />
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={priceForm.amount}
+                    onChange={(e) => setPriceForm({ ...priceForm, amount: e.target.value })}
+                    placeholder="ราคา (บาท)"
+                    className="px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                    required
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={priceForm.isDefault}
+                      onChange={(e) => setPriceForm({ ...priceForm, isDefault: e.target.checked })}
+                      className="rounded text-primary-600"
+                    />
+                    ค่าเริ่มต้น
+                  </label>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={cancelEditPrice} className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700">
+                      ยกเลิก
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={priceMutation.isPending}
+                      className="px-3 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700 disabled:opacity-50"
+                    >
+                      {priceMutation.isPending ? 'เพิ่ม...' : 'เพิ่ม'}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            ) : (
+              <button
+                type="button"
+                onClick={startAddPrice}
+                className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-primary-400 hover:text-primary-600 transition-colors"
+              >
+                + เพิ่มราคาใหม่
+              </button>
+            )}
+
+            {/* Close button */}
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setEditingProduct(null)}
+                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
+              >
+                ปิด
+              </button>
+            </div>
           </div>
-        </form>
+        )}
       </Modal>
     </div>
   );

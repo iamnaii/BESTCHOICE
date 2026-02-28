@@ -221,11 +221,12 @@ export class OverdueService {
     const lateFeeCap = lateFeeCapConfig ? Number(lateFeeCapConfig.value) : 200;
 
     // Single bulk UPDATE: calculate late fees and set status in one query
+    // Use EXTRACT(EPOCH) / 86400 to get total days (not just the day component of the interval)
     const result = await this.prisma.$executeRaw`
       UPDATE "payments"
       SET
         "late_fee" = LEAST(
-          EXTRACT(DAY FROM (${now}::timestamp - "due_date"))::int * ${lateFeePerDay},
+          GREATEST(FLOOR(EXTRACT(EPOCH FROM (${now}::timestamp - "due_date")) / 86400)::int, 0) * ${lateFeePerDay},
           ${lateFeeCap}
         ),
         "status" = 'OVERDUE'

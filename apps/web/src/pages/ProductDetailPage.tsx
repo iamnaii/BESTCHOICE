@@ -93,6 +93,16 @@ export default function ProductDetailPage() {
     },
   });
 
+  // Compute default price and profit (must be before early returns to satisfy Rules of Hooks)
+  const { defaultPrice, profit } = useMemo(() => {
+    if (!product) return { defaultPrice: undefined, profit: null };
+    const dp = product.prices.find((p) => p.isDefault);
+    return {
+      defaultPrice: dp,
+      profit: dp ? parseFloat(dp.amount) - parseFloat(product.costPrice) : null,
+    };
+  }, [product]);
+
   // Price mutations
   const priceMutation = useMutation({
     mutationFn: async (data: { label: string; amount: number; isDefault: boolean }) => {
@@ -177,13 +187,6 @@ export default function ProductDetailPage() {
   }
 
   const s = statusLabels[product.status] || { label: product.status, className: 'bg-gray-100 text-gray-700' };
-  const { defaultPrice, profit } = useMemo(() => {
-    const dp = product.prices.find((p) => p.isDefault);
-    return {
-      defaultPrice: dp,
-      profit: dp ? parseFloat(dp.amount) - parseFloat(product.costPrice) : null,
-    };
-  }, [product.prices, product.costPrice]);
 
   return (
     <div>

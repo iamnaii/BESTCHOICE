@@ -33,6 +33,14 @@ export class PaymentsService {
 
     const amountDue = Number(payment.amountDue) + Number(payment.lateFee);
     const prevPaid = Number(payment.amountPaid);
+    const remaining = amountDue - prevPaid;
+
+    // Prevent overpayment: cap amount at what is owed for this installment
+    if (amount > remaining) {
+      throw new BadRequestException(
+        `จำนวนเงินเกินยอดค้างชำระ (ยอดค้าง ${remaining.toLocaleString()} บาท, ชำระ ${amount.toLocaleString()} บาท) กรุณาใช้ระบบจัดสรรอัตโนมัติสำหรับการชำระหลายงวด`,
+      );
+    }
     const totalPaid = prevPaid + amount;
 
     const isPaidInFull = totalPaid >= amountDue;

@@ -30,7 +30,8 @@ services:
       DATABASE_URL: postgresql://${DB_USER:-installment}:${DB_PASSWORD}@db:5432/${DB_NAME:-installment_db}?schema=public
       JWT_SECRET: ${JWT_SECRET:?JWT secret required}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT refresh secret required}
-      JWT_EXPIRATION: ${JWT_EXPIRATION:-7d}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-15m}
+      JWT_REFRESH_EXPIRATION: ${JWT_REFRESH_EXPIRATION:-7d}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
       NODE_ENV: production
       PORT: 3000

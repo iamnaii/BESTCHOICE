@@ -205,16 +205,30 @@ export class RepossessionsService {
         SOLD: 'SOLD_RESELL',
       };
 
-      if (productStatusMap[dto.status]) {
-        await this.prisma.product.update({
-          where: { id: repo.product.id },
-          data: { status: productStatusMap[dto.status] },
-        });
-      }
-
       // If marking as SOLD, link to resell contract if provided
       if (dto.status === 'SOLD' && dto.soldContractId) {
         data.soldContractId = dto.soldContractId;
+      }
+
+      // Use transaction to ensure product status and repossession update are atomic
+      const newProductStatus = productStatusMap[dto.status];
+      if (newProductStatus) {
+        return this.prisma.$transaction(async (tx) => {
+          await tx.product.update({
+            where: { id: repo.product.id },
+            data: { status: newProductStatus },
+          });
+          return tx.repossession.update({
+            where: { id },
+            data,
+            include: {
+              contract: {
+                select: { contractNumber: true, customer: { select: { name: true } } },
+              },
+              product: { select: { name: true, brand: true, model: true } },
+            },
+          });
+        });
       }
     }
 
@@ -244,14 +258,16 @@ export class RepossessionsService {
       throw new BadRequestException('กรุณาระบุราคาขายต่อ');
     }
 
-    await this.prisma.product.update({
-      where: { id: repo.product.id },
-      data: { status: 'REFURBISHED' },
-    });
-
-    return this.prisma.repossession.update({
-      where: { id },
-      data: { status: 'READY_FOR_SALE', resellPrice },
+    // Use transaction to ensure both updates are atomic
+    return this.prisma.$transaction(async (tx) => {
+      await tx.product.update({
+        where: { id: repo.product.id },
+        data: { status: 'REFURBISHED' },
+      });
+      return tx.repossession.update({
+        where: { id },
+        data: { status: 'READY_FOR_SALE', resellPrice },
+      });
     });
   }
 

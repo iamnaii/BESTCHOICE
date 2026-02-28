@@ -53,6 +53,65 @@ export const ProductCategory = {
   ACCESSORY: 'ACCESSORY',
 } as const;
 
+// Payment Status
+export const PaymentStatus = {
+  PENDING: 'PENDING',
+  PAID: 'PAID',
+  PARTIALLY_PAID: 'PARTIALLY_PAID',
+  OVERDUE: 'OVERDUE',
+} as const;
+
+// Sale Type
+export const SaleType = {
+  CASH: 'CASH',
+  INSTALLMENT: 'INSTALLMENT',
+  EXTERNAL_FINANCE: 'EXTERNAL_FINANCE',
+} as const;
+
+// Purchase Order Status
+export const POStatus = {
+  DRAFT: 'DRAFT',
+  APPROVED: 'APPROVED',
+  PENDING: 'PENDING',
+  PARTIALLY_RECEIVED: 'PARTIALLY_RECEIVED',
+  FULLY_RECEIVED: 'FULLY_RECEIVED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+// Repossession Status
+export const RepossessionStatus = {
+  REPOSSESSED: 'REPOSSESSED',
+  UNDER_REPAIR: 'UNDER_REPAIR',
+  READY_FOR_SALE: 'READY_FOR_SALE',
+  SOLD: 'SOLD',
+  WRITTEN_OFF: 'WRITTEN_OFF',
+} as const;
+
+// Thai labels for display
+export const STATUS_LABELS = {
+  contract: {
+    DRAFT: 'แบบร่าง',
+    ACTIVE: 'ปกติ',
+    OVERDUE: 'ค้างชำระ',
+    DEFAULT: 'ผิดนัด',
+    EARLY_PAYOFF: 'ปิดก่อนกำหนด',
+    COMPLETED: 'ปิดสัญญา',
+    EXCHANGED: 'เปลี่ยนเครื่อง',
+    CLOSED_BAD_DEBT: 'หนี้สูญ',
+  },
+  payment: {
+    PENDING: 'รอชำระ',
+    PAID: 'ชำระแล้ว',
+    PARTIALLY_PAID: 'ชำระบางส่วน',
+    OVERDUE: 'ค้างชำระ',
+  },
+  paymentMethod: {
+    CASH: 'เงินสด',
+    BANK_TRANSFER: 'โอนธนาคาร',
+    QR_EWALLET: 'QR / e-Wallet',
+  },
+} as const;
+
 // Default System Config
 export const DEFAULT_CONFIG = {
   INTEREST_RATE: 0.08, // 8% per month

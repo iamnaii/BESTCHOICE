@@ -300,6 +300,7 @@ model Payment {
   contract   Contract @relation(fields: [contractId], references: [id])
   recordedBy User?    @relation("RecordedBy", fields: [recordedById], references: [id])
 
+  @@unique([contractId, installmentNo])
   @@index([contractId])
   @@index([dueDate])
   @@index([status])
@@ -496,6 +497,8 @@ model StockTransfer {
 
   @@index([productId])
   @@index([status])
+  @@index([fromBranchId])
+  @@index([toBranchId])
   @@map("stock_transfers")
 }
 
@@ -620,6 +623,8 @@ model Inspection {
   results InspectionResult[]
 
   @@index([productId])
+  @@index([templateId])
+  @@index([inspectorId])
   @@map("inspections")
 }
 
@@ -671,6 +676,7 @@ model EDocument {
   contract Contract @relation(fields: [contractId], references: [id])
 
   @@index([contractId])
+  @@index([createdById])
   @@map("e_documents")
 }
 
@@ -748,6 +754,8 @@ model NotificationLog {
   createdAt  DateTime            @default(now()) @map("created_at")
 
   @@index([relatedId])
+  @@index([channel])
+  @@index([createdAt])
   @@map("notification_logs")
 }
 
@@ -764,6 +772,7 @@ model CallLog {
   caller   User     @relation(fields: [callerId], references: [id])
 
   @@index([contractId])
+  @@index([callerId])
   @@map("call_logs")
 }
 
@@ -832,5 +841,7 @@ model Sale {
   @@index([saleType])
   @@index([branchId])
   @@index([createdAt])
+  @@index([customerId])
+  @@index([salespersonId])
   @@map("sales")
 }

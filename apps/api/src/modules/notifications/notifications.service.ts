@@ -141,7 +141,7 @@ export class NotificationsService {
     // Clean phone number: ensure +66 format for Thai numbers
     const cleanPhone = this.formatThaiPhone(recipient);
 
-    // ThaiBulkSMS API
+    // ThaiBulkSMS API - use POST body to avoid credentials in URL/logs
     const url = 'https://bulk.thaibulksms.com/sms.php';
     const params = new URLSearchParams({
       username: this.smsApiKey,
@@ -152,7 +152,11 @@ export class NotificationsService {
       force: 'standard',
     });
 
-    const response = await fetch(`${url}?${params.toString()}`);
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
     const responseText = await response.text();
 
     if (!response.ok || responseText.includes('error')) {

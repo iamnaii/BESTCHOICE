@@ -190,12 +190,41 @@ export default function ProductCreatePage() {
     setPrices(newPrices);
   };
 
+  const MAX_PHOTOS = 10;
+  const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB per file
+
   const handlePhotoAdd = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
-    const newFiles = [...photoFiles, ...files];
-    setPhotoFiles(newFiles);
-    files.forEach((file) => {
+
+    // Enforce max photo count
+    const remaining = MAX_PHOTOS - photoFiles.length;
+    if (remaining <= 0) {
+      toast.error(`เพิ่มรูปได้สูงสุด ${MAX_PHOTOS} รูป`);
+      e.target.value = '';
+      return;
+    }
+    const allowedFiles = files.slice(0, remaining);
+    if (files.length > remaining) {
+      toast.error(`เลือกได้อีก ${remaining} รูป (สูงสุด ${MAX_PHOTOS} รูป)`);
+    }
+
+    // Enforce file size limit
+    const validFiles = allowedFiles.filter((file) => {
+      if (file.size > MAX_FILE_SIZE) {
+        toast.error(`ไฟล์ ${file.name} ใหญ่เกิน 5MB`);
+        return false;
+      }
+      return true;
+    });
+
+    if (validFiles.length === 0) {
+      e.target.value = '';
+      return;
+    }
+
+    setPhotoFiles((prev) => [...prev, ...validFiles]);
+    validFiles.forEach((file) => {
       const reader = new FileReader();
       reader.onload = () => {
         setPhotoPreviews((prev) => [...prev, reader.result as string]);
@@ -557,7 +586,7 @@ export default function ProductCreatePage() {
               <input type="file" accept="image/*" multiple onChange={handlePhotoAdd} className="hidden" />
             </label>
           </div>
-          <p className="text-xs text-gray-400">รองรับ JPG, PNG สูงสุด 10 รูป</p>
+          <p className="text-xs text-gray-400">รองรับ JPG, PNG สูงสุด {MAX_PHOTOS} รูป (ไม่เกิน 5MB/รูป) - ใช้ไป {photoPreviews.length}/{MAX_PHOTOS}</p>
         </div>
 
         {/* Branch & Supplier */}

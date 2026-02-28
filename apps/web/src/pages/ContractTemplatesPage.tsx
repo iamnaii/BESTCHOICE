@@ -6,6 +6,21 @@ import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import toast from 'react-hot-toast';
 
+/** Sanitize HTML to prevent XSS - removes script tags, event handlers, and dangerous protocols */
+function sanitizeHtml(html: string): string {
+  return html
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '')
+    .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, '')
+    .replace(/<embed\b[^>]*>/gi, '')
+    .replace(/on\w+\s*=\s*"[^"]*"/gi, '')
+    .replace(/on\w+\s*=\s*'[^']*'/gi, '')
+    .replace(/on\w+\s*=[^\s>]*/gi, '')
+    .replace(/javascript\s*:/gi, 'blocked:')
+    .replace(/vbscript\s*:/gi, 'blocked:')
+    .replace(/data\s*:\s*text\/html/gi, 'blocked:');
+}
+
 interface Template {
   id: string;
   name: string;
@@ -202,7 +217,7 @@ export default function ContractTemplatesPage() {
       {/* Preview Modal */}
       {showPreview && (
         <Modal isOpen title="ตัวอย่างเทมเพลต" onClose={() => setShowPreview(false)}>
-          <div className="border rounded-lg p-4 max-h-[60vh] overflow-auto" dangerouslySetInnerHTML={{ __html: previewHtml }} />
+          <div className="border rounded-lg p-4 max-h-[60vh] overflow-auto" dangerouslySetInnerHTML={{ __html: sanitizeHtml(previewHtml) }} />
         </Modal>
       )}
     </div>

@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateSaleDto } from './dto/sale.dto';
 
@@ -50,7 +50,7 @@ export class SalesService {
         contract: true,
       },
     });
-    if (!sale) throw new BadRequestException('ไม่พบใบขาย');
+    if (!sale) throw new NotFoundException('ไม่พบใบขาย');
     return sale;
   }
 

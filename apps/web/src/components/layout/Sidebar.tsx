@@ -23,6 +23,7 @@ const navItems: NavItem[] = [
   { label: 'หน้าหลัก', path: '/' },
 
   // ขาย & ผ่อนชำระ — ใช้ทุกวัน
+  { label: 'POS ขายสินค้า', path: '/pos', section: 'sales' },
   { label: 'ลูกค้า', path: '/customers', section: 'sales' },
   { label: 'สัญญาผ่อน', path: '/contracts', section: 'sales' },
   { label: 'ชำระเงิน', path: '/payments', section: 'sales' },
@@ -65,7 +66,7 @@ function Sidebar() {
     <aside className="w-64 bg-white border-r border-gray-200 min-h-screen">
       <div className="p-4 border-b">
         <h1 className="text-xl font-bold text-primary-700">Best Choice</h1>
-        <p className="text-xs text-gray-400 mt-1">ระบบผ่อนชำระ</p>
+        <p className="text-xs text-gray-400 mt-1">ระบบจัดการร้าน</p>
       </div>
       <nav className="p-2">
         {filteredItems.map((item, idx) => {

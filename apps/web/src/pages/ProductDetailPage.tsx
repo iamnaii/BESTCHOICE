@@ -6,6 +6,7 @@ import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import Modal from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
+import { statusLabels, categoryLabels, transferableStatuses } from '@/lib/constants';
 
 interface Price {
   id: string;
@@ -41,25 +42,6 @@ interface Product {
   inspection: { id: string; overallGrade: string | null; isCompleted: boolean } | null;
   prices: Price[];
 }
-
-const statusLabels: Record<string, { label: string; className: string }> = {
-  PO_RECEIVED: { label: 'รับจาก PO', className: 'bg-blue-100 text-blue-700' },
-  INSPECTION: { label: 'กำลังตรวจ', className: 'bg-yellow-100 text-yellow-700' },
-  IN_STOCK: { label: 'พร้อมขาย', className: 'bg-green-100 text-green-700' },
-  RESERVED: { label: 'จอง', className: 'bg-purple-100 text-purple-700' },
-  SOLD_INSTALLMENT: { label: 'ขายผ่อน', className: 'bg-indigo-100 text-indigo-700' },
-  SOLD_CASH: { label: 'ขายสด', className: 'bg-teal-100 text-teal-700' },
-  REPOSSESSED: { label: 'ยึดคืน', className: 'bg-red-100 text-red-700' },
-  REFURBISHED: { label: 'ซ่อมแล้ว', className: 'bg-orange-100 text-orange-700' },
-  SOLD_RESELL: { label: 'ขายต่อ', className: 'bg-cyan-100 text-cyan-700' },
-};
-
-const categoryLabels: Record<string, string> = {
-  PHONE_NEW: 'มือถือใหม่',
-  PHONE_USED: 'มือถือมือสอง',
-  TABLET: 'แท็บเล็ต',
-  ACCESSORY: 'อุปกรณ์เสริม',
-};
 
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -127,9 +109,7 @@ export default function ProductDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['product', id] });
       toast.success('ลบราคาสำเร็จ');
     },
-    onError: (err: { response?: { data?: { message?: string } } }) => {
-      toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด');
-    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   // Transfer mutation
@@ -195,7 +175,7 @@ export default function ProductDetailPage() {
         subtitle={product.name}
         action={
           <div className="flex gap-2">
-            {isManager && product.status === 'IN_STOCK' && (
+            {isManager && transferableStatuses.includes(product.status) && (
               <button
                 onClick={() => {
                   setTransferForm({ toBranchId: '', notes: '' });

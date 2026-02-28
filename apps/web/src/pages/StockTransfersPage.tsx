@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
+import { transferStatusLabels } from '@/lib/constants';
 
 interface TransferProduct {
   id: string;
@@ -29,12 +30,6 @@ interface StockTransfer {
   createdAt: string;
   product: TransferProduct;
 }
-
-const transferStatusLabels: Record<string, { label: string; className: string }> = {
-  PENDING: { label: 'รอยืนยัน', className: 'bg-orange-100 text-orange-700' },
-  CONFIRMED: { label: 'ยืนยันแล้ว', className: 'bg-green-100 text-green-700' },
-  REJECTED: { label: 'ปฏิเสธ', className: 'bg-red-100 text-red-700' },
-};
 
 export default function StockTransfersPage() {
   const navigate = useNavigate();

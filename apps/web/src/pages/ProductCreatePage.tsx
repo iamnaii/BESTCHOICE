@@ -5,19 +5,13 @@ import toast from 'react-hot-toast';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import { brands, getModels, getModelInfo } from '@/data/productCatalog';
+import { categoryOptions, createProductStatusOptions, gradeOptions } from '@/lib/constants';
 
 interface PriceRow {
   label: string;
   amount: string;
   isDefault: boolean;
 }
-
-const categoryOptions = [
-  { value: 'PHONE_NEW', label: 'มือถือใหม่' },
-  { value: 'PHONE_USED', label: 'มือถือมือสอง' },
-  { value: 'TABLET', label: 'แท็บเล็ต' },
-  { value: 'ACCESSORY', label: 'อุปกรณ์เสริม' },
-];
 
 const accessoryTypes = [
   { value: 'ฟิล์ม', label: 'ฟิล์ม' },
@@ -32,19 +26,7 @@ const chargerConnectorTypes = [
   { value: 'Type-C', label: 'Type-C' },
 ];
 
-const statusOptions = [
-  { value: 'IN_STOCK', label: 'พร้อมขาย' },
-  { value: 'PO_RECEIVED', label: 'รับจาก PO' },
-  { value: 'INSPECTION', label: 'กำลังตรวจ' },
-];
-
-const gradeOptions = [
-  { value: '', label: 'ไม่ระบุ' },
-  { value: 'A', label: 'A' },
-  { value: 'B', label: 'B' },
-  { value: 'C', label: 'C' },
-  { value: 'D', label: 'D' },
-];
+const statusOptions = createProductStatusOptions;
 
 export default function ProductCreatePage() {
   const navigate = useNavigate();

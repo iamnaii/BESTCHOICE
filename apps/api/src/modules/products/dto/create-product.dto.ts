@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsNumber, IsEnum, IsArray, ValidateNested, IsBoolean } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsIn, IsArray, ValidateNested, IsBoolean } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreatePriceDto {
@@ -39,7 +39,7 @@ export class CreateProductDto {
   @IsOptional()
   serialNumber?: string;
 
-  @IsString()
+  @IsIn(['PHONE_NEW', 'PHONE_USED', 'TABLET', 'ACCESSORY'])
   category: string;
 
   @IsNumber()
@@ -56,11 +56,11 @@ export class CreateProductDto {
   @IsString()
   branchId: string;
 
-  @IsString()
+  @IsIn(['PO_RECEIVED', 'INSPECTION', 'IN_STOCK', 'RESERVED', 'SOLD_INSTALLMENT', 'SOLD_CASH', 'REPOSSESSED', 'REFURBISHED', 'SOLD_RESELL'])
   @IsOptional()
   status?: string;
 
-  @IsString()
+  @IsIn(['A', 'B', 'C', 'D'])
   @IsOptional()
   conditionGrade?: string;
 

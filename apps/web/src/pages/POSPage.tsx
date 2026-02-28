@@ -4,8 +4,8 @@ import toast from 'react-hot-toast';
 import api, { getErrorMessage } from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
 import PageHeader from '@/components/ui/PageHeader';
-
-type SaleType = 'CASH' | 'INSTALLMENT' | 'EXTERNAL_FINANCE';
+import { useAuth } from '@/contexts/AuthContext';
+import { saleTypeConfig, planTypes, paymentMethods, type SaleType } from '@/lib/constants';
 
 interface Product {
   id: string;
@@ -28,24 +28,6 @@ interface Customer {
   _count: { contracts: number };
 }
 
-const saleTypeConfig: Record<SaleType, { label: string; color: string; bg: string }> = {
-  CASH: { label: 'เงินสด', color: 'text-green-700', bg: 'bg-green-50 border-green-300 ring-green-500' },
-  INSTALLMENT: { label: 'ผ่อนร้าน', color: 'text-blue-700', bg: 'bg-blue-50 border-blue-300 ring-blue-500' },
-  EXTERNAL_FINANCE: { label: 'ผ่อนไฟแนนซ์', color: 'text-purple-700', bg: 'bg-purple-50 border-purple-300 ring-purple-500' },
-};
-
-const planTypes = [
-  { value: 'STORE_DIRECT', label: 'ผ่อนกับร้าน' },
-  { value: 'CREDIT_CARD', label: 'ผ่อนบัตรเครดิต' },
-  { value: 'STORE_WITH_INTEREST', label: 'ผ่อนกับร้าน+ดอกเบี้ย' },
-];
-
-const paymentMethods = [
-  { value: 'CASH', label: 'เงินสด' },
-  { value: 'BANK_TRANSFER', label: 'โอนเงิน' },
-  { value: 'QR_EWALLET', label: 'QR / E-Wallet' },
-];
-
 interface PosConfig {
   interestRate: number;
   minDownPaymentPct: number;
@@ -54,7 +36,9 @@ interface PosConfig {
 }
 
 export default function POSPage() {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
+  const isManager = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
 
   // Sale type
   const [saleType, setSaleType] = useState<SaleType>('CASH');
@@ -95,7 +79,7 @@ export default function POSPage() {
       const { data } = await api.get('/products', {
         params: { search: debouncedProductSearch, status: 'IN_STOCK', limit: '10' },
       });
-      return data.data || data;
+      return data.data ?? [];
     },
     enabled: !!debouncedProductSearch && debouncedProductSearch.length >= 2,
   });

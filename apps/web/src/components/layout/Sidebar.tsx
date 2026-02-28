@@ -1,5 +1,5 @@
-import { useMemo, memo } from 'react';
-import { NavLink } from 'react-router-dom';
+import { useMemo, useState, useCallback, memo } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import clsx from 'clsx';
 
@@ -18,6 +18,8 @@ const sectionLabels: Record<string, string> = {
   reports: 'รายงาน & แจ้งเตือน',
   system: 'ระบบ',
 };
+
+const sectionOrder = ['sales', 'debt', 'inventory', 'purchasing', 'reports', 'system'];
 
 const navItems: NavItem[] = [
   { label: 'หน้าหลัก', path: '/' },
@@ -56,12 +58,48 @@ const navItems: NavItem[] = [
   { label: 'นำเข้าข้อมูล', path: '/migration', roles: ['OWNER'], section: 'system' },
 ];
 
+function getInitialCollapsed(): Record<string, boolean> {
+  try {
+    const stored = localStorage.getItem('sidebar_collapsed');
+    if (stored) return JSON.parse(stored);
+  } catch { /* ignore */ }
+  return {};
+}
+
 function Sidebar() {
   const { user } = useAuth();
+  const location = useLocation();
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(getInitialCollapsed);
+
+  const toggleSection = useCallback((section: string) => {
+    setCollapsed((prev) => {
+      const next = { ...prev, [section]: !prev[section] };
+      localStorage.setItem('sidebar_collapsed', JSON.stringify(next));
+      return next;
+    });
+  }, []);
 
   const filteredItems = useMemo(() => navItems.filter(
     (item) => !item.roles || (user && item.roles.includes(user.role)),
   ), [user]);
+
+  // Group items by section
+  const topItems = useMemo(() => filteredItems.filter((i) => !i.section), [filteredItems]);
+  const sections = useMemo(() => {
+    const map = new Map<string, NavItem[]>();
+    for (const item of filteredItems) {
+      if (!item.section) continue;
+      const list = map.get(item.section);
+      if (list) list.push(item);
+      else map.set(item.section, [item]);
+    }
+    return sectionOrder
+      .filter((key) => map.has(key))
+      .map((key) => ({ key, label: sectionLabels[key] ?? key, items: map.get(key)! }));
+  }, [filteredItems]);
+
+  // Check if a section contains the active route
+  const activeSectionPath = location.pathname;
 
   return (
     <aside className="w-64 bg-primary-950 min-h-screen flex flex-col">
@@ -82,32 +120,86 @@ function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 p-3 overflow-y-auto">
-        {filteredItems.map((item, idx) => {
-          const prevItem = filteredItems[idx - 1];
-          const showSectionLabel =
-            item.section && (!prevItem || prevItem.section !== item.section);
+        {/* Top-level items (หน้าหลัก) */}
+        {topItems.map((item) => (
+          <NavLink
+            key={item.path}
+            to={item.path}
+            end={item.path === '/'}
+            className={({ isActive }) =>
+              clsx(
+                'flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 mb-0.5',
+                isActive
+                  ? 'bg-primary-600 text-white shadow-lg shadow-primary-600/20'
+                  : 'text-gray-400 hover:bg-white/5 hover:text-white',
+              )
+            }
+          >
+            {item.label}
+          </NavLink>
+        ))}
+
+        {/* Collapsible sections */}
+        {sections.map((section) => {
+          const isCollapsed = collapsed[section.key] ?? false;
+          const hasActive = section.items.some((i) =>
+            i.path === '/' ? activeSectionPath === '/' : activeSectionPath.startsWith(i.path),
+          );
 
           return (
-            <div key={item.path}>
-              {showSectionLabel && (
-                <div className="px-3 pt-4 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-                  {sectionLabels[item.section!] ?? item.section}
-                </div>
-              )}
-              <NavLink
-                to={item.path}
-                end={item.path === '/'}
-                className={({ isActive }) =>
-                  clsx(
-                    'flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 mb-0.5',
-                    isActive
-                      ? 'bg-primary-600 text-white shadow-lg shadow-primary-600/20'
-                      : 'text-gray-400 hover:bg-white/5 hover:text-white',
-                  )
-                }
+            <div key={section.key}>
+              <button
+                onClick={() => toggleSection(section.key)}
+                className={clsx(
+                  'w-full flex items-center justify-between px-3 pt-4 pb-1.5 group cursor-pointer',
+                  hasActive && isCollapsed ? 'text-primary-400' : 'text-gray-500',
+                )}
               >
-                {item.label}
-              </NavLink>
+                <span className="text-[10px] font-semibold uppercase tracking-wider group-hover:text-gray-300 transition-colors">
+                  {section.label}
+                </span>
+                <div className="flex items-center gap-1.5">
+                  {hasActive && isCollapsed && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary-400" />
+                  )}
+                  <svg
+                    className={clsx(
+                      'w-3 h-3 transition-transform duration-200 group-hover:text-gray-300',
+                      isCollapsed ? '-rotate-90' : 'rotate-0',
+                    )}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+              </button>
+
+              <div
+                className={clsx(
+                  'overflow-hidden transition-all duration-200',
+                  isCollapsed ? 'max-h-0 opacity-0' : 'max-h-96 opacity-100',
+                )}
+              >
+                {section.items.map((item) => (
+                  <NavLink
+                    key={item.path}
+                    to={item.path}
+                    end={item.path === '/'}
+                    className={({ isActive }) =>
+                      clsx(
+                        'flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 mb-0.5',
+                        isActive
+                          ? 'bg-primary-600 text-white shadow-lg shadow-primary-600/20'
+                          : 'text-gray-400 hover:bg-white/5 hover:text-white',
+                      )
+                    }
+                  >
+                    {item.label}
+                  </NavLink>
+                ))}
+              </div>
             </div>
           );
         })}

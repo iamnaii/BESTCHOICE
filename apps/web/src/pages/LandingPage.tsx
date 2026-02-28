@@ -33,6 +33,8 @@ export default function LandingPage() {
     refs[section]?.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
+  const hasToken = !!localStorage.getItem('access_token');
+
   const { data: productsResult } = useQuery<{ data: Product[] }>({
     queryKey: ['landing-products'],
     queryFn: async () => {
@@ -40,6 +42,8 @@ export default function LandingPage() {
       return data;
     },
     staleTime: 5 * 60 * 1000,
+    enabled: hasToken,
+    retry: false,
   });
 
   const products = productsResult?.data?.slice(0, 8) ?? [];

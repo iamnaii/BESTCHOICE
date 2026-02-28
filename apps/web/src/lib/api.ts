@@ -70,7 +70,7 @@ api.interceptors.response.use(
       if (!refreshToken) {
         isRefreshing = false;
         localStorage.removeItem('access_token');
-        if (window.location.pathname !== '/login') {
+        if (window.location.pathname !== '/login' && window.location.pathname !== '/landing') {
           window.location.href = '/login';
         }
         return Promise.reject(error);
@@ -98,7 +98,7 @@ api.interceptors.response.use(
         processQueue(refreshError, null);
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
-        if (window.location.pathname !== '/login') {
+        if (window.location.pathname !== '/login' && window.location.pathname !== '/landing') {
           window.location.href = '/login';
         }
         return Promise.reject(refreshError);

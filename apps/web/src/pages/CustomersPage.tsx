@@ -7,7 +7,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
-import AddressForm, { AddressData, emptyAddress, composeAddress } from '@/components/ui/AddressForm';
+import AddressForm, { AddressData, emptyAddress, composeAddress, serializeAddress } from '@/components/ui/AddressForm';
 
 interface Customer {
   id: string;
@@ -20,7 +20,40 @@ interface Customer {
   _count: { contracts: number };
 }
 
-const emptyForm = { nationalId: '', name: '', phone: '', phoneSecondary: '', lineId: '', occupation: '', workplace: '' };
+interface ReferenceData {
+  prefix: string;
+  firstName: string;
+  lastName: string;
+  phone: string;
+  relationship: string;
+}
+
+const emptyReference: ReferenceData = { prefix: '', firstName: '', lastName: '', phone: '', relationship: '' };
+
+const emptyForm = {
+  prefix: '',
+  firstName: '',
+  lastName: '',
+  nickname: '',
+  nationalId: '',
+  isForeigner: false,
+  birthDate: '',
+  phone: '',
+  phoneSecondary: '',
+  email: '',
+  lineId: '',
+  facebookLink: '',
+  facebookName: '',
+  facebookFriends: '',
+  googleMapLink: '',
+  occupation: '',
+  occupationDetail: '',
+  salary: '',
+  workplace: '',
+};
+
+const prefixOptions = ['นาย', 'นาง', 'นางสาว'];
+const relationshipOptions = ['บิดา', 'มารดา', 'พี่น้อง', 'คู่สมรส', 'ญาติ', 'เพื่อน', 'อื่นๆ'];
 
 export default function CustomersPage() {
   const navigate = useNavigate();
@@ -32,8 +65,18 @@ export default function CustomersPage() {
   const [form, setForm] = useState(emptyForm);
   const [addressIdCard, setAddressIdCard] = useState<AddressData>(emptyAddress);
   const [addressCurrent, setAddressCurrent] = useState<AddressData>(emptyAddress);
+  const [sameAddress, setSameAddress] = useState(false);
+  const [addressWork, setAddressWork] = useState<AddressData>(emptyAddress);
+  const [references, setReferences] = useState<ReferenceData[]>([{ ...emptyReference }, { ...emptyReference }]);
 
   useEffect(() => { setPage(1); }, [debouncedSearch]);
+
+  // Sync current address when "same as ID card" is checked
+  useEffect(() => {
+    if (sameAddress) {
+      setAddressCurrent(addressIdCard);
+    }
+  }, [sameAddress, addressIdCard]);
 
   const { data: result, isLoading } = useQuery<{ data: Customer[]; total: number; page: number; totalPages: number }>({
     queryKey: ['customers', debouncedSearch, page],
@@ -50,10 +93,39 @@ export default function CustomersPage() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const payload: Record<string, string | undefined> = { ...form };
-      payload.addressIdCard = composeAddress(addressIdCard) || undefined;
-      payload.addressCurrent = composeAddress(addressCurrent) || undefined;
-      Object.keys(payload).forEach((k) => { if (!payload[k]) delete payload[k]; });
+      const name = `${form.firstName} ${form.lastName}`.trim();
+      const payload: Record<string, unknown> = {
+        nationalId: form.nationalId,
+        name,
+        phone: form.phone,
+      };
+      if (form.prefix) payload.prefix = form.prefix;
+      if (form.nickname) payload.nickname = form.nickname;
+      if (form.isForeigner) payload.isForeigner = true;
+      if (form.birthDate) payload.birthDate = new Date(form.birthDate).toISOString();
+      if (form.phoneSecondary) payload.phoneSecondary = form.phoneSecondary;
+      if (form.email) payload.email = form.email;
+      if (form.lineId) payload.lineId = form.lineId;
+      if (form.facebookLink) payload.facebookLink = form.facebookLink;
+      if (form.facebookName) payload.facebookName = form.facebookName;
+      if (form.facebookFriends) payload.facebookFriends = form.facebookFriends;
+      if (form.googleMapLink) payload.googleMapLink = form.googleMapLink;
+      if (form.occupation) payload.occupation = form.occupation;
+      if (form.occupationDetail) payload.occupationDetail = form.occupationDetail;
+      if (form.salary) payload.salary = parseFloat(form.salary);
+      if (form.workplace) payload.workplace = form.workplace;
+
+      const addrIdCard = serializeAddress(addressIdCard);
+      const addrCurrent = serializeAddress(addressCurrent);
+      const addrWork = serializeAddress(addressWork);
+      if (addrIdCard) payload.addressIdCard = addrIdCard;
+      if (addrCurrent) payload.addressCurrent = addrCurrent;
+      if (addrWork) payload.addressWork = addrWork;
+
+      // Filter out empty references
+      const validRefs = references.filter(r => r.firstName || r.lastName || r.phone);
+      if (validRefs.length > 0) payload.references = validRefs;
+
       return api.post('/customers', payload);
     },
     onSuccess: (res) => {
@@ -66,6 +138,19 @@ export default function CustomersPage() {
       toast.error(getErrorMessage(err));
     },
   });
+
+  const resetForm = () => {
+    setForm(emptyForm);
+    setAddressIdCard(emptyAddress);
+    setAddressCurrent(emptyAddress);
+    setAddressWork(emptyAddress);
+    setSameAddress(false);
+    setReferences([{ ...emptyReference }, { ...emptyReference }]);
+  };
+
+  const updateRef = (index: number, field: keyof ReferenceData, value: string) => {
+    setReferences(prev => prev.map((r, i) => i === index ? { ...r, [field]: value } : r));
+  };
 
   const navigateToCustomer = useCallback((id: string) => navigate(`/customers/${id}`), [navigate]);
 
@@ -95,13 +180,18 @@ export default function CustomersPage() {
     },
   ], [navigateToCustomer]);
 
+  const inputClass = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500';
+  const selectClass = `${inputClass} bg-white`;
+  const sectionClass = 'border border-gray-200 rounded-lg p-4';
+  const sectionTitle = 'text-sm font-semibold text-gray-800 mb-3';
+
   return (
     <div>
       <PageHeader
         title="ลูกค้า"
         subtitle={`ทั้งหมด ${result?.total ?? 0} ราย`}
         action={
-          <button onClick={() => { setForm(emptyForm); setAddressIdCard(emptyAddress); setAddressCurrent(emptyAddress); setIsModalOpen(true); }} className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700">
+          <button onClick={() => { resetForm(); setIsModalOpen(true); }} className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700">
             + เพิ่มลูกค้า
           </button>
         }
@@ -125,42 +215,185 @@ export default function CustomersPage() {
       />
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="เพิ่มลูกค้าใหม่" size="lg">
-        <form onSubmit={(e) => { e.preventDefault(); createMutation.mutate(); }} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">เลขบัตร ปชช. (13 หลัก) *</label>
-              <input type="text" maxLength={13} value={form.nationalId} onChange={(e) => setForm({ ...form, nationalId: e.target.value })} className="w-full px-3 py-2 border rounded-lg outline-none font-mono" required />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อ-นามสกุล *</label>
-              <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full px-3 py-2 border rounded-lg outline-none" required />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">เบอร์โทร *</label>
-              <input type="text" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="w-full px-3 py-2 border rounded-lg outline-none" required />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">เบอร์สำรอง</label>
-              <input type="text" value={form.phoneSecondary} onChange={(e) => setForm({ ...form, phoneSecondary: e.target.value })} className="w-full px-3 py-2 border rounded-lg outline-none" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">LINE ID</label>
-              <input type="text" value={form.lineId} onChange={(e) => setForm({ ...form, lineId: e.target.value })} className="w-full px-3 py-2 border rounded-lg outline-none" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">อาชีพ</label>
-              <input type="text" value={form.occupation} onChange={(e) => setForm({ ...form, occupation: e.target.value })} className="w-full px-3 py-2 border rounded-lg outline-none" />
-            </div>
-            <div className="col-span-2">
-              <AddressForm value={addressIdCard} onChange={setAddressIdCard} label="ที่อยู่ตามบัตร" />
-            </div>
-            <div className="col-span-2">
-              <AddressForm value={addressCurrent} onChange={setAddressCurrent} label="ที่อยู่ปัจจุบัน" />
+        <form onSubmit={(e) => { e.preventDefault(); createMutation.mutate(); }} className="space-y-5 max-h-[75vh] overflow-y-auto pr-1">
+
+          {/* ===== ข้อมูลส่วนตัว ===== */}
+          <div className={sectionClass}>
+            <h3 className={sectionTitle}>ข้อมูลส่วนตัว</h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">คำนำหน้า</label>
+                <select value={form.prefix} onChange={(e) => setForm({ ...form, prefix: e.target.value })} className={selectClass}>
+                  <option value="">-- เลือก --</option>
+                  {prefixOptions.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">ชื่อ *</label>
+                <input type="text" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} className={inputClass} required />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">นามสกุล *</label>
+                <input type="text" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} className={inputClass} required />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">ชื่อเล่น</label>
+                <input type="text" value={form.nickname} onChange={(e) => setForm({ ...form, nickname: e.target.value })} className={inputClass} />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">เลขบัตรประชาชน (13 หลัก) *</label>
+                <input type="text" maxLength={13} value={form.nationalId} onChange={(e) => setForm({ ...form, nationalId: e.target.value.replace(/\D/g, '') })} className={`${inputClass} font-mono`} required />
+              </div>
+              <div className="flex items-end gap-3">
+                <div className="flex items-center gap-2 pb-2">
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" checked={form.isForeigner} onChange={(e) => setForm({ ...form, isForeigner: e.target.checked })} className="sr-only peer" />
+                    <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary-600"></div>
+                    <span className="ml-2 text-xs text-gray-600">ต่างด้าว</span>
+                  </label>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">วันเกิด</label>
+                <input type="date" value={form.birthDate} onChange={(e) => setForm({ ...form, birthDate: e.target.value })} className={inputClass} />
+              </div>
             </div>
           </div>
-          <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm text-gray-600">ยกเลิก</button>
-            <button type="submit" disabled={createMutation.isPending} className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium disabled:opacity-50">
+
+          {/* ===== ที่อยู่ตามบัตรประชาชน ===== */}
+          <div className={sectionClass}>
+            <h3 className={sectionTitle}>ที่อยู่ตามบัตรประชาชน</h3>
+            <AddressForm value={addressIdCard} onChange={setAddressIdCard} />
+          </div>
+
+          {/* ===== ที่อยู่ปัจจุบัน ===== */}
+          <div className={sectionClass}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-800">ที่อยู่ปัจจุบัน</h3>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={sameAddress} onChange={(e) => setSameAddress(e.target.checked)} className="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+                <span className="text-xs text-gray-600">เหมือนที่อยู่ตามบัตร</span>
+              </label>
+            </div>
+            {sameAddress ? (
+              <p className="text-xs text-gray-400 italic">ใช้ที่อยู่เดียวกับที่อยู่ตามบัตรประชาชน</p>
+            ) : (
+              <AddressForm value={addressCurrent} onChange={setAddressCurrent} />
+            )}
+
+            {/* Google Map Link */}
+            <div className="mt-3">
+              <label className="block text-xs text-gray-500 mb-1">Link Google Map</label>
+              <input type="url" value={form.googleMapLink} onChange={(e) => setForm({ ...form, googleMapLink: e.target.value })} className={inputClass} placeholder="https://maps.google.com/..." />
+            </div>
+          </div>
+
+          {/* ===== ข้อมูลติดต่อ ===== */}
+          <div className={sectionClass}>
+            <h3 className={sectionTitle}>ข้อมูลติดต่อ</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">เบอร์หลัก *</label>
+                <input type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className={inputClass} required />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">เบอร์สำรอง</label>
+                <input type="tel" value={form.phoneSecondary} onChange={(e) => setForm({ ...form, phoneSecondary: e.target.value })} className={inputClass} />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">อีเมล</label>
+                <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={inputClass} />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">LINE ID</label>
+                <input type="text" value={form.lineId} onChange={(e) => setForm({ ...form, lineId: e.target.value })} className={inputClass} />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">ลิงก์ Facebook</label>
+                <input type="url" value={form.facebookLink} onChange={(e) => setForm({ ...form, facebookLink: e.target.value })} className={inputClass} placeholder="https://facebook.com/..." />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">ชื่อ Facebook</label>
+                <input type="text" value={form.facebookName} onChange={(e) => setForm({ ...form, facebookName: e.target.value })} className={inputClass} />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">จำนวนเพื่อน Facebook</label>
+                <input type="text" value={form.facebookFriends} onChange={(e) => setForm({ ...form, facebookFriends: e.target.value })} className={inputClass} />
+              </div>
+            </div>
+          </div>
+
+          {/* ===== ข้อมูลที่ทำงาน ===== */}
+          <div className={sectionClass}>
+            <h3 className={sectionTitle}>ข้อมูลที่ทำงาน</h3>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">ชื่อที่ทำงาน</label>
+                <input type="text" value={form.workplace} onChange={(e) => setForm({ ...form, workplace: e.target.value })} className={inputClass} />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">อาชีพ</label>
+                <input type="text" value={form.occupation} onChange={(e) => setForm({ ...form, occupation: e.target.value })} className={inputClass} />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">รายละเอียดอาชีพ</label>
+                <input type="text" value={form.occupationDetail} onChange={(e) => setForm({ ...form, occupationDetail: e.target.value })} className={inputClass} />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">เงินเดือน</label>
+                <input type="number" value={form.salary} onChange={(e) => setForm({ ...form, salary: e.target.value })} className={inputClass} placeholder="0.00" />
+              </div>
+            </div>
+            <div className="mt-2">
+              <label className="block text-xs text-gray-500 mb-1">ที่อยู่ที่ทำงาน</label>
+              <AddressForm value={addressWork} onChange={setAddressWork} />
+            </div>
+          </div>
+
+          {/* ===== รายชื่อบุคคลอ้างอิง ===== */}
+          <div className={sectionClass}>
+            <h3 className={sectionTitle}>รายชื่อบุคคลอ้างอิง</h3>
+            <div className="space-y-4">
+              {references.map((ref, idx) => (
+                <div key={idx}>
+                  <div className="text-xs font-medium text-gray-600 mb-2">บุคคลอ้างอิง {idx + 1}</div>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">คำนำหน้า</label>
+                      <select value={ref.prefix} onChange={(e) => updateRef(idx, 'prefix', e.target.value)} className={selectClass}>
+                        <option value="">-- เลือก --</option>
+                        {prefixOptions.map(p => <option key={p} value={p}>{p}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">ชื่อ</label>
+                      <input type="text" value={ref.firstName} onChange={(e) => updateRef(idx, 'firstName', e.target.value)} className={inputClass} />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">นามสกุล</label>
+                      <input type="text" value={ref.lastName} onChange={(e) => updateRef(idx, 'lastName', e.target.value)} className={inputClass} />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">เบอร์หลัก</label>
+                      <input type="tel" value={ref.phone} onChange={(e) => updateRef(idx, 'phone', e.target.value)} className={inputClass} />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">ความสัมพันธ์</label>
+                      <select value={ref.relationship} onChange={(e) => updateRef(idx, 'relationship', e.target.value)} className={selectClass}>
+                        <option value="">-- เลือก --</option>
+                        {relationshipOptions.map(r => <option key={r} value={r}>{r}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* ===== Submit ===== */}
+          <div className="flex justify-end gap-3 pt-2 sticky bottom-0 bg-white py-3 border-t">
+            <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg">ยกเลิก</button>
+            <button type="submit" disabled={createMutation.isPending} className="px-6 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium disabled:opacity-50">
               {createMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
             </button>
           </div>

@@ -192,14 +192,27 @@ model User {
 model Customer {
   id              String   @id @default(uuid())
   nationalId      String   @unique @map("national_id") // encrypted AES-256
+  prefix          String?  // คำนำหน้า (นาย, นาง, นางสาว)
   name            String
+  nickname        String?  // ชื่อเล่น
+  isForeigner     Boolean  @default(false) @map("is_foreigner") // ต่างด้าว
+  birthDate       DateTime? @map("birth_date") // วันเกิด
   phone           String
   phoneSecondary  String?  @map("phone_secondary")
+  email           String?  // อีเมล
   lineId          String?  @map("line_id")
+  facebookLink    String?  @map("facebook_link")    // ลิงก์ Facebook
+  facebookName    String?  @map("facebook_name")    // ชื่อ Facebook
+  facebookFriends String?  @map("facebook_friends") // จำนวนเพื่อน Facebook
+  googleMapLink   String?  @map("google_map_link")  // Link Google Map
   addressIdCard   String?  @map("address_id_card")
   addressCurrent  String?  @map("address_current")
   occupation      String?
+  occupationDetail String? @map("occupation_detail") // รายละเอียดอาชีพ
+  salary          Decimal? @db.Decimal(12, 2)         // เงินเดือน
   workplace       String?
+  addressWork     String?  @map("address_work")       // ที่อยู่ที่ทำงาน
+  references      Json?    // บุคคลอ้างอิง [{prefix, firstName, lastName, phone, relationship}]
   documents       String[] @default([]) // array of file URLs
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")

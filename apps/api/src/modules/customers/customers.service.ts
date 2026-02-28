@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer.dto';
 
@@ -97,14 +98,26 @@ export class CustomersService {
       throw new ConflictException('เลขบัตรประชาชนไม่ถูกต้อง');
     }
 
-    return this.prisma.customer.create({ data: dto });
+    const data: Prisma.CustomerCreateInput = {
+      ...dto,
+      references: dto.references !== undefined
+        ? (dto.references as Prisma.InputJsonValue)
+        : undefined,
+    };
+    return this.prisma.customer.create({ data });
   }
 
   async update(id: string, dto: UpdateCustomerDto) {
     await this.findOne(id);
+    const data: Prisma.CustomerUpdateInput = {
+      ...dto,
+      references: dto.references !== undefined
+        ? (dto.references as Prisma.InputJsonValue)
+        : undefined,
+    };
     return this.prisma.customer.update({
       where: { id },
-      data: dto,
+      data,
     });
   }
 

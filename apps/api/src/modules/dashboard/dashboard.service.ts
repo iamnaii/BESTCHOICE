@@ -42,10 +42,12 @@ export class DashboardService {
       }),
       this.prisma.payment.aggregate({
         where: {
-          paidDate: {
-            gte: new Date(new Date().toISOString().split('T')[0]),
-            lt: new Date(new Date().getTime() + 24 * 60 * 60 * 1000),
-          },
+          paidDate: (() => {
+            const now = new Date();
+            const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+            return { gte: startOfDay, lt: endOfDay };
+          })(),
           status: 'PAID',
           contract: { ...branchFilter },
         },

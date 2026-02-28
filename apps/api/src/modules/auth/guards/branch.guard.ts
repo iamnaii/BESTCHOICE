@@ -6,6 +6,9 @@ export class BranchGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
     const user = request.user;
 
+    // Guard must be used after JwtAuthGuard
+    if (!user) return false;
+
     // OWNER and ACCOUNTANT can access all branches
     if (user.role === 'OWNER' || user.role === 'ACCOUNTANT') {
       return true;

@@ -72,6 +72,12 @@ export default function ContractCreatePage() {
     queryFn: async () => { const { data } = await api.get('/branches'); return data; },
   });
 
+  // Fetch system config for interest rate instead of hardcoding
+  const { data: posConfig } = useQuery<{ interestRate: number; minDownPaymentPct: number; minInstallmentMonths: number; maxInstallmentMonths: number }>({
+    queryKey: ['pos-config'],
+    queryFn: async () => { const { data } = await api.get('/sales/config'); return data; },
+  });
+
   const createMutation = useMutation({
     mutationFn: async (body: Record<string, unknown>) => {
       const { data } = await api.post('/contracts', body);
@@ -94,8 +100,9 @@ export default function ContractCreatePage() {
   };
 
   const sellingPrice = getSellingPrice();
-  const interestRate = 0.08; // default, could come from config
-  const interestTotal = sellingPrice * interestRate * totalMonths;
+  const interestRate = posConfig?.interestRate ?? 0.08;
+  const minDownPct = posConfig?.minDownPaymentPct ?? 0.15;
+  const interestTotal = (sellingPrice - downPayment) * interestRate * totalMonths;
   const financedAmount = (sellingPrice - downPayment) + interestTotal;
   const monthlyPayment = totalMonths > 0 ? Math.ceil(financedAmount / totalMonths) : 0;
 
@@ -116,7 +123,7 @@ export default function ContractCreatePage() {
   const canNext = () => {
     if (step === 0) return !!selectedProduct;
     if (step === 1) return !!selectedCustomer;
-    if (step === 2) return downPayment >= sellingPrice * 0.15 && totalMonths >= 6;
+    if (step === 2) return downPayment >= sellingPrice * minDownPct && totalMonths >= (posConfig?.minInstallmentMonths ?? 6);
     return true;
   };
 
@@ -249,7 +256,7 @@ export default function ContractCreatePage() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                 min={0}
               />
-              <div className="text-xs text-gray-400 mt-1">ขั้นต่ำ 15% = {(sellingPrice * 0.15).toLocaleString()} ฿</div>
+              <div className="text-xs text-gray-400 mt-1">ขั้นต่ำ {(minDownPct * 100).toFixed(0)}% = {(sellingPrice * minDownPct).toLocaleString()} ฿</div>
             </div>
 
             <div>

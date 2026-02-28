@@ -5,6 +5,21 @@ import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import toast from 'react-hot-toast';
 
+/** Sanitize HTML to prevent XSS */
+function sanitizeHtml(html: string): string {
+  return html
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '')
+    .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, '')
+    .replace(/<embed\b[^>]*>/gi, '')
+    .replace(/on\w+\s*=\s*"[^"]*"/gi, '')
+    .replace(/on\w+\s*=\s*'[^']*'/gi, '')
+    .replace(/on\w+\s*=[^\s>]*/gi, '')
+    .replace(/javascript\s*:/gi, 'blocked:')
+    .replace(/vbscript\s*:/gi, 'blocked:')
+    .replace(/data\s*:\s*text\/html/gi, 'blocked:');
+}
+
 interface Signature {
   id: string;
   signerType: string;
@@ -150,7 +165,7 @@ export default function ContractSignPage() {
           <h2 className="text-lg font-semibold text-gray-900 mb-3">ตัวอย่างสัญญา</h2>
           <div className="bg-white rounded-lg border p-4 max-h-[60vh] overflow-auto">
             {preview ? (
-              <div dangerouslySetInnerHTML={{ __html: preview.html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '').replace(/on\w+\s*=/gi, 'data-blocked=') }} />
+              <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(preview.html) }} />
             ) : (
               <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div></div>
             )}

@@ -17,6 +17,7 @@ export class AuthController {
   }
 
   @Post('refresh')
+  @Throttle({ short: { ttl: 60000, limit: 10 } }) // 10 refresh attempts per minute
   async refresh(@Body() refreshTokenDto: RefreshTokenDto) {
     return this.authService.refreshToken(refreshTokenDto.refreshToken);
   }

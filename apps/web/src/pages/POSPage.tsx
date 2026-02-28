@@ -177,8 +177,14 @@ export default function POSPage() {
         payload.paymentMethod = paymentMethod;
         payload.amountReceived = parseFloat(amountReceived) || netAmount;
       } else if (saleType === 'INSTALLMENT') {
+        const down = parseFloat(downPayment) || 0;
+        const minDownPct = posConfig?.minDownPaymentPct ?? 0.15;
+        const minDown = netAmount * minDownPct;
+        if (down < minDown) {
+          throw new Error(`เงินดาวน์ขั้นต่ำ ${(minDownPct * 100).toFixed(0)}% = ${minDown.toLocaleString()} บาท`);
+        }
         payload.planType = planType;
-        payload.downPayment = parseFloat(downPayment) || 0;
+        payload.downPayment = down;
         payload.totalMonths = parseInt(totalMonths);
         payload.paymentMethod = paymentMethod;
       } else if (saleType === 'EXTERNAL_FINANCE') {

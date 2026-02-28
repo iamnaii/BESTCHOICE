@@ -48,12 +48,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
     } catch (error: unknown) {
       const axiosError = error as { response?: { status?: number }; code?: string };
-      if (axiosError.response?.status === 401) {
-        logout();
-      }
-      // On timeout or network error, clear loading so the app doesn't hang
-      // User will see login page and can try again
-      if (axiosError.code === 'ECONNABORTED' || !axiosError.response) {
+      // On auth failure, timeout, or network error, clear user state
+      // Token refresh is handled automatically by api.ts interceptor
+      if (axiosError.response?.status === 401 || axiosError.code === 'ECONNABORTED' || !axiosError.response) {
         logout();
       }
     } finally {

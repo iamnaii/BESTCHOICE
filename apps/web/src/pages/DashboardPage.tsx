@@ -64,7 +64,7 @@ export default function DashboardPage() {
 
   const dashboardStaleTime = 5 * 60 * 1000; // 5 minutes - dashboard data cached in RAM
 
-  const { data: kpis } = useQuery<KPIs>({
+  const { data: kpis, isError: kpisError, refetch: refetchKpis } = useQuery<KPIs>({
     queryKey: ['dashboard-kpis'],
     queryFn: async () => (await api.get('/dashboard/kpis')).data,
     staleTime: dashboardStaleTime,
@@ -101,6 +101,16 @@ export default function DashboardPage() {
   return (
     <div>
       <PageHeader title="หน้าหลัก" subtitle={`ยินดีต้อนรับ ${user?.name}`} />
+
+      {/* Error State */}
+      {kpisError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 flex items-center justify-between">
+          <div className="text-sm text-red-700">ไม่สามารถโหลดข้อมูลได้ กรุณาลองใหม่</div>
+          <button onClick={() => refetchKpis()} className="px-3 py-1 bg-red-100 text-red-700 rounded text-sm hover:bg-red-200">
+            ลองใหม่
+          </button>
+        </div>
+      )}
 
       {/* KPI Cards */}
       {kpis && (

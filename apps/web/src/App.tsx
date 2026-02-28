@@ -84,7 +84,14 @@ function App() {
           <Route path="/suppliers" element={<SuppliersPage />} />
           <Route path="/suppliers/:id" element={<SupplierDetailPage />} />
           <Route path="/products" element={<ProductsPage />} />
-          <Route path="/products/create" element={<ProductCreatePage />} />
+          <Route
+            path="/products/create"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}>
+                <ProductCreatePage />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/products/:id" element={<ProductDetailPage />} />
           <Route path="/stock" element={<StockPage />} />
           <Route
@@ -102,7 +109,14 @@ function App() {
           <Route path="/customers" element={<CustomersPage />} />
           <Route path="/customers/:id" element={<CustomerDetailPage />} />
           <Route path="/contracts" element={<ContractsPage />} />
-          <Route path="/contracts/create" element={<ContractCreatePage />} />
+          <Route
+            path="/contracts/create"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'SALES']}>
+                <ContractCreatePage />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/contracts/:id" element={<ContractDetailPage />} />
           <Route path="/contracts/:id/sign" element={<ContractSignPage />} />
           <Route

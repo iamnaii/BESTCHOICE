@@ -51,11 +51,9 @@ jobs:
 
       - name: Lint API
         run: npm run lint --workspace=apps/api
-        continue-on-error: true
 
       - name: Lint Web
         run: npm run lint --workspace=apps/web
-        continue-on-error: true
 
       - name: Test API
         run: npm run test --workspace=apps/api
@@ -115,6 +113,8 @@ jobs:
           script: |
             cd /opt/installment-system
             docker compose -f docker-compose.prod.yml pull
+            # Run migrations BEFORE restarting the app to prevent schema mismatch
+            docker compose -f docker-compose.prod.yml up -d db
+            docker compose -f docker-compose.prod.yml run --rm api npx prisma migrate deploy
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
-            docker compose -f docker-compose.prod.yml exec api npx prisma migrate deploy
             docker system prune -f

@@ -52,12 +52,13 @@ export default function ReportsPage() {
 }
 
 function AgingReport() {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['report-aging'],
     queryFn: async () => (await api.get('/reports/aging')).data,
   });
 
   if (isLoading) return <LoadingState />;
+  if (isError) return <ErrorState onRetry={() => refetch()} />;
 
   const buckets = data?.buckets || [];
   const total = data?.total || { count: 0, amount: 0 };
@@ -100,10 +101,11 @@ function AgingReport() {
 }
 
 function RevenueReport() {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['report-revenue'],
     queryFn: async () => (await api.get('/reports/revenue-pl')).data,
   });
+  if (isError) return <ErrorState onRetry={() => refetch()} />;
 
   if (isLoading) return <LoadingState />;
 
@@ -121,10 +123,11 @@ function RevenueReport() {
 }
 
 function HighRiskReport() {
-  const { data = [], isLoading } = useQuery({
+  const { data = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['report-high-risk'],
     queryFn: async () => (await api.get('/reports/high-risk')).data,
   });
+  if (isError) return <ErrorState onRetry={() => refetch()} />;
 
   if (isLoading) return <LoadingState />;
 
@@ -165,10 +168,11 @@ function HighRiskReport() {
 }
 
 function SalesReport() {
-  const { data = [], isLoading } = useQuery({
+  const { data = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['report-sales'],
     queryFn: async () => (await api.get('/reports/sales-comparison')).data,
   });
+  if (isError) return <ErrorState onRetry={() => refetch()} />;
 
   if (isLoading) return <LoadingState />;
 
@@ -220,10 +224,11 @@ function SalesReport() {
 }
 
 function BranchReport() {
-  const { data = [], isLoading } = useQuery({
+  const { data = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['report-branch'],
     queryFn: async () => (await api.get('/reports/branch-comparison')).data,
   });
+  if (isError) return <ErrorState onRetry={() => refetch()} />;
 
   if (isLoading) return <LoadingState />;
 
@@ -261,10 +266,11 @@ function BranchReport() {
 }
 
 function DailyPaymentReport({ date, onDateChange }: { date: string; onDateChange: (d: string) => void }) {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['report-daily-payment', date],
     queryFn: async () => (await api.get(`/reports/daily-payments?date=${date}`)).data,
   });
+  if (isError) return <ErrorState onRetry={() => refetch()} />;
 
   if (isLoading) return <LoadingState />;
 
@@ -312,12 +318,13 @@ function DailyPaymentReport({ date, onDateChange }: { date: string; onDateChange
 }
 
 function StockReport() {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['report-stock'],
     queryFn: async () => (await api.get('/reports/stock')).data,
   });
 
   if (isLoading) return <LoadingState />;
+  if (isError) return <ErrorState onRetry={() => refetch()} />;
 
   const byStatus = data?.byStatus || [];
   const byBranch = data?.byBranch || [];
@@ -408,6 +415,18 @@ function LoadingState() {
     <div className="bg-white rounded-lg border p-8 text-center">
       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-3" />
       <div className="text-sm text-gray-500">กำลังโหลดข้อมูล...</div>
+    </div>
+  );
+}
+
+function ErrorState({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="bg-white rounded-lg border p-8 text-center">
+      <div className="text-red-500 text-lg mb-2">!</div>
+      <div className="text-sm text-gray-600 mb-3">ไม่สามารถโหลดข้อมูลรายงานได้</div>
+      <button onClick={onRetry} className="px-4 py-2 bg-red-50 text-red-600 rounded-lg text-sm hover:bg-red-100">
+        ลองใหม่
+      </button>
     </div>
   );
 }

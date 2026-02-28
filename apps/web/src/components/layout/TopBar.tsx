@@ -11,21 +11,32 @@ export default function TopBar() {
   const { user, logout } = useAuth();
 
   return (
-    <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6">
-      <div />
+    <header className="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-6 shadow-sm">
+      <div className="flex items-center gap-3">
+        <h2 className="text-sm font-medium text-gray-500">
+          {user?.branchName && (
+            <span className="inline-flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-green-400" />
+              {user.branchName}
+            </span>
+          )}
+        </h2>
+      </div>
       <div className="flex items-center gap-4">
-        <div className="text-sm text-right">
-          <p className="font-medium text-gray-900">{user?.name}</p>
-          <p className="text-gray-500 text-xs">
+        <div className="text-right">
+          <p className="text-sm font-semibold text-gray-900">{user?.name}</p>
+          <p className="text-xs text-gray-500">
             {user?.role && roleLabels[user.role]}
-            {user?.branchName && ` | ${user.branchName}`}
           </p>
+        </div>
+        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary-500 to-purple-600 flex items-center justify-center">
+          <span className="text-white text-sm font-bold">{user?.name?.charAt(0)}</span>
         </div>
         <button
           onClick={logout}
-          className="px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+          className="px-3 py-1.5 text-sm text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
         >
-          ออกจากระบบ
+          ออก
         </button>
       </div>
     </header>

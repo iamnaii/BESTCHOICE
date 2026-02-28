@@ -5,3 +5,15 @@
 body {
   font-family: 'Noto Sans Thai', 'Segoe UI', sans-serif;
 }
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary-400 to-purple-400;
+  }
+  .bg-hero-gradient {
+    background: linear-gradient(135deg, #1e1b4b 0%, #312e81 25%, #4338ca 50%, #6366f1 75%, #818cf8 100%);
+  }
+  .glass-card {
+    @apply bg-white/80 backdrop-blur-sm border border-white/20;
+  }
+}

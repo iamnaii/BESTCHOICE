@@ -1,4 +1,5 @@
-import { IsString, IsOptional, IsArray, Length } from 'class-validator';
+import { IsString, IsOptional, IsArray, IsBoolean, IsDateString, IsNumber, Length } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class CreateCustomerDto {
   @IsString()
@@ -6,7 +7,23 @@ export class CreateCustomerDto {
   nationalId: string;
 
   @IsString()
+  @IsOptional()
+  prefix?: string;
+
+  @IsString()
   name: string;
+
+  @IsString()
+  @IsOptional()
+  nickname?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  isForeigner?: boolean;
+
+  @IsDateString()
+  @IsOptional()
+  birthDate?: string;
 
   @IsString()
   phone: string;
@@ -17,7 +34,27 @@ export class CreateCustomerDto {
 
   @IsString()
   @IsOptional()
+  email?: string;
+
+  @IsString()
+  @IsOptional()
   lineId?: string;
+
+  @IsString()
+  @IsOptional()
+  facebookLink?: string;
+
+  @IsString()
+  @IsOptional()
+  facebookName?: string;
+
+  @IsString()
+  @IsOptional()
+  facebookFriends?: string;
+
+  @IsString()
+  @IsOptional()
+  googleMapLink?: string;
 
   @IsString()
   @IsOptional()
@@ -33,7 +70,23 @@ export class CreateCustomerDto {
 
   @IsString()
   @IsOptional()
+  occupationDetail?: string;
+
+  @IsNumber()
+  @IsOptional()
+  @Type(() => Number)
+  salary?: number;
+
+  @IsString()
+  @IsOptional()
   workplace?: string;
+
+  @IsString()
+  @IsOptional()
+  addressWork?: string;
+
+  @IsOptional()
+  references?: unknown;
 
   @IsArray()
   @IsOptional()
@@ -43,7 +96,23 @@ export class CreateCustomerDto {
 export class UpdateCustomerDto {
   @IsString()
   @IsOptional()
+  prefix?: string;
+
+  @IsString()
+  @IsOptional()
   name?: string;
+
+  @IsString()
+  @IsOptional()
+  nickname?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  isForeigner?: boolean;
+
+  @IsDateString()
+  @IsOptional()
+  birthDate?: string;
 
   @IsString()
   @IsOptional()
@@ -55,7 +124,27 @@ export class UpdateCustomerDto {
 
   @IsString()
   @IsOptional()
+  email?: string;
+
+  @IsString()
+  @IsOptional()
   lineId?: string;
+
+  @IsString()
+  @IsOptional()
+  facebookLink?: string;
+
+  @IsString()
+  @IsOptional()
+  facebookName?: string;
+
+  @IsString()
+  @IsOptional()
+  facebookFriends?: string;
+
+  @IsString()
+  @IsOptional()
+  googleMapLink?: string;
 
   @IsString()
   @IsOptional()
@@ -71,7 +160,23 @@ export class UpdateCustomerDto {
 
   @IsString()
   @IsOptional()
+  occupationDetail?: string;
+
+  @IsNumber()
+  @IsOptional()
+  @Type(() => Number)
+  salary?: number;
+
+  @IsString()
+  @IsOptional()
   workplace?: string;
+
+  @IsString()
+  @IsOptional()
+  addressWork?: string;
+
+  @IsOptional()
+  references?: unknown;
 
   @IsArray()
   @IsOptional()

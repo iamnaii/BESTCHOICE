@@ -270,6 +270,20 @@ export class SalesService {
     return `SO${String(nextNum).padStart(6, '0')}`;
   }
 
+  async getPosConfig() {
+    const configs = await this.prisma.systemConfig.findMany({
+      where: { key: { in: ['interest_rate', 'min_down_payment_pct', 'min_installment_months', 'max_installment_months'] } },
+    });
+    const getConfig = (key: string, def: number) => parseFloat(configs.find((c) => c.key === key)?.value || String(def));
+
+    return {
+      interestRate: getConfig('interest_rate', 0.08),
+      minDownPaymentPct: getConfig('min_down_payment_pct', 0.15),
+      minInstallmentMonths: getConfig('min_installment_months', 6),
+      maxInstallmentMonths: getConfig('max_installment_months', 12),
+    };
+  }
+
   async getDailySummary(date: string, branchId?: string) {
     const startOfDay = new Date(date);
     startOfDay.setHours(0, 0, 0, 0);

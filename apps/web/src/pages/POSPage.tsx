@@ -1,6 +1,5 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api, { getErrorMessage } from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -47,8 +46,14 @@ const paymentMethods = [
   { value: 'QR_EWALLET', label: 'QR / E-Wallet' },
 ];
 
+interface PosConfig {
+  interestRate: number;
+  minDownPaymentPct: number;
+  minInstallmentMonths: number;
+  maxInstallmentMonths: number;
+}
+
 export default function POSPage() {
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   // Sale type
@@ -105,6 +110,16 @@ export default function POSPage() {
     enabled: !!debouncedCustomerSearch && debouncedCustomerSearch.length >= 2,
   });
 
+  // POS config (interest rate, down payment %, months range)
+  const { data: posConfig } = useQuery<PosConfig>({
+    queryKey: ['pos-config'],
+    queryFn: async () => {
+      const { data } = await api.get('/sales/config');
+      return data;
+    },
+    staleTime: 5 * 60 * 1000, // cache 5 minutes
+  });
+
   // Calculations
   const netAmount = useMemo(() => {
     const price = parseFloat(sellingPrice) || 0;
@@ -123,12 +138,12 @@ export default function POSPage() {
     const months = parseInt(totalMonths) || 6;
     const principal = netAmount - down;
     if (principal <= 0) return null;
-    const rate = 0.08;
+    const rate = posConfig?.interestRate ?? 0.08;
     const interestTotal = principal * rate * months;
     const financedAmount = principal + interestTotal;
     const monthly = Math.ceil(financedAmount / months);
     return { principal, interestTotal, financedAmount, monthly, rate };
-  }, [saleType, netAmount, downPayment, totalMonths]);
+  }, [saleType, netAmount, downPayment, totalMonths, posConfig]);
 
   // Select product handler
   const handleSelectProduct = (product: Product) => {
@@ -181,7 +196,6 @@ export default function POSPage() {
       queryClient.invalidateQueries({ queryKey: ['products'] });
       const typeLabel = saleTypeConfig[saleType].label;
       toast.success(`ขาย${typeLabel}สำเร็จ - ${data.saleNumber}`);
-      navigate(`/pos`);
       resetForm();
     },
     onError: (err: unknown) => {
@@ -271,7 +285,7 @@ export default function POSPage() {
                   placeholder="ค้นหา IMEI, ชื่อ, รุ่น..."
                   className={inputClass}
                 />
-                {products && products.length > 0 && (
+                {productSearch.length >= 2 && products && products.length > 0 && (
                   <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
                     {products.map((p) => (
                       <button
@@ -317,7 +331,7 @@ export default function POSPage() {
                   placeholder="ค้นหาชื่อ, เบอร์โทร, เลขบัตร..."
                   className={inputClass}
                 />
-                {customers && customers.length > 0 && (
+                {customerSearch.length >= 2 && customers && customers.length > 0 && (
                   <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
                     {customers.map((c) => (
                       <button
@@ -380,7 +394,10 @@ export default function POSPage() {
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">จำนวนงวด</label>
                   <select value={totalMonths} onChange={(e) => setTotalMonths(e.target.value)} className={selectClass}>
-                    {[6, 7, 8, 9, 10, 11, 12].map(m => <option key={m} value={m}>{m} เดือน</option>)}
+                    {Array.from(
+                      { length: (posConfig?.maxInstallmentMonths ?? 12) - (posConfig?.minInstallmentMonths ?? 6) + 1 },
+                      (_, i) => (posConfig?.minInstallmentMonths ?? 6) + i,
+                    ).map(m => <option key={m} value={m}>{m} เดือน</option>)}
                   </select>
                 </div>
                 <div>

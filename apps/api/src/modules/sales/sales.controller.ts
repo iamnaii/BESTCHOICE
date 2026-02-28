@@ -27,6 +27,11 @@ export class SalesController {
     });
   }
 
+  @Get('config')
+  getPosConfig() {
+    return this.salesService.getPosConfig();
+  }
+
   @Get('daily-summary')
   getDailySummary(
     @Query('date') date?: string,

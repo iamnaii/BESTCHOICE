@@ -1,10 +1,12 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import api from '@/lib/api';
+import toast from 'react-hot-toast';
+import api, { getErrorMessage } from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
+import Modal from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface Product {
@@ -52,7 +54,52 @@ export default function ProductsPage() {
   const [page, setPage] = useState(1);
   const debouncedSearch = useDebounce(search);
 
+  const queryClient = useQueryClient();
   const isManager = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
+
+  // Quick price edit modal state
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [priceForm, setPriceForm] = useState({ label: '', amount: '', isDefault: false });
+
+  const priceMutation = useMutation({
+    mutationFn: async ({ productId, priceId, data }: { productId: string; priceId?: string; data: { label: string; amount: number; isDefault: boolean } }) => {
+      if (priceId) {
+        return api.patch(`/products/${productId}/prices/${priceId}`, data);
+      }
+      return api.post(`/products/${productId}/prices`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      toast.success('บันทึกราคาสำเร็จ');
+      setEditingProduct(null);
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const openPriceEdit = useCallback((product: Product) => {
+    setEditingProduct(product);
+    const defaultPrice = product.prices.find((p) => p.isDefault);
+    if (defaultPrice) {
+      setPriceForm({ label: defaultPrice.label, amount: defaultPrice.amount, isDefault: defaultPrice.isDefault });
+    } else {
+      setPriceForm({ label: 'ราคาขาย', amount: '', isDefault: true });
+    }
+  }, []);
+
+  const handlePriceSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProduct) return;
+    const defaultPrice = editingProduct.prices.find((p) => p.isDefault);
+    priceMutation.mutate({
+      productId: editingProduct.id,
+      priceId: defaultPrice?.id,
+      data: {
+        label: priceForm.label,
+        amount: parseFloat(priceForm.amount),
+        isDefault: priceForm.isDefault,
+      },
+    });
+  };
 
   useEffect(() => { setPage(1); }, [debouncedSearch, filterStatus, filterCategory, filterBranch]);
 
@@ -116,13 +163,26 @@ export default function ProductsPage() {
       render: (p: Product) => {
         const defaultPrice = p.prices.find((pr) => pr.isDefault);
         return (
-          <div>
-            {defaultPrice ? (
-              <div className="font-medium">{parseFloat(defaultPrice.amount).toLocaleString()} ฿</div>
-            ) : (
-              <span className="text-gray-400">-</span>
+          <div className="flex items-center gap-1.5">
+            <div>
+              {defaultPrice ? (
+                <div className="font-medium">{parseFloat(defaultPrice.amount).toLocaleString()} ฿</div>
+              ) : (
+                <span className="text-gray-400">-</span>
+              )}
+              <div className="text-xs text-gray-400">ทุน: {parseFloat(p.costPrice).toLocaleString()} ฿</div>
+            </div>
+            {isManager && (
+              <button
+                onClick={(e) => { e.stopPropagation(); openPriceEdit(p); }}
+                className="text-gray-400 hover:text-primary-600 transition-colors"
+                title="แก้ไขราคา"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              </button>
             )}
-            <div className="text-xs text-gray-400">ทุน: {parseFloat(p.costPrice).toLocaleString()} ฿</div>
           </div>
         );
       },
@@ -149,7 +209,7 @@ export default function ProductsPage() {
       label: 'สาขา',
       render: (p: Product) => <span className="text-xs">{p.branch.name}</span>,
     },
-  ], [navigateToProduct]);
+  ], [navigateToProduct, openPriceEdit, isManager]);
 
   return (
     <div>
@@ -221,6 +281,60 @@ export default function ProductsPage() {
           onPageChange: setPage,
         } : undefined}
       />
+
+      {/* Quick Price Edit Modal */}
+      <Modal
+        isOpen={!!editingProduct}
+        onClose={() => setEditingProduct(null)}
+        title={editingProduct ? `แก้ไขราคา — ${editingProduct.brand} ${editingProduct.model}` : 'แก้ไขราคา'}
+        size="sm"
+      >
+        <form onSubmit={handlePriceSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อราคา</label>
+            <input
+              type="text"
+              value={priceForm.label}
+              onChange={(e) => setPriceForm({ ...priceForm, label: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">ราคาขาย (บาท)</label>
+            <input
+              type="number"
+              step="0.01"
+              value={priceForm.amount}
+              onChange={(e) => setPriceForm({ ...priceForm, amount: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+              required
+            />
+          </div>
+          {editingProduct && (
+            <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3">
+              ราคาทุน: {parseFloat(editingProduct.costPrice).toLocaleString()} ฿
+              {priceForm.amount && (
+                <span className={`ml-2 font-medium ${parseFloat(priceForm.amount) - parseFloat(editingProduct.costPrice) > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  (กำไร: {(parseFloat(priceForm.amount) - parseFloat(editingProduct.costPrice)).toLocaleString()} ฿)
+                </span>
+              )}
+            </div>
+          )}
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" onClick={() => setEditingProduct(null)} className="px-4 py-2 text-sm text-gray-600">
+              ยกเลิก
+            </button>
+            <button
+              type="submit"
+              disabled={priceMutation.isPending}
+              className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
+            >
+              {priceMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

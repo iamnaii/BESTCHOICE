@@ -70,6 +70,7 @@ export default function POSPage() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
 
   // Sale details
+  const [selectedPriceId, setSelectedPriceId] = useState<string | 'custom'>('');
   const [sellingPrice, setSellingPrice] = useState('');
   const [discount, setDiscount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('CASH');
@@ -149,10 +150,31 @@ export default function POSPage() {
   const handleSelectProduct = (product: Product) => {
     setSelectedProduct(product);
     setProductSearch('');
-    // Auto-fill price from default price
+    // Auto-fill price from default price in the system
     const defaultPrice = product.prices.find(p => p.isDefault);
     if (defaultPrice) {
+      setSelectedPriceId(defaultPrice.id);
       setSellingPrice(String(parseFloat(defaultPrice.amount)));
+    } else if (product.prices.length > 0) {
+      setSelectedPriceId(product.prices[0].id);
+      setSellingPrice(String(parseFloat(product.prices[0].amount)));
+    } else {
+      setSelectedPriceId('custom');
+      setSellingPrice('');
+    }
+  };
+
+  // Handle price selection from product prices
+  const handlePriceSelect = (priceId: string) => {
+    if (priceId === 'custom') {
+      setSelectedPriceId('custom');
+      setSellingPrice('');
+      return;
+    }
+    const price = selectedProduct?.prices.find(p => p.id === priceId);
+    if (price) {
+      setSelectedPriceId(priceId);
+      setSellingPrice(String(parseFloat(price.amount)));
     }
   };
 
@@ -212,6 +234,7 @@ export default function POSPage() {
   const resetForm = () => {
     setSelectedProduct(null);
     setSelectedCustomer(null);
+    setSelectedPriceId('');
     setSellingPrice('');
     setDiscount('');
     setPaymentMethod('CASH');
@@ -380,10 +403,62 @@ export default function POSPage() {
           {/* Sale Details */}
           <div className="bg-white rounded-lg border p-4">
             <div className="text-sm font-semibold text-gray-800 mb-3">รายละเอียดการขาย</div>
+
+            {/* Price picker from product system */}
+            {selectedProduct && selectedProduct.prices.length > 0 && (
+              <div className="mb-3">
+                <label className="block text-xs text-gray-500 mb-2">เลือกราคาขาย (จากระบบ) *</label>
+                <div className="flex flex-wrap gap-2">
+                  {selectedProduct.prices.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => handlePriceSelect(p.id)}
+                      className={`px-3 py-2 rounded-lg border-2 text-sm transition-all ${
+                        selectedPriceId === p.id
+                          ? 'border-primary-500 bg-primary-50 text-primary-700 ring-2 ring-primary-200'
+                          : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                      }`}
+                    >
+                      <div className="font-semibold">{parseFloat(p.amount).toLocaleString()} ฿</div>
+                      <div className="text-xs text-gray-500">{p.label}{p.isDefault ? ' (ค่าเริ่มต้น)' : ''}</div>
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => handlePriceSelect('custom')}
+                    className={`px-3 py-2 rounded-lg border-2 text-sm transition-all ${
+                      selectedPriceId === 'custom'
+                        ? 'border-orange-500 bg-orange-50 text-orange-700 ring-2 ring-orange-200'
+                        : 'border-dashed border-gray-300 bg-white text-gray-500 hover:border-gray-400'
+                    }`}
+                  >
+                    <div className="font-semibold">กำหนดเอง</div>
+                    <div className="text-xs">ใส่ราคาเอง</div>
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">ราคาขาย *</label>
-                <input type="number" value={sellingPrice} onChange={(e) => setSellingPrice(e.target.value)} className={inputClass} placeholder="0" />
+                <label className="block text-xs text-gray-500 mb-1">
+                  ราคาขาย *
+                  {selectedPriceId && selectedPriceId !== 'custom' && (
+                    <span className="ml-1 text-primary-500">(จากระบบ)</span>
+                  )}
+                </label>
+                <input
+                  type="number"
+                  value={sellingPrice}
+                  onChange={(e) => {
+                    setSellingPrice(e.target.value);
+                    if (selectedPriceId !== 'custom') setSelectedPriceId('custom');
+                  }}
+                  className={`${inputClass} ${selectedPriceId && selectedPriceId !== 'custom' ? 'bg-gray-50' : ''}`}
+                  placeholder="0"
+                  readOnly={!!selectedPriceId && selectedPriceId !== 'custom'}
+                />
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">ส่วนลด</label>

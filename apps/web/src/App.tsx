@@ -36,6 +36,7 @@ const UsersPage = lazy(() => import('@/pages/UsersPage'));
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
 const ExchangePage = lazy(() => import('@/pages/ExchangePage'));
 const AuditLogsPage = lazy(() => import('@/pages/AuditLogsPage'));
+const POSPage = lazy(() => import('@/pages/POSPage'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -97,6 +98,7 @@ function App() {
           <Route path="/inspections" element={<InspectionPage />} />
           <Route path="/inspections/:id" element={<InspectionDetailPage />} />
           <Route path="/stickers" element={<StickerPrintPage />} />
+          <Route path="/pos" element={<POSPage />} />
           <Route path="/customers" element={<CustomersPage />} />
           <Route path="/customers/:id" element={<CustomerDetailPage />} />
           <Route path="/contracts" element={<ContractsPage />} />

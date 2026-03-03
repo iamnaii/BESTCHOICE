@@ -54,9 +54,9 @@ export const saleTypeConfig: Record<SaleType, { label: string; color: string; bg
 // --- Plan Type ---
 
 export const planTypes = [
-  { value: 'STORE_DIRECT', label: 'ผ่อนกับร้าน' },
+  { value: 'STORE_DIRECT', label: 'ผ่อนกับ BESTCHOICE' },
   { value: 'CREDIT_CARD', label: 'ผ่อนบัตรเครดิต' },
-  { value: 'STORE_WITH_INTEREST', label: 'ผ่อนกับร้าน+ดอกเบี้ย' },
+  { value: 'STORE_WITH_INTEREST', label: 'ผ่อนกับ BESTCHOICE+ดอกเบี้ย' },
 ];
 
 // --- Payment Method ---

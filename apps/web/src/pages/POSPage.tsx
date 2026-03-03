@@ -36,9 +36,8 @@ interface PosConfig {
 }
 
 export default function POSPage() {
-  const { user } = useAuth();
+  useAuth(); // ensure user is authenticated
   const queryClient = useQueryClient();
-  const isManager = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
 
   // Sale type
   const [saleType, setSaleType] = useState<SaleType>('CASH');
@@ -239,9 +238,9 @@ export default function POSPage() {
         payload.paymentMethod = paymentMethod;
         payload.contractNumber = contractNumber || undefined;
       } else if (saleType === 'EXTERNAL_FINANCE') {
-        if (!financeCompany) throw new Error('กรุณาใส่ชื่อบริษัทไฟแนนซ์');
+        if (!financeCompany?.trim()) throw new Error('กรุณาใส่ชื่อบริษัทไฟแนนซ์');
         const down = parseFloat(downPayment) || 0;
-        payload.financeCompany = financeCompany;
+        payload.financeCompany = financeCompany.trim();
         payload.contractNumber = contractNumber || undefined;
         payload.downPayment = down;
         payload.financeAmount = netAmount - down;
@@ -264,6 +263,7 @@ export default function POSPage() {
   });
 
   const resetForm = () => {
+    setSaleType('CASH');
     setSelectedProduct(null);
     setSelectedCustomer(null);
     setBundleProducts([]);

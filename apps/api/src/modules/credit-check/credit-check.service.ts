@@ -287,6 +287,10 @@ export class CreditCheckService {
     customerSalary: number;
     customerOccupation: string | null;
   }) {
+    if (!this.anthropic) {
+      throw new Error('Anthropic client not initialized');
+    }
+
     const contentBlocks: Anthropic.MessageCreateParams['messages'][0]['content'] = [];
 
     // Add statement images as content blocks (only accept base64 data URLs to prevent SSRF)

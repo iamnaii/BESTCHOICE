@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsNumber, IsEnum, IsIn, IsArray } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsEnum, IsIn, IsArray, IsInt, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateSaleDto {
@@ -58,6 +58,14 @@ export class CreateSaleDto {
   @IsOptional()
   @Type(() => Number)
   interestRate?: number;
+
+  // Payment due day (1-28) for custom salary-based due dates
+  @IsInt()
+  @Min(1)
+  @Max(28)
+  @IsOptional()
+  @Type(() => Number)
+  paymentDueDay?: number;
 
   // External finance fields
   @IsString()

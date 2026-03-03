@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsEnum } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsInt, Min, Max } from 'class-validator';
 
 export class CreateContractDto {
   @IsString()
@@ -29,6 +29,13 @@ export class CreateContractDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  // วันที่ครบกำหนดชำระ ตามวันเงินเดือนออก (1-28)
+  @IsInt()
+  @Min(1)
+  @Max(28)
+  @IsOptional()
+  paymentDueDay?: number;
 }
 
 export class EarlyPayoffDto {
@@ -38,4 +45,15 @@ export class EarlyPayoffDto {
   @IsString()
   @IsOptional()
   notes?: string;
+}
+
+export class ReviewContractDto {
+  @IsString()
+  @IsOptional()
+  reviewNotes?: string;
+}
+
+export class RejectContractDto {
+  @IsString()
+  reviewNotes: string; // เหตุผลปฏิเสธ (บังคับ)
 }

@@ -188,7 +188,15 @@ export class ExchangeService {
         data: { status: 'RESERVED' },
       });
 
-      // Create new contract
+      // Look up InterestConfig for the new product
+      const newProductFull = await tx.product.findUnique({ where: { id: dto.newProductId } });
+      const interestConfigRecord = newProductFull
+        ? await tx.interestConfig.findFirst({
+            where: { isActive: true, productCategories: { has: newProductFull.category } },
+          })
+        : null;
+
+      // Create new contract (DRAFT + CREATING workflow - requires approval)
       const newContract = await tx.contract.create({
         data: {
           contractNumber,
@@ -204,36 +212,35 @@ export class ExchangeService {
           interestTotal,
           financedAmount,
           monthlyPayment,
-          status: 'ACTIVE',
+          status: 'DRAFT',
+          workflowStatus: 'CREATING',
+          paymentDueDay: oldContract.paymentDueDay,
+          interestConfigId: interestConfigRecord?.id,
           parentContractId: dto.oldContractId,
           notes: dto.notes || `เปลี่ยนเครื่องจากสัญญา ${oldContract.contractNumber}`,
         },
       });
 
-      // Create payment schedule with proper date handling (avoids month overflow bug)
+      // Create payment schedule with custom due day inherited from old contract
       const now = new Date();
+      const dueDay = oldContract.paymentDueDay || 1;
       const payments: { contractId: string; installmentNo: number; dueDate: Date; amountDue: number }[] = [];
       for (let i = 1; i <= totalMonths; i++) {
-        const dueDate = new Date(now.getFullYear(), now.getMonth() + i, 1);
-        // Ensure the date is correct even when month overflows (e.g., month 13+ wraps to next year)
-        // JavaScript's Date constructor handles this automatically, but we normalize to 1st of month
-        dueDate.setDate(1);
-        dueDate.setHours(0, 0, 0, 0);
+        const dueMonth = now.getMonth() + i;
+        const dueYear = now.getFullYear() + Math.floor(dueMonth / 12);
+        const adjustedMonth = dueMonth % 12;
         payments.push({
           contractId: newContract.id,
           installmentNo: i,
-          dueDate,
+          dueDate: new Date(dueYear, adjustedMonth, dueDay),
           amountDue: monthlyPayment,
         });
       }
 
       await tx.payment.createMany({ data: payments });
 
-      // Update new product status to SOLD_INSTALLMENT
-      await tx.product.update({
-        where: { id: dto.newProductId },
-        data: { status: 'SOLD_INSTALLMENT' },
-      });
+      // Reserve new product (will become SOLD_INSTALLMENT when contract is activated after approval)
+      // Note: product was already reserved above, this is now redundant but kept for clarity
 
       // Audit log for exchange
       await tx.auditLog.create({
@@ -264,6 +271,8 @@ export class ExchangeService {
         newContract: {
           id: newContract.id,
           contractNumber: newContract.contractNumber,
+          status: 'DRAFT',
+          workflowStatus: 'CREATING',
           monthlyPayment,
           totalMonths,
           financedAmount,

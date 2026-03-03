@@ -72,6 +72,7 @@ const navItems: NavItem[] = [
   { label: 'สาขา', path: '/branches', roles: ['OWNER'], section: 'system' },
   { label: 'จัดการผู้ใช้', path: '/users', roles: ['OWNER'], section: 'system' },
   { label: 'ตั้งค่าระบบ', path: '/settings', roles: ['OWNER'], section: 'system' },
+  { label: 'ตั้งค่าดอกเบี้ย', path: '/settings/interest-config', roles: ['OWNER'], section: 'system' },
   { label: 'Audit Logs', path: '/audit-logs', roles: ['OWNER'], section: 'system' },
   { label: 'นำเข้าข้อมูล', path: '/migration', roles: ['OWNER'], section: 'system' },
 ];

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -141,7 +141,7 @@ export default function ContractCreatePage() {
             fileSize: doc.file.size,
           });
         } catch {
-          // Continue uploading other docs
+          toast.error(`อัปโหลดเอกสาร ${doc.file.name} ไม่สำเร็จ`);
         }
       }
 
@@ -163,7 +163,7 @@ export default function ContractCreatePage() {
             statementFiles: fileUrls,
           });
         } catch {
-          // Non-critical
+          toast.error('อัปโหลด Statement ไม่สำเร็จ');
         }
       }
 
@@ -199,6 +199,12 @@ export default function ContractCreatePage() {
   const minDownPct = interestConfig ? parseFloat(interestConfig.minDownPaymentPct) : (posConfig?.minDownPaymentPct ?? 0.15);
   const minMonths = interestConfig?.minInstallmentMonths ?? posConfig?.minInstallmentMonths ?? 6;
   const maxMonths = interestConfig?.maxInstallmentMonths ?? posConfig?.maxInstallmentMonths ?? 12;
+
+  // Clamp totalMonths when config range changes
+  useEffect(() => {
+    if (totalMonths < minMonths) setTotalMonths(minMonths);
+    else if (totalMonths > maxMonths) setTotalMonths(maxMonths);
+  }, [minMonths, maxMonths]);
 
   const interestTotal = (sellingPrice - downPayment) * interestRate * totalMonths;
   const financedAmount = (sellingPrice - downPayment) + interestTotal;

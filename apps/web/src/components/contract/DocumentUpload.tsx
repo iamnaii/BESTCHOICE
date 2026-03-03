@@ -167,14 +167,26 @@ export default function DocumentUpload({ contractId }: { contractId: string }) {
                     </div>
                   </div>
                 </div>
-                <button
-                  onClick={() => {
-                    if (confirm('ต้องการลบเอกสารนี้?')) deleteMutation.mutate(doc.id);
-                  }}
-                  className="text-xs text-red-600 hover:text-red-800 px-2 py-1"
-                >
-                  ลบ
-                </button>
+                <div className="flex items-center gap-2">
+                  {doc.fileUrl && (
+                    <a
+                      href={doc.fileUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-primary-600 hover:text-primary-800 px-2 py-1"
+                    >
+                      ดู
+                    </a>
+                  )}
+                  <button
+                    onClick={() => {
+                      if (confirm('ต้องการลบเอกสารนี้?')) deleteMutation.mutate(doc.id);
+                    }}
+                    className="text-xs text-red-600 hover:text-red-800 px-2 py-1"
+                  >
+                    ลบ
+                  </button>
+                </div>
               </div>
             ))}
           </div>

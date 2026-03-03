@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -8,6 +8,19 @@ import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import AddressForm, { AddressData, emptyAddress, serializeAddress } from '@/components/ui/AddressForm';
+
+interface OcrResult {
+  nationalId: string | null;
+  prefix: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  fullName: string | null;
+  birthDate: string | null;
+  address: string | null;
+  issueDate: string | null;
+  expiryDate: string | null;
+  confidence: number;
+}
 
 interface Customer {
   id: string;
@@ -68,6 +81,10 @@ export default function CustomersPage() {
   const [sameAddress, setSameAddress] = useState(false);
   const [addressWork, setAddressWork] = useState<AddressData>(emptyAddress);
   const [references, setReferences] = useState<ReferenceData[]>([{ ...emptyReference }, { ...emptyReference }]);
+
+  // OCR state
+  const ocrFileRef = useRef<HTMLInputElement>(null);
+  const [ocrLoading, setOcrLoading] = useState(false);
 
   useEffect(() => { setPage(1); }, [debouncedSearch]);
 
@@ -148,6 +165,83 @@ export default function CustomersPage() {
     setReferences([{ ...emptyReference }, { ...emptyReference }]);
   };
 
+  const handleOcrScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (ocrFileRef.current) ocrFileRef.current.value = '';
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('ไฟล์ต้องมีขนาดไม่เกิน 10MB');
+      return;
+    }
+    if (!file.type.startsWith('image/')) {
+      toast.error('กรุณาเลือกไฟล์รูปภาพ');
+      return;
+    }
+
+    setOcrLoading(true);
+    try {
+      const reader = new FileReader();
+      const imageBase64 = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error('ไม่สามารถอ่านไฟล์ได้'));
+        reader.readAsDataURL(file);
+      });
+      const { data } = await api.post<OcrResult>('/ocr/id-card', { imageBase64 });
+
+      // Auto-fill form fields
+      const updates: Partial<typeof emptyForm> = {};
+      if (data.nationalId) updates.nationalId = data.nationalId;
+      if (data.prefix) updates.prefix = data.prefix;
+      if (data.firstName) updates.firstName = data.firstName;
+      if (data.lastName) updates.lastName = data.lastName;
+      if (!data.firstName && !data.lastName && data.fullName) {
+        const parts = data.fullName.split(' ');
+        updates.firstName = parts[0] || '';
+        updates.lastName = parts.slice(1).join(' ') || '';
+      }
+      if (data.birthDate) {
+        // birthDate could be "YYYY-MM-DD" or Thai format
+        const match = data.birthDate.match(/(\d{4})-(\d{2})-(\d{2})/);
+        if (match) updates.birthDate = data.birthDate;
+      }
+      setForm(prev => ({ ...prev, ...updates }));
+
+      // Try to parse address into structured fields
+      if (data.address) {
+        const addr = { ...emptyAddress };
+        const raw = data.address;
+
+        // Extract postal code (5 digits at the end)
+        const zipMatch = raw.match(/(\d{5})\s*$/);
+        if (zipMatch) addr.postalCode = zipMatch[1];
+
+        // Extract house number pattern (e.g. "123/45" or "123")
+        const houseMatch = raw.match(/^(\d+(?:\/\d+)?)\s/);
+        if (houseMatch) addr.houseNo = houseMatch[1];
+
+        // Extract หมู่ (moo)
+        const mooMatch = raw.match(/(?:หมู่(?:ที่)?|ม\.)\s*(\d+)/);
+        if (mooMatch) addr.moo = mooMatch[1];
+
+        // Extract ซอย (soi)
+        const soiMatch = raw.match(/(?:ซอย|ซ\.)\s*([^\s,]+)/);
+        if (soiMatch) addr.soi = soiMatch[1];
+
+        // Extract ถนน (road)
+        const roadMatch = raw.match(/(?:ถนน|ถ\.)\s*([^\s,]+)/);
+        if (roadMatch) addr.road = roadMatch[1];
+
+        setAddressIdCard(addr);
+      }
+
+      toast.success(`อ่านบัตรสำเร็จ (ความมั่นใจ ${(data.confidence * 100).toFixed(0)}%)`);
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setOcrLoading(false);
+    }
+  };
+
   const updateRef = (index: number, field: keyof ReferenceData, value: string) => {
     setReferences(prev => prev.map((r, i) => i === index ? { ...r, [field]: value } : r));
   };
@@ -216,6 +310,40 @@ export default function CustomersPage() {
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="เพิ่มลูกค้าใหม่" size="lg">
         <form onSubmit={(e) => { e.preventDefault(); createMutation.mutate(); }} className="space-y-5 max-h-[75vh] overflow-y-auto pr-1">
+
+          {/* ===== OCR สแกนบัตรประชาชน ===== */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold text-blue-800">สแกนบัตรประชาชน (OCR)</h3>
+            </div>
+            <p className="text-xs text-blue-600 mb-3">ถ่ายรูปหรือเลือกรูปบัตรประชาชนเพื่อกรอกข้อมูลอัตโนมัติ</p>
+            <input
+              ref={ocrFileRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleOcrScan}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => ocrFileRef.current?.click()}
+              disabled={ocrLoading}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+            >
+              {ocrLoading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                  กำลังอ่านข้อมูล...
+                </>
+              ) : (
+                <>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                  สแกนบัตรประชาชน
+                </>
+              )}
+            </button>
+          </div>
 
           {/* ===== ข้อมูลส่วนตัว ===== */}
           <div className={sectionClass}>

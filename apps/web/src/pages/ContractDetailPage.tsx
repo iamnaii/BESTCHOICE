@@ -534,7 +534,7 @@ export default function ContractDetailPage() {
       )}
 
       {activeTab === 'documents' && (
-        <DocumentUpload contractId={contract.id} />
+        <DocumentUpload contractId={contract.id} customerId={contract.customer.id} />
       )}
 
       {activeTab === 'credit' && (

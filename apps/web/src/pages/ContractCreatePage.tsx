@@ -54,6 +54,19 @@ interface PendingDoc {
   preview: string;
 }
 
+interface OcrResult {
+  nationalId: string | null;
+  prefix: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  fullName: string | null;
+  birthDate: string | null;
+  address: string | null;
+  issueDate: string | null;
+  expiryDate: string | null;
+  confidence: number;
+}
+
 export default function ContractCreatePage() {
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
@@ -75,6 +88,16 @@ export default function ContractCreatePage() {
   const [selectedDocType, setSelectedDocType] = useState('ID_CARD_COPY');
 
   const submitForReviewRef = useRef(false);
+
+  // OCR state (Step 2 - scan ID card to find/create customer)
+  const ocrFileRef = useRef<HTMLInputElement>(null);
+  const [ocrResult, setOcrResult] = useState<OcrResult | null>(null);
+  const [ocrLoading, setOcrLoading] = useState(false);
+  const [showOcrPanel, setShowOcrPanel] = useState(false);
+  const [showCreateCustomer, setShowCreateCustomer] = useState(false);
+  const [newCustomerPhone, setNewCustomerPhone] = useState('');
+  const [creatingCustomer, setCreatingCustomer] = useState(false);
+  const [ocrScannedFile, setOcrScannedFile] = useState<File | null>(null);
 
   // Queries
   const { data: products = [] } = useQuery<Product[]>({
@@ -193,6 +216,171 @@ export default function ContractCreatePage() {
   const financedAmount = (sellingPrice - downPayment) + interestTotal;
   const monthlyPayment = totalMonths > 0 ? Math.ceil(financedAmount / totalMonths) : 0;
 
+  // Helper: parse OCR raw address string into structured JSON for addressIdCard
+  const parseOcrAddress = (raw: string): string => {
+    const addr: Record<string, string> = {
+      houseNo: '', moo: '', village: '', soi: '', road: '',
+      province: '', district: '', subdistrict: '', postalCode: '',
+    };
+    const zipMatch = raw.match(/(\d{5})\s*$/);
+    if (zipMatch) addr.postalCode = zipMatch[1];
+    const houseMatch = raw.match(/^(\d+(?:\/\d+)?)\s/);
+    if (houseMatch) addr.houseNo = houseMatch[1];
+    const mooMatch = raw.match(/(?:หมู่(?:ที่)?|ม\.)\s*(\d+)/);
+    if (mooMatch) addr.moo = mooMatch[1];
+    const soiMatch = raw.match(/(?:ซอย|ซ\.)\s*([^\s,]+)/);
+    if (soiMatch) addr.soi = soiMatch[1];
+    const roadMatch = raw.match(/(?:ถนน|ถ\.)\s*([^\s,]+)/);
+    if (roadMatch) addr.road = roadMatch[1];
+    // Check if any field was parsed; if none, store raw string as-is (legacy format)
+    const hasStructured = Object.values(addr).some(v => v !== '');
+    if (!hasStructured) return raw;
+    return JSON.stringify(addr);
+  };
+
+  // OCR: scan ID card (Step 2)
+  const handleOcrScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (ocrFileRef.current) ocrFileRef.current.value = '';
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('ไฟล์ต้องมีขนาดไม่เกิน 10MB');
+      return;
+    }
+    if (!file.type.startsWith('image/')) {
+      toast.error('กรุณาเลือกไฟล์รูปภาพ');
+      return;
+    }
+
+    setOcrLoading(true);
+    setOcrResult(null);
+    setShowOcrPanel(false);
+    setShowCreateCustomer(false);
+    setSelectedCustomer(null);  // Reset previous selection to avoid stale data
+    setOcrScannedFile(file);
+
+    try {
+      const reader = new FileReader();
+      const imageBase64 = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error('ไม่สามารถอ่านไฟล์ได้'));
+        reader.readAsDataURL(file);
+      });
+      const { data } = await api.post('/ocr/id-card', { imageBase64 });
+      setOcrResult(data);
+      setShowOcrPanel(true);
+
+      // Auto-search for customer by nationalId
+      if (data.nationalId) {
+        try {
+          const searchRes = await api.get(`/customers?search=${data.nationalId}`);
+          const found = (searchRes.data.data || []) as Customer[];
+          if (found.length > 0) {
+            setSelectedCustomer(found[0]);
+            toast.success(`พบลูกค้าในระบบ: ${found[0].name}`);
+          } else {
+            setShowCreateCustomer(true);
+            toast.success('อ่านบัตรสำเร็จ - ไม่พบลูกค้าในระบบ สามารถสร้างลูกค้าใหม่ได้');
+          }
+        } catch {
+          setShowCreateCustomer(true);
+        }
+      } else {
+        toast.success('อ่านบัตรสำเร็จ');
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'ไม่สามารถอ่านบัตรประชาชนได้');
+    } finally {
+      setOcrLoading(false);
+    }
+  };
+
+  // OCR: create new customer from scanned data
+  const createCustomerFromOcr = async () => {
+    if (!ocrResult) return;
+    if (!newCustomerPhone.trim()) {
+      toast.error('กรุณากรอกเบอร์โทร');
+      return;
+    }
+    setCreatingCustomer(true);
+    try {
+      const body: Record<string, unknown> = {
+        phone: newCustomerPhone.trim(),
+      };
+      if (ocrResult.nationalId) body.nationalId = ocrResult.nationalId;
+      if (ocrResult.prefix) body.prefix = ocrResult.prefix;
+      if (ocrResult.fullName) body.name = ocrResult.fullName;
+      if (ocrResult.birthDate) body.birthDate = ocrResult.birthDate;
+      if (ocrResult.address) body.addressIdCard = parseOcrAddress(ocrResult.address);
+
+      const { data } = await api.post('/customers', body);
+      setSelectedCustomer(data);
+      setShowCreateCustomer(false);
+      setShowOcrPanel(false);
+      toast.success(`สร้างลูกค้าใหม่สำเร็จ: ${data.name}`);
+
+      // Auto-add scanned ID card to pending documents
+      if (ocrScannedFile) {
+        const preview = URL.createObjectURL(ocrScannedFile);
+        setPendingDocs((prev) => [...prev, { id: crypto.randomUUID(), type: 'ID_CARD_COPY', file: ocrScannedFile, preview }]);
+      }
+    } catch (err: any) {
+      // Handle duplicate nationalId - API returns existingCustomer data
+      const existing = err.response?.data?.existingCustomer;
+      if (existing && err.response?.status === 409) {
+        // Auto-select the existing customer
+        try {
+          const { data: fullCustomer } = await api.get(`/customers/${existing.id}`);
+          setSelectedCustomer(fullCustomer);
+          setShowCreateCustomer(false);
+          setShowOcrPanel(false);
+          toast.success(`ลูกค้ามีอยู่แล้ว: ${existing.name} - เลือกให้อัตโนมัติ`);
+          if (ocrScannedFile) {
+            const preview = URL.createObjectURL(ocrScannedFile);
+            setPendingDocs((prev) => [...prev, { id: crypto.randomUUID(), type: 'ID_CARD_COPY', file: ocrScannedFile, preview }]);
+          }
+        } catch {
+          toast.error('ลูกค้ามีอยู่แล้วแต่โหลดข้อมูลไม่สำเร็จ กรุณาค้นหาด้วยตนเอง');
+        }
+      } else {
+        toast.error(err.response?.data?.message || 'สร้างลูกค้าไม่สำเร็จ');
+      }
+    } finally {
+      setCreatingCustomer(false);
+    }
+  };
+
+  // OCR: update existing customer info from scanned data (Step 4)
+  const updateCustomerFromOcr = async () => {
+    if (!ocrResult || !selectedCustomer) return;
+    try {
+      const updateData: Record<string, unknown> = {};
+      if (ocrResult.prefix) updateData.prefix = ocrResult.prefix;
+      if (ocrResult.fullName) updateData.name = ocrResult.fullName;
+      if (ocrResult.birthDate) updateData.birthDate = ocrResult.birthDate;
+      if (ocrResult.address) updateData.addressIdCard = parseOcrAddress(ocrResult.address);
+
+      await api.patch(`/customers/${selectedCustomer.id}`, updateData);
+      toast.success('อัปเดตข้อมูลลูกค้าสำเร็จ');
+      setShowOcrPanel(false);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'อัปเดตข้อมูลลูกค้าไม่สำเร็จ');
+    }
+  };
+
+  // When selecting existing customer from OCR results, also auto-add ID card to pending docs
+  const selectCustomerFromOcr = () => {
+    if (ocrScannedFile) {
+      const preview = URL.createObjectURL(ocrScannedFile);
+      setPendingDocs((prev) => {
+        // Avoid duplicate
+        if (prev.some((d) => d.type === 'ID_CARD_COPY' && d.file.name === ocrScannedFile.name)) return prev;
+        return [...prev, { id: crypto.randomUUID(), type: 'ID_CARD_COPY', file: ocrScannedFile, preview }];
+      });
+    }
+    setShowOcrPanel(false);
+  };
+
   const handleAddDoc = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -203,6 +391,30 @@ export default function ContractCreatePage() {
     const preview = URL.createObjectURL(file);
     setPendingDocs((prev) => [...prev, { id: crypto.randomUUID(), type: selectedDocType, file, preview }]);
     if (fileInputRef.current) fileInputRef.current.value = '';
+
+    // Trigger OCR when uploading ID card image in Step 4
+    if (selectedDocType === 'ID_CARD_COPY' && file.type.startsWith('image/')) {
+      (async () => {
+        setOcrLoading(true);
+        try {
+          const reader = new FileReader();
+          const imageBase64 = await new Promise<string>((resolve, reject) => {
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = () => reject(new Error('ไม่สามารถอ่านไฟล์ได้'));
+            reader.readAsDataURL(file);
+          });
+          const { data } = await api.post('/ocr/id-card', { imageBase64 });
+          setOcrResult(data);
+          setShowOcrPanel(true);
+          setShowCreateCustomer(false);
+          toast.success('อ่านบัตรประชาชนสำเร็จ');
+        } catch (err: any) {
+          toast.error(err.response?.data?.message || 'ไม่สามารถอ่านบัตรประชาชนได้');
+        } finally {
+          setOcrLoading(false);
+        }
+      })();
+    }
   };
 
   const handleRemoveDoc = (id: string) => {
@@ -227,6 +439,14 @@ export default function ContractCreatePage() {
       notes: notes || undefined,
       paymentDueDay,
     });
+  };
+
+  // Reset OCR panel when changing steps to prevent state bleeding
+  const goToStep = (nextStep: number) => {
+    setShowOcrPanel(false);
+    setShowCreateCustomer(false);
+    setOcrLoading(false);
+    setStep(nextStep);
   };
 
   const customerCreditApproved = latestCreditCheck?.status === 'APPROVED';
@@ -316,6 +536,126 @@ export default function ContractCreatePage() {
       {/* Step 2: Select Customer */}
       {step === 1 && (
         <div>
+          {/* OCR Scan Section */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-blue-800">สแกนบัตรประชาชน (OCR)</h3>
+                <p className="text-xs text-blue-600 mt-0.5">ถ่ายรูปบัตรประชาชน ระบบจะค้นหาหรือสร้างลูกค้าให้อัตโนมัติ</p>
+              </div>
+              <button
+                onClick={() => ocrFileRef.current?.click()}
+                disabled={ocrLoading}
+                className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                {ocrLoading ? 'กำลังสแกน...' : 'สแกนบัตร'}
+              </button>
+            </div>
+            <input
+              ref={ocrFileRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleOcrScan}
+              className="hidden"
+            />
+
+            {/* OCR Loading */}
+            {ocrLoading && (
+              <div className="flex items-center gap-3 pt-2">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600" />
+                <div className="text-sm text-blue-700">กำลังอ่านข้อมูลจากบัตรประชาชน...</div>
+              </div>
+            )}
+
+            {/* OCR Results */}
+            {showOcrPanel && ocrResult && (
+              <div className="bg-white rounded-lg border border-blue-200 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-semibold text-gray-900">ข้อมูลที่อ่านได้</h4>
+                  <span className="text-xs text-green-600">ความมั่นใจ: {(ocrResult.confidence * 100).toFixed(0)}%</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {ocrResult.nationalId && (
+                    <div>
+                      <div className="text-xs text-gray-500">เลขบัตรประชาชน</div>
+                      <div className="text-sm font-mono font-medium">{ocrResult.nationalId.replace(/(\d{1})(\d{4})(\d{5})(\d{2})(\d{1})/, '$1-$2-$3-$4-$5')}</div>
+                    </div>
+                  )}
+                  {ocrResult.prefix && (
+                    <div>
+                      <div className="text-xs text-gray-500">คำนำหน้า</div>
+                      <div className="text-sm font-medium">{ocrResult.prefix}</div>
+                    </div>
+                  )}
+                  {ocrResult.fullName && (
+                    <div>
+                      <div className="text-xs text-gray-500">ชื่อ-นามสกุล</div>
+                      <div className="text-sm font-medium">{ocrResult.fullName}</div>
+                    </div>
+                  )}
+                  {ocrResult.birthDate && (
+                    <div>
+                      <div className="text-xs text-gray-500">วันเกิด</div>
+                      <div className="text-sm font-medium">{new Date(ocrResult.birthDate).toLocaleDateString('th-TH')}</div>
+                    </div>
+                  )}
+                  {ocrResult.address && (
+                    <div className="col-span-2">
+                      <div className="text-xs text-gray-500">ที่อยู่ตามบัตร</div>
+                      <div className="text-sm font-medium">{ocrResult.address}</div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Customer found - already auto-selected */}
+                {selectedCustomer && !showCreateCustomer && (
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                    <div className="text-sm font-medium text-green-800">พบลูกค้าในระบบ: {selectedCustomer.name}</div>
+                    <div className="text-xs text-green-600 mt-1">{selectedCustomer.phone}</div>
+                    <button
+                      onClick={selectCustomerFromOcr}
+                      className="mt-2 px-3 py-1 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700"
+                    >
+                      ใช้ลูกค้านี้
+                    </button>
+                  </div>
+                )}
+
+                {/* Customer not found - create new */}
+                {showCreateCustomer && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-3">
+                    <div className="text-sm font-medium text-amber-800">ไม่พบลูกค้าในระบบ - สร้างลูกค้าใหม่</div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">เบอร์โทรศัพท์ *</label>
+                      <input
+                        type="tel"
+                        value={newCustomerPhone}
+                        onChange={(e) => setNewCustomerPhone(e.target.value)}
+                        placeholder="0812345678"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                      />
+                    </div>
+                    <button
+                      onClick={createCustomerFromOcr}
+                      disabled={creatingCustomer || !newCustomerPhone.trim()}
+                      className="px-4 py-2 text-sm bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50"
+                    >
+                      {creatingCustomer ? 'กำลังสร้าง...' : 'สร้างลูกค้าใหม่'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Divider */}
+          <div className="flex items-center gap-3 mb-4">
+            <div className="flex-1 h-px bg-gray-200" />
+            <span className="text-xs text-gray-400">หรือค้นหาลูกค้าที่มีอยู่</span>
+            <div className="flex-1 h-px bg-gray-200" />
+          </div>
+
           <input
             type="text"
             placeholder="ค้นหาลูกค้า (ชื่อ, เบอร์โทร, เลขบัตร)..."
@@ -511,6 +851,90 @@ export default function ContractCreatePage() {
             </div>
           </div>
 
+          {/* OCR Loading */}
+          {ocrLoading && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center gap-3">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600" />
+              <div>
+                <div className="text-sm font-medium text-blue-800">กำลังอ่านข้อมูลจากบัตรประชาชน...</div>
+                <div className="text-xs text-blue-600">ระบบ AI กำลังประมวลผลรูปภาพ</div>
+              </div>
+            </div>
+          )}
+
+          {/* OCR Results Panel */}
+          {showOcrPanel && ocrResult && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-green-800">ข้อมูลที่อ่านจากบัตรประชาชน</h3>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-green-600">ความมั่นใจ: {(ocrResult.confidence * 100).toFixed(0)}%</span>
+                  <button onClick={() => setShowOcrPanel(false)} className="text-xs text-gray-500 hover:text-gray-700">ปิด</button>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                {ocrResult.nationalId && (
+                  <div>
+                    <div className="text-xs text-gray-500">เลขบัตรประชาชน</div>
+                    <div className="text-sm font-mono font-medium text-gray-900">
+                      {ocrResult.nationalId.replace(/(\d{1})(\d{4})(\d{5})(\d{2})(\d{1})/, '$1-$2-$3-$4-$5')}
+                    </div>
+                  </div>
+                )}
+                {ocrResult.prefix && (
+                  <div>
+                    <div className="text-xs text-gray-500">คำนำหน้า</div>
+                    <div className="text-sm font-medium text-gray-900">{ocrResult.prefix}</div>
+                  </div>
+                )}
+                {ocrResult.fullName && (
+                  <div>
+                    <div className="text-xs text-gray-500">ชื่อ-นามสกุล</div>
+                    <div className="text-sm font-medium text-gray-900">{ocrResult.fullName}</div>
+                  </div>
+                )}
+                {ocrResult.birthDate && (
+                  <div>
+                    <div className="text-xs text-gray-500">วันเกิด</div>
+                    <div className="text-sm font-medium text-gray-900">{new Date(ocrResult.birthDate).toLocaleDateString('th-TH')}</div>
+                  </div>
+                )}
+                {ocrResult.address && (
+                  <div className="col-span-2">
+                    <div className="text-xs text-gray-500">ที่อยู่ตามบัตร</div>
+                    <div className="text-sm font-medium text-gray-900">{ocrResult.address}</div>
+                  </div>
+                )}
+                {ocrResult.issueDate && (
+                  <div>
+                    <div className="text-xs text-gray-500">วันออกบัตร</div>
+                    <div className="text-sm text-gray-700">{new Date(ocrResult.issueDate).toLocaleDateString('th-TH')}</div>
+                  </div>
+                )}
+                {ocrResult.expiryDate && (
+                  <div>
+                    <div className="text-xs text-gray-500">วันหมดอายุ</div>
+                    <div className="text-sm text-gray-700">{new Date(ocrResult.expiryDate).toLocaleDateString('th-TH')}</div>
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-2 pt-2 border-t border-green-200">
+                <button
+                  onClick={updateCustomerFromOcr}
+                  className="px-4 py-1.5 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700"
+                >
+                  อัปเดตข้อมูลลูกค้า
+                </button>
+                <button
+                  onClick={() => setShowOcrPanel(false)}
+                  className="px-4 py-1.5 text-xs border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50"
+                >
+                  ข้าม
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Pending documents list */}
           {pendingDocs.length > 0 && (
             <div className="bg-white rounded-lg border">
@@ -593,14 +1017,14 @@ export default function ContractCreatePage() {
       {/* Navigation buttons */}
       <div className="flex justify-between mt-6">
         <button
-          onClick={() => step > 0 && setStep(step - 1)}
+          onClick={() => step > 0 && goToStep(step - 1)}
           className={`px-6 py-2 text-sm rounded-lg border ${step === 0 ? 'invisible' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}
         >
           ย้อนกลับ
         </button>
         {step < 4 ? (
           <button
-            onClick={() => canNext() && setStep(step + 1)}
+            onClick={() => canNext() && goToStep(step + 1)}
             disabled={!canNext()}
             className="px-6 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >

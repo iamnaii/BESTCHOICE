@@ -26,11 +26,27 @@ const DOCUMENT_TYPES = [
   { value: 'OTHER', label: 'อื่นๆ' },
 ];
 
-export default function DocumentUpload({ contractId }: { contractId: string }) {
+interface OcrResult {
+  nationalId: string | null;
+  prefix: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  fullName: string | null;
+  birthDate: string | null;
+  address: string | null;
+  issueDate: string | null;
+  expiryDate: string | null;
+  confidence: number;
+}
+
+export default function DocumentUpload({ contractId, customerId }: { contractId: string; customerId?: string }) {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedType, setSelectedType] = useState('ID_CARD_COPY');
   const [notes, setNotes] = useState('');
+  const [ocrResult, setOcrResult] = useState<OcrResult | null>(null);
+  const [ocrLoading, setOcrLoading] = useState(false);
+  const [showOcrPanel, setShowOcrPanel] = useState(false);
 
   const { data: documents = [] } = useQuery<ContractDocument[]>({
     queryKey: ['contract-documents', contractId],
@@ -82,6 +98,64 @@ export default function DocumentUpload({ contractId }: { contractId: string }) {
     },
   });
 
+  const performOcr = async (file: File) => {
+    setOcrLoading(true);
+    try {
+      const reader = new FileReader();
+      const imageBase64 = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error('ไม่สามารถอ่านไฟล์ได้'));
+        reader.readAsDataURL(file);
+      });
+      const { data } = await api.post('/ocr/id-card', { imageBase64 });
+      setOcrResult(data);
+      setShowOcrPanel(true);
+      toast.success('อ่านบัตรประชาชนสำเร็จ');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'ไม่สามารถอ่านบัตรประชาชนได้');
+    } finally {
+      setOcrLoading(false);
+    }
+  };
+
+  // Helper: parse OCR raw address string into structured JSON
+  const parseOcrAddress = (raw: string): string => {
+    const addr: Record<string, string> = {
+      houseNo: '', moo: '', village: '', soi: '', road: '',
+      province: '', district: '', subdistrict: '', postalCode: '',
+    };
+    const zipMatch = raw.match(/(\d{5})\s*$/);
+    if (zipMatch) addr.postalCode = zipMatch[1];
+    const houseMatch = raw.match(/^(\d+(?:\/\d+)?)\s/);
+    if (houseMatch) addr.houseNo = houseMatch[1];
+    const mooMatch = raw.match(/(?:หมู่(?:ที่)?|ม\.)\s*(\d+)/);
+    if (mooMatch) addr.moo = mooMatch[1];
+    const soiMatch = raw.match(/(?:ซอย|ซ\.)\s*([^\s,]+)/);
+    if (soiMatch) addr.soi = soiMatch[1];
+    const roadMatch = raw.match(/(?:ถนน|ถ\.)\s*([^\s,]+)/);
+    if (roadMatch) addr.road = roadMatch[1];
+    const hasStructured = Object.values(addr).some(v => v !== '');
+    if (!hasStructured) return raw;
+    return JSON.stringify(addr);
+  };
+
+  const updateCustomerFromOcr = async () => {
+    if (!ocrResult || !customerId) return;
+    try {
+      const updateData: Record<string, unknown> = {};
+      if (ocrResult.prefix) updateData.prefix = ocrResult.prefix;
+      if (ocrResult.fullName) updateData.name = ocrResult.fullName;
+      if (ocrResult.birthDate) updateData.birthDate = ocrResult.birthDate;
+      if (ocrResult.address) updateData.addressIdCard = parseOcrAddress(ocrResult.address);
+
+      await api.patch(`/customers/${customerId}`, updateData);
+      toast.success('อัปเดตข้อมูลลูกค้าสำเร็จ');
+      setShowOcrPanel(false);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'อัปเดตข้อมูลลูกค้าไม่สำเร็จ');
+    }
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -90,6 +164,11 @@ export default function DocumentUpload({ contractId }: { contractId: string }) {
       return;
     }
     uploadMutation.mutate(file);
+
+    // Trigger OCR when uploading ID card image
+    if (selectedType === 'ID_CARD_COPY' && file.type.startsWith('image/')) {
+      performOcr(file);
+    }
   };
 
   const getTypeLabel = (type: string) => DOCUMENT_TYPES.find((t) => t.value === type)?.label || type;
@@ -141,6 +220,92 @@ export default function DocumentUpload({ contractId }: { contractId: string }) {
           </div>
         )}
       </div>
+
+      {/* OCR Loading */}
+      {ocrLoading && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center gap-3">
+          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600" />
+          <div>
+            <div className="text-sm font-medium text-blue-800">กำลังอ่านข้อมูลจากบัตรประชาชน...</div>
+            <div className="text-xs text-blue-600">ระบบ AI กำลังประมวลผลรูปภาพ</div>
+          </div>
+        </div>
+      )}
+
+      {/* OCR Results Panel */}
+      {showOcrPanel && ocrResult && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-green-800">ข้อมูลที่อ่านจากบัตรประชาชน</h3>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-green-600">ความมั่นใจ: {(ocrResult.confidence * 100).toFixed(0)}%</span>
+              <button onClick={() => setShowOcrPanel(false)} className="text-xs text-gray-500 hover:text-gray-700">ปิด</button>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {ocrResult.nationalId && (
+              <div>
+                <div className="text-xs text-gray-500">เลขบัตรประชาชน</div>
+                <div className="text-sm font-mono font-medium text-gray-900">
+                  {ocrResult.nationalId.replace(/(\d{1})(\d{4})(\d{5})(\d{2})(\d{1})/, '$1-$2-$3-$4-$5')}
+                </div>
+              </div>
+            )}
+            {ocrResult.prefix && (
+              <div>
+                <div className="text-xs text-gray-500">คำนำหน้า</div>
+                <div className="text-sm font-medium text-gray-900">{ocrResult.prefix}</div>
+              </div>
+            )}
+            {ocrResult.fullName && (
+              <div>
+                <div className="text-xs text-gray-500">ชื่อ-นามสกุล</div>
+                <div className="text-sm font-medium text-gray-900">{ocrResult.fullName}</div>
+              </div>
+            )}
+            {ocrResult.birthDate && (
+              <div>
+                <div className="text-xs text-gray-500">วันเกิด</div>
+                <div className="text-sm font-medium text-gray-900">{new Date(ocrResult.birthDate).toLocaleDateString('th-TH')}</div>
+              </div>
+            )}
+            {ocrResult.address && (
+              <div className="col-span-2">
+                <div className="text-xs text-gray-500">ที่อยู่ตามบัตร</div>
+                <div className="text-sm font-medium text-gray-900">{ocrResult.address}</div>
+              </div>
+            )}
+            {ocrResult.issueDate && (
+              <div>
+                <div className="text-xs text-gray-500">วันออกบัตร</div>
+                <div className="text-sm text-gray-700">{new Date(ocrResult.issueDate).toLocaleDateString('th-TH')}</div>
+              </div>
+            )}
+            {ocrResult.expiryDate && (
+              <div>
+                <div className="text-xs text-gray-500">วันหมดอายุ</div>
+                <div className="text-sm text-gray-700">{new Date(ocrResult.expiryDate).toLocaleDateString('th-TH')}</div>
+              </div>
+            )}
+          </div>
+          {customerId && (
+            <div className="flex gap-2 pt-2 border-t border-green-200">
+              <button
+                onClick={updateCustomerFromOcr}
+                className="px-4 py-1.5 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700"
+              >
+                อัปเดตข้อมูลลูกค้า
+              </button>
+              <button
+                onClick={() => setShowOcrPanel(false)}
+                className="px-4 py-1.5 text-xs border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50"
+              >
+                ข้าม
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Document list */}
       {documents.length > 0 && (

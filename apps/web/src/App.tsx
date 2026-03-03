@@ -39,6 +39,7 @@ const ExchangePage = lazy(() => import('@/pages/ExchangePage'));
 const AuditLogsPage = lazy(() => import('@/pages/AuditLogsPage'));
 const POSPage = lazy(() => import('@/pages/POSPage'));
 const SalesHistoryPage = lazy(() => import('@/pages/SalesHistoryPage'));
+const InterestConfigPage = lazy(() => import('@/pages/InterestConfigPage'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -192,6 +193,14 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER']}>
                 <SettingsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings/interest-config"
+            element={
+              <ProtectedRoute roles={['OWNER']}>
+                <InterestConfigPage />
               </ProtectedRoute>
             }
           />

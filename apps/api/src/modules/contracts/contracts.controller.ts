@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Param, Body, Query, UseGuards } from '@nestjs/common';
 import { ContractsService } from './contracts.service';
-import { CreateContractDto, EarlyPayoffDto } from './dto/contract.dto';
+import { CreateContractDto, EarlyPayoffDto, ReviewContractDto, RejectContractDto } from './dto/contract.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -14,14 +14,16 @@ export class ContractsController {
   @Get()
   findAll(
     @Query('status') status?: string,
+    @Query('workflowStatus') workflowStatus?: string,
     @Query('branchId') branchId?: string,
     @Query('customerId') customerId?: string,
     @Query('search') search?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('salespersonId') salespersonId?: string,
   ) {
     return this.contractsService.findAll({
-      status, branchId, customerId, search,
+      status, workflowStatus, branchId, customerId, search, salespersonId,
       page: page ? parseInt(page) : undefined,
       limit: limit ? parseInt(limit) : undefined,
     });
@@ -48,8 +50,36 @@ export class ContractsController {
     return this.contractsService.create(dto, user.id);
   }
 
-  @Post(':id/activate')
+  // === WORKFLOW ENDPOINTS ===
+
+  @Post(':id/submit-review')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
+  submitForReview(@Param('id') id: string, @CurrentUser() user: { id: string }) {
+    return this.contractsService.submitForReview(id, user.id);
+  }
+
+  @Post(':id/approve')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  approve(
+    @Param('id') id: string,
+    @Body() dto: ReviewContractDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.contractsService.approveContract(id, user.id, dto.reviewNotes);
+  }
+
+  @Post(':id/reject')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  reject(
+    @Param('id') id: string,
+    @Body() dto: RejectContractDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.contractsService.rejectContract(id, user.id, dto.reviewNotes);
+  }
+
+  @Post(':id/activate')
+  @Roles('OWNER', 'BRANCH_MANAGER')
   activate(@Param('id') id: string) {
     return this.contractsService.activate(id);
   }

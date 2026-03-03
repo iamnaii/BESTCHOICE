@@ -31,6 +31,9 @@ import { UsersModule } from './modules/users/users.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { StockAdjustmentsModule } from './modules/stock-adjustments/stock-adjustments.module';
 import { SalesModule } from './modules/sales/sales.module';
+import { InterestConfigModule } from './modules/interest-config/interest-config.module';
+import { ContractDocumentsModule } from './modules/contract-documents/contract-documents.module';
+import { CreditCheckModule } from './modules/credit-check/credit-check.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
 
@@ -58,6 +61,9 @@ import { SecurityMiddleware } from './modules/audit/security.middleware';
     StickersModule,
     CustomersModule,
     ContractsModule,
+    InterestConfigModule,
+    ContractDocumentsModule,
+    CreditCheckModule,
     SalesModule,
     DocumentsModule,
     PaymentsModule,

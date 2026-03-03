@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateContractDto } from './dto/contract.dto';
 
@@ -6,11 +6,22 @@ import { CreateContractDto } from './dto/contract.dto';
 export class ContractsService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(filters: { status?: string; branchId?: string; customerId?: string; search?: string; page?: number; limit?: number }) {
+  async findAll(filters: {
+    status?: string;
+    workflowStatus?: string;
+    branchId?: string;
+    customerId?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+    salespersonId?: string;
+  }) {
     const where: Record<string, unknown> = { deletedAt: null };
     if (filters.status) where.status = filters.status;
+    if (filters.workflowStatus) where.workflowStatus = filters.workflowStatus;
     if (filters.branchId) where.branchId = filters.branchId;
     if (filters.customerId) where.customerId = filters.customerId;
+    if (filters.salespersonId) where.salespersonId = filters.salespersonId;
     if (filters.search) {
       where.OR = [
         { contractNumber: { contains: filters.search, mode: 'insensitive' } },
@@ -29,10 +40,11 @@ export class ContractsService {
         take: limit,
         include: {
           customer: { select: { id: true, name: true, phone: true } },
-          product: { select: { id: true, name: true, brand: true, model: true } },
+          product: { select: { id: true, name: true, brand: true, model: true, category: true } },
           branch: { select: { id: true, name: true } },
           salesperson: { select: { id: true, name: true } },
-          _count: { select: { payments: true } },
+          reviewedBy: { select: { id: true, name: true } },
+          _count: { select: { payments: true, contractDocuments: true } },
         },
       }),
       this.prisma.contract.count({ where }),
@@ -49,9 +61,20 @@ export class ContractsService {
         product: { include: { prices: true } },
         branch: { select: { id: true, name: true } },
         salesperson: { select: { id: true, name: true } },
+        reviewedBy: { select: { id: true, name: true } },
+        interestConfig: true,
         payments: { orderBy: { installmentNo: 'asc' } },
         signatures: true,
         eDocuments: true,
+        contractDocuments: {
+          orderBy: { createdAt: 'desc' },
+          include: { uploadedBy: { select: { id: true, name: true } } },
+        },
+        creditCheck: {
+          include: {
+            checkedBy: { select: { id: true, name: true } },
+          },
+        },
       },
     });
     if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
@@ -59,16 +82,31 @@ export class ContractsService {
   }
 
   async create(dto: CreateContractDto, salespersonId: string) {
-    // Get system configs
+    // Try to find interest config by product category
+    const product = await this.prisma.product.findUnique({ where: { id: dto.productId } });
+    if (!product || product.status !== 'IN_STOCK') {
+      throw new BadRequestException('สินค้าไม่พร้อมขาย');
+    }
+
+    // Find interest config matching the product category
+    const interestConfig = await this.prisma.interestConfig.findFirst({
+      where: {
+        isActive: true,
+        productCategories: { has: product.category },
+      },
+    });
+
+    // Get system configs as fallback
     const configs = await this.prisma.systemConfig.findMany({
       where: { key: { in: ['interest_rate', 'min_down_payment_pct', 'min_installment_months', 'max_installment_months'] } },
     });
     const getConfig = (key: string, def: number) => parseFloat(configs.find((c) => c.key === key)?.value || String(def));
 
-    const interestRate = dto.interestRate ?? getConfig('interest_rate', 0.08);
-    const minDownPct = getConfig('min_down_payment_pct', 0.15);
-    const minMonths = getConfig('min_installment_months', 6);
-    const maxMonths = getConfig('max_installment_months', 12);
+    // Use interest config if found, otherwise fallback to system config
+    const interestRate = dto.interestRate ?? (interestConfig ? Number(interestConfig.interestRate) : getConfig('interest_rate', 0.08));
+    const minDownPct = interestConfig ? Number(interestConfig.minDownPaymentPct) : getConfig('min_down_payment_pct', 0.15);
+    const minMonths = interestConfig ? interestConfig.minInstallmentMonths : getConfig('min_installment_months', 6);
+    const maxMonths = interestConfig ? interestConfig.maxInstallmentMonths : getConfig('max_installment_months', 12);
 
     // Validations
     if (dto.downPayment < dto.sellingPrice * minDownPct) {
@@ -78,13 +116,12 @@ export class ContractsService {
       throw new BadRequestException(`จำนวนงวดต้องอยู่ระหว่าง ${minMonths}-${maxMonths} เดือน`);
     }
 
-    // Verify product is available
-    const product = await this.prisma.product.findUnique({ where: { id: dto.productId } });
-    if (!product || product.status !== 'IN_STOCK') {
-      throw new BadRequestException('สินค้าไม่พร้อมขาย');
+    // Validate paymentDueDay
+    if (dto.paymentDueDay !== undefined && (dto.paymentDueDay < 1 || dto.paymentDueDay > 28)) {
+      throw new BadRequestException('วันที่ครบกำหนดชำระต้องอยู่ระหว่าง 1-28');
     }
 
-    // Calculate installment (SPEC Section 3.3)
+    // Calculate installment
     const principal = dto.sellingPrice - dto.downPayment;
     const interestTotal = principal * interestRate * dto.totalMonths;
     const financedAmount = principal + interestTotal;
@@ -92,7 +129,7 @@ export class ContractsService {
 
     // Create contract + payment schedule in transaction
     const contract = await this.prisma.$transaction(async (tx) => {
-      // Generate contract number inside transaction to avoid race condition
+      // Generate contract number inside transaction
       const lastContract = await tx.contract.findFirst({
         orderBy: { contractNumber: 'desc' },
         select: { contractNumber: true },
@@ -118,12 +155,16 @@ export class ContractsService {
           financedAmount,
           monthlyPayment,
           status: 'DRAFT',
+          workflowStatus: 'CREATING',
           notes: dto.notes,
+          paymentDueDay: dto.paymentDueDay,
+          interestConfigId: interestConfig?.id,
         },
       });
 
-      // Create payment schedule
+      // Create payment schedule with custom due day
       const now = new Date();
+      const dueDay = dto.paymentDueDay || 1;
       const payments: Array<{
         contractId: string;
         installmentNo: number;
@@ -131,8 +172,14 @@ export class ContractsService {
         amountDue: number;
         status: 'PENDING';
       }> = [];
+
       for (let i = 1; i <= dto.totalMonths; i++) {
-        const dueDate = new Date(now.getFullYear(), now.getMonth() + i, 1);
+        // Calculate due date: use paymentDueDay if specified, otherwise 1st of each month
+        const dueMonth = now.getMonth() + i;
+        const dueYear = now.getFullYear() + Math.floor(dueMonth / 12);
+        const adjustedMonth = dueMonth % 12;
+        const dueDate = new Date(dueYear, adjustedMonth, dueDay);
+
         payments.push({
           contractId: newContract.id,
           installmentNo: i,
@@ -155,9 +202,88 @@ export class ContractsService {
     return this.findOne(contract.id);
   }
 
+  // === WORKFLOW: ส่งตรวจสอบ ===
+  async submitForReview(id: string, userId: string) {
+    const contract = await this.findOne(id);
+
+    if (contract.workflowStatus !== 'CREATING' && contract.workflowStatus !== 'REJECTED') {
+      throw new BadRequestException('สัญญาต้องอยู่ในสถานะ กำลังสร้าง หรือ ปฏิเสธ เท่านั้น');
+    }
+
+    // Only the salesperson who created it can submit
+    if (contract.salespersonId !== userId) {
+      throw new ForbiddenException('เฉพาะพนักงานที่สร้างสัญญาเท่านั้นที่สามารถส่งตรวจสอบ');
+    }
+
+    await this.prisma.contract.update({
+      where: { id },
+      data: { workflowStatus: 'PENDING_REVIEW' },
+    });
+
+    return this.findOne(id);
+  }
+
+  // === WORKFLOW: อนุมัติสัญญา ===
+  async approveContract(id: string, userId: string, reviewNotes?: string) {
+    const contract = await this.findOne(id);
+
+    if (contract.workflowStatus !== 'PENDING_REVIEW') {
+      throw new BadRequestException('สัญญาต้องอยู่ในสถานะ รอตรวจสอบ');
+    }
+
+    // Prevent self-approval: salesperson cannot approve their own contract
+    if (contract.salespersonId === userId) {
+      throw new ForbiddenException('ไม่สามารถอนุมัติสัญญาที่ตัวเองสร้างได้');
+    }
+
+    await this.prisma.contract.update({
+      where: { id },
+      data: {
+        workflowStatus: 'APPROVED',
+        reviewedById: userId,
+        reviewedAt: new Date(),
+        reviewNotes,
+      },
+    });
+
+    return this.findOne(id);
+  }
+
+  // === WORKFLOW: ปฏิเสธสัญญา ===
+  async rejectContract(id: string, userId: string, reviewNotes: string) {
+    const contract = await this.findOne(id);
+
+    if (contract.workflowStatus !== 'PENDING_REVIEW') {
+      throw new BadRequestException('สัญญาต้องอยู่ในสถานะ รอตรวจสอบ');
+    }
+
+    if (contract.salespersonId === userId) {
+      throw new ForbiddenException('ไม่สามารถปฏิเสธสัญญาที่ตัวเองสร้างได้');
+    }
+
+    await this.prisma.contract.update({
+      where: { id },
+      data: {
+        workflowStatus: 'REJECTED',
+        reviewedById: userId,
+        reviewedAt: new Date(),
+        reviewNotes,
+      },
+    });
+
+    return this.findOne(id);
+  }
+
   async activate(id: string) {
     const contract = await this.findOne(id);
-    if (contract.status !== 'DRAFT') throw new BadRequestException('สัญญาต้องอยู่ในสถานะ DRAFT');
+
+    // Must be APPROVED workflow and DRAFT status
+    if (contract.workflowStatus !== 'APPROVED') {
+      throw new BadRequestException('สัญญาต้องได้รับการอนุมัติก่อนเปิดใช้งาน');
+    }
+    if (contract.status !== 'DRAFT') {
+      throw new BadRequestException('สัญญาต้องอยู่ในสถานะ DRAFT');
+    }
 
     await this.prisma.$transaction([
       this.prisma.contract.update({ where: { id }, data: { status: 'ACTIVE' } }),
@@ -210,13 +336,11 @@ export class ContractsService {
     const quote = await this.getEarlyPayoffQuote(id);
 
     await this.prisma.$transaction(async (tx) => {
-      // Get all unpaid payments
       const unpaidPayments = await tx.payment.findMany({
         where: { contractId: id, status: { not: 'PAID' } },
         orderBy: { installmentNo: 'asc' },
       });
 
-      // Distribute the discounted totalPayoff across unpaid installments
       let remainingPayoff = quote.totalPayoff;
       for (const payment of unpaidPayments) {
         const owed = Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid);
@@ -234,7 +358,6 @@ export class ContractsService {
         });
       }
 
-      // Update contract status
       await tx.contract.update({
         where: { id },
         data: { status: 'EARLY_PAYOFF' },

@@ -3,9 +3,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
+import Modal from '@/components/ui/Modal';
+import WorkflowStatusBadge from '@/components/contract/WorkflowStatusBadge';
+import DocumentUpload from '@/components/contract/DocumentUpload';
+import CreditCheckPanel from '@/components/contract/CreditCheckPanel';
 import toast from 'react-hot-toast';
 import { useState } from 'react';
-import Modal from '@/components/ui/Modal';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Payment {
   id: string;
@@ -23,6 +27,7 @@ interface ContractDetail {
   id: string;
   contractNumber: string;
   status: string;
+  workflowStatus: string;
   planType: string;
   sellingPrice: string;
   downPayment: string;
@@ -31,13 +36,21 @@ interface ContractDetail {
   interestTotal: string;
   financedAmount: string;
   monthlyPayment: string;
+  paymentDueDay: number | null;
   notes: string | null;
+  reviewNotes: string | null;
   createdAt: string;
+  reviewedAt: string | null;
+  salespersonId: string;
   customer: { id: string; name: string; phone: string; nationalId: string };
   product: { id: string; name: string; brand: string; model: string; serialNumber: string | null; imeiSerial: string | null };
   branch: { id: string; name: string };
   salesperson: { id: string; name: string };
+  reviewedBy: { id: string; name: string } | null;
+  interestConfig: { id: string; name: string } | null;
   payments: Payment[];
+  contractDocuments: any[];
+  creditCheck: any;
 }
 
 interface EarlyPayoffQuote {
@@ -71,8 +84,13 @@ export default function ContractDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const [showPayoffModal, setShowPayoffModal] = useState(false);
   const [payoffMethod, setPayoffMethod] = useState('CASH');
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectNotes, setRejectNotes] = useState('');
+  const [approveNotes, setApproveNotes] = useState('');
+  const [activeTab, setActiveTab] = useState<'schedule' | 'documents' | 'credit'>('schedule');
 
   const { data: contract, isLoading } = useQuery<ContractDetail>({
     queryKey: ['contract', id],
@@ -85,9 +103,29 @@ export default function ContractDetailPage() {
     enabled: !!contract && ['ACTIVE', 'OVERDUE'].includes(contract.status),
   });
 
+  const invalidateContract = () => queryClient.invalidateQueries({ queryKey: ['contract', id] });
+
+  const submitReviewMutation = useMutation({
+    mutationFn: async () => { const { data } = await api.post(`/contracts/${id}/submit-review`); return data; },
+    onSuccess: () => { toast.success('ส่งตรวจสอบแล้ว'); invalidateContract(); },
+    onError: (err: any) => toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด'),
+  });
+
+  const approveMutation = useMutation({
+    mutationFn: async () => { const { data } = await api.post(`/contracts/${id}/approve`, { reviewNotes: approveNotes || undefined }); return data; },
+    onSuccess: () => { toast.success('อนุมัติสัญญาแล้ว'); invalidateContract(); setApproveNotes(''); },
+    onError: (err: any) => toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด'),
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: async () => { const { data } = await api.post(`/contracts/${id}/reject`, { reviewNotes: rejectNotes }); return data; },
+    onSuccess: () => { toast.success('ปฏิเสธสัญญาแล้ว'); invalidateContract(); setShowRejectModal(false); setRejectNotes(''); },
+    onError: (err: any) => toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด'),
+  });
+
   const activateMutation = useMutation({
     mutationFn: async () => { const { data } = await api.post(`/contracts/${id}/activate`); return data; },
-    onSuccess: () => { toast.success('เปิดใช้งานสัญญาแล้ว'); queryClient.invalidateQueries({ queryKey: ['contract', id] }); },
+    onSuccess: () => { toast.success('เปิดใช้งานสัญญาแล้ว'); invalidateContract(); },
     onError: (err: any) => toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด'),
   });
 
@@ -99,7 +137,7 @@ export default function ContractDetailPage() {
     onSuccess: () => {
       toast.success('ปิดสัญญาก่อนกำหนดสำเร็จ');
       setShowPayoffModal(false);
-      queryClient.invalidateQueries({ queryKey: ['contract', id] });
+      invalidateContract();
     },
     onError: (err: any) => toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด'),
   });
@@ -110,6 +148,8 @@ export default function ContractDetailPage() {
 
   const s = statusLabels[contract.status] || { label: contract.status, className: 'bg-gray-100' };
   const paidCount = contract.payments.filter((p) => p.status === 'PAID').length;
+  const isReviewer = user && ['OWNER', 'BRANCH_MANAGER'].includes(user.role) && contract.salespersonId !== user.id;
+  const isCreator = user && contract.salespersonId === user.id;
 
   const paymentColumns = [
     { key: 'installmentNo', label: 'งวดที่', render: (p: Payment) => <span className="font-medium">{p.installmentNo}</span> },
@@ -149,15 +189,24 @@ export default function ContractDetailPage() {
         title={contract.contractNumber}
         subtitle="รายละเอียดสัญญาผ่อนชำระ"
         action={
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <button onClick={() => navigate(`/contracts/${id}/sign`)} className="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700">
               ลงนาม/เอกสาร
             </button>
-            {contract.status === 'DRAFT' && (
+
+            {/* Workflow buttons */}
+            {(contract.workflowStatus === 'CREATING' || contract.workflowStatus === 'REJECTED') && isCreator && (
+              <button onClick={() => submitReviewMutation.mutate()} disabled={submitReviewMutation.isPending} className="px-4 py-2 text-sm bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50">
+                {submitReviewMutation.isPending ? 'กำลังส่ง...' : 'ส่งตรวจสอบ'}
+              </button>
+            )}
+
+            {contract.workflowStatus === 'APPROVED' && contract.status === 'DRAFT' && (
               <button onClick={() => activateMutation.mutate()} disabled={activateMutation.isPending} className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50">
                 {activateMutation.isPending ? 'กำลังเปิด...' : 'เปิดใช้งานสัญญา'}
               </button>
             )}
+
             {['ACTIVE', 'OVERDUE'].includes(contract.status) && (
               <button onClick={() => setShowPayoffModal(true)} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">
                 ปิดก่อนกำหนด
@@ -170,11 +219,15 @@ export default function ContractDetailPage() {
         }
       />
 
-      {/* Status + Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+      {/* Status + Workflow + Summary */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
         <div className="bg-white rounded-lg border p-4">
-          <div className="text-xs text-gray-500 mb-1">สถานะ</div>
+          <div className="text-xs text-gray-500 mb-1">สถานะสัญญา</div>
           <span className={`px-3 py-1 rounded-full text-sm font-medium ${s.className}`}>{s.label}</span>
+        </div>
+        <div className="bg-white rounded-lg border p-4">
+          <div className="text-xs text-gray-500 mb-1">Workflow</div>
+          <WorkflowStatusBadge status={contract.workflowStatus} />
         </div>
         <div className="bg-white rounded-lg border p-4">
           <div className="text-xs text-gray-500 mb-1">ค่างวด/เดือน</div>
@@ -190,6 +243,60 @@ export default function ContractDetailPage() {
         </div>
       </div>
 
+      {/* Workflow Actions for Reviewer */}
+      {contract.workflowStatus === 'PENDING_REVIEW' && isReviewer && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+          <h3 className="text-sm font-semibold text-amber-800 mb-3">รอการตรวจสอบจากคุณ</h3>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs text-amber-700 mb-1">หมายเหตุ (ไม่บังคับ)</label>
+              <input
+                type="text"
+                value={approveNotes}
+                onChange={(e) => setApproveNotes(e.target.value)}
+                placeholder="หมายเหตุการอนุมัติ..."
+                className="w-full px-3 py-2 border border-amber-300 rounded-lg text-sm"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => approveMutation.mutate()}
+                disabled={approveMutation.isPending}
+                className="px-6 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+              >
+                {approveMutation.isPending ? 'กำลังอนุมัติ...' : 'อนุมัติสัญญา'}
+              </button>
+              <button
+                onClick={() => setShowRejectModal(true)}
+                className="px-6 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700"
+              >
+                ปฏิเสธ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rejection notes */}
+      {contract.workflowStatus === 'REJECTED' && contract.reviewNotes && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+          <h3 className="text-sm font-semibold text-red-800">สัญญาถูกปฏิเสธ</h3>
+          <div className="text-sm text-red-700 mt-1">เหตุผล: {contract.reviewNotes}</div>
+          {contract.reviewedBy && <div className="text-xs text-red-500 mt-1">โดย: {contract.reviewedBy.name} | {contract.reviewedAt && new Date(contract.reviewedAt).toLocaleString('th-TH')}</div>}
+        </div>
+      )}
+
+      {/* Approved info */}
+      {contract.workflowStatus === 'APPROVED' && contract.reviewedBy && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+          <h3 className="text-sm font-semibold text-green-800">สัญญาอนุมัติแล้ว</h3>
+          <div className="text-xs text-green-600 mt-1">
+            อนุมัติโดย: {contract.reviewedBy.name} | {contract.reviewedAt && new Date(contract.reviewedAt).toLocaleString('th-TH')}
+            {contract.reviewNotes && ` | หมายเหตุ: ${contract.reviewNotes}`}
+          </div>
+        </div>
+      )}
+
       {/* Contract Info */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         <div className="bg-white rounded-lg border p-6">
@@ -198,9 +305,10 @@ export default function ContractDetailPage() {
             <Info label="ประเภทแผน" value={contract.planType} />
             <Info label="ราคาขาย" value={`${parseFloat(contract.sellingPrice).toLocaleString()} ฿`} />
             <Info label="เงินดาวน์" value={`${parseFloat(contract.downPayment).toLocaleString()} ฿`} />
-            <Info label="อัตราดอกเบี้ย" value={`${(parseFloat(contract.interestRate) * 100).toFixed(1)}%`} />
+            <Info label="อัตราดอกเบี้ย" value={`${(parseFloat(contract.interestRate) * 100).toFixed(1)}%${contract.interestConfig ? ` (${contract.interestConfig.name})` : ''}`} />
             <Info label="ดอกเบี้ยรวม" value={`${parseFloat(contract.interestTotal).toLocaleString()} ฿`} />
             <Info label="จำนวนงวด" value={`${contract.totalMonths} เดือน`} />
+            <Info label="วันชำระ" value={contract.paymentDueDay ? `ทุกวันที่ ${contract.paymentDueDay}` : 'วันที่ 1'} />
             <Info label="พนักงานขาย" value={contract.salesperson.name} />
             <Info label="สาขา" value={contract.branch.name} />
             <Info label="วันที่สร้าง" value={new Date(contract.createdAt).toLocaleDateString('th-TH')} />
@@ -246,11 +354,40 @@ export default function ContractDetailPage() {
         </div>
       )}
 
-      {/* Payment Schedule */}
-      <div>
-        <h2 className="text-lg font-semibold text-gray-900 mb-3">ตารางผ่อนชำระ ({paidCount}/{contract.totalMonths} งวด)</h2>
-        <DataTable columns={paymentColumns} data={contract.payments} emptyMessage="ยังไม่มีตารางผ่อน" />
+      {/* Tabs: Schedule / Documents / Credit Check */}
+      <div className="flex gap-1 mb-4 border-b">
+        <button
+          onClick={() => setActiveTab('schedule')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'schedule' ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+        >
+          ตารางผ่อน ({paidCount}/{contract.totalMonths})
+        </button>
+        <button
+          onClick={() => setActiveTab('documents')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'documents' ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+        >
+          เอกสาร ({contract.contractDocuments.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('credit')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'credit' ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+        >
+          ตรวจเครดิต
+        </button>
       </div>
+
+      {/* Tab Content */}
+      {activeTab === 'schedule' && (
+        <DataTable columns={paymentColumns} data={contract.payments} emptyMessage="ยังไม่มีตารางผ่อน" />
+      )}
+
+      {activeTab === 'documents' && (
+        <DocumentUpload contractId={contract.id} />
+      )}
+
+      {activeTab === 'credit' && (
+        <CreditCheckPanel contractId={contract.id} />
+      )}
 
       {/* Early Payoff Modal */}
       {showPayoffModal && payoffQuote && (
@@ -261,20 +398,46 @@ export default function ContractDetailPage() {
               <div className="text-2xl font-bold text-blue-800">{payoffQuote.totalPayoff.toLocaleString()} ฿</div>
               <div className="text-xs text-blue-600 mt-1">(รวมส่วนลดดอกเบี้ย 50% แล้ว)</div>
             </div>
-
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">วิธีชำระ</label>
               <select value={payoffMethod} onChange={(e) => setPayoffMethod(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
                 <option value="CASH">เงินสด</option>
-                <option value="TRANSFER">โอนเงิน</option>
-                <option value="CREDIT_CARD">บัตรเครดิต</option>
+                <option value="BANK_TRANSFER">โอนเงิน</option>
+                <option value="QR_EWALLET">QR/E-Wallet</option>
               </select>
             </div>
-
             <div className="flex gap-3 pt-2">
               <button onClick={() => setShowPayoffModal(false)} className="flex-1 px-4 py-2 text-sm border border-gray-300 rounded-lg">ยกเลิก</button>
               <button onClick={() => earlyPayoffMutation.mutate()} disabled={earlyPayoffMutation.isPending} className="flex-1 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
                 {earlyPayoffMutation.isPending ? 'กำลังปิด...' : 'ยืนยันปิดสัญญา'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Reject Modal */}
+      {showRejectModal && (
+        <Modal isOpen title="ปฏิเสธสัญญา" onClose={() => setShowRejectModal(false)}>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">เหตุผลที่ปฏิเสธ *</label>
+              <textarea
+                value={rejectNotes}
+                onChange={(e) => setRejectNotes(e.target.value)}
+                rows={3}
+                placeholder="ระบุเหตุผลที่ปฏิเสธสัญญา..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              />
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setShowRejectModal(false)} className="flex-1 px-4 py-2 text-sm border border-gray-300 rounded-lg">ยกเลิก</button>
+              <button
+                onClick={() => rejectMutation.mutate()}
+                disabled={!rejectNotes.trim() || rejectMutation.isPending}
+                className="flex-1 px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                {rejectMutation.isPending ? 'กำลังส่ง...' : 'ยืนยันปฏิเสธ'}
               </button>
             </div>
           </div>

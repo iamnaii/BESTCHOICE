@@ -141,6 +141,32 @@ enum SaleType {
   EXTERNAL_FINANCE
 }
 
+enum ContractWorkflowStatus {
+  CREATING        // กำลังสร้าง
+  PENDING_REVIEW  // รอตรวจสอบ
+  APPROVED        // อนุมัติแล้ว
+  REJECTED        // ปฏิเสธ (ส่งกลับแก้ไข)
+}
+
+enum CreditCheckStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  MANUAL_REVIEW
+}
+
+enum ContractDocumentType {
+  SIGNED_CONTRACT
+  ID_CARD_COPY
+  KYC
+  FACEBOOK_PROFILE
+  FACEBOOK_POST
+  LINE_PROFILE
+  DEVICE_RECEIPT_PHOTO
+  BANK_STATEMENT
+  OTHER
+}
+
 // ============================================================
 // CORE ENTITIES
 // ============================================================
@@ -181,6 +207,7 @@ model User {
   branch    Branch? @relation(fields: [branchId], references: [id])
 
   contractsAsSalesperson Contract[]        @relation("Salesperson")
+  contractsReviewed      Contract[]        @relation("ContractReviewer")
   salesAsSalesperson     Sale[]            @relation("SalesSalesperson")
   paymentsRecorded       Payment[]         @relation("RecordedBy")
   inspections            Inspection[]
@@ -192,6 +219,8 @@ model User {
   goodsReceivings        GoodsReceiving[]  @relation("GoodsReceivedBy")
   transfersConfirmed     StockTransfer[]   @relation("TransferConfirmedBy")
   stockAdjustments       StockAdjustment[] @relation("StockAdjustedBy")
+  documentsUploaded      ContractDocument[] @relation("DocumentUploadedBy")
+  creditChecks           CreditCheck[]     @relation("CreditCheckedBy")
 
   @@index([branchId])
   @@map("users")
@@ -226,8 +255,9 @@ model Customer {
   updatedAt       DateTime @updatedAt @map("updated_at")
   deletedAt       DateTime? @map("deleted_at")
 
-  contracts Contract[]
-  sales     Sale[]
+  contracts    Contract[]
+  sales        Sale[]
+  creditChecks CreditCheck[]
 
   @@index([phone])
   @@index([name])
@@ -256,19 +286,35 @@ model Contract {
   updatedAt        DateTime       @updatedAt @map("updated_at")
   deletedAt        DateTime?      @map("deleted_at")
 
+  // Workflow: สองฝ่าย (ทำสัญญา vs ตรวจสอบ)
+  workflowStatus   ContractWorkflowStatus @default(CREATING) @map("workflow_status")
+  reviewedById     String?        @map("reviewed_by_id")
+  reviewedAt       DateTime?      @map("reviewed_at")
+  reviewNotes      String?        @map("review_notes")
+
+  // วันที่ครบกำหนดชำระ ตามวันเงินเดือนออก (1-28)
+  paymentDueDay    Int?           @map("payment_due_day")
+
+  // ที่มาดอกเบี้ย
+  interestConfigId String?        @map("interest_config_id")
+
   customer       Customer    @relation(fields: [customerId], references: [id])
   product        Product     @relation(fields: [productId], references: [id])
   branch         Branch      @relation(fields: [branchId], references: [id])
   salesperson    User        @relation("Salesperson", fields: [salespersonId], references: [id])
   parentContract Contract?   @relation("ContractExchange", fields: [parentContractId], references: [id])
   childContracts Contract[]  @relation("ContractExchange")
+  reviewedBy     User?       @relation("ContractReviewer", fields: [reviewedById], references: [id])
+  interestConfig InterestConfig? @relation(fields: [interestConfigId], references: [id])
 
-  payments      Payment[]
-  signatures    Signature[]
-  eDocuments    EDocument[]
-  callLogs      CallLog[]
-  repossession  Repossession?
-  sale          Sale?
+  payments           Payment[]
+  signatures         Signature[]
+  eDocuments         EDocument[]
+  callLogs           CallLog[]
+  repossession       Repossession?
+  sale               Sale?
+  contractDocuments  ContractDocument[]
+  creditCheck        CreditCheck?
 
   @@index([customerId])
   @@index([branchId])
@@ -277,6 +323,7 @@ model Contract {
   @@index([createdAt])
   @@index([deletedAt])
   @@index([status, deletedAt, branchId])
+  @@index([workflowStatus])
   @@map("contracts")
 }
 
@@ -846,4 +893,72 @@ model Sale {
   @@index([customerId])
   @@index([salespersonId])
   @@map("sales")
+}
+
+// ============================================================
+// INTEREST CONFIG & CONTRACT DOCUMENTS & CREDIT CHECK
+// ============================================================
+
+model InterestConfig {
+  id                   String   @id @default(uuid())
+  name                 String   // เช่น "มือ 1", "มือ 2"
+  productCategories    String[] @default([]) @map("product_categories")
+  interestRate         Decimal  @map("interest_rate") @db.Decimal(5, 4)
+  minDownPaymentPct    Decimal  @map("min_down_payment_pct") @db.Decimal(5, 4)
+  maxInstallmentMonths Int      @map("max_installment_months")
+  minInstallmentMonths Int      @map("min_installment_months")
+  isActive             Boolean  @default(true) @map("is_active")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  contracts Contract[]
+
+  @@map("interest_configs")
+}
+
+model ContractDocument {
+  id           String               @id @default(uuid())
+  contractId   String               @map("contract_id")
+  documentType ContractDocumentType @map("document_type")
+  fileName     String               @map("file_name")
+  fileUrl      String               @map("file_url")
+  fileSize     Int?                 @map("file_size")
+  notes        String?
+  uploadedById String               @map("uploaded_by_id")
+  createdAt    DateTime             @default(now()) @map("created_at")
+
+  contract   Contract @relation(fields: [contractId], references: [id])
+  uploadedBy User     @relation("DocumentUploadedBy", fields: [uploadedById], references: [id])
+
+  @@index([contractId])
+  @@index([documentType])
+  @@map("contract_documents")
+}
+
+model CreditCheck {
+  id              String            @id @default(uuid())
+  contractId      String            @unique @map("contract_id")
+  customerId      String            @map("customer_id")
+  status          CreditCheckStatus @default(PENDING)
+  bankName        String?           @map("bank_name")
+  statementFiles  String[]          @default([]) @map("statement_files")
+  statementMonths Int               @default(3) @map("statement_months")
+  aiAnalysis      Json?             @map("ai_analysis")
+  aiScore         Int?              @map("ai_score")
+  aiSummary       String?           @map("ai_summary")
+  aiRecommendation String?          @map("ai_recommendation")
+  checkedById     String?           @map("checked_by_id")
+  checkedAt       DateTime?         @map("checked_at")
+  reviewNotes     String?           @map("review_notes")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  contract  Contract @relation(fields: [contractId], references: [id])
+  customer  Customer @relation(fields: [customerId], references: [id])
+  checkedBy User?    @relation("CreditCheckedBy", fields: [checkedById], references: [id])
+
+  @@index([contractId])
+  @@index([customerId])
+  @@index([status])
+  @@map("credit_checks")
 }

@@ -130,7 +130,7 @@ export default function ProductsPage() {
       const updated = products.find(p => p.id === editingProduct.id);
       if (updated) setEditingProduct(updated);
     }
-  }, [products]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [products]); // eslint-disable-line
 
   const { data: branches = [] } = useQuery<{ id: string; name: string }[]>({
     queryKey: ['branches'],

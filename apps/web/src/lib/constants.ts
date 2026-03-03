@@ -47,16 +47,16 @@ export type SaleType = 'CASH' | 'INSTALLMENT' | 'EXTERNAL_FINANCE';
 
 export const saleTypeConfig: Record<SaleType, { label: string; color: string; bg: string }> = {
   CASH: { label: 'เงินสด', color: 'text-green-700', bg: 'bg-green-50 border-green-300 ring-green-500' },
-  INSTALLMENT: { label: 'ผ่อนร้าน', color: 'text-blue-700', bg: 'bg-blue-50 border-blue-300 ring-blue-500' },
+  INSTALLMENT: { label: 'ผ่อนกับ BESTCHOICE', color: 'text-blue-700', bg: 'bg-blue-50 border-blue-300 ring-blue-500' },
   EXTERNAL_FINANCE: { label: 'ผ่อนไฟแนนซ์', color: 'text-purple-700', bg: 'bg-purple-50 border-purple-300 ring-purple-500' },
 };
 
 // --- Plan Type ---
 
 export const planTypes = [
-  { value: 'STORE_DIRECT', label: 'ผ่อนกับร้าน' },
+  { value: 'STORE_DIRECT', label: 'ผ่อนกับ BESTCHOICE' },
   { value: 'CREDIT_CARD', label: 'ผ่อนบัตรเครดิต' },
-  { value: 'STORE_WITH_INTEREST', label: 'ผ่อนกับร้าน+ดอกเบี้ย' },
+  { value: 'STORE_WITH_INTEREST', label: 'ผ่อนกับ BESTCHOICE+ดอกเบี้ย' },
 ];
 
 // --- Payment Method ---

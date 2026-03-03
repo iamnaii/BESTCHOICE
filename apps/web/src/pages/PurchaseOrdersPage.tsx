@@ -100,12 +100,6 @@ const paymentStatusColors: Record<string, string> = {
   FULLY_PAID: 'bg-green-100 text-green-700',
 };
 
-const categoryLabels: Record<string, string> = {
-  PHONE_NEW: 'โทรศัพท์ (ใหม่)',
-  PHONE_USED: 'โทรศัพท์ (มือสอง)',
-  TABLET: 'แท็บเล็ต',
-  ACCESSORY: 'อุปกรณ์เสริม',
-};
 
 const accessoryTypes = [
   { value: 'ฟิล์ม', label: 'ฟิล์ม' },

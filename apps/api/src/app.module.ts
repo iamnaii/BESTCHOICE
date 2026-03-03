@@ -34,6 +34,7 @@ import { SalesModule } from './modules/sales/sales.module';
 import { InterestConfigModule } from './modules/interest-config/interest-config.module';
 import { ContractDocumentsModule } from './modules/contract-documents/contract-documents.module';
 import { CreditCheckModule } from './modules/credit-check/credit-check.module';
+import { OcrModule } from './modules/ocr/ocr.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
 
@@ -64,6 +65,7 @@ import { SecurityMiddleware } from './modules/audit/security.middleware';
     InterestConfigModule,
     ContractDocumentsModule,
     CreditCheckModule,
+    OcrModule,
     SalesModule,
     DocumentsModule,
     PaymentsModule,

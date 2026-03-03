@@ -388,16 +388,24 @@ export default function ContractDetailPage() {
                 <textarea value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
               </div>
               {/* Preview calculation */}
-              {editForm.sellingPrice > 0 && editForm.downPayment > 0 && editForm.totalMonths > 0 && (
+              {editForm.sellingPrice > 0 && editForm.downPayment >= 0 && editForm.totalMonths > 0 && editForm.downPayment < editForm.sellingPrice && (
                 <div className="bg-gray-50 rounded-lg p-3 text-xs space-y-1">
                   <div>เงินต้น: {(editForm.sellingPrice - editForm.downPayment).toLocaleString()} ฿</div>
                   <div>ดอกเบี้ยรวม: {((editForm.sellingPrice - editForm.downPayment) * editForm.interestRate * editForm.totalMonths).toLocaleString()} ฿</div>
                   <div className="font-semibold">ค่างวด/เดือน: {Math.ceil(((editForm.sellingPrice - editForm.downPayment) * (1 + editForm.interestRate * editForm.totalMonths)) / editForm.totalMonths).toLocaleString()} ฿</div>
                 </div>
               )}
+              {editForm.totalMonths <= 0 && <div className="text-xs text-red-600">จำนวนงวดต้องมากกว่า 0</div>}
+              {editForm.downPayment >= editForm.sellingPrice && editForm.sellingPrice > 0 && <div className="text-xs text-red-600">เงินดาวน์ต้องน้อยกว่าราคาขาย</div>}
+              {editForm.sellingPrice <= 0 && <div className="text-xs text-red-600">ราคาขายต้องมากกว่า 0</div>}
+              {(editForm.paymentDueDay < 1 || editForm.paymentDueDay > 28) && <div className="text-xs text-red-600">วันชำระต้องอยู่ระหว่าง 1-28</div>}
               <div className="flex gap-2 pt-2">
                 <button onClick={() => setIsEditing(false)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg">ยกเลิก</button>
-                <button onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending} className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50">
+                <button
+                  onClick={() => updateMutation.mutate()}
+                  disabled={updateMutation.isPending || editForm.totalMonths <= 0 || editForm.sellingPrice <= 0 || editForm.downPayment >= editForm.sellingPrice || editForm.paymentDueDay < 1 || editForm.paymentDueDay > 28}
+                  className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+                >
                   {updateMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
                 </button>
               </div>

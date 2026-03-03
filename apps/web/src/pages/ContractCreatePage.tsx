@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -79,7 +79,7 @@ export default function ContractCreatePage() {
   const [statementFiles, setStatementFiles] = useState<File[]>([]);
   const [creditResult, setCreditResult] = useState<any>(null);
   const statementInputRef = useRef<HTMLInputElement>(null);
-  const [submitForReviewFlag, setSubmitForReviewFlag] = useState(false);
+  const submitForReviewRef = useRef(false);
 
   // Queries
   const { data: products = [] } = useQuery<Product[]>({
@@ -129,8 +129,9 @@ export default function ContractCreatePage() {
       for (const doc of pendingDocs) {
         try {
           const reader = new FileReader();
-          const fileUrl = await new Promise<string>((resolve) => {
+          const fileUrl = await new Promise<string>((resolve, reject) => {
             reader.onload = () => resolve(reader.result as string);
+            reader.onerror = () => reject(new Error('ไม่สามารถอ่านไฟล์ได้'));
             reader.readAsDataURL(doc.file);
           });
           await api.post(`/contracts/${data.id}/documents`, {
@@ -140,7 +141,7 @@ export default function ContractCreatePage() {
             fileSize: doc.file.size,
           });
         } catch {
-          // Continue uploading other docs
+          toast.error(`อัปโหลดเอกสาร ${doc.file.name} ไม่สำเร็จ`);
         }
       }
 
@@ -150,8 +151,9 @@ export default function ContractCreatePage() {
           const fileUrls: string[] = [];
           for (const file of statementFiles) {
             const reader = new FileReader();
-            const url = await new Promise<string>((resolve) => {
+            const url = await new Promise<string>((resolve, reject) => {
               reader.onload = () => resolve(reader.result as string);
+              reader.onerror = () => reject(new Error('ไม่สามารถอ่านไฟล์ได้'));
               reader.readAsDataURL(file);
             });
             fileUrls.push(url);
@@ -161,12 +163,12 @@ export default function ContractCreatePage() {
             statementFiles: fileUrls,
           });
         } catch {
-          // Non-critical
+          toast.error('อัปโหลด Statement ไม่สำเร็จ');
         }
       }
 
       // If user clicked "สร้าง + ส่งตรวจสอบ", auto-submit for review
-      if (submitForReviewFlag) {
+      if (submitForReviewRef.current) {
         try {
           await api.post(`/contracts/${data.id}/submit-review`);
           toast.success('สร้างสัญญาและส่งตรวจสอบสำเร็จ');
@@ -198,6 +200,12 @@ export default function ContractCreatePage() {
   const minMonths = interestConfig?.minInstallmentMonths ?? posConfig?.minInstallmentMonths ?? 6;
   const maxMonths = interestConfig?.maxInstallmentMonths ?? posConfig?.maxInstallmentMonths ?? 12;
 
+  // Clamp totalMonths when config range changes
+  useEffect(() => {
+    if (totalMonths < minMonths) setTotalMonths(minMonths);
+    else if (totalMonths > maxMonths) setTotalMonths(maxMonths);
+  }, [minMonths, maxMonths]);
+
   const interestTotal = (sellingPrice - downPayment) * interestRate * totalMonths;
   const financedAmount = (sellingPrice - downPayment) + interestTotal;
   const monthlyPayment = totalMonths > 0 ? Math.ceil(financedAmount / totalMonths) : 0;
@@ -215,7 +223,11 @@ export default function ContractCreatePage() {
   };
 
   const handleRemoveDoc = (id: string) => {
-    setPendingDocs((prev) => prev.filter((d) => d.id !== id));
+    setPendingDocs((prev) => {
+      const doc = prev.find((d) => d.id === id);
+      if (doc) URL.revokeObjectURL(doc.preview);
+      return prev.filter((d) => d.id !== id);
+    });
   };
 
   const handleAddStatement = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -227,7 +239,7 @@ export default function ContractCreatePage() {
 
   const handleSubmit = (submitForReview: boolean) => {
     if (!selectedProduct || !selectedCustomer) return;
-    setSubmitForReviewFlag(submitForReview);
+    submitForReviewRef.current = submitForReview;
     createMutation.mutate({
       customerId: selectedCustomer.id,
       productId: selectedProduct.id,

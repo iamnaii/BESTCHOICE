@@ -1,25 +1,11 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import DOMPurify from 'dompurify';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import toast from 'react-hot-toast';
-
-/** Sanitize HTML to prevent XSS - removes script tags, event handlers, and dangerous protocols */
-function sanitizeHtml(html: string): string {
-  return html
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-    .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '')
-    .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, '')
-    .replace(/<embed\b[^>]*>/gi, '')
-    .replace(/on\w+\s*=\s*"[^"]*"/gi, '')
-    .replace(/on\w+\s*=\s*'[^']*'/gi, '')
-    .replace(/on\w+\s*=[^\s>]*/gi, '')
-    .replace(/javascript\s*:/gi, 'blocked:')
-    .replace(/vbscript\s*:/gi, 'blocked:')
-    .replace(/data\s*:\s*text\/html/gi, 'blocked:');
-}
 
 interface Template {
   id: string;
@@ -81,6 +67,7 @@ export default function ContractTemplatesPage() {
       toast.success('ปิดใช้งานเทมเพลตแล้ว');
       queryClient.invalidateQueries({ queryKey: ['contract-templates'] });
     },
+    onError: (err: any) => toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด'),
   });
 
   const openCreate = () => {
@@ -130,7 +117,7 @@ export default function ContractTemplatesPage() {
       render: (t: Template) => (
         <div className="flex gap-2">
           <button onClick={() => openEdit(t)} className="text-xs text-primary-600 hover:underline">แก้ไข</button>
-          {t.isActive && <button onClick={() => deleteMutation.mutate(t.id)} className="text-xs text-red-600 hover:underline">ปิดใช้งาน</button>}
+          {t.isActive && <button onClick={() => { if (confirm('ต้องการปิดใช้งานเทมเพลตนี้?')) deleteMutation.mutate(t.id); }} className="text-xs text-red-600 hover:underline">ปิดใช้งาน</button>}
         </div>
       ),
     },
@@ -217,7 +204,7 @@ export default function ContractTemplatesPage() {
       {/* Preview Modal */}
       {showPreview && (
         <Modal isOpen title="ตัวอย่างเทมเพลต" onClose={() => setShowPreview(false)}>
-          <div className="border rounded-lg p-4 max-h-[60vh] overflow-auto" dangerouslySetInnerHTML={{ __html: sanitizeHtml(previewHtml) }} />
+          <div className="border rounded-lg p-4 max-h-[60vh] overflow-auto" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(previewHtml) }} />
         </Modal>
       )}
     </div>

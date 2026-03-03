@@ -1,11 +1,24 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
+import Anthropic from '@anthropic-ai/sdk';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCreditCheckDto, OverrideCreditCheckDto } from './dto/credit-check.dto';
 
 @Injectable()
 export class CreditCheckService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(CreditCheckService.name);
+  private anthropic: Anthropic | null = null;
+
+  constructor(
+    private prisma: PrismaService,
+    private configService: ConfigService,
+  ) {
+    const apiKey = this.configService.get<string>('ANTHROPIC_API_KEY');
+    if (apiKey) {
+      this.anthropic = new Anthropic({ apiKey });
+    }
+  }
 
   async findByContract(contractId: string) {
     const creditCheck = await this.prisma.creditCheck.findUnique({
@@ -81,6 +94,7 @@ export class CreditCheckService {
       bankName: creditCheck.bankName,
       statementMonths: creditCheck.statementMonths,
       statementFileCount: creditCheck.statementFiles.length,
+      statementFiles: creditCheck.statementFiles,
       monthlyPayment,
       customerSalary,
       customerOccupation: creditCheck.customer.occupation,
@@ -196,6 +210,7 @@ export class CreditCheckService {
       bankName: creditCheck.bankName,
       statementMonths: creditCheck.statementMonths,
       statementFileCount: creditCheck.statementFiles.length,
+      statementFiles: creditCheck.statementFiles,
       monthlyPayment,
       customerSalary,
       customerOccupation: creditCheck.customer.occupation,
@@ -247,22 +262,130 @@ export class CreditCheckService {
     bankName: string | null;
     statementMonths: number;
     statementFileCount: number;
+    statementFiles: string[];
     monthlyPayment: number;
     customerSalary: number;
     customerOccupation: string | null;
   }) {
-    // TODO: Replace with actual Anthropic Claude API call
-    // This is a rule-based simulation for now
-    // In production, the bank statement images would be sent to Claude Vision API
-    // with a structured prompt asking for financial analysis
+    // Try Claude Vision API first, fallback to rule-based if unavailable
+    if (this.anthropic && params.statementFiles.length > 0) {
+      try {
+        return await this.performClaudeAnalysis(params);
+      } catch (error) {
+        this.logger.warn(`Claude API analysis failed, falling back to rule-based: ${error.message}`);
+      }
+    }
 
+    return this.performRuleBasedAnalysis(params);
+  }
+
+  private async performClaudeAnalysis(params: {
+    bankName: string | null;
+    statementMonths: number;
+    statementFiles: string[];
+    monthlyPayment: number;
+    customerSalary: number;
+    customerOccupation: string | null;
+  }) {
+    if (!this.anthropic) {
+      throw new Error('Anthropic client not initialized');
+    }
+
+    const contentBlocks: Anthropic.MessageCreateParams['messages'][0]['content'] = [];
+
+    // Add statement images as content blocks (only accept base64 data URLs to prevent SSRF)
+    for (const fileUrl of params.statementFiles.slice(0, 5)) {
+      if (!fileUrl.startsWith('data:')) {
+        this.logger.warn('Skipping non-data-URL statement file to prevent SSRF');
+        continue;
+      }
+      const match = fileUrl.match(/^data:(image\/(jpeg|png|gif|webp));base64,([A-Za-z0-9+/=]+)$/);
+      if (match) {
+        const mediaType = match[1] as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+        contentBlocks.push({
+          type: 'image',
+          source: { type: 'base64', media_type: mediaType, data: match[3] },
+        });
+      }
+    }
+
+    contentBlocks.push({
+      type: 'text',
+      text: `วิเคราะห์ Statement ธนาคาร${params.bankName ? ` (${params.bankName})` : ''} ของลูกค้าที่ต้องการผ่อนชำระสินค้า
+
+ข้อมูลลูกค้า:
+- อาชีพ: ${params.customerOccupation || 'ไม่ระบุ'}
+- เงินเดือนที่แจ้ง: ${params.customerSalary > 0 ? `${params.customerSalary.toLocaleString()} บาท/เดือน` : 'ไม่ได้แจ้ง'}
+- ค่างวดที่ต้องจ่าย: ${params.monthlyPayment > 0 ? `${params.monthlyPayment.toLocaleString()} บาท/เดือน` : 'ไม่ระบุ'}
+- Statement ย้อนหลัง: ${params.statementMonths} เดือน
+
+กรุณาวิเคราะห์และตอบเป็น JSON เท่านั้น ตามรูปแบบนี้:
+{
+  "score": <คะแนน 0-100>,
+  "summary": "<สรุปผลภาษาไทย 2-3 ประโยค>",
+  "recommendation": "<คำแนะนำ: แนะนำอนุมัติ / พิจารณาเพิ่มเติม / ไม่แนะนำอนุมัติ พร้อมเหตุผล>",
+  "analysis": {
+    "monthlyIncome": <รายได้ต่อเดือนโดยประมาณจาก statement>,
+    "averageBalance": <ยอดเงินคงเหลือเฉลี่ย>,
+    "monthlyPayment": ${params.monthlyPayment},
+    "affordabilityRatio": <สัดส่วนค่างวดต่อรายได้ 0.0-1.0>,
+    "incomeConsistency": "<stable/unstable/unknown>",
+    "debtObligations": <ประมาณภาระหนี้อื่นต่อเดือน>,
+    "riskFactors": [<รายการความเสี่ยง>],
+    "positiveFactors": [<รายการจุดแข็ง>]
+  }
+}
+
+เกณฑ์การให้คะแนน:
+- 70-100: รายได้สม่ำเสมอ, ค่างวดไม่เกิน 30% ของรายได้, ยอดคงเหลือดี
+- 40-69: มีความเสี่ยงบางอย่าง ควรพิจารณาเพิ่มเติม
+- 0-39: ความเสี่ยงสูง รายได้ไม่เพียงพอหรือไม่สม่ำเสมอ
+
+ตอบเป็น JSON เท่านั้น ไม่ต้องมี markdown code block`,
+    });
+
+    const response = await this.anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: contentBlocks }],
+    });
+
+    const textContent = response.content.find((c) => c.type === 'text');
+    if (!textContent || textContent.type !== 'text') {
+      throw new Error('No text response from Claude');
+    }
+
+    // Parse JSON from response (handle possible markdown wrapping)
+    let jsonText = textContent.text.trim();
+    const jsonMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (jsonMatch) {
+      jsonText = jsonMatch[1].trim();
+    }
+
+    const result = JSON.parse(jsonText);
+
+    const score = Math.max(0, Math.min(100, Number(result.score) || 50));
+
+    return {
+      score,
+      summary: result.summary || 'วิเคราะห์โดย AI',
+      recommendation: result.recommendation || 'กรุณาตรวจสอบเพิ่มเติม',
+      analysis: result.analysis || {},
+    };
+  }
+
+  private performRuleBasedAnalysis(params: {
+    monthlyPayment: number;
+    customerSalary: number;
+    statementFileCount?: number;
+    customerOccupation: string | null;
+  }) {
     const { monthlyPayment, customerSalary } = params;
 
-    let score = 50; // base score
+    let score = 50;
     const riskFactors: string[] = [];
     const positiveFactors: string[] = [];
 
-    // Salary-based analysis
     if (customerSalary > 0) {
       const affordabilityRatio = monthlyPayment / customerSalary;
       if (affordabilityRatio <= 0.2) {
@@ -283,22 +406,20 @@ export class CreditCheckService {
       riskFactors.push('ไม่มีข้อมูลรายได้');
     }
 
-    // Statement availability
-    if (params.statementFileCount >= 3) {
+    const fileCount = params.statementFileCount ?? 0;
+    if (fileCount >= 3) {
       score += 10;
       positiveFactors.push('มี Statement ครบ 3 เดือน');
-    } else if (params.statementFileCount >= 1) {
+    } else if (fileCount >= 1) {
       score += 5;
       riskFactors.push('Statement ไม่ครบ 3 เดือน');
     }
 
-    // Occupation
     if (params.customerOccupation) {
       score += 5;
       positiveFactors.push(`อาชีพ: ${params.customerOccupation}`);
     }
 
-    // Clamp score
     score = Math.max(0, Math.min(100, score));
 
     const analysis = {

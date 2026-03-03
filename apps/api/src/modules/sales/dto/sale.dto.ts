@@ -24,7 +24,7 @@ export class CreateSaleDto {
   discount?: number;
 
   // Payment method (all sale types)
-  @IsIn(['CASH', 'BANK_TRANSFER', 'QR_EWALLET'])
+  @IsIn(['CASH', 'BANK_TRANSFER'])
   @IsOptional()
   paymentMethod?: string;
 

@@ -35,7 +35,6 @@ export const ProductStatus = {
 export const PaymentMethod = {
   CASH: 'CASH',
   BANK_TRANSFER: 'BANK_TRANSFER',
-  QR_EWALLET: 'QR_EWALLET',
 } as const;
 
 // Plan Types
@@ -108,7 +107,6 @@ export const STATUS_LABELS = {
   paymentMethod: {
     CASH: 'เงินสด',
     BANK_TRANSFER: 'โอนธนาคาร',
-    QR_EWALLET: 'QR / e-Wallet',
   },
 } as const;
 

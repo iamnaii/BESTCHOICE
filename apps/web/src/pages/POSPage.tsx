@@ -5,7 +5,7 @@ import api, { getErrorMessage } from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
 import PageHeader from '@/components/ui/PageHeader';
 import { useAuth } from '@/contexts/AuthContext';
-import { saleTypeConfig, planTypes, paymentMethods, type SaleType } from '@/lib/constants';
+import { saleTypeConfig, paymentMethods, type SaleType } from '@/lib/constants';
 
 interface Product {
   id: string;
@@ -58,7 +58,7 @@ export default function POSPage() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
 
   // Sale details
-  const [selectedPriceId, setSelectedPriceId] = useState<string | 'custom'>('');
+  const [selectedPriceId, setSelectedPriceId] = useState('');
   const [sellingPrice, setSellingPrice] = useState('');
   const [discount, setDiscount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('CASH');
@@ -70,7 +70,7 @@ export default function POSPage() {
   const [contractNumber, setContractNumber] = useState('');
 
   // Installment fields
-  const [planType, setPlanType] = useState('STORE_DIRECT');
+  const planType = 'STORE_DIRECT';
   const [totalMonths, setTotalMonths] = useState('6');
 
   // External finance fields
@@ -148,19 +148,6 @@ export default function POSPage() {
     return netAmount - down;
   }, [netAmount, downPayment]);
 
-  const installmentCalc = useMemo(() => {
-    if (saleType !== 'INSTALLMENT') return null;
-    const down = parseFloat(downPayment) || 0;
-    const months = parseInt(totalMonths) || 6;
-    const principal = netAmount - down;
-    if (principal <= 0) return null;
-    const rate = posConfig?.interestRate ?? 0.08;
-    const interestTotal = principal * rate * months;
-    const financedAmount = principal + interestTotal;
-    const monthly = Math.ceil(financedAmount / months);
-    return { principal, interestTotal, financedAmount, monthly, rate };
-  }, [saleType, netAmount, downPayment, totalMonths, posConfig]);
-
   // Select product handler
   const handleSelectProduct = (product: Product) => {
     setSelectedProduct(product);
@@ -174,18 +161,13 @@ export default function POSPage() {
       setSelectedPriceId(product.prices[0].id);
       setSellingPrice(String(parseFloat(product.prices[0].amount)));
     } else {
-      setSelectedPriceId('custom');
+      setSelectedPriceId('');
       setSellingPrice('');
     }
   };
 
   // Handle price selection from product prices
   const handlePriceSelect = (priceId: string) => {
-    if (priceId === 'custom') {
-      setSelectedPriceId('custom');
-      setSellingPrice('');
-      return;
-    }
     const price = selectedProduct?.prices.find(p => p.id === priceId);
     if (price) {
       setSelectedPriceId(priceId);
@@ -523,18 +505,6 @@ export default function POSPage() {
                       <div className="text-xs text-gray-500">{p.label}{p.isDefault ? ' (ค่าเริ่มต้น)' : ''}</div>
                     </button>
                   ))}
-                  <button
-                    type="button"
-                    onClick={() => handlePriceSelect('custom')}
-                    className={`px-3 py-2 rounded-lg border-2 text-sm transition-all ${
-                      selectedPriceId === 'custom'
-                        ? 'border-orange-500 bg-orange-50 text-orange-700 ring-2 ring-orange-200'
-                        : 'border-dashed border-gray-300 bg-white text-gray-500 hover:border-gray-400'
-                    }`}
-                  >
-                    <div className="font-semibold">กำหนดเอง</div>
-                    <div className="text-xs">ใส่ราคาเอง</div>
-                  </button>
                 </div>
               </div>
             )}
@@ -543,20 +513,14 @@ export default function POSPage() {
               <div>
                 <label className="block text-xs text-gray-500 mb-1">
                   ราคาขาย *
-                  {selectedPriceId && selectedPriceId !== 'custom' && (
-                    <span className="ml-1 text-primary-500">(จากระบบ)</span>
-                  )}
+                  <span className="ml-1 text-primary-500">(จากระบบ)</span>
                 </label>
                 <input
                   type="number"
                   value={sellingPrice}
-                  onChange={(e) => {
-                    setSellingPrice(e.target.value);
-                    if (selectedPriceId !== 'custom') setSelectedPriceId('custom');
-                  }}
-                  className={`${inputClass} ${selectedPriceId && selectedPriceId !== 'custom' ? 'bg-gray-50' : ''}`}
+                  className={`${inputClass} bg-gray-50`}
                   placeholder="0"
-                  readOnly={!!selectedPriceId && selectedPriceId !== 'custom'}
+                  readOnly
                 />
               </div>
               <div>
@@ -585,20 +549,8 @@ export default function POSPage() {
               <div className="space-y-3 mt-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">แผนผ่อนชำระ</label>
-                    <select value={planType} onChange={(e) => setPlanType(e.target.value)} className={selectClass}>
-                      {planTypes.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-                    </select>
-                  </div>
-                  <div>
                     <label className="block text-xs text-gray-500 mb-1">เลขที่สัญญา</label>
                     <input type="text" value={contractNumber} onChange={(e) => setContractNumber(e.target.value)} className={inputClass} placeholder="ระบบจะสร้างให้อัตโนมัติ" />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">เงินดาวน์ *</label>
-                    <input type="number" value={downPayment} onChange={(e) => setDownPayment(e.target.value)} className={inputClass} placeholder="0" />
                   </div>
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">จำนวนงวด</label>
@@ -611,6 +563,10 @@ export default function POSPage() {
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">เงินดาวน์</label>
+                    <input type="number" value={downPayment} onChange={(e) => setDownPayment(e.target.value)} className={inputClass} placeholder="0" />
+                  </div>
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">รับเงินดาวน์โดย</label>
                     <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className={selectClass}>
@@ -729,37 +685,22 @@ export default function POSPage() {
               </div>
             </div>
 
-            {/* Installment calculation */}
+            {/* Installment summary */}
             {saleType === 'INSTALLMENT' && (
               <div className="border-t mt-3 pt-3 space-y-2">
-                <div className="text-xs font-semibold text-gray-600 mb-1">คำนวณผ่อนชำระ</div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-gray-500">เงินดาวน์</span>
-                  <span>{(parseFloat(downPayment) || 0).toLocaleString()} ฿</span>
-                </div>
-                <div className="flex justify-between text-xs font-medium text-blue-600">
+                <div className="text-xs font-semibold text-gray-600 mb-1">สรุปผ่อนชำระ</div>
+                {contractNumber && <div className="text-xs text-gray-500">เลขที่สัญญา: <span className="text-gray-800 font-mono">{contractNumber}</span></div>}
+                {totalMonths && <div className="text-xs text-gray-500">จำนวนงวด: <span className="text-gray-800 font-medium">{totalMonths} เดือน</span></div>}
+                {parseFloat(downPayment) > 0 && (
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-500">เงินดาวน์</span>
+                    <span>{parseFloat(downPayment).toLocaleString()} ฿</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-sm font-bold text-blue-600">
                   <span>ยอดที่ BESTCHOICE รับ</span>
                   <span>{transferAmount.toLocaleString()} ฿</span>
                 </div>
-                {installmentCalc && (
-                  <>
-                    <div className="flex justify-between text-xs">
-                      <span className="text-gray-500">ดอกเบี้ยรวม ({(installmentCalc.rate * 100).toFixed(0)}%)</span>
-                      <span>{installmentCalc.interestTotal.toLocaleString()} ฿</span>
-                    </div>
-                    <div className="flex justify-between text-xs">
-                      <span className="text-gray-500">ยอดผ่อนรวม</span>
-                      <span>{installmentCalc.financedAmount.toLocaleString()} ฿</span>
-                    </div>
-                    <div className="flex justify-between text-sm font-bold text-blue-600 border-t pt-1">
-                      <span>ค่างวด/เดือน</span>
-                      <span>{installmentCalc.monthly.toLocaleString()} ฿ x {totalMonths} งวด</span>
-                    </div>
-                  </>
-                )}
-                {contractNumber && (
-                  <div className="text-xs text-gray-500 mt-1">สัญญา: <span className="text-gray-800 font-mono">{contractNumber}</span></div>
-                )}
               </div>
             )}
 

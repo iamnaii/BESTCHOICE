@@ -49,6 +49,7 @@ interface ContractDetail {
   reviewedBy: { id: string; name: string } | null;
   interestConfig: { id: string; name: string } | null;
   payments: Payment[];
+  signatures: { id: string; signerType: string; signedAt: string }[];
   contractDocuments: any[];
   creditCheck: any;
 }
@@ -91,6 +92,8 @@ export default function ContractDetailPage() {
   const [rejectNotes, setRejectNotes] = useState('');
   const [approveNotes, setApproveNotes] = useState('');
   const [activeTab, setActiveTab] = useState<'schedule' | 'documents' | 'credit'>('schedule');
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState({ sellingPrice: 0, downPayment: 0, totalMonths: 0, interestRate: 0, paymentDueDay: 1, notes: '' });
 
   const { data: contract, isLoading } = useQuery<ContractDetail>({
     queryKey: ['contract', id],
@@ -142,6 +145,32 @@ export default function ContractDetailPage() {
     onError: (err: any) => toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด'),
   });
 
+  const updateMutation = useMutation({
+    mutationFn: async () => {
+      const { data } = await api.patch(`/contracts/${id}`, editForm);
+      return data;
+    },
+    onSuccess: () => {
+      toast.success('อัปเดตสัญญาสำเร็จ');
+      setIsEditing(false);
+      invalidateContract();
+    },
+    onError: (err: any) => toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด'),
+  });
+
+  const startEditing = () => {
+    if (!contract) return;
+    setEditForm({
+      sellingPrice: parseFloat(contract.sellingPrice),
+      downPayment: parseFloat(contract.downPayment),
+      totalMonths: contract.totalMonths,
+      interestRate: parseFloat(contract.interestRate),
+      paymentDueDay: contract.paymentDueDay || 1,
+      notes: contract.notes || '',
+    });
+    setIsEditing(true);
+  };
+
   if (isLoading || !contract) {
     return <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div></div>;
   }
@@ -150,6 +179,10 @@ export default function ContractDetailPage() {
   const paidCount = contract.payments.filter((p) => p.status === 'PAID').length;
   const isReviewer = user && ['OWNER', 'BRANCH_MANAGER'].includes(user.role) && contract.salespersonId !== user.id;
   const isCreator = user && contract.salespersonId === user.id;
+  const canEdit = isCreator && (contract.workflowStatus === 'CREATING' || contract.workflowStatus === 'REJECTED');
+  const customerSigned = contract.signatures?.some((s) => s.signerType === 'CUSTOMER');
+  const staffSigned = contract.signatures?.some((s) => s.signerType === 'STAFF');
+  const allSigned = customerSigned && staffSigned;
 
   const paymentColumns = [
     { key: 'installmentNo', label: 'งวดที่', render: (p: Payment) => <span className="font-medium">{p.installmentNo}</span> },
@@ -202,7 +235,7 @@ export default function ContractDetailPage() {
             )}
 
             {contract.workflowStatus === 'APPROVED' && contract.status === 'DRAFT' && (
-              <button onClick={() => activateMutation.mutate()} disabled={activateMutation.isPending} className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50">
+              <button onClick={() => activateMutation.mutate()} disabled={activateMutation.isPending || !allSigned} title={!allSigned ? 'ต้องลงนามครบทั้งลูกค้าและพนักงานก่อน' : ''} className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50">
                 {activateMutation.isPending ? 'กำลังเปิด...' : 'เปิดใช้งานสัญญา'}
               </button>
             )}
@@ -294,26 +327,96 @@ export default function ContractDetailPage() {
             อนุมัติโดย: {contract.reviewedBy.name} | {contract.reviewedAt && new Date(contract.reviewedAt).toLocaleString('th-TH')}
             {contract.reviewNotes && ` | หมายเหตุ: ${contract.reviewNotes}`}
           </div>
+          {/* Signature status */}
+          {contract.status === 'DRAFT' && (
+            <div className="mt-3 flex items-center gap-4 text-xs">
+              <span className="font-medium text-green-700">ลงนาม:</span>
+              <span className={customerSigned ? 'text-green-700' : 'text-amber-600'}>
+                ลูกค้า {customerSigned ? 'เซ็นแล้ว' : 'ยังไม่เซ็น'}
+              </span>
+              <span className={staffSigned ? 'text-green-700' : 'text-amber-600'}>
+                พนักงาน {staffSigned ? 'เซ็นแล้ว' : 'ยังไม่เซ็น'}
+              </span>
+              {!allSigned && (
+                <button onClick={() => navigate(`/contracts/${id}/sign`)} className="px-2 py-1 bg-purple-600 text-white rounded text-xs hover:bg-purple-700">
+                  ไปลงนาม
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
 
       {/* Contract Info */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         <div className="bg-white rounded-lg border p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">ข้อมูลสัญญา</h2>
-          <div className="grid grid-cols-2 gap-3">
-            <Info label="ประเภทแผน" value={contract.planType} />
-            <Info label="ราคาขาย" value={`${parseFloat(contract.sellingPrice).toLocaleString()} ฿`} />
-            <Info label="เงินดาวน์" value={`${parseFloat(contract.downPayment).toLocaleString()} ฿`} />
-            <Info label="อัตราดอกเบี้ย" value={`${(parseFloat(contract.interestRate) * 100).toFixed(1)}%${contract.interestConfig ? ` (${contract.interestConfig.name})` : ''}`} />
-            <Info label="ดอกเบี้ยรวม" value={`${parseFloat(contract.interestTotal).toLocaleString()} ฿`} />
-            <Info label="จำนวนงวด" value={`${contract.totalMonths} เดือน`} />
-            <Info label="วันชำระ" value={contract.paymentDueDay ? `ทุกวันที่ ${contract.paymentDueDay}` : 'วันที่ 1'} />
-            <Info label="พนักงานขาย" value={contract.salesperson.name} />
-            <Info label="สาขา" value={contract.branch.name} />
-            <Info label="วันที่สร้าง" value={new Date(contract.createdAt).toLocaleDateString('th-TH')} />
-            {contract.notes && <Info label="หมายเหตุ" value={contract.notes} />}
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">ข้อมูลสัญญา</h2>
+            {canEdit && !isEditing && (
+              <button onClick={startEditing} className="px-3 py-1 text-xs bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200">
+                แก้ไข
+              </button>
+            )}
           </div>
+
+          {isEditing ? (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">ราคาขาย</label>
+                  <input type="number" value={editForm.sellingPrice} onChange={(e) => setEditForm({ ...editForm, sellingPrice: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">เงินดาวน์</label>
+                  <input type="number" value={editForm.downPayment} onChange={(e) => setEditForm({ ...editForm, downPayment: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">จำนวนงวด (เดือน)</label>
+                  <input type="number" value={editForm.totalMonths} onChange={(e) => setEditForm({ ...editForm, totalMonths: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">อัตราดอกเบี้ย (ทศนิยม เช่น 0.08)</label>
+                  <input type="number" step="0.01" value={editForm.interestRate} onChange={(e) => setEditForm({ ...editForm, interestRate: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">วันชำระ (1-28)</label>
+                  <input type="number" min={1} max={28} value={editForm.paymentDueDay} onChange={(e) => setEditForm({ ...editForm, paymentDueDay: parseInt(e.target.value) || 1 })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">หมายเหตุ</label>
+                <textarea value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+              </div>
+              {/* Preview calculation */}
+              {editForm.sellingPrice > 0 && editForm.downPayment > 0 && editForm.totalMonths > 0 && (
+                <div className="bg-gray-50 rounded-lg p-3 text-xs space-y-1">
+                  <div>เงินต้น: {(editForm.sellingPrice - editForm.downPayment).toLocaleString()} ฿</div>
+                  <div>ดอกเบี้ยรวม: {((editForm.sellingPrice - editForm.downPayment) * editForm.interestRate * editForm.totalMonths).toLocaleString()} ฿</div>
+                  <div className="font-semibold">ค่างวด/เดือน: {Math.ceil(((editForm.sellingPrice - editForm.downPayment) * (1 + editForm.interestRate * editForm.totalMonths)) / editForm.totalMonths).toLocaleString()} ฿</div>
+                </div>
+              )}
+              <div className="flex gap-2 pt-2">
+                <button onClick={() => setIsEditing(false)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg">ยกเลิก</button>
+                <button onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending} className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50">
+                  {updateMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <Info label="ประเภทแผน" value={contract.planType} />
+              <Info label="ราคาขาย" value={`${parseFloat(contract.sellingPrice).toLocaleString()} ฿`} />
+              <Info label="เงินดาวน์" value={`${parseFloat(contract.downPayment).toLocaleString()} ฿`} />
+              <Info label="อัตราดอกเบี้ย" value={`${(parseFloat(contract.interestRate) * 100).toFixed(1)}%${contract.interestConfig ? ` (${contract.interestConfig.name})` : ''}`} />
+              <Info label="ดอกเบี้ยรวม" value={`${parseFloat(contract.interestTotal).toLocaleString()} ฿`} />
+              <Info label="จำนวนงวด" value={`${contract.totalMonths} เดือน`} />
+              <Info label="วันชำระ" value={contract.paymentDueDay ? `ทุกวันที่ ${contract.paymentDueDay}` : 'วันที่ 1'} />
+              <Info label="พนักงานขาย" value={contract.salesperson.name} />
+              <Info label="สาขา" value={contract.branch.name} />
+              <Info label="วันที่สร้าง" value={new Date(contract.createdAt).toLocaleDateString('th-TH')} />
+              {contract.notes && <Info label="หมายเหตุ" value={contract.notes} />}
+            </div>
+          )}
         </div>
 
         <div className="space-y-6">

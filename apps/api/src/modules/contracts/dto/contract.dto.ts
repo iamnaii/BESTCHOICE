@@ -38,6 +38,34 @@ export class CreateContractDto {
   paymentDueDay?: number;
 }
 
+export class UpdateContractDto {
+  @IsNumber()
+  @IsOptional()
+  sellingPrice?: number;
+
+  @IsNumber()
+  @IsOptional()
+  downPayment?: number;
+
+  @IsNumber()
+  @IsOptional()
+  totalMonths?: number;
+
+  @IsNumber()
+  @IsOptional()
+  interestRate?: number;
+
+  @IsString()
+  @IsOptional()
+  notes?: string;
+
+  @IsInt()
+  @Min(1)
+  @Max(28)
+  @IsOptional()
+  paymentDueDay?: number;
+}
+
 export class EarlyPayoffDto {
   @IsString()
   paymentMethod: string;

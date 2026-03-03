@@ -59,6 +59,11 @@ export class DocumentsService {
     });
     if (!contract) throw new NotFoundException('ไม่พบสัญญา');
 
+    // Must be APPROVED before signing
+    if (contract.workflowStatus !== 'APPROVED') {
+      throw new BadRequestException('สัญญาต้องได้รับการอนุมัติก่อนจึงจะลงนามได้');
+    }
+
     // Check if already signed by this signer type
     const existing = contract.signatures.find((s) => s.signerType === signerType);
     if (existing) throw new BadRequestException(`${signerType} ลงนามไปแล้ว`);

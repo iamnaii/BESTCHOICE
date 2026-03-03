@@ -36,6 +36,12 @@ export default function ContractSignPage() {
   const [signerType, setSignerType] = useState<'CUSTOMER' | 'STAFF'>('CUSTOMER');
   const [hasDrawn, setHasDrawn] = useState(false);
 
+  // Get contract detail to check workflow
+  const { data: contract } = useQuery<{ id: string; workflowStatus: string; contractNumber: string }>({
+    queryKey: ['contract', id],
+    queryFn: async () => { const { data } = await api.get(`/contracts/${id}`); return data; },
+  });
+
   // Get contract preview
   const { data: preview } = useQuery<{ html: string }>({
     queryKey: ['contract-preview', id],
@@ -158,6 +164,14 @@ export default function ContractSignPage() {
           </button>
         }
       />
+
+      {/* Warning if not approved */}
+      {contract && contract.workflowStatus !== 'APPROVED' && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+          <div className="text-sm font-medium text-amber-800">สัญญายังไม่ได้รับการอนุมัติ</div>
+          <div className="text-xs text-amber-600 mt-1">สัญญาต้องผ่านการอนุมัติก่อนจึงจะลงนามได้ (Workflow: {contract.workflowStatus})</div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Contract Preview */}

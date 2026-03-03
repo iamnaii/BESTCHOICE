@@ -937,7 +937,7 @@ model ContractDocument {
 
 model CreditCheck {
   id              String            @id @default(uuid())
-  contractId      String            @unique @map("contract_id")
+  contractId      String?           @unique @map("contract_id")
   customerId      String            @map("customer_id")
   status          CreditCheckStatus @default(PENDING)
   bankName        String?           @map("bank_name")
@@ -953,9 +953,9 @@ model CreditCheck {
   createdAt       DateTime          @default(now()) @map("created_at")
   updatedAt       DateTime          @updatedAt @map("updated_at")
 
-  contract  Contract @relation(fields: [contractId], references: [id])
-  customer  Customer @relation(fields: [customerId], references: [id])
-  checkedBy User?    @relation("CreditCheckedBy", fields: [checkedById], references: [id])
+  contract  Contract? @relation(fields: [contractId], references: [id])
+  customer  Customer  @relation(fields: [customerId], references: [id])
+  checkedBy User?     @relation("CreditCheckedBy", fields: [checkedById], references: [id])
 
   @@index([contractId])
   @@index([customerId])

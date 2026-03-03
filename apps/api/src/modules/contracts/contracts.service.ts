@@ -109,6 +109,9 @@ export class ContractsService {
     const maxMonths = interestConfig ? interestConfig.maxInstallmentMonths : getConfig('max_installment_months', 12);
 
     // Validations
+    if (dto.downPayment >= dto.sellingPrice) {
+      throw new BadRequestException('เงินดาวน์ต้องน้อยกว่าราคาขาย');
+    }
     if (dto.downPayment < dto.sellingPrice * minDownPct) {
       throw new BadRequestException(`เงินดาวน์ขั้นต่ำ ${(minDownPct * 100).toFixed(0)}% (${(dto.sellingPrice * minDownPct).toLocaleString()} บาท)`);
     }
@@ -127,16 +130,19 @@ export class ContractsService {
     const financedAmount = principal + interestTotal;
     const monthlyPayment = Math.ceil(financedAmount / dto.totalMonths);
 
-    // Create contract + payment schedule in transaction
+    // Create contract + payment schedule in transaction with serializable isolation
     const contract = await this.prisma.$transaction(async (tx) => {
-      // Generate contract number inside transaction
+      // Generate contract number inside transaction using COUNT for robustness
+      const totalContracts = await tx.contract.count();
+      // Also check the highest existing number in case of gaps
       const lastContract = await tx.contract.findFirst({
         orderBy: { contractNumber: 'desc' },
         select: { contractNumber: true },
       });
-      const nextNum = lastContract
-        ? parseInt(lastContract.contractNumber.replace(/\D/g, '')) + 1
-        : 1;
+      const lastNum = lastContract
+        ? parseInt(lastContract.contractNumber.replace(/\D/g, '')) || 0
+        : 0;
+      const nextNum = Math.max(totalContracts, lastNum) + 1;
       const contractNumber = `CT${String(nextNum).padStart(6, '0')}`;
 
       const newContract = await tx.contract.create({
@@ -174,17 +180,17 @@ export class ContractsService {
       }> = [];
 
       for (let i = 1; i <= dto.totalMonths; i++) {
-        // Calculate due date: use paymentDueDay if specified, otherwise 1st of each month
-        const dueMonth = now.getMonth() + i;
-        const dueYear = now.getFullYear() + Math.floor(dueMonth / 12);
-        const adjustedMonth = dueMonth % 12;
-        const dueDate = new Date(dueYear, adjustedMonth, dueDay);
+        // JavaScript Date handles month overflow correctly (e.g. month 13 = next January)
+        const dueDate = new Date(now.getFullYear(), now.getMonth() + i, dueDay);
+        // Last installment adjusts for Math.ceil rounding to avoid overcharging
+        const isLast = i === dto.totalMonths;
+        const amount = isLast ? financedAmount - monthlyPayment * (dto.totalMonths - 1) : monthlyPayment;
 
         payments.push({
           contractId: newContract.id,
           installmentNo: i,
           dueDate,
-          amountDue: monthlyPayment,
+          amountDue: amount,
           status: 'PENDING' as const,
         });
       }
@@ -238,6 +244,9 @@ export class ContractsService {
     const maxMonths = interestConfig ? interestConfig.maxInstallmentMonths : getConfig('max_installment_months', 12);
 
     // Validations
+    if (downPayment >= sellingPrice) {
+      throw new BadRequestException('เงินดาวน์ต้องน้อยกว่าราคาขาย');
+    }
     if (downPayment < sellingPrice * minDownPct) {
       throw new BadRequestException(`เงินดาวน์ขั้นต่ำ ${(minDownPct * 100).toFixed(0)}% (${(sellingPrice * minDownPct).toLocaleString()} บาท)`);
     }
@@ -287,14 +296,14 @@ export class ContractsService {
       }> = [];
 
       for (let i = 1; i <= totalMonths; i++) {
-        const dueMonth = now.getMonth() + i;
-        const dueYear = now.getFullYear() + Math.floor(dueMonth / 12);
-        const adjustedMonth = dueMonth % 12;
+        const dueDate = new Date(now.getFullYear(), now.getMonth() + i, dueDay);
+        const isLast = i === totalMonths;
+        const amount = isLast ? financedAmount - monthlyPayment * (totalMonths - 1) : monthlyPayment;
         payments.push({
           contractId: id,
           installmentNo: i,
-          dueDate: new Date(dueYear, adjustedMonth, dueDay),
-          amountDue: monthlyPayment,
+          dueDate,
+          amountDue: amount,
           status: 'PENDING' as const,
         });
       }

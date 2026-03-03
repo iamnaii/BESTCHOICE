@@ -22,10 +22,12 @@ export class ContractsController {
     @Query('limit') limit?: string,
     @Query('salespersonId') salespersonId?: string,
   ) {
+    const parsedPage = page ? parseInt(page, 10) : undefined;
+    const parsedLimit = limit ? Math.min(parseInt(limit, 10), 200) : undefined;
     return this.contractsService.findAll({
       status, workflowStatus, branchId, customerId, search, salespersonId,
-      page: page ? parseInt(page) : undefined,
-      limit: limit ? parseInt(limit) : undefined,
+      page: parsedPage && !isNaN(parsedPage) ? parsedPage : undefined,
+      limit: parsedLimit && !isNaN(parsedLimit) ? parsedLimit : undefined,
     });
   }
 

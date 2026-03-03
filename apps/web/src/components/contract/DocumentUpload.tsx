@@ -43,8 +43,9 @@ export default function DocumentUpload({ contractId }: { contractId: string }) {
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
       const reader = new FileReader();
-      const fileUrl = await new Promise<string>((resolve) => {
+      const fileUrl = await new Promise<string>((resolve, reject) => {
         reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error('ไม่สามารถอ่านไฟล์ได้'));
         reader.readAsDataURL(file);
       });
 
@@ -75,6 +76,9 @@ export default function DocumentUpload({ contractId }: { contractId: string }) {
     onSuccess: () => {
       toast.success('ลบเอกสารแล้ว');
       queryClient.invalidateQueries({ queryKey: ['contract-documents', contractId] });
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'ลบเอกสารไม่สำเร็จ');
     },
   });
 

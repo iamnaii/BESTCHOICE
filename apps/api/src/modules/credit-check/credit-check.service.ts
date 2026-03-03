@@ -289,26 +289,18 @@ export class CreditCheckService {
   }) {
     const contentBlocks: Anthropic.MessageCreateParams['messages'][0]['content'] = [];
 
-    // Add statement images/PDFs as content blocks
+    // Add statement images as content blocks (only accept base64 data URLs to prevent SSRF)
     for (const fileUrl of params.statementFiles.slice(0, 5)) {
-      // Determine media type from URL
-      const isBase64 = fileUrl.startsWith('data:');
-      if (isBase64) {
-        const match = fileUrl.match(/^data:(image\/(jpeg|png|gif|webp)|application\/pdf);base64,(.+)$/);
-        if (match) {
-          const mediaType = match[1] as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
-          if (mediaType.startsWith('image/')) {
-            contentBlocks.push({
-              type: 'image',
-              source: { type: 'base64', media_type: mediaType, data: match[3] },
-            });
-          }
-        }
-      } else {
-        // URL-based image
+      if (!fileUrl.startsWith('data:')) {
+        this.logger.warn('Skipping non-data-URL statement file to prevent SSRF');
+        continue;
+      }
+      const match = fileUrl.match(/^data:(image\/(jpeg|png|gif|webp));base64,([A-Za-z0-9+/=]+)$/);
+      if (match) {
+        const mediaType = match[1] as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
         contentBlocks.push({
           type: 'image',
-          source: { type: 'url', url: fileUrl },
+          source: { type: 'base64', media_type: mediaType, data: match[3] },
         });
       }
     }

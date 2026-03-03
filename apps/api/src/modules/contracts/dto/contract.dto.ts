@@ -14,12 +14,16 @@ export class CreateContractDto {
   planType: string; // STORE_DIRECT, CREDIT_CARD, STORE_WITH_INTEREST
 
   @IsNumber()
+  @Min(1)
   sellingPrice: number;
 
   @IsNumber()
+  @Min(0)
   downPayment: number;
 
   @IsNumber()
+  @IsInt()
+  @Min(1)
   totalMonths: number;
 
   @IsNumber()
@@ -40,14 +44,18 @@ export class CreateContractDto {
 
 export class UpdateContractDto {
   @IsNumber()
+  @Min(1)
   @IsOptional()
   sellingPrice?: number;
 
   @IsNumber()
+  @Min(0)
   @IsOptional()
   downPayment?: number;
 
   @IsNumber()
+  @IsInt()
+  @Min(1)
   @IsOptional()
   totalMonths?: number;
 

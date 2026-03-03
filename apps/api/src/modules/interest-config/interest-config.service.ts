@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateInterestConfigDto, UpdateInterestConfigDto } from './dto/interest-config.dto';
 
@@ -29,6 +29,9 @@ export class InterestConfigService {
   }
 
   async create(dto: CreateInterestConfigDto) {
+    if (dto.minInstallmentMonths > dto.maxInstallmentMonths) {
+      throw new BadRequestException('จำนวนงวดขั้นต่ำต้องน้อยกว่าหรือเท่ากับจำนวนงวดสูงสุด');
+    }
     return this.prisma.interestConfig.create({
       data: {
         name: dto.name,
@@ -51,6 +54,10 @@ export class InterestConfigService {
 
   async remove(id: string) {
     await this.findOne(id);
-    return this.prisma.interestConfig.delete({ where: { id } });
+    // Soft-delete to avoid breaking FK references from existing contracts
+    return this.prisma.interestConfig.update({
+      where: { id },
+      data: { isActive: false },
+    });
   }
 }

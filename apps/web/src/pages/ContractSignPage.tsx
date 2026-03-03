@@ -1,24 +1,10 @@
 import { useRef, useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import DOMPurify from 'dompurify';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import toast from 'react-hot-toast';
-
-/** Sanitize HTML to prevent XSS */
-function sanitizeHtml(html: string): string {
-  return html
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-    .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '')
-    .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, '')
-    .replace(/<embed\b[^>]*>/gi, '')
-    .replace(/on\w+\s*=\s*"[^"]*"/gi, '')
-    .replace(/on\w+\s*=\s*'[^']*'/gi, '')
-    .replace(/on\w+\s*=[^\s>]*/gi, '')
-    .replace(/javascript\s*:/gi, 'blocked:')
-    .replace(/vbscript\s*:/gi, 'blocked:')
-    .replace(/data\s*:\s*text\/html/gi, 'blocked:');
-}
 
 interface Signature {
   id: string;
@@ -152,6 +138,7 @@ export default function ContractSignPage() {
   const customerSigned = signatures.some((s) => s.signerType === 'CUSTOMER');
   const staffSigned = signatures.some((s) => s.signerType === 'STAFF');
   const allSigned = customerSigned && staffSigned;
+  const isApproved = contract?.workflowStatus === 'APPROVED';
 
   return (
     <div>
@@ -179,7 +166,7 @@ export default function ContractSignPage() {
           <h2 className="text-lg font-semibold text-gray-900 mb-3">ตัวอย่างสัญญา</h2>
           <div className="bg-white rounded-lg border p-4 max-h-[60vh] overflow-auto">
             {preview ? (
-              <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(preview.html) }} />
+              <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(preview.html) }} />
             ) : (
               <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div></div>
             )}
@@ -208,8 +195,8 @@ export default function ContractSignPage() {
             </div>
           )}
 
-          {/* Sign pad */}
-          {!allSigned && (
+          {/* Sign pad - only enabled when contract is approved */}
+          {!allSigned && isApproved && (
             <div>
               <div className="flex items-center gap-3 mb-3">
                 <h2 className="text-lg font-semibold text-gray-900">ลงนาม</h2>

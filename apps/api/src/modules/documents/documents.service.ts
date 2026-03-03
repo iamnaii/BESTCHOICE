@@ -9,7 +9,7 @@ export class DocumentsService {
 
   // ─── Contract Templates ──────────────────────────────
   async findAllTemplates(type?: string) {
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { isActive: true };
     if (type) where.type = type;
     return this.prisma.contractTemplate.findMany({ where, orderBy: { createdAt: 'desc' } });
   }
@@ -186,28 +186,55 @@ export class DocumentsService {
     return [...new Set(matches)];
   }
 
+  /** Escape HTML special characters to prevent XSS */
+  private escapeHtml(str: string): string {
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  /** Mask national ID: show first 1 and last 4 digits only */
+  private maskNationalId(id: string): string {
+    if (!id || id.length < 5) return id;
+    return id[0] + '-xxxx-xxxxx-' + id.slice(-4);
+  }
+
+  /** Validate that a data URL is a safe image format */
+  private isSafeImageDataUrl(url: string): boolean {
+    return /^data:image\/(png|jpeg|gif|webp);base64,[A-Za-z0-9+/=]+$/.test(url);
+  }
+
   private replacePlaceholders(html: string, contract: any): string {
+    const esc = this.escapeHtml.bind(this);
+
     const paymentScheduleRows = (contract.payments || [])
       .map(
         (p: any) =>
-          `<tr><td>${p.installmentNo}</td><td>${new Date(p.dueDate).toLocaleDateString('th-TH')}</td><td>${Number(p.amountDue).toLocaleString()} ฿</td><td>${p.status === 'PAID' ? 'ชำระแล้ว' : 'รอชำระ'}</td></tr>`,
+          `<tr><td>${p.installmentNo}</td><td>${esc(new Date(p.dueDate).toLocaleDateString('th-TH'))}</td><td>${Number(p.amountDue).toLocaleString()} ฿</td><td>${p.status === 'PAID' ? 'ชำระแล้ว' : 'รอชำระ'}</td></tr>`,
       )
       .join('');
 
     const customerSig = contract.signatures?.find((s: any) => s.signerType === 'CUSTOMER');
     const staffSig = contract.signatures?.find((s: any) => s.signerType === 'STAFF');
 
+    // Validate signature images are safe data URLs before embedding
+    const customerSigSafe = customerSig && this.isSafeImageDataUrl(customerSig.signatureImage);
+    const staffSigSafe = staffSig && this.isSafeImageDataUrl(staffSig.signatureImage);
+
     const replacements: Record<string, string> = {
-      '{contract_number}': contract.contractNumber,
-      '{customer_name}': contract.customer?.name || '',
-      '{national_id}': contract.customer?.nationalId || '',
-      '{customer_phone}': contract.customer?.phone || '',
-      '{customer_address}': contract.customer?.addressCurrent || contract.customer?.addressIdCard || '',
-      '{product_name}': contract.product?.name || '',
-      '{brand}': contract.product?.brand || '',
-      '{model}': contract.product?.model || '',
-      '{imei}': contract.product?.imeiSerial || '-',
-      '{serial_number}': contract.product?.serialNumber || '-',
+      '{contract_number}': esc(contract.contractNumber || ''),
+      '{customer_name}': esc(contract.customer?.name || ''),
+      '{national_id}': esc(this.maskNationalId(contract.customer?.nationalId || '')),
+      '{customer_phone}': esc(contract.customer?.phone || ''),
+      '{customer_address}': esc(contract.customer?.addressCurrent || contract.customer?.addressIdCard || ''),
+      '{product_name}': esc(contract.product?.name || ''),
+      '{brand}': esc(contract.product?.brand || ''),
+      '{model}': esc(contract.product?.model || ''),
+      '{imei}': esc(contract.product?.imeiSerial || '-'),
+      '{serial_number}': esc(contract.product?.serialNumber || '-'),
       '{selling_price}': Number(contract.sellingPrice).toLocaleString(),
       '{down_payment}': Number(contract.downPayment).toLocaleString(),
       '{monthly_payment}': Number(contract.monthlyPayment).toLocaleString(),
@@ -215,12 +242,12 @@ export class DocumentsService {
       '{interest_rate}': `${(Number(contract.interestRate) * 100).toFixed(1)}%`,
       '{interest_total}': Number(contract.interestTotal).toLocaleString(),
       '{financed_amount}': Number(contract.financedAmount).toLocaleString(),
-      '{branch_name}': contract.branch?.name || '',
-      '{salesperson_name}': contract.salesperson?.name || '',
+      '{branch_name}': esc(contract.branch?.name || ''),
+      '{salesperson_name}': esc(contract.salesperson?.name || ''),
       '{date}': new Date().toLocaleDateString('th-TH'),
       '{payment_schedule_table}': `<table border="1" cellpadding="4" style="border-collapse:collapse;width:100%"><thead><tr><th>งวดที่</th><th>วันครบกำหนด</th><th>จำนวนเงิน</th><th>สถานะ</th></tr></thead><tbody>${paymentScheduleRows}</tbody></table>`,
-      '{customer_signature}': customerSig ? `<img src="${customerSig.signatureImage}" style="max-height:60px"/>` : '<div style="border-bottom:1px solid #000;width:200px;height:60px"></div>',
-      '{staff_signature}': staffSig ? `<img src="${staffSig.signatureImage}" style="max-height:60px"/>` : '<div style="border-bottom:1px solid #000;width:200px;height:60px"></div>',
+      '{customer_signature}': customerSigSafe ? `<img src="${customerSig.signatureImage}" style="max-height:60px"/>` : '<div style="border-bottom:1px solid #000;width:200px;height:60px"></div>',
+      '{staff_signature}': staffSigSafe ? `<img src="${staffSig.signatureImage}" style="max-height:60px"/>` : '<div style="border-bottom:1px solid #000;width:200px;height:60px"></div>',
     };
 
     let result = html;

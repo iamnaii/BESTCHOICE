@@ -48,8 +48,9 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
       const fileUrls: string[] = [];
       for (const file of Array.from(files)) {
         const reader = new FileReader();
-        const url = await new Promise<string>((resolve) => {
+        const url = await new Promise<string>((resolve, reject) => {
           reader.onload = () => resolve(reader.result as string);
+          reader.onerror = () => reject(new Error('ไม่สามารถอ่านไฟล์ได้'));
           reader.readAsDataURL(file);
         });
         fileUrls.push(url);
@@ -99,6 +100,9 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
       queryClient.invalidateQueries({ queryKey: ['credit-check', contractId] });
       setOverrideStatus('');
       setOverrideNotes('');
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'อัปเดตไม่สำเร็จ');
     },
   });
 
@@ -241,7 +245,7 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
                       <div className="text-sm font-medium">{creditCheck.aiAnalysis.monthlyPayment?.toLocaleString()} ฿</div>
                     </div>
                   )}
-                  {creditCheck.aiAnalysis.affordabilityRatio !== null && (
+                  {creditCheck.aiAnalysis.affordabilityRatio != null && !isNaN(creditCheck.aiAnalysis.affordabilityRatio) && (
                     <div className="bg-gray-50 rounded-lg p-2">
                       <div className="text-xs text-gray-500">สัดส่วนค่างวด/รายได้</div>
                       <div className="text-sm font-medium">{(creditCheck.aiAnalysis.affordabilityRatio * 100).toFixed(0)}%</div>

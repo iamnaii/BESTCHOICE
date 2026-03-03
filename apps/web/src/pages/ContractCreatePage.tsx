@@ -233,6 +233,7 @@ export default function ContractCreatePage() {
     setOcrResult(null);
     setShowOcrPanel(false);
     setShowCreateCustomer(false);
+    setSelectedCustomer(null);  // Reset previous selection to avoid stale data
     setOcrScannedFile(file);
 
     try {
@@ -302,7 +303,26 @@ export default function ContractCreatePage() {
         setPendingDocs((prev) => [...prev, { id: crypto.randomUUID(), type: 'ID_CARD_COPY', file: ocrScannedFile, preview }]);
       }
     } catch (err: any) {
-      toast.error(err.response?.data?.message || 'สร้างลูกค้าไม่สำเร็จ');
+      // Handle duplicate nationalId - API returns existingCustomer data
+      const existing = err.response?.data?.existingCustomer;
+      if (existing && err.response?.status === 409) {
+        // Auto-select the existing customer
+        try {
+          const { data: fullCustomer } = await api.get(`/customers/${existing.id}`);
+          setSelectedCustomer(fullCustomer);
+          setShowCreateCustomer(false);
+          setShowOcrPanel(false);
+          toast.success(`ลูกค้ามีอยู่แล้ว: ${existing.name} - เลือกให้อัตโนมัติ`);
+          if (ocrScannedFile) {
+            const preview = URL.createObjectURL(ocrScannedFile);
+            setPendingDocs((prev) => [...prev, { id: crypto.randomUUID(), type: 'ID_CARD_COPY', file: ocrScannedFile, preview }]);
+          }
+        } catch {
+          toast.error('ลูกค้ามีอยู่แล้วแต่โหลดข้อมูลไม่สำเร็จ กรุณาค้นหาด้วยตนเอง');
+        }
+      } else {
+        toast.error(err.response?.data?.message || 'สร้างลูกค้าไม่สำเร็จ');
+      }
     } finally {
       setCreatingCustomer(false);
     }
@@ -397,6 +417,14 @@ export default function ContractCreatePage() {
       notes: notes || undefined,
       paymentDueDay,
     });
+  };
+
+  // Reset OCR panel when changing steps to prevent state bleeding
+  const goToStep = (nextStep: number) => {
+    setShowOcrPanel(false);
+    setShowCreateCustomer(false);
+    setOcrLoading(false);
+    setStep(nextStep);
   };
 
   const customerCreditApproved = latestCreditCheck?.status === 'APPROVED';
@@ -967,14 +995,14 @@ export default function ContractCreatePage() {
       {/* Navigation buttons */}
       <div className="flex justify-between mt-6">
         <button
-          onClick={() => step > 0 && setStep(step - 1)}
+          onClick={() => step > 0 && goToStep(step - 1)}
           className={`px-6 py-2 text-sm rounded-lg border ${step === 0 ? 'invisible' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}
         >
           ย้อนกลับ
         </button>
         {step < 4 ? (
           <button
-            onClick={() => canNext() && setStep(step + 1)}
+            onClick={() => canNext() && goToStep(step + 1)}
             disabled={!canNext()}
             className="px-6 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >

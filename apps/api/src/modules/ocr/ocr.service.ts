@@ -25,13 +25,13 @@ export class OcrService {
       throw new BadRequestException('รูปแบบไฟล์ไม่ถูกต้อง กรุณาส่งเป็น base64 data URL');
     }
 
-    const match = imageBase64.match(/^data:(image\/(jpeg|png|gif|webp));base64,([A-Za-z0-9+/=]+)$/);
-    if (!match) {
+    const prefixMatch = imageBase64.match(/^data:(image\/(jpeg|png|gif|webp));base64,/);
+    if (!prefixMatch) {
       throw new BadRequestException('รูปแบบรูปภาพไม่รองรับ กรุณาใช้ JPEG, PNG, GIF หรือ WebP');
     }
 
-    const mediaType = match[1] as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
-    const base64Data = match[3];
+    const mediaType = prefixMatch[1] as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+    const base64Data = imageBase64.slice(prefixMatch[0].length);
 
     try {
       const response = await this.anthropic.messages.create({

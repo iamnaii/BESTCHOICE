@@ -216,10 +216,33 @@ export default function ContractCreatePage() {
   const financedAmount = (sellingPrice - downPayment) + interestTotal;
   const monthlyPayment = totalMonths > 0 ? Math.ceil(financedAmount / totalMonths) : 0;
 
+  // Helper: parse OCR raw address string into structured JSON for addressIdCard
+  const parseOcrAddress = (raw: string): string => {
+    const addr: Record<string, string> = {
+      houseNo: '', moo: '', village: '', soi: '', road: '',
+      province: '', district: '', subdistrict: '', postalCode: '',
+    };
+    const zipMatch = raw.match(/(\d{5})\s*$/);
+    if (zipMatch) addr.postalCode = zipMatch[1];
+    const houseMatch = raw.match(/^(\d+(?:\/\d+)?)\s/);
+    if (houseMatch) addr.houseNo = houseMatch[1];
+    const mooMatch = raw.match(/(?:หมู่(?:ที่)?|ม\.)\s*(\d+)/);
+    if (mooMatch) addr.moo = mooMatch[1];
+    const soiMatch = raw.match(/(?:ซอย|ซ\.)\s*([^\s,]+)/);
+    if (soiMatch) addr.soi = soiMatch[1];
+    const roadMatch = raw.match(/(?:ถนน|ถ\.)\s*([^\s,]+)/);
+    if (roadMatch) addr.road = roadMatch[1];
+    // Check if any field was parsed; if none, store raw string as-is (legacy format)
+    const hasStructured = Object.values(addr).some(v => v !== '');
+    if (!hasStructured) return raw;
+    return JSON.stringify(addr);
+  };
+
   // OCR: scan ID card (Step 2)
   const handleOcrScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (ocrFileRef.current) ocrFileRef.current.value = '';
     if (file.size > 10 * 1024 * 1024) {
       toast.error('ไฟล์ต้องมีขนาดไม่เกิน 10MB');
       return;
@@ -269,7 +292,6 @@ export default function ContractCreatePage() {
       toast.error(err.response?.data?.message || 'ไม่สามารถอ่านบัตรประชาชนได้');
     } finally {
       setOcrLoading(false);
-      if (ocrFileRef.current) ocrFileRef.current.value = '';
     }
   };
 
@@ -289,7 +311,7 @@ export default function ContractCreatePage() {
       if (ocrResult.prefix) body.prefix = ocrResult.prefix;
       if (ocrResult.fullName) body.name = ocrResult.fullName;
       if (ocrResult.birthDate) body.birthDate = ocrResult.birthDate;
-      if (ocrResult.address) body.addressIdCard = ocrResult.address;
+      if (ocrResult.address) body.addressIdCard = parseOcrAddress(ocrResult.address);
 
       const { data } = await api.post('/customers', body);
       setSelectedCustomer(data);
@@ -336,7 +358,7 @@ export default function ContractCreatePage() {
       if (ocrResult.prefix) updateData.prefix = ocrResult.prefix;
       if (ocrResult.fullName) updateData.name = ocrResult.fullName;
       if (ocrResult.birthDate) updateData.birthDate = ocrResult.birthDate;
-      if (ocrResult.address) updateData.addressIdCard = ocrResult.address;
+      if (ocrResult.address) updateData.addressIdCard = parseOcrAddress(ocrResult.address);
 
       await api.patch(`/customers/${selectedCustomer.id}`, updateData);
       toast.success('อัปเดตข้อมูลลูกค้าสำเร็จ');

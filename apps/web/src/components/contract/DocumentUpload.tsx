@@ -118,6 +118,27 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
     }
   };
 
+  // Helper: parse OCR raw address string into structured JSON
+  const parseOcrAddress = (raw: string): string => {
+    const addr: Record<string, string> = {
+      houseNo: '', moo: '', village: '', soi: '', road: '',
+      province: '', district: '', subdistrict: '', postalCode: '',
+    };
+    const zipMatch = raw.match(/(\d{5})\s*$/);
+    if (zipMatch) addr.postalCode = zipMatch[1];
+    const houseMatch = raw.match(/^(\d+(?:\/\d+)?)\s/);
+    if (houseMatch) addr.houseNo = houseMatch[1];
+    const mooMatch = raw.match(/(?:หมู่(?:ที่)?|ม\.)\s*(\d+)/);
+    if (mooMatch) addr.moo = mooMatch[1];
+    const soiMatch = raw.match(/(?:ซอย|ซ\.)\s*([^\s,]+)/);
+    if (soiMatch) addr.soi = soiMatch[1];
+    const roadMatch = raw.match(/(?:ถนน|ถ\.)\s*([^\s,]+)/);
+    if (roadMatch) addr.road = roadMatch[1];
+    const hasStructured = Object.values(addr).some(v => v !== '');
+    if (!hasStructured) return raw;
+    return JSON.stringify(addr);
+  };
+
   const updateCustomerFromOcr = async () => {
     if (!ocrResult || !customerId) return;
     try {
@@ -125,7 +146,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
       if (ocrResult.prefix) updateData.prefix = ocrResult.prefix;
       if (ocrResult.fullName) updateData.name = ocrResult.fullName;
       if (ocrResult.birthDate) updateData.birthDate = ocrResult.birthDate;
-      if (ocrResult.address) updateData.addressIdCard = ocrResult.address;
+      if (ocrResult.address) updateData.addressIdCard = parseOcrAddress(ocrResult.address);
 
       await api.patch(`/customers/${customerId}`, updateData);
       toast.success('อัปเดตข้อมูลลูกค้าสำเร็จ');

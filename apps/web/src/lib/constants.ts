@@ -64,7 +64,6 @@ export const planTypes = [
 export const paymentMethods = [
   { value: 'CASH', label: 'เงินสด' },
   { value: 'BANK_TRANSFER', label: 'โอนเงิน' },
-  { value: 'QR_EWALLET', label: 'QR / E-Wallet' },
 ];
 
 // --- Condition Grade ---

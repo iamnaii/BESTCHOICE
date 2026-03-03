@@ -1,6 +1,6 @@
-import { Controller, Get, Post, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards } from '@nestjs/common';
 import { ContractsService } from './contracts.service';
-import { CreateContractDto, EarlyPayoffDto, ReviewContractDto, RejectContractDto } from './dto/contract.dto';
+import { CreateContractDto, UpdateContractDto, EarlyPayoffDto, ReviewContractDto, RejectContractDto } from './dto/contract.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -48,6 +48,16 @@ export class ContractsController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   create(@Body() dto: CreateContractDto, @CurrentUser() user: { id: string }) {
     return this.contractsService.create(dto, user.id);
+  }
+
+  @Patch(':id')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateContractDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.contractsService.update(id, dto, user.id);
   }
 
   // === WORKFLOW ENDPOINTS ===

@@ -1,9 +1,12 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import { displayAddress } from '@/components/ui/AddressForm';
+import { useState, useRef } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import toast from 'react-hot-toast';
 
 interface ReferenceData {
   prefix?: string;
@@ -68,9 +71,36 @@ const statusLabels: Record<string, { label: string; className: string }> = {
   CLOSED_BAD_DEBT: { label: 'หนี้สูญ', className: 'bg-red-200 text-red-800' },
 };
 
+interface CreditCheckItem {
+  id: string;
+  status: string;
+  bankName: string | null;
+  statementFiles: string[];
+  statementMonths: number;
+  aiScore: number | null;
+  aiSummary: string | null;
+  aiRecommendation: string | null;
+  aiAnalysis: any;
+  reviewNotes: string | null;
+  checkedBy: { id: string; name: string } | null;
+  contract: { id: string; contractNumber: string } | null;
+  createdAt: string;
+}
+
+const creditStatusLabels: Record<string, { label: string; className: string }> = {
+  PENDING: { label: 'รอวิเคราะห์', className: 'bg-gray-100 text-gray-700' },
+  APPROVED: { label: 'ผ่าน', className: 'bg-green-100 text-green-700' },
+  REJECTED: { label: 'ไม่ผ่าน', className: 'bg-red-100 text-red-700' },
+  MANUAL_REVIEW: { label: 'ต้องตรวจเพิ่ม', className: 'bg-amber-100 text-amber-700' },
+};
+
 export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const creditFileRef = useRef<HTMLInputElement>(null);
+  const [creditBankName, setCreditBankName] = useState('');
 
   const { data: customer, isLoading } = useQuery<CustomerDetail>({
     queryKey: ['customer', id],
@@ -80,6 +110,50 @@ export default function CustomerDetailPage() {
   const { data: risk } = useQuery<RiskFlag>({
     queryKey: ['customer-risk', id],
     queryFn: async () => { const { data } = await api.get(`/customers/${id}/risk-flag`); return data; },
+  });
+
+  const { data: creditChecks = [] } = useQuery<CreditCheckItem[]>({
+    queryKey: ['customer-credit-checks', id],
+    queryFn: async () => { const { data } = await api.get(`/customers/${id}/credit-check`); return data; },
+  });
+
+  const uploadCreditMutation = useMutation({
+    mutationFn: async (files: FileList) => {
+      const fileUrls: string[] = [];
+      for (const file of Array.from(files)) {
+        const reader = new FileReader();
+        const url = await new Promise<string>((resolve) => {
+          reader.onload = () => resolve(reader.result as string);
+          reader.readAsDataURL(file);
+        });
+        fileUrls.push(url);
+      }
+      const { data } = await api.post(`/customers/${id}/credit-check`, {
+        bankName: creditBankName || undefined,
+        statementFiles: fileUrls,
+        statementMonths: 3,
+      });
+      return data;
+    },
+    onSuccess: () => {
+      toast.success('อัปโหลด Statement สำเร็จ');
+      queryClient.invalidateQueries({ queryKey: ['customer-credit-checks', id] });
+      if (creditFileRef.current) creditFileRef.current.value = '';
+      setCreditBankName('');
+    },
+    onError: (err: any) => toast.error(err.response?.data?.message || 'อัปโหลดไม่สำเร็จ'),
+  });
+
+  const analyzeCreditMutation = useMutation({
+    mutationFn: async (creditCheckId: string) => {
+      const { data } = await api.post(`/customers/${id}/credit-check/${creditCheckId}/analyze`);
+      return data;
+    },
+    onSuccess: () => {
+      toast.success('วิเคราะห์เครดิตเสร็จสิ้น');
+      queryClient.invalidateQueries({ queryKey: ['customer-credit-checks', id] });
+    },
+    onError: (err: any) => toast.error(err.response?.data?.message || 'วิเคราะห์ไม่สำเร็จ'),
   });
 
   if (isLoading || !customer) {
@@ -199,6 +273,68 @@ export default function CustomerDetailPage() {
       {/* Other info */}
       <div className="bg-white rounded-lg border p-6 mb-6">
         <Info label="วันที่เพิ่ม" value={new Date(customer.createdAt).toLocaleDateString('th-TH')} />
+      </div>
+
+      {/* Credit Check */}
+      <div className="bg-white rounded-lg border p-6 mb-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">ตรวจสอบเครดิต</h2>
+
+        {/* Upload new credit check */}
+        <div className="bg-gray-50 rounded-lg p-4 mb-4 space-y-3">
+          <p className="text-xs text-gray-500">อัปโหลด Statement ธนาคารย้อนหลัง 3 เดือน เพื่อเช็คเครดิตก่อนทำสัญญา</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">ธนาคาร</label>
+              <input type="text" value={creditBankName} onChange={(e) => setCreditBankName(e.target.value)} placeholder="เช่น กสิกร, กรุงไทย..." className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Statement (ภาพ/PDF)</label>
+              <input ref={creditFileRef} type="file" accept="image/*,.pdf" multiple onChange={(e) => e.target.files && uploadCreditMutation.mutate(e.target.files)} disabled={uploadCreditMutation.isPending} className="w-full text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary-50 file:text-primary-700" />
+            </div>
+          </div>
+          {uploadCreditMutation.isPending && <div className="text-sm text-primary-600">กำลังอัปโหลด...</div>}
+        </div>
+
+        {/* Credit check history */}
+        {creditChecks.length > 0 ? (
+          <div className="space-y-3">
+            {creditChecks.map((cc) => {
+              const cs = creditStatusLabels[cc.status] || { label: cc.status, className: 'bg-gray-100' };
+              return (
+                <div key={cc.id} className="border rounded-lg p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cs.className}`}>{cs.label}</span>
+                      {cc.bankName && <span className="text-xs text-gray-500">ธนาคาร: {cc.bankName}</span>}
+                      <span className="text-xs text-gray-400">{new Date(cc.createdAt).toLocaleDateString('th-TH')}</span>
+                      {cc.contract && <span className="text-xs text-primary-600">สัญญา: {cc.contract.contractNumber}</span>}
+                    </div>
+                    {cc.status === 'PENDING' && (
+                      <button onClick={() => analyzeCreditMutation.mutate(cc.id)} disabled={analyzeCreditMutation.isPending} className="px-3 py-1 text-xs bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50">
+                        {analyzeCreditMutation.isPending ? 'กำลังวิเคราะห์...' : 'AI วิเคราะห์'}
+                      </button>
+                    )}
+                  </div>
+                  {cc.aiScore !== null && (
+                    <div className="flex items-center gap-4">
+                      <div className={`text-2xl font-bold ${cc.aiScore >= 70 ? 'text-green-600' : cc.aiScore >= 50 ? 'text-amber-600' : 'text-red-600'}`}>{cc.aiScore}</div>
+                      <div className="flex-1">
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div className={`h-2 rounded-full ${cc.aiScore >= 70 ? 'bg-green-500' : cc.aiScore >= 50 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${cc.aiScore}%` }} />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {cc.aiSummary && <div className="text-xs text-gray-600">{cc.aiSummary}</div>}
+                  {cc.aiRecommendation && <div className={`text-xs font-medium p-2 rounded ${cc.aiScore && cc.aiScore >= 70 ? 'bg-green-50 text-green-700' : cc.aiScore && cc.aiScore >= 50 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>{cc.aiRecommendation}</div>}
+                  {cc.checkedBy && <div className="text-xs text-blue-600">ตรวจสอบโดย: {cc.checkedBy.name}{cc.reviewNotes ? ` - ${cc.reviewNotes}` : ''}</div>}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="text-center py-6 text-sm text-gray-400">ยังไม่มีประวัติการตรวจเครดิต</div>
+        )}
       </div>
 
       {/* Contracts */}

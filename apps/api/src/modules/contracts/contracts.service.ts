@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateContractDto } from './dto/contract.dto';
+import { CreateContractDto, UpdateContractDto } from './dto/contract.dto';
 
 @Injectable()
 export class ContractsService {
@@ -202,6 +202,108 @@ export class ContractsService {
     return this.findOne(contract.id);
   }
 
+  // === UPDATE: แก้ไขรายละเอียดสัญญา (เฉพาะ CREATING/REJECTED) ===
+  async update(id: string, dto: UpdateContractDto, userId: string) {
+    const contract = await this.findOne(id);
+
+    // Only allow editing when CREATING or REJECTED
+    if (contract.workflowStatus !== 'CREATING' && contract.workflowStatus !== 'REJECTED') {
+      throw new BadRequestException('แก้ไขได้เฉพาะสัญญาที่อยู่ในสถานะ กำลังสร้าง หรือ ถูกปฏิเสธ เท่านั้น');
+    }
+
+    // Only the creator can edit
+    if (contract.salespersonId !== userId) {
+      throw new ForbiddenException('เฉพาะพนักงานที่สร้างสัญญาเท่านั้นที่สามารถแก้ไขได้');
+    }
+
+    // Determine final values
+    const sellingPrice = dto.sellingPrice ?? Number(contract.sellingPrice);
+    const downPayment = dto.downPayment ?? Number(contract.downPayment);
+    const totalMonths = dto.totalMonths ?? contract.totalMonths;
+    const paymentDueDay = dto.paymentDueDay ?? contract.paymentDueDay;
+
+    // Get interest config
+    const interestConfig = contract.interestConfigId
+      ? await this.prisma.interestConfig.findUnique({ where: { id: contract.interestConfigId } })
+      : null;
+
+    const configs = await this.prisma.systemConfig.findMany({
+      where: { key: { in: ['interest_rate', 'min_down_payment_pct', 'min_installment_months', 'max_installment_months'] } },
+    });
+    const getConfig = (key: string, def: number) => parseFloat(configs.find((c) => c.key === key)?.value || String(def));
+
+    const interestRate = dto.interestRate ?? Number(contract.interestRate);
+    const minDownPct = interestConfig ? Number(interestConfig.minDownPaymentPct) : getConfig('min_down_payment_pct', 0.15);
+    const minMonths = interestConfig ? interestConfig.minInstallmentMonths : getConfig('min_installment_months', 6);
+    const maxMonths = interestConfig ? interestConfig.maxInstallmentMonths : getConfig('max_installment_months', 12);
+
+    // Validations
+    if (downPayment < sellingPrice * minDownPct) {
+      throw new BadRequestException(`เงินดาวน์ขั้นต่ำ ${(minDownPct * 100).toFixed(0)}% (${(sellingPrice * minDownPct).toLocaleString()} บาท)`);
+    }
+    if (totalMonths < minMonths || totalMonths > maxMonths) {
+      throw new BadRequestException(`จำนวนงวดต้องอยู่ระหว่าง ${minMonths}-${maxMonths} เดือน`);
+    }
+    if (paymentDueDay !== undefined && paymentDueDay !== null && (paymentDueDay < 1 || paymentDueDay > 28)) {
+      throw new BadRequestException('วันที่ครบกำหนดชำระต้องอยู่ระหว่าง 1-28');
+    }
+
+    // Recalculate financials
+    const principal = sellingPrice - downPayment;
+    const interestTotal = principal * interestRate * totalMonths;
+    const financedAmount = principal + interestTotal;
+    const monthlyPayment = Math.ceil(financedAmount / totalMonths);
+
+    // Update contract + recreate payment schedule
+    await this.prisma.$transaction(async (tx) => {
+      await tx.contract.update({
+        where: { id },
+        data: {
+          sellingPrice,
+          downPayment,
+          totalMonths,
+          interestRate,
+          interestTotal,
+          financedAmount,
+          monthlyPayment,
+          paymentDueDay,
+          notes: dto.notes !== undefined ? dto.notes : contract.notes,
+        },
+      });
+
+      // Delete existing unpaid payments and recreate
+      await tx.payment.deleteMany({
+        where: { contractId: id, status: 'PENDING' },
+      });
+
+      const now = new Date();
+      const dueDay = paymentDueDay || 1;
+      const payments: Array<{
+        contractId: string;
+        installmentNo: number;
+        dueDate: Date;
+        amountDue: number;
+        status: 'PENDING';
+      }> = [];
+
+      for (let i = 1; i <= totalMonths; i++) {
+        const dueMonth = now.getMonth() + i;
+        const dueYear = now.getFullYear() + Math.floor(dueMonth / 12);
+        const adjustedMonth = dueMonth % 12;
+        payments.push({
+          contractId: id,
+          installmentNo: i,
+          dueDate: new Date(dueYear, adjustedMonth, dueDay),
+          amountDue: monthlyPayment,
+          status: 'PENDING' as const,
+        });
+      }
+      await tx.payment.createMany({ data: payments });
+    });
+
+    return this.findOne(id);
+  }
+
   // === WORKFLOW: ส่งตรวจสอบ ===
   async submitForReview(id: string, userId: string) {
     const contract = await this.findOne(id);
@@ -283,6 +385,13 @@ export class ContractsService {
     }
     if (contract.status !== 'DRAFT') {
       throw new BadRequestException('สัญญาต้องอยู่ในสถานะ DRAFT');
+    }
+
+    // Require both signatures before activation
+    const customerSigned = contract.signatures?.some((s: any) => s.signerType === 'CUSTOMER');
+    const staffSigned = contract.signatures?.some((s: any) => s.signerType === 'STAFF');
+    if (!customerSigned || !staffSigned) {
+      throw new BadRequestException('ต้องลงนามครบทั้งลูกค้าและพนักงานก่อนเปิดใช้งานสัญญา');
     }
 
     await this.prisma.$transaction([

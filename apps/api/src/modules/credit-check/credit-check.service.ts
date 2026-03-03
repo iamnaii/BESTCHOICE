@@ -18,6 +18,114 @@ export class CreditCheckService {
     return creditCheck;
   }
 
+  // === Customer-level credit check (ไม่ต้องมีสัญญา) ===
+  async findByCustomer(customerId: string) {
+    return this.prisma.creditCheck.findMany({
+      where: { customerId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        contract: { select: { id: true, contractNumber: true } },
+        checkedBy: { select: { id: true, name: true } },
+      },
+    });
+  }
+
+  async findLatestByCustomer(customerId: string) {
+    return this.prisma.creditCheck.findFirst({
+      where: { customerId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        customer: { select: { id: true, name: true, phone: true, salary: true, occupation: true } },
+        checkedBy: { select: { id: true, name: true } },
+      },
+    });
+  }
+
+  async createForCustomer(customerId: string, dto: CreateCreditCheckDto, userId: string) {
+    const customer = await this.prisma.customer.findUnique({ where: { id: customerId } });
+    if (!customer) throw new NotFoundException('ไม่พบลูกค้า');
+
+    return this.prisma.creditCheck.create({
+      data: {
+        customerId,
+        bankName: dto.bankName,
+        statementFiles: dto.statementFiles,
+        statementMonths: dto.statementMonths ?? 3,
+      },
+      include: {
+        customer: { select: { id: true, name: true, phone: true, salary: true, occupation: true } },
+        checkedBy: { select: { id: true, name: true } },
+      },
+    });
+  }
+
+  async analyzeForCustomer(creditCheckId: string) {
+    const creditCheck = await this.prisma.creditCheck.findUnique({
+      where: { id: creditCheckId },
+      include: {
+        contract: { select: { monthlyPayment: true, totalMonths: true, financedAmount: true } },
+        customer: { select: { name: true, salary: true, occupation: true, occupationDetail: true } },
+      },
+    });
+    if (!creditCheck) throw new NotFoundException('ไม่พบข้อมูลตรวจสอบเครดิต');
+
+    if (creditCheck.statementFiles.length === 0) {
+      throw new BadRequestException('กรุณาอัปโหลด Statement ธนาคารก่อน');
+    }
+
+    const customerSalary = creditCheck.customer.salary ? Number(creditCheck.customer.salary) : 0;
+    // If linked to a contract, use contract's monthly payment; otherwise estimate
+    const monthlyPayment = creditCheck.contract ? Number(creditCheck.contract.monthlyPayment) : 0;
+
+    const aiAnalysis = await this.performAIAnalysis({
+      bankName: creditCheck.bankName,
+      statementMonths: creditCheck.statementMonths,
+      statementFileCount: creditCheck.statementFiles.length,
+      monthlyPayment,
+      customerSalary,
+      customerOccupation: creditCheck.customer.occupation,
+    });
+
+    return this.prisma.creditCheck.update({
+      where: { id: creditCheckId },
+      data: {
+        aiAnalysis: aiAnalysis.analysis,
+        aiScore: aiAnalysis.score,
+        aiSummary: aiAnalysis.summary,
+        aiRecommendation: aiAnalysis.recommendation,
+        status: aiAnalysis.score >= 60 ? 'APPROVED' : aiAnalysis.score >= 40 ? 'MANUAL_REVIEW' : 'REJECTED',
+      },
+      include: {
+        customer: { select: { id: true, name: true, phone: true, salary: true, occupation: true } },
+        checkedBy: { select: { id: true, name: true } },
+      },
+    });
+  }
+
+  async overrideById(creditCheckId: string, dto: OverrideCreditCheckDto, userId: string) {
+    const creditCheck = await this.prisma.creditCheck.findUnique({ where: { id: creditCheckId } });
+    if (!creditCheck) throw new NotFoundException('ไม่พบข้อมูลตรวจสอบเครดิต');
+
+    const validStatuses = ['APPROVED', 'REJECTED', 'MANUAL_REVIEW'];
+    if (!validStatuses.includes(dto.status)) {
+      throw new BadRequestException('สถานะไม่ถูกต้อง');
+    }
+
+    return this.prisma.creditCheck.update({
+      where: { id: creditCheckId },
+      data: {
+        status: dto.status as any,
+        reviewNotes: dto.reviewNotes,
+        checkedById: userId,
+        checkedAt: new Date(),
+      },
+      include: {
+        customer: { select: { id: true, name: true, phone: true, salary: true, occupation: true } },
+        checkedBy: { select: { id: true, name: true } },
+      },
+    });
+  }
+
   async create(contractId: string, dto: CreateCreditCheckDto, userId: string) {
     const contract = await this.prisma.contract.findUnique({
       where: { id: contractId },
@@ -81,10 +189,7 @@ export class CreditCheckService {
       throw new BadRequestException('กรุณาอัปโหลด Statement ธนาคารก่อน');
     }
 
-    // AI Analysis using Anthropic Claude API
-    // In production, this would call the actual Claude API
-    // For now, simulate the analysis based on available data
-    const monthlyPayment = Number(creditCheck.contract.monthlyPayment);
+    const monthlyPayment = creditCheck.contract ? Number(creditCheck.contract.monthlyPayment) : 0;
     const customerSalary = creditCheck.customer.salary ? Number(creditCheck.customer.salary) : 0;
 
     const aiAnalysis = await this.performAIAnalysis({

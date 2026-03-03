@@ -6,6 +6,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
+// === Contract-level credit check ===
 @Controller('contracts/:contractId/credit-check')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class CreditCheckController {
@@ -40,5 +41,48 @@ export class CreditCheckController {
     @CurrentUser() user: { id: string },
   ) {
     return this.service.override(contractId, dto, user.id);
+  }
+}
+
+// === Customer-level credit check (เช็คก่อนทำสัญญา) ===
+@Controller('customers/:customerId/credit-check')
+@UseGuards(JwtAuthGuard, RolesGuard)
+export class CustomerCreditCheckController {
+  constructor(private service: CreditCheckService) {}
+
+  @Get()
+  findByCustomer(@Param('customerId') customerId: string) {
+    return this.service.findByCustomer(customerId);
+  }
+
+  @Get('latest')
+  findLatest(@Param('customerId') customerId: string) {
+    return this.service.findLatestByCustomer(customerId);
+  }
+
+  @Post()
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
+  create(
+    @Param('customerId') customerId: string,
+    @Body() dto: CreateCreditCheckDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.service.createForCustomer(customerId, dto, user.id);
+  }
+
+  @Post(':creditCheckId/analyze')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
+  analyze(@Param('creditCheckId') creditCheckId: string) {
+    return this.service.analyzeForCustomer(creditCheckId);
+  }
+
+  @Post(':creditCheckId/override')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  override(
+    @Param('creditCheckId') creditCheckId: string,
+    @Body() dto: OverrideCreditCheckDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.service.overrideById(creditCheckId, dto, user.id);
   }
 }

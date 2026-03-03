@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
@@ -47,6 +48,7 @@ const configGroups = [
 ];
 
 export default function SettingsPage() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [values, setValues] = useState<Record<string, string>>({});
   const [hasChanges, setHasChanges] = useState(false);
@@ -111,9 +113,23 @@ export default function SettingsPage() {
       />
 
       <div className="space-y-6">
+        {/* Link to InterestConfig */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center justify-between">
+          <div>
+            <div className="text-sm font-medium text-blue-800">ตั้งค่าอัตราดอกเบี้ยตามประเภทสินค้า</div>
+            <div className="text-xs text-blue-600 mt-0.5">ตั้งค่าดอกเบี้ย เงินดาวน์ขั้นต่ำ จำนวนงวด แยกตามประเภทสินค้า (มือ1, มือ2, แท็บเล็ต ฯลฯ) ซึ่งจะใช้แทนค่า default ด้านล่าง</div>
+          </div>
+          <button onClick={() => navigate('/settings/interest-config')} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 whitespace-nowrap">
+            ตั้งค่าดอกเบี้ย
+          </button>
+        </div>
+
         {configGroups.map((group) => (
           <div key={group.title} className="bg-white rounded-lg border p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">{group.title}</h3>
+            {group.title === 'อัตราดอกเบี้ยและเงินดาวน์' && (
+              <div className="text-xs text-gray-500 mb-3 bg-gray-50 p-2 rounded">ค่าด้านล่างเป็นค่า default ใช้เมื่อไม่มีการตั้งค่าดอกเบี้ยตามประเภทสินค้า</div>
+            )}
             <div className="space-y-4">
               {group.items.map((item) => (
                 <div key={item.key} className="flex items-center gap-4">

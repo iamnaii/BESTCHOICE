@@ -11,7 +11,7 @@ export class RecordPaymentDto {
   amount: number;
 
   @IsString()
-  paymentMethod: string; // CASH, BANK_TRANSFER, QR_EWALLET
+  paymentMethod: string; // CASH, BANK_TRANSFER
 
   @IsString()
   @IsOptional()

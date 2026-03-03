@@ -79,6 +79,7 @@ export default function ContractCreatePage() {
   const [statementFiles, setStatementFiles] = useState<File[]>([]);
   const [creditResult, setCreditResult] = useState<any>(null);
   const statementInputRef = useRef<HTMLInputElement>(null);
+  const [submitForReviewFlag, setSubmitForReviewFlag] = useState(false);
 
   // Queries
   const { data: products = [] } = useQuery<Product[]>({
@@ -164,7 +165,17 @@ export default function ContractCreatePage() {
         }
       }
 
-      toast.success('สร้างสัญญาสำเร็จ');
+      // If user clicked "สร้าง + ส่งตรวจสอบ", auto-submit for review
+      if (submitForReviewFlag) {
+        try {
+          await api.post(`/contracts/${data.id}/submit-review`);
+          toast.success('สร้างสัญญาและส่งตรวจสอบสำเร็จ');
+        } catch {
+          toast.success('สร้างสัญญาสำเร็จ (ส่งตรวจสอบไม่สำเร็จ กรุณาส่งอีกครั้ง)');
+        }
+      } else {
+        toast.success('สร้างสัญญาสำเร็จ');
+      }
       navigate(`/contracts/${data.id}`);
     },
     onError: (err: any) => {
@@ -216,6 +227,7 @@ export default function ContractCreatePage() {
 
   const handleSubmit = (submitForReview: boolean) => {
     if (!selectedProduct || !selectedCustomer) return;
+    setSubmitForReviewFlag(submitForReview);
     createMutation.mutate({
       customerId: selectedCustomer.id,
       productId: selectedProduct.id,
@@ -226,7 +238,6 @@ export default function ContractCreatePage() {
       totalMonths,
       notes: notes || undefined,
       paymentDueDay,
-      _submitForReview: submitForReview,
     });
   };
 

@@ -146,16 +146,24 @@ export class SalesService {
     if (!dto.downPayment && dto.downPayment !== 0) throw new BadRequestException('กรุณาใส่เงินดาวน์');
     if (!dto.totalMonths) throw new BadRequestException('กรุณาเลือกจำนวนงวด');
 
-    // Get system configs
+    // Look up product to find matching InterestConfig
+    const product = await this.prisma.product.findUnique({ where: { id: dto.productId } });
+    const interestConfig = product
+      ? await this.prisma.interestConfig.findFirst({
+          where: { isActive: true, productCategories: { has: product.category } },
+        })
+      : null;
+
+    // Get system configs as fallback
     const configs = await this.prisma.systemConfig.findMany({
       where: { key: { in: ['interest_rate', 'min_down_payment_pct', 'min_installment_months', 'max_installment_months'] } },
     });
     const getConfig = (key: string, def: number) => parseFloat(configs.find((c) => c.key === key)?.value || String(def));
 
-    const interestRate = dto.interestRate ?? getConfig('interest_rate', 0.08);
-    const minDownPct = getConfig('min_down_payment_pct', 0.15);
-    const minMonths = getConfig('min_installment_months', 6);
-    const maxMonths = getConfig('max_installment_months', 12);
+    const interestRate = dto.interestRate ?? (interestConfig ? Number(interestConfig.interestRate) : getConfig('interest_rate', 0.08));
+    const minDownPct = interestConfig ? Number(interestConfig.minDownPaymentPct) : getConfig('min_down_payment_pct', 0.15);
+    const minMonths = interestConfig ? interestConfig.minInstallmentMonths : getConfig('min_installment_months', 6);
+    const maxMonths = interestConfig ? interestConfig.maxInstallmentMonths : getConfig('max_installment_months', 12);
 
     if (dto.downPayment < netAmount * minDownPct) {
       throw new BadRequestException(`เงินดาวน์ขั้นต่ำ ${(minDownPct * 100).toFixed(0)}%`);
@@ -203,12 +211,16 @@ export class SalesService {
           financedAmount,
           monthlyPayment,
           status: 'DRAFT',
+          workflowStatus: 'CREATING',
+          paymentDueDay: dto.paymentDueDay,
+          interestConfigId: interestConfig?.id,
           notes: dto.notes,
         },
       });
 
-      // Create payment schedule
+      // Create payment schedule with custom due day
       const now = new Date();
+      const dueDay = dto.paymentDueDay || 1;
       const payments: Array<{
         contractId: string;
         installmentNo: number;
@@ -217,10 +229,13 @@ export class SalesService {
         status: 'PENDING';
       }> = [];
       for (let i = 1; i <= dto.totalMonths!; i++) {
+        const dueMonth = now.getMonth() + i;
+        const dueYear = now.getFullYear() + Math.floor(dueMonth / 12);
+        const adjustedMonth = dueMonth % 12;
         payments.push({
           contractId: contract.id,
           installmentNo: i,
-          dueDate: new Date(now.getFullYear(), now.getMonth() + i, 1),
+          dueDate: new Date(dueYear, adjustedMonth, dueDay),
           amountDue: monthlyPayment,
           status: 'PENDING' as const,
         });

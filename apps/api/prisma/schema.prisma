@@ -829,6 +829,8 @@ model Sale {
   financeCompany   String?       @map("finance_company")
   financeRefNumber String?       @map("finance_ref_number")
   financeAmount    Decimal?      @map("finance_amount") @db.Decimal(12, 2)
+  downPaymentAmount Decimal?     @map("down_payment_amount") @db.Decimal(12, 2)
+  bundleProductIds String[]      @default([]) @map("bundle_product_ids")
   notes            String?
   createdAt        DateTime      @default(now()) @map("created_at")
 

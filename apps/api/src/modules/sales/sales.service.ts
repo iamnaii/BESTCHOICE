@@ -79,11 +79,38 @@ export class SalesService {
     return product;
   }
 
+  /** Mark bundle (freebie) products as SOLD_CASH */
+  private async markBundleProductsSold(
+    tx: Parameters<Parameters<typeof this.prisma.$transaction>[0]>[0],
+    bundleProductIds: string[],
+  ) {
+    if (!bundleProductIds.length) return;
+    // Verify all bundle products are IN_STOCK
+    const products = await tx.product.findMany({
+      where: { id: { in: bundleProductIds } },
+      select: { id: true, status: true, name: true },
+    });
+    for (const p of products) {
+      if (p.status !== 'IN_STOCK') {
+        throw new BadRequestException(`ของแถม "${p.name}" ไม่พร้อมขาย`);
+      }
+    }
+    if (products.length !== bundleProductIds.length) {
+      throw new BadRequestException('ไม่พบสินค้าของแถมบางรายการ');
+    }
+    // Update all bundle products to SOLD_CASH
+    await tx.product.updateMany({
+      where: { id: { in: bundleProductIds } },
+      data: { status: 'SOLD_CASH' },
+    });
+  }
+
   private async createCashSale(dto: CreateSaleDto, salespersonId: string, netAmount: number, discount: number) {
     if (!dto.paymentMethod) throw new BadRequestException('กรุณาเลือกวิธีชำระเงิน');
 
     return this.prisma.$transaction(async (tx) => {
       await this.verifyProductInStock(tx, dto.productId);
+      await this.markBundleProductsSold(tx, dto.bundleProductIds || []);
       const saleNumber = await this.generateSaleNumber(tx);
 
       const sale = await tx.sale.create({
@@ -99,6 +126,7 @@ export class SalesService {
           netAmount,
           paymentMethod: dto.paymentMethod as any,
           amountReceived: dto.amountReceived || netAmount,
+          bundleProductIds: dto.bundleProductIds || [],
           notes: dto.notes,
         },
       });
@@ -144,15 +172,19 @@ export class SalesService {
 
     return this.prisma.$transaction(async (tx) => {
       await this.verifyProductInStock(tx, dto.productId);
+      await this.markBundleProductsSold(tx, dto.bundleProductIds || []);
       const saleNumber = await this.generateSaleNumber(tx);
 
-      // Generate contract number
-      const lastContract = await tx.contract.findFirst({
-        orderBy: { contractNumber: 'desc' },
-        select: { contractNumber: true },
-      });
-      const nextNum = lastContract ? parseInt(lastContract.contractNumber.replace(/\D/g, '')) + 1 : 1;
-      const contractNumber = `CT${String(nextNum).padStart(6, '0')}`;
+      // Use provided contract number or auto-generate
+      let contractNumber = dto.contractNumber;
+      if (!contractNumber) {
+        const lastContract = await tx.contract.findFirst({
+          orderBy: { contractNumber: 'desc' },
+          select: { contractNumber: true },
+        });
+        const nextNum = lastContract ? parseInt(lastContract.contractNumber.replace(/\D/g, '')) + 1 : 1;
+        contractNumber = `CT${String(nextNum).padStart(6, '0')}`;
+      }
 
       // Create contract
       const contract = await tx.contract.create({
@@ -209,7 +241,9 @@ export class SalesService {
           netAmount,
           paymentMethod: dto.paymentMethod as any,
           amountReceived: dto.downPayment,
+          downPaymentAmount: dto.downPayment,
           contractId: contract.id,
+          bundleProductIds: dto.bundleProductIds || [],
           notes: dto.notes,
         },
       });
@@ -227,8 +261,12 @@ export class SalesService {
   private async createExternalFinanceSale(dto: CreateSaleDto, salespersonId: string, netAmount: number, discount: number) {
     if (!dto.financeCompany) throw new BadRequestException('กรุณาใส่ชื่อบริษัทไฟแนนซ์');
 
+    const downPayment = dto.downPayment || 0;
+    const financeAmount = dto.financeAmount || (netAmount - downPayment);
+
     return this.prisma.$transaction(async (tx) => {
       await this.verifyProductInStock(tx, dto.productId);
+      await this.markBundleProductsSold(tx, dto.bundleProductIds || []);
       const saleNumber = await this.generateSaleNumber(tx);
 
       const sale = await tx.sale.create({
@@ -243,10 +281,12 @@ export class SalesService {
           discount,
           netAmount,
           paymentMethod: dto.paymentMethod as any,
-          amountReceived: dto.financeAmount || netAmount,
+          amountReceived: downPayment || financeAmount,
+          downPaymentAmount: downPayment || null,
           financeCompany: dto.financeCompany,
-          financeRefNumber: dto.financeRefNumber,
-          financeAmount: dto.financeAmount,
+          financeRefNumber: dto.contractNumber || dto.financeRefNumber,
+          financeAmount,
+          bundleProductIds: dto.bundleProductIds || [],
           notes: dto.notes,
         },
       });

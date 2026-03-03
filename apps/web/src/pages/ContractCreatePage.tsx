@@ -36,7 +36,7 @@ interface InterestConfig {
   maxInstallmentMonths: number;
 }
 
-const STEPS = ['เลือกสินค้า', 'เลือกลูกค้า', 'เลือกแผนผ่อน', 'แนบเอกสาร', 'ตรวจเครดิต', 'ยืนยัน'];
+const STEPS = ['เลือกสินค้า', 'เลือกลูกค้า', 'เลือกแผนผ่อน', 'แนบเอกสาร', 'ยืนยัน'];
 
 const DOCUMENT_TYPES = [
   { value: 'ID_CARD_COPY', label: 'สำเนาบัตรประชาชน', required: true },
@@ -74,11 +74,6 @@ export default function ContractCreatePage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedDocType, setSelectedDocType] = useState('ID_CARD_COPY');
 
-  // Credit check
-  const [bankName, setBankName] = useState('');
-  const [statementFiles, setStatementFiles] = useState<File[]>([]);
-  const [creditResult, setCreditResult] = useState<any>(null);
-  const statementInputRef = useRef<HTMLInputElement>(null);
   const submitForReviewRef = useRef(false);
 
   // Queries
@@ -101,6 +96,16 @@ export default function ContractCreatePage() {
       return data.data || [];
     },
     enabled: step >= 1,
+  });
+
+  // Fetch latest credit check for selected customer
+  const { data: latestCreditCheck } = useQuery<{ id: string; status: string; aiScore: number | null } | null>({
+    queryKey: ['customer-latest-credit', selectedCustomer?.id],
+    queryFn: async () => {
+      const { data } = await api.get(`/customers/${selectedCustomer!.id}/credit-check/latest`);
+      return data;
+    },
+    enabled: !!selectedCustomer,
   });
 
   // Fetch interest config based on selected product category
@@ -142,28 +147,6 @@ export default function ContractCreatePage() {
           });
         } catch {
           toast.error(`อัปโหลดเอกสาร ${doc.file.name} ไม่สำเร็จ`);
-        }
-      }
-
-      // Upload credit check if statement files exist
-      if (statementFiles.length > 0) {
-        try {
-          const fileUrls: string[] = [];
-          for (const file of statementFiles) {
-            const reader = new FileReader();
-            const url = await new Promise<string>((resolve, reject) => {
-              reader.onload = () => resolve(reader.result as string);
-              reader.onerror = () => reject(new Error('ไม่สามารถอ่านไฟล์ได้'));
-              reader.readAsDataURL(file);
-            });
-            fileUrls.push(url);
-          }
-          await api.post(`/contracts/${data.id}/credit-check`, {
-            bankName: bankName || undefined,
-            statementFiles: fileUrls,
-          });
-        } catch {
-          toast.error('อัปโหลด Statement ไม่สำเร็จ');
         }
       }
 
@@ -230,13 +213,6 @@ export default function ContractCreatePage() {
     });
   };
 
-  const handleAddStatement = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files) return;
-    setStatementFiles((prev) => [...prev, ...Array.from(files)]);
-    if (statementInputRef.current) statementInputRef.current.value = '';
-  };
-
   const handleSubmit = (submitForReview: boolean) => {
     if (!selectedProduct || !selectedCustomer) return;
     submitForReviewRef.current = submitForReview;
@@ -253,9 +229,11 @@ export default function ContractCreatePage() {
     });
   };
 
+  const customerCreditApproved = latestCreditCheck?.status === 'APPROVED';
+
   const canNext = () => {
     if (step === 0) return !!selectedProduct;
-    if (step === 1) return !!selectedCustomer;
+    if (step === 1) return !!selectedCustomer && customerCreditApproved;
     if (step === 2) return downPayment >= sellingPrice * minDownPct && totalMonths >= minMonths && totalMonths <= maxMonths;
     return true;
   };
@@ -368,6 +346,33 @@ export default function ContractCreatePage() {
               <div className="text-center py-8 text-gray-400 text-sm">ไม่พบลูกค้า</div>
             )}
           </div>
+
+          {/* Credit check status for selected customer */}
+          {selectedCustomer && (
+            <div className={`mt-4 rounded-lg border p-4 ${customerCreditApproved ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className={`text-sm font-semibold ${customerCreditApproved ? 'text-green-800' : 'text-red-800'}`}>
+                    สถานะเครดิต: {customerCreditApproved ? 'ผ่าน' : latestCreditCheck ? (latestCreditCheck.status === 'PENDING' ? 'รอวิเคราะห์' : latestCreditCheck.status === 'REJECTED' ? 'ไม่ผ่าน' : 'ต้องตรวจเพิ่ม') : 'ยังไม่ได้ตรวจ'}
+                  </div>
+                  {latestCreditCheck?.aiScore != null && (
+                    <div className="text-xs mt-1">คะแนน: {latestCreditCheck.aiScore}/100</div>
+                  )}
+                  {!customerCreditApproved && (
+                    <div className="text-xs text-red-600 mt-1">ลูกค้าต้องผ่านการตรวจเครดิตก่อนถึงจะสร้างสัญญาได้</div>
+                  )}
+                </div>
+                {!customerCreditApproved && (
+                  <button
+                    onClick={() => navigate('/credit-checks')}
+                    className="px-3 py-1.5 text-xs bg-primary-600 text-white rounded-lg hover:bg-primary-700"
+                  >
+                    ไปตรวจเครดิต
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -544,72 +549,8 @@ export default function ContractCreatePage() {
         </div>
       )}
 
-      {/* Step 5: Credit Check */}
+      {/* Step 5: Confirm */}
       {step === 4 && (
-        <div className="max-w-2xl space-y-4">
-          <div className="bg-white rounded-lg border p-6 space-y-4">
-            <h3 className="text-sm font-semibold text-gray-900">ตรวจสอบเครดิตลูกค้า (ไม่บังคับ)</h3>
-            <p className="text-xs text-gray-500">อัปโหลด Statement ธนาคารย้อนหลัง 3 เดือน เพื่อให้ AI วิเคราะห์ความสามารถในการผ่อนชำระ สามารถข้ามขั้นตอนนี้ได้</p>
-
-            {selectedCustomer?.salary && (
-              <div className="bg-blue-50 rounded-lg p-3">
-                <div className="text-xs text-blue-600">ข้อมูลลูกค้า</div>
-                <div className="text-sm">เงินเดือน: {parseFloat(selectedCustomer.salary).toLocaleString()} ฿ | อาชีพ: {selectedCustomer.occupation || '-'}</div>
-                <div className="text-sm">ค่างวด: {monthlyPayment.toLocaleString()} ฿ ({selectedCustomer.salary ? ((monthlyPayment / parseFloat(selectedCustomer.salary)) * 100).toFixed(0) : '?'}% ของรายได้)</div>
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">ธนาคาร</label>
-                <input
-                  type="text"
-                  value={bankName}
-                  onChange={(e) => setBankName(e.target.value)}
-                  placeholder="เช่น กสิกร, กรุงไทย..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Statement ย้อนหลัง 3 เดือน</label>
-                <input
-                  ref={statementInputRef}
-                  type="file"
-                  accept="image/*,.pdf"
-                  multiple
-                  onChange={handleAddStatement}
-                  className="w-full text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
-                />
-              </div>
-            </div>
-
-            {statementFiles.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {statementFiles.map((f, i) => (
-                  <div key={i} className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-lg text-sm">
-                    <span>{f.name}</span>
-                    <button
-                      onClick={() => setStatementFiles((prev) => prev.filter((_, j) => j !== i))}
-                      className="text-red-500 text-xs"
-                    >
-                      x
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {statementFiles.length === 0 && (
-            <div className="text-center py-4 text-gray-400 text-xs">
-              สามารถข้ามขั้นตอนนี้และตรวจสอบเครดิตภายหลังในหน้ารายละเอียดสัญญาได้
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Step 6: Confirm */}
-      {step === 5 && (
         <div className="max-w-xl">
           <div className="bg-white rounded-lg border p-6 space-y-4">
             <h3 className="text-lg font-semibold">ยืนยันสัญญาผ่อนชำระ</h3>
@@ -657,7 +598,7 @@ export default function ContractCreatePage() {
         >
           ย้อนกลับ
         </button>
-        {step < 5 ? (
+        {step < 4 ? (
           <button
             onClick={() => canNext() && setStep(step + 1)}
             disabled={!canNext()}

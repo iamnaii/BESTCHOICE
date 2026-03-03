@@ -319,6 +319,47 @@ export default function ContractDetailPage() {
         </div>
       )}
 
+      {/* Signing guide for CREATING/REJECTED (sign first, review later) */}
+      {(contract.workflowStatus === 'CREATING' || contract.workflowStatus === 'REJECTED') && contract.status === 'DRAFT' && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+          <h3 className="text-sm font-semibold text-blue-800">ขั้นตอน: ให้ลูกค้าเซ็นสัญญา แล้วส่งตรวจสอบ</h3>
+          <div className="mt-3 flex items-center gap-4 text-xs">
+            <span className="font-medium text-blue-700">ลงนาม:</span>
+            <span className={customerSigned ? 'text-green-700' : 'text-amber-600'}>
+              ลูกค้า {customerSigned ? 'เซ็นแล้ว' : 'ยังไม่เซ็น'}
+            </span>
+            <span className={staffSigned ? 'text-green-700' : 'text-amber-600'}>
+              พนักงาน {staffSigned ? 'เซ็นแล้ว' : 'ยังไม่เซ็น'}
+            </span>
+            {!allSigned && (
+              <button onClick={() => navigate(`/contracts/${id}/sign`)} className="px-2 py-1 bg-purple-600 text-white rounded text-xs hover:bg-purple-700">
+                ไปลงนาม
+              </button>
+            )}
+            {allSigned && isCreator && (
+              <button onClick={() => submitReviewMutation.mutate()} disabled={submitReviewMutation.isPending} className="px-2 py-1 bg-amber-600 text-white rounded text-xs hover:bg-amber-700 disabled:opacity-50">
+                {submitReviewMutation.isPending ? 'กำลังส่ง...' : 'ส่งตรวจสอบ'}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Pending review info */}
+      {contract.workflowStatus === 'PENDING_REVIEW' && !isReviewer && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+          <h3 className="text-sm font-semibold text-amber-800">รอผู้จัดการตรวจสอบสัญญา</h3>
+          <div className="mt-2 flex items-center gap-4 text-xs">
+            <span className={customerSigned ? 'text-green-700' : 'text-amber-600'}>
+              ลูกค้า {customerSigned ? 'เซ็นแล้ว' : 'ยังไม่เซ็น'}
+            </span>
+            <span className={staffSigned ? 'text-green-700' : 'text-amber-600'}>
+              พนักงาน {staffSigned ? 'เซ็นแล้ว' : 'ยังไม่เซ็น'}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Approved info */}
       {contract.workflowStatus === 'APPROVED' && contract.reviewedBy && (
         <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">

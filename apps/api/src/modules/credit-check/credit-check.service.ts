@@ -20,6 +20,34 @@ export class CreditCheckService {
     }
   }
 
+  async findAll(filters: { status?: string; search?: string; page?: number; limit?: number }) {
+    const where: Record<string, unknown> = {};
+    if (filters.status) where.status = filters.status;
+    if (filters.search) {
+      where.customer = { name: { contains: filters.search, mode: 'insensitive' } };
+    }
+
+    const page = filters.page || 1;
+    const limit = filters.limit || 50;
+
+    const [data, total] = await Promise.all([
+      this.prisma.creditCheck.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+        include: {
+          customer: { select: { id: true, name: true, phone: true, salary: true, occupation: true } },
+          contract: { select: { id: true, contractNumber: true } },
+          checkedBy: { select: { id: true, name: true } },
+        },
+      }),
+      this.prisma.creditCheck.count({ where }),
+    ]);
+
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
+
   async findByContract(contractId: string) {
     const creditCheck = await this.prisma.creditCheck.findUnique({
       where: { contractId },

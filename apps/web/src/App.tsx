@@ -40,6 +40,7 @@ const AuditLogsPage = lazy(() => import('@/pages/AuditLogsPage'));
 const POSPage = lazy(() => import('@/pages/POSPage'));
 const SalesHistoryPage = lazy(() => import('@/pages/SalesHistoryPage'));
 const InterestConfigPage = lazy(() => import('@/pages/InterestConfigPage'));
+const CreditChecksPage = lazy(() => import('@/pages/CreditChecksPage'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -119,6 +120,7 @@ function App() {
           <Route path="/sales" element={<SalesHistoryPage />} />
           <Route path="/customers" element={<CustomersPage />} />
           <Route path="/customers/:id" element={<CustomerDetailPage />} />
+          <Route path="/credit-checks" element={<CreditChecksPage />} />
           <Route path="/contracts" element={<ContractsPage />} />
           <Route
             path="/contracts/create"

@@ -88,6 +88,15 @@ export class ContractsService {
       throw new BadRequestException('สินค้าไม่พร้อมขาย');
     }
 
+    // Require approved credit check for customer before creating contract
+    const approvedCreditCheck = await this.prisma.creditCheck.findFirst({
+      where: { customerId: dto.customerId, status: 'APPROVED', contractId: null },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!approvedCreditCheck) {
+      throw new BadRequestException('ลูกค้าต้องผ่านการตรวจเครดิตก่อนทำสัญญา');
+    }
+
     // Find interest config matching the product category
     const interestConfig = await this.prisma.interestConfig.findFirst({
       where: {
@@ -200,6 +209,12 @@ export class ContractsService {
       await tx.product.update({
         where: { id: dto.productId },
         data: { status: 'RESERVED' },
+      });
+
+      // Link the approved credit check to this contract
+      await tx.creditCheck.update({
+        where: { id: approvedCreditCheck.id },
+        data: { contractId: newContract.id },
       });
 
       return newContract;

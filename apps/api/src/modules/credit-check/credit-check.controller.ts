@@ -1,10 +1,32 @@
-import { Controller, Get, Post, Param, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, UseGuards, Query } from '@nestjs/common';
 import { CreditCheckService } from './credit-check.service';
 import { CreateCreditCheckDto, OverrideCreditCheckDto } from './dto/credit-check.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+
+// === Global credit check list ===
+@Controller('credit-checks')
+@UseGuards(JwtAuthGuard, RolesGuard)
+export class GlobalCreditCheckController {
+  constructor(private service: CreditCheckService) {}
+
+  @Get()
+  findAll(
+    @Query('status') status?: string,
+    @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.service.findAll({
+      status,
+      search,
+      page: page ? parseInt(page) : undefined,
+      limit: limit ? parseInt(limit) : undefined,
+    });
+  }
+}
 
 // === Contract-level credit check ===
 @Controller('contracts/:contractId/credit-check')

@@ -120,7 +120,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
         reader.onerror = () => reject(new Error('ไม่สามารถอ่านไฟล์ได้'));
         reader.readAsDataURL(file);
       });
-      const { data } = await api.post('/ocr/id-card', { imageBase64 });
+      const { data } = await api.post('/ocr/id-card', { imageBase64 }, { timeout: 60000 });
       setOcrResult(data);
       setShowOcrPanel(true);
       const pct = (data.confidence * 100).toFixed(0);

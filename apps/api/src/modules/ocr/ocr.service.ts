@@ -169,10 +169,6 @@ export class OcrService {
     return cleaned;
   }
 
-  private stripAddressPrefix(value: string, prefixes: RegExp): string {
-    return value.replace(prefixes, '').trim();
-  }
-
   private buildAddressStructured(raw: unknown): OcrAddressStructured | null {
     if (!raw || typeof raw !== 'object') return null;
     const a = raw as Record<string, string>;

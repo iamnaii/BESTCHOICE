@@ -126,6 +126,7 @@ function initPCSC(): void {
           readerStatus = 'waiting';
           readerError = '';
           lastCardData = null;
+          isReading = false; // Reset lock so next card insert can read
           console.log('[Card Reader] Card removed — data cleared');
         }
       });

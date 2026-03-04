@@ -243,6 +243,103 @@ describe('OcrService', () => {
       expect(result.addressStructured).toBeNull();
     });
 
+    // --- Address normalization tests ---
+
+    it('should strip ต./อ./จ. prefixes from address fields', async () => {
+      const withPrefixes = {
+        ...sampleOcrResponse,
+        addressStructured: {
+          houseNo: '11/2',
+          moo: 'หมู่ที่ 9',
+          village: '',
+          soi: 'ซอยสุขสวัสดิ์',
+          road: 'ถนนพหลโยธิน',
+          subdistrict: 'ต.ดงมะรุม',
+          district: 'อ.โคกสำโรง',
+          province: 'จ.ลพบุรี',
+          postalCode: '15120',
+        },
+      };
+      mockCreate.mockResolvedValue(makeMockResponse(withPrefixes));
+
+      const result = await service.extractIdCard(validBase64);
+
+      expect(result.addressStructured!.moo).toBe('9');
+      expect(result.addressStructured!.soi).toBe('สุขสวัสดิ์');
+      expect(result.addressStructured!.road).toBe('พหลโยธิน');
+      expect(result.addressStructured!.subdistrict).toBe('ดงมะรุม');
+      expect(result.addressStructured!.district).toBe('โคกสำโรง');
+      expect(result.addressStructured!.province).toBe('ลพบุรี');
+    });
+
+    it('should strip ตำบล/อำเภอ/จังหวัด prefixes from address', async () => {
+      const withFullPrefixes = {
+        ...sampleOcrResponse,
+        addressStructured: {
+          houseNo: '153',
+          moo: '',
+          village: '',
+          soi: '',
+          road: '',
+          subdistrict: 'ตำบลท่าทอง',
+          district: 'อำเภอเมือง',
+          province: 'จังหวัดสุราษฎร์ธานี',
+          postalCode: '84000',
+        },
+      };
+      mockCreate.mockResolvedValue(makeMockResponse(withFullPrefixes));
+
+      const result = await service.extractIdCard(validBase64);
+
+      expect(result.addressStructured!.subdistrict).toBe('ท่าทอง');
+      expect(result.addressStructured!.district).toBe('เมือง');
+      expect(result.addressStructured!.province).toBe('สุราษฎร์ธานี');
+    });
+
+    it('should fuzzy-match province names with OCR typos', async () => {
+      const withTypo = {
+        ...sampleOcrResponse,
+        addressStructured: {
+          houseNo: '11/2',
+          moo: '9',
+          village: '',
+          soi: '',
+          road: '',
+          subdistrict: 'ดงมะรุม',
+          district: 'โคกสำโรง',
+          province: 'ลพบุร',  // typo: missing ี
+          postalCode: '15120',
+        },
+      };
+      mockCreate.mockResolvedValue(makeMockResponse(withTypo));
+
+      const result = await service.extractIdCard(validBase64);
+
+      expect(result.addressStructured!.province).toBe('ลพบุรี');
+    });
+
+    it('should reject invalid postal codes', async () => {
+      const badPostal = {
+        ...sampleOcrResponse,
+        addressStructured: {
+          houseNo: '11/2',
+          moo: '9',
+          village: '',
+          soi: '',
+          road: '',
+          subdistrict: 'ดงมะรุม',
+          district: 'โคกสำโรง',
+          province: 'ลพบุรี',
+          postalCode: '1512',  // only 4 digits
+        },
+      };
+      mockCreate.mockResolvedValue(makeMockResponse(badPostal));
+
+      const result = await service.extractIdCard(validBase64);
+
+      expect(result.addressStructured!.postalCode).toBe('');
+    });
+
     // --- Validation / rejection tests ---
 
     it('should reject non-data-URL input', async () => {

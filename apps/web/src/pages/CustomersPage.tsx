@@ -9,6 +9,18 @@ import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import AddressForm, { AddressData, emptyAddress, serializeAddress } from '@/components/ui/AddressForm';
 
+interface OcrAddressStructured {
+  houseNo: string;
+  moo: string;
+  village: string;
+  soi: string;
+  road: string;
+  subdistrict: string;
+  district: string;
+  province: string;
+  postalCode: string;
+}
+
 interface OcrResult {
   nationalId: string | null;
   prefix: string | null;
@@ -17,6 +29,7 @@ interface OcrResult {
   fullName: string | null;
   birthDate: string | null;
   address: string | null;
+  addressStructured: OcrAddressStructured | null;
   issueDate: string | null;
   expiryDate: string | null;
   confidence: number;
@@ -190,51 +203,79 @@ export default function CustomersPage() {
 
       // Auto-fill form fields
       const updates: Partial<typeof emptyForm> = {};
-      if (data.nationalId) updates.nationalId = data.nationalId;
+      if (data.nationalId) {
+        if (/^\d{13}$/.test(data.nationalId)) {
+          updates.nationalId = data.nationalId;
+        } else {
+          toast.error('เลขบัตรประชาชนที่อ่านได้ไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง');
+        }
+      }
       if (data.prefix) updates.prefix = data.prefix;
-      if (data.firstName) updates.firstName = data.firstName;
-      if (data.lastName) updates.lastName = data.lastName;
+      if (data.firstName) updates.firstName = data.firstName.trim();
+      if (data.lastName) updates.lastName = data.lastName.trim();
       if (!data.firstName && !data.lastName && data.fullName) {
-        const parts = data.fullName.split(' ');
+        const parts = data.fullName.trim().split(/\s+/);
         updates.firstName = parts[0] || '';
         updates.lastName = parts.slice(1).join(' ') || '';
       }
       if (data.birthDate) {
-        // birthDate could be "YYYY-MM-DD" or Thai format
-        const match = data.birthDate.match(/(\d{4})-(\d{2})-(\d{2})/);
-        if (match) updates.birthDate = data.birthDate;
+        const match = data.birthDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (match) {
+          const [, y, m, d] = match.map(Number);
+          const dateObj = new Date(y, m - 1, d);
+          if (dateObj.getFullYear() === y && dateObj.getMonth() === m - 1 && dateObj.getDate() === d) {
+            updates.birthDate = data.birthDate;
+          }
+        }
       }
       setForm(prev => ({ ...prev, ...updates }));
 
-      // Try to parse address into structured fields
-      if (data.address) {
+      // Use structured address from backend if available, fallback to regex parsing
+      if (data.addressStructured) {
+        const a = data.addressStructured;
+        setAddressIdCard({
+          houseNo: a.houseNo || '',
+          moo: a.moo || '',
+          village: a.village || '',
+          soi: a.soi || '',
+          road: a.road || '',
+          subdistrict: a.subdistrict || '',
+          district: a.district || '',
+          province: a.province || '',
+          postalCode: a.postalCode || '',
+        });
+      } else if (data.address) {
         const addr = { ...emptyAddress };
         const raw = data.address;
-
-        // Extract postal code (5 digits at the end)
         const zipMatch = raw.match(/(\d{5})\s*$/);
         if (zipMatch) addr.postalCode = zipMatch[1];
-
-        // Extract house number pattern (e.g. "123/45" or "123")
         const houseMatch = raw.match(/^(\d+(?:\/\d+)?)\s/);
         if (houseMatch) addr.houseNo = houseMatch[1];
-
-        // Extract หมู่ (moo)
         const mooMatch = raw.match(/(?:หมู่(?:ที่)?|ม\.)\s*(\d+)/);
         if (mooMatch) addr.moo = mooMatch[1];
-
-        // Extract ซอย (soi)
         const soiMatch = raw.match(/(?:ซอย|ซ\.)\s*([^\s,]+)/);
         if (soiMatch) addr.soi = soiMatch[1];
-
-        // Extract ถนน (road)
         const roadMatch = raw.match(/(?:ถนน|ถ\.)\s*([^\s,]+)/);
         if (roadMatch) addr.road = roadMatch[1];
-
+        const villageMatch = raw.match(/(?:หมู่บ้าน|ม\.บ\.|คอนโด)\s*([^\s,]+)/);
+        if (villageMatch) addr.village = villageMatch[1];
+        const subdistrictMatch = raw.match(/(?:ตำบล|ต\.|แขวง)\s*([^\s,]+)/);
+        if (subdistrictMatch) addr.subdistrict = subdistrictMatch[1];
+        const districtMatch = raw.match(/(?:อำเภอ|อ\.|เขต)\s*([^\s,]+)/);
+        if (districtMatch) addr.district = districtMatch[1];
+        const provinceMatch = raw.match(/(?:จังหวัด|จ\.)\s*([^\s,\d]+)/);
+        if (provinceMatch) addr.province = provinceMatch[1];
         setAddressIdCard(addr);
       }
 
-      toast.success(`อ่านบัตรสำเร็จ (ความมั่นใจ ${(data.confidence * 100).toFixed(0)}%)`);
+      const pct = (data.confidence * 100).toFixed(0);
+      if (data.confidence < 0.5) {
+        toast.error(`อ่านบัตรได้ แต่ความมั่นใจต่ำมาก (${pct}%) กรุณาตรวจสอบข้อมูลทุกช่อง`);
+      } else if (data.confidence < 0.7) {
+        toast(`อ่านบัตรสำเร็จ แต่ความมั่นใจค่อนข้างต่ำ (${pct}%) กรุณาตรวจสอบข้อมูล`, { icon: '⚠️' });
+      } else {
+        toast.success(`อ่านบัตรสำเร็จ (ความมั่นใจ ${pct}%)`);
+      }
     } catch (err) {
       toast.error(getErrorMessage(err));
     } finally {

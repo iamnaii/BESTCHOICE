@@ -26,6 +26,18 @@ const DOCUMENT_TYPES = [
   { value: 'OTHER', label: 'อื่นๆ' },
 ];
 
+interface OcrAddressStructured {
+  houseNo: string;
+  moo: string;
+  village: string;
+  soi: string;
+  road: string;
+  subdistrict: string;
+  district: string;
+  province: string;
+  postalCode: string;
+}
+
 interface OcrResult {
   nationalId: string | null;
   prefix: string | null;
@@ -34,6 +46,7 @@ interface OcrResult {
   fullName: string | null;
   birthDate: string | null;
   address: string | null;
+  addressStructured: OcrAddressStructured | null;
   issueDate: string | null;
   expiryDate: string | null;
   confidence: number;
@@ -110,7 +123,14 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
       const { data } = await api.post('/ocr/id-card', { imageBase64 });
       setOcrResult(data);
       setShowOcrPanel(true);
-      toast.success('อ่านบัตรประชาชนสำเร็จ');
+      const pct = (data.confidence * 100).toFixed(0);
+      if (data.confidence < 0.5) {
+        toast.error(`อ่านบัตรได้ แต่ความมั่นใจต่ำมาก (${pct}%) กรุณาตรวจสอบข้อมูล`);
+      } else if (data.confidence < 0.7) {
+        toast(`อ่านบัตรสำเร็จ แต่ความมั่นใจค่อนข้างต่ำ (${pct}%)`, { icon: '⚠️' });
+      } else {
+        toast.success(`อ่านบัตรประชาชนสำเร็จ (ความมั่นใจ ${pct}%)`);
+      }
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'ไม่สามารถอ่านบัตรประชาชนได้');
     } finally {
@@ -118,25 +138,42 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
     }
   };
 
-  // Helper: parse OCR raw address string into structured JSON
-  const parseOcrAddress = (raw: string): string => {
-    const addr: Record<string, string> = {
-      houseNo: '', moo: '', village: '', soi: '', road: '',
-      province: '', district: '', subdistrict: '', postalCode: '',
-    };
-    const zipMatch = raw.match(/(\d{5})\s*$/);
-    if (zipMatch) addr.postalCode = zipMatch[1];
-    const houseMatch = raw.match(/^(\d+(?:\/\d+)?)\s/);
-    if (houseMatch) addr.houseNo = houseMatch[1];
-    const mooMatch = raw.match(/(?:หมู่(?:ที่)?|ม\.)\s*(\d+)/);
-    if (mooMatch) addr.moo = mooMatch[1];
-    const soiMatch = raw.match(/(?:ซอย|ซ\.)\s*([^\s,]+)/);
-    if (soiMatch) addr.soi = soiMatch[1];
-    const roadMatch = raw.match(/(?:ถนน|ถ\.)\s*([^\s,]+)/);
-    if (roadMatch) addr.road = roadMatch[1];
-    const hasStructured = Object.values(addr).some(v => v !== '');
-    if (!hasStructured) return raw;
-    return JSON.stringify(addr);
+  // Helper: build structured address JSON from OCR result
+  const buildOcrAddressJson = (data: OcrResult): string | undefined => {
+    if (data.addressStructured) {
+      const a = data.addressStructured;
+      const hasData = Object.values(a).some((v) => v !== '');
+      if (hasData) return JSON.stringify(a);
+    }
+    if (data.address) {
+      const raw = data.address;
+      const addr: Record<string, string> = {
+        houseNo: '', moo: '', village: '', soi: '', road: '',
+        province: '', district: '', subdistrict: '', postalCode: '',
+      };
+      const zipMatch = raw.match(/(\d{5})\s*$/);
+      if (zipMatch) addr.postalCode = zipMatch[1];
+      const houseMatch = raw.match(/^(\d+(?:\/\d+)?)\s/);
+      if (houseMatch) addr.houseNo = houseMatch[1];
+      const mooMatch = raw.match(/(?:หมู่(?:ที่)?|ม\.)\s*(\d+)/);
+      if (mooMatch) addr.moo = mooMatch[1];
+      const soiMatch = raw.match(/(?:ซอย|ซ\.)\s*([^\s,]+)/);
+      if (soiMatch) addr.soi = soiMatch[1];
+      const roadMatch = raw.match(/(?:ถนน|ถ\.)\s*([^\s,]+)/);
+      if (roadMatch) addr.road = roadMatch[1];
+      const villageMatch = raw.match(/(?:หมู่บ้าน|ม\.บ\.|คอนโด)\s*([^\s,]+)/);
+      if (villageMatch) addr.village = villageMatch[1];
+      const subdistrictMatch = raw.match(/(?:ตำบล|ต\.|แขวง)\s*([^\s,]+)/);
+      if (subdistrictMatch) addr.subdistrict = subdistrictMatch[1];
+      const districtMatch = raw.match(/(?:อำเภอ|อ\.|เขต)\s*([^\s,]+)/);
+      if (districtMatch) addr.district = districtMatch[1];
+      const provinceMatch = raw.match(/(?:จังหวัด|จ\.)\s*([^\s,\d]+)/);
+      if (provinceMatch) addr.province = provinceMatch[1];
+      const hasStructured = Object.values(addr).some((v) => v !== '');
+      if (hasStructured) return JSON.stringify(addr);
+      return raw;
+    }
+    return undefined;
   };
 
   const updateCustomerFromOcr = async () => {
@@ -144,9 +181,11 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
     try {
       const updateData: Record<string, unknown> = {};
       if (ocrResult.prefix) updateData.prefix = ocrResult.prefix;
-      if (ocrResult.fullName) updateData.name = ocrResult.fullName;
+      const name = [ocrResult.firstName, ocrResult.lastName].filter(Boolean).join(' ') || ocrResult.fullName;
+      if (name) updateData.name = name.trim();
       if (ocrResult.birthDate) updateData.birthDate = ocrResult.birthDate;
-      if (ocrResult.address) updateData.addressIdCard = parseOcrAddress(ocrResult.address);
+      const addrJson = buildOcrAddressJson(ocrResult);
+      if (addrJson) updateData.addressIdCard = addrJson;
 
       await api.patch(`/customers/${customerId}`, updateData);
       toast.success('อัปเดตข้อมูลลูกค้าสำเร็จ');
@@ -163,10 +202,18 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
       toast.error('ไฟล์ต้องมีขนาดไม่เกิน 10MB');
       return;
     }
+
+    // Check file type for ID card before uploading
+    const isIdCard = selectedType === 'ID_CARD_COPY';
+    if (isIdCard && !file.type.startsWith('image/')) {
+      toast.error('สำเนาบัตรประชาชนต้องเป็นไฟล์รูปภาพเท่านั้น');
+      return;
+    }
+
     uploadMutation.mutate(file);
 
     // Trigger OCR when uploading ID card image
-    if (selectedType === 'ID_CARD_COPY' && file.type.startsWith('image/')) {
+    if (isIdCard && file.type.startsWith('image/') && !ocrLoading) {
       performOcr(file);
     }
   };
@@ -234,11 +281,11 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
 
       {/* OCR Results Panel */}
       {showOcrPanel && ocrResult && (
-        <div className="bg-green-50 border border-green-200 rounded-lg p-4 space-y-3">
+        <div className={`${ocrResult.confidence < 0.7 ? 'bg-yellow-50 border-yellow-200' : 'bg-green-50 border-green-200'} border rounded-lg p-4 space-y-3`}>
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-green-800">ข้อมูลที่อ่านจากบัตรประชาชน</h3>
+            <h3 className={`text-sm font-semibold ${ocrResult.confidence < 0.7 ? 'text-yellow-800' : 'text-green-800'}`}>ข้อมูลที่อ่านจากบัตรประชาชน</h3>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-green-600">ความมั่นใจ: {(ocrResult.confidence * 100).toFixed(0)}%</span>
+              <span className={`text-xs ${ocrResult.confidence < 0.5 ? 'text-red-600 font-bold' : ocrResult.confidence < 0.7 ? 'text-yellow-600 font-semibold' : 'text-green-600'}`}>ความมั่นใจ: {(ocrResult.confidence * 100).toFixed(0)}%</span>
               <button onClick={() => setShowOcrPanel(false)} className="text-xs text-gray-500 hover:text-gray-700">ปิด</button>
             </div>
           </div>

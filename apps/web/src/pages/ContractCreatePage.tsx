@@ -54,6 +54,18 @@ interface PendingDoc {
   preview: string;
 }
 
+interface OcrAddressStructured {
+  houseNo: string;
+  moo: string;
+  village: string;
+  soi: string;
+  road: string;
+  subdistrict: string;
+  district: string;
+  province: string;
+  postalCode: string;
+}
+
 interface OcrResult {
   nationalId: string | null;
   prefix: string | null;
@@ -62,6 +74,7 @@ interface OcrResult {
   fullName: string | null;
   birthDate: string | null;
   address: string | null;
+  addressStructured: OcrAddressStructured | null;
   issueDate: string | null;
   expiryDate: string | null;
   confidence: number;
@@ -98,6 +111,13 @@ export default function ContractCreatePage() {
   const [newCustomerPhone, setNewCustomerPhone] = useState('');
   const [creatingCustomer, setCreatingCustomer] = useState(false);
   const [ocrScannedFile, setOcrScannedFile] = useState<File | null>(null);
+
+  // Cleanup object URLs on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      pendingDocs.forEach((doc) => URL.revokeObjectURL(doc.preview));
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Queries
   const { data: products = [] } = useQuery<Product[]>({
@@ -216,26 +236,44 @@ export default function ContractCreatePage() {
   const financedAmount = (sellingPrice - downPayment) + interestTotal;
   const monthlyPayment = totalMonths > 0 ? Math.ceil(financedAmount / totalMonths) : 0;
 
-  // Helper: parse OCR raw address string into structured JSON for addressIdCard
-  const parseOcrAddress = (raw: string): string => {
-    const addr: Record<string, string> = {
-      houseNo: '', moo: '', village: '', soi: '', road: '',
-      province: '', district: '', subdistrict: '', postalCode: '',
-    };
-    const zipMatch = raw.match(/(\d{5})\s*$/);
-    if (zipMatch) addr.postalCode = zipMatch[1];
-    const houseMatch = raw.match(/^(\d+(?:\/\d+)?)\s/);
-    if (houseMatch) addr.houseNo = houseMatch[1];
-    const mooMatch = raw.match(/(?:หมู่(?:ที่)?|ม\.)\s*(\d+)/);
-    if (mooMatch) addr.moo = mooMatch[1];
-    const soiMatch = raw.match(/(?:ซอย|ซ\.)\s*([^\s,]+)/);
-    if (soiMatch) addr.soi = soiMatch[1];
-    const roadMatch = raw.match(/(?:ถนน|ถ\.)\s*([^\s,]+)/);
-    if (roadMatch) addr.road = roadMatch[1];
-    // Check if any field was parsed; if none, store raw string as-is (legacy format)
-    const hasStructured = Object.values(addr).some(v => v !== '');
-    if (!hasStructured) return raw;
-    return JSON.stringify(addr);
+  // Helper: build structured address JSON from OCR result
+  const buildOcrAddressJson = (ocrData: OcrResult): string | undefined => {
+    // Prefer structured address from backend
+    if (ocrData.addressStructured) {
+      const a = ocrData.addressStructured;
+      const hasData = Object.values(a).some((v) => v !== '');
+      if (hasData) return JSON.stringify(a);
+    }
+    // Fallback: parse raw address string with regex
+    if (ocrData.address) {
+      const raw = ocrData.address;
+      const addr: Record<string, string> = {
+        houseNo: '', moo: '', village: '', soi: '', road: '',
+        province: '', district: '', subdistrict: '', postalCode: '',
+      };
+      const zipMatch = raw.match(/(\d{5})\s*$/);
+      if (zipMatch) addr.postalCode = zipMatch[1];
+      const houseMatch = raw.match(/^(\d+(?:\/\d+)?)\s/);
+      if (houseMatch) addr.houseNo = houseMatch[1];
+      const mooMatch = raw.match(/(?:หมู่(?:ที่)?|ม\.)\s*(\d+)/);
+      if (mooMatch) addr.moo = mooMatch[1];
+      const soiMatch = raw.match(/(?:ซอย|ซ\.)\s*([^\s,]+)/);
+      if (soiMatch) addr.soi = soiMatch[1];
+      const roadMatch = raw.match(/(?:ถนน|ถ\.)\s*([^\s,]+)/);
+      if (roadMatch) addr.road = roadMatch[1];
+      const villageMatch = raw.match(/(?:หมู่บ้าน|ม\.บ\.|คอนโด)\s*([^\s,]+)/);
+      if (villageMatch) addr.village = villageMatch[1];
+      const subdistrictMatch = raw.match(/(?:ตำบล|ต\.|แขวง)\s*([^\s,]+)/);
+      if (subdistrictMatch) addr.subdistrict = subdistrictMatch[1];
+      const districtMatch = raw.match(/(?:อำเภอ|อ\.|เขต)\s*([^\s,]+)/);
+      if (districtMatch) addr.district = districtMatch[1];
+      const provinceMatch = raw.match(/(?:จังหวัด|จ\.)\s*([^\s,\d]+)/);
+      if (provinceMatch) addr.province = provinceMatch[1];
+      const hasStructured = Object.values(addr).some((v) => v !== '');
+      if (hasStructured) return JSON.stringify(addr);
+      return raw;
+    }
+    return undefined;
   };
 
   // OCR: scan ID card (Step 2)
@@ -243,6 +281,7 @@ export default function ContractCreatePage() {
     const file = e.target.files?.[0];
     if (!file) return;
     if (ocrFileRef.current) ocrFileRef.current.value = '';
+    if (ocrLoading) return; // Prevent concurrent OCR requests
     if (file.size > 10 * 1024 * 1024) {
       toast.error('ไฟล์ต้องมีขนาดไม่เกิน 10MB');
       return;
@@ -270,8 +309,21 @@ export default function ContractCreatePage() {
       setOcrResult(data);
       setShowOcrPanel(true);
 
+      // Confidence warning
+      const pct = (data.confidence * 100).toFixed(0);
+      if (data.confidence < 0.5) {
+        toast.error(`อ่านบัตรได้ แต่ความมั่นใจต่ำมาก (${pct}%) กรุณาตรวจสอบข้อมูลทุกช่อง`);
+      } else if (data.confidence < 0.7) {
+        toast(`อ่านบัตรสำเร็จ แต่ความมั่นใจค่อนข้างต่ำ (${pct}%) กรุณาตรวจสอบข้อมูล`, { icon: '⚠️' });
+      }
+
+      // Validate nationalId format
+      if (data.nationalId && !/^\d{13}$/.test(data.nationalId)) {
+        toast.error('เลขบัตรประชาชนที่อ่านได้ไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง');
+      }
+
       // Auto-search for customer by nationalId
-      if (data.nationalId) {
+      if (data.nationalId && /^\d{13}$/.test(data.nationalId)) {
         try {
           const searchRes = await api.get(`/customers?search=${data.nationalId}`);
           const found = (searchRes.data.data || []) as Customer[];
@@ -280,13 +332,17 @@ export default function ContractCreatePage() {
             toast.success(`พบลูกค้าในระบบ: ${found[0].name}`);
           } else {
             setShowCreateCustomer(true);
-            toast.success('อ่านบัตรสำเร็จ - ไม่พบลูกค้าในระบบ สามารถสร้างลูกค้าใหม่ได้');
+            if (data.confidence >= 0.5) {
+              toast.success('อ่านบัตรสำเร็จ - ไม่พบลูกค้าในระบบ สามารถสร้างลูกค้าใหม่ได้');
+            }
           }
         } catch {
           setShowCreateCustomer(true);
         }
       } else {
-        toast.success('อ่านบัตรสำเร็จ');
+        if (data.confidence >= 0.7) {
+          toast.success('อ่านบัตรสำเร็จ');
+        }
       }
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'ไม่สามารถอ่านบัตรประชาชนได้');
@@ -307,11 +363,16 @@ export default function ContractCreatePage() {
       const body: Record<string, unknown> = {
         phone: newCustomerPhone.trim(),
       };
-      if (ocrResult.nationalId) body.nationalId = ocrResult.nationalId;
+      if (ocrResult.nationalId && /^\d{13}$/.test(ocrResult.nationalId)) {
+        body.nationalId = ocrResult.nationalId;
+      }
       if (ocrResult.prefix) body.prefix = ocrResult.prefix;
-      if (ocrResult.fullName) body.name = ocrResult.fullName;
+      // Use firstName + lastName to build name, fallback to fullName
+      const name = [ocrResult.firstName, ocrResult.lastName].filter(Boolean).join(' ') || ocrResult.fullName;
+      if (name) body.name = name.trim();
       if (ocrResult.birthDate) body.birthDate = ocrResult.birthDate;
-      if (ocrResult.address) body.addressIdCard = parseOcrAddress(ocrResult.address);
+      const addrJson = buildOcrAddressJson(ocrResult);
+      if (addrJson) body.addressIdCard = addrJson;
 
       const { data } = await api.post('/customers', body);
       setSelectedCustomer(data);
@@ -356,9 +417,11 @@ export default function ContractCreatePage() {
     try {
       const updateData: Record<string, unknown> = {};
       if (ocrResult.prefix) updateData.prefix = ocrResult.prefix;
-      if (ocrResult.fullName) updateData.name = ocrResult.fullName;
+      const name = [ocrResult.firstName, ocrResult.lastName].filter(Boolean).join(' ') || ocrResult.fullName;
+      if (name) updateData.name = name.trim();
       if (ocrResult.birthDate) updateData.birthDate = ocrResult.birthDate;
-      if (ocrResult.address) updateData.addressIdCard = parseOcrAddress(ocrResult.address);
+      const addrJson = buildOcrAddressJson(ocrResult);
+      if (addrJson) updateData.addressIdCard = addrJson;
 
       await api.patch(`/customers/${selectedCustomer.id}`, updateData);
       toast.success('อัปเดตข้อมูลลูกค้าสำเร็จ');
@@ -393,7 +456,7 @@ export default function ContractCreatePage() {
     if (fileInputRef.current) fileInputRef.current.value = '';
 
     // Trigger OCR when uploading ID card image in Step 4
-    if (selectedDocType === 'ID_CARD_COPY' && file.type.startsWith('image/')) {
+    if (selectedDocType === 'ID_CARD_COPY' && file.type.startsWith('image/') && !ocrLoading) {
       (async () => {
         setOcrLoading(true);
         try {
@@ -407,7 +470,14 @@ export default function ContractCreatePage() {
           setOcrResult(data);
           setShowOcrPanel(true);
           setShowCreateCustomer(false);
-          toast.success('อ่านบัตรประชาชนสำเร็จ');
+          const pct = (data.confidence * 100).toFixed(0);
+          if (data.confidence < 0.5) {
+            toast.error(`อ่านบัตรได้ แต่ความมั่นใจต่ำมาก (${pct}%) กรุณาตรวจสอบข้อมูล`);
+          } else if (data.confidence < 0.7) {
+            toast(`อ่านบัตรสำเร็จ แต่ความมั่นใจค่อนข้างต่ำ (${pct}%)`, { icon: '⚠️' });
+          } else {
+            toast.success(`อ่านบัตรประชาชนสำเร็จ (ความมั่นใจ ${pct}%)`);
+          }
         } catch (err: any) {
           toast.error(err.response?.data?.message || 'ไม่สามารถอ่านบัตรประชาชนได้');
         } finally {

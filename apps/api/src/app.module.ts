@@ -42,7 +42,7 @@ import { SecurityMiddleware } from './modules/audit/security.middleware';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: '../../.env',
+      envFilePath: ['.env', '../../.env'],
     }),
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([

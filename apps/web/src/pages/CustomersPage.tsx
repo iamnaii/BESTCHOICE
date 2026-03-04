@@ -199,7 +199,7 @@ export default function CustomersPage() {
         reader.onerror = () => reject(new Error('ไม่สามารถอ่านไฟล์ได้'));
         reader.readAsDataURL(file);
       });
-      const { data } = await api.post<OcrResult>('/ocr/id-card', { imageBase64 });
+      const { data } = await api.post<OcrResult>('/ocr/id-card', { imageBase64 }, { timeout: 60000 });
 
       // Auto-fill form fields
       const updates: Partial<typeof emptyForm> = {};

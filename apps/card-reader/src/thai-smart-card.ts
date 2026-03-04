@@ -116,14 +116,43 @@ function parseAddress(raw: string): ThaiIdCardData['addressStructured'] & { full
   return { ...structured, fullAddress };
 }
 
-/** Transmit an APDU command to the card and return the response data */
-function transmit(reader: any, protocol: number, cmd: Buffer): Promise<Buffer> {
+/** Transmit a single APDU to the card (low-level, no GET RESPONSE handling) */
+function transmitRaw(reader: any, protocol: number, cmd: Buffer, receiveLen: number = 256): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    reader.transmit(cmd, 256, protocol, (err: Error | null, data: Buffer) => {
+    reader.transmit(cmd, receiveLen, protocol, (err: Error | null, data: Buffer) => {
       if (err) return reject(err);
       resolve(data);
     });
   });
+}
+
+/**
+ * Transmit an APDU command to the card, automatically handling SW 61XX
+ * (GET RESPONSE chaining) so the caller always gets the full response.
+ */
+async function transmit(reader: any, protocol: number, cmd: Buffer): Promise<Buffer> {
+  let response = await transmitRaw(reader, protocol, cmd);
+
+  // Handle SW 61XX: "XX bytes available — use GET RESPONSE to fetch"
+  while (response.length >= 2) {
+    const sw1 = response[response.length - 2];
+    const sw2 = response[response.length - 1];
+
+    if (sw1 !== 0x61) break;
+
+    const getResponseCmd = Buffer.from([0x00, 0xC0, 0x00, 0x00, sw2]);
+    const dataBeforeSW = response.subarray(0, response.length - 2);
+    const nextResponse = await transmitRaw(reader, protocol, getResponseCmd, sw2 + 2);
+
+    // Concatenate any data from the previous response with the GET RESPONSE data
+    if (dataBeforeSW.length > 0) {
+      response = Buffer.concat([dataBeforeSW, nextResponse]);
+    } else {
+      response = nextResponse;
+    }
+  }
+
+  return response;
 }
 
 /** Get the 2-byte status word from a response */

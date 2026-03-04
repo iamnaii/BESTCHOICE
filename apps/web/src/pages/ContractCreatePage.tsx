@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { compressImageForOcr } from '@/lib/compressImage';
+import { checkCardReaderStatus, readSmartCard } from '@/lib/cardReader';
 import PageHeader from '@/components/ui/PageHeader';
 import toast from 'react-hot-toast';
 
@@ -108,6 +109,8 @@ export default function ContractCreatePage() {
   const ocrFileRef = useRef<HTMLInputElement>(null);
   const [ocrResult, setOcrResult] = useState<OcrResult | null>(null);
   const [ocrLoading, setOcrLoading] = useState(false);
+  const [cardReaderAvailable, setCardReaderAvailable] = useState(false);
+  const [cardReaderLoading, setCardReaderLoading] = useState(false);
   const [showOcrPanel, setShowOcrPanel] = useState(false);
   const [showCreateCustomer, setShowCreateCustomer] = useState(false);
   const [newCustomerPhone, setNewCustomerPhone] = useState('');
@@ -278,6 +281,67 @@ export default function ContractCreatePage() {
       return raw;
     }
     return undefined;
+  };
+
+  // Check card reader availability
+  useEffect(() => {
+    checkCardReaderStatus().then(status => {
+      setCardReaderAvailable(status !== null && status.status !== 'no_pcsc');
+    });
+  }, []);
+
+  // Smart Card: read ID card (Step 2)
+  const handleSmartCardRead = async () => {
+    setCardReaderLoading(true);
+    setOcrResult(null);
+    setShowOcrPanel(false);
+    setShowCreateCustomer(false);
+    setSelectedCustomer(null);
+
+    try {
+      const card = await readSmartCard();
+
+      // Map Smart Card data to OcrResult format
+      const data: OcrResult = {
+        nationalId: card.nationalId,
+        nationalIdValid: true, // Smart Card data is always accurate
+        prefix: card.prefix,
+        firstName: card.firstName,
+        lastName: card.lastName,
+        fullName: `${card.firstName} ${card.lastName}`.trim(),
+        birthDate: card.birthDate,
+        address: card.address,
+        addressStructured: { ...card.addressStructured, postalCode: '' },
+        issueDate: card.issueDate,
+        expiryDate: card.expiryDate,
+        confidence: 1.0,
+      };
+
+      setOcrResult(data);
+      setShowOcrPanel(true);
+      toast.success('อ่านบัตรสำเร็จ (Smart Card — ข้อมูลแม่นยำ 100%)');
+
+      // Auto-search for customer
+      if (card.nationalId && /^\d{13}$/.test(card.nationalId)) {
+        try {
+          const searchRes = await api.get(`/customers?search=${card.nationalId}`);
+          const found = (searchRes.data.data || []) as Customer[];
+          if (found.length > 0) {
+            setSelectedCustomer(found[0]);
+            toast.success(`พบลูกค้าในระบบ: ${found[0].name}`);
+          } else {
+            setShowCreateCustomer(true);
+            toast.success('ไม่พบลูกค้าในระบบ สามารถสร้างลูกค้าใหม่ได้');
+          }
+        } catch {
+          setShowCreateCustomer(true);
+        }
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'ไม่สามารถอ่านบัตรได้');
+    } finally {
+      setCardReaderLoading(false);
+    }
   };
 
   // OCR: scan ID card (Step 2)
@@ -607,6 +671,31 @@ export default function ContractCreatePage() {
       {/* Step 2: Select Customer */}
       {step === 1 && (
         <div>
+          {/* Smart Card Reader Section */}
+          {cardReaderAvailable && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-green-800">อ่านบัตรประชาชน (Smart Card)</h3>
+                  <p className="text-xs text-green-600 mt-0.5">เสียบบัตรเข้าเครื่องอ่าน — ข้อมูลแม่นยำ 100%</p>
+                </div>
+                <button
+                  onClick={handleSmartCardRead}
+                  disabled={cardReaderLoading || ocrLoading}
+                  className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                >
+                  {cardReaderLoading ? 'กำลังอ่าน...' : 'อ่านบัตร'}
+                </button>
+              </div>
+              {cardReaderLoading && (
+                <div className="flex items-center gap-3 pt-2">
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-green-600" />
+                  <div className="text-sm text-green-700">กำลังอ่านข้อมูลจาก Smart Card...</div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* OCR Scan Section */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4 space-y-3">
             <div className="flex items-center justify-between">
@@ -616,7 +705,7 @@ export default function ContractCreatePage() {
               </div>
               <button
                 onClick={() => ocrFileRef.current?.click()}
-                disabled={ocrLoading}
+                disabled={ocrLoading || cardReaderLoading}
                 className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
               >
                 {ocrLoading ? 'กำลังสแกน...' : 'สแกนบัตร'}

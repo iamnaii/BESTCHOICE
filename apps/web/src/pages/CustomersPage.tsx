@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api, { getErrorMessage } from '@/lib/api';
 import { compressImageForOcr } from '@/lib/compressImage';
+import { checkCardReaderStatus, readSmartCard, type SmartCardData } from '@/lib/cardReader';
 import { useDebounce } from '@/hooks/useDebounce';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
@@ -109,7 +110,20 @@ export default function CustomersPage() {
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrType, setOcrType] = useState<'id-card' | 'driving-license'>('id-card');
 
+  // Smart Card reader state
+  const [cardReaderAvailable, setCardReaderAvailable] = useState(false);
+  const [cardReaderLoading, setCardReaderLoading] = useState(false);
+
   useEffect(() => { setPage(1); }, [debouncedSearch]);
+
+  // Check if card reader service is available when modal opens
+  useEffect(() => {
+    if (isModalOpen) {
+      checkCardReaderStatus().then(status => {
+        setCardReaderAvailable(status !== null && status.status !== 'no_pcsc');
+      });
+    }
+  }, [isModalOpen]);
 
   // Sync current address when "same as ID card" is checked
   useEffect(() => {
@@ -297,6 +311,44 @@ export default function CustomersPage() {
     }
   };
 
+  const handleSmartCardRead = async () => {
+    setCardReaderLoading(true);
+    try {
+      const data: SmartCardData = await readSmartCard();
+
+      // Auto-fill form fields from Smart Card data
+      const updates: Partial<typeof emptyForm> = {};
+      if (data.nationalId) updates.nationalId = data.nationalId;
+      if (data.prefix) updates.prefix = data.prefix;
+      if (data.firstName) updates.firstName = data.firstName;
+      if (data.lastName) updates.lastName = data.lastName;
+      if (data.birthDate) updates.birthDate = data.birthDate;
+      setForm(prev => ({ ...prev, ...updates }));
+
+      // Fill address from Smart Card
+      if (data.addressStructured) {
+        const a = data.addressStructured;
+        setAddressIdCard({
+          houseNo: a.houseNo || '',
+          moo: a.moo || '',
+          village: a.village || '',
+          soi: a.soi || '',
+          road: a.road || '',
+          subdistrict: a.subdistrict || '',
+          district: a.district || '',
+          province: a.province || '',
+          postalCode: '',
+        });
+      }
+
+      toast.success('อ่านบัตรประชาชนสำเร็จ (Smart Card — ข้อมูลแม่นยำ 100%)');
+    } catch (err: any) {
+      toast.error(err.message || 'ไม่สามารถอ่านบัตรได้');
+    } finally {
+      setCardReaderLoading(false);
+    }
+  };
+
   const updateRef = (index: number, field: keyof ReferenceData, value: string) => {
     setReferences(prev => prev.map((r, i) => i === index ? { ...r, [field]: value } : r));
   };
@@ -367,6 +419,39 @@ export default function CustomersPage() {
         <form onSubmit={(e) => { e.preventDefault(); createMutation.mutate(); }} className="space-y-5 max-h-[75vh] overflow-y-auto pr-1">
 
           {/* ===== OCR สแกนเอกสาร ===== */}
+          {/* ===== Smart Card Reader ===== */}
+          {cardReaderAvailable && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-semibold text-green-800">อ่านบัตรประชาชน (Smart Card)</h3>
+                <span className="inline-flex items-center gap-1 text-xs text-green-600">
+                  <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                  เครื่องอ่านบัตรพร้อม
+                </span>
+              </div>
+              <p className="text-xs text-green-600 mb-3">เสียบบัตรประชาชนเข้าเครื่องอ่านบัตร แล้วกดอ่าน — ข้อมูลแม่นยำ 100%</p>
+              <button
+                type="button"
+                onClick={handleSmartCardRead}
+                disabled={cardReaderLoading || ocrLoading}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+              >
+                {cardReaderLoading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                    กำลังอ่านบัตร...
+                  </>
+                ) : (
+                  <>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" /></svg>
+                    อ่านบัตร Smart Card
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* ===== OCR Scan ===== */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-semibold text-blue-800">สแกนเอกสาร (OCR)</h3>

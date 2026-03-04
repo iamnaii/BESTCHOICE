@@ -69,6 +69,7 @@ interface OcrAddressStructured {
 
 interface OcrResult {
   nationalId: string | null;
+  nationalIdValid: boolean;
   prefix: string | null;
   firstName: string | null;
   lastName: string | null;
@@ -315,8 +316,8 @@ export default function ContractCreatePage() {
         toast(`อ่านบัตรสำเร็จ แต่ความมั่นใจค่อนข้างต่ำ (${pct}%) กรุณาตรวจสอบข้อมูล`, { icon: '⚠️' });
       }
 
-      // Validate nationalId format
-      if (data.nationalId && !/^\d{13}$/.test(data.nationalId)) {
+      // Validate nationalId checksum (from backend)
+      if (data.nationalId && !data.nationalIdValid) {
         toast.error('เลขบัตรประชาชนที่อ่านได้ไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง');
       }
 
@@ -432,10 +433,9 @@ export default function ContractCreatePage() {
   // When selecting existing customer from OCR results, also auto-add ID card to pending docs
   const selectCustomerFromOcr = () => {
     if (ocrScannedFile) {
-      const preview = URL.createObjectURL(ocrScannedFile);
       setPendingDocs((prev) => {
-        // Avoid duplicate
         if (prev.some((d) => d.type === 'ID_CARD_COPY' && d.file.name === ocrScannedFile.name)) return prev;
+        const preview = URL.createObjectURL(ocrScannedFile);
         return [...prev, { id: crypto.randomUUID(), type: 'ID_CARD_COPY', file: ocrScannedFile, preview }];
       });
     }

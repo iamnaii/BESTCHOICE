@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { resolve } from 'path';
 import { AppController } from './app.controller';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -42,7 +43,11 @@ import { SecurityMiddleware } from './modules/audit/security.middleware';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['.env', '../../.env'],
+      envFilePath: [
+        resolve(__dirname, '..', '..', '..', '..', '.env'),  // monorepo root
+        resolve(__dirname, '..', '..', '.env'),               // apps/api/.env
+        '.env',
+      ],
     }),
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([

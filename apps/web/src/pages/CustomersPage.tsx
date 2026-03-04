@@ -24,6 +24,7 @@ interface OcrAddressStructured {
 
 interface OcrResult {
   nationalId: string | null;
+  nationalIdValid: boolean;
   prefix: string | null;
   firstName: string | null;
   lastName: string | null;
@@ -202,7 +203,8 @@ export default function CustomersPage() {
       if (data.nationalId) {
         if (/^\d{13}$/.test(data.nationalId)) {
           updates.nationalId = data.nationalId;
-        } else {
+        }
+        if (!data.nationalIdValid) {
           toast.error('เลขบัตรประชาชนที่อ่านได้ไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง');
         }
       }

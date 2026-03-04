@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { OcrService } from './ocr.service';
 
 // Mock Anthropic SDK
@@ -80,6 +80,17 @@ describe('OcrService', () => {
       expect(result.issueDate).toBe('2024-11-29');
       expect(result.expiryDate).toBe('2033-10-29');
       expect(result.confidence).toBe(0.92);
+      expect(result.nationalIdValid).toBe(true);
+    });
+
+    it('should return nationalIdValid false for invalid checksum', async () => {
+      const badId = { ...sampleOcrResponse, nationalId: '1234567890123' };
+      mockCreate.mockResolvedValue(makeMockResponse(badId));
+
+      const result = await service.extractIdCard(validBase64);
+
+      expect(result.nationalId).toBe('1234567890123');
+      expect(result.nationalIdValid).toBe(false);
     });
 
     it('should parse structured address correctly', async () => {
@@ -258,12 +269,18 @@ describe('OcrService', () => {
       );
     });
 
-    it('should throw when Anthropic returns no text content', async () => {
+    it('should throw InternalServerError when Anthropic returns no text content', async () => {
       mockCreate.mockResolvedValue({ content: [] });
 
       await expect(service.extractIdCard(validBase64)).rejects.toThrow(
-        BadRequestException,
+        InternalServerErrorException,
       );
+    });
+
+    it('should reject invalid base64 characters', async () => {
+      await expect(
+        service.extractIdCard('data:image/jpeg;base64,<script>alert(1)</script>'),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 

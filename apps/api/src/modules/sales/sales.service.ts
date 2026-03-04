@@ -229,14 +229,15 @@ export class SalesService {
         status: 'PENDING';
       }> = [];
       for (let i = 1; i <= dto.totalMonths!; i++) {
-        const dueMonth = now.getMonth() + i;
-        const dueYear = now.getFullYear() + Math.floor(dueMonth / 12);
-        const adjustedMonth = dueMonth % 12;
+        const dueDate = new Date(now.getFullYear(), now.getMonth() + i, dueDay);
+        // Last installment adjusts for Math.ceil rounding to avoid overcharging
+        const isLast = i === dto.totalMonths!;
+        const amount = isLast ? financedAmount - monthlyPayment * (dto.totalMonths! - 1) : monthlyPayment;
         payments.push({
           contractId: contract.id,
           installmentNo: i,
-          dueDate: new Date(dueYear, adjustedMonth, dueDay),
-          amountDue: monthlyPayment,
+          dueDate,
+          amountDue: amount,
           status: 'PENDING' as const,
         });
       }

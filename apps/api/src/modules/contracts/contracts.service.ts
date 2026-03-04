@@ -487,6 +487,7 @@ export class ContractsService {
             paidDate: new Date(),
             amountPaid: Number(payment.amountPaid) + payAmount,
             paymentMethod: paymentMethod as any,
+            recordedById: userId,
           },
         });
       }

@@ -322,4 +322,88 @@ describe('OcrService', () => {
       expect(result.nationalId).toBe('3430600120504');
     });
   });
+
+  // Test with Bangkok-style ID card (แขวง/เขต address format)
+  describe('extractIdCard — Bangkok address card', () => {
+    const validBase64 = 'data:image/jpeg;base64,/9j/4AAQSkZJRg==';
+
+    // Simulated OCR response from a Bangkok-area ID card
+    const bangkokCardResponse = {
+      nationalId: '1100703971635',
+      prefix: 'นาย',
+      firstName: 'ชิณวัตร',
+      lastName: 'ลีนิวัตร',
+      birthDate: '1999-07-15',
+      address: '153 ซ.เพชรบุรี 5 ถ.เพชรบุรี แขวงทุ่งพญาไท เขตราชเทวี กรุงเทพมหานคร',
+      addressStructured: {
+        houseNo: '153',
+        moo: '',
+        village: '',
+        soi: 'เพชรบุรี 5',
+        road: 'เพชรบุรี',
+        subdistrict: 'ทุ่งพญาไท',
+        district: 'ราชเทวี',
+        province: 'กรุงเทพมหานคร',
+        postalCode: '10400',
+      },
+      issueDate: '2022-04-22',
+      expiryDate: '2029-07-14',
+      confidence: 0.88,
+    };
+
+    it('should extract Bangkok-style card data successfully', async () => {
+      mockCreate.mockResolvedValue({
+        content: [{ type: 'text', text: JSON.stringify(bangkokCardResponse) }],
+      });
+
+      const result = await service.extractIdCard(validBase64);
+
+      expect(result.nationalId).toBe('1100703971635');
+      expect(result.nationalIdValid).toBe(true);
+      expect(result.prefix).toBe('นาย');
+      expect(result.firstName).toBe('ชิณวัตร');
+      expect(result.lastName).toBe('ลีนิวัตร');
+      expect(result.fullName).toBe('ชิณวัตร ลีนิวัตร');
+      expect(result.birthDate).toBe('1999-07-15');
+      expect(result.issueDate).toBe('2022-04-22');
+      expect(result.expiryDate).toBe('2029-07-14');
+      expect(result.confidence).toBe(0.88);
+    });
+
+    it('should parse Bangkok structured address (แขวง/เขต) correctly', async () => {
+      mockCreate.mockResolvedValue({
+        content: [{ type: 'text', text: JSON.stringify(bangkokCardResponse) }],
+      });
+
+      const result = await service.extractIdCard(validBase64);
+
+      expect(result.addressStructured).not.toBeNull();
+      expect(result.addressStructured!.houseNo).toBe('153');
+      expect(result.addressStructured!.moo).toBe('');
+      expect(result.addressStructured!.soi).toBe('เพชรบุรี 5');
+      expect(result.addressStructured!.road).toBe('เพชรบุรี');
+      expect(result.addressStructured!.subdistrict).toBe('ทุ่งพญาไท');
+      expect(result.addressStructured!.district).toBe('ราชเทวี');
+      expect(result.addressStructured!.province).toBe('กรุงเทพมหานคร');
+      expect(result.addressStructured!.postalCode).toBe('10400');
+    });
+
+    it('should handle code fences + trailing commas + dashed nationalId', async () => {
+      const messyJson = '```json\n' + JSON.stringify({
+        ...bangkokCardResponse,
+        nationalId: '1-1007-03971-63-5',
+      }).replace(/"confidence":0.88}/, '"confidence":0.88,}') + '\n```';
+
+      mockCreate.mockResolvedValue({
+        content: [{ type: 'text', text: messyJson }],
+      });
+
+      const result = await service.extractIdCard(validBase64);
+
+      expect(result.nationalId).toBe('1100703971635');
+      expect(result.nationalIdValid).toBe(true);
+      expect(result.firstName).toBe('ชิณวัตร');
+      expect(result.addressStructured!.district).toBe('ราชเทวี');
+    });
+  });
 });

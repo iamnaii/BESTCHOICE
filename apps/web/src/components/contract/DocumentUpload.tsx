@@ -129,7 +129,11 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
         toast.success(`อ่านบัตรประชาชนสำเร็จ (ความมั่นใจ ${pct}%)`);
       }
     } catch (err: any) {
-      toast.error(err.response?.data?.message || 'ไม่สามารถอ่านบัตรประชาชนได้');
+      if (err.code === 'ECONNABORTED' || !err.response) {
+        toast.error('OCR ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาลองใหม่อีกครั้ง');
+      } else {
+        toast.error(err.response?.data?.message || 'ไม่สามารถอ่านบัตรประชาชนได้');
+      }
     } finally {
       setOcrLoading(false);
     }

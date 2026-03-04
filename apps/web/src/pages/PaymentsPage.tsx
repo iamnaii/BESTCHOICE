@@ -300,6 +300,7 @@ export default function PaymentsPage() {
               <select value={payForm.paymentMethod} onChange={(e) => setPayForm({ ...payForm, paymentMethod: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
                 <option value="CASH">เงินสด</option>
                 <option value="BANK_TRANSFER">โอนเงิน</option>
+                <option value="QR_EWALLET">QR/E-Wallet</option>
               </select>
             </div>
 

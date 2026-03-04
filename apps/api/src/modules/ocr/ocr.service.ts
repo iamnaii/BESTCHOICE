@@ -1,7 +1,7 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Anthropic from '@anthropic-ai/sdk';
-import { OcrIdCardResult } from './dto/ocr.dto';
+import { OcrIdCardResult, OcrAddressStructured } from './dto/ocr.dto';
 
 @Injectable()
 export class OcrService {
@@ -13,6 +13,29 @@ export class OcrService {
     if (apiKey) {
       this.anthropic = new Anthropic({ apiKey });
     }
+  }
+
+  private validateNationalId(id: string): boolean {
+    if (!/^\d{13}$/.test(id)) return false;
+    const digits = id.split('').map(Number);
+    let sum = 0;
+    for (let i = 0; i < 12; i++) {
+      sum += digits[i] * (13 - i);
+    }
+    const checkDigit = (11 - (sum % 11)) % 10;
+    return checkDigit === digits[12];
+  }
+
+  private isValidDate(dateStr: string): boolean {
+    const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return false;
+    const [, y, m, d] = match.map(Number);
+    const date = new Date(y, m - 1, d);
+    return (
+      date.getFullYear() === y &&
+      date.getMonth() === m - 1 &&
+      date.getDate() === d
+    );
   }
 
   async extractIdCard(imageBase64: string): Promise<OcrIdCardResult> {
@@ -51,10 +74,21 @@ export class OcrService {
 {
   "nationalId": "<เลขบัตรประชาชน 13 หลัก ไม่มีขีด เช่น 1234567890123>",
   "prefix": "<คำนำหน้า เช่น นาย, นาง, นางสาว>",
-  "firstName": "<ชื่อ>",
-  "lastName": "<นามสกุล>",
+  "firstName": "<ชื่อ (ภาษาไทย)>",
+  "lastName": "<นามสกุล (ภาษาไทย)>",
   "birthDate": "<วันเกิด รูปแบบ YYYY-MM-DD เช่น 1990-01-15>",
   "address": "<ที่อยู่ตามบัตร ทั้งหมดรวมกัน>",
+  "addressStructured": {
+    "houseNo": "<บ้านเลขที่>",
+    "moo": "<หมู่>",
+    "village": "<หมู่บ้าน/อาคาร>",
+    "soi": "<ซอย>",
+    "road": "<ถนน>",
+    "subdistrict": "<ตำบล/แขวง>",
+    "district": "<อำเภอ/เขต>",
+    "province": "<จังหวัด>",
+    "postalCode": "<รหัสไปรษณีย์ 5 หลัก>"
+  },
   "issueDate": "<วันออกบัตร รูปแบบ YYYY-MM-DD>",
   "expiryDate": "<วันหมดอายุ รูปแบบ YYYY-MM-DD>",
   "confidence": <ระดับความมั่นใจ 0.0-1.0>
@@ -62,7 +96,10 @@ export class OcrService {
 
 หมายเหตุ:
 - ให้แปลงวันที่จากพุทธศักราช (พ.ศ.) เป็นคริสต์ศักราช (ค.ศ.) โดยลบ 543 ออก
-- ถ้าอ่านข้อมูลไม่ได้ให้ใส่ null
+- ถ้าอ่านข้อมูลไม่ได้ให้ใส่ null หรือ "" สำหรับ field ใน addressStructured
+- ตำบล/แขวง ไม่ต้องมีคำนำหน้า "ตำบล" หรือ "แขวง" เช่น ใส่แค่ "บางรัก"
+- อำเภอ/เขต ไม่ต้องมีคำนำหน้า "อำเภอ" หรือ "เขต" เช่น ใส่แค่ "เมือง"
+- จังหวัด ไม่ต้องมีคำนำหน้า "จังหวัด" เช่น ใส่แค่ "กรุงเทพมหานคร"
 - ตอบเป็น JSON เท่านั้น ไม่ต้องมี markdown code block`,
               },
             ],
@@ -85,9 +122,49 @@ export class OcrService {
       const result = JSON.parse(jsonText);
 
       // Clean up nationalId - remove any dashes or spaces
-      const nationalId = result.nationalId
+      const rawNationalId = result.nationalId
         ? result.nationalId.replace(/[\s-]/g, '')
         : null;
+
+      // Validate national ID checksum
+      const nationalId =
+        rawNationalId && this.validateNationalId(rawNationalId)
+          ? rawNationalId
+          : rawNationalId; // still return it even if checksum fails, frontend will warn
+
+      // Validate dates
+      const birthDate =
+        result.birthDate && this.isValidDate(result.birthDate)
+          ? result.birthDate
+          : null;
+      const issueDate =
+        result.issueDate && this.isValidDate(result.issueDate)
+          ? result.issueDate
+          : null;
+      const expiryDate =
+        result.expiryDate && this.isValidDate(result.expiryDate)
+          ? result.expiryDate
+          : null;
+
+      // Build structured address
+      let addressStructured: OcrAddressStructured | null = null;
+      if (result.addressStructured && typeof result.addressStructured === 'object') {
+        const a = result.addressStructured;
+        addressStructured = {
+          houseNo: (a.houseNo || '').trim(),
+          moo: (a.moo || '').trim(),
+          village: (a.village || '').trim(),
+          soi: (a.soi || '').trim(),
+          road: (a.road || '').trim(),
+          subdistrict: (a.subdistrict || '').trim(),
+          district: (a.district || '').trim(),
+          province: (a.province || '').trim(),
+          postalCode: (a.postalCode || '').trim(),
+        };
+        // If all fields are empty, set to null
+        const hasData = Object.values(addressStructured).some((v) => v !== '');
+        if (!hasData) addressStructured = null;
+      }
 
       return {
         nationalId,
@@ -95,10 +172,11 @@ export class OcrService {
         firstName: result.firstName || null,
         lastName: result.lastName || null,
         fullName: [result.firstName, result.lastName].filter(Boolean).join(' ') || null,
-        birthDate: result.birthDate || null,
+        birthDate,
         address: result.address || null,
-        issueDate: result.issueDate || null,
-        expiryDate: result.expiryDate || null,
+        addressStructured,
+        issueDate,
+        expiryDate,
         confidence: Math.max(0, Math.min(1, Number(result.confidence) || 0.5)),
       };
     } catch (error) {

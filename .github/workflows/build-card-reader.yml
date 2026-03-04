@@ -89,6 +89,8 @@ jobs:
         shell: pwsh
         run: |
           Compress-Archive -Path BestchoiceCardReader -DestinationPath "BestchoiceCardReader-v${{ steps.version.outputs.version }}-win-x64.zip"
+          # Also create a fixed-name zip for direct download link
+          Copy-Item "BestchoiceCardReader-v${{ steps.version.outputs.version }}-win-x64.zip" "BestchoiceCardReader.zip"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -113,4 +115,6 @@ jobs:
             ### ต้องมี
             - Windows 10 ขึ้นไป
             - เครื่องอ่านบัตร USB Smart Card Reader
-          files: BestchoiceCardReader-v*.zip
+          files: |
+            BestchoiceCardReader-v*.zip
+            BestchoiceCardReader.zip

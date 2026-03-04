@@ -48,7 +48,7 @@ const configGroups = [
   },
 ];
 
-const CARD_READER_DOWNLOAD_URL = 'https://github.com/iamnaii/BESTCHOICE/releases/latest';
+const CARD_READER_DOWNLOAD_URL = 'https://github.com/iamnaii/BESTCHOICE/releases/latest/download/BestchoiceCardReader.zip';
 
 function CardReaderSetup() {
   const [status, setStatus] = useState<CardReaderStatus | null | 'checking'>('checking');

@@ -9,7 +9,9 @@ export class OcrService {
   private anthropic: Anthropic | null = null;
 
   constructor(private configService: ConfigService) {
-    const apiKey = this.configService.get<string>('ANTHROPIC_API_KEY');
+    const apiKey =
+      this.configService.get<string>('ANTHROPIC_API_KEY') ||
+      process.env.ANTHROPIC_API_KEY;
     if (apiKey) {
       this.anthropic = new Anthropic({ apiKey });
       this.logger.log('OCR service initialized with Anthropic API key');

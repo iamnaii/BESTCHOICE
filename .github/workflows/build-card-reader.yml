@@ -46,21 +46,13 @@ jobs:
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Install card-reader dependencies
+      - name: Install dependencies
         working-directory: apps/card-reader
-        run: npm install --production
+        run: npm install
 
-      - name: Install dev dependencies for build
+      - name: Bundle with esbuild
         working-directory: apps/card-reader
-        run: npm install typescript@5
-
-      - name: Build TypeScript
-        working-directory: apps/card-reader
-        run: npx tsc
-
-      - name: Remove dev dependencies
-        working-directory: apps/card-reader
-        run: npm prune --production
+        run: npm run bundle
 
       - name: Download portable Node.js
         shell: pwsh
@@ -81,11 +73,9 @@ jobs:
           # Copy portable Node.js
           Copy-Item -Recurse apps/card-reader/bundle/node $dist/node
 
-          # Copy built app
-          New-Item -ItemType Directory -Force -Path $dist/app
-          Copy-Item -Recurse apps/card-reader/dist $dist/app/dist
-          Copy-Item -Recurse apps/card-reader/node_modules $dist/app/node_modules
-          Copy-Item apps/card-reader/package.json $dist/app/package.json
+          # Copy bundled app (single file, no node_modules needed)
+          New-Item -ItemType Directory -Force -Path $dist/app/dist
+          Copy-Item apps/card-reader/dist/index.js $dist/app/dist/index.js
 
           # Copy scripts
           Copy-Item apps/card-reader/scripts/BestchoiceCardReader.bat $dist/

@@ -33,7 +33,6 @@ export class ReportsService {
 
     for (const p of overduePayments) {
       const days = Math.floor((now.getTime() - new Date(p.dueDate).getTime()) / (1000 * 60 * 60 * 24));
-      const outstanding = Number(p.amountDue) - Number(p.amountPaid);
       if (days <= 30) buckets['1-30'].push(p);
       else if (days <= 60) buckets['31-60'].push(p);
       else if (days <= 90) buckets['61-90'].push(p);

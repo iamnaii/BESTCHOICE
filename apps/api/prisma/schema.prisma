@@ -456,6 +456,7 @@ model POItem {
   purchaseOrder  PurchaseOrder       @relation(fields: [poId], references: [id])
   receivingItems GoodsReceivingItem[]
 
+  @@index([poId])
   @@map("po_items")
 }
 
@@ -892,6 +893,7 @@ model Sale {
   @@index([createdAt])
   @@index([customerId])
   @@index([salespersonId])
+  @@index([productId])
   @@map("sales")
 }
 

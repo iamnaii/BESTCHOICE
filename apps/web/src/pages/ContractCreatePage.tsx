@@ -15,7 +15,7 @@ interface Product {
   status: string;
   branchId: string;
   branch: { id: string; name: string };
-  prices: { id: string; planType: string; price: string; isDefault: boolean }[];
+  prices: { id: string; label: string; amount: string; isDefault: boolean }[];
 }
 
 interface Customer {
@@ -218,8 +218,8 @@ export default function ContractCreatePage() {
   // Calculate installment
   const getSellingPrice = () => {
     if (!selectedProduct) return 0;
-    const price = selectedProduct.prices.find((p) => p.planType === planType) || selectedProduct.prices.find((p) => p.isDefault);
-    return price ? parseFloat(price.price) : 0;
+    const price = selectedProduct.prices.find((p) => p.label === planType) || selectedProduct.prices.find((p) => p.isDefault);
+    return price ? parseFloat(price.amount) : 0;
   };
 
   const sellingPrice = getSellingPrice();
@@ -588,8 +588,8 @@ export default function ContractCreatePage() {
                   <div className="text-right">
                     {p.prices.map((pr) => (
                       <div key={pr.id} className="text-xs">
-                        <span className="text-gray-500">{pr.planType}: </span>
-                        <span className="font-medium">{parseFloat(pr.price).toLocaleString()} ฿</span>
+                        <span className="text-gray-500">{pr.label}: </span>
+                        <span className="font-medium">{parseFloat(pr.amount).toLocaleString()} ฿</span>
                         {pr.isDefault && <span className="ml-1 text-primary-600">(หลัก)</span>}
                       </div>
                     ))}

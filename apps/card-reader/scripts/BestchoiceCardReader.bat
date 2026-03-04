@@ -41,9 +41,7 @@ echo  ║   กดปุ่ม Ctrl+C เพื่อหยุดโปรแก
 echo  ╚══════════════════════════════════════════════════╝
 echo.
 
-:: Change to app directory so Node.js can find node_modules/pcsclite
-cd /d "%ROOT%app"
-"%NODE%" "dist\index.js"
+"%NODE%" "%APP%"
 
 if %ERRORLEVEL% neq 0 (
     echo.

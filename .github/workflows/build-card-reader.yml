@@ -1,7 +1,10 @@
-name: Build Card Reader (.exe)
+name: Build Card Reader
 
 on:
   push:
+    branches: [main]
+    paths:
+      - 'apps/card-reader/**'
     tags:
       - 'card-reader-v*'
   workflow_dispatch:
@@ -31,10 +34,12 @@ jobs:
         id: version
         shell: bash
         run: |
-          if [[ "${{ github.event_name }}" == "push" ]]; then
+          if [[ "${{ github.ref }}" == refs/tags/card-reader-v* ]]; then
             VERSION="${GITHUB_REF#refs/tags/card-reader-v}"
-          else
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="$(date +%Y%m%d)-${GITHUB_SHA::7}"
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
@@ -89,7 +94,6 @@ jobs:
         shell: pwsh
         run: |
           Compress-Archive -Path BestchoiceCardReader -DestinationPath "BestchoiceCardReader-v${{ steps.version.outputs.version }}-win-x64.zip"
-          # Also create a fixed-name zip for direct download link
           Copy-Item "BestchoiceCardReader-v${{ steps.version.outputs.version }}-win-x64.zip" "BestchoiceCardReader.zip"
 
       - name: Upload artifact
@@ -98,13 +102,15 @@ jobs:
           name: BestchoiceCardReader-win-x64
           path: BestchoiceCardReader-v*.zip
 
-      - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Create or update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: "Card Reader ${{ steps.version.outputs.version }}"
+          tag_name: card-reader-latest
+          name: "BESTCHOICE Card Reader"
+          prerelease: false
+          make_latest: true
           body: |
-            ## BESTCHOICE Card Reader v${{ steps.version.outputs.version }}
+            ## BESTCHOICE Card Reader
 
             ### วิธีติดตั้ง
             1. โหลดไฟล์ `.zip` ด้านล่าง
@@ -115,6 +121,8 @@ jobs:
             ### ต้องมี
             - Windows 10 ขึ้นไป
             - เครื่องอ่านบัตร USB Smart Card Reader
+
+            Build: v${{ steps.version.outputs.version }}
           files: |
             BestchoiceCardReader-v*.zip
             BestchoiceCardReader.zip

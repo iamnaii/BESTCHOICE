@@ -126,11 +126,15 @@ function transmit(reader: any, protocol: number, cmd: Buffer): Promise<Buffer> {
   });
 }
 
+/** Get the 2-byte status word from a response */
+function getStatusWord(response: Buffer): number {
+  if (response.length < 2) return 0;
+  return (response[response.length - 2] << 8) | response[response.length - 1];
+}
+
 /** Check if response ends with SW 90 00 (success) */
 function isSuccess(response: Buffer): boolean {
-  if (response.length < 2) return false;
-  const sw = (response[response.length - 2] << 8) | response[response.length - 1];
-  return sw === SW_SUCCESS;
+  return getStatusWord(response) === SW_SUCCESS;
 }
 
 /** Extract data from response (strip trailing 2-byte status word) */
@@ -147,7 +151,8 @@ export async function readThaiIdCard(reader: any, protocol: number): Promise<Tha
   // 1. SELECT Thai ID Application
   const selectResp = await transmit(reader, protocol, CMD.SELECT);
   if (!isSuccess(selectResp)) {
-    throw new Error('ไม่สามารถเลือก Application บนบัตรได้ — อาจไม่ใช่บัตรประชาชนไทย');
+    const sw = getStatusWord(selectResp).toString(16).toUpperCase().padStart(4, '0');
+    throw new Error(`ไม่สามารถเลือก Application บนบัตรได้ (SW=${sw}) — อาจไม่ใช่บัตรประชาชนไทย`);
   }
 
   // 2. Read CID

@@ -46,9 +46,29 @@ jobs:
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Install dependencies (isolated, no hoisting)
+      - name: Install dependencies (standalone, outside workspace)
         working-directory: apps/card-reader
-        run: npm install --install-strategy=nested
+        run: |
+          npm install --install-strategy=nested --ignore-scripts
+          npm install pcsclite --install-strategy=nested
+        env:
+          npm_config_ignore_workspace_root_check: true
+
+      - name: Verify pcsclite native module
+        working-directory: apps/card-reader
+        shell: pwsh
+        run: |
+          $pcsclitePath = "node_modules/pcsclite"
+          if (-not (Test-Path $pcsclitePath)) {
+            Write-Error "FATAL: pcsclite not found in node_modules!"
+            exit 1
+          }
+          $nodeFile = Get-ChildItem -Recurse -Filter "*.node" -Path $pcsclitePath -ErrorAction SilentlyContinue
+          if (-not $nodeFile) {
+            Write-Error "FATAL: pcsclite .node binary not found - native compilation failed!"
+            exit 1
+          }
+          Write-Host "OK: Found pcsclite native binary: $($nodeFile.FullName)"
 
       - name: Bundle with esbuild
         working-directory: apps/card-reader
@@ -77,16 +97,24 @@ jobs:
           New-Item -ItemType Directory -Force -Path $dist/app/dist
           Copy-Item apps/card-reader/dist/index.js $dist/app/dist/index.js
 
-          # Copy only pcsclite and its required dependencies (bindings, file-uri-to-path)
+          # Copy pcsclite and its required dependencies
           New-Item -ItemType Directory -Force -Path $dist/app/node_modules
           $requiredModules = @("pcsclite", "bindings", "file-uri-to-path", "nan")
+          $searchPaths = @("apps/card-reader/node_modules", "node_modules")
           foreach ($mod in $requiredModules) {
-            $src = "apps/card-reader/node_modules/$mod"
-            if (Test-Path $src) {
-              Copy-Item -Recurse $src "$dist/app/node_modules/$mod"
-              Write-Host "Copied $mod"
-            } else {
-              Write-Host "WARNING: $mod not found at $src"
+            $copied = $false
+            foreach ($base in $searchPaths) {
+              $src = "$base/$mod"
+              if (Test-Path $src) {
+                Copy-Item -Recurse $src "$dist/app/node_modules/$mod"
+                Write-Host "Copied $mod from $src"
+                $copied = $true
+                break
+              }
+            }
+            if (-not $copied) {
+              Write-Error "FATAL: $mod not found in any node_modules!"
+              exit 1
             }
           }
 

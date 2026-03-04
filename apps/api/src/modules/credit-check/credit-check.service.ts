@@ -14,9 +14,11 @@ export class CreditCheckService {
     private prisma: PrismaService,
     private configService: ConfigService,
   ) {
-    const apiKey =
+    const apiKey = (
       this.configService.get<string>('ANTHROPIC_API_KEY') ||
-      process.env.ANTHROPIC_API_KEY;
+      process.env.ANTHROPIC_API_KEY ||
+      ''
+    ).trim();
     if (apiKey) {
       this.anthropic = new Anthropic({ apiKey });
     }

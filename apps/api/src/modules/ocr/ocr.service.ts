@@ -14,14 +14,19 @@ export class OcrService {
   private anthropic: Anthropic | null = null;
 
   constructor(private configService: ConfigService) {
-    const apiKey =
-      this.configService.get<string>('ANTHROPIC_API_KEY') ??
-      process.env.ANTHROPIC_API_KEY;
+    const apiKey = (
+      this.configService.get<string>('ANTHROPIC_API_KEY') ||
+      process.env.ANTHROPIC_API_KEY ||
+      ''
+    ).trim();
     if (apiKey) {
       this.anthropic = new Anthropic({ apiKey, timeout: 90_000 });
       this.logger.log('OCR service initialized with Anthropic API key');
     } else {
-      this.logger.warn('ANTHROPIC_API_KEY not configured — OCR features will be unavailable');
+      this.logger.warn(
+        'ANTHROPIC_API_KEY not configured — OCR features will be unavailable. ' +
+        'Set ANTHROPIC_API_KEY in .env file at project root or as environment variable.',
+      );
     }
   }
 

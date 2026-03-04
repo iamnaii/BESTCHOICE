@@ -44,8 +44,10 @@ import { SecurityMiddleware } from './modules/audit/security.middleware';
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: [
-        resolve(__dirname, '..', '..', '..', '..', '.env'),  // monorepo root
-        resolve(__dirname, '..', '..', '.env'),               // apps/api/.env
+        resolve(__dirname, '..', '..', '..', '..', '.env'),  // monorepo root (from dist/src/)
+        resolve(__dirname, '..', '..', '..', '.env'),         // monorepo root (from dist/)
+        resolve(__dirname, '..', '..', '.env'),               // apps/api/.env (from dist/src/)
+        resolve(__dirname, '..', '.env'),                     // apps/api/.env (from dist/)
         '.env',
       ],
     }),

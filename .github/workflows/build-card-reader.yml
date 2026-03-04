@@ -46,9 +46,9 @@ jobs:
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Install dependencies
+      - name: Install dependencies (isolated, no hoisting)
         working-directory: apps/card-reader
-        run: npm install
+        run: npm install --install-strategy=nested
 
       - name: Bundle with esbuild
         working-directory: apps/card-reader
@@ -77,8 +77,18 @@ jobs:
           New-Item -ItemType Directory -Force -Path $dist/app/dist
           Copy-Item apps/card-reader/dist/index.js $dist/app/dist/index.js
 
-          # Copy pcsclite native module (required for smart card reader access)
-          Copy-Item -Recurse apps/card-reader/node_modules $dist/app/node_modules
+          # Copy only pcsclite and its required dependencies (bindings, file-uri-to-path)
+          New-Item -ItemType Directory -Force -Path $dist/app/node_modules
+          $requiredModules = @("pcsclite", "bindings", "file-uri-to-path", "nan")
+          foreach ($mod in $requiredModules) {
+            $src = "apps/card-reader/node_modules/$mod"
+            if (Test-Path $src) {
+              Copy-Item -Recurse $src "$dist/app/node_modules/$mod"
+              Write-Host "Copied $mod"
+            } else {
+              Write-Host "WARNING: $mod not found at $src"
+            }
+          }
 
           # Copy scripts
           Copy-Item apps/card-reader/scripts/BestchoiceCardReader.bat $dist/

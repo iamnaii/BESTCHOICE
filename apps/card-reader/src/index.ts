@@ -113,6 +113,10 @@ function initPCSC(): void {
     readerStatus = 'no_pcsc';
     readerError = err.message || 'ไม่สามารถเริ่ม PC/SC service ได้';
     console.error('[Card Reader] Failed to initialize PC/SC:', err.message);
+    if (err.code === 'MODULE_NOT_FOUND') {
+      console.error('[Card Reader] Missing module — check that pcsclite and bindings are in node_modules');
+      console.error('[Card Reader] Module search paths:', module.paths);
+    }
   }
 }
 

@@ -17,6 +17,7 @@ let lastCardData: ThaiIdCardData | null = null;
 let readerStatus: 'no_pcsc' | 'no_reader' | 'waiting' | 'card_inserted' | 'reading' | 'error' = 'no_pcsc';
 let readerError: string = '';
 let readerName: string = '';
+let isReading = false; // Lock to prevent concurrent reads
 
 function initPCSC(): void {
   try {
@@ -42,6 +43,10 @@ function initPCSC(): void {
           console.log('[Card Reader] Card inserted');
 
           // Auto-read on card insert
+          if (isReading) {
+            console.log('[Card Reader] Skipping auto-read — already reading');
+            return;
+          }
           reader.connect({ share_mode: reader.SCARD_SHARE_SHARED }, async (err: Error | null, protocol: number) => {
             if (err) {
               readerStatus = 'error';
@@ -50,17 +55,21 @@ function initPCSC(): void {
               return;
             }
 
+            isReading = true;
             readerStatus = 'reading';
             console.log('[Card Reader] Reading card data...');
 
             try {
               lastCardData = await readThaiIdCard(reader, protocol);
               readerStatus = 'card_inserted';
+              readerError = '';
               console.log(`[Card Reader] Read success: ${lastCardData.nationalId} — ${lastCardData.firstName} ${lastCardData.lastName}`);
             } catch (readErr: any) {
               readerStatus = 'error';
               readerError = readErr.message || 'อ่านบัตรไม่สำเร็จ';
               console.error('[Card Reader] Read error:', readErr.message);
+            } finally {
+              isReading = false;
             }
 
             // Disconnect
@@ -180,7 +189,7 @@ app.post('/api/read-card', async (_req, res) => {
     });
   }
 
-  if (readerStatus === 'reading') {
+  if (isReading) {
     return res.status(409).json({
       error: 'Already reading',
       message: 'กำลังอ่านบัตรอยู่แล้ว กรุณารอสักครู่',
@@ -188,7 +197,14 @@ app.post('/api/read-card', async (_req, res) => {
   }
 
   const reader = connectedReaders.values().next().value;
+  if (!reader) {
+    return res.status(503).json({
+      error: 'Reader unavailable',
+      message: 'เครื่องอ่านบัตรไม่พร้อมใช้งาน',
+    });
+  }
 
+  isReading = true;
   try {
     const protocol = await new Promise<number>((resolve, reject) => {
       reader.connect({ share_mode: reader.SCARD_SHARE_SHARED }, (err: Error | null, proto: number) => {
@@ -200,8 +216,11 @@ app.post('/api/read-card', async (_req, res) => {
     readerStatus = 'reading';
     lastCardData = await readThaiIdCard(reader, protocol);
     readerStatus = 'card_inserted';
+    readerError = '';
 
-    reader.disconnect(reader.SCARD_LEAVE_CARD, () => {});
+    reader.disconnect(reader.SCARD_LEAVE_CARD, (disconnErr: Error | null) => {
+      if (disconnErr) console.error('[Card Reader] Disconnect error:', disconnErr.message);
+    });
 
     res.json({
       success: true,
@@ -214,6 +233,8 @@ app.post('/api/read-card', async (_req, res) => {
       error: 'Read failed',
       message: err.message || 'อ่านบัตรไม่สำเร็จ',
     });
+  } finally {
+    isReading = false;
   }
 });
 

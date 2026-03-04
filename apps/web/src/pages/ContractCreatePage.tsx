@@ -109,7 +109,6 @@ export default function ContractCreatePage() {
   const ocrFileRef = useRef<HTMLInputElement>(null);
   const [ocrResult, setOcrResult] = useState<OcrResult | null>(null);
   const [ocrLoading, setOcrLoading] = useState(false);
-  const [cardReaderAvailable, setCardReaderAvailable] = useState(false);
   const [cardReaderLoading, setCardReaderLoading] = useState(false);
   const [showOcrPanel, setShowOcrPanel] = useState(false);
   const [showCreateCustomer, setShowCreateCustomer] = useState(false);
@@ -283,13 +282,6 @@ export default function ContractCreatePage() {
     return undefined;
   };
 
-  // Check card reader availability
-  useEffect(() => {
-    checkCardReaderStatus().then(status => {
-      setCardReaderAvailable(status !== null && status.status !== 'no_pcsc');
-    });
-  }, []);
-
   // Smart Card: read ID card (Step 2)
   const handleSmartCardRead = async () => {
     setCardReaderLoading(true);
@@ -297,6 +289,24 @@ export default function ContractCreatePage() {
     setShowOcrPanel(false);
     setShowCreateCustomer(false);
     setSelectedCustomer(null);
+
+    // Check if card reader service is available
+    const status = await checkCardReaderStatus();
+    if (!status || status.status === 'no_pcsc') {
+      toast.error('ไม่พบเครื่องอ่านบัตร — กรุณาติดตั้ง BESTCHOICE Card Reader Service');
+      setCardReaderLoading(false);
+      return;
+    }
+    if (status.status === 'no_reader') {
+      toast.error('ไม่พบเครื่องอ่านบัตร — กรุณาเสียบเครื่องอ่านบัตร USB');
+      setCardReaderLoading(false);
+      return;
+    }
+    if (status.status === 'waiting') {
+      toast.error('กรุณาเสียบบัตรประชาชนเข้าเครื่องอ่านบัตร');
+      setCardReaderLoading(false);
+      return;
+    }
 
     try {
       const card = await readSmartCard();
@@ -672,29 +682,27 @@ export default function ContractCreatePage() {
       {step === 1 && (
         <div>
           {/* Smart Card Reader Section */}
-          {cardReaderAvailable && (
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-semibold text-green-800">อ่านบัตรประชาชน (Smart Card)</h3>
-                  <p className="text-xs text-green-600 mt-0.5">เสียบบัตรเข้าเครื่องอ่าน — ข้อมูลแม่นยำ 100%</p>
-                </div>
-                <button
-                  onClick={handleSmartCardRead}
-                  disabled={cardReaderLoading || ocrLoading}
-                  className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
-                >
-                  {cardReaderLoading ? 'กำลังอ่าน...' : 'อ่านบัตร'}
-                </button>
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-green-800">อ่านบัตรประชาชน (Smart Card)</h3>
+                <p className="text-xs text-green-600 mt-0.5">เสียบบัตรเข้าเครื่องอ่าน — ข้อมูลแม่นยำ 100%</p>
               </div>
-              {cardReaderLoading && (
-                <div className="flex items-center gap-3 pt-2">
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-green-600" />
-                  <div className="text-sm text-green-700">กำลังอ่านข้อมูลจาก Smart Card...</div>
-                </div>
-              )}
+              <button
+                onClick={handleSmartCardRead}
+                disabled={cardReaderLoading || ocrLoading}
+                className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+              >
+                {cardReaderLoading ? 'กำลังอ่าน...' : 'อ่านบัตร'}
+              </button>
             </div>
-          )}
+            {cardReaderLoading && (
+              <div className="flex items-center gap-3 pt-2">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-green-600" />
+                <div className="text-sm text-green-700">กำลังอ่านข้อมูลจาก Smart Card...</div>
+              </div>
+            )}
+          </div>
 
           {/* OCR Scan Section */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4 space-y-3">

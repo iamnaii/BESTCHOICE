@@ -269,9 +269,9 @@ export default function ContractCreatePage() {
       if (roadMatch) addr.road = roadMatch[1];
       const villageMatch = raw.match(/(?:หมู่บ้าน|ม\.บ\.|คอนโด)\s*([^\s,]+)/);
       if (villageMatch) addr.village = villageMatch[1];
-      const subdistrictMatch = raw.match(/(?:ตำบล|ต\.|แขวง)\s*([^\s,]+)/);
+      const subdistrictMatch = raw.match(/((?:ตำบล|ต\.|แขวง)\s*[^\s,]+)/);
       if (subdistrictMatch) addr.subdistrict = subdistrictMatch[1];
-      const districtMatch = raw.match(/(?:อำเภอ|อ\.|เขต)\s*([^\s,]+)/);
+      const districtMatch = raw.match(/((?:อำเภอ|อ\.|เขต)\s*[^\s,]+)/);
       if (districtMatch) addr.district = districtMatch[1];
       const provinceMatch = raw.match(/(?:จังหวัด|จ\.)\s*([^\s,\d]+)/);
       if (provinceMatch) addr.province = provinceMatch[1];

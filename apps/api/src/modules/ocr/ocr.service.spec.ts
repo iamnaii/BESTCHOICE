@@ -245,7 +245,7 @@ describe('OcrService', () => {
 
     // --- Address normalization tests ---
 
-    it('should strip ต./อ./จ. prefixes from address fields', async () => {
+    it('should strip moo/soi/road/province prefixes but keep subdistrict/district prefixes', async () => {
       const withPrefixes = {
         ...sampleOcrResponse,
         addressStructured: {
@@ -267,12 +267,12 @@ describe('OcrService', () => {
       expect(result.addressStructured!.moo).toBe('9');
       expect(result.addressStructured!.soi).toBe('สุขสวัสดิ์');
       expect(result.addressStructured!.road).toBe('พหลโยธิน');
-      expect(result.addressStructured!.subdistrict).toBe('ดงมะรุม');
-      expect(result.addressStructured!.district).toBe('โคกสำโรง');
+      expect(result.addressStructured!.subdistrict).toBe('ต.ดงมะรุม');
+      expect(result.addressStructured!.district).toBe('อ.โคกสำโรง');
       expect(result.addressStructured!.province).toBe('ลพบุรี');
     });
 
-    it('should strip ตำบล/อำเภอ/จังหวัด prefixes from address', async () => {
+    it('should keep ตำบล/อำเภอ prefixes and strip จังหวัด prefix from address', async () => {
       const withFullPrefixes = {
         ...sampleOcrResponse,
         addressStructured: {
@@ -291,8 +291,8 @@ describe('OcrService', () => {
 
       const result = await service.extractIdCard(validBase64);
 
-      expect(result.addressStructured!.subdistrict).toBe('ท่าทอง');
-      expect(result.addressStructured!.district).toBe('เมือง');
+      expect(result.addressStructured!.subdistrict).toBe('ตำบลท่าทอง');
+      expect(result.addressStructured!.district).toBe('อำเภอเมือง');
       expect(result.addressStructured!.province).toBe('สุราษฎร์ธานี');
     });
 

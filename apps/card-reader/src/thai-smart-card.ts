@@ -107,8 +107,10 @@ function parseAddress(raw: string): ThaiIdCardData['addressStructured'] & { full
     village: parts[2] || '',
     soi: (parts[3] || '').replace(/^(ซอย|ซ\.)\s*/g, ''),
     road: (parts[4] || '').replace(/^(ถนน|ถ\.)\s*/g, ''),
-    subdistrict: (parts[5] || '').replace(/^(ตำบล|แขวง|ต\.|ท\.)\s*/g, ''),
-    district: (parts[6] || '').replace(/^(อำเภอ|เขต|อ\.|กิ่งอำเภอ)\s*/g, ''),
+    // Keep prefixes (ตำบล/แขวง/อำเภอ/เขต) — dropdown values include them
+    subdistrict: parts[5] || '',
+    district: parts[6] || '',
+    // Strip จังหวัด prefix — dropdown values don't include it
     province: (parts[7] || '').replace(/^(จังหวัด|จ\.)\s*/g, ''),
   };
 

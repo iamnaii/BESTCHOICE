@@ -29,6 +29,25 @@ export class OcrService {
   private static readonly LOW_CONFIDENCE_THRESHOLD = 0.7;
   private static readonly MAX_RETRIES = 2;
 
+  private static readonly THAI_PROVINCES: readonly string[] = [
+    'กรุงเทพมหานคร', 'กระบี่', 'กาญจนบุรี', 'กาฬสินธุ์', 'กำแพงเพชร',
+    'ขอนแก่น', 'จันทบุรี', 'ฉะเชิงเทรา', 'ชลบุรี', 'ชัยนาท',
+    'ชัยภูมิ', 'ชุมพร', 'เชียงราย', 'เชียงใหม่', 'ตรัง',
+    'ตราด', 'ตาก', 'นครนายก', 'นครปฐม', 'นครพนม',
+    'นครราชสีมา', 'นครศรีธรรมราช', 'นครสวรรค์', 'นนทบุรี', 'นราธิวาส',
+    'น่าน', 'บึงกาฬ', 'บุรีรัมย์', 'ปทุมธานี', 'ประจวบคีรีขันธ์',
+    'ปราจีนบุรี', 'ปัตตานี', 'พระนครศรีอยุธยา', 'พะเยา', 'พังงา',
+    'พัทลุง', 'พิจิตร', 'พิษณุโลก', 'เพชรบุรี', 'เพชรบูรณ์',
+    'แพร่', 'ภูเก็ต', 'มหาสารคาม', 'มุกดาหาร', 'แม่ฮ่องสอน',
+    'ยโสธร', 'ยะลา', 'ร้อยเอ็ด', 'ระนอง', 'ระยอง',
+    'ราชบุรี', 'ลพบุรี', 'ลำปาง', 'ลำพูน', 'เลย',
+    'ศรีสะเกษ', 'สกลนคร', 'สงขลา', 'สตูล', 'สมุทรปราการ',
+    'สมุทรสงคราม', 'สมุทรสาคร', 'สระแก้ว', 'สระบุรี', 'สิงห์บุรี',
+    'สุโขทัย', 'สุพรรณบุรี', 'สุราษฎร์ธานี', 'สุรินทร์', 'หนองคาย',
+    'หนองบัวลำภู', 'อ่างทอง', 'อำนาจเจริญ', 'อุดรธานี', 'อุตรดิตถ์',
+    'อุทัยธานี', 'อุบลราชธานี',
+  ];
+
   constructor(private configService: ConfigService) {
     const apiKey = (
       this.configService.get<string>('ANTHROPIC_API_KEY') ||
@@ -102,19 +121,76 @@ export class OcrService {
     return JSON.parse(jsonText);
   }
 
+  private levenshteinDistance(a: string, b: string): number {
+    const m = a.length;
+    const n = b.length;
+    const dp: number[][] = Array.from({ length: m + 1 }, (_, i) =>
+      Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)),
+    );
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        dp[i][j] =
+          a[i - 1] === b[j - 1]
+            ? dp[i - 1][j - 1]
+            : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+      }
+    }
+    return dp[m][n];
+  }
+
+  private findClosestProvince(input: string): string {
+    // Strip common prefixes
+    const cleaned = input.replace(/^(จังหวัด|จ\.|จ\s)/g, '').trim();
+    if (!cleaned) return input;
+
+    // Exact match
+    if (OcrService.THAI_PROVINCES.includes(cleaned)) return cleaned;
+
+    // Fuzzy match
+    let bestMatch = cleaned;
+    let bestDistance = Infinity;
+    const maxDistance = Math.max(2, Math.floor(cleaned.length * 0.3));
+
+    for (const province of OcrService.THAI_PROVINCES) {
+      const distance = this.levenshteinDistance(cleaned, province);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestMatch = province;
+      }
+    }
+
+    if (bestDistance <= maxDistance) {
+      if (bestDistance > 0) {
+        this.logger.log(`Province corrected: "${cleaned}" → "${bestMatch}" (distance: ${bestDistance})`);
+      }
+      return bestMatch;
+    }
+
+    return cleaned;
+  }
+
+  private stripAddressPrefix(value: string, prefixes: RegExp): string {
+    return value.replace(prefixes, '').trim();
+  }
+
   private buildAddressStructured(raw: unknown): OcrAddressStructured | null {
     if (!raw || typeof raw !== 'object') return null;
     const a = raw as Record<string, string>;
+
+    const rawSubdistrict = (a.subdistrict || '').trim();
+    const rawDistrict = (a.district || '').trim();
+    const rawProvince = (a.province || '').trim();
+
     const structured: OcrAddressStructured = {
       houseNo: (a.houseNo || '').trim(),
-      moo: (a.moo || '').trim(),
+      moo: (a.moo || '').trim().replace(/^(หมู่ที่|หมู่|ม\.)\s*/g, ''),
       village: (a.village || '').trim(),
-      soi: (a.soi || '').trim(),
-      road: (a.road || '').trim(),
-      subdistrict: (a.subdistrict || '').trim(),
-      district: (a.district || '').trim(),
-      province: (a.province || '').trim(),
-      postalCode: (a.postalCode || '').trim(),
+      soi: (a.soi || '').trim().replace(/^(ซอย|ซ\.)\s*/g, ''),
+      road: (a.road || '').trim().replace(/^(ถนน|ถ\.)\s*/g, ''),
+      subdistrict: this.stripAddressPrefix(rawSubdistrict, /^(ตำบล|แขวง|ต\.)\s*/g),
+      district: this.stripAddressPrefix(rawDistrict, /^(อำเภอ|เขต|อ\.)\s*/g),
+      province: rawProvince ? this.findClosestProvince(rawProvince) : '',
+      postalCode: /^\d{5}$/.test((a.postalCode || '').trim()) ? a.postalCode.trim() : '',
     };
     const hasData = Object.values(structured).some((v) => v !== '');
     return hasData ? structured : null;
@@ -219,9 +295,18 @@ export class OcrService {
 คำแนะนำสำคัญ:
 - เลขบัตรประชาชน 13 หลักอยู่ด้านบนของบัตร อ่านทีละหลักอย่างระมัดระวัง
 - ชื่อ-นามสกุลอยู่ตรงกลางบัตร มีทั้งภาษาไทยและภาษาอังกฤษ ให้อ่านภาษาไทย
-- ที่อยู่อยู่ด้านล่าง อ่านจากซ้ายไปขวา บนลงล่าง
 - แปลงวันที่จาก พ.ศ. เป็น ค.ศ. โดยลบ 543
-- ตำบล/แขวง, อำเภอ/เขต, จังหวัด ไม่ต้องมีคำนำหน้า
+
+วิธีอ่านที่อยู่ (สำคัญมาก):
+- ที่อยู่อยู่ด้านล่างใต้ชื่อ พิมพ์ 2-3 บรรทัด ตัวเล็ก ต้องอ่านอย่างระมัดระวัง
+- อ่านจากซ้ายไปขวา บนลงล่าง ทุกบรรทัด
+- บ้านเลขที่ อาจมี / เช่น 11/2 หรือ 123/45
+- หมู่ (moo) มักมีคำว่า "หมู่ที่" หรือ "ม." นำหน้า → เก็บเฉพาะตัวเลข
+- ซอย/ถนน → เก็บเฉพาะชื่อ ไม่ต้องมีคำว่า ซ. ถ. นำหน้า
+- ตำบล/แขวง → ตัดคำนำหน้า ต. แขวง ออก เก็บเฉพาะชื่อ
+- อำเภอ/เขต → ตัดคำนำหน้า อ. เขต ออก เก็บเฉพาะชื่อ (ถ้าเป็น "อ.เมือง" ให้ใส่ "เมือง" + ชื่อจังหวัด เช่น "เมืองลพบุรี")
+- จังหวัด → ตัดคำนำหน้า จ. ออก เก็บเฉพาะชื่อจังหวัด (ต้องเป็น 1 ใน 77 จังหวัดของไทย)
+- รหัสไปรษณีย์ 5 หลัก มักอยู่ท้ายสุดของที่อยู่
 - ถ้าอ่านไม่ได้ให้ใส่ null`;
 
     const retryPrompt = `กรุณาอ่านบัตรประชาชนไทยนี้อีกครั้งอย่างละเอียดที่สุด:
@@ -229,7 +314,12 @@ export class OcrService {
 1. ดูเลขบัตรประชาชน 13 หลักที่ด้านบน — อ่านทีละตัวเลข ระวังเลขที่คล้ายกัน เช่น 1/7, 3/8, 5/6, 0/8
 2. ชื่อ-นามสกุล — ดูทั้งภาษาไทยและอังกฤษ ใช้ประกอบกันเพื่อความแม่นยำ
 3. วันเดือนปีเกิด — ระวังการแปลง พ.ศ. เป็น ค.ศ. (ลบ 543)
-4. ที่อยู่ — อ่านทุกบรรทัด รวมถึงเลขที่บ้าน หมู่ ซอย ถนน ตำบล อำเภอ จังหวัด
+4. ที่อยู่ (สำคัญมาก — ต้องอ่านทุกตัวอักษร):
+   - ซูมเข้าไปดูที่อยู่ด้านล่างใต้ชื่อ อ่านทีละบรรทัด
+   - บ้านเลขที่ หมู่ ซอย ถนน — อ่านตัวเลขทุกตัว
+   - ตำบล/แขวง อำเภอ/เขต จังหวัด — อ่านทุกพยางค์ ระวังสระ/วรรณยุกต์ที่คล้ายกัน
+   - จังหวัดต้องเป็น 1 ใน 77 จังหวัดของไทย
+   - รหัสไปรษณีย์ 5 หลัก — มักอยู่ท้ายสุด
 5. วันออกบัตร/หมดอายุ — อยู่ด้านล่างสุด
 
 ตอบ JSON:
@@ -500,14 +590,25 @@ ${basePrompt}`;
 - เลขบัตรประชาชน 13 หลักอยู่ใต้เลขใบขับขี่
 - ชื่อ-นามสกุลมีทั้งไทยและอังกฤษ ให้ใช้ประกอบกัน
 - แปลงวันที่จาก พ.ศ. เป็น ค.ศ. (ลบ 543)
-- ตำบล/แขวง, อำเภอ/เขต, จังหวัด ไม่ต้องมีคำนำหน้า
+
+วิธีอ่านที่อยู่ (สำคัญมาก):
+- ที่อยู่พิมพ์ตัวเล็ก อ่านทีละบรรทัดอย่างระมัดระวัง
+- หมู่ (moo) → เก็บเฉพาะตัวเลข
+- ตำบล/แขวง → ตัดคำนำหน้า ต. แขวง ออก เก็บเฉพาะชื่อ
+- อำเภอ/เขต → ตัดคำนำหน้า อ. เขต ออก เก็บเฉพาะชื่อ
+- จังหวัด → ตัดคำนำหน้า จ. ออก (ต้องเป็น 1 ใน 77 จังหวัดของไทย)
+- รหัสไปรษณีย์ 5 หลัก
 - ถ้าอ่านไม่ได้ให้ใส่ null`;
 
     const retryPrompt = `กรุณาอ่านใบขับขี่ไทยนี้อีกครั้งอย่างละเอียดที่สุด:
 1. เลขใบขับขี่ — มักอยู่มุมบนขวา
 2. เลขบัตรประชาชน 13 หลัก — อ่านทีละตัว ระวัง 0/8, 1/7
 3. ชื่อ — ดูทั้งภาษาไทยและอังกฤษประกอบกัน
-4. ที่อยู่ — อ่านทุกบรรทัด
+4. ที่อยู่ (สำคัญมาก — อ่านทุกตัวอักษร):
+   - อ่านทีละบรรทัด บ้านเลขที่ หมู่ ซอย ถนน
+   - ตำบล/แขวง อำเภอ/เขต จังหวัด — อ่านทุกพยางค์
+   - จังหวัดต้องเป็น 1 ใน 77 จังหวัดของไทย
+   - รหัสไปรษณีย์ 5 หลัก
 5. วันเดือนปี — แปลง พ.ศ. เป็น ค.ศ. อย่างระมัดระวัง
 6. กรุ๊ปเลือด — มักอยู่ด้านล่าง
 

@@ -1,0 +1,116 @@
+name: Build Card Reader (.exe)
+
+on:
+  push:
+    tags:
+      - 'card-reader-v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g. 1.0.0)'
+        required: false
+        default: 'dev'
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  build-windows:
+    name: Build Windows Installer
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Determine version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            VERSION="${GITHUB_REF#refs/tags/card-reader-v}"
+          else
+            VERSION="${{ github.event.inputs.version }}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Install card-reader dependencies
+        working-directory: apps/card-reader
+        run: npm install --production
+
+      - name: Install dev dependencies for build
+        working-directory: apps/card-reader
+        run: npm install typescript@5
+
+      - name: Build TypeScript
+        working-directory: apps/card-reader
+        run: npx tsc
+
+      - name: Remove dev dependencies
+        working-directory: apps/card-reader
+        run: npm prune --production
+
+      - name: Download portable Node.js
+        shell: pwsh
+        run: |
+          $nodeUrl = "https://nodejs.org/dist/v20.18.1/node-v20.18.1-win-x64.zip"
+          Invoke-WebRequest -Uri $nodeUrl -OutFile node-portable.zip
+          Expand-Archive -Path node-portable.zip -DestinationPath node-extracted
+          # Keep only node.exe to minimize size
+          New-Item -ItemType Directory -Force -Path apps/card-reader/bundle/node
+          Copy-Item node-extracted/node-v20.18.1-win-x64/node.exe apps/card-reader/bundle/node/node.exe
+
+      - name: Assemble distribution
+        shell: pwsh
+        run: |
+          $dist = "BestchoiceCardReader"
+          New-Item -ItemType Directory -Force -Path $dist
+
+          # Copy portable Node.js
+          Copy-Item -Recurse apps/card-reader/bundle/node $dist/node
+
+          # Copy built app
+          New-Item -ItemType Directory -Force -Path $dist/app
+          Copy-Item -Recurse apps/card-reader/dist $dist/app/dist
+          Copy-Item -Recurse apps/card-reader/node_modules $dist/app/node_modules
+          Copy-Item apps/card-reader/package.json $dist/app/package.json
+
+          # Copy scripts
+          Copy-Item apps/card-reader/scripts/BestchoiceCardReader.bat $dist/
+          Copy-Item apps/card-reader/scripts/setup.bat $dist/
+          Copy-Item apps/card-reader/scripts/uninstall.bat $dist/
+          Copy-Item apps/card-reader/INSTALL.txt $dist/README.txt
+
+      - name: Create ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive -Path BestchoiceCardReader -DestinationPath "BestchoiceCardReader-v${{ steps.version.outputs.version }}-win-x64.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BestchoiceCardReader-win-x64
+          path: BestchoiceCardReader-v*.zip
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Card Reader ${{ steps.version.outputs.version }}"
+          body: |
+            ## BESTCHOICE Card Reader v${{ steps.version.outputs.version }}
+
+            ### วิธีติดตั้ง
+            1. โหลดไฟล์ `.zip` ด้านล่าง
+            2. แตกไฟล์ (คลิกขวา → Extract All)
+            3. เปิดโฟลเดอร์ที่แตกไฟล์ → ดับเบิลคลิก `setup.bat`
+            4. เสร็จ! ใช้ได้เลย
+
+            ### ต้องมี
+            - Windows 10 ขึ้นไป
+            - เครื่องอ่านบัตร USB Smart Card Reader
+          files: BestchoiceCardReader-v*.zip

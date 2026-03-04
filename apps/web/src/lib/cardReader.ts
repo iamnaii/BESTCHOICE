@@ -52,9 +52,9 @@ interface CardReaderResponse {
 
 /** Check if the card reader service is running */
 export async function checkCardReaderStatus(): Promise<CardReaderStatus | null> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT);
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), TIMEOUT);
     const resp = await fetch(`${CARD_READER_URL}/api/status`, {
       signal: controller.signal,
     });
@@ -62,6 +62,7 @@ export async function checkCardReaderStatus(): Promise<CardReaderStatus | null> 
     if (!resp.ok) return null;
     return await resp.json();
   } catch {
+    clearTimeout(timeoutId);
     return null; // Service not running
   }
 }

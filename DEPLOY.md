@@ -188,3 +188,35 @@ gunzip -c /opt/backups/installment/installment_YYYYMMDD_HHMMSS.sql.gz \
 | **Scaling** | กดเพิ่มใน UI | ต้อง upgrade Droplet |
 | **Backup** | อัตโนมัติ (Managed DB) | ตั้ง cron เอง |
 | **แนะนำสำหรับ** | มือใหม่ / ไม่อยากจัดการ server | คนมีพื้นฐาน / อยากประหยัด |
+
+---
+
+## เครื่องอ่านบัตรประชาชน (Card Reader)
+
+ตัวอ่านบัตร **ติดตั้งบนเครื่อง Windows ของร้าน** (ไม่ได้อยู่บน server) เพราะต้องต่อ USB โดยตรง
+
+### ติดตั้ง (สำหรับคนไม่เก่ง IT — ง่ายมาก)
+
+1. เปิดหน้า **GitHub Releases** ของโปรเจกต์
+2. โหลดไฟล์ `BestchoiceCardReader-vX.X.X-win-x64.zip`
+3. คลิกขวา → **Extract All** (แตกไฟล์)
+4. เปิดโฟลเดอร์ที่แตกไฟล์ → ดับเบิลคลิก **`setup.bat`**
+5. ทำตามที่โปรแกรมถาม → เสร็จ!
+
+**ไม่ต้องลง Node.js** ไม่ต้องลงอะไรเพิ่ม — แค่โหลด แตกไฟล์ แล้ว setup จบ
+
+### ใช้งาน
+
+1. เสียบเครื่องอ่านบัตร USB เข้าคอม
+2. ดับเบิลคลิก **"BESTCHOICE Card Reader"** บน Desktop
+3. เสียบบัตรประชาชน → ระบบอ่านข้อมูลให้อัตโนมัติ
+
+### สร้าง Release ใหม่ (สำหรับ Developer)
+
+```bash
+# Tag แล้ว push — GitHub Actions จะ build + สร้าง Release ให้อัตโนมัติ
+git tag card-reader-v1.0.0
+git push origin card-reader-v1.0.0
+```
+
+หรือกด **Actions → Build Card Reader → Run workflow** บน GitHub ก็ได้

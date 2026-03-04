@@ -83,46 +83,59 @@ export class PaymentsService {
       throw new BadRequestException('จำนวนเงินต้องมากกว่า 0');
     }
 
-    const contract = await this.prisma.contract.findUnique({
-      where: { id: contractId },
-      include: { payments: { orderBy: { installmentNo: 'asc' } } },
+    // Wrap entire allocation in a serializable transaction to prevent double-payment
+    return this.prisma.$transaction(async (tx) => {
+      const contract = await tx.contract.findUnique({
+        where: { id: contractId },
+        include: { payments: { orderBy: { installmentNo: 'asc' } } },
+      });
+      if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+      if (!['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status)) {
+        throw new BadRequestException('ไม่สามารถชำระเงินได้ สัญญาต้องอยู่ในสถานะ ACTIVE, OVERDUE หรือ DEFAULT');
+      }
+
+      let remaining = amount;
+      const results: any[] = [];
+
+      // Get unpaid payments in order
+      const unpaid = contract.payments.filter((p) => p.status !== 'PAID');
+      if (unpaid.length === 0) throw new BadRequestException('ไม่มีงวดค้างชำระ');
+
+      for (const payment of unpaid) {
+        if (remaining <= 0) break;
+
+        const amountDue = Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid);
+        const payAmount = Math.min(remaining, amountDue);
+        const totalPaid = Number(payment.amountPaid) + payAmount;
+        const isPaidInFull = totalPaid >= (Number(payment.amountDue) + Number(payment.lateFee));
+
+        const updated = await tx.payment.update({
+          where: { id: payment.id },
+          data: {
+            amountPaid: totalPaid,
+            paidDate: isPaidInFull ? new Date() : null,
+            paymentMethod: paymentMethod as any,
+            status: isPaidInFull ? 'PAID' : 'PARTIALLY_PAID',
+            recordedById,
+            notes: notes || payment.notes,
+          },
+        });
+
+        results.push(updated);
+        remaining -= payAmount;
+
+        // Check contract completion after each full payment
+        if (isPaidInFull) {
+          await this.checkContractCompletion(contractId, tx);
+        }
+      }
+
+      return {
+        allocatedPayments: results,
+        totalAllocated: amount - remaining,
+        overpayment: remaining > 0 ? remaining : 0,
+      };
     });
-    if (!contract) throw new NotFoundException('ไม่พบสัญญา');
-    if (!['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status)) {
-      throw new BadRequestException('ไม่สามารถชำระเงินได้ สัญญาต้องอยู่ในสถานะ ACTIVE, OVERDUE หรือ DEFAULT');
-    }
-
-    let remaining = amount;
-    const results: Awaited<ReturnType<typeof this.recordPayment>>[] = [];
-
-    // Get unpaid payments in order
-    const unpaid = contract.payments.filter((p) => p.status !== 'PAID');
-    if (unpaid.length === 0) throw new BadRequestException('ไม่มีงวดค้างชำระ');
-
-    for (const payment of unpaid) {
-      if (remaining <= 0) break;
-
-      const amountDue = Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid);
-      const payAmount = Math.min(remaining, amountDue);
-
-      const updated = await this.recordPayment(
-        contractId,
-        payment.installmentNo,
-        payAmount,
-        paymentMethod,
-        recordedById,
-        undefined,
-        notes,
-      );
-      results.push(updated);
-      remaining -= payAmount;
-    }
-
-    return {
-      allocatedPayments: results,
-      totalAllocated: amount - remaining,
-      overpayment: remaining > 0 ? remaining : 0,
-    };
   }
 
   // ─── Get payments for a contract ──────────────────────

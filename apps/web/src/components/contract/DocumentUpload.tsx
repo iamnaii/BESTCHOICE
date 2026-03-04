@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { compressImageForOcr } from '@/lib/compressImage';
 import toast from 'react-hot-toast';
 
 interface ContractDocument {
@@ -114,13 +115,8 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
   const performOcr = async (file: File) => {
     setOcrLoading(true);
     try {
-      const reader = new FileReader();
-      const imageBase64 = await new Promise<string>((resolve, reject) => {
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = () => reject(new Error('ไม่สามารถอ่านไฟล์ได้'));
-        reader.readAsDataURL(file);
-      });
-      const { data } = await api.post('/ocr/id-card', { imageBase64 }, { timeout: 60000 });
+      const imageBase64 = await compressImageForOcr(file);
+      const { data } = await api.post('/ocr/id-card', { imageBase64 }, { timeout: 90000 });
       setOcrResult(data);
       setShowOcrPanel(true);
       const pct = (data.confidence * 100).toFixed(0);

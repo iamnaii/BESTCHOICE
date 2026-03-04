@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api, { getErrorMessage } from '@/lib/api';
+import { compressImageForOcr } from '@/lib/compressImage';
 import { useDebounce } from '@/hooks/useDebounce';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
@@ -193,13 +194,8 @@ export default function CustomersPage() {
 
     setOcrLoading(true);
     try {
-      const reader = new FileReader();
-      const imageBase64 = await new Promise<string>((resolve, reject) => {
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = () => reject(new Error('ไม่สามารถอ่านไฟล์ได้'));
-        reader.readAsDataURL(file);
-      });
-      const { data } = await api.post<OcrResult>('/ocr/id-card', { imageBase64 }, { timeout: 60000 });
+      const imageBase64 = await compressImageForOcr(file);
+      const { data } = await api.post<OcrResult>('/ocr/id-card', { imageBase64 }, { timeout: 90000 });
 
       // Auto-fill form fields
       const updates: Partial<typeof emptyForm> = {};

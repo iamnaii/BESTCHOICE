@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { compressImageForOcr } from '@/lib/compressImage';
 import PageHeader from '@/components/ui/PageHeader';
 import toast from 'react-hot-toast';
 
@@ -301,13 +302,8 @@ export default function ContractCreatePage() {
     setOcrScannedFile(file);
 
     try {
-      const reader = new FileReader();
-      const imageBase64 = await new Promise<string>((resolve, reject) => {
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = () => reject(new Error('ไม่สามารถอ่านไฟล์ได้'));
-        reader.readAsDataURL(file);
-      });
-      const { data } = await api.post('/ocr/id-card', { imageBase64 }, { timeout: 60000 });
+      const imageBase64 = await compressImageForOcr(file);
+      const { data } = await api.post('/ocr/id-card', { imageBase64 }, { timeout: 90000 });
       setOcrResult(data);
       setShowOcrPanel(true);
 
@@ -462,13 +458,8 @@ export default function ContractCreatePage() {
       (async () => {
         setOcrLoading(true);
         try {
-          const reader = new FileReader();
-          const imageBase64 = await new Promise<string>((resolve, reject) => {
-            reader.onload = () => resolve(reader.result as string);
-            reader.onerror = () => reject(new Error('ไม่สามารถอ่านไฟล์ได้'));
-            reader.readAsDataURL(file);
-          });
-          const { data } = await api.post('/ocr/id-card', { imageBase64 }, { timeout: 60000 });
+          const imageBase64 = await compressImageForOcr(file);
+          const { data } = await api.post('/ocr/id-card', { imageBase64 }, { timeout: 90000 });
           setOcrResult(data);
           setShowOcrPanel(true);
           setShowCreateCustomer(false);

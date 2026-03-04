@@ -47,24 +47,36 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
-        working-directory: apps/card-reader
-        run: npm install --install-strategy=nested
+        run: npm install
 
       - name: Verify pcsclite native module
-        working-directory: apps/card-reader
         shell: pwsh
         run: |
-          $pcsclitePath = "node_modules/pcsclite"
-          if (-not (Test-Path $pcsclitePath)) {
-            Write-Error "FATAL: pcsclite not found in node_modules!"
+          # Search both workspace root and local node_modules
+          $searchPaths = @("apps/card-reader/node_modules/pcsclite", "node_modules/pcsclite")
+          $found = $false
+          foreach ($p in $searchPaths) {
+            if (Test-Path $p) {
+              Write-Host "Found pcsclite at: $p"
+              $nodeFile = Get-ChildItem -Recurse -Filter "*.node" -Path $p -ErrorAction SilentlyContinue
+              if ($nodeFile) {
+                Write-Host "OK: Native binary: $($nodeFile.FullName)"
+                $found = $true
+                break
+              } else {
+                Write-Host "WARNING: pcsclite dir exists at $p but no .node binary"
+              }
+            }
+          }
+          if (-not $found) {
+            Write-Error "FATAL: pcsclite native module not found or not compiled!"
+            # Debug: show what's actually in node_modules
+            Write-Host "--- Root node_modules top-level ---"
+            Get-ChildItem node_modules -Name -ErrorAction SilentlyContinue | Select-Object -First 30
+            Write-Host "--- apps/card-reader/node_modules top-level ---"
+            Get-ChildItem apps/card-reader/node_modules -Name -ErrorAction SilentlyContinue | Select-Object -First 30
             exit 1
           }
-          $nodeFile = Get-ChildItem -Recurse -Filter "*.node" -Path $pcsclitePath -ErrorAction SilentlyContinue
-          if (-not $nodeFile) {
-            Write-Error "FATAL: pcsclite .node binary not found - native compilation failed!"
-            exit 1
-          }
-          Write-Host "OK: Found pcsclite native binary: $($nodeFile.FullName)"
 
       - name: Bundle with esbuild
         working-directory: apps/card-reader

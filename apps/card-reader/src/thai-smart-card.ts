@@ -94,7 +94,8 @@ function parseBEDate(raw: string): string {
  * Note: some cards use slightly different field ordering
  */
 function parseAddress(raw: string): ThaiIdCardData['addressStructured'] & { fullAddress: string } {
-  const parts = raw.split('#').map(s => s.trim()).filter(Boolean);
+  // Keep empty fields to preserve correct index positions
+  const parts = raw.split('#').map(s => s.trim());
   // Thai Smart Card address has these fields in order:
   // [0] House number  [1] Village/Moo  [2] Village name
   // [3] Soi/Lane  [4] Road  [5] Sub-district (Tambon)
@@ -106,8 +107,8 @@ function parseAddress(raw: string): ThaiIdCardData['addressStructured'] & { full
     village: parts[2] || '',
     soi: (parts[3] || '').replace(/^(ซอย|ซ\.)\s*/g, ''),
     road: (parts[4] || '').replace(/^(ถนน|ถ\.)\s*/g, ''),
-    subdistrict: (parts[5] || '').replace(/^(ตำบล|แขวง|ต\.)\s*/g, ''),
-    district: (parts[6] || '').replace(/^(อำเภอ|เขต|อ\.)\s*/g, ''),
+    subdistrict: (parts[5] || '').replace(/^(ตำบล|แขวง|ต\.|ท\.)\s*/g, ''),
+    district: (parts[6] || '').replace(/^(อำเภอ|เขต|อ\.|กิ่งอำเภอ)\s*/g, ''),
     province: (parts[7] || '').replace(/^(จังหวัด|จ\.)\s*/g, ''),
   };
 

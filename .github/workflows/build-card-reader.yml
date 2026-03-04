@@ -46,13 +46,9 @@ jobs:
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Install dependencies (standalone, outside workspace)
+      - name: Install dependencies
         working-directory: apps/card-reader
-        run: |
-          npm install --install-strategy=nested --ignore-scripts
-          npm install pcsclite --install-strategy=nested
-        env:
-          npm_config_ignore_workspace_root_check: true
+        run: npm install --install-strategy=nested
 
       - name: Verify pcsclite native module
         working-directory: apps/card-reader

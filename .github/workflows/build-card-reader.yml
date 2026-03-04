@@ -3,8 +3,6 @@ name: Build Card Reader
 on:
   push:
     branches: [main]
-    paths:
-      - 'apps/card-reader/**'
     tags:
       - 'card-reader-v*'
   workflow_dispatch:

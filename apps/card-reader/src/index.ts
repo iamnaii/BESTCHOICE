@@ -28,13 +28,18 @@ function connectToCard(reader: any, shareMode: number): Promise<number> {
   });
 }
 
-function disconnectCard(reader: any): Promise<void> {
+function disconnectCard(reader: any, reset = false): Promise<void> {
   return new Promise((resolve) => {
-    reader.disconnect(reader.SCARD_LEAVE_CARD, (err: Error | null) => {
+    const disposition = reset ? reader.SCARD_RESET_CARD : reader.SCARD_LEAVE_CARD;
+    reader.disconnect(disposition, (err: Error | null) => {
       if (err) console.error('[Card Reader] Disconnect error:', err.message);
       resolve();
     });
   });
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function connectAndRead(reader: any): Promise<void> {
@@ -69,7 +74,10 @@ async function connectAndRead(reader: any): Promise<void> {
         return;
       } catch (readErr: any) {
         console.error(`[Card Reader] Read error (${name}): ${readErr.message}`);
-        await disconnectCard(reader);
+        // Reset card on communication error to clear stale state
+        await disconnectCard(reader, true);
+        // Small delay to let the reader recover before retrying
+        await delay(500);
         // If this was SHARED, try EXCLUSIVE next
         continue;
       }

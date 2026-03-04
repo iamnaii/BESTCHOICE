@@ -52,7 +52,7 @@ jobs:
 
       - name: Bundle with esbuild
         working-directory: apps/card-reader
-        run: npm run bundle
+        run: npm run build
 
       - name: Download portable Node.js
         shell: pwsh

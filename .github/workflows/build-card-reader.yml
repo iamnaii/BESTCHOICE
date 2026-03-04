@@ -73,9 +73,12 @@ jobs:
           # Copy portable Node.js
           Copy-Item -Recurse apps/card-reader/bundle/node $dist/node
 
-          # Copy bundled app (single file, no node_modules needed)
+          # Copy bundled app
           New-Item -ItemType Directory -Force -Path $dist/app/dist
           Copy-Item apps/card-reader/dist/index.js $dist/app/dist/index.js
+
+          # Copy pcsclite native module (required for smart card reader access)
+          Copy-Item -Recurse apps/card-reader/node_modules $dist/app/node_modules
 
           # Copy scripts
           Copy-Item apps/card-reader/scripts/BestchoiceCardReader.bat $dist/

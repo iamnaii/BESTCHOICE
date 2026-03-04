@@ -1,0 +1,122 @@
+/**
+ * Card Reader Service client
+ * Communicates with the local BESTCHOICE Card Reader Service
+ * running on localhost:3457 (installed on the shop's Windows PC)
+ */
+
+const CARD_READER_URL = 'http://localhost:3457';
+const TIMEOUT = 5000;
+
+export interface CardReaderStatus {
+  service: string;
+  version: string;
+  status: 'no_pcsc' | 'no_reader' | 'waiting' | 'card_inserted' | 'reading' | 'error';
+  readerName: string | null;
+  error: string | null;
+  hasCardData: boolean;
+  statusText: string;
+}
+
+export interface SmartCardAddress {
+  houseNo: string;
+  moo: string;
+  village: string;
+  soi: string;
+  road: string;
+  subdistrict: string;
+  district: string;
+  province: string;
+}
+
+export interface SmartCardData {
+  nationalId: string;
+  prefix: string;
+  firstName: string;
+  lastName: string;
+  prefixEn: string;
+  firstNameEn: string;
+  lastNameEn: string;
+  birthDate: string;
+  gender: string;
+  issuer: string;
+  issueDate: string;
+  expiryDate: string;
+  address: string;
+  addressStructured: SmartCardAddress;
+}
+
+interface CardReaderResponse {
+  success: boolean;
+  data: SmartCardData;
+}
+
+/** Check if the card reader service is running */
+export async function checkCardReaderStatus(): Promise<CardReaderStatus | null> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), TIMEOUT);
+    const resp = await fetch(`${CARD_READER_URL}/api/status`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    if (!resp.ok) return null;
+    return await resp.json();
+  } catch {
+    return null; // Service not running
+  }
+}
+
+/** Read card data from the local card reader service */
+export async function readSmartCard(): Promise<SmartCardData> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+  try {
+    const resp = await fetch(`${CARD_READER_URL}/api/read-card`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    const body = await resp.json();
+
+    if (!resp.ok) {
+      throw new Error(body.message || 'อ่านบัตรไม่สำเร็จ');
+    }
+
+    return (body as CardReaderResponse).data;
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      throw new Error('Card reader service ไม่ตอบสนอง (timeout)');
+    }
+    throw err;
+  }
+}
+
+/** Force re-read the card */
+export async function forceReadSmartCard(): Promise<SmartCardData> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+  try {
+    const resp = await fetch(`${CARD_READER_URL}/api/read-card`, {
+      method: 'POST',
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    const body = await resp.json();
+
+    if (!resp.ok) {
+      throw new Error(body.message || 'อ่านบัตรไม่สำเร็จ');
+    }
+
+    return (body as CardReaderResponse).data;
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      throw new Error('อ่านบัตรนานเกินไป (timeout)');
+    }
+    throw err;
+  }
+}

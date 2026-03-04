@@ -2,46 +2,8 @@ import * as iconv from 'iconv-lite';
 
 // ─── Thai National ID Smart Card APDU Commands ──────────────────
 // Reference: Thai Smart Card specification (MOI Thailand)
+// Command format: [CLA=0x80] [INS=0xB0] [P1=offsetHi] [P2=offsetLo] [Lc=0x02] [LenHi] [LenLo]
 
-export const THAI_ID_AID = Buffer.from('A000000054480001', 'hex');
-
-export const APDU = {
-  /** SELECT Thai ID Card application */
-  SELECT: Buffer.from('00A4040008A000000054480001', 'hex'),
-
-  /** Citizen ID — 13 digits at offset 0x0004, length 13 */
-  CID: Buffer.from('80B0000402000D', 'hex'),
-
-  /** Thai full name — 100 bytes at offset 0x0011 (TIS-620, '#' separated) */
-  THAI_NAME: Buffer.from('80B000110200064', 'hex'),
-
-  /** English full name — 100 bytes at offset 0x0075 */
-  EN_NAME: Buffer.from('80B000750200064', 'hex'),
-
-  /** Date of birth — 8 bytes YYYYMMDD (Buddhist Era) at offset 0x00D9 */
-  BIRTH_DATE: Buffer.from('80B000D902000008', 'hex'),
-
-  /** Gender — 1 byte at offset 0x00E1 (1=male, 2=female) */
-  GENDER: Buffer.from('80B000E102000001', 'hex'),
-
-  /** Card issuer — 100 bytes at offset 0x00F6 */
-  ISSUER: Buffer.from('80B000F60200064', 'hex'),
-
-  /** Issue date — 8 bytes YYYYMMDD (Buddhist Era) at offset 0x0167 */
-  ISSUE_DATE: Buffer.from('80B001670200008', 'hex'),
-
-  /** Expire date — 8 bytes YYYYMMDD (Buddhist Era) at offset 0x016F */
-  EXPIRE_DATE: Buffer.from('80B0016F0200008', 'hex'),
-
-  /** Address — 100 bytes at offset 0x1579 (TIS-620, '#' separated) */
-  ADDRESS: Buffer.from('80B015790200064', 'hex'),
-
-  /** Photo (first chunk) — read in 255-byte blocks starting offset 0x017B */
-  PHOTO_OFFSET: 0x017B,
-  PHOTO_LENGTH: 5120,
-};
-
-// Rebuild APDU commands properly with correct byte encoding
 function buildReadBinary(offsetHigh: number, offsetLow: number, lengthHigh: number, lengthLow: number): Buffer {
   return Buffer.from([0x80, 0xB0, offsetHigh, offsetLow, 0x02, lengthHigh, lengthLow]);
 }
@@ -88,29 +50,30 @@ export interface ThaiIdCardData {
   };
 }
 
-/** Decode TIS-620 (Thai encoding) buffer to string */
+/** Decode TIS-620 (Thai encoding) buffer to string, strip trailing null bytes */
 function decodeTIS620(buf: Buffer): string {
-  return iconv.decode(buf, 'tis-620').replace(/\x00+$/g, '').replace(/#/g, '#').trim();
+  return iconv.decode(buf, 'tis-620').replace(/\x00+$/g, '').trim();
 }
 
-/** Parse '#'-separated Thai name: "prefix#firstName#middleName#lastName" */
-function parseThaiName(raw: string): { prefix: string; firstName: string; lastName: string } {
+/** Parse '#'-separated name: "prefix#firstName#middleName#lastName" */
+function parseName(raw: string): { prefix: string; firstName: string; lastName: string } {
   const parts = raw.split('#').map(s => s.trim()).filter(Boolean);
-  return {
-    prefix: parts[0] || '',
-    firstName: parts[1] || '',
-    lastName: parts[parts.length - 1] || '',  // skip middleName if exists
-  };
-}
-
-/** Parse '#'-separated English name */
-function parseEnName(raw: string): { prefix: string; firstName: string; lastName: string } {
-  const parts = raw.split('#').map(s => s.trim()).filter(Boolean);
-  return {
-    prefix: parts[0] || '',
-    firstName: parts[1] || '',
-    lastName: parts[parts.length - 1] || '',
-  };
+  if (parts.length >= 3) {
+    // prefix + firstName + [middleName] + lastName
+    return {
+      prefix: parts[0],
+      firstName: parts[1],
+      lastName: parts[parts.length - 1],
+    };
+  }
+  if (parts.length === 2) {
+    // Could be prefix + name, or firstName + lastName
+    return { prefix: '', firstName: parts[0], lastName: parts[1] };
+  }
+  if (parts.length === 1) {
+    return { prefix: '', firstName: parts[0], lastName: '' };
+  }
+  return { prefix: '', firstName: '', lastName: '' };
 }
 
 /** Convert Buddhist Era date (YYYYMMDD) to Gregorian YYYY-MM-DD */
@@ -195,12 +158,12 @@ export async function readThaiIdCard(reader: any, protocol: number): Promise<Tha
   // 3. Read Thai Name
   const thaiNameResp = await transmit(reader, protocol, CMD.THAI_NAME);
   const thaiNameRaw = isSuccess(thaiNameResp) ? decodeTIS620(getData(thaiNameResp)) : '';
-  const thaiName = parseThaiName(thaiNameRaw);
+  const thaiName = parseName(thaiNameRaw);
 
   // 4. Read English Name
   const enNameResp = await transmit(reader, protocol, CMD.EN_NAME);
   const enNameRaw = isSuccess(enNameResp) ? getData(enNameResp).toString('ascii').replace(/\x00+$/g, '').trim() : '';
-  const enName = parseEnName(enNameRaw);
+  const enName = parseName(enNameRaw);
 
   // 5. Read Birth Date
   const birthResp = await transmit(reader, protocol, CMD.BIRTH_DATE);

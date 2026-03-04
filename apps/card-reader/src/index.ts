@@ -73,7 +73,8 @@ function initPCSC(): void {
         // Card removed
         if ((changes & reader.SCARD_STATE_EMPTY) && (status.state & reader.SCARD_STATE_EMPTY)) {
           readerStatus = 'waiting';
-          console.log('[Card Reader] Card removed');
+          lastCardData = null;
+          console.log('[Card Reader] Card removed — data cleared');
         }
       });
 
@@ -176,6 +177,13 @@ app.post('/api/read-card', async (_req, res) => {
     return res.status(503).json({
       error: 'No reader',
       message: 'ไม่พบเครื่องอ่านบัตร',
+    });
+  }
+
+  if (readerStatus === 'reading') {
+    return res.status(409).json({
+      error: 'Already reading',
+      message: 'กำลังอ่านบัตรอยู่แล้ว กรุณารอสักครู่',
     });
   }
 

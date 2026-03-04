@@ -35,6 +35,14 @@ services:
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
       NODE_ENV: production
       PORT: 3000
+      # Anthropic Claude API (OCR + Credit Check)
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Notifications (optional)
+      LINE_CHANNEL_ACCESS_TOKEN: ${LINE_CHANNEL_ACCESS_TOKEN:-}
+      LINE_CHANNEL_SECRET: ${LINE_CHANNEL_SECRET:-}
+      SMS_API_KEY: ${SMS_API_KEY:-}
+      SMS_API_SECRET: ${SMS_API_SECRET:-}
+      SMS_SENDER: ${SMS_SENDER:-BESTCHOICE}
     ports:
       - '127.0.0.1:3000:3000'
     healthcheck:

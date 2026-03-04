@@ -19,6 +19,16 @@ export class OcrService {
   private readonly logger = new Logger(OcrService.name);
   private anthropic: Anthropic | null = null;
 
+  private static readonly OCR_SYSTEM_PROMPT =
+    'คุณเป็นผู้เชี่ยวชาญด้าน OCR สำหรับเอกสารไทย มีความแม่นยำสูงสุดในการอ่านตัวอักษรไทยและตัวเลขจากรูปถ่ายเอกสาร ' +
+    'ให้พยายามอ่านข้อมูลทุกตัวอักษรอย่างระมัดระวัง แม้รูปจะเบลอหรือมีแสงสะท้อน ' +
+    'ถ้าตัวอักษรไม่ชัด ให้ใช้บริบทรอบข้างช่วยในการตีความ เช่น รูปแบบเลขบัตรประชาชน 13 หลัก หรือชื่อธนาคารที่คุ้นเคย ' +
+    'ตอบเป็น JSON เท่านั้น ห้ามมี markdown code block หรือข้อความอื่นใดนอกเหนือจาก JSON';
+
+  private static readonly OCR_MODEL = 'claude-sonnet-4-20250514';
+  private static readonly LOW_CONFIDENCE_THRESHOLD = 0.7;
+  private static readonly MAX_RETRIES = 2;
+
   constructor(private configService: ConfigService) {
     const apiKey = (
       this.configService.get<string>('ANTHROPIC_API_KEY') ||
@@ -116,33 +126,79 @@ export class OcrService {
     }
   }
 
+  private async callClaudeOcr(
+    mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+    base64Data: string,
+    prompt: string,
+  ): Promise<Record<string, unknown>> {
+    const response = await this.anthropic!.messages.create({
+      model: OcrService.OCR_MODEL,
+      max_tokens: 2048,
+      temperature: 0,
+      system: OcrService.OCR_SYSTEM_PROMPT,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'image',
+              source: { type: 'base64', media_type: mediaType, data: base64Data },
+            },
+            { type: 'text', text: prompt },
+          ],
+        },
+      ],
+    });
+
+    const textContent = response.content.find((c) => c.type === 'text');
+    if (!textContent || textContent.type !== 'text') {
+      throw new Error('No text response from Claude');
+    }
+
+    return this.parseJsonResponse(textContent.text) as Record<string, unknown>;
+  }
+
+  private async callClaudeOcrWithRetry(
+    mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+    base64Data: string,
+    prompt: string,
+    retryPrompt: string,
+  ): Promise<Record<string, unknown>> {
+    let bestResult = await this.callClaudeOcr(mediaType, base64Data, prompt);
+    const confidence = Number(bestResult.confidence) || 0;
+
+    if (confidence < OcrService.LOW_CONFIDENCE_THRESHOLD) {
+      this.logger.warn(`Low confidence (${confidence.toFixed(2)}), retrying with enhanced prompt`);
+      for (let attempt = 0; attempt < OcrService.MAX_RETRIES; attempt++) {
+        try {
+          const retryResult = await this.callClaudeOcr(mediaType, base64Data, retryPrompt);
+          const retryConfidence = Number(retryResult.confidence) || 0;
+          if (retryConfidence > confidence) {
+            bestResult = retryResult;
+            break;
+          }
+        } catch {
+          this.logger.warn(`Retry attempt ${attempt + 1} failed`);
+        }
+      }
+    }
+
+    return bestResult;
+  }
+
   // ─── 1. Extract ID Card ─────────────────────────────────
 
   async extractIdCard(imageBase64: string): Promise<OcrIdCardResult> {
     this.ensureAnthropicReady();
     const { mediaType, base64Data } = this.validateImageBase64(imageBase64);
 
-    try {
-      const response = await this.anthropic!.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1024,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'image',
-                source: { type: 'base64', media_type: mediaType, data: base64Data },
-              },
-              {
-                type: 'text',
-                text: `นี่คือรูปบัตรประชาชนไทย กรุณาอ่านข้อมูลจากบัตรและตอบเป็น JSON เท่านั้น ตามรูปแบบนี้:
+    const basePrompt = `อ่านข้อมูลจากบัตรประชาชนไทยในรูปนี้อย่างละเอียด ตอบเป็น JSON ตามรูปแบบนี้:
 {
-  "nationalId": "<เลขบัตรประชาชน 13 หลัก ไม่มีขีด เช่น 1234567890123>",
+  "nationalId": "<เลขบัตรประชาชน 13 หลัก ไม่มีขีด>",
   "prefix": "<คำนำหน้า เช่น นาย, นาง, นางสาว>",
   "firstName": "<ชื่อ (ภาษาไทย)>",
   "lastName": "<นามสกุล (ภาษาไทย)>",
-  "birthDate": "<วันเกิด รูปแบบ YYYY-MM-DD เช่น 1990-01-15>",
+  "birthDate": "<วันเกิด รูปแบบ YYYY-MM-DD>",
   "address": "<ที่อยู่ตามบัตร ทั้งหมดรวมกัน>",
   "addressStructured": {
     "houseNo": "<บ้านเลขที่>",
@@ -160,25 +216,27 @@ export class OcrService {
   "confidence": <ระดับความมั่นใจ 0.0-1.0>
 }
 
-หมายเหตุ:
-- ให้แปลงวันที่จากพุทธศักราช (พ.ศ.) เป็นคริสต์ศักราช (ค.ศ.) โดยลบ 543 ออก
-- ถ้าอ่านข้อมูลไม่ได้ให้ใส่ null หรือ "" สำหรับ field ใน addressStructured
-- ตำบล/แขวง ไม่ต้องมีคำนำหน้า "ตำบล" หรือ "แขวง" เช่น ใส่แค่ "บางรัก"
-- อำเภอ/เขต ไม่ต้องมีคำนำหน้า "อำเภอ" หรือ "เขต" เช่น ใส่แค่ "เมือง"
-- จังหวัด ไม่ต้องมีคำนำหน้า "จังหวัด" เช่น ใส่แค่ "กรุงเทพมหานคร"
-- ตอบเป็น JSON เท่านั้น ไม่ต้องมี markdown code block`,
-              },
-            ],
-          },
-        ],
-      });
+คำแนะนำสำคัญ:
+- เลขบัตรประชาชน 13 หลักอยู่ด้านบนของบัตร อ่านทีละหลักอย่างระมัดระวัง
+- ชื่อ-นามสกุลอยู่ตรงกลางบัตร มีทั้งภาษาไทยและภาษาอังกฤษ ให้อ่านภาษาไทย
+- ที่อยู่อยู่ด้านล่าง อ่านจากซ้ายไปขวา บนลงล่าง
+- แปลงวันที่จาก พ.ศ. เป็น ค.ศ. โดยลบ 543
+- ตำบล/แขวง, อำเภอ/เขต, จังหวัด ไม่ต้องมีคำนำหน้า
+- ถ้าอ่านไม่ได้ให้ใส่ null`;
 
-      const textContent = response.content.find((c) => c.type === 'text');
-      if (!textContent || textContent.type !== 'text') {
-        throw new Error('No text response from Claude');
-      }
+    const retryPrompt = `กรุณาอ่านบัตรประชาชนไทยนี้อีกครั้งอย่างละเอียดที่สุด:
 
-      const result = this.parseJsonResponse(textContent.text) as Record<string, unknown>;
+1. ดูเลขบัตรประชาชน 13 หลักที่ด้านบน — อ่านทีละตัวเลข ระวังเลขที่คล้ายกัน เช่น 1/7, 3/8, 5/6, 0/8
+2. ชื่อ-นามสกุล — ดูทั้งภาษาไทยและอังกฤษ ใช้ประกอบกันเพื่อความแม่นยำ
+3. วันเดือนปีเกิด — ระวังการแปลง พ.ศ. เป็น ค.ศ. (ลบ 543)
+4. ที่อยู่ — อ่านทุกบรรทัด รวมถึงเลขที่บ้าน หมู่ ซอย ถนน ตำบล อำเภอ จังหวัด
+5. วันออกบัตร/หมดอายุ — อยู่ด้านล่างสุด
+
+ตอบ JSON:
+${basePrompt.split('ตอบเป็น JSON ตามรูปแบบนี้:')[1]}`;
+
+    try {
+      const result = await this.callClaudeOcrWithRetry(mediaType, base64Data, basePrompt, retryPrompt);
 
       const rawNationalId = result.nationalId
         ? String(result.nationalId).replace(/[\s-]/g, '')
@@ -232,55 +290,42 @@ export class OcrService {
     this.ensureAnthropicReady();
     const { mediaType, base64Data } = this.validateImageBase64(imageBase64);
 
-    try {
-      const response = await this.anthropic!.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1024,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'image',
-                source: { type: 'base64', media_type: mediaType, data: base64Data },
-              },
-              {
-                type: 'text',
-                text: `นี่คือสลิปการโอนเงิน/สลิปชำระเงินจากธนาคารในประเทศไทย กรุณาอ่านข้อมูลจากสลิปและตอบเป็น JSON เท่านั้น ตามรูปแบบนี้:
+    const basePrompt = `อ่านสลิปการโอนเงิน/ชำระเงินจากธนาคารไทยในรูปนี้ ตอบเป็น JSON:
 {
-  "amount": <จำนวนเงินที่โอน เป็นตัวเลข เช่น 5000.00>,
+  "amount": <จำนวนเงิน เป็นตัวเลข เช่น 5000.00>,
   "senderName": "<ชื่อผู้โอน>",
-  "senderBank": "<ธนาคารผู้โอน เช่น กสิกร, กรุงเทพ, ไทยพาณิชย์, กรุงไทย, ทหารไทยธนชาต>",
+  "senderBank": "<ธนาคารผู้โอน>",
   "senderAccountNo": "<เลขบัญชีผู้โอน>",
   "receiverName": "<ชื่อผู้รับ>",
   "receiverBank": "<ธนาคารผู้รับ>",
   "receiverAccountNo": "<เลขบัญชีผู้รับ หรือเบอร์พร้อมเพย์>",
   "transactionRef": "<หมายเลขอ้างอิง/เลขที่รายการ>",
-  "transactionDate": "<วันที่โอน รูปแบบ YYYY-MM-DD>",
-  "transactionTime": "<เวลาที่โอน รูปแบบ HH:mm>",
-  "slipType": "<ประเภท: BANK_TRANSFER, QR_PAYMENT, PROMPTPAY, OTHER>",
-  "confidence": <ระดับความมั่นใจ 0.0-1.0>
+  "transactionDate": "<วันที่โอน YYYY-MM-DD>",
+  "transactionTime": "<เวลาที่โอน HH:mm>",
+  "slipType": "<BANK_TRANSFER | QR_PAYMENT | PROMPTPAY | OTHER>",
+  "confidence": <0.0-1.0>
 }
 
-หมายเหตุ:
-- ให้แปลงวันที่จากพุทธศักราช (พ.ศ.) เป็นคริสต์ศักราช (ค.ศ.) โดยลบ 543 ออก
-- ถ้าอ่านข้อมูลใดไม่ได้ให้ใส่ null
-- ถ้าเป็น PromptPay ให้ใส่เลขพร้อมเพย์ใน receiverAccountNo
-- ถ้าสลิปเป็น QR Payment ให้ใส่ slipType เป็น QR_PAYMENT
-- จำนวนเงินต้องเป็นตัวเลขเท่านั้น ไม่ต้องมีเครื่องหมาย , หรือ ฿
-- ตอบเป็น JSON เท่านั้น ไม่ต้องมี markdown code block`,
-              },
-            ],
-          },
-        ],
-      });
+คำแนะนำสำคัญ:
+- จำนวนเงินมักจะเป็นตัวเลขใหญ่ที่เด่นชัดที่สุดในสลิป อ่านอย่างระมัดระวังรวมถึงจุดทศนิยม
+- ชื่อผู้โอน/ผู้รับ อาจมีทั้งไทยและอังกฤษ ให้ใช้ชื่อที่อ่านได้ชัดที่สุด
+- เลขบัญชีอาจถูกบดบังบางส่วน (xxx) ให้ใส่ตามที่เห็น
+- หมายเลขอ้างอิงมักอยู่ด้านล่างของสลิป
+- แปลงวันที่จาก พ.ศ. เป็น ค.ศ. (ลบ 543)
+- จำนวนเงินเป็นตัวเลขเท่านั้น ไม่มี , หรือ ฿
+- ถ้าอ่านไม่ได้ให้ใส่ null`;
 
-      const textContent = response.content.find((c) => c.type === 'text');
-      if (!textContent || textContent.type !== 'text') {
-        throw new Error('No text response from Claude');
-      }
+    const retryPrompt = `กรุณาอ่านสลิปโอนเงินนี้อีกครั้งอย่างละเอียด:
+1. จำนวนเงิน — อ่านตัวเลขทุกหลักรวมทศนิยม
+2. ชื่อผู้โอน/ผู้รับ — อ่านทั้งภาษาไทยและอังกฤษ
+3. เลขบัญชี — อ่านทุกหลักที่เห็นได้
+4. วันเวลา — ระวัง พ.ศ./ค.ศ.
+5. หมายเลขอ้างอิง — ดูด้านล่างของสลิป
 
-      const result = this.parseJsonResponse(textContent.text) as Record<string, unknown>;
+${basePrompt}`;
+
+    try {
+      const result = await this.callClaudeOcrWithRetry(mediaType, base64Data, basePrompt, retryPrompt);
 
       // Parse and validate amount
       let amount: number | null = null;
@@ -344,50 +389,36 @@ export class OcrService {
     this.ensureAnthropicReady();
     const { mediaType, base64Data } = this.validateImageBase64(imageBase64);
 
-    try {
-      const response = await this.anthropic!.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1024,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'image',
-                source: { type: 'base64', media_type: mediaType, data: base64Data },
-              },
-              {
-                type: 'text',
-                text: `นี่คือรูปหน้าสมุดบัญชีธนาคาร (Book Bank / Passbook) ของธนาคารในประเทศไทย กรุณาอ่านข้อมูลและตอบเป็น JSON เท่านั้น ตามรูปแบบนี้:
+    const basePrompt = `อ่านข้อมูลจากหน้าสมุดบัญชีธนาคาร (Book Bank / Passbook) ไทยในรูปนี้ ตอบเป็น JSON:
 {
   "accountName": "<ชื่อเจ้าของบัญชี>",
   "accountNo": "<เลขที่บัญชี ไม่มีขีด>",
-  "bankName": "<ชื่อธนาคาร เช่น กสิกรไทย, กรุงเทพ, ไทยพาณิชย์, กรุงไทย, ทหารไทยธนชาต, ออมสิน, กรุงศรีอยุธยา>",
+  "bankName": "<ชื่อธนาคาร>",
   "branchName": "<ชื่อสาขา>",
   "accountType": "<ประเภทบัญชี เช่น ออมทรัพย์, กระแสรายวัน, ฝากประจำ>",
-  "balance": <ยอดเงินคงเหลือ เป็นตัวเลข หรือ null ถ้าไม่มี>,
-  "lastTransactionDate": "<วันที่ทำรายการล่าสุด รูปแบบ YYYY-MM-DD หรือ null>",
-  "confidence": <ระดับความมั่นใจ 0.0-1.0>
+  "balance": <ยอดเงินคงเหลือ เป็นตัวเลข หรือ null>,
+  "lastTransactionDate": "<YYYY-MM-DD หรือ null>",
+  "confidence": <0.0-1.0>
 }
 
-หมายเหตุ:
-- ให้แปลงวันที่จากพุทธศักราช (พ.ศ.) เป็นคริสต์ศักราช (ค.ศ.) โดยลบ 543 ออก
-- ถ้าอ่านข้อมูลใดไม่ได้ให้ใส่ null
-- เลขที่บัญชีไม่ต้องมีขีดหรือเว้นวรรค
-- ยอดเงินต้องเป็นตัวเลขเท่านั้น ไม่ต้องมีเครื่องหมาย , หรือ ฿
-- ตอบเป็น JSON เท่านั้น ไม่ต้องมี markdown code block`,
-              },
-            ],
-          },
-        ],
-      });
+คำแนะนำสำคัญ:
+- ชื่อธนาคารดูจากโลโก้และข้อความด้านบน (กสิกรไทย, กรุงเทพ, ไทยพาณิชย์, กรุงไทย, ทหารไทยธนชาต, ออมสิน, กรุงศรีอยุธยา, เกียรตินาคินภัทร ฯลฯ)
+- เลขบัญชีมักอยู่ตรงกลางหรือด้านบน อ่านทุกหลักอย่างระมัดระวัง ไม่ต้องมีขีดหรือเว้นวรรค
+- ชื่อเจ้าของบัญชีอาจเป็นภาษาไทยหรืออังกฤษ ให้อ่านภาษาไทยเป็นหลัก
+- แปลงวันที่จาก พ.ศ. เป็น ค.ศ. (ลบ 543)
+- ยอดเงินเป็นตัวเลขเท่านั้น ไม่มี , หรือ ฿
+- ถ้าอ่านไม่ได้ให้ใส่ null`;
 
-      const textContent = response.content.find((c) => c.type === 'text');
-      if (!textContent || textContent.type !== 'text') {
-        throw new Error('No text response from Claude');
-      }
+    const retryPrompt = `กรุณาอ่านสมุดบัญชีนี้อีกครั้ง พิจารณา:
+1. โลโก้/สีของธนาคาร ช่วยระบุชื่อธนาคาร
+2. เลขบัญชี — อ่านทีละตัวเลข ระวัง 0/8, 1/7, 3/8
+3. ชื่อเจ้าของ — ดูทั้งไทยและอังกฤษ
+4. ประเภทบัญชี — มักระบุไว้ใกล้เลขบัญชี
 
-      const result = this.parseJsonResponse(textContent.text) as Record<string, unknown>;
+${basePrompt}`;
+
+    try {
+      const result = await this.callClaudeOcrWithRetry(mediaType, base64Data, basePrompt, retryPrompt);
 
       // Parse balance
       let balance: number | null = null;
@@ -437,28 +468,14 @@ export class OcrService {
     this.ensureAnthropicReady();
     const { mediaType, base64Data } = this.validateImageBase64(imageBase64);
 
-    try {
-      const response = await this.anthropic!.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1024,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'image',
-                source: { type: 'base64', media_type: mediaType, data: base64Data },
-              },
-              {
-                type: 'text',
-                text: `นี่คือรูปใบขับขี่ (Driving License) ของประเทศไทย กรุณาอ่านข้อมูลและตอบเป็น JSON เท่านั้น ตามรูปแบบนี้:
+    const basePrompt = `อ่านข้อมูลจากใบขับขี่ไทยในรูปนี้อย่างละเอียด ตอบเป็น JSON:
 {
   "licenseNo": "<เลขที่ใบขับขี่>",
   "nationalId": "<เลขบัตรประชาชน 13 หลัก ไม่มีขีด>",
   "prefix": "<คำนำหน้า เช่น นาย, นาง, นางสาว>",
   "firstName": "<ชื่อ (ภาษาไทย)>",
   "lastName": "<นามสกุล (ภาษาไทย)>",
-  "birthDate": "<วันเกิด รูปแบบ YYYY-MM-DD>",
+  "birthDate": "<วันเกิด YYYY-MM-DD>",
   "address": "<ที่อยู่ทั้งหมดรวมกัน>",
   "addressStructured": {
     "houseNo": "<บ้านเลขที่>",
@@ -471,32 +488,33 @@ export class OcrService {
     "province": "<จังหวัด>",
     "postalCode": "<รหัสไปรษณีย์ 5 หลัก>"
   },
-  "licenseType": "<ประเภทใบขับขี่ เช่น ส่วนบุคคล, สาธารณะ, ชั่วคราว, ตลอดชีพ>",
-  "issueDate": "<วันออกใบขับขี่ รูปแบบ YYYY-MM-DD>",
-  "expiryDate": "<วันหมดอายุ รูปแบบ YYYY-MM-DD>",
-  "bloodType": "<กรุ๊ปเลือด เช่น A, B, O, AB>",
-  "confidence": <ระดับความมั่นใจ 0.0-1.0>
+  "licenseType": "<ประเภท เช่น ส่วนบุคคล, สาธารณะ, ชั่วคราว, ตลอดชีพ>",
+  "issueDate": "<วันออกใบขับขี่ YYYY-MM-DD>",
+  "expiryDate": "<วันหมดอายุ YYYY-MM-DD>",
+  "bloodType": "<กรุ๊ปเลือด A, B, O, AB>",
+  "confidence": <0.0-1.0>
 }
 
-หมายเหตุ:
-- ให้แปลงวันที่จากพุทธศักราช (พ.ศ.) เป็นคริสต์ศักราช (ค.ศ.) โดยลบ 543 ออก
-- ถ้าอ่านข้อมูลใดไม่ได้ให้ใส่ null หรือ "" สำหรับ field ใน addressStructured
-- ตำบล/แขวง ไม่ต้องมีคำนำหน้า "ตำบล" หรือ "แขวง"
-- อำเภอ/เขต ไม่ต้องมีคำนำหน้า "อำเภอ" หรือ "เขต"
-- จังหวัด ไม่ต้องมีคำนำหน้า "จังหวัด"
-- ตอบเป็น JSON เท่านั้น ไม่ต้องมี markdown code block`,
-              },
-            ],
-          },
-        ],
-      });
+คำแนะนำสำคัญ:
+- เลขที่ใบขับขี่อยู่ด้านบน อ่านทุกหลักอย่างระมัดระวัง
+- เลขบัตรประชาชน 13 หลักอยู่ใต้เลขใบขับขี่
+- ชื่อ-นามสกุลมีทั้งไทยและอังกฤษ ให้ใช้ประกอบกัน
+- แปลงวันที่จาก พ.ศ. เป็น ค.ศ. (ลบ 543)
+- ตำบล/แขวง, อำเภอ/เขต, จังหวัด ไม่ต้องมีคำนำหน้า
+- ถ้าอ่านไม่ได้ให้ใส่ null`;
 
-      const textContent = response.content.find((c) => c.type === 'text');
-      if (!textContent || textContent.type !== 'text') {
-        throw new Error('No text response from Claude');
-      }
+    const retryPrompt = `กรุณาอ่านใบขับขี่ไทยนี้อีกครั้งอย่างละเอียดที่สุด:
+1. เลขใบขับขี่ — มักอยู่มุมบนขวา
+2. เลขบัตรประชาชน 13 หลัก — อ่านทีละตัว ระวัง 0/8, 1/7
+3. ชื่อ — ดูทั้งภาษาไทยและอังกฤษประกอบกัน
+4. ที่อยู่ — อ่านทุกบรรทัด
+5. วันเดือนปี — แปลง พ.ศ. เป็น ค.ศ. อย่างระมัดระวัง
+6. กรุ๊ปเลือด — มักอยู่ด้านล่าง
 
-      const result = this.parseJsonResponse(textContent.text) as Record<string, unknown>;
+${basePrompt}`;
+
+    try {
+      const result = await this.callClaudeOcrWithRetry(mediaType, base64Data, basePrompt, retryPrompt);
 
       const rawNationalId = result.nationalId
         ? String(result.nationalId).replace(/[\s-]/g, '')

@@ -115,12 +115,14 @@ export class OcrService {
         throw new Error('No text response from Claude');
       }
 
-      // Parse JSON from response
+      // Parse JSON from response — strip code fences and trailing commas
       let jsonText = textContent.text.trim();
       const jsonMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)```/);
       if (jsonMatch) {
         jsonText = jsonMatch[1].trim();
       }
+      // Remove trailing commas before } or ] (common LLM quirk)
+      jsonText = jsonText.replace(/,\s*([}\]])/g, '$1');
 
       const result = JSON.parse(jsonText);
 

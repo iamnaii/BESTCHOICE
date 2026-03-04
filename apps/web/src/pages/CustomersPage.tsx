@@ -38,11 +38,6 @@ interface OcrResult {
   confidence: number;
 }
 
-interface OcrDrivingLicenseResult extends OcrResult {
-  licenseNo: string | null;
-  licenseType: string | null;
-  bloodType: string | null;
-}
 
 interface Customer {
   id: string;
@@ -106,24 +101,12 @@ export default function CustomersPage() {
 
   // OCR state
   const ocrFileRef = useRef<HTMLInputElement>(null);
-  const dlFileRef = useRef<HTMLInputElement>(null);
   const [ocrLoading, setOcrLoading] = useState(false);
-  const [ocrType, setOcrType] = useState<'id-card' | 'driving-license'>('id-card');
 
   // Smart Card reader state
-  const [cardReaderAvailable, setCardReaderAvailable] = useState(false);
   const [cardReaderLoading, setCardReaderLoading] = useState(false);
 
   useEffect(() => { setPage(1); }, [debouncedSearch]);
-
-  // Check if card reader service is available when modal opens
-  useEffect(() => {
-    if (isModalOpen) {
-      checkCardReaderStatus().then(status => {
-        setCardReaderAvailable(status !== null && status.status !== 'no_pcsc');
-      });
-    }
-  }, [isModalOpen]);
 
   // Sync current address when "same as ID card" is checked
   useEffect(() => {
@@ -202,11 +185,10 @@ export default function CustomersPage() {
     setReferences([{ ...emptyReference }, { ...emptyReference }]);
   };
 
-  const handleOcrScan = async (e: React.ChangeEvent<HTMLInputElement>, scanType: 'id-card' | 'driving-license' = 'id-card') => {
+  const handleOcrScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (ocrFileRef.current) ocrFileRef.current.value = '';
-    if (dlFileRef.current) dlFileRef.current.value = '';
     if (file.size > 10 * 1024 * 1024) {
       toast.error('ไฟล์ต้องมีขนาดไม่เกิน 10MB');
       return;
@@ -217,11 +199,9 @@ export default function CustomersPage() {
     }
 
     setOcrLoading(true);
-    setOcrType(scanType);
     try {
       const imageBase64 = await compressImageForOcr(file);
-      const endpoint = scanType === 'driving-license' ? '/ocr/driving-license' : '/ocr/id-card';
-      const { data } = await api.post<OcrResult | OcrDrivingLicenseResult>(endpoint, { imageBase64 }, { timeout: 90000 });
+      const { data } = await api.post<OcrResult>('/ocr/id-card', { imageBase64 }, { timeout: 90000 });
 
       // Auto-fill form fields
       const updates: Partial<typeof emptyForm> = {};
@@ -291,20 +271,19 @@ export default function CustomersPage() {
         setAddressIdCard(addr);
       }
 
-      const docName = scanType === 'driving-license' ? 'ใบขับขี่' : 'บัตร';
       const pct = (data.confidence * 100).toFixed(0);
       if (data.confidence < 0.5) {
-        toast.error(`อ่าน${docName}ได้ แต่ความมั่นใจต่ำมาก (${pct}%) กรุณาตรวจสอบข้อมูลทุกช่อง`);
+        toast.error(`อ่านบัตรได้ แต่ความมั่นใจต่ำมาก (${pct}%) กรุณาตรวจสอบข้อมูลทุกช่อง`);
       } else if (data.confidence < 0.7) {
-        toast(`อ่าน${docName}สำเร็จ แต่ความมั่นใจค่อนข้างต่ำ (${pct}%) กรุณาตรวจสอบข้อมูล`, { icon: '!' });
+        toast(`อ่านบัตรสำเร็จ แต่ความมั่นใจค่อนข้างต่ำ (${pct}%) กรุณาตรวจสอบข้อมูล`, { icon: '!' });
       } else {
-        toast.success(`อ่าน${docName}สำเร็จ (ความมั่นใจ ${pct}%)`);
+        toast.success(`อ่านบัตรสำเร็จ (ความมั่นใจ ${pct}%)`);
       }
     } catch (err: any) {
       if (err.code === 'ECONNABORTED' || !err.response) {
         toast.error('OCR ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาลองใหม่อีกครั้ง');
       } else {
-        toast.error(err.response?.data?.message || `ไม่สามารถอ่าน${scanType === 'driving-license' ? 'ใบขับขี่' : 'บัตรประชาชน'}ได้`);
+        toast.error(err.response?.data?.message || 'ไม่สามารถอ่านบัตรประชาชนได้');
       }
     } finally {
       setOcrLoading(false);
@@ -314,6 +293,20 @@ export default function CustomersPage() {
   const handleSmartCardRead = async () => {
     setCardReaderLoading(true);
     try {
+      // Check if card reader service is available
+      const status = await checkCardReaderStatus();
+      if (!status || status.status === 'no_pcsc') {
+        toast.error('ไม่พบเครื่องอ่านบัตร — กรุณาติดตั้ง BESTCHOICE Card Reader Service');
+        return;
+      }
+      if (status.status === 'no_reader') {
+        toast.error('ไม่พบเครื่องอ่านบัตร — กรุณาเสียบเครื่องอ่านบัตร USB');
+        return;
+      }
+      if (status.status === 'waiting') {
+        toast.error('กรุณาเสียบบัตรประชาชนเข้าเครื่องอ่านบัตร');
+        return;
+      }
       const data: SmartCardData = await readSmartCard();
 
       // Auto-fill form fields from Smart Card data
@@ -418,99 +411,64 @@ export default function CustomersPage() {
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="เพิ่มลูกค้าใหม่" size="lg">
         <form onSubmit={(e) => { e.preventDefault(); createMutation.mutate(); }} className="space-y-5 max-h-[75vh] overflow-y-auto pr-1">
 
-          {/* ===== OCR สแกนเอกสาร ===== */}
           {/* ===== Smart Card Reader ===== */}
-          {cardReaderAvailable && (
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-semibold text-green-800">อ่านบัตรประชาชน (Smart Card)</h3>
-                <span className="inline-flex items-center gap-1 text-xs text-green-600">
-                  <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                  เครื่องอ่านบัตรพร้อม
-                </span>
-              </div>
-              <p className="text-xs text-green-600 mb-3">เสียบบัตรประชาชนเข้าเครื่องอ่านบัตร แล้วกดอ่าน — ข้อมูลแม่นยำ 100%</p>
-              <button
-                type="button"
-                onClick={handleSmartCardRead}
-                disabled={cardReaderLoading || ocrLoading}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
-              >
-                {cardReaderLoading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                    กำลังอ่านบัตร...
-                  </>
-                ) : (
-                  <>
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" /></svg>
-                    อ่านบัตร Smart Card
-                  </>
-                )}
-              </button>
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold text-green-800">อ่านบัตรประชาชน (Smart Card)</h3>
             </div>
-          )}
+            <p className="text-xs text-green-600 mb-3">เสียบบัตรประชาชนเข้าเครื่องอ่านบัตร แล้วกดอ่าน — ข้อมูลแม่นยำ 100%</p>
+            <button
+              type="button"
+              onClick={handleSmartCardRead}
+              disabled={cardReaderLoading || ocrLoading}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+            >
+              {cardReaderLoading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                  กำลังอ่านบัตร...
+                </>
+              ) : (
+                <>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" /></svg>
+                  อ่านบัตร Smart Card
+                </>
+              )}
+            </button>
+          </div>
 
           {/* ===== OCR Scan ===== */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-semibold text-blue-800">สแกนเอกสาร (OCR)</h3>
+              <h3 className="text-sm font-semibold text-blue-800">สแกนบัตรประชาชน (OCR)</h3>
             </div>
-            <p className="text-xs text-blue-600 mb-3">ถ่ายรูปบัตรประชาชนหรือใบขับขี่เพื่อกรอกข้อมูลอัตโนมัติ</p>
+            <p className="text-xs text-blue-600 mb-3">ถ่ายรูปบัตรประชาชนเพื่อกรอกข้อมูลอัตโนมัติ</p>
             <input
               ref={ocrFileRef}
               type="file"
               accept="image/*"
               capture="environment"
-              onChange={(e) => handleOcrScan(e, 'id-card')}
+              onChange={handleOcrScan}
               className="hidden"
             />
-            <input
-              ref={dlFileRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={(e) => handleOcrScan(e, 'driving-license')}
-              className="hidden"
-            />
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => ocrFileRef.current?.click()}
-                disabled={ocrLoading}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-              >
-                {ocrLoading && ocrType === 'id-card' ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                    กำลังอ่านข้อมูล...
-                  </>
-                ) : (
-                  <>
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                    สแกนบัตรประชาชน
-                  </>
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => dlFileRef.current?.click()}
-                disabled={ocrLoading}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
-              >
-                {ocrLoading && ocrType === 'driving-license' ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                    กำลังอ่านข้อมูล...
-                  </>
-                ) : (
-                  <>
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0" /></svg>
-                    สแกนใบขับขี่
-                  </>
-                )}
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => ocrFileRef.current?.click()}
+              disabled={ocrLoading}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+            >
+              {ocrLoading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                  กำลังอ่านข้อมูล...
+                </>
+              ) : (
+                <>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                  สแกนบัตรประชาชน
+                </>
+              )}
+            </button>
           </div>
 
           {/* ===== ข้อมูลส่วนตัว ===== */}

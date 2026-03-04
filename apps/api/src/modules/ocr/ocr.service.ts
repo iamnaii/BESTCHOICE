@@ -1,4 +1,9 @@
-import { Injectable, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Anthropic from '@anthropic-ai/sdk';
 import { OcrIdCardResult, OcrAddressStructured } from './dto/ocr.dto';
@@ -10,10 +15,10 @@ export class OcrService {
 
   constructor(private configService: ConfigService) {
     const apiKey =
-      this.configService.get<string>('ANTHROPIC_API_KEY') ||
+      this.configService.get<string>('ANTHROPIC_API_KEY') ??
       process.env.ANTHROPIC_API_KEY;
     if (apiKey) {
-      this.anthropic = new Anthropic({ apiKey });
+      this.anthropic = new Anthropic({ apiKey, timeout: 90_000 });
       this.logger.log('OCR service initialized with Anthropic API key');
     } else {
       this.logger.warn('ANTHROPIC_API_KEY not configured — OCR features will be unavailable');
@@ -60,6 +65,11 @@ export class OcrService {
 
     const mediaType = prefixMatch[1] as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
     const base64Data = imageBase64.slice(prefixMatch[0].length);
+
+    // Validate base64 characters
+    if (!/^[A-Za-z0-9+/=]+$/.test(base64Data)) {
+      throw new BadRequestException('ข้อมูลรูปภาพไม่ถูกต้อง (base64 ไม่ valid)');
+    }
 
     try {
       const response = await this.anthropic.messages.create({
@@ -133,11 +143,8 @@ export class OcrService {
         ? result.nationalId.replace(/[\s-]/g, '')
         : null;
 
-      // Validate national ID checksum
-      const nationalId =
-        rawNationalId && this.validateNationalId(rawNationalId)
-          ? rawNationalId
-          : rawNationalId; // still return it even if checksum fails, frontend will warn
+      // Validate national ID checksum — return both value and validity
+      const nationalIdValid = rawNationalId ? this.validateNationalId(rawNationalId) : false;
 
       // Validate dates
       const birthDate =
@@ -174,7 +181,8 @@ export class OcrService {
       }
 
       return {
-        nationalId,
+        nationalId: rawNationalId,
+        nationalIdValid,
         prefix: result.prefix || null,
         firstName: result.firstName || null,
         lastName: result.lastName || null,
@@ -187,12 +195,17 @@ export class OcrService {
         confidence: Math.max(0, Math.min(1, Number(result.confidence) || 0.5)),
       };
     } catch (error) {
+      // Re-throw our own exceptions as-is
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
       if (error instanceof SyntaxError) {
-        this.logger.error('Failed to parse OCR response as JSON', error.message);
+        this.logger.error('Failed to parse OCR response as JSON');
         throw new BadRequestException('ไม่สามารถอ่านข้อมูลจากบัตรประชาชนได้ กรุณาลองใช้รูปที่ชัดเจนกว่านี้');
       }
-      this.logger.error('OCR ID card extraction failed', error.message);
-      throw new BadRequestException('เกิดข้อผิดพลาดในการอ่านบัตรประชาชน: ' + (error.message || 'unknown'));
+      // Anthropic API errors → 500 (not the client's fault)
+      this.logger.error('OCR ID card extraction failed');
+      throw new InternalServerErrorException('ระบบ OCR ขัดข้อง กรุณาลองใหม่อีกครั้ง');
     }
   }
 }

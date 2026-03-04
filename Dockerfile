@@ -6,7 +6,7 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 COPY apps/api/package.json apps/api/
 COPY packages/ packages/
-RUN npm install --frozen-lockfile 2>/dev/null || npm install
+RUN npm ci 2>/dev/null || npm install
 
 # ============================================
 # Stage 2: Build API
@@ -35,15 +35,15 @@ RUN apk add --no-cache wget
 RUN addgroup --system --gid 1001 appgroup && \
     adduser --system --uid 1001 appuser
 
-# Copy API build artifacts
-COPY --from=builder /app/apps/api/dist ./apps/api/dist
-COPY --from=builder /app/apps/api/package.json ./apps/api/
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
+# Copy API build artifacts (use --chown for correct permissions)
+COPY --from=builder --chown=appuser:appgroup /app/apps/api/dist ./apps/api/dist
+COPY --from=builder --chown=appuser:appgroup /app/apps/api/package.json ./apps/api/
+COPY --from=deps --chown=appuser:appgroup /app/node_modules ./node_modules
+COPY --from=builder --chown=appuser:appgroup /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder --chown=appuser:appgroup /app/apps/api/prisma ./apps/api/prisma
 
 # Copy entrypoint script
-COPY docker-entrypoint.sh ./
+COPY --chown=appuser:appgroup docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh
 
 USER appuser

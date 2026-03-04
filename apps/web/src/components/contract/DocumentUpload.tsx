@@ -41,6 +41,7 @@ interface OcrAddressStructured {
 
 interface OcrResult {
   nationalId: string | null;
+  nationalIdValid: boolean;
   prefix: string | null;
   firstName: string | null;
   lastName: string | null;

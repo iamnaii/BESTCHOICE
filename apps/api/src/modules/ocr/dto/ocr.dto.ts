@@ -3,7 +3,7 @@ import { IsString, IsNotEmpty, MaxLength } from 'class-validator';
 export class OcrIdCardDto {
   @IsString()
   @IsNotEmpty()
-  @MaxLength(20_000_000) // ~15MB base64 ≈ ~10MB image
+  @MaxLength(5_000_000) // ~3.75MB base64 (frontend compresses to ~300KB)
   imageBase64: string; // base64 data URL of the ID card image
 }
 
@@ -21,6 +21,7 @@ export interface OcrAddressStructured {
 
 export interface OcrIdCardResult {
   nationalId: string | null;
+  nationalIdValid: boolean;
   prefix: string | null;
   firstName: string | null;
   lastName: string | null;

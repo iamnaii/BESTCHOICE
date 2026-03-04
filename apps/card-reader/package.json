@@ -5,8 +5,7 @@
   "description": "Local service for reading Thai National ID Smart Cards via USB card reader",
   "scripts": {
     "dev": "ts-node src/index.ts",
-    "build": "tsc",
-    "bundle": "esbuild src/index.ts --bundle --platform=node --target=node20 --outfile=dist/index.js --external:pcsclite",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --outfile=dist/index.js --external:pcsclite",
     "start": "node dist/index.js"
   },
   "dependencies": {

@@ -113,11 +113,13 @@ export default function ContractCreatePage() {
   const [ocrScannedFile, setOcrScannedFile] = useState<File | null>(null);
 
   // Cleanup object URLs on unmount to prevent memory leaks
+  const pendingDocsRef = useRef(pendingDocs);
+  pendingDocsRef.current = pendingDocs;
   useEffect(() => {
     return () => {
-      pendingDocs.forEach((doc) => URL.revokeObjectURL(doc.preview));
+      pendingDocsRef.current.forEach((doc) => URL.revokeObjectURL(doc.preview));
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   // Queries
   const { data: products = [] } = useQuery<Product[]>({

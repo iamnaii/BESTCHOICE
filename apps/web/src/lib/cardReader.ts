@@ -92,31 +92,3 @@ export async function readSmartCard(): Promise<SmartCardData> {
     throw err;
   }
 }
-
-/** Force re-read the card */
-export async function forceReadSmartCard(): Promise<SmartCardData> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000);
-
-  try {
-    const resp = await fetch(`${CARD_READER_URL}/api/read-card`, {
-      method: 'POST',
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-
-    const body = await resp.json();
-
-    if (!resp.ok) {
-      throw new Error(body.message || 'อ่านบัตรไม่สำเร็จ');
-    }
-
-    return (body as CardReaderResponse).data;
-  } catch (err: any) {
-    clearTimeout(timeoutId);
-    if (err.name === 'AbortError') {
-      throw new Error('อ่านบัตรนานเกินไป (timeout)');
-    }
-    throw err;
-  }
-}

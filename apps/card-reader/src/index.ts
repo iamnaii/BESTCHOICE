@@ -82,6 +82,7 @@ function initPCSC(): void {
         // Card removed
         if ((changes & reader.SCARD_STATE_EMPTY) && (status.state & reader.SCARD_STATE_EMPTY)) {
           readerStatus = 'waiting';
+          readerError = '';
           lastCardData = null;
           console.log('[Card Reader] Card removed — data cleared');
         }

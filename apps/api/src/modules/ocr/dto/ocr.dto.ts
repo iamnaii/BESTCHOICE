@@ -1,7 +1,9 @@
-import { IsString } from 'class-validator';
+import { IsString, IsNotEmpty, MaxLength } from 'class-validator';
 
 export class OcrIdCardDto {
   @IsString()
+  @IsNotEmpty()
+  @MaxLength(20_000_000) // ~15MB base64 ≈ ~10MB image
   imageBase64: string; // base64 data URL of the ID card image
 }
 

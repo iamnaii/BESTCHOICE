@@ -28,9 +28,12 @@ function connectToCard(reader: any, shareMode: number): Promise<number> {
   });
 }
 
-function disconnectCard(reader: any): void {
-  reader.disconnect(reader.SCARD_LEAVE_CARD, (err: Error | null) => {
-    if (err) console.error('[Card Reader] Disconnect error:', err.message);
+function disconnectCard(reader: any): Promise<void> {
+  return new Promise((resolve) => {
+    reader.disconnect(reader.SCARD_LEAVE_CARD, (err: Error | null) => {
+      if (err) console.error('[Card Reader] Disconnect error:', err.message);
+      resolve();
+    });
   });
 }
 
@@ -61,12 +64,12 @@ async function connectAndRead(reader: any): Promise<void> {
         readerStatus = 'card_inserted';
         readerError = '';
         console.log(`[Card Reader] Read success: ${lastCardData.nationalId} — ${lastCardData.firstName} ${lastCardData.lastName}`);
-        disconnectCard(reader);
+        await disconnectCard(reader);
         isReading = false;
         return;
       } catch (readErr: any) {
         console.error(`[Card Reader] Read error (${name}): ${readErr.message}`);
-        disconnectCard(reader);
+        await disconnectCard(reader);
         // If this was SHARED, try EXCLUSIVE next
         continue;
       }

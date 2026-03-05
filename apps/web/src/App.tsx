@@ -9,14 +9,9 @@ const LandingPage = lazy(() => import('@/pages/LandingPage'));
 const LoginPage = lazy(() => import('@/pages/LoginPage'));
 const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
 const BranchesPage = lazy(() => import('@/pages/BranchesPage'));
-const SuppliersPage = lazy(() => import('@/pages/SuppliersPage'));
 const SupplierDetailPage = lazy(() => import('@/pages/SupplierDetailPage'));
-const ProductsPage = lazy(() => import('@/pages/ProductsPage'));
 const ProductCreatePage = lazy(() => import('@/pages/ProductCreatePage'));
 const ProductDetailPage = lazy(() => import('@/pages/ProductDetailPage'));
-const StockPage = lazy(() => import('@/pages/StockPage'));
-const StockTransfersPage = lazy(() => import('@/pages/StockTransfersPage'));
-const InspectionPage = lazy(() => import('@/pages/InspectionPage'));
 const InspectionDetailPage = lazy(() => import('@/pages/InspectionDetailPage'));
 const StickerPrintPage = lazy(() => import('@/pages/StickerPrintPage'));
 const CustomersPage = lazy(() => import('@/pages/CustomersPage'));
@@ -29,7 +24,6 @@ const ContractTemplatesPage = lazy(() => import('@/pages/ContractTemplatesPage')
 const PaymentsPage = lazy(() => import('@/pages/PaymentsPage'));
 const OverduePage = lazy(() => import('@/pages/OverduePage'));
 const RepossessionsPage = lazy(() => import('@/pages/RepossessionsPage'));
-const PurchaseOrdersPage = lazy(() => import('@/pages/PurchaseOrdersPage'));
 const NotificationsPage = lazy(() => import('@/pages/NotificationsPage'));
 const ReportsPage = lazy(() => import('@/pages/ReportsPage'));
 const MigrationPage = lazy(() => import('@/pages/MigrationPage'));
@@ -41,6 +35,7 @@ const POSPage = lazy(() => import('@/pages/POSPage'));
 const SalesHistoryPage = lazy(() => import('@/pages/SalesHistoryPage'));
 const InterestConfigPage = lazy(() => import('@/pages/InterestConfigPage'));
 const CreditChecksPage = lazy(() => import('@/pages/CreditChecksPage'));
+const InventoryWorkflowPage = lazy(() => import('@/pages/InventoryWorkflowPage'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -92,9 +87,19 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route path="/suppliers" element={<SuppliersPage />} />
+          {/* Inventory Workflow (unified page) */}
+          <Route path="/inventory" element={<InventoryWorkflowPage />} />
+
+          {/* Redirect old inventory routes to unified page */}
+          <Route path="/stock" element={<Navigate to="/inventory?tab=stock" replace />} />
+          <Route path="/suppliers" element={<Navigate to="/inventory?tab=suppliers" replace />} />
+          <Route path="/purchase-orders" element={<Navigate to="/inventory?tab=purchase-orders" replace />} />
+          <Route path="/inspections" element={<Navigate to="/inventory?tab=inspections" replace />} />
+          <Route path="/products" element={<Navigate to="/inventory?tab=products" replace />} />
+          <Route path="/stock/transfers" element={<Navigate to="/inventory?tab=transfers" replace />} />
+
+          {/* Detail pages still need their own routes */}
           <Route path="/suppliers/:id" element={<SupplierDetailPage />} />
-          <Route path="/products" element={<ProductsPage />} />
           <Route
             path="/products/create"
             element={
@@ -104,16 +109,6 @@ function App() {
             }
           />
           <Route path="/products/:id" element={<ProductDetailPage />} />
-          <Route path="/stock" element={<StockPage />} />
-          <Route
-            path="/stock/transfers"
-            element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}>
-                <StockTransfersPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route path="/inspections" element={<InspectionPage />} />
           <Route path="/inspections/:id" element={<InspectionDetailPage />} />
           <Route path="/stickers" element={<StickerPrintPage />} />
           <Route path="/pos" element={<POSPage />} />
@@ -155,14 +150,6 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}>
                 <RepossessionsPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/purchase-orders"
-            element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}>
-                <PurchaseOrdersPage />
               </ProtectedRoute>
             }
           />

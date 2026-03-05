@@ -8,6 +8,8 @@ interface NavItem {
   path: string;
   roles?: string[];
   section?: string;
+  step?: number;
+  group?: string;
 }
 
 const sectionMeta: Record<string, { label: string; icon: string }> = {
@@ -20,7 +22,7 @@ const sectionMeta: Record<string, { label: string; icon: string }> = {
     icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z',
   },
   inventory: {
-    label: 'คลัง & จัดซื้อ',
+    label: 'จัดซื้อ & คลังสินค้า',
     icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4',
   },
   reports: {
@@ -51,13 +53,8 @@ const navItems: NavItem[] = [
   { label: 'เปลี่ยนเครื่อง', path: '/exchange', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'debt' },
   { label: 'ยึดคืน & ขายต่อ', path: '/repossessions', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'debt' },
 
-  // คลัง & จัดซื้อ (Workflow: เช็ค Stock → สั่งซื้อ → ตรวจรับ → เข้าคลัง → ส่งสาขา → สาขารับ)
-  { label: 'สินค้า', path: '/products', section: 'inventory' },
-  { label: 'สต็อก & Reorder', path: '/stock', roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'], section: 'inventory' },
-  { label: 'Supplier', path: '/suppliers', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'inventory' },
-  { label: 'ใบสั่งซื้อ (PO)', path: '/purchase-orders', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'inventory' },
-  { label: 'ตรวจเช็คเครื่อง', path: '/inspections', section: 'inventory' },
-  { label: 'โอนสินค้าไปสาขา', path: '/stock/transfers', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'inventory' },
+  // จัดซื้อ & คลังสินค้า (unified workflow page)
+  { label: 'จัดซื้อ & คลังสินค้า', path: '/inventory', section: 'inventory' },
 
   // รายงาน & แจ้งเตือน
   { label: 'รายงาน', path: '/reports', roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'], section: 'reports' },
@@ -153,12 +150,46 @@ function Sidebar() {
           </NavLink>
         ))}
 
-        {/* Collapsible sections */}
+        {/* Sections */}
         {sections.map((section) => {
-          const isCollapsed = collapsed[section.key] ?? false;
           const hasActive = section.items.some((i) =>
             i.path === '/' ? activeSectionPath === '/' : activeSectionPath.startsWith(i.path),
           );
+
+          // Single-item section: render as direct link with icon (no collapsible)
+          if (section.items.length === 1) {
+            const item = section.items[0];
+            return (
+              <div key={section.key} className="mt-2">
+                <NavLink
+                  to={item.path}
+                  className={({ isActive }) =>
+                    clsx(
+                      'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition-colors duration-200',
+                      isActive
+                        ? 'bg-primary-900/50 text-primary-300'
+                        : 'text-gray-500 hover:bg-white/5 hover:text-gray-300',
+                    )
+                  }
+                >
+                  <svg
+                    className="w-4 h-4 shrink-0"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={section.icon} />
+                  </svg>
+                  <span className="text-[11px] font-semibold uppercase tracking-wider">
+                    {section.label}
+                  </span>
+                </NavLink>
+              </div>
+            );
+          }
+
+          // Multi-item section: collapsible
+          const isCollapsed = collapsed[section.key] ?? false;
 
           return (
             <div key={section.key} className="mt-2">
@@ -210,23 +241,42 @@ function Sidebar() {
                 )}
               >
                 <div className="ml-4 pl-2.5 border-l border-white/5 mt-0.5">
-                  {section.items.map((item) => (
-                    <NavLink
-                      key={item.path}
-                      to={item.path}
-                      end={item.path === '/'}
-                      className={({ isActive }) =>
-                        clsx(
-                          'flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 mb-0.5',
-                          isActive
-                            ? 'bg-primary-600 text-white shadow-lg shadow-primary-600/20'
-                            : 'text-gray-400 hover:bg-white/5 hover:text-white',
-                        )
-                      }
-                    >
-                      {item.label}
-                    </NavLink>
-                  ))}
+                  {section.items.map((item, idx) => {
+                    const prevGroup = idx > 0 ? section.items[idx - 1].group : null;
+                    const showGroupHeader = item.group && item.group !== prevGroup;
+
+                    return (
+                      <div key={item.path}>
+                        {showGroupHeader && (
+                          <div className={clsx('flex items-center gap-2 px-3', idx > 0 ? 'mt-3 mb-1' : 'mb-1')}>
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-600">
+                              {item.group}
+                            </span>
+                            <div className="flex-1 h-px bg-white/5" />
+                          </div>
+                        )}
+                        <NavLink
+                          to={item.path}
+                          end={item.path === '/'}
+                          className={({ isActive }) =>
+                            clsx(
+                              'flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 mb-0.5',
+                              isActive
+                                ? 'bg-primary-600 text-white shadow-lg shadow-primary-600/20'
+                                : 'text-gray-400 hover:bg-white/5 hover:text-white',
+                            )
+                          }
+                        >
+                          {item.step != null && (
+                            <span className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center text-[10px] font-bold shrink-0">
+                              {item.step}
+                            </span>
+                          )}
+                          {item.label}
+                        </NavLink>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>

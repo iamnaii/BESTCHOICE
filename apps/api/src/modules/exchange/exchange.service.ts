@@ -179,7 +179,7 @@ export class ExchangeService {
       // Return old product to stock
       await tx.product.update({
         where: { id: oldContract.productId },
-        data: { status: 'IN_STOCK', stockInDate: new Date() },
+        data: { status: 'QC_PENDING' },
       });
 
       // Reserve new product

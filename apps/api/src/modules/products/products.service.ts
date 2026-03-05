@@ -598,6 +598,7 @@ export class ProductsService {
     // --- 2. Action Required ---
     const actionRequired = {
       inspection: allProducts.filter((p) => p.status === 'INSPECTION').length,
+      qcPending: allProducts.filter((p) => p.status === 'QC_PENDING').length,
       pendingTransfers,
       repossessed: allProducts.filter((p) => p.status === 'REPOSSESSED').length,
       agingOver90: agingBuckets[3].count,

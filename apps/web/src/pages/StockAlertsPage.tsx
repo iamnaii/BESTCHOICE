@@ -7,6 +7,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { categoryLabels } from '@/lib/constants';
+import { brands, getModels, getModelInfo } from '@/data/productCatalog';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -571,48 +572,63 @@ export default function StockAlertsPage() {
             <>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">แบรนด์</label>
-                  <input
-                    type="text"
-                    value={form.brand}
-                    onChange={(e) => setForm({ ...form, brand: e.target.value })}
+                  <label className="block text-sm font-medium text-gray-700 mb-1">ประเภท</label>
+                  <select
+                    value={form.category}
+                    onChange={(e) => setForm({ ...form, category: e.target.value, brand: '', model: '', storage: '' })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-                    required
-                    placeholder="เช่น Apple, Samsung"
-                  />
+                  >
+                    {Object.entries(categoryLabels).filter(([key]) => key !== 'ACCESSORY').map(([key, val]) => (
+                      <option key={key} value={key}>{val}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">รุ่น</label>
-                  <input
-                    type="text"
-                    value={form.model}
-                    onChange={(e) => setForm({ ...form, model: e.target.value })}
+                  <label className="block text-sm font-medium text-gray-700 mb-1">แบรนด์</label>
+                  <select
+                    value={form.brand}
+                    onChange={(e) => setForm({ ...form, brand: e.target.value, model: '', storage: '' })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
                     required
-                    placeholder="เช่น iPhone 15"
-                  />
+                  >
+                    <option value="">-- เลือกแบรนด์ --</option>
+                    {brands.map((b) => (
+                      <option key={b} value={b}>{b}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">รุ่น</label>
+                  <select
+                    value={form.model}
+                    onChange={(e) => {
+                      const modelName = e.target.value;
+                      const info = form.brand ? getModelInfo(form.brand, modelName) : undefined;
+                      setForm({ ...form, model: modelName, storage: '', category: info?.category || form.category });
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                    required
+                    disabled={!form.brand}
+                  >
+                    <option value="">-- เลือกรุ่น --</option>
+                    {form.brand && getModels(form.brand, form.category).map((m) => (
+                      <option key={m.name} value={m.name}>{m.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">ความจุ (ไม่บังคับ)</label>
-                  <input
-                    type="text"
+                  <select
                     value={form.storage}
                     onChange={(e) => setForm({ ...form, storage: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-                    placeholder="เช่น 128GB"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">ประเภท</label>
-                  <select
-                    value={form.category}
-                    onChange={(e) => setForm({ ...form, category: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                    disabled={!form.model}
                   >
-                    {Object.entries(categoryLabels).map(([key, val]) => (
-                      <option key={key} value={key}>{val}</option>
+                    <option value="">ทุกความจุ</option>
+                    {form.brand && form.model && (getModelInfo(form.brand, form.model)?.storage || []).map((s) => (
+                      <option key={s} value={s}>{s}</option>
                     ))}
                   </select>
                 </div>

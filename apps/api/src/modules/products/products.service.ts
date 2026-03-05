@@ -801,7 +801,7 @@ export class ProductsService {
         name: 'ตรวจรับสินค้า (QC)',
         status: product.receivingItem ? 'completed' as const : 'pending' as const,
         description: product.receivingItem
-          ? `QC: ${product.receivingItem.status} (${product.receivingItem.createdAt.toLocaleDateString('th-TH')})`
+          ? `QC: ${product.receivingItem.status} (${new Date(product.receivingItem.createdAt).toLocaleDateString('th-TH')})`
           : 'ยังไม่ได้ตรวจรับ',
       },
       {
@@ -817,6 +817,7 @@ export class ProductsService {
         name: 'ส่งไปสาขา',
         status: latestTransfer
           ? latestTransfer.status === 'CONFIRMED' ? 'completed' as const
+            : latestTransfer.status === 'REJECTED' ? 'pending' as const
             : latestTransfer.status === 'IN_TRANSIT' ? 'in_progress' as const
             : 'pending' as const
           : 'pending' as const,

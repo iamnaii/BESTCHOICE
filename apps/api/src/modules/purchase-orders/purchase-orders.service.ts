@@ -677,7 +677,7 @@ export class PurchaseOrdersService {
               warrantyExpired: item.warrantyExpired ?? null,
               warrantyExpireDate: item.warrantyExpireDate ? new Date(item.warrantyExpireDate) : null,
               hasBox: item.hasBox ?? null,
-              checklistResults: item.checklistResults || null,
+              checklistResults: item.checklistResults ?? undefined,
               accessoryType: poItem.accessoryType || null,
               accessoryBrand: poItem.accessoryBrand || null,
             },
@@ -697,7 +697,7 @@ export class PurchaseOrdersService {
               warrantyExpired: item.warrantyExpired ?? null,
               warrantyExpireDate: item.warrantyExpireDate ? new Date(item.warrantyExpireDate) : null,
               hasBox: item.hasBox ?? null,
-              checklistResults: item.checklistResults || null,
+              checklistResults: item.checklistResults ?? undefined,
             },
           });
 

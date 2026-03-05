@@ -100,7 +100,7 @@ export default function ProductsPage() {
       priceId: editingPriceId === 'new' ? undefined : editingPriceId || undefined,
       data: {
         label: priceForm.label,
-        amount: parseFloat(priceForm.amount),
+        amount: parseFloat(priceForm.amount) || 0,
         isDefault: priceForm.isDefault,
       },
     });

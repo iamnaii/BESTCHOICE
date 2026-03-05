@@ -266,7 +266,7 @@ export default function RepossessionsPage() {
           </div>
           <div className="bg-white rounded-lg border p-4">
             <div className="text-sm text-gray-500">กำไร/ขาดทุน</div>
-            <div className={`text-lg font-bold ${profitLoss.summary.totalProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+            <div className={`text-lg font-bold ${(profitLoss.summary.totalProfit ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
               {profitLoss.summary.totalProfit?.toLocaleString()} บาท
             </div>
           </div>
@@ -274,7 +274,7 @@ export default function RepossessionsPage() {
       )}
 
       {/* Itemized P&L Table */}
-      {profitLoss?.items?.length > 0 && (
+      {(profitLoss?.items?.length ?? 0) > 0 && (
         <div className="bg-white rounded-lg border mb-6 overflow-hidden">
           <div className="px-4 py-3 border-b bg-gray-50">
             <h3 className="text-sm font-medium text-gray-700">รายละเอียดกำไร/ขาดทุน</h3>
@@ -295,7 +295,7 @@ export default function RepossessionsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {profitLoss.items.map((item: { id: string; contract: string; customer: string; product: string; conditionGrade: string; appraisalPrice: number; repairCost: number; resellPrice: number; profit: number; marginPct: string }) => (
+                {profitLoss?.items?.map((item: { id: string; contract: string; customer: string; product: string; conditionGrade: string; appraisalPrice: number; repairCost: number; resellPrice: number; profit: number; marginPct: string }) => (
                   <tr key={item.id} className="hover:bg-gray-50">
                     <td className="px-4 py-2 font-medium text-primary-600">{item.contract}</td>
                     <td className="px-4 py-2">{item.customer}</td>

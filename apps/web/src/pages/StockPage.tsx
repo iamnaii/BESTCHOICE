@@ -158,7 +158,7 @@ export default function StockPage() {
       priceId: defaultPrice?.id,
       data: {
         label: priceForm.label,
-        amount: parseFloat(priceForm.amount),
+        amount: parseFloat(priceForm.amount) || 0,
         isDefault: priceForm.isDefault,
       },
     });

@@ -236,7 +236,7 @@ export default function ContractCreatePage() {
   useEffect(() => {
     if (totalMonths < minMonths) setTotalMonths(minMonths);
     else if (totalMonths > maxMonths) setTotalMonths(maxMonths);
-  }, [minMonths, maxMonths]);
+  }, [minMonths, maxMonths, totalMonths]);
 
   const interestTotal = (sellingPrice - downPayment) * interestRate * totalMonths;
   const financedAmount = (sellingPrice - downPayment) + interestTotal;

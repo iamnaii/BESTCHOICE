@@ -37,6 +37,7 @@ enum PlanType {
 
 enum ProductStatus {
   PO_RECEIVED
+  QC_PENDING      // รอตรวจสอบคุณภาพ (ก่อนเข้าคลัง)
   INSPECTION
   IN_STOCK
   RESERVED
@@ -90,6 +91,7 @@ enum ReceivingItemStatus {
 
 enum TransferStatus {
   PENDING
+  IN_TRANSIT       // กำลังจัดส่ง
   CONFIRMED
   REJECTED
 }
@@ -189,6 +191,7 @@ model Branch {
   stockFroms       StockTransfer[] @relation("TransferFrom")
   stockTos         StockTransfer[] @relation("TransferTo")
   stockAdjustments StockAdjustment[]
+  reorderPoints    ReorderPoint[]
 
   @@map("branches")
 }
@@ -218,9 +221,11 @@ model User {
   repossessionsAppraised Repossession[]    @relation("AppraisedBy")
   goodsReceivings        GoodsReceiving[]  @relation("GoodsReceivedBy")
   transfersConfirmed     StockTransfer[]   @relation("TransferConfirmedBy")
+  transfersDispatched    StockTransfer[]   @relation("TransferDispatchedBy")
   stockAdjustments       StockAdjustment[] @relation("StockAdjustedBy")
   documentsUploaded      ContractDocument[] @relation("DocumentUploadedBy")
   creditChecks           CreditCheck[]     @relation("CreditCheckedBy")
+  branchReceivings       BranchReceiving[] @relation("BranchReceivedBy")
 
   @@index([branchId])
   @@map("users")
@@ -419,6 +424,8 @@ model PurchaseOrder {
   paymentNotes    String?         @map("payment_notes")
   attachments     String[]        @default([])
   notes           String?
+  stockCheckRef   String?         @map("stock_check_ref") // Reference to stock alert that triggered this PO
+  rejectReason    String?         @map("reject_reason")   // Reason for rejection by Owner
   createdById     String          @map("created_by_id")
   approvedById    String?         @map("approved_by_id")
   createdAt       DateTime        @default(now()) @map("created_at")
@@ -536,12 +543,20 @@ model StockTransfer {
   status        TransferStatus @default(PENDING)
   confirmedById String?        @map("confirmed_by_id")
   confirmedAt   DateTime?      @map("confirmed_at")
+  // IN_TRANSIT fields
+  dispatchedById  String?      @map("dispatched_by_id")
+  dispatchedAt    DateTime?    @map("dispatched_at")
+  trackingNote    String?      @map("tracking_note")
+  expectedDeliveryDate DateTime? @map("expected_delivery_date")
   createdAt     DateTime       @default(now()) @map("created_at")
 
-  product     Product @relation(fields: [productId], references: [id])
-  fromBranch  Branch  @relation("TransferFrom", fields: [fromBranchId], references: [id])
-  toBranch    Branch  @relation("TransferTo", fields: [toBranchId], references: [id])
-  confirmedBy User?   @relation("TransferConfirmedBy", fields: [confirmedById], references: [id])
+  product      Product @relation(fields: [productId], references: [id])
+  fromBranch   Branch  @relation("TransferFrom", fields: [fromBranchId], references: [id])
+  toBranch     Branch  @relation("TransferTo", fields: [toBranchId], references: [id])
+  confirmedBy  User?   @relation("TransferConfirmedBy", fields: [confirmedById], references: [id])
+  dispatchedBy User?   @relation("TransferDispatchedBy", fields: [dispatchedById], references: [id])
+
+  branchReceiving BranchReceiving?
 
   @@index([productId])
   @@index([status])
@@ -963,4 +978,89 @@ model CreditCheck {
   @@index([customerId])
   @@index([status])
   @@map("credit_checks")
+}
+
+// ============================================================
+// REORDER POINT & STOCK ALERTS
+// ============================================================
+
+model ReorderPoint {
+  id              String          @id @default(uuid())
+  brand           String
+  model           String
+  storage         String?
+  category        ProductCategory
+  branchId        String          @map("branch_id")
+  minQuantity     Int             @map("min_quantity")       // จำนวนขั้นต่ำก่อนแจ้งเตือน
+  reorderQuantity Int             @map("reorder_quantity")   // จำนวนที่แนะนำให้สั่ง
+  isActive        Boolean         @default(true) @map("is_active")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  branch Branch @relation(fields: [branchId], references: [id])
+
+  @@unique([brand, model, storage, category, branchId])
+  @@index([branchId])
+  @@index([isActive])
+  @@map("reorder_points")
+}
+
+model StockAlert {
+  id              String   @id @default(uuid())
+  reorderPointId  String   @map("reorder_point_id")
+  brand           String
+  model           String
+  storage         String?
+  category        String
+  branchId        String   @map("branch_id")
+  currentStock    Int      @map("current_stock")
+  minQuantity     Int      @map("min_quantity")
+  reorderQuantity Int      @map("reorder_quantity")
+  status          String   @default("ACTIVE") // ACTIVE, PO_CREATED, RESOLVED
+  poId            String?  @map("po_id")      // PO ที่สร้างจาก alert นี้
+  resolvedAt      DateTime? @map("resolved_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([status])
+  @@index([branchId])
+  @@index([createdAt])
+  @@map("stock_alerts")
+}
+
+// ============================================================
+// BRANCH RECEIVING (สาขาเช็ครับสินค้า)
+// ============================================================
+
+model BranchReceiving {
+  id           String   @id @default(uuid())
+  transferId   String   @unique @map("transfer_id")
+  receivedById String   @map("received_by_id")
+  status       String   @default("PENDING") // PENDING, COMPLETED, PARTIAL_REJECT
+  notes        String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  transfer   StockTransfer        @relation(fields: [transferId], references: [id])
+  receivedBy User                 @relation("BranchReceivedBy", fields: [receivedById], references: [id])
+  items      BranchReceivingItem[]
+
+  @@index([transferId])
+  @@map("branch_receivings")
+}
+
+model BranchReceivingItem {
+  id             String   @id @default(uuid())
+  receivingId    String   @map("receiving_id")
+  productId      String   @map("product_id")
+  imeiSerial     String?  @map("imei_serial")    // สแกนยืนยัน
+  status         String   @default("PASS")       // PASS, REJECT
+  conditionNotes String?  @map("condition_notes")
+  photos         String[] @default([])
+  rejectReason   String?  @map("reject_reason")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  receiving BranchReceiving @relation(fields: [receivingId], references: [id])
+
+  @@index([receivingId])
+  @@index([productId])
+  @@map("branch_receiving_items")
 }

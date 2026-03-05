@@ -102,6 +102,7 @@ export class PurchaseOrdersService {
       });
       const poNumber = `PO-${year}-${month}-${String(monthCount + 1).padStart(3, '0')}`;
 
+      // PO now starts as DRAFT (requires Owner approval)
       return tx.purchaseOrder.create({
         data: {
           poNumber,
@@ -114,8 +115,9 @@ export class PurchaseOrdersService {
           vatAmount,
           netAmount,
           notes: dto.notes,
+          stockCheckRef: dto.stockCheckRef || null,
           createdById: userId,
-          status: 'PENDING',
+          status: 'DRAFT',
           paymentStatus: (dto.paymentStatus as any) || 'UNPAID',
           paymentMethod: dto.paymentMethod || null,
           paidAmount: dto.paidAmount || 0,
@@ -162,13 +164,33 @@ export class PurchaseOrdersService {
 
   async approve(id: string, userId: string) {
     const po = await this.findOne(id);
-    if (!['DRAFT', 'PENDING'].includes(po.status)) {
-      throw new BadRequestException('อนุมัติได้เฉพาะ PO สถานะ DRAFT หรือ PENDING เท่านั้น');
+    if (po.status !== 'DRAFT') {
+      throw new BadRequestException('อนุมัติได้เฉพาะ PO สถานะ DRAFT เท่านั้น (ต้องรอ Owner อนุมัติ)');
     }
 
     return this.prisma.purchaseOrder.update({
       where: { id },
       data: { status: 'APPROVED', approvedById: userId },
+      include: {
+        supplier: { select: { id: true, name: true } },
+        items: true,
+      },
+    });
+  }
+
+  async reject(id: string, userId: string, reason: string) {
+    const po = await this.findOne(id);
+    if (po.status !== 'DRAFT') {
+      throw new BadRequestException('ปฏิเสธได้เฉพาะ PO สถานะ DRAFT เท่านั้น');
+    }
+
+    return this.prisma.purchaseOrder.update({
+      where: { id },
+      data: {
+        status: 'CANCELLED',
+        approvedById: userId,
+        rejectReason: reason,
+      },
       include: {
         supplier: { select: { id: true, name: true } },
         items: true,
@@ -633,7 +655,7 @@ export class PurchaseOrdersService {
             productName = nameParts.join(' ');
           }
 
-          // Create product for passed items → goes to main warehouse with IN_STOCK
+          // Create product for passed items → goes to main warehouse with QC_PENDING → then IN_STOCK
           const product = await tx.product.create({
             data: {
               name: productName,
@@ -646,7 +668,7 @@ export class PurchaseOrdersService {
               supplierId: po.supplierId,
               poId: po.id,
               branchId: mainWarehouse!.id,
-              status: 'IN_STOCK',
+              status: 'QC_PENDING',
               imeiSerial: item.imeiSerial || null,
               serialNumber: item.serialNumber || null,
               photos: item.photos || [],
@@ -728,5 +750,73 @@ export class PurchaseOrdersService {
         mainWarehouse: mainWarehouse!.name,
       };
     });
+  }
+
+  /**
+   * Confirm QC for products - moves QC_PENDING → IN_STOCK (เข้าคลังหลัก)
+   * Workflow Step 4: สินค้าเข้าคลัง
+   */
+  async confirmQC(productIds: string[]) {
+    if (!productIds || productIds.length === 0) {
+      throw new BadRequestException('กรุณาระบุสินค้าที่ต้องการยืนยัน QC');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const products = await tx.product.findMany({
+        where: { id: { in: productIds }, deletedAt: null },
+      });
+
+      // Validate all products are QC_PENDING
+      const invalidProducts = products.filter((p) => p.status !== 'QC_PENDING');
+      if (invalidProducts.length > 0) {
+        throw new BadRequestException(
+          `สินค้าต่อไปนี้ไม่ได้อยู่ในสถานะ QC_PENDING: ${invalidProducts.map((p) => p.name).join(', ')}`,
+        );
+      }
+
+      const notFound = productIds.filter((id) => !products.find((p) => p.id === id));
+      if (notFound.length > 0) {
+        throw new BadRequestException(`ไม่พบสินค้า ID: ${notFound.join(', ')}`);
+      }
+
+      // Move all products to IN_STOCK
+      await tx.product.updateMany({
+        where: { id: { in: productIds } },
+        data: { status: 'IN_STOCK' },
+      });
+
+      return {
+        confirmed: productIds.length,
+        message: `ยืนยัน QC สำเร็จ ${productIds.length} ชิ้น → เข้าคลัง IN_STOCK`,
+      };
+    });
+  }
+
+  /**
+   * Get products pending QC (QC_PENDING status)
+   */
+  async getQCPending(filters: { branchId?: string; page?: number; limit?: number }) {
+    const where: Record<string, unknown> = { status: 'QC_PENDING', deletedAt: null };
+    if (filters.branchId) where.branchId = filters.branchId;
+
+    const page = Math.max(1, filters.page || 1);
+    const limit = Math.min(100, Math.max(1, filters.limit || 50));
+
+    const [data, total] = await Promise.all([
+      this.prisma.product.findMany({
+        where,
+        include: {
+          branch: { select: { id: true, name: true } },
+          supplier: { select: { id: true, name: true } },
+          po: { select: { id: true, poNumber: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.product.count({ where }),
+    ]);
+
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 }

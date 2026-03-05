@@ -32,6 +32,8 @@ import { UsersModule } from './modules/users/users.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { StockAdjustmentsModule } from './modules/stock-adjustments/stock-adjustments.module';
 import { SalesModule } from './modules/sales/sales.module';
+import { ReorderPointsModule } from './modules/reorder-points/reorder-points.module';
+import { BranchReceivingModule } from './modules/branch-receiving/branch-receiving.module';
 import { InterestConfigModule } from './modules/interest-config/interest-config.module';
 import { ContractDocumentsModule } from './modules/contract-documents/contract-documents.module';
 import { CreditCheckModule } from './modules/credit-check/credit-check.module';
@@ -83,6 +85,8 @@ import { SecurityMiddleware } from './modules/audit/security.middleware';
     RepossessionsModule,
     PurchaseOrdersModule,
     StockAdjustmentsModule,
+    ReorderPointsModule,
+    BranchReceivingModule,
     // MASTER: Communication
     NotificationsModule,
     // MASTER: Intelligence

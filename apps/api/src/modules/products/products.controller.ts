@@ -3,7 +3,7 @@ import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { CreateProductPriceDto, UpdateProductPriceDto } from './dto/product-price.dto';
-import { TransferProductDto } from './dto/transfer-product.dto';
+import { TransferProductDto, DispatchTransferDto } from './dto/transfer-product.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -86,6 +86,11 @@ export class ProductsController {
     return this.productsService.getTransferById(transferId);
   }
 
+  @Get(':id/workflow')
+  getWorkflowStatus(@Param('id') id: string) {
+    return this.productsService.getWorkflowStatus(id);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.productsService.findOne(id);
@@ -145,6 +150,16 @@ export class ProductsController {
     return this.productsService.transfer(id, dto, user.id);
   }
 
+  @Post('transfers/:transferId/dispatch')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  dispatchTransfer(
+    @Param('transferId') transferId: string,
+    @Body() dto: DispatchTransferDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.productsService.dispatchTransfer(transferId, user.id, dto.trackingNote);
+  }
+
   @Post('transfers/:transferId/confirm')
   @Roles('OWNER', 'BRANCH_MANAGER')
   confirmTransfer(
@@ -159,7 +174,14 @@ export class ProductsController {
   rejectTransfer(
     @Param('transferId') transferId: string,
     @CurrentUser() user: { id: string },
+    @Body('reason') reason?: string,
   ) {
-    return this.productsService.rejectTransfer(transferId, user.id);
+    return this.productsService.rejectTransfer(transferId, user.id, reason);
+  }
+
+  @Get('transfers/in-transit')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  getInTransitTransfers(@Query('branchId') branchId?: string) {
+    return this.productsService.getInTransitTransfers(branchId);
   }
 }

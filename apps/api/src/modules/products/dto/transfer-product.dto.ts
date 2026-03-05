@@ -1,4 +1,4 @@
-import { IsString, IsOptional } from 'class-validator';
+import { IsString, IsOptional, IsDateString } from 'class-validator';
 
 export class TransferProductDto {
   @IsString()
@@ -7,4 +7,14 @@ export class TransferProductDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  @IsDateString()
+  @IsOptional()
+  expectedDeliveryDate?: string;
+}
+
+export class DispatchTransferDto {
+  @IsString()
+  @IsOptional()
+  trackingNote?: string;
 }

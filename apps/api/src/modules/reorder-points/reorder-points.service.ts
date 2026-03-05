@@ -329,8 +329,8 @@ export class ReorderPointsService {
 
     // Sort by urgency (lowest stock ratio first)
     lowStockItems.sort((a, b) => {
-      const ratioA = a.currentStock / a.minQuantity;
-      const ratioB = b.currentStock / b.minQuantity;
+      const ratioA = a.minQuantity > 0 ? a.currentStock / a.minQuantity : 0;
+      const ratioB = b.minQuantity > 0 ? b.currentStock / b.minQuantity : 0;
       return ratioA - ratioB;
     });
 

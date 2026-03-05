@@ -59,10 +59,18 @@ export class ProductsController {
     return this.productsService.getBrands();
   }
 
+  // Static transfer routes MUST be before transfers/:transferId
+
   @Get('transfers/pending')
   @Roles('OWNER', 'BRANCH_MANAGER')
   getPendingTransfers(@Query('branchId') branchId?: string) {
     return this.productsService.getPendingTransfers(branchId);
+  }
+
+  @Get('transfers/in-transit')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  getInTransitTransfers(@Query('branchId') branchId?: string) {
+    return this.productsService.getInTransitTransfers(branchId);
   }
 
   @Get('transfers/history')
@@ -179,9 +187,4 @@ export class ProductsController {
     return this.productsService.rejectTransfer(transferId, user.id, reason);
   }
 
-  @Get('transfers/in-transit')
-  @Roles('OWNER', 'BRANCH_MANAGER')
-  getInTransitTransfers(@Query('branchId') branchId?: string) {
-    return this.productsService.getInTransitTransfers(branchId);
-  }
 }

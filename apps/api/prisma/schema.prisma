@@ -37,7 +37,7 @@ enum PlanType {
 
 enum ProductStatus {
   PO_RECEIVED
-  QC_PENDING      // รอตรวจสอบคุณภาพ (ก่อนเข้าคลัง)
+  QC_PENDING // รอตรวจสอบคุณภาพ (ก่อนเข้าคลัง)
   INSPECTION
   IN_STOCK
   RESERVED
@@ -91,7 +91,7 @@ enum ReceivingItemStatus {
 
 enum TransferStatus {
   PENDING
-  IN_TRANSIT       // กำลังจัดส่ง
+  IN_TRANSIT // กำลังจัดส่ง
   CONFIRMED
   REJECTED
 }
@@ -144,10 +144,10 @@ enum SaleType {
 }
 
 enum ContractWorkflowStatus {
-  CREATING        // กำลังสร้าง
-  PENDING_REVIEW  // รอตรวจสอบ
-  APPROVED        // อนุมัติแล้ว
-  REJECTED        // ปฏิเสธ (ส่งกลับแก้ไข)
+  CREATING // กำลังสร้าง
+  PENDING_REVIEW // รอตรวจสอบ
+  APPROVED // อนุมัติแล้ว
+  REJECTED // ปฏิเสธ (ส่งกลับแก้ไข)
 }
 
 enum CreditCheckStatus {
@@ -188,10 +188,11 @@ model Branch {
   products         Product[]
   contracts        Contract[]
   sales            Sale[]
-  stockFroms       StockTransfer[] @relation("TransferFrom")
-  stockTos         StockTransfer[] @relation("TransferTo")
+  stockFroms       StockTransfer[]   @relation("TransferFrom")
+  stockTos         StockTransfer[]   @relation("TransferTo")
   stockAdjustments StockAdjustment[]
   reorderPoints    ReorderPoint[]
+  stockAlerts      StockAlert[]
 
   @@map("branches")
 }
@@ -207,58 +208,58 @@ model User {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  branch    Branch? @relation(fields: [branchId], references: [id])
+  branch Branch? @relation(fields: [branchId], references: [id])
 
-  contractsAsSalesperson Contract[]        @relation("Salesperson")
-  contractsReviewed      Contract[]        @relation("ContractReviewer")
-  salesAsSalesperson     Sale[]            @relation("SalesSalesperson")
-  paymentsRecorded       Payment[]         @relation("RecordedBy")
+  contractsAsSalesperson Contract[]         @relation("Salesperson")
+  contractsReviewed      Contract[]         @relation("ContractReviewer")
+  salesAsSalesperson     Sale[]             @relation("SalesSalesperson")
+  paymentsRecorded       Payment[]          @relation("RecordedBy")
   inspections            Inspection[]
   callLogs               CallLog[]
   auditLogs              AuditLog[]
-  purchaseOrdersCreated  PurchaseOrder[]   @relation("POCreatedBy")
-  purchaseOrdersApproved PurchaseOrder[]   @relation("POApprovedBy")
-  repossessionsAppraised Repossession[]    @relation("AppraisedBy")
-  goodsReceivings        GoodsReceiving[]  @relation("GoodsReceivedBy")
-  transfersConfirmed     StockTransfer[]   @relation("TransferConfirmedBy")
-  transfersDispatched    StockTransfer[]   @relation("TransferDispatchedBy")
-  stockAdjustments       StockAdjustment[] @relation("StockAdjustedBy")
+  purchaseOrdersCreated  PurchaseOrder[]    @relation("POCreatedBy")
+  purchaseOrdersApproved PurchaseOrder[]    @relation("POApprovedBy")
+  repossessionsAppraised Repossession[]     @relation("AppraisedBy")
+  goodsReceivings        GoodsReceiving[]   @relation("GoodsReceivedBy")
+  transfersConfirmed     StockTransfer[]    @relation("TransferConfirmedBy")
+  transfersDispatched    StockTransfer[]    @relation("TransferDispatchedBy")
+  stockAdjustments       StockAdjustment[]  @relation("StockAdjustedBy")
   documentsUploaded      ContractDocument[] @relation("DocumentUploadedBy")
-  creditChecks           CreditCheck[]     @relation("CreditCheckedBy")
-  branchReceivings       BranchReceiving[] @relation("BranchReceivedBy")
+  creditChecks           CreditCheck[]      @relation("CreditCheckedBy")
+  branchReceivings       BranchReceiving[]  @relation("BranchReceivedBy")
 
   @@index([branchId])
   @@map("users")
 }
 
 model Customer {
-  id              String   @id @default(uuid())
-  nationalId      String   @unique @map("national_id") // encrypted AES-256
-  prefix          String?  // คำนำหน้า (นาย, นาง, นางสาว)
-  name            String
-  nickname        String?  // ชื่อเล่น
-  isForeigner     Boolean  @default(false) @map("is_foreigner") // ต่างด้าว
-  birthDate       DateTime? @map("birth_date") // วันเกิด
-  phone           String
-  phoneSecondary  String?  @map("phone_secondary")
-  email           String?  // อีเมล
-  lineId          String?  @map("line_id")
-  facebookLink    String?  @map("facebook_link")    // ลิงก์ Facebook
-  facebookName    String?  @map("facebook_name")    // ชื่อ Facebook
-  facebookFriends String?  @map("facebook_friends") // จำนวนเพื่อน Facebook
-  googleMapLink   String?  @map("google_map_link")  // Link Google Map
-  addressIdCard   String?  @map("address_id_card")
-  addressCurrent  String?  @map("address_current")
-  occupation      String?
-  occupationDetail String? @map("occupation_detail") // รายละเอียดอาชีพ
-  salary          Decimal? @db.Decimal(12, 2)         // เงินเดือน
-  workplace       String?
-  addressWork     String?  @map("address_work")       // ที่อยู่ที่ทำงาน
-  references      Json?    // บุคคลอ้างอิง [{prefix, firstName, lastName, phone, relationship}]
-  documents       String[] @default([]) // array of file URLs
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
-  deletedAt       DateTime? @map("deleted_at")
+  id               String    @id @default(uuid())
+  nationalId       String    @unique @map("national_id") // encrypted AES-256
+  prefix           String? // คำนำหน้า (นาย, นาง, นางสาว)
+  name             String
+  nickname         String? // ชื่อเล่น
+  isForeigner      Boolean   @default(false) @map("is_foreigner") // ต่างด้าว
+  birthDate        DateTime? @map("birth_date") // วันเกิด
+  phone            String
+  phoneSecondary   String?   @map("phone_secondary")
+  email            String? // อีเมล
+  lineId           String?   @map("line_id")
+  facebookLink     String?   @map("facebook_link") // ลิงก์ Facebook
+  facebookName     String?   @map("facebook_name") // ชื่อ Facebook
+  facebookFriends  String?   @map("facebook_friends") // จำนวนเพื่อน Facebook
+  googleMapLink    String?   @map("google_map_link") // Link Google Map
+  addressIdCard    String?   @map("address_id_card")
+  addressCurrent   String?   @map("address_current")
+  occupation       String?
+  occupationDetail String?   @map("occupation_detail") // รายละเอียดอาชีพ
+  salary           Decimal?  @db.Decimal(12, 2) // เงินเดือน
+  workplace        String?
+  addressWork      String?   @map("address_work") // ที่อยู่ที่ทำงาน
+  references       Json? // บุคคลอ้างอิง [{prefix, firstName, lastName, phone, relationship}]
+  documents        String[]  @default([]) // array of file URLs
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  deletedAt        DateTime? @map("deleted_at")
 
   contracts    Contract[]
   sales        Sale[]
@@ -292,34 +293,34 @@ model Contract {
   deletedAt        DateTime?      @map("deleted_at")
 
   // Workflow: สองฝ่าย (ทำสัญญา vs ตรวจสอบ)
-  workflowStatus   ContractWorkflowStatus @default(CREATING) @map("workflow_status")
-  reviewedById     String?        @map("reviewed_by_id")
-  reviewedAt       DateTime?      @map("reviewed_at")
-  reviewNotes      String?        @map("review_notes")
+  workflowStatus ContractWorkflowStatus @default(CREATING) @map("workflow_status")
+  reviewedById   String?                @map("reviewed_by_id")
+  reviewedAt     DateTime?              @map("reviewed_at")
+  reviewNotes    String?                @map("review_notes")
 
   // วันที่ครบกำหนดชำระ ตามวันเงินเดือนออก (1-28)
-  paymentDueDay    Int?           @map("payment_due_day")
+  paymentDueDay Int? @map("payment_due_day")
 
   // ที่มาดอกเบี้ย
-  interestConfigId String?        @map("interest_config_id")
+  interestConfigId String? @map("interest_config_id")
 
-  customer       Customer    @relation(fields: [customerId], references: [id])
-  product        Product     @relation(fields: [productId], references: [id])
-  branch         Branch      @relation(fields: [branchId], references: [id])
-  salesperson    User        @relation("Salesperson", fields: [salespersonId], references: [id])
-  parentContract Contract?   @relation("ContractExchange", fields: [parentContractId], references: [id])
-  childContracts Contract[]  @relation("ContractExchange")
-  reviewedBy     User?       @relation("ContractReviewer", fields: [reviewedById], references: [id])
+  customer       Customer        @relation(fields: [customerId], references: [id])
+  product        Product         @relation(fields: [productId], references: [id])
+  branch         Branch          @relation(fields: [branchId], references: [id])
+  salesperson    User            @relation("Salesperson", fields: [salespersonId], references: [id])
+  parentContract Contract?       @relation("ContractExchange", fields: [parentContractId], references: [id])
+  childContracts Contract[]      @relation("ContractExchange")
+  reviewedBy     User?           @relation("ContractReviewer", fields: [reviewedById], references: [id])
   interestConfig InterestConfig? @relation(fields: [interestConfigId], references: [id])
 
-  payments           Payment[]
-  signatures         Signature[]
-  eDocuments         EDocument[]
-  callLogs           CallLog[]
-  repossession       Repossession?
-  sale               Sale?
-  contractDocuments  ContractDocument[]
-  creditCheck        CreditCheck?
+  payments          Payment[]
+  signatures        Signature[]
+  eDocuments        EDocument[]
+  callLogs          CallLog[]
+  repossession      Repossession?
+  sale              Sale?
+  contractDocuments ContractDocument[]
+  creditCheck       CreditCheck?
 
   @@index([customerId])
   @@index([branchId])
@@ -333,21 +334,21 @@ model Contract {
 }
 
 model Payment {
-  id            String        @id @default(uuid())
-  contractId    String        @map("contract_id")
-  installmentNo Int           @map("installment_no")
-  dueDate       DateTime      @map("due_date")
-  amountDue     Decimal       @map("amount_due") @db.Decimal(12, 2)
-  amountPaid    Decimal       @default(0) @map("amount_paid") @db.Decimal(12, 2)
-  paidDate      DateTime?     @map("paid_date")
+  id            String         @id @default(uuid())
+  contractId    String         @map("contract_id")
+  installmentNo Int            @map("installment_no")
+  dueDate       DateTime       @map("due_date")
+  amountDue     Decimal        @map("amount_due") @db.Decimal(12, 2)
+  amountPaid    Decimal        @default(0) @map("amount_paid") @db.Decimal(12, 2)
+  paidDate      DateTime?      @map("paid_date")
   paymentMethod PaymentMethod? @map("payment_method")
-  lateFee       Decimal       @default(0) @map("late_fee") @db.Decimal(12, 2)
-  evidenceUrl   String?       @map("evidence_url")
+  lateFee       Decimal        @default(0) @map("late_fee") @db.Decimal(12, 2)
+  evidenceUrl   String?        @map("evidence_url")
   notes         String?
-  status        PaymentStatus @default(PENDING)
-  recordedById  String?       @map("recorded_by_id")
-  createdAt     DateTime      @default(now()) @map("created_at")
-  updatedAt     DateTime      @updatedAt @map("updated_at")
+  status        PaymentStatus  @default(PENDING)
+  recordedById  String?        @map("recorded_by_id")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
 
   contract   Contract @relation(fields: [contractId], references: [id])
   recordedBy User?    @relation("RecordedBy", fields: [recordedById], references: [id])
@@ -366,20 +367,20 @@ model Payment {
 // ============================================================
 
 model Supplier {
-  id          String   @id @default(uuid())
-  name        String
-  contactName String   @map("contact_name")
-  nickname    String?
-  phone       String
-  phoneSecondary String? @map("phone_secondary")
-  lineId      String?  @map("line_id")
-  address     String?
-  taxId       String?  @map("tax_id")
-  hasVat      Boolean  @default(false) @map("has_vat")
-  notes       String?
-  isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id             String   @id @default(uuid())
+  name           String
+  contactName    String   @map("contact_name")
+  nickname       String?
+  phone          String
+  phoneSecondary String?  @map("phone_secondary")
+  lineId         String?  @map("line_id")
+  address        String?
+  taxId          String?  @map("tax_id")
+  hasVat         Boolean  @default(false) @map("has_vat")
+  notes          String?
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
   products       Product[]
   purchaseOrders PurchaseOrder[]
@@ -391,7 +392,7 @@ model Supplier {
 model SupplierPaymentMethod {
   id                String   @id @default(uuid())
   supplierId        String   @map("supplier_id")
-  paymentMethod     String   @map("payment_method")       // CASH, BANK_TRANSFER, CHECK, CREDIT
+  paymentMethod     String   @map("payment_method") // CASH, BANK_TRANSFER, CHECK, CREDIT
   bankName          String?  @map("bank_name")
   bankAccountName   String?  @map("bank_account_name")
   bankAccountNumber String?  @map("bank_account_number")
@@ -407,29 +408,29 @@ model SupplierPaymentMethod {
 }
 
 model PurchaseOrder {
-  id              String          @id @default(uuid())
-  poNumber        String          @unique @map("po_number")
-  supplierId      String          @map("supplier_id")
-  orderDate       DateTime        @map("order_date")
-  expectedDate    DateTime?       @map("expected_date")
-  dueDate         DateTime?       @map("due_date")
-  status          POStatus        @default(DRAFT)
-  totalAmount     Decimal         @map("total_amount") @db.Decimal(12, 2)
-  discount        Decimal         @default(0) @db.Decimal(12, 2)
-  vatAmount       Decimal         @default(0) @map("vat_amount") @db.Decimal(12, 2)
-  netAmount       Decimal         @default(0) @map("net_amount") @db.Decimal(12, 2)
-  paymentStatus   POPaymentStatus @default(UNPAID) @map("payment_status")
-  paymentMethod   String?         @map("payment_method")
-  paidAmount      Decimal         @default(0) @map("paid_amount") @db.Decimal(12, 2)
-  paymentNotes    String?         @map("payment_notes")
-  attachments     String[]        @default([])
-  notes           String?
-  stockCheckRef   String?         @map("stock_check_ref") // Reference to stock alert that triggered this PO
-  rejectReason    String?         @map("reject_reason")   // Reason for rejection by Owner
-  createdById     String          @map("created_by_id")
-  approvedById    String?         @map("approved_by_id")
-  createdAt       DateTime        @default(now()) @map("created_at")
-  updatedAt       DateTime        @updatedAt @map("updated_at")
+  id            String          @id @default(uuid())
+  poNumber      String          @unique @map("po_number")
+  supplierId    String          @map("supplier_id")
+  orderDate     DateTime        @map("order_date")
+  expectedDate  DateTime?       @map("expected_date")
+  dueDate       DateTime?       @map("due_date")
+  status        POStatus        @default(DRAFT)
+  totalAmount   Decimal         @map("total_amount") @db.Decimal(12, 2)
+  discount      Decimal         @default(0) @db.Decimal(12, 2)
+  vatAmount     Decimal         @default(0) @map("vat_amount") @db.Decimal(12, 2)
+  netAmount     Decimal         @default(0) @map("net_amount") @db.Decimal(12, 2)
+  paymentStatus POPaymentStatus @default(UNPAID) @map("payment_status")
+  paymentMethod String?         @map("payment_method")
+  paidAmount    Decimal         @default(0) @map("paid_amount") @db.Decimal(12, 2)
+  paymentNotes  String?         @map("payment_notes")
+  attachments   String[]        @default([])
+  notes         String?
+  stockCheckRef String?         @map("stock_check_ref") // Reference to stock alert that triggered this PO
+  rejectReason  String?         @map("reject_reason") // Reason for rejection by Owner
+  createdById   String          @map("created_by_id")
+  approvedById  String?         @map("approved_by_id")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
 
   supplier   Supplier @relation(fields: [supplierId], references: [id])
   createdBy  User     @relation("POCreatedBy", fields: [createdById], references: [id])
@@ -438,6 +439,7 @@ model PurchaseOrder {
   items           POItem[]
   products        Product[]
   goodsReceivings GoodsReceiving[]
+  stockAlerts     StockAlert[]
 
   @@index([supplierId])
   @@index([status])
@@ -445,22 +447,22 @@ model PurchaseOrder {
 }
 
 model POItem {
-  id          String  @id @default(uuid())
-  poId        String  @map("po_id")
-  brand       String
-  model       String
-  color       String?
-  storage     String?
+  id             String   @id @default(uuid())
+  poId           String   @map("po_id")
+  brand          String
+  model          String
+  color          String?
+  storage        String?
   category       String?
   accessoryType  String?  @map("accessory_type")
   accessoryBrand String?  @map("accessory_brand")
-  quantity    Int
-  unitPrice   Decimal @map("unit_price") @db.Decimal(12, 2)
-  receivedQty Int     @default(0) @map("received_qty")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  quantity       Int
+  unitPrice      Decimal  @map("unit_price") @db.Decimal(12, 2)
+  receivedQty    Int      @default(0) @map("received_qty")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
-  purchaseOrder  PurchaseOrder       @relation(fields: [poId], references: [id])
+  purchaseOrder  PurchaseOrder        @relation(fields: [poId], references: [id])
   receivingItems GoodsReceivingItem[]
 
   @@index([poId])
@@ -468,45 +470,46 @@ model POItem {
 }
 
 model Product {
-  id             String          @id @default(uuid())
-  name           String
-  brand          String
-  model          String
-  color          String?
-  storage        String?
-  imeiSerial     String?         @unique @map("imei_serial")
-  serialNumber   String?         @map("serial_number")
-  category       ProductCategory
-  costPrice      Decimal         @map("cost_price") @db.Decimal(12, 2)
-  supplierId     String?         @map("supplier_id")
-  poId           String?         @map("po_id")
-  branchId       String          @map("branch_id")
-  status         ProductStatus   @default(IN_STOCK)
-  conditionGrade ConditionGrade? @map("condition_grade")
-  batteryHealth  Int?            @map("battery_health")
-  warrantyExpired Boolean?       @map("warranty_expired")
-  warrantyExpireDate DateTime?   @map("warranty_expire_date")
-  hasBox         Boolean?        @map("has_box")
-  accessoryType  String?         @map("accessory_type")
-  accessoryBrand String?         @map("accessory_brand")
-  inspectionId   String?         @map("inspection_id")
-  photos         String[]        @default([])
-  createdAt      DateTime        @default(now()) @map("created_at")
-  updatedAt      DateTime        @updatedAt @map("updated_at")
-  deletedAt      DateTime?       @map("deleted_at")
+  id                 String          @id @default(uuid())
+  name               String
+  brand              String
+  model              String
+  color              String?
+  storage            String?
+  imeiSerial         String?         @unique @map("imei_serial")
+  serialNumber       String?         @map("serial_number")
+  category           ProductCategory
+  costPrice          Decimal         @map("cost_price") @db.Decimal(12, 2)
+  supplierId         String?         @map("supplier_id")
+  poId               String?         @map("po_id")
+  branchId           String          @map("branch_id")
+  status             ProductStatus   @default(IN_STOCK)
+  conditionGrade     ConditionGrade? @map("condition_grade")
+  batteryHealth      Int?            @map("battery_health")
+  warrantyExpired    Boolean?        @map("warranty_expired")
+  warrantyExpireDate DateTime?       @map("warranty_expire_date")
+  hasBox             Boolean?        @map("has_box")
+  accessoryType      String?         @map("accessory_type")
+  accessoryBrand     String?         @map("accessory_brand")
+  inspectionId       String?         @map("inspection_id")
+  photos             String[]        @default([])
+  createdAt          DateTime        @default(now()) @map("created_at")
+  updatedAt          DateTime        @updatedAt @map("updated_at")
+  deletedAt          DateTime?       @map("deleted_at")
 
   supplier   Supplier?      @relation(fields: [supplierId], references: [id])
   po         PurchaseOrder? @relation(fields: [poId], references: [id])
   branch     Branch         @relation(fields: [branchId], references: [id])
   inspection Inspection?    @relation(fields: [inspectionId], references: [id])
 
-  prices           ProductPrice[]
-  contracts        Contract[]
-  sales            Sale[]
-  repossession     Repossession?
-  receivingItem    GoodsReceivingItem?
-  stockTransfers   StockTransfer[]
-  stockAdjustments StockAdjustment[]
+  prices               ProductPrice[]
+  contracts            Contract[]
+  sales                Sale[]
+  repossession         Repossession?
+  receivingItem        GoodsReceivingItem?
+  branchReceivingItems BranchReceivingItem[]
+  stockTransfers       StockTransfer[]
+  stockAdjustments     StockAdjustment[]
 
   @@index([branchId])
   @@index([status])
@@ -519,11 +522,11 @@ model Product {
 }
 
 model ProductPrice {
-  id        String  @id @default(uuid())
-  productId String  @map("product_id")
-  label     String  // e.g. "ราคาเงินสด", "ราคาผ่อน"
-  amount    Decimal @db.Decimal(12, 2)
-  isDefault Boolean @default(false) @map("is_default")
+  id        String   @id @default(uuid())
+  productId String   @map("product_id")
+  label     String // e.g. "ราคาเงินสด", "ราคาผ่อน"
+  amount    Decimal  @db.Decimal(12, 2)
+  isDefault Boolean  @default(false) @map("is_default")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -534,21 +537,21 @@ model ProductPrice {
 }
 
 model StockTransfer {
-  id            String         @id @default(uuid())
-  productId     String         @map("product_id")
-  fromBranchId  String         @map("from_branch_id")
-  toBranchId    String         @map("to_branch_id")
-  transferredBy String         @map("transferred_by")
-  notes         String?
-  status        TransferStatus @default(PENDING)
-  confirmedById String?        @map("confirmed_by_id")
-  confirmedAt   DateTime?      @map("confirmed_at")
+  id                   String         @id @default(uuid())
+  productId            String         @map("product_id")
+  fromBranchId         String         @map("from_branch_id")
+  toBranchId           String         @map("to_branch_id")
+  transferredBy        String         @map("transferred_by")
+  notes                String?
+  status               TransferStatus @default(PENDING)
+  confirmedById        String?        @map("confirmed_by_id")
+  confirmedAt          DateTime?      @map("confirmed_at")
   // IN_TRANSIT fields
-  dispatchedById  String?      @map("dispatched_by_id")
-  dispatchedAt    DateTime?    @map("dispatched_at")
-  trackingNote    String?      @map("tracking_note")
-  expectedDeliveryDate DateTime? @map("expected_delivery_date")
-  createdAt     DateTime       @default(now()) @map("created_at")
+  dispatchedById       String?        @map("dispatched_by_id")
+  dispatchedAt         DateTime?      @map("dispatched_at")
+  trackingNote         String?        @map("tracking_note")
+  expectedDeliveryDate DateTime?      @map("expected_delivery_date")
+  createdAt            DateTime       @default(now()) @map("created_at")
 
   product      Product @relation(fields: [productId], references: [id])
   fromBranch   Branch  @relation("TransferFrom", fields: [fromBranchId], references: [id])
@@ -572,8 +575,8 @@ model GoodsReceiving {
   notes        String?
   createdAt    DateTime @default(now()) @map("created_at")
 
-  po         PurchaseOrder @relation(fields: [poId], references: [id])
-  receivedBy User          @relation("GoodsReceivedBy", fields: [receivedById], references: [id])
+  po         PurchaseOrder        @relation(fields: [poId], references: [id])
+  receivedBy User                 @relation("GoodsReceivedBy", fields: [receivedById], references: [id])
   items      GoodsReceivingItem[]
 
   @@index([poId])
@@ -581,20 +584,20 @@ model GoodsReceiving {
 }
 
 model GoodsReceivingItem {
-  id           String              @id @default(uuid())
-  receivingId  String              @map("receiving_id")
-  poItemId     String              @map("po_item_id")
-  imeiSerial   String?             @map("imei_serial")
-  serialNumber String?             @map("serial_number")
-  photos       String[]            @default([])
-  status       ReceivingItemStatus
-  rejectReason String?             @map("reject_reason")
-  batteryHealth  Int?              @map("battery_health")
-  warrantyExpired Boolean?         @map("warranty_expired")
-  warrantyExpireDate DateTime?     @map("warranty_expire_date")
-  hasBox         Boolean?          @map("has_box")
-  productId    String?             @unique @map("product_id")
-  createdAt    DateTime            @default(now()) @map("created_at")
+  id                 String              @id @default(uuid())
+  receivingId        String              @map("receiving_id")
+  poItemId           String              @map("po_item_id")
+  imeiSerial         String?             @map("imei_serial")
+  serialNumber       String?             @map("serial_number")
+  photos             String[]            @default([])
+  status             ReceivingItemStatus
+  rejectReason       String?             @map("reject_reason")
+  batteryHealth      Int?                @map("battery_health")
+  warrantyExpired    Boolean?            @map("warranty_expired")
+  warrantyExpireDate DateTime?           @map("warranty_expire_date")
+  hasBox             Boolean?            @map("has_box")
+  productId          String?             @unique @map("product_id")
+  createdAt          DateTime            @default(now()) @map("created_at")
 
   receiving GoodsReceiving @relation(fields: [receivingId], references: [id])
   poItem    POItem         @relation(fields: [poItemId], references: [id])
@@ -606,15 +609,15 @@ model GoodsReceivingItem {
 }
 
 model StockAdjustment {
-  id            String                @id @default(uuid())
-  productId     String                @map("product_id")
-  branchId      String                @map("branch_id")
-  reason        StockAdjustmentReason
-  previousStatus ProductStatus        @map("previous_status")
-  notes         String?
-  photos        String[]              @default([])
-  adjustedById  String                @map("adjusted_by_id")
-  createdAt     DateTime              @default(now()) @map("created_at")
+  id             String                @id @default(uuid())
+  productId      String                @map("product_id")
+  branchId       String                @map("branch_id")
+  reason         StockAdjustmentReason
+  previousStatus ProductStatus         @map("previous_status")
+  notes          String?
+  photos         String[]              @default([])
+  adjustedById   String                @map("adjusted_by_id")
+  createdAt      DateTime              @default(now()) @map("created_at")
 
   product    Product @relation(fields: [productId], references: [id])
   branch     Branch  @relation(fields: [branchId], references: [id])
@@ -692,16 +695,16 @@ model Inspection {
 }
 
 model InspectionResult {
-  id             String  @id @default(uuid())
-  inspectionId   String  @map("inspection_id")
-  templateItemId String  @map("template_item_id")
-  passFail       Boolean? @map("pass_fail")
+  id             String          @id @default(uuid())
+  inspectionId   String          @map("inspection_id")
+  templateItemId String          @map("template_item_id")
+  passFail       Boolean?        @map("pass_fail")
   grade          ConditionGrade?
-  score          Decimal? @db.Decimal(5, 2)
-  numberValue    Decimal? @map("number_value") @db.Decimal(10, 2)
+  score          Decimal?        @db.Decimal(5, 2)
+  numberValue    Decimal?        @map("number_value") @db.Decimal(10, 2)
   notes          String?
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
 
   inspection   Inspection             @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
   templateItem InspectionTemplateItem @relation(fields: [templateItemId], references: [id])
@@ -717,7 +720,7 @@ model InspectionResult {
 model ContractTemplate {
   id           String   @id @default(uuid())
   name         String
-  type         String   // e.g. STORE_DIRECT, CREDIT_CARD, EXCHANGE
+  type         String // e.g. STORE_DIRECT, CREDIT_CARD, EXCHANGE
   contentHtml  String   @map("content_html")
   placeholders String[] @default([])
   isActive     Boolean  @default(true) @map("is_active")
@@ -805,16 +808,16 @@ model Repossession {
 // ============================================================
 
 model NotificationLog {
-  id         String              @id @default(uuid())
-  channel    NotificationChannel
-  recipient  String              // phone or LINE user ID
-  subject    String?
-  message    String
-  status     String              // SENT, FAILED, PENDING
-  relatedId  String?             @map("related_id") // contract_id or payment_id
-  errorMsg   String?             @map("error_msg")
-  sentAt     DateTime?           @map("sent_at")
-  createdAt  DateTime            @default(now()) @map("created_at")
+  id        String              @id @default(uuid())
+  channel   NotificationChannel
+  recipient String // phone or LINE user ID
+  subject   String?
+  message   String
+  status    String // SENT, FAILED, PENDING
+  relatedId String?             @map("related_id") // contract_id or payment_id
+  errorMsg  String?             @map("error_msg")
+  sentAt    DateTime?           @map("sent_at")
+  createdAt DateTime            @default(now()) @map("created_at")
 
   @@index([relatedId])
   @@index([channel])
@@ -827,7 +830,7 @@ model CallLog {
   contractId String   @map("contract_id")
   callerId   String   @map("caller_id")
   calledAt   DateTime @map("called_at")
-  result     String   // e.g. ANSWERED, NO_ANSWER, PROMISED, REFUSED
+  result     String // e.g. ANSWERED, NO_ANSWER, PROMISED, REFUSED
   notes      String?
   createdAt  DateTime @default(now()) @map("created_at")
 
@@ -840,17 +843,17 @@ model CallLog {
 }
 
 model AuditLog {
-  id         String   @id @default(uuid())
-  userId     String   @map("user_id")
-  action     String   // CREATE, UPDATE, DELETE, EXCHANGE, REPOSSESSION, etc.
-  entity     String   // e.g. contract, payment, product
-  entityId   String   @map("entity_id")
-  oldValue   Json?    @map("old_value")
-  newValue   Json?    @map("new_value")
-  ipAddress  String?  @map("ip_address")
-  userAgent  String?  @map("user_agent")
-  duration   Int?     // request duration in ms
-  createdAt  DateTime @default(now()) @map("created_at")
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  action    String // CREATE, UPDATE, DELETE, EXCHANGE, REPOSSESSION, etc.
+  entity    String // e.g. contract, payment, product
+  entityId  String   @map("entity_id")
+  oldValue  Json?    @map("old_value")
+  newValue  Json?    @map("new_value")
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  duration  Int? // request duration in ms
+  createdAt DateTime @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id])
 
@@ -861,10 +864,10 @@ model AuditLog {
 }
 
 model SystemConfig {
-  id    String @id @default(uuid())
-  key   String @unique
-  value String
-  label String? // Thai description
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String
+  label     String? // Thai description
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -876,26 +879,26 @@ model SystemConfig {
 // ============================================================
 
 model Sale {
-  id               String        @id @default(uuid())
-  saleNumber       String        @unique @map("sale_number")
-  saleType         SaleType      @map("sale_type")
-  customerId       String        @map("customer_id")
-  productId        String        @map("product_id")
-  branchId         String        @map("branch_id")
-  salespersonId    String        @map("salesperson_id")
-  sellingPrice     Decimal       @map("selling_price") @db.Decimal(12, 2)
-  discount         Decimal       @default(0) @db.Decimal(12, 2)
-  netAmount        Decimal       @map("net_amount") @db.Decimal(12, 2)
-  paymentMethod    PaymentMethod? @map("payment_method")
-  amountReceived   Decimal?      @map("amount_received") @db.Decimal(12, 2)
-  contractId       String?       @unique @map("contract_id")
-  financeCompany   String?       @map("finance_company")
-  financeRefNumber String?       @map("finance_ref_number")
-  financeAmount    Decimal?      @map("finance_amount") @db.Decimal(12, 2)
-  downPaymentAmount Decimal?     @map("down_payment_amount") @db.Decimal(12, 2)
-  bundleProductIds String[]      @default([]) @map("bundle_product_ids")
-  notes            String?
-  createdAt        DateTime      @default(now()) @map("created_at")
+  id                String         @id @default(uuid())
+  saleNumber        String         @unique @map("sale_number")
+  saleType          SaleType       @map("sale_type")
+  customerId        String         @map("customer_id")
+  productId         String         @map("product_id")
+  branchId          String         @map("branch_id")
+  salespersonId     String         @map("salesperson_id")
+  sellingPrice      Decimal        @map("selling_price") @db.Decimal(12, 2)
+  discount          Decimal        @default(0) @db.Decimal(12, 2)
+  netAmount         Decimal        @map("net_amount") @db.Decimal(12, 2)
+  paymentMethod     PaymentMethod? @map("payment_method")
+  amountReceived    Decimal?       @map("amount_received") @db.Decimal(12, 2)
+  contractId        String?        @unique @map("contract_id")
+  financeCompany    String?        @map("finance_company")
+  financeRefNumber  String?        @map("finance_ref_number")
+  financeAmount     Decimal?       @map("finance_amount") @db.Decimal(12, 2)
+  downPaymentAmount Decimal?       @map("down_payment_amount") @db.Decimal(12, 2)
+  bundleProductIds  String[]       @default([]) @map("bundle_product_ids")
+  notes             String?
+  createdAt         DateTime       @default(now()) @map("created_at")
 
   customer    Customer  @relation(fields: [customerId], references: [id])
   product     Product   @relation(fields: [productId], references: [id])
@@ -918,7 +921,7 @@ model Sale {
 
 model InterestConfig {
   id                   String   @id @default(uuid())
-  name                 String   // เช่น "มือ 1", "มือ 2"
+  name                 String // เช่น "มือ 1", "มือ 2"
   productCategories    String[] @default([]) @map("product_categories")
   interestRate         Decimal  @map("interest_rate") @db.Decimal(5, 4)
   minDownPaymentPct    Decimal  @map("min_down_payment_pct") @db.Decimal(5, 4)
@@ -953,22 +956,22 @@ model ContractDocument {
 }
 
 model CreditCheck {
-  id              String            @id @default(uuid())
-  contractId      String?           @unique @map("contract_id")
-  customerId      String            @map("customer_id")
-  status          CreditCheckStatus @default(PENDING)
-  bankName        String?           @map("bank_name")
-  statementFiles  String[]          @default([]) @map("statement_files")
-  statementMonths Int               @default(3) @map("statement_months")
-  aiAnalysis      Json?             @map("ai_analysis")
-  aiScore         Int?              @map("ai_score")
-  aiSummary       String?           @map("ai_summary")
-  aiRecommendation String?          @map("ai_recommendation")
-  checkedById     String?           @map("checked_by_id")
-  checkedAt       DateTime?         @map("checked_at")
-  reviewNotes     String?           @map("review_notes")
-  createdAt       DateTime          @default(now()) @map("created_at")
-  updatedAt       DateTime          @updatedAt @map("updated_at")
+  id               String            @id @default(uuid())
+  contractId       String?           @unique @map("contract_id")
+  customerId       String            @map("customer_id")
+  status           CreditCheckStatus @default(PENDING)
+  bankName         String?           @map("bank_name")
+  statementFiles   String[]          @default([]) @map("statement_files")
+  statementMonths  Int               @default(3) @map("statement_months")
+  aiAnalysis       Json?             @map("ai_analysis")
+  aiScore          Int?              @map("ai_score")
+  aiSummary        String?           @map("ai_summary")
+  aiRecommendation String?           @map("ai_recommendation")
+  checkedById      String?           @map("checked_by_id")
+  checkedAt        DateTime?         @map("checked_at")
+  reviewNotes      String?           @map("review_notes")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
 
   contract  Contract? @relation(fields: [contractId], references: [id])
   customer  Customer  @relation(fields: [customerId], references: [id])
@@ -991,13 +994,14 @@ model ReorderPoint {
   storage         String?
   category        ProductCategory
   branchId        String          @map("branch_id")
-  minQuantity     Int             @map("min_quantity")       // จำนวนขั้นต่ำก่อนแจ้งเตือน
-  reorderQuantity Int             @map("reorder_quantity")   // จำนวนที่แนะนำให้สั่ง
+  minQuantity     Int             @map("min_quantity") // จำนวนขั้นต่ำก่อนแจ้งเตือน
+  reorderQuantity Int             @map("reorder_quantity") // จำนวนที่แนะนำให้สั่ง
   isActive        Boolean         @default(true) @map("is_active")
   createdAt       DateTime        @default(now()) @map("created_at")
   updatedAt       DateTime        @updatedAt @map("updated_at")
 
-  branch Branch @relation(fields: [branchId], references: [id])
+  branch      Branch       @relation(fields: [branchId], references: [id])
+  stockAlerts StockAlert[]
 
   @@unique([brand, model, storage, category, branchId])
   @@index([branchId])
@@ -1006,23 +1010,28 @@ model ReorderPoint {
 }
 
 model StockAlert {
-  id              String   @id @default(uuid())
-  reorderPointId  String   @map("reorder_point_id")
+  id              String    @id @default(uuid())
+  reorderPointId  String    @map("reorder_point_id")
   brand           String
   model           String
   storage         String?
   category        String
-  branchId        String   @map("branch_id")
-  currentStock    Int      @map("current_stock")
-  minQuantity     Int      @map("min_quantity")
-  reorderQuantity Int      @map("reorder_quantity")
-  status          String   @default("ACTIVE") // ACTIVE, PO_CREATED, RESOLVED
-  poId            String?  @map("po_id")      // PO ที่สร้างจาก alert นี้
+  branchId        String    @map("branch_id")
+  currentStock    Int       @map("current_stock")
+  minQuantity     Int       @map("min_quantity")
+  reorderQuantity Int       @map("reorder_quantity")
+  status          String    @default("ACTIVE") // ACTIVE, PO_CREATED, RESOLVED
+  poId            String?   @map("po_id") // PO ที่สร้างจาก alert นี้
   resolvedAt      DateTime? @map("resolved_at")
-  createdAt       DateTime @default(now()) @map("created_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  reorderPoint ReorderPoint   @relation(fields: [reorderPointId], references: [id])
+  branch       Branch         @relation(fields: [branchId], references: [id])
+  po           PurchaseOrder? @relation(fields: [poId], references: [id])
 
   @@index([status])
   @@index([branchId])
+  @@index([reorderPointId])
   @@index([createdAt])
   @@map("stock_alerts")
 }
@@ -1039,8 +1048,8 @@ model BranchReceiving {
   notes        String?
   createdAt    DateTime @default(now()) @map("created_at")
 
-  transfer   StockTransfer        @relation(fields: [transferId], references: [id])
-  receivedBy User                 @relation("BranchReceivedBy", fields: [receivedById], references: [id])
+  transfer   StockTransfer         @relation(fields: [transferId], references: [id])
+  receivedBy User                  @relation("BranchReceivedBy", fields: [receivedById], references: [id])
   items      BranchReceivingItem[]
 
   @@index([transferId])
@@ -1051,14 +1060,15 @@ model BranchReceivingItem {
   id             String   @id @default(uuid())
   receivingId    String   @map("receiving_id")
   productId      String   @map("product_id")
-  imeiSerial     String?  @map("imei_serial")    // สแกนยืนยัน
-  status         String   @default("PASS")       // PASS, REJECT
+  imeiSerial     String?  @map("imei_serial") // สแกนยืนยัน
+  status         String   @default("PASS") // PASS, REJECT
   conditionNotes String?  @map("condition_notes")
   photos         String[] @default([])
   rejectReason   String?  @map("reject_reason")
   createdAt      DateTime @default(now()) @map("created_at")
 
   receiving BranchReceiving @relation(fields: [receivingId], references: [id])
+  product   Product         @relation(fields: [productId], references: [id])
 
   @@index([receivingId])
   @@index([productId])

@@ -381,8 +381,8 @@ export class ProductsService {
         where: { id: transferId },
       });
       if (!transfer) throw new NotFoundException('ไม่พบรายการโอน');
-      if (!['PENDING', 'IN_TRANSIT'].includes(transfer.status)) {
-        throw new BadRequestException('รายการโอนนี้ไม่อยู่ในสถานะที่สามารถยืนยันได้');
+      if (transfer.status !== 'IN_TRANSIT') {
+        throw new BadRequestException('รายการโอนนี้ไม่อยู่ในสถานะ IN_TRANSIT (ต้อง dispatch จัดส่งก่อน)');
       }
 
       // Confirm transfer: move product to destination branch

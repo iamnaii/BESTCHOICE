@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, Query, UseGuards, BadRequestException } from '@nestjs/common';
 import { BranchReceivingService } from './branch-receiving.service';
 import { CreateBranchReceivingDto } from './dto/branch-receiving.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -29,6 +29,9 @@ export class BranchReceivingController {
   @Get('pending-deliveries')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   getPendingDeliveries(@Query('branchId') branchId: string) {
+    if (!branchId) {
+      throw new BadRequestException('กรุณาระบุ branchId');
+    }
     return this.service.getPendingDeliveries(branchId);
   }
 

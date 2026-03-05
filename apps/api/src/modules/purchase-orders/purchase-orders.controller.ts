@@ -24,6 +24,31 @@ export class PurchaseOrdersController {
     return this.purchaseOrdersService.getAccountsPayable();
   }
 
+  // === QC Confirmation (Step 4: สินค้าเข้าคลัง) ===
+  // Static routes MUST be before :id parametric routes
+
+  @Get('qc-pending')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  getQCPending(
+    @Query('branchId') branchId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.purchaseOrdersService.getQCPending({
+      branchId,
+      page: page ? parseInt(page) : undefined,
+      limit: limit ? parseInt(limit) : undefined,
+    });
+  }
+
+  @Post('qc-confirm')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  confirmQC(@Body('productIds') productIds: string[]) {
+    return this.purchaseOrdersService.confirmQC(productIds);
+  }
+
+  // === Parametric :id routes ===
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.purchaseOrdersService.findOne(id);
@@ -128,27 +153,5 @@ export class PurchaseOrdersController {
     @CurrentUser() user: { id: string },
   ) {
     return this.purchaseOrdersService.goodsReceiving(id, dto, user.id);
-  }
-
-  // === QC Confirmation (Step 4: สินค้าเข้าคลัง) ===
-
-  @Get('qc-pending')
-  @Roles('OWNER', 'BRANCH_MANAGER')
-  getQCPending(
-    @Query('branchId') branchId?: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-  ) {
-    return this.purchaseOrdersService.getQCPending({
-      branchId,
-      page: page ? parseInt(page) : undefined,
-      limit: limit ? parseInt(limit) : undefined,
-    });
-  }
-
-  @Post('qc-confirm')
-  @Roles('OWNER', 'BRANCH_MANAGER')
-  confirmQC(@Body('productIds') productIds: string[]) {
-    return this.purchaseOrdersService.confirmQC(productIds);
   }
 }

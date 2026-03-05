@@ -555,8 +555,8 @@ export class PurchaseOrdersService {
       });
 
       if (!po) throw new NotFoundException('ไม่พบใบสั่งซื้อ');
-      if (!['PENDING', 'APPROVED', 'PARTIALLY_RECEIVED'].includes(po.status)) {
-        throw new BadRequestException('PO นี้ไม่อยู่ในสถานะที่สามารถรับสินค้าได้');
+      if (!['APPROVED', 'PARTIALLY_RECEIVED'].includes(po.status)) {
+        throw new BadRequestException('PO นี้ไม่อยู่ในสถานะที่สามารถรับสินค้าได้ (ต้อง APPROVED หรือ PARTIALLY_RECEIVED)');
       }
 
       // Find main warehouse branch

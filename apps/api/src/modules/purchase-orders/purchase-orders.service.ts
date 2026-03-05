@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePODto, UpdatePODto, ReceivePODto, GoodsReceivingDto, UpdatePaymentDto } from './dto/create-po.dto';
 
@@ -677,7 +678,7 @@ export class PurchaseOrdersService {
               warrantyExpired: item.warrantyExpired ?? null,
               warrantyExpireDate: item.warrantyExpireDate ? new Date(item.warrantyExpireDate) : null,
               hasBox: item.hasBox ?? null,
-              checklistResults: item.checklistResults ?? undefined,
+              checklistResults: item.checklistResults ? (item.checklistResults as unknown as Prisma.InputJsonValue) : undefined,
               accessoryType: poItem.accessoryType || null,
               accessoryBrand: poItem.accessoryBrand || null,
             },
@@ -697,7 +698,7 @@ export class PurchaseOrdersService {
               warrantyExpired: item.warrantyExpired ?? null,
               warrantyExpireDate: item.warrantyExpireDate ? new Date(item.warrantyExpireDate) : null,
               hasBox: item.hasBox ?? null,
-              checklistResults: item.checklistResults ?? undefined,
+              checklistResults: item.checklistResults ? (item.checklistResults as unknown as Prisma.InputJsonValue) : undefined,
             },
           });
 

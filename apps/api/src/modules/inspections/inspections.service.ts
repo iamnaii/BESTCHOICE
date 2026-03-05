@@ -182,7 +182,7 @@ export class InspectionsService {
     if (inspection.products.length > 0) {
       await this.prisma.product.update({
         where: { id: inspection.products[0].id },
-        data: { conditionGrade: grade, status: 'IN_STOCK' },
+        data: { conditionGrade: grade, status: 'IN_STOCK', stockInDate: new Date() },
       });
     }
 

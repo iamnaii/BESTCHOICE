@@ -35,6 +35,7 @@ export default function ProductsPage() {
   const [filterBranch, setFilterBranch] = useState('');
   const [page, setPage] = useState(1);
   const debouncedSearch = useDebounce(search);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const queryClient = useQueryClient();
   const isManager = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
@@ -143,7 +144,61 @@ export default function ProductsPage() {
 
   const navigateToProduct = useCallback((id: string) => navigate(`/products/${id}`), [navigate]);
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === products.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(products.map((p) => p.id)));
+    }
+  };
+
+  const handleExport = () => {
+    const items = selectedIds.size > 0 ? products.filter((p) => selectedIds.has(p.id)) : products;
+    if (items.length === 0) { toast.error('ไม่มีข้อมูลให้ส่งออก'); return; }
+    const headers = ['ชื่อ', 'แบรนด์', 'รุ่น', 'IMEI/Serial', 'ประเภท', 'สถานะ', 'เกรด', 'ราคาทุน', 'ราคาขาย', 'สาขา'];
+    const rows = items.map((p) => {
+      const dp = p.prices.find((pr) => pr.isDefault);
+      return [p.name, p.brand, p.model, p.imeiSerial || '', categoryLabels[p.category] || p.category, statusLabels[p.status]?.label || p.status, p.conditionGrade || '', Number(p.costPrice || 0).toLocaleString(), dp ? Number(dp.amount).toLocaleString() : '', p.branch.name];
+    });
+    const esc = (c: unknown) => `"${String(c ?? '').replace(/"/g, '""')}"`;
+    const csv = [headers, ...rows].map((r) => r.map(esc).join(',')).join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `products-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const columns = useMemo(() => [
+    ...(isManager ? [{
+      key: 'select',
+      label: (
+        <input
+          type="checkbox"
+          checked={products.length > 0 && selectedIds.size === products.length}
+          onChange={toggleSelectAll}
+          className="rounded text-primary-600"
+        />
+      ) as unknown as string,
+      render: (p: Product) => (
+        <input
+          type="checkbox"
+          checked={selectedIds.has(p.id)}
+          onChange={(e) => { e.stopPropagation(); toggleSelect(p.id); }}
+          className="rounded text-primary-600"
+        />
+      ),
+    }] : []),
     {
       key: 'name',
       label: 'สินค้า',
@@ -223,7 +278,7 @@ export default function ProductsPage() {
       label: 'สาขา',
       render: (p: Product) => <span className="text-xs">{p.branch.name}</span>,
     },
-  ], [navigateToProduct, openPriceEdit, isManager]);
+  ], [navigateToProduct, openPriceEdit, isManager, selectedIds, products]);
 
   return (
     <div>
@@ -232,12 +287,20 @@ export default function ProductsPage() {
         subtitle={`ทั้งหมด ${result?.total ?? 0} รายการ`}
         action={
           isManager ? (
-            <button
-              onClick={() => navigate('/products/create')}
-              className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
-            >
-              + เพิ่มสินค้า
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={handleExport}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+              >
+                {selectedIds.size > 0 ? `Export (${selectedIds.size})` : 'Export CSV'}
+              </button>
+              <button
+                onClick={() => navigate('/products/create')}
+                className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
+              >
+                + เพิ่มสินค้า
+              </button>
+            </div>
           ) : undefined
         }
       />

@@ -493,6 +493,7 @@ model Product {
   accessoryBrand     String?         @map("accessory_brand")
   inspectionId       String?         @map("inspection_id")
   photos             String[]        @default([])
+  stockInDate        DateTime?       @map("stock_in_date")
   createdAt          DateTime        @default(now()) @map("created_at")
   updatedAt          DateTime        @updatedAt @map("updated_at")
   deletedAt          DateTime?       @map("deleted_at")

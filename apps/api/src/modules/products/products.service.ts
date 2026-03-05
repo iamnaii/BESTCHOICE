@@ -74,11 +74,13 @@ export class ProductsService {
   async create(dto: CreateProductDto) {
     const { prices, costPrice, warrantyExpireDate, ...data } = dto;
 
+    const isInStock = !data.status || data.status === 'IN_STOCK';
     const product = await this.prisma.product.create({
       data: {
         ...data,
         costPrice,
         warrantyExpireDate: warrantyExpireDate ? new Date(warrantyExpireDate) : null,
+        ...(isInStock ? { stockInDate: new Date() } : {}),
         ...(prices && prices.length > 0
           ? {
               prices: {
@@ -548,7 +550,7 @@ export class ProductsService {
         select: {
           id: true, status: true, category: true, brand: true, model: true,
           color: true, storage: true, costPrice: true, conditionGrade: true,
-          createdAt: true,
+          createdAt: true, stockInDate: true,
           prices: { where: { isDefault: true }, take: 1, select: { amount: true } },
         },
       }),
@@ -584,7 +586,8 @@ export class ProductsService {
       { label: '90+ วัน', min: 91, max: Infinity, count: 0, value: 0 },
     ];
     for (const p of inStockProducts) {
-      const days = Math.floor((now.getTime() - new Date(p.createdAt).getTime()) / (1000 * 60 * 60 * 24));
+      const refDate = p.stockInDate ? new Date(p.stockInDate) : new Date(p.createdAt);
+      const days = Math.floor((now.getTime() - refDate.getTime()) / (1000 * 60 * 60 * 24));
       const bucket = agingBuckets.find((b) => days >= b.min && days <= b.max);
       if (bucket) {
         bucket.count++;
@@ -674,9 +677,10 @@ export class ProductsService {
       return d >= lastMonthStart && d < thisMonthStart;
     }).length;
 
-    // Average days in stock for sold products (approximate from all IN_STOCK)
+    // Average days in stock (from stockInDate or createdAt as fallback)
     const totalDays = inStockProducts.reduce((sum, p) => {
-      return sum + Math.floor((now.getTime() - new Date(p.createdAt).getTime()) / (1000 * 60 * 60 * 24));
+      const refDate = p.stockInDate ? new Date(p.stockInDate) : new Date(p.createdAt);
+      return sum + Math.floor((now.getTime() - refDate.getTime()) / (1000 * 60 * 60 * 24));
     }, 0);
     const avgDaysInStock = inStockProducts.length > 0 ? Math.round(totalDays / inStockProducts.length) : 0;
 
@@ -695,7 +699,7 @@ export class ProductsService {
     const slowMovers = inStockProducts
       .map((p) => ({
         name: `${p.brand} ${p.model}`,
-        days: Math.floor((now.getTime() - new Date(p.createdAt).getTime()) / (1000 * 60 * 60 * 24)),
+        days: Math.floor((now.getTime() - new Date(p.stockInDate || p.createdAt).getTime()) / (1000 * 60 * 60 * 24)),
         costPrice: Number(p.costPrice),
       }))
       .sort((a, b) => b.days - a.days)

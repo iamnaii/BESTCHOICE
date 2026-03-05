@@ -57,7 +57,7 @@ export class StockAdjustmentsService {
       if (dto.reason === 'FOUND') {
         await tx.product.update({
           where: { id: dto.productId },
-          data: { status: 'IN_STOCK', deletedAt: null },
+          data: { status: 'IN_STOCK', deletedAt: null, stockInDate: new Date() },
         });
       } else if (['DAMAGED', 'LOST', 'WRITE_OFF'].includes(dto.reason)) {
         // DAMAGED, LOST, WRITE_OFF → soft delete (remove from active stock)
@@ -182,7 +182,7 @@ export class StockAdjustmentsService {
     }
     for (const adj of adjustments) {
       if (byReason[adj.reason]) {
-        byReason[adj.reason].totalValue += Number(adj.product?.costPrice || 0);
+        byReason[adj.reason].totalValue += Number(adj.product?.costPrice ?? 0) || 0;
       }
     }
 

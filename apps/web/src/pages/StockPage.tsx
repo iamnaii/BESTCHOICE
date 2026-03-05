@@ -281,7 +281,36 @@ export default function StockPage() {
 
   return (
     <div>
-      <PageHeader title="สต็อกสินค้า" subtitle={`พร้อมขาย ${totalInStock} ชิ้น | มูลค่ารวม ${totalValue.toLocaleString()} ฿`} />
+      <PageHeader
+        title="สต็อกสินค้า"
+        subtitle={`พร้อมขาย ${totalInStock} ชิ้น | มูลค่ารวม ${totalValue.toLocaleString()} ฿`}
+        action={
+          isManager && activeTab === 'list' ? (
+            <button
+              onClick={() => {
+                if (products.length === 0) { toast.error('ไม่มีข้อมูลให้ส่งออก'); return; }
+                const headers = ['สินค้า', 'IMEI', 'ประเภท', 'สี', 'ความจุ', 'ราคาทุน', 'ราคาขาย', 'สถานะ', 'เกรด', 'สาขา'];
+                const rows = products.map((p) => {
+                  const dp = p.prices?.find((pr) => pr.isDefault) || p.prices?.[0];
+                  return [`${p.brand} ${p.model}`, p.imeiSerial || '', categoryLabels[p.category] || p.category, p.color || '', p.storage || '', Number(p.costPrice || 0).toLocaleString(), dp ? Number(dp.amount).toLocaleString() : '', statusLabels[p.status]?.label || p.status, p.conditionGrade || '', p.branch.name];
+                });
+                const esc = (c: unknown) => `"${String(c ?? '').replace(/"/g, '""')}"`;
+                const csv = [headers, ...rows].map((r) => r.map(esc).join(',')).join('\n');
+                const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `stock-${new Date().toISOString().split('T')[0]}.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+              className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50"
+            >
+              Export CSV
+            </button>
+          ) : undefined
+        }
+      />
 
       {/* Branch Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">

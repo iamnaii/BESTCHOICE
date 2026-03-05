@@ -150,12 +150,46 @@ function Sidebar() {
           </NavLink>
         ))}
 
-        {/* Collapsible sections */}
+        {/* Sections */}
         {sections.map((section) => {
-          const isCollapsed = collapsed[section.key] ?? false;
           const hasActive = section.items.some((i) =>
             i.path === '/' ? activeSectionPath === '/' : activeSectionPath.startsWith(i.path),
           );
+
+          // Single-item section: render as direct link with icon (no collapsible)
+          if (section.items.length === 1) {
+            const item = section.items[0];
+            return (
+              <div key={section.key} className="mt-2">
+                <NavLink
+                  to={item.path}
+                  className={({ isActive }) =>
+                    clsx(
+                      'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition-colors duration-200',
+                      isActive
+                        ? 'bg-primary-900/50 text-primary-300'
+                        : 'text-gray-500 hover:bg-white/5 hover:text-gray-300',
+                    )
+                  }
+                >
+                  <svg
+                    className="w-4 h-4 shrink-0"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={section.icon} />
+                  </svg>
+                  <span className="text-[11px] font-semibold uppercase tracking-wider">
+                    {section.label}
+                  </span>
+                </NavLink>
+              </div>
+            );
+          }
+
+          // Multi-item section: collapsible
+          const isCollapsed = collapsed[section.key] ?? false;
 
           return (
             <div key={section.key} className="mt-2">

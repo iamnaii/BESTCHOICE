@@ -51,24 +51,17 @@ export default function InventoryWorkflowPage() {
     [user],
   );
 
-  const activeTab = searchParams.get('tab') || steps[0]?.key || 'stock';
-  const activeIdx = steps.findIndex((s) => s.key === activeTab);
+  const rawTab = searchParams.get('tab') || steps[0]?.key || 'stock';
+  const rawIdx = steps.findIndex((s) => s.key === rawTab);
+  // Fallback to first step if tab is invalid or filtered out by role
+  const activeIdx = rawIdx >= 0 ? rawIdx : 0;
+  const activeTab = steps[activeIdx]?.key || 'stock';
   const ActiveComponent = stepComponents[activeTab];
 
   const goTo = (key: string) => setSearchParams({ tab: key });
 
   return (
     <div className="space-y-0">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
-        <h1 className="text-xl font-bold text-gray-900">จัดซื้อ & คลังสินค้า</h1>
-        <p className="text-sm text-gray-500 mt-0.5">
-          {activeIdx >= 0 && steps[activeIdx]
-            ? `ขั้นตอนที่ ${activeIdx + 1} / ${steps.length} — ${steps[activeIdx].label}`
-            : 'เลือกขั้นตอน'}
-        </p>
-      </div>
-
       {/* Stepper */}
       <div className="bg-white border-b border-gray-200 px-6 py-3">
         <div className="flex items-center">

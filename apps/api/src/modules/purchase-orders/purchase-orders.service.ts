@@ -782,7 +782,7 @@ export class PurchaseOrdersService {
       // Move all products to IN_STOCK
       await tx.product.updateMany({
         where: { id: { in: productIds } },
-        data: { status: 'IN_STOCK' },
+        data: { status: 'IN_STOCK', stockInDate: new Date() },
       });
 
       return {

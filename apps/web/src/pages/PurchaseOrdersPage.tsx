@@ -128,6 +128,8 @@ const defaultChecklist = [
   { item: 'IMEI ไม่ถูก block', category: 'ซอฟต์แวร์' },
 ];
 
+const checklistCategories = [...new Set(defaultChecklist.map((c) => c.category))];
+
 interface ItemForm {
   brand: string;
   category: string;
@@ -458,6 +460,14 @@ export default function PurchaseOrdersPage() {
     const boolFields = ['hasBox', 'warrantyExpired'];
     const parsed = boolFields.includes(field) ? value === 'true' : value;
     newUnits[idx] = { ...newUnits[idx], [field]: parsed };
+    setReceivingUnits(newUnits);
+  };
+
+  const updateChecklist = (unitIdx: number, checkIdx: number, field: 'passed' | 'note', value: boolean | string) => {
+    const newUnits = [...receivingUnits];
+    const newChecklist = [...newUnits[unitIdx].checklist];
+    newChecklist[checkIdx] = { ...newChecklist[checkIdx], [field]: value };
+    newUnits[unitIdx] = { ...newUnits[unitIdx], checklist: newChecklist };
     setReceivingUnits(newUnits);
   };
 
@@ -2002,58 +2012,40 @@ export default function PurchaseOrdersPage() {
                       {/* Checklist ตรวจเช็คเครื่อง */}
                       <div className="mt-2 border-t border-orange-200 pt-2">
                         <div className="text-xs font-medium text-orange-700 mb-2">เช็คลิสต์ตรวจเครื่อง</div>
-                        {(() => {
-                          const categories = [...new Set(unit.checklist.map((c) => c.category))];
-                          return categories.map((cat) => (
-                            <div key={cat} className="mb-2">
-                              <div className="text-xs font-medium text-gray-500 mb-1">{cat}</div>
-                              <div className="space-y-1">
-                                {unit.checklist.filter((c) => c.category === cat).map((c, ci) => {
-                                  const checkIdx = unit.checklist.findIndex((x) => x.item === c.item && x.category === c.category);
-                                  return (
-                                    <div key={ci} className="flex items-center gap-2">
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          const newUnits = [...receivingUnits];
-                                          const newChecklist = [...newUnits[idx].checklist];
-                                          newChecklist[checkIdx] = { ...newChecklist[checkIdx], passed: !newChecklist[checkIdx].passed };
-                                          newUnits[idx] = { ...newUnits[idx], checklist: newChecklist };
-                                          setReceivingUnits(newUnits);
-                                        }}
-                                        className={`w-5 h-5 rounded flex items-center justify-center text-xs font-bold transition-colors ${
-                                          c.passed
-                                            ? 'bg-green-500 text-white'
-                                            : 'bg-red-500 text-white'
-                                        }`}
-                                      >
-                                        {c.passed ? '\u2713' : '\u2717'}
-                                      </button>
-                                      <span className={`text-xs flex-1 ${c.passed ? 'text-gray-700' : 'text-red-700 font-medium'}`}>
-                                        {c.item}
-                                      </span>
-                                      {!c.passed && (
-                                        <input
-                                          type="text"
-                                          placeholder="หมายเหตุ"
-                                          value={c.note}
-                                          onChange={(e) => {
-                                            const newUnits = [...receivingUnits];
-                                            const newChecklist = [...newUnits[idx].checklist];
-                                            newChecklist[checkIdx] = { ...newChecklist[checkIdx], note: e.target.value };
-                                            newUnits[idx] = { ...newUnits[idx], checklist: newChecklist };
-                                            setReceivingUnits(newUnits);
-                                          }}
-                                          className="w-32 px-1.5 py-0.5 border border-red-300 rounded text-xs focus:ring-1 focus:ring-red-400 outline-none"
-                                        />
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                              </div>
+                        {checklistCategories.map((cat) => (
+                          <div key={cat} className="mb-2">
+                            <div className="text-xs font-medium text-gray-500 mb-1">{cat}</div>
+                            <div className="space-y-1">
+                              {unit.checklist.map((c, checkIdx) => c.category !== cat ? null : (
+                                <div key={checkIdx} className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => updateChecklist(idx, checkIdx, 'passed', !c.passed)}
+                                    className={`w-5 h-5 rounded flex items-center justify-center text-xs font-bold transition-colors ${
+                                      c.passed
+                                        ? 'bg-green-500 text-white'
+                                        : 'bg-red-500 text-white'
+                                    }`}
+                                  >
+                                    {c.passed ? '\u2713' : '\u2717'}
+                                  </button>
+                                  <span className={`text-xs flex-1 ${c.passed ? 'text-gray-700' : 'text-red-700 font-medium'}`}>
+                                    {c.item}
+                                  </span>
+                                  {!c.passed && (
+                                    <input
+                                      type="text"
+                                      placeholder="หมายเหตุ"
+                                      value={c.note}
+                                      onChange={(e) => updateChecklist(idx, checkIdx, 'note', e.target.value)}
+                                      className="w-32 px-1.5 py-0.5 border border-red-300 rounded text-xs focus:ring-1 focus:ring-red-400 outline-none"
+                                    />
+                                  )}
+                                </div>
+                              ))}
                             </div>
-                          ));
-                        })()}
+                          </div>
+                        ))}
                         <div className="text-xs text-gray-400 mt-1">
                           ผ่าน {unit.checklist.filter((c) => c.passed).length}/{unit.checklist.length} รายการ
                         </div>

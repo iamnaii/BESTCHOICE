@@ -65,6 +65,7 @@ const navItems: NavItem[] = [
   { label: 'สต็อก', path: '/stock', roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'], section: 'warehouse' },
   { label: 'สินค้าในคลัง', path: '/products', section: 'warehouse' },
   { label: 'โอนสาขา', path: '/stock/transfers', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'warehouse' },
+  { label: 'เตือนสต็อก', path: '/stock/alerts', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'warehouse' },
   { label: 'ปรับสต็อก', path: '/stock/adjustments', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'warehouse' },
 
   // รายงาน & แจ้งเตือน

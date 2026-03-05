@@ -426,6 +426,259 @@ async function main() {
   console.log('Products created:', products.length, 'items');
 
   // ============================================================
+  // SUPPLIER PAYMENT METHODS
+  // ============================================================
+  const supplierPaymentMethods = [
+    { id: 'spm-001', supplierId: 'sup-001', paymentMethod: 'BANK_TRANSFER', bankName: 'กสิกรไทย', bankAccountName: 'ABC Mobile Supply', bankAccountNumber: '123-4-56789-0', isDefault: true },
+    { id: 'spm-002', supplierId: 'sup-001', paymentMethod: 'CREDIT', creditTermDays: 7, isDefault: false },
+    { id: 'spm-003', supplierId: 'sup-002', paymentMethod: 'BANK_TRANSFER', bankName: 'ไทยพาณิชย์', bankAccountName: 'Thai Phone Distributor', bankAccountNumber: '222-3-44567-8', isDefault: true },
+    { id: 'spm-004', supplierId: 'sup-002', paymentMethod: 'CREDIT', creditTermDays: 30, isDefault: false },
+    { id: 'spm-005', supplierId: 'sup-004', paymentMethod: 'BANK_TRANSFER', bankName: 'กรุงเทพ', bankAccountName: 'บจ.สยามโมบาย เทรดดิ้ง', bankAccountNumber: '333-0-78901-2', isDefault: true },
+    { id: 'spm-006', supplierId: 'sup-004', paymentMethod: 'CREDIT', creditTermDays: 15, isDefault: false },
+    { id: 'spm-007', supplierId: 'sup-005', paymentMethod: 'CASH', isDefault: true },
+    { id: 'spm-008', supplierId: 'sup-006', paymentMethod: 'BANK_TRANSFER', bankName: 'กรุงไทย', bankAccountName: 'บจ.ดิจิตอล โซลูชั่น', bankAccountNumber: '444-5-67890-1', isDefault: true },
+    { id: 'spm-009', supplierId: 'sup-008', paymentMethod: 'CASH', isDefault: true },
+    { id: 'spm-010', supplierId: 'sup-009', paymentMethod: 'BANK_TRANSFER', bankName: 'กสิกรไทย', bankAccountName: 'บจ.แกดเจ็ท แอนด์ เกียร์', bankAccountNumber: '555-6-78901-2', isDefault: true },
+    { id: 'spm-011', supplierId: 'sup-009', paymentMethod: 'CREDIT', creditTermDays: 30, isDefault: false },
+  ];
+
+  for (const pm of supplierPaymentMethods) {
+    await prisma.supplierPaymentMethod.upsert({
+      where: { id: pm.id },
+      update: {},
+      create: pm,
+    });
+  }
+  console.log('Supplier payment methods created:', supplierPaymentMethods.length, 'items');
+
+  // ============================================================
+  // SAMPLE PURCHASE ORDERS
+  // ============================================================
+  // PO-1: Apple order from ABC Mobile Supply (APPROVED, UNPAID)
+  const po1 = await prisma.purchaseOrder.upsert({
+    where: { id: 'po-001' },
+    update: {},
+    create: {
+      id: 'po-001',
+      poNumber: 'PO-2025-12-001',
+      supplierId: 'sup-001',
+      orderDate: new Date('2025-12-01'),
+      expectedDate: new Date('2025-12-05'),
+      dueDate: new Date('2025-12-08'),
+      status: 'APPROVED',
+      totalAmount: 214500,
+      discount: 0,
+      vatAmount: 15015,
+      netAmount: 229515,
+      paymentStatus: 'UNPAID',
+      paymentMethod: 'BANK_TRANSFER',
+      paidAmount: 0,
+      notes: 'สั่ง iPhone 15 Pro Max เข้าสต็อกประจำเดือน',
+      createdById: manager.id,
+      approvedById: owner.id,
+      items: {
+        create: [
+          { id: 'poi-001', brand: 'Apple', model: 'iPhone 15 Pro Max', storage: '256GB', category: 'PHONE_NEW', quantity: 3, unitPrice: 42900 },
+          { id: 'poi-002', brand: 'Apple', model: 'iPhone 15 Pro', storage: '128GB', category: 'PHONE_NEW', quantity: 2, unitPrice: 38900, receivedQty: 0 },
+        ],
+      },
+    },
+  });
+  console.log('PO-1 created:', po1.poNumber, '(APPROVED, UNPAID)');
+
+  // PO-2: Samsung order from Thai Phone Distributor (FULLY_RECEIVED, FULLY_PAID)
+  const po2 = await prisma.purchaseOrder.upsert({
+    where: { id: 'po-002' },
+    update: {},
+    create: {
+      id: 'po-002',
+      poNumber: 'PO-2025-11-001',
+      supplierId: 'sup-002',
+      orderDate: new Date('2025-11-15'),
+      expectedDate: new Date('2025-11-20'),
+      dueDate: new Date('2025-12-15'),
+      status: 'FULLY_RECEIVED',
+      totalAmount: 105600,
+      discount: 2000,
+      vatAmount: 7252,
+      netAmount: 110852,
+      paymentStatus: 'FULLY_PAID',
+      paymentMethod: 'BANK_TRANSFER',
+      paidAmount: 110852,
+      paymentNotes: 'โอนจ่ายครบ 25/11/2025',
+      notes: 'สั่ง Samsung ล็อตพฤศจิกายน',
+      createdById: owner.id,
+      approvedById: owner.id,
+      items: {
+        create: [
+          { id: 'poi-003', brand: 'Samsung', model: 'Galaxy S24 Ultra', storage: '256GB', category: 'PHONE_NEW', quantity: 2, unitPrice: 39900, receivedQty: 2 },
+          { id: 'poi-004', brand: 'Samsung', model: 'Galaxy A55', storage: '128GB', category: 'PHONE_NEW', quantity: 2, unitPrice: 12900, receivedQty: 2 },
+        ],
+      },
+    },
+  });
+  console.log('PO-2 created:', po2.poNumber, '(FULLY_RECEIVED, FULLY_PAID)');
+
+  // PO-3: OPPO/Vivo from สยามโมบาย (PARTIALLY_RECEIVED, DEPOSIT_PAID)
+  const po3 = await prisma.purchaseOrder.upsert({
+    where: { id: 'po-003' },
+    update: {},
+    create: {
+      id: 'po-003',
+      poNumber: 'PO-2025-12-002',
+      supplierId: 'sup-004',
+      orderDate: new Date('2025-12-03'),
+      expectedDate: new Date('2025-12-07'),
+      dueDate: new Date('2025-12-18'),
+      status: 'PARTIALLY_RECEIVED',
+      totalAmount: 101940,
+      discount: 0,
+      vatAmount: 7135.8,
+      netAmount: 109075.8,
+      paymentStatus: 'DEPOSIT_PAID',
+      paymentMethod: 'BANK_TRANSFER',
+      paidAmount: 30000,
+      paymentNotes: 'จ่ายมัดจำ 30,000',
+      notes: 'สั่ง OPPO + Vivo เข้าสาขาลาดพร้าว',
+      createdById: manager.id,
+      approvedById: owner.id,
+      items: {
+        create: [
+          { id: 'poi-005', brand: 'OPPO', model: 'Reno 11 Pro', storage: '256GB', category: 'PHONE_NEW', quantity: 3, unitPrice: 16990, receivedQty: 2 },
+          { id: 'poi-006', brand: 'Vivo', model: 'V30 Pro', storage: '256GB', category: 'PHONE_NEW', quantity: 3, unitPrice: 16990, receivedQty: 1 },
+        ],
+      },
+    },
+  });
+  console.log('PO-3 created:', po3.poNumber, '(PARTIALLY_RECEIVED, DEPOSIT_PAID)');
+
+  // PO-4: Used iPhones from MBK (DRAFT, pending approval)
+  const po4 = await prisma.purchaseOrder.upsert({
+    where: { id: 'po-004' },
+    update: {},
+    create: {
+      id: 'po-004',
+      poNumber: 'PO-2025-12-003',
+      supplierId: 'sup-005',
+      orderDate: new Date('2025-12-05'),
+      expectedDate: new Date('2025-12-05'),
+      status: 'DRAFT',
+      totalAmount: 87500,
+      discount: 2500,
+      vatAmount: 0,
+      netAmount: 85000,
+      paymentStatus: 'UNPAID',
+      paymentMethod: 'CASH',
+      paidAmount: 0,
+      notes: 'มือสองจาก MBK ล็อตใหม่ ราคาต่อรองแล้ว',
+      createdById: manager.id,
+      items: {
+        create: [
+          { id: 'poi-007', brand: 'Apple', model: 'iPhone 14 Pro', storage: '128GB', category: 'PHONE_USED', quantity: 2, unitPrice: 22500 },
+          { id: 'poi-008', brand: 'Apple', model: 'iPhone 13', storage: '128GB', category: 'PHONE_USED', quantity: 3, unitPrice: 14500 },
+        ],
+      },
+    },
+  });
+  console.log('PO-4 created:', po4.poNumber, '(DRAFT, pending approval)');
+
+  // PO-5: Xiaomi from ดิจิตอล โซลูชั่น (APPROVED, PARTIALLY_PAID)
+  const po5 = await prisma.purchaseOrder.upsert({
+    where: { id: 'po-005' },
+    update: {},
+    create: {
+      id: 'po-005',
+      poNumber: 'PO-2025-11-002',
+      supplierId: 'sup-006',
+      orderDate: new Date('2025-11-25'),
+      expectedDate: new Date('2025-12-01'),
+      dueDate: new Date('2025-12-25'),
+      status: 'APPROVED',
+      totalAmount: 104700,
+      discount: 3000,
+      vatAmount: 7119,
+      netAmount: 108819,
+      paymentStatus: 'PARTIALLY_PAID',
+      paymentMethod: 'BANK_TRANSFER',
+      paidAmount: 50000,
+      paymentNotes: 'โอนแล้ว 50,000 จ่ายที่เหลือเมื่อรับของ',
+      notes: 'Xiaomi + OnePlus เข้าสาขาบางแค',
+      createdById: owner.id,
+      approvedById: owner.id,
+      items: {
+        create: [
+          { id: 'poi-009', brand: 'Xiaomi', model: '14 Ultra', storage: '512GB', category: 'PHONE_NEW', quantity: 2, unitPrice: 34900 },
+          { id: 'poi-010', brand: 'OnePlus', model: '12', storage: '256GB', category: 'PHONE_NEW', quantity: 2, unitPrice: 17450 },
+        ],
+      },
+    },
+  });
+  console.log('PO-5 created:', po5.poNumber, '(APPROVED, PARTIALLY_PAID)');
+
+  // PO-6: Tablets from แกดเจ็ท แอนด์ เกียร์ (CANCELLED)
+  const po6 = await prisma.purchaseOrder.upsert({
+    where: { id: 'po-006' },
+    update: {},
+    create: {
+      id: 'po-006',
+      poNumber: 'PO-2025-10-001',
+      supplierId: 'sup-009',
+      orderDate: new Date('2025-10-20'),
+      expectedDate: new Date('2025-10-28'),
+      status: 'CANCELLED',
+      totalAmount: 98700,
+      discount: 0,
+      vatAmount: 6909,
+      netAmount: 105609,
+      paymentStatus: 'UNPAID',
+      paidAmount: 0,
+      rejectReason: 'ราคาสูงกว่าที่ตกลง ยกเลิกสั่งใหม่',
+      notes: 'Tablet ล็อตตุลาคม - ยกเลิกแล้ว',
+      createdById: manager.id,
+      approvedById: owner.id,
+      items: {
+        create: [
+          { id: 'poi-011', brand: 'Apple', model: 'iPad Pro M4', storage: '256GB', category: 'TABLET', quantity: 2, unitPrice: 36900 },
+          { id: 'poi-012', brand: 'Samsung', model: 'Galaxy Tab S9', storage: '128GB', category: 'TABLET', quantity: 1, unitPrice: 24900 },
+        ],
+      },
+    },
+  });
+  console.log('PO-6 created:', po6.poNumber, '(CANCELLED)');
+
+  // PO-7: Refurbished iPhones from iCare (FULLY_RECEIVED, FULLY_PAID)
+  const po7 = await prisma.purchaseOrder.upsert({
+    where: { id: 'po-007' },
+    update: {},
+    create: {
+      id: 'po-007',
+      poNumber: 'PO-2025-11-003',
+      supplierId: 'sup-010',
+      orderDate: new Date('2025-11-10'),
+      expectedDate: new Date('2025-11-12'),
+      status: 'FULLY_RECEIVED',
+      totalAmount: 57000,
+      discount: 2000,
+      vatAmount: 0,
+      netAmount: 55000,
+      paymentStatus: 'FULLY_PAID',
+      paymentMethod: 'CASH',
+      paidAmount: 55000,
+      paymentNotes: 'จ่ายเงินสดตอนรับของ',
+      notes: 'iPhone Refurbished Grade A เข้าสาขารามคำแหง',
+      createdById: owner.id,
+      approvedById: owner.id,
+      items: {
+        create: [
+          { id: 'poi-013', brand: 'Apple', model: 'iPhone 13 Pro', storage: '128GB', category: 'PHONE_USED', quantity: 2, unitPrice: 18500, receivedQty: 2 },
+          { id: 'poi-014', brand: 'Apple', model: 'iPhone 12', storage: '64GB', category: 'PHONE_USED', quantity: 2, unitPrice: 10000, receivedQty: 2 },
+        ],
+      },
+    },
+  });
+  console.log('PO-7 created:', po7.poNumber, '(FULLY_RECEIVED, FULLY_PAID)');
+
+  // ============================================================
   // SAMPLE CUSTOMERS
   // ============================================================
   const customers = [

@@ -148,13 +148,11 @@ export default function LandingPage() {
                 return (
                   <ProductCard
                     key={product.id}
-                    name={product.name}
                     brand={product.brand}
                     model={product.model}
                     price={defaultPrice?.amount || product.costPrice}
                     category={product.category}
                     conditionGrade={product.conditionGrade}
-                    status={product.status}
                   />
                 );
               })}
@@ -174,13 +172,11 @@ export default function LandingPage() {
               ].map((item, i) => (
                 <ProductCard
                   key={i}
-                  name={`${item.brand} ${item.model}`}
                   brand={item.brand}
                   model={item.model}
                   price={item.price}
                   category={item.category}
                   conditionGrade={item.grade}
-                  status="IN_STOCK"
                 />
               ))}
             </div>

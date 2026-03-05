@@ -79,7 +79,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data } = res;
     localStorage.setItem('access_token', data.accessToken);
     localStorage.setItem('refresh_token', data.refreshToken);
-    setUser(data.user);
+    setUser({
+      id: data.user.id,
+      email: data.user.email,
+      name: data.user.name,
+      role: data.user.role,
+      branchId: data.user.branchId,
+      branchName: data.user.branchName ?? data.user.branch?.name ?? null,
+    });
   }, []);
 
   const value = useMemo(() => ({

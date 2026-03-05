@@ -1,12 +1,9 @@
 interface ProductCardProps {
-  name: string;
   brand: string;
   model: string;
   price: string;
   category: string;
-  image?: string;
   conditionGrade?: string | null;
-  status: string;
 }
 
 const categoryLabels: Record<string, string> = {
@@ -66,7 +63,7 @@ export default function ProductCard({
           <div>
             <p className="text-xs text-gray-400">เริ่มต้นที่</p>
             <p className="text-lg font-bold text-primary-600">
-              {parseFloat(price).toLocaleString()}
+              {(Number(price) || 0).toLocaleString()}
               <span className="text-sm font-normal text-gray-500 ml-1">฿</span>
             </p>
           </div>

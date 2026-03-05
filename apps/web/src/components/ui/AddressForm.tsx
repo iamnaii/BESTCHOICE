@@ -115,7 +115,7 @@ export default function AddressForm({ value, onChange, label }: Props) {
 
   // Auto-fill postal code when province+district+subdistrict are set but postalCode is empty
   useEffect(() => {
-    if (value.province && value.district && value.subdistrict && !value.postalCode) {
+    if (value.province && value.district && value.subdistrict && !value.postalCode && addressData.length > 0) {
       const match = addressData.find(
         ([p, d, s]) => p === value.province && d === value.district && s === value.subdistrict,
       );
@@ -123,7 +123,7 @@ export default function AddressForm({ value, onChange, label }: Props) {
         onChange({ ...value, postalCode: match[3] });
       }
     }
-  }, [value.province, value.district, value.subdistrict]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [value, addressData, onChange]);
 
   const provinces = useMemo(() => {
     return [...new Set(addressData.map(([p]) => p))].sort();

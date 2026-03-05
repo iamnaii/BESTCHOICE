@@ -53,15 +53,8 @@ const navItems: NavItem[] = [
   { label: 'เปลี่ยนเครื่อง', path: '/exchange', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'debt' },
   { label: 'ยึดคืน & ขายต่อ', path: '/repossessions', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'debt' },
 
-  // จัดซื้อ & คลังสินค้า
-  // ── กลุ่ม: จัดซื้อ ──
-  { label: 'เช็คสต็อก', path: '/stock', step: 1, group: 'จัดซื้อ', roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'], section: 'inventory' },
-  { label: 'Supplier', path: '/suppliers', step: 2, group: 'จัดซื้อ', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'inventory' },
-  { label: 'สั่งซื้อ & ตรวจรับ', path: '/purchase-orders', step: 3, group: 'จัดซื้อ', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'inventory' },
-  // ── กลุ่ม: คลังสินค้า ──
-  { label: 'ตรวจเช็คเครื่อง', path: '/inspections', step: 4, group: 'คลังสินค้า', section: 'inventory' },
-  { label: 'สินค้าในคลัง', path: '/products', step: 5, group: 'คลังสินค้า', section: 'inventory' },
-  { label: 'โอนไปสาขา', path: '/stock/transfers', step: 6, group: 'คลังสินค้า', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'inventory' },
+  // จัดซื้อ & คลังสินค้า (unified workflow page)
+  { label: 'จัดซื้อ & คลังสินค้า', path: '/inventory', section: 'inventory' },
 
   // รายงาน & แจ้งเตือน
   { label: 'รายงาน', path: '/reports', roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'], section: 'reports' },

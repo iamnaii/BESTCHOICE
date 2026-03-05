@@ -204,18 +204,24 @@ export class ProductsService {
   async transfer(productId: string, dto: TransferProductDto, userId: string) {
     const product = await this.findOne(productId);
 
-    // Only allow transfer for products in stock
-    if (!['IN_STOCK', 'PO_RECEIVED'].includes(product.status)) {
-      throw new BadRequestException('ไม่สามารถโอนสินค้าที่ไม่ได้อยู่ในสต๊อคได้');
+    // Workflow enforcement: Only IN_STOCK products from Main Warehouse can be transferred
+    if (product.status !== 'IN_STOCK') {
+      throw new BadRequestException('ไม่สามารถโอนสินค้าที่ไม่ได้อยู่ในสถานะ IN_STOCK ได้ (ต้องผ่าน QC เข้าคลังก่อน)');
+    }
+
+    // Verify source is main warehouse
+    const sourceBranch = await this.prisma.branch.findUnique({ where: { id: product.branchId } });
+    if (!sourceBranch?.isMainWarehouse) {
+      throw new BadRequestException('ต้องโอนสินค้าจากคลังหลักเท่านั้น');
     }
 
     if (product.branchId === dto.toBranchId) {
       throw new BadRequestException('สาขาปลายทางต้องไม่ใช่สาขาเดียวกับสาขาต้นทาง');
     }
 
-    // Check for existing pending transfer for this product
+    // Check for existing pending/in-transit transfer for this product
     const existingTransfer = await this.prisma.stockTransfer.findFirst({
-      where: { productId, status: 'PENDING' },
+      where: { productId, status: { in: ['PENDING', 'IN_TRANSIT'] } },
     });
     if (existingTransfer) {
       throw new BadRequestException('สินค้านี้มีรายการโอนที่รออยู่แล้ว');
@@ -234,6 +240,7 @@ export class ProductsService {
         transferredBy: userId,
         notes: dto.notes,
         status: 'PENDING',
+        expectedDeliveryDate: dto.expectedDeliveryDate ? new Date(dto.expectedDeliveryDate) : null,
       },
       include: {
         fromBranch: { select: { id: true, name: true } },
@@ -329,14 +336,53 @@ export class ProductsService {
     return transfer;
   }
 
+  /**
+   * Dispatch transfer: PENDING → IN_TRANSIT (จัดส่งสินค้าออกจากคลัง)
+   */
+  async dispatchTransfer(transferId: string, userId: string, trackingNote?: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const transfer = await tx.stockTransfer.findUnique({
+        where: { id: transferId },
+        include: {
+          product: { select: { id: true, name: true, brand: true, model: true, imeiSerial: true } },
+          toBranch: { select: { id: true, name: true } },
+        },
+      });
+      if (!transfer) throw new NotFoundException('ไม่พบรายการโอน');
+      if (transfer.status !== 'PENDING') {
+        throw new BadRequestException('รายการโอนนี้ไม่อยู่ในสถานะรอจัดส่ง');
+      }
+
+      const updatedTransfer = await tx.stockTransfer.update({
+        where: { id: transferId },
+        data: {
+          status: 'IN_TRANSIT',
+          dispatchedById: userId,
+          dispatchedAt: new Date(),
+          trackingNote: trackingNote || null,
+        },
+        include: {
+          fromBranch: { select: { id: true, name: true } },
+          toBranch: { select: { id: true, name: true } },
+        },
+      });
+
+      return updatedTransfer;
+    });
+  }
+
+  /**
+   * Confirm transfer by branch (legacy - simple confirm without QC)
+   * For the new flow, use BranchReceiving module instead
+   */
   async confirmTransfer(transferId: string, userId: string) {
     return this.prisma.$transaction(async (tx) => {
       const transfer = await tx.stockTransfer.findUnique({
         where: { id: transferId },
       });
       if (!transfer) throw new NotFoundException('ไม่พบรายการโอน');
-      if (transfer.status !== 'PENDING') {
-        throw new BadRequestException('รายการโอนนี้ไม่อยู่ในสถานะรอยืนยัน');
+      if (transfer.status !== 'IN_TRANSIT') {
+        throw new BadRequestException('รายการโอนนี้ไม่อยู่ในสถานะ IN_TRANSIT (ต้อง dispatch จัดส่งก่อน)');
       }
 
       // Confirm transfer: move product to destination branch
@@ -362,14 +408,14 @@ export class ProductsService {
     });
   }
 
-  async rejectTransfer(transferId: string, userId: string) {
+  async rejectTransfer(transferId: string, userId: string, reason?: string) {
     return this.prisma.$transaction(async (tx) => {
       const transfer = await tx.stockTransfer.findUnique({
         where: { id: transferId },
       });
       if (!transfer) throw new NotFoundException('ไม่พบรายการโอน');
-      if (transfer.status !== 'PENDING') {
-        throw new BadRequestException('รายการโอนนี้ไม่อยู่ในสถานะรอยืนยัน');
+      if (!['PENDING', 'IN_TRANSIT'].includes(transfer.status)) {
+        throw new BadRequestException('รายการโอนนี้ไม่อยู่ในสถานะที่สามารถปฏิเสธได้');
       }
 
       return tx.stockTransfer.update({
@@ -378,12 +424,33 @@ export class ProductsService {
           status: 'REJECTED',
           confirmedById: userId,
           confirmedAt: new Date(),
+          trackingNote: reason ? `REJECTED: ${reason}` : transfer.trackingNote,
         },
         include: {
           fromBranch: { select: { id: true, name: true } },
           toBranch: { select: { id: true, name: true } },
         },
       });
+    });
+  }
+
+  /**
+   * Get transfers that are IN_TRANSIT (for branch to see incoming deliveries)
+   */
+  async getInTransitTransfers(branchId?: string) {
+    const where: Record<string, unknown> = { status: 'IN_TRANSIT' };
+    if (branchId) where.toBranchId = branchId;
+
+    return this.prisma.stockTransfer.findMany({
+      where,
+      include: {
+        fromBranch: { select: { id: true, name: true } },
+        toBranch: { select: { id: true, name: true } },
+        confirmedBy: { select: { id: true, name: true } },
+        dispatchedBy: { select: { id: true, name: true } },
+        product: { select: { id: true, name: true, brand: true, model: true, imeiSerial: true, serialNumber: true, photos: true, status: true } },
+      },
+      orderBy: { dispatchedAt: 'desc' },
     });
   }
 
@@ -676,6 +743,115 @@ export class ProductsService {
       topSellers,
       slowMovers,
       marginOverview,
+    };
+  }
+
+  // === Workflow Tracker ===
+
+  /**
+   * Get workflow status for a product showing which step it's at
+   * Steps: 1.เช็ค Stock → 2.สั่งสินค้า → 3.ตรวจรับ → 4.เข้าคลัง → 5.ส่งไปสาขา → 6.สาขาเช็ครับ
+   */
+  async getWorkflowStatus(productId: string) {
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
+      include: {
+        po: { select: { id: true, poNumber: true, status: true, approvedBy: { select: { name: true } } } },
+        branch: { select: { id: true, name: true, isMainWarehouse: true } },
+        supplier: { select: { id: true, name: true } },
+        receivingItem: {
+          select: {
+            id: true, status: true, createdAt: true,
+            receiving: { select: { receivedBy: { select: { name: true } } } },
+          },
+        },
+      },
+    });
+
+    if (!product || product.deletedAt) throw new NotFoundException('ไม่พบสินค้า');
+
+    // Find transfer history
+    const transfers = await this.prisma.stockTransfer.findMany({
+      where: { productId },
+      include: {
+        fromBranch: { select: { id: true, name: true } },
+        toBranch: { select: { id: true, name: true } },
+        branchReceiving: { select: { id: true, status: true, createdAt: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const latestTransfer = transfers[0] || null;
+
+    const steps = [
+      {
+        step: 1,
+        name: 'เช็ค Stock',
+        status: 'completed' as const,
+        description: 'ตรวจสอบสต๊อคก่อนสั่งซื้อ',
+      },
+      {
+        step: 2,
+        name: 'สั่งสินค้า (PO)',
+        status: product.poId ? 'completed' as const : 'pending' as const,
+        description: product.po ? `PO: ${product.po.poNumber} (${product.po.status})` : 'ยังไม่ได้สั่งซื้อ',
+      },
+      {
+        step: 3,
+        name: 'ตรวจรับสินค้า (QC)',
+        status: product.receivingItem ? 'completed' as const : 'pending' as const,
+        description: product.receivingItem
+          ? `QC: ${product.receivingItem.status} (${product.receivingItem.createdAt.toLocaleDateString('th-TH')})`
+          : 'ยังไม่ได้ตรวจรับ',
+      },
+      {
+        step: 4,
+        name: 'สินค้าเข้าคลัง',
+        status: (['IN_STOCK', 'RESERVED', 'SOLD_INSTALLMENT', 'SOLD_CASH', 'SOLD_RESELL'].includes(product.status))
+          ? 'completed' as const
+          : product.status === 'QC_PENDING' ? 'in_progress' as const : 'pending' as const,
+        description: product.status === 'QC_PENDING' ? 'รอยืนยัน QC เข้าคลัง' : product.status === 'IN_STOCK' ? 'อยู่ในคลัง' : product.status,
+      },
+      {
+        step: 5,
+        name: 'ส่งไปสาขา',
+        status: latestTransfer
+          ? latestTransfer.status === 'CONFIRMED' ? 'completed' as const
+            : latestTransfer.status === 'IN_TRANSIT' ? 'in_progress' as const
+            : 'pending' as const
+          : 'pending' as const,
+        description: latestTransfer
+          ? `${latestTransfer.fromBranch.name} → ${latestTransfer.toBranch.name} (${latestTransfer.status})`
+          : 'ยังไม่ได้โอนไปสาขา',
+      },
+      {
+        step: 6,
+        name: 'สาขาเช็ครับ',
+        status: latestTransfer?.branchReceiving
+          ? 'completed' as const
+          : latestTransfer?.status === 'IN_TRANSIT' ? 'pending' as const
+          : 'pending' as const,
+        description: latestTransfer?.branchReceiving
+          ? `ตรวจรับแล้ว (${latestTransfer.branchReceiving.status})`
+          : 'ยังไม่ได้ตรวจรับที่สาขา',
+      },
+    ];
+
+    let currentStep = 1;
+    for (let i = steps.length - 1; i >= 0; i--) {
+      if (steps[i].status === 'completed' || steps[i].status === 'in_progress') {
+        currentStep = steps[i].step;
+        break;
+      }
+    }
+
+    return {
+      productId: product.id,
+      productName: product.name,
+      currentStep,
+      status: product.status,
+      branch: product.branch,
+      steps,
     };
   }
 

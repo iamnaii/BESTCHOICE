@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { PurchaseOrdersService } from './purchase-orders.service';
-import { CreatePODto, UpdatePODto, ReceivePODto, GoodsReceivingDto, UpdatePaymentDto } from './dto/create-po.dto';
+import { CreatePODto, UpdatePODto, ReceivePODto, GoodsReceivingDto, UpdatePaymentDto, RejectPODto } from './dto/create-po.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -23,6 +23,31 @@ export class PurchaseOrdersController {
   accountsPayable() {
     return this.purchaseOrdersService.getAccountsPayable();
   }
+
+  // === QC Confirmation (Step 4: สินค้าเข้าคลัง) ===
+  // Static routes MUST be before :id parametric routes
+
+  @Get('qc-pending')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  getQCPending(
+    @Query('branchId') branchId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.purchaseOrdersService.getQCPending({
+      branchId,
+      page: page ? parseInt(page) : undefined,
+      limit: limit ? parseInt(limit) : undefined,
+    });
+  }
+
+  @Post('qc-confirm')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  confirmQC(@Body('productIds') productIds: string[]) {
+    return this.purchaseOrdersService.confirmQC(productIds);
+  }
+
+  // === Parametric :id routes ===
 
   @Get(':id')
   findOne(@Param('id') id: string) {
@@ -86,6 +111,16 @@ export class PurchaseOrdersController {
     @CurrentUser() user: { id: string },
   ) {
     return this.purchaseOrdersService.approve(id, user.id);
+  }
+
+  @Post(':id/reject')
+  @Roles('OWNER')
+  reject(
+    @Param('id') id: string,
+    @Body() dto: RejectPODto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.purchaseOrdersService.reject(id, user.id, dto.reason);
   }
 
   @Post(':id/cancel')

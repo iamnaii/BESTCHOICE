@@ -27,10 +27,10 @@ export class StockAdjustmentsService {
         if (!product || product.deletedAt) {
           throw new NotFoundException('ไม่พบสินค้า');
         }
-        const adjustableStatuses = ['IN_STOCK', 'PO_RECEIVED', 'INSPECTION'];
+        const adjustableStatuses = ['IN_STOCK', 'PO_RECEIVED', 'INSPECTION', 'QC_PENDING'];
         if (!adjustableStatuses.includes(product.status)) {
           throw new BadRequestException(
-            `ไม่สามารถปรับสต๊อคสินค้าสถานะ "${product.status}" ได้ (ต้องเป็น IN_STOCK, PO_RECEIVED, หรือ INSPECTION)`,
+            `ไม่สามารถปรับสต๊อคสินค้าสถานะ "${product.status}" ได้ (ต้องเป็น IN_STOCK, PO_RECEIVED, QC_PENDING, หรือ INSPECTION)`,
           );
         }
       }

@@ -81,6 +81,15 @@ export class CreatePODto {
   @IsArray()
   @IsOptional()
   attachments?: string[];
+
+  @IsString()
+  @IsOptional()
+  stockCheckRef?: string; // Reference to stock alert that triggered this PO
+}
+
+export class RejectPODto {
+  @IsString()
+  reason: string;
 }
 
 export class UpdatePODto {

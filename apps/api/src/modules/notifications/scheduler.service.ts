@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { NotificationsService } from './notifications.service';
 import { OverdueService } from '../overdue/overdue.service';
+import { ReorderPointsService } from '../reorder-points/reorder-points.service';
 
 @Injectable()
 export class SchedulerService {
@@ -10,6 +11,7 @@ export class SchedulerService {
   constructor(
     private notificationsService: NotificationsService,
     private overdueService: OverdueService,
+    private reorderPointsService: ReorderPointsService,
   ) {}
 
   /**
@@ -93,6 +95,20 @@ export class SchedulerService {
       this.logger.log(`Owner notifications complete: ${result.sent} sent for ${result.contracts} contracts`);
     } catch (error) {
       this.logger.error(`Owner notifications failed: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+
+  /**
+   * Run daily at 07:00: check stock levels and send alerts for low stock
+   */
+  @Cron('0 7 * * *')
+  async handleStockLevelCheck() {
+    this.logger.log('Starting daily stock level check...');
+    try {
+      const result = await this.reorderPointsService.checkStockLevels();
+      this.logger.log(`Stock check complete: ${result.alertsCreated} alerts, ${result.notificationsSent} notifications`);
+    } catch (error) {
+      this.logger.error(`Stock level check failed: ${error instanceof Error ? error.message : error}`);
     }
   }
 }

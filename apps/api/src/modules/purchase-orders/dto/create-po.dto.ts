@@ -180,6 +180,10 @@ export class GoodsReceivingItemDto {
   @IsBoolean()
   @IsOptional()
   hasBox?: boolean;
+
+  @IsIn(['A', 'B', 'C', 'D'])
+  @IsOptional()
+  conditionGrade?: string;
 }
 
 export class GoodsReceivingDto {

@@ -136,6 +136,7 @@ interface ReceivingUnitForm {
   warrantyExpired: boolean;
   warrantyExpireDate: string;
   hasBox: boolean;
+  conditionGrade: string;
 }
 
 const emptyItem: ItemForm = { brand: '', category: '', model: '', color: '', storage: '', quantity: '1', unitPrice: '', accessoryType: '', accessoryBrand: '' };
@@ -254,6 +255,7 @@ export default function PurchaseOrdersPage() {
               warrantyExpired: i.warrantyExpired,
               warrantyExpireDate: !i.warrantyExpired && i.warrantyExpireDate ? i.warrantyExpireDate : undefined,
               hasBox: i.hasBox,
+              conditionGrade: i.conditionGrade || undefined,
             } : {}),
           };
         }),
@@ -262,7 +264,7 @@ export default function PurchaseOrdersPage() {
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
       const data = res.data;
-      toast.success(`รับสินค้าสำเร็จ: ผ่าน ${data.passed} ชิ้น, ไม่ผ่าน ${data.rejected} ชิ้น → เข้าคลัง ${data.mainWarehouse}`);
+      toast.success(`รับ+ตรวจสำเร็จ: ผ่าน ${data.passed} ชิ้น, ไม่ผ่าน ${data.rejected} ชิ้น → เข้าคลัง ${data.mainWarehouse} (IN_STOCK)`);
       setIsReceiveModalOpen(false);
       setIsDetailModalOpen(false);
     },
@@ -412,6 +414,7 @@ export default function PurchaseOrdersPage() {
           warrantyExpired: false,
           warrantyExpireDate: '',
           hasBox: true,
+          conditionGrade: '',
         });
       }
     }
@@ -1921,8 +1924,22 @@ export default function PurchaseOrdersPage() {
                   )}
                   {unit.category === 'PHONE_USED' && unit.status === 'PASS' && (
                     <div className="mt-2 border border-orange-200 bg-orange-50 rounded-lg p-3 space-y-2">
-                      <div className="text-xs font-medium text-orange-700 mb-1">ข้อมูลมือสอง</div>
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="text-xs font-medium text-orange-700 mb-1">ข้อมูลมือสอง + ตรวจเช็ค</div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-0.5">เกรดสภาพ</label>
+                          <select
+                            value={unit.conditionGrade}
+                            onChange={(e) => updateReceivingUnit(idx, 'conditionGrade', e.target.value)}
+                            className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-orange-500 outline-none"
+                          >
+                            <option value="">-- เลือกเกรด --</option>
+                            <option value="A">A - สภาพดีมาก</option>
+                            <option value="B">B - สภาพดี</option>
+                            <option value="C">C - มีรอยใช้งาน</option>
+                            <option value="D">D - สภาพพอใช้</option>
+                          </select>
+                        </div>
                         <div>
                           <label className="block text-xs text-gray-500 mb-0.5">% แบตเตอรี่</label>
                           <input

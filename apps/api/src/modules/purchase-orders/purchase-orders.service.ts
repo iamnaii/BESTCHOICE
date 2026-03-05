@@ -655,7 +655,7 @@ export class PurchaseOrdersService {
             productName = nameParts.join(' ');
           }
 
-          // Create product for passed items → goes to main warehouse with QC_PENDING → then IN_STOCK
+          // Create product for passed items → goes directly to IN_STOCK (receive + inspect in one step)
           const product = await tx.product.create({
             data: {
               name: productName,
@@ -668,7 +668,9 @@ export class PurchaseOrdersService {
               supplierId: po.supplierId,
               poId: po.id,
               branchId: mainWarehouse!.id,
-              status: 'QC_PENDING',
+              status: 'IN_STOCK',
+              stockInDate: new Date(),
+              conditionGrade: (item.conditionGrade as any) || null,
               imeiSerial: item.imeiSerial || null,
               serialNumber: item.serialNumber || null,
               photos: item.photos || [],

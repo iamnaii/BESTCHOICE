@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Body, UseGuards } from '@nestjs/common';
 import { MigrationService, ImportResult } from './migration.service';
-import { BulkImportDto, ImportCustomerDto, ImportContractDto } from './dto/import.dto';
+import { BulkImportDto, ImportCustomersDto, ImportContractsDto } from './dto/import.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -17,13 +17,13 @@ export class MigrationController {
   }
 
   @Post('import/customers')
-  importCustomers(@Body() customers: ImportCustomerDto[]): Promise<ImportResult> {
-    return this.migrationService.importCustomers(customers);
+  importCustomers(@Body() dto: ImportCustomersDto): Promise<ImportResult> {
+    return this.migrationService.importCustomers(dto.items);
   }
 
   @Post('import/contracts')
-  importContracts(@Body() contracts: ImportContractDto[]): Promise<ImportResult> {
-    return this.migrationService.importContracts(contracts);
+  importContracts(@Body() dto: ImportContractsDto): Promise<ImportResult> {
+    return this.migrationService.importContracts(dto.items);
   }
 
   @Post('import/bulk')

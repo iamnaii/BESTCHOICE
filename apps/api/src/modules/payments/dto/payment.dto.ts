@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsDateString } from 'class-validator';
+import { IsString, IsNumber, IsOptional, Matches, Min } from 'class-validator';
 
 export class RecordPaymentDto {
   @IsString()
@@ -8,10 +8,12 @@ export class RecordPaymentDto {
   installmentNo: number;
 
   @IsNumber()
+  @Min(0.01, { message: 'จำนวนเงินต้องมากกว่า 0' })
   amount: number;
 
   @IsString()
-  paymentMethod: string; // CASH, BANK_TRANSFER
+  @Matches(/^(CASH|BANK_TRANSFER|QR_EWALLET)$/, { message: 'paymentMethod ต้องเป็น CASH, BANK_TRANSFER หรือ QR_EWALLET' })
+  paymentMethod: string;
 
   @IsString()
   @IsOptional()
@@ -27,9 +29,11 @@ export class BulkRecordPaymentDto {
   contractId: string;
 
   @IsNumber()
+  @Min(0.01, { message: 'จำนวนเงินต้องมากกว่า 0' })
   amount: number;
 
   @IsString()
+  @Matches(/^(CASH|BANK_TRANSFER|QR_EWALLET)$/, { message: 'paymentMethod ต้องเป็น CASH, BANK_TRANSFER หรือ QR_EWALLET' })
   paymentMethod: string;
 
   @IsString()

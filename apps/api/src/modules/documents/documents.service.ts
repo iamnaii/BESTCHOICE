@@ -21,13 +21,14 @@ export class DocumentsService {
   }
 
   async createTemplate(dto: CreateTemplateDto) {
-    // Auto-extract placeholders from contentHtml
-    const placeholders = dto.placeholders || this.extractPlaceholders(dto.contentHtml);
+    // Sanitize HTML to prevent stored XSS
+    const sanitizedHtml = this.sanitizeTemplateHtml(dto.contentHtml);
+    const placeholders = dto.placeholders || this.extractPlaceholders(sanitizedHtml);
     return this.prisma.contractTemplate.create({
       data: {
         name: dto.name,
         type: dto.type,
-        contentHtml: dto.contentHtml,
+        contentHtml: sanitizedHtml,
         placeholders,
         isActive: dto.isActive ?? true,
       },
@@ -39,8 +40,9 @@ export class DocumentsService {
     const data: Record<string, unknown> = {};
     if (dto.name !== undefined) data.name = dto.name;
     if (dto.contentHtml !== undefined) {
-      data.contentHtml = dto.contentHtml;
-      data.placeholders = dto.placeholders || this.extractPlaceholders(dto.contentHtml);
+      const sanitizedHtml = this.sanitizeTemplateHtml(dto.contentHtml);
+      data.contentHtml = sanitizedHtml;
+      data.placeholders = dto.placeholders || this.extractPlaceholders(sanitizedHtml);
     }
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
     return this.prisma.contractTemplate.update({ where: { id }, data });
@@ -181,6 +183,25 @@ export class DocumentsService {
   }
 
   // ─── Helpers ──────────────────────────────────────────
+
+  /** Sanitize template HTML: remove script tags, event handlers, and dangerous content */
+  private sanitizeTemplateHtml(html: string): string {
+    return html
+      // Remove script tags and their content
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+      // Remove event handler attributes (onclick, onerror, onload, etc.)
+      .replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+      // Remove javascript: protocol in href/src/action attributes
+      .replace(/(href|src|action)\s*=\s*(?:"javascript:[^"]*"|'javascript:[^']*')/gi, '$1=""')
+      // Remove data: protocol in src (except for images which are handled separately)
+      .replace(/src\s*=\s*(?:"data:(?!image\/)[^"]*"|'data:(?!image\/)[^']*')/gi, 'src=""')
+      // Remove iframe, object, embed, form tags
+      .replace(/<(iframe|object|embed|form)\b[^>]*>[\s\S]*?<\/\1>/gi, '')
+      .replace(/<(iframe|object|embed|form)\b[^>]*\/?>/gi, '')
+      // Remove base tag (can redirect all relative URLs)
+      .replace(/<base\b[^>]*\/?>/gi, '');
+  }
+
   private extractPlaceholders(html: string): string[] {
     const matches = html.match(/\{[a-z_]+\}/g) || [];
     return [...new Set(matches)];

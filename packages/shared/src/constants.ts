@@ -35,6 +35,7 @@ export const ProductStatus = {
 export const PaymentMethod = {
   CASH: 'CASH',
   BANK_TRANSFER: 'BANK_TRANSFER',
+  QR_EWALLET: 'QR_EWALLET',
 } as const;
 
 // Plan Types
@@ -83,7 +84,6 @@ export const RepossessionStatus = {
   UNDER_REPAIR: 'UNDER_REPAIR',
   READY_FOR_SALE: 'READY_FOR_SALE',
   SOLD: 'SOLD',
-  WRITTEN_OFF: 'WRITTEN_OFF',
 } as const;
 
 // Thai labels for display
@@ -107,6 +107,7 @@ export const STATUS_LABELS = {
   paymentMethod: {
     CASH: 'เงินสด',
     BANK_TRANSFER: 'โอนธนาคาร',
+    QR_EWALLET: 'QR/E-Wallet',
   },
 } as const;
 

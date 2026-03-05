@@ -85,7 +85,13 @@ export class AuthService {
         expiresIn: this.configService.get<string>('JWT_EXPIRATION', '15m'),
       });
 
-      return { accessToken };
+      // Rotate refresh token for security (old token becomes invalid once a new one is issued)
+      const newRefreshToken = this.jwtService.sign(newPayload, {
+        secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
+        expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRATION', '7d'),
+      });
+
+      return { accessToken, refreshToken: newRefreshToken };
     } catch {
       throw new UnauthorizedException('Refresh token ไม่ถูกต้องหรือหมดอายุ');
     }

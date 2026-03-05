@@ -218,7 +218,7 @@ export class ContractsService {
       });
 
       return newContract;
-    });
+    }, { isolationLevel: 'Serializable' });
 
     return this.findOne(contract.id);
   }

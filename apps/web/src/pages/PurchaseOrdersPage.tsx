@@ -69,8 +69,7 @@ interface PODetail extends PurchaseOrder {
 }
 
 const statusLabels: Record<string, string> = {
-  DRAFT: 'ร่าง',
-  PENDING: 'รอรับสินค้า',
+  DRAFT: 'รออนุมัติ',
   APPROVED: 'อนุมัติแล้ว',
   PARTIALLY_RECEIVED: 'รับบางส่วน',
   FULLY_RECEIVED: 'รับครบแล้ว',
@@ -78,8 +77,7 @@ const statusLabels: Record<string, string> = {
 };
 
 const statusColors: Record<string, string> = {
-  DRAFT: 'bg-gray-100 text-gray-700',
-  PENDING: 'bg-orange-100 text-orange-700',
+  DRAFT: 'bg-orange-100 text-orange-700',
   APPROVED: 'bg-blue-100 text-blue-700',
   PARTIALLY_RECEIVED: 'bg-yellow-100 text-yellow-700',
   FULLY_RECEIVED: 'bg-green-100 text-green-700',
@@ -205,9 +203,28 @@ export default function PurchaseOrdersPage() {
     mutationFn: async (data: Record<string, unknown>) => api.post('/purchase-orders', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
-      toast.success('สร้างใบสั่งซื้อสำเร็จ (สถานะ: รอรับสินค้า)');
+      toast.success('สร้างใบสั่งซื้อสำเร็จ (สถานะ: รออนุมัติ)');
       setIsCreateModalOpen(false);
       resetForm();
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const approveMutation = useMutation({
+    mutationFn: async (id: string) => api.post(`/purchase-orders/${id}/approve`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      toast.success('อนุมัติ PO สำเร็จ');
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const rejectPOMutation = useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) =>
+      api.post(`/purchase-orders/${id}/reject`, { reason }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      toast.success('ปฏิเสธ PO สำเร็จ');
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
@@ -569,7 +586,7 @@ export default function PurchaseOrdersPage() {
       label: '',
       render: (po: PurchaseOrder) => (
         <div className="flex gap-2">
-          {['PENDING', 'APPROVED', 'PARTIALLY_RECEIVED'].includes(po.status) && (
+          {['APPROVED', 'PARTIALLY_RECEIVED'].includes(po.status) && (
             <button
               onClick={() => openReceiveModal(po)}
               className="text-blue-600 hover:text-blue-700 text-sm font-medium"
@@ -577,15 +594,36 @@ export default function PurchaseOrdersPage() {
               รับสินค้า
             </button>
           )}
-          {['DRAFT', 'PENDING'].includes(po.status) && (
-            <button
-              onClick={() => {
-                if (confirm('ต้องการยกเลิก PO นี้?')) cancelMutation.mutate(po.id);
-              }}
-              className="text-red-600 hover:text-red-700 text-sm font-medium"
-            >
-              ยกเลิก
-            </button>
+          {po.status === 'DRAFT' && (
+            <>
+              <button
+                onClick={() => {
+                  if (confirm(`อนุมัติ PO ${po.poNumber}?`)) approveMutation.mutate(po.id);
+                }}
+                disabled={approveMutation.isPending}
+                className="text-green-600 hover:text-green-700 text-sm font-medium disabled:opacity-50"
+              >
+                อนุมัติ
+              </button>
+              <button
+                onClick={() => {
+                  const reason = prompt('เหตุผลที่ปฏิเสธ:');
+                  if (reason) rejectPOMutation.mutate({ id: po.id, reason });
+                }}
+                disabled={rejectPOMutation.isPending}
+                className="text-orange-600 hover:text-orange-700 text-sm font-medium disabled:opacity-50"
+              >
+                ปฏิเสธ
+              </button>
+              <button
+                onClick={() => {
+                  if (confirm('ต้องการยกเลิก PO นี้?')) cancelMutation.mutate(po.id);
+                }}
+                className="text-red-600 hover:text-red-700 text-sm font-medium"
+              >
+                ยกเลิก
+              </button>
+            </>
           )}
         </div>
       ),

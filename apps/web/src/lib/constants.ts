@@ -5,6 +5,7 @@
 
 export const statusLabels: Record<string, { label: string; className: string }> = {
   PO_RECEIVED: { label: 'รับจาก PO', className: 'bg-blue-100 text-blue-700' },
+  QC_PENDING: { label: 'รอ QC เข้าคลัง', className: 'bg-amber-100 text-amber-700' },
   INSPECTION: { label: 'กำลังตรวจ', className: 'bg-yellow-100 text-yellow-700' },
   IN_STOCK: { label: 'พร้อมขาย', className: 'bg-green-100 text-green-700' },
   RESERVED: { label: 'จอง', className: 'bg-purple-100 text-purple-700' },
@@ -79,7 +80,8 @@ export const gradeOptions = [
 // --- Transfer Status ---
 
 export const transferStatusLabels: Record<string, { label: string; className: string }> = {
-  PENDING: { label: 'รอยืนยัน', className: 'bg-orange-100 text-orange-700' },
-  CONFIRMED: { label: 'ยืนยันแล้ว', className: 'bg-green-100 text-green-700' },
+  PENDING: { label: 'รอจัดส่ง', className: 'bg-orange-100 text-orange-700' },
+  IN_TRANSIT: { label: 'กำลังจัดส่ง', className: 'bg-blue-100 text-blue-700' },
+  CONFIRMED: { label: 'รับแล้ว', className: 'bg-green-100 text-green-700' },
   REJECTED: { label: 'ปฏิเสธ', className: 'bg-red-100 text-red-700' },
 };

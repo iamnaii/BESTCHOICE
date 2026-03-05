@@ -69,8 +69,7 @@ interface PODetail extends PurchaseOrder {
 }
 
 const statusLabels: Record<string, string> = {
-  DRAFT: 'ร่าง',
-  PENDING: 'รอรับสินค้า',
+  DRAFT: 'รออนุมัติ',
   APPROVED: 'อนุมัติแล้ว',
   PARTIALLY_RECEIVED: 'รับบางส่วน',
   FULLY_RECEIVED: 'รับครบแล้ว',
@@ -78,8 +77,7 @@ const statusLabels: Record<string, string> = {
 };
 
 const statusColors: Record<string, string> = {
-  DRAFT: 'bg-gray-100 text-gray-700',
-  PENDING: 'bg-orange-100 text-orange-700',
+  DRAFT: 'bg-orange-100 text-orange-700',
   APPROVED: 'bg-blue-100 text-blue-700',
   PARTIALLY_RECEIVED: 'bg-yellow-100 text-yellow-700',
   FULLY_RECEIVED: 'bg-green-100 text-green-700',
@@ -205,9 +203,28 @@ export default function PurchaseOrdersPage() {
     mutationFn: async (data: Record<string, unknown>) => api.post('/purchase-orders', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
-      toast.success('สร้างใบสั่งซื้อสำเร็จ (สถานะ: รอรับสินค้า)');
+      toast.success('สร้างใบสั่งซื้อสำเร็จ (สถานะ: รออนุมัติ)');
       setIsCreateModalOpen(false);
       resetForm();
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const approveMutation = useMutation({
+    mutationFn: async (id: string) => api.post(`/purchase-orders/${id}/approve`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      toast.success('อนุมัติ PO สำเร็จ');
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const rejectPOMutation = useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) =>
+      api.post(`/purchase-orders/${id}/reject`, { reason }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      toast.success('ปฏิเสธ PO สำเร็จ');
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
@@ -569,7 +586,7 @@ export default function PurchaseOrdersPage() {
       label: '',
       render: (po: PurchaseOrder) => (
         <div className="flex gap-2">
-          {['PENDING', 'APPROVED', 'PARTIALLY_RECEIVED'].includes(po.status) && (
+          {['APPROVED', 'PARTIALLY_RECEIVED'].includes(po.status) && (
             <button
               onClick={() => openReceiveModal(po)}
               className="text-blue-600 hover:text-blue-700 text-sm font-medium"
@@ -577,15 +594,36 @@ export default function PurchaseOrdersPage() {
               รับสินค้า
             </button>
           )}
-          {['DRAFT', 'PENDING'].includes(po.status) && (
-            <button
-              onClick={() => {
-                if (confirm('ต้องการยกเลิก PO นี้?')) cancelMutation.mutate(po.id);
-              }}
-              className="text-red-600 hover:text-red-700 text-sm font-medium"
-            >
-              ยกเลิก
-            </button>
+          {po.status === 'DRAFT' && (
+            <>
+              <button
+                onClick={() => {
+                  if (confirm(`อนุมัติ PO ${po.poNumber}?`)) approveMutation.mutate(po.id);
+                }}
+                disabled={approveMutation.isPending}
+                className="text-green-600 hover:text-green-700 text-sm font-medium disabled:opacity-50"
+              >
+                อนุมัติ
+              </button>
+              <button
+                onClick={() => {
+                  const reason = prompt('เหตุผลที่ปฏิเสธ:');
+                  if (reason) rejectPOMutation.mutate({ id: po.id, reason });
+                }}
+                disabled={rejectPOMutation.isPending}
+                className="text-orange-600 hover:text-orange-700 text-sm font-medium disabled:opacity-50"
+              >
+                ปฏิเสธ
+              </button>
+              <button
+                onClick={() => {
+                  if (confirm('ต้องการยกเลิก PO นี้?')) cancelMutation.mutate(po.id);
+                }}
+                className="text-red-600 hover:text-red-700 text-sm font-medium"
+              >
+                ยกเลิก
+              </button>
+            </>
           )}
         </div>
       ),
@@ -635,7 +673,7 @@ export default function PurchaseOrdersPage() {
         >
           ยอดค้างจ่าย Supplier
           {payableData && payableData.grandTotal > 0 && (
-            <span className="ml-1.5 px-1.5 py-0.5 bg-red-100 text-red-700 rounded-full text-xs">{payableData.grandTotal.toLocaleString()}</span>
+            <span className="ml-1.5 px-1.5 py-0.5 bg-red-100 text-red-700 rounded-full text-xs">{(Number(payableData.grandTotal) || 0).toLocaleString()}</span>
           )}
         </button>
       </div>
@@ -650,9 +688,11 @@ export default function PurchaseOrdersPage() {
               className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
             >
               <option value="">ทุกสถานะ</option>
-              <option value="PENDING">รอรับสินค้า</option>
+              <option value="DRAFT">รออนุมัติ</option>
+              <option value="APPROVED">อนุมัติแล้ว</option>
               <option value="PARTIALLY_RECEIVED">รับบางส่วน</option>
               <option value="FULLY_RECEIVED">รับครบแล้ว</option>
+              <option value="REJECTED">ไม่อนุมัติ</option>
               <option value="CANCELLED">ยกเลิก</option>
             </select>
           </div>
@@ -683,8 +723,8 @@ export default function PurchaseOrdersPage() {
                   <div className="text-xs text-gray-500">{entry.supplier.contactName} | {entry.supplier.phone}</div>
                 </div>
                 <div className="text-right">
-                  <div className="text-lg font-bold text-red-600">{entry.totalRemaining.toLocaleString()} บาท</div>
-                  <div className="text-xs text-gray-500">จาก {entry.totalNet.toLocaleString()} (จ่ายแล้ว {entry.totalPaid.toLocaleString()})</div>
+                  <div className="text-lg font-bold text-red-600">{(Number(entry.totalRemaining) || 0).toLocaleString()} บาท</div>
+                  <div className="text-xs text-gray-500">จาก {(Number(entry.totalNet) || 0).toLocaleString()} (จ่ายแล้ว {(Number(entry.totalPaid) || 0).toLocaleString()})</div>
                 </div>
               </div>
               {/* PO List */}
@@ -721,9 +761,9 @@ export default function PurchaseOrdersPage() {
                         )}
                       </td>
                       <td className="px-4 py-2 text-gray-600 truncate max-w-[200px]" title={po.itemsSummary}>{po.itemsSummary}</td>
-                      <td className="px-4 py-2 text-right">{po.netAmount.toLocaleString()}</td>
-                      <td className="px-4 py-2 text-right text-green-600">{po.paidAmount.toLocaleString()}</td>
-                      <td className="px-4 py-2 text-right font-medium text-red-600">{po.remaining.toLocaleString()}</td>
+                      <td className="px-4 py-2 text-right">{(Number(po.netAmount) || 0).toLocaleString()}</td>
+                      <td className="px-4 py-2 text-right text-green-600">{(Number(po.paidAmount) || 0).toLocaleString()}</td>
+                      <td className="px-4 py-2 text-right font-medium text-red-600">{(Number(po.remaining) || 0).toLocaleString()}</td>
                       <td className="px-4 py-2 text-center">
                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${paymentStatusColors[po.paymentStatus] || 'bg-gray-100 text-gray-700'}`}>
                           {paymentStatusLabels[po.paymentStatus] || po.paymentStatus}
@@ -1554,7 +1594,7 @@ export default function PurchaseOrdersPage() {
             )}
 
             {/* Receive button in detail modal */}
-            {['PENDING', 'APPROVED', 'PARTIALLY_RECEIVED'].includes(selectedPO.status) && (
+            {['APPROVED', 'PARTIALLY_RECEIVED'].includes(selectedPO.status) && (
               <div className="flex justify-end pt-2 border-t">
                 <button
                   onClick={() => openReceiveModal(selectedPO)}

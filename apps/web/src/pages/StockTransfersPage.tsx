@@ -25,8 +25,12 @@ interface StockTransfer {
   toBranch: { id: string; name: string };
   status: string;
   notes: string | null;
+  trackingNote: string | null;
   confirmedBy: { id: string; name: string } | null;
   confirmedAt: string | null;
+  dispatchedBy: { id: string; name: string } | null;
+  dispatchedAt: string | null;
+  expectedDeliveryDate: string | null;
   createdAt: string;
   product: TransferProduct;
 }
@@ -42,9 +46,23 @@ export default function StockTransfersPage() {
       if (statusFilter === 'PENDING') {
         return (await api.get('/products/transfers/pending')).data;
       }
+      if (statusFilter === 'IN_TRANSIT') {
+        return (await api.get('/products/transfers/in-transit')).data;
+      }
       const params = statusFilter ? `?status=${statusFilter}` : '';
-      return (await api.get(`/products/transfers/history${params}`)).data;
+      const res = await api.get(`/products/transfers/history${params}`);
+      return res.data?.data || res.data;
     },
+  });
+
+  const dispatchMutation = useMutation({
+    mutationFn: async ({ transferId, trackingNote }: { transferId: string; trackingNote?: string }) =>
+      api.post(`/products/transfers/${transferId}/dispatch`, { trackingNote }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['stock-transfers'] });
+      toast.success('จัดส่งสินค้าเรียบร้อย');
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const confirmMutation = useMutation({
@@ -66,6 +84,7 @@ export default function StockTransfersPage() {
   });
 
   const pendingCount = transfers.filter((t) => t.status === 'PENDING').length;
+  const inTransitCount = transfers.filter((t) => t.status === 'IN_TRANSIT').length;
 
   const columns = [
     {
@@ -105,7 +124,12 @@ export default function StockTransfersPage() {
       key: 'createdAt',
       label: 'วันที่โอน',
       render: (t: StockTransfer) => (
-        <span className="text-xs">{new Date(t.createdAt).toLocaleString('th-TH')}</span>
+        <div className="text-xs">
+          <div>{new Date(t.createdAt).toLocaleString('th-TH')}</div>
+          {t.dispatchedAt && (
+            <div className="text-blue-500">ส่ง: {new Date(t.dispatchedAt).toLocaleString('th-TH')}</div>
+          )}
+        </div>
       ),
     },
     {
@@ -118,6 +142,10 @@ export default function StockTransfersPage() {
               <div>{t.confirmedBy.name}</div>
               {t.confirmedAt && <div className="text-gray-400">{new Date(t.confirmedAt).toLocaleString('th-TH')}</div>}
             </>
+          ) : t.dispatchedBy ? (
+            <>
+              <div className="text-blue-600">จัดส่งโดย: {t.dispatchedBy.name}</div>
+            </>
           ) : (
             <span className="text-gray-400">-</span>
           )}
@@ -128,7 +156,7 @@ export default function StockTransfersPage() {
       key: 'notes',
       label: 'หมายเหตุ',
       render: (t: StockTransfer) => (
-        <span className="text-xs text-gray-500">{t.notes || '-'}</span>
+        <span className="text-xs text-gray-500">{t.trackingNote || t.notes || '-'}</span>
       ),
     },
     {
@@ -137,6 +165,20 @@ export default function StockTransfersPage() {
       render: (t: StockTransfer) => (
         <div className="flex gap-2">
           {t.status === 'PENDING' && (
+            <button
+              onClick={() => {
+                const note = prompt('หมายเหตุการจัดส่ง (ถ้ามี):');
+                if (note !== null) {
+                  dispatchMutation.mutate({ transferId: t.id, trackingNote: note || undefined });
+                }
+              }}
+              disabled={dispatchMutation.isPending}
+              className="px-3 py-1 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700 disabled:opacity-50"
+            >
+              จัดส่ง
+            </button>
+          )}
+          {t.status === 'IN_TRANSIT' && (
             <>
               <button
                 onClick={() => {
@@ -171,7 +213,11 @@ export default function StockTransfersPage() {
     <div>
       <PageHeader
         title="โอนสินค้าระหว่างสาขา"
-        subtitle={pendingCount > 0 ? `รอยืนยัน ${pendingCount} รายการ` : 'จัดการการโอนสินค้า'}
+        subtitle={
+          pendingCount > 0 || inTransitCount > 0
+            ? `รอจัดส่ง ${pendingCount} | กำลังส่ง ${inTransitCount} รายการ`
+            : 'จัดการการโอนสินค้า'
+        }
       />
 
       {/* Filter */}
@@ -181,8 +227,9 @@ export default function StockTransfersPage() {
           onChange={(e) => setStatusFilter(e.target.value)}
           className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
         >
-          <option value="PENDING">รอยืนยัน</option>
-          <option value="CONFIRMED">ยืนยันแล้ว</option>
+          <option value="PENDING">รอจัดส่ง</option>
+          <option value="IN_TRANSIT">กำลังจัดส่ง</option>
+          <option value="CONFIRMED">รับแล้ว</option>
           <option value="REJECTED">ปฏิเสธ</option>
           <option value="">ทั้งหมด</option>
         </select>
@@ -192,7 +239,11 @@ export default function StockTransfersPage() {
         columns={columns}
         data={transfers}
         isLoading={isLoading}
-        emptyMessage={statusFilter === 'PENDING' ? 'ไม่มีรายการโอนที่รอยืนยัน' : 'ไม่พบรายการโอน'}
+        emptyMessage={
+          statusFilter === 'PENDING' ? 'ไม่มีรายการรอจัดส่ง'
+          : statusFilter === 'IN_TRANSIT' ? 'ไม่มีรายการกำลังจัดส่ง'
+          : 'ไม่พบรายการโอน'
+        }
       />
     </div>
   );

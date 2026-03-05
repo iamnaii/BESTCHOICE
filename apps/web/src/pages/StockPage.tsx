@@ -627,7 +627,7 @@ export default function StockPage() {
                       }`}>{i + 1}</span>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-medium text-gray-900 truncate">{item.name}</div>
-                        <div className="text-xs text-gray-400">{item.costPrice.toLocaleString()} ฿</div>
+                        <div className="text-xs text-gray-400">{(Number(item.costPrice) || 0).toLocaleString()} ฿</div>
                       </div>
                       <span className={`text-sm font-bold ${item.days > 90 ? 'text-red-600' : item.days > 60 ? 'text-orange-600' : 'text-yellow-600'}`}>
                         {item.days} วัน

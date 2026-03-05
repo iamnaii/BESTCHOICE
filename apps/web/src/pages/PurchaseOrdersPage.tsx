@@ -112,6 +112,24 @@ const chargerConnectorTypes = [
   { value: 'Type-C', label: 'Type-C' },
 ];
 
+const defaultChecklist = [
+  { item: 'สภาพตัวเครื่อง', category: 'ภายนอก' },
+  { item: 'สภาพหน้าจอ', category: 'ภายนอก' },
+  { item: 'ปุ่มกด (Power/Volume)', category: 'ภายนอก' },
+  { item: 'ช่องชาร์จ', category: 'ภายนอก' },
+  { item: 'หน้าจอสัมผัส', category: 'การทำงาน' },
+  { item: 'ลำโพง/ไมค์', category: 'การทำงาน' },
+  { item: 'กล้องหน้า/หลัง', category: 'การทำงาน' },
+  { item: 'Wi-Fi / Bluetooth', category: 'การทำงาน' },
+  { item: 'Face ID / สแกนนิ้ว', category: 'การทำงาน' },
+  { item: 'ชาร์จเข้า', category: 'แบตเตอรี่' },
+  { item: 'รีเซ็ตเครื่องแล้ว', category: 'ซอฟต์แวร์' },
+  { item: 'ปลดล็อค iCloud/Google', category: 'ซอฟต์แวร์' },
+  { item: 'IMEI ไม่ถูก block', category: 'ซอฟต์แวร์' },
+];
+
+const checklistCategories = [...new Set(defaultChecklist.map((c) => c.category))];
+
 interface ItemForm {
   brand: string;
   category: string;
@@ -136,6 +154,7 @@ interface ReceivingUnitForm {
   warrantyExpired: boolean;
   warrantyExpireDate: string;
   hasBox: boolean;
+  checklist: { item: string; category: string; passed: boolean; note: string }[];
 }
 
 const emptyItem: ItemForm = { brand: '', category: '', model: '', color: '', storage: '', quantity: '1', unitPrice: '', accessoryType: '', accessoryBrand: '' };
@@ -254,6 +273,9 @@ export default function PurchaseOrdersPage() {
               warrantyExpired: i.warrantyExpired,
               warrantyExpireDate: !i.warrantyExpired && i.warrantyExpireDate ? i.warrantyExpireDate : undefined,
               hasBox: i.hasBox,
+              checklistResults: i.checklist.map(({ item, category, passed, note }) => ({
+                item, category, passed, ...(note ? { note } : {}),
+              })),
             } : {}),
           };
         }),
@@ -262,7 +284,7 @@ export default function PurchaseOrdersPage() {
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
       const data = res.data;
-      toast.success(`รับสินค้าสำเร็จ: ผ่าน ${data.passed} ชิ้น, ไม่ผ่าน ${data.rejected} ชิ้น → เข้าคลัง ${data.mainWarehouse}`);
+      toast.success(`รับ+ตรวจสำเร็จ: ผ่าน ${data.passed} ชิ้น, ไม่ผ่าน ${data.rejected} ชิ้น → เข้าคลัง ${data.mainWarehouse} (IN_STOCK)`);
       setIsReceiveModalOpen(false);
       setIsDetailModalOpen(false);
     },
@@ -412,6 +434,7 @@ export default function PurchaseOrdersPage() {
           warrantyExpired: false,
           warrantyExpireDate: '',
           hasBox: true,
+          checklist: defaultChecklist.map((c) => ({ ...c, passed: true, note: '' })),
         });
       }
     }
@@ -437,6 +460,14 @@ export default function PurchaseOrdersPage() {
     const boolFields = ['hasBox', 'warrantyExpired'];
     const parsed = boolFields.includes(field) ? value === 'true' : value;
     newUnits[idx] = { ...newUnits[idx], [field]: parsed };
+    setReceivingUnits(newUnits);
+  };
+
+  const updateChecklist = (unitIdx: number, checkIdx: number, field: 'passed' | 'note', value: boolean | string) => {
+    const newUnits = [...receivingUnits];
+    const newChecklist = [...newUnits[unitIdx].checklist];
+    newChecklist[checkIdx] = { ...newChecklist[checkIdx], [field]: value };
+    newUnits[unitIdx] = { ...newUnits[unitIdx], checklist: newChecklist };
     setReceivingUnits(newUnits);
   };
 
@@ -1975,6 +2006,48 @@ export default function PurchaseOrdersPage() {
                               className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-orange-500 outline-none"
                             />
                           )}
+                        </div>
+                      </div>
+
+                      {/* Checklist ตรวจเช็คเครื่อง */}
+                      <div className="mt-2 border-t border-orange-200 pt-2">
+                        <div className="text-xs font-medium text-orange-700 mb-2">เช็คลิสต์ตรวจเครื่อง</div>
+                        {checklistCategories.map((cat) => (
+                          <div key={cat} className="mb-2">
+                            <div className="text-xs font-medium text-gray-500 mb-1">{cat}</div>
+                            <div className="space-y-1">
+                              {unit.checklist.map((c, checkIdx) => c.category !== cat ? null : (
+                                <div key={checkIdx} className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => updateChecklist(idx, checkIdx, 'passed', !c.passed)}
+                                    className={`w-5 h-5 rounded flex items-center justify-center text-xs font-bold transition-colors ${
+                                      c.passed
+                                        ? 'bg-green-500 text-white'
+                                        : 'bg-red-500 text-white'
+                                    }`}
+                                  >
+                                    {c.passed ? '\u2713' : '\u2717'}
+                                  </button>
+                                  <span className={`text-xs flex-1 ${c.passed ? 'text-gray-700' : 'text-red-700 font-medium'}`}>
+                                    {c.item}
+                                  </span>
+                                  {!c.passed && (
+                                    <input
+                                      type="text"
+                                      placeholder="หมายเหตุ"
+                                      value={c.note}
+                                      onChange={(e) => updateChecklist(idx, checkIdx, 'note', e.target.value)}
+                                      className="w-32 px-1.5 py-0.5 border border-red-300 rounded text-xs focus:ring-1 focus:ring-red-400 outline-none"
+                                    />
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                        <div className="text-xs text-gray-400 mt-1">
+                          ผ่าน {unit.checklist.filter((c) => c.passed).length}/{unit.checklist.length} รายการ
                         </div>
                       </div>
                     </div>

@@ -141,6 +141,21 @@ export class UpdatePaymentDto {
   attachments?: string[];
 }
 
+export class ChecklistResultDto {
+  @IsString()
+  item: string;
+
+  @IsString()
+  category: string;
+
+  @IsBoolean()
+  passed: boolean;
+
+  @IsString()
+  @IsOptional()
+  note?: string;
+}
+
 // New goods receiving DTOs
 export class GoodsReceivingItemDto {
   @IsString()
@@ -180,6 +195,12 @@ export class GoodsReceivingItemDto {
   @IsBoolean()
   @IsOptional()
   hasBox?: boolean;
+
+  @IsArray()
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => ChecklistResultDto)
+  checklistResults?: ChecklistResultDto[];
 }
 
 export class GoodsReceivingDto {

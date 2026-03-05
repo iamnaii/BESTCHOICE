@@ -46,6 +46,9 @@ enum ProductStatus {
   REPOSSESSED
   REFURBISHED
   SOLD_RESELL
+  DAMAGED
+  LOST
+  WRITTEN_OFF
 }
 
 enum ProductCategory {
@@ -1073,7 +1076,7 @@ model StockCountItem {
   stockCountId   String   @map("stock_count_id")
   productId      String   @map("product_id")
   expectedStatus String   @map("expected_status") // status ในระบบ
-  actualFound    Boolean  @default(true) @map("actual_found") // พบสินค้าจริง
+  actualFound    Boolean  @default(false) @map("actual_found") // พบสินค้าจริง (default: ยังไม่ตรวจนับ)
   conditionNotes String?  @map("condition_notes")
   scannedImei    String?  @map("scanned_imei") // IMEI ที่สแกนยืนยัน
   createdAt      DateTime @default(now()) @map("created_at")

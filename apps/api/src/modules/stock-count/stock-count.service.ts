@@ -59,51 +59,53 @@ export class StockCountService {
     const branch = await this.prisma.branch.findUnique({ where: { id: dto.branchId } });
     if (!branch) throw new NotFoundException('ไม่พบสาขา');
 
-    // Generate count number: SC-YYYY-MM-NNN
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const monthStart = new Date(year, today.getMonth(), 1);
-    const monthEnd = new Date(year, today.getMonth() + 1, 1);
-    const monthCount = await this.prisma.stockCount.count({
-      where: { createdAt: { gte: monthStart, lt: monthEnd } },
-    });
-    const countNumber = `SC-${year}-${month}-${String(monthCount + 1).padStart(3, '0')}`;
+    return this.prisma.$transaction(async (tx) => {
+      // Generate count number inside transaction to prevent duplicates
+      const today = new Date();
+      const year = today.getFullYear();
+      const month = String(today.getMonth() + 1).padStart(2, '0');
+      const monthStart = new Date(year, today.getMonth(), 1);
+      const monthEnd = new Date(year, today.getMonth() + 1, 1);
+      const monthCount = await tx.stockCount.count({
+        where: { createdAt: { gte: monthStart, lt: monthEnd } },
+      });
+      const countNumber = `SC-${year}-${month}-${String(monthCount + 1).padStart(3, '0')}`;
 
-    // Get all products that should be in this branch
-    const expectedProducts = await this.prisma.product.findMany({
-      where: {
-        branchId: dto.branchId,
-        deletedAt: null,
-        status: { in: ['IN_STOCK', 'RESERVED', 'QC_PENDING'] },
-      },
-      select: { id: true, status: true },
-    });
-
-    const stockCount = await this.prisma.stockCount.create({
-      data: {
-        countNumber,
-        branchId: dto.branchId,
-        countedById: userId,
-        notes: dto.notes,
-        status: 'IN_PROGRESS',
-        startedAt: new Date(),
-        items: {
-          create: expectedProducts.map((p) => ({
-            productId: p.id,
-            expectedStatus: p.status,
-            actualFound: false, // default: not yet counted
-          })),
+      // Get all products that should be in this branch
+      const expectedProducts = await tx.product.findMany({
+        where: {
+          branchId: dto.branchId,
+          deletedAt: null,
+          status: { in: ['IN_STOCK', 'RESERVED', 'QC_PENDING'] },
         },
-      },
-      include: {
-        branch: { select: { id: true, name: true } },
-        countedBy: { select: { id: true, name: true } },
-        _count: { select: { items: true } },
-      },
-    });
+        select: { id: true, status: true },
+      });
 
-    return stockCount;
+      const stockCount = await tx.stockCount.create({
+        data: {
+          countNumber,
+          branchId: dto.branchId,
+          countedById: userId,
+          notes: dto.notes,
+          status: 'IN_PROGRESS',
+          startedAt: new Date(),
+          items: {
+            create: expectedProducts.map((p) => ({
+              productId: p.id,
+              expectedStatus: p.status,
+              actualFound: false,
+            })),
+          },
+        },
+        include: {
+          branch: { select: { id: true, name: true } },
+          countedBy: { select: { id: true, name: true } },
+          _count: { select: { items: true } },
+        },
+      });
+
+      return stockCount;
+    });
   }
 
   /**

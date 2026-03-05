@@ -567,7 +567,10 @@ export default function PurchaseOrdersPage() {
       label: 'ยอดรวม',
       render: (po: PurchaseOrder) => (
         <div>
-          <span className="text-sm font-medium">{Number(po.totalAmount).toLocaleString()} บาท</span>
+          <span className="text-sm font-medium">{Number(po.netAmount || po.totalAmount).toLocaleString()} บาท</span>
+          {Number(po.discount) > 0 && (
+            <div className="text-xs text-red-500">ส่วนลด -{Number(po.discount).toLocaleString()}</div>
+          )}
           {Number(po.vatAmount) > 0 && (
             <div className="text-xs text-blue-600">รวม VAT {Number(po.vatAmount).toLocaleString()}</div>
           )}
@@ -729,7 +732,6 @@ export default function PurchaseOrdersPage() {
               <option value="APPROVED">อนุมัติแล้ว</option>
               <option value="PARTIALLY_RECEIVED">รับบางส่วน</option>
               <option value="FULLY_RECEIVED">รับครบแล้ว</option>
-              <option value="REJECTED">ไม่อนุมัติ</option>
               <option value="CANCELLED">ยกเลิก</option>
             </select>
           </div>

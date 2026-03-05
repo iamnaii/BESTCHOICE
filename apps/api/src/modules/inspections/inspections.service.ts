@@ -178,10 +178,10 @@ export class InspectionsService {
       },
     });
 
-    // Update product grade and status
-    if (inspection.products.length > 0) {
+    // Update all linked products' grade and status
+    for (const product of inspection.products) {
       await this.prisma.product.update({
-        where: { id: inspection.products[0].id },
+        where: { id: product.id },
         data: { conditionGrade: grade, status: 'QC_PENDING' },
       });
     }
@@ -198,10 +198,10 @@ export class InspectionsService {
       data: { gradeOverride: dto.grade as 'A' | 'B' | 'C' | 'D', overrideReason: dto.reason },
     });
 
-    // Update product grade
-    if (inspection.products.length > 0) {
+    // Update all linked products' grade
+    for (const product of inspection.products) {
       await this.prisma.product.update({
-        where: { id: inspection.products[0].id },
+        where: { id: product.id },
         data: { conditionGrade: dto.grade as 'A' | 'B' | 'C' | 'D' },
       });
     }

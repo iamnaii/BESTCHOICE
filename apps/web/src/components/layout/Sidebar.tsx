@@ -21,8 +21,12 @@ const sectionMeta: Record<string, { label: string; icon: string }> = {
     label: 'ติดตาม & จัดการหนี้',
     icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z',
   },
-  inventory: {
-    label: 'จัดซื้อ & คลังสินค้า',
+  purchasing: {
+    label: 'จัดซื้อ',
+    icon: 'M3 3h2l.4 2M7 13h10l4-8H5.4m0 0L7 13m0 0l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17M17 13a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z',
+  },
+  warehouse: {
+    label: 'คลังสินค้า',
     icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4',
   },
   reports: {
@@ -35,7 +39,7 @@ const sectionMeta: Record<string, { label: string; icon: string }> = {
   },
 };
 
-const sectionOrder = ['sales', 'debt', 'inventory', 'reports', 'system'];
+const sectionOrder = ['sales', 'debt', 'purchasing', 'warehouse', 'reports', 'system'];
 
 const navItems: NavItem[] = [
   { label: 'หน้าหลัก', path: '/' },
@@ -53,8 +57,15 @@ const navItems: NavItem[] = [
   { label: 'เปลี่ยนเครื่อง', path: '/exchange', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'debt' },
   { label: 'ยึดคืน & ขายต่อ', path: '/repossessions', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'debt' },
 
-  // จัดซื้อ & คลังสินค้า (unified workflow page)
-  { label: 'จัดซื้อ & คลังสินค้า', path: '/inventory', section: 'inventory' },
+  // จัดซื้อ
+  { label: 'สั่งซื้อ', path: '/purchase-orders', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'purchasing' },
+  { label: 'ตรวจเช็ค', path: '/inspections', section: 'purchasing' },
+
+  // คลังสินค้า
+  { label: 'สต็อก', path: '/stock', roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'], section: 'warehouse' },
+  { label: 'สินค้าในคลัง', path: '/products', section: 'warehouse' },
+  { label: 'โอนสาขา', path: '/stock/transfers', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'warehouse' },
+  { label: 'ปรับสต็อก', path: '/stock/adjustments', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'warehouse' },
 
   // รายงาน & แจ้งเตือน
   { label: 'รายงาน', path: '/reports', roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'], section: 'reports' },

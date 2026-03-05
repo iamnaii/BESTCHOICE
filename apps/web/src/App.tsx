@@ -36,7 +36,13 @@ const SalesHistoryPage = lazy(() => import('@/pages/SalesHistoryPage'));
 const InterestConfigPage = lazy(() => import('@/pages/InterestConfigPage'));
 const CreditChecksPage = lazy(() => import('@/pages/CreditChecksPage'));
 const SuppliersPage = lazy(() => import('@/pages/SuppliersPage'));
-const InventoryWorkflowPage = lazy(() => import('@/pages/InventoryWorkflowPage'));
+const StockPage = lazy(() => import('@/pages/StockPage'));
+const PurchaseOrdersPage = lazy(() => import('@/pages/PurchaseOrdersPage'));
+const InspectionPage = lazy(() => import('@/pages/InspectionPage'));
+const ProductsPage = lazy(() => import('@/pages/ProductsPage'));
+const StockTransfersPage = lazy(() => import('@/pages/StockTransfersPage'));
+const StockAlertsPage = lazy(() => import('@/pages/StockAlertsPage'));
+const StockAdjustmentsPage = lazy(() => import('@/pages/StockAdjustmentsPage'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -88,11 +94,55 @@ function App() {
               </ProtectedRoute>
             }
           />
-          {/* Inventory Workflow (unified page) */}
-          <Route path="/inventory" element={<InventoryWorkflowPage />} />
+          {/* Redirect old unified inventory page */}
+          <Route path="/inventory" element={<Navigate to="/stock" replace />} />
 
-          {/* Redirect old inventory routes to unified page */}
-          <Route path="/stock" element={<Navigate to="/inventory?tab=stock" replace />} />
+          {/* จัดซื้อ (Purchasing) */}
+          <Route
+            path="/purchase-orders"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}>
+                <PurchaseOrdersPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/inspections" element={<InspectionPage />} />
+
+          {/* คลังสินค้า (Warehouse) */}
+          <Route
+            path="/stock"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT']}>
+                <StockPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/products" element={<ProductsPage />} />
+          <Route
+            path="/stock/transfers"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}>
+                <StockTransfersPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/stock/alerts"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}>
+                <StockAlertsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/stock/adjustments"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}>
+                <StockAdjustmentsPage />
+              </ProtectedRoute>
+            }
+          />
+
           <Route
             path="/suppliers"
             element={
@@ -101,10 +151,6 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route path="/purchase-orders" element={<Navigate to="/inventory?tab=purchase-orders" replace />} />
-          <Route path="/inspections" element={<Navigate to="/inventory?tab=inspections" replace />} />
-          <Route path="/products" element={<Navigate to="/inventory?tab=products" replace />} />
-          <Route path="/stock/transfers" element={<Navigate to="/inventory?tab=transfers" replace />} />
 
           {/* Detail pages still need their own routes */}
           <Route path="/suppliers/:id" element={<SupplierDetailPage />} />

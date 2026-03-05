@@ -155,6 +155,8 @@ interface ReceivingUnitForm {
   warrantyExpireDate: string;
   hasBox: boolean;
   checklist: { item: string; category: string; passed: boolean; note: string }[];
+  sellingPrice: string;
+  conditionGrade: string;
 }
 
 const emptyItem: ItemForm = { brand: '', category: '', model: '', color: '', storage: '', quantity: '1', unitPrice: '', accessoryType: '', accessoryBrand: '' };
@@ -277,6 +279,8 @@ export default function PurchaseOrdersPage() {
                 item, category, passed, ...(note ? { note } : {}),
               })),
             } : {}),
+            ...(i.status === 'PASS' && i.sellingPrice ? { sellingPrice: Number(i.sellingPrice) } : {}),
+            ...(i.status === 'PASS' && i.conditionGrade ? { conditionGrade: i.conditionGrade } : {}),
           };
         }),
         notes: notes || undefined,
@@ -284,7 +288,7 @@ export default function PurchaseOrdersPage() {
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
       const data = res.data;
-      toast.success(`รับ+ตรวจสำเร็จ: ผ่าน ${data.passed} ชิ้น, ไม่ผ่าน ${data.rejected} ชิ้น → เข้าคลัง ${data.mainWarehouse} (IN_STOCK)`);
+      toast.success(`รับ+ตรวจสำเร็จ: ผ่าน ${data.passed} ชิ้น, ไม่ผ่าน ${data.rejected} ชิ้น → รอ QC ที่คลัง ${data.mainWarehouse}`);
       setIsReceiveModalOpen(false);
       setIsDetailModalOpen(false);
     },
@@ -435,6 +439,8 @@ export default function PurchaseOrdersPage() {
           warrantyExpireDate: '',
           hasBox: true,
           checklist: defaultChecklist.map((c) => ({ ...c, passed: true, note: '' })),
+          sellingPrice: '',
+          conditionGrade: '',
         });
       }
     }
@@ -561,7 +567,10 @@ export default function PurchaseOrdersPage() {
       label: 'ยอดรวม',
       render: (po: PurchaseOrder) => (
         <div>
-          <span className="text-sm font-medium">{Number(po.totalAmount).toLocaleString()} บาท</span>
+          <span className="text-sm font-medium">{Number(po.netAmount || po.totalAmount).toLocaleString()} บาท</span>
+          {Number(po.discount) > 0 && (
+            <div className="text-xs text-red-500">ส่วนลด -{Number(po.discount).toLocaleString()}</div>
+          )}
           {Number(po.vatAmount) > 0 && (
             <div className="text-xs text-blue-600">รวม VAT {Number(po.vatAmount).toLocaleString()}</div>
           )}
@@ -723,7 +732,6 @@ export default function PurchaseOrdersPage() {
               <option value="APPROVED">อนุมัติแล้ว</option>
               <option value="PARTIALLY_RECEIVED">รับบางส่วน</option>
               <option value="FULLY_RECEIVED">รับครบแล้ว</option>
-              <option value="REJECTED">ไม่อนุมัติ</option>
               <option value="CANCELLED">ยกเลิก</option>
             </select>
           </div>
@@ -1897,9 +1905,9 @@ export default function PurchaseOrdersPage() {
         {selectedPO && (
           <form onSubmit={handleGoodsReceiving} className="space-y-4">
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-700">
-              ตรวจรับสินค้าทีละชิ้น ระบุ IMEI/Serial แล้วเลือกผลตรวจ (ผ่าน/ไม่ผ่าน)
+              ตรวจรับสินค้าทีละชิ้น ระบุ IMEI/Serial ราคาขาย เกรด แล้วเลือกผลตรวจ (ผ่าน/ไม่ผ่าน)
               <br />
-              สินค้าที่ผ่านจะเข้าคลังกลางอัตโนมัติ
+              สินค้าที่ผ่านจะเข้าสถานะ QC_PENDING รอยืนยันก่อนเข้าคลัง
             </div>
 
             <div className="space-y-3 max-h-[50vh] overflow-y-auto">
@@ -2048,6 +2056,43 @@ export default function PurchaseOrdersPage() {
                         ))}
                         <div className="text-xs text-gray-400 mt-1">
                           ผ่าน {unit.checklist.filter((c) => c.passed).length}/{unit.checklist.length} รายการ
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {unit.status === 'PASS' && (
+                    <div className="mt-2 border border-blue-200 bg-blue-50 rounded-lg p-3 space-y-2">
+                      <div className="text-xs font-medium text-blue-700 mb-1">ราคาขาย & เกรด</div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-0.5">ราคาขาย (บาท)</label>
+                          <input
+                            type="number"
+                            placeholder="เช่น 15000"
+                            value={unit.sellingPrice}
+                            onChange={(e) => updateReceivingUnit(idx, 'sellingPrice', e.target.value)}
+                            className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                            min="0"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-0.5">เกรดสภาพ</label>
+                          <div className="flex gap-1 mt-0.5">
+                            {['A', 'B', 'C', 'D'].map((g) => (
+                              <button
+                                key={g}
+                                type="button"
+                                onClick={() => updateReceivingUnit(idx, 'conditionGrade', unit.conditionGrade === g ? '' : g)}
+                                className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                                  unit.conditionGrade === g
+                                    ? g === 'A' ? 'bg-green-600 text-white' : g === 'B' ? 'bg-blue-600 text-white' : g === 'C' ? 'bg-yellow-600 text-white' : 'bg-red-600 text-white'
+                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                }`}
+                              >
+                                {g}
+                              </button>
+                            ))}
+                          </div>
                         </div>
                       </div>
                     </div>

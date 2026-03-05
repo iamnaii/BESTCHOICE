@@ -60,10 +60,11 @@ export class StockAdjustmentsService {
           data: { status: 'IN_STOCK', deletedAt: null, stockInDate: new Date() },
         });
       } else if (['DAMAGED', 'LOST', 'WRITE_OFF'].includes(dto.reason)) {
-        // DAMAGED, LOST, WRITE_OFF → soft delete (remove from active stock)
+        // DAMAGED, LOST, WRITE_OFF → update status and soft delete
+        const statusMap: Record<string, 'DAMAGED' | 'LOST' | 'WRITTEN_OFF'> = { DAMAGED: 'DAMAGED', LOST: 'LOST', WRITE_OFF: 'WRITTEN_OFF' };
         await tx.product.update({
           where: { id: dto.productId },
-          data: { deletedAt: new Date() },
+          data: { status: statusMap[dto.reason] || dto.reason, deletedAt: new Date() },
         });
       }
       // CORRECTION, OTHER → record only, no status/deletion change

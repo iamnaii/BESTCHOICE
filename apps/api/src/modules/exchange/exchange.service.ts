@@ -40,13 +40,12 @@ export class ExchangeService {
     const newPrice = newProduct.prices.find((p) => p.id === newPriceId);
     if (!newPrice) throw new NotFoundException('ไม่พบราคาที่เลือก');
 
-    // Calculate outstanding balance
+    // Calculate outstanding balance (all unpaid payments)
     let remainingPrincipal = new Decimal(0);
-    const remainingInterest = new Decimal(0);
     let totalLateFees = new Decimal(0);
 
     for (const payment of oldContract.payments) {
-      if (['PENDING', 'OVERDUE', 'PARTIALLY_PAID'].includes(payment.status)) {
+      if (payment.status !== 'PAID') {
         const unpaid = payment.amountDue.minus(payment.amountPaid);
         remainingPrincipal = remainingPrincipal.plus(unpaid);
         totalLateFees = totalLateFees.plus(payment.lateFee);
@@ -122,13 +121,15 @@ export class ExchangeService {
       const minDownConfig = await tx.systemConfig.findUnique({ where: { key: 'min_down_payment_pct' } });
       const minDownPct = minDownConfig ? Number(minDownConfig.value) : 0.15;
 
-      // Calculate outstanding balance from old contract
-      let outstandingBalance = 0;
+      // Calculate outstanding balance from old contract (using Decimal for precision)
+      let outstandingDecimal = new Decimal(0);
       for (const payment of oldContract.payments) {
         if (payment.status !== 'PAID') {
-          outstandingBalance += Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid);
+          const unpaid = payment.amountDue.minus(payment.amountPaid).plus(payment.lateFee);
+          outstandingDecimal = outstandingDecimal.plus(unpaid);
         }
       }
+      const outstandingBalance = Number(outstandingDecimal);
 
       // Calculate new contract
       const sellingPrice = Number(newPrice.amount);
@@ -156,7 +157,8 @@ export class ExchangeService {
 
       // Include outstanding balance from old contract in the new principal
       const principal = sellingPrice - downPayment + outstandingBalance;
-      const interestTotal = principal * interestRate * totalMonths;
+      const monthlyRate = interestRate / 12;
+      const interestTotal = principal * monthlyRate * totalMonths;
       const financedAmount = principal + interestTotal;
       const monthlyPayment = Math.ceil(financedAmount / totalMonths);
 
@@ -179,7 +181,7 @@ export class ExchangeService {
       // Return old product to stock
       await tx.product.update({
         where: { id: oldContract.productId },
-        data: { status: 'IN_STOCK', stockInDate: new Date() },
+        data: { status: 'QC_PENDING' },
       });
 
       // Reserve new product

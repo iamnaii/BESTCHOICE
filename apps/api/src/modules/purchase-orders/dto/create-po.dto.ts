@@ -201,6 +201,16 @@ export class GoodsReceivingItemDto {
   @ValidateNested({ each: true })
   @Type(() => ChecklistResultDto)
   checklistResults?: ChecklistResultDto[];
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  sellingPrice?: number;
+
+  @IsString()
+  @IsOptional()
+  @IsIn(['A', 'B', 'C', 'D'])
+  conditionGrade?: 'A' | 'B' | 'C' | 'D';
 }
 
 export class GoodsReceivingDto {

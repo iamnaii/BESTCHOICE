@@ -10,6 +10,8 @@ const ProductsPage = lazy(() => import('@/pages/ProductsPage'));
 const StockTransfersPage = lazy(() => import('@/pages/StockTransfersPage'));
 const StockAlertsPage = lazy(() => import('@/pages/StockAlertsPage'));
 const StockAdjustmentsPage = lazy(() => import('@/pages/StockAdjustmentsPage'));
+const StockCountPage = lazy(() => import('@/pages/StockCountPage'));
+const BranchReceivingPage = lazy(() => import('@/pages/BranchReceivingPage'));
 
 interface Tab {
   key: string;
@@ -25,6 +27,8 @@ const allTabs: Tab[] = [
   { key: 'transfers', label: 'โอนสาขา', roles: ['OWNER', 'BRANCH_MANAGER'] },
   { key: 'alerts', label: 'แจ้งเตือนสต็อก', roles: ['OWNER', 'BRANCH_MANAGER'] },
   { key: 'adjustments', label: 'ปรับสต็อก', roles: ['OWNER', 'BRANCH_MANAGER'] },
+  { key: 'stock-count', label: 'ตรวจนับ', roles: ['OWNER', 'BRANCH_MANAGER'] },
+  { key: 'branch-receiving', label: 'สาขาเช็ครับ', roles: ['OWNER', 'BRANCH_MANAGER'] },
 ];
 
 const tabComponents: Record<string, React.LazyExoticComponent<() => JSX.Element>> = {
@@ -35,6 +39,8 @@ const tabComponents: Record<string, React.LazyExoticComponent<() => JSX.Element>
   'transfers': StockTransfersPage,
   'alerts': StockAlertsPage,
   'adjustments': StockAdjustmentsPage,
+  'stock-count': StockCountPage,
+  'branch-receiving': BranchReceivingPage,
 };
 
 const Loader = () => (

@@ -598,6 +598,7 @@ export class ProductsService {
     // --- 2. Action Required ---
     const actionRequired = {
       inspection: allProducts.filter((p) => p.status === 'INSPECTION').length,
+      qcPending: allProducts.filter((p) => p.status === 'QC_PENDING').length,
       pendingTransfers,
       repossessed: allProducts.filter((p) => p.status === 'REPOSSESSED').length,
       agingOver90: agingBuckets[3].count,
@@ -858,6 +859,167 @@ export class ProductsService {
       branch: product.branch,
       steps,
     };
+  }
+
+  // === Stock Reservation ===
+
+  /**
+   * Reserve a product (link to contract/sale in progress)
+   */
+  async reserve(productId: string, reason?: string) {
+    const product = await this.findOne(productId);
+    if (product.status !== 'IN_STOCK') {
+      throw new BadRequestException('สามารถจองได้เฉพาะสินค้าที่อยู่ IN_STOCK เท่านั้น');
+    }
+    return this.prisma.product.update({
+      where: { id: productId },
+      data: { status: 'RESERVED' },
+      include: productInclude,
+    });
+  }
+
+  /**
+   * Unreserve a product (release back to IN_STOCK)
+   */
+  async unreserve(productId: string) {
+    const product = await this.findOne(productId);
+    if (product.status !== 'RESERVED') {
+      throw new BadRequestException('สินค้านี้ไม่ได้อยู่ในสถานะ RESERVED');
+    }
+    return this.prisma.product.update({
+      where: { id: productId },
+      data: { status: 'IN_STOCK' },
+      include: productInclude,
+    });
+  }
+
+  // === Warranty Alerts ===
+
+  /**
+   * Get products with warranty expiring soon
+   */
+  async getWarrantyExpiring(daysAhead: number = 30, branchId?: string) {
+    const now = new Date();
+    const deadline = new Date();
+    deadline.setDate(deadline.getDate() + daysAhead);
+
+    const where: Record<string, unknown> = {
+      deletedAt: null,
+      warrantyExpired: false,
+      warrantyExpireDate: { gte: now, lte: deadline },
+      status: { in: ['IN_STOCK', 'RESERVED'] },
+    };
+    if (branchId) where.branchId = branchId;
+
+    const products = await this.prisma.product.findMany({
+      where: where as any,
+      include: {
+        branch: { select: { id: true, name: true } },
+        prices: { where: { isDefault: true }, take: 1 },
+      },
+      orderBy: { warrantyExpireDate: 'asc' },
+    });
+
+    return products.map((p) => ({
+      id: p.id,
+      name: p.name,
+      brand: p.brand,
+      model: p.model,
+      imeiSerial: p.imeiSerial,
+      branch: p.branch,
+      warrantyExpireDate: p.warrantyExpireDate,
+      daysRemaining: Math.ceil(
+        (new Date(p.warrantyExpireDate!).getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+      ),
+      sellingPrice: p.prices[0] ? Number(p.prices[0].amount) : null,
+    }));
+  }
+
+  // === Supplier Performance ===
+
+  /**
+   * Get supplier performance metrics (rejection rate, delivery on-time, etc.)
+   */
+  async getSupplierPerformance() {
+    const suppliers = await this.prisma.supplier.findMany({
+      where: { isActive: true },
+      select: { id: true, name: true },
+    });
+
+    const results: {
+      supplier: { id: string; name: string };
+      poCount: number;
+      totalOrdered: number;
+      totalReceived: number;
+      fulfillmentRate: number;
+      totalPassed: number;
+      totalRejected: number;
+      qualityRate: number;
+      onTimeRate: number;
+      deliveredCount: number;
+    }[] = [];
+
+    for (const supplier of suppliers) {
+      // Get all POs for this supplier
+      const pos = await this.prisma.purchaseOrder.findMany({
+        where: { supplierId: supplier.id, status: { notIn: ['DRAFT', 'CANCELLED'] } },
+        select: {
+          id: true, status: true, orderDate: true, expectedDate: true,
+          items: { select: { quantity: true, receivedQty: true } },
+          goodsReceivings: {
+            select: {
+              createdAt: true,
+              items: { select: { status: true } },
+            },
+          },
+        },
+      });
+
+      if (pos.length === 0) continue;
+
+      let totalOrdered = 0;
+      let totalReceived = 0;
+      let totalPassed = 0;
+      let totalRejected = 0;
+      let onTimeCount = 0;
+      let deliveredCount = 0;
+
+      for (const po of pos) {
+        totalOrdered += po.items.reduce((sum, i) => sum + i.quantity, 0);
+        totalReceived += po.items.reduce((sum, i) => sum + i.receivedQty, 0);
+
+        for (const gr of po.goodsReceivings) {
+          for (const item of gr.items) {
+            if (item.status === 'PASS') totalPassed++;
+            if (item.status === 'REJECT') totalRejected++;
+          }
+
+          // Check if delivered on time
+          if (po.expectedDate) {
+            deliveredCount++;
+            if (new Date(gr.createdAt) <= new Date(po.expectedDate)) {
+              onTimeCount++;
+            }
+          }
+        }
+      }
+
+      const totalInspected = totalPassed + totalRejected;
+      results.push({
+        supplier,
+        poCount: pos.length,
+        totalOrdered,
+        totalReceived,
+        fulfillmentRate: totalOrdered > 0 ? Math.round((totalReceived / totalOrdered) * 100) : 0,
+        totalPassed,
+        totalRejected,
+        qualityRate: totalInspected > 0 ? Math.round((totalPassed / totalInspected) * 100) : 100,
+        onTimeRate: deliveredCount > 0 ? Math.round((onTimeCount / deliveredCount) * 100) : 0,
+        deliveredCount,
+      });
+    }
+
+    return results.sort((a, b) => b.poCount - a.poCount);
   }
 
   // === Get available brands for filter ===

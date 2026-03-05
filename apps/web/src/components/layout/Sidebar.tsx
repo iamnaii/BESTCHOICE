@@ -60,12 +60,12 @@ const navItems: NavItem[] = [
   // จัดซื้อ
   { label: 'สั่งซื้อ', path: '/purchase-orders', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'purchasing' },
   { label: 'ตรวจเช็ค', path: '/inspections', section: 'purchasing' },
+  { label: 'เตือนสต็อก', path: '/stock/alerts', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'purchasing' },
 
   // คลังสินค้า
   { label: 'สต็อก', path: '/stock', roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'], section: 'warehouse' },
   { label: 'สินค้าในคลัง', path: '/products', section: 'warehouse' },
   { label: 'โอนสาขา', path: '/stock/transfers', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'warehouse' },
-  { label: 'เตือนสต็อก', path: '/stock/alerts', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'warehouse' },
   { label: 'ปรับสต็อก', path: '/stock/adjustments', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'warehouse' },
 
   // รายงาน & แจ้งเตือน

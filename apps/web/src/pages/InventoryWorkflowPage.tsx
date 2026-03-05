@@ -4,7 +4,7 @@ import clsx from 'clsx';
 import { useAuth } from '@/contexts/AuthContext';
 
 const StockPage = lazy(() => import('@/pages/StockPage'));
-const SuppliersPage = lazy(() => import('@/pages/SuppliersPage'));
+
 const PurchaseOrdersPage = lazy(() => import('@/pages/PurchaseOrdersPage'));
 const InspectionPage = lazy(() => import('@/pages/InspectionPage'));
 const ProductsPage = lazy(() => import('@/pages/ProductsPage'));
@@ -18,7 +18,7 @@ interface Tab {
 
 const allTabs: Tab[] = [
   { key: 'stock', label: 'สต็อก', roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
-  { key: 'suppliers', label: 'Supplier', roles: ['OWNER', 'BRANCH_MANAGER'] },
+
   { key: 'purchase-orders', label: 'สั่งซื้อ', roles: ['OWNER', 'BRANCH_MANAGER'] },
   { key: 'inspections', label: 'ตรวจเช็ค' },
   { key: 'products', label: 'สินค้าในคลัง' },
@@ -27,7 +27,7 @@ const allTabs: Tab[] = [
 
 const tabComponents: Record<string, React.LazyExoticComponent<() => JSX.Element>> = {
   'stock': StockPage,
-  'suppliers': SuppliersPage,
+
   'purchase-orders': PurchaseOrdersPage,
   'inspections': InspectionPage,
   'products': ProductsPage,

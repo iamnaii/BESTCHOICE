@@ -244,14 +244,15 @@ export default function SuppliersPage() {
   };
 
   const updatePaymentMethod = (index: number, field: keyof PaymentMethod, value: string | number | boolean) => {
-    const updated = [...paymentMethods];
-    if (field === 'isDefault' && value === true) {
-      // Only one default
-      updated.forEach((pm, i) => { pm.isDefault = i === index; });
-    } else {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (updated[index] as any)[field] = value;
-    }
+    const updated = paymentMethods.map((pm, i) => {
+      if (field === 'isDefault' && value === true) {
+        return { ...pm, isDefault: i === index };
+      }
+      if (i === index) {
+        return { ...pm, [field]: value };
+      }
+      return pm;
+    });
     setPaymentMethods(updated);
   };
 

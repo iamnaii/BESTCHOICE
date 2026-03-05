@@ -67,6 +67,7 @@ export default function InterestConfigPage() {
       toast.success('ลบสำเร็จ');
       queryClient.invalidateQueries({ queryKey: ['interest-configs'] });
     },
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : 'ลบไม่สำเร็จ'),
   });
 
   const openCreate = () => {

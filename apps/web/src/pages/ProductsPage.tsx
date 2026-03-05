@@ -125,12 +125,13 @@ export default function ProductsPage() {
   const products = result?.data ?? [];
 
   // Keep editingProduct in sync when product data refreshes after mutations
+  const editingProductId = editingProduct?.id;
   useEffect(() => {
-    if (editingProduct && products.length > 0) {
-      const updated = products.find(p => p.id === editingProduct.id);
+    if (editingProductId && products.length > 0) {
+      const updated = products.find(p => p.id === editingProductId);
       if (updated) setEditingProduct(updated);
     }
-  }, [products]); // eslint-disable-line
+  }, [products, editingProductId]);
 
   const { data: branches = [] } = useQuery<{ id: string; name: string }[]>({
     queryKey: ['branches'],

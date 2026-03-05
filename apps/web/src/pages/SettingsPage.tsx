@@ -61,7 +61,7 @@ function CardReaderSetup() {
 
   useEffect(() => { checkStatus(); }, [checkStatus]);
 
-  const isConnected = status !== null && status !== 'checking';
+  const isConnected = status !== null && status !== 'checking' && typeof status === 'object' && ['waiting', 'card_inserted', 'reading'].includes(status.status);
   const statusInfo = (() => {
     if (status === 'checking') return { color: 'gray', icon: '⏳', text: 'กำลังตรวจสอบ...' };
     if (status === null) return { color: 'red', icon: '❌', text: 'ยังไม่ได้ติดตั้ง หรือโปรแกรมไม่ได้เปิดอยู่' };

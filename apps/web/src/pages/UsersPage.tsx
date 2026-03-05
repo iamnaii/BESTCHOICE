@@ -125,7 +125,7 @@ export default function UsersPage() {
       key: 'isActive', label: 'สถานะ',
       render: (u: User) => (
         <button
-          onClick={() => toggleActiveMutation.mutate({ id: u.id, isActive: !u.isActive })}
+          onClick={() => { if (confirm(`ต้องการ${u.isActive ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}ผู้ใช้ "${u.name}" หรือไม่?`)) toggleActiveMutation.mutate({ id: u.id, isActive: !u.isActive }); }}
           className={`px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer ${u.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}
         >
           {u.isActive ? 'ใช้งาน' : 'ปิดใช้งาน'}

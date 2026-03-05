@@ -145,8 +145,8 @@ function HighRiskReport() {
             </tr>
           </thead>
           <tbody>
-            {(data as { name: string; phone: string; overdueContracts: number; totalOutstanding: number }[]).map((c, i) => (
-              <tr key={i} className="border-b last:border-0">
+            {(data as { name: string; phone: string; overdueContracts: number; totalOutstanding: number }[]).map((c) => (
+              <tr key={c.phone || c.name} className="border-b last:border-0">
                 <td className="py-2 font-medium">{c.name}</td>
                 <td className="py-2 text-gray-500">{c.phone}</td>
                 <td className="py-2 text-right">{c.overdueContracts}</td>
@@ -191,8 +191,8 @@ function SalesReport() {
             </tr>
           </thead>
           <tbody>
-            {(data as { name: string; totalContracts: number; totalSales: number; overdueContracts: number; overdueRate: number }[]).map((s, i) => (
-              <tr key={i} className="border-b last:border-0">
+            {(data as { name: string; totalContracts: number; totalSales: number; overdueContracts: number; overdueRate: number }[]).map((s) => (
+              <tr key={s.name} className="border-b last:border-0">
                 <td className="py-2 font-medium">{s.name}</td>
                 <td className="py-2 text-right">{s.totalContracts}</td>
                 <td className="py-2 text-right">{s.totalSales.toLocaleString()}</td>
@@ -248,8 +248,8 @@ function BranchReport() {
             </tr>
           </thead>
           <tbody>
-            {(data as { branchName: string; contracts: number; totalSales: number; overdueContracts: number; paymentsReceived: number; stockCount: number }[]).map((b, i) => (
-              <tr key={i} className="border-b last:border-0">
+            {(data as { branchName: string; contracts: number; totalSales: number; overdueContracts: number; paymentsReceived: number; stockCount: number }[]).map((b) => (
+              <tr key={b.branchName} className="border-b last:border-0">
                 <td className="py-2 font-medium">{b.branchName}</td>
                 <td className="py-2 text-right">{b.contracts}</td>
                 <td className="py-2 text-right">{b.totalSales.toLocaleString()}</td>

@@ -61,6 +61,7 @@ const navItems: NavItem[] = [
   { label: 'แจ้งเตือน', path: '/notifications', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'reports' },
 
   // ระบบ (OWNER)
+  { label: 'Supplier', path: '/suppliers', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'system' },
   { label: 'สาขา', path: '/branches', roles: ['OWNER'], section: 'system' },
   { label: 'จัดการผู้ใช้', path: '/users', roles: ['OWNER'], section: 'system' },
   { label: 'ตั้งค่าระบบ', path: '/settings', roles: ['OWNER'], section: 'system' },

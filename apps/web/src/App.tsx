@@ -35,6 +35,7 @@ const POSPage = lazy(() => import('@/pages/POSPage'));
 const SalesHistoryPage = lazy(() => import('@/pages/SalesHistoryPage'));
 const InterestConfigPage = lazy(() => import('@/pages/InterestConfigPage'));
 const CreditChecksPage = lazy(() => import('@/pages/CreditChecksPage'));
+const SuppliersPage = lazy(() => import('@/pages/SuppliersPage'));
 const InventoryWorkflowPage = lazy(() => import('@/pages/InventoryWorkflowPage'));
 
 const PageLoader = () => (
@@ -92,7 +93,14 @@ function App() {
 
           {/* Redirect old inventory routes to unified page */}
           <Route path="/stock" element={<Navigate to="/inventory?tab=stock" replace />} />
-          <Route path="/suppliers" element={<Navigate to="/inventory?tab=suppliers" replace />} />
+          <Route
+            path="/suppliers"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}>
+                <SuppliersPage />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/purchase-orders" element={<Navigate to="/inventory?tab=purchase-orders" replace />} />
           <Route path="/inspections" element={<Navigate to="/inventory?tab=inspections" replace />} />
           <Route path="/products" element={<Navigate to="/inventory?tab=products" replace />} />

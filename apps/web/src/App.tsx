@@ -12,7 +12,7 @@ const BranchesPage = lazy(() => import('@/pages/BranchesPage'));
 const SupplierDetailPage = lazy(() => import('@/pages/SupplierDetailPage'));
 const ProductCreatePage = lazy(() => import('@/pages/ProductCreatePage'));
 const ProductDetailPage = lazy(() => import('@/pages/ProductDetailPage'));
-const InspectionDetailPage = lazy(() => import('@/pages/InspectionDetailPage'));
+
 const StickerPrintPage = lazy(() => import('@/pages/StickerPrintPage'));
 const CustomersPage = lazy(() => import('@/pages/CustomersPage'));
 const CustomerDetailPage = lazy(() => import('@/pages/CustomerDetailPage'));
@@ -38,7 +38,7 @@ const CreditChecksPage = lazy(() => import('@/pages/CreditChecksPage'));
 const SuppliersPage = lazy(() => import('@/pages/SuppliersPage'));
 const StockPage = lazy(() => import('@/pages/StockPage'));
 const PurchaseOrdersPage = lazy(() => import('@/pages/PurchaseOrdersPage'));
-const InspectionPage = lazy(() => import('@/pages/InspectionPage'));
+
 const ProductsPage = lazy(() => import('@/pages/ProductsPage'));
 const StockTransfersPage = lazy(() => import('@/pages/StockTransfersPage'));
 const StockAlertsPage = lazy(() => import('@/pages/StockAlertsPage'));
@@ -106,8 +106,6 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route path="/inspections" element={<InspectionPage />} />
-
           {/* คลังสินค้า (Warehouse) */}
           <Route
             path="/stock"
@@ -163,7 +161,7 @@ function App() {
             }
           />
           <Route path="/products/:id" element={<ProductDetailPage />} />
-          <Route path="/inspections/:id" element={<InspectionDetailPage />} />
+
           <Route path="/stickers" element={<StickerPrintPage />} />
           <Route path="/pos" element={<POSPage />} />
           <Route path="/sales" element={<SalesHistoryPage />} />

@@ -5,6 +5,11 @@ import PageHeader from '@/components/ui/PageHeader';
 
 type ReportType = 'aging' | 'revenue' | 'high-risk' | 'sales' | 'branch' | 'daily-payment' | 'stock';
 
+/** Safe number formatter - prevents crash on undefined/null */
+function fmt(val: unknown): string {
+  return (Number(val) || 0).toLocaleString();
+}
+
 const reportTabs: { key: ReportType; label: string }[] = [
   { key: 'aging', label: 'อายุหนี้' },
   { key: 'revenue', label: 'รายได้ / กำไร-ขาดทุน' },
@@ -81,7 +86,7 @@ function AgingReport() {
               <tr key={b.range} className="border-b">
                 <td className="py-2 font-medium">{b.range}</td>
                 <td className="py-2 text-right">{b.count}</td>
-                <td className="py-2 text-right text-red-600">{b.amount.toLocaleString()}</td>
+                <td className="py-2 text-right text-red-600">{fmt(b.amount)}</td>
                 <td className="py-2 text-right text-gray-500">
                   {total.amount > 0 ? ((b.amount / total.amount) * 100).toFixed(1) : 0}%
                 </td>
@@ -90,7 +95,7 @@ function AgingReport() {
             <tr className="font-semibold bg-gray-50">
               <td className="py-2">รวม</td>
               <td className="py-2 text-right">{total.count}</td>
-              <td className="py-2 text-right text-red-600">{total.amount.toLocaleString()}</td>
+              <td className="py-2 text-right text-red-600">{fmt(total.amount)}</td>
               <td className="py-2 text-right">100%</td>
             </tr>
           </tbody>
@@ -151,7 +156,7 @@ function HighRiskReport() {
                 <td className="py-2 text-gray-500">{c.phone}</td>
                 <td className="py-2 text-right">{c.overdueContracts}</td>
                 <td className="py-2 text-right text-red-600 font-medium">
-                  {c.totalOutstanding.toLocaleString()}
+                  {fmt(c.totalOutstanding)}
                 </td>
               </tr>
             ))}
@@ -195,7 +200,7 @@ function SalesReport() {
               <tr key={s.name} className="border-b last:border-0">
                 <td className="py-2 font-medium">{s.name}</td>
                 <td className="py-2 text-right">{s.totalContracts}</td>
-                <td className="py-2 text-right">{s.totalSales.toLocaleString()}</td>
+                <td className="py-2 text-right">{fmt(s.totalSales)}</td>
                 <td className="py-2 text-right">
                   <span className={s.overdueContracts > 0 ? 'text-red-600 font-medium' : ''}>
                     {s.overdueContracts}
@@ -252,9 +257,9 @@ function BranchReport() {
               <tr key={b.branchName} className="border-b last:border-0">
                 <td className="py-2 font-medium">{b.branchName}</td>
                 <td className="py-2 text-right">{b.contracts}</td>
-                <td className="py-2 text-right">{b.totalSales.toLocaleString()}</td>
+                <td className="py-2 text-right">{fmt(b.totalSales)}</td>
                 <td className="py-2 text-right text-red-600">{b.overdueContracts}</td>
-                <td className="py-2 text-right text-green-600">{b.paymentsReceived.toLocaleString()}</td>
+                <td className="py-2 text-right text-green-600">{fmt(b.paymentsReceived)}</td>
                 <td className="py-2 text-right">{b.stockCount}</td>
               </tr>
             ))}
@@ -306,7 +311,7 @@ function DailyPaymentReport({ date, onDateChange }: { date: string; onDateChange
                 <tr key={b.branchName} className="border-b last:border-0">
                   <td className="py-2 font-medium">{b.branchName}</td>
                   <td className="py-2 text-right">{b.count}</td>
-                  <td className="py-2 text-right text-green-600">{b.amount.toLocaleString()}</td>
+                  <td className="py-2 text-right text-green-600">{fmt(b.amount)}</td>
                 </tr>
               ))}
             </tbody>
@@ -351,7 +356,7 @@ function StockReport() {
                 <tr key={s.status} className="border-b last:border-0">
                   <td className="py-2 font-medium">{s.status}</td>
                   <td className="py-2 text-right">{s.count}</td>
-                  <td className="py-2 text-right">{s.value.toLocaleString()}</td>
+                  <td className="py-2 text-right">{fmt(s.value)}</td>
                 </tr>
               ))}
             </tbody>
@@ -376,7 +381,7 @@ function StockReport() {
                   <tr key={b.branchName} className="border-b last:border-0">
                     <td className="py-2 font-medium">{b.branchName}</td>
                     <td className="py-2 text-right">{b.count}</td>
-                    <td className="py-2 text-right">{b.value.toLocaleString()}</td>
+                    <td className="py-2 text-right">{fmt(b.value)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -403,7 +408,7 @@ function SummaryCard({
     <div className="bg-gray-50 rounded-lg p-3">
       <div className="text-xs text-gray-500">{label}</div>
       <div className={`text-lg font-bold ${color}`}>
-        {isCurrency ? value.toLocaleString() : value}
+        {isCurrency ? fmt(value) : value}
       </div>
       {isCurrency && <div className="text-xs text-gray-400">บาท</div>}
     </div>

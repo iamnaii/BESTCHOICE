@@ -20,12 +20,8 @@ const sectionMeta: Record<string, { label: string; icon: string }> = {
     icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z',
   },
   inventory: {
-    label: 'สินค้า & คลัง',
+    label: 'คลัง & จัดซื้อ',
     icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4',
-  },
-  purchasing: {
-    label: 'จัดซื้อ',
-    icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01',
   },
   reports: {
     label: 'รายงาน & แจ้งเตือน',
@@ -37,7 +33,7 @@ const sectionMeta: Record<string, { label: string; icon: string }> = {
   },
 };
 
-const sectionOrder = ['sales', 'debt', 'inventory', 'purchasing', 'reports', 'system'];
+const sectionOrder = ['sales', 'debt', 'inventory', 'reports', 'system'];
 
 const navItems: NavItem[] = [
   { label: 'หน้าหลัก', path: '/' },
@@ -55,15 +51,13 @@ const navItems: NavItem[] = [
   { label: 'เปลี่ยนเครื่อง', path: '/exchange', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'debt' },
   { label: 'ยึดคืน & ขายต่อ', path: '/repossessions', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'debt' },
 
-  // สินค้า & คลัง
+  // คลัง & จัดซื้อ (Workflow: เช็ค Stock → สั่งซื้อ → ตรวจรับ → เข้าคลัง → ส่งสาขา → สาขารับ)
   { label: 'สินค้า', path: '/products', section: 'inventory' },
+  { label: 'สต็อก & Reorder', path: '/stock', roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'], section: 'inventory' },
+  { label: 'Supplier', path: '/suppliers', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'inventory' },
+  { label: 'ใบสั่งซื้อ (PO)', path: '/purchase-orders', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'inventory' },
   { label: 'ตรวจเช็คเครื่อง', path: '/inspections', section: 'inventory' },
-  { label: 'สต็อก', path: '/stock', roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'], section: 'inventory' },
-  { label: 'โอนสินค้า', path: '/stock/transfers', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'inventory' },
-
-  // จัดซื้อ
-  { label: 'Supplier', path: '/suppliers', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'purchasing' },
-  { label: 'ใบสั่งซื้อ (PO)', path: '/purchase-orders', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'purchasing' },
+  { label: 'โอนสินค้าไปสาขา', path: '/stock/transfers', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'inventory' },
 
   // รายงาน & แจ้งเตือน
   { label: 'รายงาน', path: '/reports', roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'], section: 'reports' },

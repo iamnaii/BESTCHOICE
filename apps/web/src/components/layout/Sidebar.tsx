@@ -8,6 +8,7 @@ interface NavItem {
   path: string;
   roles?: string[];
   section?: string;
+  step?: number;
 }
 
 const sectionMeta: Record<string, { label: string; icon: string }> = {
@@ -20,7 +21,7 @@ const sectionMeta: Record<string, { label: string; icon: string }> = {
     icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z',
   },
   inventory: {
-    label: 'คลัง & จัดซื้อ',
+    label: 'จัดซื้อ & คลังสินค้า',
     icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4',
   },
   reports: {
@@ -51,13 +52,13 @@ const navItems: NavItem[] = [
   { label: 'เปลี่ยนเครื่อง', path: '/exchange', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'debt' },
   { label: 'ยึดคืน & ขายต่อ', path: '/repossessions', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'debt' },
 
-  // คลัง & จัดซื้อ (Workflow: เช็ค Stock → สั่งซื้อ → ตรวจรับ → เข้าคลัง → ส่งสาขา → สาขารับ)
-  { label: 'สินค้า', path: '/products', section: 'inventory' },
-  { label: 'สต็อก & Reorder', path: '/stock', roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'], section: 'inventory' },
-  { label: 'Supplier', path: '/suppliers', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'inventory' },
-  { label: 'ใบสั่งซื้อ (PO)', path: '/purchase-orders', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'inventory' },
-  { label: 'ตรวจเช็คเครื่อง', path: '/inspections', section: 'inventory' },
-  { label: 'โอนสินค้าไปสาขา', path: '/stock/transfers', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'inventory' },
+  // จัดซื้อ & คลังสินค้า — Flow: เช็คสต็อก → Supplier → สั่งซื้อ → ตรวจรับ/QC → เข้าคลัง → ส่งสาขา
+  { label: 'เช็คสต็อก', path: '/stock', step: 1, roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'], section: 'inventory' },
+  { label: 'Supplier', path: '/suppliers', step: 2, roles: ['OWNER', 'BRANCH_MANAGER'], section: 'inventory' },
+  { label: 'สั่งซื้อ & ตรวจรับ', path: '/purchase-orders', step: 3, roles: ['OWNER', 'BRANCH_MANAGER'], section: 'inventory' },
+  { label: 'ตรวจเช็คเครื่อง', path: '/inspections', step: 4, section: 'inventory' },
+  { label: 'สินค้าในคลัง', path: '/products', step: 5, section: 'inventory' },
+  { label: 'โอนไปสาขา', path: '/stock/transfers', step: 6, roles: ['OWNER', 'BRANCH_MANAGER'], section: 'inventory' },
 
   // รายงาน & แจ้งเตือน
   { label: 'รายงาน', path: '/reports', roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'], section: 'reports' },
@@ -217,13 +218,18 @@ function Sidebar() {
                       end={item.path === '/'}
                       className={({ isActive }) =>
                         clsx(
-                          'flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 mb-0.5',
+                          'flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 mb-0.5',
                           isActive
                             ? 'bg-primary-600 text-white shadow-lg shadow-primary-600/20'
                             : 'text-gray-400 hover:bg-white/5 hover:text-white',
                         )
                       }
                     >
+                      {item.step != null && (
+                        <span className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center text-[10px] font-bold shrink-0">
+                          {item.step}
+                        </span>
+                      )}
                       {item.label}
                     </NavLink>
                   ))}

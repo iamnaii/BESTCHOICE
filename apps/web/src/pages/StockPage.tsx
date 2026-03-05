@@ -292,9 +292,10 @@ export default function StockPage() {
                 const headers = ['สินค้า', 'IMEI', 'ประเภท', 'สี', 'ความจุ', 'ราคาทุน', 'ราคาขาย', 'สถานะ', 'เกรด', 'สาขา'];
                 const rows = products.map((p) => {
                   const dp = p.prices?.find((pr) => pr.isDefault) || p.prices?.[0];
-                  return [`${p.brand} ${p.model}`, p.imeiSerial || '', categoryLabels[p.category] || p.category, p.color || '', p.storage || '', p.costPrice, dp ? dp.amount : '', statusLabels[p.status]?.label || p.status, p.conditionGrade || '', p.branch.name];
+                  return [`${p.brand} ${p.model}`, p.imeiSerial || '', categoryLabels[p.category] || p.category, p.color || '', p.storage || '', Number(p.costPrice || 0).toLocaleString(), dp ? Number(dp.amount).toLocaleString() : '', statusLabels[p.status]?.label || p.status, p.conditionGrade || '', p.branch.name];
                 });
-                const csv = [headers, ...rows].map((r) => r.map((c) => `"${c}"`).join(',')).join('\n');
+                const esc = (c: unknown) => `"${String(c ?? '').replace(/"/g, '""')}"`;
+                const csv = [headers, ...rows].map((r) => r.map(esc).join(',')).join('\n');
                 const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');

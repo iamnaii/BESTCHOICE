@@ -182,7 +182,7 @@ export class StockAdjustmentsService {
     }
     for (const adj of adjustments) {
       if (byReason[adj.reason]) {
-        byReason[adj.reason].totalValue += Number(adj.product?.costPrice || 0);
+        byReason[adj.reason].totalValue += Number(adj.product?.costPrice ?? 0) || 0;
       }
     }
 

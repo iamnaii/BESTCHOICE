@@ -166,9 +166,10 @@ export default function ProductsPage() {
     const headers = ['ชื่อ', 'แบรนด์', 'รุ่น', 'IMEI/Serial', 'ประเภท', 'สถานะ', 'เกรด', 'ราคาทุน', 'ราคาขาย', 'สาขา'];
     const rows = items.map((p) => {
       const dp = p.prices.find((pr) => pr.isDefault);
-      return [p.name, p.brand, p.model, p.imeiSerial || '', categoryLabels[p.category] || p.category, statusLabels[p.status]?.label || p.status, p.conditionGrade || '', p.costPrice, dp ? dp.amount : '', p.branch.name];
+      return [p.name, p.brand, p.model, p.imeiSerial || '', categoryLabels[p.category] || p.category, statusLabels[p.status]?.label || p.status, p.conditionGrade || '', Number(p.costPrice || 0).toLocaleString(), dp ? Number(dp.amount).toLocaleString() : '', p.branch.name];
     });
-    const csv = [headers, ...rows].map((r) => r.map((c) => `"${c}"`).join(',')).join('\n');
+    const esc = (c: unknown) => `"${String(c ?? '').replace(/"/g, '""')}"`;
+    const csv = [headers, ...rows].map((r) => r.map(esc).join(',')).join('\n');
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

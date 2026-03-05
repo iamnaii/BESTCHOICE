@@ -68,6 +68,8 @@ export default function StockAdjustmentsPage() {
   const [filterBranch, setFilterBranch] = useState('');
   const [filterReason, setFilterReason] = useState('');
   const [page, setPage] = useState(1);
+  const [prevTab, setPrevTab] = useState(activeTab);
+  if (prevTab !== activeTab) { setPrevTab(activeTab); setPage(1); }
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [form, setForm] = useState({ productId: '', reason: 'DAMAGED', notes: '' });
   const [productSearch, setProductSearch] = useState('');
@@ -161,9 +163,10 @@ export default function StockAdjustmentsPage() {
       a.notes || '',
       a.branch.name,
       a.adjustedBy.name,
-      a.product.costPrice,
+      Number(a.product.costPrice || 0).toLocaleString(),
     ]);
-    const csv = [headers, ...rows].map((r) => r.map((c) => `"${c}"`).join(',')).join('\n');
+    const esc = (c: unknown) => `"${String(c ?? '').replace(/"/g, '""')}"`;
+    const csv = [headers, ...rows].map((r) => r.map(esc).join(',')).join('\n');
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

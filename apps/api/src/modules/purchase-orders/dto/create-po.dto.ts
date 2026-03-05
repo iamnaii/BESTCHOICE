@@ -181,13 +181,9 @@ export class GoodsReceivingItemDto {
   @IsOptional()
   hasBox?: boolean;
 
-  @IsBoolean()
+  @IsArray()
   @IsOptional()
-  hasBugs?: boolean;
-
-  @IsString()
-  @IsOptional()
-  bugDetails?: string;
+  checklistResults?: { item: string; category: string; passed: boolean; note?: string }[];
 }
 
 export class GoodsReceivingDto {

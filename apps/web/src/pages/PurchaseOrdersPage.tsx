@@ -112,6 +112,22 @@ const chargerConnectorTypes = [
   { value: 'Type-C', label: 'Type-C' },
 ];
 
+const defaultChecklist = [
+  { item: 'สภาพตัวเครื่อง', category: 'ภายนอก' },
+  { item: 'สภาพหน้าจอ', category: 'ภายนอก' },
+  { item: 'ปุ่มกด (Power/Volume)', category: 'ภายนอก' },
+  { item: 'ช่องชาร์จ', category: 'ภายนอก' },
+  { item: 'หน้าจอสัมผัส', category: 'การทำงาน' },
+  { item: 'ลำโพง/ไมค์', category: 'การทำงาน' },
+  { item: 'กล้องหน้า/หลัง', category: 'การทำงาน' },
+  { item: 'Wi-Fi / Bluetooth', category: 'การทำงาน' },
+  { item: 'Face ID / สแกนนิ้ว', category: 'การทำงาน' },
+  { item: 'ชาร์จเข้า', category: 'แบตเตอรี่' },
+  { item: 'รีเซ็ตเครื่องแล้ว', category: 'ซอฟต์แวร์' },
+  { item: 'ปลดล็อค iCloud/Google', category: 'ซอฟต์แวร์' },
+  { item: 'IMEI ไม่ถูก block', category: 'ซอฟต์แวร์' },
+];
+
 interface ItemForm {
   brand: string;
   category: string;
@@ -136,8 +152,7 @@ interface ReceivingUnitForm {
   warrantyExpired: boolean;
   warrantyExpireDate: string;
   hasBox: boolean;
-  hasBugs: boolean;
-  bugDetails: string;
+  checklist: { item: string; category: string; passed: boolean; note: string }[];
 }
 
 const emptyItem: ItemForm = { brand: '', category: '', model: '', color: '', storage: '', quantity: '1', unitPrice: '', accessoryType: '', accessoryBrand: '' };
@@ -256,8 +271,9 @@ export default function PurchaseOrdersPage() {
               warrantyExpired: i.warrantyExpired,
               warrantyExpireDate: !i.warrantyExpired && i.warrantyExpireDate ? i.warrantyExpireDate : undefined,
               hasBox: i.hasBox,
-              hasBugs: i.hasBugs,
-              bugDetails: i.hasBugs && i.bugDetails ? i.bugDetails : undefined,
+              checklistResults: i.checklist.map(({ item, category, passed, note }) => ({
+                item, category, passed, ...(note ? { note } : {}),
+              })),
             } : {}),
           };
         }),
@@ -416,8 +432,7 @@ export default function PurchaseOrdersPage() {
           warrantyExpired: false,
           warrantyExpireDate: '',
           hasBox: true,
-          hasBugs: false,
-          bugDetails: '',
+          checklist: defaultChecklist.map((c) => ({ ...c, passed: true, note: '' })),
         });
       }
     }
@@ -440,7 +455,7 @@ export default function PurchaseOrdersPage() {
 
   const updateReceivingUnit = (idx: number, field: string, value: string) => {
     const newUnits = [...receivingUnits];
-    const boolFields = ['hasBox', 'warrantyExpired', 'hasBugs'];
+    const boolFields = ['hasBox', 'warrantyExpired'];
     const parsed = boolFields.includes(field) ? value === 'true' : value;
     newUnits[idx] = { ...newUnits[idx], [field]: parsed };
     setReceivingUnits(newUnits);
@@ -1927,7 +1942,7 @@ export default function PurchaseOrdersPage() {
                   )}
                   {unit.category === 'PHONE_USED' && unit.status === 'PASS' && (
                     <div className="mt-2 border border-orange-200 bg-orange-50 rounded-lg p-3 space-y-2">
-                      <div className="text-xs font-medium text-orange-700 mb-1">ข้อมูลมือสอง + ตรวจเช็ค</div>
+                      <div className="text-xs font-medium text-orange-700 mb-1">ข้อมูลมือสอง</div>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
                           <label className="block text-xs text-gray-500 mb-0.5">% แบตเตอรี่</label>
@@ -1983,35 +1998,65 @@ export default function PurchaseOrdersPage() {
                           )}
                         </div>
                       </div>
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-0.5">เช็คบัค (ตรวจซอฟต์แวร์)</label>
-                        <div className="flex items-center gap-3">
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => updateReceivingUnit(idx, 'hasBugs', 'false')}
-                              className={`px-3 py-1 rounded text-xs font-medium transition-colors ${!unit.hasBugs ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-green-100'}`}
-                            >
-                              ไม่มีบัค
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => updateReceivingUnit(idx, 'hasBugs', 'true')}
-                              className={`px-3 py-1 rounded text-xs font-medium transition-colors ${unit.hasBugs ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-red-100'}`}
-                            >
-                              มีบัค
-                            </button>
-                          </div>
+
+                      {/* Checklist ตรวจเช็คเครื่อง */}
+                      <div className="mt-2 border-t border-orange-200 pt-2">
+                        <div className="text-xs font-medium text-orange-700 mb-2">เช็คลิสต์ตรวจเครื่อง</div>
+                        {(() => {
+                          const categories = [...new Set(unit.checklist.map((c) => c.category))];
+                          return categories.map((cat) => (
+                            <div key={cat} className="mb-2">
+                              <div className="text-xs font-medium text-gray-500 mb-1">{cat}</div>
+                              <div className="space-y-1">
+                                {unit.checklist.filter((c) => c.category === cat).map((c, ci) => {
+                                  const checkIdx = unit.checklist.findIndex((x) => x.item === c.item && x.category === c.category);
+                                  return (
+                                    <div key={ci} className="flex items-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const newUnits = [...receivingUnits];
+                                          const newChecklist = [...newUnits[idx].checklist];
+                                          newChecklist[checkIdx] = { ...newChecklist[checkIdx], passed: !newChecklist[checkIdx].passed };
+                                          newUnits[idx] = { ...newUnits[idx], checklist: newChecklist };
+                                          setReceivingUnits(newUnits);
+                                        }}
+                                        className={`w-5 h-5 rounded flex items-center justify-center text-xs font-bold transition-colors ${
+                                          c.passed
+                                            ? 'bg-green-500 text-white'
+                                            : 'bg-red-500 text-white'
+                                        }`}
+                                      >
+                                        {c.passed ? '\u2713' : '\u2717'}
+                                      </button>
+                                      <span className={`text-xs flex-1 ${c.passed ? 'text-gray-700' : 'text-red-700 font-medium'}`}>
+                                        {c.item}
+                                      </span>
+                                      {!c.passed && (
+                                        <input
+                                          type="text"
+                                          placeholder="หมายเหตุ"
+                                          value={c.note}
+                                          onChange={(e) => {
+                                            const newUnits = [...receivingUnits];
+                                            const newChecklist = [...newUnits[idx].checklist];
+                                            newChecklist[checkIdx] = { ...newChecklist[checkIdx], note: e.target.value };
+                                            newUnits[idx] = { ...newUnits[idx], checklist: newChecklist };
+                                            setReceivingUnits(newUnits);
+                                          }}
+                                          className="w-32 px-1.5 py-0.5 border border-red-300 rounded text-xs focus:ring-1 focus:ring-red-400 outline-none"
+                                        />
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ));
+                        })()}
+                        <div className="text-xs text-gray-400 mt-1">
+                          ผ่าน {unit.checklist.filter((c) => c.passed).length}/{unit.checklist.length} รายการ
                         </div>
-                        {unit.hasBugs && (
-                          <input
-                            type="text"
-                            placeholder="ระบุรายละเอียดบัค เช่น จอมีเส้น, ลำโพงเสีย"
-                            value={unit.bugDetails}
-                            onChange={(e) => updateReceivingUnit(idx, 'bugDetails', e.target.value)}
-                            className="mt-1 w-full px-2 py-1.5 border border-red-300 rounded text-sm focus:ring-2 focus:ring-red-500 outline-none"
-                          />
-                        )}
                       </div>
                     </div>
                   )}

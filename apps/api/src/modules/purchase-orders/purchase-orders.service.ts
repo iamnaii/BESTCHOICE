@@ -670,7 +670,6 @@ export class PurchaseOrdersService {
               branchId: mainWarehouse!.id,
               status: 'IN_STOCK',
               stockInDate: new Date(),
-              conditionGrade: (item.conditionGrade as any) || null,
               imeiSerial: item.imeiSerial || null,
               serialNumber: item.serialNumber || null,
               photos: item.photos || [],
@@ -678,6 +677,8 @@ export class PurchaseOrdersService {
               warrantyExpired: item.warrantyExpired ?? null,
               warrantyExpireDate: item.warrantyExpireDate ? new Date(item.warrantyExpireDate) : null,
               hasBox: item.hasBox ?? null,
+              hasBugs: item.hasBugs ?? null,
+              bugDetails: item.bugDetails || null,
               accessoryType: poItem.accessoryType || null,
               accessoryBrand: poItem.accessoryBrand || null,
             },
@@ -697,6 +698,8 @@ export class PurchaseOrdersService {
               warrantyExpired: item.warrantyExpired ?? null,
               warrantyExpireDate: item.warrantyExpireDate ? new Date(item.warrantyExpireDate) : null,
               hasBox: item.hasBox ?? null,
+              hasBugs: item.hasBugs ?? null,
+              bugDetails: item.bugDetails || null,
             },
           });
 

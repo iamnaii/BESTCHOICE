@@ -136,7 +136,8 @@ interface ReceivingUnitForm {
   warrantyExpired: boolean;
   warrantyExpireDate: string;
   hasBox: boolean;
-  conditionGrade: string;
+  hasBugs: boolean;
+  bugDetails: string;
 }
 
 const emptyItem: ItemForm = { brand: '', category: '', model: '', color: '', storage: '', quantity: '1', unitPrice: '', accessoryType: '', accessoryBrand: '' };
@@ -255,7 +256,8 @@ export default function PurchaseOrdersPage() {
               warrantyExpired: i.warrantyExpired,
               warrantyExpireDate: !i.warrantyExpired && i.warrantyExpireDate ? i.warrantyExpireDate : undefined,
               hasBox: i.hasBox,
-              conditionGrade: i.conditionGrade || undefined,
+              hasBugs: i.hasBugs,
+              bugDetails: i.hasBugs && i.bugDetails ? i.bugDetails : undefined,
             } : {}),
           };
         }),
@@ -414,7 +416,8 @@ export default function PurchaseOrdersPage() {
           warrantyExpired: false,
           warrantyExpireDate: '',
           hasBox: true,
-          conditionGrade: '',
+          hasBugs: false,
+          bugDetails: '',
         });
       }
     }
@@ -437,7 +440,7 @@ export default function PurchaseOrdersPage() {
 
   const updateReceivingUnit = (idx: number, field: string, value: string) => {
     const newUnits = [...receivingUnits];
-    const boolFields = ['hasBox', 'warrantyExpired'];
+    const boolFields = ['hasBox', 'warrantyExpired', 'hasBugs'];
     const parsed = boolFields.includes(field) ? value === 'true' : value;
     newUnits[idx] = { ...newUnits[idx], [field]: parsed };
     setReceivingUnits(newUnits);
@@ -1925,21 +1928,7 @@ export default function PurchaseOrdersPage() {
                   {unit.category === 'PHONE_USED' && unit.status === 'PASS' && (
                     <div className="mt-2 border border-orange-200 bg-orange-50 rounded-lg p-3 space-y-2">
                       <div className="text-xs font-medium text-orange-700 mb-1">ข้อมูลมือสอง + ตรวจเช็ค</div>
-                      <div className="grid grid-cols-3 gap-2">
-                        <div>
-                          <label className="block text-xs text-gray-500 mb-0.5">เกรดสภาพ</label>
-                          <select
-                            value={unit.conditionGrade}
-                            onChange={(e) => updateReceivingUnit(idx, 'conditionGrade', e.target.value)}
-                            className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-orange-500 outline-none"
-                          >
-                            <option value="">-- เลือกเกรด --</option>
-                            <option value="A">A - สภาพดีมาก</option>
-                            <option value="B">B - สภาพดี</option>
-                            <option value="C">C - มีรอยใช้งาน</option>
-                            <option value="D">D - สภาพพอใช้</option>
-                          </select>
-                        </div>
+                      <div className="grid grid-cols-2 gap-2">
                         <div>
                           <label className="block text-xs text-gray-500 mb-0.5">% แบตเตอรี่</label>
                           <input
@@ -1993,6 +1982,36 @@ export default function PurchaseOrdersPage() {
                             />
                           )}
                         </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-0.5">เช็คบัค (ตรวจซอฟต์แวร์)</label>
+                        <div className="flex items-center gap-3">
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => updateReceivingUnit(idx, 'hasBugs', 'false')}
+                              className={`px-3 py-1 rounded text-xs font-medium transition-colors ${!unit.hasBugs ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-green-100'}`}
+                            >
+                              ไม่มีบัค
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateReceivingUnit(idx, 'hasBugs', 'true')}
+                              className={`px-3 py-1 rounded text-xs font-medium transition-colors ${unit.hasBugs ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-red-100'}`}
+                            >
+                              มีบัค
+                            </button>
+                          </div>
+                        </div>
+                        {unit.hasBugs && (
+                          <input
+                            type="text"
+                            placeholder="ระบุรายละเอียดบัค เช่น จอมีเส้น, ลำโพงเสีย"
+                            value={unit.bugDetails}
+                            onChange={(e) => updateReceivingUnit(idx, 'bugDetails', e.target.value)}
+                            className="mt-1 w-full px-2 py-1.5 border border-red-300 rounded text-sm focus:ring-2 focus:ring-red-500 outline-none"
+                          />
+                        )}
                       </div>
                     </div>
                   )}

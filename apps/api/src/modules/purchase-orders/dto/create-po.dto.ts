@@ -181,9 +181,13 @@ export class GoodsReceivingItemDto {
   @IsOptional()
   hasBox?: boolean;
 
-  @IsIn(['A', 'B', 'C', 'D'])
+  @IsBoolean()
   @IsOptional()
-  conditionGrade?: string;
+  hasBugs?: boolean;
+
+  @IsString()
+  @IsOptional()
+  bugDetails?: string;
 }
 
 export class GoodsReceivingDto {

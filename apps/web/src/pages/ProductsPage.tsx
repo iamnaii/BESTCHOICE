@@ -278,7 +278,6 @@ export default function ProductsPage() {
       label: 'สาขา',
       render: (p: Product) => <span className="text-xs">{p.branch.name}</span>,
     },
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   ], [navigateToProduct, openPriceEdit, isManager, selectedIds, products]);
 
   return (

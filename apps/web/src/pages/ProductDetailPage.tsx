@@ -252,7 +252,7 @@ export default function ProductDetailPage() {
             </>
           )}
           <InfoField label="สาขา" value={product.branch.name} />
-          <InfoField label="Supplier" value={product.supplier?.name} />
+          <InfoField label="ผู้ขาย" value={product.supplier?.name} />
           <InfoField label="PO" value={product.po?.poNumber} mono />
           <InfoField label="วันที่เพิ่ม" value={new Date(product.createdAt).toLocaleDateString('th-TH')} />
         </div>

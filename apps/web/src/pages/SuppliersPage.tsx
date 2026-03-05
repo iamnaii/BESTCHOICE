@@ -148,7 +148,7 @@ export default function SuppliersPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['suppliers'] });
-      toast.success(editingSupplier ? 'แก้ไข Supplier สำเร็จ' : 'สร้าง Supplier สำเร็จ');
+      toast.success(editingSupplier ? 'แก้ไขผู้ขายสำเร็จ' : 'สร้างผู้ขายสำเร็จ');
       closeModal();
     },
     onError: (err: unknown) => {
@@ -162,7 +162,7 @@ export default function SuppliersPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['suppliers'] });
-      toast.success('ปิดใช้งาน Supplier สำเร็จ');
+      toast.success('ปิดใช้งานผู้ขายสำเร็จ');
     },
     onError: (err: unknown) => {
       toast.error(getErrorMessage(err));
@@ -175,7 +175,7 @@ export default function SuppliersPage() {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['suppliers'] });
-      toast.success(variables.isActive ? 'เปิดใช้งาน Supplier สำเร็จ' : 'ปิดใช้งาน Supplier สำเร็จ');
+      toast.success(variables.isActive ? 'เปิดใช้งานผู้ขายสำเร็จ' : 'ปิดใช้งานผู้ขายสำเร็จ');
     },
     onError: (err: unknown) => {
       toast.error(getErrorMessage(err));
@@ -259,7 +259,7 @@ export default function SuppliersPage() {
   const columns = [
     {
       key: 'name',
-      label: 'ชื่อ Supplier',
+      label: 'ชื่อผู้ขาย',
       render: (s: Supplier) => (
         <span className="font-medium text-gray-900">{s.name}</span>
       ),
@@ -369,7 +369,7 @@ export default function SuppliersPage() {
             onClick={(e) => {
               e.stopPropagation();
               const action = s.isActive ? 'ปิด' : 'เปิด';
-              if (confirm(`ต้องการ${action}ใช้งาน Supplier "${s.name}" ?`)) {
+              if (confirm(`ต้องการ${action}ใช้งานผู้ขาย "${s.name}" ?`)) {
                 toggleActiveMutation.mutate({ id: s.id, isActive: !s.isActive });
               }
             }}
@@ -392,7 +392,7 @@ export default function SuppliersPage() {
   return (
     <div>
       <PageHeader
-        title="จัดการ Supplier"
+        title="จัดการผู้ขาย"
         subtitle={`ทั้งหมด ${result?.total ?? 0} ราย`}
         action={
           isManager ? (
@@ -400,7 +400,7 @@ export default function SuppliersPage() {
               onClick={openCreate}
               className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
             >
-              + เพิ่ม Supplier
+              + เพิ่มผู้ขาย
             </button>
           ) : undefined
         }
@@ -430,7 +430,7 @@ export default function SuppliersPage() {
         columns={columns}
         data={suppliers}
         isLoading={isLoading}
-        emptyMessage="ไม่พบ Supplier"
+        emptyMessage="ไม่พบผู้ขาย"
         pagination={result ? {
           page: result.page,
           totalPages: result.totalPages,
@@ -443,13 +443,13 @@ export default function SuppliersPage() {
       <Modal
         isOpen={isModalOpen}
         onClose={closeModal}
-        title={editingSupplier ? 'แก้ไข Supplier' : 'เพิ่ม Supplier ใหม่'}
+        title={editingSupplier ? 'แก้ไขผู้ขาย' : 'เพิ่มผู้ขายใหม่'}
         size="lg"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อ Supplier / บริษัท *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อผู้ขาย / บริษัท *</label>
               <input
                 type="text"
                 value={form.name}

@@ -229,10 +229,14 @@ export class ExchangeService {
         const dueMonth = now.getMonth() + i;
         const dueYear = now.getFullYear() + Math.floor(dueMonth / 12);
         const adjustedMonth = dueMonth % 12;
+        // Clamp dueDay to last day of the target month to prevent overflow
+        // (e.g., day 31 in a 30-day month would roll into next month)
+        const lastDayOfMonth = new Date(dueYear, adjustedMonth + 1, 0).getDate();
+        const clampedDay = Math.min(dueDay, lastDayOfMonth);
         payments.push({
           contractId: newContract.id,
           installmentNo: i,
-          dueDate: new Date(dueYear, adjustedMonth, dueDay),
+          dueDate: new Date(dueYear, adjustedMonth, clampedDay),
           amountDue: monthlyPayment,
         });
       }
@@ -278,6 +282,6 @@ export class ExchangeService {
           financedAmount,
         },
       };
-    });
+    }, { isolationLevel: 'Serializable' });
   }
 }

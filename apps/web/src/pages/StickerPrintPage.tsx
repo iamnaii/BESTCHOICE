@@ -126,7 +126,7 @@ export default function StickerPrintPage() {
               <div style={{ fontSize: '7pt', marginBottom: '1mm' }}>IMEI: {previewData.imei}</div>
             )}
             <div style={{ fontWeight: 'bold', fontSize: '11pt', marginBottom: '1mm' }}>
-              {previewData.selling_price.toLocaleString()} ฿
+              {(Number(previewData.selling_price) || 0).toLocaleString()} ฿
             </div>
             <div style={{ fontSize: '7pt', color: '#666' }}>
               {previewData.branch} | {previewData.date_received}

@@ -236,10 +236,11 @@ export default function ContractCreatePage() {
   useEffect(() => {
     if (totalMonths < minMonths) setTotalMonths(minMonths);
     else if (totalMonths > maxMonths) setTotalMonths(maxMonths);
-  }, [minMonths, maxMonths]);
+  }, [minMonths, maxMonths, totalMonths]);
 
-  const interestTotal = (sellingPrice - downPayment) * interestRate * totalMonths;
-  const financedAmount = (sellingPrice - downPayment) + interestTotal;
+  const principal = Math.max(sellingPrice - downPayment, 0);
+  const interestTotal = principal * interestRate * totalMonths;
+  const financedAmount = principal + interestTotal;
   const monthlyPayment = totalMonths > 0 ? Math.ceil(financedAmount / totalMonths) : 0;
 
   // Helper: build structured address JSON from OCR result

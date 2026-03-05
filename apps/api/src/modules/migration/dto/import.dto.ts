@@ -97,6 +97,20 @@ export class ImportPaymentDto {
   paidDate?: string;
 }
 
+export class ImportCustomersDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ImportCustomerDto)
+  items: ImportCustomerDto[];
+}
+
+export class ImportContractsDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ImportContractDto)
+  items: ImportContractDto[];
+}
+
 export class BulkImportDto {
   @IsArray()
   @ValidateNested({ each: true })

@@ -265,7 +265,7 @@ export default function PurchaseOrdersPage() {
         api.get(`/purchase-orders/${selectedPO.id}`).then(({ data }) => {
           setPODetail(data);
           setSelectedPO(data);
-        });
+        }).catch(() => { /* detail will refresh on next open */ });
       }
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),

@@ -70,7 +70,7 @@ export async function checkCardReaderStatus(): Promise<CardReaderStatus | null> 
 /** Read card data from the local card reader service */
 export async function readSmartCard(): Promise<SmartCardData> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000);
+  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT * 2);
 
   try {
     const resp = await fetch(`${CARD_READER_URL}/api/read-card`, {
@@ -78,12 +78,18 @@ export async function readSmartCard(): Promise<SmartCardData> {
     });
     clearTimeout(timeoutId);
 
-    const body = await resp.json();
-
     if (!resp.ok) {
-      throw new Error(body.message || 'อ่านบัตรไม่สำเร็จ');
+      let message = 'อ่านบัตรไม่สำเร็จ';
+      try {
+        const errBody = await resp.json();
+        if (errBody.message) message = errBody.message;
+      } catch {
+        // Response body is not JSON
+      }
+      throw new Error(message);
     }
 
+    const body = await resp.json();
     return (body as CardReaderResponse).data;
   } catch (err: any) {
     clearTimeout(timeoutId);

@@ -48,9 +48,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
     } catch (error: unknown) {
       const axiosError = error as { response?: { status?: number }; code?: string };
-      // On auth failure, timeout, or network error, clear user state
-      // Token refresh is handled automatically by api.ts interceptor
-      if (axiosError.response?.status === 401 || axiosError.code === 'ECONNABORTED' || !axiosError.response) {
+      // Only logout on explicit 401 (unauthorized) - token refresh is handled by api.ts interceptor
+      // Do NOT logout on network errors or timeouts as the token may still be valid
+      if (axiosError.response?.status === 401) {
         logout();
       }
     } finally {
@@ -79,7 +79,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data } = res;
     localStorage.setItem('access_token', data.accessToken);
     localStorage.setItem('refresh_token', data.refreshToken);
-    setUser(data.user);
+    setUser({
+      id: data.user.id,
+      email: data.user.email,
+      name: data.user.name,
+      role: data.user.role,
+      branchId: data.user.branchId,
+      branchName: data.user.branchName ?? data.user.branch?.name ?? null,
+    });
   }, []);
 
   const value = useMemo(() => ({

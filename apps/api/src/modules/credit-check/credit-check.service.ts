@@ -303,8 +303,9 @@ export class CreditCheckService {
     if (this.anthropic && params.statementFiles.length > 0) {
       try {
         return await this.performClaudeAnalysis(params);
-      } catch (error) {
-        this.logger.warn(`Claude API analysis failed, falling back to rule-based: ${error.message}`);
+      } catch (error: unknown) {
+        const errMsg = error instanceof Error ? error.message : String(error);
+        this.logger.warn(`Claude API analysis failed, falling back to rule-based: ${errMsg}`);
       }
     }
 

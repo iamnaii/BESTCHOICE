@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsBoolean, IsArray } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsArray, MaxLength, Matches } from 'class-validator';
 
 export class CreateTemplateDto {
   @IsString()
@@ -39,9 +39,12 @@ export class UpdateTemplateDto {
 
 export class SignContractDto {
   @IsString()
+  @MaxLength(500000, { message: 'ลายเซ็นต้องมีขนาดไม่เกิน 500KB' })
+  @Matches(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/, { message: 'ลายเซ็นต้องเป็นรูปแบบ base64 image เท่านั้น' })
   signatureImage: string; // base64 PNG
 
   @IsString()
+  @Matches(/^(CUSTOMER|STAFF)$/, { message: 'signerType ต้องเป็น CUSTOMER หรือ STAFF' })
   signerType: string; // CUSTOMER, STAFF
 }
 

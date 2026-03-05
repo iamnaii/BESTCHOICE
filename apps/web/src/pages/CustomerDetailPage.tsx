@@ -122,8 +122,9 @@ export default function CustomerDetailPage() {
       const fileUrls: string[] = [];
       for (const file of Array.from(files)) {
         const reader = new FileReader();
-        const url = await new Promise<string>((resolve) => {
+        const url = await new Promise<string>((resolve, reject) => {
           reader.onload = () => resolve(reader.result as string);
+          reader.onerror = () => reject(new Error('ไม่สามารถอ่านไฟล์ได้'));
           reader.readAsDataURL(file);
         });
         fileUrls.push(url);

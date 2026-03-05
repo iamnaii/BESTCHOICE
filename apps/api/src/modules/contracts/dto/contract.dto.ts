@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsInt, Min, Max } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsInt, Min, Max, Matches } from 'class-validator';
 
 export class CreateContractDto {
   @IsString()
@@ -11,7 +11,8 @@ export class CreateContractDto {
   branchId: string;
 
   @IsString()
-  planType: string; // STORE_DIRECT, CREDIT_CARD, STORE_WITH_INTEREST
+  @Matches(/^(STORE_DIRECT|CREDIT_CARD|STORE_WITH_INTEREST)$/, { message: 'planType ต้องเป็น STORE_DIRECT, CREDIT_CARD หรือ STORE_WITH_INTEREST' })
+  planType: string;
 
   @IsNumber()
   @Min(1)
@@ -76,6 +77,7 @@ export class UpdateContractDto {
 
 export class EarlyPayoffDto {
   @IsString()
+  @Matches(/^(CASH|BANK_TRANSFER|QR_EWALLET)$/, { message: 'paymentMethod ต้องเป็น CASH, BANK_TRANSFER หรือ QR_EWALLET' })
   paymentMethod: string;
 
   @IsString()

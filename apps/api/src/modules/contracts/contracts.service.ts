@@ -190,7 +190,10 @@ export class ContractsService {
 
       for (let i = 1; i <= dto.totalMonths; i++) {
         // JavaScript Date handles month overflow correctly (e.g. month 13 = next January)
-        const dueDate = new Date(now.getFullYear(), now.getMonth() + i, dueDay);
+        // but day overflow is unsafe (day 31 in Feb → March), so clamp to last day of month
+        const targetMonth = now.getMonth() + i;
+        const lastDay = new Date(now.getFullYear(), targetMonth + 1, 0).getDate();
+        const dueDate = new Date(now.getFullYear(), targetMonth, Math.min(dueDay, lastDay));
         // Last installment adjusts for Math.ceil rounding to avoid overcharging
         const isLast = i === dto.totalMonths;
         const amount = isLast ? financedAmount - monthlyPayment * (dto.totalMonths - 1) : monthlyPayment;
@@ -218,7 +221,7 @@ export class ContractsService {
       });
 
       return newContract;
-    });
+    }, { isolationLevel: 'Serializable' });
 
     return this.findOne(contract.id);
   }
@@ -311,7 +314,9 @@ export class ContractsService {
       }> = [];
 
       for (let i = 1; i <= totalMonths; i++) {
-        const dueDate = new Date(now.getFullYear(), now.getMonth() + i, dueDay);
+        const targetMonth = now.getMonth() + i;
+        const lastDay = new Date(now.getFullYear(), targetMonth + 1, 0).getDate();
+        const dueDate = new Date(now.getFullYear(), targetMonth, Math.min(dueDay, lastDay));
         const isLast = i === totalMonths;
         const amount = isLast ? financedAmount - monthlyPayment * (totalMonths - 1) : monthlyPayment;
         payments.push({

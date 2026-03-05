@@ -16,6 +16,17 @@ export default class ErrorBoundary extends Component<Props, State> {
     return { hasError: true, error };
   }
 
+  componentDidUpdate(prevProps: Props) {
+    // Reset error state when children change (e.g. route navigation)
+    if (this.state.hasError && prevProps.children !== this.props.children) {
+      this.setState({ hasError: false, error: null });
+    }
+  }
+
+  private handleReset = () => {
+    this.setState({ hasError: false, error: null });
+  };
+
   render() {
     if (this.state.hasError) {
       return (
@@ -26,12 +37,20 @@ export default class ErrorBoundary extends Component<Props, State> {
             <p className="text-sm text-gray-500 mb-4">
               {this.state.error?.message || 'ระบบเกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง'}
             </p>
-            <button
-              onClick={() => window.location.reload()}
-              className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700"
-            >
-              โหลดหน้าใหม่
-            </button>
+            <div className="flex gap-2 justify-center">
+              <button
+                onClick={this.handleReset}
+                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-100"
+              >
+                ลองใหม่
+              </button>
+              <button
+                onClick={() => window.location.reload()}
+                className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700"
+              >
+                โหลดหน้าใหม่
+              </button>
+            </div>
           </div>
         </div>
       );

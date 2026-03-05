@@ -172,7 +172,8 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
       if (provinceMatch) addr.province = provinceMatch[1];
       const hasStructured = Object.values(addr).some((v) => v !== '');
       if (hasStructured) return JSON.stringify(addr);
-      return raw;
+      // Wrap raw address text as JSON for consistent backend parsing
+      return JSON.stringify({ ...addr, raw });
     }
     return undefined;
   };
@@ -201,6 +202,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
     if (!file) return;
     if (file.size > 10 * 1024 * 1024) {
       toast.error('ไฟล์ต้องมีขนาดไม่เกิน 10MB');
+      if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
 
@@ -208,6 +210,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
     const isIdCard = selectedType === 'ID_CARD_COPY';
     if (isIdCard && !file.type.startsWith('image/')) {
       toast.error('สำเนาบัตรประชาชนต้องเป็นไฟล์รูปภาพเท่านั้น');
+      if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
 

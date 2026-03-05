@@ -15,7 +15,11 @@
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\""
   },
   "devDependencies": {
-    "turbo": "^2.4.0",
-    "prettier": "^3.2.0"
+    "prettier": "^3.2.0",
+    "prisma": "^6.19.2",
+    "turbo": "^2.4.0"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.2"
   }
 }

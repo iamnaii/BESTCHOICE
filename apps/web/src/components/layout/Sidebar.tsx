@@ -9,6 +9,7 @@ interface NavItem {
   roles?: string[];
   section?: string;
   step?: number;
+  group?: string;
 }
 
 const sectionMeta: Record<string, { label: string; icon: string }> = {
@@ -52,13 +53,15 @@ const navItems: NavItem[] = [
   { label: 'เปลี่ยนเครื่อง', path: '/exchange', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'debt' },
   { label: 'ยึดคืน & ขายต่อ', path: '/repossessions', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'debt' },
 
-  // จัดซื้อ & คลังสินค้า — Flow: เช็คสต็อก → Supplier → สั่งซื้อ → ตรวจรับ/QC → เข้าคลัง → ส่งสาขา
-  { label: 'เช็คสต็อก', path: '/stock', step: 1, roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'], section: 'inventory' },
-  { label: 'Supplier', path: '/suppliers', step: 2, roles: ['OWNER', 'BRANCH_MANAGER'], section: 'inventory' },
-  { label: 'สั่งซื้อ & ตรวจรับ', path: '/purchase-orders', step: 3, roles: ['OWNER', 'BRANCH_MANAGER'], section: 'inventory' },
-  { label: 'ตรวจเช็คเครื่อง', path: '/inspections', step: 4, section: 'inventory' },
-  { label: 'สินค้าในคลัง', path: '/products', step: 5, section: 'inventory' },
-  { label: 'โอนไปสาขา', path: '/stock/transfers', step: 6, roles: ['OWNER', 'BRANCH_MANAGER'], section: 'inventory' },
+  // จัดซื้อ & คลังสินค้า
+  // ── กลุ่ม: จัดซื้อ ──
+  { label: 'เช็คสต็อก', path: '/stock', step: 1, group: 'จัดซื้อ', roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'], section: 'inventory' },
+  { label: 'Supplier', path: '/suppliers', step: 2, group: 'จัดซื้อ', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'inventory' },
+  { label: 'สั่งซื้อ & ตรวจรับ', path: '/purchase-orders', step: 3, group: 'จัดซื้อ', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'inventory' },
+  // ── กลุ่ม: คลังสินค้า ──
+  { label: 'ตรวจเช็คเครื่อง', path: '/inspections', step: 4, group: 'คลังสินค้า', section: 'inventory' },
+  { label: 'สินค้าในคลัง', path: '/products', step: 5, group: 'คลังสินค้า', section: 'inventory' },
+  { label: 'โอนไปสาขา', path: '/stock/transfers', step: 6, group: 'คลังสินค้า', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'inventory' },
 
   // รายงาน & แจ้งเตือน
   { label: 'รายงาน', path: '/reports', roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'], section: 'reports' },
@@ -211,28 +214,42 @@ function Sidebar() {
                 )}
               >
                 <div className="ml-4 pl-2.5 border-l border-white/5 mt-0.5">
-                  {section.items.map((item) => (
-                    <NavLink
-                      key={item.path}
-                      to={item.path}
-                      end={item.path === '/'}
-                      className={({ isActive }) =>
-                        clsx(
-                          'flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 mb-0.5',
-                          isActive
-                            ? 'bg-primary-600 text-white shadow-lg shadow-primary-600/20'
-                            : 'text-gray-400 hover:bg-white/5 hover:text-white',
-                        )
-                      }
-                    >
-                      {item.step != null && (
-                        <span className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center text-[10px] font-bold shrink-0">
-                          {item.step}
-                        </span>
-                      )}
-                      {item.label}
-                    </NavLink>
-                  ))}
+                  {section.items.map((item, idx) => {
+                    const prevGroup = idx > 0 ? section.items[idx - 1].group : null;
+                    const showGroupHeader = item.group && item.group !== prevGroup;
+
+                    return (
+                      <div key={item.path}>
+                        {showGroupHeader && (
+                          <div className={clsx('flex items-center gap-2 px-3', idx > 0 ? 'mt-3 mb-1' : 'mb-1')}>
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-600">
+                              {item.group}
+                            </span>
+                            <div className="flex-1 h-px bg-white/5" />
+                          </div>
+                        )}
+                        <NavLink
+                          to={item.path}
+                          end={item.path === '/'}
+                          className={({ isActive }) =>
+                            clsx(
+                              'flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 mb-0.5',
+                              isActive
+                                ? 'bg-primary-600 text-white shadow-lg shadow-primary-600/20'
+                                : 'text-gray-400 hover:bg-white/5 hover:text-white',
+                            )
+                          }
+                        >
+                          {item.step != null && (
+                            <span className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center text-[10px] font-bold shrink-0">
+                              {item.step}
+                            </span>
+                          )}
+                          {item.label}
+                        </NavLink>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>

@@ -59,6 +59,23 @@ export class ProductsController {
     return this.productsService.getBrands();
   }
 
+  @Get('warranty/expiring')
+  getWarrantyExpiring(
+    @Query('days') days?: string,
+    @Query('branchId') branchId?: string,
+  ) {
+    return this.productsService.getWarrantyExpiring(
+      days ? parseInt(days) : 30,
+      branchId,
+    );
+  }
+
+  @Get('supplier-performance')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  getSupplierPerformance() {
+    return this.productsService.getSupplierPerformance();
+  }
+
   // Static transfer routes MUST be before transfers/:transferId
 
   @Get('transfers/pending')
@@ -144,6 +161,20 @@ export class ProductsController {
   @Roles('OWNER', 'BRANCH_MANAGER')
   removePrice(@Param('id') id: string, @Param('priceId') priceId: string) {
     return this.productsService.removePrice(id, priceId);
+  }
+
+  // === Reservation Endpoints ===
+
+  @Post(':id/reserve')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
+  reserve(@Param('id') id: string, @Body('reason') reason?: string) {
+    return this.productsService.reserve(id, reason);
+  }
+
+  @Post(':id/unreserve')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
+  unreserve(@Param('id') id: string) {
+    return this.productsService.unreserve(id);
   }
 
   // === Transfer Endpoints ===

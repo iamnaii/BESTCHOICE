@@ -245,7 +245,8 @@ export class RepossessionsService {
   }
 
   /**
-   * Mark repossessed product as ready for sale
+   * Mark repossessed product as ready for sale with pricing
+   * Creates ProductPrice and moves product to REFURBISHED + back to main warehouse
    */
   async markReadyForSale(id: string, resellPrice: number) {
     const repo = await this.findOne(id);
@@ -258,12 +259,42 @@ export class RepossessionsService {
       throw new BadRequestException('กรุณาระบุราคาขายต่อ');
     }
 
-    // Use transaction to ensure both updates are atomic
+    // Use transaction to ensure all updates are atomic
     return this.prisma.$transaction(async (tx) => {
+      // Find main warehouse for re-stocking
+      const mainWarehouse = await tx.branch.findFirst({
+        where: { isMainWarehouse: true, isActive: true },
+      });
+
       await tx.product.update({
         where: { id: repo.product.id },
-        data: { status: 'REFURBISHED' },
+        data: {
+          status: 'REFURBISHED',
+          stockInDate: new Date(),
+          ...(mainWarehouse ? { branchId: mainWarehouse.id } : {}),
+        },
       });
+
+      // Create/update selling price for refurbished product
+      const existingPrice = await tx.productPrice.findFirst({
+        where: { productId: repo.product.id, isDefault: true },
+      });
+      if (existingPrice) {
+        await tx.productPrice.update({
+          where: { id: existingPrice.id },
+          data: { amount: resellPrice, label: 'ราคาขายต่อ (Refurbished)' },
+        });
+      } else {
+        await tx.productPrice.create({
+          data: {
+            productId: repo.product.id,
+            label: 'ราคาขายต่อ (Refurbished)',
+            amount: resellPrice,
+            isDefault: true,
+          },
+        });
+      }
+
       return tx.repossession.update({
         where: { id },
         data: { status: 'READY_FOR_SALE', resellPrice },

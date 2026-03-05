@@ -656,7 +656,7 @@ export class PurchaseOrdersService {
             productName = nameParts.join(' ');
           }
 
-          // Create product for passed items → goes directly to IN_STOCK (receive + inspect in one step)
+          // Create product for passed items → QC_PENDING (ต้องยืนยัน QC ก่อนเข้าคลัง)
           const product = await tx.product.create({
             data: {
               name: productName,
@@ -669,8 +669,7 @@ export class PurchaseOrdersService {
               supplierId: po.supplierId,
               poId: po.id,
               branchId: mainWarehouse!.id,
-              status: 'IN_STOCK',
-              stockInDate: new Date(),
+              status: 'QC_PENDING',
               imeiSerial: item.imeiSerial || null,
               serialNumber: item.serialNumber || null,
               photos: item.photos || [],
@@ -679,10 +678,23 @@ export class PurchaseOrdersService {
               warrantyExpireDate: item.warrantyExpireDate ? new Date(item.warrantyExpireDate) : null,
               hasBox: item.hasBox ?? null,
               checklistResults: item.checklistResults ? (item.checklistResults as unknown as Prisma.InputJsonValue) : undefined,
+              conditionGrade: item.conditionGrade || null,
               accessoryType: poItem.accessoryType || null,
               accessoryBrand: poItem.accessoryBrand || null,
             },
           });
+
+          // Create selling price if provided
+          if (item.sellingPrice && item.sellingPrice > 0) {
+            await tx.productPrice.create({
+              data: {
+                productId: product.id,
+                label: 'ราคาขาย',
+                amount: item.sellingPrice,
+                isDefault: true,
+              },
+            });
+          }
 
           // Create receiving item linked to product
           await tx.goodsReceivingItem.create({

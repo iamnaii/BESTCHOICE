@@ -193,6 +193,7 @@ model Branch {
   stockAdjustments StockAdjustment[]
   reorderPoints    ReorderPoint[]
   stockAlerts      StockAlert[]
+  stockCounts      StockCount[]
 
   @@map("branches")
 }
@@ -227,6 +228,7 @@ model User {
   documentsUploaded      ContractDocument[] @relation("DocumentUploadedBy")
   creditChecks           CreditCheck[]      @relation("CreditCheckedBy")
   branchReceivings       BranchReceiving[]  @relation("BranchReceivedBy")
+  stockCounts            StockCount[]       @relation("StockCountedBy")
 
   @@index([branchId])
   @@map("users")
@@ -512,6 +514,7 @@ model Product {
   branchReceivingItems BranchReceivingItem[]
   stockTransfers       StockTransfer[]
   stockAdjustments     StockAdjustment[]
+  stockCountItems      StockCountItem[]
 
   @@index([branchId])
   @@index([status])
@@ -1037,6 +1040,51 @@ model StockAlert {
   @@index([reorderPointId])
   @@index([createdAt])
   @@map("stock_alerts")
+}
+
+// ============================================================
+// STOCK COUNT (ตรวจนับสต๊อก)
+// ============================================================
+
+model StockCount {
+  id          String   @id @default(uuid())
+  countNumber String   @unique @map("count_number") // SC-YYYY-MM-NNN
+  branchId    String   @map("branch_id")
+  countedById String   @map("counted_by_id")
+  status      String   @default("DRAFT") // DRAFT, IN_PROGRESS, COMPLETED, CANCELLED
+  notes       String?
+  startedAt   DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  branch    Branch           @relation(fields: [branchId], references: [id])
+  countedBy User             @relation("StockCountedBy", fields: [countedById], references: [id])
+  items     StockCountItem[]
+
+  @@index([branchId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("stock_counts")
+}
+
+model StockCountItem {
+  id             String   @id @default(uuid())
+  stockCountId   String   @map("stock_count_id")
+  productId      String   @map("product_id")
+  expectedStatus String   @map("expected_status") // status ในระบบ
+  actualFound    Boolean  @default(true) @map("actual_found") // พบสินค้าจริง
+  conditionNotes String?  @map("condition_notes")
+  scannedImei    String?  @map("scanned_imei") // IMEI ที่สแกนยืนยัน
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  stockCount StockCount @relation(fields: [stockCountId], references: [id], onDelete: Cascade)
+  product    Product    @relation(fields: [productId], references: [id])
+
+  @@unique([stockCountId, productId])
+  @@index([stockCountId])
+  @@index([productId])
+  @@map("stock_count_items")
 }
 
 // ============================================================

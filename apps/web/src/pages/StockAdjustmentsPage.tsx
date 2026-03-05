@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import api, { getErrorMessage } from '@/lib/api';
@@ -68,8 +68,7 @@ export default function StockAdjustmentsPage() {
   const [filterBranch, setFilterBranch] = useState('');
   const [filterReason, setFilterReason] = useState('');
   const [page, setPage] = useState(1);
-  const [prevTab, setPrevTab] = useState(activeTab);
-  if (prevTab !== activeTab) { setPrevTab(activeTab); setPage(1); }
+  useEffect(() => { setPage(1); }, [activeTab]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [form, setForm] = useState({ productId: '', reason: 'DAMAGED', notes: '' });
   const [productSearch, setProductSearch] = useState('');

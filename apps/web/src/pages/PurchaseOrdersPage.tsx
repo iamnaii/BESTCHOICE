@@ -503,7 +503,7 @@ export default function PurchaseOrdersPage() {
     },
     {
       key: 'supplier',
-      label: 'Supplier',
+      label: 'ผู้ขาย',
       render: (po: PurchaseOrder) => (
         <div>
           <div className="font-medium">{po.supplier.name}</div>
@@ -671,7 +671,7 @@ export default function PurchaseOrdersPage() {
           onClick={() => setActiveTab('payable')}
           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'payable' ? 'border-red-600 text-red-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
         >
-          ยอดค้างจ่าย Supplier
+          ยอดค้างจ่ายผู้ขาย
           {payableData && payableData.grandTotal > 0 && (
             <span className="ml-1.5 px-1.5 py-0.5 bg-red-100 text-red-700 rounded-full text-xs">{(Number(payableData.grandTotal) || 0).toLocaleString()}</span>
           )}
@@ -709,14 +709,14 @@ export default function PurchaseOrdersPage() {
               <div className="text-2xl font-bold text-red-700">{(payableData?.grandTotal || 0).toLocaleString()} บาท</div>
             </div>
             <div className="text-sm text-red-500">
-              {payableData?.suppliers.length || 0} Supplier, {payableData?.suppliers.reduce((sum, s) => sum + s.poCount, 0) || 0} ใบ PO
+              {payableData?.suppliers.length || 0} ผู้ขาย, {payableData?.suppliers.reduce((sum, s) => sum + s.poCount, 0) || 0} ใบ PO
             </div>
           </div>
 
-          {/* Per-Supplier Breakdown */}
+          {/* Per-ผู้ขาย Breakdown */}
           {payableData?.suppliers.map((entry) => (
             <div key={entry.supplier.id} className="bg-white border rounded-xl overflow-hidden">
-              {/* Supplier Header */}
+              {/* ผู้ขาย Header */}
               <div className="px-4 py-3 bg-gray-50 border-b flex items-center justify-between">
                 <div>
                   <div className="font-medium text-gray-900">{entry.supplier.name}</div>
@@ -786,7 +786,7 @@ export default function PurchaseOrdersPage() {
       <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="สร้างใบสั่งซื้อ" size="xl">
         <form onSubmit={handleCreate} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Supplier *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">ผู้ขาย *</label>
             <select
               value={form.supplierId}
               onChange={(e) => {
@@ -802,7 +802,7 @@ export default function PurchaseOrdersPage() {
               className={selectClass}
               required
             >
-              <option value="">{suppliersLoading ? 'กำลังโหลด...' : suppliersError ? '⚠ โหลดข้อมูลไม่ได้' : '-- เลือก Supplier --'}</option>
+              <option value="">{suppliersLoading ? 'กำลังโหลด...' : suppliersError ? '⚠ โหลดข้อมูลไม่ได้' : '-- เลือกผู้ขาย --'}</option>
               {suppliers.map((s) => (
                 <option key={s.id} value={s.id}>{s.name} ({s.contactName}){s.hasVat ? ' [VAT]' : ''}</option>
               ))}
@@ -814,7 +814,7 @@ export default function PurchaseOrdersPage() {
                     supplierHasVat ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
                   }`}
                 >
-                  {supplierHasVat ? 'Supplier มี VAT - จะคำนวณ VAT 7% อัตโนมัติ' : 'Supplier ไม่มี VAT'}
+                  {supplierHasVat ? 'ผู้ขายมี VAT - จะคำนวณ VAT 7% อัตโนมัติ' : 'ผู้ขายไม่มี VAT'}
                 </span>
                 {selectedSupplier.paymentMethods?.length > 0 && (
                   <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
@@ -1363,7 +1363,7 @@ export default function PurchaseOrdersPage() {
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <span className="text-gray-500">Supplier:</span>{' '}
+                <span className="text-gray-500">ผู้ขาย:</span>{' '}
                 <span className="font-medium">{selectedPO.supplier.name}</span>
               </div>
               <div>

@@ -573,7 +573,7 @@ export default function ProductCreatePage() {
 
         {/* Branch & Supplier */}
         <div className="bg-white rounded-lg border p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">สาขา & Supplier</h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">สาขา & ผู้ขาย</h2>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">สาขา *</label>
@@ -583,7 +583,7 @@ export default function ProductCreatePage() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Supplier</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">ผู้ขาย</label>
               <select value={form.supplierId} onChange={(e) => setForm({ ...form, supplierId: e.target.value })} className={inputCls}>
                 <option value="">{suppliersLoading ? 'กำลังโหลด...' : suppliersError ? '⚠ โหลดข้อมูลไม่ได้' : 'ไม่ระบุ'}</option>
                 {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}

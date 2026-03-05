@@ -124,7 +124,7 @@ export default function SupplierDetailPage() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['supplier', id] });
       queryClient.invalidateQueries({ queryKey: ['suppliers'] });
-      toast.success(variables.isActive ? 'เปิดใช้งาน Supplier สำเร็จ' : 'ซ่อน Supplier สำเร็จ');
+      toast.success(variables.isActive ? 'เปิดใช้งานผู้ขายสำเร็จ' : 'ซ่อนผู้ขายสำเร็จ');
     },
     onError: (err: unknown) => {
       toast.error(getErrorMessage(err));
@@ -151,7 +151,7 @@ export default function SupplierDetailPage() {
   }
 
   if (!supplier) {
-    return <div className="text-center py-12 text-gray-500">ไม่พบข้อมูล Supplier</div>;
+    return <div className="text-center py-12 text-gray-500">ไม่พบข้อมูลผู้ขาย</div>;
   }
 
   const totalCost = history?.products.reduce((sum, p) => sum + parseFloat(p.costPrice), 0) || 0;
@@ -234,14 +234,14 @@ export default function SupplierDetailPage() {
     <div>
       <PageHeader
         title={supplier.name}
-        subtitle="รายละเอียด Supplier"
+        subtitle="รายละเอียดผู้ขาย"
         action={
           <div className="flex gap-2">
             {isManager && (
               <button
                 onClick={() => {
                   const action = supplier.isActive ? 'ซ่อน' : 'เปิดใช้งาน';
-                  if (confirm(`ต้องการ${action} Supplier "${supplier.name}" ?`)) {
+                  if (confirm(`ต้องการ${action}ผู้ขาย "${supplier.name}" ?`)) {
                     toggleActiveMutation.mutate({ supplierId: supplier.id, isActive: !supplier.isActive });
                   }
                 }}
@@ -252,7 +252,7 @@ export default function SupplierDetailPage() {
                     : 'text-green-600 border-green-300 hover:bg-green-50'
                 }`}
               >
-                {supplier.isActive ? 'ซ่อน Supplier' : 'เปิดใช้งาน'}
+                {supplier.isActive ? 'ซ่อนผู้ขาย' : 'เปิดใช้งาน'}
               </button>
             )}
             <button
@@ -265,10 +265,10 @@ export default function SupplierDetailPage() {
         }
       />
 
-      {/* Supplier Info Card */}
+      {/* ข้อมูลผู้ขาย */}
       <div className="bg-white rounded-lg border p-6 mb-6">
         <div className="flex items-start justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gray-900">ข้อมูล Supplier</h2>
+          <h2 className="text-lg font-semibold text-gray-900">ข้อมูลผู้ขาย</h2>
           <span
             className={`px-2 py-0.5 rounded-full text-xs font-medium ${
               supplier.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
@@ -365,7 +365,7 @@ export default function SupplierDetailPage() {
           columns={productColumns}
           data={history?.products || []}
           isLoading={historyLoading}
-          emptyMessage="ยังไม่มีสินค้าจาก Supplier นี้"
+          emptyMessage="ยังไม่มีสินค้าจากผู้ขายนี้"
         />
       </div>
     </div>

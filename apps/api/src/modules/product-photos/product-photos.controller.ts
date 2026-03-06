@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Delete, Param, Body, UseGuards } from '@nestjs/common';
 import { ProductPhotosService } from './product-photos.service';
-import { UploadProductPhotoDto, DeleteProductPhotoDto } from './dto/product-photo.dto';
+import { UploadProductPhotoDto } from './dto/product-photo.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';

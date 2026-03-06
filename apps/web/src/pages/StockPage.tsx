@@ -49,6 +49,8 @@ interface StockDashboard {
   stockAging: AgingBucket[];
   actionRequired: {
     inspection: number;
+    qcPending: number;
+    photoPending: number;
     pendingTransfers: number;
     repossessed: number;
     agingOver90: number;
@@ -269,7 +271,7 @@ export default function StockPage() {
   ];
 
   const actionTotal = dashboard
-    ? dashboard.actionRequired.inspection + dashboard.actionRequired.pendingTransfers + dashboard.actionRequired.repossessed + dashboard.actionRequired.agingOver90
+    ? dashboard.actionRequired.inspection + (dashboard.actionRequired.photoPending || 0) + dashboard.actionRequired.pendingTransfers + dashboard.actionRequired.repossessed + dashboard.actionRequired.agingOver90
     : 0;
 
   return (
@@ -360,6 +362,14 @@ export default function StockPage() {
                       {dashboard.actionRequired.inspection}
                     </div>
                     <div className="text-sm text-yellow-700">รอตรวจสอบ</div>
+                  </div>
+                )}
+                {(dashboard.actionRequired.photoPending || 0) > 0 && (
+                  <div className="flex items-center gap-3 p-3 bg-violet-50 rounded-lg">
+                    <div className="w-10 h-10 bg-violet-100 rounded-full flex items-center justify-center text-violet-600 text-lg font-bold">
+                      {dashboard.actionRequired.photoPending}
+                    </div>
+                    <div className="text-sm text-violet-700">รอถ่ายรูป</div>
                   </div>
                 )}
                 {dashboard.actionRequired.pendingTransfers > 0 && (

@@ -794,15 +794,15 @@ export class PurchaseOrdersService {
         throw new BadRequestException(`ไม่พบสินค้า ID: ${notFound.join(', ')}`);
       }
 
-      // Move all products to IN_STOCK
+      // Move all products to PHOTO_PENDING (ถ่ายรูป 6 มุมก่อนเข้าคลัง)
       await tx.product.updateMany({
         where: { id: { in: productIds } },
-        data: { status: 'IN_STOCK', stockInDate: new Date() },
+        data: { status: 'PHOTO_PENDING' },
       });
 
       return {
         confirmed: productIds.length,
-        message: `ยืนยัน QC สำเร็จ ${productIds.length} ชิ้น → เข้าคลัง IN_STOCK`,
+        message: `ยืนยัน QC สำเร็จ ${productIds.length} ชิ้น → รอถ่ายรูปสินค้า`,
       };
     });
   }

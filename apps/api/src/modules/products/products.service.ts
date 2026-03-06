@@ -12,7 +12,7 @@ const productInclude = {
   branch: { select: { id: true, name: true } },
   po: { select: { id: true, poNumber: true } },
   inspection: { select: { id: true, overallGrade: true, isCompleted: true } },
-  productPhotos: { select: { id: true, isCompleted: true, front: true, back: true, left: true, right: true, top: true, bottom: true } },
+  productPhotos: { select: { id: true, isCompleted: true } },
 };
 
 @Injectable()
@@ -758,11 +758,33 @@ export class ProductsService {
             receiving: { select: { receivedBy: { select: { name: true } } } },
           },
         },
-        productPhotos: { select: { id: true, isCompleted: true, front: true, back: true, left: true, right: true, top: true, bottom: true } },
+        productPhotos: { select: { id: true, isCompleted: true } },
       },
     });
 
     if (!product || product.deletedAt) throw new NotFoundException('ไม่พบสินค้า');
+
+    // Get photo completion count without loading base64 data
+    let photoAngles = 0;
+    if (product.productPhotos) {
+      const pp = await this.prisma.productPhoto.findUnique({
+        where: { productId },
+        select: { front: false, back: false, left: false, right: false, top: false, bottom: false,
+          id: true },
+      });
+      // Count non-null angles using a raw query approach
+      if (pp) {
+        const raw = await this.prisma.$queryRaw<[{ count: number }]>`
+          SELECT (CASE WHEN front IS NOT NULL THEN 1 ELSE 0 END
+               + CASE WHEN back IS NOT NULL THEN 1 ELSE 0 END
+               + CASE WHEN "left" IS NOT NULL THEN 1 ELSE 0 END
+               + CASE WHEN "right" IS NOT NULL THEN 1 ELSE 0 END
+               + CASE WHEN top IS NOT NULL THEN 1 ELSE 0 END
+               + CASE WHEN bottom IS NOT NULL THEN 1 ELSE 0 END) as count
+          FROM product_photos WHERE product_id = ${productId}`;
+        photoAngles = Number(raw[0]?.count || 0);
+      }
+    }
 
     // Find transfer history
     const transfers = await this.prisma.stockTransfer.findMany({
@@ -778,9 +800,6 @@ export class ProductsService {
     const latestTransfer = transfers[0] || null;
 
     const photoCompleted = product.productPhotos?.isCompleted === true;
-    const photoAngles = product.productPhotos
-      ? ['front', 'back', 'left', 'right', 'top', 'bottom'].filter((a) => (product.productPhotos as Record<string, unknown>)?.[a] !== null).length
-      : 0;
 
     const steps = [
       {

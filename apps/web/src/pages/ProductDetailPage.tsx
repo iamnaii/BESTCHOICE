@@ -43,12 +43,16 @@ interface Product {
   prices: Price[];
 }
 
+type Tab = 'info' | 'photos';
+
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const isManager = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
+
+  const [activeTab, setActiveTab] = useState<Tab>('info');
 
   // Price modal state
   const [isPriceModalOpen, setIsPriceModalOpen] = useState(false);
@@ -196,28 +200,55 @@ export default function ProductDetailPage() {
         }
       />
 
-      {/* Product Photos - 6 angles (เฉพาะมือสอง) */}
+      {/* Tabs */}
       {product.category === 'PHONE_USED' && (
-        <ProductPhotosPanel
-          productId={product.id}
-          canEdit={isManager || user?.role === 'SALES'}
-        />
-      )}
-
-      {/* Legacy Photos (from goods receiving) */}
-      {product.photos && product.photos.length > 0 && (
-        <div className="bg-white rounded-lg border p-6 mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-3">รูปถ่ายจากการตรวจรับ</h2>
-          <div className="flex flex-wrap gap-3">
-            {product.photos.map((photo, i) => (
-              <div key={i} className="w-28 h-28 rounded-lg overflow-hidden border">
-                <img src={photo} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
-              </div>
-            ))}
-          </div>
+        <div className="flex gap-1 mb-4 border-b">
+          {([
+            { key: 'info' as Tab, label: 'ข้อมูลสินค้า' },
+            { key: 'photos' as Tab, label: 'รูปถ่าย' },
+          ]).map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === tab.key
+                  ? 'border-primary-600 text-primary-700'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
       )}
 
+      {/* Tab: Photos */}
+      {activeTab === 'photos' && product.category === 'PHONE_USED' && (
+        <div>
+          <ProductPhotosPanel
+            productId={product.id}
+            canEdit={isManager || user?.role === 'SALES'}
+          />
+
+          {/* Legacy Photos (from goods receiving) */}
+          {product.photos && product.photos.length > 0 && (
+            <div className="bg-white rounded-lg border p-4 mb-4">
+              <h2 className="text-sm font-semibold text-gray-900 mb-2">รูปถ่ายจากการตรวจรับ</h2>
+              <div className="flex flex-wrap gap-2">
+                {product.photos.map((photo, i) => (
+                  <div key={i} className="w-20 h-20 rounded overflow-hidden border">
+                    <img src={photo} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab: Info (or always show for non-PHONE_USED) */}
+      {(activeTab === 'info' || product.category !== 'PHONE_USED') && (
+      <>
       {/* Product Info */}
       <div className="bg-white rounded-lg border p-6 mb-6">
         <div className="flex items-start justify-between mb-4">
@@ -348,6 +379,8 @@ export default function ProductDetailPage() {
             )}
           </div>
         </div>
+      )}
+      </>
       )}
 
       {/* Price Add/Edit Modal */}

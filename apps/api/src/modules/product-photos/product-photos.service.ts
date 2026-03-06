@@ -152,8 +152,8 @@ export class ProductPhotosService {
         data: { isCompleted: true },
       });
 
-      // If status is PHOTO_PENDING, advance to IN_STOCK
-      if (product.status === 'PHOTO_PENDING') {
+      // If status is PHOTO_PENDING or QC_PENDING, advance to IN_STOCK
+      if (product.status === 'PHOTO_PENDING' || product.status === 'QC_PENDING') {
         await tx.product.update({
           where: { id: productId },
           data: { status: 'IN_STOCK', stockInDate: new Date() },
@@ -163,7 +163,7 @@ export class ProductPhotosService {
       return {
         productId,
         isCompleted: true,
-        status: product.status === 'PHOTO_PENDING' ? 'IN_STOCK' : product.status,
+        status: (product.status === 'PHOTO_PENDING' || product.status === 'QC_PENDING') ? 'IN_STOCK' : product.status,
       };
     });
   }

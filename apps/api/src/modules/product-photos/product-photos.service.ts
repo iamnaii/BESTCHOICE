@@ -4,7 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 const ANGLES = ['front', 'back', 'left', 'right', 'top', 'bottom'] as const;
 type Angle = typeof ANGLES[number];
 
-const ALLOWED_UPLOAD_STATUSES = ['PHOTO_PENDING', 'QC_PENDING', 'IN_STOCK'];
+const ALLOWED_UPLOAD_STATUSES = ['PHOTO_PENDING', 'IN_STOCK'];
 
 @Injectable()
 export class ProductPhotosService {
@@ -152,8 +152,8 @@ export class ProductPhotosService {
         data: { isCompleted: true },
       });
 
-      // If status is PHOTO_PENDING or QC_PENDING, advance to IN_STOCK
-      if (product.status === 'PHOTO_PENDING' || product.status === 'QC_PENDING') {
+      // If status is PHOTO_PENDING, advance to IN_STOCK
+      if (product.status === 'PHOTO_PENDING') {
         await tx.product.update({
           where: { id: productId },
           data: { status: 'IN_STOCK', stockInDate: new Date() },
@@ -163,7 +163,7 @@ export class ProductPhotosService {
       return {
         productId,
         isCompleted: true,
-        status: (product.status === 'PHOTO_PENDING' || product.status === 'QC_PENDING') ? 'IN_STOCK' : product.status,
+        status: product.status === 'PHOTO_PENDING' ? 'IN_STOCK' : product.status,
       };
     });
   }

@@ -5,7 +5,7 @@
 
 export const statusLabels: Record<string, { label: string; className: string }> = {
   PO_RECEIVED: { label: 'รับจาก PO', className: 'bg-blue-100 text-blue-700' },
-  QC_PENDING: { label: 'รอ QC เข้าคลัง', className: 'bg-amber-100 text-amber-700' },
+  QC_PENDING: { label: 'รอตรวจรับ', className: 'bg-amber-100 text-amber-700' },
   PHOTO_PENDING: { label: 'รอถ่ายรูป', className: 'bg-violet-100 text-violet-700' },
   INSPECTION: { label: 'กำลังตรวจ', className: 'bg-yellow-100 text-yellow-700' },
   IN_STOCK: { label: 'พร้อมขาย', className: 'bg-green-100 text-green-700' },

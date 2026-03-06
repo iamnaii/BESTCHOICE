@@ -794,15 +794,30 @@ export class PurchaseOrdersService {
         throw new BadRequestException(`ไม่พบสินค้า ID: ${notFound.join(', ')}`);
       }
 
-      // Move all products to PHOTO_PENDING (ถ่ายรูป 6 มุมก่อนเข้าคลัง)
-      await tx.product.updateMany({
-        where: { id: { in: productIds } },
-        data: { status: 'PHOTO_PENDING' },
-      });
+      // PHONE_USED → PHOTO_PENDING (ต้องถ่ายรูป 6 มุมก่อนเข้าคลัง)
+      const usedPhoneIds = products.filter((p) => p.category === 'PHONE_USED').map((p) => p.id);
+      const otherIds = products.filter((p) => p.category !== 'PHONE_USED').map((p) => p.id);
+
+      if (usedPhoneIds.length > 0) {
+        await tx.product.updateMany({
+          where: { id: { in: usedPhoneIds } },
+          data: { status: 'PHOTO_PENDING' },
+        });
+      }
+
+      // อื่นๆ → IN_STOCK ตรง (ไม่ต้องถ่ายรูป)
+      if (otherIds.length > 0) {
+        await tx.product.updateMany({
+          where: { id: { in: otherIds } },
+          data: { status: 'IN_STOCK', stockInDate: new Date() },
+        });
+      }
 
       return {
         confirmed: productIds.length,
-        message: `ยืนยัน QC สำเร็จ ${productIds.length} ชิ้น → รอถ่ายรูปสินค้า`,
+        message: `ยืนยัน QC สำเร็จ ${productIds.length} ชิ้น`
+          + (usedPhoneIds.length > 0 ? ` (มือสอง ${usedPhoneIds.length} ชิ้น → รอถ่ายรูป)` : '')
+          + (otherIds.length > 0 ? ` (อื่นๆ ${otherIds.length} ชิ้น → เข้าคลัง)` : ''),
       };
     });
   }

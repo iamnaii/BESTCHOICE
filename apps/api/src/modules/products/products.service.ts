@@ -799,76 +799,79 @@ export class ProductsService {
 
     const latestTransfer = transfers[0] || null;
 
+    const isUsedPhone = product.category === 'PHONE_USED';
     const photoCompleted = product.productPhotos?.isCompleted === true;
 
-    const steps = [
+    const rawSteps: { name: string; status: 'completed' | 'in_progress' | 'pending'; description: string }[] = [
       {
-        step: 1,
         name: 'เช็ค Stock',
-        status: 'completed' as const,
+        status: 'completed',
         description: 'ตรวจสอบสต๊อคก่อนสั่งซื้อ',
       },
       {
-        step: 2,
         name: 'สั่งสินค้า (PO)',
-        status: product.poId ? 'completed' as const : 'pending' as const,
+        status: product.poId ? 'completed' : 'pending',
         description: product.po ? `PO: ${product.po.poNumber} (${product.po.status})` : 'ยังไม่ได้สั่งซื้อ',
       },
       {
-        step: 3,
         name: 'ตรวจรับสินค้า (QC)',
-        status: product.receivingItem ? 'completed' as const : 'pending' as const,
+        status: product.receivingItem ? 'completed' : 'pending',
         description: product.receivingItem
           ? `QC: ${product.receivingItem.status} (${new Date(product.receivingItem.createdAt).toLocaleDateString('th-TH')})`
           : 'ยังไม่ได้ตรวจรับ',
       },
-      {
-        step: 4,
+    ];
+
+    // ถ่ายรูป 6 มุม เฉพาะมือสอง
+    if (isUsedPhone) {
+      rawSteps.push({
         name: 'ถ่ายรูปสินค้า 6 มุม',
         status: photoCompleted
-          ? 'completed' as const
-          : product.status === 'PHOTO_PENDING' ? 'in_progress' as const
-          : photoAngles > 0 ? 'in_progress' as const
-          : 'pending' as const,
+          ? 'completed'
+          : product.status === 'PHOTO_PENDING' ? 'in_progress'
+          : photoAngles > 0 ? 'in_progress'
+          : 'pending',
         description: photoCompleted
           ? 'ถ่ายรูปครบ 6 มุมแล้ว'
           : photoAngles > 0
           ? `ถ่ายแล้ว ${photoAngles}/6 มุม`
           : 'รอถ่ายรูปสินค้า',
-      },
+      });
+    }
+
+    rawSteps.push(
       {
-        step: 5,
         name: 'สินค้าเข้าคลัง',
         status: (['IN_STOCK', 'RESERVED', 'SOLD_INSTALLMENT', 'SOLD_CASH', 'SOLD_RESELL'].includes(product.status))
-          ? 'completed' as const
-          : product.status === 'QC_PENDING' ? 'in_progress' as const : 'pending' as const,
+          ? 'completed'
+          : product.status === 'QC_PENDING' ? 'in_progress' : 'pending',
         description: product.status === 'QC_PENDING' ? 'รอยืนยัน QC เข้าคลัง' : product.status === 'IN_STOCK' ? 'อยู่ในคลัง' : product.status,
       },
       {
-        step: 6,
         name: 'ส่งไปสาขา',
         status: latestTransfer
-          ? latestTransfer.status === 'CONFIRMED' ? 'completed' as const
-            : latestTransfer.status === 'REJECTED' ? 'pending' as const
-            : latestTransfer.status === 'IN_TRANSIT' ? 'in_progress' as const
-            : 'pending' as const
-          : 'pending' as const,
+          ? latestTransfer.status === 'CONFIRMED' ? 'completed'
+            : latestTransfer.status === 'REJECTED' ? 'pending'
+            : latestTransfer.status === 'IN_TRANSIT' ? 'in_progress'
+            : 'pending'
+          : 'pending',
         description: latestTransfer
           ? `${latestTransfer.fromBranch.name} → ${latestTransfer.toBranch.name} (${latestTransfer.status})`
           : 'ยังไม่ได้โอนไปสาขา',
       },
       {
-        step: 7,
         name: 'สาขาเช็ครับ',
         status: latestTransfer?.branchReceiving
-          ? 'completed' as const
-          : latestTransfer?.status === 'IN_TRANSIT' ? 'pending' as const
-          : 'pending' as const,
+          ? 'completed'
+          : latestTransfer?.status === 'IN_TRANSIT' ? 'pending'
+          : 'pending',
         description: latestTransfer?.branchReceiving
           ? `ตรวจรับแล้ว (${latestTransfer.branchReceiving.status})`
           : 'ยังไม่ได้ตรวจรับที่สาขา',
       },
-    ];
+    );
+
+    const steps = rawSteps.map((s, i) => ({ step: i + 1, ...s }));
 
     let currentStep = 1;
     for (let i = steps.length - 1; i >= 0; i--) {

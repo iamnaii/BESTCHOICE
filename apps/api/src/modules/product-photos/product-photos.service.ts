@@ -13,9 +13,14 @@ export class ProductPhotosService {
   async getPhotos(productId: string) {
     const product = await this.prisma.product.findUnique({
       where: { id: productId },
-      select: { id: true, status: true, productPhotos: true },
+      select: { id: true, status: true, category: true, productPhotos: true },
     });
     if (!product) throw new NotFoundException('ไม่พบสินค้า');
+
+    // รูปถ่าย 6 มุมเฉพาะมือสอง
+    if (product.category !== 'PHONE_USED') {
+      return { productId, applicable: false };
+    }
 
     if (!product.productPhotos) {
       return {
@@ -49,9 +54,13 @@ export class ProductPhotosService {
   async uploadPhoto(productId: string, angle: string, photo: string, userId: string) {
     const product = await this.prisma.product.findUnique({
       where: { id: productId },
-      select: { id: true, status: true, deletedAt: true },
+      select: { id: true, status: true, category: true, deletedAt: true },
     });
     if (!product || product.deletedAt) throw new NotFoundException('ไม่พบสินค้า');
+
+    if (product.category !== 'PHONE_USED') {
+      throw new BadRequestException('ถ่ายรูป 6 มุมเฉพาะสินค้ามือสองเท่านั้น');
+    }
 
     if (!ALLOWED_UPLOAD_STATUSES.includes(product.status)) {
       throw new BadRequestException(`ไม่สามารถอัปโหลดรูปในสถานะ ${product.status} ได้`);

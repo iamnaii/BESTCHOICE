@@ -210,7 +210,7 @@ export default function ProductPhotosPanel({
                 {ANGLE_LABELS[angle]}
               </div>
               {photo ? (
-                <div className="relative group">
+                <div className="relative">
                   <div
                     className="w-full aspect-[4/3] rounded overflow-hidden border border-green-300 cursor-pointer"
                     onClick={() => setPreviewPhoto({ angle, src: photo })}
@@ -221,21 +221,21 @@ export default function ProductPhotosPanel({
                       className="w-full h-full object-cover"
                     />
                   </div>
-                  {canEdit && !isCompleted && (
-                    <div className="absolute top-0.5 right-0.5 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {canEdit && (
+                    <div className="flex gap-1 mt-1">
                       <button
                         onClick={() => triggerUpload(angle)}
-                        className="p-0.5 bg-white/90 rounded text-[10px] text-blue-600 hover:bg-white shadow-sm leading-none"
-                        title="เปลี่ยนรูป"
+                        disabled={uploadMutation.isPending || deleteMutation.isPending}
+                        className="flex-1 px-1 py-0.5 bg-blue-50 rounded text-[10px] text-blue-600 hover:bg-blue-100 font-medium disabled:opacity-50"
                       >
-                        แก้
+                        เปลี่ยน
                       </button>
                       <button
                         onClick={() => {
                           if (confirm(`ลบรูป${ANGLE_LABELS[angle]}?`)) deleteMutation.mutate(angle);
                         }}
-                        className="p-0.5 bg-white/90 rounded text-[10px] text-red-600 hover:bg-white shadow-sm leading-none"
-                        title="ลบรูป"
+                        disabled={deleteMutation.isPending}
+                        className="flex-1 px-1 py-0.5 bg-red-50 rounded text-[10px] text-red-600 hover:bg-red-100 font-medium disabled:opacity-50"
                       >
                         ลบ
                       </button>

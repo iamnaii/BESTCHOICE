@@ -4,99 +4,129 @@ import * as bcrypt from 'bcrypt';
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('Seeding database...');
+  console.log('=== Resetting & Seeding database ===');
 
-  // Create branches
-  const branch1 = await prisma.branch.upsert({
-    where: { id: 'branch-001' },
-    update: {},
-    create: {
+  // ============================================================
+  // STEP 0: DELETE ALL DATA (reverse dependency order)
+  // ============================================================
+  console.log('Deleting all existing data...');
+  await prisma.stockCountItem.deleteMany();
+  await prisma.stockCount.deleteMany();
+  await prisma.branchReceivingItem.deleteMany();
+  await prisma.branchReceiving.deleteMany();
+  await prisma.stockAlert.deleteMany();
+  await prisma.reorderPoint.deleteMany();
+  await prisma.stockAdjustment.deleteMany();
+  await prisma.stockTransfer.deleteMany();
+  await prisma.inspectionResult.deleteMany();
+  await prisma.inspection.deleteMany();
+  await prisma.inspectionTemplateItem.deleteMany();
+  await prisma.inspectionTemplate.deleteMany();
+  await prisma.repossession.deleteMany();
+  await prisma.callLog.deleteMany();
+  await prisma.notificationLog.deleteMany();
+  await prisma.auditLog.deleteMany();
+  await prisma.signature.deleteMany();
+  await prisma.eDocument.deleteMany();
+  await prisma.contractDocument.deleteMany();
+  await prisma.creditCheck.deleteMany();
+  await prisma.payment.deleteMany();
+  await prisma.sale.deleteMany();
+  await prisma.contract.deleteMany();
+  await prisma.interestConfig.deleteMany();
+  await prisma.productPrice.deleteMany();
+  await prisma.goodsReceivingItem.deleteMany();
+  await prisma.goodsReceiving.deleteMany();
+  await prisma.pOItem.deleteMany();
+  await prisma.product.deleteMany();
+  await prisma.purchaseOrder.deleteMany();
+  await prisma.supplierPaymentMethod.deleteMany();
+  await prisma.supplier.deleteMany();
+  await prisma.customer.deleteMany();
+  await prisma.user.deleteMany();
+  await prisma.branch.deleteMany();
+  await prisma.systemConfig.deleteMany();
+  await prisma.contractTemplate.deleteMany();
+  await prisma.stickerTemplate.deleteMany();
+  console.log('All data deleted.');
+
+  // ============================================================
+  // STEP 1: BRANCHES
+  // ============================================================
+  const hashedPassword = await bcrypt.hash('admin1234', 10);
+
+  const branch1 = await prisma.branch.create({
+    data: {
       id: 'branch-001',
+      name: 'คลังสินค้าหลัก (Main Warehouse)',
+      location: '99 ถ.วิภาวดีรังสิต แขวงจตุจักร เขตจตุจักร กทม. 10900',
+      phone: '02-100-0000',
+      isMainWarehouse: true,
+    },
+  });
+
+  const branch2 = await prisma.branch.create({
+    data: {
+      id: 'branch-002',
       name: 'สาขาลาดพร้าว',
       location: '123 ถ.ลาดพร้าว แขวงจอมพล เขตจตุจักร กทม. 10900',
       phone: '02-111-1111',
     },
   });
 
-  const branch2 = await prisma.branch.upsert({
-    where: { id: 'branch-002' },
-    update: {},
-    create: {
-      id: 'branch-002',
+  const branch3 = await prisma.branch.create({
+    data: {
+      id: 'branch-003',
       name: 'สาขารามคำแหง',
       location: '456 ถ.รามคำแหง แขวงหัวหมาก เขตบางกะปิ กทม. 10240',
       phone: '02-222-2222',
     },
   });
 
-  const branch3 = await prisma.branch.upsert({
-    where: { id: 'branch-003' },
-    update: {},
-    create: {
-      id: 'branch-003',
+  const branch4 = await prisma.branch.create({
+    data: {
+      id: 'branch-004',
       name: 'สาขาบางแค',
       location: '789 ถ.เพชรเกษม แขวงบางแค เขตบางแค กทม. 10160',
       phone: '02-333-3333',
     },
   });
 
-  console.log('Branches created:', branch1.name, branch2.name, branch3.name);
+  console.log('Branches created: 4 (1 warehouse + 3 branches)');
 
-  // Create admin user (owner)
-  const hashedPassword = await bcrypt.hash('admin1234', 10);
-
-  const owner = await prisma.user.upsert({
-    where: { email: 'admin@bestchoice.com' },
-    update: {},
-    create: {
-      email: 'admin@bestchoice.com',
-      password: hashedPassword,
-      name: 'เจ้าของร้าน',
-      role: 'OWNER',
-      branchId: branch1.id,
-    },
+  // ============================================================
+  // STEP 2: USERS (6 users across branches)
+  // ============================================================
+  const owner = await prisma.user.create({
+    data: { id: 'user-001', email: 'admin@bestchoice.com', password: hashedPassword, name: 'สุรชัย เจ้าของร้าน', role: 'OWNER', branchId: branch1.id },
   });
-
-  // Create sample users for each role
-  const manager = await prisma.user.upsert({
-    where: { email: 'manager@bestchoice.com' },
-    update: {},
-    create: {
-      email: 'manager@bestchoice.com',
-      password: hashedPassword,
-      name: 'ผู้จัดการสาขาลาดพร้าว',
-      role: 'BRANCH_MANAGER',
-      branchId: branch1.id,
-    },
+  const mgr1 = await prisma.user.create({
+    data: { id: 'user-002', email: 'manager.ladprao@bestchoice.com', password: hashedPassword, name: 'วิภา ผู้จัดการลาดพร้าว', role: 'BRANCH_MANAGER', branchId: branch2.id },
   });
-
-  const sales = await prisma.user.upsert({
-    where: { email: 'sales@bestchoice.com' },
-    update: {},
-    create: {
-      email: 'sales@bestchoice.com',
-      password: hashedPassword,
-      name: 'พนักงานขาย',
-      role: 'SALES',
-      branchId: branch1.id,
-    },
+  const mgr2 = await prisma.user.create({
+    data: { id: 'user-003', email: 'manager.ramkham@bestchoice.com', password: hashedPassword, name: 'ธนา ผู้จัดการรามคำแหง', role: 'BRANCH_MANAGER', branchId: branch3.id },
   });
-
-  const accountant = await prisma.user.upsert({
-    where: { email: 'accountant@bestchoice.com' },
-    update: {},
-    create: {
-      email: 'accountant@bestchoice.com',
-      password: hashedPassword,
-      name: 'ฝ่ายบัญชี',
-      role: 'ACCOUNTANT',
-      branchId: null,
-    },
+  const sales1 = await prisma.user.create({
+    data: { id: 'user-004', email: 'sales1@bestchoice.com', password: hashedPassword, name: 'สมศักดิ์ พนักงานขาย', role: 'SALES', branchId: branch2.id },
   });
+  const sales2 = await prisma.user.create({
+    data: { id: 'user-005', email: 'sales2@bestchoice.com', password: hashedPassword, name: 'อารียา พนักงานขาย', role: 'SALES', branchId: branch3.id },
+  });
+  const accountant = await prisma.user.create({
+    data: { id: 'user-006', email: 'accountant@bestchoice.com', password: hashedPassword, name: 'พิมพ์ใจ ฝ่ายบัญชี', role: 'ACCOUNTANT', branchId: null },
+  });
+  const sales3 = await prisma.user.create({
+    data: { id: 'user-007', email: 'sales3@bestchoice.com', password: hashedPassword, name: 'กิตติ พนักงานขาย', role: 'SALES', branchId: branch4.id },
+  });
+  const mgr3 = await prisma.user.create({
+    data: { id: 'user-008', email: 'manager.bangkhae@bestchoice.com', password: hashedPassword, name: 'ประภา ผู้จัดการบางแค', role: 'BRANCH_MANAGER', branchId: branch4.id },
+  });
+  console.log('Users created: 8');
 
-  console.log('Users created:', owner.name, manager.name, sales.name, accountant.name);
 
-  // System config defaults
+  // ============================================================
+  // STEP 3: SYSTEM CONFIG
+  // ============================================================
   const configs = [
     { key: 'interest_rate', value: '0.08', label: 'อัตราดอกเบี้ยต่อเดือน (Flat rate)' },
     { key: 'min_down_payment_pct', value: '0.15', label: 'เงินดาวน์ขั้นต่ำ (%)' },
@@ -110,877 +140,1085 @@ async function main() {
     { key: 'grade_a_threshold', value: '90', label: 'เกณฑ์ Grade A (%)' },
     { key: 'grade_b_threshold', value: '70', label: 'เกณฑ์ Grade B (%)' },
     { key: 'grade_c_threshold', value: '50', label: 'เกณฑ์ Grade C (%)' },
+    { key: 'notification_template_payment_reminder_line', value: JSON.stringify({ name: 'แจ้งเตือนชำระเงิน (LINE)', eventType: 'PAYMENT_REMINDER', channel: 'LINE', subject: 'แจ้งเตือนค่างวด', messageTemplate: 'สวัสดีค่ะ คุณ{customer_name}\nค่างวด {contract_number} จำนวน {amount} บาท ครบกำหนด {due_date}\n- Best Choice', isActive: true }), label: 'Template: แจ้งเตือนชำระเงิน (LINE)' },
+    { key: 'notification_template_payment_reminder_sms', value: JSON.stringify({ name: 'แจ้งเตือนชำระเงิน (SMS)', eventType: 'PAYMENT_REMINDER', channel: 'SMS', messageTemplate: 'BestChoice: คุณ{customer_name} ค่างวด {contract_number} {amount}บาท ครบกำหนด {due_date}', isActive: true }), label: 'Template: แจ้งเตือนชำระเงิน (SMS)' },
+    { key: 'notification_template_overdue_notice_line', value: JSON.stringify({ name: 'แจ้งค้างชำระ (LINE)', eventType: 'OVERDUE_NOTICE', channel: 'LINE', messageTemplate: 'แจ้งเตือน: คุณ{customer_name} ค่างวด {contract_number} เลยกำหนด {days_overdue} วัน ยอด {amount} บาท\n- Best Choice', isActive: true }), label: 'Template: แจ้งค้างชำระ (LINE)' },
+    { key: 'notification_template_payment_success_line', value: JSON.stringify({ name: 'ยืนยันชำระเงิน (LINE)', eventType: 'PAYMENT_SUCCESS', channel: 'LINE', messageTemplate: 'ขอบคุณค่ะ คุณ{customer_name} ชำระ {contract_number} {amount}บาท สำเร็จ คงเหลือ {remaining_installments} งวด\n- Best Choice', isActive: true }), label: 'Template: ยืนยันชำระเงิน (LINE)' },
+    { key: 'notification_template_contract_default_line', value: JSON.stringify({ name: 'แจ้งผิดนัด (LINE)', eventType: 'CONTRACT_DEFAULT', channel: 'LINE', messageTemplate: 'สำคัญ: คุณ{customer_name} สัญญา {contract_number} เปลี่ยนสถานะผิดนัดชำระ กรุณาติดต่อสาขา {branch_phone}\n- Best Choice', isActive: true }), label: 'Template: แจ้งผิดนัดสัญญา (LINE)' },
   ];
-
-  for (const config of configs) {
-    await prisma.systemConfig.upsert({
-      where: { key: config.key },
-      update: { value: config.value, label: config.label },
-      create: config,
-    });
-  }
-
-  console.log('System config created:', configs.length, 'entries');
-
-  // Create default inspection template for phones
-  const phoneTemplate = await prisma.inspectionTemplate.create({
-    data: {
-      name: 'ตรวจเช็คมือถือมือสอง',
-      deviceType: 'PHONE',
-      items: {
-        create: [
-          { category: 'ภายนอก', itemName: 'สภาพตัวเครื่อง (รอยขีดข่วน/บุบ)', scoreType: 'GRADE', isRequired: true, weight: 15, sortOrder: 1 },
-          { category: 'ภายนอก', itemName: 'สภาพหน้าจอ (รอยร้าว/dead pixel)', scoreType: 'GRADE', isRequired: true, weight: 20, sortOrder: 2 },
-          { category: 'ภายนอก', itemName: 'สภาพปุ่มกด (Power, Volume)', scoreType: 'PASS_FAIL', isRequired: true, weight: 5, sortOrder: 3 },
-          { category: 'ภายนอก', itemName: 'ช่องชาร์จ', scoreType: 'PASS_FAIL', isRequired: true, weight: 5, sortOrder: 4 },
-          { category: 'การทำงาน', itemName: 'หน้าจอสัมผัส (touch ทุกจุด)', scoreType: 'PASS_FAIL', isRequired: true, weight: 10, sortOrder: 5 },
-          { category: 'การทำงาน', itemName: 'ลำโพง/ไมค์', scoreType: 'PASS_FAIL', isRequired: true, weight: 5, sortOrder: 6 },
-          { category: 'การทำงาน', itemName: 'กล้องหน้า/กล้องหลัง', scoreType: 'PASS_FAIL', isRequired: true, weight: 5, sortOrder: 7 },
-          { category: 'การทำงาน', itemName: 'Wi-Fi / Bluetooth', scoreType: 'PASS_FAIL', isRequired: true, weight: 5, sortOrder: 8 },
-          { category: 'การทำงาน', itemName: 'GPS / NFC', scoreType: 'PASS_FAIL', isRequired: false, weight: 3, sortOrder: 9 },
-          { category: 'การทำงาน', itemName: 'Face ID / สแกนนิ้ว', scoreType: 'PASS_FAIL', isRequired: true, weight: 5, sortOrder: 10 },
-          { category: 'แบตเตอรี่', itemName: 'สุขภาพแบตเตอรี่ (Battery Health %)', scoreType: 'NUMBER', isRequired: true, weight: 10, sortOrder: 11 },
-          { category: 'แบตเตอรี่', itemName: 'ชาร์จเข้า', scoreType: 'PASS_FAIL', isRequired: true, weight: 5, sortOrder: 12 },
-          { category: 'ซอฟต์แวร์', itemName: 'รีเซ็ตเครื่องแล้ว', scoreType: 'PASS_FAIL', isRequired: true, weight: 2, sortOrder: 13 },
-          { category: 'ซอฟต์แวร์', itemName: 'ปลดล็อค iCloud/Google Account', scoreType: 'PASS_FAIL', isRequired: true, weight: 3, sortOrder: 14 },
-          { category: 'ซอฟต์แวร์', itemName: 'IMEI ไม่ถูก block', scoreType: 'PASS_FAIL', isRequired: true, weight: 2, sortOrder: 15 },
-        ],
-      },
-    },
-  });
-
-  console.log('Inspection template created:', phoneTemplate.name);
+  for (const c of configs) { await prisma.systemConfig.create({ data: c }); }
+  console.log('SystemConfig created:', configs.length);
 
   // ============================================================
-  // SAMPLE SUPPLIERS
+  // STEP 4: SUPPLIERS (10)
   // ============================================================
-  const suppliers = [
-    {
-      id: 'sup-001',
-      name: 'ABC Mobile Supply',
-      contactName: 'คุณสมศรี วงศ์สุวรรณ',
-      nickname: 'ABC',
-      phone: '089-999-1111',
-      phoneSecondary: '02-234-5678',
-      lineId: 'abc_mobile',
-      address: '100 ถ.เจริญกรุง เขตบางรัก กทม. 10500',
-      taxId: '0105548012345',
-      hasVat: true,
-      notes: 'Supplier หลัก Apple - Authorized Reseller, สั่งล่วงหน้า 3 วัน',
-    },
-    {
-      id: 'sup-002',
-      name: 'Thai Phone Distributor Co., Ltd.',
-      contactName: 'คุณวิทยา เจริญพร',
-      nickname: 'Thai Phone',
-      phone: '089-999-2222',
-      phoneSecondary: '02-345-6789',
-      lineId: 'thaiphone_dist',
-      address: '200 ถ.พระราม 4 เขตคลองเตย กทม. 10110',
-      taxId: '0105561023456',
-      hasVat: true,
-      notes: 'Supplier Samsung/Android ทุกรุ่น, มีเครดิต 30 วัน',
-    },
-    {
-      id: 'sup-003',
-      name: 'Mobile Accessories Plus',
-      contactName: 'คุณนิดา พรหมมา',
-      nickname: 'MAP',
-      phone: '089-999-3333',
-      lineId: 'nida_map',
-      address: '300 ถ.สีลม เขตบางรัก กทม. 10500',
-      taxId: '0105565034567',
-      hasVat: false,
-      notes: 'อุปกรณ์เสริม/เคส/ฟิล์มกระจก ราคาส่ง',
-    },
-    {
-      id: 'sup-004',
-      name: 'บริษัท สยามโมบาย เทรดดิ้ง จำกัด',
-      contactName: 'คุณอนันต์ สยามรัฐ',
-      nickname: 'สยามโมบาย',
-      phone: '086-777-4444',
-      phoneSecondary: '02-456-7890',
-      lineId: 'siammobile_trading',
-      address: '88/5 ถ.พญาไท แขวงถนนพญาไท เขตราชเทวี กทม. 10400',
-      taxId: '0105557045678',
-      hasVat: true,
-      notes: 'มือถือ OPPO, Vivo, Realme ราคาดี เครดิต 15 วัน',
-    },
-    {
-      id: 'sup-005',
-      name: 'MBK Phone Center',
-      contactName: 'คุณประยุทธ์ แซ่ลิ้ม',
-      nickname: 'MBK',
-      phone: '081-888-5555',
-      lineId: 'mbk_phonecenter',
-      address: 'ชั้น 4 ห้อง 4A-25 MBK Center ถ.พญาไท เขตปทุมวัน กทม. 10330',
-      hasVat: false,
-      notes: 'มือถือมือสองสภาพดี ราคาถูก รับเครื่องได้ทันที',
-    },
-    {
-      id: 'sup-006',
-      name: 'บริษัท ดิจิตอล โซลูชั่น จำกัด',
-      contactName: 'คุณพิมพ์ลดา ศรีสุข',
-      nickname: 'Digital Sol',
-      phone: '092-666-6666',
-      phoneSecondary: '02-567-8901',
-      lineId: 'digitalsol_bkk',
-      address: '55 อาคารไอทีสแควร์ ถ.แจ้งวัฒนะ แขวงทุ่งสองห้อง เขตหลักสี่ กทม. 10210',
-      taxId: '0105563056789',
-      hasVat: true,
-      notes: 'Xiaomi, Huawei, OnePlus - นำเข้าตรง ราคา MBK -5%',
-    },
-    {
-      id: 'sup-007',
-      name: 'J&T Mobile Import',
-      contactName: 'คุณจิราภา ตั้งศิริ',
-      nickname: 'J&T',
-      phone: '095-555-7777',
-      phoneSecondary: '02-678-9012',
-      lineId: 'jt_mobileimport',
-      address: '123/45 ซ.นวมินทร์ 70 แขวงคลองกุ่ม เขตบึงกุ่ม กทม. 10230',
-      taxId: '0105570067890',
-      hasVat: true,
-      notes: 'นำเข้ามือถือจากญี่ปุ่น/เกาหลี สินค้า Grade A เครดิต 7 วัน',
-    },
-    {
-      id: 'sup-008',
-      name: 'ร้านพี่หนึ่ง โทรศัพท์มือถือ',
-      contactName: 'คุณหนึ่งฤทัย ใจเย็น',
-      nickname: 'พี่หนึ่ง',
-      phone: '063-444-8888',
-      lineId: 'peenueng_mobile',
-      address: 'ร้าน A12 ตลาดคลองถม เขตป้อมปราบฯ กทม. 10100',
-      hasVat: false,
-      notes: 'มือถือมือสอง iPhone เครื่องศูนย์ไทย ราคาต่อรองได้',
-    },
-    {
-      id: 'sup-009',
-      name: 'บริษัท แกดเจ็ท แอนด์ เกียร์ จำกัด',
-      contactName: 'คุณธนกร วัฒนชัย',
-      nickname: 'G&G',
-      phone: '097-333-9999',
-      phoneSecondary: '02-789-0123',
-      lineId: 'gadget_gear_th',
-      address: '999 ถ.ศรีนครินทร์ แขวงสวนหลวง เขตสวนหลวง กทม. 10250',
-      taxId: '0105568078901',
-      hasVat: true,
-      notes: 'Tablet iPad/Samsung Tab/อุปกรณ์ IT ครบวงจร เครดิต 30 วัน',
-    },
-    {
-      id: 'sup-010',
-      name: 'iCare Refurbished',
-      contactName: 'คุณศิริพร แจ่มใส',
-      nickname: 'iCare',
-      phone: '064-222-0000',
-      lineId: 'icare_refurb',
-      address: '77/3 ถ.รัชดาภิเษก แขวงดินแดง เขตดินแดง กทม. 10400',
-      taxId: '0105572089012',
-      hasVat: false,
-      notes: 'iPhone Refurbished Grade A-B พร้อมรับประกัน 3 เดือน',
-    },
+  const suppliersData = [
+    { id: 'sup-001', name: 'ABC Mobile Supply', contactName: 'คุณสมศรี วงศ์สุวรรณ', nickname: 'ABC', phone: '089-999-1111', phoneSecondary: '02-234-5678', lineId: 'abc_mobile', address: '100 ถ.เจริญกรุง เขตบางรัก กทม. 10500', taxId: '0105548012345', hasVat: true, notes: 'Apple Authorized Reseller' },
+    { id: 'sup-002', name: 'Thai Phone Distributor Co., Ltd.', contactName: 'คุณวิทยา เจริญพร', nickname: 'Thai Phone', phone: '089-999-2222', phoneSecondary: '02-345-6789', lineId: 'thaiphone_dist', address: '200 ถ.พระราม 4 เขตคลองเตย กทม. 10110', taxId: '0105561023456', hasVat: true, notes: 'Samsung/Android ทุกรุ่น เครดิต 30 วัน' },
+    { id: 'sup-003', name: 'Mobile Accessories Plus', contactName: 'คุณนิดา พรหมมา', nickname: 'MAP', phone: '089-999-3333', lineId: 'nida_map', address: '300 ถ.สีลม เขตบางรัก กทม. 10500', taxId: '0105565034567', hasVat: false, notes: 'อุปกรณ์เสริม/เคส/ฟิล์ม ราคาส่ง' },
+    { id: 'sup-004', name: 'บจก. สยามโมบาย เทรดดิ้ง', contactName: 'คุณอนันต์ สยามรัฐ', nickname: 'สยามโมบาย', phone: '086-777-4444', phoneSecondary: '02-456-7890', lineId: 'siammobile', address: '88/5 ถ.พญาไท เขตราชเทวี กทม. 10400', taxId: '0105557045678', hasVat: true, notes: 'OPPO, Vivo, Realme เครดิต 15 วัน' },
+    { id: 'sup-005', name: 'MBK Phone Center', contactName: 'คุณประยุทธ์ แซ่ลิ้ม', nickname: 'MBK', phone: '081-888-5555', lineId: 'mbk_phone', address: 'ชั้น 4 MBK Center ถ.พญาไท เขตปทุมวัน กทม. 10330', hasVat: false, notes: 'มือสองสภาพดี รับเครื่องทันที' },
+    { id: 'sup-006', name: 'บจก. ดิจิตอล โซลูชั่น', contactName: 'คุณพิมพ์ลดา ศรีสุข', nickname: 'Digital Sol', phone: '092-666-6666', phoneSecondary: '02-567-8901', lineId: 'digitalsol', address: '55 อาคารไอทีสแควร์ ถ.แจ้งวัฒนะ เขตหลักสี่ กทม. 10210', taxId: '0105563056789', hasVat: true, notes: 'Xiaomi, Huawei, OnePlus นำเข้าตรง' },
+    { id: 'sup-007', name: 'J&T Mobile Import', contactName: 'คุณจิราภา ตั้งศิริ', nickname: 'J&T', phone: '095-555-7777', phoneSecondary: '02-678-9012', lineId: 'jt_mobile', address: '123/45 ซ.นวมินทร์ 70 เขตบึงกุ่ม กทม. 10230', taxId: '0105570067890', hasVat: true, notes: 'นำเข้าจากญี่ปุ่น/เกาหลี Grade A เครดิต 7 วัน' },
+    { id: 'sup-008', name: 'ร้านพี่หนึ่ง โทรศัพท์มือถือ', contactName: 'คุณหนึ่งฤทัย ใจเย็น', nickname: 'พี่หนึ่ง', phone: '063-444-8888', lineId: 'peenueng', address: 'ร้าน A12 ตลาดคลองถม เขตป้อมปราบฯ กทม. 10100', hasVat: false, notes: 'iPhone มือสอง เครื่องศูนย์ไทย' },
+    { id: 'sup-009', name: 'บจก. แกดเจ็ท แอนด์ เกียร์', contactName: 'คุณธนกร วัฒนชัย', nickname: 'G&G', phone: '097-333-9999', phoneSecondary: '02-789-0123', lineId: 'gadget_gear', address: '999 ถ.ศรีนครินทร์ เขตสวนหลวง กทม. 10250', taxId: '0105568078901', hasVat: true, notes: 'Tablet iPad/Samsung Tab เครดิต 30 วัน' },
+    { id: 'sup-010', name: 'iCare Refurbished', contactName: 'คุณศิริพร แจ่มใส', nickname: 'iCare', phone: '064-222-0000', lineId: 'icare_refurb', address: '77/3 ถ.รัชดาภิเษก เขตดินแดง กทม. 10400', taxId: '0105572089012', hasVat: false, notes: 'iPhone Refurbished Grade A-B รับประกัน 3 เดือน' },
   ];
-
-  for (const s of suppliers) {
-    await prisma.supplier.upsert({
-      where: { id: s.id },
-      update: {},
-      create: s,
-    });
-  }
-  console.log('Suppliers created:', suppliers.length, 'items');
+  for (const s of suppliersData) { await prisma.supplier.create({ data: s }); }
+  console.log('Suppliers created: 10');
 
   // ============================================================
-  // SAMPLE PRODUCTS
+  // STEP 5: SUPPLIER PAYMENT METHODS (11)
   // ============================================================
-  const products = [
-    {
-      id: 'prod-001',
-      name: 'iPhone 15 Pro Max 256GB',
-      brand: 'Apple',
-      model: 'iPhone 15 Pro Max',
-      imeiSerial: '354567890123456',
-      category: 'PHONE_NEW' as const,
-      costPrice: 42900,
-      branchId: branch1.id,
-      status: 'IN_STOCK' as const,
-      conditionGrade: null,
-    },
-    {
-      id: 'prod-002',
-      name: 'iPhone 14 Pro 128GB',
-      brand: 'Apple',
-      model: 'iPhone 14 Pro',
-      imeiSerial: '354567890123457',
-      category: 'PHONE_USED' as const,
-      costPrice: 28500,
-      branchId: branch1.id,
-      status: 'IN_STOCK' as const,
-      conditionGrade: 'A' as const,
-    },
-    {
-      id: 'prod-003',
-      name: 'Samsung Galaxy S24 Ultra 256GB',
-      brand: 'Samsung',
-      model: 'Galaxy S24 Ultra',
-      imeiSerial: '354567890123458',
-      category: 'PHONE_NEW' as const,
-      costPrice: 39900,
-      branchId: branch1.id,
-      status: 'SOLD_INSTALLMENT' as const,
-      conditionGrade: null,
-    },
-    {
-      id: 'prod-004',
-      name: 'Samsung Galaxy A55 128GB',
-      brand: 'Samsung',
-      model: 'Galaxy A55',
-      imeiSerial: '354567890123459',
-      category: 'PHONE_NEW' as const,
-      costPrice: 12900,
-      branchId: branch2.id,
-      status: 'IN_STOCK' as const,
-      conditionGrade: null,
-    },
-    {
-      id: 'prod-005',
-      name: 'iPhone 13 128GB',
-      brand: 'Apple',
-      model: 'iPhone 13',
-      imeiSerial: '354567890123460',
-      category: 'PHONE_USED' as const,
-      costPrice: 15500,
-      branchId: branch2.id,
-      status: 'SOLD_INSTALLMENT' as const,
-      conditionGrade: 'B' as const,
-    },
-    {
-      id: 'prod-006',
-      name: 'OPPO Reno 11 Pro 256GB',
-      brand: 'OPPO',
-      model: 'Reno 11 Pro',
-      imeiSerial: '354567890123461',
-      category: 'PHONE_NEW' as const,
-      costPrice: 16990,
-      branchId: branch1.id,
-      status: 'IN_STOCK' as const,
-      conditionGrade: null,
-    },
-    {
-      id: 'prod-007',
-      name: 'Xiaomi 14 Ultra 512GB',
-      brand: 'Xiaomi',
-      model: '14 Ultra',
-      imeiSerial: '354567890123462',
-      category: 'PHONE_NEW' as const,
-      costPrice: 34900,
-      branchId: branch3.id,
-      status: 'IN_STOCK' as const,
-      conditionGrade: null,
-    },
-    {
-      id: 'prod-008',
-      name: 'iPad Pro M4 11" 256GB',
-      brand: 'Apple',
-      model: 'iPad Pro M4',
-      imeiSerial: '354567890123463',
-      category: 'TABLET' as const,
-      costPrice: 36900,
-      branchId: branch3.id,
-      status: 'IN_STOCK' as const,
-      conditionGrade: null,
-    },
-    {
-      id: 'prod-009',
-      name: 'Samsung Galaxy Tab S9 128GB',
-      brand: 'Samsung',
-      model: 'Galaxy Tab S9',
-      imeiSerial: '354567890123464',
-      category: 'TABLET' as const,
-      costPrice: 24900,
-      branchId: branch1.id,
-      status: 'SOLD_INSTALLMENT' as const,
-      conditionGrade: null,
-    },
-    {
-      id: 'prod-010',
-      name: 'iPhone 12 64GB',
-      brand: 'Apple',
-      model: 'iPhone 12',
-      imeiSerial: '354567890123465',
-      category: 'PHONE_USED' as const,
-      costPrice: 9500,
-      branchId: branch2.id,
-      status: 'RESERVED' as const,
-      conditionGrade: 'C' as const,
-    },
-  ];
-
-  for (const p of products) {
-    await prisma.product.upsert({
-      where: { id: p.id },
-      update: {},
-      create: p,
-    });
-  }
-  console.log('Products created:', products.length, 'items');
-
-  // ============================================================
-  // SUPPLIER PAYMENT METHODS
-  // ============================================================
-  const supplierPaymentMethods = [
+  const spmData = [
     { id: 'spm-001', supplierId: 'sup-001', paymentMethod: 'BANK_TRANSFER', bankName: 'กสิกรไทย', bankAccountName: 'ABC Mobile Supply', bankAccountNumber: '123-4-56789-0', isDefault: true },
     { id: 'spm-002', supplierId: 'sup-001', paymentMethod: 'CREDIT', creditTermDays: 7, isDefault: false },
     { id: 'spm-003', supplierId: 'sup-002', paymentMethod: 'BANK_TRANSFER', bankName: 'ไทยพาณิชย์', bankAccountName: 'Thai Phone Distributor', bankAccountNumber: '222-3-44567-8', isDefault: true },
     { id: 'spm-004', supplierId: 'sup-002', paymentMethod: 'CREDIT', creditTermDays: 30, isDefault: false },
-    { id: 'spm-005', supplierId: 'sup-004', paymentMethod: 'BANK_TRANSFER', bankName: 'กรุงเทพ', bankAccountName: 'บจ.สยามโมบาย เทรดดิ้ง', bankAccountNumber: '333-0-78901-2', isDefault: true },
+    { id: 'spm-005', supplierId: 'sup-004', paymentMethod: 'BANK_TRANSFER', bankName: 'กรุงเทพ', bankAccountName: 'บจก.สยามโมบาย เทรดดิ้ง', bankAccountNumber: '333-0-78901-2', isDefault: true },
     { id: 'spm-006', supplierId: 'sup-004', paymentMethod: 'CREDIT', creditTermDays: 15, isDefault: false },
     { id: 'spm-007', supplierId: 'sup-005', paymentMethod: 'CASH', isDefault: true },
-    { id: 'spm-008', supplierId: 'sup-006', paymentMethod: 'BANK_TRANSFER', bankName: 'กรุงไทย', bankAccountName: 'บจ.ดิจิตอล โซลูชั่น', bankAccountNumber: '444-5-67890-1', isDefault: true },
+    { id: 'spm-008', supplierId: 'sup-006', paymentMethod: 'BANK_TRANSFER', bankName: 'กรุงไทย', bankAccountName: 'บจก.ดิจิตอล โซลูชั่น', bankAccountNumber: '444-5-67890-1', isDefault: true },
     { id: 'spm-009', supplierId: 'sup-008', paymentMethod: 'CASH', isDefault: true },
-    { id: 'spm-010', supplierId: 'sup-009', paymentMethod: 'BANK_TRANSFER', bankName: 'กสิกรไทย', bankAccountName: 'บจ.แกดเจ็ท แอนด์ เกียร์', bankAccountNumber: '555-6-78901-2', isDefault: true },
+    { id: 'spm-010', supplierId: 'sup-009', paymentMethod: 'BANK_TRANSFER', bankName: 'กสิกรไทย', bankAccountName: 'บจก.แกดเจ็ท แอนด์ เกียร์', bankAccountNumber: '555-6-78901-2', isDefault: true },
     { id: 'spm-011', supplierId: 'sup-009', paymentMethod: 'CREDIT', creditTermDays: 30, isDefault: false },
   ];
+  for (const pm of spmData) { await prisma.supplierPaymentMethod.create({ data: pm }); }
+  console.log('SupplierPaymentMethods created: 11');
 
-  for (const pm of supplierPaymentMethods) {
-    await prisma.supplierPaymentMethod.upsert({
-      where: { id: pm.id },
-      update: {},
-      create: pm,
-    });
-  }
-  console.log('Supplier payment methods created:', supplierPaymentMethods.length, 'items');
 
   // ============================================================
-  // SAMPLE PURCHASE ORDERS
+  // STEP 6: PRODUCTS (25 products)
   // ============================================================
-  // PO-1: Apple order from ABC Mobile Supply (APPROVED, UNPAID)
-  const po1 = await prisma.purchaseOrder.upsert({
-    where: { id: 'po-001' },
-    update: {},
-    create: {
-      id: 'po-001',
-      poNumber: 'PO-2025-12-001',
-      supplierId: 'sup-001',
-      orderDate: new Date('2025-12-01'),
-      expectedDate: new Date('2025-12-05'),
-      dueDate: new Date('2025-12-08'),
-      status: 'APPROVED',
-      totalAmount: 214500,
-      discount: 0,
-      vatAmount: 15015,
-      netAmount: 229515,
-      paymentStatus: 'UNPAID',
-      paymentMethod: 'BANK_TRANSFER',
-      paidAmount: 0,
-      notes: 'สั่ง iPhone 15 Pro Max เข้าสต็อกประจำเดือน',
-      createdById: manager.id,
-      approvedById: owner.id,
-      items: {
-        create: [
-          { id: 'poi-001', brand: 'Apple', model: 'iPhone 15 Pro Max', storage: '256GB', category: 'PHONE_NEW', quantity: 3, unitPrice: 42900 },
-          { id: 'poi-002', brand: 'Apple', model: 'iPhone 15 Pro', storage: '128GB', category: 'PHONE_NEW', quantity: 2, unitPrice: 38900, receivedQty: 0 },
-        ],
-      },
-    },
-  });
-  console.log('PO-1 created:', po1.poNumber, '(APPROVED, UNPAID)');
-
-  // PO-2: Samsung order from Thai Phone Distributor (FULLY_RECEIVED, FULLY_PAID)
-  const po2 = await prisma.purchaseOrder.upsert({
-    where: { id: 'po-002' },
-    update: {},
-    create: {
-      id: 'po-002',
-      poNumber: 'PO-2025-11-001',
-      supplierId: 'sup-002',
-      orderDate: new Date('2025-11-15'),
-      expectedDate: new Date('2025-11-20'),
-      dueDate: new Date('2025-12-15'),
-      status: 'FULLY_RECEIVED',
-      totalAmount: 105600,
-      discount: 2000,
-      vatAmount: 7252,
-      netAmount: 110852,
-      paymentStatus: 'FULLY_PAID',
-      paymentMethod: 'BANK_TRANSFER',
-      paidAmount: 110852,
-      paymentNotes: 'โอนจ่ายครบ 25/11/2025',
-      notes: 'สั่ง Samsung ล็อตพฤศจิกายน',
-      createdById: owner.id,
-      approvedById: owner.id,
-      items: {
-        create: [
-          { id: 'poi-003', brand: 'Samsung', model: 'Galaxy S24 Ultra', storage: '256GB', category: 'PHONE_NEW', quantity: 2, unitPrice: 39900, receivedQty: 2 },
-          { id: 'poi-004', brand: 'Samsung', model: 'Galaxy A55', storage: '128GB', category: 'PHONE_NEW', quantity: 2, unitPrice: 12900, receivedQty: 2 },
-        ],
-      },
-    },
-  });
-  console.log('PO-2 created:', po2.poNumber, '(FULLY_RECEIVED, FULLY_PAID)');
-
-  // PO-3: OPPO/Vivo from สยามโมบาย (PARTIALLY_RECEIVED, DEPOSIT_PAID)
-  const po3 = await prisma.purchaseOrder.upsert({
-    where: { id: 'po-003' },
-    update: {},
-    create: {
-      id: 'po-003',
-      poNumber: 'PO-2025-12-002',
-      supplierId: 'sup-004',
-      orderDate: new Date('2025-12-03'),
-      expectedDate: new Date('2025-12-07'),
-      dueDate: new Date('2025-12-18'),
-      status: 'PARTIALLY_RECEIVED',
-      totalAmount: 101940,
-      discount: 0,
-      vatAmount: 7135.8,
-      netAmount: 109075.8,
-      paymentStatus: 'DEPOSIT_PAID',
-      paymentMethod: 'BANK_TRANSFER',
-      paidAmount: 30000,
-      paymentNotes: 'จ่ายมัดจำ 30,000',
-      notes: 'สั่ง OPPO + Vivo เข้าสาขาลาดพร้าว',
-      createdById: manager.id,
-      approvedById: owner.id,
-      items: {
-        create: [
-          { id: 'poi-005', brand: 'OPPO', model: 'Reno 11 Pro', storage: '256GB', category: 'PHONE_NEW', quantity: 3, unitPrice: 16990, receivedQty: 2 },
-          { id: 'poi-006', brand: 'Vivo', model: 'V30 Pro', storage: '256GB', category: 'PHONE_NEW', quantity: 3, unitPrice: 16990, receivedQty: 1 },
-        ],
-      },
-    },
-  });
-  console.log('PO-3 created:', po3.poNumber, '(PARTIALLY_RECEIVED, DEPOSIT_PAID)');
-
-  // PO-4: Used iPhones from MBK (DRAFT, pending approval)
-  const po4 = await prisma.purchaseOrder.upsert({
-    where: { id: 'po-004' },
-    update: {},
-    create: {
-      id: 'po-004',
-      poNumber: 'PO-2025-12-003',
-      supplierId: 'sup-005',
-      orderDate: new Date('2025-12-05'),
-      expectedDate: new Date('2025-12-05'),
-      status: 'DRAFT',
-      totalAmount: 87500,
-      discount: 2500,
-      vatAmount: 0,
-      netAmount: 85000,
-      paymentStatus: 'UNPAID',
-      paymentMethod: 'CASH',
-      paidAmount: 0,
-      notes: 'มือสองจาก MBK ล็อตใหม่ ราคาต่อรองแล้ว',
-      createdById: manager.id,
-      items: {
-        create: [
-          { id: 'poi-007', brand: 'Apple', model: 'iPhone 14 Pro', storage: '128GB', category: 'PHONE_USED', quantity: 2, unitPrice: 22500 },
-          { id: 'poi-008', brand: 'Apple', model: 'iPhone 13', storage: '128GB', category: 'PHONE_USED', quantity: 3, unitPrice: 14500 },
-        ],
-      },
-    },
-  });
-  console.log('PO-4 created:', po4.poNumber, '(DRAFT, pending approval)');
-
-  // PO-5: Xiaomi from ดิจิตอล โซลูชั่น (APPROVED, PARTIALLY_PAID)
-  const po5 = await prisma.purchaseOrder.upsert({
-    where: { id: 'po-005' },
-    update: {},
-    create: {
-      id: 'po-005',
-      poNumber: 'PO-2025-11-002',
-      supplierId: 'sup-006',
-      orderDate: new Date('2025-11-25'),
-      expectedDate: new Date('2025-12-01'),
-      dueDate: new Date('2025-12-25'),
-      status: 'APPROVED',
-      totalAmount: 104700,
-      discount: 3000,
-      vatAmount: 7119,
-      netAmount: 108819,
-      paymentStatus: 'PARTIALLY_PAID',
-      paymentMethod: 'BANK_TRANSFER',
-      paidAmount: 50000,
-      paymentNotes: 'โอนแล้ว 50,000 จ่ายที่เหลือเมื่อรับของ',
-      notes: 'Xiaomi + OnePlus เข้าสาขาบางแค',
-      createdById: owner.id,
-      approvedById: owner.id,
-      items: {
-        create: [
-          { id: 'poi-009', brand: 'Xiaomi', model: '14 Ultra', storage: '512GB', category: 'PHONE_NEW', quantity: 2, unitPrice: 34900 },
-          { id: 'poi-010', brand: 'OnePlus', model: '12', storage: '256GB', category: 'PHONE_NEW', quantity: 2, unitPrice: 17450 },
-        ],
-      },
-    },
-  });
-  console.log('PO-5 created:', po5.poNumber, '(APPROVED, PARTIALLY_PAID)');
-
-  // PO-6: Tablets from แกดเจ็ท แอนด์ เกียร์ (CANCELLED)
-  const po6 = await prisma.purchaseOrder.upsert({
-    where: { id: 'po-006' },
-    update: {},
-    create: {
-      id: 'po-006',
-      poNumber: 'PO-2025-10-001',
-      supplierId: 'sup-009',
-      orderDate: new Date('2025-10-20'),
-      expectedDate: new Date('2025-10-28'),
-      status: 'CANCELLED',
-      totalAmount: 98700,
-      discount: 0,
-      vatAmount: 6909,
-      netAmount: 105609,
-      paymentStatus: 'UNPAID',
-      paidAmount: 0,
-      rejectReason: 'ราคาสูงกว่าที่ตกลง ยกเลิกสั่งใหม่',
-      notes: 'Tablet ล็อตตุลาคม - ยกเลิกแล้ว',
-      createdById: manager.id,
-      approvedById: owner.id,
-      items: {
-        create: [
-          { id: 'poi-011', brand: 'Apple', model: 'iPad Pro M4', storage: '256GB', category: 'TABLET', quantity: 2, unitPrice: 36900 },
-          { id: 'poi-012', brand: 'Samsung', model: 'Galaxy Tab S9', storage: '128GB', category: 'TABLET', quantity: 1, unitPrice: 24900 },
-        ],
-      },
-    },
-  });
-  console.log('PO-6 created:', po6.poNumber, '(CANCELLED)');
-
-  // PO-7: Refurbished iPhones from iCare (FULLY_RECEIVED, FULLY_PAID)
-  const po7 = await prisma.purchaseOrder.upsert({
-    where: { id: 'po-007' },
-    update: {},
-    create: {
-      id: 'po-007',
-      poNumber: 'PO-2025-11-003',
-      supplierId: 'sup-010',
-      orderDate: new Date('2025-11-10'),
-      expectedDate: new Date('2025-11-12'),
-      status: 'FULLY_RECEIVED',
-      totalAmount: 57000,
-      discount: 2000,
-      vatAmount: 0,
-      netAmount: 55000,
-      paymentStatus: 'FULLY_PAID',
-      paymentMethod: 'CASH',
-      paidAmount: 55000,
-      paymentNotes: 'จ่ายเงินสดตอนรับของ',
-      notes: 'iPhone Refurbished Grade A เข้าสาขารามคำแหง',
-      createdById: owner.id,
-      approvedById: owner.id,
-      items: {
-        create: [
-          { id: 'poi-013', brand: 'Apple', model: 'iPhone 13 Pro', storage: '128GB', category: 'PHONE_USED', quantity: 2, unitPrice: 18500, receivedQty: 2 },
-          { id: 'poi-014', brand: 'Apple', model: 'iPhone 12', storage: '64GB', category: 'PHONE_USED', quantity: 2, unitPrice: 10000, receivedQty: 2 },
-        ],
-      },
-    },
-  });
-  console.log('PO-7 created:', po7.poNumber, '(FULLY_RECEIVED, FULLY_PAID)');
-
-  // ============================================================
-  // SAMPLE CUSTOMERS
-  // ============================================================
-  const customers = [
-    {
-      id: 'cust-001',
-      nationalId: 'ENC_1100100100001',
-      name: 'สมชาย ใจดี',
-      phone: '081-111-1111',
-      phoneSecondary: '02-111-1112',
-      lineId: 'somchai_j',
-      addressIdCard: '11 ซ.ลาดพร้าว 15 แขวงจอมพล เขตจตุจักร กทม. 10900',
-      addressCurrent: '11 ซ.ลาดพร้าว 15 แขวงจอมพล เขตจตุจักร กทม. 10900',
-      occupation: 'พนักงานบริษัท',
-      workplace: 'บจก. ไทยพาณิชย์',
-    },
-    {
-      id: 'cust-002',
-      nationalId: 'ENC_1100100100002',
-      name: 'สมหญิง รักเรียน',
-      phone: '082-222-2222',
-      lineId: 'somying_r',
-      addressIdCard: '22 ถ.รามคำแหง แขวงหัวหมาก เขตบางกะปิ กทม. 10240',
-      addressCurrent: '22 ถ.รามคำแหง แขวงหัวหมาก เขตบางกะปิ กทม. 10240',
-      occupation: 'ค้าขาย',
-      workplace: 'ร้านค้าส่ง ตลาดนัด',
-    },
-    {
-      id: 'cust-003',
-      nationalId: 'ENC_1100100100003',
-      name: 'วิชัย มั่งมี',
-      phone: '083-333-3333',
-      addressIdCard: '33 ถ.เพชรเกษม แขวงบางแค เขตบางแค กทม. 10160',
-      occupation: 'รับราชการ',
-      workplace: 'กรมสรรพากร',
-    },
-    {
-      id: 'cust-004',
-      nationalId: 'ENC_1100100100004',
-      name: 'นภา แก้วใส',
-      phone: '084-444-4444',
-      lineId: 'napa_k',
-      addressIdCard: '44 ซ.สุขุมวิท 71 แขวงคลองตัน เขตวัฒนา กทม. 10110',
-      addressCurrent: '44 ซ.สุขุมวิท 71 แขวงคลองตัน เขตวัฒนา กทม. 10110',
-      occupation: 'ฟรีแลนซ์',
-    },
-    {
-      id: 'cust-005',
-      nationalId: 'ENC_1100100100005',
-      name: 'ประเสริฐ ทองคำ',
-      phone: '085-555-5555',
-      addressIdCard: '55 ถ.พหลโยธิน แขวงจตุจักร เขตจตุจักร กทม. 10900',
-      occupation: 'พนักงานโรงงาน',
-      workplace: 'บมจ. ปูนซิเมนต์ไทย',
-    },
+  const productsData = [
+    // PHONE_NEW (8)
+    { id: 'prod-001', name: 'iPhone 15 Pro Max 256GB', brand: 'Apple', model: 'iPhone 15 Pro Max', color: 'Natural Titanium', storage: '256GB', imeiSerial: '354567890123456', serialNumber: 'F2LXK1A2B3', category: 'PHONE_NEW' as const, costPrice: 42900, branchId: 'branch-002', status: 'IN_STOCK' as const, supplierId: 'sup-001', stockInDate: new Date('2026-01-15') },
+    { id: 'prod-002', name: 'iPhone 15 Pro 128GB', brand: 'Apple', model: 'iPhone 15 Pro', color: 'Black Titanium', storage: '128GB', imeiSerial: '354567890123457', serialNumber: 'F2LXK1A2B4', category: 'PHONE_NEW' as const, costPrice: 38900, branchId: 'branch-002', status: 'IN_STOCK' as const, supplierId: 'sup-001', stockInDate: new Date('2026-01-15') },
+    { id: 'prod-003', name: 'Samsung Galaxy S24 Ultra 256GB', brand: 'Samsung', model: 'Galaxy S24 Ultra', color: 'Titanium Gray', storage: '256GB', imeiSerial: '354567890123458', serialNumber: 'RZ8T30ABC1', category: 'PHONE_NEW' as const, costPrice: 39900, branchId: 'branch-002', status: 'SOLD_INSTALLMENT' as const, supplierId: 'sup-002', stockInDate: new Date('2026-01-10') },
+    { id: 'prod-004', name: 'Samsung Galaxy A55 128GB', brand: 'Samsung', model: 'Galaxy A55', color: 'Awesome Navy', storage: '128GB', imeiSerial: '354567890123459', serialNumber: 'RZ8T30ABC2', category: 'PHONE_NEW' as const, costPrice: 12900, branchId: 'branch-003', status: 'IN_STOCK' as const, supplierId: 'sup-002', stockInDate: new Date('2026-01-20') },
+    { id: 'prod-005', name: 'OPPO Reno 11 Pro 256GB', brand: 'OPPO', model: 'Reno 11 Pro', color: 'Pearl White', storage: '256GB', imeiSerial: '354567890123461', serialNumber: 'OPPO11PRO01', category: 'PHONE_NEW' as const, costPrice: 16990, branchId: 'branch-002', status: 'IN_STOCK' as const, supplierId: 'sup-004', stockInDate: new Date('2026-02-01') },
+    { id: 'prod-006', name: 'Xiaomi 14 Ultra 512GB', brand: 'Xiaomi', model: '14 Ultra', color: 'Black', storage: '512GB', imeiSerial: '354567890123462', serialNumber: 'XI14U00001', category: 'PHONE_NEW' as const, costPrice: 34900, branchId: 'branch-004', status: 'IN_STOCK' as const, supplierId: 'sup-006', stockInDate: new Date('2026-02-05') },
+    { id: 'prod-007', name: 'Vivo V30 Pro 256GB', brand: 'Vivo', model: 'V30 Pro', color: 'Peacock Green', storage: '256GB', imeiSerial: '354567890123470', serialNumber: 'VIVOV30P01', category: 'PHONE_NEW' as const, costPrice: 16990, branchId: 'branch-003', status: 'SOLD_CASH' as const, supplierId: 'sup-004', stockInDate: new Date('2026-01-25') },
+    { id: 'prod-008', name: 'Samsung Galaxy S24 128GB', brand: 'Samsung', model: 'Galaxy S24', color: 'Amber Yellow', storage: '128GB', imeiSerial: '354567890123471', serialNumber: 'RZ8T30ABC3', category: 'PHONE_NEW' as const, costPrice: 27900, branchId: 'branch-004', status: 'SOLD_INSTALLMENT' as const, supplierId: 'sup-002', stockInDate: new Date('2026-02-10') },
+    // PHONE_USED (7)
+    { id: 'prod-009', name: 'iPhone 14 Pro 128GB (มือสอง)', brand: 'Apple', model: 'iPhone 14 Pro', color: 'Deep Purple', storage: '128GB', imeiSerial: '354567890123463', serialNumber: 'F2LXK1C2D3', category: 'PHONE_USED' as const, costPrice: 22500, branchId: 'branch-002', status: 'IN_STOCK' as const, conditionGrade: 'A' as const, batteryHealth: 92, warrantyExpired: true, hasBox: true, supplierId: 'sup-005', stockInDate: new Date('2026-02-01') },
+    { id: 'prod-010', name: 'iPhone 13 128GB (มือสอง)', brand: 'Apple', model: 'iPhone 13', color: 'Midnight', storage: '128GB', imeiSerial: '354567890123464', serialNumber: 'F2LXK1E2F3', category: 'PHONE_USED' as const, costPrice: 15500, branchId: 'branch-003', status: 'SOLD_INSTALLMENT' as const, conditionGrade: 'B' as const, batteryHealth: 85, warrantyExpired: true, hasBox: false, supplierId: 'sup-008', stockInDate: new Date('2026-01-20') },
+    { id: 'prod-011', name: 'iPhone 12 64GB (มือสอง)', brand: 'Apple', model: 'iPhone 12', color: 'Blue', storage: '64GB', imeiSerial: '354567890123465', serialNumber: 'F2LXK1G2H3', category: 'PHONE_USED' as const, costPrice: 9500, branchId: 'branch-003', status: 'SOLD_INSTALLMENT' as const, conditionGrade: 'C' as const, batteryHealth: 78, warrantyExpired: true, hasBox: false, supplierId: 'sup-010', stockInDate: new Date('2026-01-10') },
+    { id: 'prod-012', name: 'iPhone 13 Pro 128GB (มือสอง)', brand: 'Apple', model: 'iPhone 13 Pro', color: 'Sierra Blue', storage: '128GB', imeiSerial: '354567890123466', serialNumber: 'F2LXK1I2J3', category: 'PHONE_USED' as const, costPrice: 18500, branchId: 'branch-002', status: 'IN_STOCK' as const, conditionGrade: 'A' as const, batteryHealth: 90, warrantyExpired: true, hasBox: true, supplierId: 'sup-010', stockInDate: new Date('2026-02-05') },
+    { id: 'prod-013', name: 'Samsung Galaxy S23 128GB (มือสอง)', brand: 'Samsung', model: 'Galaxy S23', color: 'Phantom Black', storage: '128GB', imeiSerial: '354567890123467', serialNumber: 'RZ8T30DEF1', category: 'PHONE_USED' as const, costPrice: 12000, branchId: 'branch-004', status: 'IN_STOCK' as const, conditionGrade: 'B' as const, batteryHealth: 88, warrantyExpired: false, warrantyExpireDate: new Date('2026-06-15'), hasBox: true, supplierId: 'sup-007', stockInDate: new Date('2026-02-08') },
+    { id: 'prod-014', name: 'iPhone 14 128GB (มือสอง)', brand: 'Apple', model: 'iPhone 14', color: 'Product Red', storage: '128GB', imeiSerial: '354567890123472', serialNumber: 'F2LXK1K2L3', category: 'PHONE_USED' as const, costPrice: 18000, branchId: 'branch-002', status: 'REPOSSESSED' as const, conditionGrade: 'B' as const, batteryHealth: 82, warrantyExpired: true, hasBox: false, stockInDate: new Date('2026-01-05') },
+    { id: 'prod-015', name: 'iPhone 11 64GB (มือสอง)', brand: 'Apple', model: 'iPhone 11', color: 'White', storage: '64GB', imeiSerial: '354567890123473', serialNumber: 'F2LXK1M2N3', category: 'PHONE_USED' as const, costPrice: 6500, branchId: 'branch-003', status: 'DAMAGED' as const, conditionGrade: 'D' as const, batteryHealth: 65, warrantyExpired: true, hasBox: false, supplierId: 'sup-008', stockInDate: new Date('2025-12-20') },
+    // TABLET (4)
+    { id: 'prod-016', name: 'iPad Pro M4 11" 256GB', brand: 'Apple', model: 'iPad Pro M4', color: 'Space Black', storage: '256GB', imeiSerial: '354567890123468', serialNumber: 'IPADM4001', category: 'TABLET' as const, costPrice: 36900, branchId: 'branch-004', status: 'IN_STOCK' as const, supplierId: 'sup-009', stockInDate: new Date('2026-02-10') },
+    { id: 'prod-017', name: 'Samsung Galaxy Tab S9 128GB', brand: 'Samsung', model: 'Galaxy Tab S9', color: 'Graphite', storage: '128GB', imeiSerial: '354567890123469', serialNumber: 'TABS9001', category: 'TABLET' as const, costPrice: 24900, branchId: 'branch-002', status: 'SOLD_INSTALLMENT' as const, supplierId: 'sup-009', stockInDate: new Date('2026-01-05') },
+    { id: 'prod-018', name: 'iPad Air M2 11" 128GB', brand: 'Apple', model: 'iPad Air M2', color: 'Starlight', storage: '128GB', imeiSerial: '354567890123474', serialNumber: 'IPADA2001', category: 'TABLET' as const, costPrice: 27900, branchId: 'branch-003', status: 'IN_STOCK' as const, supplierId: 'sup-009', stockInDate: new Date('2026-02-15') },
+    { id: 'prod-019', name: 'Samsung Galaxy Tab A9+ 64GB', brand: 'Samsung', model: 'Galaxy Tab A9+', color: 'Silver', storage: '64GB', imeiSerial: '354567890123475', serialNumber: 'TABA9P001', category: 'TABLET' as const, costPrice: 9900, branchId: 'branch-004', status: 'SOLD_CASH' as const, supplierId: 'sup-002', stockInDate: new Date('2026-01-28') },
+    // ACCESSORY (6)
+    { id: 'prod-020', name: 'เคส iPhone 15 Pro Max MagSafe', brand: 'Apple', model: 'MagSafe Case', color: 'Clear', category: 'ACCESSORY' as const, costPrice: 890, branchId: 'branch-002', status: 'IN_STOCK' as const, accessoryType: 'CASE', accessoryBrand: 'Apple', supplierId: 'sup-003', stockInDate: new Date('2026-02-01') },
+    { id: 'prod-021', name: 'ฟิล์มกระจก Samsung Galaxy S24 Ultra', brand: 'Samsung', model: 'Galaxy S24 Ultra Screen Protector', category: 'ACCESSORY' as const, costPrice: 250, branchId: 'branch-002', status: 'IN_STOCK' as const, accessoryType: 'SCREEN_PROTECTOR', accessoryBrand: 'Nillkin', supplierId: 'sup-003', stockInDate: new Date('2026-02-01') },
+    { id: 'prod-022', name: 'สายชาร์จ USB-C 2m', brand: 'Anker', model: 'PowerLine III', category: 'ACCESSORY' as const, costPrice: 350, branchId: 'branch-003', status: 'IN_STOCK' as const, accessoryType: 'CABLE', accessoryBrand: 'Anker', supplierId: 'sup-003', stockInDate: new Date('2026-02-01') },
+    { id: 'prod-023', name: 'หูฟัง AirPods Pro 2', brand: 'Apple', model: 'AirPods Pro 2', color: 'White', imeiSerial: '354567890123476', serialNumber: 'AIRPODS001', category: 'ACCESSORY' as const, costPrice: 7900, branchId: 'branch-002', status: 'SOLD_CASH' as const, accessoryType: 'EARPHONE', accessoryBrand: 'Apple', supplierId: 'sup-001', stockInDate: new Date('2026-01-15') },
+    { id: 'prod-024', name: 'ที่ชาร์จไร้สาย MagSafe', brand: 'Apple', model: 'MagSafe Charger', color: 'White', category: 'ACCESSORY' as const, costPrice: 1290, branchId: 'branch-004', status: 'IN_STOCK' as const, accessoryType: 'CHARGER', accessoryBrand: 'Apple', supplierId: 'sup-003', stockInDate: new Date('2026-02-10') },
+    { id: 'prod-025', name: 'Power Bank 20000mAh', brand: 'Anker', model: 'PowerCore 20K', color: 'Black', category: 'ACCESSORY' as const, costPrice: 990, branchId: 'branch-003', status: 'IN_STOCK' as const, accessoryType: 'POWER_BANK', accessoryBrand: 'Anker', supplierId: 'sup-003', stockInDate: new Date('2026-02-01') },
   ];
-
-  for (const c of customers) {
-    await prisma.customer.upsert({
-      where: { id: c.id },
-      update: {},
-      create: c,
-    });
-  }
-  console.log('Customers created:', customers.length, 'people');
+  for (const p of productsData) { await prisma.product.create({ data: p }); }
+  console.log('Products created: 25');
 
   // ============================================================
-  // SAMPLE CONTRACTS + PAYMENTS
+  // STEP 7: PRODUCT PRICES
   // ============================================================
-  // Contract 1: Samsung Galaxy S24 Ultra - สมชาย (ACTIVE, 10 months)
-  const contract1 = await prisma.contract.upsert({
-    where: { id: 'cont-001' },
-    update: {},
-    create: {
-      id: 'cont-001',
-      contractNumber: 'BC-2025-0001',
-      customerId: 'cust-001',
-      productId: 'prod-003',
-      branchId: branch1.id,
-      salespersonId: sales.id,
-      planType: 'STORE_DIRECT',
-      sellingPrice: 49900,
-      downPayment: 9900,
-      interestRate: 0.08,
-      totalMonths: 10,
-      financedAmount: 40000,
-      interestTotal: 32000,
-      monthlyPayment: 7200,
-      status: 'ACTIVE',
+  const pricesData = [
+    { id: 'pp-001', productId: 'prod-001', label: 'ราคาเงินสด', amount: 46900, isDefault: true },
+    { id: 'pp-002', productId: 'prod-001', label: 'ราคาผ่อน', amount: 49900, isDefault: false },
+    { id: 'pp-003', productId: 'prod-002', label: 'ราคาเงินสด', amount: 42900, isDefault: true },
+    { id: 'pp-004', productId: 'prod-002', label: 'ราคาผ่อน', amount: 45900, isDefault: false },
+    { id: 'pp-005', productId: 'prod-003', label: 'ราคาเงินสด', amount: 44900, isDefault: true },
+    { id: 'pp-006', productId: 'prod-003', label: 'ราคาผ่อน', amount: 49900, isDefault: false },
+    { id: 'pp-007', productId: 'prod-004', label: 'ราคาเงินสด', amount: 14900, isDefault: true },
+    { id: 'pp-008', productId: 'prod-009', label: 'ราคาเงินสด', amount: 26900, isDefault: true },
+    { id: 'pp-009', productId: 'prod-009', label: 'ราคาผ่อน', amount: 29900, isDefault: false },
+    { id: 'pp-010', productId: 'prod-010', label: 'ราคาเงินสด', amount: 18900, isDefault: true },
+    { id: 'pp-011', productId: 'prod-010', label: 'ราคาผ่อน', amount: 19900, isDefault: false },
+    { id: 'pp-012', productId: 'prod-011', label: 'ราคาเงินสด', amount: 11900, isDefault: true },
+    { id: 'pp-013', productId: 'prod-016', label: 'ราคาเงินสด', amount: 41900, isDefault: true },
+    { id: 'pp-014', productId: 'prod-016', label: 'ราคาผ่อน', amount: 44900, isDefault: false },
+    { id: 'pp-015', productId: 'prod-017', label: 'ราคาเงินสด', amount: 29900, isDefault: true },
+    { id: 'pp-016', productId: 'prod-005', label: 'ราคาเงินสด', amount: 19900, isDefault: true },
+    { id: 'pp-017', productId: 'prod-006', label: 'ราคาเงินสด', amount: 39900, isDefault: true },
+    { id: 'pp-018', productId: 'prod-012', label: 'ราคาเงินสด', amount: 22900, isDefault: true },
+    { id: 'pp-019', productId: 'prod-013', label: 'ราคาเงินสด', amount: 15900, isDefault: true },
+    { id: 'pp-020', productId: 'prod-020', label: 'ราคาขาย', amount: 1590, isDefault: true },
+    { id: 'pp-021', productId: 'prod-021', label: 'ราคาขาย', amount: 490, isDefault: true },
+    { id: 'pp-022', productId: 'prod-022', label: 'ราคาขาย', amount: 590, isDefault: true },
+    { id: 'pp-023', productId: 'prod-023', label: 'ราคาขาย', amount: 8990, isDefault: true },
+    { id: 'pp-024', productId: 'prod-024', label: 'ราคาขาย', amount: 1790, isDefault: true },
+    { id: 'pp-025', productId: 'prod-025', label: 'ราคาขาย', amount: 1490, isDefault: true },
+  ];
+  for (const pp of pricesData) { await prisma.productPrice.create({ data: pp }); }
+  console.log('ProductPrices created:', pricesData.length);
+
+
+  // ============================================================
+  // STEP 8: PURCHASE ORDERS + PO ITEMS (7 POs)
+  // ============================================================
+  await prisma.purchaseOrder.create({
+    data: {
+      id: 'po-001', poNumber: 'PO-2026-01-001', supplierId: 'sup-001', orderDate: new Date('2026-01-10'), expectedDate: new Date('2026-01-15'), dueDate: new Date('2026-01-17'),
+      status: 'FULLY_RECEIVED', totalAmount: 214500, discount: 0, vatAmount: 15015, netAmount: 229515, paymentStatus: 'FULLY_PAID', paymentMethod: 'BANK_TRANSFER', paidAmount: 229515,
+      paymentNotes: 'โอนจ่ายครบ 15/01/2026', notes: 'iPhone 15 Pro Max + Pro เข้าสต็อก', createdById: 'user-002', approvedById: 'user-001',
+      items: { create: [
+        { id: 'poi-001', brand: 'Apple', model: 'iPhone 15 Pro Max', color: 'Natural Titanium', storage: '256GB', category: 'PHONE_NEW', quantity: 3, unitPrice: 42900, receivedQty: 3 },
+        { id: 'poi-002', brand: 'Apple', model: 'iPhone 15 Pro', color: 'Black Titanium', storage: '128GB', category: 'PHONE_NEW', quantity: 2, unitPrice: 38900, receivedQty: 2 },
+      ]},
     },
   });
 
-  // Generate payments for contract 1 (3 paid, 7 pending)
+  await prisma.purchaseOrder.create({
+    data: {
+      id: 'po-002', poNumber: 'PO-2026-01-002', supplierId: 'sup-002', orderDate: new Date('2026-01-08'), expectedDate: new Date('2026-01-12'),
+      status: 'FULLY_RECEIVED', totalAmount: 105600, discount: 2000, vatAmount: 7252, netAmount: 110852, paymentStatus: 'FULLY_PAID', paymentMethod: 'BANK_TRANSFER', paidAmount: 110852,
+      paymentNotes: 'โอนครบ 20/01/2026', notes: 'Samsung ล็อตมกราคม', createdById: 'user-001', approvedById: 'user-001',
+      items: { create: [
+        { id: 'poi-003', brand: 'Samsung', model: 'Galaxy S24 Ultra', color: 'Titanium Gray', storage: '256GB', category: 'PHONE_NEW', quantity: 2, unitPrice: 39900, receivedQty: 2 },
+        { id: 'poi-004', brand: 'Samsung', model: 'Galaxy A55', color: 'Awesome Navy', storage: '128GB', category: 'PHONE_NEW', quantity: 2, unitPrice: 12900, receivedQty: 2 },
+      ]},
+    },
+  });
+
+  await prisma.purchaseOrder.create({
+    data: {
+      id: 'po-003', poNumber: 'PO-2026-02-001', supplierId: 'sup-004', orderDate: new Date('2026-01-28'), expectedDate: new Date('2026-02-03'), dueDate: new Date('2026-02-12'),
+      status: 'PARTIALLY_RECEIVED', totalAmount: 101940, discount: 0, vatAmount: 7136, netAmount: 109076, paymentStatus: 'DEPOSIT_PAID', paymentMethod: 'BANK_TRANSFER', paidAmount: 30000,
+      paymentNotes: 'จ่ายมัดจำ 30,000', notes: 'OPPO + Vivo เข้าสาขาลาดพร้าว+รามคำแหง', createdById: 'user-002', approvedById: 'user-001',
+      items: { create: [
+        { id: 'poi-005', brand: 'OPPO', model: 'Reno 11 Pro', color: 'Pearl White', storage: '256GB', category: 'PHONE_NEW', quantity: 3, unitPrice: 16990, receivedQty: 2 },
+        { id: 'poi-006', brand: 'Vivo', model: 'V30 Pro', color: 'Peacock Green', storage: '256GB', category: 'PHONE_NEW', quantity: 3, unitPrice: 16990, receivedQty: 1 },
+      ]},
+    },
+  });
+
+  await prisma.purchaseOrder.create({
+    data: {
+      id: 'po-004', poNumber: 'PO-2026-02-002', supplierId: 'sup-005', orderDate: new Date('2026-02-05'), expectedDate: new Date('2026-02-05'),
+      status: 'DRAFT', totalAmount: 87500, discount: 2500, vatAmount: 0, netAmount: 85000, paymentStatus: 'UNPAID', paymentMethod: 'CASH', paidAmount: 0,
+      notes: 'มือสอง MBK ล็อตใหม่ รอ approve', createdById: 'user-002',
+      items: { create: [
+        { id: 'poi-007', brand: 'Apple', model: 'iPhone 14 Pro', color: 'Deep Purple', storage: '128GB', category: 'PHONE_USED', quantity: 2, unitPrice: 22500 },
+        { id: 'poi-008', brand: 'Apple', model: 'iPhone 13', color: 'Midnight', storage: '128GB', category: 'PHONE_USED', quantity: 3, unitPrice: 14500 },
+      ]},
+    },
+  });
+
+  await prisma.purchaseOrder.create({
+    data: {
+      id: 'po-005', poNumber: 'PO-2026-02-003', supplierId: 'sup-006', orderDate: new Date('2026-02-01'), expectedDate: new Date('2026-02-07'), dueDate: new Date('2026-03-01'),
+      status: 'APPROVED', totalAmount: 104700, discount: 3000, vatAmount: 7119, netAmount: 108819, paymentStatus: 'PARTIALLY_PAID', paymentMethod: 'BANK_TRANSFER', paidAmount: 50000,
+      paymentNotes: 'โอนแล้ว 50,000', notes: 'Xiaomi + OnePlus เข้าสาขาบางแค', createdById: 'user-001', approvedById: 'user-001',
+      items: { create: [
+        { id: 'poi-009', brand: 'Xiaomi', model: '14 Ultra', color: 'Black', storage: '512GB', category: 'PHONE_NEW', quantity: 2, unitPrice: 34900 },
+        { id: 'poi-010', brand: 'OnePlus', model: '12', color: 'Flowy Emerald', storage: '256GB', category: 'PHONE_NEW', quantity: 2, unitPrice: 17450 },
+      ]},
+    },
+  });
+
+  await prisma.purchaseOrder.create({
+    data: {
+      id: 'po-006', poNumber: 'PO-2025-12-001', supplierId: 'sup-009', orderDate: new Date('2025-12-20'), expectedDate: new Date('2025-12-28'),
+      status: 'CANCELLED', totalAmount: 98700, discount: 0, vatAmount: 6909, netAmount: 105609, paymentStatus: 'UNPAID', paidAmount: 0,
+      rejectReason: 'ราคาสูงกว่าที่ตกลง', notes: 'Tablet ล็อตธันวาคม - ยกเลิก', createdById: 'user-002', approvedById: 'user-001',
+      items: { create: [
+        { id: 'poi-011', brand: 'Apple', model: 'iPad Pro M4', storage: '256GB', category: 'TABLET', quantity: 2, unitPrice: 36900 },
+        { id: 'poi-012', brand: 'Samsung', model: 'Galaxy Tab S9', storage: '128GB', category: 'TABLET', quantity: 1, unitPrice: 24900 },
+      ]},
+    },
+  });
+
+  await prisma.purchaseOrder.create({
+    data: {
+      id: 'po-007', poNumber: 'PO-2026-01-003', supplierId: 'sup-010', orderDate: new Date('2026-01-05'), expectedDate: new Date('2026-01-07'),
+      status: 'FULLY_RECEIVED', totalAmount: 57000, discount: 2000, vatAmount: 0, netAmount: 55000, paymentStatus: 'FULLY_PAID', paymentMethod: 'CASH', paidAmount: 55000,
+      paymentNotes: 'จ่ายเงินสดตอนรับของ', notes: 'iPhone Refurbished Grade A เข้ารามคำแหง', createdById: 'user-001', approvedById: 'user-001',
+      items: { create: [
+        { id: 'poi-013', brand: 'Apple', model: 'iPhone 13 Pro', color: 'Sierra Blue', storage: '128GB', category: 'PHONE_USED', quantity: 2, unitPrice: 18500, receivedQty: 2 },
+        { id: 'poi-014', brand: 'Apple', model: 'iPhone 12', color: 'Blue', storage: '64GB', category: 'PHONE_USED', quantity: 2, unitPrice: 10000, receivedQty: 2 },
+      ]},
+    },
+  });
+  console.log('PurchaseOrders created: 7 (with POItems)');
+
+  // ============================================================
+  // STEP 9: GOODS RECEIVINGS + ITEMS
+  // ============================================================
+  // GR for PO-001 (fully received)
+  await prisma.goodsReceiving.create({
+    data: {
+      id: 'gr-001', poId: 'po-001', receivedById: 'user-002', notes: 'รับของครบ ตรวจสอบแล้ว',
+      items: { create: [
+        { id: 'gri-001', poItemId: 'poi-001', imeiSerial: '354567890123456', serialNumber: 'F2LXK1A2B3', status: 'PASS', productId: 'prod-001', batteryHealth: 100, hasBox: true },
+        { id: 'gri-002', poItemId: 'poi-002', imeiSerial: '354567890123457', serialNumber: 'F2LXK1A2B4', status: 'PASS', productId: 'prod-002', batteryHealth: 100, hasBox: true },
+      ]},
+    },
+  });
+
+  // GR for PO-002 (fully received)
+  await prisma.goodsReceiving.create({
+    data: {
+      id: 'gr-002', poId: 'po-002', receivedById: 'user-002', notes: 'Samsung ล็อต มค. รับครบ',
+      items: { create: [
+        { id: 'gri-003', poItemId: 'poi-003', imeiSerial: '354567890123458', serialNumber: 'RZ8T30ABC1', status: 'PASS', productId: 'prod-003', batteryHealth: 100, hasBox: true },
+        { id: 'gri-004', poItemId: 'poi-004', imeiSerial: '354567890123459', serialNumber: 'RZ8T30ABC2', status: 'PASS', productId: 'prod-004', batteryHealth: 100, hasBox: true },
+      ]},
+    },
+  });
+
+  // GR for PO-003 (partially received)
+  await prisma.goodsReceiving.create({
+    data: {
+      id: 'gr-003', poId: 'po-003', receivedById: 'user-003', notes: 'รับ OPPO 2 เครื่อง + Vivo 1 เครื่อง',
+      items: { create: [
+        { id: 'gri-005', poItemId: 'poi-005', imeiSerial: '354567890123461', serialNumber: 'OPPO11PRO01', status: 'PASS', productId: 'prod-005', batteryHealth: 100, hasBox: true },
+        { id: 'gri-006', poItemId: 'poi-006', imeiSerial: '354567890123470', serialNumber: 'VIVOV30P01', status: 'PASS', productId: 'prod-007', batteryHealth: 100, hasBox: true },
+      ]},
+    },
+  });
+
+  // GR for PO-007 (refurbished iPhones)
+  await prisma.goodsReceiving.create({
+    data: {
+      id: 'gr-004', poId: 'po-007', receivedById: 'user-003', notes: 'iPhone มือสอง iCare รับครบ ตรวจแล้ว',
+      items: { create: [
+        { id: 'gri-007', poItemId: 'poi-013', imeiSerial: '354567890123466', serialNumber: 'F2LXK1I2J3', status: 'PASS', productId: 'prod-012', batteryHealth: 90, hasBox: true, warrantyExpired: true },
+        { id: 'gri-008', poItemId: 'poi-014', imeiSerial: '354567890123465', serialNumber: 'F2LXK1G2H3', status: 'PASS', productId: 'prod-011', batteryHealth: 78, hasBox: false, warrantyExpired: true },
+      ]},
+    },
+  });
+  console.log('GoodsReceivings created: 4 (with items)');
+
+
+  // ============================================================
+  // STEP 10: CUSTOMERS (12)
+  // ============================================================
+  const customersData = [
+    { id: 'cust-001', nationalId: 'ENC_1100100100001', prefix: 'นาย', name: 'สมชาย ใจดี', nickname: 'ชาย', phone: '081-111-1111', phoneSecondary: '02-111-1112', lineId: 'somchai_j', facebookName: 'สมชาย ใจดี', facebookLink: 'https://facebook.com/somchai', facebookFriends: '1,234', addressIdCard: '11 ซ.ลาดพร้าว 15 แขวงจอมพล เขตจตุจักร กทม. 10900', addressCurrent: '11 ซ.ลาดพร้าว 15 แขวงจอมพล เขตจตุจักร กทม. 10900', occupation: 'พนักงานบริษัท', occupationDetail: 'เจ้าหน้าที่ IT', salary: 35000, workplace: 'บจก. ไทยพาณิชย์', addressWork: '9 ถ.รัชดาภิเษก เขตจตุจักร กทม.', birthDate: new Date('1990-05-15'), references: JSON.parse('[{"prefix":"นาง","firstName":"สมศรี","lastName":"ใจดี","phone":"082-111-2222","relationship":"มารดา"},{"prefix":"นาย","firstName":"วิชัย","lastName":"ดีใจ","phone":"083-111-3333","relationship":"เพื่อน"}]') },
+    { id: 'cust-002', nationalId: 'ENC_1100100100002', prefix: 'นางสาว', name: 'สมหญิง รักเรียน', nickname: 'หญิง', phone: '082-222-2222', lineId: 'somying_r', facebookName: 'สมหญิง รักเรียน', facebookFriends: '567', addressIdCard: '22 ถ.รามคำแหง แขวงหัวหมาก เขตบางกะปิ กทม. 10240', addressCurrent: '22 ถ.รามคำแหง แขวงหัวหมาก เขตบางกะปิ กทม. 10240', occupation: 'ค้าขาย', occupationDetail: 'ขายของออนไลน์', salary: 25000, workplace: 'ร้านค้าออนไลน์', birthDate: new Date('1995-08-20'), references: JSON.parse('[{"prefix":"นาย","firstName":"สมศักดิ์","lastName":"รักเรียน","phone":"081-222-3333","relationship":"พ่อ"}]') },
+    { id: 'cust-003', nationalId: 'ENC_1100100100003', prefix: 'นาย', name: 'วิชัย มั่งมี', nickname: 'ชัย', phone: '083-333-3333', addressIdCard: '33 ถ.เพชรเกษม แขวงบางแค เขตบางแค กทม. 10160', addressCurrent: '33 ถ.เพชรเกษม แขวงบางแค เขตบางแค กทม. 10160', occupation: 'รับราชการ', occupationDetail: 'เจ้าพนักงานสรรพากร', salary: 28000, workplace: 'กรมสรรพากร', addressWork: 'ถ.พหลโยธิน เขตจตุจักร กทม.', birthDate: new Date('1988-03-10'), references: JSON.parse('[{"prefix":"นาง","firstName":"สุดา","lastName":"มั่งมี","phone":"084-333-4444","relationship":"ภรรยา"}]') },
+    { id: 'cust-004', nationalId: 'ENC_1100100100004', prefix: 'นางสาว', name: 'นภา แก้วใส', nickname: 'นภา', phone: '084-444-4444', lineId: 'napa_k', facebookName: 'Napa Kaewsai', facebookFriends: '2,345', addressIdCard: '44 ซ.สุขุมวิท 71 แขวงคลองตัน เขตวัฒนา กทม. 10110', addressCurrent: '44 ซ.สุขุมวิท 71 แขวงคลองตัน เขตวัฒนา กทม. 10110', occupation: 'ฟรีแลนซ์', occupationDetail: 'กราฟิกดีไซเนอร์', salary: 40000, birthDate: new Date('1992-11-25'), references: JSON.parse('[{"prefix":"นาย","firstName":"ปิติ","lastName":"แก้วใส","phone":"085-444-5555","relationship":"พี่ชาย"}]') },
+    { id: 'cust-005', nationalId: 'ENC_1100100100005', prefix: 'นาย', name: 'ประเสริฐ ทองคำ', phone: '085-555-5555', addressIdCard: '55 ถ.พหลโยธิน แขวงจตุจักร เขตจตุจักร กทม. 10900', occupation: 'พนักงานโรงงาน', salary: 18000, workplace: 'บมจ. ปูนซิเมนต์ไทย', birthDate: new Date('1985-07-03'), references: JSON.parse('[{"prefix":"นาย","firstName":"ทวี","lastName":"ทองคำ","phone":"086-555-6666","relationship":"น้องชาย"}]') },
+    { id: 'cust-006', nationalId: 'ENC_1100100100006', prefix: 'นาง', name: 'มาลี ดอกไม้', nickname: 'มาลี', phone: '086-666-6666', lineId: 'malee_d', addressIdCard: '66 ซ.อารีย์ แขวงพญาไท เขตพญาไท กทม. 10400', addressCurrent: '66 ซ.อารีย์ แขวงพญาไท เขตพญาไท กทม. 10400', occupation: 'แม่บ้าน', salary: 15000, birthDate: new Date('1980-12-01'), references: JSON.parse('[{"prefix":"นาย","firstName":"ประสิทธิ์","lastName":"ดอกไม้","phone":"087-666-7777","relationship":"สามี"}]') },
+    { id: 'cust-007', nationalId: 'ENC_1100100100007', prefix: 'นาย', name: 'ธนกร สุขสม', nickname: 'กร', phone: '087-777-7777', lineId: 'thanakorn_s', facebookName: 'Thanakorn Suksom', facebookFriends: '890', addressIdCard: '77 ถ.ศรีนครินทร์ แขวงหนองบอน เขตประเวศ กทม. 10250', occupation: 'พนักงานบริษัท', occupationDetail: 'วิศวกร', salary: 55000, workplace: 'บมจ. ปตท.', addressWork: 'ถ.วิภาวดี กทม.', birthDate: new Date('1991-04-18'), references: JSON.parse('[{"prefix":"นาง","firstName":"รัตนา","lastName":"สุขสม","phone":"088-777-8888","relationship":"มารดา"}]') },
+    { id: 'cust-008', nationalId: 'ENC_1100100100008', prefix: 'นางสาว', name: 'พิมพ์ชนก ศรีวิไล', nickname: 'พิมพ์', phone: '088-888-8888', lineId: 'pimchanok_s', facebookName: 'พิมพ์ชนก ศรีวิไล', facebookFriends: '3,456', addressIdCard: '88 ซ.รามอินทรา 5 แขวงอนุสาวรีย์ เขตบางเขน กทม. 10220', occupation: 'นักศึกษา', occupationDetail: 'ป.ตรี ปี 4 มหาวิทยาลัยเกษตรศาสตร์', birthDate: new Date('2002-09-30'), references: JSON.parse('[{"prefix":"นาย","firstName":"สมชาย","lastName":"ศรีวิไล","phone":"089-888-9999","relationship":"บิดา"}]') },
+    { id: 'cust-009', nationalId: 'ENC_1100100100009', prefix: 'นาย', name: 'อดิศร จันทร์เจริญ', nickname: 'อดิ', phone: '089-999-9999', addressIdCard: '99 ถ.นวมินทร์ แขวงนวลจันทร์ เขตบึงกุ่ม กทม. 10230', occupation: 'ขับรถแท็กซี่', salary: 20000, birthDate: new Date('1978-01-22'), references: JSON.parse('[{"prefix":"นาย","firstName":"สมบัติ","lastName":"จันทร์เจริญ","phone":"090-999-0000","relationship":"พี่ชาย"}]') },
+    { id: 'cust-010', nationalId: 'ENC_1100100100010', prefix: 'นาย', name: 'ภูมิพัฒน์ เอกชัย', nickname: 'ภูมิ', phone: '090-000-0000', lineId: 'phumipat_e', facebookName: 'Phumipat Ekachai', facebookFriends: '1,678', addressIdCard: '100 ม.10 ต.บางพูน อ.เมือง จ.ปทุมธานี 12000', addressCurrent: '100 ม.10 ต.บางพูน อ.เมือง จ.ปทุมธานี 12000', occupation: 'เจ้าของกิจการ', occupationDetail: 'ร้านซ่อมมือถือ', salary: 60000, workplace: 'ร้าน Fix Phone Pro', birthDate: new Date('1993-06-12'), references: JSON.parse('[{"prefix":"นางสาว","firstName":"วิภา","lastName":"เอกชัย","phone":"091-000-1111","relationship":"น้องสาว"}]') },
+    { id: 'cust-011', nationalId: 'ENC_1100100100011', prefix: 'นางสาว', name: 'กัญญา เทพสวัสดิ์', nickname: 'แจง', phone: '091-111-1111', lineId: 'kanya_t', addressIdCard: '111 ถ.บรมราชชนนี แขวงศาลาธรรมสพน์ เขตทวีวัฒนา กทม. 10170', occupation: 'พยาบาล', salary: 32000, workplace: 'รพ.ศิริราช', birthDate: new Date('1994-02-14'), references: JSON.parse('[{"prefix":"นาง","firstName":"สุรีย์","lastName":"เทพสวัสดิ์","phone":"092-111-2222","relationship":"มารดา"}]') },
+    { id: 'cust-012', nationalId: 'ENC_1100100100012', prefix: 'นาย', name: 'ชานนท์ วงษ์พิทักษ์', nickname: 'นนท์', isForeigner: false, phone: '092-222-2222', addressIdCard: '222 ม.5 ต.คลองหนึ่ง อ.คลองหลวง จ.ปทุมธานี 12120', occupation: 'ช่างไฟฟ้า', salary: 22000, birthDate: new Date('1987-10-08'), references: JSON.parse('[{"prefix":"นางสาว","firstName":"สมใจ","lastName":"วงษ์พิทักษ์","phone":"093-222-3333","relationship":"ภรรยา"}]') },
+  ];
+  for (const c of customersData) { await prisma.customer.create({ data: c }); }
+  console.log('Customers created: 12');
+
+  // ============================================================
+  // STEP 11: INTEREST CONFIG
+  // ============================================================
+  const ic1 = await prisma.interestConfig.create({
+    data: { id: 'ic-001', name: 'มือถือใหม่', productCategories: ['PHONE_NEW'], interestRate: 0.0800, minDownPaymentPct: 0.2000, maxInstallmentMonths: 12, minInstallmentMonths: 6 },
+  });
+  const ic2 = await prisma.interestConfig.create({
+    data: { id: 'ic-002', name: 'มือถือมือสอง', productCategories: ['PHONE_USED'], interestRate: 0.1000, minDownPaymentPct: 0.2500, maxInstallmentMonths: 10, minInstallmentMonths: 6 },
+  });
+  const ic3 = await prisma.interestConfig.create({
+    data: { id: 'ic-003', name: 'แท็บเล็ต', productCategories: ['TABLET'], interestRate: 0.0800, minDownPaymentPct: 0.1500, maxInstallmentMonths: 12, minInstallmentMonths: 6 },
+  });
+  await prisma.interestConfig.create({
+    data: { id: 'ic-004', name: 'อุปกรณ์เสริม', productCategories: ['ACCESSORY'], interestRate: 0.0500, minDownPaymentPct: 0.3000, maxInstallmentMonths: 6, minInstallmentMonths: 3, isActive: false },
+  });
+  console.log('InterestConfigs created: 4');
+
+
+  // ============================================================
+  // STEP 12: CONTRACTS (8 contracts, various statuses)
+  // ============================================================
+  // Contract 1: Samsung S24 Ultra - สมชาย (ACTIVE, APPROVED)
+  await prisma.contract.create({
+    data: {
+      id: 'cont-001', contractNumber: 'BC-2026-0001', customerId: 'cust-001', productId: 'prod-003', branchId: 'branch-002', salespersonId: 'user-004',
+      planType: 'STORE_DIRECT', sellingPrice: 49900, downPayment: 9900, interestRate: 0.0800, totalMonths: 10, financedAmount: 40000, interestTotal: 32000, monthlyPayment: 7200,
+      status: 'ACTIVE', workflowStatus: 'APPROVED', reviewedById: 'user-002', reviewedAt: new Date('2026-01-12'), reviewNotes: 'ตรวจเอกสารครบ อนุมัติ', paymentDueDay: 15,
+      interestConfigId: 'ic-001',
+    },
+  });
+
+  // Contract 2: iPhone 13 มือสอง - สมหญิง (ACTIVE, APPROVED)
+  await prisma.contract.create({
+    data: {
+      id: 'cont-002', contractNumber: 'BC-2026-0002', customerId: 'cust-002', productId: 'prod-010', branchId: 'branch-003', salespersonId: 'user-005',
+      planType: 'STORE_DIRECT', sellingPrice: 19900, downPayment: 3900, interestRate: 0.1000, totalMonths: 6, financedAmount: 16000, interestTotal: 9600, monthlyPayment: 4267,
+      status: 'ACTIVE', workflowStatus: 'APPROVED', reviewedById: 'user-003', reviewedAt: new Date('2026-01-22'), paymentDueDay: 1,
+      interestConfigId: 'ic-002',
+    },
+  });
+
+  // Contract 3: Galaxy Tab S9 - วิชัย (OVERDUE, APPROVED)
+  await prisma.contract.create({
+    data: {
+      id: 'cont-003', contractNumber: 'BC-2026-0003', customerId: 'cust-003', productId: 'prod-017', branchId: 'branch-002', salespersonId: 'user-004',
+      planType: 'STORE_WITH_INTEREST', sellingPrice: 29900, downPayment: 5900, interestRate: 0.0800, totalMonths: 8, financedAmount: 24000, interestTotal: 15360, monthlyPayment: 4920,
+      status: 'OVERDUE', workflowStatus: 'APPROVED', reviewedById: 'user-002', reviewedAt: new Date('2026-01-08'), paymentDueDay: 10,
+      interestConfigId: 'ic-003',
+    },
+  });
+
+  // Contract 4: iPhone 12 มือสอง - นภา (DEFAULT - ค้างชำระหลายงวด)
+  await prisma.contract.create({
+    data: {
+      id: 'cont-004', contractNumber: 'BC-2026-0004', customerId: 'cust-004', productId: 'prod-011', branchId: 'branch-003', salespersonId: 'user-005',
+      planType: 'STORE_DIRECT', sellingPrice: 12900, downPayment: 2900, interestRate: 0.1000, totalMonths: 6, financedAmount: 10000, interestTotal: 6000, monthlyPayment: 2667,
+      status: 'DEFAULT', workflowStatus: 'APPROVED', reviewedById: 'user-003', reviewedAt: new Date('2025-12-20'), paymentDueDay: 5,
+      interestConfigId: 'ic-002', notes: 'ลูกค้าติดต่อไม่ได้ ค้างชำระ 3 งวดติด',
+    },
+  });
+
+  // Contract 5: iPhone 14 มือสอง - ประเสริฐ (COMPLETED)
+  await prisma.contract.create({
+    data: {
+      id: 'cont-005', contractNumber: 'BC-2025-0005', customerId: 'cust-005', productId: 'prod-014', branchId: 'branch-002', salespersonId: 'user-004',
+      planType: 'STORE_DIRECT', sellingPrice: 24900, downPayment: 5900, interestRate: 0.1000, totalMonths: 6, financedAmount: 19000, interestTotal: 11400, monthlyPayment: 5067,
+      status: 'COMPLETED', workflowStatus: 'APPROVED', reviewedById: 'user-002', reviewedAt: new Date('2025-07-10'), paymentDueDay: 20,
+      interestConfigId: 'ic-002',
+    },
+  });
+
+  // Contract 6: DRAFT - ธนกร กำลังทำสัญญา
+  await prisma.contract.create({
+    data: {
+      id: 'cont-006', contractNumber: 'BC-2026-0006', customerId: 'cust-007', productId: 'prod-001', branchId: 'branch-002', salespersonId: 'user-004',
+      planType: 'STORE_DIRECT', sellingPrice: 49900, downPayment: 14900, interestRate: 0.0800, totalMonths: 10, financedAmount: 35000, interestTotal: 28000, monthlyPayment: 6300,
+      status: 'DRAFT', workflowStatus: 'CREATING', paymentDueDay: 25,
+      interestConfigId: 'ic-001',
+    },
+  });
+
+  // Contract 7: EARLY_PAYOFF - มาลี ปิดบัญชีก่อนกำหนด
+  await prisma.contract.create({
+    data: {
+      id: 'cont-007', contractNumber: 'BC-2025-0007', customerId: 'cust-006', productId: 'prod-008', branchId: 'branch-004', salespersonId: 'user-007',
+      planType: 'STORE_DIRECT', sellingPrice: 34900, downPayment: 9900, interestRate: 0.0800, totalMonths: 8, financedAmount: 25000, interestTotal: 16000, monthlyPayment: 5125,
+      status: 'EARLY_PAYOFF', workflowStatus: 'APPROVED', reviewedById: 'user-008', reviewedAt: new Date('2025-09-05'), paymentDueDay: 10,
+      interestConfigId: 'ic-001', notes: 'ปิดบัญชีก่อนกำหนด งวดที่ 5/8 ลดดอกเบี้ยให้ 50%',
+    },
+  });
+
+  // Contract 8: PENDING_REVIEW - อดิศร รอตรวจสอบ
+  await prisma.contract.create({
+    data: {
+      id: 'cont-008', contractNumber: 'BC-2026-0008', customerId: 'cust-009', productId: 'prod-009', branchId: 'branch-002', salespersonId: 'user-004',
+      planType: 'STORE_DIRECT', sellingPrice: 29900, downPayment: 6900, interestRate: 0.1000, totalMonths: 8, financedAmount: 23000, interestTotal: 18400, monthlyPayment: 5175,
+      status: 'DRAFT', workflowStatus: 'PENDING_REVIEW', paymentDueDay: 15,
+      interestConfigId: 'ic-002', notes: 'รอผู้จัดการตรวจสอบเอกสาร',
+    },
+  });
+  console.log('Contracts created: 8');
+
+  // ============================================================
+  // STEP 13: PAYMENTS
+  // ============================================================
+  // Contract 1 payments (3 paid, 7 pending, 10 total)
   for (let i = 1; i <= 10; i++) {
-    const dueDate = new Date(2025, i, 15); // 15th of each month starting Feb 2025
+    const dueDate = new Date(2026, i, 15);
     const isPaid = i <= 3;
-    await prisma.payment.upsert({
-      where: { id: `pay-001-${String(i).padStart(2, '0')}` },
-      update: {},
-      create: {
-        id: `pay-001-${String(i).padStart(2, '0')}`,
-        contractId: contract1.id,
-        installmentNo: i,
-        dueDate,
-        amountDue: 7200,
-        amountPaid: isPaid ? 7200 : 0,
+    await prisma.payment.create({
+      data: {
+        id: `pay-001-${String(i).padStart(2, '0')}`, contractId: 'cont-001', installmentNo: i, dueDate,
+        amountDue: 7200, amountPaid: isPaid ? 7200 : 0,
         paidDate: isPaid ? new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate() - 2) : null,
         paymentMethod: isPaid ? 'BANK_TRANSFER' : null,
         status: isPaid ? 'PAID' : (dueDate < new Date() ? 'OVERDUE' : 'PENDING'),
-        recordedById: isPaid ? sales.id : null,
+        recordedById: isPaid ? 'user-004' : null,
       },
     });
   }
-  console.log('Contract 1 created:', contract1.contractNumber, '(ACTIVE, 3/10 paid)');
 
-  // Contract 2: iPhone 13 - สมหญิง (ACTIVE, 6 months)
-  const contract2 = await prisma.contract.upsert({
-    where: { id: 'cont-002' },
-    update: {},
-    create: {
-      id: 'cont-002',
-      contractNumber: 'BC-2025-0002',
-      customerId: 'cust-002',
-      productId: 'prod-005',
-      branchId: branch2.id,
-      salespersonId: sales.id,
-      planType: 'STORE_DIRECT',
-      sellingPrice: 19900,
-      downPayment: 3900,
-      interestRate: 0.08,
-      totalMonths: 6,
-      financedAmount: 16000,
-      interestTotal: 7680,
-      monthlyPayment: 3947,
-      status: 'ACTIVE',
-    },
-  });
-
-  // Generate payments for contract 2 (5 paid, 1 pending)
+  // Contract 2 payments (5 paid, 1 pending, 6 total)
   for (let i = 1; i <= 6; i++) {
-    const dueDate = new Date(2025, i - 1, 1); // 1st of each month starting Jan 2025
+    const dueDate = new Date(2026, i, 1);
     const isPaid = i <= 5;
-    await prisma.payment.upsert({
-      where: { id: `pay-002-${String(i).padStart(2, '0')}` },
-      update: {},
-      create: {
-        id: `pay-002-${String(i).padStart(2, '0')}`,
-        contractId: contract2.id,
-        installmentNo: i,
-        dueDate,
-        amountDue: 3947,
-        amountPaid: isPaid ? 3947 : 0,
+    await prisma.payment.create({
+      data: {
+        id: `pay-002-${String(i).padStart(2, '0')}`, contractId: 'cont-002', installmentNo: i, dueDate,
+        amountDue: 4267, amountPaid: isPaid ? 4267 : 0,
         paidDate: isPaid ? new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate()) : null,
         paymentMethod: isPaid ? 'CASH' : null,
         status: isPaid ? 'PAID' : 'PENDING',
-        recordedById: isPaid ? sales.id : null,
+        recordedById: isPaid ? 'user-005' : null,
       },
     });
   }
-  console.log('Contract 2 created:', contract2.contractNumber, '(ACTIVE, 5/6 paid)');
 
-  // Contract 3: Samsung Galaxy Tab S9 - วิชัย (OVERDUE, 8 months)
-  const contract3 = await prisma.contract.upsert({
-    where: { id: 'cont-003' },
-    update: {},
-    create: {
-      id: 'cont-003',
-      contractNumber: 'BC-2025-0003',
-      customerId: 'cust-003',
-      productId: 'prod-009',
-      branchId: branch1.id,
-      salespersonId: sales.id,
-      planType: 'STORE_WITH_INTEREST',
-      sellingPrice: 29900,
-      downPayment: 5900,
-      interestRate: 0.08,
-      totalMonths: 8,
-      financedAmount: 24000,
-      interestTotal: 15360,
-      monthlyPayment: 4920,
-      status: 'OVERDUE',
-    },
-  });
-
-  // Generate payments for contract 3 (2 paid, 6 pending with some overdue)
+  // Contract 3 payments (2 paid, 2 overdue, 4 pending, 8 total)
   for (let i = 1; i <= 8; i++) {
-    const dueDate = new Date(2025, i, 10); // 10th of each month
+    const dueDate = new Date(2026, i, 10);
     const isPaid = i <= 2;
     const isOverdue = !isPaid && dueDate < new Date();
-    await prisma.payment.upsert({
-      where: { id: `pay-003-${String(i).padStart(2, '0')}` },
-      update: {},
-      create: {
-        id: `pay-003-${String(i).padStart(2, '0')}`,
-        contractId: contract3.id,
-        installmentNo: i,
-        dueDate,
-        amountDue: 4920,
-        amountPaid: isPaid ? 4920 : 0,
+    await prisma.payment.create({
+      data: {
+        id: `pay-003-${String(i).padStart(2, '0')}`, contractId: 'cont-003', installmentNo: i, dueDate,
+        amountDue: 4920, amountPaid: isPaid ? 4920 : (i === 3 ? 2000 : 0),
         paidDate: isPaid ? new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate() + 1) : null,
         paymentMethod: isPaid ? 'QR_EWALLET' : null,
         lateFee: isOverdue ? 200 : 0,
-        status: isPaid ? 'PAID' : (isOverdue ? 'OVERDUE' : 'PENDING'),
-        recordedById: isPaid ? sales.id : null,
+        status: isPaid ? 'PAID' : (i === 3 ? 'PARTIALLY_PAID' : (isOverdue ? 'OVERDUE' : 'PENDING')),
+        recordedById: isPaid ? 'user-004' : null,
       },
     });
   }
-  console.log('Contract 3 created:', contract3.contractNumber, '(OVERDUE, 2/8 paid)');
 
-  // ============================================================
-  // DEFAULT NOTIFICATION TEMPLATES
-  // ============================================================
-  const notificationTemplates = [
-    {
-      key: 'notification_template_payment_reminder_line',
-      value: JSON.stringify({
-        name: 'แจ้งเตือนชำระเงิน (LINE)',
-        eventType: 'PAYMENT_REMINDER',
-        channel: 'LINE',
-        subject: 'แจ้งเตือนค่างวด',
-        messageTemplate: 'สวัสดีค่ะ คุณ{customer_name}\nแจ้งเตือน: ค่างวดสัญญา {contract_number}\nจำนวน {amount} บาท\nครบกำหนดชำระ {due_date}\nกรุณาชำระตามกำหนด ขอบคุณค่ะ - Best Choice',
-        description: 'ส่งเตือนผ่าน LINE ก่อนครบกำหนดชำระ 1-3 วัน',
-        isActive: true,
-      }),
-      label: 'Template: แจ้งเตือนชำระเงิน (LINE)',
-    },
-    {
-      key: 'notification_template_payment_reminder_sms',
-      value: JSON.stringify({
-        name: 'แจ้งเตือนชำระเงิน (SMS)',
-        eventType: 'PAYMENT_REMINDER',
-        channel: 'SMS',
-        subject: 'แจ้งเตือนค่างวด',
-        messageTemplate: 'BestChoice: คุณ{customer_name} ค่างวดสัญญา {contract_number} จำนวน {amount} บาท ครบกำหนด {due_date} กรุณาชำระตามกำหนด',
-        description: 'ส่งเตือนผ่าน SMS สำหรับลูกค้าที่ไม่มี LINE',
-        isActive: true,
-      }),
-      label: 'Template: แจ้งเตือนชำระเงิน (SMS)',
-    },
-    {
-      key: 'notification_template_overdue_notice_line',
-      value: JSON.stringify({
-        name: 'แจ้งค้างชำระ (LINE)',
-        eventType: 'OVERDUE_NOTICE',
-        channel: 'LINE',
-        subject: 'แจ้งค้างชำระ',
-        messageTemplate: 'แจ้งเตือน: คุณ{customer_name}\nค่างวดสัญญา {contract_number} เลยกำหนดชำระ {days_overdue} วัน\nยอมค้างชำระ {amount} บาท (รวมค่าปรับ)\nกรุณาชำระโดยเร็ว - Best Choice',
-        description: 'แจ้งเตือนค้างชำระผ่าน LINE วันที่ 1, 3, 7 หลังเลยกำหนด',
-        isActive: true,
-      }),
-      label: 'Template: แจ้งค้างชำระ (LINE)',
-    },
-    {
-      key: 'notification_template_overdue_notice_sms',
-      value: JSON.stringify({
-        name: 'แจ้งค้างชำระ (SMS)',
-        eventType: 'OVERDUE_NOTICE',
-        channel: 'SMS',
-        subject: 'แจ้งค้างชำระ',
-        messageTemplate: 'BestChoice: คุณ{customer_name} ค่างวดสัญญา {contract_number} เลยกำหนด {days_overdue} วัน ค้างชำระ {amount} บาท กรุณาชำระโดยเร็ว',
-        description: 'แจ้งเตือนค้างชำระผ่าน SMS',
-        isActive: true,
-      }),
-      label: 'Template: แจ้งค้างชำระ (SMS)',
-    },
-    {
-      key: 'notification_template_payment_success_line',
-      value: JSON.stringify({
-        name: 'ยืนยันการชำระเงิน (LINE)',
-        eventType: 'PAYMENT_SUCCESS',
-        channel: 'LINE',
-        subject: 'ชำระเงินสำเร็จ',
-        messageTemplate: 'ขอบคุณค่ะ คุณ{customer_name}\nรับชำระค่างวดสัญญา {contract_number}\nจำนวน {amount} บาท เรียบร้อยแล้ว\nงวมคงเหลือ {remaining_installments} งวด\nขอบคุณที่ชำระตรงเวลาค่ะ - Best Choice',
-        description: 'ยืนยันการชำระเงินสำเร็จผ่าน LINE',
-        isActive: true,
-      }),
-      label: 'Template: ยืนยันการชำระเงิน (LINE)',
-    },
-    {
-      key: 'notification_template_contract_default_line',
-      value: JSON.stringify({
-        name: 'แจ้งผิดนัดสัญญา (LINE)',
-        eventType: 'CONTRACT_DEFAULT',
-        channel: 'LINE',
-        subject: 'แจ้งผิดนัดชำระ',
-        messageTemplate: 'แจ้งเตือนสำคัญ: คุณ{customer_name}\nสัญญา {contract_number} ถูกเปลี่ยนสถานะเป็นผิดนัดชำระ\nเนื่องจากค้างชำระติดต่อกันเกิน 2 งวด\nกรุณาติดต่อสาขาเพื่อชำระ หรือโทร {branch_phone}\n- Best Choice',
-        description: 'แจ้งเตือนเมื่อสัญญาเปลี่ยนเป็นสถานะ DEFAULT',
-        isActive: true,
-      }),
-      label: 'Template: แจ้งผิดนัดสัญญา (LINE)',
-    },
-  ];
-
-  for (const t of notificationTemplates) {
-    await prisma.systemConfig.upsert({
-      where: { key: t.key },
-      update: { value: t.value, label: t.label },
-      create: t,
+  // Contract 4 payments (1 paid, 3 overdue, 2 pending, 6 total - DEFAULT)
+  for (let i = 1; i <= 6; i++) {
+    const dueDate = new Date(2026, i - 1, 5);
+    const isPaid = i <= 1;
+    const isOverdue = !isPaid && dueDate < new Date();
+    await prisma.payment.create({
+      data: {
+        id: `pay-004-${String(i).padStart(2, '0')}`, contractId: 'cont-004', installmentNo: i, dueDate,
+        amountDue: 2667, amountPaid: isPaid ? 2667 : 0,
+        paidDate: isPaid ? new Date(2026, 0, 5) : null,
+        paymentMethod: isPaid ? 'CASH' : null,
+        lateFee: isOverdue ? 200 : 0,
+        status: isPaid ? 'PAID' : (isOverdue ? 'OVERDUE' : 'PENDING'),
+        recordedById: isPaid ? 'user-005' : null,
+      },
     });
   }
-  console.log('Notification templates created:', notificationTemplates.length, 'templates');
 
-  console.log('Seeding completed!');
+  // Contract 5 payments (6/6 paid - COMPLETED)
+  for (let i = 1; i <= 6; i++) {
+    const dueDate = new Date(2025, 7 + i, 20);
+    await prisma.payment.create({
+      data: {
+        id: `pay-005-${String(i).padStart(2, '0')}`, contractId: 'cont-005', installmentNo: i, dueDate,
+        amountDue: 5067, amountPaid: 5067,
+        paidDate: new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate() - 1),
+        paymentMethod: i % 2 === 0 ? 'BANK_TRANSFER' : 'CASH',
+        status: 'PAID',
+        recordedById: 'user-004',
+      },
+    });
+  }
+
+  // Contract 7 payments (5 paid out of 8 - EARLY_PAYOFF, last payment is lump sum)
+  for (let i = 1; i <= 5; i++) {
+    const dueDate = new Date(2025, 9 + i, 10);
+    await prisma.payment.create({
+      data: {
+        id: `pay-007-${String(i).padStart(2, '0')}`, contractId: 'cont-007', installmentNo: i, dueDate,
+        amountDue: i === 5 ? 10000 : 5125, amountPaid: i === 5 ? 10000 : 5125,
+        paidDate: new Date(dueDate.getFullYear(), dueDate.getMonth(), i === 5 ? 8 : dueDate.getDate()),
+        paymentMethod: 'BANK_TRANSFER',
+        status: 'PAID',
+        recordedById: 'user-007',
+        notes: i === 5 ? 'ปิดบัญชีก่อนกำหนด ชำระยอมรวม' : null,
+      },
+    });
+  }
+  console.log('Payments created for all contracts');
+
+
+  // ============================================================
+  // STEP 14: CONTRACT DOCUMENTS
+  // ============================================================
+  const contractDocs = [
+    { id: 'cdoc-001', contractId: 'cont-001', documentType: 'SIGNED_CONTRACT' as const, fileName: 'contract_BC-2026-0001.pdf', fileUrl: '/uploads/contracts/cont-001/contract.pdf', fileSize: 245000, uploadedById: 'user-004' },
+    { id: 'cdoc-002', contractId: 'cont-001', documentType: 'ID_CARD_COPY' as const, fileName: 'id_card_somchai.jpg', fileUrl: '/uploads/contracts/cont-001/id_card.jpg', fileSize: 180000, uploadedById: 'user-004' },
+    { id: 'cdoc-003', contractId: 'cont-001', documentType: 'FACEBOOK_PROFILE' as const, fileName: 'fb_somchai.png', fileUrl: '/uploads/contracts/cont-001/facebook.png', fileSize: 320000, uploadedById: 'user-004' },
+    { id: 'cdoc-004', contractId: 'cont-002', documentType: 'SIGNED_CONTRACT' as const, fileName: 'contract_BC-2026-0002.pdf', fileUrl: '/uploads/contracts/cont-002/contract.pdf', fileSize: 230000, uploadedById: 'user-005' },
+    { id: 'cdoc-005', contractId: 'cont-002', documentType: 'ID_CARD_COPY' as const, fileName: 'id_card_somying.jpg', fileUrl: '/uploads/contracts/cont-002/id_card.jpg', fileSize: 165000, uploadedById: 'user-005' },
+    { id: 'cdoc-006', contractId: 'cont-003', documentType: 'SIGNED_CONTRACT' as const, fileName: 'contract_BC-2026-0003.pdf', fileUrl: '/uploads/contracts/cont-003/contract.pdf', fileSize: 250000, uploadedById: 'user-004' },
+    { id: 'cdoc-007', contractId: 'cont-003', documentType: 'BANK_STATEMENT' as const, fileName: 'bank_stmt_wichai.pdf', fileUrl: '/uploads/contracts/cont-003/bank_statement.pdf', fileSize: 450000, uploadedById: 'user-004' },
+    { id: 'cdoc-008', contractId: 'cont-004', documentType: 'SIGNED_CONTRACT' as const, fileName: 'contract_BC-2026-0004.pdf', fileUrl: '/uploads/contracts/cont-004/contract.pdf', fileSize: 240000, uploadedById: 'user-005' },
+    { id: 'cdoc-009', contractId: 'cont-005', documentType: 'SIGNED_CONTRACT' as const, fileName: 'contract_BC-2025-0005.pdf', fileUrl: '/uploads/contracts/cont-005/contract.pdf', fileSize: 235000, uploadedById: 'user-004' },
+    { id: 'cdoc-010', contractId: 'cont-005', documentType: 'DEVICE_RECEIPT_PHOTO' as const, fileName: 'receipt_phone.jpg', fileUrl: '/uploads/contracts/cont-005/receipt.jpg', fileSize: 280000, uploadedById: 'user-004' },
+  ];
+  for (const d of contractDocs) { await prisma.contractDocument.create({ data: d }); }
+  console.log('ContractDocuments created:', contractDocs.length);
+
+  // ============================================================
+  // STEP 15: CREDIT CHECKS
+  // ============================================================
+  await prisma.creditCheck.create({
+    data: {
+      id: 'cc-001', contractId: 'cont-001', customerId: 'cust-001', status: 'APPROVED', bankName: 'กสิกรไทย',
+      statementFiles: ['/uploads/credit/cc-001/stmt1.pdf', '/uploads/credit/cc-001/stmt2.pdf'], statementMonths: 3,
+      aiScore: 82, aiSummary: 'ลูกค้ามีรายได้สม่ำเสมอ เงินเดือนเข้าตรงเวลา ไม่มีประวัติเช็คคืน', aiRecommendation: 'อนุมัติ - ความเสี่ยงต่ำ',
+      aiAnalysis: { incomeStability: 'HIGH', averageBalance: 45000, monthlyIncome: 35000, suspiciousTransactions: 0 },
+      checkedById: 'user-002', checkedAt: new Date('2026-01-11'),
+    },
+  });
+  await prisma.creditCheck.create({
+    data: {
+      id: 'cc-002', contractId: 'cont-002', customerId: 'cust-002', status: 'APPROVED', bankName: 'กรุงเทพ',
+      statementFiles: ['/uploads/credit/cc-002/stmt1.pdf'], statementMonths: 3,
+      aiScore: 68, aiSummary: 'รายได้ไม่สม่ำเสมอ แต่มียอมเงินในบัญชีเพียงพอ', aiRecommendation: 'อนุมัติ - ความเสี่ยงปานกลาง',
+      aiAnalysis: { incomeStability: 'MEDIUM', averageBalance: 22000, monthlyIncome: 25000, suspiciousTransactions: 0 },
+      checkedById: 'user-003', checkedAt: new Date('2026-01-21'),
+    },
+  });
+  await prisma.creditCheck.create({
+    data: {
+      id: 'cc-003', contractId: 'cont-004', customerId: 'cust-004', status: 'APPROVED', bankName: 'กรุงไทย',
+      statementFiles: ['/uploads/credit/cc-003/stmt1.pdf'], statementMonths: 3,
+      aiScore: 55, aiSummary: 'รายได้ฟรีแลนซ์ ไม่แน่นอน แต่มียอดเงินสะสม', aiRecommendation: 'อนุมัติแบบมีเงื่อนไข - ดาวน์สูงขึ้น',
+      aiAnalysis: { incomeStability: 'LOW', averageBalance: 18000, monthlyIncome: 40000, suspiciousTransactions: 1 },
+      checkedById: 'user-003', checkedAt: new Date('2025-12-19'),
+    },
+  });
+  await prisma.creditCheck.create({
+    data: {
+      id: 'cc-004', customerId: 'cust-009', status: 'PENDING',
+      statementFiles: ['/uploads/credit/cc-004/stmt1.pdf'], statementMonths: 3,
+      reviewNotes: 'รอตรวจสอบเพิ่มเติม',
+    },
+  });
+  console.log('CreditChecks created: 4');
+
+  // ============================================================
+  // STEP 16: SIGNATURES
+  // ============================================================
+  const sigData = [
+    { id: 'sig-001', contractId: 'cont-001', signerType: 'CUSTOMER' as const, signatureImage: '/uploads/signatures/sig-001.png', ipAddress: '192.168.1.100', deviceInfo: 'iPad Safari 17.0' },
+    { id: 'sig-002', contractId: 'cont-001', signerType: 'STAFF' as const, signatureImage: '/uploads/signatures/sig-002.png', ipAddress: '192.168.1.10', deviceInfo: 'Chrome 120 Windows' },
+    { id: 'sig-003', contractId: 'cont-002', signerType: 'CUSTOMER' as const, signatureImage: '/uploads/signatures/sig-003.png', ipAddress: '192.168.1.101', deviceInfo: 'iPhone Safari 17.2' },
+    { id: 'sig-004', contractId: 'cont-002', signerType: 'STAFF' as const, signatureImage: '/uploads/signatures/sig-004.png', ipAddress: '192.168.1.11', deviceInfo: 'Chrome 120 Windows' },
+    { id: 'sig-005', contractId: 'cont-003', signerType: 'CUSTOMER' as const, signatureImage: '/uploads/signatures/sig-005.png', ipAddress: '192.168.1.102', deviceInfo: 'Android Chrome 120' },
+    { id: 'sig-006', contractId: 'cont-003', signerType: 'STAFF' as const, signatureImage: '/uploads/signatures/sig-006.png', ipAddress: '192.168.1.10', deviceInfo: 'Chrome 120 Windows' },
+    { id: 'sig-007', contractId: 'cont-005', signerType: 'CUSTOMER' as const, signatureImage: '/uploads/signatures/sig-007.png', ipAddress: '192.168.1.103', deviceInfo: 'Samsung Internet 20' },
+    { id: 'sig-008', contractId: 'cont-005', signerType: 'STAFF' as const, signatureImage: '/uploads/signatures/sig-008.png', ipAddress: '192.168.1.10', deviceInfo: 'Chrome 120 Windows' },
+  ];
+  for (const s of sigData) { await prisma.signature.create({ data: s }); }
+  console.log('Signatures created:', sigData.length);
+
+  // ============================================================
+  // STEP 17: E-DOCUMENTS
+  // ============================================================
+  const eDocsData = [
+    { id: 'edoc-001', contractId: 'cont-001', documentType: 'CONTRACT', fileUrl: '/uploads/edocs/cont-001/contract.pdf', fileHash: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2', createdById: 'user-004' },
+    { id: 'edoc-002', contractId: 'cont-001', documentType: 'RECEIPT_DOWN', fileUrl: '/uploads/edocs/cont-001/receipt_down.pdf', fileHash: 'b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3', createdById: 'user-004' },
+    { id: 'edoc-003', contractId: 'cont-002', documentType: 'CONTRACT', fileUrl: '/uploads/edocs/cont-002/contract.pdf', fileHash: 'c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4', createdById: 'user-005' },
+    { id: 'edoc-004', contractId: 'cont-005', documentType: 'PAYOFF', fileUrl: '/uploads/edocs/cont-005/payoff.pdf', fileHash: 'd4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5', createdById: 'user-004' },
+  ];
+  for (const e of eDocsData) { await prisma.eDocument.create({ data: e }); }
+  console.log('EDocuments created:', eDocsData.length);
+
+
+  // ============================================================
+  // STEP 18: SALES (6 sales)
+  // ============================================================
+  // Sale 1: INSTALLMENT - Samsung S24 Ultra (linked to cont-001)
+  await prisma.sale.create({
+    data: {
+      id: 'sale-001', saleNumber: 'SL-2026-0001', saleType: 'INSTALLMENT', customerId: 'cust-001', productId: 'prod-003',
+      branchId: 'branch-002', salespersonId: 'user-004', sellingPrice: 49900, discount: 0, netAmount: 49900,
+      paymentMethod: 'CASH', amountReceived: 9900, contractId: 'cont-001', downPaymentAmount: 9900,
+      notes: 'ลูกค้าจ่ายดาวน์เงินสด', createdAt: new Date('2026-01-12'),
+    },
+  });
+
+  // Sale 2: INSTALLMENT - iPhone 13 (linked to cont-002)
+  await prisma.sale.create({
+    data: {
+      id: 'sale-002', saleNumber: 'SL-2026-0002', saleType: 'INSTALLMENT', customerId: 'cust-002', productId: 'prod-010',
+      branchId: 'branch-003', salespersonId: 'user-005', sellingPrice: 19900, discount: 0, netAmount: 19900,
+      paymentMethod: 'CASH', amountReceived: 3900, contractId: 'cont-002', downPaymentAmount: 3900,
+      createdAt: new Date('2026-01-22'),
+    },
+  });
+
+  // Sale 3: CASH - Vivo V30 Pro
+  await prisma.sale.create({
+    data: {
+      id: 'sale-003', saleNumber: 'SL-2026-0003', saleType: 'CASH', customerId: 'cust-007', productId: 'prod-007',
+      branchId: 'branch-003', salespersonId: 'user-005', sellingPrice: 22900, discount: 1000, netAmount: 21900,
+      paymentMethod: 'BANK_TRANSFER', amountReceived: 21900,
+      notes: 'ลดราคาพิเศษ ลูกค้าประจำ', createdAt: new Date('2026-02-10'),
+    },
+  });
+
+  // Sale 4: CASH - AirPods Pro 2
+  await prisma.sale.create({
+    data: {
+      id: 'sale-004', saleNumber: 'SL-2026-0004', saleType: 'CASH', customerId: 'cust-010', productId: 'prod-023',
+      branchId: 'branch-002', salespersonId: 'user-004', sellingPrice: 8990, discount: 0, netAmount: 8990,
+      paymentMethod: 'QR_EWALLET', amountReceived: 8990,
+      createdAt: new Date('2026-02-15'),
+    },
+  });
+
+  // Sale 5: EXTERNAL_FINANCE - Samsung Galaxy Tab A9+
+  await prisma.sale.create({
+    data: {
+      id: 'sale-005', saleNumber: 'SL-2026-0005', saleType: 'EXTERNAL_FINANCE', customerId: 'cust-011', productId: 'prod-019',
+      branchId: 'branch-004', salespersonId: 'user-007', sellingPrice: 12900, discount: 0, netAmount: 12900,
+      financeCompany: 'KTC', financeRefNumber: 'KTC-2026-00123', financeAmount: 12900,
+      createdAt: new Date('2026-02-01'),
+    },
+  });
+
+  // Sale 6: INSTALLMENT - Galaxy Tab S9 (linked to cont-003)
+  await prisma.sale.create({
+    data: {
+      id: 'sale-006', saleNumber: 'SL-2026-0006', saleType: 'INSTALLMENT', customerId: 'cust-003', productId: 'prod-017',
+      branchId: 'branch-002', salespersonId: 'user-004', sellingPrice: 29900, discount: 0, netAmount: 29900,
+      paymentMethod: 'CASH', amountReceived: 5900, contractId: 'cont-003', downPaymentAmount: 5900,
+      createdAt: new Date('2026-01-08'),
+    },
+  });
+  console.log('Sales created: 6');
+
+  // ============================================================
+  // STEP 19: REPOSSESSION
+  // ============================================================
+  await prisma.repossession.create({
+    data: {
+      id: 'repo-001', contractId: 'cont-004', productId: 'prod-014',
+      repossessedDate: new Date('2026-03-01'), conditionGrade: 'B', appraisalPrice: 15000,
+      appraisedById: 'user-002', repairCost: 2000, resellPrice: 18000,
+      photos: ['/uploads/repossessions/repo-001/front.jpg', '/uploads/repossessions/repo-001/back.jpg'],
+      status: 'READY_FOR_SALE', notes: 'เครื่องสภาพดี เปลี่ยนแบตใหม่ พร้อมขายต่อ',
+    },
+  });
+  console.log('Repossessions created: 1');
+
+
+  // ============================================================
+  // STEP 20: INSPECTION TEMPLATES + ITEMS
+  // ============================================================
+  const phoneTemplate = await prisma.inspectionTemplate.create({
+    data: {
+      id: 'insp-tmpl-001', name: 'ตรวจเช็คมือถือมือสอง', deviceType: 'PHONE',
+      items: { create: [
+        { id: 'iti-001', category: 'ภายนอก', itemName: 'สภาพตัวเครื่อง (รอยขีดข่วน/บุบ)', scoreType: 'GRADE', isRequired: true, weight: 15, sortOrder: 1 },
+        { id: 'iti-002', category: 'ภายนอก', itemName: 'สภาพหน้าจอ (รอยร้าว/dead pixel)', scoreType: 'GRADE', isRequired: true, weight: 20, sortOrder: 2 },
+        { id: 'iti-003', category: 'ภายนอก', itemName: 'สภาพปุ่มกด (Power, Volume)', scoreType: 'PASS_FAIL', isRequired: true, weight: 5, sortOrder: 3 },
+        { id: 'iti-004', category: 'ภายนอก', itemName: 'ช่องชาร์จ', scoreType: 'PASS_FAIL', isRequired: true, weight: 5, sortOrder: 4 },
+        { id: 'iti-005', category: 'การทำงาน', itemName: 'หน้าจอสัมผัส (touch ทุกจุด)', scoreType: 'PASS_FAIL', isRequired: true, weight: 10, sortOrder: 5 },
+        { id: 'iti-006', category: 'การทำงาน', itemName: 'ลำโพง/ไมค์', scoreType: 'PASS_FAIL', isRequired: true, weight: 5, sortOrder: 6 },
+        { id: 'iti-007', category: 'การทำงาน', itemName: 'กล้องหน้า/กล้องหลัง', scoreType: 'PASS_FAIL', isRequired: true, weight: 5, sortOrder: 7 },
+        { id: 'iti-008', category: 'การทำงาน', itemName: 'Wi-Fi / Bluetooth', scoreType: 'PASS_FAIL', isRequired: true, weight: 5, sortOrder: 8 },
+        { id: 'iti-009', category: 'การทำงาน', itemName: 'GPS / NFC', scoreType: 'PASS_FAIL', isRequired: false, weight: 3, sortOrder: 9 },
+        { id: 'iti-010', category: 'การทำงาน', itemName: 'Face ID / สแกนนิ้ว', scoreType: 'PASS_FAIL', isRequired: true, weight: 5, sortOrder: 10 },
+        { id: 'iti-011', category: 'แบตเตอรี่', itemName: 'สุขภาพแบตเตอรี่ (Battery Health %)', scoreType: 'NUMBER', isRequired: true, weight: 10, sortOrder: 11 },
+        { id: 'iti-012', category: 'แบตเตอรี่', itemName: 'ชาร์จเข้า', scoreType: 'PASS_FAIL', isRequired: true, weight: 5, sortOrder: 12 },
+        { id: 'iti-013', category: 'ซอฟต์แวร์', itemName: 'รีเซ็ตเครื่องแล้ว', scoreType: 'PASS_FAIL', isRequired: true, weight: 2, sortOrder: 13 },
+        { id: 'iti-014', category: 'ซอฟต์แวร์', itemName: 'ปลดล็อค iCloud/Google Account', scoreType: 'PASS_FAIL', isRequired: true, weight: 3, sortOrder: 14 },
+        { id: 'iti-015', category: 'ซอฟต์แวร์', itemName: 'IMEI ไม่ถูก block', scoreType: 'PASS_FAIL', isRequired: true, weight: 2, sortOrder: 15 },
+      ]},
+    },
+  });
+
+  const tabletTemplate = await prisma.inspectionTemplate.create({
+    data: {
+      id: 'insp-tmpl-002', name: 'ตรวจเช็คแท็บเล็ตมือสอง', deviceType: 'TABLET',
+      items: { create: [
+        { id: 'iti-016', category: 'ภายนอก', itemName: 'สภาพตัวเครื่อง', scoreType: 'GRADE', isRequired: true, weight: 15, sortOrder: 1 },
+        { id: 'iti-017', category: 'ภายนอก', itemName: 'สภาพหน้าจอ', scoreType: 'GRADE', isRequired: true, weight: 20, sortOrder: 2 },
+        { id: 'iti-018', category: 'การทำงาน', itemName: 'หน้าจอสัมผัส', scoreType: 'PASS_FAIL', isRequired: true, weight: 15, sortOrder: 3 },
+        { id: 'iti-019', category: 'การทำงาน', itemName: 'ลำโพง', scoreType: 'PASS_FAIL', isRequired: true, weight: 10, sortOrder: 4 },
+        { id: 'iti-020', category: 'การทำงาน', itemName: 'กล้อง', scoreType: 'PASS_FAIL', isRequired: true, weight: 10, sortOrder: 5 },
+        { id: 'iti-021', category: 'แบตเตอรี่', itemName: 'สุขภาพแบตเตอรี่', scoreType: 'NUMBER', isRequired: true, weight: 15, sortOrder: 6 },
+        { id: 'iti-022', category: 'อุปกรณ์เสริม', itemName: 'Apple Pencil ใช้งานได้', scoreType: 'PASS_FAIL', isRequired: false, weight: 5, sortOrder: 7 },
+        { id: 'iti-023', category: 'อุปกรณ์เสริม', itemName: 'Keyboard ใช้งานได้', scoreType: 'PASS_FAIL', isRequired: false, weight: 5, sortOrder: 8 },
+      ]},
+    },
+  });
+  console.log('InspectionTemplates created: 2 (Phone: 15 items, Tablet: 8 items)');
+
+  // ============================================================
+  // STEP 21: INSPECTIONS + RESULTS
+  // ============================================================
+  // Inspection 1: iPhone 14 Pro (Grade A)
+  await prisma.inspection.create({
+    data: {
+      id: 'insp-001', productId: 'prod-009', templateId: 'insp-tmpl-001', inspectorId: 'user-002',
+      inspectedAt: new Date('2026-02-01'), overallGrade: 'A', isCompleted: true,
+      photos: ['/uploads/inspections/insp-001/front.jpg', '/uploads/inspections/insp-001/back.jpg'],
+      notes: 'สภาพดีมาก มีรอยขีดข่วนเล็กน้อยด้านหลัง',
+      results: { create: [
+        { id: 'ir-001', templateItemId: 'iti-001', grade: 'A', notes: 'รอยนิดเดียวด้านหลัง' },
+        { id: 'ir-002', templateItemId: 'iti-002', grade: 'A', notes: 'จอสวย ไม่มี dead pixel' },
+        { id: 'ir-003', templateItemId: 'iti-003', passFail: true },
+        { id: 'ir-004', templateItemId: 'iti-004', passFail: true },
+        { id: 'ir-005', templateItemId: 'iti-005', passFail: true },
+        { id: 'ir-006', templateItemId: 'iti-006', passFail: true },
+        { id: 'ir-007', templateItemId: 'iti-007', passFail: true },
+        { id: 'ir-008', templateItemId: 'iti-008', passFail: true },
+        { id: 'ir-009', templateItemId: 'iti-009', passFail: true },
+        { id: 'ir-010', templateItemId: 'iti-010', passFail: true },
+        { id: 'ir-011', templateItemId: 'iti-011', numberValue: 92, notes: 'Battery Health 92%' },
+        { id: 'ir-012', templateItemId: 'iti-012', passFail: true },
+        { id: 'ir-013', templateItemId: 'iti-013', passFail: true },
+        { id: 'ir-014', templateItemId: 'iti-014', passFail: true },
+        { id: 'ir-015', templateItemId: 'iti-015', passFail: true },
+      ]},
+    },
+  });
+
+  // Inspection 2: iPhone 13 (Grade B)
+  await prisma.inspection.create({
+    data: {
+      id: 'insp-002', productId: 'prod-010', templateId: 'insp-tmpl-001', inspectorId: 'user-003',
+      inspectedAt: new Date('2026-01-20'), overallGrade: 'B', isCompleted: true,
+      notes: 'มีรอยตามการใช้งาน แบตลดลงบ้าง',
+      results: { create: [
+        { id: 'ir-016', templateItemId: 'iti-001', grade: 'B', notes: 'รอยขีดข่วนหลายจุด' },
+        { id: 'ir-017', templateItemId: 'iti-002', grade: 'A' },
+        { id: 'ir-018', templateItemId: 'iti-003', passFail: true },
+        { id: 'ir-019', templateItemId: 'iti-004', passFail: true },
+        { id: 'ir-020', templateItemId: 'iti-005', passFail: true },
+        { id: 'ir-021', templateItemId: 'iti-006', passFail: true },
+        { id: 'ir-022', templateItemId: 'iti-007', passFail: true },
+        { id: 'ir-023', templateItemId: 'iti-008', passFail: true },
+        { id: 'ir-024', templateItemId: 'iti-011', numberValue: 85 },
+        { id: 'ir-025', templateItemId: 'iti-012', passFail: true },
+        { id: 'ir-026', templateItemId: 'iti-013', passFail: true },
+        { id: 'ir-027', templateItemId: 'iti-014', passFail: true },
+        { id: 'ir-028', templateItemId: 'iti-015', passFail: true },
+      ]},
+    },
+  });
+
+  // Inspection 3: iPhone 11 (Grade D - damaged)
+  await prisma.inspection.create({
+    data: {
+      id: 'insp-003', productId: 'prod-015', templateId: 'insp-tmpl-001', inspectorId: 'user-003',
+      inspectedAt: new Date('2025-12-20'), overallGrade: 'D', isCompleted: true,
+      notes: 'จอมีรอยร้าว ลำโพงเสีย',
+      results: { create: [
+        { id: 'ir-029', templateItemId: 'iti-001', grade: 'C' },
+        { id: 'ir-030', templateItemId: 'iti-002', grade: 'D', notes: 'จอร้าวมุมขวาล่าง' },
+        { id: 'ir-031', templateItemId: 'iti-003', passFail: true },
+        { id: 'ir-032', templateItemId: 'iti-004', passFail: true },
+        { id: 'ir-033', templateItemId: 'iti-005', passFail: false, notes: 'touch ไม่ตอบสนองมุมขวาล่าง' },
+        { id: 'ir-034', templateItemId: 'iti-006', passFail: false, notes: 'ลำโพงซ้ายเสีย' },
+        { id: 'ir-035', templateItemId: 'iti-007', passFail: true },
+        { id: 'ir-036', templateItemId: 'iti-011', numberValue: 65 },
+        { id: 'ir-037', templateItemId: 'iti-012', passFail: true },
+        { id: 'ir-038', templateItemId: 'iti-013', passFail: true },
+        { id: 'ir-039', templateItemId: 'iti-014', passFail: true },
+        { id: 'ir-040', templateItemId: 'iti-015', passFail: true },
+      ]},
+    },
+  });
+  // Link inspections to products
+  await prisma.product.update({ where: { id: 'prod-009' }, data: { inspectionId: 'insp-001' } });
+  await prisma.product.update({ where: { id: 'prod-010' }, data: { inspectionId: 'insp-002' } });
+  await prisma.product.update({ where: { id: 'prod-015' }, data: { inspectionId: 'insp-003' } });
+  console.log('Inspections created: 3 (with results)');
+
+
+  // ============================================================
+  // STEP 22: STOCK TRANSFERS + BRANCH RECEIVINGS
+  // ============================================================
+  // Transfer 1: Warehouse -> ลาดพร้าว (CONFIRMED)
+  await prisma.stockTransfer.create({
+    data: {
+      id: 'st-001', productId: 'prod-005', fromBranchId: 'branch-001', toBranchId: 'branch-002',
+      transferredBy: 'user-001', status: 'CONFIRMED',
+      dispatchedById: 'user-001', dispatchedAt: new Date('2026-02-01'), trackingNote: 'ส่งรถบริษัท',
+      confirmedById: 'user-002', confirmedAt: new Date('2026-02-01'),
+      notes: 'โอนจากคลังไปลาดพร้าว',
+    },
+  });
+  await prisma.branchReceiving.create({
+    data: {
+      id: 'br-001', transferId: 'st-001', receivedById: 'user-002', status: 'COMPLETED', notes: 'รับเรียบร้อย',
+      items: { create: [
+        { id: 'bri-001', productId: 'prod-005', imeiSerial: '354567890123461', status: 'PASS' },
+      ]},
+    },
+  });
+
+  // Transfer 2: ลาดพร้าว -> รามคำแหง (IN_TRANSIT)
+  await prisma.stockTransfer.create({
+    data: {
+      id: 'st-002', productId: 'prod-012', fromBranchId: 'branch-002', toBranchId: 'branch-003',
+      transferredBy: 'user-002', status: 'IN_TRANSIT',
+      dispatchedById: 'user-002', dispatchedAt: new Date('2026-03-05'), trackingNote: 'ส่ง Grab Express',
+      expectedDeliveryDate: new Date('2026-03-06'),
+      notes: 'ลูกค้ารามคำแหงต้องการเครื่องนี้',
+    },
+  });
+
+  // Transfer 3: Warehouse -> บางแค (PENDING)
+  await prisma.stockTransfer.create({
+    data: {
+      id: 'st-003', productId: 'prod-024', fromBranchId: 'branch-001', toBranchId: 'branch-004',
+      transferredBy: 'user-001', status: 'PENDING',
+      notes: 'รอจัดส่งที่ชาร์จ MagSafe ไปบางแค',
+    },
+  });
+
+  // Transfer 4: รามคำแหง -> ลาดพร้าว (REJECTED)
+  await prisma.stockTransfer.create({
+    data: {
+      id: 'st-004', productId: 'prod-022', fromBranchId: 'branch-003', toBranchId: 'branch-002',
+      transferredBy: 'user-003', status: 'REJECTED',
+      dispatchedById: 'user-003', dispatchedAt: new Date('2026-02-20'),
+      confirmedById: 'user-002', confirmedAt: new Date('2026-02-21'),
+      notes: 'ลาดพร้าวมีสายชาร์จเพียงพอแล้ว',
+    },
+  });
+  console.log('StockTransfers created: 4 (with BranchReceiving)');
+
+  // ============================================================
+  // STEP 23: STOCK ADJUSTMENTS
+  // ============================================================
+  await prisma.stockAdjustment.create({
+    data: {
+      id: 'sa-001', productId: 'prod-015', branchId: 'branch-003', reason: 'DAMAGED', previousStatus: 'IN_STOCK',
+      notes: 'จอร้าว ลำโพงเสีย ตรวจสอบจาก inspection แล้ว',
+      photos: ['/uploads/adjustments/sa-001/damage.jpg'],
+      adjustedById: 'user-003',
+    },
+  });
+  await prisma.stockAdjustment.create({
+    data: {
+      id: 'sa-002', productId: 'prod-014', branchId: 'branch-002', reason: 'CORRECTION', previousStatus: 'SOLD_INSTALLMENT',
+      notes: 'แก้สถานะเป็น REPOSSESSED หลังยึดเครื่องคืน',
+      adjustedById: 'user-002',
+    },
+  });
+  await prisma.stockAdjustment.create({
+    data: {
+      id: 'sa-003', productId: 'prod-008', branchId: 'branch-004', reason: 'FOUND', previousStatus: 'IN_STOCK',
+      notes: 'สแกนพบเครื่องที่เคยบันทึกหาย คืนสถานะแล้ว',
+      adjustedById: 'user-008',
+    },
+  });
+  console.log('StockAdjustments created: 3');
+
+
+  // ============================================================
+  // STEP 24: REORDER POINTS + STOCK ALERTS
+  // ============================================================
+  await prisma.reorderPoint.create({
+    data: {
+      id: 'rp-001', brand: 'Apple', model: 'iPhone 15 Pro Max', storage: '256GB', category: 'PHONE_NEW',
+      branchId: 'branch-002', minQuantity: 2, reorderQuantity: 5,
+    },
+  });
+  await prisma.reorderPoint.create({
+    data: {
+      id: 'rp-002', brand: 'Samsung', model: 'Galaxy S24 Ultra', storage: '256GB', category: 'PHONE_NEW',
+      branchId: 'branch-002', minQuantity: 2, reorderQuantity: 3,
+    },
+  });
+  await prisma.reorderPoint.create({
+    data: {
+      id: 'rp-003', brand: 'Apple', model: 'iPhone 14 Pro', storage: '128GB', category: 'PHONE_USED',
+      branchId: 'branch-002', minQuantity: 3, reorderQuantity: 5,
+    },
+  });
+  await prisma.reorderPoint.create({
+    data: {
+      id: 'rp-004', brand: 'Apple', model: 'iPhone 13', storage: '128GB', category: 'PHONE_USED',
+      branchId: 'branch-003', minQuantity: 2, reorderQuantity: 4,
+    },
+  });
+  console.log('ReorderPoints created: 4');
+
+  // Stock Alerts
+  await prisma.stockAlert.create({
+    data: {
+      id: 'sa-alert-001', reorderPointId: 'rp-002', brand: 'Samsung', model: 'Galaxy S24 Ultra', storage: '256GB',
+      category: 'PHONE_NEW', branchId: 'branch-002', currentStock: 0, minQuantity: 2, reorderQuantity: 3,
+      status: 'ACTIVE',
+    },
+  });
+  await prisma.stockAlert.create({
+    data: {
+      id: 'sa-alert-002', reorderPointId: 'rp-003', brand: 'Apple', model: 'iPhone 14 Pro', storage: '128GB',
+      category: 'PHONE_USED', branchId: 'branch-002', currentStock: 1, minQuantity: 3, reorderQuantity: 5,
+      status: 'PO_CREATED', poId: 'po-004',
+    },
+  });
+  await prisma.stockAlert.create({
+    data: {
+      id: 'sa-alert-003', reorderPointId: 'rp-004', brand: 'Apple', model: 'iPhone 13', storage: '128GB',
+      category: 'PHONE_USED', branchId: 'branch-003', currentStock: 0, minQuantity: 2, reorderQuantity: 4,
+      status: 'RESOLVED', resolvedAt: new Date('2026-02-15'),
+    },
+  });
+  console.log('StockAlerts created: 3');
+
+  // ============================================================
+  // STEP 25: STOCK COUNTS + ITEMS
+  // ============================================================
+  // Stock Count 1: Completed count at ลาดพร้าว
+  await prisma.stockCount.create({
+    data: {
+      id: 'sc-001', countNumber: 'SC-2026-03-001', branchId: 'branch-002', countedById: 'user-002',
+      status: 'COMPLETED', notes: 'ตรวจนับสต็อกประจำเดือน มีนาคม', startedAt: new Date('2026-03-01 09:00:00'), completedAt: new Date('2026-03-01 12:00:00'),
+      items: { create: [
+        { id: 'sci-001', productId: 'prod-001', expectedStatus: 'IN_STOCK', actualFound: true, scannedImei: '354567890123456' },
+        { id: 'sci-002', productId: 'prod-002', expectedStatus: 'IN_STOCK', actualFound: true, scannedImei: '354567890123457' },
+        { id: 'sci-003', productId: 'prod-005', expectedStatus: 'IN_STOCK', actualFound: true, scannedImei: '354567890123461' },
+        { id: 'sci-004', productId: 'prod-009', expectedStatus: 'IN_STOCK', actualFound: true, scannedImei: '354567890123463' },
+        { id: 'sci-005', productId: 'prod-012', expectedStatus: 'IN_STOCK', actualFound: true, scannedImei: '354567890123466' },
+        { id: 'sci-006', productId: 'prod-020', expectedStatus: 'IN_STOCK', actualFound: true },
+        { id: 'sci-007', productId: 'prod-021', expectedStatus: 'IN_STOCK', actualFound: true },
+      ]},
+    },
+  });
+
+  // Stock Count 2: In progress at รามคำแหง
+  await prisma.stockCount.create({
+    data: {
+      id: 'sc-002', countNumber: 'SC-2026-03-002', branchId: 'branch-003', countedById: 'user-003',
+      status: 'IN_PROGRESS', notes: 'กำลังนับ', startedAt: new Date('2026-03-05 10:00:00'),
+      items: { create: [
+        { id: 'sci-008', productId: 'prod-004', expectedStatus: 'IN_STOCK', actualFound: true, scannedImei: '354567890123459' },
+        { id: 'sci-009', productId: 'prod-018', expectedStatus: 'IN_STOCK', actualFound: false, conditionNotes: 'ยังไม่พบ กำลังค้นหา' },
+        { id: 'sci-010', productId: 'prod-022', expectedStatus: 'IN_STOCK', actualFound: true },
+        { id: 'sci-011', productId: 'prod-025', expectedStatus: 'IN_STOCK', actualFound: true },
+      ]},
+    },
+  });
+
+  // Stock Count 3: Draft at บางแค
+  await prisma.stockCount.create({
+    data: {
+      id: 'sc-003', countNumber: 'SC-2026-03-003', branchId: 'branch-004', countedById: 'user-008',
+      status: 'DRAFT', notes: 'เตรียมนับสต็อก สัปดาห์หน้า',
+    },
+  });
+  console.log('StockCounts created: 3 (with items)');
+
+
+  // ============================================================
+  // STEP 26: CALL LOGS
+  // ============================================================
+  const callLogsData = [
+    { id: 'cl-001', contractId: 'cont-003', callerId: 'user-004', calledAt: new Date('2026-03-01 10:30:00'), result: 'ANSWERED', notes: 'ลูกค้าบอกจะมาจ่ายสัปดาห์หน้า' },
+    { id: 'cl-002', contractId: 'cont-003', callerId: 'user-004', calledAt: new Date('2026-03-04 14:00:00'), result: 'NO_ANSWER', notes: 'โทรไม่รับ 3 ครั้ง' },
+    { id: 'cl-003', contractId: 'cont-004', callerId: 'user-005', calledAt: new Date('2026-02-10 11:00:00'), result: 'NO_ANSWER', notes: 'ติดต่อไม่ได้' },
+    { id: 'cl-004', contractId: 'cont-004', callerId: 'user-005', calledAt: new Date('2026-02-15 09:00:00'), result: 'REFUSED', notes: 'ลูกค้าปฏิเสธจ่าย อ้างไม่มีเงิน' },
+    { id: 'cl-005', contractId: 'cont-004', callerId: 'user-002', calledAt: new Date('2026-02-20 15:30:00'), result: 'PROMISED', notes: 'โทรจากผู้จัดการ ลูกค้าสัญญาจะจ่ายภายในสิ้นเดือน แต่ไม่มา' },
+    { id: 'cl-006', contractId: 'cont-001', callerId: 'user-004', calledAt: new Date('2026-02-13 16:00:00'), result: 'ANSWERED', notes: 'แจ้งเตือนครบกำหนดงวด 3 ลูกค้ารับทราบ' },
+  ];
+  for (const cl of callLogsData) { await prisma.callLog.create({ data: cl }); }
+  console.log('CallLogs created:', callLogsData.length);
+
+  // ============================================================
+  // STEP 27: NOTIFICATION LOGS
+  // ============================================================
+  const notifData = [
+    { id: 'noti-001', channel: 'LINE' as const, recipient: 'somchai_j', subject: 'แจ้งเตือนค่างวด', message: 'สวัสดีค่ะ คุณสมชาย ค่างวด BC-2026-0001 จำนวน 7,200 บาท ครบกำหนด 15/02/2026', status: 'SENT', relatedId: 'cont-001', sentAt: new Date('2026-02-12') },
+    { id: 'noti-002', channel: 'LINE' as const, recipient: 'somchai_j', subject: 'ชำระเงินสำเร็จ', message: 'ขอบคุณค่ะ คุณสมชาย ชำระค่างวด BC-2026-0001 จำนวน 7,200 บาท สำเร็จ คงเหลือ 7 งวด', status: 'SENT', relatedId: 'cont-001', sentAt: new Date('2026-02-13') },
+    { id: 'noti-003', channel: 'SMS' as const, recipient: '083-333-3333', subject: 'แจ้งค้างชำระ', message: 'BestChoice: คุณวิชัย ค่างวด BC-2026-0003 เลยกำหนด 5 วัน ค้างชำระ 5,120 บาท', status: 'SENT', relatedId: 'cont-003', sentAt: new Date('2026-03-05') },
+    { id: 'noti-004', channel: 'LINE' as const, recipient: 'napa_k', subject: 'แจ้งผิดนัดชำระ', message: 'สำคัญ: คุณนภา สัญญา BC-2026-0004 เปลี่ยนสถานะผิดนัดชำระ กรุณาติดต่อสาขา', status: 'SENT', relatedId: 'cont-004', sentAt: new Date('2026-02-25') },
+    { id: 'noti-005', channel: 'SMS' as const, recipient: '084-444-4444', subject: 'แจ้งผิดนัดชำระ', message: 'BestChoice: คุณนภา สัญญา BC-2026-0004 ผิดนัดชำระ กรุณาติดต่อสาขา 02-222-2222', status: 'FAILED', relatedId: 'cont-004', errorMsg: 'SMS gateway timeout' },
+    { id: 'noti-006', channel: 'IN_APP' as const, recipient: 'user-002', message: 'Stock Alert: Samsung Galaxy S24 Ultra 256GB ที่สาขาลาดพร้าว เหลือ 0 เครื่อง (ต่ำกว่าขั้นต่ำ 2)', status: 'SENT', relatedId: 'sa-alert-001', sentAt: new Date('2026-03-01') },
+  ];
+  for (const n of notifData) { await prisma.notificationLog.create({ data: n }); }
+  console.log('NotificationLogs created:', notifData.length);
+
+  // ============================================================
+  // STEP 28: AUDIT LOGS
+  // ============================================================
+  const auditData = [
+    { id: 'audit-001', userId: 'user-004', action: 'CREATE', entity: 'contract', entityId: 'cont-001', newValue: { contractNumber: 'BC-2026-0001', status: 'DRAFT' }, ipAddress: '192.168.1.10', userAgent: 'Chrome/120 Windows', duration: 250 },
+    { id: 'audit-002', userId: 'user-002', action: 'UPDATE', entity: 'contract', entityId: 'cont-001', oldValue: { workflowStatus: 'PENDING_REVIEW' }, newValue: { workflowStatus: 'APPROVED' }, ipAddress: '192.168.1.11', userAgent: 'Chrome/120 macOS', duration: 180 },
+    { id: 'audit-003', userId: 'user-004', action: 'CREATE', entity: 'payment', entityId: 'pay-001-01', newValue: { amountPaid: 7200, status: 'PAID' }, ipAddress: '192.168.1.10', userAgent: 'Chrome/120 Windows', duration: 120 },
+    { id: 'audit-004', userId: 'user-005', action: 'CREATE', entity: 'contract', entityId: 'cont-004', newValue: { contractNumber: 'BC-2026-0004', status: 'DRAFT' }, ipAddress: '192.168.1.12', userAgent: 'Safari/17 iPad', duration: 300 },
+    { id: 'audit-005', userId: 'user-001', action: 'UPDATE', entity: 'contract', entityId: 'cont-004', oldValue: { status: 'OVERDUE' }, newValue: { status: 'DEFAULT' }, ipAddress: '192.168.1.1', userAgent: 'Chrome/120 Windows', duration: 150 },
+    { id: 'audit-006', userId: 'user-002', action: 'REPOSSESSION', entity: 'product', entityId: 'prod-014', newValue: { status: 'REPOSSESSED', repossessionId: 'repo-001' }, ipAddress: '192.168.1.11', userAgent: 'Chrome/120 macOS', duration: 200 },
+    { id: 'audit-007', userId: 'user-001', action: 'CREATE', entity: 'purchase_order', entityId: 'po-001', newValue: { poNumber: 'PO-2026-01-001', status: 'DRAFT' }, ipAddress: '192.168.1.1', userAgent: 'Chrome/120 Windows', duration: 280 },
+    { id: 'audit-008', userId: 'user-001', action: 'UPDATE', entity: 'purchase_order', entityId: 'po-001', oldValue: { status: 'DRAFT' }, newValue: { status: 'APPROVED' }, ipAddress: '192.168.1.1', userAgent: 'Chrome/120 Windows', duration: 100 },
+    { id: 'audit-009', userId: 'user-002', action: 'CREATE', entity: 'goods_receiving', entityId: 'gr-001', newValue: { poId: 'po-001', itemCount: 2 }, ipAddress: '192.168.1.11', userAgent: 'Chrome/120 macOS', duration: 350 },
+    { id: 'audit-010', userId: 'user-001', action: 'CREATE', entity: 'stock_transfer', entityId: 'st-001', newValue: { productId: 'prod-005', from: 'branch-001', to: 'branch-002' }, ipAddress: '192.168.1.1', userAgent: 'Chrome/120 Windows', duration: 130 },
+  ];
+  for (const a of auditData) { await prisma.auditLog.create({ data: a }); }
+  console.log('AuditLogs created:', auditData.length);
+
+  // ============================================================
+  // STEP 29: CONTRACT TEMPLATES
+  // ============================================================
+  await prisma.contractTemplate.create({
+    data: {
+      id: 'ct-001', name: 'สัญญาผ่อนชำระมาตรฐาน (ร้านค้าตรง)', type: 'STORE_DIRECT',
+      contentHtml: '<h1>สัญญาผ่อนชำระสินค้า</h1><p>สัญญาฉบับนี้ทำขึ้นระหว่าง ร้าน Best Choice ("ผู้ขาย") กับ {customer_name} ("ผู้ซื้อ")...</p><p>สินค้า: {product_name}</p><p>ราคาขาย: {selling_price} บาท</p><p>เงินดาวน์: {down_payment} บาท</p><p>จำนวนงวด: {total_months} งวด</p><p>ค่างวด: {monthly_payment} บาท/เดือน</p>',
+      placeholders: ['customer_name', 'product_name', 'selling_price', 'down_payment', 'total_months', 'monthly_payment', 'contract_number', 'branch_name'],
+    },
+  });
+  await prisma.contractTemplate.create({
+    data: {
+      id: 'ct-002', name: 'สัญญาผ่อนชำระ (บัตรเครดิต)', type: 'CREDIT_CARD',
+      contentHtml: '<h1>สัญญาผ่อนชำระผ่านบัตรเครดิต</h1><p>สัญญาฉบับนี้ทำขึ้นระหว่าง ร้าน Best Choice กับ {customer_name}...</p><p>ผ่อนผ่านบัตรเครดิต {card_type} ดอกเบี้ย {interest_rate}%</p>',
+      placeholders: ['customer_name', 'product_name', 'selling_price', 'card_type', 'interest_rate', 'total_months'],
+    },
+  });
+  await prisma.contractTemplate.create({
+    data: {
+      id: 'ct-003', name: 'สัญญาแลกเปลี่ยนเครื่อง', type: 'EXCHANGE',
+      contentHtml: '<h1>สัญญาแลกเปลี่ยนสินค้า</h1><p>ผู้ซื้อ {customer_name} นำเครื่อง {old_product} มาแลกเปลี่ยนกับ {new_product}...</p><p>มูลค่าเครื่องเก่า: {trade_in_value} บาท</p><p>ส่วนต่างที่ต้องชำระ: {difference} บาท</p>',
+      placeholders: ['customer_name', 'old_product', 'new_product', 'trade_in_value', 'difference'],
+    },
+  });
+  console.log('ContractTemplates created: 3');
+
+  // ============================================================
+  // STEP 30: STICKER TEMPLATES
+  // ============================================================
+  await prisma.stickerTemplate.create({
+    data: {
+      id: 'stk-001', name: 'สติ๊กเกอร์ราคา มาตรฐาน', sizeWidthMm: 50, sizeHeightMm: 30,
+      layoutConfig: { rows: [{ type: 'text', field: 'product_name', fontSize: 10, bold: true }, { type: 'text', field: 'price', fontSize: 14, bold: true, color: 'red' }, { type: 'barcode', field: 'imei_serial', height: 15 }] },
+      placeholders: ['product_name', 'price', 'imei_serial', 'branch_name'],
+    },
+  });
+  await prisma.stickerTemplate.create({
+    data: {
+      id: 'stk-002', name: 'สติ๊กเกอร์ QR สินค้า', sizeWidthMm: 40, sizeHeightMm: 40,
+      layoutConfig: { rows: [{ type: 'qrcode', field: 'product_url', size: 30 }, { type: 'text', field: 'product_name', fontSize: 8 }] },
+      placeholders: ['product_url', 'product_name', 'product_id'],
+    },
+  });
+  console.log('StickerTemplates created: 2');
+
+  // ============================================================
+  // DONE
+  // ============================================================
+  console.log('');
+  console.log('=== Seeding completed! ===');
+  console.log('Summary:');
+  console.log('  Branches: 4 (1 warehouse + 3 stores)');
+  console.log('  Users: 8 (1 owner, 3 managers, 3 sales, 1 accountant)');
+  console.log('  Suppliers: 10 (with 11 payment methods)');
+  console.log('  Products: 25 (8 new phones, 7 used phones, 4 tablets, 6 accessories)');
+  console.log('  ProductPrices: 25');
+  console.log('  PurchaseOrders: 7 (with PO items)');
+  console.log('  GoodsReceivings: 4 (with items)');
+  console.log('  Customers: 12');
+  console.log('  InterestConfigs: 4');
+  console.log('  Contracts: 8 (ACTIVE, OVERDUE, DEFAULT, COMPLETED, EARLY_PAYOFF, DRAFT)');
+  console.log('  Payments: 41');
+  console.log('  ContractDocuments: 10');
+  console.log('  CreditChecks: 4');
+  console.log('  Signatures: 8');
+  console.log('  EDocuments: 4');
+  console.log('  Sales: 6 (CASH, INSTALLMENT, EXTERNAL_FINANCE)');
+  console.log('  Repossessions: 1');
+  console.log('  InspectionTemplates: 2 (Phone 15 items, Tablet 8 items)');
+  console.log('  Inspections: 3 (with results)');
+  console.log('  StockTransfers: 4 (CONFIRMED, IN_TRANSIT, PENDING, REJECTED)');
+  console.log('  BranchReceivings: 1 (with items)');
+  console.log('  StockAdjustments: 3');
+  console.log('  ReorderPoints: 4');
+  console.log('  StockAlerts: 3 (ACTIVE, PO_CREATED, RESOLVED)');
+  console.log('  StockCounts: 3 (COMPLETED, IN_PROGRESS, DRAFT)');
+  console.log('  CallLogs: 6');
+  console.log('  NotificationLogs: 6');
+  console.log('  AuditLogs: 10');
+  console.log('  ContractTemplates: 3');
+  console.log('  StickerTemplates: 2');
+  console.log('  SystemConfig: 18');
 }
 
 main()

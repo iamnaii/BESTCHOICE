@@ -154,14 +154,14 @@ async function main() {
   // ============================================================
   const suppliersData = [
     { id: 'sup-001', name: 'ABC Mobile Supply', contactName: 'คุณสมศรี วงศ์สุวรรณ', nickname: 'ABC', phone: '089-999-1111', phoneSecondary: '02-234-5678', lineId: 'abc_mobile', address: '100 ถ.เจริญกรุง เขตบางรัก กทม. 10500', taxId: '0105548012345', hasVat: true, notes: 'Apple Authorized Reseller' },
-    { id: 'sup-002', name: 'Thai Phone Distributor Co., Ltd.', contactName: 'คุณวิทยา เจริญพร', nickname: 'Thai Phone', phone: '089-999-2222', phoneSecondary: '02-345-6789', lineId: 'thaiphone_dist', address: '200 ถ.พระราม 4 เขตคลองเตย กทม. 10110', taxId: '0105561023456', hasVat: true, notes: 'Samsung/Android ทุกรุ่น เครดิต 30 วัน' },
+    { id: 'sup-002', name: 'iStore Premium Co., Ltd.', contactName: 'คุณวิทยา เจริญพร', nickname: 'iStore', phone: '089-999-2222', phoneSecondary: '02-345-6789', lineId: 'istore_prem', address: '200 ถ.พระราม 4 เขตคลองเตย กทม. 10110', taxId: '0105561023456', hasVat: true, notes: 'Apple Premium Reseller เครดิต 30 วัน' },
     { id: 'sup-003', name: 'Mobile Accessories Plus', contactName: 'คุณนิดา พรหมมา', nickname: 'MAP', phone: '089-999-3333', lineId: 'nida_map', address: '300 ถ.สีลม เขตบางรัก กทม. 10500', taxId: '0105565034567', hasVat: false, notes: 'อุปกรณ์เสริม/เคส/ฟิล์ม ราคาส่ง' },
-    { id: 'sup-004', name: 'บจก. สยามโมบาย เทรดดิ้ง', contactName: 'คุณอนันต์ สยามรัฐ', nickname: 'สยามโมบาย', phone: '086-777-4444', phoneSecondary: '02-456-7890', lineId: 'siammobile', address: '88/5 ถ.พญาไท เขตราชเทวี กทม. 10400', taxId: '0105557045678', hasVat: true, notes: 'OPPO, Vivo, Realme เครดิต 15 วัน' },
+    { id: 'sup-004', name: 'บจก. แอปเปิล เซ็นทรัล ซัพพลาย', contactName: 'คุณอนันต์ สยามรัฐ', nickname: 'ACS', phone: '086-777-4444', phoneSecondary: '02-456-7890', lineId: 'acs_apple', address: '88/5 ถ.พญาไท เขตราชเทวี กทม. 10400', taxId: '0105557045678', hasVat: true, notes: 'Apple iPhone ทุกรุ่น เครดิต 15 วัน' },
     { id: 'sup-005', name: 'MBK Phone Center', contactName: 'คุณประยุทธ์ แซ่ลิ้ม', nickname: 'MBK', phone: '081-888-5555', lineId: 'mbk_phone', address: 'ชั้น 4 MBK Center ถ.พญาไท เขตปทุมวัน กทม. 10330', hasVat: false, notes: 'มือสองสภาพดี รับเครื่องทันที' },
-    { id: 'sup-006', name: 'บจก. ดิจิตอล โซลูชั่น', contactName: 'คุณพิมพ์ลดา ศรีสุข', nickname: 'Digital Sol', phone: '092-666-6666', phoneSecondary: '02-567-8901', lineId: 'digitalsol', address: '55 อาคารไอทีสแควร์ ถ.แจ้งวัฒนะ เขตหลักสี่ กทม. 10210', taxId: '0105563056789', hasVat: true, notes: 'Xiaomi, Huawei, OnePlus นำเข้าตรง' },
+    { id: 'sup-006', name: 'บจก. ไอโฟน พลัส', contactName: 'คุณพิมพ์ลดา ศรีสุข', nickname: 'iPhone+', phone: '092-666-6666', phoneSecondary: '02-567-8901', lineId: 'iphoneplus', address: '55 อาคารไอทีสแควร์ ถ.แจ้งวัฒนะ เขตหลักสี่ กทม. 10210', taxId: '0105563056789', hasVat: true, notes: 'Apple iPhone/iPad นำเข้าตรง' },
     { id: 'sup-007', name: 'J&T Mobile Import', contactName: 'คุณจิราภา ตั้งศิริ', nickname: 'J&T', phone: '095-555-7777', phoneSecondary: '02-678-9012', lineId: 'jt_mobile', address: '123/45 ซ.นวมินทร์ 70 เขตบึงกุ่ม กทม. 10230', taxId: '0105570067890', hasVat: true, notes: 'นำเข้าจากญี่ปุ่น/เกาหลี Grade A เครดิต 7 วัน' },
     { id: 'sup-008', name: 'ร้านพี่หนึ่ง โทรศัพท์มือถือ', contactName: 'คุณหนึ่งฤทัย ใจเย็น', nickname: 'พี่หนึ่ง', phone: '063-444-8888', lineId: 'peenueng', address: 'ร้าน A12 ตลาดคลองถม เขตป้อมปราบฯ กทม. 10100', hasVat: false, notes: 'iPhone มือสอง เครื่องศูนย์ไทย' },
-    { id: 'sup-009', name: 'บจก. แกดเจ็ท แอนด์ เกียร์', contactName: 'คุณธนกร วัฒนชัย', nickname: 'G&G', phone: '097-333-9999', phoneSecondary: '02-789-0123', lineId: 'gadget_gear', address: '999 ถ.ศรีนครินทร์ เขตสวนหลวง กทม. 10250', taxId: '0105568078901', hasVat: true, notes: 'Tablet iPad/Samsung Tab เครดิต 30 วัน' },
+    { id: 'sup-009', name: 'บจก. แกดเจ็ท แอนด์ เกียร์', contactName: 'คุณธนกร วัฒนชัย', nickname: 'G&G', phone: '097-333-9999', phoneSecondary: '02-789-0123', lineId: 'gadget_gear', address: '999 ถ.ศรีนครินทร์ เขตสวนหลวง กทม. 10250', taxId: '0105568078901', hasVat: true, notes: 'iPad ทุกรุ่น เครดิต 30 วัน' },
     { id: 'sup-010', name: 'iCare Refurbished', contactName: 'คุณศิริพร แจ่มใส', nickname: 'iCare', phone: '064-222-0000', lineId: 'icare_refurb', address: '77/3 ถ.รัชดาภิเษก เขตดินแดง กทม. 10400', taxId: '0105572089012', hasVat: false, notes: 'iPhone Refurbished Grade A-B รับประกัน 3 เดือน' },
   ];
   for (const s of suppliersData) { await prisma.supplier.create({ data: s }); }
@@ -173,12 +173,12 @@ async function main() {
   const spmData = [
     { id: 'spm-001', supplierId: 'sup-001', paymentMethod: 'BANK_TRANSFER', bankName: 'กสิกรไทย', bankAccountName: 'ABC Mobile Supply', bankAccountNumber: '123-4-56789-0', isDefault: true },
     { id: 'spm-002', supplierId: 'sup-001', paymentMethod: 'CREDIT', creditTermDays: 7, isDefault: false },
-    { id: 'spm-003', supplierId: 'sup-002', paymentMethod: 'BANK_TRANSFER', bankName: 'ไทยพาณิชย์', bankAccountName: 'Thai Phone Distributor', bankAccountNumber: '222-3-44567-8', isDefault: true },
+    { id: 'spm-003', supplierId: 'sup-002', paymentMethod: 'BANK_TRANSFER', bankName: 'ไทยพาณิชย์', bankAccountName: 'iStore Premium', bankAccountNumber: '222-3-44567-8', isDefault: true },
     { id: 'spm-004', supplierId: 'sup-002', paymentMethod: 'CREDIT', creditTermDays: 30, isDefault: false },
-    { id: 'spm-005', supplierId: 'sup-004', paymentMethod: 'BANK_TRANSFER', bankName: 'กรุงเทพ', bankAccountName: 'บจก.สยามโมบาย เทรดดิ้ง', bankAccountNumber: '333-0-78901-2', isDefault: true },
+    { id: 'spm-005', supplierId: 'sup-004', paymentMethod: 'BANK_TRANSFER', bankName: 'กรุงเทพ', bankAccountName: 'บจก.แอปเปิล เซ็นทรัล ซัพพลาย', bankAccountNumber: '333-0-78901-2', isDefault: true },
     { id: 'spm-006', supplierId: 'sup-004', paymentMethod: 'CREDIT', creditTermDays: 15, isDefault: false },
     { id: 'spm-007', supplierId: 'sup-005', paymentMethod: 'CASH', isDefault: true },
-    { id: 'spm-008', supplierId: 'sup-006', paymentMethod: 'BANK_TRANSFER', bankName: 'กรุงไทย', bankAccountName: 'บจก.ดิจิตอล โซลูชั่น', bankAccountNumber: '444-5-67890-1', isDefault: true },
+    { id: 'spm-008', supplierId: 'sup-006', paymentMethod: 'BANK_TRANSFER', bankName: 'กรุงไทย', bankAccountName: 'บจก.ไอโฟน พลัส', bankAccountNumber: '444-5-67890-1', isDefault: true },
     { id: 'spm-009', supplierId: 'sup-008', paymentMethod: 'CASH', isDefault: true },
     { id: 'spm-010', supplierId: 'sup-009', paymentMethod: 'BANK_TRANSFER', bankName: 'กสิกรไทย', bankAccountName: 'บจก.แกดเจ็ท แอนด์ เกียร์', bankAccountNumber: '555-6-78901-2', isDefault: true },
     { id: 'spm-011', supplierId: 'sup-009', paymentMethod: 'CREDIT', creditTermDays: 30, isDefault: false },
@@ -194,28 +194,28 @@ async function main() {
     // PHONE_NEW (8)
     { id: 'prod-001', name: 'iPhone 15 Pro Max 256GB', brand: 'Apple', model: 'iPhone 15 Pro Max', color: 'Natural Titanium', storage: '256GB', imeiSerial: '354567890123456', serialNumber: 'F2LXK1A2B3', category: 'PHONE_NEW' as const, costPrice: 42900, branchId: 'branch-002', status: 'IN_STOCK' as const, supplierId: 'sup-001', stockInDate: new Date('2026-01-15') },
     { id: 'prod-002', name: 'iPhone 15 Pro 128GB', brand: 'Apple', model: 'iPhone 15 Pro', color: 'Black Titanium', storage: '128GB', imeiSerial: '354567890123457', serialNumber: 'F2LXK1A2B4', category: 'PHONE_NEW' as const, costPrice: 38900, branchId: 'branch-002', status: 'IN_STOCK' as const, supplierId: 'sup-001', stockInDate: new Date('2026-01-15') },
-    { id: 'prod-003', name: 'Samsung Galaxy S24 Ultra 256GB', brand: 'Samsung', model: 'Galaxy S24 Ultra', color: 'Titanium Gray', storage: '256GB', imeiSerial: '354567890123458', serialNumber: 'RZ8T30ABC1', category: 'PHONE_NEW' as const, costPrice: 39900, branchId: 'branch-002', status: 'SOLD_INSTALLMENT' as const, supplierId: 'sup-002', stockInDate: new Date('2026-01-10') },
-    { id: 'prod-004', name: 'Samsung Galaxy A55 128GB', brand: 'Samsung', model: 'Galaxy A55', color: 'Awesome Navy', storage: '128GB', imeiSerial: '354567890123459', serialNumber: 'RZ8T30ABC2', category: 'PHONE_NEW' as const, costPrice: 12900, branchId: 'branch-003', status: 'IN_STOCK' as const, supplierId: 'sup-002', stockInDate: new Date('2026-01-20') },
-    { id: 'prod-005', name: 'OPPO Reno 11 Pro 256GB', brand: 'OPPO', model: 'Reno 11 Pro', color: 'Pearl White', storage: '256GB', imeiSerial: '354567890123461', serialNumber: 'OPPO11PRO01', category: 'PHONE_NEW' as const, costPrice: 16990, branchId: 'branch-002', status: 'IN_STOCK' as const, supplierId: 'sup-004', stockInDate: new Date('2026-02-01') },
-    { id: 'prod-006', name: 'Xiaomi 14 Ultra 512GB', brand: 'Xiaomi', model: '14 Ultra', color: 'Black', storage: '512GB', imeiSerial: '354567890123462', serialNumber: 'XI14U00001', category: 'PHONE_NEW' as const, costPrice: 34900, branchId: 'branch-004', status: 'IN_STOCK' as const, supplierId: 'sup-006', stockInDate: new Date('2026-02-05') },
-    { id: 'prod-007', name: 'Vivo V30 Pro 256GB', brand: 'Vivo', model: 'V30 Pro', color: 'Peacock Green', storage: '256GB', imeiSerial: '354567890123470', serialNumber: 'VIVOV30P01', category: 'PHONE_NEW' as const, costPrice: 16990, branchId: 'branch-003', status: 'SOLD_CASH' as const, supplierId: 'sup-004', stockInDate: new Date('2026-01-25') },
-    { id: 'prod-008', name: 'Samsung Galaxy S24 128GB', brand: 'Samsung', model: 'Galaxy S24', color: 'Amber Yellow', storage: '128GB', imeiSerial: '354567890123471', serialNumber: 'RZ8T30ABC3', category: 'PHONE_NEW' as const, costPrice: 27900, branchId: 'branch-004', status: 'SOLD_INSTALLMENT' as const, supplierId: 'sup-002', stockInDate: new Date('2026-02-10') },
+    { id: 'prod-003', name: 'iPhone 16 Pro Max 256GB', brand: 'Apple', model: 'iPhone 16 Pro Max', color: 'Desert Titanium', storage: '256GB', imeiSerial: '354567890123458', serialNumber: 'F2LXK2A2B1', category: 'PHONE_NEW' as const, costPrice: 44900, branchId: 'branch-002', status: 'SOLD_INSTALLMENT' as const, supplierId: 'sup-002', stockInDate: new Date('2026-01-10') },
+    { id: 'prod-004', name: 'iPhone 16 128GB', brand: 'Apple', model: 'iPhone 16', color: 'Ultramarine', storage: '128GB', imeiSerial: '354567890123459', serialNumber: 'F2LXK2C2D1', category: 'PHONE_NEW' as const, costPrice: 29900, branchId: 'branch-003', status: 'IN_STOCK' as const, supplierId: 'sup-002', stockInDate: new Date('2026-01-20') },
+    { id: 'prod-005', name: 'iPhone 15 128GB', brand: 'Apple', model: 'iPhone 15', color: 'Blue', storage: '128GB', imeiSerial: '354567890123461', serialNumber: 'F2LXK3A2B1', category: 'PHONE_NEW' as const, costPrice: 28900, branchId: 'branch-002', status: 'IN_STOCK' as const, supplierId: 'sup-004', stockInDate: new Date('2026-02-01') },
+    { id: 'prod-006', name: 'iPhone 16 Pro 256GB', brand: 'Apple', model: 'iPhone 16 Pro', color: 'Black Titanium', storage: '256GB', imeiSerial: '354567890123462', serialNumber: 'F2LXK2E2F1', category: 'PHONE_NEW' as const, costPrice: 39900, branchId: 'branch-004', status: 'IN_STOCK' as const, supplierId: 'sup-006', stockInDate: new Date('2026-02-05') },
+    { id: 'prod-007', name: 'iPhone 14 128GB', brand: 'Apple', model: 'iPhone 14', color: 'Midnight', storage: '128GB', imeiSerial: '354567890123470', serialNumber: 'F2LXK3C2D1', category: 'PHONE_NEW' as const, costPrice: 22900, branchId: 'branch-003', status: 'SOLD_CASH' as const, supplierId: 'sup-004', stockInDate: new Date('2026-01-25') },
+    { id: 'prod-008', name: 'iPhone 15 Plus 256GB', brand: 'Apple', model: 'iPhone 15 Plus', color: 'Pink', storage: '256GB', imeiSerial: '354567890123471', serialNumber: 'F2LXK3E2F1', category: 'PHONE_NEW' as const, costPrice: 32900, branchId: 'branch-004', status: 'SOLD_INSTALLMENT' as const, supplierId: 'sup-002', stockInDate: new Date('2026-02-10') },
     // PHONE_USED (7)
     { id: 'prod-009', name: 'iPhone 14 Pro 128GB (มือสอง)', brand: 'Apple', model: 'iPhone 14 Pro', color: 'Deep Purple', storage: '128GB', imeiSerial: '354567890123463', serialNumber: 'F2LXK1C2D3', category: 'PHONE_USED' as const, costPrice: 22500, branchId: 'branch-002', status: 'IN_STOCK' as const, conditionGrade: 'A' as const, batteryHealth: 92, warrantyExpired: true, hasBox: true, supplierId: 'sup-005', stockInDate: new Date('2026-02-01') },
     { id: 'prod-010', name: 'iPhone 13 128GB (มือสอง)', brand: 'Apple', model: 'iPhone 13', color: 'Midnight', storage: '128GB', imeiSerial: '354567890123464', serialNumber: 'F2LXK1E2F3', category: 'PHONE_USED' as const, costPrice: 15500, branchId: 'branch-003', status: 'SOLD_INSTALLMENT' as const, conditionGrade: 'B' as const, batteryHealth: 85, warrantyExpired: true, hasBox: false, supplierId: 'sup-008', stockInDate: new Date('2026-01-20') },
     { id: 'prod-011', name: 'iPhone 12 64GB (มือสอง)', brand: 'Apple', model: 'iPhone 12', color: 'Blue', storage: '64GB', imeiSerial: '354567890123465', serialNumber: 'F2LXK1G2H3', category: 'PHONE_USED' as const, costPrice: 9500, branchId: 'branch-003', status: 'SOLD_INSTALLMENT' as const, conditionGrade: 'C' as const, batteryHealth: 78, warrantyExpired: true, hasBox: false, supplierId: 'sup-010', stockInDate: new Date('2026-01-10') },
     { id: 'prod-012', name: 'iPhone 13 Pro 128GB (มือสอง)', brand: 'Apple', model: 'iPhone 13 Pro', color: 'Sierra Blue', storage: '128GB', imeiSerial: '354567890123466', serialNumber: 'F2LXK1I2J3', category: 'PHONE_USED' as const, costPrice: 18500, branchId: 'branch-002', status: 'IN_STOCK' as const, conditionGrade: 'A' as const, batteryHealth: 90, warrantyExpired: true, hasBox: true, supplierId: 'sup-010', stockInDate: new Date('2026-02-05') },
-    { id: 'prod-013', name: 'Samsung Galaxy S23 128GB (มือสอง)', brand: 'Samsung', model: 'Galaxy S23', color: 'Phantom Black', storage: '128GB', imeiSerial: '354567890123467', serialNumber: 'RZ8T30DEF1', category: 'PHONE_USED' as const, costPrice: 12000, branchId: 'branch-004', status: 'IN_STOCK' as const, conditionGrade: 'B' as const, batteryHealth: 88, warrantyExpired: false, warrantyExpireDate: new Date('2026-06-15'), hasBox: true, supplierId: 'sup-007', stockInDate: new Date('2026-02-08') },
+    { id: 'prod-013', name: 'iPhone 12 Pro Max 128GB (มือสอง)', brand: 'Apple', model: 'iPhone 12 Pro Max', color: 'Pacific Blue', storage: '128GB', imeiSerial: '354567890123467', serialNumber: 'F2LXK4A2B1', category: 'PHONE_USED' as const, costPrice: 14500, branchId: 'branch-004', status: 'IN_STOCK' as const, conditionGrade: 'B' as const, batteryHealth: 88, warrantyExpired: false, warrantyExpireDate: new Date('2026-06-15'), hasBox: true, supplierId: 'sup-007', stockInDate: new Date('2026-02-08') },
     { id: 'prod-014', name: 'iPhone 14 128GB (มือสอง)', brand: 'Apple', model: 'iPhone 14', color: 'Product Red', storage: '128GB', imeiSerial: '354567890123472', serialNumber: 'F2LXK1K2L3', category: 'PHONE_USED' as const, costPrice: 18000, branchId: 'branch-002', status: 'REPOSSESSED' as const, conditionGrade: 'B' as const, batteryHealth: 82, warrantyExpired: true, hasBox: false, stockInDate: new Date('2026-01-05') },
     { id: 'prod-015', name: 'iPhone 11 64GB (มือสอง)', brand: 'Apple', model: 'iPhone 11', color: 'White', storage: '64GB', imeiSerial: '354567890123473', serialNumber: 'F2LXK1M2N3', category: 'PHONE_USED' as const, costPrice: 6500, branchId: 'branch-003', status: 'DAMAGED' as const, conditionGrade: 'D' as const, batteryHealth: 65, warrantyExpired: true, hasBox: false, supplierId: 'sup-008', stockInDate: new Date('2025-12-20') },
     // TABLET (4)
     { id: 'prod-016', name: 'iPad Pro M4 11" 256GB', brand: 'Apple', model: 'iPad Pro M4', color: 'Space Black', storage: '256GB', imeiSerial: '354567890123468', serialNumber: 'IPADM4001', category: 'TABLET' as const, costPrice: 36900, branchId: 'branch-004', status: 'IN_STOCK' as const, supplierId: 'sup-009', stockInDate: new Date('2026-02-10') },
-    { id: 'prod-017', name: 'Samsung Galaxy Tab S9 128GB', brand: 'Samsung', model: 'Galaxy Tab S9', color: 'Graphite', storage: '128GB', imeiSerial: '354567890123469', serialNumber: 'TABS9001', category: 'TABLET' as const, costPrice: 24900, branchId: 'branch-002', status: 'SOLD_INSTALLMENT' as const, supplierId: 'sup-009', stockInDate: new Date('2026-01-05') },
+    { id: 'prod-017', name: 'iPad 10th Gen 64GB', brand: 'Apple', model: 'iPad 10th Gen', color: 'Silver', storage: '64GB', imeiSerial: '354567890123469', serialNumber: 'IPAD10G001', category: 'TABLET' as const, costPrice: 14900, branchId: 'branch-002', status: 'SOLD_INSTALLMENT' as const, supplierId: 'sup-009', stockInDate: new Date('2026-01-05') },
     { id: 'prod-018', name: 'iPad Air M2 11" 128GB', brand: 'Apple', model: 'iPad Air M2', color: 'Starlight', storage: '128GB', imeiSerial: '354567890123474', serialNumber: 'IPADA2001', category: 'TABLET' as const, costPrice: 27900, branchId: 'branch-003', status: 'IN_STOCK' as const, supplierId: 'sup-009', stockInDate: new Date('2026-02-15') },
-    { id: 'prod-019', name: 'Samsung Galaxy Tab A9+ 64GB', brand: 'Samsung', model: 'Galaxy Tab A9+', color: 'Silver', storage: '64GB', imeiSerial: '354567890123475', serialNumber: 'TABA9P001', category: 'TABLET' as const, costPrice: 9900, branchId: 'branch-004', status: 'SOLD_CASH' as const, supplierId: 'sup-002', stockInDate: new Date('2026-01-28') },
+    { id: 'prod-019', name: 'iPad mini 6th Gen 64GB', brand: 'Apple', model: 'iPad mini 6', color: 'Space Gray', storage: '64GB', imeiSerial: '354567890123475', serialNumber: 'IPADM6001', category: 'TABLET' as const, costPrice: 16900, branchId: 'branch-004', status: 'SOLD_CASH' as const, supplierId: 'sup-009', stockInDate: new Date('2026-01-28') },
     // ACCESSORY (6)
     { id: 'prod-020', name: 'เคส iPhone 15 Pro Max MagSafe', brand: 'Apple', model: 'MagSafe Case', color: 'Clear', category: 'ACCESSORY' as const, costPrice: 890, branchId: 'branch-002', status: 'IN_STOCK' as const, accessoryType: 'CASE', accessoryBrand: 'Apple', supplierId: 'sup-003', stockInDate: new Date('2026-02-01') },
-    { id: 'prod-021', name: 'ฟิล์มกระจก Samsung Galaxy S24 Ultra', brand: 'Samsung', model: 'Galaxy S24 Ultra Screen Protector', category: 'ACCESSORY' as const, costPrice: 250, branchId: 'branch-002', status: 'IN_STOCK' as const, accessoryType: 'SCREEN_PROTECTOR', accessoryBrand: 'Nillkin', supplierId: 'sup-003', stockInDate: new Date('2026-02-01') },
+    { id: 'prod-021', name: 'ฟิล์มกระจก iPhone 16 Pro Max', brand: 'Apple', model: 'iPhone 16 Pro Max Screen Protector', category: 'ACCESSORY' as const, costPrice: 290, branchId: 'branch-002', status: 'IN_STOCK' as const, accessoryType: 'SCREEN_PROTECTOR', accessoryBrand: 'Nillkin', supplierId: 'sup-003', stockInDate: new Date('2026-02-01') },
     { id: 'prod-022', name: 'สายชาร์จ USB-C 2m', brand: 'Anker', model: 'PowerLine III', category: 'ACCESSORY' as const, costPrice: 350, branchId: 'branch-003', status: 'IN_STOCK' as const, accessoryType: 'CABLE', accessoryBrand: 'Anker', supplierId: 'sup-003', stockInDate: new Date('2026-02-01') },
     { id: 'prod-023', name: 'หูฟัง AirPods Pro 2', brand: 'Apple', model: 'AirPods Pro 2', color: 'White', imeiSerial: '354567890123476', serialNumber: 'AIRPODS001', category: 'ACCESSORY' as const, costPrice: 7900, branchId: 'branch-002', status: 'SOLD_CASH' as const, accessoryType: 'EARPHONE', accessoryBrand: 'Apple', supplierId: 'sup-001', stockInDate: new Date('2026-01-15') },
     { id: 'prod-024', name: 'ที่ชาร์จไร้สาย MagSafe', brand: 'Apple', model: 'MagSafe Charger', color: 'White', category: 'ACCESSORY' as const, costPrice: 1290, branchId: 'branch-004', status: 'IN_STOCK' as const, accessoryType: 'CHARGER', accessoryBrand: 'Apple', supplierId: 'sup-003', stockInDate: new Date('2026-02-10') },
@@ -232,9 +232,9 @@ async function main() {
     { id: 'pp-002', productId: 'prod-001', label: 'ราคาผ่อน', amount: 49900, isDefault: false },
     { id: 'pp-003', productId: 'prod-002', label: 'ราคาเงินสด', amount: 42900, isDefault: true },
     { id: 'pp-004', productId: 'prod-002', label: 'ราคาผ่อน', amount: 45900, isDefault: false },
-    { id: 'pp-005', productId: 'prod-003', label: 'ราคาเงินสด', amount: 44900, isDefault: true },
-    { id: 'pp-006', productId: 'prod-003', label: 'ราคาผ่อน', amount: 49900, isDefault: false },
-    { id: 'pp-007', productId: 'prod-004', label: 'ราคาเงินสด', amount: 14900, isDefault: true },
+    { id: 'pp-005', productId: 'prod-003', label: 'ราคาเงินสด', amount: 49900, isDefault: true },
+    { id: 'pp-006', productId: 'prod-003', label: 'ราคาผ่อน', amount: 54900, isDefault: false },
+    { id: 'pp-007', productId: 'prod-004', label: 'ราคาเงินสด', amount: 34900, isDefault: true },
     { id: 'pp-008', productId: 'prod-009', label: 'ราคาเงินสด', amount: 26900, isDefault: true },
     { id: 'pp-009', productId: 'prod-009', label: 'ราคาผ่อน', amount: 29900, isDefault: false },
     { id: 'pp-010', productId: 'prod-010', label: 'ราคาเงินสด', amount: 18900, isDefault: true },
@@ -242,13 +242,13 @@ async function main() {
     { id: 'pp-012', productId: 'prod-011', label: 'ราคาเงินสด', amount: 11900, isDefault: true },
     { id: 'pp-013', productId: 'prod-016', label: 'ราคาเงินสด', amount: 41900, isDefault: true },
     { id: 'pp-014', productId: 'prod-016', label: 'ราคาผ่อน', amount: 44900, isDefault: false },
-    { id: 'pp-015', productId: 'prod-017', label: 'ราคาเงินสด', amount: 29900, isDefault: true },
-    { id: 'pp-016', productId: 'prod-005', label: 'ราคาเงินสด', amount: 19900, isDefault: true },
-    { id: 'pp-017', productId: 'prod-006', label: 'ราคาเงินสด', amount: 39900, isDefault: true },
+    { id: 'pp-015', productId: 'prod-017', label: 'ราคาเงินสด', amount: 18900, isDefault: true },
+    { id: 'pp-016', productId: 'prod-005', label: 'ราคาเงินสด', amount: 33900, isDefault: true },
+    { id: 'pp-017', productId: 'prod-006', label: 'ราคาเงินสด', amount: 44900, isDefault: true },
     { id: 'pp-018', productId: 'prod-012', label: 'ราคาเงินสด', amount: 22900, isDefault: true },
-    { id: 'pp-019', productId: 'prod-013', label: 'ราคาเงินสด', amount: 15900, isDefault: true },
+    { id: 'pp-019', productId: 'prod-013', label: 'ราคาเงินสด', amount: 18900, isDefault: true },
     { id: 'pp-020', productId: 'prod-020', label: 'ราคาขาย', amount: 1590, isDefault: true },
-    { id: 'pp-021', productId: 'prod-021', label: 'ราคาขาย', amount: 490, isDefault: true },
+    { id: 'pp-021', productId: 'prod-021', label: 'ราคาขาย', amount: 590, isDefault: true },
     { id: 'pp-022', productId: 'prod-022', label: 'ราคาขาย', amount: 590, isDefault: true },
     { id: 'pp-023', productId: 'prod-023', label: 'ราคาขาย', amount: 8990, isDefault: true },
     { id: 'pp-024', productId: 'prod-024', label: 'ราคาขาย', amount: 1790, isDefault: true },
@@ -276,11 +276,11 @@ async function main() {
   await prisma.purchaseOrder.create({
     data: {
       id: 'po-002', poNumber: 'PO-2026-01-002', supplierId: 'sup-002', orderDate: new Date('2026-01-08'), expectedDate: new Date('2026-01-12'),
-      status: 'FULLY_RECEIVED', totalAmount: 105600, discount: 2000, vatAmount: 7252, netAmount: 110852, paymentStatus: 'FULLY_PAID', paymentMethod: 'BANK_TRANSFER', paidAmount: 110852,
-      paymentNotes: 'โอนครบ 20/01/2026', notes: 'Samsung ล็อตมกราคม', createdById: 'user-001', approvedById: 'user-001',
+      status: 'FULLY_RECEIVED', totalAmount: 149600, discount: 2000, vatAmount: 10332, netAmount: 157932, paymentStatus: 'FULLY_PAID', paymentMethod: 'BANK_TRANSFER', paidAmount: 157932,
+      paymentNotes: 'โอนครบ 20/01/2026', notes: 'iPhone ล็อตมกราคม', createdById: 'user-001', approvedById: 'user-001',
       items: { create: [
-        { id: 'poi-003', brand: 'Samsung', model: 'Galaxy S24 Ultra', color: 'Titanium Gray', storage: '256GB', category: 'PHONE_NEW', quantity: 2, unitPrice: 39900, receivedQty: 2 },
-        { id: 'poi-004', brand: 'Samsung', model: 'Galaxy A55', color: 'Awesome Navy', storage: '128GB', category: 'PHONE_NEW', quantity: 2, unitPrice: 12900, receivedQty: 2 },
+        { id: 'poi-003', brand: 'Apple', model: 'iPhone 16 Pro Max', color: 'Desert Titanium', storage: '256GB', category: 'PHONE_NEW', quantity: 2, unitPrice: 44900, receivedQty: 2 },
+        { id: 'poi-004', brand: 'Apple', model: 'iPhone 16', color: 'Ultramarine', storage: '128GB', category: 'PHONE_NEW', quantity: 2, unitPrice: 29900, receivedQty: 2 },
       ]},
     },
   });
@@ -288,11 +288,11 @@ async function main() {
   await prisma.purchaseOrder.create({
     data: {
       id: 'po-003', poNumber: 'PO-2026-02-001', supplierId: 'sup-004', orderDate: new Date('2026-01-28'), expectedDate: new Date('2026-02-03'), dueDate: new Date('2026-02-12'),
-      status: 'PARTIALLY_RECEIVED', totalAmount: 101940, discount: 0, vatAmount: 7136, netAmount: 109076, paymentStatus: 'DEPOSIT_PAID', paymentMethod: 'BANK_TRANSFER', paidAmount: 30000,
-      paymentNotes: 'จ่ายมัดจำ 30,000', notes: 'OPPO + Vivo เข้าสาขาลาดพร้าว+รามคำแหง', createdById: 'user-002', approvedById: 'user-001',
+      status: 'PARTIALLY_RECEIVED', totalAmount: 155400, discount: 0, vatAmount: 10878, netAmount: 166278, paymentStatus: 'DEPOSIT_PAID', paymentMethod: 'BANK_TRANSFER', paidAmount: 30000,
+      paymentNotes: 'จ่ายมัดจำ 30,000', notes: 'iPhone 15 + iPhone 14 เข้าสาขาลาดพร้าว+รามคำแหง', createdById: 'user-002', approvedById: 'user-001',
       items: { create: [
-        { id: 'poi-005', brand: 'OPPO', model: 'Reno 11 Pro', color: 'Pearl White', storage: '256GB', category: 'PHONE_NEW', quantity: 3, unitPrice: 16990, receivedQty: 2 },
-        { id: 'poi-006', brand: 'Vivo', model: 'V30 Pro', color: 'Peacock Green', storage: '256GB', category: 'PHONE_NEW', quantity: 3, unitPrice: 16990, receivedQty: 1 },
+        { id: 'poi-005', brand: 'Apple', model: 'iPhone 15', color: 'Blue', storage: '128GB', category: 'PHONE_NEW', quantity: 3, unitPrice: 28900, receivedQty: 2 },
+        { id: 'poi-006', brand: 'Apple', model: 'iPhone 14', color: 'Midnight', storage: '128GB', category: 'PHONE_NEW', quantity: 3, unitPrice: 22900, receivedQty: 1 },
       ]},
     },
   });
@@ -312,11 +312,11 @@ async function main() {
   await prisma.purchaseOrder.create({
     data: {
       id: 'po-005', poNumber: 'PO-2026-02-003', supplierId: 'sup-006', orderDate: new Date('2026-02-01'), expectedDate: new Date('2026-02-07'), dueDate: new Date('2026-03-01'),
-      status: 'APPROVED', totalAmount: 104700, discount: 3000, vatAmount: 7119, netAmount: 108819, paymentStatus: 'PARTIALLY_PAID', paymentMethod: 'BANK_TRANSFER', paidAmount: 50000,
-      paymentNotes: 'โอนแล้ว 50,000', notes: 'Xiaomi + OnePlus เข้าสาขาบางแค', createdById: 'user-001', approvedById: 'user-001',
+      status: 'APPROVED', totalAmount: 153600, discount: 3000, vatAmount: 10542, netAmount: 161142, paymentStatus: 'PARTIALLY_PAID', paymentMethod: 'BANK_TRANSFER', paidAmount: 50000,
+      paymentNotes: 'โอนแล้ว 50,000', notes: 'iPhone 16 Pro + iPad Pro เข้าสาขาบางแค', createdById: 'user-001', approvedById: 'user-001',
       items: { create: [
-        { id: 'poi-009', brand: 'Xiaomi', model: '14 Ultra', color: 'Black', storage: '512GB', category: 'PHONE_NEW', quantity: 2, unitPrice: 34900 },
-        { id: 'poi-010', brand: 'OnePlus', model: '12', color: 'Flowy Emerald', storage: '256GB', category: 'PHONE_NEW', quantity: 2, unitPrice: 17450 },
+        { id: 'poi-009', brand: 'Apple', model: 'iPhone 16 Pro', color: 'Black Titanium', storage: '256GB', category: 'PHONE_NEW', quantity: 2, unitPrice: 39900 },
+        { id: 'poi-010', brand: 'Apple', model: 'iPad Pro M4', color: 'Space Black', storage: '256GB', category: 'TABLET', quantity: 2, unitPrice: 36900 },
       ]},
     },
   });
@@ -324,11 +324,11 @@ async function main() {
   await prisma.purchaseOrder.create({
     data: {
       id: 'po-006', poNumber: 'PO-2025-12-001', supplierId: 'sup-009', orderDate: new Date('2025-12-20'), expectedDate: new Date('2025-12-28'),
-      status: 'CANCELLED', totalAmount: 98700, discount: 0, vatAmount: 6909, netAmount: 105609, paymentStatus: 'UNPAID', paidAmount: 0,
+      status: 'CANCELLED', totalAmount: 88700, discount: 0, vatAmount: 6209, netAmount: 94909, paymentStatus: 'UNPAID', paidAmount: 0,
       rejectReason: 'ราคาสูงกว่าที่ตกลง', notes: 'Tablet ล็อตธันวาคม - ยกเลิก', createdById: 'user-002', approvedById: 'user-001',
       items: { create: [
         { id: 'poi-011', brand: 'Apple', model: 'iPad Pro M4', storage: '256GB', category: 'TABLET', quantity: 2, unitPrice: 36900 },
-        { id: 'poi-012', brand: 'Samsung', model: 'Galaxy Tab S9', storage: '128GB', category: 'TABLET', quantity: 1, unitPrice: 24900 },
+        { id: 'poi-012', brand: 'Apple', model: 'iPad 10th Gen', storage: '64GB', category: 'TABLET', quantity: 1, unitPrice: 14900 },
       ]},
     },
   });
@@ -363,10 +363,10 @@ async function main() {
   // GR for PO-002 (fully received)
   await prisma.goodsReceiving.create({
     data: {
-      id: 'gr-002', poId: 'po-002', receivedById: 'user-002', notes: 'Samsung ล็อต มค. รับครบ',
+      id: 'gr-002', poId: 'po-002', receivedById: 'user-002', notes: 'iPhone ล็อต มค. รับครบ',
       items: { create: [
-        { id: 'gri-003', poItemId: 'poi-003', imeiSerial: '354567890123458', serialNumber: 'RZ8T30ABC1', status: 'PASS', productId: 'prod-003', batteryHealth: 100, hasBox: true },
-        { id: 'gri-004', poItemId: 'poi-004', imeiSerial: '354567890123459', serialNumber: 'RZ8T30ABC2', status: 'PASS', productId: 'prod-004', batteryHealth: 100, hasBox: true },
+        { id: 'gri-003', poItemId: 'poi-003', imeiSerial: '354567890123458', serialNumber: 'F2LXK2A2B1', status: 'PASS', productId: 'prod-003', batteryHealth: 100, hasBox: true },
+        { id: 'gri-004', poItemId: 'poi-004', imeiSerial: '354567890123459', serialNumber: 'F2LXK2C2D1', status: 'PASS', productId: 'prod-004', batteryHealth: 100, hasBox: true },
       ]},
     },
   });
@@ -374,10 +374,10 @@ async function main() {
   // GR for PO-003 (partially received)
   await prisma.goodsReceiving.create({
     data: {
-      id: 'gr-003', poId: 'po-003', receivedById: 'user-003', notes: 'รับ OPPO 2 เครื่อง + Vivo 1 เครื่อง',
+      id: 'gr-003', poId: 'po-003', receivedById: 'user-003', notes: 'รับ iPhone 15 จำนวน 2 เครื่อง + iPhone 14 จำนวน 1 เครื่อง',
       items: { create: [
-        { id: 'gri-005', poItemId: 'poi-005', imeiSerial: '354567890123461', serialNumber: 'OPPO11PRO01', status: 'PASS', productId: 'prod-005', batteryHealth: 100, hasBox: true },
-        { id: 'gri-006', poItemId: 'poi-006', imeiSerial: '354567890123470', serialNumber: 'VIVOV30P01', status: 'PASS', productId: 'prod-007', batteryHealth: 100, hasBox: true },
+        { id: 'gri-005', poItemId: 'poi-005', imeiSerial: '354567890123461', serialNumber: 'F2LXK3A2B1', status: 'PASS', productId: 'prod-005', batteryHealth: 100, hasBox: true },
+        { id: 'gri-006', poItemId: 'poi-006', imeiSerial: '354567890123470', serialNumber: 'F2LXK3C2D1', status: 'PASS', productId: 'prod-007', batteryHealth: 100, hasBox: true },
       ]},
     },
   });
@@ -436,11 +436,11 @@ async function main() {
   // ============================================================
   // STEP 12: CONTRACTS (8 contracts, various statuses)
   // ============================================================
-  // Contract 1: Samsung S24 Ultra - สมชาย (ACTIVE, APPROVED)
+  // Contract 1: iPhone 16 Pro Max - สมชาย (ACTIVE, APPROVED)
   await prisma.contract.create({
     data: {
       id: 'cont-001', contractNumber: 'BC-2026-0001', customerId: 'cust-001', productId: 'prod-003', branchId: 'branch-002', salespersonId: 'user-004',
-      planType: 'STORE_DIRECT', sellingPrice: 49900, downPayment: 9900, interestRate: 0.0800, totalMonths: 10, financedAmount: 40000, interestTotal: 32000, monthlyPayment: 7200,
+      planType: 'STORE_DIRECT', sellingPrice: 54900, downPayment: 10900, interestRate: 0.0800, totalMonths: 10, financedAmount: 44000, interestTotal: 35200, monthlyPayment: 7920,
       status: 'ACTIVE', workflowStatus: 'APPROVED', reviewedById: 'user-002', reviewedAt: new Date('2026-01-12'), reviewNotes: 'ตรวจเอกสารครบ อนุมัติ', paymentDueDay: 15,
       interestConfigId: 'ic-001',
     },
@@ -456,11 +456,11 @@ async function main() {
     },
   });
 
-  // Contract 3: Galaxy Tab S9 - วิชัย (OVERDUE, APPROVED)
+  // Contract 3: iPad 10th Gen - วิชัย (OVERDUE, APPROVED)
   await prisma.contract.create({
     data: {
       id: 'cont-003', contractNumber: 'BC-2026-0003', customerId: 'cust-003', productId: 'prod-017', branchId: 'branch-002', salespersonId: 'user-004',
-      planType: 'STORE_WITH_INTEREST', sellingPrice: 29900, downPayment: 5900, interestRate: 0.0800, totalMonths: 8, financedAmount: 24000, interestTotal: 15360, monthlyPayment: 4920,
+      planType: 'STORE_WITH_INTEREST', sellingPrice: 18900, downPayment: 3900, interestRate: 0.0800, totalMonths: 8, financedAmount: 15000, interestTotal: 9600, monthlyPayment: 3075,
       status: 'OVERDUE', workflowStatus: 'APPROVED', reviewedById: 'user-002', reviewedAt: new Date('2026-01-08'), paymentDueDay: 10,
       interestConfigId: 'ic-003',
     },
@@ -496,11 +496,11 @@ async function main() {
     },
   });
 
-  // Contract 7: EARLY_PAYOFF - มาลี ปิดบัญชีก่อนกำหนด
+  // Contract 7: EARLY_PAYOFF - มาลี ปิดบัญชีก่อนกำหนด (iPhone 15 Plus)
   await prisma.contract.create({
     data: {
       id: 'cont-007', contractNumber: 'BC-2025-0007', customerId: 'cust-006', productId: 'prod-008', branchId: 'branch-004', salespersonId: 'user-007',
-      planType: 'STORE_DIRECT', sellingPrice: 34900, downPayment: 9900, interestRate: 0.0800, totalMonths: 8, financedAmount: 25000, interestTotal: 16000, monthlyPayment: 5125,
+      planType: 'STORE_DIRECT', sellingPrice: 39900, downPayment: 9900, interestRate: 0.0800, totalMonths: 8, financedAmount: 30000, interestTotal: 19200, monthlyPayment: 6150,
       status: 'EARLY_PAYOFF', workflowStatus: 'APPROVED', reviewedById: 'user-008', reviewedAt: new Date('2025-09-05'), paymentDueDay: 10,
       interestConfigId: 'ic-001', notes: 'ปิดบัญชีก่อนกำหนด งวดที่ 5/8 ลดดอกเบี้ยให้ 50%',
     },
@@ -527,7 +527,7 @@ async function main() {
     await prisma.payment.create({
       data: {
         id: `pay-001-${String(i).padStart(2, '0')}`, contractId: 'cont-001', installmentNo: i, dueDate,
-        amountDue: 7200, amountPaid: isPaid ? 7200 : 0,
+        amountDue: 7920, amountPaid: isPaid ? 7920 : 0,
         paidDate: isPaid ? new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate() - 2) : null,
         paymentMethod: isPaid ? 'BANK_TRANSFER' : null,
         status: isPaid ? 'PAID' : (dueDate < new Date() ? 'OVERDUE' : 'PENDING'),
@@ -560,7 +560,7 @@ async function main() {
     await prisma.payment.create({
       data: {
         id: `pay-003-${String(i).padStart(2, '0')}`, contractId: 'cont-003', installmentNo: i, dueDate,
-        amountDue: 4920, amountPaid: isPaid ? 4920 : (i === 3 ? 2000 : 0),
+        amountDue: 3075, amountPaid: isPaid ? 3075 : (i === 3 ? 1500 : 0),
         paidDate: isPaid ? new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate() + 1) : null,
         paymentMethod: isPaid ? 'QR_EWALLET' : null,
         lateFee: isOverdue ? 200 : 0,
@@ -609,7 +609,7 @@ async function main() {
     await prisma.payment.create({
       data: {
         id: `pay-007-${String(i).padStart(2, '0')}`, contractId: 'cont-007', installmentNo: i, dueDate,
-        amountDue: i === 5 ? 10000 : 5125, amountPaid: i === 5 ? 10000 : 5125,
+        amountDue: i === 5 ? 12000 : 6150, amountPaid: i === 5 ? 12000 : 6150,
         paidDate: new Date(dueDate.getFullYear(), dueDate.getMonth(), i === 5 ? 8 : dueDate.getDate()),
         paymentMethod: 'BANK_TRANSFER',
         status: 'PAID',
@@ -710,12 +710,12 @@ async function main() {
   // ============================================================
   // STEP 18: SALES (6 sales)
   // ============================================================
-  // Sale 1: INSTALLMENT - Samsung S24 Ultra (linked to cont-001)
+  // Sale 1: INSTALLMENT - iPhone 16 Pro Max (linked to cont-001)
   await prisma.sale.create({
     data: {
       id: 'sale-001', saleNumber: 'SL-2026-0001', saleType: 'INSTALLMENT', customerId: 'cust-001', productId: 'prod-003',
-      branchId: 'branch-002', salespersonId: 'user-004', sellingPrice: 49900, discount: 0, netAmount: 49900,
-      paymentMethod: 'CASH', amountReceived: 9900, contractId: 'cont-001', downPaymentAmount: 9900,
+      branchId: 'branch-002', salespersonId: 'user-004', sellingPrice: 54900, discount: 0, netAmount: 54900,
+      paymentMethod: 'CASH', amountReceived: 10900, contractId: 'cont-001', downPaymentAmount: 10900,
       notes: 'ลูกค้าจ่ายดาวน์เงินสด', createdAt: new Date('2026-01-12'),
     },
   });
@@ -730,12 +730,12 @@ async function main() {
     },
   });
 
-  // Sale 3: CASH - Vivo V30 Pro
+  // Sale 3: CASH - iPhone 14
   await prisma.sale.create({
     data: {
       id: 'sale-003', saleNumber: 'SL-2026-0003', saleType: 'CASH', customerId: 'cust-007', productId: 'prod-007',
-      branchId: 'branch-003', salespersonId: 'user-005', sellingPrice: 22900, discount: 1000, netAmount: 21900,
-      paymentMethod: 'BANK_TRANSFER', amountReceived: 21900,
+      branchId: 'branch-003', salespersonId: 'user-005', sellingPrice: 27900, discount: 1000, netAmount: 26900,
+      paymentMethod: 'BANK_TRANSFER', amountReceived: 26900,
       notes: 'ลดราคาพิเศษ ลูกค้าประจำ', createdAt: new Date('2026-02-10'),
     },
   });
@@ -750,22 +750,22 @@ async function main() {
     },
   });
 
-  // Sale 5: EXTERNAL_FINANCE - Samsung Galaxy Tab A9+
+  // Sale 5: EXTERNAL_FINANCE - iPad mini 6
   await prisma.sale.create({
     data: {
       id: 'sale-005', saleNumber: 'SL-2026-0005', saleType: 'EXTERNAL_FINANCE', customerId: 'cust-011', productId: 'prod-019',
-      branchId: 'branch-004', salespersonId: 'user-007', sellingPrice: 12900, discount: 0, netAmount: 12900,
-      financeCompany: 'KTC', financeRefNumber: 'KTC-2026-00123', financeAmount: 12900,
+      branchId: 'branch-004', salespersonId: 'user-007', sellingPrice: 19900, discount: 0, netAmount: 19900,
+      financeCompany: 'KTC', financeRefNumber: 'KTC-2026-00123', financeAmount: 19900,
       createdAt: new Date('2026-02-01'),
     },
   });
 
-  // Sale 6: INSTALLMENT - Galaxy Tab S9 (linked to cont-003)
+  // Sale 6: INSTALLMENT - iPad 10th Gen (linked to cont-003)
   await prisma.sale.create({
     data: {
       id: 'sale-006', saleNumber: 'SL-2026-0006', saleType: 'INSTALLMENT', customerId: 'cust-003', productId: 'prod-017',
-      branchId: 'branch-002', salespersonId: 'user-004', sellingPrice: 29900, discount: 0, netAmount: 29900,
-      paymentMethod: 'CASH', amountReceived: 5900, contractId: 'cont-003', downPaymentAmount: 5900,
+      branchId: 'branch-002', salespersonId: 'user-004', sellingPrice: 18900, discount: 0, netAmount: 18900,
+      paymentMethod: 'CASH', amountReceived: 3900, contractId: 'cont-003', downPaymentAmount: 3900,
       createdAt: new Date('2026-01-08'),
     },
   });
@@ -1005,7 +1005,7 @@ async function main() {
   });
   await prisma.reorderPoint.create({
     data: {
-      id: 'rp-002', brand: 'Samsung', model: 'Galaxy S24 Ultra', storage: '256GB', category: 'PHONE_NEW',
+      id: 'rp-002', brand: 'Apple', model: 'iPhone 16 Pro Max', storage: '256GB', category: 'PHONE_NEW',
       branchId: 'branch-002', minQuantity: 2, reorderQuantity: 3,
     },
   });
@@ -1026,7 +1026,7 @@ async function main() {
   // Stock Alerts
   await prisma.stockAlert.create({
     data: {
-      id: 'sa-alert-001', reorderPointId: 'rp-002', brand: 'Samsung', model: 'Galaxy S24 Ultra', storage: '256GB',
+      id: 'sa-alert-001', reorderPointId: 'rp-002', brand: 'Apple', model: 'iPhone 16 Pro Max', storage: '256GB',
       category: 'PHONE_NEW', branchId: 'branch-002', currentStock: 0, minQuantity: 2, reorderQuantity: 3,
       status: 'ACTIVE',
     },
@@ -1109,12 +1109,12 @@ async function main() {
   // STEP 27: NOTIFICATION LOGS
   // ============================================================
   const notifData = [
-    { id: 'noti-001', channel: 'LINE' as const, recipient: 'somchai_j', subject: 'แจ้งเตือนค่างวด', message: 'สวัสดีค่ะ คุณสมชาย ค่างวด BC-2026-0001 จำนวน 7,200 บาท ครบกำหนด 15/02/2026', status: 'SENT', relatedId: 'cont-001', sentAt: new Date('2026-02-12') },
-    { id: 'noti-002', channel: 'LINE' as const, recipient: 'somchai_j', subject: 'ชำระเงินสำเร็จ', message: 'ขอบคุณค่ะ คุณสมชาย ชำระค่างวด BC-2026-0001 จำนวน 7,200 บาท สำเร็จ คงเหลือ 7 งวด', status: 'SENT', relatedId: 'cont-001', sentAt: new Date('2026-02-13') },
-    { id: 'noti-003', channel: 'SMS' as const, recipient: '083-333-3333', subject: 'แจ้งค้างชำระ', message: 'BestChoice: คุณวิชัย ค่างวด BC-2026-0003 เลยกำหนด 5 วัน ค้างชำระ 5,120 บาท', status: 'SENT', relatedId: 'cont-003', sentAt: new Date('2026-03-05') },
+    { id: 'noti-001', channel: 'LINE' as const, recipient: 'somchai_j', subject: 'แจ้งเตือนค่างวด', message: 'สวัสดีค่ะ คุณสมชาย ค่างวด BC-2026-0001 จำนวน 7,920 บาท ครบกำหนด 15/02/2026', status: 'SENT', relatedId: 'cont-001', sentAt: new Date('2026-02-12') },
+    { id: 'noti-002', channel: 'LINE' as const, recipient: 'somchai_j', subject: 'ชำระเงินสำเร็จ', message: 'ขอบคุณค่ะ คุณสมชาย ชำระค่างวด BC-2026-0001 จำนวน 7,920 บาท สำเร็จ คงเหลือ 7 งวด', status: 'SENT', relatedId: 'cont-001', sentAt: new Date('2026-02-13') },
+    { id: 'noti-003', channel: 'SMS' as const, recipient: '083-333-3333', subject: 'แจ้งค้างชำระ', message: 'BestChoice: คุณวิชัย ค่างวด BC-2026-0003 เลยกำหนด 5 วัน ค้างชำระ 3,275 บาท', status: 'SENT', relatedId: 'cont-003', sentAt: new Date('2026-03-05') },
     { id: 'noti-004', channel: 'LINE' as const, recipient: 'napa_k', subject: 'แจ้งผิดนัดชำระ', message: 'สำคัญ: คุณนภา สัญญา BC-2026-0004 เปลี่ยนสถานะผิดนัดชำระ กรุณาติดต่อสาขา', status: 'SENT', relatedId: 'cont-004', sentAt: new Date('2026-02-25') },
     { id: 'noti-005', channel: 'SMS' as const, recipient: '084-444-4444', subject: 'แจ้งผิดนัดชำระ', message: 'BestChoice: คุณนภา สัญญา BC-2026-0004 ผิดนัดชำระ กรุณาติดต่อสาขา 02-222-2222', status: 'FAILED', relatedId: 'cont-004', errorMsg: 'SMS gateway timeout' },
-    { id: 'noti-006', channel: 'IN_APP' as const, recipient: 'user-002', message: 'Stock Alert: Samsung Galaxy S24 Ultra 256GB ที่สาขาลาดพร้าว เหลือ 0 เครื่อง (ต่ำกว่าขั้นต่ำ 2)', status: 'SENT', relatedId: 'sa-alert-001', sentAt: new Date('2026-03-01') },
+    { id: 'noti-006', channel: 'IN_APP' as const, recipient: 'user-002', message: 'Stock Alert: iPhone 16 Pro Max 256GB ที่สาขาลาดพร้าว เหลือ 0 เครื่อง (ต่ำกว่าขั้นต่ำ 2)', status: 'SENT', relatedId: 'sa-alert-001', sentAt: new Date('2026-03-01') },
   ];
   for (const n of notifData) { await prisma.notificationLog.create({ data: n }); }
   console.log('NotificationLogs created:', notifData.length);

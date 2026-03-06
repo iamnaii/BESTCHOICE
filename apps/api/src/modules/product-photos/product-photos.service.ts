@@ -90,9 +90,13 @@ export class ProductPhotosService {
     // Validate product exists and is in editable status
     const product = await this.prisma.product.findUnique({
       where: { id: productId },
-      select: { id: true, status: true, deletedAt: true },
+      select: { id: true, status: true, category: true, deletedAt: true },
     });
     if (!product || product.deletedAt) throw new NotFoundException('ไม่พบสินค้า');
+
+    if (product.category !== 'PHONE_USED') {
+      throw new BadRequestException('ลบรูป 6 มุมเฉพาะสินค้ามือสองเท่านั้น');
+    }
 
     if (!ALLOWED_UPLOAD_STATUSES.includes(product.status)) {
       throw new BadRequestException(`ไม่สามารถลบรูปในสถานะ ${product.status} ได้`);
@@ -101,11 +105,6 @@ export class ProductPhotosService {
     if (!ANGLES.includes(angle as Angle)) {
       throw new BadRequestException('angle ไม่ถูกต้อง');
     }
-
-    const pp = await this.prisma.productPhoto.findUnique({
-      where: { productId },
-    });
-    if (!pp) throw new NotFoundException('ไม่พบรูปถ่ายสินค้า');
 
     const updated = await this.prisma.productPhoto.update({
       where: { productId },
@@ -125,9 +124,17 @@ export class ProductPhotosService {
     return this.prisma.$transaction(async (tx) => {
       const product = await tx.product.findUnique({
         where: { id: productId },
-        select: { id: true, status: true, deletedAt: true },
+        select: { id: true, status: true, category: true, deletedAt: true },
       });
       if (!product || product.deletedAt) throw new NotFoundException('ไม่พบสินค้า');
+
+      if (product.category !== 'PHONE_USED') {
+        throw new BadRequestException('ยืนยันรูป 6 มุมเฉพาะสินค้ามือสองเท่านั้น');
+      }
+
+      if (!ALLOWED_UPLOAD_STATUSES.includes(product.status)) {
+        throw new BadRequestException(`ไม่สามารถยืนยันรูปในสถานะ ${product.status} ได้`);
+      }
 
       const pp = await tx.productPhoto.findUnique({
         where: { productId },

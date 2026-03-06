@@ -836,8 +836,13 @@ export class ProductsService {
         name: 'สินค้าเข้าคลัง',
         status: (['IN_STOCK', 'RESERVED', 'SOLD_INSTALLMENT', 'SOLD_CASH', 'SOLD_RESELL'].includes(product.status))
           ? 'completed'
-          : product.status === 'QC_PENDING' ? 'in_progress' : 'pending',
-        description: product.status === 'QC_PENDING' ? 'รอยืนยัน QC เข้าคลัง' : product.status === 'IN_STOCK' ? 'อยู่ในคลัง' : product.status,
+          : product.status === 'QC_PENDING' ? 'in_progress'
+          : product.status === 'PHOTO_PENDING' ? 'pending'
+          : 'pending',
+        description: product.status === 'QC_PENDING' ? 'รอยืนยัน QC เข้าคลัง'
+          : product.status === 'PHOTO_PENDING' ? 'รอถ่ายรูป 6 มุมก่อนเข้าคลัง'
+          : product.status === 'IN_STOCK' ? 'อยู่ในคลัง'
+          : 'รอดำเนินการ',
       },
       {
         name: 'ส่งไปสาขา',

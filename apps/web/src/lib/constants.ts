@@ -5,7 +5,7 @@
 
 export const statusLabels: Record<string, { label: string; className: string }> = {
   PO_RECEIVED: { label: 'รับจาก PO', className: 'bg-blue-100 text-blue-700' },
-  QC_PENDING: { label: 'รอ QC เข้าคลัง', className: 'bg-amber-100 text-amber-700' },
+  QC_PENDING: { label: 'รอตรวจรับ', className: 'bg-amber-100 text-amber-700' },
   PHOTO_PENDING: { label: 'รอถ่ายรูป', className: 'bg-violet-100 text-violet-700' },
   INSPECTION: { label: 'กำลังตรวจ', className: 'bg-yellow-100 text-yellow-700' },
   IN_STOCK: { label: 'พร้อมขาย', className: 'bg-green-100 text-green-700' },
@@ -15,6 +15,9 @@ export const statusLabels: Record<string, { label: string; className: string }> 
   REPOSSESSED: { label: 'ยึดคืน', className: 'bg-red-100 text-red-700' },
   REFURBISHED: { label: 'ซ่อมแล้ว', className: 'bg-orange-100 text-orange-700' },
   SOLD_RESELL: { label: 'ขายต่อ', className: 'bg-cyan-100 text-cyan-700' },
+  DAMAGED: { label: 'เสียหาย', className: 'bg-red-100 text-red-700' },
+  LOST: { label: 'สูญหาย', className: 'bg-red-100 text-red-700' },
+  WRITTEN_OFF: { label: 'ตัดจำหน่าย', className: 'bg-gray-100 text-gray-700' },
 };
 
 // Statuses that are valid for product creation

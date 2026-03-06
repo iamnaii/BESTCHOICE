@@ -4,7 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 const ANGLES = ['front', 'back', 'left', 'right', 'top', 'bottom'] as const;
 type Angle = typeof ANGLES[number];
 
-const ALLOWED_UPLOAD_STATUSES = ['PHOTO_PENDING', 'QC_PENDING', 'IN_STOCK'];
+const ALLOWED_UPLOAD_STATUSES = ['PHOTO_PENDING', 'IN_STOCK'];
 
 @Injectable()
 export class ProductPhotosService {
@@ -105,6 +105,9 @@ export class ProductPhotosService {
     if (!ANGLES.includes(angle as Angle)) {
       throw new BadRequestException('angle ไม่ถูกต้อง');
     }
+
+    const existing = await this.prisma.productPhoto.findUnique({ where: { productId } });
+    if (!existing) throw new BadRequestException('ยังไม่มีรูปให้ลบ');
 
     const updated = await this.prisma.productPhoto.update({
       where: { productId },

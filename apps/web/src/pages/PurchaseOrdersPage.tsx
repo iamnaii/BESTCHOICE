@@ -69,6 +69,7 @@ interface PODetail extends PurchaseOrder {
 }
 
 const statusLabels: Record<string, string> = {
+  PENDING: 'รอดำเนินการ',
   DRAFT: 'รออนุมัติ',
   APPROVED: 'อนุมัติแล้ว',
   PARTIALLY_RECEIVED: 'รับบางส่วน',
@@ -77,6 +78,7 @@ const statusLabels: Record<string, string> = {
 };
 
 const statusColors: Record<string, string> = {
+  PENDING: 'bg-gray-100 text-gray-700',
   DRAFT: 'bg-orange-100 text-orange-700',
   APPROVED: 'bg-blue-100 text-blue-700',
   PARTIALLY_RECEIVED: 'bg-yellow-100 text-yellow-700',

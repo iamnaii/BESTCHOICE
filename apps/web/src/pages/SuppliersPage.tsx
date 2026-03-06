@@ -156,7 +156,7 @@ export default function SuppliersPage() {
     },
   });
 
-  const deleteMutation = useMutation({
+  const _deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       return api.delete(`/suppliers/${id}`);
     },

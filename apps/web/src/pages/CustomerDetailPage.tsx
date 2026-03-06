@@ -98,7 +98,7 @@ export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { } = useAuth();
   const creditFileRef = useRef<HTMLInputElement>(null);
   const [creditBankName, setCreditBankName] = useState('');
 

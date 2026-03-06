@@ -205,7 +205,7 @@ export class DashboardService {
     const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 
     // 2 batch queries for all branches instead of 2 per branch
-    const [overdueByBranch, paymentsByBranch] = await Promise.all([
+    const [overdueByBranch] = await Promise.all([
       this.prisma.contract.groupBy({
         by: ['branchId'],
         where: {

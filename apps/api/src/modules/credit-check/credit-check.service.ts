@@ -86,7 +86,7 @@ export class CreditCheckService {
     });
   }
 
-  async createForCustomer(customerId: string, dto: CreateCreditCheckDto, userId: string) {
+  async createForCustomer(customerId: string, dto: CreateCreditCheckDto, _userId: string) {
     const customer = await this.prisma.customer.findUnique({ where: { id: customerId } });
     if (!customer) throw new NotFoundException('ไม่พบลูกค้า');
 
@@ -172,7 +172,7 @@ export class CreditCheckService {
     });
   }
 
-  async create(contractId: string, dto: CreateCreditCheckDto, userId: string) {
+  async create(contractId: string, dto: CreateCreditCheckDto, _userId: string) {
     const contract = await this.prisma.contract.findUnique({
       where: { id: contractId },
       include: { customer: true },

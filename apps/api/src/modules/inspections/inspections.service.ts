@@ -109,8 +109,8 @@ export class InspectionsService {
     const product = await this.prisma.product.findUnique({ where: { id: dto.productId } });
     if (!product) throw new NotFoundException('ไม่พบสินค้า');
 
-    // Verify template
-    const template = await this.findOneTemplate(dto.templateId);
+    // Verify template exists
+    await this.findOneTemplate(dto.templateId);
 
     const inspection = await this.prisma.inspection.create({
       data: {

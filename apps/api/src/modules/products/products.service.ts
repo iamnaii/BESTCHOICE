@@ -893,7 +893,7 @@ export class ProductsService {
   /**
    * Reserve a product (link to contract/sale in progress)
    */
-  async reserve(productId: string, reason?: string) {
+  async reserve(productId: string, _reason?: string) {
     const product = await this.findOne(productId);
     if (product.status !== 'IN_STOCK') {
       throw new BadRequestException('สามารถจองได้เฉพาะสินค้าที่อยู่ IN_STOCK เท่านั้น');

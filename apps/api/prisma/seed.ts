@@ -200,7 +200,7 @@ async function main() {
     { id: 'prod-006', name: 'iPhone 16 Pro 256GB', brand: 'Apple', model: 'iPhone 16 Pro', color: 'Black Titanium', storage: '256GB', imeiSerial: '354567890123462', serialNumber: 'F2LXK2E2F1', category: 'PHONE_NEW' as const, costPrice: 39900, branchId: 'branch-004', status: 'IN_STOCK' as const, supplierId: 'sup-006', stockInDate: new Date('2026-02-05') },
     { id: 'prod-007', name: 'iPhone 14 128GB', brand: 'Apple', model: 'iPhone 14', color: 'Midnight', storage: '128GB', imeiSerial: '354567890123470', serialNumber: 'F2LXK3C2D1', category: 'PHONE_NEW' as const, costPrice: 22900, branchId: 'branch-003', status: 'SOLD_CASH' as const, supplierId: 'sup-004', stockInDate: new Date('2026-01-25') },
     { id: 'prod-008', name: 'iPhone 15 Plus 256GB', brand: 'Apple', model: 'iPhone 15 Plus', color: 'Pink', storage: '256GB', imeiSerial: '354567890123471', serialNumber: 'F2LXK3E2F1', category: 'PHONE_NEW' as const, costPrice: 32900, branchId: 'branch-004', status: 'SOLD_INSTALLMENT' as const, supplierId: 'sup-002', stockInDate: new Date('2026-02-10') },
-    // PHONE_USED (7)
+    // PHONE_USED (15)
     { id: 'prod-009', name: 'iPhone 14 Pro 128GB (มือสอง)', brand: 'Apple', model: 'iPhone 14 Pro', color: 'Deep Purple', storage: '128GB', imeiSerial: '354567890123463', serialNumber: 'F2LXK1C2D3', category: 'PHONE_USED' as const, costPrice: 22500, branchId: 'branch-002', status: 'IN_STOCK' as const, conditionGrade: 'A' as const, batteryHealth: 92, warrantyExpired: true, hasBox: true, supplierId: 'sup-005', stockInDate: new Date('2026-02-01') },
     { id: 'prod-010', name: 'iPhone 13 128GB (มือสอง)', brand: 'Apple', model: 'iPhone 13', color: 'Midnight', storage: '128GB', imeiSerial: '354567890123464', serialNumber: 'F2LXK1E2F3', category: 'PHONE_USED' as const, costPrice: 15500, branchId: 'branch-003', status: 'SOLD_INSTALLMENT' as const, conditionGrade: 'B' as const, batteryHealth: 85, warrantyExpired: true, hasBox: false, supplierId: 'sup-008', stockInDate: new Date('2026-01-20') },
     { id: 'prod-011', name: 'iPhone 12 64GB (มือสอง)', brand: 'Apple', model: 'iPhone 12', color: 'Blue', storage: '64GB', imeiSerial: '354567890123465', serialNumber: 'F2LXK1G2H3', category: 'PHONE_USED' as const, costPrice: 9500, branchId: 'branch-003', status: 'SOLD_INSTALLMENT' as const, conditionGrade: 'C' as const, batteryHealth: 78, warrantyExpired: true, hasBox: false, supplierId: 'sup-010', stockInDate: new Date('2026-01-10') },
@@ -208,6 +208,15 @@ async function main() {
     { id: 'prod-013', name: 'iPhone 12 Pro Max 128GB (มือสอง)', brand: 'Apple', model: 'iPhone 12 Pro Max', color: 'Pacific Blue', storage: '128GB', imeiSerial: '354567890123467', serialNumber: 'F2LXK4A2B1', category: 'PHONE_USED' as const, costPrice: 14500, branchId: 'branch-004', status: 'IN_STOCK' as const, conditionGrade: 'B' as const, batteryHealth: 88, warrantyExpired: false, warrantyExpireDate: new Date('2026-06-15'), hasBox: true, supplierId: 'sup-007', stockInDate: new Date('2026-02-08') },
     { id: 'prod-014', name: 'iPhone 14 128GB (มือสอง)', brand: 'Apple', model: 'iPhone 14', color: 'Product Red', storage: '128GB', imeiSerial: '354567890123472', serialNumber: 'F2LXK1K2L3', category: 'PHONE_USED' as const, costPrice: 18000, branchId: 'branch-002', status: 'REPOSSESSED' as const, conditionGrade: 'B' as const, batteryHealth: 82, warrantyExpired: true, hasBox: false, stockInDate: new Date('2026-01-05') },
     { id: 'prod-015', name: 'iPhone 11 64GB (มือสอง)', brand: 'Apple', model: 'iPhone 11', color: 'White', storage: '64GB', imeiSerial: '354567890123473', serialNumber: 'F2LXK1M2N3', category: 'PHONE_USED' as const, costPrice: 6500, branchId: 'branch-003', status: 'DAMAGED' as const, conditionGrade: 'D' as const, batteryHealth: 65, warrantyExpired: true, hasBox: false, supplierId: 'sup-008', stockInDate: new Date('2025-12-20') },
+    // PHONE_USED เพิ่มเติม - เกรดสภาพหลากหลาย (8)
+    { id: 'prod-026', name: 'iPhone 15 Pro 256GB (มือสอง)', brand: 'Apple', model: 'iPhone 15 Pro', color: 'White Titanium', storage: '256GB', imeiSerial: '354567890123477', serialNumber: 'F2LXK5A2B1', category: 'PHONE_USED' as const, costPrice: 32000, branchId: 'branch-002', status: 'IN_STOCK' as const, conditionGrade: 'A' as const, batteryHealth: 95, warrantyExpired: false, warrantyExpireDate: new Date('2026-09-15'), hasBox: true, supplierId: 'sup-005', stockInDate: new Date('2026-02-20') },
+    { id: 'prod-027', name: 'iPhone 14 Pro Max 256GB (มือสอง)', brand: 'Apple', model: 'iPhone 14 Pro Max', color: 'Space Black', storage: '256GB', imeiSerial: '354567890123478', serialNumber: 'F2LXK5C2D1', category: 'PHONE_USED' as const, costPrice: 27000, branchId: 'branch-004', status: 'IN_STOCK' as const, conditionGrade: 'A' as const, batteryHealth: 93, warrantyExpired: true, hasBox: true, supplierId: 'sup-010', stockInDate: new Date('2026-02-18') },
+    { id: 'prod-028', name: 'iPhone 13 mini 128GB (มือสอง)', brand: 'Apple', model: 'iPhone 13 mini', color: 'Pink', storage: '128GB', imeiSerial: '354567890123479', serialNumber: 'F2LXK5E2F1', category: 'PHONE_USED' as const, costPrice: 12500, branchId: 'branch-003', status: 'IN_STOCK' as const, conditionGrade: 'B' as const, batteryHealth: 86, warrantyExpired: true, hasBox: false, supplierId: 'sup-008', stockInDate: new Date('2026-02-10') },
+    { id: 'prod-029', name: 'iPhone 15 128GB (มือสอง)', brand: 'Apple', model: 'iPhone 15', color: 'Green', storage: '128GB', imeiSerial: '354567890123480', serialNumber: 'F2LXK5G2H1', category: 'PHONE_USED' as const, costPrice: 22000, branchId: 'branch-002', status: 'SOLD_INSTALLMENT' as const, conditionGrade: 'B' as const, batteryHealth: 88, warrantyExpired: false, warrantyExpireDate: new Date('2026-12-01'), hasBox: true, supplierId: 'sup-005', stockInDate: new Date('2026-02-12') },
+    { id: 'prod-030', name: 'iPhone 12 mini 64GB (มือสอง)', brand: 'Apple', model: 'iPhone 12 mini', color: 'Purple', storage: '64GB', imeiSerial: '354567890123481', serialNumber: 'F2LXK5I2J1', category: 'PHONE_USED' as const, costPrice: 7500, branchId: 'branch-003', status: 'IN_STOCK' as const, conditionGrade: 'C' as const, batteryHealth: 75, warrantyExpired: true, hasBox: false, supplierId: 'sup-008', stockInDate: new Date('2026-01-25') },
+    { id: 'prod-031', name: 'iPhone 13 256GB (มือสอง)', brand: 'Apple', model: 'iPhone 13', color: 'Starlight', storage: '256GB', imeiSerial: '354567890123482', serialNumber: 'F2LXK5K2L1', category: 'PHONE_USED' as const, costPrice: 14000, branchId: 'branch-004', status: 'IN_STOCK' as const, conditionGrade: 'C' as const, batteryHealth: 79, warrantyExpired: true, hasBox: false, supplierId: 'sup-010', stockInDate: new Date('2026-01-30') },
+    { id: 'prod-032', name: 'iPhone XR 64GB (มือสอง)', brand: 'Apple', model: 'iPhone XR', color: 'Coral', storage: '64GB', imeiSerial: '354567890123483', serialNumber: 'F2LXK5M2N1', category: 'PHONE_USED' as const, costPrice: 4500, branchId: 'branch-003', status: 'DAMAGED' as const, conditionGrade: 'D' as const, batteryHealth: 62, warrantyExpired: true, hasBox: false, supplierId: 'sup-008', stockInDate: new Date('2025-11-15') },
+    { id: 'prod-033', name: 'iPhone SE 3 64GB (มือสอง)', brand: 'Apple', model: 'iPhone SE 3', color: 'Midnight', storage: '64GB', imeiSerial: '354567890123484', serialNumber: 'F2LXK5O2P1', category: 'PHONE_USED' as const, costPrice: 8000, branchId: 'branch-002', status: 'IN_STOCK' as const, conditionGrade: 'D' as const, batteryHealth: 68, warrantyExpired: true, hasBox: false, supplierId: 'sup-005', stockInDate: new Date('2025-12-10') },
     // TABLET (4)
     { id: 'prod-016', name: 'iPad Pro M4 11" 256GB', brand: 'Apple', model: 'iPad Pro M4', color: 'Space Black', storage: '256GB', imeiSerial: '354567890123468', serialNumber: 'IPADM4001', category: 'TABLET' as const, costPrice: 36900, branchId: 'branch-004', status: 'IN_STOCK' as const, supplierId: 'sup-009', stockInDate: new Date('2026-02-10') },
     { id: 'prod-017', name: 'iPad 10th Gen 64GB', brand: 'Apple', model: 'iPad 10th Gen', color: 'Silver', storage: '64GB', imeiSerial: '354567890123469', serialNumber: 'IPAD10G001', category: 'TABLET' as const, costPrice: 14900, branchId: 'branch-002', status: 'SOLD_INSTALLMENT' as const, supplierId: 'sup-009', stockInDate: new Date('2026-01-05') },
@@ -222,7 +231,7 @@ async function main() {
     { id: 'prod-025', name: 'Power Bank 20000mAh', brand: 'Anker', model: 'PowerCore 20K', color: 'Black', category: 'ACCESSORY' as const, costPrice: 990, branchId: 'branch-003', status: 'IN_STOCK' as const, accessoryType: 'POWER_BANK', accessoryBrand: 'Anker', supplierId: 'sup-003', stockInDate: new Date('2026-02-01') },
   ];
   for (const p of productsData) { await prisma.product.create({ data: p }); }
-  console.log('Products created: 25');
+  console.log('Products created: 33');
 
   // ============================================================
   // STEP 7: PRODUCT PRICES
@@ -253,6 +262,18 @@ async function main() {
     { id: 'pp-023', productId: 'prod-023', label: 'ราคาขาย', amount: 8990, isDefault: true },
     { id: 'pp-024', productId: 'prod-024', label: 'ราคาขาย', amount: 1790, isDefault: true },
     { id: 'pp-025', productId: 'prod-025', label: 'ราคาขาย', amount: 1490, isDefault: true },
+    // มือสอง - ราคาตามเกรดสภาพ
+    { id: 'pp-026', productId: 'prod-026', label: 'ราคาเงินสด', amount: 37900, isDefault: true },
+    { id: 'pp-027', productId: 'prod-026', label: 'ราคาผ่อน', amount: 41900, isDefault: false },
+    { id: 'pp-028', productId: 'prod-027', label: 'ราคาเงินสด', amount: 32900, isDefault: true },
+    { id: 'pp-029', productId: 'prod-027', label: 'ราคาผ่อน', amount: 35900, isDefault: false },
+    { id: 'pp-030', productId: 'prod-028', label: 'ราคาเงินสด', amount: 15900, isDefault: true },
+    { id: 'pp-031', productId: 'prod-029', label: 'ราคาเงินสด', amount: 26900, isDefault: true },
+    { id: 'pp-032', productId: 'prod-029', label: 'ราคาผ่อน', amount: 29900, isDefault: false },
+    { id: 'pp-033', productId: 'prod-030', label: 'ราคาเงินสด', amount: 9900, isDefault: true },
+    { id: 'pp-034', productId: 'prod-031', label: 'ราคาเงินสด', amount: 17900, isDefault: true },
+    { id: 'pp-035', productId: 'prod-032', label: 'ราคาเงินสด', amount: 5900, isDefault: true },
+    { id: 'pp-036', productId: 'prod-033', label: 'ราคาเงินสด', amount: 9900, isDefault: true },
   ];
   for (const pp of pricesData) { await prisma.productPrice.create({ data: pp }); }
   console.log('ProductPrices created:', pricesData.length);
@@ -344,7 +365,36 @@ async function main() {
       ]},
     },
   });
-  console.log('PurchaseOrders created: 7 (with POItems)');
+  // PO-008: มือสอง ล็อตใหม่ เกรดหลากหลาย (FULLY_RECEIVED)
+  await prisma.purchaseOrder.create({
+    data: {
+      id: 'po-008', poNumber: 'PO-2026-02-004', supplierId: 'sup-005', orderDate: new Date('2026-02-15'), expectedDate: new Date('2026-02-18'),
+      status: 'FULLY_RECEIVED', totalAmount: 128000, discount: 3000, vatAmount: 0, netAmount: 125000, paymentStatus: 'FULLY_PAID', paymentMethod: 'CASH', paidAmount: 125000,
+      paymentNotes: 'จ่ายเงินสดตอนรับของ', notes: 'iPhone มือสอง เกรดรวม A-D จาก MBK', createdById: 'user-002', approvedById: 'user-001',
+      items: { create: [
+        { id: 'poi-015', brand: 'Apple', model: 'iPhone 15 Pro', color: 'White Titanium', storage: '256GB', category: 'PHONE_USED', quantity: 1, unitPrice: 32000, receivedQty: 1 },
+        { id: 'poi-016', brand: 'Apple', model: 'iPhone 14 Pro Max', color: 'Space Black', storage: '256GB', category: 'PHONE_USED', quantity: 1, unitPrice: 27000, receivedQty: 1 },
+        { id: 'poi-017', brand: 'Apple', model: 'iPhone 13 mini', color: 'Pink', storage: '128GB', category: 'PHONE_USED', quantity: 1, unitPrice: 12500, receivedQty: 1 },
+        { id: 'poi-018', brand: 'Apple', model: 'iPhone 15', color: 'Green', storage: '128GB', category: 'PHONE_USED', quantity: 1, unitPrice: 22000, receivedQty: 1 },
+        { id: 'poi-019', brand: 'Apple', model: 'iPhone 12 mini', color: 'Purple', storage: '64GB', category: 'PHONE_USED', quantity: 1, unitPrice: 7500, receivedQty: 1 },
+        { id: 'poi-020', brand: 'Apple', model: 'iPhone 13', color: 'Starlight', storage: '256GB', category: 'PHONE_USED', quantity: 1, unitPrice: 14000, receivedQty: 1 },
+      ]},
+    },
+  });
+
+  // PO-009: มือสอง เกรด D ราคาถูก (FULLY_RECEIVED)
+  await prisma.purchaseOrder.create({
+    data: {
+      id: 'po-009', poNumber: 'PO-2025-12-002', supplierId: 'sup-008', orderDate: new Date('2025-11-10'), expectedDate: new Date('2025-11-12'),
+      status: 'FULLY_RECEIVED', totalAmount: 12500, discount: 0, vatAmount: 0, netAmount: 12500, paymentStatus: 'FULLY_PAID', paymentMethod: 'CASH', paidAmount: 12500,
+      paymentNotes: 'จ่ายเงินสดครบ', notes: 'iPhone มือสอง เกรด D ราคาถูก ต้องซ่อม/เช็คสภาพ', createdById: 'user-001', approvedById: 'user-001',
+      items: { create: [
+        { id: 'poi-021', brand: 'Apple', model: 'iPhone XR', color: 'Coral', storage: '64GB', category: 'PHONE_USED', quantity: 1, unitPrice: 4500, receivedQty: 1 },
+        { id: 'poi-022', brand: 'Apple', model: 'iPhone SE 3', color: 'Midnight', storage: '64GB', category: 'PHONE_USED', quantity: 1, unitPrice: 8000, receivedQty: 1 },
+      ]},
+    },
+  });
+  console.log('PurchaseOrders created: 9 (with POItems)');
 
   // ============================================================
   // STEP 9: GOODS RECEIVINGS + ITEMS
@@ -392,7 +442,32 @@ async function main() {
       ]},
     },
   });
-  console.log('GoodsReceivings created: 4 (with items)');
+  // GR for PO-008 (มือสอง เกรดรวม)
+  await prisma.goodsReceiving.create({
+    data: {
+      id: 'gr-005', poId: 'po-008', receivedById: 'user-002', notes: 'รับมือสอง MBK ล็อตใหม่ ตรวจเกรดแล้ว',
+      items: { create: [
+        { id: 'gri-009', poItemId: 'poi-015', imeiSerial: '354567890123477', serialNumber: 'F2LXK5A2B1', status: 'PASS', productId: 'prod-026', batteryHealth: 95, hasBox: true, warrantyExpired: false },
+        { id: 'gri-010', poItemId: 'poi-016', imeiSerial: '354567890123478', serialNumber: 'F2LXK5C2D1', status: 'PASS', productId: 'prod-027', batteryHealth: 93, hasBox: true, warrantyExpired: true },
+        { id: 'gri-011', poItemId: 'poi-017', imeiSerial: '354567890123479', serialNumber: 'F2LXK5E2F1', status: 'PASS', productId: 'prod-028', batteryHealth: 86, hasBox: false, warrantyExpired: true },
+        { id: 'gri-012', poItemId: 'poi-018', imeiSerial: '354567890123480', serialNumber: 'F2LXK5G2H1', status: 'PASS', productId: 'prod-029', batteryHealth: 88, hasBox: true, warrantyExpired: false },
+        { id: 'gri-013', poItemId: 'poi-019', imeiSerial: '354567890123481', serialNumber: 'F2LXK5I2J1', status: 'PASS', productId: 'prod-030', batteryHealth: 75, hasBox: false, warrantyExpired: true },
+        { id: 'gri-014', poItemId: 'poi-020', imeiSerial: '354567890123482', serialNumber: 'F2LXK5K2L1', status: 'PASS', productId: 'prod-031', batteryHealth: 79, hasBox: false, warrantyExpired: true },
+      ]},
+    },
+  });
+
+  // GR for PO-009 (มือสอง เกรด D)
+  await prisma.goodsReceiving.create({
+    data: {
+      id: 'gr-006', poId: 'po-009', receivedById: 'user-003', notes: 'รับมือสอง เกรด D ต้องซ่อม/ตรวจสภาพ',
+      items: { create: [
+        { id: 'gri-015', poItemId: 'poi-021', imeiSerial: '354567890123483', serialNumber: 'F2LXK5M2N1', status: 'PASS', productId: 'prod-032', batteryHealth: 62, hasBox: false, warrantyExpired: true },
+        { id: 'gri-016', poItemId: 'poi-022', imeiSerial: '354567890123484', serialNumber: 'F2LXK5O2P1', status: 'PASS', productId: 'prod-033', batteryHealth: 68, hasBox: false, warrantyExpired: true },
+      ]},
+    },
+  });
+  console.log('GoodsReceivings created: 6 (with items)');
 
 
   // ============================================================

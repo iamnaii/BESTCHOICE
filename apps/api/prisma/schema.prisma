@@ -570,9 +570,9 @@ model PricingTemplate {
   id                         String          @id @default(uuid())
   brand                      String
   model                      String
-  storage                    String?
+  storage                    String          @default("")
   category                   ProductCategory
-  hasWarranty                Boolean?        @map("has_warranty") // null = ไม่เกี่ยว (มือ 1), true/false = มือ 2
+  hasWarranty                Boolean         @default(false) @map("has_warranty") // false = ไม่เกี่ยว/ไม่มีประกัน, true = มีประกัน (มือ 2)
   cashPrice                  Decimal         @map("cash_price") @db.Decimal(12, 2)
   installmentBestchoicePrice Decimal         @map("installment_bestchoice_price") @db.Decimal(12, 2)
   installmentFinancePrice    Decimal         @map("installment_finance_price") @db.Decimal(12, 2)

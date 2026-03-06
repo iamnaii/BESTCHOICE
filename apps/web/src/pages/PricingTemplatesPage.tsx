@@ -60,7 +60,7 @@ export default function PricingTemplatesPage() {
       const payload = {
         ...form,
         storage: form.storage || undefined,
-        hasWarranty: form.category === 'PHONE_USED' ? form.hasWarranty : null,
+        hasWarranty: form.category === 'PHONE_USED' ? (form.hasWarranty ?? false) : false,
         cashPrice: parseFloat(form.cashPrice),
         installmentBestchoicePrice: parseFloat(form.installmentBestchoicePrice),
         installmentFinancePrice: parseFloat(form.installmentFinancePrice),
@@ -170,9 +170,9 @@ export default function PricingTemplatesPage() {
           const categoryRaw = String(row['ประเภท'] || '').trim();
           const category = categoryRaw === 'มือ 2' ? 'PHONE_USED' : 'PHONE_NEW';
           const warrantyRaw = String(row['ประกัน'] || '').trim();
-          let hasWarranty: boolean | null = null;
+          let hasWarranty = false;
           if (category === 'PHONE_USED') {
-            hasWarranty = warrantyRaw === 'มีประกัน' ? true : warrantyRaw === 'ไม่มีประกัน' ? false : null;
+            hasWarranty = warrantyRaw === 'มีประกัน';
           }
           return {
             brand: String(row['ยี่ห้อ'] || '').trim(),
@@ -235,7 +235,8 @@ export default function PricingTemplatesPage() {
     return null;
   };
 
-  const canSave = form.brand && form.model && form.cashPrice && form.installmentBestchoicePrice && form.installmentFinancePrice;
+  const canSave = form.brand && form.model && form.cashPrice && form.installmentBestchoicePrice && form.installmentFinancePrice
+    && (form.category !== 'PHONE_USED' || form.hasWarranty !== null);
 
   return (
     <div>

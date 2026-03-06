@@ -23,7 +23,7 @@ export class CreatePricingTemplateDto {
 
   @IsBoolean()
   @IsOptional()
-  hasWarranty?: boolean | null;
+  hasWarranty?: boolean;
 
   @IsNumber()
   cashPrice: number;

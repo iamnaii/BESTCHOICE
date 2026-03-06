@@ -33,9 +33,9 @@ export class PricingTemplatesService {
       where: {
         brand: { equals: brand, mode: 'insensitive' },
         model: { equals: model, mode: 'insensitive' },
-        storage: storage || null,
+        storage: storage || '',
         category: category as any,
-        hasWarranty: category === 'PHONE_USED' ? hasWarranty : null,
+        hasWarranty: category === 'PHONE_USED' ? (hasWarranty ?? false) : false,
         isActive: true,
       },
     });
@@ -48,9 +48,9 @@ export class PricingTemplatesService {
         where: {
           brand: { equals: brand, mode: 'insensitive' },
           model: { equals: model, mode: 'insensitive' },
-          storage: null,
+          storage: '',
           category: category as any,
-          hasWarranty: category === 'PHONE_USED' ? hasWarranty : null,
+          hasWarranty: category === 'PHONE_USED' ? (hasWarranty ?? false) : false,
           isActive: true,
         },
       });
@@ -65,9 +65,9 @@ export class PricingTemplatesService {
         data: {
           brand: dto.brand,
           model: dto.model,
-          storage: dto.storage || null,
+          storage: dto.storage || '',
           category: dto.category as any,
-          hasWarranty: dto.category === 'PHONE_USED' ? (dto.hasWarranty ?? null) : null,
+          hasWarranty: dto.category === 'PHONE_USED' ? (dto.hasWarranty ?? false) : false,
           cashPrice: dto.cashPrice,
           installmentBestchoicePrice: dto.installmentBestchoicePrice,
           installmentFinancePrice: dto.installmentFinancePrice,
@@ -102,14 +102,14 @@ export class PricingTemplatesService {
 
     for (const item of items) {
       try {
-        const hasWarranty = item.category === 'PHONE_USED' ? (item.hasWarranty ?? null) : null;
-        await (this.prisma.pricingTemplate.upsert as any)({
+        const hasWarranty = item.category === 'PHONE_USED' ? (item.hasWarranty ?? false) : false;
+        await this.prisma.pricingTemplate.upsert({
           where: {
             brand_model_storage_category_hasWarranty: {
               brand: item.brand,
               model: item.model,
-              storage: item.storage || null,
-              category: item.category,
+              storage: item.storage || '',
+              category: item.category as any,
               hasWarranty,
             },
           },
@@ -122,7 +122,7 @@ export class PricingTemplatesService {
           create: {
             brand: item.brand,
             model: item.model,
-            storage: item.storage || null,
+            storage: item.storage || '',
             category: item.category as any,
             hasWarranty,
             cashPrice: item.cashPrice,

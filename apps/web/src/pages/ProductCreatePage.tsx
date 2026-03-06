@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
@@ -90,6 +90,37 @@ export default function ProductCreatePage() {
 
   const availableColors = modelInfo?.colors ?? [];
   const availableStorage = modelInfo?.storage ?? [];
+
+  // Auto-fill prices from pricing template when brand/model/storage/category/warranty change
+  const lookupPrices = useCallback(async () => {
+    if (!form.brand || !form.model) return;
+    if (form.category === 'ACCESSORY') return;
+    try {
+      const params = new URLSearchParams({
+        brand: form.brand,
+        model: form.model,
+        category: form.category,
+      });
+      if (form.storage) params.set('storage', form.storage);
+      if (form.category === 'PHONE_USED') {
+        params.set('hasWarranty', String(!form.warrantyExpired));
+      }
+      const { data } = await api.get(`/pricing-templates/lookup?${params}`);
+      if (data) {
+        setPrices([
+          { label: 'ราคาเงินสด', amount: String(parseFloat(data.cashPrice)), isDefault: true },
+          { label: 'ราคาผ่อน BESTCHOICE', amount: String(parseFloat(data.installmentBestchoicePrice)), isDefault: false },
+          { label: 'ราคาผ่อนไฟแนนซ์', amount: String(parseFloat(data.installmentFinancePrice)), isDefault: false },
+        ]);
+      }
+    } catch {
+      // No template found, keep manual input
+    }
+  }, [form.brand, form.model, form.storage, form.category, form.warrantyExpired]);
+
+  useEffect(() => {
+    lookupPrices();
+  }, [lookupPrices]);
 
   const createMutation = useMutation({
     mutationFn: async () => {

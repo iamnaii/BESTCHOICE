@@ -37,6 +37,7 @@ import { ReorderPointsModule } from './modules/reorder-points/reorder-points.mod
 import { BranchReceivingModule } from './modules/branch-receiving/branch-receiving.module';
 import { StockCountModule } from './modules/stock-count/stock-count.module';
 import { InterestConfigModule } from './modules/interest-config/interest-config.module';
+import { PricingTemplatesModule } from './modules/pricing-templates/pricing-templates.module';
 import { ContractDocumentsModule } from './modules/contract-documents/contract-documents.module';
 import { CreditCheckModule } from './modules/credit-check/credit-check.module';
 import { OcrModule } from './modules/ocr/ocr.module';
@@ -75,6 +76,7 @@ import { SecurityMiddleware } from './modules/audit/security.middleware';
     CustomersModule,
     ContractsModule,
     InterestConfigModule,
+    PricingTemplatesModule,
     ContractDocumentsModule,
     CreditCheckModule,
     OcrModule,

@@ -5,7 +5,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import { displayAddress } from '@/components/ui/AddressForm';
 import { useState, useRef } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
+
 import toast from 'react-hot-toast';
 
 interface ReferenceData {
@@ -98,7 +98,7 @@ export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+
   const creditFileRef = useRef<HTMLInputElement>(null);
   const [creditBankName, setCreditBankName] = useState('');
 

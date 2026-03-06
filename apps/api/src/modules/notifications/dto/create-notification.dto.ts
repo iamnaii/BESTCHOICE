@@ -1,5 +1,4 @@
-import { IsString, IsOptional, IsEnum, IsArray, ValidateNested, IsDateString } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsString, IsOptional, IsArray, IsDateString } from 'class-validator';
 
 export class SendNotificationDto {
   @IsString()

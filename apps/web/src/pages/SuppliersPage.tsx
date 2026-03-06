@@ -156,19 +156,6 @@ export default function SuppliersPage() {
     },
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      return api.delete(`/suppliers/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['suppliers'] });
-      toast.success('ปิดใช้งานผู้ขายสำเร็จ');
-    },
-    onError: (err: unknown) => {
-      toast.error(getErrorMessage(err));
-    },
-  });
-
   const toggleActiveMutation = useMutation({
     mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
       return api.patch(`/suppliers/${id}`, { isActive });

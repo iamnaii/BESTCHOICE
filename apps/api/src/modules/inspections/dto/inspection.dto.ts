@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsBoolean, IsNumber, IsArray, ValidateNested, IsEnum } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsNumber, IsArray, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 // === Template DTOs ===

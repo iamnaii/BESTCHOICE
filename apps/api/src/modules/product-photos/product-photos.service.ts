@@ -4,7 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 const ANGLES = ['front', 'back', 'left', 'right', 'top', 'bottom'] as const;
 type Angle = typeof ANGLES[number];
 
-const ALLOWED_UPLOAD_STATUSES = ['PHOTO_PENDING', 'IN_STOCK'];
+const ALLOWED_UPLOAD_STATUSES = ['PHOTO_PENDING', 'IN_STOCK', 'RESERVED'];
 
 @Injectable()
 export class ProductPhotosService {

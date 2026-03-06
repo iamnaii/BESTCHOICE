@@ -656,7 +656,10 @@ export class PurchaseOrdersService {
             productName = nameParts.join(' ');
           }
 
-          // Create product for passed items → QC_PENDING (ต้องยืนยัน QC ก่อนเข้าคลัง)
+          // Create product for passed items
+          // PHONE_USED → PHOTO_PENDING (ต้องถ่ายรูป 6 มุมก่อนเข้าคลัง)
+          // PHONE_NEW / ACCESSORY → IN_STOCK (เข้าคลังได้เลย)
+          const initialStatus = productCategory === 'PHONE_USED' ? 'PHOTO_PENDING' : 'IN_STOCK';
           const product = await tx.product.create({
             data: {
               name: productName,
@@ -669,7 +672,7 @@ export class PurchaseOrdersService {
               supplierId: po.supplierId,
               poId: po.id,
               branchId: mainWarehouse!.id,
-              status: 'QC_PENDING',
+              status: initialStatus,
               imeiSerial: item.imeiSerial || null,
               serialNumber: item.serialNumber || null,
               photos: item.photos || [],

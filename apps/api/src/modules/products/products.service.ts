@@ -12,7 +12,7 @@ const productInclude = {
   branch: { select: { id: true, name: true } },
   po: { select: { id: true, poNumber: true } },
   inspection: { select: { id: true, overallGrade: true, isCompleted: true } },
-  productPhotos: { select: { id: true, isCompleted: true, front: true, back: true, left: true, right: true, top: true, bottom: true } },
+  productPhotos: { select: { id: true, isCompleted: true } },
 };
 
 @Injectable()
@@ -758,11 +758,25 @@ export class ProductsService {
             receiving: { select: { receivedBy: { select: { name: true } } } },
           },
         },
-        productPhotos: { select: { id: true, isCompleted: true, front: true, back: true, left: true, right: true, top: true, bottom: true } },
+        productPhotos: { select: { id: true, isCompleted: true } },
       },
     });
 
     if (!product || product.deletedAt) throw new NotFoundException('ไม่พบสินค้า');
+
+    // Get photo completion count without loading base64 data
+    let photoAngles = 0;
+    if (product.productPhotos) {
+      const raw = await this.prisma.$queryRaw<[{ count: bigint }]>`
+        SELECT (CASE WHEN front IS NOT NULL THEN 1 ELSE 0 END
+             + CASE WHEN back IS NOT NULL THEN 1 ELSE 0 END
+             + CASE WHEN "left" IS NOT NULL THEN 1 ELSE 0 END
+             + CASE WHEN "right" IS NOT NULL THEN 1 ELSE 0 END
+             + CASE WHEN top IS NOT NULL THEN 1 ELSE 0 END
+             + CASE WHEN bottom IS NOT NULL THEN 1 ELSE 0 END) as count
+        FROM product_photos WHERE product_id = ${productId}`;
+      photoAngles = Number(raw[0]?.count || 0);
+    }
 
     // Find transfer history
     const transfers = await this.prisma.stockTransfer.findMany({
@@ -777,79 +791,84 @@ export class ProductsService {
 
     const latestTransfer = transfers[0] || null;
 
+    const isUsedPhone = product.category === 'PHONE_USED';
     const photoCompleted = product.productPhotos?.isCompleted === true;
-    const photoAngles = product.productPhotos
-      ? ['front', 'back', 'left', 'right', 'top', 'bottom'].filter((a) => (product.productPhotos as Record<string, unknown>)?.[a] !== null).length
-      : 0;
 
-    const steps = [
+    const rawSteps: { name: string; status: 'completed' | 'in_progress' | 'pending'; description: string }[] = [
       {
-        step: 1,
         name: 'เช็ค Stock',
-        status: 'completed' as const,
+        status: 'completed',
         description: 'ตรวจสอบสต๊อคก่อนสั่งซื้อ',
       },
       {
-        step: 2,
         name: 'สั่งสินค้า (PO)',
-        status: product.poId ? 'completed' as const : 'pending' as const,
+        status: product.poId ? 'completed' : 'pending',
         description: product.po ? `PO: ${product.po.poNumber} (${product.po.status})` : 'ยังไม่ได้สั่งซื้อ',
       },
       {
-        step: 3,
         name: 'ตรวจรับสินค้า (QC)',
-        status: product.receivingItem ? 'completed' as const : 'pending' as const,
+        status: product.receivingItem ? 'completed' : 'pending',
         description: product.receivingItem
           ? `QC: ${product.receivingItem.status} (${new Date(product.receivingItem.createdAt).toLocaleDateString('th-TH')})`
           : 'ยังไม่ได้ตรวจรับ',
       },
-      {
-        step: 4,
+    ];
+
+    // ถ่ายรูป 6 มุม เฉพาะมือสอง
+    if (isUsedPhone) {
+      rawSteps.push({
         name: 'ถ่ายรูปสินค้า 6 มุม',
         status: photoCompleted
-          ? 'completed' as const
-          : product.status === 'PHOTO_PENDING' ? 'in_progress' as const
-          : photoAngles > 0 ? 'in_progress' as const
-          : 'pending' as const,
+          ? 'completed'
+          : product.status === 'PHOTO_PENDING' ? 'in_progress'
+          : photoAngles > 0 ? 'in_progress'
+          : 'pending',
         description: photoCompleted
           ? 'ถ่ายรูปครบ 6 มุมแล้ว'
           : photoAngles > 0
           ? `ถ่ายแล้ว ${photoAngles}/6 มุม`
           : 'รอถ่ายรูปสินค้า',
-      },
+      });
+    }
+
+    rawSteps.push(
       {
-        step: 5,
         name: 'สินค้าเข้าคลัง',
         status: (['IN_STOCK', 'RESERVED', 'SOLD_INSTALLMENT', 'SOLD_CASH', 'SOLD_RESELL'].includes(product.status))
-          ? 'completed' as const
-          : product.status === 'QC_PENDING' ? 'in_progress' as const : 'pending' as const,
-        description: product.status === 'QC_PENDING' ? 'รอยืนยัน QC เข้าคลัง' : product.status === 'IN_STOCK' ? 'อยู่ในคลัง' : product.status,
+          ? 'completed'
+          : product.status === 'QC_PENDING' ? 'in_progress'
+          : product.status === 'PHOTO_PENDING' ? 'pending'
+          : 'pending',
+        description: product.status === 'QC_PENDING' ? 'รอยืนยัน QC เข้าคลัง'
+          : product.status === 'PHOTO_PENDING' ? 'รอถ่ายรูป 6 มุมก่อนเข้าคลัง'
+          : product.status === 'IN_STOCK' ? 'อยู่ในคลัง'
+          : 'รอดำเนินการ',
       },
       {
-        step: 6,
         name: 'ส่งไปสาขา',
         status: latestTransfer
-          ? latestTransfer.status === 'CONFIRMED' ? 'completed' as const
-            : latestTransfer.status === 'REJECTED' ? 'pending' as const
-            : latestTransfer.status === 'IN_TRANSIT' ? 'in_progress' as const
-            : 'pending' as const
-          : 'pending' as const,
+          ? latestTransfer.status === 'CONFIRMED' ? 'completed'
+            : latestTransfer.status === 'REJECTED' ? 'pending'
+            : latestTransfer.status === 'IN_TRANSIT' ? 'in_progress'
+            : 'pending'
+          : 'pending',
         description: latestTransfer
           ? `${latestTransfer.fromBranch.name} → ${latestTransfer.toBranch.name} (${latestTransfer.status})`
           : 'ยังไม่ได้โอนไปสาขา',
       },
       {
-        step: 7,
         name: 'สาขาเช็ครับ',
         status: latestTransfer?.branchReceiving
-          ? 'completed' as const
-          : latestTransfer?.status === 'IN_TRANSIT' ? 'pending' as const
-          : 'pending' as const,
+          ? 'completed'
+          : latestTransfer?.status === 'IN_TRANSIT' ? 'pending'
+          : 'pending',
         description: latestTransfer?.branchReceiving
           ? `ตรวจรับแล้ว (${latestTransfer.branchReceiving.status})`
           : 'ยังไม่ได้ตรวจรับที่สาขา',
       },
-    ];
+    );
+
+    const steps = rawSteps.map((s, i) => ({ step: i + 1, ...s }));
 
     let currentStep = 1;
     for (let i = steps.length - 1; i >= 0; i--) {

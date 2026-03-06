@@ -196,11 +196,13 @@ export default function ProductDetailPage() {
         }
       />
 
-      {/* Product Photos - 6 angles */}
-      <ProductPhotosPanel
-        productId={product.id}
-        canEdit={isManager || user?.role === 'SALES'}
-      />
+      {/* Product Photos - 6 angles (เฉพาะมือสอง) */}
+      {product.category === 'PHONE_USED' && (
+        <ProductPhotosPanel
+          productId={product.id}
+          canEdit={isManager || user?.role === 'SALES'}
+        />
+      )}
 
       {/* Legacy Photos (from goods receiving) */}
       {product.photos && product.photos.length > 0 && (

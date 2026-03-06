@@ -4,6 +4,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 const ANGLES = ['front', 'back', 'left', 'right', 'top', 'bottom'] as const;
 type Angle = typeof ANGLES[number];
 
+const ALLOWED_UPLOAD_STATUSES = ['PHOTO_PENDING', 'QC_PENDING', 'IN_STOCK'];
+
 @Injectable()
 export class ProductPhotosService {
   constructor(private prisma: PrismaService) {}
@@ -11,9 +13,14 @@ export class ProductPhotosService {
   async getPhotos(productId: string) {
     const product = await this.prisma.product.findUnique({
       where: { id: productId },
-      select: { id: true, status: true, productPhotos: true },
+      select: { id: true, status: true, category: true, productPhotos: true },
     });
     if (!product) throw new NotFoundException('ไม่พบสินค้า');
+
+    // รูปถ่าย 6 มุมเฉพาะมือสอง
+    if (product.category !== 'PHONE_USED') {
+      return { productId, applicable: false };
+    }
 
     if (!product.productPhotos) {
       return {
@@ -47,13 +54,15 @@ export class ProductPhotosService {
   async uploadPhoto(productId: string, angle: string, photo: string, userId: string) {
     const product = await this.prisma.product.findUnique({
       where: { id: productId },
-      select: { id: true, status: true, deletedAt: true },
+      select: { id: true, status: true, category: true, deletedAt: true },
     });
     if (!product || product.deletedAt) throw new NotFoundException('ไม่พบสินค้า');
 
-    // Allow upload when status is PHOTO_PENDING, QC_PENDING, or IN_STOCK
-    const allowedStatuses = ['PHOTO_PENDING', 'QC_PENDING', 'IN_STOCK'];
-    if (!allowedStatuses.includes(product.status)) {
+    if (product.category !== 'PHONE_USED') {
+      throw new BadRequestException('ถ่ายรูป 6 มุมเฉพาะสินค้ามือสองเท่านั้น');
+    }
+
+    if (!ALLOWED_UPLOAD_STATUSES.includes(product.status)) {
       throw new BadRequestException(`ไม่สามารถอัปโหลดรูปในสถานะ ${product.status} ได้`);
     }
 
@@ -61,24 +70,12 @@ export class ProductPhotosService {
       throw new BadRequestException('angle ไม่ถูกต้อง');
     }
 
-    // Upsert ProductPhoto record
-    const existing = await this.prisma.productPhoto.findUnique({
+    // Use upsert to avoid race condition between concurrent uploads
+    const pp = await this.prisma.productPhoto.upsert({
       where: { productId },
+      create: { productId, [angle]: photo, uploadedById: userId },
+      update: { [angle]: photo, uploadedById: userId },
     });
-
-    const data = { [angle]: photo, uploadedById: userId };
-
-    let pp;
-    if (existing) {
-      pp = await this.prisma.productPhoto.update({
-        where: { productId },
-        data,
-      });
-    } else {
-      pp = await this.prisma.productPhoto.create({
-        data: { productId, ...data },
-      });
-    }
 
     return {
       productId,
@@ -90,10 +87,20 @@ export class ProductPhotosService {
   }
 
   async deletePhoto(productId: string, angle: string) {
-    const pp = await this.prisma.productPhoto.findUnique({
-      where: { productId },
+    // Validate product exists and is in editable status
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
+      select: { id: true, status: true, category: true, deletedAt: true },
     });
-    if (!pp) throw new NotFoundException('ไม่พบรูปถ่ายสินค้า');
+    if (!product || product.deletedAt) throw new NotFoundException('ไม่พบสินค้า');
+
+    if (product.category !== 'PHONE_USED') {
+      throw new BadRequestException('ลบรูป 6 มุมเฉพาะสินค้ามือสองเท่านั้น');
+    }
+
+    if (!ALLOWED_UPLOAD_STATUSES.includes(product.status)) {
+      throw new BadRequestException(`ไม่สามารถลบรูปในสถานะ ${product.status} ได้`);
+    }
 
     if (!ANGLES.includes(angle as Angle)) {
       throw new BadRequestException('angle ไม่ถูกต้อง');
@@ -114,36 +121,50 @@ export class ProductPhotosService {
   }
 
   async completePhotos(productId: string) {
-    const product = await this.prisma.product.findUnique({
-      where: { id: productId },
-      select: { id: true, status: true },
-    });
-    if (!product) throw new NotFoundException('ไม่พบสินค้า');
-
-    const pp = await this.prisma.productPhoto.findUnique({
-      where: { productId },
-    });
-    if (!pp) throw new BadRequestException('ยังไม่ได้อัปโหลดรูปเลย');
-
-    const missingAngles = ANGLES.filter((a) => pp[a] === null);
-    if (missingAngles.length > 0) {
-      throw new BadRequestException(`ยังขาดรูป: ${missingAngles.join(', ')}`);
-    }
-
-    // Mark photos as completed
-    await this.prisma.productPhoto.update({
-      where: { productId },
-      data: { isCompleted: true },
-    });
-
-    // If status is PHOTO_PENDING, advance to IN_STOCK
-    if (product.status === 'PHOTO_PENDING') {
-      await this.prisma.product.update({
+    return this.prisma.$transaction(async (tx) => {
+      const product = await tx.product.findUnique({
         where: { id: productId },
-        data: { status: 'IN_STOCK', stockInDate: new Date() },
+        select: { id: true, status: true, category: true, deletedAt: true },
       });
-    }
+      if (!product || product.deletedAt) throw new NotFoundException('ไม่พบสินค้า');
 
-    return { productId, isCompleted: true, status: product.status === 'PHOTO_PENDING' ? 'IN_STOCK' : product.status };
+      if (product.category !== 'PHONE_USED') {
+        throw new BadRequestException('ยืนยันรูป 6 มุมเฉพาะสินค้ามือสองเท่านั้น');
+      }
+
+      if (!ALLOWED_UPLOAD_STATUSES.includes(product.status)) {
+        throw new BadRequestException(`ไม่สามารถยืนยันรูปในสถานะ ${product.status} ได้`);
+      }
+
+      const pp = await tx.productPhoto.findUnique({
+        where: { productId },
+      });
+      if (!pp) throw new BadRequestException('ยังไม่ได้อัปโหลดรูปเลย');
+
+      const missingAngles = ANGLES.filter((a) => pp[a] === null);
+      if (missingAngles.length > 0) {
+        throw new BadRequestException(`ยังขาดรูป: ${missingAngles.join(', ')}`);
+      }
+
+      // Mark photos as completed
+      await tx.productPhoto.update({
+        where: { productId },
+        data: { isCompleted: true },
+      });
+
+      // If status is PHOTO_PENDING, advance to IN_STOCK
+      if (product.status === 'PHOTO_PENDING') {
+        await tx.product.update({
+          where: { id: productId },
+          data: { status: 'IN_STOCK', stockInDate: new Date() },
+        });
+      }
+
+      return {
+        productId,
+        isCompleted: true,
+        status: product.status === 'PHOTO_PENDING' ? 'IN_STOCK' : product.status,
+      };
+    });
   }
 }

@@ -34,6 +34,7 @@ const AuditLogsPage = lazy(() => import('@/pages/AuditLogsPage'));
 const POSPage = lazy(() => import('@/pages/POSPage'));
 const SalesHistoryPage = lazy(() => import('@/pages/SalesHistoryPage'));
 const InterestConfigPage = lazy(() => import('@/pages/InterestConfigPage'));
+const PricingTemplatesPage = lazy(() => import('@/pages/PricingTemplatesPage'));
 const CreditChecksPage = lazy(() => import('@/pages/CreditChecksPage'));
 const SuppliersPage = lazy(() => import('@/pages/SuppliersPage'));
 const StockPage = lazy(() => import('@/pages/StockPage'));
@@ -260,6 +261,14 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER']}>
                 <InterestConfigPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings/pricing-templates"
+            element={
+              <ProtectedRoute roles={['OWNER']}>
+                <PricingTemplatesPage />
               </ProtectedRoute>
             }
           />

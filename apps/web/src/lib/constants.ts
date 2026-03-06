@@ -67,16 +67,6 @@ export const paymentMethods = [
   { value: 'BANK_TRANSFER', label: 'โอนเงิน' },
 ];
 
-// --- Condition Grade ---
-
-export const gradeOptions = [
-  { value: '', label: 'ไม่ระบุ' },
-  { value: 'A', label: 'A' },
-  { value: 'B', label: 'B' },
-  { value: 'C', label: 'C' },
-  { value: 'D', label: 'D' },
-];
-
 // --- Transfer Status ---
 
 export const transferStatusLabels: Record<string, { label: string; className: string }> = {

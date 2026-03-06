@@ -192,6 +192,13 @@ export const productCatalog: BrandCatalog[] = [
         colors: ['Purple', 'Yellow', 'Green', 'Black', 'White', '(PRODUCT)RED'],
         storage: ['64GB', '128GB', '256GB'],
       },
+      // === iPhone XR/XS ===
+      {
+        name: 'iPhone XR',
+        category: 'PHONE_NEW',
+        colors: ['Blue', 'White', 'Black', 'Yellow', 'Coral', '(PRODUCT)RED'],
+        storage: ['64GB', '128GB', '256GB'],
+      },
       // === iPhone SE ===
       {
         name: 'iPhone SE (3rd gen)',

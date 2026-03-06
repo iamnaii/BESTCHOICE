@@ -60,10 +60,6 @@ export class CreateProductDto {
   @IsOptional()
   status?: string;
 
-  @IsIn(['A', 'B', 'C', 'D'])
-  @IsOptional()
-  conditionGrade?: string;
-
   @IsArray()
   @IsOptional()
   photos?: string[];

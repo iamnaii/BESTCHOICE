@@ -12,6 +12,7 @@ const productInclude = {
   branch: { select: { id: true, name: true } },
   po: { select: { id: true, poNumber: true } },
   inspection: { select: { id: true, overallGrade: true, isCompleted: true } },
+  productPhotos: { select: { id: true, isCompleted: true, front: true, back: true, left: true, right: true, top: true, bottom: true } },
 };
 
 @Injectable()
@@ -599,6 +600,7 @@ export class ProductsService {
     const actionRequired = {
       inspection: allProducts.filter((p) => p.status === 'INSPECTION').length,
       qcPending: allProducts.filter((p) => p.status === 'QC_PENDING').length,
+      photoPending: allProducts.filter((p) => p.status === 'PHOTO_PENDING').length,
       pendingTransfers,
       repossessed: allProducts.filter((p) => p.status === 'REPOSSESSED').length,
       agingOver90: agingBuckets[3].count,
@@ -741,7 +743,7 @@ export class ProductsService {
 
   /**
    * Get workflow status for a product showing which step it's at
-   * Steps: 1.เช็ค Stock → 2.สั่งสินค้า → 3.ตรวจรับ → 4.เข้าคลัง → 5.ส่งไปสาขา → 6.สาขาเช็ครับ
+   * Steps: 1.เช็ค Stock → 2.สั่งสินค้า → 3.ตรวจรับ → 4.ถ่ายรูป 6 มุม → 5.เข้าคลัง → 6.ส่งไปสาขา → 7.สาขาเช็ครับ
    */
   async getWorkflowStatus(productId: string) {
     const product = await this.prisma.product.findUnique({
@@ -756,6 +758,7 @@ export class ProductsService {
             receiving: { select: { receivedBy: { select: { name: true } } } },
           },
         },
+        productPhotos: { select: { id: true, isCompleted: true, front: true, back: true, left: true, right: true, top: true, bottom: true } },
       },
     });
 
@@ -773,6 +776,11 @@ export class ProductsService {
     });
 
     const latestTransfer = transfers[0] || null;
+
+    const photoCompleted = product.productPhotos?.isCompleted === true;
+    const photoAngles = product.productPhotos
+      ? ['front', 'back', 'left', 'right', 'top', 'bottom'].filter((a) => (product.productPhotos as Record<string, unknown>)?.[a] !== null).length
+      : 0;
 
     const steps = [
       {
@@ -797,6 +805,20 @@ export class ProductsService {
       },
       {
         step: 4,
+        name: 'ถ่ายรูปสินค้า 6 มุม',
+        status: photoCompleted
+          ? 'completed' as const
+          : product.status === 'PHOTO_PENDING' ? 'in_progress' as const
+          : photoAngles > 0 ? 'in_progress' as const
+          : 'pending' as const,
+        description: photoCompleted
+          ? 'ถ่ายรูปครบ 6 มุมแล้ว'
+          : photoAngles > 0
+          ? `ถ่ายแล้ว ${photoAngles}/6 มุม`
+          : 'รอถ่ายรูปสินค้า',
+      },
+      {
+        step: 5,
         name: 'สินค้าเข้าคลัง',
         status: (['IN_STOCK', 'RESERVED', 'SOLD_INSTALLMENT', 'SOLD_CASH', 'SOLD_RESELL'].includes(product.status))
           ? 'completed' as const
@@ -804,7 +826,7 @@ export class ProductsService {
         description: product.status === 'QC_PENDING' ? 'รอยืนยัน QC เข้าคลัง' : product.status === 'IN_STOCK' ? 'อยู่ในคลัง' : product.status,
       },
       {
-        step: 5,
+        step: 6,
         name: 'ส่งไปสาขา',
         status: latestTransfer
           ? latestTransfer.status === 'CONFIRMED' ? 'completed' as const
@@ -817,7 +839,7 @@ export class ProductsService {
           : 'ยังไม่ได้โอนไปสาขา',
       },
       {
-        step: 6,
+        step: 7,
         name: 'สาขาเช็ครับ',
         status: latestTransfer?.branchReceiving
           ? 'completed' as const

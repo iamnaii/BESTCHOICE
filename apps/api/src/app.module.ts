@@ -11,6 +11,7 @@ import { BranchesModule } from './modules/branches/branches.module';
 // Supplier Management (Phase 2 step-by-step modules)
 import { SuppliersModule } from './modules/suppliers/suppliers.module';
 import { ProductsModule } from './modules/products/products.module';
+import { ProductPhotosModule } from './modules/product-photos/product-photos.module';
 import { InspectionsModule } from './modules/inspections/inspections.module';
 import { StickersModule } from './modules/stickers/stickers.module';
 import { CustomersModule } from './modules/customers/customers.module';
@@ -68,6 +69,7 @@ import { SecurityMiddleware } from './modules/audit/security.middleware';
     // Supplier Management (Phase 2 step-by-step modules)
     SuppliersModule,
     ProductsModule,
+    ProductPhotosModule,
     InspectionsModule,
     StickersModule,
     CustomersModule,

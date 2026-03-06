@@ -38,6 +38,7 @@ enum PlanType {
 enum ProductStatus {
   PO_RECEIVED
   QC_PENDING // รอตรวจสอบคุณภาพ (ก่อนเข้าคลัง)
+  PHOTO_PENDING // รอถ่ายรูปสินค้า 6 มุม (หลัง QC ผ่าน)
   INSPECTION
   IN_STOCK
   RESERVED
@@ -232,6 +233,7 @@ model User {
   creditChecks           CreditCheck[]      @relation("CreditCheckedBy")
   branchReceivings       BranchReceiving[]  @relation("BranchReceivedBy")
   stockCounts            StockCount[]       @relation("StockCountedBy")
+  productPhotosUploaded  ProductPhoto[]     @relation("ProductPhotoUploadedBy")
 
   @@index([branchId])
   @@map("users")
@@ -517,6 +519,7 @@ model Product {
   stockTransfers       StockTransfer[]
   stockAdjustments     StockAdjustment[]
   stockCountItems      StockCountItem[]
+  productPhotos        ProductPhoto?
 
   @@index([branchId])
   @@index([status])
@@ -526,6 +529,26 @@ model Product {
   @@index([deletedAt])
   @@index([createdAt])
   @@map("products")
+}
+
+model ProductPhoto {
+  id          String   @id @default(uuid())
+  productId   String   @unique @map("product_id")
+  front       String?  // ด้านหน้า
+  back        String?  // ด้านหลัง
+  left        String?  // ข้างซ้าย
+  right       String?  // ข้างขวา
+  top         String?  // ด้านบน
+  bottom      String?  // ด้านล่าง
+  isCompleted Boolean  @default(false) @map("is_completed")
+  uploadedById String? @map("uploaded_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  product    Product @relation(fields: [productId], references: [id])
+  uploadedBy User?   @relation("ProductPhotoUploadedBy", fields: [uploadedById], references: [id])
+
+  @@map("product_photos")
 }
 
 model ProductPrice {

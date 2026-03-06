@@ -106,6 +106,9 @@ export class ProductPhotosService {
       throw new BadRequestException('angle ไม่ถูกต้อง');
     }
 
+    const existing = await this.prisma.productPhoto.findUnique({ where: { productId } });
+    if (!existing) throw new BadRequestException('ยังไม่มีรูปให้ลบ');
+
     const updated = await this.prisma.productPhoto.update({
       where: { productId },
       data: { [angle]: null, isCompleted: false },

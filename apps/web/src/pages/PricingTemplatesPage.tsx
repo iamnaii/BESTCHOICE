@@ -324,7 +324,7 @@ export default function PricingTemplatesPage() {
                       }`}>
                         {t.category === 'PHONE_NEW' ? 'มือ 1' : 'มือ 2'}
                       </span>
-                      {warrantyLabel(t.hasWarranty) && (
+                      {t.category === 'PHONE_USED' && warrantyLabel(t.hasWarranty) && (
                         <span className={`ml-1 px-2 py-0.5 rounded-full text-xs font-medium ${
                           t.hasWarranty ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
                         }`}>

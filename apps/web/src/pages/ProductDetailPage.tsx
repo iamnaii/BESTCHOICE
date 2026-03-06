@@ -308,7 +308,7 @@ export default function ProductDetailPage() {
         </div>
         <div className="bg-white rounded-lg border p-4">
           <div className="text-xs text-gray-500 mb-1">กำไร</div>
-          <div className={`text-lg font-semibold ${profit && profit > 0 ? 'text-green-600' : 'text-red-600'}`}>
+          <div className={`text-lg font-semibold ${profit === null ? 'text-gray-400' : profit > 0 ? 'text-green-600' : profit === 0 ? 'text-gray-600' : 'text-red-600'}`}>
             {profit !== null ? `${profit.toLocaleString()} ฿` : '-'}
           </div>
         </div>

@@ -15,6 +15,9 @@ export const statusLabels: Record<string, { label: string; className: string }> 
   REPOSSESSED: { label: 'ยึดคืน', className: 'bg-red-100 text-red-700' },
   REFURBISHED: { label: 'ซ่อมแล้ว', className: 'bg-orange-100 text-orange-700' },
   SOLD_RESELL: { label: 'ขายต่อ', className: 'bg-cyan-100 text-cyan-700' },
+  DAMAGED: { label: 'เสียหาย', className: 'bg-red-100 text-red-700' },
+  LOST: { label: 'สูญหาย', className: 'bg-red-100 text-red-700' },
+  WRITTEN_OFF: { label: 'ตัดจำหน่าย', className: 'bg-gray-100 text-gray-700' },
 };
 
 // Statuses that are valid for product creation

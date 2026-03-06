@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import Modal from '@/components/ui/Modal';
+import ProductPhotosPanel from '@/components/product/ProductPhotosPanel';
 import { useAuth } from '@/contexts/AuthContext';
 import { statusLabels, categoryLabels, transferableStatuses } from '@/lib/constants';
 
@@ -195,10 +196,16 @@ export default function ProductDetailPage() {
         }
       />
 
-      {/* Product Photos */}
+      {/* Product Photos - 6 angles */}
+      <ProductPhotosPanel
+        productId={product.id}
+        canEdit={isManager || user?.role === 'SALES'}
+      />
+
+      {/* Legacy Photos (from goods receiving) */}
       {product.photos && product.photos.length > 0 && (
         <div className="bg-white rounded-lg border p-6 mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-3">รูปถ่ายสินค้า</h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-3">รูปถ่ายจากการตรวจรับ</h2>
           <div className="flex flex-wrap gap-3">
             {product.photos.map((photo, i) => (
               <div key={i} className="w-28 h-28 rounded-lg overflow-hidden border">

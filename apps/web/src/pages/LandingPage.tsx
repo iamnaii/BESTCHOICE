@@ -13,7 +13,6 @@ interface Product {
   category: string;
   costPrice: string;
   status: string;
-  conditionGrade: string | null;
   prices: { id: string; label: string; amount: string; isDefault: boolean }[];
 }
 
@@ -152,7 +151,6 @@ export default function LandingPage() {
                     model={product.model}
                     price={defaultPrice?.amount || product.costPrice}
                     category={product.category}
-                    conditionGrade={product.conditionGrade}
                   />
                 );
               })}
@@ -176,7 +174,6 @@ export default function LandingPage() {
                   model={item.model}
                   price={item.price}
                   category={item.category}
-                  conditionGrade={item.grade}
                 />
               ))}
             </div>

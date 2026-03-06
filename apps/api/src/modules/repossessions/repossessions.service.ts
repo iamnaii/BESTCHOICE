@@ -131,7 +131,6 @@ export class RepossessionsService {
         where: { id: contract.productId },
         data: {
           status: 'REPOSSESSED',
-          conditionGrade: dto.conditionGrade as ConditionGrade,
         },
       });
 

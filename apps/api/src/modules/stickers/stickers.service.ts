@@ -42,7 +42,7 @@ export class StickersService {
     if (!product) throw new NotFoundException('ไม่พบสินค้า');
 
     const defaultPrice = product.prices[0];
-    const grade = product.inspection?.gradeOverride || product.inspection?.overallGrade || product.conditionGrade;
+    const grade = product.inspection?.gradeOverride || product.inspection?.overallGrade;
 
     return {
       product_code: product.id.slice(0, 8).toUpperCase(),

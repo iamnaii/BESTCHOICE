@@ -549,7 +549,7 @@ export class ProductsService {
         where: baseWhere as any,
         select: {
           id: true, status: true, category: true, brand: true, model: true,
-          color: true, storage: true, costPrice: true, conditionGrade: true,
+          color: true, storage: true, costPrice: true,
           createdAt: true, stockInDate: true,
           prices: { where: { isDefault: true }, take: 1, select: { amount: true } },
         },
@@ -656,20 +656,7 @@ export class ProductsService {
       stockMovement.push({ month: monthLabel, in: monthIn, out: monthOut });
     }
 
-    // --- 6. Condition Grade Distribution (IN_STOCK only) ---
-    const gradeMap = new Map<string, { count: number; value: number }>();
-    for (const p of inStockProducts) {
-      const grade = p.conditionGrade || 'N/A';
-      const entry = gradeMap.get(grade) || { count: 0, value: 0 };
-      entry.count++;
-      entry.value += Number(p.costPrice);
-      gradeMap.set(grade, entry);
-    }
-    const conditionGrade = Array.from(gradeMap.entries())
-      .map(([grade, data]) => ({ grade, ...data }))
-      .sort((a, b) => b.count - a.count);
-
-    // --- 7. Stock Turnover ---
+    // --- 6. Stock Turnover ---
     const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const soldThisMonth = soldProducts.filter((p) => new Date(p.updatedAt) >= thisMonthStart).length;
@@ -738,7 +725,6 @@ export class ProductsService {
       byColor,
       byStorage,
       stockMovement,
-      conditionGrade,
       stockTurnover: {
         avgDaysInStock,
         soldThisMonth,

@@ -3,7 +3,6 @@ interface ProductCardProps {
   model: string;
   price: string;
   category: string;
-  conditionGrade?: string | null;
 }
 
 const categoryLabels: Record<string, string> = {
@@ -13,22 +12,13 @@ const categoryLabels: Record<string, string> = {
   ACCESSORY: 'อุปกรณ์เสริม',
 };
 
-const gradeBadgeColors: Record<string, string> = {
-  A: 'bg-green-100 text-green-700',
-  B: 'bg-blue-100 text-blue-700',
-  C: 'bg-yellow-100 text-yellow-700',
-  D: 'bg-orange-100 text-orange-700',
-};
-
 export default function ProductCard({
   brand,
   model,
   price,
   category,
-  conditionGrade,
 }: ProductCardProps) {
   const categoryLabel = categoryLabels[category] || category;
-  const gradeColor = conditionGrade ? (gradeBadgeColors[conditionGrade] || 'bg-gray-100 text-gray-700') : '';
 
   return (
     <div className="group bg-white rounded-2xl border border-gray-100 overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
@@ -45,13 +35,6 @@ export default function ProductCard({
         <span className="absolute top-3 left-3 px-2.5 py-1 text-[10px] font-semibold bg-primary-600 text-white rounded-full">
           {categoryLabel}
         </span>
-
-        {/* Grade Badge */}
-        {conditionGrade && (
-          <span className={`absolute top-3 right-3 px-2 py-1 text-[10px] font-bold rounded-full ${gradeColor}`}>
-            Grade {conditionGrade}
-          </span>
-        )}
       </div>
 
       {/* Content */}

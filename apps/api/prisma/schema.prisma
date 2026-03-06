@@ -489,7 +489,6 @@ model Product {
   poId               String?         @map("po_id")
   branchId           String          @map("branch_id")
   status             ProductStatus   @default(IN_STOCK)
-  conditionGrade     ConditionGrade? @map("condition_grade")
   batteryHealth      Int?            @map("battery_health")
   warrantyExpired    Boolean?        @map("warranty_expired")
   warrantyExpireDate DateTime?       @map("warranty_expire_date")

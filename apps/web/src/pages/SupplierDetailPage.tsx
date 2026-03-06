@@ -51,7 +51,6 @@ interface ProductRecord {
   category: string;
   costPrice: string;
   status: string;
-  conditionGrade: string | null;
   createdAt: string;
   branch: { id: string; name: string };
   po: { id: string; poNumber: string; orderDate: string } | null;

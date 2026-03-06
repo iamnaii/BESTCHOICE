@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import { brands, getModels, getModelInfo } from '@/data/productCatalog';
-import { categoryOptions, createProductStatusOptions, gradeOptions } from '@/lib/constants';
+import { categoryOptions, createProductStatusOptions } from '@/lib/constants';
 
 interface PriceRow {
   label: string;
@@ -44,7 +44,6 @@ export default function ProductCreatePage() {
     supplierId: '',
     branchId: '',
     status: 'IN_STOCK',
-    conditionGrade: '',
     batteryHealth: '',
     warrantyExpired: false,
     warrantyExpireDate: '',
@@ -119,7 +118,6 @@ export default function ProductCreatePage() {
         supplierId: form.supplierId || undefined,
         branchId: form.branchId,
         status: form.status,
-        conditionGrade: form.conditionGrade || undefined,
         ...(form.category === 'PHONE_USED' ? {
           batteryHealth: form.batteryHealth ? Number(form.batteryHealth) : undefined,
           warrantyExpired: form.warrantyExpired,
@@ -460,15 +458,6 @@ export default function ProductCreatePage() {
               </select>
             </div>
 
-            {form.category !== 'ACCESSORY' && (
-              /* เกรดสภาพ */
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">เกรดสภาพ</label>
-                <select value={form.conditionGrade} onChange={(e) => setForm({ ...form, conditionGrade: e.target.value })} className={inputCls}>
-                  {gradeOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                </select>
-              </div>
-            )}
           </div>
 
           {/* Accessory auto name preview */}

@@ -49,10 +49,6 @@ export class UpdateProductDto {
   @IsOptional()
   status?: string;
 
-  @IsString()
-  @IsOptional()
-  conditionGrade?: string;
-
   @IsArray()
   @IsOptional()
   photos?: string[];

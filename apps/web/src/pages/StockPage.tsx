@@ -21,7 +21,6 @@ interface StockProduct {
   status: string;
   color: string | null;
   storage: string | null;
-  conditionGrade: string | null;
   branch: { id: string; name: string };
   supplier: { id: string; name: string } | null;
   prices: { id: string; label: string; amount: string; isDefault: boolean }[];
@@ -60,7 +59,6 @@ interface StockDashboard {
   byColor: BreakdownItem[];
   byStorage: BreakdownItem[];
   stockMovement: { month: string; in: number; out: number }[];
-  conditionGrade: { grade: string; count: number; value: number }[];
   stockTurnover: {
     avgDaysInStock: number;
     soldThisMonth: number;
@@ -264,11 +262,6 @@ export default function StockPage() {
       },
     },
     {
-      key: 'conditionGrade',
-      label: 'เกรด',
-      render: (p: StockProduct) => <span className="text-sm">{p.conditionGrade || '-'}</span>,
-    },
-    {
       key: 'branch',
       label: 'สาขา',
       render: (p: StockProduct) => <span className="text-xs font-medium">{p.branch.name}</span>,
@@ -289,10 +282,10 @@ export default function StockPage() {
             <button
               onClick={() => {
                 if (products.length === 0) { toast.error('ไม่มีข้อมูลให้ส่งออก'); return; }
-                const headers = ['สินค้า', 'IMEI', 'ประเภท', 'สี', 'ความจุ', 'ราคาทุน', 'ราคาขาย', 'สถานะ', 'เกรด', 'สาขา'];
+                const headers = ['สินค้า', 'IMEI', 'ประเภท', 'สี', 'ความจุ', 'ราคาทุน', 'ราคาขาย', 'สถานะ', 'สาขา'];
                 const rows = products.map((p) => {
                   const dp = p.prices?.find((pr) => pr.isDefault) || p.prices?.[0];
-                  return [`${p.brand} ${p.model}`, p.imeiSerial || '', categoryLabels[p.category] || p.category, p.color || '', p.storage || '', Number(p.costPrice || 0).toLocaleString(), dp ? Number(dp.amount).toLocaleString() : '', statusLabels[p.status]?.label || p.status, p.conditionGrade || '', p.branch.name];
+                  return [`${p.brand} ${p.model}`, p.imeiSerial || '', categoryLabels[p.category] || p.category, p.color || '', p.storage || '', Number(p.costPrice || 0).toLocaleString(), dp ? Number(dp.amount).toLocaleString() : '', statusLabels[p.status]?.label || p.status, p.branch.name];
                 });
                 const esc = (c: unknown) => `"${String(c ?? '').replace(/"/g, '""')}"`;
                 const csv = [headers, ...rows].map((r) => r.map(esc).join(',')).join('\n');
@@ -560,33 +553,7 @@ export default function StockPage() {
             </div>
           </div>
 
-          {/* Row 5: Condition Grade */}
-          {dashboard.conditionGrade.length > 0 && dashboard.conditionGrade.some((g) => g.grade !== 'N/A') && (
-            <div className="bg-white rounded-lg border p-5">
-              <SectionTitle>สภาพสินค้า (Condition Grade) - เฉพาะพร้อมขาย</SectionTitle>
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                {dashboard.conditionGrade.map((g) => {
-                  const gradeColors: Record<string, string> = {
-                    A: 'bg-green-50 border-green-200 text-green-700',
-                    B: 'bg-blue-50 border-blue-200 text-blue-700',
-                    C: 'bg-yellow-50 border-yellow-200 text-yellow-700',
-                    D: 'bg-red-50 border-red-200 text-red-700',
-                    'N/A': 'bg-gray-50 border-gray-200 text-gray-500',
-                  };
-                  const color = gradeColors[g.grade] || gradeColors['N/A'];
-                  return (
-                    <div key={g.grade} className={`rounded-lg border p-4 text-center ${color}`}>
-                      <div className="text-2xl font-bold">{g.grade}</div>
-                      <div className="text-sm mt-1">{g.count} ชิ้น</div>
-                      <div className="text-xs mt-1 opacity-75">{g.value.toLocaleString()} ฿</div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Row 6: Margin Overview */}
+          {/* Row 5: Margin Overview */}
           <div className="bg-white rounded-lg border p-5">
             <SectionTitle>กำไรเฉลี่ย (Margin Overview) - สินค้าพร้อมขาย</SectionTitle>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

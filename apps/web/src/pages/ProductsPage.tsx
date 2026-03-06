@@ -19,7 +19,6 @@ interface Product {
   category: string;
   costPrice: string;
   status: string;
-  conditionGrade: string | null;
   createdAt: string;
   branch: { id: string; name: string };
   supplier: { id: string; name: string } | null;
@@ -163,10 +162,10 @@ export default function ProductsPage() {
   const handleExport = () => {
     const items = selectedIds.size > 0 ? products.filter((p) => selectedIds.has(p.id)) : products;
     if (items.length === 0) { toast.error('ไม่มีข้อมูลให้ส่งออก'); return; }
-    const headers = ['ชื่อ', 'แบรนด์', 'รุ่น', 'IMEI/Serial', 'ประเภท', 'สถานะ', 'เกรด', 'ราคาทุน', 'ราคาขาย', 'สาขา'];
+    const headers = ['ชื่อ', 'แบรนด์', 'รุ่น', 'IMEI/Serial', 'ประเภท', 'สถานะ', 'ราคาทุน', 'ราคาขาย', 'สาขา'];
     const rows = items.map((p) => {
       const dp = p.prices.find((pr) => pr.isDefault);
-      return [p.name, p.brand, p.model, p.imeiSerial || '', categoryLabels[p.category] || p.category, statusLabels[p.status]?.label || p.status, p.conditionGrade || '', Number(p.costPrice || 0).toLocaleString(), dp ? Number(dp.amount).toLocaleString() : '', p.branch.name];
+      return [p.name, p.brand, p.model, p.imeiSerial || '', categoryLabels[p.category] || p.category, statusLabels[p.status]?.label || p.status, Number(p.costPrice || 0).toLocaleString(), dp ? Number(dp.amount).toLocaleString() : '', p.branch.name];
     });
     const esc = (c: unknown) => `"${String(c ?? '').replace(/"/g, '""')}"`;
     const csv = [headers, ...rows].map((r) => r.map(esc).join(',')).join('\n');
@@ -263,15 +262,6 @@ export default function ProductsPage() {
         const s = statusLabels[p.status] || { label: p.status, className: 'bg-gray-100 text-gray-700' };
         return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.className}`}>{s.label}</span>;
       },
-    },
-    {
-      key: 'conditionGrade',
-      label: 'เกรด',
-      render: (p: Product) => (
-        <span className={`text-sm font-medium ${p.conditionGrade ? '' : 'text-gray-400'}`}>
-          {p.conditionGrade || '-'}
-        </span>
-      ),
     },
     {
       key: 'branch',

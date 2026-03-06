@@ -27,7 +27,6 @@ interface Product {
   category: string;
   costPrice: string;
   status: string;
-  conditionGrade: string | null;
   batteryHealth: number | null;
   warrantyExpired: boolean | null;
   warrantyExpireDate: string | null;
@@ -241,9 +240,6 @@ export default function ProductDetailPage() {
             </>
           )}
           <InfoField label="ประเภท" value={categoryLabels[product.category] || product.category} />
-          {product.category !== 'ACCESSORY' && (
-            <InfoField label="เกรดสภาพ" value={product.conditionGrade} />
-          )}
           {product.category === 'PHONE_USED' && (
             <>
               <InfoField label="แบตเตอรี่" value={product.batteryHealth != null ? `${product.batteryHealth}%` : null} />

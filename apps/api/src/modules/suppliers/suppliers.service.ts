@@ -165,7 +165,6 @@ export class SuppliersService {
         category: true,
         costPrice: true,
         status: true,
-        conditionGrade: true,
         createdAt: true,
         branch: { select: { id: true, name: true } },
         po: { select: { id: true, poNumber: true, orderDate: true } },

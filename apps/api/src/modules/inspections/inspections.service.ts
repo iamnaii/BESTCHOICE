@@ -182,7 +182,7 @@ export class InspectionsService {
     for (const product of inspection.products) {
       await this.prisma.product.update({
         where: { id: product.id },
-        data: { conditionGrade: grade, status: 'QC_PENDING' },
+        data: { status: 'QC_PENDING' },
       });
     }
 
@@ -198,13 +198,6 @@ export class InspectionsService {
       data: { gradeOverride: dto.grade as 'A' | 'B' | 'C' | 'D', overrideReason: dto.reason },
     });
 
-    // Update all linked products' grade
-    for (const product of inspection.products) {
-      await this.prisma.product.update({
-        where: { id: product.id },
-        data: { conditionGrade: dto.grade as 'A' | 'B' | 'C' | 'D' },
-      });
-    }
 
     return this.findOneInspection(id);
   }

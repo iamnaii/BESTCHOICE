@@ -767,23 +767,15 @@ export class ProductsService {
     // Get photo completion count without loading base64 data
     let photoAngles = 0;
     if (product.productPhotos) {
-      const pp = await this.prisma.productPhoto.findUnique({
-        where: { productId },
-        select: { front: false, back: false, left: false, right: false, top: false, bottom: false,
-          id: true },
-      });
-      // Count non-null angles using a raw query approach
-      if (pp) {
-        const raw = await this.prisma.$queryRaw<[{ count: number }]>`
-          SELECT (CASE WHEN front IS NOT NULL THEN 1 ELSE 0 END
-               + CASE WHEN back IS NOT NULL THEN 1 ELSE 0 END
-               + CASE WHEN "left" IS NOT NULL THEN 1 ELSE 0 END
-               + CASE WHEN "right" IS NOT NULL THEN 1 ELSE 0 END
-               + CASE WHEN top IS NOT NULL THEN 1 ELSE 0 END
-               + CASE WHEN bottom IS NOT NULL THEN 1 ELSE 0 END) as count
-          FROM product_photos WHERE product_id = ${productId}`;
-        photoAngles = Number(raw[0]?.count || 0);
-      }
+      const raw = await this.prisma.$queryRaw<[{ count: bigint }]>`
+        SELECT (CASE WHEN front IS NOT NULL THEN 1 ELSE 0 END
+             + CASE WHEN back IS NOT NULL THEN 1 ELSE 0 END
+             + CASE WHEN "left" IS NOT NULL THEN 1 ELSE 0 END
+             + CASE WHEN "right" IS NOT NULL THEN 1 ELSE 0 END
+             + CASE WHEN top IS NOT NULL THEN 1 ELSE 0 END
+             + CASE WHEN bottom IS NOT NULL THEN 1 ELSE 0 END) as count
+        FROM product_photos WHERE product_id = ${productId}`;
+      photoAngles = Number(raw[0]?.count || 0);
     }
 
     // Find transfer history

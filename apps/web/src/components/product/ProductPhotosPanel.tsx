@@ -5,7 +5,8 @@ import api, { getErrorMessage } from '@/lib/api';
 
 interface PhotoData {
   productId: string;
-  photos: {
+  applicable?: boolean;
+  photos?: {
     front: string | null;
     back: string | null;
     left: string | null;
@@ -13,9 +14,9 @@ interface PhotoData {
     top: string | null;
     bottom: string | null;
   };
-  isCompleted: boolean;
-  completedCount: number;
-  totalCount: number;
+  isCompleted?: boolean;
+  completedCount?: number;
+  totalCount?: number;
 }
 
 const ANGLE_LABELS: Record<string, string> = {
@@ -159,6 +160,9 @@ export default function ProductPhotosPanel({
       </div>
     );
   }
+
+  // Not applicable for non-PHONE_USED products
+  if (data && data.applicable === false) return null;
 
   const photos = data?.photos || { front: null, back: null, left: null, right: null, top: null, bottom: null };
   const isCompleted = data?.isCompleted || false;

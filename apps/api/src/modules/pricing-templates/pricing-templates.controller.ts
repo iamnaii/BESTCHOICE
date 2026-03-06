@@ -38,6 +38,12 @@ export class PricingTemplatesController {
     return this.service.create(dto);
   }
 
+  @Post('import')
+  @Roles('OWNER')
+  bulkImport(@Body() body: { items: CreatePricingTemplateDto[] }) {
+    return this.service.bulkImport(body.items);
+  }
+
   @Put(':id')
   @Roles('OWNER')
   update(@Param('id') id: string, @Body() dto: UpdatePricingTemplateDto) {

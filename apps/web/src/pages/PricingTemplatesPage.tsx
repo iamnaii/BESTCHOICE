@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import * as XLSX from 'xlsx';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import Modal from '@/components/ui/Modal';
@@ -41,6 +42,7 @@ export default function PricingTemplatesPage() {
   const [form, setForm] = useState(defaultForm);
   const [filterCategory, setFilterCategory] = useState<string>('');
   const [filterBrand, setFilterBrand] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: templates = [], isLoading } = useQuery<PricingTemplate[]>({
     queryKey: ['pricing-templates', filterCategory, filterBrand],
@@ -91,6 +93,113 @@ export default function PricingTemplatesPage() {
     onError: () => toast.error('ลบไม่สำเร็จ'),
   });
 
+  const importMutation = useMutation({
+    mutationFn: async (items: any[]) => {
+      const { data } = await api.post('/pricing-templates/import', { items });
+      return data;
+    },
+    onSuccess: (data: { success: number; skipped: number; errors: string[] }) => {
+      queryClient.invalidateQueries({ queryKey: ['pricing-templates'] });
+      if (data.errors.length > 0) {
+        toast.success(`นำเข้าสำเร็จ ${data.success} รายการ, ข้ามไป ${data.skipped} รายการ`);
+      } else {
+        toast.success(`นำเข้าสำเร็จทั้งหมด ${data.success} รายการ`);
+      }
+    },
+    onError: (err: any) => toast.error(err.response?.data?.message || 'นำเข้าไม่สำเร็จ'),
+  });
+
+  const downloadTemplate = () => {
+    const sampleData = [
+      { 'ยี่ห้อ': 'Apple', 'รุ่น': 'iPhone 15', 'ความจุ': '128GB', 'ประเภท': 'มือ 1', 'ประกัน': '', 'ราคาเงินสด': 25000, 'ราคาผ่อน BESTCHOICE': 27000, 'ราคาผ่อนไฟแนนซ์': 26000 },
+      { 'ยี่ห้อ': 'Apple', 'รุ่น': 'iPhone 15', 'ความจุ': '128GB', 'ประเภท': 'มือ 2', 'ประกัน': 'มีประกัน', 'ราคาเงินสด': 18000, 'ราคาผ่อน BESTCHOICE': 20000, 'ราคาผ่อนไฟแนนซ์': 19000 },
+      { 'ยี่ห้อ': 'Apple', 'รุ่น': 'iPhone 15', 'ความจุ': '128GB', 'ประเภท': 'มือ 2', 'ประกัน': 'ไม่มีประกัน', 'ราคาเงินสด': 16000, 'ราคาผ่อน BESTCHOICE': 18000, 'ราคาผ่อนไฟแนนซ์': 17000 },
+      { 'ยี่ห้อ': 'Samsung', 'รุ่น': 'Galaxy S24', 'ความจุ': '256GB', 'ประเภท': 'มือ 1', 'ประกัน': '', 'ราคาเงินสด': 28000, 'ราคาผ่อน BESTCHOICE': 30000, 'ราคาผ่อนไฟแนนซ์': 29000 },
+    ];
+    const ws = XLSX.utils.json_to_sheet(sampleData);
+    // Set column widths
+    ws['!cols'] = [
+      { wch: 12 }, { wch: 18 }, { wch: 10 }, { wch: 10 }, { wch: 14 },
+      { wch: 14 }, { wch: 20 }, { wch: 18 },
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'ราคาตั้งต้น');
+
+    // Add instruction sheet
+    const instructions = [
+      ['คำอธิบายคอลัมน์'],
+      ['ยี่ห้อ', 'ชื่อยี่ห้อ เช่น Apple, Samsung, OPPO'],
+      ['รุ่น', 'ชื่อรุ่น เช่น iPhone 15, Galaxy S24'],
+      ['ความจุ', 'เว้นว่างได้ เช่น 128GB, 256GB'],
+      ['ประเภท', '"มือ 1" หรือ "มือ 2"'],
+      ['ประกัน', 'สำหรับมือ 2: "มีประกัน" หรือ "ไม่มีประกัน" (มือ 1 เว้นว่าง)'],
+      ['ราคาเงินสด', 'ตัวเลข เช่น 25000'],
+      ['ราคาผ่อน BESTCHOICE', 'ตัวเลข เช่น 27000'],
+      ['ราคาผ่อนไฟแนนซ์', 'ตัวเลข เช่น 26000'],
+      [],
+      ['หมายเหตุ'],
+      ['- หากมีข้อมูลซ้ำ (ยี่ห้อ+รุ่น+ความจุ+ประเภท+ประกัน) จะอัปเดตราคาทับ'],
+      ['- มือ 2 ต้องระบุว่า "มีประกัน" หรือ "ไม่มีประกัน"'],
+    ];
+    const wsInstr = XLSX.utils.aoa_to_sheet(instructions);
+    wsInstr['!cols'] = [{ wch: 22 }, { wch: 60 }];
+    XLSX.utils.book_append_sheet(wb, wsInstr, 'คำอธิบาย');
+
+    XLSX.writeFile(wb, 'แบบฟอร์มราคาตั้งต้น.xlsx');
+  };
+
+  const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (fileInputRef.current) fileInputRef.current.value = '';
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const data = new Uint8Array(evt.target?.result as ArrayBuffer);
+        const wb = XLSX.read(data, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json<Record<string, any>>(ws);
+
+        if (rows.length === 0) {
+          toast.error('ไฟล์ไม่มีข้อมูล');
+          return;
+        }
+
+        const items = rows.map((row) => {
+          const categoryRaw = String(row['ประเภท'] || '').trim();
+          const category = categoryRaw === 'มือ 2' ? 'PHONE_USED' : 'PHONE_NEW';
+          const warrantyRaw = String(row['ประกัน'] || '').trim();
+          let hasWarranty: boolean | null = null;
+          if (category === 'PHONE_USED') {
+            hasWarranty = warrantyRaw === 'มีประกัน' ? true : warrantyRaw === 'ไม่มีประกัน' ? false : null;
+          }
+          return {
+            brand: String(row['ยี่ห้อ'] || '').trim(),
+            model: String(row['รุ่น'] || '').trim(),
+            storage: String(row['ความจุ'] || '').trim() || undefined,
+            category,
+            hasWarranty,
+            cashPrice: Number(row['ราคาเงินสด']) || 0,
+            installmentBestchoicePrice: Number(row['ราคาผ่อน BESTCHOICE']) || 0,
+            installmentFinancePrice: Number(row['ราคาผ่อนไฟแนนซ์']) || 0,
+          };
+        }).filter((item) => item.brand && item.model && item.cashPrice > 0);
+
+        if (items.length === 0) {
+          toast.error('ไม่พบข้อมูลที่ถูกต้อง กรุณาตรวจสอบหัวคอลัมน์');
+          return;
+        }
+
+        toast.success(`พบ ${items.length} รายการ กำลังนำเข้า...`);
+        importMutation.mutate(items);
+      } catch {
+        toast.error('ไม่สามารถอ่านไฟล์ได้ กรุณาใช้ไฟล์ .xlsx');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
   const openCreate = () => {
     setEditId(null);
     setForm(defaultForm);
@@ -134,9 +243,25 @@ export default function PricingTemplatesPage() {
         title="ราคาตั้งต้น"
         subtitle="กำหนดราคาเงินสด / ผ่อน BESTCHOICE / ผ่อนไฟแนนซ์ ตามรุ่นสินค้า"
         action={
-          <button onClick={openCreate} className="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700">
-            + เพิ่มราคาตั้งต้น
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={downloadTemplate}
+              className="px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+            >
+              ดาวน์โหลดแบบฟอร์ม
+            </button>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={importMutation.isPending}
+              className="px-3 py-2 text-sm text-primary-600 border border-primary-300 rounded-lg hover:bg-primary-50 disabled:opacity-50"
+            >
+              {importMutation.isPending ? 'กำลังนำเข้า...' : 'นำเข้า Excel'}
+            </button>
+            <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileImport} />
+            <button onClick={openCreate} className="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700">
+              + เพิ่มราคาตั้งต้น
+            </button>
+          </div>
         }
       />
 

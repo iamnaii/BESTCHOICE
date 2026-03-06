@@ -96,4 +96,47 @@ export class PricingTemplatesService {
       data: { isActive: false },
     });
   }
+
+  async bulkImport(items: CreatePricingTemplateDto[]) {
+    const results = { success: 0, skipped: 0, errors: [] as string[] };
+
+    for (const item of items) {
+      try {
+        const hasWarranty = item.category === 'PHONE_USED' ? (item.hasWarranty ?? null) : null;
+        await (this.prisma.pricingTemplate.upsert as any)({
+          where: {
+            brand_model_storage_category_hasWarranty: {
+              brand: item.brand,
+              model: item.model,
+              storage: item.storage || null,
+              category: item.category,
+              hasWarranty,
+            },
+          },
+          update: {
+            cashPrice: item.cashPrice,
+            installmentBestchoicePrice: item.installmentBestchoicePrice,
+            installmentFinancePrice: item.installmentFinancePrice,
+            isActive: true,
+          },
+          create: {
+            brand: item.brand,
+            model: item.model,
+            storage: item.storage || null,
+            category: item.category as any,
+            hasWarranty,
+            cashPrice: item.cashPrice,
+            installmentBestchoicePrice: item.installmentBestchoicePrice,
+            installmentFinancePrice: item.installmentFinancePrice,
+          },
+        });
+        results.success++;
+      } catch (e: any) {
+        results.errors.push(`${item.brand} ${item.model} ${item.storage || ''}: ${e.message}`);
+        results.skipped++;
+      }
+    }
+
+    return results;
+  }
 }

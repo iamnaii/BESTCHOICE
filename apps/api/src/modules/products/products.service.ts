@@ -365,10 +365,8 @@ export class ProductsService {
         throw error;
       }
       this.logger.error('bulkTransfer failed', error);
-      if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        throw new InternalServerErrorException(`โอนสินค้าไม่สำเร็จ: ${error.message}`);
-      }
-      throw new InternalServerErrorException('โอนสินค้าไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+      const message = error instanceof Error ? error.message : String(error);
+      throw new InternalServerErrorException(`โอนสินค้าไม่สำเร็จ: ${message}`);
     }
   }
 

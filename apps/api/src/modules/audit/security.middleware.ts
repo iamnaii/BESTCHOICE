@@ -33,14 +33,18 @@ export class SecurityMiddleware implements NestMiddleware {
     );
 
     // Block suspicious payloads (basic XSS/injection prevention)
+    // Skip scanning for large payloads (e.g., base64 image uploads) to avoid CPU spikes
     if (req.body && typeof req.body === 'object') {
-      const bodyStr = JSON.stringify(req.body);
-      for (const pattern of SecurityMiddleware.suspiciousPatterns) {
-        if (pattern.test(bodyStr)) {
-          throw new HttpException(
-            'Invalid request payload',
-            HttpStatus.BAD_REQUEST,
-          );
+      const contentLength = parseInt(req.headers['content-length'] || '0', 10);
+      if (contentLength < 1_000_000) {
+        const bodyStr = JSON.stringify(req.body);
+        for (const pattern of SecurityMiddleware.suspiciousPatterns) {
+          if (pattern.test(bodyStr)) {
+            throw new HttpException(
+              'Invalid request payload',
+              HttpStatus.BAD_REQUEST,
+            );
+          }
         }
       }
     }

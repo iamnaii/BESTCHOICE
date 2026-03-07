@@ -29,5 +29,9 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+    watch: {
+      // Exclude heavy directories from file watching to prevent CPU spikes
+      ignored: ['**/node_modules/**', '**/.git/**'],
+    },
   },
 });

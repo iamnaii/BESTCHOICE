@@ -18,9 +18,9 @@ const queryClient = new QueryClient({
         return failureCount < 1;
       },
       refetchOnWindowFocus: false,
-      staleTime: 2 * 60 * 1000, // 2 minutes - serve from RAM cache, reduce CPU/network
+      staleTime: 3 * 60 * 1000, // 3 minutes - longer stale time reduces redundant API calls and CPU load
       gcTime: 10 * 60 * 1000, // 10 minutes - keep data in memory longer
-      refetchOnMount: 'always', // still refresh on mount but serve stale data immediately
+      refetchOnMount: true, // only refetch on mount when data is stale (respects staleTime)
     },
   },
 });

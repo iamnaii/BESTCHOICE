@@ -233,7 +233,7 @@ function Sidebar() {
                 </span>
                 <div className="flex items-center gap-1.5">
                   {hasActive && isCollapsed && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-primary-400 animate-pulse" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary-400" />
                   )}
                   <svg
                     className={clsx(

@@ -75,7 +75,7 @@ export const paymentMethods = [
 
 export const transferStatusLabels: Record<string, { label: string; className: string }> = {
   PENDING: { label: 'รอจัดส่ง', className: 'bg-orange-100 text-orange-700' },
-  IN_TRANSIT: { label: 'กำลังจัดส่ง', className: 'bg-blue-100 text-blue-700' },
+  IN_TRANSIT: { label: 'ระหว่างโอนสินค้า', className: 'bg-blue-100 text-blue-700' },
   CONFIRMED: { label: 'รับแล้ว', className: 'bg-green-100 text-green-700' },
   REJECTED: { label: 'ปฏิเสธ', className: 'bg-red-100 text-red-700' },
 };

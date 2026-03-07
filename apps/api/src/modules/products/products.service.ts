@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, Logger, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger, InternalServerErrorException, HttpException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -360,8 +360,8 @@ export class ProductsService {
         return { batchNumber, transfers, count: transfers.length };
       }, { timeout: 15000 });
     } catch (error) {
-      // Re-throw HttpExceptions (BadRequest, NotFound, etc.) as-is
-      if (error instanceof BadRequestException || error instanceof NotFoundException) {
+      // Re-throw HttpExceptions (BadRequest, NotFound, Forbidden, etc.) as-is
+      if (error instanceof HttpException) {
         throw error;
       }
       this.logger.error('bulkTransfer failed', error);

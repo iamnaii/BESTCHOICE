@@ -3,7 +3,7 @@ import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { CreateProductPriceDto, UpdateProductPriceDto } from './dto/product-price.dto';
-import { TransferProductDto, DispatchTransferDto } from './dto/transfer-product.dto';
+import { TransferProductDto, DispatchTransferDto, BulkTransferDto } from './dto/transfer-product.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -178,6 +178,15 @@ export class ProductsController {
   }
 
   // === Transfer Endpoints ===
+
+  @Post('bulk-transfer')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  bulkTransfer(
+    @Body() dto: BulkTransferDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.productsService.bulkTransfer(dto, user.id);
+  }
 
   @Post(':id/transfer')
   @Roles('OWNER', 'BRANCH_MANAGER')

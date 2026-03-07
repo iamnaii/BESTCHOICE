@@ -4,7 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { CreateProductPriceDto, UpdateProductPriceDto } from './dto/product-price.dto';
-import { TransferProductDto } from './dto/transfer-product.dto';
+import { TransferProductDto, BulkTransferDto } from './dto/transfer-product.dto';
 
 const productInclude = {
   prices: { orderBy: { createdAt: 'asc' as const } },
@@ -204,6 +204,26 @@ export class ProductsService {
 
   // === Stock Transfer ===
 
+  private async generateBatchNumber(tx: any): Promise<string> {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const monthStart = new Date(year, now.getMonth(), 1);
+    const monthEnd = new Date(year, now.getMonth() + 1, 1);
+
+    // Count distinct batch numbers this month
+    const distinctBatches = await tx.stockTransfer.findMany({
+      where: {
+        batchNumber: { not: null },
+        createdAt: { gte: monthStart, lt: monthEnd },
+      },
+      select: { batchNumber: true },
+      distinct: ['batchNumber'],
+    });
+
+    return `TRF-${year}-${month}-${String(distinctBatches.length + 1).padStart(3, '0')}`;
+  }
+
   async transfer(productId: string, dto: TransferProductDto, userId: string) {
     const product = await this.findOne(productId);
 
@@ -235,23 +255,100 @@ export class ProductsService {
     if (!toBranch) throw new NotFoundException('ไม่พบสาขาปลายทาง');
 
     // Create transfer record with PENDING status (product doesn't move yet)
-    const transfer = await this.prisma.stockTransfer.create({
-      data: {
-        productId,
-        fromBranchId: product.branchId,
-        toBranchId: dto.toBranchId,
-        transferredBy: userId,
-        notes: dto.notes,
-        status: 'PENDING',
-        expectedDeliveryDate: dto.expectedDeliveryDate ? new Date(dto.expectedDeliveryDate) : null,
-      },
-      include: {
-        fromBranch: { select: { id: true, name: true } },
-        toBranch: { select: { id: true, name: true } },
-      },
+    const transfer = await this.prisma.$transaction(async (tx) => {
+      const batchNumber = await this.generateBatchNumber(tx);
+
+      return tx.stockTransfer.create({
+        data: {
+          batchNumber,
+          productId,
+          fromBranchId: product.branchId,
+          toBranchId: dto.toBranchId,
+          transferredBy: userId,
+          notes: dto.notes,
+          status: 'PENDING',
+          expectedDeliveryDate: dto.expectedDeliveryDate ? new Date(dto.expectedDeliveryDate) : null,
+        },
+        include: {
+          fromBranch: { select: { id: true, name: true } },
+          toBranch: { select: { id: true, name: true } },
+        },
+      });
     });
 
     return transfer;
+  }
+
+  async bulkTransfer(dto: BulkTransferDto, userId: string) {
+    // Verify destination branch exists
+    const toBranch = await this.prisma.branch.findUnique({ where: { id: dto.toBranchId } });
+    if (!toBranch) throw new NotFoundException('ไม่พบสาขาปลายทาง');
+
+    return this.prisma.$transaction(async (tx) => {
+      // Load all products
+      const products = await tx.product.findMany({
+        where: { id: { in: dto.productIds }, deletedAt: null },
+        include: { branch: { select: { id: true, name: true, isMainWarehouse: true } } },
+      });
+
+      if (products.length !== dto.productIds.length) {
+        const foundIds = new Set(products.map(p => p.id));
+        const missing = dto.productIds.filter(id => !foundIds.has(id));
+        throw new NotFoundException(`ไม่พบสินค้า: ${missing.join(', ')}`);
+      }
+
+      // Validate all products
+      const errors: string[] = [];
+      for (const product of products) {
+        if (product.status !== 'IN_STOCK') {
+          errors.push(`${product.brand} ${product.model} - สถานะไม่ใช่ IN_STOCK`);
+        } else if (!product.branch.isMainWarehouse) {
+          errors.push(`${product.brand} ${product.model} - ไม่ได้อยู่คลังหลัก`);
+        } else if (product.branchId === dto.toBranchId) {
+          errors.push(`${product.brand} ${product.model} - อยู่สาขาปลายทางอยู่แล้ว`);
+        }
+      }
+      if (errors.length > 0) {
+        throw new BadRequestException(`ไม่สามารถโอนได้:\n${errors.join('\n')}`);
+      }
+
+      // Check for existing pending/in-transit transfers
+      const existingTransfers = await tx.stockTransfer.findMany({
+        where: { productId: { in: dto.productIds }, status: { in: ['PENDING', 'IN_TRANSIT'] } },
+        include: { product: { select: { brand: true, model: true } } },
+      });
+      if (existingTransfers.length > 0) {
+        const names = existingTransfers.map(t => `${t.product.brand} ${t.product.model}`);
+        throw new BadRequestException(`สินค้ามีรายการโอนรออยู่แล้ว: ${names.join(', ')}`);
+      }
+
+      // Generate batch number for this transfer group
+      const batchNumber = await this.generateBatchNumber(tx);
+
+      // Create transfer records with shared batch number
+      const transfers = await Promise.all(
+        products.map(product =>
+          tx.stockTransfer.create({
+            data: {
+              batchNumber,
+              productId: product.id,
+              fromBranchId: product.branchId,
+              toBranchId: dto.toBranchId,
+              transferredBy: userId,
+              notes: dto.notes,
+              status: 'PENDING',
+            },
+            include: {
+              fromBranch: { select: { id: true, name: true } },
+              toBranch: { select: { id: true, name: true } },
+              product: { select: { id: true, brand: true, model: true, imeiSerial: true } },
+            },
+          }),
+        ),
+      );
+
+      return { batchNumber, transfers, count: transfers.length };
+    });
   }
 
   async getPendingTransfers(branchId?: string) {

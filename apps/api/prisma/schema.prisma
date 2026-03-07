@@ -588,6 +588,7 @@ model PricingTemplate {
 
 model StockTransfer {
   id                   String         @id @default(uuid())
+  batchNumber          String?        @map("batch_number") // เลขใบโอน เช่น TRF-2026-03-001
   productId            String         @map("product_id")
   fromBranchId         String         @map("from_branch_id")
   toBranchId           String         @map("to_branch_id")
@@ -615,6 +616,7 @@ model StockTransfer {
   @@index([status])
   @@index([fromBranchId])
   @@index([toBranchId])
+  @@index([batchNumber])
   @@map("stock_transfers")
 }
 

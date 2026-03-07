@@ -128,6 +128,11 @@ export default function StockPage() {
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
+  // Bulk transfer modal state
+  const [showBulkTransfer, setShowBulkTransfer] = useState(false);
+  const [transferBranchId, setTransferBranchId] = useState('');
+  const [transferNotes, setTransferNotes] = useState('');
+
   // Price management modal state (multi-price CRUD from ProductsPage)
   const [editingProduct, setEditingProduct] = useState<StockProduct | null>(null);
   const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
@@ -166,6 +171,34 @@ export default function StockPage() {
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
+
+  const bulkTransferMutation = useMutation({
+    mutationFn: async (data: { productIds: string[]; toBranchId: string; notes?: string }) => {
+      return api.post('/products/bulk-transfer', data);
+    },
+    onSuccess: (res, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['stock'] });
+      queryClient.invalidateQueries({ queryKey: ['stock-list'] });
+      queryClient.invalidateQueries({ queryKey: ['stock-dashboard'] });
+      const batchNumber = res.data?.batchNumber;
+      toast.success(`โอนสินค้า ${variables.productIds.length} รายการสำเร็จ${batchNumber ? ` (${batchNumber})` : ''}`);
+      setShowBulkTransfer(false);
+      setSelectedIds(new Set());
+      setTransferBranchId('');
+      setTransferNotes('');
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const handleBulkTransfer = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (selectedIds.size === 0 || !transferBranchId) return;
+    bulkTransferMutation.mutate({
+      productIds: Array.from(selectedIds),
+      toBranchId: transferBranchId,
+      notes: transferNotes || undefined,
+    });
+  };
 
   const openPriceEdit = useCallback((product: StockProduct) => {
     setEditingProduct(product);
@@ -423,6 +456,14 @@ export default function StockPage() {
         action={
           isManager && activeTab === 'list' ? (
             <div className="flex gap-2">
+              {selectedIds.size > 0 && (
+                <button
+                  onClick={() => setShowBulkTransfer(true)}
+                  className="px-4 py-2 border border-blue-300 text-blue-600 rounded-lg text-sm font-medium hover:bg-blue-50 transition-colors"
+                >
+                  โอนสินค้า ({selectedIds.size})
+                </button>
+              )}
               <button
                 onClick={handleExport}
                 className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
@@ -854,6 +895,75 @@ export default function StockPage() {
           />
         </>
       )}
+
+      {/* Bulk Transfer Modal */}
+      <Modal
+        isOpen={showBulkTransfer}
+        onClose={() => setShowBulkTransfer(false)}
+        title={`โอนสินค้า ${selectedIds.size} รายการ`}
+        size="sm"
+      >
+        <form onSubmit={handleBulkTransfer} className="space-y-4">
+          {/* Selected items summary */}
+          <div className="bg-gray-50 rounded-lg p-3 max-h-48 overflow-y-auto">
+            <div className="text-xs font-medium text-gray-500 mb-2">สินค้าที่เลือก:</div>
+            <div className="space-y-1">
+              {listProducts.filter(p => selectedIds.has(p.id)).map(p => (
+                <div key={p.id} className="flex items-center justify-between text-sm">
+                  <span className="text-gray-700">{p.brand} {p.model}</span>
+                  <span className="text-xs text-gray-400 font-mono">{p.imeiSerial || '-'}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Destination branch */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">สาขาปลายทาง</label>
+            <select
+              value={transferBranchId}
+              onChange={(e) => setTransferBranchId(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+              required
+            >
+              <option value="">เลือกสาขา...</option>
+              {branches.map(b => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ (ไม่บังคับ)</label>
+            <textarea
+              value={transferNotes}
+              onChange={(e) => setTransferNotes(e.target.value)}
+              rows={2}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none resize-none"
+              placeholder="เช่น ส่งไปเปิดสาขาใหม่..."
+            />
+          </div>
+
+          {/* Actions */}
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => setShowBulkTransfer(false)}
+              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg"
+            >
+              ยกเลิก
+            </button>
+            <button
+              type="submit"
+              disabled={bulkTransferMutation.isPending || !transferBranchId}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            >
+              {bulkTransferMutation.isPending ? 'กำลังโอน...' : `โอน ${selectedIds.size} รายการ`}
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       {/* Multi-Price Management Modal */}
       <Modal

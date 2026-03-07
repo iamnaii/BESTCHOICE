@@ -3,7 +3,7 @@ import { ReactNode, memo } from 'react';
 interface Column<T> {
   key: string;
   label: string;
-  render?: (item: T) => ReactNode;
+  render?: (item: T, col: Column<T>, index: number) => ReactNode;
 }
 
 interface PaginationInfo {
@@ -63,12 +63,12 @@ function DataTable<T extends { id: string }>({
                 </td>
               </tr>
             ) : (
-              data.map((item) => (
+              data.map((item, idx) => (
                 <tr key={item.id} className={`hover:bg-gray-50 transition-colors${onRowClick ? ' cursor-pointer' : ''}`} onClick={() => onRowClick?.(item)}>
                   {columns.map((col) => (
                     <td key={col.key} className="px-4 py-3 text-sm text-gray-700">
                       {col.render
-                        ? col.render(item)
+                        ? col.render(item, col, idx)
                         : (item as Record<string, unknown>)[col.key]?.toString() || '-'}
                     </td>
                   ))}

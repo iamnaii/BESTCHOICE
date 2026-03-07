@@ -14,13 +14,16 @@ interface Sale {
   netAmount: string;
   paymentMethod: string;
   amountReceived: string;
+  downPaymentAmount: string | null;
   financeCompany: string | null;
+  financeRefNumber: string | null;
   notes: string | null;
   createdAt: string;
   customer: { id: string; name: string; phone: string };
-  product: { id: string; name: string; brand: string; model: string; imeiSerial: string | null };
+  product: { id: string; name: string; brand: string; model: string; imeiSerial: string | null; serialNumber: string | null };
   branch: { id: string; name: string };
   salesperson: { id: string; name: string };
+  contract: { id: string; contractNumber: string; status: string; monthlyPayment: string; totalMonths: number } | null;
 }
 
 interface SalesResponse {
@@ -65,6 +68,13 @@ export default function SalesHistoryPage() {
 
   const columns = useMemo(() => [
     {
+      key: 'index',
+      label: '#',
+      render: (_s: Sale, _col: unknown, idx?: number) => (
+        <span className="text-xs text-gray-400">{((salesData?.page || 1) - 1) * limit + (idx ?? 0) + 1}</span>
+      ),
+    },
+    {
       key: 'saleNumber',
       label: 'เลขที่',
       render: (s: Sale) => (
@@ -95,7 +105,9 @@ export default function SalesHistoryPage() {
       render: (s: Sale) => (
         <div>
           <div className="text-sm font-medium">{s.product.brand} {s.product.model}</div>
-          {s.product.imeiSerial && <div className="text-xs text-gray-400 font-mono">{s.product.imeiSerial}</div>}
+          {(s.product.imeiSerial || s.product.serialNumber) && (
+            <div className="text-xs text-gray-400 font-mono">{s.product.imeiSerial || s.product.serialNumber}</div>
+          )}
         </div>
       ),
     },
@@ -103,28 +115,67 @@ export default function SalesHistoryPage() {
       key: 'customer',
       label: 'ลูกค้า',
       render: (s: Sale) => (
-        <div>
-          <div className="text-sm">{s.customer.name}</div>
+        <button onClick={(e) => { e.stopPropagation(); navigate(`/customers/${s.customer.id}`); }} className="text-left hover:underline">
+          <div className="text-sm text-primary-600">{s.customer.name}</div>
           <div className="text-xs text-gray-400">{s.customer.phone}</div>
-        </div>
+        </button>
       ),
     },
     {
       key: 'netAmount',
       label: 'ยอดสุทธิ',
       render: (s: Sale) => (
-        <span className="text-sm font-medium">{Number(s.netAmount).toLocaleString()} ฿</span>
+        <div>
+          <div className="text-sm font-medium">{Number(s.netAmount).toLocaleString()} ฿</div>
+          {Number(s.discount) > 0 && (
+            <div className="text-xs text-red-500">ลด {Number(s.discount).toLocaleString()} ฿</div>
+          )}
+        </div>
       ),
     },
     {
-      key: 'paymentMethod',
-      label: 'วิธีชำระ',
+      key: 'payment',
+      label: 'การชำระ',
       render: (s: Sale) => (
-        <div>
-          <div className="text-xs">{paymentMethodLabels[s.paymentMethod] || s.paymentMethod}</div>
-          {s.financeCompany && <div className="text-xs text-purple-600">{s.financeCompany}</div>}
+        <div className="text-xs">
+          <div>{paymentMethodLabels[s.paymentMethod] || s.paymentMethod || '-'}</div>
+          {s.saleType === 'INSTALLMENT' && s.contract && (
+            <div className="text-blue-600">
+              ดาวน์ {Number(s.downPaymentAmount || 0).toLocaleString()} ฿
+              <br />ผ่อน {Number(s.contract.monthlyPayment).toLocaleString()} x {s.contract.totalMonths} งวด
+            </div>
+          )}
+          {s.saleType === 'EXTERNAL_FINANCE' && s.financeCompany && (
+            <div className="text-purple-600">
+              {s.financeCompany}
+              {s.downPaymentAmount && Number(s.downPaymentAmount) > 0 && (
+                <span> / ดาวน์ {Number(s.downPaymentAmount).toLocaleString()} ฿</span>
+              )}
+            </div>
+          )}
         </div>
       ),
+    },
+    {
+      key: 'contract',
+      label: 'สัญญา',
+      render: (s: Sale) => {
+        if (!s.contract) return <span className="text-xs text-gray-400">-</span>;
+        const statusMap: Record<string, { label: string; cls: string }> = {
+          DRAFT: { label: 'ร่าง', cls: 'text-gray-500' },
+          ACTIVE: { label: 'ใช้งาน', cls: 'text-green-600' },
+          OVERDUE: { label: 'ค้างชำระ', cls: 'text-red-600' },
+          DEFAULT: { label: 'ผิดนัด', cls: 'text-red-700 font-semibold' },
+          COMPLETED: { label: 'ปิดแล้ว', cls: 'text-gray-500' },
+        };
+        const cs = statusMap[s.contract.status] || { label: s.contract.status, cls: 'text-gray-500' };
+        return (
+          <div className="text-xs">
+            <div className="font-mono text-primary-600">{s.contract.contractNumber}</div>
+            <div className={cs.cls}>{cs.label}</div>
+          </div>
+        );
+      },
     },
     {
       key: 'salesperson',
@@ -136,17 +187,26 @@ export default function SalesHistoryPage() {
       label: 'สาขา',
       render: (s: Sale) => <span className="text-xs">{s.branch.name}</span>,
     },
-  ], []);
+  ], [navigate, salesData?.page, limit]);
 
   // Summary stats
   const stats = useMemo(() => {
     if (!salesData?.data) return null;
     const sales = salesData.data;
     const totalRevenue = sales.reduce((sum, s) => sum + Number(s.netAmount), 0);
-    const cashCount = sales.filter(s => s.saleType === 'CASH').length;
-    const installmentCount = sales.filter(s => s.saleType === 'INSTALLMENT').length;
-    const financeCount = sales.filter(s => s.saleType === 'EXTERNAL_FINANCE').length;
-    return { totalRevenue, cashCount, installmentCount, financeCount };
+    const cashSales = sales.filter(s => s.saleType === 'CASH');
+    const installmentSales = sales.filter(s => s.saleType === 'INSTALLMENT');
+    const financeSales = sales.filter(s => s.saleType === 'EXTERNAL_FINANCE');
+    return {
+      totalRevenue,
+      cashCount: cashSales.length,
+      cashRevenue: cashSales.reduce((sum, s) => sum + Number(s.netAmount), 0),
+      installmentCount: installmentSales.length,
+      installmentRevenue: installmentSales.reduce((sum, s) => sum + Number(s.netAmount), 0),
+      financeCount: financeSales.length,
+      financeRevenue: financeSales.reduce((sum, s) => sum + Number(s.netAmount), 0),
+      totalDiscount: sales.reduce((sum, s) => sum + Number(s.discount), 0),
+    };
   }, [salesData]);
 
   return (
@@ -159,18 +219,23 @@ export default function SalesHistoryPage() {
           <div className="bg-white rounded-lg border p-4">
             <div className="text-xs text-gray-500 mb-1">ทั้งหมด</div>
             <div className="text-xl font-bold">{salesData.total.toLocaleString()} <span className="text-sm font-normal text-gray-400">รายการ</span></div>
+            <div className="text-sm text-gray-500 mt-1">{stats.totalRevenue.toLocaleString()} ฿</div>
+            {stats.totalDiscount > 0 && <div className="text-xs text-red-500">ส่วนลดรวม {stats.totalDiscount.toLocaleString()} ฿</div>}
           </div>
           <div className="bg-white rounded-lg border p-4">
             <div className="text-xs text-gray-500 mb-1">เงินสด (หน้านี้)</div>
             <div className="text-xl font-bold text-green-600">{stats.cashCount}</div>
+            <div className="text-sm text-green-600 mt-1">{stats.cashRevenue.toLocaleString()} ฿</div>
           </div>
           <div className="bg-white rounded-lg border p-4">
             <div className="text-xs text-gray-500 mb-1">ผ่อนร้าน (หน้านี้)</div>
             <div className="text-xl font-bold text-blue-600">{stats.installmentCount}</div>
+            <div className="text-sm text-blue-600 mt-1">{stats.installmentRevenue.toLocaleString()} ฿</div>
           </div>
           <div className="bg-white rounded-lg border p-4">
             <div className="text-xs text-gray-500 mb-1">ไฟแนนซ์ (หน้านี้)</div>
             <div className="text-xl font-bold text-purple-600">{stats.financeCount}</div>
+            <div className="text-sm text-purple-600 mt-1">{stats.financeRevenue.toLocaleString()} ฿</div>
           </div>
         </div>
       )}

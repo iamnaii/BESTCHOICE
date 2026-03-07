@@ -24,14 +24,46 @@ export class CustomersService {
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
-        include: {
+        select: {
+          id: true,
+          nationalId: true,
+          name: true,
+          nickname: true,
+          phone: true,
+          occupation: true,
+          salary: true,
+          lineId: true,
+          createdAt: true,
           _count: { select: { contracts: true } },
+          contracts: {
+            where: { deletedAt: null },
+            select: { status: true },
+          },
+          creditChecks: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            select: { status: true, aiScore: true },
+          },
         },
       }),
       this.prisma.customer.count({ where }),
     ]);
 
-    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+    const enriched = data.map((c) => {
+      const activeContracts = c.contracts.filter((ct) => ct.status === 'ACTIVE').length;
+      const overdueContracts = c.contracts.filter((ct) => ['OVERDUE', 'DEFAULT'].includes(ct.status)).length;
+      const latestCredit = c.creditChecks[0] || null;
+      const { contracts, creditChecks, ...rest } = c;
+      return {
+        ...rest,
+        activeContracts,
+        overdueContracts,
+        latestCreditStatus: latestCredit?.status || null,
+        latestCreditScore: latestCredit?.aiScore || null,
+      };
+    });
+
+    return { data: enriched, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   async findOne(id: string) {

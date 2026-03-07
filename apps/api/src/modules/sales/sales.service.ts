@@ -28,9 +28,10 @@ export class SalesService {
         take: limit,
         include: {
           customer: { select: { id: true, name: true, phone: true } },
-          product: { select: { id: true, name: true, brand: true, model: true, imeiSerial: true } },
+          product: { select: { id: true, name: true, brand: true, model: true, imeiSerial: true, serialNumber: true } },
           branch: { select: { id: true, name: true } },
           salesperson: { select: { id: true, name: true } },
+          contract: { select: { id: true, contractNumber: true, status: true, monthlyPayment: true, totalMonths: true } },
         },
       }),
       this.prisma.sale.count({ where }),

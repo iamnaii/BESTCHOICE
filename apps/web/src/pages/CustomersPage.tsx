@@ -43,11 +43,17 @@ interface Customer {
   id: string;
   nationalId: string;
   name: string;
+  nickname: string | null;
   phone: string;
-  phoneSecondary: string | null;
   lineId: string | null;
+  occupation: string | null;
+  salary: number | null;
   createdAt: string;
   _count: { contracts: number };
+  activeContracts: number;
+  overdueContracts: number;
+  latestCreditStatus: string | null;
+  latestCreditScore: number | null;
 }
 
 interface ReferenceData {
@@ -350,10 +356,20 @@ export default function CustomersPage() {
 
   const columns = useMemo(() => [
     {
+      key: 'index',
+      label: '#',
+      render: (_c: Customer, _col: unknown, idx?: number) => (
+        <span className="text-xs text-gray-400">{((result?.page || 1) - 1) * 50 + (idx ?? 0) + 1}</span>
+      ),
+    },
+    {
       key: 'name',
       label: 'ชื่อ',
       render: (c: Customer) => (
-        <button onClick={() => navigateToCustomer(c.id)} className="text-primary-600 font-medium hover:underline text-left">{c.name}</button>
+        <button onClick={() => navigateToCustomer(c.id)} className="text-left hover:underline">
+          <div className="text-primary-600 font-medium">{c.name}</div>
+          {c.nickname && <div className="text-xs text-gray-400">({c.nickname})</div>}
+        </button>
       ),
     },
     { key: 'phone', label: 'เบอร์โทร' },
@@ -363,16 +379,54 @@ export default function CustomersPage() {
       render: (c: Customer) => <span className="font-mono text-xs">{c.nationalId.replace(/(\d{1})(\d{4})(\d{5})(\d{2})(\d{1})/, '$1-$2-$3-$4-$5')}</span>,
     },
     {
+      key: 'occupation',
+      label: 'อาชีพ',
+      render: (c: Customer) => <span className="text-sm">{c.occupation || '-'}</span>,
+    },
+    {
+      key: 'salary',
+      label: 'เงินเดือน',
+      render: (c: Customer) => (
+        <span className="text-sm">{c.salary ? Number(c.salary).toLocaleString('th-TH') : '-'}</span>
+      ),
+    },
+    {
       key: 'contracts',
       label: 'สัญญา',
-      render: (c: Customer) => <span className="text-sm">{c._count.contracts} สัญญา</span>,
+      render: (c: Customer) => (
+        <div className="text-xs">
+          <span className="text-sm">{c._count.contracts} สัญญา</span>
+          {c.activeContracts > 0 && <div className="text-green-600">{c.activeContracts} ใช้งาน</div>}
+          {c.overdueContracts > 0 && <div className="text-red-600">{c.overdueContracts} ค้างชำระ</div>}
+        </div>
+      ),
+    },
+    {
+      key: 'credit',
+      label: 'เครดิต',
+      render: (c: Customer) => {
+        if (!c.latestCreditStatus) return <span className="text-xs text-gray-400">-</span>;
+        const statusMap: Record<string, { label: string; cls: string }> = {
+          APPROVED: { label: 'ผ่าน', cls: 'bg-green-100 text-green-700' },
+          REJECTED: { label: 'ไม่ผ่าน', cls: 'bg-red-100 text-red-700' },
+          PENDING: { label: 'รอตรวจ', cls: 'bg-yellow-100 text-yellow-700' },
+          MANUAL_REVIEW: { label: 'รอรีวิว', cls: 'bg-orange-100 text-orange-700' },
+        };
+        const s = statusMap[c.latestCreditStatus] || { label: c.latestCreditStatus, cls: 'bg-gray-100 text-gray-700' };
+        return (
+          <div className="text-xs">
+            <span className={`px-1.5 py-0.5 rounded-full font-medium ${s.cls}`}>{s.label}</span>
+            {c.latestCreditScore != null && <div className="text-gray-400 mt-0.5">{c.latestCreditScore}/100</div>}
+          </div>
+        );
+      },
     },
     {
       key: 'createdAt',
       label: 'วันที่เพิ่ม',
       render: (c: Customer) => <span className="text-xs">{new Date(c.createdAt).toLocaleDateString('th-TH')}</span>,
     },
-  ], [navigateToCustomer]);
+  ], [navigateToCustomer, result?.page]);
 
   const inputClass = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500';
   const selectClass = `${inputClass} bg-white`;

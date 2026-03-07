@@ -325,30 +325,30 @@ export class ProductsService {
       // Generate batch number for this transfer group
       const batchNumber = await this.generateBatchNumber(tx);
 
-      // Create transfer records with shared batch number
-      const transfers = await Promise.all(
-        products.map(product =>
-          tx.stockTransfer.create({
-            data: {
-              batchNumber,
-              productId: product.id,
-              fromBranchId: product.branchId,
-              toBranchId: dto.toBranchId,
-              transferredBy: userId,
-              notes: dto.notes,
-              status: 'PENDING',
-            },
-            include: {
-              fromBranch: { select: { id: true, name: true } },
-              toBranch: { select: { id: true, name: true } },
-              product: { select: { id: true, brand: true, model: true, imeiSerial: true } },
-            },
-          }),
-        ),
-      );
+      // Create transfer records sequentially to avoid transaction serialization errors
+      const transfers = [];
+      for (const product of products) {
+        const transfer = await tx.stockTransfer.create({
+          data: {
+            batchNumber,
+            productId: product.id,
+            fromBranchId: product.branchId,
+            toBranchId: dto.toBranchId,
+            transferredBy: userId,
+            notes: dto.notes,
+            status: 'PENDING',
+          },
+          include: {
+            fromBranch: { select: { id: true, name: true } },
+            toBranch: { select: { id: true, name: true } },
+            product: { select: { id: true, brand: true, model: true, imeiSerial: true } },
+          },
+        });
+        transfers.push(transfer);
+      }
 
       return { batchNumber, transfers, count: transfers.length };
-    });
+    }, { timeout: 15000 });
   }
 
   async getPendingTransfers(branchId?: string) {

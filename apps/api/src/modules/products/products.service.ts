@@ -6,6 +6,25 @@ import { UpdateProductDto } from './dto/update-product.dto';
 import { CreateProductPriceDto, UpdateProductPriceDto } from './dto/product-price.dto';
 import { TransferProductDto, BulkTransferDto } from './dto/transfer-product.dto';
 
+// Core StockTransfer select - only columns guaranteed to exist
+const stockTransferSelect = {
+  id: true,
+  batchNumber: true,
+  productId: true,
+  fromBranchId: true,
+  toBranchId: true,
+  transferredBy: true,
+  notes: true,
+  status: true,
+  confirmedById: true,
+  confirmedAt: true,
+  dispatchedById: true,
+  dispatchedAt: true,
+  trackingNote: true,
+  expectedDeliveryDate: true,
+  createdAt: true,
+};
+
 const productInclude = {
   prices: { orderBy: { createdAt: 'asc' as const } },
   supplier: { select: { id: true, name: true } },
@@ -254,6 +273,7 @@ export class ProductsService {
     // Check for existing pending/in-transit transfer for this product
     const existingTransfer = await this.prisma.stockTransfer.findFirst({
       where: { productId, status: { in: ['PENDING', 'IN_TRANSIT'] } },
+      select: { id: true },
     });
     if (existingTransfer) {
       throw new BadRequestException('สินค้านี้มีรายการโอนที่รออยู่แล้ว');
@@ -278,7 +298,8 @@ export class ProductsService {
           status: 'PENDING',
           expectedDeliveryDate: dto.expectedDeliveryDate ? new Date(dto.expectedDeliveryDate) : null,
         },
-        include: {
+        select: {
+          ...stockTransferSelect,
           fromBranch: { select: { id: true, name: true } },
           toBranch: { select: { id: true, name: true } },
         },
@@ -325,7 +346,7 @@ export class ProductsService {
         // Check for existing pending/in-transit transfers
         const existingTransfers = await tx.stockTransfer.findMany({
           where: { productId: { in: dto.productIds }, status: { in: ['PENDING', 'IN_TRANSIT'] } },
-          include: { product: { select: { brand: true, model: true } } },
+          select: { id: true, product: { select: { brand: true, model: true } } },
         });
         if (existingTransfers.length > 0) {
           const names = existingTransfers.map(t => `${t.product.brand} ${t.product.model}`);
@@ -348,7 +369,8 @@ export class ProductsService {
               notes: dto.notes,
               status: 'PENDING',
             },
-            include: {
+            select: {
+              ...stockTransferSelect,
               fromBranch: { select: { id: true, name: true } },
               toBranch: { select: { id: true, name: true } },
               product: { select: { id: true, brand: true, model: true, imeiSerial: true } },
@@ -365,10 +387,8 @@ export class ProductsService {
         throw error;
       }
       this.logger.error('bulkTransfer failed', error);
-      if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        throw new InternalServerErrorException(`โอนสินค้าไม่สำเร็จ: ${error.message}`);
-      }
-      throw new InternalServerErrorException('โอนสินค้าไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+      const message = error instanceof Error ? error.message : String(error);
+      throw new InternalServerErrorException(`โอนสินค้าไม่สำเร็จ: ${message}`);
     }
   }
 
@@ -378,7 +398,8 @@ export class ProductsService {
 
     return this.prisma.stockTransfer.findMany({
       where,
-      include: {
+      select: {
+        ...stockTransferSelect,
         fromBranch: { select: { id: true, name: true } },
         toBranch: { select: { id: true, name: true } },
         confirmedBy: { select: { id: true, name: true } },
@@ -421,7 +442,8 @@ export class ProductsService {
     const [data, total] = await Promise.all([
       this.prisma.stockTransfer.findMany({
         where,
-        include: {
+        select: {
+          ...stockTransferSelect,
           fromBranch: { select: { id: true, name: true } },
           toBranch: { select: { id: true, name: true } },
           confirmedBy: { select: { id: true, name: true } },
@@ -440,10 +462,12 @@ export class ProductsService {
   async getTransferById(transferId: string) {
     const transfer = await this.prisma.stockTransfer.findUnique({
       where: { id: transferId },
-      include: {
+      select: {
+        ...stockTransferSelect,
         fromBranch: { select: { id: true, name: true } },
         toBranch: { select: { id: true, name: true } },
         confirmedBy: { select: { id: true, name: true } },
+        dispatchedBy: { select: { id: true, name: true } },
         product: {
           select: {
             id: true, name: true, brand: true, model: true,
@@ -464,7 +488,8 @@ export class ProductsService {
     return this.prisma.$transaction(async (tx) => {
       const transfer = await tx.stockTransfer.findUnique({
         where: { id: transferId },
-        include: {
+        select: {
+          ...stockTransferSelect,
           product: { select: { id: true, name: true, brand: true, model: true, imeiSerial: true } },
           toBranch: { select: { id: true, name: true } },
         },
@@ -482,7 +507,8 @@ export class ProductsService {
           dispatchedAt: new Date(),
           trackingNote: trackingNote || null,
         },
-        include: {
+        select: {
+          ...stockTransferSelect,
           fromBranch: { select: { id: true, name: true } },
           toBranch: { select: { id: true, name: true } },
         },
@@ -500,6 +526,7 @@ export class ProductsService {
     return this.prisma.$transaction(async (tx) => {
       const transfer = await tx.stockTransfer.findUnique({
         where: { id: transferId },
+        select: { id: true, status: true, productId: true, toBranchId: true },
       });
       if (!transfer) throw new NotFoundException('ไม่พบรายการโอน');
       if (transfer.status !== 'IN_TRANSIT') {
@@ -514,7 +541,8 @@ export class ProductsService {
           confirmedById: userId,
           confirmedAt: new Date(),
         },
-        include: {
+        select: {
+          ...stockTransferSelect,
           fromBranch: { select: { id: true, name: true } },
           toBranch: { select: { id: true, name: true } },
         },
@@ -533,6 +561,7 @@ export class ProductsService {
     return this.prisma.$transaction(async (tx) => {
       const transfer = await tx.stockTransfer.findUnique({
         where: { id: transferId },
+        select: { id: true, status: true, trackingNote: true },
       });
       if (!transfer) throw new NotFoundException('ไม่พบรายการโอน');
       if (!['PENDING', 'IN_TRANSIT'].includes(transfer.status)) {
@@ -547,7 +576,8 @@ export class ProductsService {
           confirmedAt: new Date(),
           trackingNote: reason ? `REJECTED: ${reason}` : transfer.trackingNote,
         },
-        include: {
+        select: {
+          ...stockTransferSelect,
           fromBranch: { select: { id: true, name: true } },
           toBranch: { select: { id: true, name: true } },
         },
@@ -564,7 +594,8 @@ export class ProductsService {
 
     return this.prisma.stockTransfer.findMany({
       where,
-      include: {
+      select: {
+        ...stockTransferSelect,
         fromBranch: { select: { id: true, name: true } },
         toBranch: { select: { id: true, name: true } },
         confirmedBy: { select: { id: true, name: true } },
@@ -899,7 +930,8 @@ export class ProductsService {
     // Find transfer history
     const transfers = await this.prisma.stockTransfer.findMany({
       where: { productId },
-      include: {
+      select: {
+        ...stockTransferSelect,
         fromBranch: { select: { id: true, name: true } },
         toBranch: { select: { id: true, name: true } },
         branchReceiving: { select: { id: true, status: true, createdAt: true } },

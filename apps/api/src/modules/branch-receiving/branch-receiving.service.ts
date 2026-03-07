@@ -19,7 +19,8 @@ export class BranchReceivingService {
       // Validate transfer exists and is IN_TRANSIT
       const transfer = await tx.stockTransfer.findUnique({
         where: { id: dto.transferId },
-        include: {
+        select: {
+          id: true, status: true, productId: true, fromBranchId: true, toBranchId: true,
           product: { select: { id: true, name: true, imeiSerial: true, brand: true, model: true } },
           fromBranch: { select: { id: true, name: true } },
           toBranch: { select: { id: true, name: true } },
@@ -150,7 +151,9 @@ export class BranchReceivingService {
         where,
         include: {
           transfer: {
-            include: {
+            select: {
+              id: true, batchNumber: true, status: true, createdAt: true, notes: true,
+              productId: true, fromBranchId: true, toBranchId: true, transferredBy: true,
               product: { select: { id: true, name: true, brand: true, model: true, imeiSerial: true, photos: true } },
               fromBranch: { select: { id: true, name: true } },
               toBranch: { select: { id: true, name: true } },
@@ -174,7 +177,9 @@ export class BranchReceivingService {
       where: { id },
       include: {
         transfer: {
-          include: {
+          select: {
+            id: true, batchNumber: true, status: true, createdAt: true, notes: true,
+            productId: true, fromBranchId: true, toBranchId: true, transferredBy: true,
             product: {
               select: {
                 id: true, name: true, brand: true, model: true,
@@ -204,7 +209,10 @@ export class BranchReceivingService {
         toBranchId: branchId,
         status: 'IN_TRANSIT',
       },
-      include: {
+      select: {
+        id: true, batchNumber: true, status: true, createdAt: true, notes: true,
+        productId: true, fromBranchId: true, toBranchId: true, transferredBy: true,
+        dispatchedAt: true, trackingNote: true, expectedDeliveryDate: true,
         product: {
           select: {
             id: true, name: true, brand: true, model: true,

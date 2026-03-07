@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsDateString } from 'class-validator';
+import { IsString, IsOptional, IsDateString, IsArray, ArrayMinSize } from 'class-validator';
 
 export class TransferProductDto {
   @IsString()
@@ -11,6 +11,20 @@ export class TransferProductDto {
   @IsDateString()
   @IsOptional()
   expectedDeliveryDate?: string;
+}
+
+export class BulkTransferDto {
+  @IsArray()
+  @IsString({ each: true })
+  @ArrayMinSize(1)
+  productIds: string[];
+
+  @IsString()
+  toBranchId: string;
+
+  @IsString()
+  @IsOptional()
+  notes?: string;
 }
 
 export class DispatchTransferDto {

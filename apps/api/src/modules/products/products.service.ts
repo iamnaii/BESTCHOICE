@@ -4,7 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { CreateProductPriceDto, UpdateProductPriceDto } from './dto/product-price.dto';
-import { TransferProductDto } from './dto/transfer-product.dto';
+import { TransferProductDto, BulkTransferDto } from './dto/transfer-product.dto';
 
 const productInclude = {
   prices: { orderBy: { createdAt: 'asc' as const } },
@@ -252,6 +252,74 @@ export class ProductsService {
     });
 
     return transfer;
+  }
+
+  async bulkTransfer(dto: BulkTransferDto, userId: string) {
+    // Verify destination branch exists
+    const toBranch = await this.prisma.branch.findUnique({ where: { id: dto.toBranchId } });
+    if (!toBranch) throw new NotFoundException('ไม่พบสาขาปลายทาง');
+
+    return this.prisma.$transaction(async (tx) => {
+      // Load all products
+      const products = await tx.product.findMany({
+        where: { id: { in: dto.productIds }, deletedAt: null },
+        include: { branch: { select: { id: true, name: true, isMainWarehouse: true } } },
+      });
+
+      if (products.length !== dto.productIds.length) {
+        const foundIds = new Set(products.map(p => p.id));
+        const missing = dto.productIds.filter(id => !foundIds.has(id));
+        throw new NotFoundException(`ไม่พบสินค้า: ${missing.join(', ')}`);
+      }
+
+      // Validate all products
+      const errors: string[] = [];
+      for (const product of products) {
+        if (product.status !== 'IN_STOCK') {
+          errors.push(`${product.brand} ${product.model} - สถานะไม่ใช่ IN_STOCK`);
+        } else if (!product.branch.isMainWarehouse) {
+          errors.push(`${product.brand} ${product.model} - ไม่ได้อยู่คลังหลัก`);
+        } else if (product.branchId === dto.toBranchId) {
+          errors.push(`${product.brand} ${product.model} - อยู่สาขาปลายทางอยู่แล้ว`);
+        }
+      }
+      if (errors.length > 0) {
+        throw new BadRequestException(`ไม่สามารถโอนได้:\n${errors.join('\n')}`);
+      }
+
+      // Check for existing pending/in-transit transfers
+      const existingTransfers = await tx.stockTransfer.findMany({
+        where: { productId: { in: dto.productIds }, status: { in: ['PENDING', 'IN_TRANSIT'] } },
+        include: { product: { select: { brand: true, model: true } } },
+      });
+      if (existingTransfers.length > 0) {
+        const names = existingTransfers.map(t => `${t.product.brand} ${t.product.model}`);
+        throw new BadRequestException(`สินค้ามีรายการโอนรออยู่แล้ว: ${names.join(', ')}`);
+      }
+
+      // Create transfer records
+      const transfers = await Promise.all(
+        products.map(product =>
+          tx.stockTransfer.create({
+            data: {
+              productId: product.id,
+              fromBranchId: product.branchId,
+              toBranchId: dto.toBranchId,
+              transferredBy: userId,
+              notes: dto.notes,
+              status: 'PENDING',
+            },
+            include: {
+              fromBranch: { select: { id: true, name: true } },
+              toBranch: { select: { id: true, name: true } },
+              product: { select: { id: true, brand: true, model: true, imeiSerial: true } },
+            },
+          }),
+        ),
+      );
+
+      return { transfers, count: transfers.length };
+    });
   }
 
   async getPendingTransfers(branchId?: string) {

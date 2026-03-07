@@ -44,7 +44,6 @@ const StockTransfersPage = lazy(() => import('@/pages/StockTransfersPage'));
 const StockAlertsPage = lazy(() => import('@/pages/StockAlertsPage'));
 const StockAdjustmentsPage = lazy(() => import('@/pages/StockAdjustmentsPage'));
 const StockCountPage = lazy(() => import('@/pages/StockCountPage'));
-const BranchReceivingPage = lazy(() => import('@/pages/BranchReceivingPage'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -150,14 +149,7 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/stock/branch-receiving"
-            element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}>
-                <BranchReceivingPage />
-              </ProtectedRoute>
-            }
-          />
+          <Route path="/stock/branch-receiving" element={<Navigate to="/stock/transfers?view=incoming" replace />} />
 
           <Route
             path="/suppliers"

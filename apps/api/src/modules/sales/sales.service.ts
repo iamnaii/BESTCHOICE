@@ -229,7 +229,9 @@ export class SalesService {
         status: 'PENDING';
       }> = [];
       for (let i = 1; i <= dto.totalMonths!; i++) {
-        const dueDate = new Date(now.getFullYear(), now.getMonth() + i, dueDay);
+        const targetMonth = now.getMonth() + i;
+        const lastDay = new Date(now.getFullYear(), targetMonth + 1, 0).getDate();
+        const dueDate = new Date(now.getFullYear(), targetMonth, Math.min(dueDay, lastDay));
         // Last installment adjusts for Math.ceil rounding to avoid overcharging
         const isLast = i === dto.totalMonths!;
         const amount = isLast ? financedAmount - monthlyPayment * (dto.totalMonths! - 1) : monthlyPayment;

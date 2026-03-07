@@ -66,7 +66,6 @@ const navItems: NavItem[] = [
   { label: 'โอนสาขา', path: '/stock/transfers', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'warehouse' },
   { label: 'ปรับสต็อก', path: '/stock/adjustments', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'warehouse' },
   { label: 'ตรวจนับสต๊อก', path: '/stock/count', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'warehouse' },
-  { label: 'สาขาเช็ครับ', path: '/stock/branch-receiving', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'warehouse' },
 
   // รายงาน & แจ้งเตือน
   { label: 'รายงาน', path: '/reports', roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'], section: 'reports' },

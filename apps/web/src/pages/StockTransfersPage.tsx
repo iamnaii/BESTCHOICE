@@ -98,17 +98,9 @@ export default function StockTransfersPage() {
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
-  const confirmMutation = useMutation({
-    mutationFn: async (transferId: string) => api.post(`/products/transfers/${transferId}/confirm`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['stock-transfers'] });
-      toast.success('ยืนยันรับสินค้าเข้าสาขาสำเร็จ');
-    },
-    onError: (err: unknown) => toast.error(getErrorMessage(err)),
-  });
-
   const rejectMutation = useMutation({
-    mutationFn: async (transferId: string) => api.post(`/products/transfers/${transferId}/reject`),
+    mutationFn: async ({ transferId, reason }: { transferId: string; reason?: string }) =>
+      api.post(`/products/transfers/${transferId}/reject`, { reason }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['stock-transfers'] });
       toast.success('ปฏิเสธการโอนสำเร็จ');
@@ -120,7 +112,7 @@ export default function StockTransfersPage() {
   const { data: branches } = useQuery({
     queryKey: ['branches'],
     queryFn: () => api.get('/branches').then((r) => r.data),
-    enabled: activeTab === 'incoming',
+    enabled: activeTab === 'incoming' || activeTab === 'history',
   });
 
   const { data: pendingDeliveries, isLoading: loadingPending } = useQuery({
@@ -355,7 +347,7 @@ export default function StockTransfersPage() {
               className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
             >
               <option value="PENDING">รอจัดส่ง</option>
-              <option value="IN_TRANSIT">กำลังจัดส่ง</option>
+              <option value="IN_TRANSIT">ระหว่างโอนสินค้า</option>
               <option value="CONFIRMED">รับแล้ว</option>
               <option value="REJECTED">ปฏิเสธ</option>
               <option value="">ทั้งหมด</option>
@@ -368,7 +360,7 @@ export default function StockTransfersPage() {
             isLoading={loadingTransfers}
             emptyMessage={
               statusFilter === 'PENDING' ? 'ไม่มีรายการรอจัดส่ง'
-              : statusFilter === 'IN_TRANSIT' ? 'ไม่มีรายการกำลังจัดส่ง'
+              : statusFilter === 'IN_TRANSIT' ? 'ไม่มีรายการระหว่างโอนสินค้า'
               : 'ไม่พบรายการโอน'
             }
           />
@@ -579,8 +571,9 @@ export default function StockTransfersPage() {
               </button>
               <button
                 onClick={() => {
-                  if (confirm(`ปฏิเสธการโอน ${slipTransfer.product.brand} ${slipTransfer.product.model}?`)) {
-                    rejectMutation.mutate(slipTransfer.id);
+                  const reason = prompt(`เหตุผลที่ปฏิเสธ ${slipTransfer.product.brand} ${slipTransfer.product.model}:`);
+                  if (reason !== null) {
+                    rejectMutation.mutate({ transferId: slipTransfer.id, reason: reason || undefined });
                     setIsSlipModalOpen(false);
                   }
                 }}

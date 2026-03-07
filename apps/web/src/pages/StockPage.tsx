@@ -176,11 +176,12 @@ export default function StockPage() {
     mutationFn: async (data: { productIds: string[]; toBranchId: string; notes?: string }) => {
       return api.post('/products/bulk-transfer', data);
     },
-    onSuccess: (_, variables) => {
+    onSuccess: (res, variables) => {
       queryClient.invalidateQueries({ queryKey: ['stock'] });
       queryClient.invalidateQueries({ queryKey: ['stock-list'] });
       queryClient.invalidateQueries({ queryKey: ['stock-dashboard'] });
-      toast.success(`โอนสินค้า ${variables.productIds.length} รายการสำเร็จ`);
+      const batchNumber = res.data?.batchNumber;
+      toast.success(`โอนสินค้า ${variables.productIds.length} รายการสำเร็จ${batchNumber ? ` (${batchNumber})` : ''}`);
       setShowBulkTransfer(false);
       setSelectedIds(new Set());
       setTransferBranchId('');

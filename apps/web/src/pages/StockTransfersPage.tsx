@@ -20,6 +20,7 @@ interface TransferProduct {
 
 interface StockTransfer {
   id: string;
+  batchNumber: string | null;
   productId: string;
   fromBranch: { id: string; name: string };
   toBranch: { id: string; name: string };
@@ -87,6 +88,13 @@ export default function StockTransfersPage() {
   const inTransitCount = transfers.filter((t) => t.status === 'IN_TRANSIT').length;
 
   const columns = [
+    {
+      key: 'batchNumber',
+      label: 'เลขใบโอน',
+      render: (t: StockTransfer) => (
+        <span className="text-xs font-mono font-medium text-blue-600">{t.batchNumber || '-'}</span>
+      ),
+    },
     {
       key: 'product',
       label: 'สินค้า',

@@ -204,6 +204,26 @@ export class ProductsService {
 
   // === Stock Transfer ===
 
+  private async generateBatchNumber(tx: any): Promise<string> {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const monthStart = new Date(year, now.getMonth(), 1);
+    const monthEnd = new Date(year, now.getMonth() + 1, 1);
+
+    // Count distinct batch numbers this month
+    const distinctBatches = await tx.stockTransfer.findMany({
+      where: {
+        batchNumber: { not: null },
+        createdAt: { gte: monthStart, lt: monthEnd },
+      },
+      select: { batchNumber: true },
+      distinct: ['batchNumber'],
+    });
+
+    return `TRF-${year}-${month}-${String(distinctBatches.length + 1).padStart(3, '0')}`;
+  }
+
   async transfer(productId: string, dto: TransferProductDto, userId: string) {
     const product = await this.findOne(productId);
 
@@ -235,20 +255,25 @@ export class ProductsService {
     if (!toBranch) throw new NotFoundException('ไม่พบสาขาปลายทาง');
 
     // Create transfer record with PENDING status (product doesn't move yet)
-    const transfer = await this.prisma.stockTransfer.create({
-      data: {
-        productId,
-        fromBranchId: product.branchId,
-        toBranchId: dto.toBranchId,
-        transferredBy: userId,
-        notes: dto.notes,
-        status: 'PENDING',
-        expectedDeliveryDate: dto.expectedDeliveryDate ? new Date(dto.expectedDeliveryDate) : null,
-      },
-      include: {
-        fromBranch: { select: { id: true, name: true } },
-        toBranch: { select: { id: true, name: true } },
-      },
+    const transfer = await this.prisma.$transaction(async (tx) => {
+      const batchNumber = await this.generateBatchNumber(tx);
+
+      return tx.stockTransfer.create({
+        data: {
+          batchNumber,
+          productId,
+          fromBranchId: product.branchId,
+          toBranchId: dto.toBranchId,
+          transferredBy: userId,
+          notes: dto.notes,
+          status: 'PENDING',
+          expectedDeliveryDate: dto.expectedDeliveryDate ? new Date(dto.expectedDeliveryDate) : null,
+        },
+        include: {
+          fromBranch: { select: { id: true, name: true } },
+          toBranch: { select: { id: true, name: true } },
+        },
+      });
     });
 
     return transfer;
@@ -297,11 +322,15 @@ export class ProductsService {
         throw new BadRequestException(`สินค้ามีรายการโอนรออยู่แล้ว: ${names.join(', ')}`);
       }
 
-      // Create transfer records
+      // Generate batch number for this transfer group
+      const batchNumber = await this.generateBatchNumber(tx);
+
+      // Create transfer records with shared batch number
       const transfers = await Promise.all(
         products.map(product =>
           tx.stockTransfer.create({
             data: {
+              batchNumber,
               productId: product.id,
               fromBranchId: product.branchId,
               toBranchId: dto.toBranchId,
@@ -318,7 +347,7 @@ export class ProductsService {
         ),
       );
 
-      return { transfers, count: transfers.length };
+      return { batchNumber, transfers, count: transfers.length };
     });
   }
 

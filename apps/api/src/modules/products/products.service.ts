@@ -403,7 +403,8 @@ export class ProductsService {
         fromBranch: { select: { id: true, name: true } },
         toBranch: { select: { id: true, name: true } },
         confirmedBy: { select: { id: true, name: true } },
-        product: { select: { id: true, name: true, brand: true, model: true, imeiSerial: true, serialNumber: true, photos: true, status: true } },
+        dispatchedBy: { select: { id: true, name: true } },
+        product: { select: { id: true, name: true, brand: true, model: true, imeiSerial: true, serialNumber: true, color: true, storage: true, photos: true, status: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -447,7 +448,7 @@ export class ProductsService {
           fromBranch: { select: { id: true, name: true } },
           toBranch: { select: { id: true, name: true } },
           confirmedBy: { select: { id: true, name: true } },
-          product: { select: { id: true, name: true, brand: true, model: true, imeiSerial: true, serialNumber: true } },
+          product: { select: { id: true, name: true, brand: true, model: true, imeiSerial: true, serialNumber: true, color: true, storage: true, photos: true, status: true } },
         },
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
@@ -511,6 +512,8 @@ export class ProductsService {
           ...stockTransferSelect,
           fromBranch: { select: { id: true, name: true } },
           toBranch: { select: { id: true, name: true } },
+          dispatchedBy: { select: { id: true, name: true } },
+          product: { select: { id: true, name: true, brand: true, model: true, imeiSerial: true, serialNumber: true, color: true, storage: true, photos: true, status: true } },
         },
       });
 
@@ -545,6 +548,8 @@ export class ProductsService {
           ...stockTransferSelect,
           fromBranch: { select: { id: true, name: true } },
           toBranch: { select: { id: true, name: true } },
+          confirmedBy: { select: { id: true, name: true } },
+          product: { select: { id: true, name: true, brand: true, model: true, imeiSerial: true, serialNumber: true, color: true, storage: true, photos: true, status: true } },
         },
       });
 
@@ -580,6 +585,7 @@ export class ProductsService {
           ...stockTransferSelect,
           fromBranch: { select: { id: true, name: true } },
           toBranch: { select: { id: true, name: true } },
+          product: { select: { id: true, name: true, brand: true, model: true, imeiSerial: true, serialNumber: true, photos: true, status: true } },
         },
       });
     });
@@ -600,7 +606,7 @@ export class ProductsService {
         toBranch: { select: { id: true, name: true } },
         confirmedBy: { select: { id: true, name: true } },
         dispatchedBy: { select: { id: true, name: true } },
-        product: { select: { id: true, name: true, brand: true, model: true, imeiSerial: true, serialNumber: true, photos: true, status: true } },
+        product: { select: { id: true, name: true, brand: true, model: true, imeiSerial: true, serialNumber: true, color: true, storage: true, photos: true, status: true } },
       },
       orderBy: { dispatchedAt: 'desc' },
     });

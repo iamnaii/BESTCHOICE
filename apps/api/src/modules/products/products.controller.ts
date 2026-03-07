@@ -91,6 +91,7 @@ export class ProductsController {
   }
 
   @Get('transfers/history')
+  @Roles('OWNER', 'BRANCH_MANAGER')
   getTransferHistory(
     @Query('branchId') branchId?: string,
     @Query('status') status?: string,

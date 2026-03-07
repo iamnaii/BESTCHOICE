@@ -65,6 +65,10 @@ export default function StockTransfersPage() {
   const [rejectReason, setRejectReason] = useState('');
   const [receiveNotes, setReceiveNotes] = useState('');
 
+  // --- Transfer slip modal state ---
+  const [isSlipModalOpen, setIsSlipModalOpen] = useState(false);
+  const [slipTransfer, setSlipTransfer] = useState<StockTransfer | null>(null);
+
   const goToTab = (key: TabKey) => setSearchParams({ view: key });
 
   // ============ OUTGOING TAB QUERIES ============
@@ -94,17 +98,9 @@ export default function StockTransfersPage() {
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
-  const confirmMutation = useMutation({
-    mutationFn: async (transferId: string) => api.post(`/products/transfers/${transferId}/confirm`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['stock-transfers'] });
-      toast.success('ยืนยันรับสินค้าเข้าสาขาสำเร็จ');
-    },
-    onError: (err: unknown) => toast.error(getErrorMessage(err)),
-  });
-
   const rejectMutation = useMutation({
-    mutationFn: async (transferId: string) => api.post(`/products/transfers/${transferId}/reject`),
+    mutationFn: async ({ transferId, reason }: { transferId: string; reason?: string }) =>
+      api.post(`/products/transfers/${transferId}/reject`, { reason }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['stock-transfers'] });
       toast.success('ปฏิเสธการโอนสำเร็จ');
@@ -116,7 +112,7 @@ export default function StockTransfersPage() {
   const { data: branches } = useQuery({
     queryKey: ['branches'],
     queryFn: () => api.get('/branches').then((r) => r.data),
-    enabled: activeTab === 'incoming',
+    enabled: activeTab === 'incoming' || activeTab === 'history',
   });
 
   const { data: pendingDeliveries, isLoading: loadingPending } = useQuery({
@@ -155,6 +151,16 @@ export default function StockTransfersPage() {
   });
 
   // ============ HELPERS ============
+  const openSlipModal = (transfer: StockTransfer) => {
+    setSlipTransfer(transfer);
+    setIsSlipModalOpen(true);
+  };
+
+  const handleSlipReceive = (transfer: StockTransfer) => {
+    setIsSlipModalOpen(false);
+    openReceiveModal(transfer);
+  };
+
   const openReceiveModal = (transfer: StockTransfer) => {
     setSelectedTransfer(transfer);
     setScannedImei('');
@@ -287,30 +293,12 @@ export default function StockTransfersPage() {
             </button>
           )}
           {t.status === 'IN_TRANSIT' && (
-            <>
-              <button
-                onClick={() => {
-                  if (confirm(`ยืนยันรับสินค้า ${t.product.brand} ${t.product.model} เข้าสาขา ${t.toBranch.name}?`)) {
-                    confirmMutation.mutate(t.id);
-                  }
-                }}
-                disabled={confirmMutation.isPending}
-                className="px-3 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700 disabled:opacity-50"
-              >
-                ยืนยันรับ
-              </button>
-              <button
-                onClick={() => {
-                  if (confirm(`ปฏิเสธการโอน ${t.product.brand} ${t.product.model}?`)) {
-                    rejectMutation.mutate(t.id);
-                  }
-                }}
-                disabled={rejectMutation.isPending}
-                className="px-3 py-1 bg-red-600 text-white rounded text-xs font-medium hover:bg-red-700 disabled:opacity-50"
-              >
-                ปฏิเสธ
-              </button>
-            </>
+            <button
+              onClick={() => openSlipModal(t)}
+              className="px-3 py-1 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700"
+            >
+              ใบโอนสินค้า
+            </button>
           )}
         </div>
       ),
@@ -359,7 +347,7 @@ export default function StockTransfersPage() {
               className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
             >
               <option value="PENDING">รอจัดส่ง</option>
-              <option value="IN_TRANSIT">กำลังจัดส่ง</option>
+              <option value="IN_TRANSIT">ระหว่างโอนสินค้า</option>
               <option value="CONFIRMED">รับแล้ว</option>
               <option value="REJECTED">ปฏิเสธ</option>
               <option value="">ทั้งหมด</option>
@@ -372,7 +360,7 @@ export default function StockTransfersPage() {
             isLoading={loadingTransfers}
             emptyMessage={
               statusFilter === 'PENDING' ? 'ไม่มีรายการรอจัดส่ง'
-              : statusFilter === 'IN_TRANSIT' ? 'ไม่มีรายการกำลังจัดส่ง'
+              : statusFilter === 'IN_TRANSIT' ? 'ไม่มีรายการระหว่างโอนสินค้า'
               : 'ไม่พบรายการโอน'
             }
           />
@@ -415,10 +403,10 @@ export default function StockTransfersPage() {
                     {t.trackingNote && <div className="text-xs text-blue-600 mt-1">{t.trackingNote}</div>}
                   </div>
                   <button
-                    onClick={() => openReceiveModal(t)}
-                    className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700"
+                    onClick={() => openSlipModal(t)}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
                   >
-                    ตรวจรับ
+                    ดูใบโอนสินค้า
                   </button>
                 </div>
               ))}
@@ -484,6 +472,120 @@ export default function StockTransfersPage() {
           )}
         </div>
       )}
+
+      {/* ============ TRANSFER SLIP MODAL ============ */}
+      <Modal isOpen={isSlipModalOpen} onClose={() => setIsSlipModalOpen(false)} title="ใบโอนสินค้า" size="lg">
+        {slipTransfer && (
+          <div className="space-y-5">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-dashed border-gray-300 pb-4">
+              <div>
+                <h3 className="text-lg font-bold text-gray-800">ใบโอนสินค้า</h3>
+                <p className="text-sm text-gray-500 font-mono mt-0.5">{slipTransfer.batchNumber || '-'}</p>
+              </div>
+              <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
+                ระหว่างโอนสินค้า
+              </span>
+            </div>
+
+            {/* Branch Info */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-orange-50 rounded-lg p-3">
+                <div className="text-xs text-orange-600 font-medium mb-1">ต้นทาง</div>
+                <div className="font-semibold text-gray-800">{slipTransfer.fromBranch.name}</div>
+              </div>
+              <div className="bg-green-50 rounded-lg p-3">
+                <div className="text-xs text-green-600 font-medium mb-1">ปลายทาง</div>
+                <div className="font-semibold text-gray-800">{slipTransfer.toBranch.name}</div>
+              </div>
+            </div>
+
+            {/* Product Details */}
+            <div className="bg-gray-50 rounded-lg p-4">
+              <div className="text-xs text-gray-500 font-medium mb-2">รายการสินค้า</div>
+              <div className="flex items-start gap-3">
+                {slipTransfer.product.photos?.[0] && (
+                  <img
+                    src={slipTransfer.product.photos[0]}
+                    alt={slipTransfer.product.name}
+                    className="w-16 h-16 object-cover rounded-lg border"
+                  />
+                )}
+                <div className="flex-1">
+                  <div className="font-semibold text-gray-800">{slipTransfer.product.brand} {slipTransfer.product.model}</div>
+                  <div className="text-sm text-gray-500 mt-1 space-y-0.5">
+                    {slipTransfer.product.color && <div>สี: {slipTransfer.product.color}</div>}
+                    {slipTransfer.product.storage && <div>ความจุ: {slipTransfer.product.storage}</div>}
+                    {slipTransfer.product.imeiSerial && (
+                      <div className="font-mono text-xs">IMEI: {slipTransfer.product.imeiSerial}</div>
+                    )}
+                    {slipTransfer.product.serialNumber && (
+                      <div className="font-mono text-xs">S/N: {slipTransfer.product.serialNumber}</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Transfer Info */}
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <span className="text-gray-500">วันที่สร้างใบโอน:</span>
+                <span className="ml-2 font-medium">{new Date(slipTransfer.createdAt).toLocaleDateString('th-TH')}</span>
+              </div>
+              {slipTransfer.dispatchedAt && (
+                <div>
+                  <span className="text-gray-500">วันที่จัดส่ง:</span>
+                  <span className="ml-2 font-medium">{new Date(slipTransfer.dispatchedAt).toLocaleDateString('th-TH')}</span>
+                </div>
+              )}
+              {slipTransfer.dispatchedBy && (
+                <div>
+                  <span className="text-gray-500">จัดส่งโดย:</span>
+                  <span className="ml-2 font-medium">{slipTransfer.dispatchedBy.name}</span>
+                </div>
+              )}
+              {slipTransfer.expectedDeliveryDate && (
+                <div>
+                  <span className="text-gray-500">คาดว่าถึง:</span>
+                  <span className="ml-2 font-medium">{new Date(slipTransfer.expectedDeliveryDate).toLocaleDateString('th-TH')}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Notes */}
+            {(slipTransfer.notes || slipTransfer.trackingNote) && (
+              <div className="bg-blue-50 rounded-lg p-3">
+                {slipTransfer.notes && <div className="text-sm text-gray-700">หมายเหตุ: {slipTransfer.notes}</div>}
+                {slipTransfer.trackingNote && <div className="text-sm text-blue-700">หมายเหตุจัดส่ง: {slipTransfer.trackingNote}</div>}
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="border-t border-gray-200 pt-4 flex gap-3">
+              <button
+                onClick={() => handleSlipReceive(slipTransfer)}
+                className="flex-1 py-2.5 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors"
+              >
+                ตรวจรับสินค้า
+              </button>
+              <button
+                onClick={() => {
+                  const reason = prompt(`เหตุผลที่ปฏิเสธ ${slipTransfer.product.brand} ${slipTransfer.product.model}:`);
+                  if (reason !== null) {
+                    rejectMutation.mutate({ transferId: slipTransfer.id, reason: reason || undefined });
+                    setIsSlipModalOpen(false);
+                  }
+                }}
+                disabled={rejectMutation.isPending}
+                className="flex-1 py-2.5 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors disabled:opacity-50"
+              >
+                ปฏิเสธ - ส่งกลับ
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* ============ RECEIVE MODAL ============ */}
       <Modal isOpen={isReceiveModalOpen} onClose={() => setIsReceiveModalOpen(false)} title="ตรวจรับสินค้า">

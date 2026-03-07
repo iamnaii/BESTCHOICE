@@ -77,10 +77,11 @@ export class BranchReceivingService {
 
       // Check if all items passed
       const allPassed = dto.items.every((item) => item.status === 'PASS');
+      const allRejected = dto.items.every((item) => item.status === 'REJECT');
       const anyRejected = dto.items.some((item) => item.status === 'REJECT');
 
       // Update receiving status
-      const receivingStatus = allPassed ? 'COMPLETED' : 'PARTIAL_REJECT';
+      const receivingStatus = allPassed ? 'COMPLETED' : allRejected ? 'REJECTED' : 'PARTIAL_REJECT';
       await tx.branchReceiving.update({
         where: { id: receiving.id },
         data: { status: receivingStatus },

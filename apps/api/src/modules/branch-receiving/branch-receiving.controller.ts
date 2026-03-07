@@ -12,6 +12,7 @@ export class BranchReceivingController {
   constructor(private service: BranchReceivingService) {}
 
   @Get()
+  @Roles('OWNER', 'BRANCH_MANAGER')
   findAll(
     @Query('branchId') branchId?: string,
     @Query('status') status?: string,
@@ -36,6 +37,7 @@ export class BranchReceivingController {
   }
 
   @Get(':id')
+  @Roles('OWNER', 'BRANCH_MANAGER')
   findOne(@Param('id') id: string) {
     return this.service.findOne(id);
   }

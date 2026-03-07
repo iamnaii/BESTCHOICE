@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger, InternalServerErrorException, HttpException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -17,6 +17,8 @@ const productInclude = {
 
 @Injectable()
 export class ProductsService {
+  private readonly logger = new Logger(ProductsService.name);
+
   constructor(private prisma: PrismaService) {}
 
   async findAll(filters: {
@@ -211,17 +213,24 @@ export class ProductsService {
     const monthStart = new Date(year, now.getMonth(), 1);
     const monthEnd = new Date(year, now.getMonth() + 1, 1);
 
-    // Count distinct batch numbers this month
-    const distinctBatches = await tx.stockTransfer.findMany({
-      where: {
-        batchNumber: { not: null },
-        createdAt: { gte: monthStart, lt: monthEnd },
-      },
-      select: { batchNumber: true },
-      distinct: ['batchNumber'],
-    });
+    try {
+      // Count distinct batch numbers this month using groupBy
+      const distinctBatches = await tx.stockTransfer.groupBy({
+        by: ['batchNumber'],
+        where: {
+          batchNumber: { not: null },
+          createdAt: { gte: monthStart, lt: monthEnd },
+        },
+      });
 
-    return `TRF-${year}-${month}-${String(distinctBatches.length + 1).padStart(3, '0')}`;
+      return `TRF-${year}-${month}-${String(distinctBatches.length + 1).padStart(3, '0')}`;
+    } catch (error) {
+      // Fallback if batch_number column doesn't exist yet (migration not applied)
+      this.logger.warn('generateBatchNumber failed, using timestamp fallback', error);
+      const day = String(now.getDate()).padStart(2, '0');
+      const seq = String(Date.now()).slice(-4);
+      return `TRF-${year}-${month}-${day}-${seq}`;
+    }
   }
 
   async transfer(productId: string, dto: TransferProductDto, userId: string) {
@@ -284,71 +293,83 @@ export class ProductsService {
     const toBranch = await this.prisma.branch.findUnique({ where: { id: dto.toBranchId } });
     if (!toBranch) throw new NotFoundException('ไม่พบสาขาปลายทาง');
 
-    return this.prisma.$transaction(async (tx) => {
-      // Load all products
-      const products = await tx.product.findMany({
-        where: { id: { in: dto.productIds }, deletedAt: null },
-        include: { branch: { select: { id: true, name: true, isMainWarehouse: true } } },
-      });
-
-      if (products.length !== dto.productIds.length) {
-        const foundIds = new Set(products.map(p => p.id));
-        const missing = dto.productIds.filter(id => !foundIds.has(id));
-        throw new NotFoundException(`ไม่พบสินค้า: ${missing.join(', ')}`);
-      }
-
-      // Validate all products
-      const errors: string[] = [];
-      for (const product of products) {
-        if (product.status !== 'IN_STOCK') {
-          errors.push(`${product.brand} ${product.model} - สถานะไม่ใช่ IN_STOCK`);
-        } else if (!product.branch.isMainWarehouse) {
-          errors.push(`${product.brand} ${product.model} - ไม่ได้อยู่คลังหลัก`);
-        } else if (product.branchId === dto.toBranchId) {
-          errors.push(`${product.brand} ${product.model} - อยู่สาขาปลายทางอยู่แล้ว`);
-        }
-      }
-      if (errors.length > 0) {
-        throw new BadRequestException(`ไม่สามารถโอนได้:\n${errors.join('\n')}`);
-      }
-
-      // Check for existing pending/in-transit transfers
-      const existingTransfers = await tx.stockTransfer.findMany({
-        where: { productId: { in: dto.productIds }, status: { in: ['PENDING', 'IN_TRANSIT'] } },
-        include: { product: { select: { brand: true, model: true } } },
-      });
-      if (existingTransfers.length > 0) {
-        const names = existingTransfers.map(t => `${t.product.brand} ${t.product.model}`);
-        throw new BadRequestException(`สินค้ามีรายการโอนรออยู่แล้ว: ${names.join(', ')}`);
-      }
-
-      // Generate batch number for this transfer group
-      const batchNumber = await this.generateBatchNumber(tx);
-
-      // Create transfer records sequentially to avoid transaction serialization errors
-      const transfers: any[] = [];
-      for (const product of products) {
-        const transfer = await tx.stockTransfer.create({
-          data: {
-            batchNumber,
-            productId: product.id,
-            fromBranchId: product.branchId,
-            toBranchId: dto.toBranchId,
-            transferredBy: userId,
-            notes: dto.notes,
-            status: 'PENDING',
-          },
-          include: {
-            fromBranch: { select: { id: true, name: true } },
-            toBranch: { select: { id: true, name: true } },
-            product: { select: { id: true, brand: true, model: true, imeiSerial: true } },
-          },
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        // Load all products
+        const products = await tx.product.findMany({
+          where: { id: { in: dto.productIds }, deletedAt: null },
+          include: { branch: { select: { id: true, name: true, isMainWarehouse: true } } },
         });
-        transfers.push(transfer);
-      }
 
-      return { batchNumber, transfers, count: transfers.length };
-    }, { timeout: 15000 });
+        if (products.length !== dto.productIds.length) {
+          const foundIds = new Set(products.map(p => p.id));
+          const missing = dto.productIds.filter(id => !foundIds.has(id));
+          throw new NotFoundException(`ไม่พบสินค้า: ${missing.join(', ')}`);
+        }
+
+        // Validate all products
+        const errors: string[] = [];
+        for (const product of products) {
+          if (product.status !== 'IN_STOCK') {
+            errors.push(`${product.brand} ${product.model} - สถานะไม่ใช่ IN_STOCK`);
+          } else if (!product.branch.isMainWarehouse) {
+            errors.push(`${product.brand} ${product.model} - ไม่ได้อยู่คลังหลัก`);
+          } else if (product.branchId === dto.toBranchId) {
+            errors.push(`${product.brand} ${product.model} - อยู่สาขาปลายทางอยู่แล้ว`);
+          }
+        }
+        if (errors.length > 0) {
+          throw new BadRequestException(`ไม่สามารถโอนได้:\n${errors.join('\n')}`);
+        }
+
+        // Check for existing pending/in-transit transfers
+        const existingTransfers = await tx.stockTransfer.findMany({
+          where: { productId: { in: dto.productIds }, status: { in: ['PENDING', 'IN_TRANSIT'] } },
+          include: { product: { select: { brand: true, model: true } } },
+        });
+        if (existingTransfers.length > 0) {
+          const names = existingTransfers.map(t => `${t.product.brand} ${t.product.model}`);
+          throw new BadRequestException(`สินค้ามีรายการโอนรออยู่แล้ว: ${names.join(', ')}`);
+        }
+
+        // Generate batch number for this transfer group
+        const batchNumber = await this.generateBatchNumber(tx);
+
+        // Create transfer records sequentially to avoid transaction serialization errors
+        const transfers: any[] = [];
+        for (const product of products) {
+          const transfer = await tx.stockTransfer.create({
+            data: {
+              batchNumber,
+              productId: product.id,
+              fromBranchId: product.branchId,
+              toBranchId: dto.toBranchId,
+              transferredBy: userId,
+              notes: dto.notes,
+              status: 'PENDING',
+            },
+            include: {
+              fromBranch: { select: { id: true, name: true } },
+              toBranch: { select: { id: true, name: true } },
+              product: { select: { id: true, brand: true, model: true, imeiSerial: true } },
+            },
+          });
+          transfers.push(transfer);
+        }
+
+        return { batchNumber, transfers, count: transfers.length };
+      }, { timeout: 15000 });
+    } catch (error) {
+      // Re-throw HttpExceptions (BadRequest, NotFound, Forbidden, etc.) as-is
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      this.logger.error('bulkTransfer failed', error);
+      if (error instanceof Prisma.PrismaClientKnownRequestError) {
+        throw new InternalServerErrorException(`โอนสินค้าไม่สำเร็จ: ${error.message}`);
+      }
+      throw new InternalServerErrorException('โอนสินค้าไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+    }
   }
 
   async getPendingTransfers(branchId?: string) {

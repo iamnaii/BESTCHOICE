@@ -40,7 +40,6 @@ const SuppliersPage = lazy(() => import('@/pages/SuppliersPage'));
 const StockPage = lazy(() => import('@/pages/StockPage'));
 const PurchaseOrdersPage = lazy(() => import('@/pages/PurchaseOrdersPage'));
 
-const ProductsPage = lazy(() => import('@/pages/ProductsPage'));
 const StockTransfersPage = lazy(() => import('@/pages/StockTransfersPage'));
 const StockAlertsPage = lazy(() => import('@/pages/StockAlertsPage'));
 const StockAdjustmentsPage = lazy(() => import('@/pages/StockAdjustmentsPage'));
@@ -118,7 +117,7 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route path="/products" element={<ProductsPage />} />
+          <Route path="/products" element={<Navigate to="/stock?tab=list" replace />} />
           <Route
             path="/stock/transfers"
             element={

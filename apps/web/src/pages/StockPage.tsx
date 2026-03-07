@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api, { getErrorMessage } from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -21,6 +21,7 @@ interface StockProduct {
   status: string;
   color: string | null;
   storage: string | null;
+  createdAt?: string;
   branch: { id: string; name: string };
   supplier: { id: string; name: string } | null;
   prices: { id: string; label: string; amount: string; isDefault: boolean }[];
@@ -110,19 +111,32 @@ function BarInline({ label, count, total, color }: { label: string; count: numbe
 
 export default function StockPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const isManager = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
+
+  // Support ?tab=list from redirect
+  const initialTab = searchParams.get('tab') === 'list' ? 'list' : 'dashboard';
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'list'>(initialTab);
+
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
   const [filterBranch, setFilterBranch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'list'>('dashboard');
+  const [page, setPage] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  // Quick price edit modal state
+  // Price management modal state (multi-price CRUD from ProductsPage)
   const [editingProduct, setEditingProduct] = useState<StockProduct | null>(null);
+  const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
   const [priceForm, setPriceForm] = useState({ label: '', amount: '', isDefault: false });
+
+  // Reset page when filters change
+  useEffect(() => { setPage(1); }, [debouncedSearch, filterStatus, filterCategory, filterBranch]);
+
+  // --- Mutations ---
 
   const priceMutation = useMutation({
     mutationFn: async ({ productId, priceId, data }: { productId: string; priceId?: string; data: { label: string; amount: number; isDefault: boolean } }) => {
@@ -133,29 +147,53 @@ export default function StockPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['stock'] });
+      queryClient.invalidateQueries({ queryKey: ['stock-list'] });
       toast.success('บันทึกราคาสำเร็จ');
-      setEditingProduct(null);
+      setEditingPriceId(null);
+      setPriceForm({ label: '', amount: '', isDefault: false });
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
-  const openPriceEdit = (product: StockProduct) => {
+  const deletePriceMutation = useMutation({
+    mutationFn: async ({ productId, priceId }: { productId: string; priceId: string }) => {
+      return api.delete(`/products/${productId}/prices/${priceId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['stock'] });
+      queryClient.invalidateQueries({ queryKey: ['stock-list'] });
+      toast.success('ลบราคาสำเร็จ');
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const openPriceEdit = useCallback((product: StockProduct) => {
     setEditingProduct(product);
-    const defaultPrice = product.prices?.find((p) => p.isDefault) || product.prices?.[0];
-    if (defaultPrice) {
-      setPriceForm({ label: defaultPrice.label, amount: defaultPrice.amount, isDefault: defaultPrice.isDefault });
-    } else {
-      setPriceForm({ label: 'ราคาขาย', amount: '', isDefault: true });
-    }
+    setEditingPriceId(null);
+    setPriceForm({ label: '', amount: '', isDefault: false });
+  }, []);
+
+  const startEditPrice = (price: { id: string; label: string; amount: string; isDefault: boolean }) => {
+    setEditingPriceId(price.id);
+    setPriceForm({ label: price.label, amount: price.amount, isDefault: price.isDefault });
+  };
+
+  const startAddPrice = () => {
+    setEditingPriceId('new');
+    setPriceForm({ label: '', amount: '', isDefault: false });
+  };
+
+  const cancelEditPrice = () => {
+    setEditingPriceId(null);
+    setPriceForm({ label: '', amount: '', isDefault: false });
   };
 
   const handlePriceSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingProduct) return;
-    const defaultPrice = editingProduct.prices?.find((p) => p.isDefault) || editingProduct.prices?.[0];
     priceMutation.mutate({
       productId: editingProduct.id,
-      priceId: defaultPrice?.id,
+      priceId: editingPriceId === 'new' ? undefined : editingPriceId || undefined,
       data: {
         label: priceForm.label,
         amount: parseFloat(priceForm.amount) || 0,
@@ -164,19 +202,20 @@ export default function StockPage() {
     });
   };
 
-  const { data, isLoading } = useQuery<{ products: StockProduct[]; summary: BranchSummary[] }>({
-    queryKey: ['stock', debouncedSearch, filterBranch, filterStatus, filterCategory],
+  // --- Queries ---
+
+  // Summary data for branch cards (always loaded)
+  const { data: summaryData } = useQuery<{ products: StockProduct[]; summary: BranchSummary[] }>({
+    queryKey: ['stock', filterBranch],
     queryFn: async () => {
       const params: Record<string, string> = {};
-      if (debouncedSearch) params.search = debouncedSearch;
       if (filterBranch) params.branchId = filterBranch;
-      if (filterStatus) params.status = filterStatus;
-      if (filterCategory) params.category = filterCategory;
       const { data } = await api.get('/products/stock', { params });
       return data;
     },
   });
 
+  // Dashboard analytics
   const { data: dashboard } = useQuery<StockDashboard>({
     queryKey: ['stock-dashboard', filterBranch],
     queryFn: async () => {
@@ -187,18 +226,114 @@ export default function StockPage() {
     },
   });
 
-  const products = data?.products || [];
-  const summary = data?.summary || [];
+  // Paginated product list for the list tab (uses /products API)
+  const { data: listResult, isLoading: listLoading } = useQuery<{ data: StockProduct[]; total: number; page: number; totalPages: number }>({
+    queryKey: ['stock-list', debouncedSearch, filterStatus, filterCategory, filterBranch, page],
+    queryFn: async () => {
+      const params: Record<string, string> = {};
+      if (debouncedSearch) params.search = debouncedSearch;
+      if (filterStatus) params.status = filterStatus;
+      if (filterCategory) params.category = filterCategory;
+      if (filterBranch) params.branchId = filterBranch;
+      params.page = String(page);
+      const { data } = await api.get('/products', { params });
+      return data;
+    },
+    enabled: activeTab === 'list',
+  });
+
+  // Branches list for dropdown
+  const { data: branches = [] } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ['branches'],
+    queryFn: async () => {
+      const { data } = await api.get('/branches');
+      return data;
+    },
+  });
+
+  const listProducts = listResult?.data ?? [];
+  const summary = summaryData?.summary || [];
   const totalInStock = summary.reduce((sum, s) => sum + s.inStock, 0);
   const totalValue = summary.reduce((sum, s) => sum + s.totalValue, 0);
 
-  const columns = [
+  // Keep editingProduct in sync when product data refreshes after mutations
+  const editingProductId = editingProduct?.id;
+  useEffect(() => {
+    if (editingProductId && listProducts.length > 0) {
+      const updated = listProducts.find(p => p.id === editingProductId);
+      if (updated) setEditingProduct(updated);
+    }
+  }, [listProducts, editingProductId]);
+
+  // --- Selection ---
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === listProducts.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(listProducts.map((p) => p.id)));
+    }
+  };
+
+  // --- Export ---
+
+  const handleExport = () => {
+    const items = selectedIds.size > 0 ? listProducts.filter((p) => selectedIds.has(p.id)) : listProducts;
+    if (items.length === 0) { toast.error('ไม่มีข้อมูลให้ส่งออก'); return; }
+    const headers = ['สินค้า', 'แบรนด์', 'รุ่น', 'IMEI/Serial', 'ประเภท', 'สี', 'ความจุ', 'ราคาทุน', 'ราคาขาย', 'สถานะ', 'สาขา'];
+    const rows = items.map((p) => {
+      const dp = p.prices?.find((pr) => pr.isDefault) || p.prices?.[0];
+      return [p.name, p.brand, p.model, p.imeiSerial || '', categoryLabels[p.category] || p.category, p.color || '', p.storage || '', Number(p.costPrice || 0).toLocaleString(), dp ? Number(dp.amount).toLocaleString() : '', statusLabels[p.status]?.label || p.status, p.branch.name];
+    });
+    const esc = (c: unknown) => `"${String(c ?? '').replace(/"/g, '""')}"`;
+    const csv = [headers, ...rows].map((r) => r.map(esc).join(',')).join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `stock-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // --- Table columns ---
+
+  const navigateToProduct = useCallback((id: string) => navigate(`/products/${id}`), [navigate]);
+
+  const columns = useMemo(() => [
+    ...(isManager ? [{
+      key: 'select',
+      label: (
+        <input
+          type="checkbox"
+          checked={listProducts.length > 0 && selectedIds.size === listProducts.length}
+          onChange={toggleSelectAll}
+          className="rounded text-primary-600"
+        />
+      ) as unknown as string,
+      render: (p: StockProduct) => (
+        <input
+          type="checkbox"
+          checked={selectedIds.has(p.id)}
+          onChange={(e) => { e.stopPropagation(); toggleSelect(p.id); }}
+          className="rounded text-primary-600"
+        />
+      ),
+    }] : []),
     {
       key: 'name',
       label: 'สินค้า',
       render: (p: StockProduct) => (
         <button
-          onClick={() => navigate(`/products/${p.id}`)}
+          onClick={() => navigateToProduct(p.id)}
           className="text-left hover:underline"
         >
           <div className="text-primary-600 font-medium">{p.brand} {p.model}</div>
@@ -222,29 +357,25 @@ export default function StockPage() {
       render: (p: StockProduct) => <span className="text-sm">{p.storage || '-'}</span>,
     },
     {
-      key: 'costPrice',
-      label: 'ราคาทุน',
-      render: (p: StockProduct) => (
-        <span className="text-sm">{parseFloat(p.costPrice).toLocaleString()} ฿</span>
-      ),
-    },
-    {
-      key: 'sellingPrice',
-      label: 'ราคาขาย',
+      key: 'prices',
+      label: 'ราคา',
       render: (p: StockProduct) => {
         const defaultPrice = p.prices?.find((pr) => pr.isDefault) || p.prices?.[0];
         return (
           <div className="flex items-center gap-1.5">
-            {defaultPrice ? (
-              <span className="text-sm font-medium">{parseFloat(defaultPrice.amount).toLocaleString()} ฿</span>
-            ) : (
-              <span className="text-gray-400">-</span>
-            )}
+            <div>
+              {defaultPrice ? (
+                <div className="font-medium">{parseFloat(defaultPrice.amount).toLocaleString()} ฿</div>
+              ) : (
+                <span className="text-gray-400">-</span>
+              )}
+              <div className="text-xs text-gray-400">ทุน: {parseFloat(p.costPrice).toLocaleString()} ฿</div>
+            </div>
             {isManager && (
               <button
                 onClick={(e) => { e.stopPropagation(); openPriceEdit(p); }}
                 className="text-gray-400 hover:text-primary-600 transition-colors"
-                title="แก้ไขราคา"
+                title="จัดการราคา"
               >
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -268,41 +399,43 @@ export default function StockPage() {
       label: 'สาขา',
       render: (p: StockProduct) => <span className="text-xs font-medium">{p.branch.name}</span>,
     },
-  ];
+  ], [navigateToProduct, openPriceEdit, isManager, selectedIds, listProducts]);
 
   const actionTotal = dashboard
     ? dashboard.actionRequired.inspection + (dashboard.actionRequired.photoPending || 0) + dashboard.actionRequired.pendingTransfers + dashboard.actionRequired.repossessed + dashboard.actionRequired.agingOver90
     : 0;
 
+  const handleTabChange = (tab: 'dashboard' | 'list') => {
+    setActiveTab(tab);
+    // Update URL without full navigation
+    if (tab === 'list') {
+      setSearchParams({ tab: 'list' }, { replace: true });
+    } else {
+      setSearchParams({}, { replace: true });
+    }
+  };
+
   return (
     <div>
       <PageHeader
-        title="สต็อกสินค้า"
+        title="คลังสินค้า"
         subtitle={`พร้อมขาย ${totalInStock} ชิ้น | มูลค่ารวม ${totalValue.toLocaleString()} ฿`}
         action={
           isManager && activeTab === 'list' ? (
-            <button
-              onClick={() => {
-                if (products.length === 0) { toast.error('ไม่มีข้อมูลให้ส่งออก'); return; }
-                const headers = ['สินค้า', 'IMEI', 'ประเภท', 'สี', 'ความจุ', 'ราคาทุน', 'ราคาขาย', 'สถานะ', 'สาขา'];
-                const rows = products.map((p) => {
-                  const dp = p.prices?.find((pr) => pr.isDefault) || p.prices?.[0];
-                  return [`${p.brand} ${p.model}`, p.imeiSerial || '', categoryLabels[p.category] || p.category, p.color || '', p.storage || '', Number(p.costPrice || 0).toLocaleString(), dp ? Number(dp.amount).toLocaleString() : '', statusLabels[p.status]?.label || p.status, p.branch.name];
-                });
-                const esc = (c: unknown) => `"${String(c ?? '').replace(/"/g, '""')}"`;
-                const csv = [headers, ...rows].map((r) => r.map(esc).join(',')).join('\n');
-                const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `stock-${new Date().toISOString().split('T')[0]}.csv`;
-                a.click();
-                URL.revokeObjectURL(url);
-              }}
-              className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50"
-            >
-              Export CSV
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={handleExport}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+              >
+                {selectedIds.size > 0 ? `Export (${selectedIds.size})` : 'Export CSV'}
+              </button>
+              <button
+                onClick={() => navigate('/products/create')}
+                className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
+              >
+                + เพิ่มสินค้า
+              </button>
+            </div>
           ) : undefined
         }
       />
@@ -330,7 +463,7 @@ export default function StockPage() {
       {/* Tabs: Dashboard / List */}
       <div className="flex gap-1 mb-6 bg-gray-100 rounded-lg p-1 w-fit">
         <button
-          onClick={() => setActiveTab('dashboard')}
+          onClick={() => handleTabChange('dashboard')}
           className={`px-4 py-2 text-sm rounded-md font-medium transition-colors ${
             activeTab === 'dashboard' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
           }`}
@@ -338,12 +471,12 @@ export default function StockPage() {
           Dashboard
         </button>
         <button
-          onClick={() => setActiveTab('list')}
+          onClick={() => handleTabChange('list')}
           className={`px-4 py-2 text-sm rounded-md font-medium transition-colors ${
             activeTab === 'list' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
           }`}
         >
-          รายการสินค้า
+          รายการสินค้า {listResult ? `(${listResult.total})` : ''}
         </button>
       </div>
 
@@ -687,72 +820,227 @@ export default function StockPage() {
                 <option key={key} value={key}>{val}</option>
               ))}
             </select>
+            <select
+              value={filterBranch}
+              onChange={(e) => setFilterBranch(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+            >
+              <option value="">ทุกสาขา</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
             {filterBranch && (
               <button
                 onClick={() => setFilterBranch('')}
                 className="px-3 py-2 text-sm text-primary-600 hover:text-primary-700"
               >
-                ดูทุกสาขา
+                ล้างตัวกรอง
               </button>
             )}
           </div>
 
-          <DataTable columns={columns} data={products} isLoading={isLoading} emptyMessage="ไม่พบสินค้าในสต็อก" />
+          <DataTable
+            columns={columns}
+            data={listProducts}
+            isLoading={listLoading}
+            emptyMessage="ไม่พบสินค้า"
+            pagination={listResult ? {
+              page: listResult.page,
+              totalPages: listResult.totalPages,
+              total: listResult.total,
+              onPageChange: setPage,
+            } : undefined}
+          />
         </>
       )}
 
-      {/* Quick Price Edit Modal */}
+      {/* Multi-Price Management Modal */}
       <Modal
         isOpen={!!editingProduct}
         onClose={() => setEditingProduct(null)}
-        title={editingProduct ? `แก้ไขราคา — ${editingProduct.brand} ${editingProduct.model}` : 'แก้ไขราคา'}
+        title={editingProduct ? `จัดการราคา — ${editingProduct.brand} ${editingProduct.model}` : 'จัดการราคา'}
         size="sm"
       >
-        <form onSubmit={handlePriceSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อราคา</label>
-            <input
-              type="text"
-              value={priceForm.label}
-              onChange={(e) => setPriceForm({ ...priceForm, label: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">ราคาขาย (บาท)</label>
-            <input
-              type="number"
-              step="0.01"
-              value={priceForm.amount}
-              onChange={(e) => setPriceForm({ ...priceForm, amount: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-              required
-            />
-          </div>
-          {editingProduct && (
+        {editingProduct && (
+          <div className="space-y-4">
+            {/* Cost price reference */}
             <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3">
-              ราคาทุน: {parseFloat(editingProduct.costPrice).toLocaleString()} ฿
-              {priceForm.amount && (
-                <span className={`ml-2 font-medium ${parseFloat(priceForm.amount) - parseFloat(editingProduct.costPrice) > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  (กำไร: {(parseFloat(priceForm.amount) - parseFloat(editingProduct.costPrice)).toLocaleString()} ฿)
-                </span>
+              ราคาทุน: <span className="font-medium text-gray-700">{parseFloat(editingProduct.costPrice).toLocaleString()} ฿</span>
+            </div>
+
+            {/* Existing prices list */}
+            <div className="space-y-2">
+              {editingProduct.prices.map((price) => (
+                <div key={price.id}>
+                  {editingPriceId === price.id ? (
+                    /* Inline edit form */
+                    <form onSubmit={handlePriceSubmit} className="border-2 border-primary-200 rounded-lg p-3 bg-primary-50 space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="text"
+                          value={priceForm.label}
+                          onChange={(e) => setPriceForm({ ...priceForm, label: e.target.value })}
+                          placeholder="ชื่อราคา"
+                          className="px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                          required
+                        />
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={priceForm.amount}
+                          onChange={(e) => setPriceForm({ ...priceForm, amount: e.target.value })}
+                          placeholder="ราคา (บาท)"
+                          className="px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                          required
+                        />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={priceForm.isDefault}
+                            onChange={(e) => setPriceForm({ ...priceForm, isDefault: e.target.checked })}
+                            className="rounded text-primary-600"
+                          />
+                          ค่าเริ่มต้น
+                        </label>
+                        <div className="flex gap-2">
+                          <button type="button" onClick={cancelEditPrice} className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700">
+                            ยกเลิก
+                          </button>
+                          <button
+                            type="submit"
+                            disabled={priceMutation.isPending}
+                            className="px-3 py-1 bg-primary-600 text-white rounded text-xs font-medium hover:bg-primary-700 disabled:opacity-50"
+                          >
+                            {priceMutation.isPending ? 'บันทึก...' : 'บันทึก'}
+                          </button>
+                        </div>
+                      </div>
+                      {priceForm.amount && (
+                        <div className={`text-xs ${parseFloat(priceForm.amount) - parseFloat(editingProduct.costPrice) > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          กำไร: {(parseFloat(priceForm.amount) - parseFloat(editingProduct.costPrice)).toLocaleString()} ฿
+                        </div>
+                      )}
+                    </form>
+                  ) : (
+                    /* Display row */
+                    <div className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-gray-50 border border-transparent hover:border-gray-200">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-gray-900">{price.label}</span>
+                        {price.isDefault && (
+                          <span className="px-1.5 py-0.5 bg-primary-100 text-primary-700 text-xs rounded font-medium">
+                            ค่าเริ่มต้น
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm font-semibold">{parseFloat(price.amount).toLocaleString()} ฿</span>
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => startEditPrice(price)}
+                            className="p-1 text-gray-400 hover:text-primary-600 transition-colors"
+                            title="แก้ไข"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (confirm('ต้องการลบราคานี้?')) {
+                                deletePriceMutation.mutate({ productId: editingProduct.id, priceId: price.id });
+                              }
+                            }}
+                            className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                            title="ลบ"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {editingProduct.prices.length === 0 && !editingPriceId && (
+                <p className="text-sm text-gray-400 text-center py-3">ยังไม่มีราคาขาย</p>
               )}
             </div>
-          )}
-          <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={() => setEditingProduct(null)} className="px-4 py-2 text-sm text-gray-600">
-              ยกเลิก
-            </button>
-            <button
-              type="submit"
-              disabled={priceMutation.isPending}
-              className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
-            >
-              {priceMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
-            </button>
+
+            {/* Add new price form */}
+            {editingPriceId === 'new' ? (
+              <form onSubmit={handlePriceSubmit} className="border-2 border-green-200 rounded-lg p-3 bg-green-50 space-y-2">
+                <div className="text-xs font-medium text-green-700 mb-1">เพิ่มราคาใหม่</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    value={priceForm.label}
+                    onChange={(e) => setPriceForm({ ...priceForm, label: e.target.value })}
+                    placeholder='เช่น "ราคาเงินสด"'
+                    className="px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                    required
+                  />
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={priceForm.amount}
+                    onChange={(e) => setPriceForm({ ...priceForm, amount: e.target.value })}
+                    placeholder="ราคา (บาท)"
+                    className="px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                    required
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={priceForm.isDefault}
+                      onChange={(e) => setPriceForm({ ...priceForm, isDefault: e.target.checked })}
+                      className="rounded text-primary-600"
+                    />
+                    ค่าเริ่มต้น
+                  </label>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={cancelEditPrice} className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700">
+                      ยกเลิก
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={priceMutation.isPending}
+                      className="px-3 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700 disabled:opacity-50"
+                    >
+                      {priceMutation.isPending ? 'เพิ่ม...' : 'เพิ่ม'}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            ) : (
+              <button
+                type="button"
+                onClick={startAddPrice}
+                className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-primary-400 hover:text-primary-600 transition-colors"
+              >
+                + เพิ่มราคาใหม่
+              </button>
+            )}
+
+            {/* Close button */}
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setEditingProduct(null)}
+                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
+              >
+                ปิด
+              </button>
+            </div>
           </div>
-        </form>
+        )}
       </Modal>
     </div>
   );

@@ -1,3 +1,6 @@
+-- Add IN_TRANSIT value to TransferStatus enum
+ALTER TYPE "TransferStatus" ADD VALUE 'IN_TRANSIT';
+
 -- Add dispatch/transit fields to stock_transfers
 ALTER TABLE "stock_transfers" ADD COLUMN "dispatched_by_id" TEXT;
 ALTER TABLE "stock_transfers" ADD COLUMN "dispatched_at" TIMESTAMP(3);

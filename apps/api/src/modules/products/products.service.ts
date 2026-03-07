@@ -326,7 +326,7 @@ export class ProductsService {
       const batchNumber = await this.generateBatchNumber(tx);
 
       // Create transfer records sequentially to avoid transaction serialization errors
-      const transfers = [];
+      const transfers: any[] = [];
       for (const product of products) {
         const transfer = await tx.stockTransfer.create({
           data: {

@@ -469,6 +469,60 @@ export default function ContractCreatePage() {
     }
   };
 
+  // Smart Card: read ID card for customer modal (pre-fill form)
+  const handleSmartCardForModal = async () => {
+    setCardReaderLoading(true);
+
+    const status = await checkCardReaderStatus();
+    if (!status || status.status === 'no_pcsc') {
+      toast.error('ไม่พบเครื่องอ่านบัตร — กรุณาติดตั้ง BESTCHOICE Card Reader Service');
+      setCardReaderLoading(false);
+      return;
+    }
+    if (status.status === 'no_reader') {
+      toast.error('ไม่พบเครื่องอ่านบัตร — กรุณาเสียบเครื่องอ่านบัตร USB');
+      setCardReaderLoading(false);
+      return;
+    }
+    if (status.status === 'waiting') {
+      toast.error('กรุณาเสียบบัตรประชาชนเข้าเครื่องอ่านบัตร');
+      setCardReaderLoading(false);
+      return;
+    }
+
+    try {
+      const card = await readSmartCard();
+      // Pre-fill customer form
+      setCustForm((prev) => ({
+        ...prev,
+        prefix: card.prefix || prev.prefix,
+        firstName: card.firstName || prev.firstName,
+        lastName: card.lastName || prev.lastName,
+        nationalId: card.nationalId || prev.nationalId,
+        birthDate: card.birthDate ? card.birthDate.split('T')[0] : prev.birthDate,
+      }));
+      // Pre-fill ID card address
+      if (card.addressStructured) {
+        setCustAddrIdCard({
+          houseNo: card.addressStructured.houseNo || '',
+          moo: card.addressStructured.moo || '',
+          village: card.addressStructured.village || '',
+          soi: card.addressStructured.soi || '',
+          road: card.addressStructured.road || '',
+          subdistrict: card.addressStructured.subdistrict || '',
+          district: card.addressStructured.district || '',
+          province: card.addressStructured.province || '',
+          postalCode: '',
+        });
+      }
+      toast.success('อ่านบัตรสำเร็จ — กรอกข้อมูลให้อัตโนมัติแล้ว');
+    } catch (err: any) {
+      toast.error(err.message || 'ไม่สามารถอ่านบัตรได้');
+    } finally {
+      setCardReaderLoading(false);
+    }
+  };
+
   // OCR: scan ID card (Step 2)
   const handleOcrScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -570,6 +624,7 @@ export default function ContractCreatePage() {
       setSelectedCustomer(data);
       setShowCreateCustomer(false);
       setShowOcrPanel(false);
+      setNewCustomerPhone('');
       toast.success(`สร้างลูกค้าใหม่สำเร็จ: ${data.name}`);
 
       // Auto-add scanned ID card to pending documents
@@ -587,6 +642,7 @@ export default function ContractCreatePage() {
           setSelectedCustomer(fullCustomer);
           setShowCreateCustomer(false);
           setShowOcrPanel(false);
+          setNewCustomerPhone('');
           toast.success(`ลูกค้ามีอยู่แล้ว: ${existing.name} - เลือกให้อัตโนมัติ`);
           if (ocrScannedFile) {
             const preview = URL.createObjectURL(ocrScannedFile);
@@ -633,6 +689,8 @@ export default function ContractCreatePage() {
       });
     }
     setShowOcrPanel(false);
+    setShowCreateCustomer(false);
+    setNewCustomerPhone('');
   };
 
   const handleAddDoc = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -797,6 +855,17 @@ export default function ContractCreatePage() {
       {/* Step 2: Select Customer */}
       {step === 1 && (
         <div>
+          {/* Add new customer button - at top */}
+          <button
+            onClick={() => { resetCustForm(); setShowCustomerModal(true); }}
+            className="w-full mb-4 py-3 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors flex items-center justify-center gap-2"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" />
+            </svg>
+            เพิ่มลูกค้าใหม่
+          </button>
+
           {/* Smart Card Reader Section */}
           <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4 space-y-3">
             <div className="flex items-center justify-between">
@@ -972,13 +1041,6 @@ export default function ContractCreatePage() {
             )}
           </div>
 
-          {/* Add new customer button */}
-          <button
-            onClick={() => { resetCustForm(); setShowCustomerModal(true); }}
-            className="w-full mt-3 py-2.5 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-primary-400 hover:text-primary-600 transition-colors"
-          >
-            + เพิ่มลูกค้าใหม่
-          </button>
 
           {/* Credit check status for selected customer */}
           {selectedCustomer && (
@@ -1346,6 +1408,30 @@ export default function ContractCreatePage() {
       {/* Customer creation modal (full form like CustomersPage) */}
       <Modal isOpen={showCustomerModal} onClose={() => setShowCustomerModal(false)} title="เพิ่มลูกค้าใหม่" size="lg">
         <form onSubmit={(e) => { e.preventDefault(); createCustomerMutation.mutate(); }} className="space-y-5 max-h-[75vh] overflow-y-auto pr-1">
+
+          {/* Smart Card Reader - pre-fill form */}
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-green-800">อ่านบัตรประชาชน (Smart Card)</h3>
+                <p className="text-xs text-green-600 mt-0.5">เสียบบัตรเข้าเครื่องอ่าน — กรอกข้อมูลให้อัตโนมัติ</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleSmartCardForModal}
+                disabled={cardReaderLoading}
+                className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+              >
+                {cardReaderLoading ? 'กำลังอ่าน...' : 'อ่านบัตร'}
+              </button>
+            </div>
+            {cardReaderLoading && (
+              <div className="flex items-center gap-3 pt-2">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-green-600" />
+                <div className="text-sm text-green-700">กำลังอ่านข้อมูลจาก Smart Card...</div>
+              </div>
+            )}
+          </div>
 
           {/* ข้อมูลส่วนตัว */}
           <div className="border border-gray-200 rounded-lg p-4">

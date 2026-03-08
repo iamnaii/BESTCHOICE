@@ -624,6 +624,7 @@ export default function ContractCreatePage() {
       setSelectedCustomer(data);
       setShowCreateCustomer(false);
       setShowOcrPanel(false);
+      setNewCustomerPhone('');
       toast.success(`สร้างลูกค้าใหม่สำเร็จ: ${data.name}`);
 
       // Auto-add scanned ID card to pending documents
@@ -641,6 +642,7 @@ export default function ContractCreatePage() {
           setSelectedCustomer(fullCustomer);
           setShowCreateCustomer(false);
           setShowOcrPanel(false);
+          setNewCustomerPhone('');
           toast.success(`ลูกค้ามีอยู่แล้ว: ${existing.name} - เลือกให้อัตโนมัติ`);
           if (ocrScannedFile) {
             const preview = URL.createObjectURL(ocrScannedFile);
@@ -687,6 +689,8 @@ export default function ContractCreatePage() {
       });
     }
     setShowOcrPanel(false);
+    setShowCreateCustomer(false);
+    setNewCustomerPhone('');
   };
 
   const handleAddDoc = (e: React.ChangeEvent<HTMLInputElement>) => {

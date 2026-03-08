@@ -54,9 +54,9 @@ export class UsersService {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('ไม่พบผู้ใช้งาน');
 
-    const data: Prisma.UserUpdateInput = {};
+    const data: Prisma.UserUncheckedUpdateInput = {};
     if (dto.name !== undefined) data.name = dto.name;
-    if (dto.role !== undefined) data.role = dto.role;
+    if (dto.role !== undefined) data.role = dto.role as UserRole;
     if (dto.branchId !== undefined) data.branchId = dto.branchId || null;
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
     if (dto.password) data.password = await bcrypt.hash(dto.password, 10);

@@ -284,7 +284,7 @@ export default function ContractCreatePage() {
   });
 
   // Fallback POS config
-  const { data: posConfig } = useQuery<{ interestRate: number; minDownPaymentPct: number; minInstallmentMonths: number; maxInstallmentMonths: number }>({
+  const { data: posConfig } = useQuery<{ interestRate: number; minDownPaymentPct: number; storeCommissionPct: number; vatPct: number; minInstallmentMonths: number; maxInstallmentMonths: number }>({
     queryKey: ['pos-config'],
     queryFn: async () => { const { data } = await api.get('/sales/config'); return data; },
   });
@@ -336,7 +336,11 @@ export default function ContractCreatePage() {
   // Calculate installment
   const getSellingPrice = () => {
     if (!selectedProduct) return 0;
-    const price = selectedProduct.prices.find((p) => p.label === planType) || selectedProduct.prices.find((p) => p.isDefault);
+    // For installment contracts, prefer "ราคาผ่อน" price, then default, then first available
+    const price =
+      selectedProduct.prices.find((p) => p.label === 'ราคาผ่อน') ||
+      selectedProduct.prices.find((p) => p.isDefault) ||
+      selectedProduct.prices[0];
     return price ? parseFloat(price.amount) : 0;
   };
 
@@ -345,8 +349,8 @@ export default function ContractCreatePage() {
   // Use interest config if available, otherwise use posConfig
   const interestRate = interestConfig ? parseFloat(interestConfig.interestRate) : (posConfig?.interestRate ?? 0.08);
   const minDownPct = interestConfig ? parseFloat(interestConfig.minDownPaymentPct) : (posConfig?.minDownPaymentPct ?? 0.15);
-  const storeCommPct = interestConfig ? parseFloat(interestConfig.storeCommissionPct) : 0.10;
-  const vatPct = interestConfig ? parseFloat(interestConfig.vatPct) : 0.07;
+  const storeCommPct = interestConfig ? parseFloat(interestConfig.storeCommissionPct) : (posConfig?.storeCommissionPct ?? 0.10);
+  const vatPct = interestConfig ? parseFloat(interestConfig.vatPct) : (posConfig?.vatPct ?? 0.07);
   const minMonths = interestConfig?.minInstallmentMonths ?? posConfig?.minInstallmentMonths ?? 6;
   const maxMonths = interestConfig?.maxInstallmentMonths ?? posConfig?.maxInstallmentMonths ?? 12;
 

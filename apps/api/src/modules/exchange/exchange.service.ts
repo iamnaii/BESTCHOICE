@@ -155,11 +155,18 @@ export class ExchangeService {
         throw new BadRequestException(`จำนวนงวดต้องอยู่ระหว่าง ${minMonths}-${maxMonths} เดือน`);
       }
 
+      // Load store commission and VAT config
+      const storeCommConfig = await tx.systemConfig.findUnique({ where: { key: 'store_commission_pct' } });
+      const vatConfig = await tx.systemConfig.findUnique({ where: { key: 'vat_pct' } });
+      const storeCommissionPct = storeCommConfig ? Number(storeCommConfig.value) : 0.10;
+      const vatPct = vatConfig ? Number(vatConfig.value) : 0.07;
+
       // Include outstanding balance from old contract in the new principal
       const principal = sellingPrice - downPayment + outstandingBalance;
-      const monthlyRate = interestRate / 12;
-      const interestTotal = principal * monthlyRate * totalMonths;
-      const financedAmount = principal + interestTotal;
+      const storeCommission = principal * storeCommissionPct;
+      const interestTotal = principal * interestRate * totalMonths;
+      const vatAmount = (principal + storeCommission + interestTotal) * vatPct;
+      const financedAmount = principal + storeCommission + interestTotal + vatAmount;
       const monthlyPayment = Math.ceil(financedAmount / totalMonths);
 
       // Generate new contract number

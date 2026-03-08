@@ -978,6 +978,8 @@ model InterestConfig {
   productCategories    String[] @default([]) @map("product_categories")
   interestRate         Decimal  @map("interest_rate") @db.Decimal(5, 4)
   minDownPaymentPct    Decimal  @map("min_down_payment_pct") @db.Decimal(5, 4)
+  storeCommissionPct   Decimal  @default(0.10) @map("store_commission_pct") @db.Decimal(5, 4)
+  vatPct               Decimal  @default(0.07) @map("vat_pct") @db.Decimal(5, 4)
   maxInstallmentMonths Int      @map("max_installment_months")
   minInstallmentMonths Int      @map("min_installment_months")
   isActive             Boolean  @default(true) @map("is_active")

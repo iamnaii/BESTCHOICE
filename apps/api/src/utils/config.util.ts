@@ -9,6 +9,8 @@ const INSTALLMENT_CONFIG_KEYS = [
   'min_down_payment_pct',
   'min_installment_months',
   'max_installment_months',
+  'store_commission_pct',
+  'vat_pct',
 ] as const;
 
 export interface InstallmentConfig {
@@ -16,6 +18,8 @@ export interface InstallmentConfig {
   minDownPaymentPct: number;
   minInstallmentMonths: number;
   maxInstallmentMonths: number;
+  storeCommissionPct: number;
+  vatPct: number;
 }
 
 const DEFAULTS: InstallmentConfig = {
@@ -23,6 +27,8 @@ const DEFAULTS: InstallmentConfig = {
   minDownPaymentPct: 0.15,
   minInstallmentMonths: 6,
   maxInstallmentMonths: 12,
+  storeCommissionPct: 0.10,
+  vatPct: 0.07,
 };
 
 /**
@@ -43,6 +49,8 @@ export async function loadInstallmentConfig(
     minDownPaymentPct: getValue('min_down_payment_pct', DEFAULTS.minDownPaymentPct),
     minInstallmentMonths: getValue('min_installment_months', DEFAULTS.minInstallmentMonths),
     maxInstallmentMonths: getValue('max_installment_months', DEFAULTS.maxInstallmentMonths),
+    storeCommissionPct: getValue('store_commission_pct', DEFAULTS.storeCommissionPct),
+    vatPct: getValue('vat_pct', DEFAULTS.vatPct),
   };
 }
 
@@ -50,18 +58,22 @@ export async function loadInstallmentConfig(
  * Resolve installment config: prefer InterestConfig entity, fallback to system config
  */
 export function resolveInstallmentParams(
-  interestConfig: { interestRate: any; minDownPaymentPct: any; minInstallmentMonths: number; maxInstallmentMonths: number } | null,
+  interestConfig: { interestRate: any; minDownPaymentPct: any; storeCommissionPct?: any; vatPct?: any; minInstallmentMonths: number; maxInstallmentMonths: number } | null,
   systemConfig: InstallmentConfig,
   overrideInterestRate?: number | null,
 ): {
   interestRate: number;
   minDownPaymentPct: number;
+  storeCommissionPct: number;
+  vatPct: number;
   minInstallmentMonths: number;
   maxInstallmentMonths: number;
 } {
   return {
     interestRate: overrideInterestRate ?? (interestConfig ? Number(interestConfig.interestRate) : systemConfig.interestRate),
     minDownPaymentPct: interestConfig ? Number(interestConfig.minDownPaymentPct) : systemConfig.minDownPaymentPct,
+    storeCommissionPct: interestConfig?.storeCommissionPct != null ? Number(interestConfig.storeCommissionPct) : systemConfig.storeCommissionPct,
+    vatPct: interestConfig?.vatPct != null ? Number(interestConfig.vatPct) : systemConfig.vatPct,
     minInstallmentMonths: interestConfig ? interestConfig.minInstallmentMonths : systemConfig.minInstallmentMonths,
     maxInstallmentMonths: interestConfig ? interestConfig.maxInstallmentMonths : systemConfig.maxInstallmentMonths,
   };

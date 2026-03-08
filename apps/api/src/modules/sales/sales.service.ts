@@ -168,7 +168,7 @@ export class SalesService {
       throw new BadRequestException(`จำนวนงวดต้องอยู่ระหว่าง ${params.minInstallmentMonths}-${params.maxInstallmentMonths} เดือน`);
     }
 
-    const calc = calculateInstallment(netAmount, dto.downPayment, params.interestRate, dto.totalMonths);
+    const calc = calculateInstallment(netAmount, dto.downPayment, params.interestRate, dto.totalMonths, params.storeCommissionPct, params.vatPct);
 
     return this.prisma.$transaction(async (tx) => {
       await this.verifyProductInStock(tx, dto.productId);

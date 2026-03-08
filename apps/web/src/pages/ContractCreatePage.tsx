@@ -36,6 +36,8 @@ interface InterestConfig {
   productCategories: string[];
   interestRate: string;
   minDownPaymentPct: string;
+  storeCommissionPct: string;
+  vatPct: string;
   minInstallmentMonths: number;
   maxInstallmentMonths: number;
 }
@@ -343,6 +345,8 @@ export default function ContractCreatePage() {
   // Use interest config if available, otherwise use posConfig
   const interestRate = interestConfig ? parseFloat(interestConfig.interestRate) : (posConfig?.interestRate ?? 0.08);
   const minDownPct = interestConfig ? parseFloat(interestConfig.minDownPaymentPct) : (posConfig?.minDownPaymentPct ?? 0.15);
+  const storeCommPct = interestConfig ? parseFloat(interestConfig.storeCommissionPct) : 0.10;
+  const vatPct = interestConfig ? parseFloat(interestConfig.vatPct) : 0.07;
   const minMonths = interestConfig?.minInstallmentMonths ?? posConfig?.minInstallmentMonths ?? 6;
   const maxMonths = interestConfig?.maxInstallmentMonths ?? posConfig?.maxInstallmentMonths ?? 12;
 
@@ -353,8 +357,10 @@ export default function ContractCreatePage() {
   }, [minMonths, maxMonths, totalMonths]);
 
   const principal = Math.max(sellingPrice - downPayment, 0);
+  const storeCommission = principal * storeCommPct;
   const interestTotal = principal * interestRate * totalMonths;
-  const financedAmount = principal + interestTotal;
+  const vatAmount = (principal + storeCommission + interestTotal) * vatPct;
+  const financedAmount = principal + storeCommission + interestTotal + vatAmount;
   const monthlyPayment = totalMonths > 0 ? Math.ceil(financedAmount / totalMonths) : 0;
 
   // Helper: build structured address JSON from OCR result
@@ -1013,12 +1019,24 @@ export default function ContractCreatePage() {
                 <span>-{downPayment.toLocaleString()} ฿</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">ดอกเบี้ยรวม ({(interestRate * 100).toFixed(1)}% x {totalMonths} เดือน)</span>
-                <span>{interestTotal.toLocaleString()} ฿</span>
+                <span className="text-gray-600">ยอดปล่อย (Loan)</span>
+                <span>{principal.toLocaleString()} ฿</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">ยอดผ่อนรวม</span>
-                <span>{financedAmount.toLocaleString()} ฿</span>
+                <span className="text-gray-600">ค่าคอมหน้าร้าน ({(storeCommPct * 100).toFixed(0)}%)</span>
+                <span>{storeCommission.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">ดอกเบี้ยรวม ({(interestRate * 100).toFixed(1)}% x {totalMonths} เดือน)</span>
+                <span>{interestTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">VAT ({(vatPct * 100).toFixed(0)}%)</span>
+                <span>{vatAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">รวมยอดจัดไฟแนนซ์</span>
+                <span>{financedAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span>
               </div>
               <div className="border-t pt-2 flex justify-between text-base font-bold text-primary-700">
                 <span>ค่างวด/เดือน</span>

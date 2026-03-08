@@ -117,6 +117,11 @@ export default function ContractCreatePage() {
   const [creatingCustomer, setCreatingCustomer] = useState(false);
   const [ocrScannedFile, setOcrScannedFile] = useState<File | null>(null);
 
+  // Manual customer creation state (Step 2)
+  const [showManualCreate, setShowManualCreate] = useState(false);
+  const [manualForm, setManualForm] = useState({ name: '', phone: '', nationalId: '' });
+  const [manualCreating, setManualCreating] = useState(false);
+
   // Cleanup object URLs on unmount to prevent memory leaks
   const pendingDocsRef = useRef(pendingDocs);
   pendingDocsRef.current = pendingDocs;
@@ -149,7 +154,7 @@ export default function ContractCreatePage() {
   });
 
   // Fetch latest credit check for selected customer
-  const { data: latestCreditCheck } = useQuery<{ id: string; status: string; aiScore: number | null } | null>({
+  const { data: latestCreditCheck, isFetched: creditCheckFetched } = useQuery<{ id: string; status: string; aiScore: number | null } | null>({
     queryKey: ['customer-latest-credit', selectedCustomer?.id],
     queryFn: async () => {
       const { data } = await api.get(`/customers/${selectedCustomer!.id}/credit-check/latest`);
@@ -490,6 +495,45 @@ export default function ContractCreatePage() {
     }
   };
 
+  // Manual customer creation (Step 2)
+  const createCustomerManual = async () => {
+    if (!manualForm.name.trim()) { toast.error('กรุณากรอกชื่อ'); return; }
+    if (!manualForm.phone.trim()) { toast.error('กรุณากรอกเบอร์โทร'); return; }
+    if (!manualForm.nationalId.trim() || !/^\d{13}$/.test(manualForm.nationalId.trim())) {
+      toast.error('กรุณากรอกเลขบัตรประชาชน 13 หลัก');
+      return;
+    }
+    setManualCreating(true);
+    try {
+      const { data } = await api.post('/customers', {
+        name: manualForm.name.trim(),
+        phone: manualForm.phone.trim(),
+        nationalId: manualForm.nationalId.trim(),
+      });
+      setSelectedCustomer(data);
+      setShowManualCreate(false);
+      setManualForm({ name: '', phone: '', nationalId: '' });
+      toast.success(`สร้างลูกค้าใหม่สำเร็จ: ${data.name}`);
+    } catch (err: any) {
+      const existing = err.response?.data?.existingCustomer;
+      if (existing && err.response?.status === 409) {
+        try {
+          const { data: fullCustomer } = await api.get(`/customers/${existing.id}`);
+          setSelectedCustomer(fullCustomer);
+          setShowManualCreate(false);
+          setManualForm({ name: '', phone: '', nationalId: '' });
+          toast.success(`ลูกค้ามีอยู่แล้ว: ${existing.name} — เลือกให้อัตโนมัติ`);
+        } catch {
+          toast.error('ลูกค้ามีอยู่แล้วแต่โหลดข้อมูลไม่สำเร็จ กรุณาค้นหาด้วยตนเอง');
+        }
+      } else {
+        toast.error(err.response?.data?.message || 'ไม่สามารถสร้างลูกค้าได้');
+      }
+    } finally {
+      setManualCreating(false);
+    }
+  };
+
   // OCR: update existing customer info from scanned data (Step 4)
   const updateCustomerFromOcr = async () => {
     if (!ocrResult || !selectedCustomer) return;
@@ -600,13 +644,16 @@ export default function ContractCreatePage() {
 
   // Auto-advance to next step when customer is double-clicked and credit is approved
   useEffect(() => {
-    if (customerDoubleClicked && customerCreditApproved && step === 1) {
+    if (!customerDoubleClicked || step !== 1) return;
+    if (!creditCheckFetched) return; // wait for query to resolve
+    if (customerCreditApproved) {
       setCustomerDoubleClicked(false);
       goToStep(2);
-    } else if (customerDoubleClicked && latestCreditCheck && !customerCreditApproved) {
+    } else {
+      // Credit not approved or no credit check at all — reset flag, user sees the status panel
       setCustomerDoubleClicked(false);
     }
-  }, [customerDoubleClicked, customerCreditApproved, latestCreditCheck, step]);
+  }, [customerDoubleClicked, customerCreditApproved, creditCheckFetched, step]);
 
   const canNext = () => {
     if (step === 0) return !!selectedProduct;
@@ -868,6 +915,51 @@ export default function ContractCreatePage() {
               <div className="text-center py-8 text-gray-400 text-sm">ไม่พบลูกค้า</div>
             )}
           </div>
+
+          {/* Manual customer creation */}
+          {!showManualCreate ? (
+            <button
+              onClick={() => setShowManualCreate(true)}
+              className="w-full mt-3 py-2.5 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-primary-400 hover:text-primary-600 transition-colors"
+            >
+              + เพิ่มลูกค้าใหม่
+            </button>
+          ) : (
+            <div className="mt-3 border border-primary-200 bg-primary-50 rounded-lg p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-semibold text-primary-800">เพิ่มลูกค้าใหม่</h4>
+                <button onClick={() => setShowManualCreate(false)} className="text-xs text-gray-400 hover:text-gray-600">ยกเลิก</button>
+              </div>
+              <input
+                type="text"
+                placeholder="ชื่อ-นามสกุล *"
+                value={manualForm.name}
+                onChange={(e) => setManualForm(f => ({ ...f, name: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              />
+              <input
+                type="tel"
+                placeholder="เบอร์โทร *"
+                value={manualForm.phone}
+                onChange={(e) => setManualForm(f => ({ ...f, phone: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              />
+              <input
+                type="text"
+                placeholder="เลขบัตรประชาชน 13 หลัก *"
+                value={manualForm.nationalId}
+                onChange={(e) => setManualForm(f => ({ ...f, nationalId: e.target.value.replace(/\D/g, '').slice(0, 13) }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              />
+              <button
+                onClick={createCustomerManual}
+                disabled={manualCreating}
+                className="w-full py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
+              >
+                {manualCreating ? 'กำลังสร้าง...' : 'สร้างลูกค้า'}
+              </button>
+            </div>
+          )}
 
           {/* Credit check status for selected customer */}
           {selectedCustomer && (

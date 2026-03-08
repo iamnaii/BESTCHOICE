@@ -47,7 +47,7 @@ interface ContractDetail {
   branch: { id: string; name: string };
   salesperson: { id: string; name: string };
   reviewedBy: { id: string; name: string } | null;
-  interestConfig: { id: string; name: string } | null;
+  interestConfig: { id: string; name: string; storeCommissionPct?: string; vatPct?: string } | null;
   payments: Payment[];
   signatures: { id: string; signerType: string; signedAt: string }[];
   contractDocuments: any[];
@@ -429,13 +429,25 @@ export default function ContractDetailPage() {
                 <textarea value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
               </div>
               {/* Preview calculation */}
-              {editForm.sellingPrice > 0 && editForm.downPayment >= 0 && editForm.totalMonths > 0 && editForm.downPayment < editForm.sellingPrice && (
-                <div className="bg-gray-50 rounded-lg p-3 text-xs space-y-1">
-                  <div>เงินต้น: {(editForm.sellingPrice - editForm.downPayment).toLocaleString()} ฿</div>
-                  <div>ดอกเบี้ยรวม: {((editForm.sellingPrice - editForm.downPayment) * editForm.interestRate * editForm.totalMonths).toLocaleString()} ฿</div>
-                  <div className="font-semibold">ค่างวด/เดือน: {Math.ceil(((editForm.sellingPrice - editForm.downPayment) * (1 + editForm.interestRate * editForm.totalMonths)) / editForm.totalMonths).toLocaleString()} ฿</div>
-                </div>
-              )}
+              {editForm.sellingPrice > 0 && editForm.downPayment >= 0 && editForm.totalMonths > 0 && editForm.downPayment < editForm.sellingPrice && (() => {
+                const p = editForm.sellingPrice - editForm.downPayment;
+                const commPct = contract.interestConfig ? parseFloat(contract.interestConfig.storeCommissionPct || '0.10') : 0.10;
+                const vPct = contract.interestConfig ? parseFloat(contract.interestConfig.vatPct || '0.07') : 0.07;
+                const comm = p * commPct;
+                const interest = p * editForm.interestRate * editForm.totalMonths;
+                const vat = (p + comm + interest) * vPct;
+                const total = p + comm + interest + vat;
+                const monthly = Math.ceil(total / editForm.totalMonths);
+                return (
+                  <div className="bg-gray-50 rounded-lg p-3 text-xs space-y-1">
+                    <div>ยอดปล่อย: {p.toLocaleString()} ฿</div>
+                    <div>ค่าคอมหน้าร้าน ({(commPct * 100).toFixed(0)}%): {comm.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</div>
+                    <div>ดอกเบี้ยรวม: {interest.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</div>
+                    <div>VAT ({(vPct * 100).toFixed(0)}%): {vat.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</div>
+                    <div className="font-semibold">ค่างวด/เดือน: {monthly.toLocaleString()} ฿</div>
+                  </div>
+                );
+              })()}
               {editForm.totalMonths <= 0 && <div className="text-xs text-red-600">จำนวนงวดต้องมากกว่า 0</div>}
               {editForm.downPayment >= editForm.sellingPrice && editForm.sellingPrice > 0 && <div className="text-xs text-red-600">เงินดาวน์ต้องน้อยกว่าราคาขาย</div>}
               {editForm.sellingPrice <= 0 && <div className="text-xs text-red-600">ราคาขายต้องมากกว่า 0</div>}
@@ -456,8 +468,10 @@ export default function ContractDetailPage() {
               <Info label="ประเภทแผน" value={contract.planType} />
               <Info label="ราคาขาย" value={`${parseFloat(contract.sellingPrice).toLocaleString()} ฿`} />
               <Info label="เงินดาวน์" value={`${parseFloat(contract.downPayment).toLocaleString()} ฿`} />
+              <Info label="ยอดปล่อย (Loan)" value={`${(parseFloat(contract.sellingPrice) - parseFloat(contract.downPayment)).toLocaleString()} ฿`} />
               <Info label="อัตราดอกเบี้ย" value={`${(parseFloat(contract.interestRate) * 100).toFixed(1)}%${contract.interestConfig ? ` (${contract.interestConfig.name})` : ''}`} />
               <Info label="ดอกเบี้ยรวม" value={`${parseFloat(contract.interestTotal).toLocaleString()} ฿`} />
+              <Info label="ยอดจัดไฟแนนซ์" value={`${parseFloat(contract.financedAmount).toLocaleString()} ฿`} />
               <Info label="จำนวนงวด" value={`${contract.totalMonths} เดือน`} />
               <Info label="วันชำระ" value={contract.paymentDueDay ? `ทุกวันที่ ${contract.paymentDueDay}` : 'วันที่ 1'} />
               <Info label="พนักงานขาย" value={contract.salesperson.name} />

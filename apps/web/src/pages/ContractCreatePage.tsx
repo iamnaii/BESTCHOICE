@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery, useMutation } from '@tanstack/react-query';
-import api from '@/lib/api';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import api, { getErrorMessage } from '@/lib/api';
 import { compressImageForOcr } from '@/lib/compressImage';
 import { checkCardReaderStatus, readSmartCard } from '@/lib/cardReader';
 import PageHeader from '@/components/ui/PageHeader';
+import Modal from '@/components/ui/Modal';
+import AddressForm, { AddressData, emptyAddress, serializeAddress } from '@/components/ui/AddressForm';
 import toast from 'react-hot-toast';
 
 interface Product {
@@ -48,6 +50,41 @@ const DOCUMENT_TYPES = [
   { value: 'LINE_PROFILE', label: 'Profile LINE', required: false },
   { value: 'DEVICE_RECEIPT_PHOTO', label: 'รูปรับเครื่อง', required: false },
 ];
+
+interface CustReferenceData {
+  prefix: string;
+  firstName: string;
+  lastName: string;
+  phone: string;
+  relationship: string;
+}
+
+const emptyCustReference: CustReferenceData = { prefix: '', firstName: '', lastName: '', phone: '', relationship: '' };
+
+const emptyCustForm = {
+  prefix: '',
+  firstName: '',
+  lastName: '',
+  nickname: '',
+  nationalId: '',
+  isForeigner: false,
+  birthDate: '',
+  phone: '',
+  phoneSecondary: '',
+  email: '',
+  lineId: '',
+  facebookLink: '',
+  facebookName: '',
+  facebookFriends: '',
+  googleMapLink: '',
+  occupation: '',
+  occupationDetail: '',
+  salary: '',
+  workplace: '',
+};
+
+const custPrefixOptions = ['นาย', 'นาง', 'นางสาว'];
+const custRelationshipOptions = ['บิดา', 'มารดา', 'พี่น้อง', 'คู่สมรส', 'ญาติ', 'เพื่อน', 'อื่นๆ'];
 
 interface PendingDoc {
   id: string;
@@ -97,7 +134,6 @@ export default function ContractCreatePage() {
   const [totalMonths, setTotalMonths] = useState(6);
   const [notes, setNotes] = useState('');
   const [paymentDueDay, setPaymentDueDay] = useState<number>(1);
-  const [customerDoubleClicked, setCustomerDoubleClicked] = useState(false);
 
   // Documents
   const [pendingDocs, setPendingDocs] = useState<PendingDoc[]>([]);
@@ -117,10 +153,33 @@ export default function ContractCreatePage() {
   const [creatingCustomer, setCreatingCustomer] = useState(false);
   const [ocrScannedFile, setOcrScannedFile] = useState<File | null>(null);
 
-  // Manual customer creation state (Step 2)
-  const [showManualCreate, setShowManualCreate] = useState(false);
-  const [manualForm, setManualForm] = useState({ name: '', phone: '', nationalId: '' });
-  const [manualCreating, setManualCreating] = useState(false);
+  // Manual customer creation modal state (Step 2)
+  const [showCustomerModal, setShowCustomerModal] = useState(false);
+  const [custForm, setCustForm] = useState(emptyCustForm);
+  const [custAddrIdCard, setCustAddrIdCard] = useState<AddressData>(emptyAddress);
+  const [custAddrCurrent, setCustAddrCurrent] = useState<AddressData>(emptyAddress);
+  const [custSameAddress, setCustSameAddress] = useState(false);
+  const [custAddrWork, setCustAddrWork] = useState<AddressData>(emptyAddress);
+  const [custReferences, setCustReferences] = useState<CustReferenceData[]>([{ ...emptyCustReference }, { ...emptyCustReference }]);
+  const queryClient = useQueryClient();
+
+  // Sync custAddrCurrent when "same as ID card" is checked
+  useEffect(() => {
+    if (custSameAddress) setCustAddrCurrent(custAddrIdCard);
+  }, [custSameAddress, custAddrIdCard]);
+
+  const resetCustForm = () => {
+    setCustForm(emptyCustForm);
+    setCustAddrIdCard(emptyAddress);
+    setCustAddrCurrent(emptyAddress);
+    setCustAddrWork(emptyAddress);
+    setCustSameAddress(false);
+    setCustReferences([{ ...emptyCustReference }, { ...emptyCustReference }]);
+  };
+
+  const updateCustRef = (index: number, field: keyof CustReferenceData, value: string) => {
+    setCustReferences(prev => prev.map((r, i) => i === index ? { ...r, [field]: value } : r));
+  };
 
   // Cleanup object URLs on unmount to prevent memory leaks
   const pendingDocsRef = useRef(pendingDocs);
@@ -154,13 +213,62 @@ export default function ContractCreatePage() {
   });
 
   // Fetch latest credit check for selected customer
-  const { data: latestCreditCheck, isFetched: creditCheckFetched } = useQuery<{ id: string; status: string; aiScore: number | null } | null>({
+  const { data: latestCreditCheck } = useQuery<{ id: string; status: string; aiScore: number | null } | null>({
     queryKey: ['customer-latest-credit', selectedCustomer?.id],
     queryFn: async () => {
       const { data } = await api.get(`/customers/${selectedCustomer!.id}/credit-check/latest`);
       return data;
     },
     enabled: !!selectedCustomer,
+  });
+
+  // Create customer mutation (full form from modal)
+  const createCustomerMutation = useMutation({
+    mutationFn: async () => {
+      const name = `${custForm.firstName} ${custForm.lastName}`.trim();
+      const payload: Record<string, unknown> = {
+        nationalId: custForm.nationalId,
+        name,
+        phone: custForm.phone,
+      };
+      if (custForm.prefix) payload.prefix = custForm.prefix;
+      if (custForm.nickname) payload.nickname = custForm.nickname;
+      if (custForm.isForeigner) payload.isForeigner = true;
+      if (custForm.birthDate) payload.birthDate = new Date(custForm.birthDate).toISOString();
+      if (custForm.phoneSecondary) payload.phoneSecondary = custForm.phoneSecondary;
+      if (custForm.email) payload.email = custForm.email;
+      if (custForm.lineId) payload.lineId = custForm.lineId;
+      if (custForm.facebookLink) payload.facebookLink = custForm.facebookLink;
+      if (custForm.facebookName) payload.facebookName = custForm.facebookName;
+      if (custForm.facebookFriends) payload.facebookFriends = custForm.facebookFriends;
+      if (custForm.googleMapLink) payload.googleMapLink = custForm.googleMapLink;
+      if (custForm.occupation) payload.occupation = custForm.occupation;
+      if (custForm.occupationDetail) payload.occupationDetail = custForm.occupationDetail;
+      if (custForm.salary && !isNaN(parseFloat(custForm.salary))) payload.salary = parseFloat(custForm.salary);
+      if (custForm.workplace) payload.workplace = custForm.workplace;
+
+      const addrIdCard = serializeAddress(custAddrIdCard);
+      const addrCurrent = serializeAddress(custAddrCurrent);
+      const addrWork = serializeAddress(custAddrWork);
+      if (addrIdCard) payload.addressIdCard = addrIdCard;
+      if (addrCurrent) payload.addressCurrent = addrCurrent;
+      if (addrWork) payload.addressWork = addrWork;
+
+      const validRefs = custReferences.filter(r => r.firstName || r.lastName || r.phone);
+      if (validRefs.length > 0) payload.references = validRefs;
+
+      return api.post('/customers', payload);
+    },
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['customers-search'] });
+      toast.success('เพิ่มลูกค้าสำเร็จ');
+      setSelectedCustomer(res.data);
+      setShowCustomerModal(false);
+      resetCustForm();
+    },
+    onError: (err: unknown) => {
+      toast.error(getErrorMessage(err));
+    },
   });
 
   // Fetch interest config based on selected product category
@@ -495,45 +603,6 @@ export default function ContractCreatePage() {
     }
   };
 
-  // Manual customer creation (Step 2)
-  const createCustomerManual = async () => {
-    if (!manualForm.name.trim()) { toast.error('กรุณากรอกชื่อ'); return; }
-    if (!manualForm.phone.trim()) { toast.error('กรุณากรอกเบอร์โทร'); return; }
-    if (!manualForm.nationalId.trim() || !/^\d{13}$/.test(manualForm.nationalId.trim())) {
-      toast.error('กรุณากรอกเลขบัตรประชาชน 13 หลัก');
-      return;
-    }
-    setManualCreating(true);
-    try {
-      const { data } = await api.post('/customers', {
-        name: manualForm.name.trim(),
-        phone: manualForm.phone.trim(),
-        nationalId: manualForm.nationalId.trim(),
-      });
-      setSelectedCustomer(data);
-      setShowManualCreate(false);
-      setManualForm({ name: '', phone: '', nationalId: '' });
-      toast.success(`สร้างลูกค้าใหม่สำเร็จ: ${data.name}`);
-    } catch (err: any) {
-      const existing = err.response?.data?.existingCustomer;
-      if (existing && err.response?.status === 409) {
-        try {
-          const { data: fullCustomer } = await api.get(`/customers/${existing.id}`);
-          setSelectedCustomer(fullCustomer);
-          setShowManualCreate(false);
-          setManualForm({ name: '', phone: '', nationalId: '' });
-          toast.success(`ลูกค้ามีอยู่แล้ว: ${existing.name} — เลือกให้อัตโนมัติ`);
-        } catch {
-          toast.error('ลูกค้ามีอยู่แล้วแต่โหลดข้อมูลไม่สำเร็จ กรุณาค้นหาด้วยตนเอง');
-        }
-      } else {
-        toast.error(err.response?.data?.message || 'ไม่สามารถสร้างลูกค้าได้');
-      }
-    } finally {
-      setManualCreating(false);
-    }
-  };
-
   // OCR: update existing customer info from scanned data (Step 4)
   const updateCustomerFromOcr = async () => {
     if (!ocrResult || !selectedCustomer) return;
@@ -641,19 +710,6 @@ export default function ContractCreatePage() {
   };
 
   const customerCreditApproved = latestCreditCheck?.status === 'APPROVED';
-
-  // Auto-advance to next step when customer is double-clicked and credit is approved
-  useEffect(() => {
-    if (!customerDoubleClicked || step !== 1) return;
-    if (!creditCheckFetched) return; // wait for query to resolve
-    if (customerCreditApproved) {
-      setCustomerDoubleClicked(false);
-      goToStep(2);
-    } else {
-      // Credit not approved or no credit check at all — reset flag, user sees the status panel
-      setCustomerDoubleClicked(false);
-    }
-  }, [customerDoubleClicked, customerCreditApproved, creditCheckFetched, step]);
 
   const canNext = () => {
     if (step === 0) return !!selectedProduct;
@@ -896,7 +952,7 @@ export default function ContractCreatePage() {
               <div
                 key={c.id}
                 onClick={() => setSelectedCustomer(c)}
-                onDoubleClick={() => { setSelectedCustomer(c); setCustomerDoubleClicked(true); }}
+                onDoubleClick={() => { setSelectedCustomer(c); goToStep(2); }}
                 className={`p-4 rounded-lg border cursor-pointer transition-colors ${selectedCustomer?.id === c.id ? 'border-primary-500 bg-primary-50' : 'border-gray-200 hover:border-gray-300'}`}
               >
                 <div className="flex justify-between items-center">
@@ -916,50 +972,13 @@ export default function ContractCreatePage() {
             )}
           </div>
 
-          {/* Manual customer creation */}
-          {!showManualCreate ? (
-            <button
-              onClick={() => setShowManualCreate(true)}
-              className="w-full mt-3 py-2.5 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-primary-400 hover:text-primary-600 transition-colors"
-            >
-              + เพิ่มลูกค้าใหม่
-            </button>
-          ) : (
-            <div className="mt-3 border border-primary-200 bg-primary-50 rounded-lg p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-semibold text-primary-800">เพิ่มลูกค้าใหม่</h4>
-                <button onClick={() => setShowManualCreate(false)} className="text-xs text-gray-400 hover:text-gray-600">ยกเลิก</button>
-              </div>
-              <input
-                type="text"
-                placeholder="ชื่อ-นามสกุล *"
-                value={manualForm.name}
-                onChange={(e) => setManualForm(f => ({ ...f, name: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-              />
-              <input
-                type="tel"
-                placeholder="เบอร์โทร *"
-                value={manualForm.phone}
-                onChange={(e) => setManualForm(f => ({ ...f, phone: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-              />
-              <input
-                type="text"
-                placeholder="เลขบัตรประชาชน 13 หลัก *"
-                value={manualForm.nationalId}
-                onChange={(e) => setManualForm(f => ({ ...f, nationalId: e.target.value.replace(/\D/g, '').slice(0, 13) }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-              />
-              <button
-                onClick={createCustomerManual}
-                disabled={manualCreating}
-                className="w-full py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
-              >
-                {manualCreating ? 'กำลังสร้าง...' : 'สร้างลูกค้า'}
-              </button>
-            </div>
-          )}
+          {/* Add new customer button */}
+          <button
+            onClick={() => { resetCustForm(); setShowCustomerModal(true); }}
+            className="w-full mt-3 py-2.5 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-primary-400 hover:text-primary-600 transition-colors"
+          >
+            + เพิ่มลูกค้าใหม่
+          </button>
 
           {/* Credit check status for selected customer */}
           {selectedCustomer && (
@@ -1323,6 +1342,191 @@ export default function ContractCreatePage() {
           </div>
         )}
       </div>
+
+      {/* Customer creation modal (full form like CustomersPage) */}
+      <Modal isOpen={showCustomerModal} onClose={() => setShowCustomerModal(false)} title="เพิ่มลูกค้าใหม่" size="lg">
+        <form onSubmit={(e) => { e.preventDefault(); createCustomerMutation.mutate(); }} className="space-y-5 max-h-[75vh] overflow-y-auto pr-1">
+
+          {/* ข้อมูลส่วนตัว */}
+          <div className="border border-gray-200 rounded-lg p-4">
+            <h3 className="text-sm font-semibold text-gray-800 mb-3">ข้อมูลส่วนตัว</h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">คำนำหน้า</label>
+                <select value={custForm.prefix} onChange={(e) => setCustForm({ ...custForm, prefix: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white">
+                  <option value="">-- เลือก --</option>
+                  {custPrefixOptions.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">ชื่อ *</label>
+                <input type="text" value={custForm.firstName} onChange={(e) => setCustForm({ ...custForm, firstName: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">นามสกุล *</label>
+                <input type="text" value={custForm.lastName} onChange={(e) => setCustForm({ ...custForm, lastName: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">ชื่อเล่น</label>
+                <input type="text" value={custForm.nickname} onChange={(e) => setCustForm({ ...custForm, nickname: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">เลขบัตรประชาชน (13 หลัก) *</label>
+                <input type="text" maxLength={13} value={custForm.nationalId} onChange={(e) => setCustForm({ ...custForm, nationalId: e.target.value.replace(/\D/g, '') })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono" required />
+              </div>
+              <div className="flex items-end gap-3">
+                <div className="flex items-center gap-2 pb-2">
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" checked={custForm.isForeigner} onChange={(e) => setCustForm({ ...custForm, isForeigner: e.target.checked })} className="sr-only peer" />
+                    <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary-600"></div>
+                    <span className="ml-2 text-xs text-gray-600">ต่างด้าว</span>
+                  </label>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">วันเกิด</label>
+                <input type="date" value={custForm.birthDate} onChange={(e) => setCustForm({ ...custForm, birthDate: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+              </div>
+            </div>
+          </div>
+
+          {/* ที่อยู่ตามบัตรประชาชน */}
+          <div className="border border-gray-200 rounded-lg p-4">
+            <h3 className="text-sm font-semibold text-gray-800 mb-3">ที่อยู่ตามบัตรประชาชน</h3>
+            <AddressForm value={custAddrIdCard} onChange={setCustAddrIdCard} />
+          </div>
+
+          {/* ที่อยู่ปัจจุบัน */}
+          <div className="border border-gray-200 rounded-lg p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-800">ที่อยู่ปัจจุบัน</h3>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={custSameAddress} onChange={(e) => setCustSameAddress(e.target.checked)} className="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+                <span className="text-xs text-gray-600">เหมือนที่อยู่ตามบัตร</span>
+              </label>
+            </div>
+            {custSameAddress ? (
+              <p className="text-xs text-gray-400 italic">ใช้ที่อยู่เดียวกับที่อยู่ตามบัตรประชาชน</p>
+            ) : (
+              <AddressForm value={custAddrCurrent} onChange={setCustAddrCurrent} />
+            )}
+            <div className="mt-3">
+              <label className="block text-xs text-gray-500 mb-1">Link Google Map</label>
+              <input type="url" value={custForm.googleMapLink} onChange={(e) => setCustForm({ ...custForm, googleMapLink: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="https://maps.google.com/..." />
+            </div>
+          </div>
+
+          {/* ข้อมูลติดต่อ */}
+          <div className="border border-gray-200 rounded-lg p-4">
+            <h3 className="text-sm font-semibold text-gray-800 mb-3">ข้อมูลติดต่อ</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">เบอร์หลัก *</label>
+                <input type="tel" value={custForm.phone} onChange={(e) => setCustForm({ ...custForm, phone: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">เบอร์สำรอง</label>
+                <input type="tel" value={custForm.phoneSecondary} onChange={(e) => setCustForm({ ...custForm, phoneSecondary: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">อีเมล</label>
+                <input type="email" value={custForm.email} onChange={(e) => setCustForm({ ...custForm, email: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">LINE ID</label>
+                <input type="text" value={custForm.lineId} onChange={(e) => setCustForm({ ...custForm, lineId: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">ลิงก์ Facebook</label>
+                <input type="url" value={custForm.facebookLink} onChange={(e) => setCustForm({ ...custForm, facebookLink: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="https://facebook.com/..." />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">ชื่อ Facebook</label>
+                <input type="text" value={custForm.facebookName} onChange={(e) => setCustForm({ ...custForm, facebookName: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">จำนวนเพื่อน Facebook</label>
+                <input type="text" value={custForm.facebookFriends} onChange={(e) => setCustForm({ ...custForm, facebookFriends: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+              </div>
+            </div>
+          </div>
+
+          {/* ข้อมูลที่ทำงาน */}
+          <div className="border border-gray-200 rounded-lg p-4">
+            <h3 className="text-sm font-semibold text-gray-800 mb-3">ข้อมูลที่ทำงาน</h3>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">ชื่อที่ทำงาน</label>
+                <input type="text" value={custForm.workplace} onChange={(e) => setCustForm({ ...custForm, workplace: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">อาชีพ</label>
+                <input type="text" value={custForm.occupation} onChange={(e) => setCustForm({ ...custForm, occupation: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">รายละเอียดอาชีพ</label>
+                <input type="text" value={custForm.occupationDetail} onChange={(e) => setCustForm({ ...custForm, occupationDetail: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">เงินเดือน</label>
+                <input type="number" value={custForm.salary} onChange={(e) => setCustForm({ ...custForm, salary: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="0.00" />
+              </div>
+            </div>
+            <div className="mt-2">
+              <label className="block text-xs text-gray-500 mb-1">ที่อยู่ที่ทำงาน</label>
+              <AddressForm value={custAddrWork} onChange={setCustAddrWork} />
+            </div>
+          </div>
+
+          {/* รายชื่อบุคคลอ้างอิง */}
+          <div className="border border-gray-200 rounded-lg p-4">
+            <h3 className="text-sm font-semibold text-gray-800 mb-3">รายชื่อบุคคลอ้างอิง</h3>
+            <div className="space-y-4">
+              {custReferences.map((ref, idx) => (
+                <div key={idx}>
+                  <div className="text-xs font-medium text-gray-600 mb-2">บุคคลอ้างอิง {idx + 1}</div>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">คำนำหน้า</label>
+                      <select value={ref.prefix} onChange={(e) => updateCustRef(idx, 'prefix', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white">
+                        <option value="">-- เลือก --</option>
+                        {custPrefixOptions.map(p => <option key={p} value={p}>{p}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">ชื่อ</label>
+                      <input type="text" value={ref.firstName} onChange={(e) => updateCustRef(idx, 'firstName', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">นามสกุล</label>
+                      <input type="text" value={ref.lastName} onChange={(e) => updateCustRef(idx, 'lastName', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">เบอร์หลัก</label>
+                      <input type="tel" value={ref.phone} onChange={(e) => updateCustRef(idx, 'phone', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">ความสัมพันธ์</label>
+                      <select value={ref.relationship} onChange={(e) => updateCustRef(idx, 'relationship', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white">
+                        <option value="">-- เลือก --</option>
+                        {custRelationshipOptions.map(r => <option key={r} value={r}>{r}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Submit */}
+          <div className="flex justify-end gap-3 pt-2 sticky bottom-0 bg-white py-3 border-t">
+            <button type="button" onClick={() => setShowCustomerModal(false)} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg">ยกเลิก</button>
+            <button type="submit" disabled={createCustomerMutation.isPending} className="px-6 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium disabled:opacity-50">
+              {createCustomerMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

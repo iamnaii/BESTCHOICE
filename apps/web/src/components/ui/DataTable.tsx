@@ -19,6 +19,7 @@ interface DataTableProps<T> {
   isLoading?: boolean;
   emptyMessage?: string;
   onRowClick?: (item: T) => void;
+  onRowDoubleClick?: (item: T) => void;
   pagination?: PaginationInfo;
 }
 
@@ -28,6 +29,7 @@ function DataTable<T extends { id: string }>({
   isLoading,
   emptyMessage = 'ไม่พบข้อมูล',
   onRowClick,
+  onRowDoubleClick,
   pagination,
 }: DataTableProps<T>) {
   if (isLoading) {
@@ -64,7 +66,7 @@ function DataTable<T extends { id: string }>({
               </tr>
             ) : (
               data.map((item, idx) => (
-                <tr key={item.id} className={`hover:bg-gray-50 transition-colors${onRowClick ? ' cursor-pointer' : ''}`} onClick={() => onRowClick?.(item)}>
+                <tr key={item.id} className={`hover:bg-gray-50 transition-colors${onRowClick || onRowDoubleClick ? ' cursor-pointer' : ''}`} onClick={() => onRowClick?.(item)} onDoubleClick={() => onRowDoubleClick?.(item)}>
                   {columns.map((col) => (
                     <td key={col.key} className="px-4 py-3 text-sm text-gray-700">
                       {col.render

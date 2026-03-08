@@ -11,7 +11,7 @@ export class AuthController {
   constructor(private authService: AuthService) {}
 
   @Post('login')
-  @Throttle({ short: { ttl: 900000, limit: 5 } }) // 5 login attempts per 15 minutes
+  @Throttle({ short: { ttl: 60000, limit: 20 } }) // 20 login attempts per minute
   async login(@Body() loginDto: LoginDto) {
     return this.authService.login(loginDto);
   }

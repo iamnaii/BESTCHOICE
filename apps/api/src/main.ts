@@ -2,9 +2,14 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
+import { validateEnv } from './utils/env-validation';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
+
+  // Validate required environment variables before starting
+  validateEnv();
+
   const app = await NestFactory.create(AppModule);
 
   // Increase body size limit for base64 image uploads

@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { PaymentMethod } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
@@ -20,7 +21,7 @@ export class PaymentsService {
     }
 
     const contract = await this.prisma.contract.findUnique({ where: { id: contractId } });
-    if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+    if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
     if (!['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status)) {
       throw new BadRequestException('ไม่สามารถชำระเงินได้ สัญญาต้องอยู่ในสถานะ ACTIVE, OVERDUE หรือ DEFAULT');
     }
@@ -52,7 +53,7 @@ export class PaymentsService {
         data: {
           amountPaid: totalPaid,
           paidDate: isPaidInFull ? new Date() : null,
-          paymentMethod: paymentMethod as any,
+          paymentMethod: paymentMethod as PaymentMethod,
           status: isPaidInFull ? 'PAID' : 'PARTIALLY_PAID',
           recordedById,
           evidenceUrl: evidenceUrl || payment.evidenceUrl,
@@ -114,7 +115,7 @@ export class PaymentsService {
           data: {
             amountPaid: totalPaid,
             paidDate: isPaidInFull ? new Date() : null,
-            paymentMethod: paymentMethod as any,
+            paymentMethod: paymentMethod as PaymentMethod,
             status: isPaidInFull ? 'PAID' : 'PARTIALLY_PAID',
             recordedById,
             notes: notes || payment.notes,
@@ -141,7 +142,7 @@ export class PaymentsService {
   // ─── Get payments for a contract ──────────────────────
   async getContractPayments(contractId: string) {
     const contract = await this.prisma.contract.findUnique({ where: { id: contractId } });
-    if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+    if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
 
     return this.prisma.payment.findMany({
       where: { contractId },
@@ -240,8 +241,7 @@ export class PaymentsService {
   }
 
   // ─── Check if contract is fully paid ──────────────────
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private async checkContractCompletion(contractId: string, tx?: any) {
+  private async checkContractCompletion(contractId: string, tx?: { payment: { count: (...args: any[]) => Promise<number> }; contract: { update: (...args: any[]) => Promise<any> } }) {
     const db = tx || this.prisma;
     const unpaid = await db.payment.count({
       where: { contractId, status: { not: 'PAID' } },

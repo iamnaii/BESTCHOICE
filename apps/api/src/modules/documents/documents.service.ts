@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { SignerType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateTemplateDto, UpdateTemplateDto } from './dto/document.dto';
 import * as crypto from 'crypto';
@@ -59,7 +60,7 @@ export class DocumentsService {
       where: { id: contractId },
       include: { signatures: true },
     });
-    if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+    if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
 
     // Must be APPROVED before signing
     if (contract.workflowStatus !== 'APPROVED') {
@@ -73,7 +74,7 @@ export class DocumentsService {
     return this.prisma.signature.create({
       data: {
         contractId,
-        signerType: signerType as any,
+        signerType: signerType as SignerType,
         signatureImage,
         ipAddress: req.ip || null,
         deviceInfo: req.userAgent || null,
@@ -101,7 +102,7 @@ export class DocumentsService {
         signatures: true,
       },
     });
-    if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+    if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
 
     // Get template
     let htmlContent = '';
@@ -165,7 +166,7 @@ export class DocumentsService {
         signatures: true,
       },
     });
-    if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+    if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
 
     let htmlContent = '';
     if (templateId) {

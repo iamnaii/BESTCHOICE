@@ -164,7 +164,7 @@ export class CustomersService {
   async getContracts(id: string) {
     await this.findOne(id);
     return this.prisma.contract.findMany({
-      where: { customerId: id },
+      where: { customerId: id, deletedAt: null },
       include: {
         product: { select: { id: true, name: true, brand: true, model: true } },
         branch: { select: { id: true, name: true } },

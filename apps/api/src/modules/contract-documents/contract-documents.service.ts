@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { ContractDocumentType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UploadContractDocumentDto } from './dto/contract-document.dto';
 
@@ -19,9 +20,9 @@ export class ContractDocumentsService {
   constructor(private prisma: PrismaService) {}
 
   async findByContract(contractId: string) {
-    // Verify contract exists
+    // Verify contract exists and is not soft-deleted
     const contract = await this.prisma.contract.findUnique({ where: { id: contractId } });
-    if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+    if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
 
     return this.prisma.contractDocument.findMany({
       where: { contractId },
@@ -33,9 +34,9 @@ export class ContractDocumentsService {
   }
 
   async upload(contractId: string, dto: UploadContractDocumentDto, userId: string) {
-    // Verify contract exists
+    // Verify contract exists and is not soft-deleted
     const contract = await this.prisma.contract.findUnique({ where: { id: contractId } });
-    if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+    if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
 
     if (!VALID_DOCUMENT_TYPES.includes(dto.documentType)) {
       throw new BadRequestException(`ประเภทเอกสารไม่ถูกต้อง: ${dto.documentType}`);
@@ -44,7 +45,7 @@ export class ContractDocumentsService {
     return this.prisma.contractDocument.create({
       data: {
         contractId,
-        documentType: dto.documentType as any,
+        documentType: dto.documentType as ContractDocumentType,
         fileName: dto.fileName,
         fileUrl: dto.fileUrl,
         fileSize: dto.fileSize,

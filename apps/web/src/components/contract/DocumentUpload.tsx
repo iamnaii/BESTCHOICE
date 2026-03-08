@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { compressImageForOcr } from '@/lib/compressImage';
 import toast from 'react-hot-toast';
+import type { OcrResult } from '@/types/ocr';
 
 interface ContractDocument {
   id: string;
@@ -26,33 +27,6 @@ const DOCUMENT_TYPES = [
   { value: 'BANK_STATEMENT', label: 'Statement ธนาคาร' },
   { value: 'OTHER', label: 'อื่นๆ' },
 ];
-
-interface OcrAddressStructured {
-  houseNo: string;
-  moo: string;
-  village: string;
-  soi: string;
-  road: string;
-  subdistrict: string;
-  district: string;
-  province: string;
-  postalCode: string;
-}
-
-interface OcrResult {
-  nationalId: string | null;
-  nationalIdValid: boolean;
-  prefix: string | null;
-  firstName: string | null;
-  lastName: string | null;
-  fullName: string | null;
-  birthDate: string | null;
-  address: string | null;
-  addressStructured: OcrAddressStructured | null;
-  issueDate: string | null;
-  expiryDate: string | null;
-  confidence: number;
-}
 
 export default function DocumentUpload({ contractId, customerId }: { contractId: string; customerId?: string }) {
   const queryClient = useQueryClient();

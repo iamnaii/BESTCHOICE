@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { UserRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -34,7 +35,7 @@ export class UsersService {
         email: dto.email,
         password: hashedPassword,
         name: dto.name,
-        role: dto.role as any,
+        role: dto.role as UserRole,
         branchId: dto.branchId || null,
       },
       select: {
@@ -53,7 +54,7 @@ export class UsersService {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('ไม่พบผู้ใช้งาน');
 
-    const data: any = {};
+    const data: Prisma.UserUpdateInput = {};
     if (dto.name !== undefined) data.name = dto.name;
     if (dto.role !== undefined) data.role = dto.role;
     if (dto.branchId !== undefined) data.branchId = dto.branchId || null;

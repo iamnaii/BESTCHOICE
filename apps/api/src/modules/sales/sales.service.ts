@@ -1,6 +1,9 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { PaymentMethod, PlanType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateSaleDto } from './dto/sale.dto';
+import { calculateInstallment, generatePaymentSchedule } from '../../utils/installment.util';
+import { loadInstallmentConfig, resolveInstallmentParams } from '../../utils/config.util';
 
 @Injectable()
 export class SalesService {
@@ -125,7 +128,7 @@ export class SalesService {
           sellingPrice: dto.sellingPrice,
           discount,
           netAmount,
-          paymentMethod: dto.paymentMethod as any,
+          paymentMethod: dto.paymentMethod as PaymentMethod,
           amountReceived: dto.amountReceived || netAmount,
           bundleProductIds: dto.bundleProductIds || [],
           notes: dto.notes,
@@ -155,29 +158,17 @@ export class SalesService {
         })
       : null;
 
-    // Get system configs as fallback
-    const configs = await this.prisma.systemConfig.findMany({
-      where: { key: { in: ['interest_rate', 'min_down_payment_pct', 'min_installment_months', 'max_installment_months'] } },
-    });
-    const getConfig = (key: string, def: number) => parseFloat(configs.find((c) => c.key === key)?.value || String(def));
+    const systemConfig = await loadInstallmentConfig(this.prisma);
+    const params = resolveInstallmentParams(interestConfig, systemConfig, dto.interestRate);
 
-    const interestRate = dto.interestRate ?? (interestConfig ? Number(interestConfig.interestRate) : getConfig('interest_rate', 0.08));
-    const minDownPct = interestConfig ? Number(interestConfig.minDownPaymentPct) : getConfig('min_down_payment_pct', 0.15);
-    const minMonths = interestConfig ? interestConfig.minInstallmentMonths : getConfig('min_installment_months', 6);
-    const maxMonths = interestConfig ? interestConfig.maxInstallmentMonths : getConfig('max_installment_months', 12);
-
-    if (dto.downPayment < netAmount * minDownPct) {
-      throw new BadRequestException(`เงินดาวน์ขั้นต่ำ ${(minDownPct * 100).toFixed(0)}%`);
+    if (dto.downPayment < netAmount * params.minDownPaymentPct) {
+      throw new BadRequestException(`เงินดาวน์ขั้นต่ำ ${(params.minDownPaymentPct * 100).toFixed(0)}%`);
     }
-    if (dto.totalMonths < minMonths || dto.totalMonths > maxMonths) {
-      throw new BadRequestException(`จำนวนงวดต้องอยู่ระหว่าง ${minMonths}-${maxMonths} เดือน`);
+    if (dto.totalMonths < params.minInstallmentMonths || dto.totalMonths > params.maxInstallmentMonths) {
+      throw new BadRequestException(`จำนวนงวดต้องอยู่ระหว่าง ${params.minInstallmentMonths}-${params.maxInstallmentMonths} เดือน`);
     }
 
-    // Calculate installment
-    const principal = netAmount - dto.downPayment;
-    const interestTotal = principal * interestRate * dto.totalMonths;
-    const financedAmount = principal + interestTotal;
-    const monthlyPayment = Math.ceil(financedAmount / dto.totalMonths);
+    const calc = calculateInstallment(netAmount, dto.downPayment, params.interestRate, dto.totalMonths);
 
     return this.prisma.$transaction(async (tx) => {
       await this.verifyProductInStock(tx, dto.productId);
@@ -203,14 +194,14 @@ export class SalesService {
           productId: dto.productId,
           branchId: dto.branchId,
           salespersonId,
-          planType: dto.planType as any,
+          planType: dto.planType as PlanType,
           sellingPrice: netAmount,
           downPayment: dto.downPayment!,
-          interestRate,
+          interestRate: params.interestRate,
           totalMonths: dto.totalMonths!,
-          interestTotal,
-          financedAmount,
-          monthlyPayment,
+          interestTotal: calc.interestTotal,
+          financedAmount: calc.financedAmount,
+          monthlyPayment: calc.monthlyPayment,
           status: 'DRAFT',
           workflowStatus: 'CREATING',
           paymentDueDay: dto.paymentDueDay,
@@ -219,31 +210,10 @@ export class SalesService {
         },
       });
 
-      // Create payment schedule with custom due day
-      const now = new Date();
-      const dueDay = dto.paymentDueDay || 1;
-      const payments: Array<{
-        contractId: string;
-        installmentNo: number;
-        dueDate: Date;
-        amountDue: number;
-        status: 'PENDING';
-      }> = [];
-      for (let i = 1; i <= dto.totalMonths!; i++) {
-        const targetMonth = now.getMonth() + i;
-        const lastDay = new Date(now.getFullYear(), targetMonth + 1, 0).getDate();
-        const dueDate = new Date(now.getFullYear(), targetMonth, Math.min(dueDay, lastDay));
-        // Last installment adjusts for Math.ceil rounding to avoid overcharging
-        const isLast = i === dto.totalMonths!;
-        const amount = isLast ? financedAmount - monthlyPayment * (dto.totalMonths! - 1) : monthlyPayment;
-        payments.push({
-          contractId: contract.id,
-          installmentNo: i,
-          dueDate,
-          amountDue: amount,
-          status: 'PENDING' as const,
-        });
-      }
+      // Create payment schedule
+      const payments = generatePaymentSchedule(
+        contract.id, dto.totalMonths!, calc.financedAmount, calc.monthlyPayment, dto.paymentDueDay,
+      );
       await tx.payment.createMany({ data: payments });
 
       // Create sale record linked to contract
@@ -258,7 +228,7 @@ export class SalesService {
           sellingPrice: dto.sellingPrice,
           discount,
           netAmount,
-          paymentMethod: dto.paymentMethod as any,
+          paymentMethod: dto.paymentMethod as PaymentMethod,
           amountReceived: dto.downPayment,
           downPaymentAmount: dto.downPayment,
           contractId: contract.id,
@@ -299,7 +269,7 @@ export class SalesService {
           sellingPrice: dto.sellingPrice,
           discount,
           netAmount,
-          paymentMethod: dto.paymentMethod as any,
+          paymentMethod: dto.paymentMethod as PaymentMethod,
           amountReceived: downPayment > 0 ? downPayment : financeAmount,
           downPaymentAmount: downPayment,
           financeCompany: dto.financeCompany,
@@ -330,17 +300,7 @@ export class SalesService {
   }
 
   async getPosConfig() {
-    const configs = await this.prisma.systemConfig.findMany({
-      where: { key: { in: ['interest_rate', 'min_down_payment_pct', 'min_installment_months', 'max_installment_months'] } },
-    });
-    const getConfig = (key: string, def: number) => parseFloat(configs.find((c) => c.key === key)?.value || String(def));
-
-    return {
-      interestRate: getConfig('interest_rate', 0.08),
-      minDownPaymentPct: getConfig('min_down_payment_pct', 0.15),
-      minInstallmentMonths: getConfig('min_installment_months', 6),
-      maxInstallmentMonths: getConfig('max_installment_months', 12),
-    };
+    return loadInstallmentConfig(this.prisma);
   }
 
   async getDailySummary(date: string, branchId?: string) {

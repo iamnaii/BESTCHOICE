@@ -129,7 +129,7 @@ export class ContractsService {
     }
 
     // Calculate installment using shared utility
-    const calc = calculateInstallment(dto.sellingPrice, dto.downPayment, params.interestRate, dto.totalMonths);
+    const calc = calculateInstallment(dto.sellingPrice, dto.downPayment, params.interestRate, dto.totalMonths, params.storeCommissionPct, params.vatPct);
     const { interestTotal, financedAmount, monthlyPayment } = calc;
 
     // Create contract + payment schedule in transaction with serializable isolation
@@ -239,7 +239,7 @@ export class ContractsService {
 
     // Recalculate financials using shared utility
     const interestRate = params.interestRate;
-    const calc = calculateInstallment(sellingPrice, downPayment, interestRate, totalMonths);
+    const calc = calculateInstallment(sellingPrice, downPayment, interestRate, totalMonths, params.storeCommissionPct, params.vatPct);
     const { interestTotal, financedAmount, monthlyPayment } = calc;
 
     // Update contract + recreate payment schedule

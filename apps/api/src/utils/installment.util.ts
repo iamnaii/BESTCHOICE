@@ -6,27 +6,37 @@
 export interface InstallmentCalculation {
   principal: number;
   interestTotal: number;
+  storeCommission: number;
+  vatAmount: number;
   financedAmount: number;
   monthlyPayment: number;
 }
 
 /**
- * Calculate installment financials
- * Uses simple interest: interest = principal × rate × months
- * Monthly payment is ceiling'd, last installment adjusts to avoid overcharge
+ * Calculate installment financials with full formula:
+ * 1. principal (loanAmount) = sellingPrice - downPayment
+ * 2. storeCommission = principal × storeCommissionPct
+ * 3. interestTotal = principal × interestRate × totalMonths  (flat rate)
+ * 4. vatAmount = (principal + storeCommission + interestTotal) × vatPct
+ * 5. financedAmount = principal + storeCommission + interestTotal + vatAmount
+ * 6. monthlyPayment = ceil(financedAmount / totalMonths)
  */
 export function calculateInstallment(
   sellingPrice: number,
   downPayment: number,
   interestRate: number,
   totalMonths: number,
+  storeCommissionPct: number = 0,
+  vatPct: number = 0,
 ): InstallmentCalculation {
   const principal = sellingPrice - downPayment;
+  const storeCommission = principal * storeCommissionPct;
   const interestTotal = principal * interestRate * totalMonths;
-  const financedAmount = principal + interestTotal;
+  const vatAmount = (principal + storeCommission + interestTotal) * vatPct;
+  const financedAmount = principal + storeCommission + interestTotal + vatAmount;
   const monthlyPayment = Math.ceil(financedAmount / totalMonths);
 
-  return { principal, interestTotal, financedAmount, monthlyPayment };
+  return { principal, interestTotal, storeCommission, vatAmount, financedAmount, monthlyPayment };
 }
 
 export interface PaymentScheduleItem {

@@ -19,6 +19,18 @@ export class CreateInterestConfigDto {
   minDownPaymentPct: number;
 
   @IsNumber()
+  @Min(0)
+  @Max(1)
+  @IsOptional()
+  storeCommissionPct?: number;
+
+  @IsNumber()
+  @Min(0)
+  @Max(1)
+  @IsOptional()
+  vatPct?: number;
+
+  @IsNumber()
   @Min(1)
   minInstallmentMonths: number;
 
@@ -48,6 +60,18 @@ export class UpdateInterestConfigDto {
   @Max(1)
   @IsOptional()
   minDownPaymentPct?: number;
+
+  @IsNumber()
+  @Min(0)
+  @Max(1)
+  @IsOptional()
+  storeCommissionPct?: number;
+
+  @IsNumber()
+  @Min(0)
+  @Max(1)
+  @IsOptional()
+  vatPct?: number;
 
   @IsNumber()
   @Min(1)

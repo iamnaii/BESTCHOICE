@@ -38,6 +38,8 @@ export class InterestConfigService {
         productCategories: dto.productCategories,
         interestRate: dto.interestRate,
         minDownPaymentPct: dto.minDownPaymentPct,
+        storeCommissionPct: dto.storeCommissionPct,
+        vatPct: dto.vatPct,
         minInstallmentMonths: dto.minInstallmentMonths,
         maxInstallmentMonths: dto.maxInstallmentMonths,
       },

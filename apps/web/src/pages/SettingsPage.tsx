@@ -19,6 +19,8 @@ const configGroups = [
     items: [
       { key: 'interest_rate', label: 'อัตราดอกเบี้ยต่อเดือน (Flat rate)', suffix: '', type: 'number', step: '0.01' },
       { key: 'min_down_payment_pct', label: 'เงินดาวน์ขั้นต่ำ (%)', suffix: '', type: 'number', step: '0.01' },
+      { key: 'store_commission_pct', label: 'ค่าคอมหน้าร้าน (เช่น 0.10 = 10%)', suffix: '', type: 'number', step: '0.01' },
+      { key: 'vat_pct', label: 'VAT (เช่น 0.07 = 7%)', suffix: '', type: 'number', step: '0.01' },
     ],
   },
   {

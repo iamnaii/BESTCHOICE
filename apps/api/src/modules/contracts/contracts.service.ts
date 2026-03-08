@@ -1,6 +1,9 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { PaymentMethod, PlanType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateContractDto, UpdateContractDto } from './dto/contract.dto';
+import { calculateInstallment, generatePaymentSchedule } from '../../utils/installment.util';
+import { loadInstallmentConfig, resolveInstallmentParams } from '../../utils/config.util';
 
 @Injectable()
 export class ContractsService {
@@ -105,27 +108,19 @@ export class ContractsService {
       },
     });
 
-    // Get system configs as fallback
-    const configs = await this.prisma.systemConfig.findMany({
-      where: { key: { in: ['interest_rate', 'min_down_payment_pct', 'min_installment_months', 'max_installment_months'] } },
-    });
-    const getConfig = (key: string, def: number) => parseFloat(configs.find((c) => c.key === key)?.value || String(def));
-
-    // Use interest config if found, otherwise fallback to system config
-    const interestRate = dto.interestRate ?? (interestConfig ? Number(interestConfig.interestRate) : getConfig('interest_rate', 0.08));
-    const minDownPct = interestConfig ? Number(interestConfig.minDownPaymentPct) : getConfig('min_down_payment_pct', 0.15);
-    const minMonths = interestConfig ? interestConfig.minInstallmentMonths : getConfig('min_installment_months', 6);
-    const maxMonths = interestConfig ? interestConfig.maxInstallmentMonths : getConfig('max_installment_months', 12);
+    // Load configs with shared utility
+    const systemConfig = await loadInstallmentConfig(this.prisma);
+    const params = resolveInstallmentParams(interestConfig, systemConfig, dto.interestRate);
 
     // Validations
     if (dto.downPayment >= dto.sellingPrice) {
       throw new BadRequestException('เงินดาวน์ต้องน้อยกว่าราคาขาย');
     }
-    if (dto.downPayment < dto.sellingPrice * minDownPct) {
-      throw new BadRequestException(`เงินดาวน์ขั้นต่ำ ${(minDownPct * 100).toFixed(0)}% (${(dto.sellingPrice * minDownPct).toLocaleString()} บาท)`);
+    if (dto.downPayment < dto.sellingPrice * params.minDownPaymentPct) {
+      throw new BadRequestException(`เงินดาวน์ขั้นต่ำ ${(params.minDownPaymentPct * 100).toFixed(0)}% (${(dto.sellingPrice * params.minDownPaymentPct).toLocaleString()} บาท)`);
     }
-    if (dto.totalMonths < minMonths || dto.totalMonths > maxMonths) {
-      throw new BadRequestException(`จำนวนงวดต้องอยู่ระหว่าง ${minMonths}-${maxMonths} เดือน`);
+    if (dto.totalMonths < params.minInstallmentMonths || dto.totalMonths > params.maxInstallmentMonths) {
+      throw new BadRequestException(`จำนวนงวดต้องอยู่ระหว่าง ${params.minInstallmentMonths}-${params.maxInstallmentMonths} เดือน`);
     }
 
     // Validate paymentDueDay
@@ -133,11 +128,9 @@ export class ContractsService {
       throw new BadRequestException('วันที่ครบกำหนดชำระต้องอยู่ระหว่าง 1-28');
     }
 
-    // Calculate installment
-    const principal = dto.sellingPrice - dto.downPayment;
-    const interestTotal = principal * interestRate * dto.totalMonths;
-    const financedAmount = principal + interestTotal;
-    const monthlyPayment = Math.ceil(financedAmount / dto.totalMonths);
+    // Calculate installment using shared utility
+    const calc = calculateInstallment(dto.sellingPrice, dto.downPayment, params.interestRate, dto.totalMonths);
+    const { interestTotal, financedAmount, monthlyPayment } = calc;
 
     // Create contract + payment schedule in transaction with serializable isolation
     const contract = await this.prisma.$transaction(async (tx) => {
@@ -161,10 +154,10 @@ export class ContractsService {
           productId: dto.productId,
           branchId: dto.branchId,
           salespersonId,
-          planType: dto.planType as any,
+          planType: dto.planType as PlanType,
           sellingPrice: dto.sellingPrice,
           downPayment: dto.downPayment,
-          interestRate,
+          interestRate: params.interestRate,
           totalMonths: dto.totalMonths,
           interestTotal,
           financedAmount,
@@ -177,35 +170,10 @@ export class ContractsService {
         },
       });
 
-      // Create payment schedule with custom due day
-      const now = new Date();
-      const dueDay = dto.paymentDueDay || 1;
-      const payments: Array<{
-        contractId: string;
-        installmentNo: number;
-        dueDate: Date;
-        amountDue: number;
-        status: 'PENDING';
-      }> = [];
-
-      for (let i = 1; i <= dto.totalMonths; i++) {
-        // JavaScript Date handles month overflow correctly (e.g. month 13 = next January)
-        // but day overflow is unsafe (day 31 in Feb → March), so clamp to last day of month
-        const targetMonth = now.getMonth() + i;
-        const lastDay = new Date(now.getFullYear(), targetMonth + 1, 0).getDate();
-        const dueDate = new Date(now.getFullYear(), targetMonth, Math.min(dueDay, lastDay));
-        // Last installment adjusts for Math.ceil rounding to avoid overcharging
-        const isLast = i === dto.totalMonths;
-        const amount = isLast ? financedAmount - monthlyPayment * (dto.totalMonths - 1) : monthlyPayment;
-
-        payments.push({
-          contractId: newContract.id,
-          installmentNo: i,
-          dueDate,
-          amountDue: amount,
-          status: 'PENDING' as const,
-        });
-      }
+      // Create payment schedule using shared utility
+      const payments = generatePaymentSchedule(
+        newContract.id, dto.totalMonths, financedAmount, monthlyPayment, dto.paymentDueDay,
+      );
       await tx.payment.createMany({ data: payments });
 
       // Reserve product
@@ -251,35 +219,28 @@ export class ContractsService {
       ? await this.prisma.interestConfig.findUnique({ where: { id: contract.interestConfigId } })
       : null;
 
-    const configs = await this.prisma.systemConfig.findMany({
-      where: { key: { in: ['interest_rate', 'min_down_payment_pct', 'min_installment_months', 'max_installment_months'] } },
-    });
-    const getConfig = (key: string, def: number) => parseFloat(configs.find((c) => c.key === key)?.value || String(def));
-
-    const interestRate = dto.interestRate ?? Number(contract.interestRate);
-    const minDownPct = interestConfig ? Number(interestConfig.minDownPaymentPct) : getConfig('min_down_payment_pct', 0.15);
-    const minMonths = interestConfig ? interestConfig.minInstallmentMonths : getConfig('min_installment_months', 6);
-    const maxMonths = interestConfig ? interestConfig.maxInstallmentMonths : getConfig('max_installment_months', 12);
+    const systemConfig = await loadInstallmentConfig(this.prisma);
+    const params = resolveInstallmentParams(interestConfig, systemConfig, dto.interestRate ?? Number(contract.interestRate));
+    const { minDownPaymentPct, minInstallmentMonths, maxInstallmentMonths } = params;
 
     // Validations
     if (downPayment >= sellingPrice) {
       throw new BadRequestException('เงินดาวน์ต้องน้อยกว่าราคาขาย');
     }
-    if (downPayment < sellingPrice * minDownPct) {
-      throw new BadRequestException(`เงินดาวน์ขั้นต่ำ ${(minDownPct * 100).toFixed(0)}% (${(sellingPrice * minDownPct).toLocaleString()} บาท)`);
+    if (downPayment < sellingPrice * minDownPaymentPct) {
+      throw new BadRequestException(`เงินดาวน์ขั้นต่ำ ${(minDownPaymentPct * 100).toFixed(0)}% (${(sellingPrice * minDownPaymentPct).toLocaleString()} บาท)`);
     }
-    if (totalMonths < minMonths || totalMonths > maxMonths) {
-      throw new BadRequestException(`จำนวนงวดต้องอยู่ระหว่าง ${minMonths}-${maxMonths} เดือน`);
+    if (totalMonths < minInstallmentMonths || totalMonths > maxInstallmentMonths) {
+      throw new BadRequestException(`จำนวนงวดต้องอยู่ระหว่าง ${minInstallmentMonths}-${maxInstallmentMonths} เดือน`);
     }
     if (paymentDueDay !== undefined && paymentDueDay !== null && (paymentDueDay < 1 || paymentDueDay > 28)) {
       throw new BadRequestException('วันที่ครบกำหนดชำระต้องอยู่ระหว่าง 1-28');
     }
 
-    // Recalculate financials
-    const principal = sellingPrice - downPayment;
-    const interestTotal = principal * interestRate * totalMonths;
-    const financedAmount = principal + interestTotal;
-    const monthlyPayment = Math.ceil(financedAmount / totalMonths);
+    // Recalculate financials using shared utility
+    const interestRate = params.interestRate;
+    const calc = calculateInstallment(sellingPrice, downPayment, interestRate, totalMonths);
+    const { interestTotal, financedAmount, monthlyPayment } = calc;
 
     // Update contract + recreate payment schedule
     await this.prisma.$transaction(async (tx) => {
@@ -303,30 +264,7 @@ export class ContractsService {
         where: { contractId: id, status: 'PENDING' },
       });
 
-      const now = new Date();
-      const dueDay = paymentDueDay || 1;
-      const payments: Array<{
-        contractId: string;
-        installmentNo: number;
-        dueDate: Date;
-        amountDue: number;
-        status: 'PENDING';
-      }> = [];
-
-      for (let i = 1; i <= totalMonths; i++) {
-        const targetMonth = now.getMonth() + i;
-        const lastDay = new Date(now.getFullYear(), targetMonth + 1, 0).getDate();
-        const dueDate = new Date(now.getFullYear(), targetMonth, Math.min(dueDay, lastDay));
-        const isLast = i === totalMonths;
-        const amount = isLast ? financedAmount - monthlyPayment * (totalMonths - 1) : monthlyPayment;
-        payments.push({
-          contractId: id,
-          installmentNo: i,
-          dueDate,
-          amountDue: amount,
-          status: 'PENDING' as const,
-        });
-      }
+      const payments = generatePaymentSchedule(id, totalMonths, financedAmount, monthlyPayment, paymentDueDay);
       await tx.payment.createMany({ data: payments });
     });
 
@@ -417,8 +355,8 @@ export class ContractsService {
     }
 
     // Require both signatures before activation
-    const customerSigned = contract.signatures?.some((s: any) => s.signerType === 'CUSTOMER');
-    const staffSigned = contract.signatures?.some((s: any) => s.signerType === 'STAFF');
+    const customerSigned = contract.signatures?.some((s: { signerType: string }) => s.signerType === 'CUSTOMER');
+    const staffSigned = contract.signatures?.some((s: { signerType: string }) => s.signerType === 'STAFF');
     if (!customerSigned || !staffSigned) {
       throw new BadRequestException('ต้องลงนามครบทั้งลูกค้าและพนักงานก่อนเปิดใช้งานสัญญา');
     }
@@ -491,7 +429,7 @@ export class ContractsService {
             status: 'PAID',
             paidDate: new Date(),
             amountPaid: Number(payment.amountPaid) + payAmount,
-            paymentMethod: paymentMethod as any,
+            paymentMethod: paymentMethod as PaymentMethod,
             recordedById: userId,
           },
         });

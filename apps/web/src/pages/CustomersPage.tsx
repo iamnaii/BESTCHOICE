@@ -10,33 +10,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import AddressForm, { AddressData, emptyAddress, serializeAddress } from '@/components/ui/AddressForm';
-
-interface OcrAddressStructured {
-  houseNo: string;
-  moo: string;
-  village: string;
-  soi: string;
-  road: string;
-  subdistrict: string;
-  district: string;
-  province: string;
-  postalCode: string;
-}
-
-interface OcrResult {
-  nationalId: string | null;
-  nationalIdValid: boolean;
-  prefix: string | null;
-  firstName: string | null;
-  lastName: string | null;
-  fullName: string | null;
-  birthDate: string | null;
-  address: string | null;
-  addressStructured: OcrAddressStructured | null;
-  issueDate: string | null;
-  expiryDate: string | null;
-  confidence: number;
-}
+import type { OcrResult } from '@/types/ocr';
 
 
 interface Customer {

@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, POPaymentStatus, ProductCategory } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePODto, UpdatePODto, ReceivePODto, GoodsReceivingDto, UpdatePaymentDto } from './dto/create-po.dto';
 
@@ -119,7 +119,7 @@ export class PurchaseOrdersService {
           stockCheckRef: dto.stockCheckRef || null,
           createdById: userId,
           status: 'DRAFT',
-          paymentStatus: (dto.paymentStatus as any) || 'UNPAID',
+          paymentStatus: (dto.paymentStatus as POPaymentStatus) || 'UNPAID',
           paymentMethod: dto.paymentMethod || null,
           paidAmount: dto.paidAmount || 0,
           paymentNotes: dto.paymentNotes || null,
@@ -223,7 +223,7 @@ export class PurchaseOrdersService {
     return this.prisma.purchaseOrder.update({
       where: { id },
       data: {
-        paymentStatus: dto.paymentStatus as any,
+        paymentStatus: dto.paymentStatus as POPaymentStatus,
         ...(dto.paymentMethod !== undefined ? { paymentMethod: dto.paymentMethod || null } : {}),
         paidAmount: dto.paidAmount,
         ...(dto.paymentNotes !== undefined ? { paymentNotes: dto.paymentNotes || null } : {}),
@@ -279,7 +279,7 @@ export class PurchaseOrdersService {
       if (remaining <= 0) continue;
 
       const entry = supplierMap.get(po.supplierId) || {
-        supplier: po.supplier as any,
+        supplier: po.supplier as { id: string; name: string; contactName: string; phone: string },
         totalNet: 0,
         totalPaid: 0,
         totalRemaining: 0,
@@ -484,7 +484,7 @@ export class PurchaseOrdersService {
         });
 
         for (let i = 0; i < receiveItem.receivedQty; i++) {
-          const productCategory = (poItem.category as any) || 'PHONE_NEW';
+          const productCategory = (poItem.category as ProductCategory) || 'PHONE_NEW';
           let productName: string;
           if (productCategory === 'ACCESSORY') {
             const isCharger = poItem.accessoryType === 'ชุดชาร์จ';
@@ -639,7 +639,7 @@ export class PurchaseOrdersService {
 
         if (item.status === 'PASS') {
           // Build product name from PO item details
-          const productCategory = (poItem.category as any) || 'PHONE_NEW';
+          const productCategory = (poItem.category as ProductCategory) || 'PHONE_NEW';
           let productName: string;
           if (productCategory === 'ACCESSORY') {
             const isCharger = poItem.accessoryType === 'ชุดชาร์จ';

@@ -97,6 +97,7 @@ export default function ContractCreatePage() {
   const [totalMonths, setTotalMonths] = useState(6);
   const [notes, setNotes] = useState('');
   const [paymentDueDay, setPaymentDueDay] = useState<number>(1);
+  const [customerDoubleClicked, setCustomerDoubleClicked] = useState(false);
 
   // Documents
   const [pendingDocs, setPendingDocs] = useState<PendingDoc[]>([]);
@@ -597,6 +598,16 @@ export default function ContractCreatePage() {
 
   const customerCreditApproved = latestCreditCheck?.status === 'APPROVED';
 
+  // Auto-advance to next step when customer is double-clicked and credit is approved
+  useEffect(() => {
+    if (customerDoubleClicked && customerCreditApproved && step === 1) {
+      setCustomerDoubleClicked(false);
+      goToStep(2);
+    } else if (customerDoubleClicked && latestCreditCheck && !customerCreditApproved) {
+      setCustomerDoubleClicked(false);
+    }
+  }, [customerDoubleClicked, customerCreditApproved, latestCreditCheck, step]);
+
   const canNext = () => {
     if (step === 0) return !!selectedProduct;
     if (step === 1) return !!selectedCustomer && customerCreditApproved;
@@ -649,6 +660,7 @@ export default function ContractCreatePage() {
               <div
                 key={p.id}
                 onClick={() => setSelectedProduct(p)}
+                onDoubleClick={() => { setSelectedProduct(p); goToStep(1); }}
                 className={`p-4 rounded-lg border cursor-pointer transition-colors ${selectedProduct?.id === p.id ? 'border-primary-500 bg-primary-50' : 'border-gray-200 hover:border-gray-300'}`}
               >
                 <div className="flex justify-between items-start">
@@ -837,6 +849,7 @@ export default function ContractCreatePage() {
               <div
                 key={c.id}
                 onClick={() => setSelectedCustomer(c)}
+                onDoubleClick={() => { setSelectedCustomer(c); setCustomerDoubleClicked(true); }}
                 className={`p-4 rounded-lg border cursor-pointer transition-colors ${selectedCustomer?.id === c.id ? 'border-primary-500 bg-primary-50' : 'border-gray-200 hover:border-gray-300'}`}
               >
                 <div className="flex justify-between items-center">

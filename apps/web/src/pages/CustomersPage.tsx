@@ -454,6 +454,7 @@ export default function CustomersPage() {
         data={customers}
         isLoading={isLoading}
         emptyMessage="ไม่พบลูกค้า"
+        onRowDoubleClick={(c) => navigate(`/customers/${c.id}`)}
         pagination={result ? {
           page: result.page,
           totalPages: result.totalPages,

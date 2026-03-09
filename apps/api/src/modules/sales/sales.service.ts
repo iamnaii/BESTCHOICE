@@ -142,7 +142,7 @@ export class SalesService {
       });
 
       return sale;
-    });
+    }, { isolationLevel: 'Serializable' });
   }
 
   private async createInstallmentSale(dto: CreateSaleDto, salespersonId: string, netAmount: number, discount: number) {
@@ -174,6 +174,7 @@ export class SalesService {
       await this.verifyProductInStock(tx, dto.productId);
       await this.markBundleProductsSold(tx, dto.bundleProductIds || []);
       const saleNumber = await this.generateSaleNumber(tx);
+
 
       // Use provided contract number or auto-generate
       let contractNumber = dto.contractNumber;
@@ -287,7 +288,7 @@ export class SalesService {
       });
 
       return sale;
-    });
+    }, { isolationLevel: 'Serializable' });
   }
 
   private async generateSaleNumber(tx: Parameters<Parameters<typeof this.prisma.$transaction>[0]>[0]) {

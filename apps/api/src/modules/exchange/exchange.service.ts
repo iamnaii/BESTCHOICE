@@ -242,11 +242,14 @@ export class ExchangeService {
         // (e.g., day 31 in a 30-day month would roll into next month)
         const lastDayOfMonth = new Date(dueYear, adjustedMonth + 1, 0).getDate();
         const clampedDay = Math.min(dueDay, lastDayOfMonth);
+        // Last installment adjusts for Math.ceil rounding to avoid overcharging
+        const isLast = i === totalMonths;
+        const amount = isLast ? financedAmount - monthlyPayment * (totalMonths - 1) : monthlyPayment;
         payments.push({
           contractId: newContract.id,
           installmentNo: i,
           dueDate: new Date(dueYear, adjustedMonth, clampedDay),
-          amountDue: monthlyPayment,
+          amountDue: amount,
         });
       }
 

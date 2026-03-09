@@ -259,13 +259,25 @@ export class ContractsService {
         },
       });
 
-      // Delete existing unpaid payments and recreate
-      await tx.payment.deleteMany({
-        where: { contractId: id, status: 'PENDING' },
+      // Delete existing unpaid payments and recreate only remaining installments
+      const paidCount = await tx.payment.count({
+        where: { contractId: id, status: 'PAID' },
       });
 
-      const payments = generatePaymentSchedule(id, totalMonths, financedAmount, monthlyPayment, paymentDueDay);
-      await tx.payment.createMany({ data: payments });
+      await tx.payment.deleteMany({
+        where: { contractId: id, status: { not: 'PAID' } },
+      });
+
+      const remainingMonths = totalMonths - paidCount;
+      if (remainingMonths > 0) {
+        const payments = generatePaymentSchedule(id, remainingMonths, financedAmount - (monthlyPayment * paidCount), monthlyPayment, paymentDueDay);
+        // Offset installment numbers to continue after paid ones
+        const offsetPayments = payments.map((p) => ({
+          ...p,
+          installmentNo: p.installmentNo + paidCount,
+        }));
+        await tx.payment.createMany({ data: offsetPayments });
+      }
     });
 
     return this.findOne(id);
@@ -386,7 +398,9 @@ export class ContractsService {
     const paidPayments = contract.payments.filter((p) => p.status === 'PAID');
     const remainingMonths = contract.totalMonths - paidPayments.length;
     const monthlyInterest = Number(contract.interestTotal) / contract.totalMonths;
-    const monthlyPrincipal = (Number(contract.sellingPrice) - Number(contract.downPayment)) / contract.totalMonths;
+    // Use financedAmount (includes commission + VAT) minus interest for true principal
+    const truePrincipal = Number(contract.financedAmount) - Number(contract.interestTotal);
+    const monthlyPrincipal = truePrincipal / contract.totalMonths;
 
     const remainingPrincipal = monthlyPrincipal * remainingMonths;
     const remainingInterest = monthlyInterest * remainingMonths;

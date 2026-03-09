@@ -222,6 +222,7 @@ export class OverdueService {
 
     // Single bulk UPDATE: calculate late fees and set status in one query
     // Use EXTRACT(EPOCH) / 86400 to get total days (not just the day component of the interval)
+    // Skip payments with late_fee_waived flag to preserve manually adjusted fees
     const result = await this.prisma.$executeRaw`
       UPDATE "payments"
       SET
@@ -232,6 +233,7 @@ export class OverdueService {
         "status" = 'OVERDUE'
       WHERE "status" IN ('PENDING', 'PARTIALLY_PAID', 'OVERDUE')
         AND "due_date" < ${now}
+        AND "late_fee_waived" = false
         AND "contract_id" IN (
           SELECT "id" FROM "contracts"
           WHERE "status" IN ('ACTIVE', 'OVERDUE', 'DEFAULT')

@@ -350,6 +350,7 @@ model Payment {
   paidDate      DateTime?      @map("paid_date")
   paymentMethod PaymentMethod? @map("payment_method")
   lateFee       Decimal        @default(0) @map("late_fee") @db.Decimal(12, 2)
+  lateFeeWaived Boolean        @default(false) @map("late_fee_waived")
   evidenceUrl   String?        @map("evidence_url")
   notes         String?
   status        PaymentStatus  @default(PENDING)

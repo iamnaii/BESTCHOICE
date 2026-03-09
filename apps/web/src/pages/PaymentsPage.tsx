@@ -122,7 +122,7 @@ export default function PaymentsPage() {
   const openPayModal = useCallback((payment: PendingPayment) => {
     setSelectedPayment(payment);
     const remaining = parseFloat(payment.amountDue) + parseFloat(payment.lateFee) - parseFloat(payment.amountPaid);
-    setPayForm({ amount: Math.round(remaining), paymentMethod: 'CASH', notes: '' });
+    setPayForm({ amount: Math.round(remaining * 100) / 100, paymentMethod: 'CASH', notes: '' });
     setSlipResult(null);
     setShowPayModal(true);
   }, []);

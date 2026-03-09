@@ -63,10 +63,19 @@ export class ReportsService {
     end.setHours(23, 59, 59, 999);
     const branchFilter = branchId ? { branchId } : {};
 
-    const [interestIncome, lateFeeIncome, totalPayments, newContracts] = await Promise.all([
-      this.prisma.contract.aggregate({
-        where: { createdAt: { gte: start, lte: end }, deletedAt: null, ...branchFilter },
-        _sum: { interestTotal: true },
+    const [interestIncomePayments, lateFeeIncome, totalPayments, newContracts] = await Promise.all([
+      // Calculate interest portion from payments actually received in this period
+      // Interest per installment = contract.interestTotal / contract.totalMonths
+      this.prisma.payment.findMany({
+        where: {
+          paidDate: { gte: start, lte: end },
+          status: 'PAID',
+          contract: { deletedAt: null, ...branchFilter },
+        },
+        select: {
+          amountPaid: true,
+          contract: { select: { interestTotal: true, totalMonths: true } },
+        },
       }),
       this.prisma.payment.aggregate({
         where: {
@@ -89,10 +98,16 @@ export class ReportsService {
       }),
     ]);
 
+    // Sum the interest portion of each payment received in this period
+    const interestIncome = interestIncomePayments.reduce((sum, p) => {
+      const monthlyInterest = Number(p.contract.interestTotal) / p.contract.totalMonths;
+      return sum + monthlyInterest;
+    }, 0);
+
     return {
       period: { start: startDate, end: endDate },
       revenue: {
-        interestIncome: Number(interestIncome._sum.interestTotal || 0),
+        interestIncome: Math.round(interestIncome),
         lateFeeIncome: Number(lateFeeIncome._sum.lateFee || 0),
         totalPaymentsReceived: Number(totalPayments._sum.amountPaid || 0),
         paymentCount: totalPayments._count || 0,

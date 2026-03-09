@@ -133,6 +133,13 @@ export default function ExchangePage() {
       toast.error('กรุณาระบุเงินดาวน์');
       return;
     }
+    if (quote) {
+      const minDown = quote.summary.newProductPrice * 0.15;
+      if (Number(downPayment) < minDown) {
+        toast.error(`เงินดาวน์ขั้นต่ำ 15% = ${minDown.toLocaleString()} บาท`);
+        return;
+      }
+    }
     setStep('confirm');
   };
 

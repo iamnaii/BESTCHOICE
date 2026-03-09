@@ -1,16 +1,17 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { X, Plus, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
 import type { Block, BlockType } from '@/types/template';
 import { BLOCK_TYPES } from '@/constants/blockTypes';
 import { AVAILABLE_VARIABLES, VARIABLE_GROUPS } from '@/constants/variables';
 import { useTemplateStore } from '@/store/templateStore';
-import VariableAutocomplete from './VariableAutocomplete';
+import RichTextEditor from './RichTextEditor';
 
 export default function BlockEditModal() {
   const { editingBlock, setEditingBlock, updateBlock } = useTemplateStore();
   const [form, setForm] = useState<Partial<Block>>({});
   const [showVarPanel, setShowVarPanel] = useState(true);
   const [expandedGroup, setExpandedGroup] = useState<string | null>('สัญญา');
+  const editorRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (editingBlock) {
@@ -55,14 +56,25 @@ export default function BlockEditModal() {
     }));
   };
 
-  // Insert variable at end of content
+  // Insert variable into the Tiptap editor at cursor position
   const insertVariable = (key: string) => {
     const tag = `{{= ${key}}}`;
+    // Try to insert at cursor via Tiptap editor
+    const hiddenInput = editorRef.current?.querySelector('input[data-editor-id="rich-text"]') as any;
+    if (hiddenInput?.__tiptapEditor) {
+      const editor = hiddenInput.__tiptapEditor;
+      editor.chain().focus().insertContent(`<span data-variable="${key}" class="variable-tag">${tag}</span>&nbsp;`).run();
+      return;
+    }
+    // Fallback: append to content
     setForm(prev => ({
       ...prev,
       content: (prev.content || '') + tag,
     }));
   };
+
+  // Check if this block type should use rich text editor
+  const useRichText = !['payment-table', 'signature-block', 'photo-attachment'].includes(form.type || '');
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -78,7 +90,7 @@ export default function BlockEditModal() {
         {/* Body - 2 columns */}
         <div className="flex-1 overflow-hidden flex">
           {/* Left: Edit form */}
-          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4" ref={editorRef}>
             {/* Block type */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">ประเภท</label>
@@ -119,20 +131,29 @@ export default function BlockEditModal() {
               </div>
             )}
 
-            {/* Content */}
+            {/* Content - Rich Text Editor or textarea */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 เนื้อหา
                 <span className="ml-2 text-xs text-gray-400 font-normal">
-                  คลิกตัวแปรด้านขวาเพื่อแทรก หรือพิมพ์ {'{{ '} เพื่อค้นหา
+                  คลิกตัวแปรด้านขวาเพื่อแทรก | จัดรูปแบบด้วย toolbar ด้านบน
                 </span>
               </label>
-              <VariableAutocomplete
-                value={form.content || ''}
-                onChange={content => setForm({ ...form, content })}
-                placeholder="พิมพ์เนื้อหา... คลิกตัวแปรด้านขวาเพื่อแทรกอัตโนมัติ"
-                rows={12}
-              />
+              {useRichText ? (
+                <RichTextEditor
+                  value={form.content || ''}
+                  onChange={content => setForm({ ...form, content })}
+                  placeholder="พิมพ์เนื้อหา... ใช้ toolbar จัดรูปแบบ หรือคลิกตัวแปรด้านขวาเพื่อแทรก"
+                />
+              ) : (
+                <textarea
+                  value={form.content || ''}
+                  onChange={e => setForm({ ...form, content: e.target.value })}
+                  placeholder="เนื้อหาสำหรับ block นี้..."
+                  rows={6}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-violet-500 resize-y"
+                />
+              )}
             </div>
 
             {/* Sub-items for clause type */}
@@ -226,13 +247,13 @@ export default function BlockEditModal() {
                   <h4 className="text-[10px] font-bold text-gray-400 uppercase mb-2">ส่วนพิเศษ</h4>
                   <div className="space-y-1">
                     <button
-                      onClick={() => setForm(prev => ({ ...prev, content: (prev.content || '') + '\n@sign_customer' }))}
+                      onClick={() => insertVariable('SIGN_CUSTOMER')}
                       className="w-full text-left px-2 py-1.5 text-xs text-gray-700 rounded hover:bg-green-50 hover:text-green-700"
                     >
                       ลายเซ็นผู้เช่าซื้อ
                     </button>
                     <button
-                      onClick={() => setForm(prev => ({ ...prev, content: (prev.content || '') + '\n@sign_company' }))}
+                      onClick={() => insertVariable('SIGN_COMPANY')}
                       className="w-full text-left px-2 py-1.5 text-xs text-gray-700 rounded hover:bg-green-50 hover:text-green-700"
                     >
                       ลายเซ็นผู้ให้เช่าซื้อ

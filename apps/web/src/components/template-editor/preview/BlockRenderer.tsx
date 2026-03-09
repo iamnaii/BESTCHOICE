@@ -1,3 +1,4 @@
+import DOMPurify from 'dompurify';
 import type { Block } from '@/types/template';
 import { renderVariables, buildSampleContext } from '@/utils/templateRenderer';
 import { AVAILABLE_VARIABLES } from '@/constants/variables';
@@ -10,29 +11,61 @@ interface Props {
   previewMode: boolean;
 }
 
+/** Detect if content contains HTML tags (from rich text editor) */
+function isHtmlContent(content: string): boolean {
+  return /<[a-z][\s\S]*>/i.test(content);
+}
+
+/** Render HTML content with variable substitution and sanitization */
+function RichHtmlContent({ html, previewMode, ctx }: { html: string; previewMode: boolean; ctx: Record<string, any> }) {
+  const resolved = previewMode ? renderVariables(html, ctx) : html;
+  // In edit mode, highlight variable tags via CSS
+  const withHighlights = previewMode
+    ? resolved
+    : resolved.replace(
+        /\{\{=\s*([^}]*)\}\}/g,
+        '<span style="background:#ede9fe;color:#6d28d9;padding:1px 4px;border-radius:3px;font-family:monospace;font-size:0.85em">{{= $1}}</span>'
+      );
+  const clean = DOMPurify.sanitize(withHighlights, {
+    ADD_TAGS: ['span'],
+    ADD_ATTR: ['style', 'data-variable', 'class'],
+  });
+  return <div dangerouslySetInnerHTML={{ __html: clean }} />;
+}
+
 export default function BlockRenderer({ block, previewMode }: Props) {
   const ctx = buildSampleContext(AVAILABLE_VARIABLES);
   const resolved = previewMode ? renderVariables(block.content, ctx) : '';
+  const isRich = isHtmlContent(block.content);
 
   switch (block.type) {
     case 'contract-header':
       return (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', fontSize: '13px', color: '#4a4a4a' }}>
-          <VariableHighlighter text={block.content} previewMode={previewMode} resolvedText={resolved} />
+          {isRich
+            ? <RichHtmlContent html={block.content} previewMode={previewMode} ctx={ctx} />
+            : <VariableHighlighter text={block.content} previewMode={previewMode} resolvedText={resolved} />
+          }
         </div>
       );
 
     case 'heading':
       return (
         <h2 style={{ textAlign: 'center', fontWeight: 700, fontSize: '18px', margin: '16px 0 12px', letterSpacing: '0.5px', color: '#111' }}>
-          <VariableHighlighter text={block.content} previewMode={previewMode} resolvedText={resolved} />
+          {isRich
+            ? <RichHtmlContent html={block.content} previewMode={previewMode} ctx={ctx} />
+            : <VariableHighlighter text={block.content} previewMode={previewMode} resolvedText={resolved} />
+          }
         </h2>
       );
 
     case 'subheading':
       return (
         <h3 style={{ fontWeight: 700, fontSize: '15px', marginTop: '14px', marginBottom: '6px', color: '#222' }}>
-          <VariableHighlighter text={block.content} previewMode={previewMode} resolvedText={resolved} />
+          {isRich
+            ? <RichHtmlContent html={block.content} previewMode={previewMode} ctx={ctx} />
+            : <VariableHighlighter text={block.content} previewMode={previewMode} resolvedText={resolved} />
+          }
         </h3>
       );
 
@@ -40,6 +73,13 @@ export default function BlockRenderer({ block, previewMode }: Props) {
     case 'party-info':
     case 'product-info':
     case 'agreement':
+      if (isRich) {
+        return (
+          <div style={{ fontSize: '14px', lineHeight: 1.8, margin: '4px 0', color: '#1a1a1a' }}>
+            <RichHtmlContent html={block.content} previewMode={previewMode} ctx={ctx} />
+          </div>
+        );
+      }
       return (
         <p style={{ fontSize: '14px', lineHeight: 1.8, margin: '4px 0', textIndent: '2em', color: '#1a1a1a' }}>
           <VariableHighlighter text={block.content} previewMode={previewMode} resolvedText={resolved} />
@@ -69,7 +109,10 @@ export default function BlockRenderer({ block, previewMode }: Props) {
       }
       return (
         <div style={{ margin: '8px 0', fontSize: '14px' }}>
-          <VariableHighlighter text={block.content} previewMode={false} />
+          {isRich
+            ? <RichHtmlContent html={block.content} previewMode={false} ctx={ctx} />
+            : <VariableHighlighter text={block.content} previewMode={false} />
+          }
         </div>
       );
 
@@ -80,14 +123,26 @@ export default function BlockRenderer({ block, previewMode }: Props) {
           <p style={{ fontSize: '14px', fontWeight: 700, color: '#111' }}>
             ข้อ {block.clauseNumber} {block.clauseTitle}
           </p>
-          <p style={{ fontSize: '14px', lineHeight: 1.8, textIndent: '2em', marginTop: '4px', color: '#1a1a1a' }}>
-            <VariableHighlighter text={block.content} previewMode={previewMode} resolvedText={resolvedClause} />
-          </p>
+          <div style={{ fontSize: '14px', lineHeight: 1.8, marginTop: '4px', color: '#1a1a1a' }}>
+            {isRich
+              ? <RichHtmlContent html={block.content} previewMode={previewMode} ctx={ctx} />
+              : (
+                <p style={{ textIndent: '2em' }}>
+                  <VariableHighlighter text={block.content} previewMode={previewMode} resolvedText={resolvedClause} />
+                </p>
+              )
+            }
+          </div>
           {block.subItems && block.subItems.length > 0 && (
             <div style={{ marginLeft: '3em', marginTop: '4px' }}>
               {block.subItems.map((item, i) => {
                 const resolvedItem = previewMode ? renderVariables(item, ctx) : '';
-                return (
+                const subIsRich = isHtmlContent(item);
+                return subIsRich ? (
+                  <div key={i} style={{ fontSize: '13px', lineHeight: 1.7, marginBottom: '2px', color: '#333' }}>
+                    <RichHtmlContent html={item} previewMode={previewMode} ctx={ctx} />
+                  </div>
+                ) : (
                   <p key={i} style={{ fontSize: '13px', lineHeight: 1.7, marginBottom: '2px', color: '#333' }}>
                     <VariableHighlighter text={item} previewMode={previewMode} resolvedText={resolvedItem} />
                   </p>
@@ -124,6 +179,13 @@ export default function BlockRenderer({ block, previewMode }: Props) {
       );
 
     case 'attachment-list':
+      if (isRich) {
+        return (
+          <div style={{ margin: '12px 0', fontSize: '14px' }}>
+            <RichHtmlContent html={block.content} previewMode={previewMode} ctx={ctx} />
+          </div>
+        );
+      }
       return (
         <div style={{ margin: '12px 0', fontSize: '14px' }}>
           {block.content.split('\n').map((line, i) => (
@@ -136,6 +198,13 @@ export default function BlockRenderer({ block, previewMode }: Props) {
 
     case 'column':
     case 'column-vertical':
+      if (isRich) {
+        return (
+          <div style={{ margin: '8px 0', fontSize: '14px' }}>
+            <RichHtmlContent html={block.content} previewMode={previewMode} ctx={ctx} />
+          </div>
+        );
+      }
       return (
         <div style={{ margin: '8px 0', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', fontSize: '14px', alignItems: block.type === 'column-vertical' ? 'start' : 'center' }}>
           {block.content.split('||').map((col, i) => (
@@ -147,6 +216,13 @@ export default function BlockRenderer({ block, previewMode }: Props) {
       );
 
     case 'numbered':
+      if (isRich) {
+        return (
+          <div style={{ margin: '4px 0', marginLeft: '2em', fontSize: '14px' }}>
+            <RichHtmlContent html={block.content} previewMode={previewMode} ctx={ctx} />
+          </div>
+        );
+      }
       return (
         <div style={{ margin: '4px 0', marginLeft: '2em', fontSize: '14px' }}>
           <VariableHighlighter text={block.content} previewMode={previewMode} resolvedText={resolved} />
@@ -154,6 +230,13 @@ export default function BlockRenderer({ block, previewMode }: Props) {
       );
 
     default:
+      if (isRich) {
+        return (
+          <div style={{ fontSize: '14px', margin: '4px 0' }}>
+            <RichHtmlContent html={block.content} previewMode={previewMode} ctx={ctx} />
+          </div>
+        );
+      }
       return (
         <p style={{ fontSize: '14px', margin: '4px 0' }}>
           <VariableHighlighter text={block.content} previewMode={previewMode} resolvedText={resolved} />

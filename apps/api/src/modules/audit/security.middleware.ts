@@ -36,7 +36,7 @@ export class SecurityMiddleware implements NestMiddleware {
     // Skip scanning for:
     // - Large payloads (e.g., base64 image uploads) to avoid CPU spikes
     // - OCR / file-upload routes that carry base64 data (false positives from base64 content)
-    const skipScanPaths = ['/ocr/', '/product-photos', '/documents'];
+    const skipScanPaths = ['/ocr/', '/product-photos', '/documents', '/contracts/', '/contract-templates'];
     const shouldSkipScan = skipScanPaths.some(p => req.path.includes(p));
 
     if (!shouldSkipScan && req.body && typeof req.body === 'object') {

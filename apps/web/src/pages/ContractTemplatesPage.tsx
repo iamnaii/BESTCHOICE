@@ -1,10 +1,10 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import DOMPurify from 'dompurify';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
+import RichTextEditor from '@/components/ui/RichTextEditor';
 import toast from 'react-hot-toast';
 
 interface Template {
@@ -20,27 +20,27 @@ interface Template {
 const PLACEHOLDER_GROUPS = [
   {
     label: 'สัญญา',
-    items: ['{contract_number}', '{contract_date}', '{date}'],
+    items: ['{contract_number}', '{contract_date}', '{contract_date_day}', '{contract_date_month}', '{contract_date_year}', '{date}'],
   },
   {
     label: 'ลูกค้า',
-    items: ['{customer_name}', '{national_id}', '{customer_phone}', '{customer_address}'],
+    items: ['{customer_prefix}', '{customer_name}', '{national_id}', '{customer_phone}', '{customer_phone_secondary}', '{customer_address}', '{customer_address_id_card}', '{customer_address_current}', '{customer_zipcode}', '{customer_line_id}', '{customer_facebook}', '{customer_occupation}', '{customer_salary}', '{customer_workplace}', '{customer_address_work}', '{customer_references}'],
   },
   {
     label: 'สินค้า',
-    items: ['{product_name}', '{brand}', '{model}', '{imei}', '{serial_number}'],
+    items: ['{product_name}', '{brand}', '{model}', '{imei}', '{serial_number}', '{product_color}', '{product_storage}', '{product_category}'],
   },
   {
     label: 'การเงิน',
-    items: ['{selling_price}', '{down_payment}', '{monthly_payment}', '{total_months}', '{interest_rate}', '{interest_total}', '{financed_amount}'],
+    items: ['{selling_price}', '{down_payment}', '{monthly_payment}', '{total_months}', '{total_months_text}', '{interest_rate}', '{interest_total}', '{financed_amount}', '{financed_amount_text}'],
   },
   {
     label: 'งวดชำระ',
-    items: ['{payment_schedule_table}', '{first_payment_due}', '{last_payment_due}'],
+    items: ['{payment_schedule_table}', '{first_payment_due}', '{first_payment_day}', '{first_payment_month}', '{first_payment_year}', '{last_payment_due}'],
   },
   {
     label: 'สาขา/พนักงาน',
-    items: ['{branch_name}', '{salesperson_name}'],
+    items: ['{branch_name}', '{branch_address}', '{branch_phone}', '{salesperson_name}'],
   },
   {
     label: 'ลายเซ็น',
@@ -54,9 +54,6 @@ export default function ContractTemplatesPage() {
   const [editing, setEditing] = useState<Template | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [detectedPlaceholders, setDetectedPlaceholders] = useState<string[]>([]);
-  const [showPreview, setShowPreview] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const [form, setForm] = useState({
     name: '',
@@ -99,7 +96,6 @@ export default function ContractTemplatesPage() {
     setEditing(null);
     setForm({ name: '', type: 'STORE_DIRECT' as const, contentHtml: '' });
     setDetectedPlaceholders([]);
-    setShowPreview(false);
     setShowModal(true);
   };
 
@@ -107,7 +103,6 @@ export default function ContractTemplatesPage() {
     setEditing(t);
     setForm({ name: t.name, type: 'STORE_DIRECT' as const, contentHtml: t.contentHtml });
     setDetectedPlaceholders(t.placeholders || []);
-    setShowPreview(false);
     setShowModal(true);
   };
 
@@ -122,22 +117,28 @@ export default function ContractTemplatesPage() {
   };
 
   const insertPlaceholder = useCallback((placeholder: string) => {
-    const textarea = textareaRef.current;
-    if (!textarea) {
-      setForm(prev => ({ ...prev, contentHtml: prev.contentHtml + placeholder }));
-      return;
+    // Insert placeholder at cursor in the contentEditable editor
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0) {
+      const range = sel.getRangeAt(0);
+      // Check if selection is inside the editor
+      const editorEl = document.querySelector('[contenteditable="true"]');
+      if (editorEl && editorEl.contains(range.commonAncestorContainer)) {
+        range.deleteContents();
+        const textNode = document.createTextNode(placeholder);
+        range.insertNode(textNode);
+        // Move cursor after inserted text
+        range.setStartAfter(textNode);
+        range.setEndAfter(textNode);
+        sel.removeAllRanges();
+        sel.addRange(range);
+        // Trigger change
+        editorEl.dispatchEvent(new Event('input', { bubbles: true }));
+        return;
+      }
     }
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    setForm(prev => ({
-      ...prev,
-      contentHtml: prev.contentHtml.slice(0, start) + placeholder + prev.contentHtml.slice(end),
-    }));
-    // Restore cursor position after React re-render
-    requestAnimationFrame(() => {
-      textarea.selectionStart = textarea.selectionEnd = start + placeholder.length;
-      textarea.focus();
-    });
+    // Fallback: append to end
+    setForm(prev => ({ ...prev, contentHtml: prev.contentHtml + placeholder }));
   }, []);
 
   const processFile = useCallback(async (file: File) => {
@@ -163,7 +164,6 @@ export default function ContractTemplatesPage() {
       const { data } = await api.post('/contract-templates/generate-from-file', { fileBase64: base64 }, { timeout: 180000 });
       setForm(prev => ({ ...prev, contentHtml: data.contentHtml }));
       setDetectedPlaceholders(data.placeholders || []);
-      setShowPreview(true);
       toast.success(`AI สร้างเทมเพลตสำเร็จ (ใส่ ${data.placeholders?.length || 0} ตัวแปร)`);
     } catch (err: any) {
       const code = (err as { code?: string }).code;
@@ -175,23 +175,6 @@ export default function ContractTemplatesPage() {
     } finally {
       setIsGenerating(false);
     }
-  }, []);
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const file = e.dataTransfer.files[0];
-    if (file) processFile(file);
-  }, [processFile]);
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  }, []);
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
   }, []);
 
   const columns = [
@@ -267,7 +250,7 @@ export default function ContractTemplatesPage() {
                 {isGenerating ? (
                   <div className="flex items-center gap-2 px-3 py-2 bg-purple-50 rounded-lg">
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-600"></div>
-                    <span className="text-sm text-purple-700">กำลังสร้าง...</span>
+                    <span className="text-sm text-purple-700">AI กำลังสร้าง...</span>
                   </div>
                 ) : (
                   <label className="inline-flex items-center gap-1.5 px-3 py-2 bg-purple-50 text-purple-700 text-sm font-medium rounded-lg cursor-pointer hover:bg-purple-100 transition-colors">
@@ -284,99 +267,63 @@ export default function ContractTemplatesPage() {
               </div>
             </div>
 
-            {/* Row 2: Editor + Preview (2 columns) */}
-            <div className="grid grid-cols-2 gap-4" style={{ minHeight: '400px' }}>
-              {/* Left: HTML Editor */}
+            {/* Row 2: Rich Text Editor + Placeholder sidebar */}
+            <div className="grid grid-cols-[1fr_220px] gap-3" style={{ minHeight: '450px' }}>
+              {/* Left: WYSIWYG Editor */}
+              <div className="flex flex-col min-w-0">
+                <RichTextEditor
+                  value={form.contentHtml}
+                  onChange={(html) => setForm(prev => ({ ...prev, contentHtml: html }))}
+                  placeholder="พิมพ์เนื้อหาสัญญาที่นี่ หรือลากไฟล์มาวางเพื่อให้ AI สร้างให้..."
+                  minHeight="420px"
+                  onFileDrop={processFile}
+                />
+              </div>
+
+              {/* Right: Placeholder panel */}
               <div className="flex flex-col">
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-sm font-medium text-gray-700">HTML</label>
-                  <button
-                    type="button"
-                    onClick={() => setShowPreview(p => !p)}
-                    className="text-xs text-primary-600 hover:text-primary-700"
-                  >
-                    {showPreview ? 'ซ่อนตัวอย่าง' : 'ดูตัวอย่าง'}
-                  </button>
-                </div>
-                <div
-                  className={`relative flex-1 ${isDragging ? 'ring-2 ring-purple-400 ring-offset-2 rounded-lg' : ''}`}
-                  onDrop={handleDrop}
-                  onDragOver={handleDragOver}
-                  onDragLeave={handleDragLeave}
-                >
-                  <textarea
-                    ref={textareaRef}
-                    value={form.contentHtml}
-                    onChange={(e) => setForm(prev => ({ ...prev, contentHtml: e.target.value }))}
-                    className="w-full h-full min-h-[380px] px-3 py-2 border border-gray-300 rounded-lg text-xs font-mono resize-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    placeholder="วาง HTML ที่นี่ หรือลากไฟล์มาวางเพื่อให้ AI สร้างให้"
-                    spellCheck={false}
-                  />
-                  {isDragging && (
-                    <div className="absolute inset-0 bg-purple-50/90 border-2 border-dashed border-purple-400 rounded-lg flex items-center justify-center">
-                      <div className="text-center">
-                        <svg className="w-8 h-8 text-purple-500 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
-                        <p className="text-sm font-medium text-purple-700">วางไฟล์ที่นี่เพื่อสร้างเทมเพลตด้วย AI</p>
+                <label className="text-sm font-medium text-gray-700 mb-1">ตัวแปร</label>
+                <div className="flex-1 border border-gray-200 rounded-lg p-2.5 overflow-auto bg-gray-50">
+                  {/* Detected placeholders */}
+                  {detectedPlaceholders.length > 0 && (
+                    <div className="mb-2.5 pb-2 border-b border-gray-200">
+                      <div className="text-xs font-medium text-green-700 mb-1">
+                        ใช้แล้ว ({detectedPlaceholders.length})
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {detectedPlaceholders.map((p) => (
+                          <span key={p} className="text-[10px] px-1.5 py-0.5 bg-green-100 text-green-800 rounded cursor-pointer hover:bg-green-200" onClick={() => insertPlaceholder(p)}>{p}</span>
+                        ))}
                       </div>
                     </div>
                   )}
-                </div>
-              </div>
 
-              {/* Right: Preview */}
-              {showPreview ? (
-                <div className="flex flex-col">
-                  <label className="text-sm font-medium text-gray-700 mb-1">ตัวอย่าง</label>
-                  <div
-                    className="flex-1 border border-gray-200 rounded-lg p-4 overflow-auto bg-white min-h-[380px]"
-                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(form.contentHtml) }}
-                  />
-                </div>
-              ) : (
-                <div className="flex flex-col">
-                  <label className="text-sm font-medium text-gray-700 mb-1">ตัวแปรที่ใช้ได้</label>
-                  <div className="flex-1 border border-gray-200 rounded-lg p-3 overflow-auto bg-gray-50 min-h-[380px]">
-                    {/* Detected placeholders */}
-                    {detectedPlaceholders.length > 0 && (
-                      <div className="mb-3 pb-3 border-b border-gray-200">
-                        <div className="text-xs font-medium text-green-700 mb-1.5">
-                          ใช้ในเทมเพลตแล้ว ({detectedPlaceholders.length})
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {detectedPlaceholders.map((p) => (
-                            <span key={p} className="text-xs px-1.5 py-0.5 bg-green-100 text-green-800 rounded">{p}</span>
-                          ))}
+                  {/* Grouped placeholders */}
+                  <div className="space-y-2">
+                    {PLACEHOLDER_GROUPS.map((group) => (
+                      <div key={group.label}>
+                        <div className="text-[10px] font-semibold text-gray-500 mb-0.5 uppercase">{group.label}</div>
+                        <div className="flex flex-wrap gap-0.5">
+                          {group.items.map((p) => {
+                            const isUsed = detectedPlaceholders.includes(p);
+                            return (
+                              <button
+                                key={p}
+                                type="button"
+                                onClick={() => insertPlaceholder(p)}
+                                title={isUsed ? 'ใช้แล้ว (กดเพื่อเพิ่มอีก)' : 'กดเพื่อแทรกที่ตำแหน่ง cursor'}
+                                className={`text-[10px] px-1 py-0.5 rounded transition-colors ${isUsed ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-white text-gray-600 border border-gray-200 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200'}`}
+                              >
+                                {p.replace(/[{}]/g, '')}
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
-                    )}
-
-                    {/* Grouped placeholders */}
-                    <div className="space-y-2.5">
-                      {PLACEHOLDER_GROUPS.map((group) => (
-                        <div key={group.label}>
-                          <div className="text-xs font-medium text-gray-500 mb-1">{group.label}</div>
-                          <div className="flex flex-wrap gap-1">
-                            {group.items.map((p) => {
-                              const isUsed = detectedPlaceholders.includes(p);
-                              return (
-                                <button
-                                  key={p}
-                                  type="button"
-                                  onClick={() => insertPlaceholder(p)}
-                                  title={isUsed ? 'ใช้แล้ว (กดเพื่อเพิ่มอีก)' : 'กดเพื่อแทรกที่ตำแหน่ง cursor'}
-                                  className={`text-xs px-1.5 py-0.5 rounded transition-colors ${isUsed ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-white text-gray-700 border border-gray-200 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200'}`}
-                                >
-                                  {p}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                    ))}
                   </div>
                 </div>
-              )}
+              </div>
             </div>
 
             {/* Row 3: Actions */}

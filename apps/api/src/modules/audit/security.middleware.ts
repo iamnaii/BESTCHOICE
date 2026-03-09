@@ -4,13 +4,23 @@ import { Request, Response, NextFunction } from 'express';
 @Injectable()
 export class SecurityMiddleware implements NestMiddleware {
   // Pre-compile regex patterns once at class level
+  // NOTE: These must not false-positive on legitimate data like base64, HTML templates, etc.
   private static readonly suspiciousPatterns = [
     /<script\b[^>]*>/i,
-    /javascript:/i,
-    /on\w+\s*=/i,
+    /javascript\s*:/i,
+    /\bon(click|load|error|mouseover|focus|blur|submit|change|input)\s*=/i,
     /union\s+select/i,
     /;\s*drop\s+table/i,
     /--\s*$/,
+  ];
+
+  // Paths that carry HTML/base64 content and would false-positive on XSS patterns
+  private static readonly skipScanPaths = [
+    '/ocr/',
+    '/product-photos',
+    '/documents',
+    '/contracts/',
+    '/contract-templates',
   ];
 
   use(req: Request, res: Response, next: NextFunction) {
@@ -33,11 +43,9 @@ export class SecurityMiddleware implements NestMiddleware {
     );
 
     // Block suspicious payloads (basic XSS/injection prevention)
-    // Skip scanning for:
-    // - Large payloads (e.g., base64 image uploads) to avoid CPU spikes
-    // - OCR / file-upload routes that carry base64 data (false positives from base64 content)
-    const skipScanPaths = ['/ocr/', '/product-photos', '/documents'];
-    const shouldSkipScan = skipScanPaths.some(p => req.path.includes(p));
+    // Skip scanning for routes that carry base64 or HTML content (false positives)
+    const reqUrl = req.originalUrl || req.path || '';
+    const shouldSkipScan = SecurityMiddleware.skipScanPaths.some(p => reqUrl.includes(p));
 
     if (!shouldSkipScan && req.body && typeof req.body === 'object') {
       const contentLength = parseInt(req.headers['content-length'] || '0', 10);

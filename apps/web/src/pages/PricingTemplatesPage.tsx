@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import Modal from '@/components/ui/Modal';
 import toast from 'react-hot-toast';
@@ -81,7 +81,7 @@ export default function PricingTemplatesPage() {
       queryClient.invalidateQueries({ queryKey: ['pricing-templates'] });
       closeModal();
     },
-    onError: (err: any) => toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด'),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const deleteMutation = useMutation({
@@ -106,7 +106,7 @@ export default function PricingTemplatesPage() {
         toast.success(`นำเข้าสำเร็จทั้งหมด ${data.success} รายการ`);
       }
     },
-    onError: (err: any) => toast.error(err.response?.data?.message || 'นำเข้าไม่สำเร็จ'),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const downloadTemplate = () => {

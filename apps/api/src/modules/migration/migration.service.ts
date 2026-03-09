@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ImportCustomerDto, ImportContractDto, BulkImportDto } from './dto/import.dto';
+import { generateContractNumber } from '../../utils/sequence.util';
 
 export interface ImportResult {
   success: number;
@@ -151,14 +152,7 @@ export class MigrationService {
         });
 
         // Generate contract number
-        const lastContract = await this.prisma.contract.findFirst({
-          orderBy: { contractNumber: 'desc' },
-          select: { contractNumber: true },
-        });
-        const nextNum = lastContract
-          ? parseInt(lastContract.contractNumber.replace(/\D/g, '')) + 1
-          : 1;
-        const contractNumber = `CT${String(nextNum).padStart(6, '0')}`;
+        const contractNumber = await generateContractNumber(this.prisma);
 
         // Calculate financials
         const principal = c.sellingPrice - c.downPayment;

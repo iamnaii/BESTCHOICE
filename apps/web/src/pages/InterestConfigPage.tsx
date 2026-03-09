@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import Modal from '@/components/ui/Modal';
 import toast from 'react-hot-toast';
@@ -93,7 +93,7 @@ export default function InterestConfigPage() {
       queryClient.invalidateQueries({ queryKey: ['interest-configs'] });
       closeModal();
     },
-    onError: (err: any) => toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด'),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const deleteMutation = useMutation({

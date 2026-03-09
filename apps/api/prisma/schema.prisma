@@ -337,6 +337,7 @@ model Contract {
   @@index([deletedAt])
   @@index([status, deletedAt, branchId])
   @@index([workflowStatus])
+  @@index([parentContractId])
   @@map("contracts")
 }
 
@@ -358,7 +359,7 @@ model Payment {
   createdAt     DateTime       @default(now()) @map("created_at")
   updatedAt     DateTime       @updatedAt @map("updated_at")
 
-  contract   Contract @relation(fields: [contractId], references: [id])
+  contract   Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
   recordedBy User?    @relation("RecordedBy", fields: [recordedById], references: [id])
 
   @@unique([contractId, installmentNo])
@@ -367,6 +368,7 @@ model Payment {
   @@index([status])
   @@index([paidDate])
   @@index([status, dueDate])
+  @@index([recordedById])
   @@map("payments")
 }
 
@@ -470,7 +472,7 @@ model POItem {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  purchaseOrder  PurchaseOrder        @relation(fields: [poId], references: [id])
+  purchaseOrder  PurchaseOrder        @relation(fields: [poId], references: [id], onDelete: Cascade)
   receivingItems GoodsReceivingItem[]
 
   @@index([poId])
@@ -529,6 +531,7 @@ model Product {
   @@index([supplierId])
   @@index([deletedAt])
   @@index([createdAt])
+  @@index([branchId, status])
   @@map("products")
 }
 
@@ -546,7 +549,7 @@ model ProductPhoto {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  product    Product @relation(fields: [productId], references: [id])
+  product    Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   uploadedBy User?   @relation("ProductPhotoUploadedBy", fields: [uploadedById], references: [id])
 
   @@map("product_photos")
@@ -561,7 +564,7 @@ model ProductPrice {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  product Product @relation(fields: [productId], references: [id])
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@index([productId])
   @@map("product_prices")
@@ -628,7 +631,7 @@ model GoodsReceiving {
   notes        String?
   createdAt    DateTime @default(now()) @map("created_at")
 
-  po         PurchaseOrder        @relation(fields: [poId], references: [id])
+  po         PurchaseOrder        @relation(fields: [poId], references: [id], onDelete: Cascade)
   receivedBy User                 @relation("GoodsReceivedBy", fields: [receivedById], references: [id])
   items      GoodsReceivingItem[]
 
@@ -653,7 +656,7 @@ model GoodsReceivingItem {
   productId          String?             @unique @map("product_id")
   createdAt          DateTime            @default(now()) @map("created_at")
 
-  receiving GoodsReceiving @relation(fields: [receivingId], references: [id])
+  receiving GoodsReceiving @relation(fields: [receivingId], references: [id], onDelete: Cascade)
   poItem    POItem         @relation(fields: [poItemId], references: [id])
   product   Product?       @relation(fields: [productId], references: [id])
 
@@ -793,7 +796,7 @@ model EDocument {
   createdById  String   @map("created_by_id")
   createdAt    DateTime @default(now()) @map("created_at")
 
-  contract Contract @relation(fields: [contractId], references: [id])
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
 
   @@index([contractId])
   @@index([createdById])
@@ -809,7 +812,7 @@ model Signature {
   deviceInfo     String?    @map("device_info")
   signedAt       DateTime   @default(now()) @map("signed_at")
 
-  contract Contract @relation(fields: [contractId], references: [id])
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
 
   @@index([contractId])
   @@map("signatures")
@@ -876,6 +879,7 @@ model NotificationLog {
   @@index([relatedId])
   @@index([channel])
   @@index([createdAt])
+  @@index([status, channel])
   @@map("notification_logs")
 }
 
@@ -888,7 +892,7 @@ model CallLog {
   notes      String?
   createdAt  DateTime @default(now()) @map("created_at")
 
-  contract Contract @relation(fields: [contractId], references: [id])
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
   caller   User     @relation(fields: [callerId], references: [id])
 
   @@index([contractId])
@@ -1003,7 +1007,7 @@ model ContractDocument {
   uploadedById String               @map("uploaded_by_id")
   createdAt    DateTime             @default(now()) @map("created_at")
 
-  contract   Contract @relation(fields: [contractId], references: [id])
+  contract   Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
   uploadedBy User     @relation("DocumentUploadedBy", fields: [uploadedById], references: [id])
 
   @@index([contractId])
@@ -1168,7 +1172,7 @@ model BranchReceivingItem {
   rejectReason   String?  @map("reject_reason")
   createdAt      DateTime @default(now()) @map("created_at")
 
-  receiving BranchReceiving @relation(fields: [receivingId], references: [id])
+  receiving BranchReceiving @relation(fields: [receivingId], references: [id], onDelete: Cascade)
   product   Product         @relation(fields: [productId], references: [id])
 
   @@index([receivingId])

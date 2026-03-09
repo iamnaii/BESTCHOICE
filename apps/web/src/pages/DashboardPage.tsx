@@ -69,25 +69,25 @@ export default function DashboardPage() {
     staleTime: dashboardStaleTime,
   });
 
-  const { data: trend = [] } = useQuery<MonthlyTrend[]>({
+  const { data: trend = [], isError: trendError, refetch: refetchTrend } = useQuery<MonthlyTrend[]>({
     queryKey: ['dashboard-trend'],
     queryFn: async () => (await api.get('/dashboard/monthly-trend')).data,
     staleTime: dashboardStaleTime,
   });
 
-  const { data: topOverdue = [] } = useQuery<TopOverdue[]>({
+  const { data: topOverdue = [], isError: topOverdueError, refetch: refetchTopOverdue } = useQuery<TopOverdue[]>({
     queryKey: ['dashboard-top-overdue'],
     queryFn: async () => (await api.get('/dashboard/top-overdue')).data,
     staleTime: dashboardStaleTime,
   });
 
-  const { data: statusDist = [] } = useQuery<StatusDistribution[]>({
+  const { data: statusDist = [], isError: statusDistError, refetch: refetchStatusDist } = useQuery<StatusDistribution[]>({
     queryKey: ['dashboard-status-dist'],
     queryFn: async () => (await api.get('/dashboard/status-distribution')).data,
     staleTime: dashboardStaleTime,
   });
 
-  const { data: branchData = [] } = useQuery<BranchComparison[]>({
+  const { data: branchData = [], isError: branchError, refetch: refetchBranch } = useQuery<BranchComparison[]>({
     queryKey: ['dashboard-branches'],
     queryFn: async () => (await api.get('/dashboard/branch-comparison')).data,
     enabled: user?.role === 'OWNER',
@@ -223,7 +223,12 @@ export default function DashboardPage() {
         {/* Monthly Trend */}
         <div className="bg-white rounded-2xl border border-gray-100 p-6">
           <h3 className="text-sm font-semibold text-gray-900 mb-5">แนวโน้ม 12 เดือน</h3>
-          {trend.length > 0 ? (
+          {trendError ? (
+            <div className="text-center py-8">
+              <p className="text-sm text-red-500 mb-2">โหลดข้อมูลไม่สำเร็จ</p>
+              <button onClick={() => refetchTrend()} className="text-xs text-primary-600 hover:underline">ลองใหม่</button>
+            </div>
+          ) : trend.length > 0 ? (
             <div className="space-y-2.5">
               {trend.map((t) => (
                 <div key={t.month} className="flex items-center gap-3 text-xs">
@@ -263,7 +268,12 @@ export default function DashboardPage() {
         {/* Status Distribution */}
         <div className="bg-white rounded-2xl border border-gray-100 p-6">
           <h3 className="text-sm font-semibold text-gray-900 mb-5">สถานะสัญญา</h3>
-          {statusDist.length > 0 ? (
+          {statusDistError ? (
+            <div className="text-center py-8">
+              <p className="text-sm text-red-500 mb-2">โหลดข้อมูลไม่สำเร็จ</p>
+              <button onClick={() => refetchStatusDist()} className="text-xs text-primary-600 hover:underline">ลองใหม่</button>
+            </div>
+          ) : statusDist.length > 0 ? (
             <div className="space-y-4">
               {statusDist.map((s) => (
                 <div key={s.status} className="flex items-center gap-3">
@@ -290,6 +300,12 @@ export default function DashboardPage() {
       </div>
 
       {/* Top Overdue */}
+      {topOverdueError && (
+        <div className="bg-white rounded-2xl border border-red-100 p-6 mb-6 text-center">
+          <p className="text-sm text-red-500 mb-2">โหลดข้อมูลค้างชำระไม่สำเร็จ</p>
+          <button onClick={() => refetchTopOverdue()} className="text-xs text-primary-600 hover:underline">ลองใหม่</button>
+        </div>
+      )}
       {topOverdue.length > 0 && (
         <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-6">
           <h3 className="text-sm font-semibold text-gray-900 mb-5">สัญญาค้างชำระสูงสุด (Top 10)</h3>
@@ -335,6 +351,12 @@ export default function DashboardPage() {
       )}
 
       {/* Branch Comparison (OWNER only) */}
+      {user?.role === 'OWNER' && branchError && (
+        <div className="bg-white rounded-2xl border border-red-100 p-6 mb-6 text-center">
+          <p className="text-sm text-red-500 mb-2">โหลดข้อมูลสาขาไม่สำเร็จ</p>
+          <button onClick={() => refetchBranch()} className="text-xs text-primary-600 hover:underline">ลองใหม่</button>
+        </div>
+      )}
       {user?.role === 'OWNER' && branchData.length > 0 && (
         <div className="bg-white rounded-2xl border border-gray-100 p-6">
           <h3 className="text-sm font-semibold text-gray-900 mb-5">เปรียบเทียบสาขา</h3>

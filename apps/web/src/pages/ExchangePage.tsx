@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 
 interface Contract {
@@ -94,8 +94,7 @@ export default function ExchangePage() {
       setQuote(data);
       setStep('quote');
     },
-    onError: (err: { response?: { data?: { message?: string } } }) =>
-      toast.error(err.response?.data?.message || 'ไม่สามารถคำนวณได้'),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   // Execute exchange
@@ -116,8 +115,7 @@ export default function ExchangePage() {
       queryClient.invalidateQueries({ queryKey: ['exchange-products'] });
       toast.success('เปลี่ยนเครื่องสำเร็จ');
     },
-    onError: (err: { response?: { data?: { message?: string } } }) =>
-      toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด'),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const handleGetQuote = () => {

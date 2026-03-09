@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCallLogDto } from './dto/create-call-log.dto';
 import { Prisma } from '@prisma/client';
+import { BUSINESS_RULES } from '../../utils/config.util';
 
 @Injectable()
 export class OverdueService {
@@ -217,8 +218,8 @@ export class OverdueService {
       this.prisma.systemConfig.findUnique({ where: { key: 'late_fee_cap' } }),
     ]);
 
-    const lateFeePerDay = lateFeeConfig ? Number(lateFeeConfig.value) : 100;
-    const lateFeeCap = lateFeeCapConfig ? Number(lateFeeCapConfig.value) : 200;
+    const lateFeePerDay = lateFeeConfig ? Number(lateFeeConfig.value) : BUSINESS_RULES.LATE_FEE_PER_DAY;
+    const lateFeeCap = lateFeeCapConfig ? Number(lateFeeCapConfig.value) : BUSINESS_RULES.LATE_FEE_CAP;
 
     // Single bulk UPDATE: calculate late fees and set status in one query
     // Use EXTRACT(EPOCH) / 86400 to get total days (not just the day component of the interval)

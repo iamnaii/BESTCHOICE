@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import toast from 'react-hot-toast';
@@ -46,7 +46,7 @@ export default function OverduePage() {
       toast.success(`คำนวณค่าปรับเสร็จ: ${data.lateFees.updated} รายการ, สถานะ: ${data.statuses.overdueCount} OVERDUE, ${data.statuses.defaultCount} DEFAULT`);
       queryClient.invalidateQueries({ queryKey: ['overdue-payments'] });
     },
-    onError: (err: any) => toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด'),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   // Calculate summary stats (memoized to avoid recomputing on every render)

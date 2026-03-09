@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, Logger } from '@nes
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateExchangeDto } from './dto/create-exchange.dto';
 import { Decimal } from '@prisma/client/runtime/library';
+import { generateContractNumber } from '../../utils/sequence.util';
 
 @Injectable()
 export class ExchangeService {
@@ -170,14 +171,7 @@ export class ExchangeService {
       const monthlyPayment = Math.ceil(financedAmount / totalMonths);
 
       // Generate new contract number
-      const lastContract = await tx.contract.findFirst({
-        orderBy: { contractNumber: 'desc' },
-        select: { contractNumber: true },
-      });
-      const nextNum = lastContract
-        ? parseInt(lastContract.contractNumber.replace(/\D/g, '')) + 1
-        : 1;
-      const contractNumber = `CT${String(nextNum).padStart(6, '0')}`;
+      const contractNumber = await generateContractNumber(tx);
 
       // Close old contract
       await tx.contract.update({

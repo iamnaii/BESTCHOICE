@@ -3,7 +3,8 @@ import { PaymentMethod, PlanType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateContractDto, UpdateContractDto } from './dto/contract.dto';
 import { calculateInstallment, generatePaymentSchedule } from '../../utils/installment.util';
-import { loadInstallmentConfig, resolveInstallmentParams } from '../../utils/config.util';
+import { loadInstallmentConfig, resolveInstallmentParams, BUSINESS_RULES } from '../../utils/config.util';
+import { generateContractNumber } from '../../utils/sequence.util';
 
 @Injectable()
 export class ContractsService {
@@ -146,15 +147,8 @@ export class ContractsService {
             throw new BadRequestException('สินค้าไม่พร้อมขาย (อาจถูกจองแล้ว)');
           }
 
-          // Generate contract number using highest existing number
-          const lastContract = await tx.contract.findFirst({
-            orderBy: { contractNumber: 'desc' },
-            select: { contractNumber: true },
-          });
-          const lastNum = lastContract
-            ? parseInt(lastContract.contractNumber.replace(/\D/g, '')) || 0
-            : 0;
-          const contractNumber = `CT${String(lastNum + 1).padStart(6, '0')}`;
+          // Generate contract number
+          const contractNumber = await generateContractNumber(tx);
 
           const newContract = await tx.contract.create({
             data: {
@@ -450,7 +444,7 @@ export class ContractsService {
 
     const remainingPrincipal = monthlyPrincipal * remainingMonths;
     const remainingInterest = monthlyInterest * remainingMonths;
-    const discount = remainingInterest * 0.5;
+    const discount = remainingInterest * BUSINESS_RULES.EARLY_PAYOFF_DISCOUNT;
     const totalPayoff = remainingPrincipal + (remainingInterest - discount);
 
     // Add any unpaid late fees

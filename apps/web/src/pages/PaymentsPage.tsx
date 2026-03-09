@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import { compressImageForOcr } from '@/lib/compressImage';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
@@ -116,7 +116,7 @@ export default function PaymentsPage() {
       setSelectedPayment(null);
       setSlipResult(null);
     },
-    onError: (err: any) => toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด'),
+    onError: (err: any) => toast.error(getErrorMessage(err)),
   });
 
   const openPayModal = useCallback((payment: PendingPayment) => {
@@ -196,7 +196,7 @@ export default function PaymentsPage() {
       if (err.code === 'ECONNABORTED' || !err.response) {
         toast.error('ไม่สามารถเชื่อมต่อ OCR ได้ กรุณาลองใหม่');
       } else {
-        toast.error(err.response?.data?.message || 'ไม่สามารถอ่านสลิปได้');
+        toast.error(getErrorMessage(err));
       }
     } finally {
       setOcrSlipLoading(false);

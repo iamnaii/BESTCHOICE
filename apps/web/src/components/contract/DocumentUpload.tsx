@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import { compressImageForOcr } from '@/lib/compressImage';
 import toast from 'react-hot-toast';
 import type { OcrResult } from '@/types/ocr';
@@ -69,8 +69,8 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
       setNotes('');
       if (fileInputRef.current) fileInputRef.current.value = '';
     },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.message || 'อัปโหลดไม่สำเร็จ');
+    onError: (err: unknown) => {
+      toast.error(getErrorMessage(err));
     },
   });
 
@@ -82,8 +82,8 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
       toast.success('ลบเอกสารแล้ว');
       queryClient.invalidateQueries({ queryKey: ['contract-documents', contractId] });
     },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.message || 'ลบเอกสารไม่สำเร็จ');
+    onError: (err: unknown) => {
+      toast.error(getErrorMessage(err));
     },
   });
 
@@ -106,7 +106,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
       if (err.code === 'ECONNABORTED' || !err.response) {
         toast.error('OCR ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาลองใหม่อีกครั้ง');
       } else {
-        toast.error(err.response?.data?.message || 'ไม่สามารถอ่านบัตรประชาชนได้');
+        toast.error(getErrorMessage(err));
       }
     } finally {
       setOcrLoading(false);
@@ -167,7 +167,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
       toast.success('อัปเดตข้อมูลลูกค้าสำเร็จ');
       setShowOcrPanel(false);
     } catch (err: any) {
-      toast.error(err.response?.data?.message || 'อัปเดตข้อมูลลูกค้าไม่สำเร็จ');
+      toast.error(getErrorMessage(err));
     }
   };
 

@@ -373,6 +373,11 @@ export default function PurchaseOrdersPage() {
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
+    const invalidItems = items.filter((i) => !i.category || !i.quantity || !i.unitPrice);
+    if (invalidItems.length > 0) {
+      toast.error('กรุณากรอกหมวดหมู่ จำนวน และราคาให้ครบทุกรายการ');
+      return;
+    }
     createMutation.mutate({
       supplierId: form.supplierId,
       orderDate: form.orderDate,
@@ -402,6 +407,7 @@ export default function PurchaseOrdersPage() {
 
   const openDetailModal = async (po: PurchaseOrder) => {
     setSelectedPO(po);
+    setPODetail(null);
     setIsDetailModalOpen(true);
     try {
       const { data } = await api.get(`/purchase-orders/${po.id}`);
@@ -543,7 +549,7 @@ export default function PurchaseOrdersPage() {
   const subtotal = items.reduce((sum, i) => sum + Number(i.quantity || 0) * Number(i.unitPrice || 0), 0);
   const selectedSupplier = suppliers.find((s) => s.id === form.supplierId);
   const supplierHasVat = selectedSupplier?.hasVat ?? false;
-  const discountNum = Number(form.discount) || 0;
+  const discountNum = Math.min(Number(form.discount) || 0, subtotal);
   const subtotalAfterDiscount = subtotal - discountNum;
   const vatAmount = supplierHasVat ? Math.round(subtotalAfterDiscount * 0.07 * 100) / 100 : 0;
   const netAmount = subtotalAfterDiscount + vatAmount;
@@ -593,7 +599,7 @@ export default function PurchaseOrdersPage() {
       label: 'ยอดรวม',
       render: (po: PurchaseOrder) => (
         <div>
-          <span className="text-sm font-medium">{Number(po.netAmount || po.totalAmount).toLocaleString()} บาท</span>
+          <span className="text-sm font-medium">{Number(po.netAmount ?? po.totalAmount).toLocaleString()} บาท</span>
           {Number(po.discount) > 0 && (
             <div className="text-xs text-red-500">ส่วนลด -{Number(po.discount).toLocaleString()}</div>
           )}
@@ -1455,7 +1461,7 @@ export default function PurchaseOrdersPage() {
               </div>
               <div>
                 <span className="text-gray-500">ยอดสุทธิ:</span>{' '}
-                <span className="font-medium">{Number(selectedPO.netAmount || selectedPO.totalAmount).toLocaleString()} บาท</span>
+                <span className="font-medium">{Number(selectedPO.netAmount ?? selectedPO.totalAmount).toLocaleString()} บาท</span>
               </div>
               <div>
                 <span className="text-gray-500">การจ่ายเงิน:</span>{' '}
@@ -1491,10 +1497,10 @@ export default function PurchaseOrdersPage() {
                     <span>
                       <span className="text-gray-500">จ่ายแล้ว:</span>{' '}
                       <span className="font-medium text-lg text-green-700">{Number(selectedPO.paidAmount || 0).toLocaleString()}</span>
-                      <span className="text-gray-400"> / {Number(selectedPO.netAmount || selectedPO.totalAmount).toLocaleString()} บาท</span>
+                      <span className="text-gray-400"> / {Number(selectedPO.netAmount ?? selectedPO.totalAmount).toLocaleString()} บาท</span>
                     </span>
                     {(() => {
-                      const net = Number(selectedPO.netAmount || selectedPO.totalAmount);
+                      const net = Number(selectedPO.netAmount ?? selectedPO.totalAmount);
                       const paid = Number(selectedPO.paidAmount || 0);
                       const remaining = net - paid;
                       if (remaining > 0 && paid > 0) {
@@ -1507,11 +1513,11 @@ export default function PurchaseOrdersPage() {
                       return null;
                     })()}
                   </div>
-                  {Number(selectedPO.netAmount || selectedPO.totalAmount) > 0 && (
+                  {Number(selectedPO.netAmount ?? selectedPO.totalAmount) > 0 && (
                     <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
                       <div
                         className="bg-green-500 h-1.5 rounded-full"
-                        style={{ width: `${Math.min((Number(selectedPO.paidAmount || 0) / Number(selectedPO.netAmount || selectedPO.totalAmount)) * 100, 100)}%` }}
+                        style={{ width: `${Math.min((Number(selectedPO.paidAmount || 0) / Number(selectedPO.netAmount ?? selectedPO.totalAmount)) * 100, 100)}%` }}
                       />
                     </div>
                   )}
@@ -1701,7 +1707,7 @@ export default function PurchaseOrdersPage() {
               )}
               <div className="flex justify-between font-medium border-t pt-1">
                 <span>ยอดสุทธิ:</span>
-                <span>{Number(selectedPO.netAmount || selectedPO.totalAmount).toLocaleString()} บาท</span>
+                <span>{Number(selectedPO.netAmount ?? selectedPO.totalAmount).toLocaleString()} บาท</span>
               </div>
               {Number(selectedPO.paidAmount) > 0 && (
                 <>
@@ -1711,7 +1717,7 @@ export default function PurchaseOrdersPage() {
                   </div>
                   <div className="flex justify-between font-semibold text-amber-700">
                     <span>คงเหลือ:</span>
-                    <span>{(Number(selectedPO.netAmount || selectedPO.totalAmount) - Number(selectedPO.paidAmount)).toLocaleString()} บาท</span>
+                    <span>{(Number(selectedPO.netAmount ?? selectedPO.totalAmount) - Number(selectedPO.paidAmount)).toLocaleString()} บาท</span>
                   </div>
                 </>
               )}
@@ -1733,7 +1739,7 @@ export default function PurchaseOrdersPage() {
                   value={paymentForm.paymentStatus}
                   onChange={(e) => {
                     const newStatus = e.target.value;
-                    const netAmt = Number(selectedPO.netAmount || selectedPO.totalAmount);
+                    const netAmt = Number(selectedPO.netAmount ?? selectedPO.totalAmount);
                     setPaymentForm({
                       ...paymentForm,
                       paymentStatus: newStatus,
@@ -1794,14 +1800,14 @@ export default function PurchaseOrdersPage() {
                 step="0.01"
                 required
               />
-              {Number(selectedPO.netAmount || selectedPO.totalAmount) > 0 && paymentForm.paymentStatus !== 'UNPAID' && paymentForm.paymentStatus !== 'FULLY_PAID' && (
+              {Number(selectedPO.netAmount ?? selectedPO.totalAmount) > 0 && paymentForm.paymentStatus !== 'UNPAID' && paymentForm.paymentStatus !== 'FULLY_PAID' && (
                 <div className="flex gap-2 mt-1">
-                  <button type="button" onClick={() => setPaymentForm({ ...paymentForm, paidAmount: String(Math.round(Number(selectedPO.netAmount || selectedPO.totalAmount) * 0.3)) })} className="text-xs text-blue-600 hover:underline">30%</button>
-                  <button type="button" onClick={() => setPaymentForm({ ...paymentForm, paidAmount: String(Math.round(Number(selectedPO.netAmount || selectedPO.totalAmount) * 0.5)) })} className="text-xs text-blue-600 hover:underline">50%</button>
+                  <button type="button" onClick={() => setPaymentForm({ ...paymentForm, paidAmount: String(Math.round(Number(selectedPO.netAmount ?? selectedPO.totalAmount) * 0.3)) })} className="text-xs text-blue-600 hover:underline">30%</button>
+                  <button type="button" onClick={() => setPaymentForm({ ...paymentForm, paidAmount: String(Math.round(Number(selectedPO.netAmount ?? selectedPO.totalAmount) * 0.5)) })} className="text-xs text-blue-600 hover:underline">50%</button>
                 </div>
               )}
               {(() => {
-                const netAmt = Number(selectedPO.netAmount || selectedPO.totalAmount);
+                const netAmt = Number(selectedPO.netAmount ?? selectedPO.totalAmount);
                 const paid = Number(paymentForm.paidAmount) || 0;
                 const remaining = netAmt - paid;
                 if (paid > 0 && remaining > 0) {
@@ -1924,7 +1930,7 @@ export default function PurchaseOrdersPage() {
       {/* Goods Receiving Modal */}
       <Modal
         isOpen={isReceiveModalOpen}
-        onClose={() => setIsReceiveModalOpen(false)}
+        onClose={() => { setIsReceiveModalOpen(false); setReceivingUnits([]); setReceivingNotes(''); }}
         title={`รับสินค้า - ${selectedPO?.poNumber || ''}`}
         size="xl"
       >

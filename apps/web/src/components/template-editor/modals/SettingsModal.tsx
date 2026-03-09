@@ -1,0 +1,147 @@
+import { X } from 'lucide-react';
+import { useTemplateStore } from '@/store/templateStore';
+
+export default function SettingsModal() {
+  const { showSettings, setShowSettings, currentTemplate, updateSettings } = useTemplateStore();
+  const settings = currentTemplate.settings;
+
+  if (!showSettings) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+          <h2 className="text-lg font-bold text-gray-800">ตั้งค่าเทมเพลต</h2>
+          <button onClick={() => setShowSettings(false)} className="p-1 text-gray-400 hover:text-gray-600">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="px-6 py-4 space-y-5">
+          {/* Letterhead */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">แบบพิมพ์</label>
+            <div className="flex gap-4">
+              {[
+                { value: 'none', label: 'ไม่มีหัวกระดาษ' },
+                { value: 'bestchoice', label: 'BESTCHOICEPHONE' },
+                { value: 'logo', label: 'โลโก้' },
+              ].map(opt => (
+                <label key={opt.value} className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="radio"
+                    name="letterhead"
+                    checked={settings.letterhead === opt.value}
+                    onChange={() => updateSettings({ letterhead: opt.value as typeof settings.letterhead })}
+                    className="text-violet-600 focus:ring-violet-500"
+                  />
+                  {opt.label}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Page number */}
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={settings.showPageNumber}
+              onChange={e => updateSettings({ showPageNumber: e.target.checked })}
+              className="rounded text-violet-600 focus:ring-violet-500"
+            />
+            เพิ่มเลขหน้า (หน้า X/Y)
+          </label>
+
+          {/* Signature except last page */}
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={settings.showSignatureExceptLastPage}
+              onChange={e => updateSettings({ showSignatureExceptLastPage: e.target.checked })}
+              className="rounded text-violet-600 focus:ring-violet-500"
+            />
+            เพิ่มลายเซ็น ยกเว้นหน้าสุดท้าย
+          </label>
+
+          {/* Footer text */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Footer</label>
+            <input
+              type="text"
+              value={settings.footerText}
+              onChange={e => updateSettings({ footerText: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-violet-500"
+            />
+          </div>
+
+          {/* Footer content */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">เนื้อหาท้ายเอกสาร</label>
+            <textarea
+              value={settings.footerContent}
+              onChange={e => updateSettings({ footerContent: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-y"
+              rows={3}
+              placeholder="ข้อความท้ายเอกสาร (รองรับ template variables)"
+            />
+          </div>
+
+          {/* Margins */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">ระยะขอบ (mm)</label>
+            <div className="grid grid-cols-4 gap-3">
+              {(['top', 'bottom', 'left', 'right'] as const).map(side => (
+                <div key={side}>
+                  <label className="block text-xs text-gray-500 mb-1 capitalize">{side === 'top' ? 'บน' : side === 'bottom' ? 'ล่าง' : side === 'left' ? 'ซ้าย' : 'ขวา'}</label>
+                  <input
+                    type="number"
+                    value={settings.margins[side]}
+                    onChange={e => updateSettings({ margins: { ...settings.margins, [side]: parseInt(e.target.value) || 0 } })}
+                    className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
+                    min={0}
+                    max={50}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Font sizes */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">ขนาดตัวอักษร (px)</label>
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { key: 'body' as const, label: 'เนื้อหา' },
+                { key: 'heading' as const, label: 'หัวข้อ' },
+                { key: 'footer' as const, label: 'Footer' },
+              ].map(item => (
+                <div key={item.key}>
+                  <label className="block text-xs text-gray-500 mb-1">{item.label}</label>
+                  <input
+                    type="number"
+                    value={settings.fontSize[item.key]}
+                    onChange={e => updateSettings({ fontSize: { ...settings.fontSize, [item.key]: parseInt(e.target.value) || 12 } })}
+                    className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
+                    min={8}
+                    max={36}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end px-6 py-4 border-t border-gray-200">
+          <button
+            onClick={() => setShowSettings(false)}
+            className="px-4 py-2 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700"
+          >
+            ปิด
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

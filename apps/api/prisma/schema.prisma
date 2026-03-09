@@ -780,6 +780,8 @@ model ContractTemplate {
   type         String // e.g. STORE_DIRECT, CREDIT_CARD, EXCHANGE
   contentHtml  String   @map("content_html")
   placeholders String[] @default([])
+  blocks       Json?    @default("[]") // Block-based editor content (JSON array)
+  settings     Json?    // Template settings (letterhead, margins, font sizes, etc.)
   isActive     Boolean  @default(true) @map("is_active")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")

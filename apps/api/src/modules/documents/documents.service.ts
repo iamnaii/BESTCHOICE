@@ -31,6 +31,8 @@ export class DocumentsService {
         type: dto.type || 'STORE_DIRECT',
         contentHtml: sanitizedHtml,
         placeholders,
+        blocks: dto.blocks ?? [],
+        settings: dto.settings ?? null,
         isActive: dto.isActive ?? true,
       },
     });
@@ -45,6 +47,8 @@ export class DocumentsService {
       data.contentHtml = sanitizedHtml;
       data.placeholders = dto.placeholders || this.extractPlaceholders(sanitizedHtml);
     }
+    if (dto.blocks !== undefined) data.blocks = dto.blocks;
+    if (dto.settings !== undefined) data.settings = dto.settings;
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
     return this.prisma.contractTemplate.update({ where: { id }, data });
   }
@@ -205,8 +209,10 @@ export class DocumentsService {
   }
 
   private extractPlaceholders(html: string): string[] {
-    const matches = html.match(/\{[a-z_]+\}/g) || [];
-    return [...new Set(matches)];
+    // Support both old {placeholder} and new {{= VARIABLE}} syntax
+    const oldMatches = html.match(/\{[a-z_]+\}/g) || [];
+    const newMatches = html.match(/\{\{=\s*[A-Z_][A-Z0-9_.]*\s*(?:\|[^}]*)?\}\}/g) || [];
+    return [...new Set([...oldMatches, ...newMatches])];
   }
 
   /** Escape HTML special characters to prevent XSS */
@@ -436,6 +442,95 @@ ${bodyHtml}
     for (const [key, value] of Object.entries(replacements)) {
       result = result.replace(new RegExp(key.replace(/[{}]/g, '\\$&'), 'g'), value);
     }
+
+    // Support new {{= VARIABLE}} syntax — maps to same contract data
+    const newSyntaxMap: Record<string, string> = {
+      'CONTRACT.NUMBER': replacements['{contract_number}'],
+      'CONTRACT.DATE': replacements['{contract_date}'],
+      'CUSTOMER.NAME': replacements['{customer_name}'],
+      'CUSTOMER.IDCARD': replacements['{national_id}'],
+      'CUSTOMER.TEL': replacements['{customer_phone}'],
+      'CUSTOMER.ADDRESS_ID': replacements['{customer_address_id_card}'],
+      'CUSTOMER.ADDRESS_CONTACT': replacements['{customer_address_current}'],
+      'CUSTOMER.LINE_ID': replacements['{customer_line_id}'],
+      'CUSTOMER.FACEBOOK': replacements['{customer_facebook}'],
+      'CUSTOMER.OCCUPATION': replacements['{customer_occupation}'],
+      'CUSTOMER.SALARY': replacements['{customer_salary}'],
+      'CUSTOMER.WORKPLACE': replacements['{customer_workplace}'],
+      'PHONE.BRAND': replacements['{brand}'],
+      'PHONE.MODEL': replacements['{model}'],
+      'PHONE.STORAGE': replacements['{product_storage}'],
+      'PHONE.COLOR': replacements['{product_color}'],
+      'PHONE.CONDITION': replacements['{product_category}'],
+      'PHONE.IMEI': replacements['{imei}'],
+      'PHONE.SERIAL': replacements['{serial_number}'],
+      'COMPANY.NAME_TH': esc('บริษัท เบสท์ช้อยส์โฟน จำกัด'),
+      'COMPANY.NAME_EN': esc('BESTCHOICEPHONE Co., Ltd.'),
+      'COMPANY.TAX_ID': esc('0165568000050'),
+      'COMPANY.ADDRESS': esc('456/21 ชั้น 2 ถนนนารายณ์มหาราช ตำบลทะเลชุบศร อำเภอเมือง จังหวัดลพบุรี 15000'),
+      'COMPANY.DIRECTOR': esc('เอกนรินทร์ คงเดช'),
+      'COMPANY.DIRECTOR_ID': esc('1-1601-00452-40-7'),
+      'COMPANY.DIRECTOR_ADDRESS': esc('517 ถนนนารายณ์มหาราช ตำบลทะเลชุบศร อำเภอเมือง จังหวัดลพบุรี 15000'),
+      'CONTRACT.TOTAL_AMOUNT': Number(contract.financedAmount).toLocaleString('th-TH', { minimumFractionDigits: 2 }),
+      'CONTRACT.TOTAL_AMOUNT_TEXT': this.numberToThaiText(Number(contract.financedAmount)),
+      'CONTRACT.DOWN_PAYMENT': Number(contract.downPayment).toLocaleString('th-TH', { minimumFractionDigits: 2 }),
+      'CONTRACT.MONTHLY_PAYMENT': Number(contract.monthlyPayment).toLocaleString('th-TH', { minimumFractionDigits: 2 }),
+      'CONTRACT.MONTHLY_PAYMENT_TEXT': this.numberToThaiText(Number(contract.monthlyPayment)),
+      'CONTRACT.TOTAL_MONTHS': String(contract.totalMonths),
+      'CONTRACT.PENALTY_RATE': '100',
+      'CONTRACT.WARRANTY_DAYS': '30',
+      'CONTRACT.EARLY_DISCOUNT': '50',
+      'CONTRACT.MIN_MONTHS_EARLY': '6',
+      'BRANCH.NAME': replacements['{branch_name}'],
+      'BRANCH.ADDRESS': replacements['{branch_address}'],
+      'BRANCH.PHONE': replacements['{branch_phone}'],
+      'SALESPERSON.NAME': replacements['{salesperson_name}'],
+    };
+
+    // Replace {{= KEY}} patterns (with optional format pipe)
+    result = result.replace(/\{\{=\s*([A-Z_][A-Z0-9_.]*)\s*(?:\|\s*[^}]*)?\s*\}\}/g, (_match, key: string) => {
+      return newSyntaxMap[key] ?? _match;
+    });
+
+    // Handle date format pipes for new syntax
+    const contractDate2 = new Date(contract.createdAt);
+    const startDate = payments.length > 0 ? new Date(payments[0].dueDate) : contractDate2;
+    const endDate = payments.length > 0 ? new Date(payments[payments.length - 1].dueDate) : contractDate2;
+
+    const dateMap: Record<string, Date> = {
+      'CONTRACT.DATE': contractDate2,
+      'CONTRACT.START_DATE': startDate,
+      'CONTRACT.END_DATE': endDate,
+    };
+
+    // Apply date formatting for {{= VAR | date:X }}
+    result = result.replace(/\{\{=\s*(CONTRACT\.\w+)\s*\|\s*date:(\w+)\s*\}\}/g, (_match, key: string, fmt: string) => {
+      const d = dateMap[key];
+      if (!d) return newSyntaxMap[key] ?? _match;
+      switch (fmt) {
+        case 's': return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear() + 543}`;
+        case 'm': {
+          const monthsShort = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+          return `${d.getDate()} ${monthsShort[d.getMonth()]} ${d.getFullYear() + 543}`;
+        }
+        case 'l': {
+          const monthsFull = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+          return `${d.getDate()} เดือน ${monthsFull[d.getMonth()]} พ.ศ. ${d.getFullYear() + 543}`;
+        }
+        default: return newSyntaxMap[key] ?? _match;
+      }
+    });
+
+    // Handle {{= VAR | num:2 }} for numeric formatting
+    result = result.replace(/\{\{=\s*([A-Z_][A-Z0-9_.]*)\s*\|\s*num(?::(\d+))?\s*\}\}/g, (_match, key: string, decimals: string) => {
+      const val = newSyntaxMap[key];
+      if (!val) return _match;
+      const n = parseFloat(val.replace(/,/g, ''));
+      if (isNaN(n)) return val;
+      const dec = decimals ? parseInt(decimals) : 0;
+      return n.toLocaleString('th-TH', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+    });
+
     return result;
   }
 

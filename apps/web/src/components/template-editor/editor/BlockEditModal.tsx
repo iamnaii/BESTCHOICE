@@ -1,13 +1,16 @@
 import { useState, useEffect } from 'react';
-import { X, Plus, Trash2 } from 'lucide-react';
+import { X, Plus, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
 import type { Block, BlockType } from '@/types/template';
 import { BLOCK_TYPES } from '@/constants/blockTypes';
+import { AVAILABLE_VARIABLES, VARIABLE_GROUPS } from '@/constants/variables';
 import { useTemplateStore } from '@/store/templateStore';
 import VariableAutocomplete from './VariableAutocomplete';
 
 export default function BlockEditModal() {
   const { editingBlock, setEditingBlock, updateBlock } = useTemplateStore();
   const [form, setForm] = useState<Partial<Block>>({});
+  const [showVarPanel, setShowVarPanel] = useState(true);
+  const [expandedGroup, setExpandedGroup] = useState<string | null>('สัญญา');
 
   useEffect(() => {
     if (editingBlock) {
@@ -52,124 +55,217 @@ export default function BlockEditModal() {
     }));
   };
 
+  // Insert variable at end of content
+  const insertVariable = (key: string) => {
+    const tag = `{{= ${key}}}`;
+    setForm(prev => ({
+      ...prev,
+      content: (prev.content || '') + tag,
+    }));
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-          <h2 className="text-lg font-bold text-gray-800">แก้ไข Block</h2>
+          <h2 className="text-lg font-bold text-gray-800">แก้ไขส่วนประกอบ</h2>
           <button onClick={handleClose} className="p-1 text-gray-400 hover:text-gray-600">
             <X size={20} />
           </button>
         </div>
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-          {/* Block type */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">ประเภท</label>
-            <select
-              value={form.type}
-              onChange={e => setForm({ ...form, type: e.target.value as BlockType })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-violet-500"
-            >
-              {BLOCK_TYPES.map(t => (
-                <option key={t.value} value={t.value}>{t.label} — {t.description}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Clause fields */}
-          {form.type === 'clause' && (
-            <div className="grid grid-cols-[100px_1fr] gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">เลขข้อ</label>
-                <input
-                  type="number"
-                  value={form.clauseNumber || ''}
-                  onChange={e => setForm({ ...form, clauseNumber: parseInt(e.target.value) || 0 })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                  min={1}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อข้อสัญญา</label>
-                <input
-                  type="text"
-                  value={form.clauseTitle || ''}
-                  onChange={e => setForm({ ...form, clauseTitle: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                  placeholder="เช่น วัตถุประสงค์และข้อจำกัด"
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Content */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              เนื้อหา
-              <span className="ml-2 text-xs text-gray-400 font-normal">
-                พิมพ์ {'{{ '} เพื่อเลือก variable, ใช้ **text** เพื่อ bold
-              </span>
-            </label>
-            <VariableAutocomplete
-              value={form.content || ''}
-              onChange={content => setForm({ ...form, content })}
-              placeholder="พิมพ์เนื้อหา... ใช้ {{= VARIABLE}} สำหรับตัวแปร"
-              rows={10}
-            />
-          </div>
-
-          {/* Sub-items for clause type */}
-          {form.type === 'clause' && (
+        {/* Body - 2 columns */}
+        <div className="flex-1 overflow-hidden flex">
+          {/* Left: Edit form */}
+          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+            {/* Block type */}
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-sm font-medium text-gray-700">ข้อย่อย</label>
-                <button
-                  onClick={addSubItem}
-                  className="flex items-center gap-1 text-xs text-violet-600 hover:text-violet-700"
-                >
-                  <Plus size={12} /> เพิ่มข้อย่อย
-                </button>
+              <label className="block text-sm font-medium text-gray-700 mb-1">ประเภท</label>
+              <select
+                value={form.type}
+                onChange={e => setForm({ ...form, type: e.target.value as BlockType })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-violet-500"
+              >
+                {BLOCK_TYPES.map(t => (
+                  <option key={t.value} value={t.value}>{t.label} — {t.description}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Clause fields */}
+            {form.type === 'clause' && (
+              <div className="grid grid-cols-[100px_1fr] gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">เลขข้อ</label>
+                  <input
+                    type="number"
+                    value={form.clauseNumber || ''}
+                    onChange={e => setForm({ ...form, clauseNumber: parseInt(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    min={1}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อข้อสัญญา</label>
+                  <input
+                    type="text"
+                    value={form.clauseTitle || ''}
+                    onChange={e => setForm({ ...form, clauseTitle: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    placeholder="เช่น วัตถุประสงค์และข้อจำกัด"
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                {(form.subItems || []).map((item, idx) => (
-                  <div key={idx} className="flex items-start gap-2">
-                    <span className="text-xs text-gray-400 mt-2.5 w-6 text-right">{idx + 1})</span>
-                    <textarea
-                      value={item}
-                      onChange={e => updateSubItem(idx, e.target.value)}
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono resize-y"
-                      rows={2}
-                    />
+            )}
+
+            {/* Content */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                เนื้อหา
+                <span className="ml-2 text-xs text-gray-400 font-normal">
+                  คลิกตัวแปรด้านขวาเพื่อแทรก หรือพิมพ์ {'{{ '} เพื่อค้นหา
+                </span>
+              </label>
+              <VariableAutocomplete
+                value={form.content || ''}
+                onChange={content => setForm({ ...form, content })}
+                placeholder="พิมพ์เนื้อหา... คลิกตัวแปรด้านขวาเพื่อแทรกอัตโนมัติ"
+                rows={12}
+              />
+            </div>
+
+            {/* Sub-items for clause type */}
+            {form.type === 'clause' && (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm font-medium text-gray-700">ข้อย่อย</label>
+                  <button
+                    onClick={addSubItem}
+                    className="flex items-center gap-1 text-xs text-violet-600 hover:text-violet-700"
+                  >
+                    <Plus size={12} /> เพิ่มข้อย่อย
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {(form.subItems || []).map((item, idx) => (
+                    <div key={idx} className="flex items-start gap-2">
+                      <span className="text-xs text-gray-400 mt-2.5 w-6 text-right">{idx + 1})</span>
+                      <textarea
+                        value={item}
+                        onChange={e => updateSubItem(idx, e.target.value)}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono resize-y"
+                        rows={2}
+                      />
+                      <button
+                        onClick={() => removeSubItem(idx)}
+                        className="p-1.5 text-gray-400 hover:text-red-600 mt-1"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Right: Variable insert panel */}
+          {showVarPanel && (
+            <div className="w-72 border-l border-gray-200 bg-gray-50 overflow-y-auto">
+              <div className="p-3">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-xs font-bold text-gray-500 uppercase">แทรกตัวแปร</h3>
+                  <span className="text-[10px] text-gray-400">คลิกเพื่อแทรก</span>
+                </div>
+
+                {VARIABLE_GROUPS.map(group => {
+                  const vars = AVAILABLE_VARIABLES.filter(v => {
+                    if (v.type === 'array') return false;
+                    if (group.altPrefix) {
+                      return v.key.startsWith(group.prefix) || v.key.startsWith(group.altPrefix);
+                    }
+                    return v.key.startsWith(group.prefix);
+                  });
+                  if (vars.length === 0) return null;
+                  const isExpanded = expandedGroup === group.label;
+
+                  return (
+                    <div key={group.label} className="mb-1">
+                      <button
+                        onClick={() => setExpandedGroup(isExpanded ? null : group.label)}
+                        className="w-full flex items-center gap-1.5 px-2 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                      >
+                        {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                        {group.label}
+                        <span className="text-[10px] text-gray-400 ml-auto">{vars.length}</span>
+                      </button>
+                      {isExpanded && (
+                        <div className="ml-1 space-y-0.5 pb-2">
+                          {vars.map(v => (
+                            <button
+                              key={v.key}
+                              onClick={() => insertVariable(v.key)}
+                              className="w-full flex items-center gap-2 px-2 py-1.5 text-left rounded hover:bg-violet-50 hover:text-violet-700 transition-colors group"
+                              title={`ตัวอย่าง: ${v.sampleValue}`}
+                            >
+                              <span className="text-xs text-gray-700 group-hover:text-violet-700 truncate flex-1">{v.label}</span>
+                              <span className="text-[9px] px-1 py-0.5 rounded bg-gray-200 text-gray-500 group-hover:bg-violet-100 group-hover:text-violet-600 shrink-0">
+                                แทรก
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* Special blocks */}
+                <div className="mt-3 pt-3 border-t border-gray-200">
+                  <h4 className="text-[10px] font-bold text-gray-400 uppercase mb-2">ส่วนพิเศษ</h4>
+                  <div className="space-y-1">
                     <button
-                      onClick={() => removeSubItem(idx)}
-                      className="p-1.5 text-gray-400 hover:text-red-600 mt-1"
+                      onClick={() => setForm(prev => ({ ...prev, content: (prev.content || '') + '\n@sign_customer' }))}
+                      className="w-full text-left px-2 py-1.5 text-xs text-gray-700 rounded hover:bg-green-50 hover:text-green-700"
                     >
-                      <Trash2 size={14} />
+                      ลายเซ็นผู้เช่าซื้อ
+                    </button>
+                    <button
+                      onClick={() => setForm(prev => ({ ...prev, content: (prev.content || '') + '\n@sign_company' }))}
+                      className="w-full text-left px-2 py-1.5 text-xs text-gray-700 rounded hover:bg-green-50 hover:text-green-700"
+                    >
+                      ลายเซ็นผู้ให้เช่าซื้อ
                     </button>
                   </div>
-                ))}
+                </div>
               </div>
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200">
+        <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
           <button
-            onClick={handleClose}
-            className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+            onClick={() => setShowVarPanel(!showVarPanel)}
+            className="text-xs text-gray-500 hover:text-violet-600"
           >
-            ยกเลิก
+            {showVarPanel ? 'ซ่อนตัวแปร' : 'แสดงตัวแปร'}
           </button>
-          <button
-            onClick={handleSave}
-            className="px-4 py-2 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700"
-          >
-            บันทึก
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleClose}
+              className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+            >
+              ยกเลิก
+            </button>
+            <button
+              onClick={handleSave}
+              className="px-4 py-2 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700"
+            >
+              บันทึก
+            </button>
+          </div>
         </div>
       </div>
     </div>

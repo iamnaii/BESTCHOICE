@@ -6,25 +6,33 @@ export default function DocumentPreview() {
   const { blocks, settings } = currentTemplate;
 
   return (
-    <div className="flex-1 bg-[#F1F0F5] overflow-y-auto p-6">
+    <div className="flex-1 bg-[#E8E6EE] overflow-y-auto p-8">
       {/* A4 Paper simulation */}
       <div
-        className="mx-auto bg-white shadow-lg"
+        className="mx-auto bg-white rounded-sm"
         style={{
           width: '210mm',
           minHeight: '297mm',
           padding: `${settings.margins.top}mm ${settings.margins.right}mm ${settings.margins.bottom}mm ${settings.margins.left}mm`,
-          fontFamily: "'Sarabun', sans-serif",
+          fontFamily: "'Sarabun', 'Noto Sans Thai', sans-serif",
           fontSize: `${settings.fontSize.body}px`,
-          lineHeight: 1.6,
+          lineHeight: 1.7,
+          boxShadow: '0 4px 24px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08)',
+          color: '#1a1a1a',
         }}
       >
         {/* Letterhead */}
         {settings.letterhead === 'bestchoice' && (
-          <div className="text-center mb-4 pb-2 border-b border-gray-300">
-            <h1 className="text-[16px] font-bold text-violet-800">BESTCHOICEPHONE Co., Ltd.</h1>
-            <p className="text-[11px] text-gray-500">บริษัท เบสท์ช้อยส์โฟน จำกัด | เลขประจำตัวผู้เสียภาษี 0165568000050</p>
-            <p className="text-[10px] text-gray-400">456/21 ชั้น 2 ถนนนารายณ์มหาราช ตำบลทะเลชุบศร อำเภอเมือง จังหวัดลพบุรี 15000</p>
+          <div className="text-center mb-5 pb-3" style={{ borderBottom: '2px solid #6D28D9' }}>
+            <h1 style={{ fontSize: '18px', fontWeight: 700, color: '#6D28D9', letterSpacing: '1px', marginBottom: '4px' }}>
+              BESTCHOICEPHONE Co., Ltd.
+            </h1>
+            <p style={{ fontSize: '12px', color: '#4a4a4a', marginBottom: '2px' }}>
+              บริษัท เบสท์ช้อยส์โฟน จำกัด | เลขประจำตัวผู้เสียภาษี 0165568000050
+            </p>
+            <p style={{ fontSize: '10px', color: '#888' }}>
+              456/21 ชั้น 2 ถนนนารายณ์มหาราช ตำบลทะเลชุบศร อำเภอเมือง จังหวัดลพบุรี 15000
+            </p>
           </div>
         )}
 
@@ -34,12 +42,18 @@ export default function DocumentPreview() {
         ))}
 
         {/* Footer */}
-        <div className="mt-8 pt-2 border-t border-gray-200 flex justify-between items-end"
-          style={{ fontSize: `${settings.fontSize.footer}px` }}
+        <div
+          className="mt-10 pt-3 flex justify-between items-end"
+          style={{
+            fontSize: `${settings.fontSize.footer}px`,
+            borderTop: '1px solid #d1d5db',
+          }}
         >
-          <span className="text-gray-400">{settings.footerText}</span>
+          <span style={{ color: '#9ca3af' }}>{settings.footerText}</span>
           {settings.showPageNumber && (
-            <span className="text-gray-400">{settings.pageNumberFormat.replace('{page}', '1').replace('{total}', '6')}</span>
+            <span style={{ color: '#9ca3af' }}>
+              {settings.pageNumberFormat.replace('{page}', '1').replace('{total}', '6')}
+            </span>
           )}
         </div>
       </div>

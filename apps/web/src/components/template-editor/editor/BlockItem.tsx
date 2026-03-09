@@ -64,7 +64,7 @@ export default function BlockItem({ block, index, totalBlocks }: Props) {
         </button>
 
         {/* Type badge */}
-        <span className="text-[10px] px-2 py-0.5 bg-violet-50 text-violet-700 rounded font-medium">
+        <span className="text-[10px] px-2 py-0.5 bg-violet-50 text-violet-700 rounded-full font-medium">
           {label}
         </span>
 

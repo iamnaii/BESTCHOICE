@@ -146,7 +146,8 @@ export class SalesService {
   }
 
   private async createInstallmentSale(dto: CreateSaleDto, salespersonId: string, netAmount: number, discount: number) {
-    if (!dto.planType) throw new BadRequestException('กรุณาเลือกแผนผ่อนชำระ');
+    // Default planType to STORE_DIRECT (single plan type)
+    if (!dto.planType) dto.planType = 'STORE_DIRECT';
     if (!dto.downPayment && dto.downPayment !== 0) throw new BadRequestException('กรุณาใส่เงินดาวน์');
     if (!dto.totalMonths) throw new BadRequestException('กรุณาเลือกจำนวนงวด');
 

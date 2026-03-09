@@ -11,8 +11,8 @@ export class CreateContractDto {
   branchId: string;
 
   @IsString()
-  @Matches(/^(STORE_DIRECT|CREDIT_CARD|STORE_WITH_INTEREST)$/, { message: 'planType ต้องเป็น STORE_DIRECT, CREDIT_CARD หรือ STORE_WITH_INTEREST' })
-  planType: string;
+  @IsOptional()
+  planType?: string = 'STORE_DIRECT';
 
   @IsNumber()
   @Min(1)

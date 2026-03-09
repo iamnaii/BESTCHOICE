@@ -28,7 +28,7 @@ export class DocumentsService {
     return this.prisma.contractTemplate.create({
       data: {
         name: dto.name,
-        type: dto.type,
+        type: dto.type || 'STORE_DIRECT',
         contentHtml: sanitizedHtml,
         placeholders,
         isActive: dto.isActive ?? true,
@@ -110,9 +110,9 @@ export class DocumentsService {
       const template = await this.findOneTemplate(templateId);
       htmlContent = template.contentHtml;
     } else {
-      // Find active template by contract type
+      // Find active template (single plan type: STORE_DIRECT)
       const template = await this.prisma.contractTemplate.findFirst({
-        where: { type: contract.planType, isActive: true },
+        where: { type: 'STORE_DIRECT', isActive: true },
         orderBy: { createdAt: 'desc' },
       });
       htmlContent = template?.contentHtml || this.getDefaultTemplate(documentType);
@@ -174,7 +174,7 @@ export class DocumentsService {
       htmlContent = template.contentHtml;
     } else {
       const template = await this.prisma.contractTemplate.findFirst({
-        where: { type: contract.planType, isActive: true },
+        where: { type: 'STORE_DIRECT', isActive: true },
         orderBy: { createdAt: 'desc' },
       });
       htmlContent = template?.contentHtml || this.getDefaultTemplate('CONTRACT');

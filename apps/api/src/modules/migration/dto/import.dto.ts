@@ -50,7 +50,8 @@ export class ImportContractDto {
   salespersonEmail: string;
 
   @IsString()
-  planType: string;
+  @IsOptional()
+  planType?: string = 'STORE_DIRECT';
 
   @IsNumber()
   sellingPrice: number;

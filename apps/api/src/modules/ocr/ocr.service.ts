@@ -125,7 +125,7 @@ export class OcrService {
     const isDocument = mediaType === 'application/pdf';
 
     if (!/^[A-Za-z0-9+/=]+$/.test(base64Data)) {
-      throw new BadRequestException('ข้อมูลไฟล์ไม่ถูกต้อง (base64 ไม่ valid)');
+      throw new BadRequestException('ข้อมูลไฟล์ไม่ถูกต้อง (รูปแบบ base64 ไม่ถูกต้อง)');
     }
 
     return { mediaType, base64Data, isDocument };
@@ -283,7 +283,7 @@ export class OcrService {
 
   private static readonly TEMPLATE_GENERATION_PROMPT = `คุณเป็นผู้เชี่ยวชาญด้านการสร้างเทมเพลต HTML สำหรับสัญญาผ่อนชำระสินค้า (ร้านขายมือถือในประเทศไทย)
 
-ให้อ่านเอกสารในรูปนี้แล้วสร้าง HTML template ที่มีโครงสร้างเหมือนเอกสารต้นฉบับให้มากที่สุด
+ให้อ่านเอกสารนี้แล้วสร้าง HTML template ที่มีโครงสร้างเหมือนเอกสารต้นฉบับให้มากที่สุด
 
 กฎสำคัญ:
 1. ใช้ placeholders เหล่านี้แทนข้อมูลจริง (ใส่เฉพาะที่เหมาะสมตามเนื้อหาในเอกสาร):

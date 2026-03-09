@@ -124,7 +124,7 @@ export default function ContractTemplatesPage() {
       const { data } = await api.post('/contract-templates/generate-from-file', { fileBase64: base64 }, { timeout: 120000 });
       setForm({ ...form, contentHtml: data.contentHtml });
       setDetectedPlaceholders(data.placeholders || []);
-      toast.success(`AI สร้างเทมเพลตสำเร็จ (พบ ${data.placeholders?.length || 0} placeholders) กรุณาตรวจสอบก่อนบันทึก`);
+      toast.success(`AI สร้างเทมเพลตสำเร็จ (ใส่ ${data.placeholders?.length || 0} ตัวแปร) กรุณาตรวจสอบก่อนบันทึก`);
     } catch (err: any) {
       toast.error(getErrorMessage(err));
     } finally {
@@ -181,7 +181,7 @@ export default function ContractTemplatesPage() {
           </button>
         </div>
       ) : (
-        <DataTable columns={columns} data={templates} emptyMessage="ยังไม่มีเทมเพลต กรุณารัน seed หรือสร้างเทมเพลตใหม่" />
+        <DataTable columns={columns} data={templates} emptyMessage="ยังไม่มีเทมเพลต กรุณาสร้างเทมเพลตใหม่" />
       )}
 
       {/* Create/Edit Modal */}
@@ -204,7 +204,7 @@ export default function ContractTemplatesPage() {
                   </div>
                 ) : (
                   <>
-                    <p className="text-sm text-gray-500 mb-2">แนบรูปเอกสาร/สัญญา หรือ PDF แล้ว AI จะสร้าง HTML template ให้</p>
+                    <p className="text-sm text-gray-500 mb-2">แนบไฟล์เอกสาร (รูปภาพ หรือ PDF) แล้ว AI จะสร้างเทมเพลตให้</p>
                     <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 text-purple-700 text-sm font-medium rounded-lg cursor-pointer hover:bg-purple-100">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                       เลือกไฟล์เอกสาร
@@ -234,7 +234,7 @@ export default function ContractTemplatesPage() {
 
             {detectedPlaceholders.length > 0 && (
               <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                <div className="text-xs font-medium text-green-700 mb-1.5">Placeholders ที่ AI ใส่ในเทมเพลต ({detectedPlaceholders.length} รายการ):</div>
+                <div className="text-xs font-medium text-green-700 mb-1.5">Placeholders ที่ใช้ในเทมเพลต ({detectedPlaceholders.length} รายการ):</div>
                 <div className="flex flex-wrap gap-1">
                   {detectedPlaceholders.map((p) => (
                     <span key={p} className="text-xs px-1.5 py-0.5 bg-green-100 text-green-800 rounded">{p}</span>

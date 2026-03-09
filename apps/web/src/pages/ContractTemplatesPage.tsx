@@ -1,6 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api, { getErrorMessage } from '@/lib/api';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useTemplateStore } from '@/store/templateStore';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
@@ -17,6 +16,7 @@ import PDFExportModal from '@/components/template-editor/pdf/PDFExportModal';
 const AUTO_SAVE_INTERVAL = 30_000;
 
 export default function ContractTemplatesPage() {
+  const navigate = useNavigate();
   const [activeSidebarId, setActiveSidebarId] = useState('template');
   const {
     previewMode, editingBlock, showSettings, showExportModal,
@@ -36,15 +36,20 @@ export default function ContractTemplatesPage() {
     if (!isDirty) return;
     const timer = setInterval(() => {
       saveTemplate();
-      toast.success('บันทึกอัตโนมัติ', { duration: 1500, icon: '💾' });
+      toast.success('บันทึกอัตโนมัติ', { duration: 1500 });
     }, AUTO_SAVE_INTERVAL);
     return () => clearInterval(timer);
   }, [isDirty, saveTemplate]);
 
+  const handleBack = () => {
+    if (isDirty && !confirm('มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก ต้องการออกหรือไม่?')) return;
+    navigate('/');
+  };
+
   return (
-    <div className="fixed inset-0 flex bg-gray-100" style={{ fontFamily: "'Sarabun', sans-serif" }}>
+    <div className="-m-6 flex bg-gray-100" style={{ fontFamily: "'Sarabun', sans-serif", height: 'calc(100vh - 56px)' }}>
       {/* Left Sidebar */}
-      <EditorSidebar activeId={activeSidebarId} onSelect={setActiveSidebarId} />
+      <EditorSidebar activeId={activeSidebarId} onSelect={setActiveSidebarId} onBack={handleBack} />
 
       {/* Main Area */}
       <div className="flex-1 flex flex-col min-w-0">

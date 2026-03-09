@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import toast from 'react-hot-toast';
 import type { Block, Template, TemplateSettings } from '@/types/template';
 import { DEFAULT_SETTINGS } from '@/types/template';
 import { AVAILABLE_VARIABLES } from '@/constants/variables';
@@ -139,6 +140,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
         isDirty: true,
       };
     });
+    toast.success('เพิ่ม block แล้ว', { duration: 1500 });
   },
 
   updateBlock: (id, updates) => {
@@ -163,6 +165,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
         isDirty: true,
       };
     });
+    toast.success('ลบ block แล้ว', { duration: 1500 });
   },
 
   duplicateBlock: (id) => {
@@ -179,6 +182,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
         isDirty: true,
       };
     });
+    toast.success('สำเนา block แล้ว', { duration: 1500 });
   },
 
   moveBlock: (fromIndex, toIndex) => {

@@ -1,4 +1,4 @@
-import { Settings, Building2, Shield, User, Users, FolderOpen, MessageCircle, Bell, MapPin, FileText } from 'lucide-react';
+import { Settings, Building2, Shield, User, Users, FolderOpen, MessageCircle, Bell, MapPin, FileText, ArrowLeft } from 'lucide-react';
 
 interface MenuItem {
   id: string;
@@ -22,19 +22,29 @@ const MENU_ITEMS: MenuItem[] = [
 interface Props {
   activeId: string;
   onSelect: (id: string) => void;
+  onBack?: () => void;
 }
 
-export default function EditorSidebar({ activeId, onSelect }: Props) {
+export default function EditorSidebar({ activeId, onSelect, onBack }: Props) {
   return (
-    <div className="w-[200px] min-h-full bg-[#1E1B2E] flex flex-col">
-      {/* Logo */}
+    <div className="w-[200px] min-h-full bg-[#1E1B2E] flex flex-col flex-shrink-0">
+      {/* Logo + Back */}
       <div className="px-4 py-4 border-b border-white/10">
+        {onBack && (
+          <button
+            onClick={onBack}
+            className="flex items-center gap-1.5 text-[#A5A0C0] hover:text-white text-xs mb-2 transition-colors"
+          >
+            <ArrowLeft size={14} />
+            กลับหน้าหลัก
+          </button>
+        )}
         <h1 className="text-white font-bold text-sm">BESTCHOICEPHONE</h1>
         <p className="text-[#A5A0C0] text-[10px]">Document Template Editor</p>
       </div>
 
       {/* Menu */}
-      <nav className="flex-1 py-2">
+      <nav className="flex-1 py-2 overflow-y-auto">
         {MENU_ITEMS.map(item => (
           <button
             key={item.id}

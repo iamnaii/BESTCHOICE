@@ -91,15 +91,6 @@ export class ContractsService {
       throw new BadRequestException('สินค้าไม่พร้อมขาย');
     }
 
-    // Require approved credit check for customer before creating contract
-    const approvedCreditCheck = await this.prisma.creditCheck.findFirst({
-      where: { customerId: dto.customerId, status: 'APPROVED', contractId: null },
-      orderBy: { createdAt: 'desc' },
-    });
-    if (!approvedCreditCheck) {
-      throw new BadRequestException('ลูกค้าต้องผ่านการตรวจเครดิตก่อนทำสัญญา');
-    }
-
     // Find interest config matching the product category
     const interestConfig = await this.prisma.interestConfig.findFirst({
       where: {
@@ -132,66 +123,97 @@ export class ContractsService {
     const calc = calculateInstallment(dto.sellingPrice, dto.downPayment, params.interestRate, dto.totalMonths, params.storeCommissionPct, params.vatPct);
     const { interestTotal, financedAmount, monthlyPayment } = calc;
 
-    // Create contract + payment schedule in transaction with serializable isolation
-    const contract = await this.prisma.$transaction(async (tx) => {
-      // Generate contract number inside transaction using COUNT for robustness
-      const totalContracts = await tx.contract.count();
-      // Also check the highest existing number in case of gaps
-      const lastContract = await tx.contract.findFirst({
-        orderBy: { contractNumber: 'desc' },
-        select: { contractNumber: true },
-      });
-      const lastNum = lastContract
-        ? parseInt(lastContract.contractNumber.replace(/\D/g, '')) || 0
-        : 0;
-      const nextNum = Math.max(totalContracts, lastNum) + 1;
-      const contractNumber = `CT${String(nextNum).padStart(6, '0')}`;
+    // Create contract + payment schedule in transaction
+    // Retry up to 3 times on unique constraint / serialization errors
+    const MAX_RETRIES = 3;
+    let contract;
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        contract = await this.prisma.$transaction(async (tx) => {
+          // Verify credit check inside transaction for atomicity
+          const approvedCreditCheck = await tx.creditCheck.findFirst({
+            where: { customerId: dto.customerId, status: 'APPROVED', contractId: null },
+            orderBy: { createdAt: 'desc' },
+          });
+          if (!approvedCreditCheck) {
+            throw new BadRequestException('ลูกค้าต้องผ่านการตรวจเครดิตก่อนทำสัญญา');
+          }
 
-      const newContract = await tx.contract.create({
-        data: {
-          contractNumber,
-          customerId: dto.customerId,
-          productId: dto.productId,
-          branchId: dto.branchId,
-          salespersonId,
-          planType: dto.planType as PlanType,
-          sellingPrice: dto.sellingPrice,
-          downPayment: dto.downPayment,
-          interestRate: params.interestRate,
-          totalMonths: dto.totalMonths,
-          interestTotal,
-          financedAmount,
-          monthlyPayment,
-          status: 'DRAFT',
-          workflowStatus: 'CREATING',
-          notes: dto.notes,
-          paymentDueDay: dto.paymentDueDay,
-          interestConfigId: interestConfig?.id,
-        },
-      });
+          // Verify product is still available inside transaction
+          const currentProduct = await tx.product.findUnique({ where: { id: dto.productId } });
+          if (!currentProduct || currentProduct.status !== 'IN_STOCK') {
+            throw new BadRequestException('สินค้าไม่พร้อมขาย (อาจถูกจองแล้ว)');
+          }
 
-      // Create payment schedule using shared utility
-      const payments = generatePaymentSchedule(
-        newContract.id, dto.totalMonths, financedAmount, monthlyPayment, dto.paymentDueDay,
-      );
-      await tx.payment.createMany({ data: payments });
+          // Generate contract number using highest existing number
+          const lastContract = await tx.contract.findFirst({
+            orderBy: { contractNumber: 'desc' },
+            select: { contractNumber: true },
+          });
+          const lastNum = lastContract
+            ? parseInt(lastContract.contractNumber.replace(/\D/g, '')) || 0
+            : 0;
+          const contractNumber = `CT${String(lastNum + 1).padStart(6, '0')}`;
 
-      // Reserve product
-      await tx.product.update({
-        where: { id: dto.productId },
-        data: { status: 'RESERVED' },
-      });
+          const newContract = await tx.contract.create({
+            data: {
+              contractNumber,
+              customerId: dto.customerId,
+              productId: dto.productId,
+              branchId: dto.branchId,
+              salespersonId,
+              planType: dto.planType as PlanType,
+              sellingPrice: dto.sellingPrice,
+              downPayment: dto.downPayment,
+              interestRate: params.interestRate,
+              totalMonths: dto.totalMonths,
+              interestTotal,
+              financedAmount,
+              monthlyPayment,
+              status: 'DRAFT',
+              workflowStatus: 'CREATING',
+              notes: dto.notes,
+              paymentDueDay: dto.paymentDueDay,
+              interestConfigId: interestConfig?.id,
+            },
+          });
 
-      // Link the approved credit check to this contract
-      await tx.creditCheck.update({
-        where: { id: approvedCreditCheck.id },
-        data: { contractId: newContract.id },
-      });
+          // Create payment schedule using shared utility
+          const payments = generatePaymentSchedule(
+            newContract.id, dto.totalMonths, financedAmount, monthlyPayment, dto.paymentDueDay,
+          );
+          await tx.payment.createMany({ data: payments });
 
-      return newContract;
-    }, { isolationLevel: 'Serializable' });
+          // Reserve product
+          await tx.product.update({
+            where: { id: dto.productId },
+            data: { status: 'RESERVED' },
+          });
 
-    return this.findOne(contract.id);
+          // Link the approved credit check to this contract
+          await tx.creditCheck.update({
+            where: { id: approvedCreditCheck.id },
+            data: { contractId: newContract.id },
+          });
+
+          return newContract;
+        }, { timeout: 15000 });
+        break; // success — exit retry loop
+      } catch (err: any) {
+        // Retry on unique constraint (P2002) or serialization failure (P2034)
+        const isRetryable = err?.code === 'P2002' || err?.code === 'P2034';
+        if (isRetryable && attempt < MAX_RETRIES - 1) {
+          continue;
+        }
+        // Re-throw BadRequestException / ForbiddenException as-is
+        if (err instanceof BadRequestException || err instanceof ForbiddenException) {
+          throw err;
+        }
+        throw new BadRequestException('ไม่สามารถสร้างสัญญาได้ กรุณาลองใหม่อีกครั้ง');
+      }
+    }
+
+    return this.findOne(contract!.id);
   }
 
   // === UPDATE: แก้ไขรายละเอียดสัญญา (เฉพาะ CREATING/REJECTED) ===

@@ -224,6 +224,52 @@ export class DocumentsService {
     return id[0] + '-xxxx-xxxxx-' + id.slice(-4);
   }
 
+  /** Convert number to Thai baht text */
+  private numberToThaiText(num: number): string {
+    const digits = ['', 'หนึ่ง', 'สอง', 'สาม', 'สี่', 'ห้า', 'หก', 'เจ็ด', 'แปด', 'เก้า'];
+    const positions = ['', 'สิบ', 'ร้อย', 'พัน', 'หมื่น', 'แสน', 'ล้าน'];
+
+    const convertIntPart = (n: number): string => {
+      if (n === 0) return 'ศูนย์';
+      let result = '';
+      const str = String(n);
+      const len = str.length;
+      for (let i = 0; i < len; i++) {
+        const d = Number(str[i]);
+        const pos = len - i - 1;
+        if (d === 0) continue;
+        if (pos === 0 && d === 1 && len > 1) {
+          result += 'เอ็ด';
+        } else if (pos === 1 && d === 1) {
+          result += 'สิบ';
+        } else if (pos === 1 && d === 2) {
+          result += 'ยี่สิบ';
+        } else {
+          result += digits[d] + positions[pos];
+        }
+      }
+      return result;
+    };
+
+    const intPart = Math.floor(Math.abs(num));
+    const decPart = Math.round((Math.abs(num) - intPart) * 100);
+
+    let text = convertIntPart(intPart) + 'บาท';
+    if (decPart > 0) {
+      text += convertIntPart(decPart) + 'สตางค์';
+    } else {
+      text += 'ถ้วน';
+    }
+    return text;
+  }
+
+  /** Convert number to Thai text (no currency) */
+  private numberToThaiCountText(num: number): string {
+    const digits = ['ศูนย์', 'หนึ่ง', 'สอง', 'สาม', 'สี่', 'ห้า', 'หก', 'เจ็ด', 'แปด', 'เก้า', 'สิบ', 'สิบเอ็ด', 'สิบสอง'];
+    if (num >= 0 && num <= 12) return digits[num];
+    return String(num);
+  }
+
   /** Validate that a data URL is a safe image format */
   private isSafeImageDataUrl(url: string): boolean {
     return /^data:image\/(png|jpeg|gif|webp);base64,[A-Za-z0-9+/=]+$/.test(url);
@@ -254,10 +300,10 @@ export class DocumentsService {
     const thaiMonth = contractDate.toLocaleDateString('th-TH', { month: 'long' });
     const thaiYear = contractDate.toLocaleDateString('th-TH', { year: 'numeric' }).replace(/[^\d]/g, '');
 
-    // Build guarantor/references rows
+    // Build guarantor/references as numbered list (matching contract format)
     const references: any[] = contract.customer?.references || [];
     const referencesHtml = references.map((r: any, i: number) =>
-      `<tr><td>${i + 1}</td><td>${esc(r.prefix || '')}${esc(r.firstName || '')} ${esc(r.lastName || '')}</td><td>${esc(r.phone || '')}</td><td>${esc(r.relationship || '')}</td></tr>`
+      `<p style="margin-left:3em">${i + 1}. ชื่อ-นามสกุล <u>&nbsp;&nbsp;${esc(r.prefix || '')}${esc(r.firstName || '')} ${esc(r.lastName || '')}&nbsp;&nbsp;</u> เบอร์โทรศัพท์ <u>&nbsp;&nbsp;${esc(r.phone || '')}&nbsp;&nbsp;</u> ความสัมพันธ์ <u>&nbsp;&nbsp;${esc(r.relationship || '')}&nbsp;&nbsp;</u></p>`
     ).join('');
 
     // Compute first and last payment dates
@@ -306,6 +352,8 @@ export class DocumentsService {
       '{interest_rate}': `${(Number(contract.interestRate) * 100).toFixed(1)}%`,
       '{interest_total}': Number(contract.interestTotal).toLocaleString(),
       '{financed_amount}': Number(contract.financedAmount).toLocaleString(),
+      '{financed_amount_text}': this.numberToThaiText(Number(contract.financedAmount)),
+      '{total_months_text}': this.numberToThaiCountText(contract.totalMonths) + 'เดือน',
       '{first_payment_due}': firstPaymentDue,
       '{first_payment_day}': firstPaymentDay,
       '{first_payment_month}': firstPaymentMonth,

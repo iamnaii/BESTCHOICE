@@ -32,6 +32,7 @@ export default function ContractTemplatesPage() {
   const [editing, setEditing] = useState<Template | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [previewHtml, setPreviewHtml] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const [form, setForm] = useState({
     name: '',
@@ -97,6 +98,35 @@ export default function ContractTemplatesPage() {
     setShowPreview(true);
   };
 
+  const handleGenerateFromFile = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      toast.error('รองรับเฉพาะไฟล์รูปภาพ (JPG, PNG, WebP)');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('ไฟล์ต้องมีขนาดไม่เกิน 10MB');
+      return;
+    }
+
+    setIsGenerating(true);
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const { data } = await api.post('/contract-templates/generate-from-file', { imageBase64: base64 }, { timeout: 120000 });
+      setForm({ ...form, contentHtml: data.contentHtml });
+      toast.success('AI สร้างเทมเพลตสำเร็จ กรุณาตรวจสอบและแก้ไขก่อนบันทึก');
+    } catch (err: any) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   const columns = [
     { key: 'name', label: 'ชื่อเทมเพลต', render: (t: Template) => <span className="font-medium text-sm">{t.name}</span> },
     { key: 'type', label: 'ประเภท', render: () => <span className="text-xs px-2 py-0.5 bg-gray-100 rounded">ผ่อนกับ BESTCHOICE</span> },
@@ -158,6 +188,33 @@ export default function ContractTemplatesPage() {
               <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
             </div>
 
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">สร้างจากไฟล์ด้วย AI</label>
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-primary-400 transition-colors">
+                {isGenerating ? (
+                  <div className="flex items-center justify-center gap-2 py-2">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-600"></div>
+                    <span className="text-sm text-gray-600">AI กำลังอ่านเอกสารและสร้างเทมเพลต...</span>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-sm text-gray-500 mb-2">แนบรูปเอกสาร/สัญญา แล้ว AI จะสร้าง HTML template ให้</p>
+                    <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 text-purple-700 text-sm font-medium rounded-lg cursor-pointer hover:bg-purple-100">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                      เลือกรูปเอกสาร
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        className="hidden"
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleGenerateFromFile(f); e.target.value = ''; }}
+                      />
+                    </label>
+                    <p className="text-xs text-gray-400 mt-1">รองรับ JPG, PNG, WebP (ไม่เกิน 10MB)</p>
+                  </>
+                )}
+              </div>
+            </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">เนื้อหา HTML</label>

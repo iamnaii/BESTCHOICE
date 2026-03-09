@@ -258,6 +258,81 @@ export class OcrService {
     return bestResult;
   }
 
+  // ─── 0. Generate Template HTML from File ───────────────
+
+  private static readonly TEMPLATE_GENERATION_PROMPT = `คุณเป็นผู้เชี่ยวชาญด้านการสร้างเทมเพลต HTML สำหรับสัญญาผ่อนชำระสินค้า (ร้านขายมือถือในประเทศไทย)
+
+ให้อ่านเอกสารในรูปนี้แล้วสร้าง HTML template ที่มีโครงสร้างเหมือนเอกสารต้นฉบับให้มากที่สุด
+
+กฎสำคัญ:
+1. ใช้ placeholders เหล่านี้แทนข้อมูลจริง (ใส่เฉพาะที่เหมาะสมตามเนื้อหาในเอกสาร):
+   - ข้อมูลสัญญา: {contract_number}, {contract_date}, {contract_date_day}, {contract_date_month}, {contract_date_year}
+   - ข้อมูลลูกค้า: {customer_name}, {customer_prefix}, {national_id}, {customer_phone}, {customer_phone_secondary}, {customer_address}, {customer_address_id_card}, {customer_address_current}, {customer_zipcode}, {customer_line_id}, {customer_facebook}, {customer_occupation}, {customer_salary}, {customer_workplace}, {customer_address_work}, {customer_references}
+   - ข้อมูลสินค้า: {product_name}, {brand}, {model}, {imei}, {serial_number}, {product_color}, {product_storage}, {product_category}
+   - ข้อมูลการเงิน: {selling_price}, {down_payment}, {monthly_payment}, {total_months}, {total_months_text}, {interest_rate}, {interest_total}, {financed_amount}, {financed_amount_text}
+   - ข้อมูลงวดชำระ: {first_payment_due}, {first_payment_day}, {first_payment_month}, {first_payment_year}, {last_payment_due}, {payment_schedule_table}
+   - ข้อมูลสาขา: {branch_name}, {branch_address}, {branch_phone}
+   - ข้อมูลพนักงาน: {salesperson_name}
+   - ลายเซ็น: {customer_signature}, {staff_signature}
+   - อื่นๆ: {date}
+
+2. จัดหน้าให้เหมาะกับกระดาษ A4 (max-width: 800px, margin: 0 auto)
+3. ใช้ font-family: 'Sarabun', 'Noto Sans Thai', sans-serif
+4. ใช้ inline CSS เท่านั้น (ไม่ใช้ <style> tag)
+5. ห้ามใส่ <script>, <iframe>, หรือ event handler ใดๆ
+6. ตอบเป็น HTML เท่านั้น ห้ามมี markdown code block หรือข้อความอื่น
+7. ถ้าเอกสารไม่ใช่สัญญาหรือเอกสารทางธุรกิจ ให้สร้างเทมเพลตสัญญาผ่อนชำระทั่วไป โดยอ้างอิงจากรูปแบบที่เห็น`;
+
+  async generateTemplateHtml(imageBase64: string): Promise<{ contentHtml: string; placeholders: string[] }> {
+    this.ensureAnthropicReady();
+    const { mediaType, base64Data } = this.validateImageBase64(imageBase64);
+
+    try {
+      const response = await this.anthropic!.messages.create({
+        model: OcrService.OCR_MODEL,
+        max_tokens: 8192,
+        temperature: 0.2,
+        system: OcrService.TEMPLATE_GENERATION_PROMPT,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'image',
+                source: { type: 'base64', media_type: mediaType, data: base64Data },
+              },
+              {
+                type: 'text',
+                text: 'อ่านเอกสารนี้แล้วสร้าง HTML template ตามรูปแบบที่เห็น ใช้ placeholders แทนข้อมูลจริง ตอบเป็น HTML เท่านั้น',
+              },
+            ],
+          },
+        ],
+      });
+
+      const textContent = response.content.find((c) => c.type === 'text');
+      if (!textContent || textContent.type !== 'text') {
+        throw new Error('No text response from Claude');
+      }
+
+      // Extract HTML from response (strip markdown code blocks if present)
+      let html = textContent.text.trim();
+      const htmlMatch = html.match(/```(?:html)?\s*([\s\S]*?)```/);
+      if (htmlMatch) {
+        html = htmlMatch[1].trim();
+      }
+
+      // Extract placeholders used
+      const placeholders = [...new Set((html.match(/\{[a-z_]+\}/g) || []))];
+
+      return { contentHtml: html, placeholders };
+    } catch (error) {
+      if (error instanceof BadRequestException) throw error;
+      this.logger.error('Template generation from file failed', (error as Error).message);
+      throw new InternalServerErrorException('ไม่สามารถสร้างเทมเพลตจากไฟล์ได้ กรุณาลองใหม่อีกครั้ง');
+    }
+  }
+
   // ─── 1. Extract ID Card ─────────────────────────────────
 
   async extractIdCard(imageBase64: string): Promise<OcrIdCardResult> {

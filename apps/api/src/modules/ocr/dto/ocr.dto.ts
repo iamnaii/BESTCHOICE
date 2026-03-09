@@ -28,6 +28,13 @@ export class OcrDrivingLicenseDto {
   imageBase64: string; // base64 data URL of the driving license image
 }
 
+export class OcrGenerateTemplateDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(15_000_000) // ~10MB file becomes ~13.3MB base64 + data URL prefix
+  imageBase64: string; // base64 data URL of the document image
+}
+
 export interface OcrAddressStructured {
   houseNo: string;
   moo: string;

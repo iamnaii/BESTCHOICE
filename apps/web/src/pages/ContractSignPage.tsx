@@ -1,7 +1,6 @@
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import DOMPurify from 'dompurify';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import toast from 'react-hot-toast';
@@ -161,14 +160,14 @@ export default function ContractSignPage() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Contract Preview */}
+        {/* Contract Preview (A4 via iframe) */}
         <div>
           <h2 className="text-lg font-semibold text-gray-900 mb-3">ตัวอย่างสัญญา</h2>
-          <div className="bg-white rounded-lg border p-4 max-h-[60vh] overflow-auto">
+          <div className="bg-gray-200 rounded-lg border overflow-hidden" style={{ height: '70vh' }}>
             {preview ? (
-              <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(preview.html) }} />
+              <ContractPreviewFrame html={preview.html} />
             ) : (
-              <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div></div>
+              <div className="flex items-center justify-center py-12 bg-white"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div></div>
             )}
           </div>
         </div>
@@ -260,5 +259,33 @@ export default function ContractSignPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+/** Renders contract HTML in a sandboxed iframe for proper A4 page rendering */
+function ContractPreviewFrame({ html }: { html: string }) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  const writeContent = useCallback(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!doc) return;
+    doc.open();
+    doc.write(html);
+    doc.close();
+  }, [html]);
+
+  useEffect(() => {
+    writeContent();
+  }, [writeContent]);
+
+  return (
+    <iframe
+      ref={iframeRef}
+      title="contract-preview"
+      className="w-full h-full border-0"
+      sandbox="allow-same-origin"
+    />
   );
 }

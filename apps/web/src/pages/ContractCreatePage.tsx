@@ -131,7 +131,7 @@ export default function ContractCreatePage() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [customerSearch, setCustomerSearch] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [planType, setPlanType] = useState('STORE_DIRECT');
+  const planType = 'STORE_DIRECT';
   const [downPayment, setDownPayment] = useState(0);
   const [totalMonths, setTotalMonths] = useState(6);
   const [notes, setNotes] = useState('');
@@ -951,14 +951,6 @@ export default function ContractCreatePage() {
               </div>
             )}
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">ประเภทแผน</label>
-              <select value={planType} onChange={(e) => setPlanType(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
-                <option value="STORE_DIRECT">ผ่อนกับร้าน (STORE_DIRECT)</option>
-                <option value="CREDIT_CARD">ผ่อนบัตรเครดิต (CREDIT_CARD)</option>
-                <option value="STORE_WITH_INTEREST">ผ่อนกับร้าน+ดอกเบี้ย (STORE_WITH_INTEREST)</option>
-              </select>
-            </div>
 
             <div className="bg-gray-50 rounded-lg p-4">
               <div className="text-sm font-medium text-gray-700 mb-2">สินค้า: {selectedProduct?.brand} {selectedProduct?.model}</div>
@@ -994,8 +986,8 @@ export default function ContractCreatePage() {
                 onChange={(e) => setPaymentDueDay(Number(e.target.value))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
               >
-                {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
-                  <option key={d} value={d}>วันที่ {d} ของทุกเดือน</option>
+                {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                  <option key={d} value={d}>{d === 31 ? 'สิ้นเดือน (วันสุดท้ายของเดือน)' : `วันที่ ${d} ของทุกเดือน`}</option>
                 ))}
               </select>
               <div className="text-xs text-gray-400 mt-1">ลูกค้าจะต้องชำระเงินทุกวันที่ {paymentDueDay} ของเดือน</div>
@@ -1227,7 +1219,7 @@ export default function ContractCreatePage() {
               </div>
 
               <div className="bg-gray-50 rounded-lg p-4 grid grid-cols-2 gap-3">
-                <div><div className="text-xs text-gray-500">ประเภท</div><div className="text-sm font-medium">{planType}</div></div>
+                <div><div className="text-xs text-gray-500">ประเภท</div><div className="text-sm font-medium">ผ่อนกับร้าน</div></div>
                 <div><div className="text-xs text-gray-500">ราคาขาย</div><div className="text-sm font-medium">{sellingPrice.toLocaleString()} ฿</div></div>
                 <div><div className="text-xs text-gray-500">เงินดาวน์</div><div className="text-sm font-medium">{downPayment.toLocaleString()} ฿</div></div>
                 <div><div className="text-xs text-gray-500">จำนวนงวด</div><div className="text-sm font-medium">{totalMonths} เดือน</div></div>

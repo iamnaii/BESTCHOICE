@@ -39,7 +39,7 @@ export default function ContractTemplatesPage() {
     contentHtml: '',
   });
 
-  const { data: templates = [], isLoading } = useQuery<Template[]>({
+  const { data: templates = [], isLoading, isError, error, refetch } = useQuery<Template[]>({
     queryKey: ['contract-templates'],
     queryFn: async () => { const { data } = await api.get('/contract-templates'); return data; },
   });
@@ -137,8 +137,16 @@ export default function ContractTemplatesPage() {
 
       {isLoading ? (
         <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div></div>
+      ) : isError ? (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+          <p className="text-red-700 font-medium mb-2">ไม่สามารถโหลดเทมเพลตได้</p>
+          <p className="text-red-600 text-sm mb-4">{getErrorMessage(error)}</p>
+          <button onClick={() => refetch()} className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700">
+            ลองใหม่
+          </button>
+        </div>
       ) : (
-        <DataTable columns={columns} data={templates} emptyMessage="ยังไม่มีเทมเพลต" />
+        <DataTable columns={columns} data={templates} emptyMessage="ยังไม่มีเทมเพลต กรุณารัน seed หรือสร้างเทมเพลตใหม่" />
       )}
 
       {/* Create/Edit Modal */}

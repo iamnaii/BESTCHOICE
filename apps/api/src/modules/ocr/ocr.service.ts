@@ -55,7 +55,7 @@ export class OcrService {
       ''
     ).trim();
     if (apiKey) {
-      this.anthropic = new Anthropic({ apiKey, timeout: 90_000 });
+      this.anthropic = new Anthropic({ apiKey, timeout: 120_000 });
       this.logger.log('OCR service initialized with Anthropic API key');
     } else {
       this.logger.warn(
@@ -219,6 +219,25 @@ export class OcrService {
     }
   }
 
+  /** Check if Anthropic AI is configured and reachable */
+  async checkAiStatus(): Promise<{ configured: boolean; connected: boolean; model: string; error?: string }> {
+    const model = OcrService.OCR_MODEL;
+    if (!this.anthropic) {
+      return { configured: false, connected: false, model, error: 'ANTHROPIC_API_KEY ไม่ได้ตั้งค่า' };
+    }
+    try {
+      await this.anthropic.messages.create({
+        model,
+        max_tokens: 10,
+        messages: [{ role: 'user', content: 'ping' }],
+      });
+      return { configured: true, connected: true, model };
+    } catch (err) {
+      const msg = (err as Error).message || 'Unknown error';
+      return { configured: true, connected: false, model, error: msg };
+    }
+  }
+
   private async callClaudeOcr(
     mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
     base64Data: string,
@@ -350,7 +369,18 @@ export class OcrService {
       return { contentHtml: html, placeholders };
     } catch (error) {
       if (error instanceof BadRequestException) throw error;
-      this.logger.error('Template generation from file failed', (error as Error).message);
+      const errMsg = (error as Error).message || '';
+      this.logger.error('Template generation from file failed', errMsg);
+
+      if (errMsg.includes('timeout') || errMsg.includes('ETIMEDOUT') || errMsg.includes('abort')) {
+        throw new InternalServerErrorException('AI ใช้เวลานานเกินไป — ลองใช้ไฟล์ที่มีขนาดเล็กลง หรือเป็นรูปภาพแทน PDF');
+      }
+      if (errMsg.includes('401') || errMsg.includes('authentication')) {
+        throw new InternalServerErrorException('API Key ไม่ถูกต้อง กรุณาติดต่อผู้ดูแลระบบ');
+      }
+      if (errMsg.includes('429') || errMsg.includes('rate')) {
+        throw new InternalServerErrorException('AI ถูกจำกัดการใช้งานชั่วคราว กรุณารอสักครู่แล้วลองใหม่');
+      }
       throw new InternalServerErrorException('ไม่สามารถสร้างเทมเพลตจากไฟล์ได้ กรุณาลองใหม่อีกครั้ง');
     }
   }

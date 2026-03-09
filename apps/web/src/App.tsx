@@ -44,6 +44,7 @@ const StockTransfersPage = lazy(() => import('@/pages/StockTransfersPage'));
 const StockAlertsPage = lazy(() => import('@/pages/StockAlertsPage'));
 const StockAdjustmentsPage = lazy(() => import('@/pages/StockAdjustmentsPage'));
 const StockCountPage = lazy(() => import('@/pages/StockCountPage'));
+const SystemStatusPage = lazy(() => import('@/pages/SystemStatusPage'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -268,6 +269,14 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER']}>
                 <AuditLogsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/system-status"
+            element={
+              <ProtectedRoute roles={['OWNER']}>
+                <SystemStatusPage />
               </ProtectedRoute>
             }
           />

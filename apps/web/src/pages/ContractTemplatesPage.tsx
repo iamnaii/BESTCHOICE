@@ -160,13 +160,18 @@ export default function ContractTemplatesPage() {
         reader.readAsDataURL(file);
       });
 
-      const { data } = await api.post('/contract-templates/generate-from-file', { fileBase64: base64 }, { timeout: 120000 });
+      const { data } = await api.post('/contract-templates/generate-from-file', { fileBase64: base64 }, { timeout: 180000 });
       setForm(prev => ({ ...prev, contentHtml: data.contentHtml }));
       setDetectedPlaceholders(data.placeholders || []);
       setShowPreview(true);
       toast.success(`AI สร้างเทมเพลตสำเร็จ (ใส่ ${data.placeholders?.length || 0} ตัวแปร)`);
     } catch (err: any) {
-      toast.error(getErrorMessage(err));
+      const code = (err as { code?: string }).code;
+      if (code === 'ECONNABORTED') {
+        toast.error('AI ใช้เวลานานเกินไป — ลองใช้ไฟล์ขนาดเล็กลง หรือใช้รูปภาพแทน PDF');
+      } else {
+        toast.error(getErrorMessage(err));
+      }
     } finally {
       setIsGenerating(false);
     }

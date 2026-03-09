@@ -79,6 +79,7 @@ const navItems: NavItem[] = [
   { label: 'ตั้งค่าดอกเบี้ย', path: '/settings/interest-config', roles: ['OWNER'], section: 'system' },
   { label: 'ราคาตั้งต้น', path: '/settings/pricing-templates', roles: ['OWNER'], section: 'system' },
   { label: 'เทมเพลตสัญญา', path: '/contract-templates', roles: ['OWNER'], section: 'system' },
+  { label: 'สถานะระบบ', path: '/system-status', roles: ['OWNER'], section: 'system' },
   { label: 'Audit Logs', path: '/audit-logs', roles: ['OWNER'], section: 'system' },
   { label: 'นำเข้าข้อมูล', path: '/migration', roles: ['OWNER'], section: 'system' },
 ];

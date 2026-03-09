@@ -219,6 +219,25 @@ export class OcrService {
     }
   }
 
+  /** Check if Anthropic AI is configured and reachable */
+  async checkAiStatus(): Promise<{ configured: boolean; connected: boolean; model: string; error?: string }> {
+    const model = OcrService.OCR_MODEL;
+    if (!this.anthropic) {
+      return { configured: false, connected: false, model, error: 'ANTHROPIC_API_KEY ไม่ได้ตั้งค่า' };
+    }
+    try {
+      await this.anthropic.messages.create({
+        model,
+        max_tokens: 10,
+        messages: [{ role: 'user', content: 'ping' }],
+      });
+      return { configured: true, connected: true, model };
+    } catch (err) {
+      const msg = (err as Error).message || 'Unknown error';
+      return { configured: true, connected: false, model, error: msg };
+    }
+  }
+
   private async callClaudeOcr(
     mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
     base64Data: string,

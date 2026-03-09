@@ -1,12 +1,47 @@
-import { Settings, Plus, Save, Undo2, Eye, EyeOff, Download, Loader2 } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { ArrowLeft, Settings, Plus, Save, Undo2, Eye, EyeOff, Download, Loader2, BookOpen } from 'lucide-react';
 import { useTemplateStore } from '@/store/templateStore';
+import type { BlockType } from '@/types/template';
 
-export default function HeaderBar() {
+interface Props {
+  onBack?: () => void;
+  onToggleCheatSheet?: () => void;
+  showCheatSheet?: boolean;
+}
+
+const QUICK_ADD_BLOCKS: { type: BlockType; label: string }[] = [
+  { type: 'paragraph', label: 'ข้อความ' },
+  { type: 'clause', label: 'ข้อสัญญา' },
+  { type: 'heading', label: 'หัวเรื่อง' },
+  { type: 'subheading', label: 'หัวข้อย่อย' },
+  { type: 'party-info', label: 'คู่สัญญา' },
+  { type: 'product-info', label: 'ข้อมูลสินค้า' },
+  { type: 'payment-table', label: 'ตารางค่างวด' },
+  { type: 'signature-block', label: 'ช่องลายเซ็น' },
+  { type: 'photo-attachment', label: 'แนบรูปภาพ' },
+];
+
+export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet }: Props) {
   const {
     currentTemplate, templates, previewMode, isSaving, isLoading,
     setPreviewMode, setShowSettings, setShowExportModal,
     addBlock, saveTemplateToApi, undo, isDirty, loadTemplate,
   } = useTemplateStore();
+
+  const [showAddMenu, setShowAddMenu] = useState(false);
+  const addMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close menu on outside click
+  useEffect(() => {
+    if (!showAddMenu) return;
+    const handleClick = (e: MouseEvent) => {
+      if (addMenuRef.current && !addMenuRef.current.contains(e.target as Node)) {
+        setShowAddMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showAddMenu]);
 
   const handleTemplateChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const id = e.target.value;
@@ -16,8 +51,23 @@ export default function HeaderBar() {
     }
   };
 
+  const handleAddBlock = (type: BlockType) => {
+    addBlock(type);
+    setShowAddMenu(false);
+  };
+
   return (
-    <div className="h-14 bg-white border-b border-gray-200 flex items-center px-4 gap-3">
+    <div className="h-14 bg-white border-b border-gray-200 flex items-center px-4 gap-2">
+      {/* Back button */}
+      {onBack && (
+        <button
+          onClick={onBack}
+          className="flex items-center gap-1 px-2 py-1.5 text-sm text-gray-500 hover:text-gray-700 rounded-lg hover:bg-gray-50 transition-colors mr-1"
+        >
+          <ArrowLeft size={16} />
+        </button>
+      )}
+
       {/* Template selector */}
       <select
         value={currentTemplate.id}
@@ -35,12 +85,26 @@ export default function HeaderBar() {
         ))}
       </select>
 
-      {isDirty && <span className="text-xs text-amber-600">* ยังไม่ได้บันทึก</span>}
-      {isSaving && <span className="text-xs text-blue-600 flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> กำลังบันทึก...</span>}
+      {isDirty && <span className="text-xs text-amber-600">*</span>}
+      {isSaving && <span className="text-xs text-blue-600 flex items-center gap-1"><Loader2 size={12} className="animate-spin" /></span>}
 
       <div className="flex-1" />
 
-      {/* Action buttons */}
+      {/* Cheat sheet toggle */}
+      {onToggleCheatSheet && (
+        <button
+          onClick={onToggleCheatSheet}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors ${
+            showCheatSheet
+              ? 'bg-amber-100 text-amber-700 border border-amber-300'
+              : 'text-gray-700 border border-gray-300 hover:bg-gray-50'
+          }`}
+        >
+          <BookOpen size={14} />
+          ตัวแปร
+        </button>
+      )}
+
       <button
         onClick={() => setShowSettings(true)}
         className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
@@ -49,13 +113,29 @@ export default function HeaderBar() {
         ตั้งค่า
       </button>
 
-      <button
-        onClick={() => addBlock('paragraph')}
-        className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-      >
-        <Plus size={14} />
-        เพิ่มข้อมูล
-      </button>
+      {/* Add block dropdown */}
+      <div className="relative" ref={addMenuRef}>
+        <button
+          onClick={() => setShowAddMenu(!showAddMenu)}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+        >
+          <Plus size={14} />
+          เพิ่ม
+        </button>
+        {showAddMenu && (
+          <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-50 w-48 py-1">
+            {QUICK_ADD_BLOCKS.map(b => (
+              <button
+                key={b.type}
+                onClick={() => handleAddBlock(b.type)}
+                className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-violet-50 hover:text-violet-700 transition-colors"
+              >
+                {b.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       <button
         onClick={() => saveTemplateToApi()}
@@ -68,10 +148,10 @@ export default function HeaderBar() {
 
       <button
         onClick={() => undo()}
-        className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+        className="flex items-center gap-1.5 px-2 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+        title="Undo (Ctrl+Z)"
       >
         <Undo2 size={14} />
-        Undo
       </button>
 
       <button
@@ -91,7 +171,7 @@ export default function HeaderBar() {
         className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors"
       >
         <Download size={14} />
-        Export PDF
+        PDF
       </button>
     </div>
   );

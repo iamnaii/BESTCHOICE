@@ -17,21 +17,21 @@ export default function BlockRenderer({ block, previewMode }: Props) {
   switch (block.type) {
     case 'contract-header':
       return (
-        <div className="flex justify-between items-center mb-2 text-[13px]">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', fontSize: '13px', color: '#4a4a4a' }}>
           <VariableHighlighter text={block.content} previewMode={previewMode} resolvedText={resolved} />
         </div>
       );
 
     case 'heading':
       return (
-        <h2 className="text-center font-bold text-[18px] my-3">
+        <h2 style={{ textAlign: 'center', fontWeight: 700, fontSize: '18px', margin: '16px 0 12px', letterSpacing: '0.5px', color: '#111' }}>
           <VariableHighlighter text={block.content} previewMode={previewMode} resolvedText={resolved} />
         </h2>
       );
 
     case 'subheading':
       return (
-        <h3 className="font-bold text-[15px] mt-3 mb-1">
+        <h3 style={{ fontWeight: 700, fontSize: '15px', marginTop: '14px', marginBottom: '6px', color: '#222' }}>
           <VariableHighlighter text={block.content} previewMode={previewMode} resolvedText={resolved} />
         </h3>
       );
@@ -41,7 +41,7 @@ export default function BlockRenderer({ block, previewMode }: Props) {
     case 'product-info':
     case 'agreement':
       return (
-        <p className="text-[14px] leading-relaxed my-1 indent-8">
+        <p style={{ fontSize: '14px', lineHeight: 1.8, margin: '4px 0', textIndent: '2em', color: '#1a1a1a' }}>
           <VariableHighlighter text={block.content} previewMode={previewMode} resolvedText={resolved} />
         </p>
       );
@@ -50,18 +50,25 @@ export default function BlockRenderer({ block, previewMode }: Props) {
       if (previewMode) {
         const contacts = ctx['EMERGENCY_CONTACTS'] as { NAME: string; TEL: string; RELATION: string }[];
         return (
-          <div className="my-2 text-[14px]">
-            <p className="mb-1">(กรณีที่ผู้ให้เช่าซื้อติดต่อผู้เช่าซื้อไม่ได้ ขอให้ติดต่อบุคคลดังต่อไปนี้)</p>
-            {contacts.map((c, i) => (
-              <p key={i} className="ml-8">
-                {i + 1}. ชื่อ-นามสกุล {c.NAME}{'       '}เบอร์โทรศัพท์ {c.TEL}{'       '}ความสัมพันธ์ {c.RELATION}
-              </p>
-            ))}
+          <div style={{ margin: '8px 0', fontSize: '14px' }}>
+            <p style={{ marginBottom: '4px' }}>(กรณีที่ผู้ให้เช่าซื้อติดต่อผู้เช่าซื้อไม่ได้ ขอให้ติดต่อบุคคลดังต่อไปนี้)</p>
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginLeft: '2em' }}>
+              <tbody>
+                {contacts.map((c, i) => (
+                  <tr key={i}>
+                    <td style={{ padding: '2px 8px 2px 0', width: '24px' }}>{i + 1}.</td>
+                    <td style={{ padding: '2px 8px' }}>ชื่อ-นามสกุล {c.NAME}</td>
+                    <td style={{ padding: '2px 8px' }}>เบอร์โทร {c.TEL}</td>
+                    <td style={{ padding: '2px 8px' }}>ความสัมพันธ์ {c.RELATION}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         );
       }
       return (
-        <div className="my-2 text-[14px]">
+        <div style={{ margin: '8px 0', fontSize: '14px' }}>
           <VariableHighlighter text={block.content} previewMode={false} />
         </div>
       );
@@ -69,19 +76,19 @@ export default function BlockRenderer({ block, previewMode }: Props) {
     case 'clause': {
       const resolvedClause = previewMode ? renderVariables(block.content, ctx) : '';
       return (
-        <div className="my-2">
-          <p className="text-[14px] font-bold">
+        <div style={{ margin: '10px 0' }}>
+          <p style={{ fontSize: '14px', fontWeight: 700, color: '#111' }}>
             ข้อ {block.clauseNumber} {block.clauseTitle}
           </p>
-          <p className="text-[14px] leading-relaxed indent-8 mt-1">
+          <p style={{ fontSize: '14px', lineHeight: 1.8, textIndent: '2em', marginTop: '4px', color: '#1a1a1a' }}>
             <VariableHighlighter text={block.content} previewMode={previewMode} resolvedText={resolvedClause} />
           </p>
           {block.subItems && block.subItems.length > 0 && (
-            <div className="ml-12 mt-1 space-y-0.5">
+            <div style={{ marginLeft: '3em', marginTop: '4px' }}>
               {block.subItems.map((item, i) => {
                 const resolvedItem = previewMode ? renderVariables(item, ctx) : '';
                 return (
-                  <p key={i} className="text-[13px] leading-relaxed">
+                  <p key={i} style={{ fontSize: '13px', lineHeight: 1.7, marginBottom: '2px', color: '#333' }}>
                     <VariableHighlighter text={item} previewMode={previewMode} resolvedText={resolvedItem} />
                   </p>
                 );
@@ -100,16 +107,16 @@ export default function BlockRenderer({ block, previewMode }: Props) {
 
     case 'photo-attachment':
       return (
-        <div className="my-4">
-          <p className="text-[14px] font-bold mb-3 text-center">รูปถ่ายโทรศัพท์แนบท้ายสัญญา</p>
-          <div className="grid grid-cols-2 gap-3">
+        <div style={{ margin: '20px 0', pageBreakBefore: 'always' }}>
+          <p style={{ fontSize: '14px', fontWeight: 700, marginBottom: '12px', textAlign: 'center' }}>รูปถ่ายโทรศัพท์แนบท้ายสัญญา</p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             {[1, 2, 3, 4, 5, 6].map(n => (
-              <div key={n} className="border-2 border-dashed border-gray-300 rounded-lg h-32 flex items-center justify-center text-gray-400 text-sm">
+              <div key={n} style={{ border: '2px dashed #d1d5db', borderRadius: '8px', height: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', fontSize: '13px' }}>
                 รูปภาพ {n}
               </div>
             ))}
           </div>
-          <div className="mt-4 text-center text-[14px]">
+          <div style={{ marginTop: '16px', textAlign: 'center', fontSize: '14px' }}>
             <p>ชื่อ .............................. ผู้เช่าซื้อ</p>
             <p>วันที่ .......... เดือน .................. พ.ศ ............</p>
           </div>
@@ -118,9 +125,9 @@ export default function BlockRenderer({ block, previewMode }: Props) {
 
     case 'attachment-list':
       return (
-        <div className="my-3 text-[14px]">
+        <div style={{ margin: '12px 0', fontSize: '14px' }}>
           {block.content.split('\n').map((line, i) => (
-            <p key={i} className={i === 0 ? 'font-bold mb-1' : 'ml-4'}>
+            <p key={i} style={{ fontWeight: i === 0 ? 700 : 400, marginLeft: i === 0 ? 0 : '2em', marginBottom: '2px' }}>
               <VariableHighlighter text={line} previewMode={previewMode} resolvedText={previewMode ? renderVariables(line, ctx) : ''} />
             </p>
           ))}
@@ -130,7 +137,7 @@ export default function BlockRenderer({ block, previewMode }: Props) {
     case 'column':
     case 'column-vertical':
       return (
-        <div className={`my-2 grid grid-cols-2 gap-4 text-[14px] ${block.type === 'column-vertical' ? 'items-start' : 'items-center'}`}>
+        <div style={{ margin: '8px 0', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', fontSize: '14px', alignItems: block.type === 'column-vertical' ? 'start' : 'center' }}>
           {block.content.split('||').map((col, i) => (
             <div key={i}>
               <VariableHighlighter text={col.trim()} previewMode={previewMode} resolvedText={previewMode ? renderVariables(col.trim(), ctx) : ''} />
@@ -141,14 +148,14 @@ export default function BlockRenderer({ block, previewMode }: Props) {
 
     case 'numbered':
       return (
-        <div className="my-1 ml-8 text-[14px]">
+        <div style={{ margin: '4px 0', marginLeft: '2em', fontSize: '14px' }}>
           <VariableHighlighter text={block.content} previewMode={previewMode} resolvedText={resolved} />
         </div>
       );
 
     default:
       return (
-        <p className="text-[14px] my-1">
+        <p style={{ fontSize: '14px', margin: '4px 0' }}>
           <VariableHighlighter text={block.content} previewMode={previewMode} resolvedText={resolved} />
         </p>
       );

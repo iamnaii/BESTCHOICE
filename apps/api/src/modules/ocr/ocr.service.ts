@@ -226,15 +226,25 @@ export class OcrService {
       return { configured: false, connected: false, model, error: 'ANTHROPIC_API_KEY ไม่ได้ตั้งค่า' };
     }
     try {
-      await this.anthropic.messages.create({
+      // Use count_tokens as a lightweight ping — no tokens consumed
+      await this.anthropic.messages.countTokens({
         model,
-        max_tokens: 10,
         messages: [{ role: 'user', content: 'ping' }],
       });
       return { configured: true, connected: true, model };
     } catch (err) {
-      const msg = (err as Error).message || 'Unknown error';
-      return { configured: true, connected: false, model, error: msg };
+      // If count_tokens not available, try a simple messages call
+      try {
+        await this.anthropic.messages.create({
+          model,
+          max_tokens: 1,
+          messages: [{ role: 'user', content: 'hi' }],
+        });
+        return { configured: true, connected: true, model };
+      } catch (err2) {
+        const msg = (err2 as Error).message || 'Unknown error';
+        return { configured: true, connected: false, model, error: msg };
+      }
     }
   }
 

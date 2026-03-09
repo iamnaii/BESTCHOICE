@@ -15,6 +15,12 @@ export class CreateTemplateDto {
   @IsOptional()
   placeholders?: string[];
 
+  @IsOptional()
+  blocks?: any; // Block-based editor content (JSON)
+
+  @IsOptional()
+  settings?: any; // Template settings (JSON)
+
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
@@ -32,6 +38,12 @@ export class UpdateTemplateDto {
   @IsArray()
   @IsOptional()
   placeholders?: string[];
+
+  @IsOptional()
+  blocks?: any; // Block-based editor content (JSON)
+
+  @IsOptional()
+  settings?: any; // Template settings (JSON)
 
   @IsBoolean()
   @IsOptional()

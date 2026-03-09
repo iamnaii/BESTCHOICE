@@ -33,6 +33,7 @@ export default function ContractTemplatesPage() {
   const [showPreview, setShowPreview] = useState(false);
   const [previewHtml, setPreviewHtml] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [detectedPlaceholders, setDetectedPlaceholders] = useState<string[]>([]);
 
   const [form, setForm] = useState({
     name: '',
@@ -74,12 +75,14 @@ export default function ContractTemplatesPage() {
   const openCreate = () => {
     setEditing(null);
     setForm({ name: '', type: 'STORE_DIRECT' as const, contentHtml: '' });
+    setDetectedPlaceholders([]);
     setShowModal(true);
   };
 
   const openEdit = (t: Template) => {
     setEditing(t);
     setForm({ name: t.name, type: 'STORE_DIRECT' as const, contentHtml: t.contentHtml });
+    setDetectedPlaceholders(t.placeholders || []);
     setShowModal(true);
   };
 
@@ -120,7 +123,8 @@ export default function ContractTemplatesPage() {
 
       const { data } = await api.post('/contract-templates/generate-from-file', { fileBase64: base64 }, { timeout: 120000 });
       setForm({ ...form, contentHtml: data.contentHtml });
-      toast.success('AI สร้างเทมเพลตสำเร็จ กรุณาตรวจสอบและแก้ไขก่อนบันทึก');
+      setDetectedPlaceholders(data.placeholders || []);
+      toast.success(`AI สร้างเทมเพลตสำเร็จ (พบ ${data.placeholders?.length || 0} placeholders) กรุณาตรวจสอบก่อนบันทึก`);
     } catch (err: any) {
       toast.error(getErrorMessage(err));
     } finally {
@@ -228,15 +232,26 @@ export default function ContractTemplatesPage() {
               />
             </div>
 
+            {detectedPlaceholders.length > 0 && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                <div className="text-xs font-medium text-green-700 mb-1.5">Placeholders ที่ AI ใส่ในเทมเพลต ({detectedPlaceholders.length} รายการ):</div>
+                <div className="flex flex-wrap gap-1">
+                  {detectedPlaceholders.map((p) => (
+                    <span key={p} className="text-xs px-1.5 py-0.5 bg-green-100 text-green-800 rounded">{p}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div>
-              <div className="text-xs font-medium text-gray-500 mb-1">Placeholders ที่ใช้ได้:</div>
+              <div className="text-xs font-medium text-gray-500 mb-1">Placeholders ที่ใช้ได้ทั้งหมด:</div>
               <div className="flex flex-wrap gap-1">
                 {AVAILABLE_PLACEHOLDERS.map((p) => (
                   <button
                     key={p}
                     type="button"
                     onClick={() => setForm({ ...form, contentHtml: form.contentHtml + p })}
-                    className="text-xs px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded hover:bg-blue-100"
+                    className={`text-xs px-1.5 py-0.5 rounded hover:bg-blue-100 ${detectedPlaceholders.includes(p) ? 'bg-green-100 text-green-700' : 'bg-blue-50 text-blue-700'}`}
                   >
                     {p}
                   </button>

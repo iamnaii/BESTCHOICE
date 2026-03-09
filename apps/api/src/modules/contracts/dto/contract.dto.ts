@@ -35,10 +35,10 @@ export class CreateContractDto {
   @IsOptional()
   notes?: string;
 
-  // วันที่ครบกำหนดชำระ ตามวันเงินเดือนออก (1-28)
+  // วันที่ครบกำหนดชำระ ตามวันเงินเดือนออก (1-28 หรือ 31=สิ้นเดือน)
   @IsInt()
   @Min(1)
-  @Max(28)
+  @Max(31)
   @IsOptional()
   paymentDueDay?: number;
 }
@@ -70,7 +70,7 @@ export class UpdateContractDto {
 
   @IsInt()
   @Min(1)
-  @Max(28)
+  @Max(31)
   @IsOptional()
   paymentDueDay?: number;
 }

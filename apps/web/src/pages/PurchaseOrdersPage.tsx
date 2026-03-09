@@ -416,19 +416,17 @@ export default function PurchaseOrdersPage() {
     setSelectedPO(po);
     setReceivingNotes('');
 
-    // Lookup pricing templates for all unique items
+    // Fetch all pricing templates and match on client side
     const pricingCache = new Map<string, string>();
-    for (const item of po.items) {
-      if (item.category === 'ACCESSORY' || !item.brand || !item.model) continue;
-      const cacheKey = `${item.brand}|${item.model}|${item.storage || ''}|${item.category || 'PHONE_NEW'}`;
-      if (pricingCache.has(cacheKey)) continue;
-      try {
-        const params = new URLSearchParams({ brand: item.brand, model: item.model, category: item.category || 'PHONE_NEW' });
-        if (item.storage) params.set('storage', item.storage);
-        const { data } = await api.get(`/pricing-templates/lookup?${params}`);
-        if (data?.cashPrice) pricingCache.set(cacheKey, String(Number(data.cashPrice)));
-      } catch { /* no pricing template found */ }
-    }
+    try {
+      const { data: templates } = await api.get('/pricing-templates');
+      if (Array.isArray(templates)) {
+        for (const t of templates) {
+          const key = `${(t.brand || '').toLowerCase()}|${(t.model || '').toLowerCase()}|${(t.storage || '').toLowerCase()}|${(t.category || '').toUpperCase()}`;
+          if (t.cashPrice) pricingCache.set(key, String(Number(t.cashPrice)));
+        }
+      }
+    } catch { /* failed to fetch pricing templates */ }
 
     const units: ReceivingUnitForm[] = [];
     for (const item of po.items) {
@@ -440,8 +438,20 @@ export default function PurchaseOrdersPage() {
             ? [item.accessoryType, item.accessoryBrand, item.model].filter(Boolean)
             : [item.accessoryType, item.accessoryBrand, item.model ? `สำหรับ ${item.model}` : ''].filter(Boolean))
         : [item.brand, item.model, item.color, item.storage].filter(Boolean);
-      const cacheKey = `${item.brand}|${item.model}|${item.storage || ''}|${item.category || 'PHONE_NEW'}`;
-      const defaultPrice = pricingCache.get(cacheKey) || '';
+
+      // Try to find matching pricing template (with storage, then without)
+      let defaultPrice = '';
+      if (!isAccessory && item.brand && item.model) {
+        const category = (item.category || 'PHONE_NEW').toUpperCase();
+        const key = `${item.brand.toLowerCase()}|${item.model.toLowerCase()}|${(item.storage || '').toLowerCase()}|${category}`;
+        defaultPrice = pricingCache.get(key) || '';
+        // Fallback: try without storage
+        if (!defaultPrice && item.storage) {
+          const keyNoStorage = `${item.brand.toLowerCase()}|${item.model.toLowerCase()}||${category}`;
+          defaultPrice = pricingCache.get(keyNoStorage) || '';
+        }
+      }
+
       for (let i = 0; i < remaining; i++) {
         units.push({
           poItemId: item.id,

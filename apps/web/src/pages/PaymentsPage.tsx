@@ -129,6 +129,11 @@ export default function PaymentsPage() {
 
   const handlePay = () => {
     if (!selectedPayment || payForm.amount <= 0) return;
+    const remaining = parseFloat(selectedPayment.amountDue) + parseFloat(selectedPayment.lateFee) - parseFloat(selectedPayment.amountPaid);
+    if (payForm.amount > Math.round(remaining * 100) / 100) {
+      toast.error(`จำนวนเงินไม่ควรเกินยอดคงค้าง ${remaining.toLocaleString()} ฿`);
+      return;
+    }
     recordMutation.mutate({
       contractId: selectedPayment.contract.id,
       installmentNo: selectedPayment.installmentNo,
@@ -142,7 +147,6 @@ export default function PaymentsPage() {
   const handleSlipScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (slipFileRef.current) slipFileRef.current.value = '';
     if (file.size > 10 * 1024 * 1024) {
       toast.error('ไฟล์ต้องมีขนาดไม่เกิน 10MB');
       return;
@@ -196,6 +200,7 @@ export default function PaymentsPage() {
       }
     } finally {
       setOcrSlipLoading(false);
+      if (slipFileRef.current) slipFileRef.current.value = '';
     }
   };
 
@@ -360,7 +365,7 @@ export default function PaymentsPage() {
 
       {/* Record Payment Modal */}
       {showPayModal && selectedPayment && (
-        <Modal isOpen title="บันทึกการรับชำระ" onClose={() => { setShowPayModal(false); setSelectedPayment(null); setSlipResult(null); }}>
+        <Modal isOpen title="บันทึกการรับชำระ" onClose={() => { setShowPayModal(false); setSelectedPayment(null); setSlipResult(null); setPayForm({ amount: 0, paymentMethod: 'CASH', notes: '' }); }}>
           <div className="space-y-4">
             <div className="bg-gray-50 rounded-lg p-4">
               <div className="text-sm"><span className="text-gray-500">สัญญา: </span><span className="font-mono font-medium">{selectedPayment.contract.contractNumber}</span></div>
@@ -453,7 +458,7 @@ export default function PaymentsPage() {
             </div>
 
             <div className="flex gap-3 pt-2">
-              <button onClick={() => { setShowPayModal(false); setSelectedPayment(null); setSlipResult(null); }} className="flex-1 px-4 py-2 text-sm border border-gray-300 rounded-lg">ยกเลิก</button>
+              <button onClick={() => { setShowPayModal(false); setSelectedPayment(null); setSlipResult(null); setPayForm({ amount: 0, paymentMethod: 'CASH', notes: '' }); }} className="flex-1 px-4 py-2 text-sm border border-gray-300 rounded-lg">ยกเลิก</button>
               <button onClick={handlePay} disabled={recordMutation.isPending || payForm.amount <= 0} className="flex-1 px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50">
                 {recordMutation.isPending ? 'กำลังบันทึก...' : 'ยืนยันรับชำระ'}
               </button>

@@ -146,13 +146,12 @@ export default function SettingsPage() {
   });
 
   useEffect(() => {
-    if (configs.length > 0) {
+    if (configs.length > 0 && !hasChanges) {
       const map: Record<string, string> = {};
       configs.forEach((c) => { map[c.key] = c.value; });
       setValues(map);
-      setHasChanges(false);
     }
-  }, [configs]);
+  }, [configs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const saveMutation = useMutation({
     mutationFn: async (items: { key: string; value: string }[]) =>
@@ -228,7 +227,7 @@ export default function SettingsPage() {
                     <input
                       type={item.type}
                       step={item.step}
-                      value={values[item.key] || ''}
+                      value={values[item.key] ?? ''}
                       onChange={(e) => handleChange(item.key, e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-right focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
                     />

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
@@ -49,8 +49,18 @@ const paymentMethodLabels: Record<string, string> = {
 export default function SalesHistoryPage() {
   const navigate = useNavigate();
   const [saleTypeFilter, setSaleTypeFilter] = useState('');
+  const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => {
+    debounceRef.current = setTimeout(() => {
+      setSearch(searchInput);
+      setPage(1);
+    }, 400);
+    return () => clearTimeout(debounceRef.current);
+  }, [searchInput]);
   const limit = 20;
 
   const { data: salesData, isLoading } = useQuery<SalesResponse>({
@@ -71,7 +81,7 @@ export default function SalesHistoryPage() {
       key: 'index',
       label: '#',
       render: (_s: Sale, _col: unknown, idx?: number) => (
-        <span className="text-xs text-gray-400">{((salesData?.page || 1) - 1) * limit + (idx ?? 0) + 1}</span>
+        <span className="text-xs text-gray-400">{((salesData?.page ?? 1) - 1) * limit + (idx ?? 0) + 1}</span>
       ),
     },
     {
@@ -253,8 +263,8 @@ export default function SalesHistoryPage() {
         </select>
         <input
           type="text"
-          value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
           placeholder="ค้นหาเลขที่ขาย, ชื่อลูกค้า, ชื่อสินค้า..."
           className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-72"
         />
@@ -266,7 +276,7 @@ export default function SalesHistoryPage() {
         data={salesData?.data || []}
         isLoading={isLoading}
         emptyMessage="ยังไม่มีรายการขาย"
-        onRowClick={(sale) => navigate(`/products/${sale.product.id}`)}
+        onRowClick={(sale) => navigate(`/sales/${sale.id}`)}
         pagination={salesData ? {
           page: salesData.page,
           totalPages: salesData.totalPages,

@@ -412,9 +412,24 @@ export default function PurchaseOrdersPage() {
     }
   };
 
-  const openReceiveModal = (po: PurchaseOrder) => {
+  const openReceiveModal = async (po: PurchaseOrder) => {
     setSelectedPO(po);
     setReceivingNotes('');
+
+    // Lookup pricing templates for all unique items
+    const pricingCache = new Map<string, string>();
+    for (const item of po.items) {
+      if (item.category === 'ACCESSORY' || !item.brand || !item.model) continue;
+      const cacheKey = `${item.brand}|${item.model}|${item.storage || ''}|${item.category || 'PHONE_NEW'}`;
+      if (pricingCache.has(cacheKey)) continue;
+      try {
+        const params = new URLSearchParams({ brand: item.brand, model: item.model, category: item.category || 'PHONE_NEW' });
+        if (item.storage) params.set('storage', item.storage);
+        const { data } = await api.get(`/pricing-templates/lookup?${params}`);
+        if (data?.cashPrice) pricingCache.set(cacheKey, String(Number(data.cashPrice)));
+      } catch { /* no pricing template found */ }
+    }
+
     const units: ReceivingUnitForm[] = [];
     for (const item of po.items) {
       const remaining = item.quantity - item.receivedQty;
@@ -425,6 +440,8 @@ export default function PurchaseOrdersPage() {
             ? [item.accessoryType, item.accessoryBrand, item.model].filter(Boolean)
             : [item.accessoryType, item.accessoryBrand, item.model ? `สำหรับ ${item.model}` : ''].filter(Boolean))
         : [item.brand, item.model, item.color, item.storage].filter(Boolean);
+      const cacheKey = `${item.brand}|${item.model}|${item.storage || ''}|${item.category || 'PHONE_NEW'}`;
+      const defaultPrice = pricingCache.get(cacheKey) || '';
       for (let i = 0; i < remaining; i++) {
         units.push({
           poItemId: item.id,
@@ -439,7 +456,7 @@ export default function PurchaseOrdersPage() {
           warrantyExpireDate: '',
           hasBox: true,
           checklist: defaultChecklist.map((c) => ({ ...c, passed: true, note: '' })),
-          sellingPrice: '',
+          sellingPrice: defaultPrice,
         });
       }
     }

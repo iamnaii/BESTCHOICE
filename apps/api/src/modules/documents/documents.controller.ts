@@ -1,6 +1,9 @@
 import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Req } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { DocumentsService } from './documents.service';
 import { CreateTemplateDto, UpdateTemplateDto, SignContractDto, GenerateDocumentDto } from './dto/document.dto';
+import { OcrGenerateTemplateDto } from '../ocr/dto/ocr.dto';
+import { OcrService } from '../ocr/ocr.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -9,12 +12,22 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 @Controller()
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class DocumentsController {
-  constructor(private documentsService: DocumentsService) {}
+  constructor(
+    private documentsService: DocumentsService,
+    private ocrService: OcrService,
+  ) {}
 
   // ─── Contract Templates ──────────────────────────────
   @Get('contract-templates')
   findAllTemplates(@Query('type') type?: string) {
     return this.documentsService.findAllTemplates(type);
+  }
+
+  @Post('contract-templates/generate-from-file')
+  @Roles('OWNER')
+  @Throttle({ short: { limit: 3, ttl: 60000 } })
+  generateTemplateFromFile(@Body() dto: OcrGenerateTemplateDto) {
+    return this.ocrService.generateTemplateHtml(dto.imageBase64);
   }
 
   @Get('contract-templates/:id')

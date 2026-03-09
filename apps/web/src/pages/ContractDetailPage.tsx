@@ -8,6 +8,7 @@ import WorkflowStatusBadge from '@/components/contract/WorkflowStatusBadge';
 import DocumentUpload from '@/components/contract/DocumentUpload';
 import CreditCheckPanel from '@/components/contract/CreditCheckPanel';
 import toast from 'react-hot-toast';
+import { planTypes } from '@/lib/constants';
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -465,7 +466,7 @@ export default function ContractDetailPage() {
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-3">
-              <Info label="ประเภทแผน" value={contract.planType} />
+              <Info label="ประเภทแผน" value={planTypes.find(p => p.value === contract.planType)?.label ?? contract.planType} />
               <Info label="ราคาขาย" value={`${parseFloat(contract.sellingPrice).toLocaleString()} ฿`} />
               <Info label="เงินดาวน์" value={`${parseFloat(contract.downPayment).toLocaleString()} ฿`} />
               <Info label="ยอดปล่อย (Loan)" value={`${(parseFloat(contract.sellingPrice) - parseFloat(contract.downPayment)).toLocaleString()} ฿`} />

@@ -163,7 +163,7 @@ export class ContractsService {
               productId: dto.productId,
               branchId: dto.branchId,
               salespersonId,
-              planType: dto.planType as PlanType,
+              planType: (dto.planType || 'STORE_DIRECT') as PlanType,
               sellingPrice: dto.sellingPrice,
               downPayment: dto.downPayment,
               interestRate: params.interestRate,

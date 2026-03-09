@@ -5,7 +5,8 @@ export class CreateTemplateDto {
   name: string;
 
   @IsString()
-  type: string; // STORE_DIRECT, CREDIT_CARD, STORE_WITH_INTEREST, EXCHANGE
+  @IsOptional()
+  type?: string = 'STORE_DIRECT';
 
   @IsString()
   contentHtml: string;

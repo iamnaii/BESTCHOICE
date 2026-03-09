@@ -35,7 +35,7 @@ export default function ContractTemplatesPage() {
 
   const [form, setForm] = useState({
     name: '',
-    type: 'STORE_DIRECT',
+    type: 'STORE_DIRECT' as const,
     contentHtml: '',
   });
 
@@ -72,13 +72,13 @@ export default function ContractTemplatesPage() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ name: '', type: 'STORE_DIRECT', contentHtml: '' });
+    setForm({ name: '', type: 'STORE_DIRECT' as const, contentHtml: '' });
     setShowModal(true);
   };
 
   const openEdit = (t: Template) => {
     setEditing(t);
-    setForm({ name: t.name, type: t.type, contentHtml: t.contentHtml });
+    setForm({ name: t.name, type: 'STORE_DIRECT' as const, contentHtml: t.contentHtml });
     setShowModal(true);
   };
 
@@ -99,7 +99,7 @@ export default function ContractTemplatesPage() {
 
   const columns = [
     { key: 'name', label: 'ชื่อเทมเพลต', render: (t: Template) => <span className="font-medium text-sm">{t.name}</span> },
-    { key: 'type', label: 'ประเภท', render: (t: Template) => <span className="text-xs px-2 py-0.5 bg-gray-100 rounded">{t.type}</span> },
+    { key: 'type', label: 'ประเภท', render: () => <span className="text-xs px-2 py-0.5 bg-gray-100 rounded">ผ่อนกับ BESTCHOICE</span> },
     {
       key: 'isActive',
       label: 'สถานะ',
@@ -150,17 +150,6 @@ export default function ContractTemplatesPage() {
               <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
             </div>
 
-            {!editing && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">ประเภท</label>
-                <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
-                  <option value="STORE_DIRECT">ผ่อนกับร้าน (STORE_DIRECT)</option>
-                  <option value="CREDIT_CARD">ผ่อนบัตรเครดิต (CREDIT_CARD)</option>
-                  <option value="STORE_WITH_INTEREST">ผ่อน+ดอกเบี้ย (STORE_WITH_INTEREST)</option>
-                  <option value="EXCHANGE">เปลี่ยนเครื่อง (EXCHANGE)</option>
-                </select>
-              </div>
-            )}
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">เนื้อหา HTML</label>

@@ -45,9 +45,9 @@ export class CreateSaleDto {
   contractNumber?: string;
 
   // Installment fields
-  @IsIn(['STORE_DIRECT', 'CREDIT_CARD', 'STORE_WITH_INTEREST'])
+  @IsString()
   @IsOptional()
-  planType?: string;
+  planType?: string = 'STORE_DIRECT';
 
   @IsNumber()
   @IsOptional()

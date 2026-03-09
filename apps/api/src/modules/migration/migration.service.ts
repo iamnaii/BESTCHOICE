@@ -173,7 +173,7 @@ export class MigrationService {
             productId: product.id,
             branchId: branch.id,
             salespersonId: salesperson.id,
-            planType: c.planType as 'STORE_DIRECT' | 'CREDIT_CARD' | 'STORE_WITH_INTEREST',
+            planType: 'STORE_DIRECT',
             sellingPrice: c.sellingPrice,
             downPayment: c.downPayment,
             interestRate: c.interestRate,

@@ -56,13 +56,10 @@ export const saleTypeConfig: Record<SaleType, { label: string; color: string; bg
   EXTERNAL_FINANCE: { label: 'ผ่อนไฟแนนซ์', color: 'text-purple-700', bg: 'bg-purple-50 border-purple-300 ring-purple-500' },
 };
 
-// --- Plan Type ---
+// --- Plan Type (single type: STORE_DIRECT) ---
 
-export const planTypes = [
-  { value: 'STORE_DIRECT', label: 'ผ่อนกับ BESTCHOICE' },
-  { value: 'CREDIT_CARD', label: 'ผ่อนบัตรเครดิต' },
-  { value: 'STORE_WITH_INTEREST', label: 'ผ่อนกับ BESTCHOICE+ดอกเบี้ย' },
-];
+export const PLAN_TYPE = 'STORE_DIRECT';
+export const PLAN_TYPE_LABEL = 'ผ่อนกับ BESTCHOICE';
 
 // --- Payment Method ---
 

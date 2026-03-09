@@ -38,11 +38,9 @@ export const PaymentMethod = {
   QR_EWALLET: 'QR_EWALLET',
 } as const;
 
-// Plan Types
+// Plan Type (single type)
 export const PlanType = {
   STORE_DIRECT: 'STORE_DIRECT',
-  CREDIT_CARD: 'CREDIT_CARD',
-  STORE_WITH_INTEREST: 'STORE_WITH_INTEREST',
 } as const;
 
 // Product Categories

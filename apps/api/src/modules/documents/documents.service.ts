@@ -232,10 +232,11 @@ export class DocumentsService {
   private replacePlaceholders(html: string, contract: any): string {
     const esc = this.escapeHtml.bind(this);
 
-    const paymentScheduleRows = (contract.payments || [])
+    const payments = contract.payments || [];
+    const paymentScheduleRows = payments
       .map(
         (p: any) =>
-          `<tr><td>${p.installmentNo}</td><td>${esc(new Date(p.dueDate).toLocaleDateString('th-TH'))}</td><td>${Number(p.amountDue).toLocaleString()} ฿</td><td>${p.status === 'PAID' ? 'ชำระแล้ว' : 'รอชำระ'}</td></tr>`,
+          `<tr><td style="text-align:center">${p.installmentNo}</td><td style="text-align:center">${esc(new Date(p.dueDate).toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' }))}</td><td style="text-align:right">${Number(p.amountDue).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>`,
       )
       .join('');
 
@@ -259,6 +260,15 @@ export class DocumentsService {
       `<tr><td>${i + 1}</td><td>${esc(r.prefix || '')}${esc(r.firstName || '')} ${esc(r.lastName || '')}</td><td>${esc(r.phone || '')}</td><td>${esc(r.relationship || '')}</td></tr>`
     ).join('');
 
+    // Compute first and last payment dates
+    const firstPayment = payments.length > 0 ? new Date(payments[0].dueDate) : contractDate;
+    const lastPayment = payments.length > 0 ? new Date(payments[payments.length - 1].dueDate) : contractDate;
+    const firstPaymentDue = firstPayment.toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' });
+    const firstPaymentDay = firstPayment.toLocaleDateString('th-TH', { day: 'numeric' });
+    const firstPaymentMonth = firstPayment.toLocaleDateString('th-TH', { month: 'long' });
+    const firstPaymentYear = firstPayment.toLocaleDateString('th-TH', { year: 'numeric' }).replace(/[^\d]/g, '');
+    const lastPaymentDue = lastPayment.toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' });
+
     const replacements: Record<string, string> = {
       '{contract_number}': esc(contract.contractNumber || ''),
       '{contract_date}': thaiDate,
@@ -273,6 +283,7 @@ export class DocumentsService {
       '{customer_address}': esc(contract.customer?.addressCurrent || contract.customer?.addressIdCard || ''),
       '{customer_address_id_card}': esc(contract.customer?.addressIdCard || ''),
       '{customer_address_current}': esc(contract.customer?.addressCurrent || ''),
+      '{customer_zipcode}': esc(contract.customer?.zipcode || contract.customer?.postalCode || ''),
       '{customer_line_id}': esc(contract.customer?.lineId || '-'),
       '{customer_facebook}': esc(contract.customer?.facebookLink || contract.customer?.facebookName || '-'),
       '{customer_occupation}': esc(contract.customer?.occupation || '-'),
@@ -295,12 +306,17 @@ export class DocumentsService {
       '{interest_rate}': `${(Number(contract.interestRate) * 100).toFixed(1)}%`,
       '{interest_total}': Number(contract.interestTotal).toLocaleString(),
       '{financed_amount}': Number(contract.financedAmount).toLocaleString(),
+      '{first_payment_due}': firstPaymentDue,
+      '{first_payment_day}': firstPaymentDay,
+      '{first_payment_month}': firstPaymentMonth,
+      '{first_payment_year}': firstPaymentYear,
+      '{last_payment_due}': lastPaymentDue,
       '{branch_name}': esc(contract.branch?.name || ''),
       '{branch_address}': esc(contract.branch?.location || ''),
       '{branch_phone}': esc(contract.branch?.phone || ''),
       '{salesperson_name}': esc(contract.salesperson?.name || ''),
       '{date}': new Date().toLocaleDateString('th-TH'),
-      '{payment_schedule_table}': `<table border="1" cellpadding="4" style="border-collapse:collapse;width:100%"><thead><tr><th>งวดที่</th><th>วันครบกำหนด</th><th>จำนวนเงิน</th><th>สถานะ</th></tr></thead><tbody>${paymentScheduleRows}</tbody></table>`,
+      '{payment_schedule_table}': `<table border="1" cellpadding="6" style="border-collapse:collapse;width:100%;margin:10px auto"><thead><tr style="background:#f5f5f5"><th style="text-align:center">งวดที่</th><th style="text-align:center">วันที่ครบกำหนดชำระ</th><th style="text-align:center">จำนวนเงิน</th></tr></thead><tbody>${paymentScheduleRows}</tbody></table>`,
       '{customer_signature}': customerSigSafe ? `<img src="${customerSig.signatureImage}" style="max-height:60px"/>` : '<div style="border-bottom:1px solid #000;width:200px;height:60px"></div>',
       '{staff_signature}': staffSigSafe ? `<img src="${staffSig.signatureImage}" style="max-height:60px"/>` : '<div style="border-bottom:1px solid #000;width:200px;height:60px"></div>',
     };

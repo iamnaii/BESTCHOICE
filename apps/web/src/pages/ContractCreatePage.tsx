@@ -986,8 +986,8 @@ export default function ContractCreatePage() {
                 onChange={(e) => setPaymentDueDay(Number(e.target.value))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
               >
-                {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
-                  <option key={d} value={d}>วันที่ {d} ของทุกเดือน</option>
+                {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                  <option key={d} value={d}>{d === 31 ? 'สิ้นเดือน (วันสุดท้ายของเดือน)' : `วันที่ ${d} ของทุกเดือน`}</option>
                 ))}
               </select>
               <div className="text-xs text-gray-400 mt-1">ลูกค้าจะต้องชำระเงินทุกวันที่ {paymentDueDay} ของเดือน</div>

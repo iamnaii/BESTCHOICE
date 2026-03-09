@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { Prisma, POPaymentStatus, ProductCategory } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePODto, UpdatePODto, ReceivePODto, GoodsReceivingDto, UpdatePaymentDto } from './dto/create-po.dto';
+import { generatePONumber } from '../../utils/sequence.util';
 
 @Injectable()
 export class PurchaseOrdersService {
@@ -91,17 +92,7 @@ export class PurchaseOrdersService {
     // Use transaction to prevent PO number race condition
     return this.prisma.$transaction(async (tx) => {
       // Generate PO number inside transaction: PO-YYYY-MM-NNN format (monthly sequence)
-      const today = new Date();
-      const year = today.getFullYear();
-      const month = String(today.getMonth() + 1).padStart(2, '0');
-      const monthStart = new Date(year, today.getMonth(), 1);
-      const monthEnd = new Date(year, today.getMonth() + 1, 1);
-      const monthCount = await tx.purchaseOrder.count({
-        where: {
-          createdAt: { gte: monthStart, lt: monthEnd },
-        },
-      });
-      const poNumber = `PO-${year}-${month}-${String(monthCount + 1).padStart(3, '0')}`;
+      const poNumber = await generatePONumber(tx);
 
       // PO now starts as DRAFT (requires Owner approval)
       return tx.purchaseOrder.create({

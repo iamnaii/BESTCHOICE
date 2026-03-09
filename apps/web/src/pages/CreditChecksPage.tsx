@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import { compressImageForOcr } from '@/lib/compressImage';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
@@ -128,7 +128,7 @@ export default function CreditChecksPage() {
       setBookBankResult(null);
       if (fileRef.current) fileRef.current.value = '';
     },
-    onError: (err: any) => toast.error(err.response?.data?.message || err.message || 'เกิดข้อผิดพลาด'),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const analyzeMutation = useMutation({
@@ -140,7 +140,7 @@ export default function CreditChecksPage() {
       toast.success('วิเคราะห์เครดิตเสร็จสิ้น');
       queryClient.invalidateQueries({ queryKey: ['credit-checks'] });
     },
-    onError: (err: any) => toast.error(err.response?.data?.message || 'วิเคราะห์ไม่สำเร็จ'),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const overrideMutation = useMutation({
@@ -160,7 +160,7 @@ export default function CreditChecksPage() {
       setOverrideStatus('');
       setOverrideNotes('');
     },
-    onError: (err: any) => toast.error(err.response?.data?.message || 'อัปเดตไม่สำเร็จ'),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const handleBookBankScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -197,7 +197,7 @@ export default function CreditChecksPage() {
       if (err.code === 'ECONNABORTED' || !err.response) {
         toast.error('ไม่สามารถเชื่อมต่อ OCR ได้ กรุณาลองใหม่');
       } else {
-        toast.error(err.response?.data?.message || 'ไม่สามารถอ่านสมุดบัญชีได้');
+        toast.error(getErrorMessage(err));
       }
     } finally {
       setBookBankLoading(false);

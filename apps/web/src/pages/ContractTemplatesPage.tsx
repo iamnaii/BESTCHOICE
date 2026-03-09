@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import DOMPurify from 'dompurify';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
@@ -58,7 +58,7 @@ export default function ContractTemplatesPage() {
       queryClient.invalidateQueries({ queryKey: ['contract-templates'] });
       closeModal();
     },
-    onError: (err: any) => toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด'),
+    onError: (err: any) => toast.error(getErrorMessage(err)),
   });
 
   const deleteMutation = useMutation({
@@ -67,7 +67,7 @@ export default function ContractTemplatesPage() {
       toast.success('ปิดใช้งานเทมเพลตแล้ว');
       queryClient.invalidateQueries({ queryKey: ['contract-templates'] });
     },
-    onError: (err: any) => toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด'),
+    onError: (err: any) => toast.error(getErrorMessage(err)),
   });
 
   const openCreate = () => {

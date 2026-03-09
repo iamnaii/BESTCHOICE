@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateSaleDto } from './dto/sale.dto';
 import { calculateInstallment, generatePaymentSchedule } from '../../utils/installment.util';
 import { loadInstallmentConfig, resolveInstallmentParams } from '../../utils/config.util';
+import { generateContractNumber, generateSaleNumber } from '../../utils/sequence.util';
 
 @Injectable()
 export class SalesService {
@@ -115,7 +116,7 @@ export class SalesService {
     return this.prisma.$transaction(async (tx) => {
       await this.verifyProductInStock(tx, dto.productId);
       await this.markBundleProductsSold(tx, dto.bundleProductIds || []);
-      const saleNumber = await this.generateSaleNumber(tx);
+      const saleNumber = await generateSaleNumber(tx);
 
       const sale = await tx.sale.create({
         data: {
@@ -174,18 +175,12 @@ export class SalesService {
     return this.prisma.$transaction(async (tx) => {
       await this.verifyProductInStock(tx, dto.productId);
       await this.markBundleProductsSold(tx, dto.bundleProductIds || []);
-      const saleNumber = await this.generateSaleNumber(tx);
-
+      const saleNumber = await generateSaleNumber(tx);
 
       // Use provided contract number or auto-generate
       let contractNumber = dto.contractNumber;
       if (!contractNumber) {
-        const lastContract = await tx.contract.findFirst({
-          orderBy: { contractNumber: 'desc' },
-          select: { contractNumber: true },
-        });
-        const nextNum = lastContract ? parseInt(lastContract.contractNumber.replace(/\D/g, '')) + 1 : 1;
-        contractNumber = `CT${String(nextNum).padStart(6, '0')}`;
+        contractNumber = await generateContractNumber(tx);
       }
 
       // Create contract
@@ -258,7 +253,7 @@ export class SalesService {
     return this.prisma.$transaction(async (tx) => {
       await this.verifyProductInStock(tx, dto.productId);
       await this.markBundleProductsSold(tx, dto.bundleProductIds || []);
-      const saleNumber = await this.generateSaleNumber(tx);
+      const saleNumber = await generateSaleNumber(tx);
 
       const sale = await tx.sale.create({
         data: {
@@ -290,15 +285,6 @@ export class SalesService {
 
       return sale;
     }, { isolationLevel: 'Serializable' });
-  }
-
-  private async generateSaleNumber(tx: Parameters<Parameters<typeof this.prisma.$transaction>[0]>[0]) {
-    const lastSale = await tx.sale.findFirst({
-      orderBy: { saleNumber: 'desc' },
-      select: { saleNumber: true },
-    });
-    const nextNum = lastSale ? parseInt(lastSale.saleNumber.replace(/\D/g, '')) + 1 : 1;
-    return `SO${String(nextNum).padStart(6, '0')}`;
   }
 
   async getPosConfig() {

@@ -101,8 +101,7 @@ export default function RepossessionsPage() {
       toast.success('บันทึกการยึดคืนสำเร็จ');
       setIsCreateModalOpen(false);
     },
-    onError: (err: { response?: { data?: { message?: string } } }) =>
-      toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด'),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const updateMutation = useMutation({

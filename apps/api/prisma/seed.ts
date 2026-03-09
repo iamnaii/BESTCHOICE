@@ -1,5 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const prisma = new PrismaClient();
 
@@ -1215,28 +1217,23 @@ async function main() {
   // ============================================================
   // STEP 29: CONTRACT TEMPLATES
   // ============================================================
+  const templateHtml = fs.readFileSync(path.join(__dirname, '../src/modules/documents/templates/hire-purchase-contract.html'), 'utf-8');
   await prisma.contractTemplate.create({
     data: {
-      id: 'ct-001', name: 'สัญญาผ่อนชำระมาตรฐาน (ร้านค้าตรง)', type: 'STORE_DIRECT',
-      contentHtml: '<h1>สัญญาผ่อนชำระสินค้า</h1><p>สัญญาฉบับนี้ทำขึ้นระหว่าง ร้าน Best Choice ("ผู้ขาย") กับ {customer_name} ("ผู้ซื้อ")...</p><p>สินค้า: {product_name}</p><p>ราคาขาย: {selling_price} บาท</p><p>เงินดาวน์: {down_payment} บาท</p><p>จำนวนงวด: {total_months} งวด</p><p>ค่างวด: {monthly_payment} บาท/เดือน</p>',
-      placeholders: ['customer_name', 'product_name', 'selling_price', 'down_payment', 'total_months', 'monthly_payment', 'contract_number', 'branch_name'],
+      id: 'ct-001', name: 'สัญญาเช่าซื้อโทรศัพท์มือถือ', type: 'STORE_DIRECT',
+      contentHtml: templateHtml,
+      placeholders: [
+        'contract_number', 'contract_date', 'contract_date_day', 'contract_date_month', 'contract_date_year',
+        'customer_name', 'customer_prefix', 'national_id', 'customer_phone', 'customer_phone_secondary',
+        'customer_address_id_card', 'customer_address_current', 'customer_line_id', 'customer_facebook',
+        'customer_references', 'brand', 'model', 'product_color', 'product_storage', 'product_category',
+        'imei', 'serial_number', 'selling_price', 'down_payment', 'monthly_payment', 'total_months',
+        'financed_amount', 'interest_rate', 'interest_total', 'payment_schedule_table',
+        'branch_name', 'branch_address', 'salesperson_name', 'customer_signature', 'staff_signature',
+      ],
     },
   });
-  await prisma.contractTemplate.create({
-    data: {
-      id: 'ct-002', name: 'สัญญาผ่อนชำระ (บัตรเครดิต)', type: 'CREDIT_CARD',
-      contentHtml: '<h1>สัญญาผ่อนชำระผ่านบัตรเครดิต</h1><p>สัญญาฉบับนี้ทำขึ้นระหว่าง ร้าน Best Choice กับ {customer_name}...</p><p>ผ่อนผ่านบัตรเครดิต {card_type} ดอกเบี้ย {interest_rate}%</p>',
-      placeholders: ['customer_name', 'product_name', 'selling_price', 'card_type', 'interest_rate', 'total_months'],
-    },
-  });
-  await prisma.contractTemplate.create({
-    data: {
-      id: 'ct-003', name: 'สัญญาแลกเปลี่ยนเครื่อง', type: 'EXCHANGE',
-      contentHtml: '<h1>สัญญาแลกเปลี่ยนสินค้า</h1><p>ผู้ซื้อ {customer_name} นำเครื่อง {old_product} มาแลกเปลี่ยนกับ {new_product}...</p><p>มูลค่าเครื่องเก่า: {trade_in_value} บาท</p><p>ส่วนต่างที่ต้องชำระ: {difference} บาท</p>',
-      placeholders: ['customer_name', 'old_product', 'new_product', 'trade_in_value', 'difference'],
-    },
-  });
-  console.log('ContractTemplates created: 3');
+  console.log('ContractTemplates created: 1 (สัญญาเช่าซื้อโทรศัพท์มือถือ)');
 
   // ============================================================
   // STEP 30: STICKER TEMPLATES

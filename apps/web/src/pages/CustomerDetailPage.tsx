@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import { displayAddress } from '@/components/ui/AddressForm';
@@ -142,7 +142,7 @@ export default function CustomerDetailPage() {
       if (creditFileRef.current) creditFileRef.current.value = '';
       setCreditBankName('');
     },
-    onError: (err: any) => toast.error(err.response?.data?.message || 'อัปโหลดไม่สำเร็จ'),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const analyzeCreditMutation = useMutation({
@@ -154,7 +154,7 @@ export default function CustomerDetailPage() {
       toast.success('วิเคราะห์เครดิตเสร็จสิ้น');
       queryClient.invalidateQueries({ queryKey: ['customer-credit-checks', id] });
     },
-    onError: (err: any) => toast.error(err.response?.data?.message || 'วิเคราะห์ไม่สำเร็จ'),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   if (isLoading || !customer) {

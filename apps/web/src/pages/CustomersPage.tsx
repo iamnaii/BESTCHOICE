@@ -263,7 +263,7 @@ export default function CustomersPage() {
       if (err.code === 'ECONNABORTED' || !err.response) {
         toast.error('OCR ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาลองใหม่อีกครั้ง');
       } else {
-        toast.error(err.response?.data?.message || 'ไม่สามารถอ่านบัตรประชาชนได้');
+        toast.error(getErrorMessage(err));
       }
     } finally {
       setOcrLoading(false);

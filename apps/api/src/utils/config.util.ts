@@ -31,6 +31,13 @@ const DEFAULTS: InstallmentConfig = {
   vatPct: 0.07,
 };
 
+/** Business rule constants for overdue and early payoff */
+export const BUSINESS_RULES = {
+  LATE_FEE_PER_DAY: 100,    // baht per day overdue
+  LATE_FEE_CAP: 200,         // max late fee per installment (baht)
+  EARLY_PAYOFF_DISCOUNT: 0.5, // 50% discount on remaining interest
+} as const;
+
 /**
  * Load installment-related system configs with defaults
  */

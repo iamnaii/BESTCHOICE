@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -68,8 +68,8 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
       queryClient.invalidateQueries({ queryKey: ['credit-check', contractId] });
       if (fileInputRef.current) fileInputRef.current.value = '';
     },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.message || 'อัปโหลดไม่สำเร็จ');
+    onError: (err: unknown) => {
+      toast.error(getErrorMessage(err));
     },
   });
 
@@ -82,8 +82,8 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
       toast.success('วิเคราะห์เครดิตเสร็จสิ้น');
       queryClient.invalidateQueries({ queryKey: ['credit-check', contractId] });
     },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.message || 'วิเคราะห์ไม่สำเร็จ');
+    onError: (err: unknown) => {
+      toast.error(getErrorMessage(err));
     },
   });
 
@@ -101,8 +101,8 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
       setOverrideStatus('');
       setOverrideNotes('');
     },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.message || 'อัปเดตไม่สำเร็จ');
+    onError: (err: unknown) => {
+      toast.error(getErrorMessage(err));
     },
   });
 

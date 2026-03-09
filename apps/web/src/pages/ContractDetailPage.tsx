@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
@@ -111,25 +111,25 @@ export default function ContractDetailPage() {
   const submitReviewMutation = useMutation({
     mutationFn: async () => { const { data } = await api.post(`/contracts/${id}/submit-review`); return data; },
     onSuccess: () => { toast.success('ส่งตรวจสอบแล้ว'); invalidateContract(); },
-    onError: (err: any) => toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด'),
+    onError: (err: any) => toast.error(getErrorMessage(err)),
   });
 
   const approveMutation = useMutation({
     mutationFn: async () => { const { data } = await api.post(`/contracts/${id}/approve`, { reviewNotes: approveNotes || undefined }); return data; },
     onSuccess: () => { toast.success('อนุมัติสัญญาแล้ว'); invalidateContract(); setApproveNotes(''); },
-    onError: (err: any) => toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด'),
+    onError: (err: any) => toast.error(getErrorMessage(err)),
   });
 
   const rejectMutation = useMutation({
     mutationFn: async () => { const { data } = await api.post(`/contracts/${id}/reject`, { reviewNotes: rejectNotes }); return data; },
     onSuccess: () => { toast.success('ปฏิเสธสัญญาแล้ว'); invalidateContract(); setShowRejectModal(false); setRejectNotes(''); },
-    onError: (err: any) => toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด'),
+    onError: (err: any) => toast.error(getErrorMessage(err)),
   });
 
   const activateMutation = useMutation({
     mutationFn: async () => { const { data } = await api.post(`/contracts/${id}/activate`); return data; },
     onSuccess: () => { toast.success('เปิดใช้งานสัญญาแล้ว'); invalidateContract(); },
-    onError: (err: any) => toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด'),
+    onError: (err: any) => toast.error(getErrorMessage(err)),
   });
 
   const earlyPayoffMutation = useMutation({
@@ -142,7 +142,7 @@ export default function ContractDetailPage() {
       setShowPayoffModal(false);
       invalidateContract();
     },
-    onError: (err: any) => toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด'),
+    onError: (err: any) => toast.error(getErrorMessage(err)),
   });
 
   const updateMutation = useMutation({
@@ -155,7 +155,7 @@ export default function ContractDetailPage() {
       setIsEditing(false);
       invalidateContract();
     },
-    onError: (err: any) => toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด'),
+    onError: (err: any) => toast.error(getErrorMessage(err)),
   });
 
   const startEditing = () => {

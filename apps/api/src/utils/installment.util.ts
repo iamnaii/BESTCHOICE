@@ -29,6 +29,12 @@ export function calculateInstallment(
   storeCommissionPct: number = 0,
   vatPct: number = 0,
 ): InstallmentCalculation {
+  if (sellingPrice <= 0) throw new Error('ราคาขายต้องมากกว่า 0');
+  if (downPayment < 0) throw new Error('เงินดาวน์ต้องไม่ติดลบ');
+  if (downPayment >= sellingPrice) throw new Error('เงินดาวน์ต้องน้อยกว่าราคาขาย');
+  if (totalMonths <= 0) throw new Error('จำนวนงวดต้องมากกว่า 0');
+  if (interestRate < 0) throw new Error('อัตราดอกเบี้ยต้องไม่ติดลบ');
+
   const principal = sellingPrice - downPayment;
   const storeCommission = principal * storeCommissionPct;
   const interestTotal = principal * interestRate * totalMonths;

@@ -329,7 +329,7 @@ export default function ContractCreatePage() {
       navigate(`/contracts/${data.id}`);
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด');
+      toast.error(getErrorMessage(err));
     },
   });
 
@@ -608,7 +608,7 @@ export default function ContractCreatePage() {
       if (err.code === 'ECONNABORTED' || !err.response) {
         toast.error('OCR ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาลองใหม่อีกครั้ง');
       } else {
-        toast.error(err.response?.data?.message || 'ไม่สามารถอ่านบัตรประชาชนได้');
+        toast.error(getErrorMessage(err));
       }
     } finally {
       setOcrLoading(false);
@@ -670,7 +670,7 @@ export default function ContractCreatePage() {
           toast.error('ลูกค้ามีอยู่แล้วแต่โหลดข้อมูลไม่สำเร็จ กรุณาค้นหาด้วยตนเอง');
         }
       } else {
-        toast.error(err.response?.data?.message || 'สร้างลูกค้าไม่สำเร็จ');
+        toast.error(getErrorMessage(err));
       }
     } finally {
       setCreatingCustomer(false);
@@ -693,7 +693,7 @@ export default function ContractCreatePage() {
       toast.success('อัปเดตข้อมูลลูกค้าสำเร็จ');
       setShowOcrPanel(false);
     } catch (err: any) {
-      toast.error(err.response?.data?.message || 'อัปเดตข้อมูลลูกค้าไม่สำเร็จ');
+      toast.error(getErrorMessage(err));
     }
   };
 
@@ -744,7 +744,7 @@ export default function ContractCreatePage() {
           if (err.code === 'ECONNABORTED' || !err.response) {
             toast.error('OCR ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาลองใหม่อีกครั้ง');
           } else {
-            toast.error(err.response?.data?.message || 'ไม่สามารถอ่านบัตรประชาชนได้');
+            toast.error(getErrorMessage(err));
           }
         } finally {
           setOcrLoading(false);

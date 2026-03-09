@@ -2,7 +2,7 @@ import { useRef, useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import DOMPurify from 'dompurify';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import toast from 'react-hot-toast';
 
@@ -52,7 +52,7 @@ export default function ContractSignPage() {
       // Auto-switch to staff if customer just signed
       if (signerType === 'CUSTOMER') setSignerType('STAFF');
     },
-    onError: (err: any) => toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด'),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const generateMutation = useMutation({
@@ -65,7 +65,7 @@ export default function ContractSignPage() {
       queryClient.invalidateQueries({ queryKey: ['contract', id] });
       navigate(`/contracts/${id}`);
     },
-    onError: (err: any) => toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด'),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   // Canvas setup

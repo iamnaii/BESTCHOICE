@@ -1,7 +1,13 @@
-import { Settings, Plus, Save, Undo2, Eye, EyeOff, Download, Loader2 } from 'lucide-react';
+import { ArrowLeft, Settings, Plus, Save, Undo2, Eye, EyeOff, Download, Loader2, BookOpen } from 'lucide-react';
 import { useTemplateStore } from '@/store/templateStore';
 
-export default function HeaderBar() {
+interface Props {
+  onBack?: () => void;
+  onToggleCheatSheet?: () => void;
+  showCheatSheet?: boolean;
+}
+
+export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet }: Props) {
   const {
     currentTemplate, templates, previewMode, isSaving, isLoading,
     setPreviewMode, setShowSettings, setShowExportModal,
@@ -17,7 +23,17 @@ export default function HeaderBar() {
   };
 
   return (
-    <div className="h-14 bg-white border-b border-gray-200 flex items-center px-4 gap-3">
+    <div className="h-14 bg-white border-b border-gray-200 flex items-center px-4 gap-2">
+      {/* Back button */}
+      {onBack && (
+        <button
+          onClick={onBack}
+          className="flex items-center gap-1 px-2 py-1.5 text-sm text-gray-500 hover:text-gray-700 rounded-lg hover:bg-gray-50 transition-colors mr-1"
+        >
+          <ArrowLeft size={16} />
+        </button>
+      )}
+
       {/* Template selector */}
       <select
         value={currentTemplate.id}
@@ -35,12 +51,26 @@ export default function HeaderBar() {
         ))}
       </select>
 
-      {isDirty && <span className="text-xs text-amber-600">* ยังไม่ได้บันทึก</span>}
-      {isSaving && <span className="text-xs text-blue-600 flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> กำลังบันทึก...</span>}
+      {isDirty && <span className="text-xs text-amber-600">*</span>}
+      {isSaving && <span className="text-xs text-blue-600 flex items-center gap-1"><Loader2 size={12} className="animate-spin" /></span>}
 
       <div className="flex-1" />
 
-      {/* Action buttons */}
+      {/* Cheat sheet toggle */}
+      {onToggleCheatSheet && (
+        <button
+          onClick={onToggleCheatSheet}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors ${
+            showCheatSheet
+              ? 'bg-amber-100 text-amber-700 border border-amber-300'
+              : 'text-gray-700 border border-gray-300 hover:bg-gray-50'
+          }`}
+        >
+          <BookOpen size={14} />
+          ตัวแปร
+        </button>
+      )}
+
       <button
         onClick={() => setShowSettings(true)}
         className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
@@ -54,7 +84,7 @@ export default function HeaderBar() {
         className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
       >
         <Plus size={14} />
-        เพิ่มข้อมูล
+        เพิ่ม
       </button>
 
       <button
@@ -68,10 +98,10 @@ export default function HeaderBar() {
 
       <button
         onClick={() => undo()}
-        className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+        className="flex items-center gap-1.5 px-2 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+        title="Undo (Ctrl+Z)"
       >
         <Undo2 size={14} />
-        Undo
       </button>
 
       <button
@@ -91,7 +121,7 @@ export default function HeaderBar() {
         className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors"
       >
         <Download size={14} />
-        Export PDF
+        PDF
       </button>
     </div>
   );

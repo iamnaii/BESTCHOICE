@@ -122,7 +122,7 @@ export default function ContractTemplatesPage() {
       });
 
       const { data } = await api.post('/contract-templates/generate-from-file', { fileBase64: base64 }, { timeout: 120000 });
-      setForm({ ...form, contentHtml: data.contentHtml });
+      setForm(prev => ({ ...prev, contentHtml: data.contentHtml }));
       setDetectedPlaceholders(data.placeholders || []);
       toast.success(`AI สร้างเทมเพลตสำเร็จ (ใส่ ${data.placeholders?.length || 0} ตัวแปร) กรุณาตรวจสอบก่อนบันทึก`);
     } catch (err: any) {
@@ -250,7 +250,7 @@ export default function ContractTemplatesPage() {
                   <button
                     key={p}
                     type="button"
-                    onClick={() => setForm({ ...form, contentHtml: form.contentHtml + p })}
+                    onClick={() => setForm(prev => ({ ...prev, contentHtml: prev.contentHtml + p }))}
                     className={`text-xs px-1.5 py-0.5 rounded hover:bg-blue-100 ${detectedPlaceholders.includes(p) ? 'bg-green-100 text-green-700' : 'bg-blue-50 text-blue-700'}`}
                   >
                     {p}

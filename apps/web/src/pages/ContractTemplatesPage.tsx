@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import toast from 'react-hot-toast';
 import { useTemplateStore } from '@/store/templateStore';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import EditorSidebar from '@/components/template-editor/layout/EditorSidebar';
@@ -20,26 +19,27 @@ export default function ContractTemplatesPage() {
   const [activeSidebarId, setActiveSidebarId] = useState('template');
   const {
     previewMode, editingBlock, showSettings, showExportModal,
-    isDirty, saveTemplate, loadFromLocalStorage,
+    isDirty, saveTemplate, saveTemplateToApi, fetchTemplates, loadFromLocalStorage,
   } = useTemplateStore();
 
   // Keyboard shortcuts
   useKeyboardShortcuts();
 
-  // Load draft from localStorage on mount
+  // Fetch templates from API on mount, load localStorage draft as fallback
   useEffect(() => {
     loadFromLocalStorage();
-  }, [loadFromLocalStorage]);
+    fetchTemplates();
+  }, [fetchTemplates, loadFromLocalStorage]);
 
-  // Auto-save every 30 seconds when dirty
+  // Auto-save every 30 seconds when dirty — save to both localStorage and API
   useEffect(() => {
     if (!isDirty) return;
     const timer = setInterval(() => {
       saveTemplate();
-      toast.success('บันทึกอัตโนมัติ', { duration: 1500 });
+      saveTemplateToApi();
     }, AUTO_SAVE_INTERVAL);
     return () => clearInterval(timer);
-  }, [isDirty, saveTemplate]);
+  }, [isDirty, saveTemplate, saveTemplateToApi]);
 
   const handleBack = () => {
     if (isDirty && !confirm('มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก ต้องการออกหรือไม่?')) return;

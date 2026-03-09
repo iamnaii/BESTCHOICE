@@ -1,9 +1,8 @@
 import { useEffect } from 'react';
 import { useTemplateStore } from '@/store/templateStore';
-import toast from 'react-hot-toast';
 
 export function useKeyboardShortcuts() {
-  const { saveTemplate, undo, setShowExportModal } = useTemplateStore();
+  const { saveTemplateToApi, undo, setShowExportModal } = useTemplateStore();
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -11,8 +10,7 @@ export function useKeyboardShortcuts() {
         switch (e.key.toLowerCase()) {
           case 's':
             e.preventDefault();
-            saveTemplate();
-            toast.success('บันทึกแล้ว');
+            saveTemplateToApi();
             break;
           case 'z':
             if (!e.shiftKey) {
@@ -30,5 +28,5 @@ export function useKeyboardShortcuts() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [saveTemplate, undo, setShowExportModal]);
+  }, [saveTemplateToApi, undo, setShowExportModal]);
 }

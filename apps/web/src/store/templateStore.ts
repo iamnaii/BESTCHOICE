@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import toast from 'react-hot-toast';
+import api from '@/lib/api';
 import type { Block, Template, TemplateSettings } from '@/types/template';
 import { DEFAULT_SETTINGS } from '@/types/template';
 import { AVAILABLE_VARIABLES } from '@/constants/variables';
@@ -9,6 +10,19 @@ import { uid } from '@/utils/uid';
 interface HistoryEntry {
   blocks: Block[];
   settings: TemplateSettings;
+}
+
+// Shape returned by the API
+interface ApiTemplate {
+  id: string;
+  name: string;
+  type: string;
+  contentHtml: string;
+  blocks: Block[] | null;
+  settings: TemplateSettings | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface TemplateStore {
@@ -22,6 +36,10 @@ interface TemplateStore {
   showSettings: boolean;
   showExportModal: boolean;
 
+  // Loading
+  isLoading: boolean;
+  isSaving: boolean;
+
   // Undo/Redo
   history: HistoryEntry[];
   historyIndex: number;
@@ -29,6 +47,11 @@ interface TemplateStore {
   // Auto-save
   lastSaved: Date | null;
   isDirty: boolean;
+
+  // Actions - API
+  fetchTemplates: () => Promise<void>;
+  loadTemplate: (id: string) => Promise<void>;
+  saveTemplateToApi: () => Promise<void>;
 
   // Actions - Template
   setCurrentTemplate: (id: string) => void;
@@ -57,23 +80,16 @@ interface TemplateStore {
   redo: () => void;
   pushHistory: () => void;
 
-  // Actions - Save
+  // Actions - Save (localStorage draft)
   saveTemplate: () => void;
   loadFromLocalStorage: () => void;
 }
 
-const TEMPLATE_LIST = [
-  { id: 'hire-purchase', name: 'สัญญาเช่าซื้อโทรศัพท์มือถือ' },
-  { id: 'power-of-attorney', name: 'หนังสือมอบอำนาจ' },
-  { id: 'split-payment-diff', name: 'ขอแบ่งชำระ (ผู้ซื้อกับผู้ผ่อนคนละคน)' },
-  { id: 'split-payment-same', name: 'ขอแบ่งชำระ (คนเดียวกัน)' },
-  { id: 'consent', name: 'หนังสือยินยอม' },
-  { id: 'quotation', name: 'ใบเสนอราคา' },
-];
+const DRAFT_KEY = 'bcp-template-draft';
 
 function createInitialTemplate(): Template {
   return {
-    id: 'hire-purchase',
+    id: '',
     name: 'สัญญาเช่าซื้อโทรศัพท์มือถือ',
     settings: { ...DEFAULT_SETTINGS },
     blocks: createDefaultContractBlocks(),
@@ -83,38 +99,147 @@ function createInitialTemplate(): Template {
   };
 }
 
-const AUTO_SAVE_KEY = 'bcp-template-draft';
+/** Convert API response to frontend Template */
+function apiToTemplate(t: ApiTemplate): Template {
+  return {
+    id: t.id,
+    name: t.name,
+    settings: (t.settings as TemplateSettings) || { ...DEFAULT_SETTINGS },
+    blocks: Array.isArray(t.blocks) && t.blocks.length > 0 ? t.blocks : createDefaultContractBlocks(),
+    variables: AVAILABLE_VARIABLES,
+    createdAt: t.createdAt,
+    updatedAt: t.updatedAt,
+  };
+}
+
+/** Build contentHtml from blocks for backward compatibility */
+function blocksToHtml(blocks: Block[]): string {
+  return blocks.map(b => {
+    if (b.type === 'heading' || b.type === 'contract-header') {
+      return `<h2>${b.content}</h2>`;
+    }
+    if (b.type === 'clause') {
+      let html = `<p><strong>ข้อ ${b.clauseNumber ?? ''} ${b.clauseTitle ?? ''}</strong></p><p>${b.content}</p>`;
+      if (b.subItems?.length) {
+        html += b.subItems.map((s, i) => `<p>${b.clauseNumber}.${i + 1} ${s}</p>`).join('');
+      }
+      return html;
+    }
+    return `<p>${b.content}</p>`;
+  }).join('\n');
+}
 
 export const useTemplateStore = create<TemplateStore>((set, get) => ({
   currentTemplate: createInitialTemplate(),
-  templates: TEMPLATE_LIST,
+  templates: [],
   previewMode: false,
   editingBlock: null,
   showSettings: false,
   showExportModal: false,
+  isLoading: false,
+  isSaving: false,
   history: [],
   historyIndex: -1,
   lastSaved: null,
   isDirty: false,
 
+  // ─── API Actions ─────────────────────────────────────
+
+  fetchTemplates: async () => {
+    set({ isLoading: true });
+    try {
+      const { data } = await api.get<ApiTemplate[]>('/contract-templates');
+      const list = data.map(t => ({ id: t.id, name: t.name }));
+      set({ templates: list });
+
+      // If we don't have a current template loaded from API, load the first one
+      const { currentTemplate } = get();
+      if (!currentTemplate.id && list.length > 0) {
+        await get().loadTemplate(list[0].id);
+      }
+    } catch {
+      // API not available — fall back to local defaults
+      set({
+        templates: [{ id: '', name: 'สัญญาเช่าซื้อโทรศัพท์มือถือ (ร่าง)' }],
+      });
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  loadTemplate: async (id: string) => {
+    set({ isLoading: true });
+    try {
+      const { data } = await api.get<ApiTemplate>(`/contract-templates/${id}`);
+      const template = apiToTemplate(data);
+      set({
+        currentTemplate: template,
+        history: [],
+        historyIndex: -1,
+        isDirty: false,
+      });
+    } catch {
+      toast.error('โหลดเทมเพลตไม่สำเร็จ');
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  saveTemplateToApi: async () => {
+    const { currentTemplate, isSaving } = get();
+    if (isSaving) return;
+    set({ isSaving: true });
+
+    const payload = {
+      name: currentTemplate.name,
+      type: 'STORE_DIRECT',
+      contentHtml: blocksToHtml(currentTemplate.blocks),
+      blocks: currentTemplate.blocks,
+      settings: currentTemplate.settings,
+    };
+
+    try {
+      if (currentTemplate.id) {
+        // Update existing
+        const { data } = await api.patch<ApiTemplate>(`/contract-templates/${currentTemplate.id}`, payload);
+        set(state => ({
+          currentTemplate: { ...state.currentTemplate, updatedAt: data.updatedAt },
+          isDirty: false,
+          lastSaved: new Date(),
+        }));
+      } else {
+        // Create new
+        const { data } = await api.post<ApiTemplate>('/contract-templates', payload);
+        const template = apiToTemplate(data);
+        set(state => ({
+          currentTemplate: template,
+          templates: [...state.templates, { id: data.id, name: data.name }],
+          isDirty: false,
+          lastSaved: new Date(),
+        }));
+      }
+      toast.success('บันทึกเทมเพลตสำเร็จ');
+      // Also save to localStorage as backup
+      get().saveTemplate();
+    } catch {
+      toast.error('บันทึกไม่สำเร็จ กรุณาลองใหม่');
+    } finally {
+      set({ isSaving: false });
+    }
+  },
+
+  // ─── Template Selection ──────────────────────────────
+
   setCurrentTemplate: (id) => {
-    const tmpl = TEMPLATE_LIST.find(t => t.id === id);
-    if (!tmpl) return;
-    set({
-      currentTemplate: {
-        ...createInitialTemplate(),
-        id: tmpl.id,
-        name: tmpl.name,
-      },
-      history: [],
-      historyIndex: -1,
-    });
+    get().loadTemplate(id);
   },
 
   selectTemplate: (name) => {
-    const tmpl = TEMPLATE_LIST.find(t => t.name === name);
-    if (tmpl) get().setCurrentTemplate(tmpl.id);
+    const tmpl = get().templates.find(t => t.name === name);
+    if (tmpl?.id) get().loadTemplate(tmpl.id);
   },
+
+  // ─── Block Actions ───────────────────────────────────
 
   addBlock: (type, afterId) => {
     get().pushHistory();
@@ -133,7 +258,6 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       } else {
         blocks.push(newBlock);
       }
-      // Reorder
       blocks.forEach((b, i) => b.order = i);
       return {
         currentTemplate: { ...state.currentTemplate, blocks, updatedAt: new Date().toISOString() },
@@ -225,6 +349,8 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     }));
   },
 
+  // ─── Settings ────────────────────────────────────────
+
   updateSettings: (updates) => {
     get().pushHistory();
     set(state => ({
@@ -241,6 +367,8 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
   setPreviewMode: (mode) => set({ previewMode: mode }),
   setEditingBlock: (block) => set({ editingBlock: block }),
   setShowExportModal: (show) => set({ showExportModal: show }),
+
+  // ─── Undo / Redo ────────────────────────────────────
 
   undo: () => {
     const { history, historyIndex } = get();
@@ -279,16 +407,17 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       };
       const newHistory = state.history.slice(0, state.historyIndex + 1);
       newHistory.push(entry);
-      // Keep max 50 entries
       if (newHistory.length > 50) newHistory.shift();
       return { history: newHistory, historyIndex: newHistory.length - 1 };
     });
   },
 
+  // ─── localStorage Draft ──────────────────────────────
+
   saveTemplate: () => {
     const state = get();
     try {
-      localStorage.setItem(AUTO_SAVE_KEY, JSON.stringify({
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({
         template: state.currentTemplate,
         savedAt: new Date().toISOString(),
       }));
@@ -300,7 +429,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
 
   loadFromLocalStorage: () => {
     try {
-      const saved = localStorage.getItem(AUTO_SAVE_KEY);
+      const saved = localStorage.getItem(DRAFT_KEY);
       if (saved) {
         const { template } = JSON.parse(saved);
         if (template?.blocks?.length) {

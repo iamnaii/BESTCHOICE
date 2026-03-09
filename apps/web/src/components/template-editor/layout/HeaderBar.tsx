@@ -1,29 +1,42 @@
-import { Settings, Plus, Save, Undo2, Eye, EyeOff, Download } from 'lucide-react';
+import { Settings, Plus, Save, Undo2, Eye, EyeOff, Download, Loader2 } from 'lucide-react';
 import { useTemplateStore } from '@/store/templateStore';
 
 export default function HeaderBar() {
   const {
-    currentTemplate, templates, previewMode,
+    currentTemplate, templates, previewMode, isSaving, isLoading,
     setPreviewMode, setShowSettings, setShowExportModal,
-    addBlock, saveTemplate, undo, selectTemplate, isDirty,
+    addBlock, saveTemplateToApi, undo, isDirty, loadTemplate,
   } = useTemplateStore();
+
+  const handleTemplateChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const id = e.target.value;
+    if (id && id !== currentTemplate.id) {
+      if (isDirty && !confirm('มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก ต้องการเปลี่ยนเทมเพลตหรือไม่?')) return;
+      loadTemplate(id);
+    }
+  };
 
   return (
     <div className="h-14 bg-white border-b border-gray-200 flex items-center px-4 gap-3">
       {/* Template selector */}
       <select
-        value={currentTemplate.name}
-        onChange={e => selectTemplate(e.target.value)}
-        className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-violet-500 focus:border-violet-500 max-w-[320px]"
+        value={currentTemplate.id}
+        onChange={handleTemplateChange}
+        disabled={isLoading}
+        className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-violet-500 focus:border-violet-500 max-w-[320px] disabled:opacity-50"
       >
+        {templates.length === 0 && (
+          <option value="">กำลังโหลด...</option>
+        )}
         {templates.map(t => (
-          <option key={t.id} value={t.name}>
-            {t.name}{t.id === 'hire-purchase' ? ' ⭐' : ''}
+          <option key={t.id} value={t.id}>
+            {t.name}
           </option>
         ))}
       </select>
 
       {isDirty && <span className="text-xs text-amber-600">* ยังไม่ได้บันทึก</span>}
+      {isSaving && <span className="text-xs text-blue-600 flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> กำลังบันทึก...</span>}
 
       <div className="flex-1" />
 
@@ -45,10 +58,11 @@ export default function HeaderBar() {
       </button>
 
       <button
-        onClick={() => saveTemplate()}
-        className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+        onClick={() => saveTemplateToApi()}
+        disabled={isSaving}
+        className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
       >
-        <Save size={14} />
+        {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
         บันทึก
       </button>
 

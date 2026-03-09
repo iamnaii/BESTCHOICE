@@ -1,5 +1,5 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
-import { PaymentMethod, PlanType } from '@prisma/client';
+import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, InternalServerErrorException } from '@nestjs/common';
+import { PaymentMethod, PlanType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateContractDto, UpdateContractDto } from './dto/contract.dto';
 import { calculateInstallment, generatePaymentSchedule } from '../../utils/installment.util';
@@ -210,8 +210,30 @@ export class ContractsService {
         if (err instanceof BadRequestException || err instanceof ForbiddenException) {
           throw err;
         }
-        this.logger.error(`Failed to create contract: ${err?.message}`, err?.stack);
-        throw new BadRequestException('ไม่สามารถสร้างสัญญาได้ กรุณาลองใหม่อีกครั้ง');
+
+        this.logger.error(`Failed to create contract (attempt ${attempt + 1}/${MAX_RETRIES}): [${err?.code}] ${err?.message}`, err?.stack);
+
+        // Provide specific error messages for known Prisma errors
+        if (err instanceof Prisma.PrismaClientKnownRequestError) {
+          switch (err.code) {
+            case 'P2002':
+              throw new BadRequestException('เลขสัญญาซ้ำ กรุณาลองใหม่อีกครั้ง');
+            case 'P2003': {
+              const field = (err.meta as any)?.field_name || '';
+              if (field.includes('branch')) throw new BadRequestException('ไม่พบสาขาที่เลือก');
+              if (field.includes('customer')) throw new BadRequestException('ไม่พบข้อมูลลูกค้า');
+              if (field.includes('product')) throw new BadRequestException('ไม่พบสินค้าที่เลือก');
+              if (field.includes('salesperson') || field.includes('user')) throw new BadRequestException('ไม่พบข้อมูลพนักงานขาย');
+              throw new BadRequestException(`ข้อมูลอ้างอิงไม่ถูกต้อง (${field})`);
+            }
+            case 'P2025':
+              throw new BadRequestException('ไม่พบข้อมูลที่ต้องการอัปเดต (อาจถูกลบแล้ว)');
+            case 'P2028':
+              throw new BadRequestException('การทำรายการหมดเวลา กรุณาลองใหม่อีกครั้ง');
+          }
+        }
+
+        throw new InternalServerErrorException(`ไม่สามารถสร้างสัญญาได้: ${err?.message || 'ข้อผิดพลาดไม่ทราบสาเหตุ'}`);
       }
     }
 

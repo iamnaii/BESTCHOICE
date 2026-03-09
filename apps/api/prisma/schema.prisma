@@ -457,8 +457,8 @@ model PurchaseOrder {
 model POItem {
   id             String   @id @default(uuid())
   poId           String   @map("po_id")
-  brand          String
-  model          String
+  brand          String?
+  model          String?
   color          String?
   storage        String?
   category       String?

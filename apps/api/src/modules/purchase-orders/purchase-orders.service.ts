@@ -126,8 +126,8 @@ export class PurchaseOrdersService {
           attachments: dto.attachments || [],
           items: {
             create: dto.items.map((item) => ({
-              brand: item.brand,
-              model: item.model,
+              brand: item.brand || null,
+              model: item.model || null,
               color: item.color || null,
               storage: item.storage || null,
               category: item.category || null,
@@ -505,8 +505,8 @@ export class PurchaseOrdersService {
           const product = await tx.product.create({
             data: {
               name: productName,
-              brand: poItem.brand,
-              model: poItem.model,
+              brand: poItem.brand || '',
+              model: poItem.model || '',
               color: poItem.color || null,
               storage: poItem.storage || null,
               category: productCategory,
@@ -663,8 +663,8 @@ export class PurchaseOrdersService {
           const product = await tx.product.create({
             data: {
               name: productName,
-              brand: poItem.brand,
-              model: poItem.model,
+              brand: poItem.brand || '',
+              model: poItem.model || '',
               color: poItem.color || null,
               storage: poItem.storage || null,
               category: productCategory,

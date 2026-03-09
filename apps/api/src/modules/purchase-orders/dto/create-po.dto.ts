@@ -3,10 +3,12 @@ import { Type } from 'class-transformer';
 
 export class POItemDto {
   @IsString()
-  brand: string;
+  @IsOptional()
+  brand?: string;
 
   @IsString()
-  model: string;
+  @IsOptional()
+  model?: string;
 
   @IsString()
   @IsOptional()

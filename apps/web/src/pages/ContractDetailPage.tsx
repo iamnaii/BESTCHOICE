@@ -421,8 +421,12 @@ export default function ContractDetailPage() {
                   <input type="number" step="0.01" value={editForm.interestRate} onChange={(e) => setEditForm({ ...editForm, interestRate: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">วันชำระ (1-31)</label>
-                  <input type="number" min={1} max={31} value={editForm.paymentDueDay} onChange={(e) => setEditForm({ ...editForm, paymentDueDay: parseInt(e.target.value) || 1 })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                  <label className="block text-xs text-gray-500 mb-1">วันชำระ</label>
+                  <select value={editForm.paymentDueDay} onChange={(e) => setEditForm({ ...editForm, paymentDueDay: parseInt(e.target.value) || 1 })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                    {[...Array.from({ length: 28 }, (_, i) => i + 1), 31].map((d) => (
+                      <option key={d} value={d}>{d === 31 ? 'สิ้นเดือน' : `วันที่ ${d}`}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
               <div>
@@ -452,7 +456,7 @@ export default function ContractDetailPage() {
               {editForm.totalMonths <= 0 && <div className="text-xs text-red-600">จำนวนงวดต้องมากกว่า 0</div>}
               {editForm.downPayment >= editForm.sellingPrice && editForm.sellingPrice > 0 && <div className="text-xs text-red-600">เงินดาวน์ต้องน้อยกว่าราคาขาย</div>}
               {editForm.sellingPrice <= 0 && <div className="text-xs text-red-600">ราคาขายต้องมากกว่า 0</div>}
-              {(editForm.paymentDueDay < 1 || editForm.paymentDueDay > 28) && <div className="text-xs text-red-600">วันชำระต้องอยู่ระหว่าง 1-28</div>}
+              {(editForm.paymentDueDay < 1 || (editForm.paymentDueDay > 28 && editForm.paymentDueDay !== 31)) && <div className="text-xs text-red-600">วันชำระต้องอยู่ระหว่าง 1-28 หรือสิ้นเดือน</div>}
               <div className="flex gap-2 pt-2">
                 <button onClick={() => setIsEditing(false)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg">ยกเลิก</button>
                 <button
@@ -474,7 +478,7 @@ export default function ContractDetailPage() {
               <Info label="ดอกเบี้ยรวม" value={`${parseFloat(contract.interestTotal).toLocaleString()} ฿`} />
               <Info label="ยอดจัดไฟแนนซ์" value={`${parseFloat(contract.financedAmount).toLocaleString()} ฿`} />
               <Info label="จำนวนงวด" value={`${contract.totalMonths} เดือน`} />
-              <Info label="วันชำระ" value={contract.paymentDueDay ? `ทุกวันที่ ${contract.paymentDueDay}` : 'วันที่ 1'} />
+              <Info label="วันชำระ" value={contract.paymentDueDay === 31 ? 'สิ้นเดือน' : contract.paymentDueDay ? `ทุกวันที่ ${contract.paymentDueDay}` : 'วันที่ 1'} />
               <Info label="พนักงานขาย" value={contract.salesperson.name} />
               <Info label="สาขา" value={contract.branch.name} />
               <Info label="วันที่สร้าง" value={new Date(contract.createdAt).toLocaleDateString('th-TH')} />

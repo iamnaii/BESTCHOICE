@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -139,6 +139,7 @@ export default function SettingsPage() {
   const queryClient = useQueryClient();
   const [values, setValues] = useState<Record<string, string>>({});
   const [hasChanges, setHasChanges] = useState(false);
+  const hasChangesRef = useRef(false);
 
   const { data: configs = [], isLoading } = useQuery<ConfigItem[]>({
     queryKey: ['settings'],
@@ -146,11 +147,10 @@ export default function SettingsPage() {
   });
 
   useEffect(() => {
-    if (configs.length > 0) {
+    if (configs.length > 0 && !hasChangesRef.current) {
       const map: Record<string, string> = {};
       configs.forEach((c) => { map[c.key] = c.value; });
       setValues(map);
-      setHasChanges(false);
     }
   }, [configs]);
 
@@ -161,6 +161,7 @@ export default function SettingsPage() {
       queryClient.invalidateQueries({ queryKey: ['settings'] });
       toast.success('บันทึกการตั้งค่าสำเร็จ');
       setHasChanges(false);
+      hasChangesRef.current = false;
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
@@ -168,6 +169,7 @@ export default function SettingsPage() {
   const handleChange = (key: string, value: string) => {
     setValues((prev) => ({ ...prev, [key]: value }));
     setHasChanges(true);
+    hasChangesRef.current = true;
   };
 
   const handleSave = () => {
@@ -228,7 +230,7 @@ export default function SettingsPage() {
                     <input
                       type={item.type}
                       step={item.step}
-                      value={values[item.key] || ''}
+                      value={values[item.key] ?? ''}
                       onChange={(e) => handleChange(item.key, e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-right focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
                     />

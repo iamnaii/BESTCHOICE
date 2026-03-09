@@ -33,8 +33,13 @@ export class SecurityMiddleware implements NestMiddleware {
     );
 
     // Block suspicious payloads (basic XSS/injection prevention)
-    // Skip scanning for large payloads (e.g., base64 image uploads) to avoid CPU spikes
-    if (req.body && typeof req.body === 'object') {
+    // Skip scanning for:
+    // - Large payloads (e.g., base64 image uploads) to avoid CPU spikes
+    // - OCR / file-upload routes that carry base64 data (false positives from base64 content)
+    const skipScanPaths = ['/ocr/', '/product-photos', '/documents'];
+    const shouldSkipScan = skipScanPaths.some(p => req.path.includes(p));
+
+    if (!shouldSkipScan && req.body && typeof req.body === 'object') {
       const contentLength = parseInt(req.headers['content-length'] || '0', 10);
       if (contentLength < 1_000_000) {
         const bodyStr = JSON.stringify(req.body);

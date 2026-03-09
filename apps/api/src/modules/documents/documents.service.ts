@@ -118,8 +118,8 @@ export class DocumentsService {
       htmlContent = template?.contentHtml || this.getDefaultTemplate(documentType);
     }
 
-    // Replace placeholders
-    const renderedHtml = this.replacePlaceholders(htmlContent, contract);
+    // Replace placeholders and wrap with A4 styling
+    const renderedHtml = this.wrapWithA4Styles(this.replacePlaceholders(htmlContent, contract));
 
     // Generate file hash
     const fileHash = crypto.createHash('sha256').update(renderedHtml).digest('hex');
@@ -180,7 +180,8 @@ export class DocumentsService {
       htmlContent = template?.contentHtml || this.getDefaultTemplate('CONTRACT');
     }
 
-    return { html: this.replacePlaceholders(htmlContent, contract) };
+    const bodyHtml = this.replacePlaceholders(htmlContent, contract);
+    return { html: this.wrapWithA4Styles(bodyHtml) };
   }
 
   // ─── Helpers ──────────────────────────────────────────
@@ -273,6 +274,68 @@ export class DocumentsService {
   /** Validate that a data URL is a safe image format */
   private isSafeImageDataUrl(url: string): boolean {
     return /^data:image\/(png|jpeg|gif|webp);base64,[A-Za-z0-9+/=]+$/.test(url);
+  }
+
+  /** Wrap rendered HTML with A4 page styles and page numbering */
+  private wrapWithA4Styles(bodyHtml: string): string {
+    return `<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8"/>
+<style>
+  @page {
+    size: A4;
+    margin: 20mm 18mm 25mm 18mm;
+    @bottom-center {
+      content: counter(page) "/" counter(pages);
+      font-size: 10px;
+      color: #999;
+      font-family: 'Sarabun', sans-serif;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: 'Sarabun', 'Noto Sans Thai', sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #222;
+  }
+  .a4-page {
+    width: 170mm;
+    min-height: 250mm;
+    margin: 0 auto;
+    padding: 0;
+  }
+  table { border-collapse: collapse; }
+  /* Page break helpers that templates can use */
+  .page-break { page-break-after: always; break-after: page; }
+  .no-break { page-break-inside: avoid; break-inside: avoid; }
+  /* Print styles */
+  @media print {
+    body { margin: 0; padding: 0; }
+    .a4-page { width: 100%; min-height: auto; }
+  }
+  /* Screen preview: simulate A4 pages */
+  @media screen {
+    body { background: #e5e7eb; padding: 20px 0; }
+    .a4-page {
+      background: #fff;
+      width: 210mm;
+      min-height: 297mm;
+      padding: 20mm 18mm 25mm 18mm;
+      margin: 0 auto 20px auto;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+  }
+</style>
+</head>
+<body>
+<div class="a4-page">
+${bodyHtml}
+</div>
+</body>
+</html>`;
   }
 
   private replacePlaceholders(html: string, contract: any): string {
@@ -379,33 +442,78 @@ export class DocumentsService {
   private getDefaultTemplate(documentType: string): string {
     if (documentType === 'CONTRACT') {
       return `
-        <div style="font-family:'Sarabun',sans-serif;max-width:800px;margin:0 auto;padding:20px">
-          <h1 style="text-align:center">สัญญาผ่อนชำระ</h1>
-          <p style="text-align:center">เลขที่สัญญา: <strong>{contract_number}</strong></p>
-          <p style="text-align:center">สาขา: {branch_name} | วันที่: {date}</p>
-          <hr/>
-          <h3>ข้อมูลลูกค้า</h3>
-          <p>ชื่อ: {customer_name}<br/>เลขบัตร ปชช.: {national_id}<br/>เบอร์โทร: {customer_phone}<br/>ที่อยู่: {customer_address}</p>
-          <h3>ข้อมูลสินค้า</h3>
-          <p>สินค้า: {brand} {model}<br/>IMEI: {imei}<br/>S/N: {serial_number}</p>
-          <h3>เงื่อนไขการผ่อนชำระ</h3>
-          <table style="width:100%">
-            <tr><td>ราคาขาย</td><td><strong>{selling_price} บาท</strong></td></tr>
-            <tr><td>เงินดาวน์</td><td>{down_payment} บาท</td></tr>
-            <tr><td>อัตราดอกเบี้ย</td><td>{interest_rate}</td></tr>
-            <tr><td>จำนวนงวด</td><td>{total_months} เดือน</td></tr>
-            <tr><td>ค่างวดต่อเดือน</td><td><strong>{monthly_payment} บาท</strong></td></tr>
-            <tr><td>ดอกเบี้ยรวม</td><td>{interest_total} บาท</td></tr>
-            <tr><td>ยอดผ่อนรวม</td><td>{financed_amount} บาท</td></tr>
-          </table>
-          <h3>ตารางผ่อนชำระ</h3>
-          {payment_schedule_table}
-          <div style="margin-top:40px;display:flex;justify-content:space-between">
-            <div style="text-align:center"><p>ลงนามลูกค้า</p>{customer_signature}<p>{customer_name}</p></div>
-            <div style="text-align:center"><p>ลงนามพนักงาน</p>{staff_signature}<p>{salesperson_name}</p></div>
-          </div>
-        </div>
-      `;
+<div>
+  <h1 style="text-align:center;margin:0 0 4px">สัญญาผ่อนชำระ</h1>
+  <p style="text-align:center;margin:0 0 2px">เลขที่สัญญา: <strong>{contract_number}</strong></p>
+  <p style="text-align:center;margin:0 0 16px;color:#666">สาขา: {branch_name} | วันที่: {contract_date}</p>
+  <hr style="border:none;border-top:1px solid #ccc;margin:0 0 16px"/>
+
+  <div class="no-break">
+    <h3 style="margin:0 0 8px;border-bottom:1px solid #eee;padding-bottom:4px">ข้อมูลลูกค้า</h3>
+    <table style="width:100%;margin-bottom:12px;font-size:13px">
+      <tr><td style="width:120px;color:#666">ชื่อ-นามสกุล</td><td><strong>{customer_name}</strong></td></tr>
+      <tr><td style="color:#666">เลขบัตร ปชช.</td><td>{national_id}</td></tr>
+      <tr><td style="color:#666">เบอร์โทร</td><td>{customer_phone}</td></tr>
+      <tr><td style="color:#666">ที่อยู่ (บัตร)</td><td>{customer_address_id_card}</td></tr>
+      <tr><td style="color:#666">ที่อยู่ปัจจุบัน</td><td>{customer_address_current}</td></tr>
+      <tr><td style="color:#666">อาชีพ</td><td>{customer_occupation}</td></tr>
+      <tr><td style="color:#666">ที่ทำงาน</td><td>{customer_workplace}</td></tr>
+    </table>
+  </div>
+
+  <div class="no-break">
+    <h3 style="margin:0 0 8px;border-bottom:1px solid #eee;padding-bottom:4px">บุคคลอ้างอิง</h3>
+    <div style="margin-bottom:12px;font-size:13px">{customer_references}</div>
+  </div>
+
+  <div class="no-break">
+    <h3 style="margin:0 0 8px;border-bottom:1px solid #eee;padding-bottom:4px">ข้อมูลสินค้า</h3>
+    <table style="width:100%;margin-bottom:12px;font-size:13px">
+      <tr><td style="width:120px;color:#666">สินค้า</td><td><strong>{brand} {model}</strong></td></tr>
+      <tr><td style="color:#666">ประเภท</td><td>{product_category}</td></tr>
+      <tr><td style="color:#666">สี</td><td>{product_color}</td></tr>
+      <tr><td style="color:#666">ความจุ</td><td>{product_storage}</td></tr>
+      <tr><td style="color:#666">IMEI</td><td>{imei}</td></tr>
+      <tr><td style="color:#666">S/N</td><td>{serial_number}</td></tr>
+    </table>
+  </div>
+
+  <div class="no-break">
+    <h3 style="margin:0 0 8px;border-bottom:1px solid #eee;padding-bottom:4px">เงื่อนไขการผ่อนชำระ</h3>
+    <table style="width:100%;margin-bottom:16px;font-size:13px">
+      <tr><td style="width:160px;color:#666">ราคาขาย</td><td><strong>{selling_price} บาท</strong></td></tr>
+      <tr><td style="color:#666">เงินดาวน์</td><td>{down_payment} บาท</td></tr>
+      <tr><td style="color:#666">ยอดผ่อน</td><td><strong>{financed_amount} บาท</strong> ({financed_amount_text})</td></tr>
+      <tr><td style="color:#666">อัตราดอกเบี้ย</td><td>{interest_rate}</td></tr>
+      <tr><td style="color:#666">จำนวนงวด</td><td>{total_months} เดือน ({total_months_text})</td></tr>
+      <tr><td style="color:#666">ค่างวดต่อเดือน</td><td><strong>{monthly_payment} บาท</strong></td></tr>
+      <tr><td style="color:#666">ดอกเบี้ยรวม</td><td>{interest_total} บาท</td></tr>
+      <tr><td style="color:#666">งวดแรก</td><td>{first_payment_due}</td></tr>
+      <tr><td style="color:#666">งวดสุดท้าย</td><td>{last_payment_due}</td></tr>
+    </table>
+  </div>
+
+  <div class="page-break"></div>
+
+  <h3 style="margin:0 0 8px;border-bottom:1px solid #eee;padding-bottom:4px">ตารางผ่อนชำระ</h3>
+  {payment_schedule_table}
+
+  <div class="no-break" style="margin-top:40px">
+    <h3 style="margin:0 0 8px;border-bottom:1px solid #eee;padding-bottom:4px">ลงนาม</h3>
+    <div style="display:flex;justify-content:space-around;margin-top:20px">
+      <div style="text-align:center">
+        <p style="margin:0 0 4px;font-size:12px;color:#666">ผู้ซื้อ (ลูกค้า)</p>
+        {customer_signature}
+        <p style="margin:8px 0 0;font-size:13px">({customer_name})</p>
+      </div>
+      <div style="text-align:center">
+        <p style="margin:0 0 4px;font-size:12px;color:#666">ผู้ขาย (พนักงาน)</p>
+        {staff_signature}
+        <p style="margin:8px 0 0;font-size:13px">({salesperson_name})</p>
+      </div>
+    </div>
+  </div>
+</div>`;
     }
     return '<div>{contract_number}</div>';
   }

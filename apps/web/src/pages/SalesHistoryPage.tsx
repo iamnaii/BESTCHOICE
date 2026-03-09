@@ -217,9 +217,8 @@ export default function SalesHistoryPage() {
       {stats && salesData && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-lg border p-4">
-            <div className="text-xs text-gray-500 mb-1">ทั้งหมด</div>
-            <div className="text-xl font-bold">{salesData.total.toLocaleString()} <span className="text-sm font-normal text-gray-400">รายการ</span></div>
-            <div className="text-sm text-gray-500 mt-1">{stats.totalRevenue.toLocaleString()} ฿</div>
+            <div className="text-xs text-gray-500 mb-1">ทั้งหมด {salesData.total.toLocaleString()} รายการ (หน้านี้ {salesData.data.length})</div>
+            <div className="text-xl font-bold">{stats.totalRevenue.toLocaleString()} <span className="text-sm font-normal text-gray-400">฿ (หน้านี้)</span></div>
             {stats.totalDiscount > 0 && <div className="text-xs text-red-500">ส่วนลดรวม {stats.totalDiscount.toLocaleString()} ฿</div>}
           </div>
           <div className="bg-white rounded-lg border p-4">

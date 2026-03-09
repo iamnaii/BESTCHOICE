@@ -106,7 +106,8 @@ export default function ProductsPage() {
     });
   };
 
-  useEffect(() => { setPage(1); }, [debouncedSearch, filterStatus, filterCategory, filterBranch]);
+  useEffect(() => { setPage(1); setSelectedIds(new Set()); }, [debouncedSearch, filterStatus, filterCategory, filterBranch]);
+  useEffect(() => { setSelectedIds(new Set()); }, [page]);
 
   const { data: result, isLoading } = useQuery<{ data: Product[]; total: number; page: number; totalPages: number }>({
     queryKey: ['products', debouncedSearch, filterStatus, filterCategory, filterBranch, page],

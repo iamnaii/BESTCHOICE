@@ -99,9 +99,7 @@ export class NotificationsService {
    */
   private async sendLine(recipient: string, message: string): Promise<void> {
     if (!this.lineChannelAccessToken) {
-      this.logger.warn(`[LINE] No channel access token configured. Message logged but not delivered.`);
-      this.logger.log(`[LINE] To: ${recipient}, Message: ${message.substring(0, 100)}...`);
-      return;
+      throw new Error('LINE channel access token not configured');
     }
 
     const url = 'https://api.line.me/v2/bot/message/push';
@@ -133,9 +131,7 @@ export class NotificationsService {
    */
   private async sendSms(recipient: string, message: string): Promise<void> {
     if (!this.smsApiKey) {
-      this.logger.warn(`[SMS] No API key configured. Message logged but not delivered.`);
-      this.logger.log(`[SMS] To: ${recipient}, Message: ${message.substring(0, 100)}...`);
-      return;
+      throw new Error('SMS API key not configured');
     }
 
     // Clean phone number: ensure +66 format for Thai numbers

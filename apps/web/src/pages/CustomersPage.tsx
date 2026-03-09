@@ -95,7 +95,7 @@ export default function CustomersPage() {
     }
   }, [sameAddress, addressIdCard]);
 
-  const { data: result, isLoading } = useQuery<{ data: Customer[]; total: number; page: number; totalPages: number }>({
+  const { data: result, isLoading } = useQuery<{ data: Customer[]; total: number; page: number; limit: number; totalPages: number }>({
     queryKey: ['customers', debouncedSearch, page],
     queryFn: async () => {
       const params: Record<string, string> = {};
@@ -333,7 +333,7 @@ export default function CustomersPage() {
       key: 'index',
       label: '#',
       render: (_c: Customer, _col: unknown, idx?: number) => (
-        <span className="text-xs text-gray-400">{((result?.page || 1) - 1) * 50 + (idx ?? 0) + 1}</span>
+        <span className="text-xs text-gray-400">{((result?.page || 1) - 1) * (result?.limit || 50) + (idx ?? 0) + 1}</span>
       ),
     },
     {

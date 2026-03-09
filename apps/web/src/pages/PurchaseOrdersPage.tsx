@@ -439,7 +439,7 @@ export default function PurchaseOrdersPage() {
           warrantyExpireDate: '',
           hasBox: true,
           checklist: defaultChecklist.map((c) => ({ ...c, passed: true, note: '' })),
-          sellingPrice: '',
+          sellingPrice: item.unitPrice ? String(Number(item.unitPrice)) : '',
         });
       }
     }

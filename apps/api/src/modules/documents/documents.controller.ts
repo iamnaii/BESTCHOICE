@@ -27,7 +27,7 @@ export class DocumentsController {
   @Roles('OWNER')
   @Throttle({ short: { limit: 3, ttl: 60000 } })
   generateTemplateFromFile(@Body() dto: OcrGenerateTemplateDto) {
-    return this.ocrService.generateTemplateHtml(dto.imageBase64);
+    return this.ocrService.generateTemplateHtml(dto.fileBase64);
   }
 
   @Get('contract-templates/:id')

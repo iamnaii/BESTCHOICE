@@ -110,6 +110,27 @@ export class OcrService {
     return { mediaType, base64Data };
   }
 
+  private validateFileBase64(fileBase64: string): { mediaType: string; base64Data: string; isDocument: boolean } {
+    if (!fileBase64.startsWith('data:')) {
+      throw new BadRequestException('รูปแบบไฟล์ไม่ถูกต้อง กรุณาส่งเป็น base64 data URL');
+    }
+
+    const prefixMatch = fileBase64.match(/^data:(image\/(jpeg|png|gif|webp)|application\/pdf);base64,/);
+    if (!prefixMatch) {
+      throw new BadRequestException('รูปแบบไฟล์ไม่รองรับ กรุณาใช้ JPEG, PNG, WebP หรือ PDF');
+    }
+
+    const mediaType = prefixMatch[1];
+    const base64Data = fileBase64.slice(prefixMatch[0].length);
+    const isDocument = mediaType === 'application/pdf';
+
+    if (!/^[A-Za-z0-9+/=]+$/.test(base64Data)) {
+      throw new BadRequestException('ข้อมูลไฟล์ไม่ถูกต้อง (base64 ไม่ valid)');
+    }
+
+    return { mediaType, base64Data, isDocument };
+  }
+
   private parseJsonResponse(rawText: string): unknown {
     let jsonText = rawText.trim();
     const jsonMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -283,11 +304,15 @@ export class OcrService {
 6. ตอบเป็น HTML เท่านั้น ห้ามมี markdown code block หรือข้อความอื่น
 7. ถ้าเอกสารไม่ใช่สัญญาหรือเอกสารทางธุรกิจ ให้สร้างเทมเพลตสัญญาผ่อนชำระทั่วไป โดยอ้างอิงจากรูปแบบที่เห็น`;
 
-  async generateTemplateHtml(imageBase64: string): Promise<{ contentHtml: string; placeholders: string[] }> {
+  async generateTemplateHtml(fileBase64: string): Promise<{ contentHtml: string; placeholders: string[] }> {
     this.ensureAnthropicReady();
-    const { mediaType, base64Data } = this.validateImageBase64(imageBase64);
+    const { mediaType, base64Data, isDocument } = this.validateFileBase64(fileBase64);
 
     try {
+      const fileContent = isDocument
+        ? { type: 'document' as const, source: { type: 'base64' as const, media_type: mediaType as 'application/pdf', data: base64Data } }
+        : { type: 'image' as const, source: { type: 'base64' as const, media_type: mediaType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp', data: base64Data } };
+
       const response = await this.anthropic!.messages.create({
         model: OcrService.OCR_MODEL,
         max_tokens: 8192,
@@ -297,10 +322,7 @@ export class OcrService {
           {
             role: 'user',
             content: [
-              {
-                type: 'image',
-                source: { type: 'base64', media_type: mediaType, data: base64Data },
-              },
+              fileContent,
               {
                 type: 'text',
                 text: 'อ่านเอกสารนี้แล้วสร้าง HTML template ตามรูปแบบที่เห็น ใช้ placeholders แทนข้อมูลจริง ตอบเป็น HTML เท่านั้น',

@@ -99,8 +99,9 @@ export default function ContractTemplatesPage() {
   };
 
   const handleGenerateFromFile = async (file: File) => {
-    if (!file.type.startsWith('image/')) {
-      toast.error('รองรับเฉพาะไฟล์รูปภาพ (JPG, PNG, WebP)');
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('รองรับเฉพาะไฟล์ JPG, PNG, WebP หรือ PDF');
       return;
     }
     if (file.size > 10 * 1024 * 1024) {
@@ -117,7 +118,7 @@ export default function ContractTemplatesPage() {
         reader.readAsDataURL(file);
       });
 
-      const { data } = await api.post('/contract-templates/generate-from-file', { imageBase64: base64 }, { timeout: 120000 });
+      const { data } = await api.post('/contract-templates/generate-from-file', { fileBase64: base64 }, { timeout: 120000 });
       setForm({ ...form, contentHtml: data.contentHtml });
       toast.success('AI สร้างเทมเพลตสำเร็จ กรุณาตรวจสอบและแก้ไขก่อนบันทึก');
     } catch (err: any) {
@@ -199,18 +200,18 @@ export default function ContractTemplatesPage() {
                   </div>
                 ) : (
                   <>
-                    <p className="text-sm text-gray-500 mb-2">แนบรูปเอกสาร/สัญญา แล้ว AI จะสร้าง HTML template ให้</p>
+                    <p className="text-sm text-gray-500 mb-2">แนบรูปเอกสาร/สัญญา หรือ PDF แล้ว AI จะสร้าง HTML template ให้</p>
                     <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 text-purple-700 text-sm font-medium rounded-lg cursor-pointer hover:bg-purple-100">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                      เลือกรูปเอกสาร
+                      เลือกไฟล์เอกสาร
                       <input
                         type="file"
-                        accept="image/jpeg,image/png,image/webp"
+                        accept="image/jpeg,image/png,image/webp,application/pdf"
                         className="hidden"
                         onChange={(e) => { const f = e.target.files?.[0]; if (f) handleGenerateFromFile(f); e.target.value = ''; }}
                       />
                     </label>
-                    <p className="text-xs text-gray-400 mt-1">รองรับ JPG, PNG, WebP (ไม่เกิน 10MB)</p>
+                    <p className="text-xs text-gray-400 mt-1">รองรับ JPG, PNG, WebP, PDF (ไม่เกิน 10MB)</p>
                   </>
                 )}
               </div>

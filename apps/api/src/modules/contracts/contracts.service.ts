@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PaymentMethod, PlanType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateContractDto, UpdateContractDto } from './dto/contract.dto';
@@ -7,6 +7,7 @@ import { loadInstallmentConfig, resolveInstallmentParams } from '../../utils/con
 
 @Injectable()
 export class ContractsService {
+  private readonly logger = new Logger(ContractsService.name);
   constructor(private prisma: PrismaService) {}
 
   async findAll(filters: {
@@ -209,6 +210,7 @@ export class ContractsService {
         if (err instanceof BadRequestException || err instanceof ForbiddenException) {
           throw err;
         }
+        this.logger.error(`Failed to create contract: ${err?.message}`, err?.stack);
         throw new BadRequestException('ไม่สามารถสร้างสัญญาได้ กรุณาลองใหม่อีกครั้ง');
       }
     }

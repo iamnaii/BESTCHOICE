@@ -994,11 +994,11 @@ export default function ContractCreatePage() {
                 onChange={(e) => setPaymentDueDay(Number(e.target.value))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
               >
-                {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
-                  <option key={d} value={d}>{`วันที่ ${d} ของทุกเดือน`}</option>
+                {[...Array.from({ length: 28 }, (_, i) => i + 1), 31].map((d) => (
+                  <option key={d} value={d}>{d === 31 ? 'สิ้นเดือน (วันสุดท้ายของเดือน)' : `วันที่ ${d} ของทุกเดือน`}</option>
                 ))}
               </select>
-              <div className="text-xs text-gray-400 mt-1">ลูกค้าจะต้องชำระเงินทุกวันที่ {paymentDueDay} ของเดือน</div>
+              <div className="text-xs text-gray-400 mt-1">ลูกค้าจะต้องชำระเงิน{paymentDueDay === 31 ? 'ทุกสิ้นเดือน' : `ทุกวันที่ ${paymentDueDay} ของเดือน`}</div>
             </div>
 
             <div>
@@ -1046,7 +1046,7 @@ export default function ContractCreatePage() {
                 <span>ค่างวด/เดือน</span>
                 <span>{monthlyPayment.toLocaleString()} ฿</span>
               </div>
-              <div className="text-xs text-gray-500 text-right">ชำระทุกวันที่ {paymentDueDay}</div>
+              <div className="text-xs text-gray-500 text-right">ชำระ{paymentDueDay === 31 ? 'ทุกสิ้นเดือน' : `ทุกวันที่ ${paymentDueDay}`}</div>
             </div>
           </div>
         </div>
@@ -1233,7 +1233,7 @@ export default function ContractCreatePage() {
                 <div><div className="text-xs text-gray-500">จำนวนงวด</div><div className="text-sm font-medium">{totalMonths} เดือน</div></div>
                 <div><div className="text-xs text-gray-500">ดอกเบี้ย</div><div className="text-sm font-medium">{(interestRate * 100).toFixed(1)}%{interestConfig ? ` (${interestConfig.name})` : ''}</div></div>
                 <div><div className="text-xs text-gray-500">ค่างวด/เดือน</div><div className="text-lg font-bold text-primary-700">{monthlyPayment.toLocaleString()} ฿</div></div>
-                <div><div className="text-xs text-gray-500">วันชำระ</div><div className="text-sm font-medium">ทุกวันที่ {paymentDueDay}</div></div>
+                <div><div className="text-xs text-gray-500">วันชำระ</div><div className="text-sm font-medium">{paymentDueDay === 31 ? 'สิ้นเดือน' : `ทุกวันที่ ${paymentDueDay}`}</div></div>
                 <div><div className="text-xs text-gray-500">เอกสารแนบ</div><div className="text-sm font-medium">{pendingDocs.length} ไฟล์</div></div>
               </div>
 

@@ -124,8 +124,8 @@ export class ContractsService {
     }
 
     // Validate paymentDueDay
-    if (dto.paymentDueDay !== undefined && (dto.paymentDueDay < 1 || dto.paymentDueDay > 28)) {
-      throw new BadRequestException('วันที่ครบกำหนดชำระต้องอยู่ระหว่าง 1-28');
+    if (dto.paymentDueDay !== undefined && (dto.paymentDueDay < 1 || (dto.paymentDueDay > 28 && dto.paymentDueDay !== 31))) {
+      throw new BadRequestException('วันที่ครบกำหนดชำระต้องอยู่ระหว่าง 1-28 หรือ 31 (สิ้นเดือน)');
     }
 
     // Calculate installment using shared utility
@@ -233,8 +233,8 @@ export class ContractsService {
     if (totalMonths < minInstallmentMonths || totalMonths > maxInstallmentMonths) {
       throw new BadRequestException(`จำนวนงวดต้องอยู่ระหว่าง ${minInstallmentMonths}-${maxInstallmentMonths} เดือน`);
     }
-    if (paymentDueDay !== undefined && paymentDueDay !== null && (paymentDueDay < 1 || paymentDueDay > 28)) {
-      throw new BadRequestException('วันที่ครบกำหนดชำระต้องอยู่ระหว่าง 1-28');
+    if (paymentDueDay !== undefined && paymentDueDay !== null && (paymentDueDay < 1 || (paymentDueDay > 28 && paymentDueDay !== 31))) {
+      throw new BadRequestException('วันที่ครบกำหนดชำระต้องอยู่ระหว่าง 1-28 หรือ 31 (สิ้นเดือน)');
     }
 
     // Recalculate financials using shared utility

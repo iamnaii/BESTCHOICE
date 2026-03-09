@@ -246,17 +246,48 @@ export class DocumentsService {
     const customerSigSafe = customerSig && this.isSafeImageDataUrl(customerSig.signatureImage);
     const staffSigSafe = staffSig && this.isSafeImageDataUrl(staffSig.signatureImage);
 
+    // Format contract date in Thai
+    const contractDate = new Date(contract.createdAt);
+    const thaiDate = contractDate.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+    const thaiDay = contractDate.toLocaleDateString('th-TH', { day: 'numeric' });
+    const thaiMonth = contractDate.toLocaleDateString('th-TH', { month: 'long' });
+    const thaiYear = contractDate.toLocaleDateString('th-TH', { year: 'numeric' }).replace(/[^\d]/g, '');
+
+    // Build guarantor/references rows
+    const references: any[] = contract.customer?.references || [];
+    const referencesHtml = references.map((r: any, i: number) =>
+      `<tr><td>${i + 1}</td><td>${esc(r.prefix || '')}${esc(r.firstName || '')} ${esc(r.lastName || '')}</td><td>${esc(r.phone || '')}</td><td>${esc(r.relationship || '')}</td></tr>`
+    ).join('');
+
     const replacements: Record<string, string> = {
       '{contract_number}': esc(contract.contractNumber || ''),
+      '{contract_date}': thaiDate,
+      '{contract_date_day}': thaiDay,
+      '{contract_date_month}': thaiMonth,
+      '{contract_date_year}': thaiYear,
       '{customer_name}': esc(contract.customer?.name || ''),
+      '{customer_prefix}': esc(contract.customer?.prefix || ''),
       '{national_id}': esc(this.maskNationalId(contract.customer?.nationalId || '')),
       '{customer_phone}': esc(contract.customer?.phone || ''),
+      '{customer_phone_secondary}': esc(contract.customer?.phoneSecondary || '-'),
       '{customer_address}': esc(contract.customer?.addressCurrent || contract.customer?.addressIdCard || ''),
+      '{customer_address_id_card}': esc(contract.customer?.addressIdCard || ''),
+      '{customer_address_current}': esc(contract.customer?.addressCurrent || ''),
+      '{customer_line_id}': esc(contract.customer?.lineId || '-'),
+      '{customer_facebook}': esc(contract.customer?.facebookLink || contract.customer?.facebookName || '-'),
+      '{customer_occupation}': esc(contract.customer?.occupation || '-'),
+      '{customer_salary}': contract.customer?.salary ? Number(contract.customer.salary).toLocaleString() : '-',
+      '{customer_workplace}': esc(contract.customer?.workplace || '-'),
+      '{customer_address_work}': esc(contract.customer?.addressWork || '-'),
+      '{customer_references}': referencesHtml,
       '{product_name}': esc(contract.product?.name || ''),
       '{brand}': esc(contract.product?.brand || ''),
       '{model}': esc(contract.product?.model || ''),
       '{imei}': esc(contract.product?.imeiSerial || '-'),
       '{serial_number}': esc(contract.product?.serialNumber || '-'),
+      '{product_color}': esc(contract.product?.color || '-'),
+      '{product_storage}': esc(contract.product?.storage || '-'),
+      '{product_category}': contract.product?.category === 'PHONE_NEW' ? 'มือ1' : contract.product?.category === 'PHONE_USED' ? 'มือ2' : esc(contract.product?.category || ''),
       '{selling_price}': Number(contract.sellingPrice).toLocaleString(),
       '{down_payment}': Number(contract.downPayment).toLocaleString(),
       '{monthly_payment}': Number(contract.monthlyPayment).toLocaleString(),
@@ -265,6 +296,8 @@ export class DocumentsService {
       '{interest_total}': Number(contract.interestTotal).toLocaleString(),
       '{financed_amount}': Number(contract.financedAmount).toLocaleString(),
       '{branch_name}': esc(contract.branch?.name || ''),
+      '{branch_address}': esc(contract.branch?.location || ''),
+      '{branch_phone}': esc(contract.branch?.phone || ''),
       '{salesperson_name}': esc(contract.salesperson?.name || ''),
       '{date}': new Date().toLocaleDateString('th-TH'),
       '{payment_schedule_table}': `<table border="1" cellpadding="4" style="border-collapse:collapse;width:100%"><thead><tr><th>งวดที่</th><th>วันครบกำหนด</th><th>จำนวนเงิน</th><th>สถานะ</th></tr></thead><tbody>${paymentScheduleRows}</tbody></table>`,

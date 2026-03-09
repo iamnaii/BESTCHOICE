@@ -443,27 +443,41 @@ ${bodyHtml}
       result = result.replace(new RegExp(key.replace(/[{}]/g, '\\$&'), 'g'), value);
     }
 
+    // Build EMERGENCY_CONTACTS array with NAME/TEL/RELATION structure for new syntax
+    const emergencyContacts = references.map((r: any) => ({
+      NAME: `${r.prefix || ''}${r.firstName || ''} ${r.lastName || ''}`.trim(),
+      TEL: r.phone || '',
+      RELATION: r.relationship || '',
+    }));
+
     // Support new {{= VARIABLE}} syntax — maps to same contract data
     const newSyntaxMap: Record<string, string> = {
+      // === Contract ===
       'CONTRACT.NUMBER': replacements['{contract_number}'],
       'CONTRACT.DATE': replacements['{contract_date}'],
-      'CUSTOMER.NAME': replacements['{customer_name}'],
-      'CUSTOMER.IDCARD': replacements['{national_id}'],
-      'CUSTOMER.TEL': replacements['{customer_phone}'],
-      'CUSTOMER.ADDRESS_ID': replacements['{customer_address_id_card}'],
-      'CUSTOMER.ADDRESS_CONTACT': replacements['{customer_address_current}'],
-      'CUSTOMER.LINE_ID': replacements['{customer_line_id}'],
-      'CUSTOMER.FACEBOOK': replacements['{customer_facebook}'],
-      'CUSTOMER.OCCUPATION': replacements['{customer_occupation}'],
-      'CUSTOMER.SALARY': replacements['{customer_salary}'],
-      'CUSTOMER.WORKPLACE': replacements['{customer_workplace}'],
-      'PHONE.BRAND': replacements['{brand}'],
-      'PHONE.MODEL': replacements['{model}'],
-      'PHONE.STORAGE': replacements['{product_storage}'],
-      'PHONE.COLOR': replacements['{product_color}'],
-      'PHONE.CONDITION': replacements['{product_category}'],
-      'PHONE.IMEI': replacements['{imei}'],
-      'PHONE.SERIAL': replacements['{serial_number}'],
+      'CONTRACT.DATE_DAY': thaiDay,
+      'CONTRACT.DATE_MONTH': thaiMonth,
+      'CONTRACT.DATE_YEAR': thaiYear,
+      'CONTRACT.TOTAL_AMOUNT': Number(contract.financedAmount).toLocaleString('th-TH', { minimumFractionDigits: 2 }),
+      'CONTRACT.TOTAL_AMOUNT_TEXT': this.numberToThaiText(Number(contract.financedAmount)),
+      'CONTRACT.DOWN_PAYMENT': Number(contract.downPayment).toLocaleString('th-TH', { minimumFractionDigits: 2 }),
+      'CONTRACT.SELLING_PRICE': Number(contract.sellingPrice).toLocaleString('th-TH', { minimumFractionDigits: 2 }),
+      'CONTRACT.MONTHLY_PAYMENT': Number(contract.monthlyPayment).toLocaleString('th-TH', { minimumFractionDigits: 2 }),
+      'CONTRACT.MONTHLY_PAYMENT_TEXT': this.numberToThaiText(Number(contract.monthlyPayment)),
+      'CONTRACT.TOTAL_MONTHS': String(contract.totalMonths),
+      'CONTRACT.TOTAL_MONTHS_TEXT': this.numberToThaiCountText(contract.totalMonths) + 'เดือน',
+      'CONTRACT.INTEREST_RATE': replacements['{interest_rate}'],
+      'CONTRACT.INTEREST_TOTAL': replacements['{interest_total}'],
+      'CONTRACT.PAYMENT_DUE_DAY': firstPaymentDay,
+      'CONTRACT.FIRST_PAYMENT_DATE': firstPaymentDue,
+      'CONTRACT.LAST_PAYMENT_DATE': lastPaymentDue,
+      'CONTRACT.PENALTY_RATE': '100',
+      'CONTRACT.WARRANTY_DAYS': '30',
+      'CONTRACT.EARLY_DISCOUNT': '50',
+      'CONTRACT.MIN_MONTHS_EARLY': '6',
+      'CONTRACT.NOTES': esc(contract.notes || ''),
+
+      // === Company ===
       'COMPANY.NAME_TH': esc('บริษัท เบสท์ช้อยส์โฟน จำกัด'),
       'COMPANY.NAME_EN': esc('BESTCHOICEPHONE Co., Ltd.'),
       'COMPANY.TAX_ID': esc('0165568000050'),
@@ -471,16 +485,39 @@ ${bodyHtml}
       'COMPANY.DIRECTOR': esc('เอกนรินทร์ คงเดช'),
       'COMPANY.DIRECTOR_ID': esc('1-1601-00452-40-7'),
       'COMPANY.DIRECTOR_ADDRESS': esc('517 ถนนนารายณ์มหาราช ตำบลทะเลชุบศร อำเภอเมือง จังหวัดลพบุรี 15000'),
-      'CONTRACT.TOTAL_AMOUNT': Number(contract.financedAmount).toLocaleString('th-TH', { minimumFractionDigits: 2 }),
-      'CONTRACT.TOTAL_AMOUNT_TEXT': this.numberToThaiText(Number(contract.financedAmount)),
-      'CONTRACT.DOWN_PAYMENT': Number(contract.downPayment).toLocaleString('th-TH', { minimumFractionDigits: 2 }),
-      'CONTRACT.MONTHLY_PAYMENT': Number(contract.monthlyPayment).toLocaleString('th-TH', { minimumFractionDigits: 2 }),
-      'CONTRACT.MONTHLY_PAYMENT_TEXT': this.numberToThaiText(Number(contract.monthlyPayment)),
-      'CONTRACT.TOTAL_MONTHS': String(contract.totalMonths),
-      'CONTRACT.PENALTY_RATE': '100',
-      'CONTRACT.WARRANTY_DAYS': '30',
-      'CONTRACT.EARLY_DISCOUNT': '50',
-      'CONTRACT.MIN_MONTHS_EARLY': '6',
+
+      // === Customer ===
+      'CUSTOMER.NAME': replacements['{customer_name}'],
+      'CUSTOMER.PREFIX': replacements['{customer_prefix}'],
+      'CUSTOMER.IDCARD': replacements['{national_id}'],
+      'CUSTOMER.BIRTHDATE': contract.customer?.birthdate ? new Date(contract.customer.birthdate).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' }) : '-',
+      'CUSTOMER.NICKNAME': esc(contract.customer?.nickname || '-'),
+      'CUSTOMER.TEL': replacements['{customer_phone}'],
+      'CUSTOMER.TEL_SECONDARY': replacements['{customer_phone_secondary}'],
+      'CUSTOMER.EMAIL': esc(contract.customer?.email || '-'),
+      'CUSTOMER.ADDRESS_ID': replacements['{customer_address_id_card}'],
+      'CUSTOMER.ADDRESS_CONTACT': replacements['{customer_address_current}'],
+      'CUSTOMER.ADDRESS_WORK': replacements['{customer_address_work}'],
+      'CUSTOMER.LINE_ID': replacements['{customer_line_id}'],
+      'CUSTOMER.FACEBOOK': replacements['{customer_facebook}'],
+      'CUSTOMER.OCCUPATION': replacements['{customer_occupation}'],
+      'CUSTOMER.OCCUPATION_DETAIL': esc(contract.customer?.occupationDetail || '-'),
+      'CUSTOMER.SALARY': replacements['{customer_salary}'],
+      'CUSTOMER.WORKPLACE': replacements['{customer_workplace}'],
+
+      // === Phone ===
+      'PHONE.NAME': esc(contract.product?.name || `${contract.product?.brand || ''} ${contract.product?.model || ''}`.trim()),
+      'PHONE.BRAND': replacements['{brand}'],
+      'PHONE.MODEL': replacements['{model}'],
+      'PHONE.STORAGE': replacements['{product_storage}'],
+      'PHONE.COLOR': replacements['{product_color}'],
+      'PHONE.CONDITION': replacements['{product_category}'],
+      'PHONE.IMEI': replacements['{imei}'],
+      'PHONE.SERIAL': replacements['{serial_number}'],
+      'PHONE.BATTERY_HEALTH': esc(contract.product?.batteryHealth ? `${contract.product.batteryHealth}%` : '-'),
+      'PHONE.WARRANTY_EXPIRE': contract.product?.warrantyExpireDate ? new Date(contract.product.warrantyExpireDate).toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' }) : '-',
+
+      // === Branch / Staff ===
       'BRANCH.NAME': replacements['{branch_name}'],
       'BRANCH.ADDRESS': replacements['{branch_address}'],
       'BRANCH.PHONE': replacements['{branch_phone}'],
@@ -525,6 +562,27 @@ ${bodyHtml}
       const dec = decimals ? parseInt(decimals) : 0;
       return n.toLocaleString('th-TH', { minimumFractionDigits: dec, maximumFractionDigits: dec });
     });
+
+    // Handle EMERGENCY_CONTACTS block rendering
+    if (result.includes('EMERGENCY_CONTACTS')) {
+      const contactsHtml = emergencyContacts.map((c, i) =>
+        `<tr><td style="padding:2px 8px 2px 0;width:24px">${i + 1}.</td><td style="padding:2px 8px">ชื่อ-นามสกุล ${esc(c.NAME)}</td><td style="padding:2px 8px">เบอร์โทร ${esc(c.TEL)}</td><td style="padding:2px 8px">ความสัมพันธ์ ${esc(c.RELATION)}</td></tr>`
+      ).join('');
+      const contactsTable = `<table style="width:100%;border-collapse:collapse;margin-left:2em"><tbody>${contactsHtml}</tbody></table>`;
+      result = result.replace(/\{\{=\s*EMERGENCY_CONTACTS\s*\}\}/g, contactsTable);
+    }
+
+    // Handle INSTALLMENTS block rendering
+    if (result.includes('INSTALLMENTS')) {
+      const monthsShort = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+      const installmentsRows = payments.map((p: any) => {
+        const d = new Date(p.dueDate);
+        const dateStr = `${d.getDate()} ${monthsShort[d.getMonth()]} ${d.getFullYear() + 543}`;
+        return `<tr><td style="text-align:center;padding:4px 8px">${p.installmentNo}</td><td style="text-align:center;padding:4px 8px">${dateStr}</td><td style="text-align:right;padding:4px 8px">${Number(p.amountDue).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>`;
+      }).join('');
+      const installmentsTable = `<table style="width:100%;border-collapse:collapse;border:1px solid #d1d5db"><thead><tr style="background:#f3f4f6"><th style="padding:6px 8px;border:1px solid #d1d5db;text-align:center">งวดที่</th><th style="padding:6px 8px;border:1px solid #d1d5db;text-align:center">วันครบกำหนด</th><th style="padding:6px 8px;border:1px solid #d1d5db;text-align:center">จำนวนเงิน (บาท)</th></tr></thead><tbody>${installmentsRows}</tbody></table>`;
+      result = result.replace(/\{\{=\s*INSTALLMENTS\s*\}\}/g, installmentsTable);
+    }
 
     // Replace remaining {{= KEY}} patterns (general catch-all, runs AFTER format-specific replacements)
     result = result.replace(/\{\{=\s*([A-Z_][A-Z0-9_.]*)\s*(?:\|\s*[^}]*)?\s*\}\}/g, (_match, key: string) => {

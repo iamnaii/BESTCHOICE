@@ -487,12 +487,7 @@ ${bodyHtml}
       'SALESPERSON.NAME': replacements['{salesperson_name}'],
     };
 
-    // Replace {{= KEY}} patterns (with optional format pipe)
-    result = result.replace(/\{\{=\s*([A-Z_][A-Z0-9_.]*)\s*(?:\|\s*[^}]*)?\s*\}\}/g, (_match, key: string) => {
-      return newSyntaxMap[key] ?? _match;
-    });
-
-    // Handle date format pipes for new syntax
+    // Handle date format pipes for new syntax (MUST run before general replacement)
     const contractDate2 = new Date(contract.createdAt);
     const startDate = payments.length > 0 ? new Date(payments[0].dueDate) : contractDate2;
     const endDate = payments.length > 0 ? new Date(payments[payments.length - 1].dueDate) : contractDate2;
@@ -529,6 +524,11 @@ ${bodyHtml}
       if (isNaN(n)) return val;
       const dec = decimals ? parseInt(decimals) : 0;
       return n.toLocaleString('th-TH', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+    });
+
+    // Replace remaining {{= KEY}} patterns (general catch-all, runs AFTER format-specific replacements)
+    result = result.replace(/\{\{=\s*([A-Z_][A-Z0-9_.]*)\s*(?:\|\s*[^}]*)?\s*\}\}/g, (_match, key: string) => {
+      return newSyntaxMap[key] ?? _match;
     });
 
     return result;

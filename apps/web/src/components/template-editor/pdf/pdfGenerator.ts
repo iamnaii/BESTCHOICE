@@ -7,30 +7,39 @@ import { renderVariables, buildSampleContext } from '@/utils/templateRenderer';
 import { AVAILABLE_VARIABLES } from '@/constants/variables';
 import { formatDateMedium, formatNumberDecimal } from '@/utils/formatters';
 
-let fontLoaded = false;
+// Cache font base64 data at module level so it persists across doc instances
+const fontCache: Record<string, string> = {};
 
 async function loadSarabunFont(doc: jsPDF) {
-  if (fontLoaded) return;
+  // Fetch and cache font data if not already cached
+  if (Object.keys(fontCache).length === 0) {
+    const loadFont = async (url: string, fontName: string) => {
+      try {
+        const response = await fetch(url);
+        const buffer = await response.arrayBuffer();
+        fontCache[fontName] = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+      } catch (err) {
+        console.warn(`Failed to load font ${fontName}:`, err);
+      }
+    };
 
-  // Load font files from public directory
-  const loadFont = async (url: string, fontName: string, style: string) => {
-    try {
-      const response = await fetch(url);
-      const buffer = await response.arrayBuffer();
-      const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
-      doc.addFileToVFS(`${fontName}.ttf`, base64);
-      doc.addFont(`${fontName}.ttf`, 'Sarabun', style);
-    } catch (err) {
-      console.warn(`Failed to load font ${fontName}:`, err);
-    }
+    await Promise.all([
+      loadFont('/fonts/Sarabun-Regular.ttf', 'Sarabun-Regular'),
+      loadFont('/fonts/Sarabun-Bold.ttf', 'Sarabun-Bold'),
+      loadFont('/fonts/Sarabun-Light.ttf', 'Sarabun-Light'),
+    ]);
+  }
+
+  // Register cached fonts on this doc instance
+  const styles: Record<string, string> = {
+    'Sarabun-Regular': 'normal',
+    'Sarabun-Bold': 'bold',
+    'Sarabun-Light': 'light',
   };
-
-  await Promise.all([
-    loadFont('/fonts/Sarabun-Regular.ttf', 'Sarabun-Regular', 'normal'),
-    loadFont('/fonts/Sarabun-Bold.ttf', 'Sarabun-Bold', 'bold'),
-    loadFont('/fonts/Sarabun-Light.ttf', 'Sarabun-Light', 'light'),
-  ]);
-  fontLoaded = true;
+  for (const [fontName, base64] of Object.entries(fontCache)) {
+    doc.addFileToVFS(`${fontName}.ttf`, base64);
+    doc.addFont(`${fontName}.ttf`, 'Sarabun', styles[fontName] ?? 'normal');
+  }
 }
 
 // Strip **bold** markers for plain text

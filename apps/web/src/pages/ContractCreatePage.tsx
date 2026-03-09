@@ -354,6 +354,14 @@ export default function ContractCreatePage() {
   const minMonths = interestConfig?.minInstallmentMonths ?? posConfig?.minInstallmentMonths ?? 6;
   const maxMonths = interestConfig?.maxInstallmentMonths ?? posConfig?.maxInstallmentMonths ?? 12;
 
+  // Auto-set down payment to minimum when price/config becomes available
+  const [downPaymentTouched, setDownPaymentTouched] = useState(false);
+  useEffect(() => {
+    if (!downPaymentTouched && sellingPrice > 0 && minDownPct > 0) {
+      setDownPayment(Math.ceil(sellingPrice * minDownPct));
+    }
+  }, [sellingPrice, minDownPct, downPaymentTouched]);
+
   // Clamp totalMonths when config range changes
   useEffect(() => {
     if (totalMonths < minMonths) setTotalMonths(minMonths);
@@ -962,7 +970,7 @@ export default function ContractCreatePage() {
               <input
                 type="number"
                 value={downPayment}
-                onChange={(e) => setDownPayment(Number(e.target.value))}
+                onChange={(e) => { setDownPaymentTouched(true); setDownPayment(Number(e.target.value)); }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                 min={0}
               />

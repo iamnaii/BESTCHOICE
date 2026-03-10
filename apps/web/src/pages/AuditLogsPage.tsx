@@ -31,7 +31,7 @@ const actionColors: Record<string, string> = {
   PUT: 'bg-blue-100 text-blue-700',
   PATCH: 'bg-yellow-100 text-yellow-700',
   DELETE: 'bg-red-100 text-red-700',
-  EXCHANGE: 'bg-purple-100 text-purple-700',
+  EXCHANGE: 'bg-blue-100 text-blue-700',
   REPOSSESSION: 'bg-orange-100 text-orange-700',
   CREATE_CALL_LOG: 'bg-teal-100 text-teal-700',
   STATUS_CHANGE: 'bg-indigo-100 text-indigo-700',

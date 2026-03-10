@@ -116,7 +116,7 @@ export default function LandingPage() {
                     </div>
                   </div>
                   {/* Decorative circles */}
-                  <div className="absolute -top-8 -right-8 w-24 h-24 bg-purple-500/20 rounded-full blur-xl" />
+                  <div className="absolute -top-8 -right-8 w-24 h-24 bg-blue-500/20 rounded-full blur-xl" />
                   <div className="absolute -bottom-8 -left-8 w-32 h-32 bg-primary-500/20 rounded-full blur-xl" />
                 </div>
               </div>
@@ -337,7 +337,7 @@ export default function LandingPage() {
           <div className="grid md:grid-cols-4 gap-8">
             <div className="md:col-span-2">
               <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-400 to-purple-500 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-400 to-blue-500 flex items-center justify-center">
                   <span className="text-white font-bold text-sm">B</span>
                 </div>
                 <span className="text-xl font-bold text-white">

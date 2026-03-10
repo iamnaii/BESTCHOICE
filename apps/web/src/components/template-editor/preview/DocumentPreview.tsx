@@ -6,7 +6,7 @@ export default function DocumentPreview() {
   const { blocks, settings } = currentTemplate;
 
   return (
-    <div className="flex-1 bg-[#E8E6EE] overflow-y-auto p-8">
+    <div className="flex-1 bg-slate-100 overflow-y-auto p-8">
       {/* A4 Paper simulation */}
       <div
         className="mx-auto bg-white rounded-sm"
@@ -23,14 +23,14 @@ export default function DocumentPreview() {
       >
         {/* Letterhead */}
         {settings.letterhead === 'bestchoice' && (
-          <div className="text-center mb-5 pb-3" style={{ borderBottom: '2px solid #6D28D9' }}>
-            <h1 style={{ fontSize: '18px', fontWeight: 700, color: '#6D28D9', letterSpacing: '1px', marginBottom: '4px' }}>
+          <div className="text-center mb-5 pb-3" style={{ borderBottom: '2px solid #2563eb' }}>
+            <h1 style={{ fontSize: '20px', fontWeight: 700, color: '#1d4ed8', letterSpacing: '1px', marginBottom: '4px' }}>
               BESTCHOICEPHONE Co., Ltd.
             </h1>
-            <p style={{ fontSize: '12px', color: '#4a4a4a', marginBottom: '2px' }}>
+            <p style={{ fontSize: '14px', color: '#4a4a4a', marginBottom: '2px' }}>
               บริษัท เบสท์ช้อยส์โฟน จำกัด | เลขประจำตัวผู้เสียภาษี 0165568000050
             </p>
-            <p style={{ fontSize: '10px', color: '#888' }}>
+            <p style={{ fontSize: '12px', color: '#888' }}>
               456/21 ชั้น 2 ถนนนารายณ์มหาราช ตำบลทะเลชุบศร อำเภอเมือง จังหวัดลพบุรี 15000
             </p>
           </div>

@@ -73,7 +73,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet }
         value={currentTemplate.id}
         onChange={handleTemplateChange}
         disabled={isLoading}
-        className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-violet-500 focus:border-violet-500 max-w-[320px] disabled:opacity-50"
+        className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 max-w-[320px] disabled:opacity-50"
       >
         {templates.length === 0 && (
           <option value="">กำลังโหลด...</option>
@@ -128,7 +128,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet }
               <button
                 key={b.type}
                 onClick={() => handleAddBlock(b.type)}
-                className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-violet-50 hover:text-violet-700 transition-colors"
+                className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
               >
                 {b.label}
               </button>
@@ -158,7 +158,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet }
         onClick={() => setPreviewMode(!previewMode)}
         className={`flex items-center gap-1.5 px-3.5 py-2 text-sm rounded-lg transition-colors ${
           previewMode
-            ? 'bg-violet-600 text-white hover:bg-violet-700'
+            ? 'bg-blue-600 text-white hover:bg-blue-700'
             : 'text-gray-700 border border-gray-300 hover:bg-gray-50'
         }`}
       >
@@ -168,7 +168,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet }
 
       <button
         onClick={() => setShowExportModal(true)}
-        className="flex items-center gap-1.5 px-3.5 py-2 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors"
+        className="flex items-center gap-1.5 px-3.5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
       >
         <Download size={16} />
         PDF

@@ -9,7 +9,7 @@ export const SYNTAX_REFERENCE: { group: string; items: SyntaxItem[] }[] = [
   {
     group: 'PRINT',
     items: [
-      { label: 'แสดงค่า', syntax: '{{= VAR.MEMBER}}', color: 'text-violet-700', bgColor: 'bg-violet-100' },
+      { label: 'แสดงค่า', syntax: '{{= VAR.MEMBER}}', color: 'text-blue-700', bgColor: 'bg-blue-100' },
     ],
   },
   {

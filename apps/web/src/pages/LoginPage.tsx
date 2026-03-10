@@ -73,7 +73,7 @@ export default function LoginPage() {
         </div>
 
         {/* Decorative elements */}
-        <div className="absolute top-20 right-20 w-64 h-64 bg-purple-500/10 rounded-full blur-3xl" />
+        <div className="absolute top-20 right-20 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl" />
         <div className="absolute bottom-20 left-20 w-48 h-48 bg-primary-400/10 rounded-full blur-3xl" />
       </div>
 
@@ -81,7 +81,7 @@ export default function LoginPage() {
       <div className="flex-1 flex items-center justify-center px-6 bg-gray-50">
         <div className="max-w-md w-full">
           <div className="lg:hidden flex items-center gap-2 mb-8">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-500 to-purple-600 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-500 to-blue-600 flex items-center justify-center">
               <span className="text-white font-bold text-sm">B</span>
             </div>
             <span className="text-xl font-bold text-gray-900">

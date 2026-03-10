@@ -77,7 +77,7 @@ const statusLabels: Record<string, { label: string; className: string }> = {
   PO_RECEIVED: { label: 'รับจาก PO', className: 'bg-blue-100 text-blue-700' },
   INSPECTION: { label: 'กำลังตรวจ', className: 'bg-yellow-100 text-yellow-700' },
   IN_STOCK: { label: 'พร้อมขาย', className: 'bg-green-100 text-green-700' },
-  RESERVED: { label: 'จอง', className: 'bg-purple-100 text-purple-700' },
+  RESERVED: { label: 'จอง', className: 'bg-blue-100 text-blue-700' },
   SOLD_INSTALLMENT: { label: 'ขายผ่อน', className: 'bg-indigo-100 text-indigo-700' },
   SOLD_CASH: { label: 'ขายสด', className: 'bg-teal-100 text-teal-700' },
   REPOSSESSED: { label: 'ยึดคืน', className: 'bg-red-100 text-red-700' },

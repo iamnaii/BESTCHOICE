@@ -25,9 +25,9 @@ export default function PaymentTable({ previewMode }: Props) {
           </thead>
           <tbody>
             <tr>
-              <td className="border border-gray-300 px-3 py-1.5 text-xs font-mono text-violet-600">{'{{= INSTALLMENT.NO}}'}</td>
-              <td className="border border-gray-300 px-3 py-1.5 text-xs font-mono text-violet-600">{'{{= INSTALLMENT.DUE_DATE | date:m}}'}</td>
-              <td className="border border-gray-300 px-3 py-1.5 text-xs font-mono text-violet-600 text-right">{'{{= INSTALLMENT.AMOUNT | num:2}}'}</td>
+              <td className="border border-gray-300 px-3 py-1.5 text-xs font-mono text-blue-600">{'{{= INSTALLMENT.NO}}'}</td>
+              <td className="border border-gray-300 px-3 py-1.5 text-xs font-mono text-blue-600">{'{{= INSTALLMENT.DUE_DATE | date:m}}'}</td>
+              <td className="border border-gray-300 px-3 py-1.5 text-xs font-mono text-blue-600 text-right">{'{{= INSTALLMENT.AMOUNT | num:2}}'}</td>
             </tr>
           </tbody>
         </table>

@@ -91,7 +91,7 @@ export default function VariableAutocomplete({ value, onChange, placeholder, row
         onChange={handleInput}
         placeholder={placeholder}
         rows={rows}
-        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-violet-500 focus:border-violet-500 resize-y"
+        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y"
         spellCheck={false}
       />
 
@@ -117,9 +117,9 @@ export default function VariableAutocomplete({ value, onChange, placeholder, row
                   <button
                     key={v.key}
                     onClick={() => insertVariable(v.key)}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-violet-50 transition-colors"
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-blue-50 transition-colors"
                   >
-                    <span className="text-xs font-mono text-violet-700">{v.key}</span>
+                    <span className="text-xs font-mono text-blue-700">{v.key}</span>
                     <span className="text-[10px] text-gray-400 flex-1 truncate">{v.label}</span>
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{v.type}</span>
                   </button>

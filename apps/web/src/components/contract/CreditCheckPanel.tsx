@@ -187,7 +187,7 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
             <button
               onClick={() => analyzeMutation.mutate()}
               disabled={analyzeMutation.isPending}
-              className="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+              className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
             >
               {analyzeMutation.isPending ? 'กำลังวิเคราะห์...' : 'AI วิเคราะห์เครดิต'}
             </button>

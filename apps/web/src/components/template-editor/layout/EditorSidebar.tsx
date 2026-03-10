@@ -27,7 +27,7 @@ interface Props {
 
 export default function EditorSidebar({ activeId, onSelect, onBack }: Props) {
   return (
-    <div className="w-[200px] min-h-full bg-[#1E1B2E] flex flex-col flex-shrink-0">
+    <div className="w-[200px] min-h-full bg-primary-950 flex flex-col flex-shrink-0">
       {/* Logo + Back */}
       <div className="px-4 py-4 border-b border-white/10">
         {onBack && (
@@ -51,7 +51,7 @@ export default function EditorSidebar({ activeId, onSelect, onBack }: Props) {
             onClick={() => onSelect(item.id)}
             className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
               activeId === item.id
-                ? 'bg-[#6D28D9] text-white'
+                ? 'bg-primary-600 text-white'
                 : 'text-gray-300 hover:bg-white/5 hover:text-white'
             }`}
           >

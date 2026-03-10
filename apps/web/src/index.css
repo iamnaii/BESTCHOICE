@@ -2,8 +2,25 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── TH Sarabun PSK Font ─────────────────────────────── */
+@font-face {
+  font-family: 'TH Sarabun PSK';
+  src: url('/fonts/THSarabunPSK-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'TH Sarabun PSK';
+  src: url('/fonts/THSarabunPSK-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 body {
-  font-family: 'Noto Sans Thai', 'Segoe UI', sans-serif;
+  font-family: 'TH Sarabun PSK', 'Noto Sans Thai', sans-serif;
 }
 
 @layer utilities {
@@ -23,7 +40,7 @@ body {
   min-height: 240px;
   padding: 12px 16px;
   outline: none;
-  font-family: 'Sarabun', 'Noto Sans Thai', sans-serif;
+  font-family: 'TH Sarabun PSK', 'Noto Sans Thai', sans-serif;
   font-size: 14px;
   line-height: 1.8;
   color: #1a1a1a;

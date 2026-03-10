@@ -1,5 +1,5 @@
 // PDF Generator using jspdf + jspdf-autotable
-// Uses Sarabun font embedded for Thai text support
+// Uses TH Sarabun PSK font embedded for Thai text support
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { Template, Block } from '@/types/template';
@@ -7,10 +7,12 @@ import { renderVariables, buildSampleContext } from '@/utils/templateRenderer';
 import { AVAILABLE_VARIABLES } from '@/constants/variables';
 import { formatDateMedium, formatNumberDecimal } from '@/utils/formatters';
 
+const PDF_FONT_FAMILY = 'THSarabunPSK';
+
 // Cache font base64 data at module level so it persists across doc instances
 const fontCache: Record<string, string> = {};
 
-async function loadSarabunFont(doc: jsPDF) {
+async function loadThaiFont(doc: jsPDF) {
   // Fetch and cache font data if not already cached
   if (Object.keys(fontCache).length === 0) {
     const loadFont = async (url: string, fontName: string) => {
@@ -24,21 +26,19 @@ async function loadSarabunFont(doc: jsPDF) {
     };
 
     await Promise.all([
-      loadFont('/fonts/Sarabun-Regular.ttf', 'Sarabun-Regular'),
-      loadFont('/fonts/Sarabun-Bold.ttf', 'Sarabun-Bold'),
-      loadFont('/fonts/Sarabun-Light.ttf', 'Sarabun-Light'),
+      loadFont('/fonts/THSarabunPSK-Regular.ttf', 'THSarabunPSK-Regular'),
+      loadFont('/fonts/THSarabunPSK-Bold.ttf', 'THSarabunPSK-Bold'),
     ]);
   }
 
   // Register cached fonts on this doc instance
   const styles: Record<string, string> = {
-    'Sarabun-Regular': 'normal',
-    'Sarabun-Bold': 'bold',
-    'Sarabun-Light': 'light',
+    'THSarabunPSK-Regular': 'normal',
+    'THSarabunPSK-Bold': 'bold',
   };
   for (const [fontName, base64] of Object.entries(fontCache)) {
     doc.addFileToVFS(`${fontName}.ttf`, base64);
-    doc.addFont(`${fontName}.ttf`, 'Sarabun', styles[fontName] ?? 'normal');
+    doc.addFont(`${fontName}.ttf`, PDF_FONT_FAMILY, styles[fontName] ?? 'normal');
   }
 }
 
@@ -57,8 +57,8 @@ export async function generatePDF(template: Template): Promise<Blob> {
     format: 'a4',
   });
 
-  await loadSarabunFont(doc);
-  doc.setFont('Sarabun', 'normal');
+  await loadThaiFont(doc);
+  doc.setFont(PDF_FONT_FAMILY, 'normal');
 
   const margin = settings.margins;
   const pageWidth = 210;
@@ -77,10 +77,10 @@ export async function generatePDF(template: Template): Promise<Blob> {
       // Add letterhead on new page if needed
       if (settings.letterhead === 'bestchoice') {
         doc.setFontSize(10);
-        doc.setFont('Sarabun', 'bold');
+        doc.setFont(PDF_FONT_FAMILY, 'bold');
         doc.text('BESTCHOICEPHONE Co., Ltd.', pageWidth / 2, y, { align: 'center' });
         y += 6;
-        doc.setFont('Sarabun', 'normal');
+        doc.setFont(PDF_FONT_FAMILY, 'normal');
       }
     }
   }
@@ -88,7 +88,7 @@ export async function generatePDF(template: Template): Promise<Blob> {
   function addFooter() {
     const footerY = pageHeight - margin.bottom + 5;
     doc.setFontSize(settings.fontSize.footer);
-    doc.setFont('Sarabun', 'normal');
+    doc.setFont(PDF_FONT_FAMILY, 'normal');
     doc.setTextColor(150);
     doc.text(settings.footerText, margin.left, footerY);
     if (settings.showPageNumber) {
@@ -103,7 +103,7 @@ export async function generatePDF(template: Template): Promise<Blob> {
   function addText(text: string, fontSize: number, options?: { bold?: boolean; align?: 'left' | 'center' | 'right'; indent?: number }) {
     const { bold = false, align = 'left', indent = 0 } = options || {};
     doc.setFontSize(fontSize);
-    doc.setFont('Sarabun', bold ? 'bold' : 'normal');
+    doc.setFont(PDF_FONT_FAMILY, bold ? 'bold' : 'normal');
 
     const effectiveWidth = contentWidth - indent;
     const x = margin.left + indent;
@@ -127,11 +127,11 @@ export async function generatePDF(template: Template): Promise<Blob> {
   // Letterhead
   if (settings.letterhead === 'bestchoice') {
     doc.setFontSize(14);
-    doc.setFont('Sarabun', 'bold');
+    doc.setFont(PDF_FONT_FAMILY, 'bold');
     doc.text('BESTCHOICEPHONE Co., Ltd.', pageWidth / 2, y, { align: 'center' });
     y += 5;
     doc.setFontSize(9);
-    doc.setFont('Sarabun', 'normal');
+    doc.setFont(PDF_FONT_FAMILY, 'normal');
     doc.setTextColor(100);
     doc.text('บริษัท เบสท์ช้อยส์โฟน จำกัด | เลขประจำตัวผู้เสียภาษี 0165568000050', pageWidth / 2, y, { align: 'center' });
     y += 4;
@@ -207,7 +207,7 @@ export async function generatePDF(template: Template): Promise<Blob> {
           ]),
           margin: { left: margin.left, right: margin.right },
           styles: {
-            font: 'Sarabun',
+            font: PDF_FONT_FAMILY,
             fontSize: 12,
             cellPadding: 2,
           },
@@ -238,7 +238,7 @@ export async function generatePDF(template: Template): Promise<Blob> {
           for (let c = 0; c < 2; c++) {
             const x = margin.left + c * colWidth + colWidth / 2;
             doc.setFontSize(13);
-            doc.setFont('Sarabun', 'normal');
+            doc.setFont(PDF_FONT_FAMILY, 'normal');
             doc.text(`ลงชื่อ..................................................${row[c]}`, x, y, { align: 'center' });
             doc.text(`(${' '.repeat(40)})`, x, y + 6, { align: 'center' });
           }
@@ -290,7 +290,7 @@ export async function generatePDF(template: Template): Promise<Blob> {
         const cols = resolved.split('||').map(s => s.trim());
         const colWidth = contentWidth / 2;
         doc.setFontSize(settings.fontSize.body);
-        doc.setFont('Sarabun', 'normal');
+        doc.setFont(PDF_FONT_FAMILY, 'normal');
         for (let c = 0; c < Math.min(cols.length, 2); c++) {
           const x = margin.left + c * colWidth;
           const lines = doc.splitTextToSize(stripBold(cols[c]), colWidth - 5);

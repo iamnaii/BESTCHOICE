@@ -41,7 +41,7 @@ export default function ContractTemplatesPage() {
   }, [isDirty, saveTemplate, saveTemplateToApi]);
 
   return (
-    <div className="-m-6 flex flex-col bg-gray-100" style={{ fontFamily: "'Sarabun', sans-serif", height: 'calc(100vh - 56px)' }}>
+    <div className="-m-6 flex flex-col bg-gray-100" style={{ fontFamily: "'TH Sarabun PSK', sans-serif", height: 'calc(100vh - 56px)' }}>
       {/* Header Bar */}
       <HeaderBar onBack={() => {
         if (isDirty && !confirm('มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก ต้องการออกหรือไม่?')) return;

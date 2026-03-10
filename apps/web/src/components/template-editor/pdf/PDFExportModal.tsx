@@ -68,7 +68,7 @@ export default function PDFExportModal() {
               <div className="text-6xl mb-4">📄</div>
               <h3 className="text-lg font-medium text-gray-700 mb-2">{currentTemplate.name}</h3>
               <p className="text-sm text-gray-500 mb-6">
-                {currentTemplate.blocks.length} blocks | A4 | Sarabun font
+                {currentTemplate.blocks.length} blocks | A4 | TH Sarabun PSK
               </p>
 
               <div className="flex items-center justify-center gap-4">

@@ -66,9 +66,10 @@ export class DocumentsService {
     });
     if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
 
-    // Must be APPROVED before signing
-    if (contract.workflowStatus !== 'APPROVED') {
-      throw new BadRequestException('สัญญาต้องได้รับการอนุมัติก่อนจึงจะลงนามได้');
+    // Allow signing during CREATING, REJECTED, PENDING_REVIEW, and APPROVED (not after activation)
+    const allowedWorkflow = ['CREATING', 'REJECTED', 'PENDING_REVIEW', 'APPROVED'];
+    if (!allowedWorkflow.includes(contract.workflowStatus)) {
+      throw new BadRequestException('ไม่สามารถลงนามได้ในสถานะปัจจุบัน');
     }
 
     // Check if already signed by this signer type

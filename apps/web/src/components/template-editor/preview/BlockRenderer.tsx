@@ -43,6 +43,26 @@ function RichHtmlContent({ html, previewMode, ctx }: { html: string; previewMode
   return <div dangerouslySetInnerHTML={{ __html: clean }} />;
 }
 
+/** Render inline HTML — strips block tags (p/div) to keep content inline for flex layouts */
+function InlineHtmlContent({ html, previewMode, ctx }: { html: string; previewMode: boolean; ctx: Record<string, any> }) {
+  const resolved = previewMode ? renderVariables(html, ctx) : html;
+  const withHighlights = previewMode
+    ? resolved
+    : resolved.replace(
+        /\{\{=\s*([^}]*)\}\}/g,
+        '<span style="background:#d1fae5;color:#047857;padding:1px 4px;border-radius:3px;font-family:monospace;font-size:0.85em">{{= $1}}</span>'
+      );
+  // Strip block-level wrappers so content stays inline
+  const stripped = withHighlights
+    .replace(/<\/?(?:p|div)[^>]*>/gi, '')
+    .trim();
+  const clean = DOMPurify.sanitize(stripped, {
+    ADD_TAGS: ['span'],
+    ADD_ATTR: ['style', 'data-variable', 'class'],
+  });
+  return <span dangerouslySetInnerHTML={{ __html: clean }} />;
+}
+
 /** Strip HTML tags to get plain text */
 function stripHtml(html: string): string {
   return html.replace(/<[^>]*>/g, '').trim();
@@ -67,16 +87,16 @@ export default function BlockRenderer({ block, previewMode, clauseIndex }: Props
   switch (block.type) {
     case 'contract-header': {
       if (isRich) {
-        // Rich text — preserve bold formatting, split on ||
+        // Rich text — preserve bold formatting, split on ||, render inline for flex layout
         const parts = block.content.split('||');
         return (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', fontSize: '15px', color: '#4a4a4a' }}>
             <div>
-              <RichHtmlContent html={parts[0]?.trim() || ''} previewMode={previewMode} ctx={ctx} />
+              <InlineHtmlContent html={parts[0]?.trim() || ''} previewMode={previewMode} ctx={ctx} />
             </div>
             {parts[1] && (
-              <div>
-                <RichHtmlContent html={parts[1]?.trim() || ''} previewMode={previewMode} ctx={ctx} />
+              <div style={{ flexShrink: 0, textAlign: 'right' }}>
+                <InlineHtmlContent html={parts[1]?.trim() || ''} previewMode={previewMode} ctx={ctx} />
               </div>
             )}
           </div>

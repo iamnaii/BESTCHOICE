@@ -96,7 +96,8 @@ export async function generatePDF(template: Template): Promise<Blob> {
     doc.setFontSize(settings.fontSize.footer);
     doc.setFont(PDF_FONT_FAMILY, 'normal');
     doc.setTextColor(150);
-    doc.text(settings.footerText, margin.left, footerY);
+    const resolvedFooter = renderVariables(settings.footerText, ctx);
+    doc.text(resolvedFooter, margin.left, footerY);
     if (settings.showPageNumber) {
       const pageText = settings.pageNumberFormat
         .replace('{page}', String(pageNum))

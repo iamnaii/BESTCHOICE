@@ -1,9 +1,13 @@
 import { useTemplateStore } from '@/store/templateStore';
+import { renderVariables, buildSampleContext } from '@/utils/templateRenderer';
+import { AVAILABLE_VARIABLES } from '@/constants/variables';
 import BlockRenderer from './BlockRenderer';
 
 export default function DocumentPreview() {
   const { currentTemplate, previewMode } = useTemplateStore();
   const { blocks, settings } = currentTemplate;
+  const ctx = previewMode ? buildSampleContext(AVAILABLE_VARIABLES) : {};
+  const resolvedFooter = previewMode ? renderVariables(settings.footerText, ctx) : settings.footerText;
 
   return (
     <div className="flex-1 bg-slate-100 overflow-y-auto p-8">
@@ -53,7 +57,7 @@ export default function DocumentPreview() {
             borderTop: '1px solid #d1d5db',
           }}
         >
-          <span style={{ color: '#9ca3af' }}>{settings.footerText}</span>
+          <span style={{ color: '#9ca3af' }}>{resolvedFooter}</span>
           {settings.showPageNumber && (
             <span style={{ color: '#9ca3af' }}>
               {settings.pageNumberFormat.replace('{page}', '1').replace('{total}', '6')}

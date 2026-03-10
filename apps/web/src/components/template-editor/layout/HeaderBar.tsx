@@ -1,12 +1,15 @@
 import { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Settings, Plus, Save, Undo2, Eye, EyeOff, Download, Loader2, BookOpen } from 'lucide-react';
+import { ArrowLeft, Settings, Plus, Save, Undo2, Download, Loader2, BookOpen, Columns2, PenLine, Eye } from 'lucide-react';
 import { useTemplateStore } from '@/store/templateStore';
 import type { BlockType } from '@/types/template';
+import type { ViewMode } from '@/pages/ContractTemplatesPage';
 
 interface Props {
   onBack?: () => void;
   onToggleCheatSheet?: () => void;
   showCheatSheet?: boolean;
+  viewMode: ViewMode;
+  onViewModeChange: (mode: ViewMode) => void;
 }
 
 const QUICK_ADD_BLOCKS: { type: BlockType; label: string }[] = [
@@ -21,11 +24,18 @@ const QUICK_ADD_BLOCKS: { type: BlockType; label: string }[] = [
   { type: 'photo-attachment', label: 'แนบรูปภาพ' },
 ];
 
-export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet }: Props) {
+const VIEW_MODES: { mode: ViewMode; icon: typeof Columns2; label: string }[] = [
+  { mode: 'editor', icon: PenLine, label: 'แก้ไข' },
+  { mode: 'split', icon: Columns2, label: 'แบ่งหน้า' },
+  { mode: 'preview', icon: Eye, label: 'Preview' },
+];
+
+export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, viewMode, onViewModeChange }: Props) {
   const {
-    currentTemplate, templates, previewMode, isSaving, isLoading,
-    setPreviewMode, setShowSettings, setShowExportModal,
+    currentTemplate, templates, isSaving, isLoading,
+    setShowSettings, setShowExportModal,
     addBlock, saveTemplateToApi, undo, isDirty, loadTemplate,
+    previewMode, setPreviewMode,
   } = useTemplateStore();
 
   const [showAddMenu, setShowAddMenu] = useState(false);
@@ -89,6 +99,21 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet }
       {isSaving && <span className="text-xs text-primary-600 flex items-center gap-1"><Loader2 size={12} className="animate-spin" /></span>}
 
       <div className="flex-1" />
+
+      {/* Preview mode toggle (show sample data) */}
+      {(viewMode === 'split' || viewMode === 'preview') && (
+        <button
+          onClick={() => setPreviewMode(!previewMode)}
+          className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg transition-colors ${
+            previewMode
+              ? 'bg-blue-100 text-blue-700 border border-blue-300'
+              : 'text-slate-600 border border-slate-200 hover:bg-slate-50'
+          }`}
+          title="แสดงข้อมูลตัวอย่าง"
+        >
+          ตัวอย่างข้อมูล
+        </button>
+      )}
 
       {/* Cheat sheet toggle */}
       {onToggleCheatSheet && (
@@ -154,17 +179,24 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet }
         <Undo2 size={16} />
       </button>
 
-      <button
-        onClick={() => setPreviewMode(!previewMode)}
-        className={`flex items-center gap-1.5 px-3.5 py-2 text-sm rounded-lg transition-colors ${
-          previewMode
-            ? 'bg-primary-600 text-white hover:bg-primary-700'
-            : 'text-slate-600 border border-slate-200 hover:bg-slate-50'
-        }`}
-      >
-        {previewMode ? <EyeOff size={16} /> : <Eye size={16} />}
-        {previewMode ? 'แก้ไข' : 'Preview'}
-      </button>
+      {/* View mode selector */}
+      <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden">
+        {VIEW_MODES.map(({ mode, icon: Icon, label }) => (
+          <button
+            key={mode}
+            onClick={() => onViewModeChange(mode)}
+            className={`flex items-center gap-1.5 px-3 py-2 text-sm transition-colors ${
+              viewMode === mode
+                ? 'bg-primary-600 text-white'
+                : 'text-slate-600 hover:bg-slate-50'
+            }`}
+            title={label}
+          >
+            <Icon size={16} />
+            <span className="hidden xl:inline">{label}</span>
+          </button>
+        ))}
+      </div>
 
       <button
         onClick={() => setShowExportModal(true)}

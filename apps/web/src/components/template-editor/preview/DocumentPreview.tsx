@@ -1,18 +1,49 @@
+import { useRef, useEffect, useState, useCallback } from 'react';
 import { useTemplateStore } from '@/store/templateStore';
 import { renderVariables, buildSampleContext } from '@/utils/templateRenderer';
 import { AVAILABLE_VARIABLES } from '@/constants/variables';
 import BlockRenderer from './BlockRenderer';
 
-export default function DocumentPreview() {
+interface Props {
+  compact?: boolean;
+}
+
+export default function DocumentPreview({ compact }: Props) {
   const { currentTemplate, previewMode } = useTemplateStore();
   const { blocks, settings } = currentTemplate;
   const ctx = previewMode ? buildSampleContext(AVAILABLE_VARIABLES) : {};
   const resolvedFooter = previewMode ? renderVariables(settings.footerText, ctx) : settings.footerText;
 
+  const containerRef = useRef<HTMLDivElement>(null);
+  const paperRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+
+  const updateScale = useCallback(() => {
+    if (!compact || !containerRef.current) {
+      setScale(1);
+      return;
+    }
+    // A4 width = 210mm ≈ 793.7px at 96dpi
+    const containerWidth = containerRef.current.clientWidth;
+    const padding = 32; // 16px padding each side
+    const availableWidth = containerWidth - padding;
+    const a4WidthPx = 793.7;
+    const newScale = Math.min(1, availableWidth / a4WidthPx);
+    setScale(newScale);
+  }, [compact]);
+
+  useEffect(() => {
+    updateScale();
+    const observer = new ResizeObserver(updateScale);
+    if (containerRef.current) observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, [updateScale]);
+
   return (
-    <div className="flex-1 bg-slate-100 overflow-y-auto p-8">
+    <div ref={containerRef} className="flex-1 bg-slate-100 overflow-y-auto overflow-x-hidden p-4" style={{ height: '100%' }}>
       {/* A4 Paper simulation */}
       <div
+        ref={paperRef}
         className="mx-auto bg-white rounded-sm"
         style={{
           width: '210mm',
@@ -23,6 +54,9 @@ export default function DocumentPreview() {
           lineHeight: 1.7,
           boxShadow: '0 4px 24px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08)',
           color: '#1a1a1a',
+          transform: scale < 1 ? `scale(${scale})` : undefined,
+          transformOrigin: 'top center',
+          marginBottom: scale < 1 ? `-${(1 - scale) * 100}%` : undefined,
         }}
       >
         {/* Letterhead */}

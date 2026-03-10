@@ -37,20 +37,20 @@ export default function PaymentTable({ previewMode }: Props) {
   }
 
   return (
-    <table className="w-full my-3 border-collapse text-[13px]">
+    <table className="mx-auto my-3 border-collapse text-[12px]" style={{ width: '75%' }}>
       <thead>
         <tr className="bg-gray-50">
-          <th className="border border-gray-400 px-3 py-1.5 text-center w-16">งวดที่</th>
-          <th className="border border-gray-400 px-3 py-1.5 text-center">วันที่ครบกำหนดชำระ</th>
-          <th className="border border-gray-400 px-3 py-1.5 text-right w-28">จำนวนเงิน</th>
+          <th className="border border-gray-400 px-2 py-1 text-center" style={{ width: '50px' }}>งวดที่</th>
+          <th className="border border-gray-400 px-2 py-1 text-center">วันที่ครบกำหนดชำระ</th>
+          <th className="border border-gray-400 px-2 py-1 text-right" style={{ width: '90px' }}>จำนวนเงิน</th>
         </tr>
       </thead>
       <tbody>
         {installments?.map(inst => (
           <tr key={inst.NO}>
-            <td className="border border-gray-400 px-3 py-1 text-center">{inst.NO}</td>
-            <td className="border border-gray-400 px-3 py-1 text-center">{formatDateMedium(inst.DUE_DATE)}</td>
-            <td className="border border-gray-400 px-3 py-1 text-right">{formatNumberDecimal(inst.AMOUNT)}</td>
+            <td className="border border-gray-400 px-2 py-0.5 text-center">{inst.NO}</td>
+            <td className="border border-gray-400 px-2 py-0.5 text-center">{formatDateMedium(inst.DUE_DATE)}</td>
+            <td className="border border-gray-400 px-2 py-0.5 text-right">{formatNumberDecimal(inst.AMOUNT)}</td>
           </tr>
         ))}
       </tbody>

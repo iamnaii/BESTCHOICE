@@ -43,6 +43,11 @@ function RichHtmlContent({ html, previewMode, ctx }: { html: string; previewMode
   return <div dangerouslySetInnerHTML={{ __html: clean }} />;
 }
 
+/** Strip HTML tags to get plain text */
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]*>/g, '').trim();
+}
+
 export default function BlockRenderer({ block, previewMode, clauseIndex }: Props) {
   const ctx = getSampleContext();
   const resolved = previewMode ? renderVariables(block.content, ctx) : '';
@@ -50,11 +55,27 @@ export default function BlockRenderer({ block, previewMode, clauseIndex }: Props
 
   switch (block.type) {
     case 'contract-header': {
-      const headerParts = block.content.split('||');
-      const leftPart = headerParts[0]?.trim() || '';
-      const rightPart = headerParts[1]?.trim() || '';
-      const resolvedLeft = previewMode ? renderVariables(leftPart, ctx) : '';
-      const resolvedRight = previewMode ? renderVariables(rightPart, ctx) : '';
+      // Strip HTML tags first so we always work with plain text
+      const plainContent = isRich ? stripHtml(block.content) : block.content;
+      let leftPart: string;
+      let rightPart: string;
+      if (plainContent.includes('||')) {
+        const parts = plainContent.split('||');
+        leftPart = parts[0]?.trim() || '';
+        rightPart = parts[1]?.trim() || '';
+      } else {
+        // Try splitting on "วันที่ทำสัญญา" for legacy data
+        const splitIdx = plainContent.indexOf('วันที่ทำสัญญา');
+        if (splitIdx > 0) {
+          leftPart = plainContent.substring(0, splitIdx).trim();
+          rightPart = plainContent.substring(splitIdx).trim();
+        } else {
+          leftPart = plainContent;
+          rightPart = '';
+        }
+      }
+      const resolvedLeft = previewMode ? renderVariables(leftPart, ctx) : leftPart;
+      const resolvedRight = previewMode ? renderVariables(rightPart, ctx) : rightPart;
       return (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', fontSize: '15px', color: '#4a4a4a' }}>
           <div>
@@ -139,6 +160,9 @@ export default function BlockRenderer({ block, previewMode, clauseIndex }: Props
     case 'clause': {
       const resolvedClause = previewMode ? renderVariables(block.content, ctx) : '';
       const displayNumber = clauseIndex ?? block.clauseNumber;
+      // Split content by newlines to render sub-items on separate lines
+      const contentLines = (isRich ? block.content : block.content).split('\n');
+      const resolvedLines = resolvedClause ? resolvedClause.split('\n') : [];
       return (
         <div style={{ margin: '10px 0' }}>
           <p style={{ fontSize: '16px', fontWeight: 700, color: '#111' }}>
@@ -147,11 +171,15 @@ export default function BlockRenderer({ block, previewMode, clauseIndex }: Props
           <div style={{ fontSize: '16px', lineHeight: 1.8, marginTop: '4px', color: '#1a1a1a' }}>
             {isRich
               ? <RichHtmlContent html={block.content} previewMode={previewMode} ctx={ctx} />
-              : (
-                <p style={{ textIndent: '2em' }}>
-                  <VariableHighlighter text={block.content} previewMode={previewMode} resolvedText={resolvedClause} />
-                </p>
-              )
+              : contentLines.map((line, i) => {
+                  const isSubItem = i > 0;
+                  const resolvedLine = resolvedLines[i] || '';
+                  return (
+                    <p key={i} style={{ textIndent: isSubItem ? '0' : '2em', marginLeft: isSubItem ? '3em' : '0', marginBottom: '2px' }}>
+                      <VariableHighlighter text={line} previewMode={previewMode} resolvedText={resolvedLine} />
+                    </p>
+                  );
+                })
             }
           </div>
         </div>

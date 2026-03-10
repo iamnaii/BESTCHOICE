@@ -57,7 +57,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet }
   };
 
   return (
-    <div className="h-14 bg-white border-b border-gray-200 flex items-center px-4 gap-2">
+    <div className="h-14 bg-white border-b border-gray-200 flex items-center px-4 gap-2.5">
       {/* Back button */}
       {onBack && (
         <button
@@ -94,22 +94,22 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet }
       {onToggleCheatSheet && (
         <button
           onClick={onToggleCheatSheet}
-          className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors ${
+          className={`flex items-center gap-1.5 px-3.5 py-2 text-sm rounded-lg transition-colors ${
             showCheatSheet
               ? 'bg-amber-100 text-amber-700 border border-amber-300'
               : 'text-gray-700 border border-gray-300 hover:bg-gray-50'
           }`}
         >
-          <BookOpen size={14} />
+          <BookOpen size={16} />
           ตัวแปร
         </button>
       )}
 
       <button
         onClick={() => setShowSettings(true)}
-        className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+        className="flex items-center gap-1.5 px-3.5 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
       >
-        <Settings size={14} />
+        <Settings size={16} />
         ตั้งค่า
       </button>
 
@@ -117,9 +117,9 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet }
       <div className="relative" ref={addMenuRef}>
         <button
           onClick={() => setShowAddMenu(!showAddMenu)}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          className="flex items-center gap-1.5 px-3.5 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
         >
-          <Plus size={14} />
+          <Plus size={16} />
           เพิ่ม
         </button>
         {showAddMenu && (
@@ -140,37 +140,37 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet }
       <button
         onClick={() => saveTemplateToApi()}
         disabled={isSaving}
-        className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+        className="flex items-center gap-1.5 px-3.5 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
       >
-        {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+        {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
         บันทึก
       </button>
 
       <button
         onClick={() => undo()}
-        className="flex items-center gap-1.5 px-2 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+        className="flex items-center gap-1.5 px-2.5 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
         title="Undo (Ctrl+Z)"
       >
-        <Undo2 size={14} />
+        <Undo2 size={16} />
       </button>
 
       <button
         onClick={() => setPreviewMode(!previewMode)}
-        className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors ${
+        className={`flex items-center gap-1.5 px-3.5 py-2 text-sm rounded-lg transition-colors ${
           previewMode
             ? 'bg-violet-600 text-white hover:bg-violet-700'
             : 'text-gray-700 border border-gray-300 hover:bg-gray-50'
         }`}
       >
-        {previewMode ? <EyeOff size={14} /> : <Eye size={14} />}
+        {previewMode ? <EyeOff size={16} /> : <Eye size={16} />}
         {previewMode ? 'แก้ไข' : 'Preview'}
       </button>
 
       <button
         onClick={() => setShowExportModal(true)}
-        className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors"
+        className="flex items-center gap-1.5 px-3.5 py-2 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors"
       >
-        <Download size={14} />
+        <Download size={16} />
         PDF
       </button>
     </div>

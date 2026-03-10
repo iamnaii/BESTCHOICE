@@ -139,7 +139,7 @@ function Sidebar() {
             <h1 className="text-lg font-bold text-white leading-tight">
               best<span className="text-primary-400">choice</span>
             </h1>
-            <p className="text-[10px] text-gray-500">ระบบจัดการร้าน</p>
+            <p className="text-xs text-gray-500">ระบบจัดการร้าน</p>
           </div>
         </div>
       </div>
@@ -195,7 +195,7 @@ function Sidebar() {
                   >
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={section.icon} />
                   </svg>
-                  <span className="text-[11px] font-semibold uppercase tracking-wider">
+                  <span className="text-xs font-semibold uppercase tracking-wider">
                     {section.label}
                   </span>
                 </NavLink>
@@ -228,7 +228,7 @@ function Sidebar() {
                 >
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={section.icon} />
                 </svg>
-                <span className="flex-1 text-left text-[11px] font-semibold uppercase tracking-wider group-hover:text-gray-300 transition-colors">
+                <span className="flex-1 text-left text-xs font-semibold uppercase tracking-wider group-hover:text-gray-300 transition-colors">
                   {section.label}
                 </span>
                 <div className="flex items-center gap-1.5">
@@ -264,7 +264,7 @@ function Sidebar() {
                       <div key={item.path}>
                         {showGroupHeader && (
                           <div className={clsx('flex items-center gap-2 px-3', idx > 0 ? 'mt-3 mb-1' : 'mb-1')}>
-                            <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-600">
+                            <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-600">
                               {item.group}
                             </span>
                             <div className="flex-1 h-px bg-white/5" />
@@ -283,7 +283,7 @@ function Sidebar() {
                           }
                         >
                           {item.step != null && (
-                            <span className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center text-[10px] font-bold shrink-0">
+                            <span className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center text-[11px] font-bold shrink-0">
                               {item.step}
                             </span>
                           )}

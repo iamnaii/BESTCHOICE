@@ -33,14 +33,14 @@ export default function EditorSidebar({ activeId, onSelect, onBack }: Props) {
         {onBack && (
           <button
             onClick={onBack}
-            className="flex items-center gap-1.5 text-[#A5A0C0] hover:text-white text-xs mb-2 transition-colors"
+            className="flex items-center gap-1.5 text-gray-300 hover:text-white text-sm mb-2 transition-colors"
           >
             <ArrowLeft size={14} />
             กลับหน้าหลัก
           </button>
         )}
         <h1 className="text-white font-bold text-sm">BESTCHOICEPHONE</h1>
-        <p className="text-[#A5A0C0] text-[10px]">Document Template Editor</p>
+        <p className="text-gray-400 text-xs">Document Template Editor</p>
       </div>
 
       {/* Menu */}
@@ -52,7 +52,7 @@ export default function EditorSidebar({ activeId, onSelect, onBack }: Props) {
             className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
               activeId === item.id
                 ? 'bg-[#6D28D9] text-white'
-                : 'text-[#A5A0C0] hover:bg-white/5 hover:text-white'
+                : 'text-gray-300 hover:bg-white/5 hover:text-white'
             }`}
           >
             {item.icon}
@@ -63,7 +63,7 @@ export default function EditorSidebar({ activeId, onSelect, onBack }: Props) {
 
       {/* Footer */}
       <div className="px-4 py-3 border-t border-white/10">
-        <p className="text-[#A5A0C0] text-[10px]">BESTCHOICEPHONE Co., Ltd.</p>
+        <p className="text-gray-400 text-xs">BESTCHOICEPHONE Co., Ltd.</p>
       </div>
     </div>
   );

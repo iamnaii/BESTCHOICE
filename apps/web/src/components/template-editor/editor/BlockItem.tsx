@@ -46,7 +46,7 @@ export default function BlockItem({ block, index, totalBlocks }: Props) {
       }`}
     >
       {/* Header */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100">
+      <div className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-100">
         {/* Drag handle */}
         <button
           {...attributes}
@@ -65,7 +65,7 @@ export default function BlockItem({ block, index, totalBlocks }: Props) {
         </button>
 
         {/* Type badge */}
-        <span className="text-[10px] px-2 py-0.5 bg-violet-50 text-violet-700 rounded-full font-medium">
+        <span className="text-xs px-2.5 py-0.5 bg-violet-50 text-violet-700 rounded-full font-medium">
           {label}
         </span>
 
@@ -79,7 +79,7 @@ export default function BlockItem({ block, index, totalBlocks }: Props) {
         <div className="flex-1" />
 
         {/* Controls */}
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
           <button
             onClick={() => moveBlock(index, Math.max(0, index - 1))}
             disabled={index === 0}

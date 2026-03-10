@@ -50,7 +50,7 @@ function DataTable<T extends { id: string }>({
               {columns.map((col) => (
                 <th
                   key={col.key}
-                  className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider"
+                  className="px-5 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider"
                 >
                   {col.label}
                 </th>
@@ -68,7 +68,7 @@ function DataTable<T extends { id: string }>({
               data.map((item, idx) => (
                 <tr key={item.id} className={`hover:bg-gray-50 transition-colors${onRowClick || onRowDoubleClick ? ' cursor-pointer' : ''}`} onClick={() => onRowClick?.(item)} onDoubleClick={() => onRowDoubleClick?.(item)}>
                   {columns.map((col) => (
-                    <td key={col.key} className="px-4 py-3 text-sm text-gray-700">
+                    <td key={col.key} className="px-5 py-3.5 text-sm text-gray-700">
                       {col.render
                         ? col.render(item, col, idx)
                         : (item as Record<string, unknown>)[col.key]?.toString() || '-'}

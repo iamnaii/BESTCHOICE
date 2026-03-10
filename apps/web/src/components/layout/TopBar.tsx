@@ -24,8 +24,8 @@ export default function TopBar() {
       </div>
       <div className="flex items-center gap-4">
         <div className="text-right">
-          <p className="text-sm font-semibold text-gray-900">{user?.name}</p>
-          <p className="text-xs text-gray-500">
+          <p className="text-sm font-semibold text-gray-800">{user?.name}</p>
+          <p className="text-sm text-gray-500">
             {user?.role && roleLabels[user.role]}
           </p>
         </div>
@@ -34,7 +34,7 @@ export default function TopBar() {
         </div>
         <button
           onClick={logout}
-          className="px-3 py-1.5 text-sm text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+          className="px-3.5 py-2 text-sm text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
         >
           ออก
         </button>

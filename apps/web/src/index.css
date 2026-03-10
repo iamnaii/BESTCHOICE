@@ -21,6 +21,8 @@
 
 body {
   font-family: 'TH Sarabun PSK', 'Noto Sans Thai', sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
 }
 
 @layer utilities {
@@ -38,10 +40,10 @@ body {
 /* ── Tiptap Rich Text Editor ──────────────────────────── */
 .tiptap.ProseMirror {
   min-height: 240px;
-  padding: 12px 16px;
+  padding: 14px 18px;
   outline: none;
   font-family: 'TH Sarabun PSK', 'Noto Sans Thai', sans-serif;
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.8;
   color: #1a1a1a;
 }

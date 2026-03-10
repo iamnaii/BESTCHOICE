@@ -22,6 +22,15 @@
   font-display: swap;
 }
 
+/* Direct Bold font — bypasses font-weight matching for <strong>/<b> */
+@font-face {
+  font-family: 'TH Sarabun PSK Bold';
+  src: url('/fonts/THSarabunPSK-Bold.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* ── Base Styles ────────────────────────────────────── */
 body {
   font-family: 'Noto Sans Thai', 'Inter', system-ui, -apple-system, sans-serif;
@@ -50,8 +59,9 @@ body {
 }
 
 /* ── Ensure bold renders correctly with TH Sarabun PSK ── */
-/* Force font-weight 700 to match the Bold @font-face variant */
+/* Use dedicated Bold font-family to bypass font-weight matching issues */
 strong, b {
+  font-family: 'TH Sarabun PSK Bold', 'TH Sarabun PSK', 'Noto Sans Thai', sans-serif !important;
   font-weight: 700 !important;
 }
 
@@ -68,8 +78,8 @@ strong, b {
 
 .tiptap.ProseMirror strong,
 .tiptap.ProseMirror b {
+  font-family: 'TH Sarabun PSK Bold', 'TH Sarabun PSK', 'Noto Sans Thai', sans-serif !important;
   font-weight: 700 !important;
-  font-family: 'TH Sarabun PSK', 'Noto Sans Thai', sans-serif !important;
 }
 
 .tiptap.ProseMirror p {

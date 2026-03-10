@@ -21,8 +21,11 @@
 
 body {
   font-family: 'TH Sarabun PSK', 'Noto Sans Thai', sans-serif;
-  font-size: 16px;
+  font-size: 17px;
   line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 @layer utilities {
@@ -43,7 +46,7 @@ body {
   padding: 14px 18px;
   outline: none;
   font-family: 'TH Sarabun PSK', 'Noto Sans Thai', sans-serif;
-  font-size: 16px;
+  font-size: 17px;
   line-height: 1.8;
   color: #1a1a1a;
 }

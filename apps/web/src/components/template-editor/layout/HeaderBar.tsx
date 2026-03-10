@@ -57,12 +57,12 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet }
   };
 
   return (
-    <div className="h-14 bg-white border-b border-gray-200 flex items-center px-4 gap-2.5">
+    <div className="h-14 bg-white border-b border-slate-200 flex items-center px-5 gap-2.5">
       {/* Back button */}
       {onBack && (
         <button
           onClick={onBack}
-          className="flex items-center gap-1 px-2 py-1.5 text-sm text-gray-500 hover:text-gray-700 rounded-lg hover:bg-gray-50 transition-colors mr-1"
+          className="flex items-center gap-1 px-2.5 py-2 text-sm text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-50 transition-colors mr-1"
         >
           <ArrowLeft size={16} />
         </button>
@@ -73,7 +73,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet }
         value={currentTemplate.id}
         onChange={handleTemplateChange}
         disabled={isLoading}
-        className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 max-w-[320px] disabled:opacity-50"
+        className="px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 max-w-[320px] disabled:opacity-50"
       >
         {templates.length === 0 && (
           <option value="">กำลังโหลด...</option>
@@ -97,7 +97,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet }
           className={`flex items-center gap-1.5 px-3.5 py-2 text-sm rounded-lg transition-colors ${
             showCheatSheet
               ? 'bg-amber-100 text-amber-700 border border-amber-300'
-              : 'text-gray-700 border border-gray-300 hover:bg-gray-50'
+              : 'text-slate-600 border border-slate-200 hover:bg-slate-50'
           }`}
         >
           <BookOpen size={16} />
@@ -107,7 +107,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet }
 
       <button
         onClick={() => setShowSettings(true)}
-        className="flex items-center gap-1.5 px-3.5 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+        className="flex items-center gap-1.5 px-3.5 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
       >
         <Settings size={16} />
         ตั้งค่า
@@ -117,18 +117,18 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet }
       <div className="relative" ref={addMenuRef}>
         <button
           onClick={() => setShowAddMenu(!showAddMenu)}
-          className="flex items-center gap-1.5 px-3.5 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          className="flex items-center gap-1.5 px-3.5 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
         >
           <Plus size={16} />
           เพิ่ม
         </button>
         {showAddMenu && (
-          <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-50 w-48 py-1">
+          <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 w-48 py-1">
             {QUICK_ADD_BLOCKS.map(b => (
               <button
                 key={b.type}
                 onClick={() => handleAddBlock(b.type)}
-                className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                className="w-full text-left px-3 py-2 text-sm text-slate-600 hover:bg-primary-50 hover:text-primary-700 transition-colors"
               >
                 {b.label}
               </button>
@@ -140,7 +140,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet }
       <button
         onClick={() => saveTemplateToApi()}
         disabled={isSaving}
-        className="flex items-center gap-1.5 px-3.5 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+        className="flex items-center gap-1.5 px-3.5 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50"
       >
         {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
         บันทึก
@@ -148,7 +148,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet }
 
       <button
         onClick={() => undo()}
-        className="flex items-center gap-1.5 px-2.5 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+        className="flex items-center gap-1.5 px-2.5 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
         title="Undo (Ctrl+Z)"
       >
         <Undo2 size={16} />
@@ -159,7 +159,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet }
         className={`flex items-center gap-1.5 px-3.5 py-2 text-sm rounded-lg transition-colors ${
           previewMode
             ? 'bg-blue-600 text-white hover:bg-blue-700'
-            : 'text-gray-700 border border-gray-300 hover:bg-gray-50'
+            : 'text-slate-600 border border-slate-200 hover:bg-slate-50'
         }`}
       >
         {previewMode ? <EyeOff size={16} /> : <Eye size={16} />}

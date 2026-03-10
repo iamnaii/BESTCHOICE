@@ -130,22 +130,22 @@ function Sidebar() {
   return (
     <aside className="w-64 bg-primary-950 min-h-screen flex flex-col">
       {/* Logo */}
-      <div className="p-5 border-b border-white/10">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary-400 to-sky-400 flex items-center justify-center shadow-lg shadow-primary-500/20">
-            <span className="text-white font-bold text-sm">B</span>
+      <div className="px-5 py-6 border-b border-white/10">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-400 to-sky-400 flex items-center justify-center shadow-lg shadow-primary-500/20">
+            <span className="text-white font-bold text-base">B</span>
           </div>
           <div>
-            <h1 className="text-lg font-bold text-white leading-tight">
+            <h1 className="text-lg font-semibold text-white leading-tight tracking-wide">
               best<span className="text-primary-400">choice</span>
             </h1>
-            <p className="text-xs text-gray-500">ระบบจัดการร้าน</p>
+            <p className="text-xs text-slate-500 mt-0.5">ระบบจัดการร้าน</p>
           </div>
         </div>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-3 overflow-y-auto">
+      <nav className="flex-1 px-3 py-4 overflow-y-auto space-y-0.5">
         {/* Top-level items (หน้าหลัก) */}
         {topItems.map((item) => (
           <NavLink
@@ -154,10 +154,10 @@ function Sidebar() {
             end={item.path === '/'}
             className={({ isActive }) =>
               clsx(
-                'flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 mb-0.5',
+                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
                 isActive
                   ? 'bg-primary-600 text-white shadow-lg shadow-primary-600/20'
-                  : 'text-gray-400 hover:bg-white/5 hover:text-white',
+                  : 'text-slate-400 hover:bg-white/5 hover:text-white',
               )
             }
           >
@@ -175,15 +175,15 @@ function Sidebar() {
           if (section.items.length === 1) {
             const item = section.items[0];
             return (
-              <div key={section.key} className="mt-2">
+              <div key={section.key} className="mt-3">
                 <NavLink
                   to={item.path}
                   className={({ isActive }) =>
                     clsx(
-                      'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition-colors duration-200',
+                      'w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg transition-colors duration-200',
                       isActive
                         ? 'bg-primary-900/50 text-primary-300'
-                        : 'text-gray-500 hover:bg-white/5 hover:text-gray-300',
+                        : 'text-slate-500 hover:bg-white/5 hover:text-slate-300',
                     )
                   }
                 >
@@ -207,20 +207,20 @@ function Sidebar() {
           const isCollapsed = collapsed[section.key] ?? false;
 
           return (
-            <div key={section.key} className="mt-2">
+            <div key={section.key} className="mt-3">
               <button
                 onClick={() => toggleSection(section.key)}
                 className={clsx(
-                  'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg group cursor-pointer transition-colors duration-200',
+                  'w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg group cursor-pointer transition-colors duration-200',
                   hasActive && isCollapsed
                     ? 'bg-primary-900/50 text-primary-300'
-                    : 'text-gray-500 hover:bg-white/5',
+                    : 'text-slate-500 hover:bg-white/5',
                 )}
               >
                 <svg
                   className={clsx(
                     'w-4 h-4 shrink-0 transition-colors duration-200',
-                    hasActive && isCollapsed ? 'text-primary-400' : 'text-gray-600 group-hover:text-gray-400',
+                    hasActive && isCollapsed ? 'text-primary-400' : 'text-slate-600 group-hover:text-slate-400',
                   )}
                   fill="none"
                   viewBox="0 0 24 24"
@@ -228,7 +228,7 @@ function Sidebar() {
                 >
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={section.icon} />
                 </svg>
-                <span className="flex-1 text-left text-xs font-semibold uppercase tracking-wider group-hover:text-gray-300 transition-colors">
+                <span className="flex-1 text-left text-xs font-semibold uppercase tracking-wider group-hover:text-slate-300 transition-colors">
                   {section.label}
                 </span>
                 <div className="flex items-center gap-1.5">
@@ -237,7 +237,7 @@ function Sidebar() {
                   )}
                   <svg
                     className={clsx(
-                      'w-3.5 h-3.5 transition-transform duration-200 text-gray-600 group-hover:text-gray-400',
+                      'w-3.5 h-3.5 transition-transform duration-200 text-slate-600 group-hover:text-slate-400',
                       isCollapsed ? '-rotate-90' : 'rotate-0',
                     )}
                     fill="none"
@@ -264,7 +264,7 @@ function Sidebar() {
                       <div key={item.path}>
                         {showGroupHeader && (
                           <div className={clsx('flex items-center gap-2 px-3', idx > 0 ? 'mt-3 mb-1' : 'mb-1')}>
-                            <span className="text-xs font-semibold uppercase tracking-wider text-gray-600">
+                            <span className="text-xs font-semibold uppercase tracking-wider text-slate-600">
                               {item.group}
                             </span>
                             <div className="flex-1 h-px bg-white/5" />
@@ -275,10 +275,10 @@ function Sidebar() {
                           end={item.path === '/'}
                           className={({ isActive }) =>
                             clsx(
-                              'flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 mb-0.5',
+                              'flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
                               isActive
                                 ? 'bg-primary-600 text-white shadow-lg shadow-primary-600/20'
-                                : 'text-gray-400 hover:bg-white/5 hover:text-white',
+                                : 'text-slate-400 hover:bg-white/5 hover:text-white',
                             )
                           }
                         >
@@ -301,14 +301,14 @@ function Sidebar() {
 
       {/* User info at bottom */}
       {user && (
-        <div className="p-4 border-t border-white/10">
+        <div className="px-4 py-5 border-t border-white/10">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-primary-700 flex items-center justify-center">
-              <span className="text-white text-xs font-bold">{user.name?.charAt(0)}</span>
+            <div className="w-9 h-9 rounded-lg bg-primary-700 flex items-center justify-center">
+              <span className="text-white text-sm font-semibold">{user.name?.charAt(0)}</span>
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-white truncate">{user.name}</p>
-              <p className="text-xs text-gray-500 truncate">{user.branchName}</p>
+              <p className="text-xs text-slate-500 truncate">{user.branchName}</p>
             </div>
           </div>
         </div>

@@ -10,17 +10,29 @@ type PrismaTx = {
 };
 
 /**
- * Generate next contract number (CT000001, CT000002, ...)
+ * Generate next contract number (BCP2603-00001, BCP2603-00002, ...)
+ * Format: BCP + YY + MM + '-' + 5-digit sequence (global)
  */
 export async function generateContractNumber(tx: PrismaTx): Promise<string> {
+  const now = new Date();
+  const yy = String(now.getFullYear()).slice(-2);
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const prefix = `BCP${yy}${mm}`;
+
   const lastContract = await tx.contract.findFirst({
+    where: { contractNumber: { startsWith: prefix } },
     orderBy: { contractNumber: 'desc' as const },
     select: { contractNumber: true },
   });
-  const lastNum = lastContract
-    ? parseInt(lastContract.contractNumber.replace(/\D/g, '')) || 0
-    : 0;
-  return `CT${String(lastNum + 1).padStart(6, '0')}`;
+
+  let nextSeq = 1;
+  if (lastContract) {
+    const parts = lastContract.contractNumber.split('-');
+    const lastSeq = parts.length > 1 ? parseInt(parts[1]) || 0 : 0;
+    nextSeq = lastSeq + 1;
+  }
+
+  return `${prefix}-${String(nextSeq).padStart(5, '0')}`;
 }
 
 /**

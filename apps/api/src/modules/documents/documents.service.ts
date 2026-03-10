@@ -76,7 +76,7 @@ export class DocumentsService {
     const existing = contract.signatures.find((s) => s.signerType === signerType);
     if (existing) throw new BadRequestException(`${signerType} ลงนามไปแล้ว`);
 
-    return this.prisma.signature.create({
+    const signature = await this.prisma.signature.create({
       data: {
         contractId,
         signerType: signerType as SignerType,
@@ -85,6 +85,19 @@ export class DocumentsService {
         deviceInfo: req.userAgent || null,
       },
     });
+
+    // Auto-submit for review when both signatures are collected
+    const allSignatures = [...contract.signatures, { signerType }];
+    const hasCustomer = allSignatures.some((s) => s.signerType === 'CUSTOMER');
+    const hasStaff = allSignatures.some((s) => s.signerType === 'STAFF');
+    if (hasCustomer && hasStaff && (contract.workflowStatus === 'CREATING' || contract.workflowStatus === 'REJECTED')) {
+      await this.prisma.contract.update({
+        where: { id: contractId },
+        data: { workflowStatus: 'PENDING_REVIEW' },
+      });
+    }
+
+    return signature;
   }
 
   async getSignatures(contractId: string) {
@@ -280,7 +293,9 @@ export class DocumentsService {
 
   /** Validate that a data URL is a safe image format */
   private isSafeImageDataUrl(url: string): boolean {
-    return /^data:image\/(png|jpeg|gif|webp);base64,[A-Za-z0-9+/=]+$/.test(url);
+    if (!url || typeof url !== 'string') return false;
+    // Check prefix is a valid image data URL, and ensure no HTML/script injection
+    return /^data:image\/(png|jpeg|gif|webp);base64,/.test(url) && !/<|>|javascript:/i.test(url);
   }
 
   /** Wrap rendered HTML with A4 page styles and page numbering */

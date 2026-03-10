@@ -156,6 +156,12 @@ export default function ContractDetailPage() {
     onError: (err: any) => toast.error(getErrorMessage(err)),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: async () => { const { data } = await api.delete(`/contracts/${id}`); return data; },
+    onSuccess: () => { toast.success('ลบสัญญาแล้ว'); navigate('/contracts'); },
+    onError: (err: any) => toast.error(getErrorMessage(err)),
+  });
+
   const updateMutation = useMutation({
     mutationFn: async () => {
       const { data } = await api.patch(`/contracts/${id}`, editForm);
@@ -188,9 +194,11 @@ export default function ContractDetailPage() {
 
   const s = statusLabels[contract.status] || { label: contract.status, className: 'bg-gray-100' };
   const paidCount = contract.payments.filter((p) => p.status === 'PAID').length;
-  const isReviewer = user && ['OWNER', 'BRANCH_MANAGER'].includes(user.role) && contract.salespersonId !== user.id;
+  const isReviewer = user && ['OWNER', 'BRANCH_MANAGER'].includes(user.role) && (user.role === 'OWNER' || contract.salespersonId !== user.id);
   const isCreator = user && contract.salespersonId === user.id;
-  const canEdit = isCreator && (contract.workflowStatus === 'CREATING' || contract.workflowStatus === 'REJECTED');
+  const isOwner = user?.role === 'OWNER';
+  const canEdit = (isCreator || isOwner) && (contract.workflowStatus === 'CREATING' || contract.workflowStatus === 'REJECTED');
+  const canDelete = isOwner && (contract.workflowStatus === 'CREATING' || contract.workflowStatus === 'REJECTED');
   const customerSigned = contract.signatures?.some((s) => s.signerType === 'CUSTOMER');
   const staffSigned = contract.signatures?.some((s) => s.signerType === 'STAFF');
   const allSigned = customerSigned && staffSigned;
@@ -254,6 +262,15 @@ export default function ContractDetailPage() {
             {['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status) && (
               <button onClick={() => setShowPayoffModal(true)} className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700">
                 ปิดก่อนกำหนด
+              </button>
+            )}
+            {canDelete && (
+              <button
+                onClick={() => { if (window.confirm('ยืนยันลบสัญญานี้?')) deleteMutation.mutate(); }}
+                disabled={deleteMutation.isPending}
+                className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleteMutation.isPending ? 'กำลังลบ...' : 'ลบสัญญา'}
               </button>
             )}
             <button onClick={() => navigate('/contracts')} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg">
@@ -671,7 +688,7 @@ function ContractPreviewFrame({ html }: { html: string }) {
       ref={iframeRef}
       title="contract-preview"
       className="w-full h-full border-0"
-      sandbox="allow-same-origin"
+      sandbox="allow-same-origin allow-popups"
     />
   );
 }

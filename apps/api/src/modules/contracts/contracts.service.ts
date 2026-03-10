@@ -244,8 +244,9 @@ export class ContractsService {
       throw new BadRequestException('แก้ไขได้เฉพาะสัญญาที่อยู่ในสถานะ กำลังสร้าง หรือ ถูกปฏิเสธ เท่านั้น');
     }
 
-    // Only the creator can edit
-    if (contract.salespersonId !== userId) {
+    // Only the creator can edit (OWNER can edit any contract)
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    if (contract.salespersonId !== userId && user?.role !== 'OWNER') {
       throw new ForbiddenException('เฉพาะพนักงานที่สร้างสัญญาเท่านั้นที่สามารถแก้ไขได้');
     }
 
@@ -346,7 +347,7 @@ export class ContractsService {
   }
 
   // === WORKFLOW: อนุมัติสัญญา ===
-  async approveContract(id: string, userId: string, reviewNotes?: string) {
+  async approveContract(id: string, userId: string, userRole: string, reviewNotes?: string) {
     const contract = await this.findOne(id);
 
     if (contract.workflowStatus !== 'PENDING_REVIEW') {
@@ -354,7 +355,8 @@ export class ContractsService {
     }
 
     // Prevent self-approval: salesperson cannot approve their own contract
-    if (contract.salespersonId === userId) {
+    // Exception: OWNER can always approve (for small business where owner is also salesperson)
+    if (contract.salespersonId === userId && userRole !== 'OWNER') {
       throw new ForbiddenException('ไม่สามารถอนุมัติสัญญาที่ตัวเองสร้างได้');
     }
 
@@ -372,14 +374,15 @@ export class ContractsService {
   }
 
   // === WORKFLOW: ปฏิเสธสัญญา ===
-  async rejectContract(id: string, userId: string, reviewNotes: string) {
+  async rejectContract(id: string, userId: string, userRole: string, reviewNotes: string) {
     const contract = await this.findOne(id);
 
     if (contract.workflowStatus !== 'PENDING_REVIEW') {
       throw new BadRequestException('สัญญาต้องอยู่ในสถานะ รอตรวจสอบ');
     }
 
-    if (contract.salespersonId === userId) {
+    // OWNER can always reject (for small business where owner is also salesperson)
+    if (contract.salespersonId === userId && userRole !== 'OWNER') {
       throw new ForbiddenException('ไม่สามารถปฏิเสธสัญญาที่ตัวเองสร้างได้');
     }
 
@@ -426,6 +429,26 @@ export class ContractsService {
     ]);
 
     return this.findOne(id);
+  }
+
+  // === SOFT DELETE: ลบสัญญา (เฉพาะ CREATING/REJECTED) ===
+  async softDelete(id: string, userId: string) {
+    const contract = await this.findOne(id);
+
+    if (contract.workflowStatus !== 'CREATING' && contract.workflowStatus !== 'REJECTED') {
+      throw new BadRequestException('ลบได้เฉพาะสัญญาที่อยู่ในสถานะ กำลังสร้าง หรือ ถูกปฏิเสธ เท่านั้น');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.contract.update({ where: { id }, data: { deletedAt: new Date() } }),
+      // Release reserved product back to IN_STOCK
+      this.prisma.product.updateMany({
+        where: { id: contract.productId, status: 'RESERVED' },
+        data: { status: 'IN_STOCK' },
+      }),
+    ]);
+
+    return { message: 'ลบสัญญาเรียบร้อย' };
   }
 
   async getSchedule(id: string) {

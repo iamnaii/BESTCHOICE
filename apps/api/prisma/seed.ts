@@ -526,7 +526,7 @@ async function main() {
   // Contract 1: iPhone 16 Pro Max - สมชาย (ACTIVE, APPROVED)
   await prisma.contract.create({
     data: {
-      id: 'cont-001', contractNumber: 'BC-2026-0001', customerId: 'cust-001', productId: 'prod-003', branchId: 'branch-002', salespersonId: 'user-004',
+      id: 'cont-001', contractNumber: 'BCP2601-00001', customerId: 'cust-001', productId: 'prod-003', branchId: 'branch-002', salespersonId: 'user-004',
       planType: 'STORE_DIRECT', sellingPrice: 54900, downPayment: 10900, interestRate: 0.0800, totalMonths: 10, financedAmount: 44000, interestTotal: 35200, monthlyPayment: 7920,
       status: 'ACTIVE', workflowStatus: 'APPROVED', reviewedById: 'user-002', reviewedAt: new Date('2026-01-12'), reviewNotes: 'ตรวจเอกสารครบ อนุมัติ', paymentDueDay: 15,
       interestConfigId: 'ic-001',
@@ -536,7 +536,7 @@ async function main() {
   // Contract 2: iPhone 13 มือสอง - สมหญิง (ACTIVE, APPROVED)
   await prisma.contract.create({
     data: {
-      id: 'cont-002', contractNumber: 'BC-2026-0002', customerId: 'cust-002', productId: 'prod-010', branchId: 'branch-003', salespersonId: 'user-005',
+      id: 'cont-002', contractNumber: 'BCP2601-00002', customerId: 'cust-002', productId: 'prod-010', branchId: 'branch-003', salespersonId: 'user-005',
       planType: 'STORE_DIRECT', sellingPrice: 19900, downPayment: 3900, interestRate: 0.1000, totalMonths: 6, financedAmount: 16000, interestTotal: 9600, monthlyPayment: 4267,
       status: 'ACTIVE', workflowStatus: 'APPROVED', reviewedById: 'user-003', reviewedAt: new Date('2026-01-22'), paymentDueDay: 1,
       interestConfigId: 'ic-002',
@@ -546,7 +546,7 @@ async function main() {
   // Contract 3: iPad 10th Gen - วิชัย (OVERDUE, APPROVED)
   await prisma.contract.create({
     data: {
-      id: 'cont-003', contractNumber: 'BC-2026-0003', customerId: 'cust-003', productId: 'prod-017', branchId: 'branch-002', salespersonId: 'user-004',
+      id: 'cont-003', contractNumber: 'BCP2601-00003', customerId: 'cust-003', productId: 'prod-017', branchId: 'branch-002', salespersonId: 'user-004',
       planType: 'STORE_WITH_INTEREST', sellingPrice: 18900, downPayment: 3900, interestRate: 0.0800, totalMonths: 8, financedAmount: 15000, interestTotal: 9600, monthlyPayment: 3075,
       status: 'OVERDUE', workflowStatus: 'APPROVED', reviewedById: 'user-002', reviewedAt: new Date('2026-01-08'), paymentDueDay: 10,
       interestConfigId: 'ic-003',
@@ -556,7 +556,7 @@ async function main() {
   // Contract 4: iPhone 12 มือสอง - นภา (DEFAULT - ค้างชำระหลายงวด)
   await prisma.contract.create({
     data: {
-      id: 'cont-004', contractNumber: 'BC-2026-0004', customerId: 'cust-004', productId: 'prod-011', branchId: 'branch-003', salespersonId: 'user-005',
+      id: 'cont-004', contractNumber: 'BCP2601-00004', customerId: 'cust-004', productId: 'prod-011', branchId: 'branch-003', salespersonId: 'user-005',
       planType: 'STORE_DIRECT', sellingPrice: 12900, downPayment: 2900, interestRate: 0.1000, totalMonths: 6, financedAmount: 10000, interestTotal: 6000, monthlyPayment: 2667,
       status: 'DEFAULT', workflowStatus: 'APPROVED', reviewedById: 'user-003', reviewedAt: new Date('2025-12-20'), paymentDueDay: 5,
       interestConfigId: 'ic-002', notes: 'ลูกค้าติดต่อไม่ได้ ค้างชำระ 3 งวดติด',
@@ -566,7 +566,7 @@ async function main() {
   // Contract 5: iPhone 14 มือสอง - ประเสริฐ (COMPLETED)
   await prisma.contract.create({
     data: {
-      id: 'cont-005', contractNumber: 'BC-2025-0005', customerId: 'cust-005', productId: 'prod-014', branchId: 'branch-002', salespersonId: 'user-004',
+      id: 'cont-005', contractNumber: 'BCP2507-00001', customerId: 'cust-005', productId: 'prod-014', branchId: 'branch-002', salespersonId: 'user-004',
       planType: 'STORE_DIRECT', sellingPrice: 24900, downPayment: 5900, interestRate: 0.1000, totalMonths: 6, financedAmount: 19000, interestTotal: 11400, monthlyPayment: 5067,
       status: 'COMPLETED', workflowStatus: 'APPROVED', reviewedById: 'user-002', reviewedAt: new Date('2025-07-10'), paymentDueDay: 20,
       interestConfigId: 'ic-002',
@@ -576,7 +576,7 @@ async function main() {
   // Contract 6: DRAFT - ธนกร กำลังทำสัญญา
   await prisma.contract.create({
     data: {
-      id: 'cont-006', contractNumber: 'BC-2026-0006', customerId: 'cust-007', productId: 'prod-001', branchId: 'branch-002', salespersonId: 'user-004',
+      id: 'cont-006', contractNumber: 'BCP2602-00001', customerId: 'cust-007', productId: 'prod-001', branchId: 'branch-002', salespersonId: 'user-004',
       planType: 'STORE_DIRECT', sellingPrice: 49900, downPayment: 14900, interestRate: 0.0800, totalMonths: 10, financedAmount: 35000, interestTotal: 28000, monthlyPayment: 6300,
       status: 'DRAFT', workflowStatus: 'CREATING', paymentDueDay: 25,
       interestConfigId: 'ic-001',
@@ -586,7 +586,7 @@ async function main() {
   // Contract 7: EARLY_PAYOFF - มาลี ปิดบัญชีก่อนกำหนด (iPhone 15 Plus)
   await prisma.contract.create({
     data: {
-      id: 'cont-007', contractNumber: 'BC-2025-0007', customerId: 'cust-006', productId: 'prod-008', branchId: 'branch-004', salespersonId: 'user-007',
+      id: 'cont-007', contractNumber: 'BCP2509-00001', customerId: 'cust-006', productId: 'prod-008', branchId: 'branch-004', salespersonId: 'user-007',
       planType: 'STORE_DIRECT', sellingPrice: 39900, downPayment: 9900, interestRate: 0.0800, totalMonths: 8, financedAmount: 30000, interestTotal: 19200, monthlyPayment: 6150,
       status: 'EARLY_PAYOFF', workflowStatus: 'APPROVED', reviewedById: 'user-008', reviewedAt: new Date('2025-09-05'), paymentDueDay: 10,
       interestConfigId: 'ic-001', notes: 'ปิดบัญชีก่อนกำหนด งวดที่ 5/8 ลดดอกเบี้ยให้ 50%',
@@ -596,7 +596,7 @@ async function main() {
   // Contract 8: PENDING_REVIEW - อดิศร รอตรวจสอบ
   await prisma.contract.create({
     data: {
-      id: 'cont-008', contractNumber: 'BC-2026-0008', customerId: 'cust-009', productId: 'prod-009', branchId: 'branch-002', salespersonId: 'user-004',
+      id: 'cont-008', contractNumber: 'BCP2603-00001', customerId: 'cust-009', productId: 'prod-009', branchId: 'branch-002', salespersonId: 'user-004',
       planType: 'STORE_DIRECT', sellingPrice: 29900, downPayment: 6900, interestRate: 0.1000, totalMonths: 8, financedAmount: 23000, interestTotal: 18400, monthlyPayment: 5175,
       status: 'DRAFT', workflowStatus: 'PENDING_REVIEW', paymentDueDay: 15,
       interestConfigId: 'ic-002', notes: 'รอผู้จัดการตรวจสอบเอกสาร',
@@ -605,7 +605,7 @@ async function main() {
   // Contract 9: CREATING - ธนา กำลังสร้างสัญญาใหม่ (iPad Air M2)
   await prisma.contract.create({
     data: {
-      id: 'cont-009', contractNumber: 'BC-2026-0009', customerId: 'cust-008', productId: 'prod-018', branchId: 'branch-003', salespersonId: 'user-005',
+      id: 'cont-009', contractNumber: 'BCP2603-00002', customerId: 'cust-008', productId: 'prod-018', branchId: 'branch-003', salespersonId: 'user-005',
       planType: 'STORE_DIRECT', sellingPrice: 35900, downPayment: 5000, interestRate: 0.0800, totalMonths: 10, financedAmount: 30900, interestTotal: 24720, monthlyPayment: 5562,
       status: 'DRAFT', workflowStatus: 'CREATING', paymentDueDay: 5,
       interestConfigId: 'ic-001',
@@ -615,7 +615,7 @@ async function main() {
   // Contract 10: REJECTED - พรทิพย์ สัญญาถูกปฏิเสธ
   await prisma.contract.create({
     data: {
-      id: 'cont-010', contractNumber: 'BC-2026-0010', customerId: 'cust-010', productId: 'prod-005', branchId: 'branch-002', salespersonId: 'user-004',
+      id: 'cont-010', contractNumber: 'BCP2603-00003', customerId: 'cust-010', productId: 'prod-005', branchId: 'branch-002', salespersonId: 'user-004',
       planType: 'STORE_DIRECT', sellingPrice: 33900, downPayment: 3000, interestRate: 0.1000, totalMonths: 10, financedAmount: 30900, interestTotal: 30900, monthlyPayment: 6180,
       status: 'DRAFT', workflowStatus: 'REJECTED', reviewedById: 'user-002', reviewedAt: new Date('2026-03-07'), reviewNotes: 'เอกสารไม่ครบ กรุณาแนบสำเนาบัตรประชาชน',
       paymentDueDay: 15, interestConfigId: 'ic-002',
@@ -731,15 +731,15 @@ async function main() {
   // STEP 14: CONTRACT DOCUMENTS
   // ============================================================
   const contractDocs = [
-    { id: 'cdoc-001', contractId: 'cont-001', documentType: 'SIGNED_CONTRACT' as const, fileName: 'contract_BC-2026-0001.pdf', fileUrl: '/uploads/contracts/cont-001/contract.pdf', fileSize: 245000, uploadedById: 'user-004' },
+    { id: 'cdoc-001', contractId: 'cont-001', documentType: 'SIGNED_CONTRACT' as const, fileName: 'contract_BCP2601-00001.pdf', fileUrl: '/uploads/contracts/cont-001/contract.pdf', fileSize: 245000, uploadedById: 'user-004' },
     { id: 'cdoc-002', contractId: 'cont-001', documentType: 'ID_CARD_COPY' as const, fileName: 'id_card_somchai.jpg', fileUrl: '/uploads/contracts/cont-001/id_card.jpg', fileSize: 180000, uploadedById: 'user-004' },
     { id: 'cdoc-003', contractId: 'cont-001', documentType: 'FACEBOOK_PROFILE' as const, fileName: 'fb_somchai.png', fileUrl: '/uploads/contracts/cont-001/facebook.png', fileSize: 320000, uploadedById: 'user-004' },
-    { id: 'cdoc-004', contractId: 'cont-002', documentType: 'SIGNED_CONTRACT' as const, fileName: 'contract_BC-2026-0002.pdf', fileUrl: '/uploads/contracts/cont-002/contract.pdf', fileSize: 230000, uploadedById: 'user-005' },
+    { id: 'cdoc-004', contractId: 'cont-002', documentType: 'SIGNED_CONTRACT' as const, fileName: 'contract_BCP2601-00002.pdf', fileUrl: '/uploads/contracts/cont-002/contract.pdf', fileSize: 230000, uploadedById: 'user-005' },
     { id: 'cdoc-005', contractId: 'cont-002', documentType: 'ID_CARD_COPY' as const, fileName: 'id_card_somying.jpg', fileUrl: '/uploads/contracts/cont-002/id_card.jpg', fileSize: 165000, uploadedById: 'user-005' },
-    { id: 'cdoc-006', contractId: 'cont-003', documentType: 'SIGNED_CONTRACT' as const, fileName: 'contract_BC-2026-0003.pdf', fileUrl: '/uploads/contracts/cont-003/contract.pdf', fileSize: 250000, uploadedById: 'user-004' },
+    { id: 'cdoc-006', contractId: 'cont-003', documentType: 'SIGNED_CONTRACT' as const, fileName: 'contract_BCP2601-00003.pdf', fileUrl: '/uploads/contracts/cont-003/contract.pdf', fileSize: 250000, uploadedById: 'user-004' },
     { id: 'cdoc-007', contractId: 'cont-003', documentType: 'BANK_STATEMENT' as const, fileName: 'bank_stmt_wichai.pdf', fileUrl: '/uploads/contracts/cont-003/bank_statement.pdf', fileSize: 450000, uploadedById: 'user-004' },
-    { id: 'cdoc-008', contractId: 'cont-004', documentType: 'SIGNED_CONTRACT' as const, fileName: 'contract_BC-2026-0004.pdf', fileUrl: '/uploads/contracts/cont-004/contract.pdf', fileSize: 240000, uploadedById: 'user-005' },
-    { id: 'cdoc-009', contractId: 'cont-005', documentType: 'SIGNED_CONTRACT' as const, fileName: 'contract_BC-2025-0005.pdf', fileUrl: '/uploads/contracts/cont-005/contract.pdf', fileSize: 235000, uploadedById: 'user-004' },
+    { id: 'cdoc-008', contractId: 'cont-004', documentType: 'SIGNED_CONTRACT' as const, fileName: 'contract_BCP2601-00004.pdf', fileUrl: '/uploads/contracts/cont-004/contract.pdf', fileSize: 240000, uploadedById: 'user-005' },
+    { id: 'cdoc-009', contractId: 'cont-005', documentType: 'SIGNED_CONTRACT' as const, fileName: 'contract_BCP2507-00001.pdf', fileUrl: '/uploads/contracts/cont-005/contract.pdf', fileSize: 235000, uploadedById: 'user-004' },
     { id: 'cdoc-010', contractId: 'cont-005', documentType: 'DEVICE_RECEIPT_PHOTO' as const, fileName: 'receipt_phone.jpg', fileUrl: '/uploads/contracts/cont-005/receipt.jpg', fileSize: 280000, uploadedById: 'user-004' },
   ];
   for (const d of contractDocs) { await prisma.contractDocument.create({ data: d }); }
@@ -1241,11 +1241,11 @@ async function main() {
   // STEP 27: NOTIFICATION LOGS
   // ============================================================
   const notifData = [
-    { id: 'noti-001', channel: 'LINE' as const, recipient: 'somchai_j', subject: 'แจ้งเตือนค่างวด', message: 'สวัสดีค่ะ คุณสมชาย ค่างวด BC-2026-0001 จำนวน 7,920 บาท ครบกำหนด 15/02/2026', status: 'SENT', relatedId: 'cont-001', sentAt: new Date('2026-02-12') },
-    { id: 'noti-002', channel: 'LINE' as const, recipient: 'somchai_j', subject: 'ชำระเงินสำเร็จ', message: 'ขอบคุณค่ะ คุณสมชาย ชำระค่างวด BC-2026-0001 จำนวน 7,920 บาท สำเร็จ คงเหลือ 7 งวด', status: 'SENT', relatedId: 'cont-001', sentAt: new Date('2026-02-13') },
-    { id: 'noti-003', channel: 'SMS' as const, recipient: '083-333-3333', subject: 'แจ้งค้างชำระ', message: 'BestChoice: คุณวิชัย ค่างวด BC-2026-0003 เลยกำหนด 5 วัน ค้างชำระ 3,275 บาท', status: 'SENT', relatedId: 'cont-003', sentAt: new Date('2026-03-05') },
-    { id: 'noti-004', channel: 'LINE' as const, recipient: 'napa_k', subject: 'แจ้งผิดนัดชำระ', message: 'สำคัญ: คุณนภา สัญญา BC-2026-0004 เปลี่ยนสถานะผิดนัดชำระ กรุณาติดต่อสาขา', status: 'SENT', relatedId: 'cont-004', sentAt: new Date('2026-02-25') },
-    { id: 'noti-005', channel: 'SMS' as const, recipient: '084-444-4444', subject: 'แจ้งผิดนัดชำระ', message: 'BestChoice: คุณนภา สัญญา BC-2026-0004 ผิดนัดชำระ กรุณาติดต่อสาขา 02-222-2222', status: 'FAILED', relatedId: 'cont-004', errorMsg: 'SMS gateway timeout' },
+    { id: 'noti-001', channel: 'LINE' as const, recipient: 'somchai_j', subject: 'แจ้งเตือนค่างวด', message: 'สวัสดีค่ะ คุณสมชาย ค่างวด BCP2601-00001 จำนวน 7,920 บาท ครบกำหนด 15/02/2026', status: 'SENT', relatedId: 'cont-001', sentAt: new Date('2026-02-12') },
+    { id: 'noti-002', channel: 'LINE' as const, recipient: 'somchai_j', subject: 'ชำระเงินสำเร็จ', message: 'ขอบคุณค่ะ คุณสมชาย ชำระค่างวด BCP2601-00001 จำนวน 7,920 บาท สำเร็จ คงเหลือ 7 งวด', status: 'SENT', relatedId: 'cont-001', sentAt: new Date('2026-02-13') },
+    { id: 'noti-003', channel: 'SMS' as const, recipient: '083-333-3333', subject: 'แจ้งค้างชำระ', message: 'BestChoice: คุณวิชัย ค่างวด BCP2601-00003 เลยกำหนด 5 วัน ค้างชำระ 3,275 บาท', status: 'SENT', relatedId: 'cont-003', sentAt: new Date('2026-03-05') },
+    { id: 'noti-004', channel: 'LINE' as const, recipient: 'napa_k', subject: 'แจ้งผิดนัดชำระ', message: 'สำคัญ: คุณนภา สัญญา BCP2601-00004 เปลี่ยนสถานะผิดนัดชำระ กรุณาติดต่อสาขา', status: 'SENT', relatedId: 'cont-004', sentAt: new Date('2026-02-25') },
+    { id: 'noti-005', channel: 'SMS' as const, recipient: '084-444-4444', subject: 'แจ้งผิดนัดชำระ', message: 'BestChoice: คุณนภา สัญญา BCP2601-00004 ผิดนัดชำระ กรุณาติดต่อสาขา 02-222-2222', status: 'FAILED', relatedId: 'cont-004', errorMsg: 'SMS gateway timeout' },
     { id: 'noti-006', channel: 'IN_APP' as const, recipient: 'user-002', message: 'Stock Alert: iPhone 16 Pro Max 256GB ที่สาขาลาดพร้าว เหลือ 0 เครื่อง (ต่ำกว่าขั้นต่ำ 2)', status: 'SENT', relatedId: 'sa-alert-001', sentAt: new Date('2026-03-01') },
   ];
   for (const n of notifData) { await prisma.notificationLog.create({ data: n }); }
@@ -1255,10 +1255,10 @@ async function main() {
   // STEP 28: AUDIT LOGS
   // ============================================================
   const auditData = [
-    { id: 'audit-001', userId: 'user-004', action: 'CREATE', entity: 'contract', entityId: 'cont-001', newValue: { contractNumber: 'BC-2026-0001', status: 'DRAFT' }, ipAddress: '192.168.1.10', userAgent: 'Chrome/120 Windows', duration: 250 },
+    { id: 'audit-001', userId: 'user-004', action: 'CREATE', entity: 'contract', entityId: 'cont-001', newValue: { contractNumber: 'BCP2601-00001', status: 'DRAFT' }, ipAddress: '192.168.1.10', userAgent: 'Chrome/120 Windows', duration: 250 },
     { id: 'audit-002', userId: 'user-002', action: 'UPDATE', entity: 'contract', entityId: 'cont-001', oldValue: { workflowStatus: 'PENDING_REVIEW' }, newValue: { workflowStatus: 'APPROVED' }, ipAddress: '192.168.1.11', userAgent: 'Chrome/120 macOS', duration: 180 },
     { id: 'audit-003', userId: 'user-004', action: 'CREATE', entity: 'payment', entityId: 'pay-001-01', newValue: { amountPaid: 7200, status: 'PAID' }, ipAddress: '192.168.1.10', userAgent: 'Chrome/120 Windows', duration: 120 },
-    { id: 'audit-004', userId: 'user-005', action: 'CREATE', entity: 'contract', entityId: 'cont-004', newValue: { contractNumber: 'BC-2026-0004', status: 'DRAFT' }, ipAddress: '192.168.1.12', userAgent: 'Safari/17 iPad', duration: 300 },
+    { id: 'audit-004', userId: 'user-005', action: 'CREATE', entity: 'contract', entityId: 'cont-004', newValue: { contractNumber: 'BCP2601-00004', status: 'DRAFT' }, ipAddress: '192.168.1.12', userAgent: 'Safari/17 iPad', duration: 300 },
     { id: 'audit-005', userId: 'user-001', action: 'UPDATE', entity: 'contract', entityId: 'cont-004', oldValue: { status: 'OVERDUE' }, newValue: { status: 'DEFAULT' }, ipAddress: '192.168.1.1', userAgent: 'Chrome/120 Windows', duration: 150 },
     { id: 'audit-006', userId: 'user-002', action: 'REPOSSESSION', entity: 'product', entityId: 'prod-014', newValue: { status: 'REPOSSESSED', repossessionId: 'repo-001' }, ipAddress: '192.168.1.11', userAgent: 'Chrome/120 macOS', duration: 200 },
     { id: 'audit-007', userId: 'user-001', action: 'CREATE', entity: 'purchase_order', entityId: 'po-001', newValue: { poNumber: 'PO-2026-01-001', status: 'DRAFT' }, ipAddress: '192.168.1.1', userAgent: 'Chrome/120 Windows', duration: 280 },

@@ -24,6 +24,7 @@ interface Contract {
   branch: { id: string; name: string };
   salesperson: { id: string; name: string };
   reviewedBy: { id: string; name: string } | null;
+  signatures: { signerType: string }[];
   _count: { payments: number; contractDocuments: number };
 }
 
@@ -123,6 +124,17 @@ export default function ContractsPage() {
       key: 'workflowStatus',
       label: 'Workflow',
       render: (c: Contract) => <WorkflowStatusBadge status={c.workflowStatus} />,
+    },
+    {
+      key: 'signatures',
+      label: 'ลงนาม',
+      render: (c: Contract) => {
+        const hasCust = c.signatures?.some(s => s.signerType === 'CUSTOMER');
+        const hasStaff = c.signatures?.some(s => s.signerType === 'STAFF');
+        if (hasCust && hasStaff) return <span className="text-xs text-green-600 font-medium">ครบ</span>;
+        if (hasCust || hasStaff) return <span className="text-xs text-amber-600">{hasCust ? 'ลูกค้า' : 'พนักงาน'}</span>;
+        return <span className="text-xs text-gray-400">-</span>;
+      },
     },
     {
       key: 'status',

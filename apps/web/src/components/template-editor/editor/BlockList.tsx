@@ -5,6 +5,7 @@ import {
 import {
   SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
+import { FileText } from 'lucide-react';
 import { useTemplateStore } from '@/store/templateStore';
 import BlockItem from './BlockItem';
 
@@ -33,7 +34,7 @@ export default function BlockList() {
   };
 
   return (
-    <div className="space-y-2 p-4">
+    <div className="space-y-3 p-5">
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={blocks.map(b => b.id)} strategy={verticalListSortingStrategy}>
           {(() => {
@@ -47,9 +48,10 @@ export default function BlockList() {
       </DndContext>
 
       {blocks.length === 0 && (
-        <div className="text-center py-12 text-gray-400">
-          <p className="text-lg mb-2">ยังไม่มี block</p>
-          <p className="text-sm">กดปุ่ม "เพิ่มข้อมูล" เพื่อเริ่มสร้างเอกสาร</p>
+        <div className="text-center py-16 text-slate-400">
+          <FileText size={48} className="mx-auto mb-4 text-slate-300" />
+          <p className="text-lg font-medium text-slate-500 mb-2">ยังไม่มี block</p>
+          <p className="text-sm">กดปุ่ม "เพิ่ม" ด้านบนเพื่อเริ่มสร้างเอกสาร</p>
         </div>
       )}
     </div>

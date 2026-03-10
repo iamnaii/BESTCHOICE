@@ -67,23 +67,22 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
   };
 
   return (
-    <div className="h-14 bg-white border-b border-slate-200 flex items-center px-5 gap-2.5">
-      {/* Back button */}
+    <div className="h-14 bg-white border-b border-slate-200 flex items-center px-4 gap-1.5">
+      {/* === Left: Navigation & Template === */}
       {onBack && (
         <button
           onClick={onBack}
-          className="flex items-center gap-1 px-2.5 py-2 text-sm text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-50 transition-colors mr-1"
+          className="flex items-center gap-1 p-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors"
         >
-          <ArrowLeft size={16} />
+          <ArrowLeft size={18} />
         </button>
       )}
 
-      {/* Template selector */}
       <select
         value={currentTemplate.id}
         onChange={handleTemplateChange}
         disabled={isLoading}
-        className="px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 max-w-[320px] disabled:opacity-50"
+        className="px-3 py-2 text-sm font-medium border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 max-w-[320px] disabled:opacity-50"
       >
         {templates.length === 0 && (
           <option value="">กำลังโหลด...</option>
@@ -95,116 +94,140 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
         ))}
       </select>
 
-      {isDirty && <span className="text-xs text-amber-600">*</span>}
-      {isSaving && <span className="text-xs text-primary-600 flex items-center gap-1"><Loader2 size={12} className="animate-spin" /></span>}
+      {isDirty && (
+        <span className="text-xs font-medium text-amber-500 bg-amber-50 px-2 py-0.5 rounded-full">
+          ยังไม่บันทึก
+        </span>
+      )}
+      {isSaving && (
+        <span className="text-xs text-primary-600 flex items-center gap-1">
+          <Loader2 size={12} className="animate-spin" />
+          <span>กำลังบันทึก...</span>
+        </span>
+      )}
 
       <div className="flex-1" />
 
-      {/* Preview mode toggle (show sample data) */}
-      {(viewMode === 'split' || viewMode === 'preview') && (
-        <button
-          onClick={() => setPreviewMode(!previewMode)}
-          className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg transition-colors ${
-            previewMode
-              ? 'bg-blue-100 text-blue-700 border border-blue-300'
-              : 'text-slate-600 border border-slate-200 hover:bg-slate-50'
-          }`}
-          title="แสดงข้อมูลตัวอย่าง"
-        >
-          ตัวอย่างข้อมูล
-        </button>
-      )}
-
-      {/* Cheat sheet toggle */}
-      {onToggleCheatSheet && (
-        <button
-          onClick={onToggleCheatSheet}
-          className={`flex items-center gap-1.5 px-3.5 py-2 text-sm rounded-lg transition-colors ${
-            showCheatSheet
-              ? 'bg-amber-100 text-amber-700 border border-amber-300'
-              : 'text-slate-600 border border-slate-200 hover:bg-slate-50'
-          }`}
-        >
-          <BookOpen size={16} />
-          ตัวแปร
-        </button>
-      )}
-
-      <button
-        onClick={() => setShowSettings(true)}
-        className="flex items-center gap-1.5 px-3.5 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
-      >
-        <Settings size={16} />
-        ตั้งค่า
-      </button>
-
-      {/* Add block dropdown */}
-      <div className="relative" ref={addMenuRef}>
-        <button
-          onClick={() => setShowAddMenu(!showAddMenu)}
-          className="flex items-center gap-1.5 px-3.5 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
-        >
-          <Plus size={16} />
-          เพิ่ม
-        </button>
-        {showAddMenu && (
-          <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 w-48 py-1">
-            {QUICK_ADD_BLOCKS.map(b => (
-              <button
-                key={b.type}
-                onClick={() => handleAddBlock(b.type)}
-                className="w-full text-left px-3 py-2 text-sm text-slate-600 hover:bg-primary-50 hover:text-primary-700 transition-colors"
-              >
-                {b.label}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <button
-        onClick={() => saveTemplateToApi()}
-        disabled={isSaving}
-        className="flex items-center gap-1.5 px-3.5 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50"
-      >
-        {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-        บันทึก
-      </button>
-
-      <button
-        onClick={() => undo()}
-        className="flex items-center gap-1.5 px-2.5 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
-        title="Undo (Ctrl+Z)"
-      >
-        <Undo2 size={16} />
-      </button>
-
-      {/* View mode selector */}
-      <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden">
-        {VIEW_MODES.map(({ mode, icon: Icon, label }) => (
+      {/* === Center: View Controls === */}
+      <div className="flex items-center gap-1.5">
+        {/* Preview mode toggle */}
+        {(viewMode === 'split' || viewMode === 'preview') && (
           <button
-            key={mode}
-            onClick={() => onViewModeChange(mode)}
-            className={`flex items-center gap-1.5 px-3 py-2 text-sm transition-colors ${
-              viewMode === mode
-                ? 'bg-primary-600 text-white'
-                : 'text-slate-600 hover:bg-slate-50'
+            onClick={() => setPreviewMode(!previewMode)}
+            className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg transition-colors ${
+              previewMode
+                ? 'bg-blue-100 text-blue-700 border border-blue-300'
+                : 'text-slate-500 border border-slate-200 hover:bg-slate-50'
             }`}
-            title={label}
+            title="แสดงข้อมูลตัวอย่าง"
           >
-            <Icon size={16} />
-            <span className="hidden xl:inline">{label}</span>
+            ตัวอย่างข้อมูล
           </button>
-        ))}
+        )}
+
+        {/* Cheat sheet toggle */}
+        {onToggleCheatSheet && (
+          <button
+            onClick={onToggleCheatSheet}
+            className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg transition-colors ${
+              showCheatSheet
+                ? 'bg-amber-100 text-amber-700 border border-amber-300'
+                : 'text-slate-500 border border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            <BookOpen size={15} />
+            ตัวแปร
+          </button>
+        )}
+
+        <button
+          onClick={() => setShowSettings(true)}
+          className="flex items-center gap-1.5 px-3 py-2 text-sm text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+        >
+          <Settings size={15} />
+          <span className="hidden lg:inline">ตั้งค่า</span>
+        </button>
       </div>
 
-      <button
-        onClick={() => setShowExportModal(true)}
-        className="flex items-center gap-1.5 px-3.5 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
-      >
-        <Download size={16} />
-        PDF
-      </button>
+      {/* Divider */}
+      <div className="w-px h-7 bg-slate-200 mx-1" />
+
+      {/* === Right: Actions === */}
+      <div className="flex items-center gap-1.5">
+        {/* Add block dropdown */}
+        <div className="relative" ref={addMenuRef}>
+          <button
+            onClick={() => setShowAddMenu(!showAddMenu)}
+            className="flex items-center gap-1.5 px-3 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+          >
+            <Plus size={15} />
+            เพิ่ม
+          </button>
+          {showAddMenu && (
+            <div className="absolute right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl z-50 w-52 py-1.5">
+              {QUICK_ADD_BLOCKS.map(b => (
+                <button
+                  key={b.type}
+                  onClick={() => handleAddBlock(b.type)}
+                  className="w-full text-left px-4 py-2.5 text-sm text-slate-600 hover:bg-primary-50 hover:text-primary-700 transition-colors"
+                >
+                  {b.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <button
+          onClick={() => saveTemplateToApi()}
+          disabled={isSaving}
+          className="flex items-center gap-1.5 px-3 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50"
+        >
+          {isSaving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+          <span className="hidden lg:inline">บันทึก</span>
+        </button>
+
+        <button
+          onClick={() => undo()}
+          className="p-2 text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+          title="Undo (Ctrl+Z)"
+        >
+          <Undo2 size={15} />
+        </button>
+      </div>
+
+      {/* Divider */}
+      <div className="w-px h-7 bg-slate-200 mx-1" />
+
+      {/* === Far Right: View Mode & Export === */}
+      <div className="flex items-center gap-1.5">
+        {/* View mode selector */}
+        <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden">
+          {VIEW_MODES.map(({ mode, icon: Icon, label }) => (
+            <button
+              key={mode}
+              onClick={() => onViewModeChange(mode)}
+              className={`flex items-center gap-1.5 px-3 py-2 text-sm transition-colors ${
+                viewMode === mode
+                  ? 'bg-primary-600 text-white'
+                  : 'text-slate-500 hover:bg-slate-50'
+              }`}
+              title={label}
+            >
+              <Icon size={15} />
+              <span className="hidden xl:inline">{label}</span>
+            </button>
+          ))}
+        </div>
+
+        <button
+          onClick={() => setShowExportModal(true)}
+          className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+        >
+          <Download size={15} />
+          PDF
+        </button>
+      </div>
     </div>
   );
 }

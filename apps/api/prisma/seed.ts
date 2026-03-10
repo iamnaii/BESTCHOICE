@@ -276,6 +276,16 @@ async function main() {
     { id: 'pp-034', productId: 'prod-031', label: 'ราคาเงินสด', amount: 17900, isDefault: true },
     { id: 'pp-035', productId: 'prod-032', label: 'ราคาเงินสด', amount: 5900, isDefault: true },
     { id: 'pp-036', productId: 'prod-033', label: 'ราคาเงินสด', amount: 9900, isDefault: true },
+    // Products that were missing prices
+    { id: 'pp-037', productId: 'prod-007', label: 'ราคาเงินสด', amount: 26900, isDefault: true },
+    { id: 'pp-038', productId: 'prod-007', label: 'ราคาผ่อน', amount: 29900, isDefault: false },
+    { id: 'pp-039', productId: 'prod-008', label: 'ราคาเงินสด', amount: 37900, isDefault: true },
+    { id: 'pp-040', productId: 'prod-008', label: 'ราคาผ่อน', amount: 41900, isDefault: false },
+    { id: 'pp-041', productId: 'prod-014', label: 'ราคาเงินสด', amount: 22900, isDefault: true },
+    { id: 'pp-042', productId: 'prod-015', label: 'ราคาเงินสด', amount: 8900, isDefault: true },
+    { id: 'pp-043', productId: 'prod-018', label: 'ราคาเงินสด', amount: 32900, isDefault: true },
+    { id: 'pp-044', productId: 'prod-018', label: 'ราคาผ่อน', amount: 35900, isDefault: false },
+    { id: 'pp-045', productId: 'prod-019', label: 'ราคาเงินสด', amount: 19900, isDefault: true },
   ];
   for (const pp of pricesData) { await prisma.productPrice.create({ data: pp }); }
   console.log('ProductPrices created:', pricesData.length);
@@ -592,7 +602,26 @@ async function main() {
       interestConfigId: 'ic-002', notes: 'รอผู้จัดการตรวจสอบเอกสาร',
     },
   });
-  console.log('Contracts created: 8');
+  // Contract 9: CREATING - ธนา กำลังสร้างสัญญาใหม่ (iPad Air M2)
+  await prisma.contract.create({
+    data: {
+      id: 'cont-009', contractNumber: 'BC-2026-0009', customerId: 'cust-008', productId: 'prod-018', branchId: 'branch-003', salespersonId: 'user-005',
+      planType: 'STORE_DIRECT', sellingPrice: 35900, downPayment: 5000, interestRate: 0.0800, totalMonths: 10, financedAmount: 30900, interestTotal: 24720, monthlyPayment: 5562,
+      status: 'DRAFT', workflowStatus: 'CREATING', paymentDueDay: 5,
+      interestConfigId: 'ic-001',
+    },
+  });
+
+  // Contract 10: REJECTED - พรทิพย์ สัญญาถูกปฏิเสธ
+  await prisma.contract.create({
+    data: {
+      id: 'cont-010', contractNumber: 'BC-2026-0010', customerId: 'cust-010', productId: 'prod-005', branchId: 'branch-002', salespersonId: 'user-004',
+      planType: 'STORE_DIRECT', sellingPrice: 33900, downPayment: 3000, interestRate: 0.1000, totalMonths: 10, financedAmount: 30900, interestTotal: 30900, monthlyPayment: 6180,
+      status: 'DRAFT', workflowStatus: 'REJECTED', reviewedById: 'user-002', reviewedAt: new Date('2026-03-07'), reviewNotes: 'เอกสารไม่ครบ กรุณาแนบสำเนาบัตรประชาชน',
+      paymentDueDay: 15, interestConfigId: 'ic-002',
+    },
+  });
+  console.log('Contracts created: 10');
 
   // ============================================================
   // STEP 13: PAYMENTS
@@ -753,7 +782,33 @@ async function main() {
       reviewNotes: 'รอตรวจสอบเพิ่มเติม',
     },
   });
-  console.log('CreditChecks created: 4');
+  await prisma.creditCheck.create({
+    data: {
+      id: 'cc-005', contractId: 'cont-003', customerId: 'cust-003', status: 'APPROVED', bankName: 'ไทยพาณิชย์',
+      statementFiles: ['/uploads/credit/cc-005/stmt1.pdf', '/uploads/credit/cc-005/stmt2.pdf'], statementMonths: 3,
+      aiScore: 72, aiSummary: 'รายได้มั่นคง ภาระหนี้ต่ำ', aiRecommendation: 'อนุมัติ - ความเสี่ยงต่ำ',
+      aiAnalysis: { incomeStability: 'HIGH', averageBalance: 38000, monthlyIncome: 30000, suspiciousTransactions: 0 },
+      checkedById: 'user-002', checkedAt: new Date('2026-02-05'),
+    },
+  });
+  await prisma.creditCheck.create({
+    data: {
+      id: 'cc-006', customerId: 'cust-005', status: 'REJECTED', bankName: 'ออมสิน',
+      statementFiles: ['/uploads/credit/cc-006/stmt1.pdf'], statementMonths: 3,
+      aiScore: 32, aiSummary: 'รายได้ไม่สม่ำเสมอ ยอดเงินในบัญชีต่ำ', aiRecommendation: 'ไม่แนะนำอนุมัติ - ความเสี่ยงสูง',
+      aiAnalysis: { incomeStability: 'LOW', averageBalance: 5000, monthlyIncome: 12000, suspiciousTransactions: 2 },
+      checkedById: 'user-003', checkedAt: new Date('2026-01-28'),
+    },
+  });
+  await prisma.creditCheck.create({
+    data: {
+      id: 'cc-007', customerId: 'cust-006', status: 'MANUAL_REVIEW', bankName: 'กสิกรไทย',
+      statementFiles: ['/uploads/credit/cc-007/stmt1.pdf', '/uploads/credit/cc-007/stmt2.pdf', '/uploads/credit/cc-007/stmt3.pdf'], statementMonths: 3,
+      aiScore: 48, aiSummary: 'รายได้ปานกลาง แต่มีรายจ่ายสูง ควรตรวจสอบเพิ่มเติม', aiRecommendation: 'พิจารณาเพิ่มเติม - สอบถามแหล่งรายได้เสริม',
+      aiAnalysis: { incomeStability: 'MEDIUM', averageBalance: 15000, monthlyIncome: 28000, suspiciousTransactions: 0 },
+    },
+  });
+  console.log('CreditChecks created: 7');
 
   // ============================================================
   // STEP 16: SIGNATURES
@@ -1269,10 +1324,10 @@ async function main() {
   console.log('  GoodsReceivings: 4 (with items)');
   console.log('  Customers: 12');
   console.log('  InterestConfigs: 4');
-  console.log('  Contracts: 8 (ACTIVE, OVERDUE, DEFAULT, COMPLETED, EARLY_PAYOFF, DRAFT)');
+  console.log('  Contracts: 10 (ACTIVE, OVERDUE, DEFAULT, COMPLETED, EARLY_PAYOFF, DRAFT, CREATING, REJECTED)');
   console.log('  Payments: 41');
   console.log('  ContractDocuments: 10');
-  console.log('  CreditChecks: 4');
+  console.log('  CreditChecks: 7');
   console.log('  Signatures: 8');
   console.log('  EDocuments: 4');
   console.log('  Sales: 6 (CASH, INSTALLMENT, EXTERNAL_FINANCE)');

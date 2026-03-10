@@ -149,21 +149,42 @@ export async function generatePDF(template: Template): Promise<Blob> {
     y += 5;
   }
 
+  // Strip HTML tags for plain text rendering
+  function stripHtml(html: string): string {
+    return html.replace(/<[^>]*>/g, '').trim();
+  }
+
   // Render blocks
   let clauseCounter = 0;
   for (const block of blocks) {
-    const resolved = renderVariables(block.content, ctx);
+    // Strip HTML tags from content before rendering
+    const plainContent = stripHtml(block.content);
+    const resolved = renderVariables(plainContent, ctx);
 
     switch (block.type) {
       case 'contract-header': {
-        const headerParts = resolved.split('||').map(s => s.trim());
+        let leftText: string;
+        let rightText: string;
+        if (resolved.includes('||')) {
+          const parts = resolved.split('||').map(s => s.trim());
+          leftText = parts[0];
+          rightText = parts[1] || '';
+        } else {
+          // Legacy: split on "วันที่ทำสัญญา"
+          const splitIdx = resolved.indexOf('วันที่ทำสัญญา');
+          if (splitIdx > 0) {
+            leftText = resolved.substring(0, splitIdx).trim();
+            rightText = resolved.substring(splitIdx).trim();
+          } else {
+            leftText = resolved;
+            rightText = '';
+          }
+        }
         doc.setFontSize(13);
         doc.setFont(PDF_FONT_FAMILY, 'normal');
-        if (headerParts.length >= 2) {
-          doc.text(stripBold(headerParts[0]), margin.left, y);
-          doc.text(stripBold(headerParts[1]), pageWidth - margin.right, y, { align: 'right' });
-        } else {
-          doc.text(stripBold(headerParts[0] || ''), margin.left, y);
+        doc.text(stripBold(leftText), margin.left, y);
+        if (rightText) {
+          doc.text(stripBold(rightText), pageWidth - margin.right, y, { align: 'right' });
         }
         y += 13 * 0.45 + 1;
         break;
@@ -202,13 +223,22 @@ export async function generatePDF(template: Template): Promise<Blob> {
         clauseCounter++;
         y += 1;
         addText(`ข้อ ${clauseCounter} ${block.clauseTitle || ''}`, settings.fontSize.body, { bold: true });
-        addText(resolved, settings.fontSize.body, { indent: 8 });
+        // Split by newlines to render sub-items
+        const clauseLines = resolved.split('\n');
+        addText(clauseLines[0], settings.fontSize.body, { indent: 8 });
+        for (let i = 1; i < clauseLines.length; i++) {
+          if (clauseLines[i].trim()) {
+            addText(clauseLines[i], 13, { indent: 12 });
+          }
+        }
         break;
       }
 
       case 'payment-table': {
         checkPageBreak(80);
         const installments = ctx['INSTALLMENTS'] as any[];
+        const tableWidth = contentWidth * 0.75;
+        const tableMarginLeft = margin.left + (contentWidth - tableWidth) / 2;
         autoTable(doc, {
           startY: y,
           head: [['งวดที่', 'วันที่ครบกำหนดชำระ', 'จำนวนเงิน']],
@@ -217,7 +247,8 @@ export async function generatePDF(template: Template): Promise<Blob> {
             formatDateMedium(inst.DUE_DATE),
             formatNumberDecimal(inst.AMOUNT),
           ]),
-          margin: { left: margin.left, right: margin.right },
+          tableWidth: tableWidth,
+          margin: { left: tableMarginLeft, right: margin.right },
           styles: {
             font: PDF_FONT_FAMILY,
             fontSize: 12,

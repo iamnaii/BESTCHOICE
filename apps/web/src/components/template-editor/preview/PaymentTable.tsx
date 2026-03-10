@@ -37,7 +37,7 @@ export default function PaymentTable({ previewMode }: Props) {
   }
 
   return (
-    <table className="w-full my-3 border-collapse text-[13px]">
+    <table className="mx-auto my-3 border-collapse text-[13px]" style={{ width: '75%' }}>
       <thead>
         <tr className="bg-gray-50">
           <th className="border border-gray-400 px-3 py-1.5 text-center w-16">งวดที่</th>

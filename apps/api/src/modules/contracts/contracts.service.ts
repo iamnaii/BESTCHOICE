@@ -49,6 +49,7 @@ export class ContractsService {
           branch: { select: { id: true, name: true } },
           salesperson: { select: { id: true, name: true } },
           reviewedBy: { select: { id: true, name: true } },
+          signatures: { select: { signerType: true } },
           _count: { select: { payments: true, contractDocuments: true } },
         },
       }),

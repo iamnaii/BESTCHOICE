@@ -47,12 +47,18 @@ export function renderVariables(template: string, ctx: RenderContext): string {
       const arr = resolveKey(ctx, arrayKey.trim());
       if (!Array.isArray(arr)) return '';
       return arr.map((item, index) => {
+        // Replace @index0 and @index1 BEFORE {{= ... }} so that {{= @index1}} resolves correctly
         let rendered = body;
+        rendered = rendered.replace(/@index0/g, String(index));
+        rendered = rendered.replace(/@index1/g, String(index + 1));
         // Replace {{= ITEM.PROP }} and {{= ITEM.PROP | format }}
         rendered = rendered.replace(/\{\{=\s*([^|}]+?)(?:\s*\|\s*([^}]+?))?\s*\}\}/g, (_m, k: string, fmt: string) => {
           const trimmedKey = k.trim();
           let val: any;
-          if (trimmedKey.startsWith(itemVar + '.')) {
+          // Handle pure numeric values (from resolved @index)
+          if (/^\d+$/.test(trimmedKey)) {
+            val = trimmedKey;
+          } else if (trimmedKey.startsWith(itemVar + '.')) {
             const prop = trimmedKey.substring(itemVar.length + 1);
             val = item[prop];
           } else {
@@ -62,9 +68,6 @@ export function renderVariables(template: string, ctx: RenderContext): string {
           if (fmt) return applyFormat(val, fmt.trim());
           return String(val ?? '');
         });
-        // Replace @index0 and @index1
-        rendered = rendered.replace(/@index0/g, String(index));
-        rendered = rendered.replace(/@index1/g, String(index + 1));
         return rendered;
       }).join('');
     }

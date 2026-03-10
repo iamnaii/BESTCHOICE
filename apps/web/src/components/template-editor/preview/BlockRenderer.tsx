@@ -48,6 +48,17 @@ function stripHtml(html: string): string {
   return html.replace(/<[^>]*>/g, '').trim();
 }
 
+/** Convert HTML content to an array of text lines (splitting on block-level tags) */
+function htmlToLines(html: string): string[] {
+  // Replace closing block tags with newline markers, then strip all tags
+  const withBreaks = html
+    .replace(/<\/(?:p|div|li|br\s*\/?)>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]*>/g, '')
+    .trim();
+  return withBreaks.split('\n').filter(line => line.trim() !== '');
+}
+
 export default function BlockRenderer({ block, previewMode, clauseIndex }: Props) {
   const ctx = getSampleContext();
   const resolved = previewMode ? renderVariables(block.content, ctx) : '';
@@ -158,29 +169,35 @@ export default function BlockRenderer({ block, previewMode, clauseIndex }: Props
       );
 
     case 'clause': {
-      const resolvedClause = previewMode ? renderVariables(block.content, ctx) : '';
       const displayNumber = clauseIndex ?? block.clauseNumber;
-      // Split content by newlines to render sub-items on separate lines
-      const contentLines = (isRich ? block.content : block.content).split('\n');
-      const resolvedLines = resolvedClause ? resolvedClause.split('\n') : [];
+      // Always work with plain text lines for consistent rendering
+      // Convert HTML <p> tags to newlines so sub-item numbering is preserved
+      const plainContent = isRich ? htmlToLines(block.content) : block.content.split('\n');
+      const resolvedContent = previewMode
+        ? (isRich ? htmlToLines(renderVariables(block.content, ctx)) : renderVariables(block.content, ctx).split('\n'))
+        : [];
       return (
         <div style={{ margin: '10px 0' }}>
           <p style={{ fontSize: '16px', fontWeight: 700, color: '#111' }}>
             ข้อ {displayNumber} {block.clauseTitle}
           </p>
           <div style={{ fontSize: '16px', lineHeight: 1.8, marginTop: '4px', color: '#1a1a1a' }}>
-            {isRich
-              ? <RichHtmlContent html={block.content} previewMode={previewMode} ctx={ctx} />
-              : contentLines.map((line, i) => {
-                  const isSubItem = i > 0;
-                  const resolvedLine = resolvedLines[i] || '';
-                  return (
-                    <p key={i} style={{ textIndent: isSubItem ? '0' : '2em', marginLeft: isSubItem ? '3em' : '0', marginBottom: '2px' }}>
-                      <VariableHighlighter text={line} previewMode={previewMode} resolvedText={resolvedLine} />
-                    </p>
-                  );
-                })
-            }
+            {plainContent.map((line, i) => {
+              const isSubItem = i > 0;
+              const resolvedLine = resolvedContent[i] || '';
+              // Auto-number sub-items if they don't already have a number prefix
+              const displayLine = isSubItem && line.trim() && !/^\d+[).]\s/.test(line.trim())
+                ? `${i}) ${line.trim()}`
+                : line;
+              const displayResolved = isSubItem && resolvedLine.trim() && !/^\d+[).]\s/.test(resolvedLine.trim())
+                ? `${i}) ${resolvedLine.trim()}`
+                : resolvedLine;
+              return (
+                <p key={i} style={{ textIndent: isSubItem ? '0' : '2em', marginLeft: isSubItem ? '3em' : '0', marginBottom: '2px' }}>
+                  <VariableHighlighter text={displayLine} previewMode={previewMode} resolvedText={displayResolved} />
+                </p>
+              );
+            })}
           </div>
         </div>
       );

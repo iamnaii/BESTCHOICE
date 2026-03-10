@@ -106,8 +106,8 @@ export async function generatePDF(template: Template): Promise<Blob> {
     doc.setTextColor(0);
   }
 
-  function addText(text: string, fontSize: number, options?: { bold?: boolean; align?: 'left' | 'center' | 'right'; indent?: number }) {
-    const { bold = false, align = 'left', indent = 0 } = options || {};
+  function addText(text: string, fontSize: number, options?: { bold?: boolean; align?: 'left' | 'center' | 'right'; indent?: number; firstLineIndent?: number }) {
+    const { bold = false, align = 'left', indent = 0, firstLineIndent } = options || {};
     doc.setFontSize(fontSize);
     doc.setFont(PDF_FONT_FAMILY, bold ? 'bold' : 'normal');
 
@@ -116,14 +116,17 @@ export async function generatePDF(template: Template): Promise<Blob> {
     const cleanText = stripBold(text);
     const lines = doc.splitTextToSize(cleanText, effectiveWidth);
 
-    for (const line of lines) {
+    for (let li = 0; li < lines.length; li++) {
+      const line = lines[li];
       checkPageBreak(fontSize * 0.45);
+      // First-line indent (like CSS textIndent) — only on the very first line
+      const extraIndent = (li === 0 && firstLineIndent) ? firstLineIndent : 0;
       if (align === 'center') {
         doc.text(line, pageWidth / 2, y, { align: 'center' });
       } else if (align === 'right') {
         doc.text(line, pageWidth - margin.right, y, { align: 'right' });
       } else {
-        doc.text(line, x, y);
+        doc.text(line, x + extraIndent, y);
       }
       y += fontSize * 0.45;
     }
@@ -149,9 +152,13 @@ export async function generatePDF(template: Template): Promise<Blob> {
     y += 5;
   }
 
-  // Strip HTML tags for plain text rendering
+  // Strip HTML tags for plain text rendering, preserving paragraph breaks
   function stripHtml(html: string): string {
-    return html.replace(/<[^>]*>/g, '').trim();
+    return html
+      .replace(/<\/(?:p|div|li)>/gi, '\n')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<[^>]*>/g, '')
+      .trim();
   }
 
   // Render blocks
@@ -163,20 +170,22 @@ export async function generatePDF(template: Template): Promise<Blob> {
 
     switch (block.type) {
       case 'contract-header': {
+        // Collapse newlines to space (preview renders as single line)
+        const headerText = resolved.replace(/\n+/g, ' ').trim();
         let leftText: string;
         let rightText: string;
-        if (resolved.includes('||')) {
-          const parts = resolved.split('||').map(s => s.trim());
+        if (headerText.includes('||')) {
+          const parts = headerText.split('||').map(s => s.trim());
           leftText = parts[0];
           rightText = parts[1] || '';
         } else {
           // Legacy: split on "วันที่ทำสัญญา"
-          const splitIdx = resolved.indexOf('วันที่ทำสัญญา');
+          const splitIdx = headerText.indexOf('วันที่ทำสัญญา');
           if (splitIdx > 0) {
-            leftText = resolved.substring(0, splitIdx).trim();
-            rightText = resolved.substring(splitIdx).trim();
+            leftText = headerText.substring(0, splitIdx).trim();
+            rightText = headerText.substring(splitIdx).trim();
           } else {
-            leftText = resolved;
+            leftText = headerText;
             rightText = '';
           }
         }
@@ -204,14 +213,19 @@ export async function generatePDF(template: Template): Promise<Blob> {
       case 'paragraph':
       case 'party-info':
       case 'product-info':
-      case 'agreement':
-        addText(resolved, settings.fontSize.body, { indent: 8 });
+      case 'agreement': {
+        // Render each paragraph separately with first-line indent (matching preview textIndent: 2em)
+        const paragraphs = resolved.split('\n').filter(l => l.trim());
+        for (const para of paragraphs) {
+          addText(para, settings.fontSize.body, { firstLineIndent: 8 });
+        }
         break;
+      }
 
       case 'emergency-contacts': {
         const contacts = ctx['EMERGENCY_CONTACTS'] as any[];
-        // First line
-        const firstLine = block.content.split('\n')[0] || '';
+        // First line — use stripped content for HTML compatibility
+        const firstLine = plainContent.split('\n')[0] || '';
         addText(renderVariables(firstLine, ctx), settings.fontSize.body);
         contacts.forEach((c, i) => {
           addText(`${i + 1}. ชื่อ-นามสกุล ${c.NAME}       เบอร์โทรศัพท์ ${c.TEL}       ความสัมพันธ์ ${c.RELATION}`, settings.fontSize.body, { indent: 8 });
@@ -224,11 +238,14 @@ export async function generatePDF(template: Template): Promise<Blob> {
         y += 1;
         addText(`ข้อ ${clauseCounter} ${block.clauseTitle || ''}`, settings.fontSize.body, { bold: true });
         // Split by newlines to render sub-items
-        const clauseLines = resolved.split('\n');
-        addText(clauseLines[0], settings.fontSize.body, { indent: 8 });
+        const clauseLines = resolved.split('\n').filter(l => l.trim());
+        if (clauseLines[0]) addText(clauseLines[0], settings.fontSize.body, { firstLineIndent: 8 });
         for (let i = 1; i < clauseLines.length; i++) {
-          if (clauseLines[i].trim()) {
-            addText(clauseLines[i], 13, { indent: 12 });
+          const line = clauseLines[i].trim();
+          if (line) {
+            // Auto-number sub-items if they don't already have a number prefix
+            const displayLine = /^\d+[).]\s/.test(line) ? line : `${i}) ${line}`;
+            addText(displayLine, 13, { indent: 12 });
           }
         }
         break;
@@ -330,7 +347,8 @@ export async function generatePDF(template: Template): Promise<Blob> {
 
       case 'column':
       case 'column-vertical': {
-        const cols = resolved.split('||').map(s => s.trim());
+        // Collapse newlines from stripHtml before splitting columns
+        const cols = resolved.replace(/\n+/g, ' ').split('||').map(s => s.trim());
         const colWidth = contentWidth / 2;
         doc.setFontSize(settings.fontSize.body);
         doc.setFont(PDF_FONT_FAMILY, 'normal');

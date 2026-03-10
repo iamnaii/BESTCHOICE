@@ -8,12 +8,13 @@ import { TextStyle } from '@tiptap/extension-text-style';
 import Color from '@tiptap/extension-color';
 import Highlight from '@tiptap/extension-highlight';
 import Placeholder from '@tiptap/extension-placeholder';
+import IndentExtension from './IndentExtension';
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   List, ListOrdered, Undo2, Redo2,
   Heading1, Heading2, Heading3, Palette, Highlighter,
-  RemoveFormatting, Indent,
+  RemoveFormatting, Indent, Outdent,
 } from 'lucide-react';
 
 interface Props {
@@ -51,6 +52,7 @@ export default function RichTextEditor({ value, onChange, onEditorReady, placeho
       TextStyle,
       Color,
       Highlight.configure({ multicolor: true }),
+      IndentExtension,
       Placeholder.configure({
         placeholder: placeholder || 'พิมพ์เนื้อหา...',
       }),
@@ -236,13 +238,18 @@ export default function RichTextEditor({ value, onChange, onEditorReady, placeho
           <ListOrdered size={15} />
         </ToolbarButton>
 
-        {/* Indent / Outdent using blockquote as proxy */}
+        {/* Indent / Outdent */}
         <ToolbarButton
-          onClick={() => editor.chain().focus().toggleBlockquote().run()}
-          active={editor.isActive('blockquote')}
-          title="ย่อหน้า"
+          onClick={() => editor.chain().focus().indent().run()}
+          title="เพิ่มย่อหน้า (Tab)"
         >
           <Indent size={15} />
+        </ToolbarButton>
+        <ToolbarButton
+          onClick={() => editor.chain().focus().outdent().run()}
+          title="ลดย่อหน้า (Shift+Tab)"
+        >
+          <Outdent size={15} />
         </ToolbarButton>
 
         <Divider />

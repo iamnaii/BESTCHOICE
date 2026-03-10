@@ -55,8 +55,13 @@ interface TextSegment {
   underline: boolean;
 }
 
+interface ParsedParagraph {
+  segments: TextSegment[];
+  align?: 'left' | 'center' | 'right' | 'justify';
+}
+
 /** Parse HTML into styled text segments, splitting on <strong>/<b>/<u> tags */
-function parseHtmlSegments(html: string): TextSegment[][] {
+function parseHtmlSegments(html: string): ParsedParagraph[] {
   // First split into paragraphs by block-level tags
   const paragraphs = html
     .replace(/<\/(?:p|div|li)>/gi, '\n<PARA_BREAK>\n')
@@ -66,6 +71,11 @@ function parseHtmlSegments(html: string): TextSegment[][] {
     .filter(p => p.length > 0);
 
   return paragraphs.map(para => {
+    // Extract text-align from opening block tag (e.g. <p style="text-align: justify">)
+    let align: ParsedParagraph['align'];
+    const alignMatch = para.match(/style="[^"]*text-align:\s*(left|center|right|justify)/i);
+    if (alignMatch) align = alignMatch[1].toLowerCase() as ParsedParagraph['align'];
+
     const segments: TextSegment[] = [];
     let bold = false;
     let underline = false;
@@ -96,7 +106,7 @@ function parseHtmlSegments(html: string): TextSegment[][] {
       }
     }
     if (buffer) segments.push({ text: buffer, bold, underline });
-    return segments;
+    return { segments, align };
   });
 }
 
@@ -174,7 +184,7 @@ export async function generatePDF(template: Template): Promise<Blob> {
   }
 
   /** Plain text addText — used for non-HTML content */
-  function addText(text: string, fontSize: number, options?: { bold?: boolean; align?: 'left' | 'center' | 'right'; indent?: number; firstLineIndent?: number }) {
+  function addText(text: string, fontSize: number, options?: { bold?: boolean; align?: 'left' | 'center' | 'right' | 'justify'; indent?: number; firstLineIndent?: number }) {
     const { bold = false, align = 'left', indent = 0, firstLineIndent } = options || {};
     doc.setFontSize(fontSize);
     doc.setFont(PDF_FONT_FAMILY, bold ? 'bold' : 'normal');
@@ -205,7 +215,7 @@ export async function generatePDF(template: Template): Promise<Blob> {
    * Render rich text segments with inline bold/underline support.
    * Handles word-wrapping across segments.
    */
-  function addRichText(segments: TextSegment[], fontSize: number, options?: { indent?: number; firstLineIndent?: number; align?: 'left' | 'center' | 'right' }) {
+  function addRichText(segments: TextSegment[], fontSize: number, options?: { indent?: number; firstLineIndent?: number; align?: 'left' | 'center' | 'right' | 'justify' }) {
     const { indent = 0, firstLineIndent, align = 'left' } = options || {};
     const lineHeight = fontSize * 0.45;
     const effectiveWidth = contentWidth - indent;
@@ -264,9 +274,11 @@ export async function generatePDF(template: Template): Promise<Blob> {
 
     // Render each line
     isFirstLine = true;
-    for (const lineTokens of lines) {
+    for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+      const lineTokens = lines[lineIdx];
       checkPageBreak(lineHeight);
       const extraIndent = (isFirstLine && firstLineIndent) ? firstLineIndent : 0;
+      const isLastLine = lineIdx === lines.length - 1;
 
       if (align === 'center') {
         // For centered text, calculate total width and offset
@@ -281,6 +293,26 @@ export async function generatePDF(template: Template): Promise<Blob> {
             doc.line(cx, y + 0.5, cx + tw, y + 0.5);
           }
           cx += token.width;
+        }
+      } else if (align === 'justify' && !isLastLine && lineTokens.length > 1) {
+        // Justify: distribute extra space between words (not on last line)
+        const wordTokens = lineTokens.filter(t => !t.isSpace);
+        const totalTextWidth = wordTokens.reduce((sum, t) => sum + t.width, 0);
+        const availWidth = effectiveWidth - extraIndent;
+        const gaps = wordTokens.length - 1;
+        const extraSpacePerGap = gaps > 0 ? (availWidth - totalTextWidth) / gaps : 0;
+
+        let cx = baseX + extraIndent;
+        for (let wi = 0; wi < wordTokens.length; wi++) {
+          const token = wordTokens[wi];
+          doc.setFont(PDF_FONT_FAMILY, token.bold ? 'bold' : 'normal');
+          doc.text(token.text, cx, y);
+          if (token.underline) {
+            const tw = doc.getTextWidth(token.text);
+            doc.setDrawColor(0);
+            doc.line(cx, y + 0.5, cx + tw, y + 0.5);
+          }
+          cx += token.width + (wi < wordTokens.length - 1 ? extraSpacePerGap : 0);
         }
       } else {
         let cx = baseX + extraIndent;
@@ -306,12 +338,12 @@ export async function generatePDF(template: Template): Promise<Blob> {
    * Smart render — detects HTML content and uses rich text rendering with inline bold.
    * Falls back to plain text addText for non-HTML content.
    */
-  function addContent(content: string, fontSize: number, options?: { bold?: boolean; indent?: number; firstLineIndent?: number; align?: 'left' | 'center' | 'right' }) {
+  function addContent(content: string, fontSize: number, options?: { bold?: boolean; indent?: number; firstLineIndent?: number; align?: 'left' | 'center' | 'right' | 'justify' }) {
     if (isHtmlContent(content)) {
       // Resolve variables in the HTML before parsing
       const resolvedHtml = renderVariables(content, ctx);
       const paragraphs = parseHtmlSegments(resolvedHtml);
-      for (const segments of paragraphs) {
+      for (const { segments, align: paraAlign } of paragraphs) {
         if (segments.length === 0 || (segments.length === 1 && !segments[0].text.trim())) continue;
         // If bold option is set, force all segments to bold
         const finalSegments = options?.bold
@@ -320,7 +352,7 @@ export async function generatePDF(template: Template): Promise<Blob> {
         addRichText(finalSegments, fontSize, {
           indent: options?.indent,
           firstLineIndent: options?.firstLineIndent,
-          align: options?.align,
+          align: paraAlign || options?.align,
         });
       }
     } else {
@@ -361,30 +393,64 @@ export async function generatePDF(template: Template): Promise<Blob> {
 
     switch (block.type) {
       case 'contract-header': {
-        // Collapse newlines to space (preview renders as single line)
-        const headerText = resolved.replace(/\n+/g, ' ').trim();
-        let leftText: string;
-        let rightText: string;
-        if (headerText.includes('||')) {
-          const parts = headerText.split('||').map(s => s.trim());
-          leftText = parts[0];
-          rightText = parts[1] || '';
-        } else {
-          // Legacy: split on "วันที่ทำสัญญา"
-          const splitIdx = headerText.indexOf('วันที่ทำสัญญา');
-          if (splitIdx > 0) {
-            leftText = headerText.substring(0, splitIdx).trim();
-            rightText = headerText.substring(splitIdx).trim();
-          } else {
-            leftText = headerText;
-            rightText = '';
-          }
-        }
         doc.setFontSize(13);
-        doc.setFont(PDF_FONT_FAMILY, 'normal');
-        doc.text(stripBold(leftText), margin.left, y);
-        if (rightText) {
-          doc.text(stripBold(rightText), pageWidth - margin.right, y, { align: 'right' });
+
+        if (isHtmlContent(block.content)) {
+          // Rich text contract header — preserve bold formatting
+          const resolvedHtml = renderVariables(block.content, ctx);
+          const parts = resolvedHtml.split('||').map(s => s.trim());
+          const leftSegments = parseHtmlSegments(parts[0] || '').flatMap(p => p.segments);
+          const rightSegments = parts[1] ? parseHtmlSegments(parts[1]).flatMap(p => p.segments) : [];
+
+          // Render left side
+          let cx = margin.left;
+          for (const seg of leftSegments) {
+            if (!seg.text) continue;
+            doc.setFont(PDF_FONT_FAMILY, seg.bold ? 'bold' : 'normal');
+            doc.text(seg.text, cx, y);
+            cx += doc.getTextWidth(seg.text);
+          }
+
+          // Render right side (right-aligned)
+          if (rightSegments.length > 0) {
+            let totalWidth = 0;
+            for (const seg of rightSegments) {
+              if (!seg.text) continue;
+              doc.setFont(PDF_FONT_FAMILY, seg.bold ? 'bold' : 'normal');
+              totalWidth += doc.getTextWidth(seg.text);
+            }
+            cx = pageWidth - margin.right - totalWidth;
+            for (const seg of rightSegments) {
+              if (!seg.text) continue;
+              doc.setFont(PDF_FONT_FAMILY, seg.bold ? 'bold' : 'normal');
+              doc.text(seg.text, cx, y);
+              cx += doc.getTextWidth(seg.text);
+            }
+          }
+        } else {
+          // Plain text contract header
+          const headerText = resolved.replace(/\n+/g, ' ').trim();
+          let leftText: string;
+          let rightText: string;
+          if (headerText.includes('||')) {
+            const parts = headerText.split('||').map(s => s.trim());
+            leftText = parts[0];
+            rightText = parts[1] || '';
+          } else {
+            const splitIdx = headerText.indexOf('วันที่ทำสัญญา');
+            if (splitIdx > 0) {
+              leftText = headerText.substring(0, splitIdx).trim();
+              rightText = headerText.substring(splitIdx).trim();
+            } else {
+              leftText = headerText;
+              rightText = '';
+            }
+          }
+          doc.setFont(PDF_FONT_FAMILY, 'normal');
+          doc.text(stripBold(leftText), margin.left, y);
+          if (rightText) {
+            doc.text(stripBold(rightText), pageWidth - margin.right, y, { align: 'right' });
+          }
         }
         y += 13 * 0.45 + 1;
         break;

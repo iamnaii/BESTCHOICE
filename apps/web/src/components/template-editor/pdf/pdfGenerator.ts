@@ -2,7 +2,7 @@
 // Uses TH Sarabun PSK font embedded for Thai text support
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import type { Template, Block } from '@/types/template';
+import type { Template } from '@/types/template';
 import { renderVariables, buildSampleContext } from '@/utils/templateRenderer';
 import { AVAILABLE_VARIABLES } from '@/constants/variables';
 import { formatDateMedium, formatNumberDecimal } from '@/utils/formatters';

@@ -3,6 +3,20 @@ export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
+      /* ── Thai-friendly font scale ─────────────────────────
+         TH Sarabun PSK renders smaller than Latin fonts at the
+         same px value.  Bump every step ~1-2px so Thai text
+         stays legible, especially at the small end.
+         ──────────────────────────────────────────────────── */
+      fontSize: {
+        'xs':   ['13px', { lineHeight: '1.5' }],
+        'sm':   ['15px', { lineHeight: '1.55' }],
+        'base': ['17px', { lineHeight: '1.6' }],
+        'lg':   ['19px', { lineHeight: '1.55' }],
+        'xl':   ['21px', { lineHeight: '1.5' }],
+        '2xl':  ['26px', { lineHeight: '1.4' }],
+        '3xl':  ['32px', { lineHeight: '1.35' }],
+      },
       keyframes: {
         fadeIn: {
           '0%': { opacity: '0', transform: 'translateY(8px)' },

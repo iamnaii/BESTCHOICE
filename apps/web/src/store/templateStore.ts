@@ -113,33 +113,136 @@ function apiToTemplate(t: ApiTemplate): Template {
   };
 }
 
-/** Build contentHtml from blocks for backward compatibility */
+/** Detect if content contains HTML tags (from rich text editor) */
+function isHtml(s: string) {
+  return /<\/?(?:p|div|span|br|h[1-6]|ul|ol|li|strong|em|u|s|mark|blockquote|a|table|tr|td|th|thead|tbody|img)\b[^>]*\/?>/i.test(s);
+}
+
+/** Strip HTML tags to plain text, preserving paragraph breaks */
+function stripHtmlToText(html: string): string {
+  return html
+    .replace(/<\/(?:p|div|li)>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]*>/g, '')
+    .trim();
+}
+
+/** Build contentHtml from blocks — matches the template editor preview layout */
 function blocksToHtml(blocks: Block[]): string {
-  const isHtml = (s: string) => /<\/?(?:p|div|span|br|h[1-6]|ul|ol|li|strong|em|u|s|mark|blockquote|a|table|tr|td|th|thead|tbody|img)\b[^>]*\/?>/i.test(s);
+  let clauseCounter = 0;
   return blocks.map(b => {
-    // If content is already rich HTML (from Tiptap), pass through directly
-    if (isHtml(b.content)) {
-      if (b.type === 'clause') {
-        let html = `<p><strong>ข้อ ${b.clauseNumber ?? ''} ${b.clauseTitle ?? ''}</strong></p>${b.content}`;
-        if (b.subItems?.length) {
-          html += b.subItems.map((s, i) => isHtml(s) ? s : `<p>${b.clauseNumber}.${i + 1} ${s}</p>`).join('');
+    const content = b.content || '';
+    const rich = isHtml(content);
+
+    switch (b.type) {
+      case 'contract-header': {
+        const plain = rich ? stripHtmlToText(content) : content;
+        if (plain.includes('||')) {
+          const [left, right] = plain.split('||').map(s => s.trim());
+          return `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:15px;color:#4a4a4a"><div>${left}</div><div>${right || ''}</div></div>`;
         }
+        return `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:15px;color:#4a4a4a"><div>${plain}</div></div>`;
+      }
+
+      case 'heading':
+        return `<h2 style="text-align:center;font-weight:700;font-size:20px;margin:16px 0 12px;letter-spacing:0.5px;color:#111">${rich ? content : content}</h2>`;
+
+      case 'subheading':
+        return `<h3 style="font-weight:700;font-size:17px;margin-top:14px;margin-bottom:6px;color:#222">${rich ? content : content}</h3>`;
+
+      case 'paragraph':
+      case 'party-info':
+      case 'product-info':
+      case 'agreement':
+        if (rich) {
+          return `<div style="font-size:16px;line-height:1.8;margin:4px 0;color:#1a1a1a">${content}</div>`;
+        }
+        return `<p style="font-size:16px;line-height:1.8;margin:4px 0;text-indent:2em;color:#1a1a1a">${content}</p>`;
+
+      case 'emergency-contacts':
+        // The backend replaces {{= EMERGENCY_CONTACTS }} with a rendered table
+        if (rich) {
+          return `<div style="margin:8px 0;font-size:16px">${content}</div>`;
+        }
+        return `<div style="margin:8px 0;font-size:16px"><p style="margin-bottom:4px">${content.split('\n')[0] || ''}</p>{{= EMERGENCY_CONTACTS }}</div>`;
+
+      case 'clause': {
+        clauseCounter++;
+        const lines = rich ? stripHtmlToText(content).split('\n').filter((l: string) => l.trim()) : content.split('\n').filter((l: string) => l.trim());
+        let html = `<div style="margin:10px 0"><p style="font-size:16px;font-weight:700;color:#111">ข้อ ${clauseCounter} ${b.clauseTitle || ''}</p><div style="font-size:16px;line-height:1.8;margin-top:4px;color:#1a1a1a">`;
+        if (lines[0]) {
+          html += `<p style="text-indent:2em;margin-bottom:2px">${lines[0]}</p>`;
+        }
+        for (let i = 1; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (!line) continue;
+          const displayLine = /^\d+[).]\s/.test(line) ? line : `${i}) ${line}`;
+          html += `<p style="margin-left:3em;margin-bottom:2px">${displayLine}</p>`;
+        }
+        if (b.subItems?.length) {
+          b.subItems.forEach((s, i) => {
+            html += `<p style="margin-left:3em;margin-bottom:2px">${clauseCounter}.${i + 1} ${isHtml(s) ? stripHtmlToText(s) : s}</p>`;
+          });
+        }
+        html += '</div></div>';
         return html;
       }
-      return b.content;
-    }
-    // Plain text fallback
-    if (b.type === 'heading' || b.type === 'contract-header') {
-      return `<h2>${b.content}</h2>`;
-    }
-    if (b.type === 'clause') {
-      let html = `<p><strong>ข้อ ${b.clauseNumber ?? ''} ${b.clauseTitle ?? ''}</strong></p><p>${b.content}</p>`;
-      if (b.subItems?.length) {
-        html += b.subItems.map((s, i) => `<p>${b.clauseNumber}.${i + 1} ${s}</p>`).join('');
+
+      case 'payment-table':
+        return `<div style="margin:12px 0">{{= INSTALLMENTS }}</div>`;
+
+      case 'signature-block':
+        return `<div style="margin:24px 0;display:grid;grid-template-columns:1fr 1fr;gap:32px 32px">
+          <div style="text-align:center"><div style="margin-bottom:4px;font-size:13px">ลงชื่อ..................................................ผู้ให้เช่าซื้อ</div><div style="font-size:12px;color:#6b7280">(${' '.repeat(30)})</div></div>
+          <div style="text-align:center"><div style="margin-bottom:4px;font-size:13px">ลงชื่อ..................................................ผู้เช่าซื้อ</div><div style="font-size:12px;color:#6b7280">(${' '.repeat(30)})</div></div>
+          <div style="text-align:center"><div style="margin-bottom:4px;font-size:13px">ลงชื่อ..................................................พยาน</div><div style="font-size:12px;color:#6b7280">(${' '.repeat(30)})</div></div>
+          <div style="text-align:center"><div style="margin-bottom:4px;font-size:13px">ลงชื่อ..................................................พยาน</div><div style="font-size:12px;color:#6b7280">(${' '.repeat(30)})</div></div>
+        </div>`;
+
+      case 'photo-attachment':
+        return `<div style="margin:20px 0;page-break-before:always">
+          <p style="font-size:16px;font-weight:700;margin-bottom:12px;text-align:center">รูปถ่ายโทรศัพท์แนบท้ายสัญญา</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            ${[1,2,3,4,5,6].map(n => `<div style="border:2px dashed #d1d5db;border-radius:8px;height:120px;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:15px">รูปภาพ ${n}</div>`).join('')}
+          </div>
+          <div style="margin-top:16px;text-align:center;font-size:16px">
+            <p>ชื่อ .............................. ผู้เช่าซื้อ</p>
+            <p>วันที่ .......... เดือน .................. พ.ศ ............</p>
+          </div>
+        </div>`;
+
+      case 'attachment-list': {
+        if (rich) {
+          return `<div style="margin:12px 0;font-size:16px">${content}</div>`;
+        }
+        const lines2 = content.split('\n');
+        return `<div style="margin:12px 0;font-size:16px">${lines2.map((line: string, i: number) =>
+          `<p style="font-weight:${i === 0 ? 700 : 400};margin-left:${i === 0 ? 0 : '2em'};margin-bottom:2px">${line}</p>`
+        ).join('')}</div>`;
       }
-      return html;
+
+      case 'column':
+      case 'column-vertical': {
+        if (rich) {
+          return `<div style="margin:8px 0;font-size:16px">${content}</div>`;
+        }
+        const cols = content.split('||').map((s: string) => s.trim());
+        const align = b.type === 'column-vertical' ? 'start' : 'center';
+        return `<div style="margin:8px 0;display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:16px;align-items:${align}">${cols.map((col: string) => `<div>${col}</div>`).join('')}</div>`;
+      }
+
+      case 'numbered':
+        if (rich) {
+          return `<div style="margin:4px 0;margin-left:2em;font-size:16px">${content}</div>`;
+        }
+        return `<div style="margin:4px 0;margin-left:2em;font-size:16px">${content}</div>`;
+
+      default:
+        if (rich) {
+          return `<div style="font-size:16px;margin:4px 0">${content}</div>`;
+        }
+        return `<p style="font-size:16px;margin:4px 0">${content}</p>`;
     }
-    return `<p>${b.content}</p>`;
   }).join('\n');
 }
 

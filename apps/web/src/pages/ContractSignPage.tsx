@@ -22,7 +22,7 @@ export default function ContractSignPage() {
   const [hasDrawn, setHasDrawn] = useState(false);
 
   // Get contract detail to check workflow
-  const { data: contract } = useQuery<{ id: string; workflowStatus: string; contractNumber: string }>({
+  const { data: contract } = useQuery<{ id: string; status: string; workflowStatus: string; contractNumber: string }>({
     queryKey: ['contract', id],
     queryFn: async () => { const { data } = await api.get(`/contracts/${id}`); return data; },
   });
@@ -137,7 +137,8 @@ export default function ContractSignPage() {
   const customerSigned = signatures.some((s) => s.signerType === 'CUSTOMER');
   const staffSigned = signatures.some((s) => s.signerType === 'STAFF');
   const allSigned = customerSigned && staffSigned;
-  const isApproved = contract?.workflowStatus === 'APPROVED';
+  // Allow signing when contract status is DRAFT (any workflow stage)
+  const canSign = contract?.status === 'DRAFT';
 
   return (
     <div>
@@ -151,11 +152,11 @@ export default function ContractSignPage() {
         }
       />
 
-      {/* Warning if not approved */}
-      {contract && contract.workflowStatus !== 'APPROVED' && (
+      {/* Warning if contract is not draft */}
+      {contract && contract.status !== 'DRAFT' && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
-          <div className="text-sm font-medium text-amber-800">สัญญายังไม่ได้รับการอนุมัติ</div>
-          <div className="text-xs text-amber-600 mt-1">สัญญาต้องผ่านการอนุมัติก่อนจึงจะลงนามได้ (Workflow: {contract.workflowStatus})</div>
+          <div className="text-sm font-medium text-amber-800">ไม่สามารถลงนามได้</div>
+          <div className="text-xs text-amber-600 mt-1">สัญญาไม่อยู่ในสถานะร่าง (สถานะปัจจุบัน: {contract.status})</div>
         </div>
       )}
 
@@ -194,8 +195,8 @@ export default function ContractSignPage() {
             </div>
           )}
 
-          {/* Sign pad - only enabled when contract is approved */}
-          {!allSigned && isApproved && (
+          {/* Sign pad - enabled when contract is DRAFT */}
+          {!allSigned && canSign && (
             <div>
               <div className="flex items-center gap-3 mb-3">
                 <h2 className="text-lg font-semibold text-gray-900">ลงนาม</h2>

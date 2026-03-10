@@ -114,7 +114,20 @@ function apiToTemplate(t: ApiTemplate): Template {
 
 /** Build contentHtml from blocks for backward compatibility */
 function blocksToHtml(blocks: Block[]): string {
+  const isHtml = (s: string) => /<[a-z][\s\S]*>/i.test(s);
   return blocks.map(b => {
+    // If content is already rich HTML (from Tiptap), pass through directly
+    if (isHtml(b.content)) {
+      if (b.type === 'clause') {
+        let html = `<p><strong>ข้อ ${b.clauseNumber ?? ''} ${b.clauseTitle ?? ''}</strong></p>${b.content}`;
+        if (b.subItems?.length) {
+          html += b.subItems.map((s, i) => isHtml(s) ? s : `<p>${b.clauseNumber}.${i + 1} ${s}</p>`).join('');
+        }
+        return html;
+      }
+      return b.content;
+    }
+    // Plain text fallback
     if (b.type === 'heading' || b.type === 'contract-header') {
       return `<h2>${b.content}</h2>`;
     }

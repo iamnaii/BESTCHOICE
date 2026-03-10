@@ -33,8 +33,9 @@ export default function BlockItem({ block, index, totalBlocks }: Props) {
     }
   };
 
-  // Truncate content for display
-  const displayContent = block.content.replace(/\{\{[^}]*\}\}/g, '[…]').substring(0, 120);
+  // Truncate content for display (strip HTML tags if rich text)
+  const plainText = block.content.replace(/<[^>]*>/g, '').replace(/\{\{[^}]*\}\}/g, '[…]');
+  const displayContent = plainText.substring(0, 120);
 
   return (
     <div

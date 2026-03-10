@@ -608,6 +608,20 @@ ${bodyHtml}
       return newSyntaxMap[key] ?? _match;
     });
 
+    // Post-process: fill empty signature names for templates that lack variables in signature section
+    const sigStaffName = esc(contract.salesperson?.name || 'เอกนรินทร์ คงเดช');
+    const sigCustomerName = esc(contract.customer?.name || '');
+
+    // Match: "ลงชื่อ...ผู้ให้เช่าซื้อ" followed (within nearby HTML) by "(" whitespace-only ")"
+    result = result.replace(
+      /(ลงชื่อ[\s\S]{0,200}?ผู้ให้เช่าซื้อ[\s\S]{0,300}?)\(\s{0,50}\)/,
+      `$1( ${sigStaffName} )`,
+    );
+    result = result.replace(
+      /(ลงชื่อ[\s\S]{0,200}?ผู้เช่าซื้อ[\s\S]{0,300}?)\(\s{0,50}\)/,
+      `$1( ${sigCustomerName} )`,
+    );
+
     return result;
   }
 

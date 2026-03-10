@@ -203,26 +203,31 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     if (isSaving) return;
     set({ isSaving: true });
 
-    const payload = {
-      name: currentTemplate.name,
-      type: 'STORE_DIRECT',
-      contentHtml: blocksToHtml(currentTemplate.blocks),
-      blocks: currentTemplate.blocks,
-      settings: currentTemplate.settings,
-    };
+    const contentHtml = blocksToHtml(currentTemplate.blocks);
 
     try {
       if (currentTemplate.id) {
-        // Update existing
-        const { data } = await api.patch<ApiTemplate>(`/contract-templates/${currentTemplate.id}`, payload);
+        // Update existing — do NOT send `type` (not in UpdateTemplateDto)
+        const { data } = await api.patch<ApiTemplate>(`/contract-templates/${currentTemplate.id}`, {
+          name: currentTemplate.name,
+          contentHtml,
+          blocks: currentTemplate.blocks,
+          settings: currentTemplate.settings,
+        });
         set(state => ({
           currentTemplate: { ...state.currentTemplate, updatedAt: data.updatedAt },
           isDirty: false,
           lastSaved: new Date(),
         }));
       } else {
-        // Create new
-        const { data } = await api.post<ApiTemplate>('/contract-templates', payload);
+        // Create new — include `type` for CreateTemplateDto
+        const { data } = await api.post<ApiTemplate>('/contract-templates', {
+          name: currentTemplate.name,
+          type: 'STORE_DIRECT',
+          contentHtml,
+          blocks: currentTemplate.blocks,
+          settings: currentTemplate.settings,
+        });
         const template = apiToTemplate(data);
         set(state => ({
           currentTemplate: template,

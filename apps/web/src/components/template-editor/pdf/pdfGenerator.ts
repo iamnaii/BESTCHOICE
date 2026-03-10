@@ -19,7 +19,13 @@ async function loadThaiFont(doc: jsPDF) {
       try {
         const response = await fetch(url);
         const buffer = await response.arrayBuffer();
-        fontCache[fontName] = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+        // Convert in chunks to avoid "Maximum call stack size exceeded" on large fonts
+        const bytes = new Uint8Array(buffer);
+        let binary = '';
+        for (let i = 0; i < bytes.length; i += 8192) {
+          binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+        }
+        fontCache[fontName] = btoa(binary);
       } catch (err) {
         console.warn(`Failed to load font ${fontName}:`, err);
       }

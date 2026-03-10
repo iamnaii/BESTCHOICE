@@ -23,7 +23,7 @@ function readExifOrientation(file: File): Promise<number> {
         offset += 2;
         if (marker === 0xFFE1) {
           // APP1 (EXIF)
-          const length = view.getUint16(offset);
+          // Skip APP1 length field
           offset += 2;
           // Check "Exif\0\0"
           if (view.getUint32(offset) !== 0x45786966) { resolve(1); return; }

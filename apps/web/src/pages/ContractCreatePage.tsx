@@ -365,9 +365,11 @@ export default function ContractCreatePage() {
   // Clamp totalMonths when config range changes
   useEffect(() => {
     if (minMonths > maxMonths) return; // Guard against invalid config
-    if (totalMonths < minMonths) setTotalMonths(minMonths);
-    else if (totalMonths > maxMonths) setTotalMonths(maxMonths);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setTotalMonths(prev => {
+      if (prev < minMonths) return minMonths;
+      if (prev > maxMonths) return maxMonths;
+      return prev;
+    });
   }, [minMonths, maxMonths]);
 
   const principal = Math.max(sellingPrice - downPayment, 0);

@@ -47,6 +47,8 @@ export default function ContractSignPage() {
     onSuccess: () => {
       toast.success(`ลงนาม ${signerType === 'CUSTOMER' ? 'ลูกค้า' : 'พนักงาน'} สำเร็จ`);
       queryClient.invalidateQueries({ queryKey: ['contract-signatures', id] });
+      queryClient.invalidateQueries({ queryKey: ['contract', id] });
+      queryClient.invalidateQueries({ queryKey: ['contract-preview', id] });
       clearCanvas();
       // Auto-switch to staff if customer just signed
       if (signerType === 'CUSTOMER') setSignerType('STAFF');

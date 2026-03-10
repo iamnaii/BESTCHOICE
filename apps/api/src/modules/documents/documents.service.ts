@@ -523,6 +523,9 @@ ${bodyHtml}
       'BRANCH.ADDRESS': replacements['{branch_address}'],
       'BRANCH.PHONE': replacements['{branch_phone}'],
       'SALESPERSON.NAME': replacements['{salesperson_name}'],
+
+      // === Aliases ===
+      'CUSTOMER.FULLNAME': replacements['{customer_name}'],
     };
 
     // Handle date format pipes for new syntax (MUST run before general replacement)

@@ -66,8 +66,24 @@ export default function BlockRenderer({ block, previewMode, clauseIndex }: Props
 
   switch (block.type) {
     case 'contract-header': {
-      // Strip HTML tags first so we always work with plain text
-      const plainContent = isRich ? stripHtml(block.content) : block.content;
+      if (isRich) {
+        // Rich text — preserve bold formatting, split on ||
+        const parts = block.content.split('||');
+        return (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', fontSize: '15px', color: '#4a4a4a' }}>
+            <div>
+              <RichHtmlContent html={parts[0]?.trim() || ''} previewMode={previewMode} ctx={ctx} />
+            </div>
+            {parts[1] && (
+              <div>
+                <RichHtmlContent html={parts[1]?.trim() || ''} previewMode={previewMode} ctx={ctx} />
+              </div>
+            )}
+          </div>
+        );
+      }
+      // Plain text fallback
+      const plainContent = block.content;
       let leftPart: string;
       let rightPart: string;
       if (plainContent.includes('||')) {
@@ -75,7 +91,6 @@ export default function BlockRenderer({ block, previewMode, clauseIndex }: Props
         leftPart = parts[0]?.trim() || '';
         rightPart = parts[1]?.trim() || '';
       } else {
-        // Try splitting on "วันที่ทำสัญญา" for legacy data
         const splitIdx = plainContent.indexOf('วันที่ทำสัญญา');
         if (splitIdx > 0) {
           leftPart = plainContent.substring(0, splitIdx).trim();

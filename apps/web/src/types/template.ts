@@ -63,6 +63,7 @@ export interface BlockTypeInfo {
   description: string;
 }
 
+// Thai legal contract standard: TH Sarabun PSK 16pt body, A4 with binding margin
 export const DEFAULT_SETTINGS: TemplateSettings = {
   letterhead: 'bestchoice',
   showPageNumber: true,
@@ -70,6 +71,6 @@ export const DEFAULT_SETTINGS: TemplateSettings = {
   showSignatureExceptLastPage: false,
   footerText: 'BESTCHOICEPHONE Co., Ltd.',
   footerContent: '',
-  margins: { top: 25, bottom: 25, left: 25, right: 20 },
-  fontSize: { body: 14, heading: 18, footer: 12 },
+  margins: { top: 25, bottom: 20, left: 30, right: 25 },
+  fontSize: { body: 16, heading: 20, footer: 12 },
 };

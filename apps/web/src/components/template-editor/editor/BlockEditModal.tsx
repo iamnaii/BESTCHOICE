@@ -35,18 +35,24 @@ export default function BlockEditModal() {
 
   const handleClose = () => setEditingBlock(null);
 
-  // Insert variable into the Tiptap editor at cursor position
+  // Insert variable into the Tiptap editor at cursor position (bold by default)
   const insertVariable = (key: string) => {
     const tag = `{{= ${key}}}`;
     const editor = editorInstanceRef.current;
     if (editor) {
-      editor.chain().focus().insertContent(tag + ' ').run();
+      // Insert as bold so variables stand out in the document
+      editor.chain().focus()
+        .toggleBold()
+        .insertContent(tag)
+        .toggleBold()
+        .insertContent(' ')
+        .run();
       return;
     }
-    // Fallback for non-rich-text blocks: append to content
+    // Fallback for non-rich-text blocks: wrap in <strong>
     setForm(prev => ({
       ...prev,
-      content: (prev.content || '') + tag,
+      content: (prev.content || '') + `<strong>${tag}</strong>`,
     }));
   };
 

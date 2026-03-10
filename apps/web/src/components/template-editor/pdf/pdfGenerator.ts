@@ -475,23 +475,42 @@ export async function generatePDF(template: Template): Promise<Blob> {
       }
 
       case 'signature-block': {
-        checkPageBreak(60);
+        checkPageBreak(70);
         y += 8;
-        const sigs = [
-          ['ผู้ให้เช่าซื้อ', 'ผู้เช่าซื้อ'],
-          ['พยาน', 'พยาน'],
-        ];
-        for (const row of sigs) {
-          const colWidth = contentWidth / 2;
-          for (let c = 0; c < 2; c++) {
-            const x = margin.left + c * colWidth + colWidth / 2;
-            doc.setFontSize(13);
-            doc.setFont(PDF_FONT_FAMILY, 'normal');
-            doc.text(`ลงชื่อ..................................................${row[c]}`, x, y, { align: 'center' });
-            doc.text(`(${' '.repeat(40)})`, x, y + 6, { align: 'center' });
-          }
-          y += 18;
+        const sigFontSize = settings.fontSize.body;
+        const colWidth = contentWidth / 2;
+        const customerName = String(ctx['CUSTOMER.FULLNAME'] || '...................................');
+        const managerName = 'เอกนรินทร์ คงเดช';
+
+        // Row 1: ผู้ให้เช่าซื้อ (left) + ผู้เช่าซื้อ (right)
+        doc.setFontSize(sigFontSize);
+        doc.setFont(PDF_FONT_FAMILY, 'normal');
+
+        // ผู้ให้เช่าซื้อ
+        const leftX = margin.left + colWidth / 2;
+        doc.text('ลงชื่อ..................................................ผู้ให้เช่าซื้อ', leftX, y, { align: 'center' });
+        doc.text(`( ${managerName} )`, leftX, y + 6, { align: 'center' });
+        doc.setFontSize(sigFontSize - 2);
+        doc.setTextColor(100);
+        doc.text('ผู้จัดการ บริษัท เบสท์ช้อยส์โฟน จำกัด', leftX, y + 11, { align: 'center' });
+        doc.setTextColor(0);
+
+        // ผู้เช่าซื้อ
+        const rightX = margin.left + colWidth + colWidth / 2;
+        doc.setFontSize(sigFontSize);
+        doc.text('ลงชื่อ..................................................ผู้เช่าซื้อ', rightX, y, { align: 'center' });
+        doc.text(`( ${customerName} )`, rightX, y + 6, { align: 'center' });
+
+        y += 22;
+
+        // Row 2: พยาน x 2
+        doc.setFontSize(sigFontSize);
+        for (let c = 0; c < 2; c++) {
+          const x = margin.left + c * colWidth + colWidth / 2;
+          doc.text('ลงชื่อ..................................................พยาน', x, y, { align: 'center' });
+          doc.text(`(${' '.repeat(40)})`, x, y + 6, { align: 'center' });
         }
+        y += 18;
         break;
       }
 

@@ -149,9 +149,13 @@ export async function generatePDF(template: Template): Promise<Blob> {
     y += 5;
   }
 
-  // Strip HTML tags for plain text rendering
+  // Strip HTML tags for plain text rendering, preserving paragraph breaks
   function stripHtml(html: string): string {
-    return html.replace(/<[^>]*>/g, '').trim();
+    return html
+      .replace(/<\/(?:p|div|li)>/gi, '\n')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<[^>]*>/g, '')
+      .trim();
   }
 
   // Render blocks
@@ -224,11 +228,14 @@ export async function generatePDF(template: Template): Promise<Blob> {
         y += 1;
         addText(`ข้อ ${clauseCounter} ${block.clauseTitle || ''}`, settings.fontSize.body, { bold: true });
         // Split by newlines to render sub-items
-        const clauseLines = resolved.split('\n');
-        addText(clauseLines[0], settings.fontSize.body, { indent: 8 });
+        const clauseLines = resolved.split('\n').filter(l => l.trim());
+        if (clauseLines[0]) addText(clauseLines[0], settings.fontSize.body, { indent: 8 });
         for (let i = 1; i < clauseLines.length; i++) {
-          if (clauseLines[i].trim()) {
-            addText(clauseLines[i], 13, { indent: 12 });
+          const line = clauseLines[i].trim();
+          if (line) {
+            // Auto-number sub-items if they don't already have a number prefix
+            const displayLine = /^\d+[).]\s/.test(line) ? line : `${i}) ${line}`;
+            addText(displayLine, 13, { indent: 12 });
           }
         }
         break;

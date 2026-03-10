@@ -475,13 +475,12 @@ export async function generatePDF(template: Template): Promise<Blob> {
         break;
 
       case 'emergency-contacts': {
-        const contacts = ctx['EMERGENCY_CONTACTS'] as any[];
-        // First line — use stripped content for HTML compatibility
-        const firstLine = plainContent.split('\n')[0] || '';
-        addText(renderVariables(firstLine, ctx), settings.fontSize.body);
-        contacts.forEach((c, i) => {
-          addText(`${i + 1}. ชื่อ-นามสกุล ${c.NAME}       เบอร์โทรศัพท์ ${c.TEL}       ความสัมพันธ์ ${c.RELATION}`, settings.fontSize.body, { indent: 8 });
-        });
+        // Use template-resolved content (handles {{for}} loops properly)
+        const ecLines = resolved.split('\n').filter(l => l.trim());
+        if (ecLines[0]) addText(ecLines[0], settings.fontSize.body);
+        for (let i = 1; i < ecLines.length; i++) {
+          if (ecLines[i].trim()) addText(ecLines[i], settings.fontSize.body, { indent: 8 });
+        }
         break;
       }
 

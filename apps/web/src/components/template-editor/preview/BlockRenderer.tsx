@@ -13,7 +13,9 @@ interface Props {
 
 /** Detect if content contains HTML tags (from rich text editor) */
 function isHtmlContent(content: string): boolean {
-  return /<[a-z][\s\S]*>/i.test(content);
+  // Match actual HTML tags like <p>, <div>, <span>, <h1>, <br/>, <strong>, etc.
+  // Avoids false positives on plain text with comparison operators like "x < y"
+  return /<\/?(?:p|div|span|br|h[1-6]|ul|ol|li|strong|em|u|s|mark|blockquote|a|table|tr|td|th|thead|tbody|img)\b[^>]*\/?>/i.test(content);
 }
 
 /** Render HTML content with variable substitution and sanitization */

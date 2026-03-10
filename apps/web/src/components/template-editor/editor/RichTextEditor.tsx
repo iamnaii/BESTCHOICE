@@ -1,5 +1,6 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
+import type { Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import TextAlign from '@tiptap/extension-text-align';
@@ -12,12 +13,13 @@ import {
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   List, ListOrdered, Undo2, Redo2,
   Heading1, Heading2, Heading3, Palette, Highlighter,
-  RemoveFormatting, Indent, Outdent,
+  RemoveFormatting, Indent,
 } from 'lucide-react';
 
 interface Props {
   value: string;
   onChange: (html: string) => void;
+  onEditorReady?: (editor: Editor) => void;
   placeholder?: string;
 }
 
@@ -33,7 +35,10 @@ const HIGHLIGHT_COLORS = [
   '#e9d5ff', '#fed7aa', '#f0abfc', '#99f6e4',
 ];
 
-export default function RichTextEditor({ value, onChange, placeholder }: Props) {
+export default function RichTextEditor({ value, onChange, onEditorReady, placeholder }: Props) {
+  // Track whether the change originated from the editor itself
+  const isInternalChange = useRef(false);
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -52,6 +57,7 @@ export default function RichTextEditor({ value, onChange, placeholder }: Props) 
     ],
     content: value,
     onUpdate: ({ editor: ed }) => {
+      isInternalChange.current = true;
       onChange(ed.getHTML());
     },
     editorProps: {
@@ -61,25 +67,23 @@ export default function RichTextEditor({ value, onChange, placeholder }: Props) 
     },
   });
 
-  // Sync external value changes (e.g. variable insertion)
+  // Notify parent when editor is ready (for variable insertion)
   useEffect(() => {
-    if (editor && value !== editor.getHTML()) {
-      editor.commands.setContent(value, { emitUpdate: false });
+    if (editor && onEditorReady) {
+      onEditorReady(editor);
     }
-  }, [value, editor]);
+  }, [editor, onEditorReady]);
 
-  // Insert HTML at current cursor position
-  const insertAtCursor = useCallback((html: string) => {
+  // Sync external value changes only (skip if change came from editor itself)
+  useEffect(() => {
     if (!editor) return;
-    editor.chain().focus().insertContent(html).run();
-  }, [editor]);
-
-  // Expose insert method via ref-like pattern on the DOM
-  useEffect(() => {
-    if (editor) {
-      (editor as any).__insertAtCursor = insertAtCursor;
+    if (isInternalChange.current) {
+      isInternalChange.current = false;
+      return;
     }
-  }, [editor, insertAtCursor]);
+    // External change — update editor content
+    editor.commands.setContent(value, { emitUpdate: false });
+  }, [value, editor]);
 
   if (!editor) return null;
 
@@ -254,11 +258,6 @@ export default function RichTextEditor({ value, onChange, placeholder }: Props) 
 
       {/* Editor content */}
       <EditorContent editor={editor} />
-
-      {/* Expose editor instance for external variable insertion */}
-      <input type="hidden" data-editor-id="rich-text" ref={(el) => {
-        if (el) (el as any).__tiptapEditor = editor;
-      }} />
     </div>
   );
 }

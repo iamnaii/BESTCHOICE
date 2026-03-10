@@ -11,10 +11,12 @@ const PDF_FONT_FAMILY = 'THSarabunPSK';
 
 // Cache font base64 data at module level so it persists across doc instances
 const fontCache: Record<string, string> = {};
+const REQUIRED_FONTS = ['THSarabunPSK-Regular', 'THSarabunPSK-Bold'];
 
 async function loadThaiFont(doc: jsPDF) {
-  // Fetch and cache font data if not already cached
-  if (Object.keys(fontCache).length === 0) {
+  // Fetch and cache any missing fonts (retries on partial failure)
+  const missing = REQUIRED_FONTS.filter(f => !fontCache[f]);
+  if (missing.length > 0) {
     const loadFont = async (url: string, fontName: string) => {
       try {
         const response = await fetch(url);
@@ -31,10 +33,10 @@ async function loadThaiFont(doc: jsPDF) {
       }
     };
 
-    await Promise.all([
-      loadFont('/fonts/THSarabunPSK-Regular.ttf', 'THSarabunPSK-Regular'),
-      loadFont('/fonts/THSarabunPSK-Bold.ttf', 'THSarabunPSK-Bold'),
-    ]);
+    await Promise.all(missing.map(fontName => {
+      const fileName = fontName.replace('THSarabunPSK-', 'THSarabunPSK-');
+      return loadFont(`/fonts/${fileName}.ttf`, fontName);
+    }));
   }
 
   // Register cached fonts on this doc instance

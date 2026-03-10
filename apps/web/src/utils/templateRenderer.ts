@@ -91,7 +91,8 @@ export function renderVariables(template: string, ctx: RenderContext): string {
 
       for (let i = 0; i < conditions.length; i++) {
         const val = resolveKey(ctx, conditions[i]);
-        if (val) return bodies[i];
+        // Treat undefined/null as falsy, but 0 and "" as truthy (variable exists)
+        if (val != null && val !== false) return bodies[i];
       }
       return elseBody;
     }

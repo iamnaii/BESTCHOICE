@@ -68,9 +68,9 @@ const statusLabels: Record<string, { label: string; className: string }> = {
   ACTIVE: { label: 'ผ่อนอยู่', className: 'bg-green-100 text-green-700' },
   OVERDUE: { label: 'ค้างชำระ', className: 'bg-yellow-100 text-yellow-700' },
   DEFAULT: { label: 'ผิดนัด', className: 'bg-red-100 text-red-700' },
-  EARLY_PAYOFF: { label: 'ปิดก่อน', className: 'bg-blue-100 text-blue-700' },
+  EARLY_PAYOFF: { label: 'ปิดก่อน', className: 'bg-primary-100 text-primary-700' },
   COMPLETED: { label: 'ครบ', className: 'bg-teal-100 text-teal-700' },
-  EXCHANGED: { label: 'เปลี่ยนเครื่อง', className: 'bg-blue-100 text-blue-700' },
+  EXCHANGED: { label: 'เปลี่ยนเครื่อง', className: 'bg-primary-100 text-primary-700' },
   CLOSED_BAD_DEBT: { label: 'หนี้สูญ', className: 'bg-red-200 text-red-800' },
 };
 
@@ -223,7 +223,7 @@ export default function ContractDetailPage() {
         subtitle="รายละเอียดสัญญาผ่อนชำระ"
         action={
           <div className="flex gap-2 flex-wrap">
-            <button onClick={() => navigate(`/contracts/${id}/sign`)} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+            <button onClick={() => navigate(`/contracts/${id}/sign`)} className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700">
               ลงนาม/เอกสาร
             </button>
 
@@ -241,7 +241,7 @@ export default function ContractDetailPage() {
             )}
 
             {['ACTIVE', 'OVERDUE'].includes(contract.status) && (
-              <button onClick={() => setShowPayoffModal(true)} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+              <button onClick={() => setShowPayoffModal(true)} className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700">
                 ปิดก่อนกำหนด
               </button>
             )}
@@ -321,10 +321,10 @@ export default function ContractDetailPage() {
 
       {/* Signing guide for CREATING/REJECTED (sign first, review later) */}
       {(contract.workflowStatus === 'CREATING' || contract.workflowStatus === 'REJECTED') && contract.status === 'DRAFT' && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-          <h3 className="text-sm font-semibold text-blue-800">ขั้นตอน: ให้ลูกค้าเซ็นสัญญา แล้วส่งตรวจสอบ</h3>
+        <div className="bg-primary-50 border border-primary-200 rounded-lg p-4 mb-6">
+          <h3 className="text-sm font-semibold text-primary-800">ขั้นตอน: ให้ลูกค้าเซ็นสัญญา แล้วส่งตรวจสอบ</h3>
           <div className="mt-3 flex items-center gap-4 text-xs">
-            <span className="font-medium text-blue-700">ลงนาม:</span>
+            <span className="font-medium text-primary-700">ลงนาม:</span>
             <span className={customerSigned ? 'text-green-700' : 'text-amber-600'}>
               ลูกค้า {customerSigned ? 'เซ็นแล้ว' : 'ยังไม่เซ็น'}
             </span>
@@ -332,7 +332,7 @@ export default function ContractDetailPage() {
               พนักงาน {staffSigned ? 'เซ็นแล้ว' : 'ยังไม่เซ็น'}
             </span>
             {!allSigned && (
-              <button onClick={() => navigate(`/contracts/${id}/sign`)} className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">
+              <button onClick={() => navigate(`/contracts/${id}/sign`)} className="px-2 py-1 bg-primary-600 text-white rounded text-xs hover:bg-primary-700">
                 ไปลงนาม
               </button>
             )}
@@ -379,7 +379,7 @@ export default function ContractDetailPage() {
                 พนักงาน {staffSigned ? 'เซ็นแล้ว' : 'ยังไม่เซ็น'}
               </span>
               {!allSigned && (
-                <button onClick={() => navigate(`/contracts/${id}/sign`)} className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">
+                <button onClick={() => navigate(`/contracts/${id}/sign`)} className="px-2 py-1 bg-primary-600 text-white rounded text-xs hover:bg-primary-700">
                   ไปลงนาม
                 </button>
               )}
@@ -511,15 +511,15 @@ export default function ContractDetailPage() {
 
       {/* Early Payoff Quote */}
       {payoffQuote && ['ACTIVE', 'OVERDUE'].includes(contract.status) && (
-        <div className="bg-blue-50 rounded-lg border border-blue-200 p-6 mb-6">
-          <h2 className="text-lg font-semibold text-blue-800 mb-3">ประเมินปิดก่อนกำหนด</h2>
+        <div className="bg-primary-50 rounded-lg border border-primary-200 p-6 mb-6">
+          <h2 className="text-lg font-semibold text-primary-800 mb-3">ประเมินปิดก่อนกำหนด</h2>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            <div><div className="text-xs text-blue-600">งวดคงเหลือ</div><div className="font-medium">{payoffQuote.remainingMonths} งวด</div></div>
-            <div><div className="text-xs text-blue-600">เงินต้นคงเหลือ</div><div className="font-medium">{payoffQuote.remainingPrincipal.toLocaleString()} ฿</div></div>
-            <div><div className="text-xs text-blue-600">ดอกเบี้ยคงเหลือ</div><div className="font-medium">{payoffQuote.remainingInterest.toLocaleString()} ฿</div></div>
+            <div><div className="text-xs text-primary-600">งวดคงเหลือ</div><div className="font-medium">{payoffQuote.remainingMonths} งวด</div></div>
+            <div><div className="text-xs text-primary-600">เงินต้นคงเหลือ</div><div className="font-medium">{payoffQuote.remainingPrincipal.toLocaleString()} ฿</div></div>
+            <div><div className="text-xs text-primary-600">ดอกเบี้ยคงเหลือ</div><div className="font-medium">{payoffQuote.remainingInterest.toLocaleString()} ฿</div></div>
             <div><div className="text-xs text-green-600">ส่วนลดดอกเบี้ย (50%)</div><div className="font-medium text-green-700">-{payoffQuote.discount.toLocaleString()} ฿</div></div>
             {payoffQuote.unpaidLateFees > 0 && <div><div className="text-xs text-red-600">ค่าปรับค้างชำระ</div><div className="font-medium text-red-700">{payoffQuote.unpaidLateFees.toLocaleString()} ฿</div></div>}
-            <div><div className="text-xs text-blue-600 font-semibold">ยอดปิดสัญญา</div><div className="text-xl font-bold text-blue-800">{payoffQuote.totalPayoff.toLocaleString()} ฿</div></div>
+            <div><div className="text-xs text-primary-600 font-semibold">ยอดปิดสัญญา</div><div className="text-xl font-bold text-primary-800">{payoffQuote.totalPayoff.toLocaleString()} ฿</div></div>
           </div>
         </div>
       )}
@@ -563,10 +563,10 @@ export default function ContractDetailPage() {
       {showPayoffModal && payoffQuote && (
         <Modal isOpen title="ปิดสัญญาก่อนกำหนด" onClose={() => setShowPayoffModal(false)}>
           <div className="space-y-4">
-            <div className="bg-blue-50 rounded-lg p-4">
+            <div className="bg-primary-50 rounded-lg p-4">
               <div className="text-sm">ยอดที่ต้องชำระ</div>
-              <div className="text-2xl font-bold text-blue-800">{payoffQuote.totalPayoff.toLocaleString()} ฿</div>
-              <div className="text-xs text-blue-600 mt-1">(รวมส่วนลดดอกเบี้ย 50% แล้ว)</div>
+              <div className="text-2xl font-bold text-primary-800">{payoffQuote.totalPayoff.toLocaleString()} ฿</div>
+              <div className="text-xs text-primary-600 mt-1">(รวมส่วนลดดอกเบี้ย 50% แล้ว)</div>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">วิธีชำระ</label>
@@ -578,7 +578,7 @@ export default function ContractDetailPage() {
             </div>
             <div className="flex gap-3 pt-2">
               <button onClick={() => setShowPayoffModal(false)} className="flex-1 px-4 py-2 text-sm border border-gray-300 rounded-lg">ยกเลิก</button>
-              <button onClick={() => earlyPayoffMutation.mutate()} disabled={earlyPayoffMutation.isPending} className="flex-1 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+              <button onClick={() => earlyPayoffMutation.mutate()} disabled={earlyPayoffMutation.isPending} className="flex-1 px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50">
                 {earlyPayoffMutation.isPending ? 'กำลังปิด...' : 'ยืนยันปิดสัญญา'}
               </button>
             </div>

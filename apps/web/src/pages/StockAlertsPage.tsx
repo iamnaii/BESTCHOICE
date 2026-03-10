@@ -344,7 +344,7 @@ export default function StockAlertsPage() {
       render: (a: StockAlert) => {
         const styles: Record<string, string> = {
           ACTIVE: 'bg-red-100 text-red-700',
-          PO_CREATED: 'bg-blue-100 text-blue-700',
+          PO_CREATED: 'bg-primary-100 text-primary-700',
           RESOLVED: 'bg-green-100 text-green-700',
         };
         const labels: Record<string, string> = {
@@ -476,9 +476,9 @@ export default function StockAlertsPage() {
               <div className="text-xs text-gray-500 mb-1">แจ้งเตือนรอดำเนินการ</div>
               <div className="text-2xl font-bold text-orange-600">{activeAlerts}</div>
             </div>
-            <div className="bg-white rounded-lg border p-4 border-l-4 border-l-blue-500">
+            <div className="bg-white rounded-lg border p-4 border-l-4 border-l-primary-500">
               <div className="text-xs text-gray-500 mb-1">Reorder Points ทั้งหมด</div>
-              <div className="text-2xl font-bold text-blue-600">{reorderPoints?.length || 0}</div>
+              <div className="text-2xl font-bold text-primary-600">{reorderPoints?.length || 0}</div>
             </div>
             <div className="bg-white rounded-lg border p-4 border-l-4 border-l-green-500">
               <div className="text-xs text-gray-500 mb-1">สินค้าปกติ</div>

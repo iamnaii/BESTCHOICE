@@ -90,7 +90,7 @@ export default function RichTextEditor({ value, onChange, onEditorReady, placeho
   if (!editor) return null;
 
   return (
-    <div className="border border-gray-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500">
+    <div className="border border-gray-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-primary-500">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-0.5 px-2 py-1.5 bg-gray-50 border-b border-gray-200">
         {/* Undo / Redo */}
@@ -293,7 +293,7 @@ function ToolbarButton({ onClick, active, disabled, title, children }: {
       title={title}
       className={`p-1.5 rounded transition-colors ${
         active
-          ? 'bg-blue-100 text-blue-700'
+          ? 'bg-primary-100 text-primary-700'
           : 'text-gray-600 hover:bg-gray-200 hover:text-gray-800'
       } ${disabled ? 'opacity-30 cursor-not-allowed' : ''}`}
     >
@@ -319,7 +319,7 @@ function ColorDropdown({ icon, colors, activeColor, onSelect, onClear, title }: 
       <button
         type="button"
         className={`p-1.5 rounded transition-colors flex items-center gap-0.5 ${
-          activeColor ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-200'
+          activeColor ? 'bg-primary-50 text-primary-700' : 'text-gray-600 hover:bg-gray-200'
         }`}
         title={title}
       >
@@ -336,7 +336,7 @@ function ColorDropdown({ icon, colors, activeColor, onSelect, onClear, title }: 
               type="button"
               onClick={() => onSelect(color)}
               className={`w-8 h-8 rounded border-2 transition-transform hover:scale-110 ${
-                activeColor === color ? 'border-blue-500 ring-1 ring-blue-300' : 'border-gray-200'
+                activeColor === color ? 'border-primary-500 ring-1 ring-primary-300' : 'border-gray-200'
               }`}
               style={{ backgroundColor: color }}
               title={color}

@@ -74,10 +74,10 @@ interface PORecord {
 }
 
 const statusLabels: Record<string, { label: string; className: string }> = {
-  PO_RECEIVED: { label: 'รับจาก PO', className: 'bg-blue-100 text-blue-700' },
+  PO_RECEIVED: { label: 'รับจาก PO', className: 'bg-primary-100 text-primary-700' },
   INSPECTION: { label: 'กำลังตรวจ', className: 'bg-yellow-100 text-yellow-700' },
   IN_STOCK: { label: 'พร้อมขาย', className: 'bg-green-100 text-green-700' },
-  RESERVED: { label: 'จอง', className: 'bg-blue-100 text-blue-700' },
+  RESERVED: { label: 'จอง', className: 'bg-primary-100 text-primary-700' },
   SOLD_INSTALLMENT: { label: 'ขายผ่อน', className: 'bg-indigo-100 text-indigo-700' },
   SOLD_CASH: { label: 'ขายสด', className: 'bg-teal-100 text-teal-700' },
   REPOSSESSED: { label: 'ยึดคืน', className: 'bg-red-100 text-red-700' },
@@ -88,7 +88,7 @@ const statusLabels: Record<string, { label: string; className: string }> = {
 const poStatusLabels: Record<string, { label: string; className: string }> = {
   DRAFT: { label: 'ร่าง', className: 'bg-gray-100 text-gray-700' },
   PENDING: { label: 'รอรับสินค้า', className: 'bg-orange-100 text-orange-700' },
-  APPROVED: { label: 'อนุมัติ', className: 'bg-blue-100 text-blue-700' },
+  APPROVED: { label: 'อนุมัติ', className: 'bg-primary-100 text-primary-700' },
   PARTIALLY_RECEIVED: { label: 'รับบางส่วน', className: 'bg-yellow-100 text-yellow-700' },
   FULLY_RECEIVED: { label: 'รับครบ', className: 'bg-green-100 text-green-700' },
   CANCELLED: { label: 'ยกเลิก', className: 'bg-red-100 text-red-700' },
@@ -287,7 +287,7 @@ export default function SupplierDetailPage() {
             <div className="text-xs text-gray-500 mb-0.5">สถานะ VAT</div>
             <span
               className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                supplier.hasVat ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
+                supplier.hasVat ? 'bg-primary-100 text-primary-700' : 'bg-gray-100 text-gray-500'
               }`}
             >
               {supplier.hasVat ? 'มี VAT (7%)' : 'ไม่มี VAT'}

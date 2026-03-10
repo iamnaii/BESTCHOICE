@@ -42,12 +42,12 @@ export default function CheatSheet() {
       <div className="mt-4 pt-3 border-t border-gray-200">
         <div className="text-xs font-bold text-gray-400 uppercase mb-2">ตัวอย่าง</div>
         <div className="space-y-1.5 text-xs text-gray-600 font-mono">
-          <p><span className="text-blue-600">{'{{= CONTRACT.NUMBER}}'}</span></p>
+          <p><span className="text-primary-600">{'{{= CONTRACT.NUMBER}}'}</span></p>
           <p><span className="text-teal-600">{'{{= CONTRACT.DATE | date:l}}'}</span></p>
           <p><span className="text-teal-600">{'{{= CONTRACT.TOTAL_AMOUNT | num:2}}'}</span></p>
-          <p className="text-blue-600">{'{{for ITEM in INSTALLMENTS}}'}</p>
-          <p className="ml-2 text-blue-600">{'{{= ITEM.NO}} {{= ITEM.AMOUNT | num:2}}'}</p>
-          <p className="text-blue-600">{'{{/for}}'}</p>
+          <p className="text-primary-600">{'{{for ITEM in INSTALLMENTS}}'}</p>
+          <p className="ml-2 text-primary-600">{'{{= ITEM.NO}} {{= ITEM.AMOUNT | num:2}}'}</p>
+          <p className="text-primary-600">{'{{/for}}'}</p>
         </div>
       </div>
     </div>

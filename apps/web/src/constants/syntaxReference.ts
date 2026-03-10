@@ -9,15 +9,15 @@ export const SYNTAX_REFERENCE: { group: string; items: SyntaxItem[] }[] = [
   {
     group: 'PRINT',
     items: [
-      { label: 'แสดงค่า', syntax: '{{= VAR.MEMBER}}', color: 'text-blue-700', bgColor: 'bg-blue-100' },
+      { label: 'แสดงค่า', syntax: '{{= VAR.MEMBER}}', color: 'text-primary-700', bgColor: 'bg-primary-100' },
     ],
   },
   {
     group: 'LOOP',
     items: [
-      { label: 'วนลูป', syntax: '{{for ITEM in ARRAY}} ... {{/for}}', color: 'text-blue-700', bgColor: 'bg-blue-100' },
-      { label: 'ลำดับ (0)', syntax: '@index0', color: 'text-blue-700', bgColor: 'bg-blue-100' },
-      { label: 'ลำดับ (1)', syntax: '@index1', color: 'text-blue-700', bgColor: 'bg-blue-100' },
+      { label: 'วนลูป', syntax: '{{for ITEM in ARRAY}} ... {{/for}}', color: 'text-primary-700', bgColor: 'bg-primary-100' },
+      { label: 'ลำดับ (0)', syntax: '@index0', color: 'text-primary-700', bgColor: 'bg-primary-100' },
+      { label: 'ลำดับ (1)', syntax: '@index1', color: 'text-primary-700', bgColor: 'bg-primary-100' },
     ],
   },
   {

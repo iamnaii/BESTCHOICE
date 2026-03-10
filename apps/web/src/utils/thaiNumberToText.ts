@@ -35,8 +35,13 @@ export function bahtText(amount: number | string): string {
 
   const isNegative = num < 0;
   const absNum = Math.abs(num);
-  const intPart = Math.floor(absNum);
-  const decPart = Math.round((absNum - intPart) * 100);
+  let intPart = Math.floor(absNum);
+  let decPart = Math.round((absNum - intPart) * 100);
+  // Handle rounding overflow: e.g. bahtText(1.999) → decPart=100
+  if (decPart >= 100) {
+    intPart += 1;
+    decPart = 0;
+  }
 
   let result = '';
 

@@ -3,19 +3,23 @@ export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
-      /* ── Thai-friendly font scale ─────────────────────────
-         TH Sarabun PSK renders smaller than Latin fonts at the
-         same px value.  Bump every step so Thai text stays
-         legible, especially at the small end.
+      fontFamily: {
+        sans: ["'Noto Sans Thai'", "'Inter'", 'system-ui', '-apple-system', 'sans-serif'],
+        sarabun: ["'TH Sarabun PSK'", "'Noto Sans Thai'", 'sans-serif'],
+      },
+      /* ── Font scale for Noto Sans Thai ────────────────────
+         Noto Sans Thai is a proper UI font — standard sizes
+         work well. Slightly generous line-heights for Thai.
          ──────────────────────────────────────────────────── */
       fontSize: {
-        'xs':   ['14px', { lineHeight: '1.5' }],
-        'sm':   ['16px', { lineHeight: '1.55' }],
-        'base': ['18px', { lineHeight: '1.6' }],
-        'lg':   ['20px', { lineHeight: '1.55' }],
-        'xl':   ['23px', { lineHeight: '1.5' }],
-        '2xl':  ['28px', { lineHeight: '1.4' }],
-        '3xl':  ['34px', { lineHeight: '1.35' }],
+        'xs':   ['12px', { lineHeight: '1.5' }],
+        'sm':   ['14px', { lineHeight: '1.55' }],
+        'base': ['15px', { lineHeight: '1.65' }],
+        'lg':   ['18px', { lineHeight: '1.55' }],
+        'xl':   ['20px', { lineHeight: '1.5' }],
+        '2xl':  ['24px', { lineHeight: '1.4' }],
+        '3xl':  ['30px', { lineHeight: '1.35' }],
+        '4xl':  ['36px', { lineHeight: '1.25' }],
       },
       keyframes: {
         fadeIn: {
@@ -38,18 +42,26 @@ export default {
       },
       colors: {
         primary: {
-          50: '#eff6ff',
-          100: '#dbeafe',
-          200: '#bfdbfe',
-          300: '#93c5fd',
-          400: '#60a5fa',
-          500: '#3b82f6',
-          600: '#2563eb',
-          700: '#1d4ed8',
-          800: '#1e40af',
-          900: '#1e3a5f',
-          950: '#0f172a',
+          50: '#ecfdf5',
+          100: '#d1fae5',
+          200: '#a7f3d0',
+          300: '#6ee7b7',
+          400: '#34d399',
+          500: '#10b981',
+          600: '#059669',
+          700: '#047857',
+          800: '#065f46',
+          900: '#064e3b',
+          950: '#0f2a20',
         },
+      },
+      borderRadius: {
+        'xl': '12px',
+        '2xl': '16px',
+      },
+      boxShadow: {
+        'card': '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
+        'card-hover': '0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04)',
       },
     },
   },

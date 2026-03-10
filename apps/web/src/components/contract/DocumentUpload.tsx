@@ -248,11 +248,11 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
 
       {/* OCR Loading */}
       {ocrLoading && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center gap-3">
-          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600" />
+        <div className="bg-primary-50 border border-primary-200 rounded-lg p-4 flex items-center gap-3">
+          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-600" />
           <div>
-            <div className="text-sm font-medium text-blue-800">กำลังอ่านข้อมูลจากบัตรประชาชน...</div>
-            <div className="text-xs text-blue-600">ระบบ AI กำลังประมวลผลรูปภาพ</div>
+            <div className="text-sm font-medium text-primary-800">กำลังอ่านข้อมูลจากบัตรประชาชน...</div>
+            <div className="text-xs text-primary-600">ระบบ AI กำลังประมวลผลรูปภาพ</div>
           </div>
         </div>
       )}
@@ -343,7 +343,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
               <div key={doc.id} className="px-4 py-3 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold ${
-                    doc.fileName.endsWith('.pdf') ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'
+                    doc.fileName.endsWith('.pdf') ? 'bg-red-100 text-red-600' : 'bg-primary-100 text-primary-600'
                   }`}>
                     {doc.fileName.endsWith('.pdf') ? 'PDF' : 'IMG'}
                   </div>

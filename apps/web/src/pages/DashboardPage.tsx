@@ -52,8 +52,8 @@ const statusColors: Record<string, string> = {
   ACTIVE: 'bg-green-500',
   OVERDUE: 'bg-yellow-500',
   DEFAULT: 'bg-red-500',
-  COMPLETED: 'bg-blue-500',
-  EXCHANGED: 'bg-blue-500',
+  COMPLETED: 'bg-primary-500',
+  EXCHANGED: 'bg-primary-500',
   CLOSED_BAD_DEBT: 'bg-gray-500',
 };
 
@@ -173,7 +173,7 @@ export default function DashboardPage() {
           </div>
 
           <div
-            className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-5 cursor-pointer hover:shadow-xl hover:shadow-blue-500/20 transition-all duration-300 hover:-translate-y-0.5"
+            className="bg-gradient-to-br from-primary-500 to-primary-600 rounded-2xl p-5 cursor-pointer hover:shadow-xl hover:shadow-primary-500/20 transition-all duration-300 hover:-translate-y-0.5"
             onClick={() => navigate('/products')}
           >
             <div className="flex items-center justify-between mb-3">
@@ -184,8 +184,8 @@ export default function DashboardPage() {
               </div>
             </div>
             <div className="text-2xl font-bold text-white">{kpis.products.inStock}</div>
-            <div className="text-sm text-blue-200 mt-1">สินค้าในสต็อก</div>
-            <div className="text-xs text-blue-300 mt-1">จาก {kpis.products.total} ชิ้น</div>
+            <div className="text-sm text-primary-200 mt-1">สินค้าในสต็อก</div>
+            <div className="text-xs text-primary-300 mt-1">จาก {kpis.products.total} ชิ้น</div>
           </div>
         </div>
       )}
@@ -200,7 +200,7 @@ export default function DashboardPage() {
           </div>
           <div className="bg-white rounded-2xl border border-gray-100 p-5 hover:shadow-md transition-all cursor-pointer" onClick={() => navigate('/contracts')}>
             <div className="text-sm text-gray-500">ปิดสัญญาแล้ว</div>
-            <div className="text-xl font-bold text-blue-600 mt-1">{kpis.contracts.completed}</div>
+            <div className="text-xl font-bold text-primary-600 mt-1">{kpis.contracts.completed}</div>
             <div className="text-xs text-gray-400 mt-1">สัญญา</div>
           </div>
           <div className="bg-white rounded-2xl border border-gray-100 p-5 hover:shadow-md transition-all">

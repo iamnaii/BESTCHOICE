@@ -46,7 +46,7 @@ interface InspectionDetail {
 
 const gradeColors: Record<string, string> = {
   A: 'bg-green-100 text-green-700 border-green-200',
-  B: 'bg-blue-100 text-blue-700 border-blue-200',
+  B: 'bg-primary-100 text-primary-700 border-primary-200',
   C: 'bg-yellow-100 text-yellow-700 border-yellow-200',
   D: 'bg-red-100 text-red-700 border-red-200',
 };

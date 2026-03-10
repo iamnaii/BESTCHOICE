@@ -23,8 +23,8 @@ export default function DocumentPreview() {
       >
         {/* Letterhead */}
         {settings.letterhead === 'bestchoice' && (
-          <div className="text-center mb-5 pb-3" style={{ borderBottom: '2px solid #2563eb' }}>
-            <h1 style={{ fontSize: '20px', fontWeight: 700, color: '#1d4ed8', letterSpacing: '1px', marginBottom: '4px' }}>
+          <div className="text-center mb-5 pb-3" style={{ borderBottom: '2px solid #059669' }}>
+            <h1 style={{ fontSize: '20px', fontWeight: 700, color: '#059669', letterSpacing: '1px', marginBottom: '4px' }}>
               BESTCHOICEPHONE Co., Ltd.
             </h1>
             <p style={{ fontSize: '14px', color: '#4a4a4a', marginBottom: '2px' }}>

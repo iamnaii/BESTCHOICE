@@ -48,7 +48,7 @@ const reasonLabels: Record<string, { label: string; className: string }> = {
   DAMAGED: { label: 'เสียหาย', className: 'bg-red-100 text-red-700' },
   LOST: { label: 'สูญหาย', className: 'bg-orange-100 text-orange-700' },
   FOUND: { label: 'พบเพิ่ม', className: 'bg-green-100 text-green-700' },
-  CORRECTION: { label: 'แก้ไขข้อมูล', className: 'bg-blue-100 text-blue-700' },
+  CORRECTION: { label: 'แก้ไขข้อมูล', className: 'bg-primary-100 text-primary-700' },
   WRITE_OFF: { label: 'ตัดจำหน่าย', className: 'bg-gray-100 text-gray-700' },
   OTHER: { label: 'อื่นๆ', className: 'bg-gray-100 text-gray-500' },
 };

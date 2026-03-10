@@ -98,7 +98,7 @@ export default function BranchesPage() {
         <div className="flex items-center gap-2">
           <span>{b.name}</span>
           {b.isMainWarehouse && (
-            <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-xs rounded font-medium">คลังกลาง</span>
+            <span className="px-1.5 py-0.5 bg-primary-100 text-primary-700 text-xs rounded font-medium">คลังกลาง</span>
           )}
         </div>
       ),
@@ -146,7 +146,7 @@ export default function BranchesPage() {
                     setMainWarehouseMutation.mutate(b.id);
                   }
                 }}
-                className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+                className="text-primary-600 hover:text-primary-700 text-sm font-medium"
               >
                 ตั้งเป็นคลังกลาง
               </button>

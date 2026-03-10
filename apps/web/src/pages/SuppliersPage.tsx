@@ -277,7 +277,7 @@ export default function SuppliersPage() {
       render: (s: Supplier) => (
         <span
           className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-            s.hasVat ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
+            s.hasVat ? 'bg-primary-100 text-primary-700' : 'bg-gray-100 text-gray-500'
           }`}
         >
           {s.hasVat ? 'มี VAT' : 'ไม่มี VAT'}
@@ -514,7 +514,7 @@ export default function SuppliersPage() {
                   type="button"
                   onClick={() => setForm({ ...form, hasVat: !form.hasVat })}
                   className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    form.hasVat ? 'bg-blue-600' : 'bg-gray-300'
+                    form.hasVat ? 'bg-primary-600' : 'bg-gray-300'
                   }`}
                 >
                   <span
@@ -523,7 +523,7 @@ export default function SuppliersPage() {
                     }`}
                   />
                 </button>
-                <span className={`text-sm font-medium ${form.hasVat ? 'text-blue-600' : 'text-gray-400'}`}>
+                <span className={`text-sm font-medium ${form.hasVat ? 'text-primary-600' : 'text-gray-400'}`}>
                   {form.hasVat ? 'มี VAT (7%)' : 'ไม่มี VAT'}
                 </span>
               </label>
@@ -536,7 +536,7 @@ export default function SuppliersPage() {
                 <button
                   type="button"
                   onClick={addPaymentMethod}
-                  className="px-3 py-1 text-xs bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors font-medium"
+                  className="px-3 py-1 text-xs bg-primary-50 text-primary-600 rounded-lg hover:bg-primary-100 transition-colors font-medium"
                 >
                   + เพิ่มวิธีชำระเงิน
                 </button>
@@ -557,7 +557,7 @@ export default function SuppliersPage() {
                           name="defaultPayment"
                           checked={pm.isDefault}
                           onChange={() => updatePaymentMethod(index, 'isDefault', true)}
-                          className="text-blue-600"
+                          className="text-primary-600"
                         />
                         <span className="text-xs text-gray-500">ค่าเริ่มต้น</span>
                       </label>

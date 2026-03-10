@@ -364,9 +364,13 @@ export default function ContractCreatePage() {
 
   // Clamp totalMonths when config range changes
   useEffect(() => {
-    if (totalMonths < minMonths) setTotalMonths(minMonths);
-    else if (totalMonths > maxMonths) setTotalMonths(maxMonths);
-  }, [minMonths, maxMonths, totalMonths]);
+    if (minMonths > maxMonths) return; // Guard against invalid config
+    setTotalMonths(prev => {
+      if (prev < minMonths) return minMonths;
+      if (prev > maxMonths) return maxMonths;
+      return prev;
+    });
+  }, [minMonths, maxMonths]);
 
   const principal = Math.max(sellingPrice - downPayment, 0);
   const storeCommission = principal * storeCommPct;
@@ -952,10 +956,10 @@ export default function ContractCreatePage() {
           <div className="bg-white rounded-lg border p-6 space-y-4">
             {/* Interest Config Badge */}
             {interestConfig && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-2">
-                <span className="text-xs text-blue-600">ใช้ดอกเบี้ยตาม:</span>
-                <span className="text-sm font-medium text-blue-800">{interestConfig.name}</span>
-                <span className="text-xs text-blue-500">({(interestRate * 100).toFixed(1)}% | ดาวน์ขั้นต่ำ {(minDownPct * 100).toFixed(0)}% | {minMonths}-{maxMonths} เดือน)</span>
+              <div className="bg-primary-50 border border-primary-200 rounded-lg p-3 flex items-center gap-2">
+                <span className="text-xs text-primary-600">ใช้ดอกเบี้ยตาม:</span>
+                <span className="text-sm font-medium text-primary-800">{interestConfig.name}</span>
+                <span className="text-xs text-primary-500">({(interestRate * 100).toFixed(1)}% | ดาวน์ขั้นต่ำ {(minDownPct * 100).toFixed(0)}% | {minMonths}-{maxMonths} เดือน)</span>
               </div>
             )}
 
@@ -1087,11 +1091,11 @@ export default function ContractCreatePage() {
 
           {/* OCR Loading */}
           {ocrLoading && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center gap-3">
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600" />
+            <div className="bg-primary-50 border border-primary-200 rounded-lg p-4 flex items-center gap-3">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-600" />
               <div>
-                <div className="text-sm font-medium text-blue-800">กำลังอ่านข้อมูลจากบัตรประชาชน...</div>
-                <div className="text-xs text-blue-600">ระบบ AI กำลังประมวลผลรูปภาพ</div>
+                <div className="text-sm font-medium text-primary-800">กำลังอ่านข้อมูลจากบัตรประชาชน...</div>
+                <div className="text-xs text-primary-600">ระบบ AI กำลังประมวลผลรูปภาพ</div>
               </div>
             </div>
           )}

@@ -74,7 +74,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
           onClick={onBack}
           className="flex items-center gap-1 p-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors"
         >
-          <ArrowLeft size={18} />
+          <ArrowLeft size={20} />
         </button>
       )}
 
@@ -82,7 +82,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
         value={currentTemplate.id}
         onChange={handleTemplateChange}
         disabled={isLoading}
-        className="px-3 py-2 text-sm font-medium border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 max-w-[320px] disabled:opacity-50"
+        className="px-3 py-2 text-base font-medium border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 max-w-[320px] disabled:opacity-50"
       >
         {templates.length === 0 && (
           <option value="">กำลังโหลด...</option>
@@ -95,13 +95,13 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
       </select>
 
       {isDirty && (
-        <span className="text-xs font-medium text-amber-500 bg-amber-50 px-2 py-0.5 rounded-full">
+        <span className="text-sm font-medium text-amber-500 bg-amber-50 px-2.5 py-1 rounded-full">
           ยังไม่บันทึก
         </span>
       )}
       {isSaving && (
-        <span className="text-xs text-primary-600 flex items-center gap-1">
-          <Loader2 size={12} className="animate-spin" />
+        <span className="text-sm text-primary-600 flex items-center gap-1">
+          <Loader2 size={14} className="animate-spin" />
           <span>กำลังบันทึก...</span>
         </span>
       )}
@@ -114,7 +114,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
         {(viewMode === 'split' || viewMode === 'preview') && (
           <button
             onClick={() => setPreviewMode(!previewMode)}
-            className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg transition-colors ${
+            className={`flex items-center gap-1.5 px-3 py-2 text-base rounded-lg transition-colors ${
               previewMode
                 ? 'bg-blue-100 text-blue-700 border border-blue-300'
                 : 'text-slate-500 border border-slate-200 hover:bg-slate-50'
@@ -129,22 +129,22 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
         {onToggleCheatSheet && (
           <button
             onClick={onToggleCheatSheet}
-            className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg transition-colors ${
+            className={`flex items-center gap-1.5 px-3 py-2 text-base rounded-lg transition-colors ${
               showCheatSheet
                 ? 'bg-amber-100 text-amber-700 border border-amber-300'
                 : 'text-slate-500 border border-slate-200 hover:bg-slate-50'
             }`}
           >
-            <BookOpen size={15} />
+            <BookOpen size={17} />
             ตัวแปร
           </button>
         )}
 
         <button
           onClick={() => setShowSettings(true)}
-          className="flex items-center gap-1.5 px-3 py-2 text-sm text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-2 text-base text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
         >
-          <Settings size={15} />
+          <Settings size={17} />
           <span className="hidden lg:inline">ตั้งค่า</span>
         </button>
       </div>
@@ -158,9 +158,9 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
         <div className="relative" ref={addMenuRef}>
           <button
             onClick={() => setShowAddMenu(!showAddMenu)}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 text-base text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
           >
-            <Plus size={15} />
+            <Plus size={17} />
             เพิ่ม
           </button>
           {showAddMenu && (
@@ -169,7 +169,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
                 <button
                   key={b.type}
                   onClick={() => handleAddBlock(b.type)}
-                  className="w-full text-left px-4 py-2.5 text-sm text-slate-600 hover:bg-primary-50 hover:text-primary-700 transition-colors"
+                  className="w-full text-left px-4 py-2.5 text-base text-slate-600 hover:bg-primary-50 hover:text-primary-700 transition-colors"
                 >
                   {b.label}
                 </button>
@@ -181,9 +181,9 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
         <button
           onClick={() => saveTemplateToApi()}
           disabled={isSaving}
-          className="flex items-center gap-1.5 px-3 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50"
+          className="flex items-center gap-1.5 px-3 py-2 text-base text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50"
         >
-          {isSaving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+          {isSaving ? <Loader2 size={17} className="animate-spin" /> : <Save size={17} />}
           <span className="hidden lg:inline">บันทึก</span>
         </button>
 
@@ -192,7 +192,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
           className="p-2 text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
           title="Undo (Ctrl+Z)"
         >
-          <Undo2 size={15} />
+          <Undo2 size={17} />
         </button>
       </div>
 
@@ -207,14 +207,14 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
             <button
               key={mode}
               onClick={() => onViewModeChange(mode)}
-              className={`flex items-center gap-1.5 px-3 py-2 text-sm transition-colors ${
+              className={`flex items-center gap-1.5 px-3 py-2 text-base transition-colors ${
                 viewMode === mode
                   ? 'bg-primary-600 text-white'
                   : 'text-slate-500 hover:bg-slate-50'
               }`}
               title={label}
             >
-              <Icon size={15} />
+              <Icon size={17} />
               <span className="hidden xl:inline">{label}</span>
             </button>
           ))}
@@ -222,9 +222,9 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
 
         <button
           onClick={() => setShowExportModal(true)}
-          className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+          className="flex items-center gap-1.5 px-4 py-2 text-base font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
         >
-          <Download size={15} />
+          <Download size={17} />
           PDF
         </button>
       </div>

@@ -14,27 +14,27 @@ export default function CheatSheet() {
   return (
     <div className="w-[300px] bg-white border-r border-slate-200 overflow-y-auto">
       <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b border-slate-200 px-4 py-3">
-        <h3 className="text-sm font-bold text-slate-600">Template Syntax</h3>
-        <p className="text-xs text-slate-400 mt-0.5">คลิกเพื่อ copy syntax</p>
+        <h3 className="text-base font-bold text-slate-600">Template Syntax</h3>
+        <p className="text-sm text-slate-400 mt-0.5">คลิกเพื่อ copy syntax</p>
       </div>
 
       <div className="p-4 space-y-5">
         {SYNTAX_REFERENCE.map(group => (
           <div key={group.group}>
-            <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2.5">{group.group}</div>
+            <div className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2.5">{group.group}</div>
             <div className="flex flex-wrap gap-2">
               {group.items.map(item => (
                 <button
                   key={item.syntax}
                   onClick={() => handleCopy(item.syntax)}
-                  className={`group/item relative inline-flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-mono transition-all hover:shadow-sm ${item.bgColor} ${item.color} hover:opacity-90`}
+                  className={`group/item relative inline-flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-sm font-mono transition-all hover:shadow-sm ${item.bgColor} ${item.color} hover:opacity-90`}
                   title={`คลิกเพื่อ copy: ${item.syntax}`}
                 >
                   <span className="truncate max-w-[200px]">{item.label}</span>
                   {copied === item.syntax ? (
-                    <Check size={12} className="text-green-600 flex-shrink-0" />
+                    <Check size={14} className="text-green-600 flex-shrink-0" />
                   ) : (
-                    <Copy size={12} className="opacity-0 group-hover/item:opacity-100 flex-shrink-0 transition-opacity" />
+                    <Copy size={14} className="opacity-0 group-hover/item:opacity-100 flex-shrink-0 transition-opacity" />
                   )}
                 </button>
               ))}
@@ -44,8 +44,8 @@ export default function CheatSheet() {
 
         {/* Quick variable reference */}
         <div className="pt-4 border-t border-slate-200">
-          <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2.5">ตัวอย่าง</div>
-          <div className="space-y-1.5 text-xs text-slate-600 font-mono bg-slate-50 rounded-lg p-3 leading-relaxed">
+          <div className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2.5">ตัวอย่าง</div>
+          <div className="space-y-1.5 text-sm text-slate-600 font-mono bg-slate-50 rounded-lg p-3 leading-relaxed">
             <p><span className="text-primary-600">{'{{= CONTRACT.NUMBER}}'}</span></p>
             <p><span className="text-teal-600">{'{{= CONTRACT.DATE | date:l}}'}</span></p>
             <p><span className="text-teal-600">{'{{= CONTRACT.TOTAL_AMOUNT | num:2}}'}</span></p>

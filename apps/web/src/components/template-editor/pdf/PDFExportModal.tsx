@@ -49,7 +49,7 @@ export default function PDFExportModal() {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
           <h2 className="text-lg font-bold text-gray-800">Export PDF</h2>
-          <button onClick={handleClose} className="p-1 text-gray-400 hover:text-gray-600">
+          <button onClick={handleClose} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
             <X size={20} />
           </button>
         </div>
@@ -67,7 +67,7 @@ export default function PDFExportModal() {
             <div className="text-center py-16">
               <div className="text-6xl mb-4">📄</div>
               <h3 className="text-lg font-medium text-gray-700 mb-2">{currentTemplate.name}</h3>
-              <p className="text-sm text-gray-500 mb-6">
+              <p className="text-base text-gray-500 mb-6">
                 {currentTemplate.blocks.length} blocks | A4 | TH Sarabun PSK
               </p>
 
@@ -75,17 +75,17 @@ export default function PDFExportModal() {
                 <button
                   onClick={() => handleGenerate('preview')}
                   disabled={isGenerating}
-                  className="flex items-center gap-2 px-6 py-3 text-sm border border-primary-300 text-primary-700 rounded-lg hover:bg-primary-50 disabled:opacity-50 transition-colors"
+                  className="flex items-center gap-2 px-6 py-3 text-base border border-primary-300 text-primary-700 rounded-lg hover:bg-primary-50 disabled:opacity-50 transition-colors"
                 >
-                  {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <Eye size={16} />}
+                  {isGenerating ? <Loader2 size={18} className="animate-spin" /> : <Eye size={18} />}
                   Preview
                 </button>
                 <button
                   onClick={() => handleGenerate('download')}
                   disabled={isGenerating}
-                  className="flex items-center gap-2 px-6 py-3 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
+                  className="flex items-center gap-2 px-6 py-3 text-base bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
                 >
-                  {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                  {isGenerating ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
                   ดาวน์โหลด PDF
                 </button>
               </div>
@@ -98,16 +98,16 @@ export default function PDFExportModal() {
           <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
             <button
               onClick={() => { URL.revokeObjectURL(previewUrl); setPreviewUrl(null); }}
-              className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              className="px-5 py-2.5 text-base text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
             >
               กลับ
             </button>
             <button
               onClick={() => handleGenerate('download')}
               disabled={isGenerating}
-              className="flex items-center gap-2 px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+              className="flex items-center gap-2 px-5 py-2.5 text-base bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
             >
-              <Download size={14} />
+              <Download size={16} />
               ดาวน์โหลด PDF
             </button>
           </div>

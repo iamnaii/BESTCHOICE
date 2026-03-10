@@ -51,7 +51,7 @@ export default function BlockList() {
         <div className="text-center py-16 text-slate-400">
           <FileText size={48} className="mx-auto mb-4 text-slate-300" />
           <p className="text-lg font-medium text-slate-500 mb-2">ยังไม่มี block</p>
-          <p className="text-sm">กดปุ่ม "เพิ่ม" ด้านบนเพื่อเริ่มสร้างเอกสาร</p>
+          <p className="text-base">กดปุ่ม "เพิ่ม" ด้านบนเพื่อเริ่มสร้างเอกสาร</p>
         </div>
       )}
     </div>

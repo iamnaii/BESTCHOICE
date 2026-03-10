@@ -75,7 +75,7 @@ export default function BlockItem({ block, index, totalBlocks, clauseIndex }: Pr
           {...listeners}
           className="cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 -ml-1"
         >
-          <GripVertical size={18} />
+          <GripVertical size={20} />
         </button>
 
         {/* Collapse toggle */}
@@ -83,17 +83,17 @@ export default function BlockItem({ block, index, totalBlocks, clauseIndex }: Pr
           onClick={() => toggleCollapse(block.id)}
           className="text-slate-400 hover:text-slate-600 -ml-1"
         >
-          {block.collapsed ? <ChevronRight size={16} /> : <ChevronDownIcon size={16} />}
+          {block.collapsed ? <ChevronRight size={18} /> : <ChevronDownIcon size={18} />}
         </button>
 
         {/* Type badge */}
-        <span className={`text-xs px-3 py-1.5 rounded-full font-semibold tracking-wide ${badgeColor}`}>
+        <span className={`text-sm px-3 py-1.5 rounded-full font-semibold tracking-wide ${badgeColor}`}>
           {label}
         </span>
 
         {/* Clause number */}
         {block.type === 'clause' && clauseIndex ? (
-          <span className="text-sm text-slate-600 font-medium">
+          <span className="text-base text-slate-600 font-medium">
             ข้อ {clauseIndex}{block.clauseTitle ? ` — ${block.clauseTitle}` : ''}
           </span>
         ) : null}
@@ -108,7 +108,7 @@ export default function BlockItem({ block, index, totalBlocks, clauseIndex }: Pr
             className="p-2 text-slate-400 hover:text-slate-600 disabled:opacity-30 rounded-lg hover:bg-slate-100"
             title="เลื่อนขึ้น"
           >
-            <ChevronUp size={16} />
+            <ChevronUp size={18} />
           </button>
           <button
             onClick={() => moveBlock(index, Math.min(totalBlocks - 1, index + 1))}
@@ -116,7 +116,7 @@ export default function BlockItem({ block, index, totalBlocks, clauseIndex }: Pr
             className="p-2 text-slate-400 hover:text-slate-600 disabled:opacity-30 rounded-lg hover:bg-slate-100"
             title="เลื่อนลง"
           >
-            <ChevronDown size={16} />
+            <ChevronDown size={18} />
           </button>
 
           <div className="w-px h-5 bg-slate-200 mx-1" />
@@ -126,21 +126,21 @@ export default function BlockItem({ block, index, totalBlocks, clauseIndex }: Pr
             className="p-2 text-slate-400 hover:text-primary-600 rounded-lg hover:bg-primary-50"
             title="แก้ไข"
           >
-            <Edit3 size={16} />
+            <Edit3 size={18} />
           </button>
           <button
             onClick={() => duplicateBlock(block.id)}
             className="p-2 text-slate-400 hover:text-emerald-600 rounded-lg hover:bg-emerald-50"
             title="สำเนา"
           >
-            <Copy size={16} />
+            <Copy size={18} />
           </button>
           <button
             onClick={handleDelete}
             className="p-2 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50"
             title="ลบ"
           >
-            <Trash2 size={16} />
+            <Trash2 size={18} />
           </button>
         </div>
       </div>
@@ -148,7 +148,7 @@ export default function BlockItem({ block, index, totalBlocks, clauseIndex }: Pr
       {/* Content preview */}
       {!block.collapsed && (
         <div
-          className="px-5 py-3.5 text-sm leading-relaxed text-slate-600 cursor-pointer hover:bg-slate-50/60 rounded-b-xl transition-colors"
+          className="px-5 py-3.5 text-base leading-relaxed text-slate-600 cursor-pointer hover:bg-slate-50/60 rounded-b-xl transition-colors"
           onClick={() => setEditingBlock(block)}
         >
           {displayContent || <span className="text-slate-400 italic">คลิกเพื่อเพิ่มเนื้อหา...</span>}

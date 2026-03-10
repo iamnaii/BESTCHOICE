@@ -14,7 +14,7 @@ import {
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   List, ListOrdered, Undo2, Redo2,
   Heading1, Heading2, Heading3, Palette, Highlighter,
-  RemoveFormatting, Indent, Outdent,
+  RemoveFormatting, Indent, Outdent, IndentIncrease,
 } from 'lucide-react';
 
 interface Props {
@@ -250,6 +250,13 @@ export default function RichTextEditor({ value, onChange, onEditorReady, placeho
           title="ลดย่อหน้า (Shift+Tab)"
         >
           <Outdent size={15} />
+        </ToolbarButton>
+        <ToolbarButton
+          onClick={() => editor.chain().focus().toggleFirstLineIndent().run()}
+          active={editor.isActive({ firstLineIndent: true })}
+          title="ย่อหน้าบรรทัดแรก (text-indent)"
+        >
+          <IndentIncrease size={15} />
         </ToolbarButton>
 
         <Divider />

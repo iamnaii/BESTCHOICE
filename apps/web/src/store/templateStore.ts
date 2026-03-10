@@ -86,6 +86,7 @@ interface TemplateStore {
 }
 
 const DRAFT_KEY = 'bcp-template-draft';
+let _loadRequestId = 0; // Track latest loadTemplate request to prevent race conditions
 
 function createInitialTemplate(): Template {
   return {
@@ -181,9 +182,12 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
   },
 
   loadTemplate: async (id: string) => {
+    const requestId = ++_loadRequestId;
     set({ isLoading: true });
     try {
       const { data } = await api.get<ApiTemplate>(`/contract-templates/${id}`);
+      // Ignore stale response if a newer loadTemplate was called
+      if (requestId !== _loadRequestId) return;
       const template = apiToTemplate(data);
       set({
         currentTemplate: template,
@@ -192,9 +196,12 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
         isDirty: false,
       });
     } catch {
+      if (requestId !== _loadRequestId) return;
       toast.error('โหลดเทมเพลตไม่สำเร็จ');
     } finally {
-      set({ isLoading: false });
+      if (requestId === _loadRequestId) {
+        set({ isLoading: false });
+      }
     }
   },
 
@@ -272,13 +279,17 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       };
       if (afterId) {
         const idx = blocks.findIndex(b => b.id === afterId);
-        blocks.splice(idx + 1, 0, newBlock);
+        if (idx !== -1) {
+          blocks.splice(idx + 1, 0, newBlock);
+        } else {
+          blocks.push(newBlock);
+        }
       } else {
         blocks.push(newBlock);
       }
-      blocks.forEach((b, i) => b.order = i);
+      const ordered = blocks.map((b, i) => ({ ...b, order: i }));
       return {
-        currentTemplate: { ...state.currentTemplate, blocks, updatedAt: new Date().toISOString() },
+        currentTemplate: { ...state.currentTemplate, blocks: ordered, updatedAt: new Date().toISOString() },
         isDirty: true,
       };
     });
@@ -300,8 +311,9 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
   deleteBlock: (id) => {
     get().pushHistory();
     set(state => {
-      const blocks = state.currentTemplate.blocks.filter(b => b.id !== id);
-      blocks.forEach((b, i) => b.order = i);
+      const blocks = state.currentTemplate.blocks
+        .filter(b => b.id !== id)
+        .map((b, i) => ({ ...b, order: i }));
       return {
         currentTemplate: { ...state.currentTemplate, blocks, updatedAt: new Date().toISOString() },
         isDirty: true,
@@ -316,11 +328,12 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       const blocks = [...state.currentTemplate.blocks];
       const idx = blocks.findIndex(b => b.id === id);
       if (idx === -1) return state;
-      const clone = { ...blocks[idx], id: uid(), subItems: blocks[idx].subItems ? [...blocks[idx].subItems] : undefined };
+      const clone: Block = JSON.parse(JSON.stringify(blocks[idx]));
+      clone.id = uid();
       blocks.splice(idx + 1, 0, clone);
-      blocks.forEach((b, i) => b.order = i);
+      const ordered = blocks.map((b, i) => ({ ...b, order: i }));
       return {
-        currentTemplate: { ...state.currentTemplate, blocks, updatedAt: new Date().toISOString() },
+        currentTemplate: { ...state.currentTemplate, blocks: ordered, updatedAt: new Date().toISOString() },
         isDirty: true,
       };
     });
@@ -333,9 +346,9 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       const blocks = [...state.currentTemplate.blocks];
       const [moved] = blocks.splice(fromIndex, 1);
       blocks.splice(toIndex, 0, moved);
-      blocks.forEach((b, i) => b.order = i);
+      const ordered = blocks.map((b, i) => ({ ...b, order: i }));
       return {
-        currentTemplate: { ...state.currentTemplate, blocks, updatedAt: new Date().toISOString() },
+        currentTemplate: { ...state.currentTemplate, blocks: ordered, updatedAt: new Date().toISOString() },
         isDirty: true,
       };
     });
@@ -393,9 +406,8 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
 
   undo: () => {
     const { history, historyIndex } = get();
-    // historyIndex points to the current state snapshot; we go back one
-    if (historyIndex <= 0) return;
-    const entry = history[historyIndex - 1];
+    if (historyIndex < 0 || history.length === 0) return;
+    const entry = history[historyIndex];
     set(state => ({
       currentTemplate: {
         ...state.currentTemplate,
@@ -403,6 +415,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
         settings: JSON.parse(JSON.stringify(entry.settings)),
       },
       historyIndex: historyIndex - 1,
+      isDirty: true,
     }));
   },
 
@@ -429,7 +442,10 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       // Truncate any redo entries beyond current position
       const newHistory = state.history.slice(0, state.historyIndex + 1);
       newHistory.push(entry);
-      if (newHistory.length > 50) newHistory.shift();
+      if (newHistory.length > 50) {
+        newHistory.shift();
+        return { history: newHistory, historyIndex: newHistory.length - 1 };
+      }
       return { history: newHistory, historyIndex: newHistory.length - 1 };
     });
   },

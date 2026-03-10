@@ -76,7 +76,11 @@ export function applyFormat(value: any, format: string): string {
     case 'date:l': return formatDateLong(String(value));
     case 'date:month_name': return formatMonthName(String(value));
     case 'num': return formatNumber(value);
-    case 'num:2': return formatNumberDecimal(value, 2);
-    default: return String(value);
+    default: {
+      // Handle num:N pattern (e.g. num:0, num:2, num:3)
+      const numMatch = fmt.match(/^num:(\d+)$/);
+      if (numMatch) return formatNumberDecimal(value, parseInt(numMatch[1], 10));
+      return String(value);
+    }
   }
 }

@@ -203,15 +203,16 @@ model Branch {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String
-  name      String
-  role      UserRole @default(SALES)
-  branchId  String?  @map("branch_id")
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id             String   @id @default(uuid())
+  email          String   @unique
+  password       String
+  name           String
+  role           UserRole @default(SALES)
+  branchId       String?  @map("branch_id")
+  isActive       Boolean  @default(true) @map("is_active")
+  savedSignature String?  @map("saved_signature") @db.Text
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
   branch Branch? @relation(fields: [branchId], references: [id])
 

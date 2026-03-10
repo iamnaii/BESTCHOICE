@@ -194,10 +194,10 @@ function blocksToHtml(blocks: Block[]): string {
 
       case 'signature-block':
         return `<div style="margin:24px 0;display:grid;grid-template-columns:1fr 1fr;gap:32px 32px">
-          <div style="text-align:center"><div style="margin-bottom:4px;font-size:13px">ลงชื่อ {staff_signature} ผู้ให้เช่าซื้อ</div><div style="font-size:12px;color:#6b7280">( {{= COMPANY.DIRECTOR }} )</div><div style="font-size:11px;color:#999">ผู้จัดการ {{= COMPANY.NAME_TH }}</div></div>
-          <div style="text-align:center"><div style="margin-bottom:4px;font-size:13px">ลงชื่อ {customer_signature} ผู้เช่าซื้อ</div><div style="font-size:12px;color:#6b7280">( {{= CUSTOMER.NAME }} )</div></div>
-          <div style="text-align:center"><div style="margin-bottom:4px;font-size:13px">ลงชื่อ..................................................พยาน</div><div style="font-size:12px;color:#6b7280">(${' '.repeat(30)})</div></div>
-          <div style="text-align:center"><div style="margin-bottom:4px;font-size:13px">ลงชื่อ..................................................พยาน</div><div style="font-size:12px;color:#6b7280">(${' '.repeat(30)})</div></div>
+          <div style="text-align:center"><div style="font-size:13px">ลงชื่อ</div><div style="min-height:50px;display:flex;align-items:center;justify-content:center">{staff_signature}</div><div style="font-size:13px">ผู้ให้เช่าซื้อ</div><div style="font-size:12px;color:#6b7280">( {{= COMPANY.DIRECTOR }} )</div><div style="font-size:11px;color:#999">ผู้จัดการ {{= COMPANY.NAME_TH }}</div></div>
+          <div style="text-align:center"><div style="font-size:13px">ลงชื่อ</div><div style="min-height:50px;display:flex;align-items:center;justify-content:center">{customer_signature}</div><div style="font-size:13px">ผู้เช่าซื้อ</div><div style="font-size:12px;color:#6b7280">( {{= CUSTOMER.NAME }} )</div></div>
+          <div style="text-align:center"><div style="font-size:13px">ลงชื่อ</div><div style="min-height:50px;border-bottom:1px dotted #000;width:80%;margin:0 auto"></div><div style="font-size:13px">พยาน</div><div style="font-size:12px;color:#6b7280">(${' '.repeat(30)})</div></div>
+          <div style="text-align:center"><div style="font-size:13px">ลงชื่อ</div><div style="min-height:50px;border-bottom:1px dotted #000;width:80%;margin:0 auto"></div><div style="font-size:13px">พยาน</div><div style="font-size:12px;color:#6b7280">(${' '.repeat(30)})</div></div>
         </div>`;
 
       case 'photo-attachment':

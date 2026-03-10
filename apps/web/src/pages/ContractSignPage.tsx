@@ -20,6 +20,7 @@ export default function ContractSignPage() {
   const [isDrawing, setIsDrawing] = useState(false);
   const [signerType, setSignerType] = useState<'CUSTOMER' | 'STAFF'>('CUSTOMER');
   const [hasDrawn, setHasDrawn] = useState(false);
+  const [signMode, setSignMode] = useState<'choose' | 'draw' | 'saved'>('choose');
 
   // Get contract detail to check workflow
   const { data: contract } = useQuery<{ id: string; status: string; workflowStatus: string; contractNumber: string }>({
@@ -39,21 +40,40 @@ export default function ContractSignPage() {
     queryFn: async () => { const { data } = await api.get(`/contracts/${id}/signatures`); return data; },
   });
 
+  // Get saved staff signature
+  const { data: savedSigData } = useQuery<{ signatureImage: string | null }>({
+    queryKey: ['saved-signature'],
+    queryFn: async () => { const { data } = await api.get('/users/me/signature'); return data; },
+  });
+  const savedSignature = savedSigData?.signatureImage || null;
+
   const signMutation = useMutation({
     mutationFn: async (body: { signatureImage: string; signerType: string }) => {
       const { data } = await api.post(`/contracts/${id}/sign`, body);
       return data;
     },
-    onSuccess: () => {
-      toast.success(`ลงนาม ${signerType === 'CUSTOMER' ? 'ลูกค้า' : 'พนักงาน'} สำเร็จ`);
+    onSuccess: (_data, variables) => {
+      toast.success(`ลงนาม ${variables.signerType === 'CUSTOMER' ? 'ลูกค้า' : 'พนักงาน'} สำเร็จ`);
       queryClient.invalidateQueries({ queryKey: ['contract-signatures', id] });
       queryClient.invalidateQueries({ queryKey: ['contract', id] });
       queryClient.invalidateQueries({ queryKey: ['contract-preview', id] });
       clearCanvas();
+      setSignMode('choose');
       // Auto-switch to staff if customer just signed
-      if (signerType === 'CUSTOMER') setSignerType('STAFF');
+      if (variables.signerType === 'CUSTOMER') setSignerType('STAFF');
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  // Save signature to user profile
+  const saveSignatureMutation = useMutation({
+    mutationFn: async (signatureImage: string) => {
+      const { data } = await api.put('/users/me/signature', { signatureImage });
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['saved-signature'] });
+    },
   });
 
   const generateMutation = useMutation({
@@ -78,7 +98,7 @@ export default function ContractSignPage() {
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
     ctx.strokeStyle = '#000';
-  }, []);
+  }, [signMode]);
 
   const getPos = (e: React.MouseEvent | React.TouchEvent) => {
     const canvas = canvasRef.current!;
@@ -129,11 +149,20 @@ export default function ContractSignPage() {
     setHasDrawn(false);
   };
 
-  const handleSign = () => {
+  const handleSignFromCanvas = () => {
     const canvas = canvasRef.current;
     if (!canvas || !hasDrawn) { toast.error('กรุณาลงนามก่อน'); return; }
     const signatureImage = canvas.toDataURL('image/png');
+    // Save staff signature for future use
+    if (signerType === 'STAFF') {
+      saveSignatureMutation.mutate(signatureImage);
+    }
     signMutation.mutate({ signatureImage, signerType });
+  };
+
+  const handleSignFromSaved = () => {
+    if (!savedSignature) { toast.error('ไม่พบลายเซ็นที่บันทึกไว้'); return; }
+    signMutation.mutate({ signatureImage: savedSignature, signerType });
   };
 
   const customerSigned = signatures.some((s) => s.signerType === 'CUSTOMER');
@@ -141,6 +170,9 @@ export default function ContractSignPage() {
   const allSigned = customerSigned && staffSigned;
   // Allow signing when contract status is DRAFT (any workflow stage)
   const canSign = contract?.status === 'DRAFT';
+
+  // Determine if current signer type is already signed
+  const currentAlreadySigned = signerType === 'CUSTOMER' ? customerSigned : staffSigned;
 
   return (
     <div>
@@ -204,7 +236,7 @@ export default function ContractSignPage() {
                 <h2 className="text-lg font-semibold text-gray-900">ลงนาม</h2>
                 <select
                   value={signerType}
-                  onChange={(e) => setSignerType(e.target.value as 'CUSTOMER' | 'STAFF')}
+                  onChange={(e) => { setSignerType(e.target.value as 'CUSTOMER' | 'STAFF'); setSignMode('choose'); }}
                   className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
                 >
                   <option value="CUSTOMER" disabled={customerSigned}>ลูกค้า {customerSigned ? '(ลงนามแล้ว)' : ''}</option>
@@ -212,36 +244,80 @@ export default function ContractSignPage() {
                 </select>
               </div>
 
-              <div className="bg-white rounded-lg border p-4">
-                <div className="text-xs text-gray-500 mb-2 text-center">กรุณาลงนามในกรอบด้านล่าง</div>
-                <canvas
-                  ref={canvasRef}
-                  width={500}
-                  height={200}
-                  className="w-full border-2 border-dashed border-gray-300 rounded-lg cursor-crosshair touch-none"
-                  style={{ height: '200px' }}
-                  onMouseDown={startDraw}
-                  onMouseMove={draw}
-                  onMouseUp={endDraw}
-                  onMouseLeave={endDraw}
-                  onTouchStart={startDraw}
-                  onTouchMove={draw}
-                  onTouchEnd={endDraw}
-                />
-                <div className="flex gap-3 mt-3">
-                  <button onClick={clearCanvas} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">
-                    ล้าง
-                  </button>
-                  <div className="flex-1" />
-                  <button
-                    onClick={handleSign}
-                    disabled={!hasDrawn || signMutation.isPending}
-                    className="px-6 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
-                  >
-                    {signMutation.isPending ? 'กำลังบันทึก...' : 'ยืนยันลงนาม'}
-                  </button>
+              {!currentAlreadySigned && (
+                <div className="bg-white rounded-lg border p-4">
+                  {/* Mode chooser: show saved signature option for STAFF when available */}
+                  {signMode === 'choose' && (
+                    <div className="space-y-3">
+                      {/* Show saved signature option for STAFF */}
+                      {signerType === 'STAFF' && savedSignature && (
+                        <div className="border-2 border-primary-200 bg-primary-50 rounded-lg p-4">
+                          <div className="text-sm font-medium text-primary-800 mb-2">ลายเซ็นที่บันทึกไว้</div>
+                          <div className="bg-white rounded border p-3 flex justify-center mb-3">
+                            <img src={savedSignature} alt="saved-signature" className="h-16" />
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={handleSignFromSaved}
+                              disabled={signMutation.isPending}
+                              className="flex-1 px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+                            >
+                              {signMutation.isPending ? 'กำลังบันทึก...' : 'ใช้ลายเซ็นที่บันทึกไว้'}
+                            </button>
+                            <button
+                              onClick={() => setSignMode('draw')}
+                              className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+                            >
+                              เซ็นใหม่
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* If no saved signature or is customer, go straight to draw mode */}
+                      {(signerType === 'CUSTOMER' || !savedSignature) && (
+                        <SignaturePad
+                          canvasRef={canvasRef}
+                          hasDrawn={hasDrawn}
+                          isPending={signMutation.isPending}
+                          onStartDraw={startDraw}
+                          onDraw={draw}
+                          onEndDraw={endDraw}
+                          onClear={clearCanvas}
+                          onSign={handleSignFromCanvas}
+                        />
+                      )}
+                    </div>
+                  )}
+
+                  {/* Draw mode (re-sign) */}
+                  {signMode === 'draw' && (
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-xs text-gray-500">เซ็นลายเซ็นใหม่</div>
+                        {signerType === 'STAFF' && savedSignature && (
+                          <button
+                            onClick={() => setSignMode('choose')}
+                            className="text-xs text-primary-600 hover:underline"
+                          >
+                            ใช้ลายเซ็นที่บันทึกไว้
+                          </button>
+                        )}
+                      </div>
+                      <SignaturePad
+                        canvasRef={canvasRef}
+                        hasDrawn={hasDrawn}
+                        isPending={signMutation.isPending}
+                        onStartDraw={startDraw}
+                        onDraw={draw}
+                        onEndDraw={endDraw}
+                        onClear={clearCanvas}
+                        onSign={handleSignFromCanvas}
+                      />
+                    </div>
+                  )}
                 </div>
-              </div>
+              )}
             </div>
           )}
 
@@ -262,6 +338,60 @@ export default function ContractSignPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+/** Reusable signature drawing pad */
+function SignaturePad({
+  canvasRef,
+  hasDrawn,
+  isPending,
+  onStartDraw,
+  onDraw,
+  onEndDraw,
+  onClear,
+  onSign,
+}: {
+  canvasRef: React.RefObject<HTMLCanvasElement>;
+  hasDrawn: boolean;
+  isPending: boolean;
+  onStartDraw: (e: React.MouseEvent | React.TouchEvent) => void;
+  onDraw: (e: React.MouseEvent | React.TouchEvent) => void;
+  onEndDraw: () => void;
+  onClear: () => void;
+  onSign: () => void;
+}) {
+  return (
+    <>
+      <div className="text-xs text-gray-500 mb-2 text-center">กรุณาลงนามในกรอบด้านล่าง</div>
+      <canvas
+        ref={canvasRef}
+        width={500}
+        height={200}
+        className="w-full border-2 border-dashed border-gray-300 rounded-lg cursor-crosshair touch-none"
+        style={{ height: '200px' }}
+        onMouseDown={onStartDraw}
+        onMouseMove={onDraw}
+        onMouseUp={onEndDraw}
+        onMouseLeave={onEndDraw}
+        onTouchStart={onStartDraw}
+        onTouchMove={onDraw}
+        onTouchEnd={onEndDraw}
+      />
+      <div className="flex gap-3 mt-3">
+        <button onClick={onClear} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">
+          ล้าง
+        </button>
+        <div className="flex-1" />
+        <button
+          onClick={onSign}
+          disabled={!hasDrawn || isPending}
+          className="px-6 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+        >
+          {isPending ? 'กำลังบันทึก...' : 'ยืนยันลงนาม'}
+        </button>
+      </div>
+    </>
   );
 }
 

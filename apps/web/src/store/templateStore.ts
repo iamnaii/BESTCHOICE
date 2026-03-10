@@ -114,7 +114,7 @@ function apiToTemplate(t: ApiTemplate): Template {
 
 /** Build contentHtml from blocks for backward compatibility */
 function blocksToHtml(blocks: Block[]): string {
-  const isHtml = (s: string) => /<[a-z][\s\S]*>/i.test(s);
+  const isHtml = (s: string) => /<\/?(?:p|div|span|br|h[1-6]|ul|ol|li|strong|em|u|s|mark|blockquote|a|table|tr|td|th|thead|tbody|img)\b[^>]*\/?>/i.test(s);
   return blocks.map(b => {
     // If content is already rich HTML (from Tiptap), pass through directly
     if (isHtml(b.content)) {
@@ -203,26 +203,31 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     if (isSaving) return;
     set({ isSaving: true });
 
-    const payload = {
-      name: currentTemplate.name,
-      type: 'STORE_DIRECT',
-      contentHtml: blocksToHtml(currentTemplate.blocks),
-      blocks: currentTemplate.blocks,
-      settings: currentTemplate.settings,
-    };
+    const contentHtml = blocksToHtml(currentTemplate.blocks);
 
     try {
       if (currentTemplate.id) {
-        // Update existing
-        const { data } = await api.patch<ApiTemplate>(`/contract-templates/${currentTemplate.id}`, payload);
+        // Update existing — do NOT send `type` (not in UpdateTemplateDto)
+        const { data } = await api.patch<ApiTemplate>(`/contract-templates/${currentTemplate.id}`, {
+          name: currentTemplate.name,
+          contentHtml,
+          blocks: currentTemplate.blocks,
+          settings: currentTemplate.settings,
+        });
         set(state => ({
           currentTemplate: { ...state.currentTemplate, updatedAt: data.updatedAt },
           isDirty: false,
           lastSaved: new Date(),
         }));
       } else {
-        // Create new
-        const { data } = await api.post<ApiTemplate>('/contract-templates', payload);
+        // Create new — include `type` for CreateTemplateDto
+        const { data } = await api.post<ApiTemplate>('/contract-templates', {
+          name: currentTemplate.name,
+          type: 'STORE_DIRECT',
+          contentHtml,
+          blocks: currentTemplate.blocks,
+          settings: currentTemplate.settings,
+        });
         const template = apiToTemplate(data);
         set(state => ({
           currentTemplate: template,
@@ -311,7 +316,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       const blocks = [...state.currentTemplate.blocks];
       const idx = blocks.findIndex(b => b.id === id);
       if (idx === -1) return state;
-      const clone = { ...blocks[idx], id: uid() };
+      const clone = { ...blocks[idx], id: uid(), subItems: blocks[idx].subItems ? [...blocks[idx].subItems] : undefined };
       blocks.splice(idx + 1, 0, clone);
       blocks.forEach((b, i) => b.order = i);
       return {
@@ -385,13 +390,14 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
 
   undo: () => {
     const { history, historyIndex } = get();
-    if (historyIndex < 0) return;
-    const entry = history[historyIndex];
+    // historyIndex points to the current state snapshot; we go back one
+    if (historyIndex <= 0) return;
+    const entry = history[historyIndex - 1];
     set(state => ({
       currentTemplate: {
         ...state.currentTemplate,
-        blocks: entry.blocks,
-        settings: entry.settings,
+        blocks: JSON.parse(JSON.stringify(entry.blocks)),
+        settings: { ...entry.settings },
       },
       historyIndex: historyIndex - 1,
     }));
@@ -399,14 +405,13 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
 
   redo: () => {
     const { history, historyIndex } = get();
-    if (historyIndex >= history.length - 2) return;
-    const entry = history[historyIndex + 2];
-    if (!entry) return;
+    if (historyIndex >= history.length - 1) return;
+    const entry = history[historyIndex + 1];
     set(state => ({
       currentTemplate: {
         ...state.currentTemplate,
-        blocks: entry.blocks,
-        settings: entry.settings,
+        blocks: JSON.parse(JSON.stringify(entry.blocks)),
+        settings: { ...entry.settings },
       },
       historyIndex: historyIndex + 1,
     }));
@@ -418,6 +423,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
         blocks: JSON.parse(JSON.stringify(state.currentTemplate.blocks)),
         settings: { ...state.currentTemplate.settings },
       };
+      // Truncate any redo entries beyond current position
       const newHistory = state.history.slice(0, state.historyIndex + 1);
       newHistory.push(entry);
       if (newHistory.length > 50) newHistory.shift();

@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Plus, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
+import type { Editor } from '@tiptap/react';
 import type { Block, BlockType } from '@/types/template';
 import { BLOCK_TYPES } from '@/constants/blockTypes';
 import { AVAILABLE_VARIABLES, VARIABLE_GROUPS } from '@/constants/variables';
@@ -11,7 +12,7 @@ export default function BlockEditModal() {
   const [form, setForm] = useState<Partial<Block>>({});
   const [showVarPanel, setShowVarPanel] = useState(true);
   const [expandedGroup, setExpandedGroup] = useState<string | null>('สัญญา');
-  const editorRef = useRef<HTMLDivElement>(null);
+  const editorInstanceRef = useRef<Editor | null>(null);
 
   useEffect(() => {
     if (editingBlock) {
@@ -59,19 +60,27 @@ export default function BlockEditModal() {
   // Insert variable into the Tiptap editor at cursor position
   const insertVariable = (key: string) => {
     const tag = `{{= ${key}}}`;
-    // Try to insert at cursor via Tiptap editor
-    const hiddenInput = editorRef.current?.querySelector('input[data-editor-id="rich-text"]') as any;
-    if (hiddenInput?.__tiptapEditor) {
-      const editor = hiddenInput.__tiptapEditor;
-      editor.chain().focus().insertContent(`<span data-variable="${key}" class="variable-tag">${tag}</span>&nbsp;`).run();
+    const editor = editorInstanceRef.current;
+    if (editor) {
+      editor.chain().focus().insertContent(tag + ' ').run();
       return;
     }
-    // Fallback: append to content
+    // Fallback for non-rich-text blocks: append to content
     setForm(prev => ({
       ...prev,
       content: (prev.content || '') + tag,
     }));
   };
+
+  // Callback when Tiptap editor is ready
+  const handleEditorReady = useCallback((editor: Editor) => {
+    editorInstanceRef.current = editor;
+  }, []);
+
+  // Use functional updater to avoid stale closure
+  const handleContentChange = useCallback((content: string) => {
+    setForm(prev => ({ ...prev, content }));
+  }, []);
 
   // Check if this block type should use rich text editor
   const useRichText = !['payment-table', 'signature-block', 'photo-attachment'].includes(form.type || '');
@@ -90,13 +99,13 @@ export default function BlockEditModal() {
         {/* Body - 2 columns */}
         <div className="flex-1 overflow-hidden flex">
           {/* Left: Edit form */}
-          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4" ref={editorRef}>
+          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
             {/* Block type */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">ประเภท</label>
               <select
                 value={form.type}
-                onChange={e => setForm({ ...form, type: e.target.value as BlockType })}
+                onChange={e => setForm(prev => ({ ...prev, type: e.target.value as BlockType }))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-violet-500"
               >
                 {BLOCK_TYPES.map(t => (
@@ -113,7 +122,7 @@ export default function BlockEditModal() {
                   <input
                     type="number"
                     value={form.clauseNumber || ''}
-                    onChange={e => setForm({ ...form, clauseNumber: parseInt(e.target.value) || 0 })}
+                    onChange={e => setForm(prev => ({ ...prev, clauseNumber: parseInt(e.target.value) || 0 }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                     min={1}
                   />
@@ -123,7 +132,7 @@ export default function BlockEditModal() {
                   <input
                     type="text"
                     value={form.clauseTitle || ''}
-                    onChange={e => setForm({ ...form, clauseTitle: e.target.value })}
+                    onChange={e => setForm(prev => ({ ...prev, clauseTitle: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                     placeholder="เช่น วัตถุประสงค์และข้อจำกัด"
                   />
@@ -142,13 +151,14 @@ export default function BlockEditModal() {
               {useRichText ? (
                 <RichTextEditor
                   value={form.content || ''}
-                  onChange={content => setForm({ ...form, content })}
+                  onChange={handleContentChange}
+                  onEditorReady={handleEditorReady}
                   placeholder="พิมพ์เนื้อหา... ใช้ toolbar จัดรูปแบบ หรือคลิกตัวแปรด้านขวาเพื่อแทรก"
                 />
               ) : (
                 <textarea
                   value={form.content || ''}
-                  onChange={e => setForm({ ...form, content: e.target.value })}
+                  onChange={e => setForm(prev => ({ ...prev, content: e.target.value }))}
                   placeholder="เนื้อหาสำหรับ block นี้..."
                   rows={6}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-violet-500 resize-y"

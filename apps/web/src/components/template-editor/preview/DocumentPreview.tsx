@@ -35,18 +35,22 @@ export default function DocumentPreview({ compact }: Props) {
   }, [compact]);
 
   // Update wrapper height when paper content changes
+  // We use marginBottom compensation instead of overflow:hidden to avoid clipping
   useEffect(() => {
     if (scale >= 1 || !paperRef.current) {
       setWrapperHeight(undefined);
       return;
     }
-    const observer = new ResizeObserver(() => {
+    const updateHeight = () => {
       if (paperRef.current) {
-        setWrapperHeight(paperRef.current.offsetHeight * scale);
+        // The negative margin collapses the empty space left by CSS scale
+        const emptySpace = paperRef.current.offsetHeight * (1 - scale);
+        setWrapperHeight(-emptySpace);
       }
-    });
+    };
+    const observer = new ResizeObserver(updateHeight);
     observer.observe(paperRef.current);
-    setWrapperHeight(paperRef.current.offsetHeight * scale);
+    updateHeight();
     return () => observer.disconnect();
   }, [scale]);
 
@@ -59,8 +63,8 @@ export default function DocumentPreview({ compact }: Props) {
 
   return (
     <div ref={containerRef} className="flex-1 bg-slate-100 overflow-y-auto overflow-x-hidden p-4" style={{ height: '100%' }}>
-      {/* Wrapper to collapse extra space from CSS scale */}
-      <div style={{ height: wrapperHeight, overflow: scale < 1 ? 'hidden' : undefined }}>
+      {/* Wrapper — negative marginBottom collapses extra space from CSS scale without clipping */}
+      <div style={{ marginBottom: wrapperHeight }}>
         {/* A4 Paper simulation */}
         <div
           ref={paperRef}

@@ -608,6 +608,39 @@ ${bodyHtml}
       return newSyntaxMap[key] ?? _match;
     });
 
+    // Post-process: fill empty signature names for templates that lack variables in signature section
+    const sigStaffName = esc(contract.salesperson?.name || 'เอกนรินทร์ คงเดช');
+    const sigCustomerName = esc(contract.customer?.name || '');
+
+    // Match: "ลงชื่อ...ผู้ให้เช่าซื้อ" followed (within nearby HTML) by "(" whitespace-only ")"
+    result = result.replace(
+      /(ลงชื่อ[\s\S]{0,200}?ผู้ให้เช่าซื้อ[\s\S]{0,300}?)\(\s{0,50}\)/,
+      `$1( ${sigStaffName} )`,
+    );
+    result = result.replace(
+      /(ลงชื่อ[\s\S]{0,200}?ผู้เช่าซื้อ[\s\S]{0,300}?)\(\s{0,50}\)/,
+      `$1( ${sigCustomerName} )`,
+    );
+
+    // Post-process: inject real signature images for templates that lack {staff_signature}/{customer_signature} placeholders
+    // Only applies when template used dots (e.g. "ลงชื่อ..........ผู้ให้เช่าซื้อ") instead of placeholders
+    const hadStaffPlaceholder = html.includes('{staff_signature}');
+    const hadCustomerPlaceholder = html.includes('{customer_signature}');
+    const sigImgStyle = 'max-height:60px;display:block;margin:4px auto';
+
+    if (staffSigSafe && !hadStaffPlaceholder) {
+      result = result.replace(
+        /(ลงชื่อ[.…]{3,}ผู้ให้เช่าซื้อ<\/(?:p|div)>)/,
+        `$1<div style="text-align:center"><img src="${staffSig.signatureImage}" style="${sigImgStyle}"/></div>`,
+      );
+    }
+    if (customerSigSafe && !hadCustomerPlaceholder) {
+      result = result.replace(
+        /(ลงชื่อ[.…]{3,}ผู้เช่าซื้อ<\/(?:p|div)>)/,
+        `$1<div style="text-align:center"><img src="${customerSig.signatureImage}" style="${sigImgStyle}"/></div>`,
+      );
+    }
+
     return result;
   }
 

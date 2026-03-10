@@ -345,10 +345,13 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     get().pushHistory();
     set(state => {
       const blockMap = new Map(state.currentTemplate.blocks.map(b => [b.id, b]));
-      const blocks = ids.map((id, i) => {
-        const block = blockMap.get(id)!;
-        return { ...block, order: i };
-      });
+      const blocks = ids
+        .map((id, i) => {
+          const block = blockMap.get(id);
+          if (!block) return null;
+          return { ...block, order: i };
+        })
+        .filter((b): b is NonNullable<typeof b> => b !== null);
       return {
         currentTemplate: { ...state.currentTemplate, blocks, updatedAt: new Date().toISOString() },
         isDirty: true,
@@ -397,7 +400,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       currentTemplate: {
         ...state.currentTemplate,
         blocks: JSON.parse(JSON.stringify(entry.blocks)),
-        settings: { ...entry.settings },
+        settings: JSON.parse(JSON.stringify(entry.settings)),
       },
       historyIndex: historyIndex - 1,
     }));
@@ -411,7 +414,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       currentTemplate: {
         ...state.currentTemplate,
         blocks: JSON.parse(JSON.stringify(entry.blocks)),
-        settings: { ...entry.settings },
+        settings: JSON.parse(JSON.stringify(entry.settings)),
       },
       historyIndex: historyIndex + 1,
     }));
@@ -421,7 +424,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     set(state => {
       const entry: HistoryEntry = {
         blocks: JSON.parse(JSON.stringify(state.currentTemplate.blocks)),
-        settings: { ...state.currentTemplate.settings },
+        settings: JSON.parse(JSON.stringify(state.currentTemplate.settings)),
       };
       // Truncate any redo entries beyond current position
       const newHistory = state.history.slice(0, state.historyIndex + 1);

@@ -11,6 +11,13 @@ interface Props {
   previewMode: boolean;
 }
 
+// Memoize sample context at module level — AVAILABLE_VARIABLES is static
+let _cachedCtx: Record<string, any> | null = null;
+function getSampleContext() {
+  if (!_cachedCtx) _cachedCtx = buildSampleContext(AVAILABLE_VARIABLES);
+  return _cachedCtx;
+}
+
 /** Detect if content contains HTML tags (from rich text editor) */
 function isHtmlContent(content: string): boolean {
   // Match actual HTML tags like <p>, <div>, <span>, <h1>, <br/>, <strong>, etc.
@@ -36,7 +43,7 @@ function RichHtmlContent({ html, previewMode, ctx }: { html: string; previewMode
 }
 
 export default function BlockRenderer({ block, previewMode }: Props) {
-  const ctx = buildSampleContext(AVAILABLE_VARIABLES);
+  const ctx = getSampleContext();
   const resolved = previewMode ? renderVariables(block.content, ctx) : '';
   const isRich = isHtmlContent(block.content);
 
@@ -90,7 +97,7 @@ export default function BlockRenderer({ block, previewMode }: Props) {
 
     case 'emergency-contacts':
       if (previewMode) {
-        const contacts = ctx['EMERGENCY_CONTACTS'] as { NAME: string; TEL: string; RELATION: string }[];
+        const contacts = (ctx['EMERGENCY_CONTACTS'] || []) as { NAME: string; TEL: string; RELATION: string }[];
         return (
           <div style={{ margin: '8px 0', fontSize: '14px' }}>
             <p style={{ marginBottom: '4px' }}>(กรณีที่ผู้ให้เช่าซื้อติดต่อผู้เช่าซื้อไม่ได้ ขอให้ติดต่อบุคคลดังต่อไปนี้)</p>

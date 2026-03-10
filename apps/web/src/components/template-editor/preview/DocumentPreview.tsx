@@ -14,7 +14,7 @@ export default function DocumentPreview() {
           width: '210mm',
           minHeight: '297mm',
           padding: `${settings.margins.top}mm ${settings.margins.right}mm ${settings.margins.bottom}mm ${settings.margins.left}mm`,
-          fontFamily: "'Sarabun', 'Noto Sans Thai', sans-serif",
+          fontFamily: "'TH Sarabun PSK', 'Noto Sans Thai', sans-serif",
           fontSize: `${settings.fontSize.body}px`,
           lineHeight: 1.7,
           boxShadow: '0 4px 24px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08)',

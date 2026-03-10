@@ -40,8 +40,16 @@ const Indent = Extension.create<IndentOptions>({
               return Math.round(parseFloat(ml) / 2) || 0;
             },
             renderHTML: (attributes) => {
-              if (!attributes.indent || attributes.indent <= 0) return {};
-              return { style: `margin-left: ${attributes.indent * 2}em` };
+              // Build combined style for both indent and firstLineIndent
+              const parts: string[] = [];
+              if (attributes.indent && attributes.indent > 0) {
+                parts.push(`margin-left: ${attributes.indent * 2}em`);
+              }
+              if (attributes.firstLineIndent) {
+                parts.push('text-indent: 2em');
+              }
+              if (parts.length === 0) return {};
+              return { style: parts.join('; ') };
             },
           },
           firstLineIndent: {
@@ -50,10 +58,8 @@ const Indent = Extension.create<IndentOptions>({
               const ti = element.style.textIndent;
               return !!ti && parseFloat(ti) > 0;
             },
-            renderHTML: (attributes) => {
-              if (!attributes.firstLineIndent) return {};
-              return { style: 'text-indent: 2em' };
-            },
+            // Style rendering is handled by the indent attribute above
+            renderHTML: () => ({}),
           },
         },
       },

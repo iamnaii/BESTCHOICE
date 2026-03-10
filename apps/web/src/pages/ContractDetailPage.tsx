@@ -8,7 +8,7 @@ import WorkflowStatusBadge from '@/components/contract/WorkflowStatusBadge';
 import DocumentUpload from '@/components/contract/DocumentUpload';
 import CreditCheckPanel from '@/components/contract/CreditCheckPanel';
 import toast from 'react-hot-toast';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface Payment {
@@ -91,7 +91,7 @@ export default function ContractDetailPage() {
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectNotes, setRejectNotes] = useState('');
   const [approveNotes, setApproveNotes] = useState('');
-  const [activeTab, setActiveTab] = useState<'schedule' | 'documents' | 'credit'>('schedule');
+  const [activeTab, setActiveTab] = useState<'schedule' | 'documents' | 'credit' | 'preview'>('schedule');
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({ sellingPrice: 0, downPayment: 0, totalMonths: 0, interestRate: 0, paymentDueDay: 1, notes: '' });
 
@@ -104,6 +104,12 @@ export default function ContractDetailPage() {
     queryKey: ['contract-payoff', id],
     queryFn: async () => { const { data } = await api.get(`/contracts/${id}/early-payoff-quote`); return data; },
     enabled: !!contract && ['ACTIVE', 'OVERDUE'].includes(contract.status),
+  });
+
+  const { data: preview, isLoading: previewLoading } = useQuery<{ html: string }>({
+    queryKey: ['contract-preview', id],
+    queryFn: async () => { const { data } = await api.get(`/contracts/${id}/preview`); return data; },
+    enabled: activeTab === 'preview',
   });
 
   const invalidateContract = () => queryClient.invalidateQueries({ queryKey: ['contract', id] });
@@ -524,13 +530,19 @@ export default function ContractDetailPage() {
         </div>
       )}
 
-      {/* Tabs: Schedule / Documents / Credit Check */}
+      {/* Tabs: Schedule / Documents / Credit Check / Preview */}
       <div className="flex gap-1 mb-4 border-b">
         <button
           onClick={() => setActiveTab('schedule')}
           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'schedule' ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
         >
           ตารางผ่อน ({paidCount}/{contract.totalMonths})
+        </button>
+        <button
+          onClick={() => setActiveTab('preview')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'preview' ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+        >
+          ดูสัญญา
         </button>
         <button
           onClick={() => setActiveTab('documents')}
@@ -547,6 +559,20 @@ export default function ContractDetailPage() {
       </div>
 
       {/* Tab Content */}
+      {activeTab === 'preview' && (
+        <div className="bg-gray-200 rounded-lg border overflow-hidden" style={{ height: '80vh' }}>
+          {previewLoading ? (
+            <div className="flex items-center justify-center py-12 bg-white">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+            </div>
+          ) : preview ? (
+            <ContractPreviewFrame html={preview.html} />
+          ) : (
+            <div className="flex items-center justify-center py-12 bg-white text-gray-500">ไม่สามารถโหลดตัวอย่างสัญญาได้</div>
+          )}
+        </div>
+      )}
+
       {activeTab === 'schedule' && (
         <DataTable columns={paymentColumns} data={contract.payments} emptyMessage="ยังไม่มีตารางผ่อน" />
       )}
@@ -619,4 +645,28 @@ export default function ContractDetailPage() {
 
 function Info({ label, value }: { label: string; value: string | null | undefined }) {
   return <div><div className="text-xs text-gray-500 mb-0.5">{label}</div><div className="text-sm text-gray-900">{value || '-'}</div></div>;
+}
+
+/** Renders contract HTML in a sandboxed iframe */
+function ContractPreviewFrame({ html }: { html: string }) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  useEffect(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!doc) return;
+    doc.open();
+    doc.write(html);
+    doc.close();
+  }, [html]);
+
+  return (
+    <iframe
+      ref={iframeRef}
+      title="contract-preview"
+      className="w-full h-full border-0"
+      sandbox="allow-same-origin"
+    />
+  );
 }

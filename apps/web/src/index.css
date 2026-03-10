@@ -50,9 +50,9 @@ body {
 }
 
 /* ── Ensure bold renders correctly with TH Sarabun PSK ── */
-/* Tailwind preflight uses 'bolder' which may not resolve correctly in all browsers */
+/* Force font-weight 700 to match the Bold @font-face variant */
 strong, b {
-  font-weight: 700;
+  font-weight: 700 !important;
 }
 
 /* ── Tiptap Rich Text Editor (uses Sarabun for contracts) */
@@ -68,7 +68,8 @@ strong, b {
 
 .tiptap.ProseMirror strong,
 .tiptap.ProseMirror b {
-  font-weight: 700;
+  font-weight: 700 !important;
+  font-family: 'TH Sarabun PSK', 'Noto Sans Thai', sans-serif !important;
 }
 
 .tiptap.ProseMirror p {

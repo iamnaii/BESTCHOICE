@@ -1,23 +1,52 @@
-export default function SignatureBlock() {
-  const signatures = [
-    { label: 'ผู้ให้เช่าซื้อ', tag: '@sign_company' },
-    { label: 'ผู้เช่าซื้อ', tag: '@sign_customer' },
-    { label: 'พยาน', tag: '@sign_witness1' },
-    { label: 'พยาน', tag: '@sign_witness2' },
-  ];
+import { buildSampleContext } from '@/utils/templateRenderer';
+import { AVAILABLE_VARIABLES } from '@/constants/variables';
+
+interface Props {
+  previewMode?: boolean;
+}
+
+// Memoize context
+let _ctx: Record<string, any> | null = null;
+function getCtx() {
+  if (!_ctx) _ctx = buildSampleContext(AVAILABLE_VARIABLES);
+  return _ctx;
+}
+
+export default function SignatureBlock({ previewMode = false }: Props) {
+  const ctx = getCtx();
+  const customerName = previewMode
+    ? String(ctx['CUSTOMER.FULLNAME'] || '...................................')
+    : '{{= CUSTOMER.FULLNAME}}';
+  const managerName = 'เอกนรินทร์ คงเดช';
 
   return (
-    <div className="my-6 grid grid-cols-2 gap-x-8 gap-y-8">
-      {signatures.map((sig, i) => (
-        <div key={i} className="text-center">
-          <div className="mb-1 text-[13px]">
-            ลงชื่อ..................................................{sig.label}
-          </div>
-          <div className="text-[12px] text-gray-500">
-            ({' '.repeat(30)})
-          </div>
+    <div className="my-8" style={{ fontSize: '16px', lineHeight: 2 }}>
+      {/* Row 1: Main signatories */}
+      <div className="grid grid-cols-2 gap-x-8 mb-8">
+        {/* ผู้ให้เช่าซื้อ */}
+        <div className="text-center">
+          <div>ลงชื่อ..................................................ผู้ให้เช่าซื้อ</div>
+          <div>( {managerName} )</div>
+          <div style={{ fontSize: '14px', color: '#666' }}>ผู้จัดการ บริษัท เบสท์ช้อยส์โฟน จำกัด</div>
         </div>
-      ))}
+        {/* ผู้เช่าซื้อ */}
+        <div className="text-center">
+          <div>ลงชื่อ..................................................ผู้เช่าซื้อ</div>
+          <div>( {customerName} )</div>
+        </div>
+      </div>
+
+      {/* Row 2: Witnesses */}
+      <div className="grid grid-cols-2 gap-x-8">
+        <div className="text-center">
+          <div>ลงชื่อ..................................................พยาน</div>
+          <div>({'  '.repeat(15)})</div>
+        </div>
+        <div className="text-center">
+          <div>ลงชื่อ..................................................พยาน</div>
+          <div>({'  '.repeat(15)})</div>
+        </div>
+      </div>
     </div>
   );
 }

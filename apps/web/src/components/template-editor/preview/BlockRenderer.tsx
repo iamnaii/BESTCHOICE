@@ -207,7 +207,7 @@ export default function BlockRenderer({ block, previewMode, clauseIndex }: Props
       return <PaymentTable previewMode={previewMode} />;
 
     case 'signature-block':
-      return <SignatureBlock />;
+      return <SignatureBlock previewMode={previewMode} />;
 
     case 'photo-attachment':
       return (

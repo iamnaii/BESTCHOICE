@@ -91,7 +91,7 @@ export default function VariableAutocomplete({ value, onChange, placeholder, row
         onChange={handleInput}
         placeholder={placeholder}
         rows={rows}
-        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-primary-500 focus:border-primary-500 resize-y"
+        className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-base font-mono focus:ring-2 focus:ring-primary-500 focus:border-primary-500 resize-y"
         spellCheck={false}
       />
 
@@ -110,18 +110,18 @@ export default function VariableAutocomplete({ value, onChange, placeholder, row
             if (vars.length === 0) return null;
             return (
               <div key={group.label}>
-                <div className="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase bg-gray-50 sticky top-0">
+                <div className="px-3 py-1.5 text-xs font-bold text-gray-400 uppercase bg-gray-50 sticky top-0">
                   {group.label}
                 </div>
                 {vars.map(v => (
                   <button
                     key={v.key}
                     onClick={() => insertVariable(v.key)}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-primary-50 transition-colors"
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-primary-50 transition-colors"
                   >
-                    <span className="text-xs font-mono text-primary-700">{v.key}</span>
-                    <span className="text-[10px] text-gray-400 flex-1 truncate">{v.label}</span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{v.type}</span>
+                    <span className="text-sm font-mono text-primary-700">{v.key}</span>
+                    <span className="text-xs text-gray-400 flex-1 truncate">{v.label}</span>
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{v.type}</span>
                   </button>
                 ))}
               </div>

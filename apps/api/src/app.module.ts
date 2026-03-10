@@ -43,6 +43,7 @@ import { CreditCheckModule } from './modules/credit-check/credit-check.module';
 import { OcrModule } from './modules/ocr/ocr.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
+import { CsrfGuard } from './guards/csrf.guard';
 
 @Module({
   imports: [
@@ -110,6 +111,10 @@ import { SecurityMiddleware } from './modules/audit/security.middleware';
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: CsrfGuard,
     },
     {
       provide: APP_INTERCEPTOR,

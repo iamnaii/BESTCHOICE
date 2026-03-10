@@ -221,12 +221,15 @@ export class NotificationsService {
   async sendBulk(templateId: string, contractIds: string[]) {
     const results: { contractId: string; status: string }[] = [];
 
-    for (const contractId of contractIds) {
-      const contract = await this.prisma.contract.findUnique({
-        where: { id: contractId },
-        include: { customer: { select: { name: true, phone: true, lineId: true } } },
-      });
+    // Batch load all contracts to avoid N+1 queries
+    const contracts = await this.prisma.contract.findMany({
+      where: { id: { in: contractIds } },
+      include: { customer: { select: { name: true, phone: true, lineId: true } } },
+    });
+    const contractMap = new Map(contracts.map((c) => [c.id, c]));
 
+    for (const contractId of contractIds) {
+      const contract = contractMap.get(contractId);
       if (!contract) continue;
 
       const customer = contract.customer;
@@ -261,7 +264,7 @@ export class NotificationsService {
     return this.prisma.notificationLog.findMany({
       where,
       orderBy: { createdAt: 'desc' },
-      take: filters.limit || 50,
+      take: Math.min(filters.limit || 50, 100),
     });
   }
 

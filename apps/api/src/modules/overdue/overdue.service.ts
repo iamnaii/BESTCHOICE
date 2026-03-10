@@ -23,7 +23,7 @@ export class OverdueService {
     limit?: number;
   }) {
     const page = filters.page || 1;
-    const limit = filters.limit || 50;
+    const limit = Math.min(filters.limit || 50, 100);
     const skip = (page - 1) * limit;
 
     const where: Prisma.ContractWhereInput = {

@@ -235,6 +235,7 @@ model User {
   branchReceivings       BranchReceiving[]  @relation("BranchReceivedBy")
   stockCounts            StockCount[]       @relation("StockCountedBy")
   productPhotosUploaded  ProductPhoto[]     @relation("ProductPhotoUploadedBy")
+  refreshTokens          RefreshToken[]
 
   @@index([branchId])
   @@map("users")
@@ -1181,4 +1182,19 @@ model BranchReceivingItem {
   @@index([receivingId])
   @@index([productId])
   @@map("branch_receiving_items")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
 }

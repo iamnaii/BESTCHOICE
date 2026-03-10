@@ -40,11 +40,13 @@ export class CustomersController {
   }
 
   @Post()
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   create(@Body() dto: CreateCustomerDto) {
     return this.customersService.create(dto);
   }
 
   @Patch(':id')
+  @Roles('OWNER', 'BRANCH_MANAGER')
   update(@Param('id') id: string, @Body() dto: UpdateCustomerDto) {
     return this.customersService.update(id, dto);
   }

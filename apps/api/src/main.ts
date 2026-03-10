@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { json, urlencoded } from 'express';
+import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { validateEnv } from './utils/env-validation';
 
@@ -15,6 +16,7 @@ async function bootstrap() {
   // Increase body size limit for base64 image uploads
   app.use(json({ limit: '20mb' }));
   app.use(urlencoded({ extended: true, limit: '20mb' }));
+  app.use(cookieParser());
 
   // CORS configuration
   const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173')

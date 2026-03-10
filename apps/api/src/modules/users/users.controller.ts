@@ -6,6 +6,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { SaveSignatureDto } from './dto/save-signature.dto';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -19,8 +20,8 @@ export class UsersController {
   }
 
   @Put('me/signature')
-  saveSignature(@CurrentUser('id') userId: string, @Body('signatureImage') signatureImage: string) {
-    return this.usersService.saveSignature(userId, signatureImage);
+  saveSignature(@CurrentUser('id') userId: string, @Body() dto: SaveSignatureDto) {
+    return this.usersService.saveSignature(userId, dto.signatureImage);
   }
 
   @Delete('me/signature')

@@ -82,16 +82,19 @@ export class InspectionsController {
   }
 
   @Post('inspections')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   createInspection(@Body() dto: CreateInspectionDto, @CurrentUser() user: { id: string }) {
     return this.inspectionsService.createInspection(dto, user.id);
   }
 
   @Patch('inspections/:id')
+  @Roles('OWNER', 'BRANCH_MANAGER')
   updateInspection(@Param('id') id: string, @Body() dto: UpdateInspectionDto) {
     return this.inspectionsService.updateInspection(id, dto);
   }
 
   @Post('inspections/:id/complete')
+  @Roles('OWNER', 'BRANCH_MANAGER')
   completeInspection(@Param('id') id: string) {
     return this.inspectionsService.completeInspection(id);
   }

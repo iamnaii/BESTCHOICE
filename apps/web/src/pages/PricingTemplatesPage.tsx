@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import Modal from '@/components/ui/Modal';
@@ -109,25 +109,33 @@ export default function PricingTemplatesPage() {
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
-  const downloadTemplate = () => {
-    const sampleData = [
-      { 'ยี่ห้อ': 'Apple', 'รุ่น': 'iPhone 15', 'ความจุ': '128GB', 'ประเภท': 'มือ 1', 'ประกัน': '', 'ราคาเงินสด': 25000, 'ราคาผ่อน BESTCHOICE': 27000, 'ราคาผ่อนไฟแนนซ์': 26000 },
-      { 'ยี่ห้อ': 'Apple', 'รุ่น': 'iPhone 15', 'ความจุ': '128GB', 'ประเภท': 'มือ 2', 'ประกัน': 'มีประกัน', 'ราคาเงินสด': 18000, 'ราคาผ่อน BESTCHOICE': 20000, 'ราคาผ่อนไฟแนนซ์': 19000 },
-      { 'ยี่ห้อ': 'Apple', 'รุ่น': 'iPhone 15', 'ความจุ': '128GB', 'ประเภท': 'มือ 2', 'ประกัน': 'ไม่มีประกัน', 'ราคาเงินสด': 16000, 'ราคาผ่อน BESTCHOICE': 18000, 'ราคาผ่อนไฟแนนซ์': 17000 },
-      { 'ยี่ห้อ': 'Samsung', 'รุ่น': 'Galaxy S24', 'ความจุ': '256GB', 'ประเภท': 'มือ 1', 'ประกัน': '', 'ราคาเงินสด': 28000, 'ราคาผ่อน BESTCHOICE': 30000, 'ราคาผ่อนไฟแนนซ์': 29000 },
-    ];
-    const ws = XLSX.utils.json_to_sheet(sampleData);
-    // Set column widths
-    ws['!cols'] = [
-      { wch: 12 }, { wch: 18 }, { wch: 10 }, { wch: 10 }, { wch: 14 },
-      { wch: 14 }, { wch: 20 }, { wch: 18 },
-    ];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'ราคาตั้งต้น');
+  const downloadTemplate = async () => {
+    const wb = new ExcelJS.Workbook();
 
-    // Add instruction sheet
-    const instructions = [
-      ['คำอธิบายคอลัมน์'],
+    // Data sheet
+    const ws = wb.addWorksheet('ราคาตั้งต้น');
+    ws.columns = [
+      { header: 'ยี่ห้อ', key: 'brand', width: 12 },
+      { header: 'รุ่น', key: 'model', width: 18 },
+      { header: 'ความจุ', key: 'storage', width: 10 },
+      { header: 'ประเภท', key: 'category', width: 10 },
+      { header: 'ประกัน', key: 'warranty', width: 14 },
+      { header: 'ราคาเงินสด', key: 'cash', width: 14 },
+      { header: 'ราคาผ่อน BESTCHOICE', key: 'bestchoice', width: 20 },
+      { header: 'ราคาผ่อนไฟแนนซ์', key: 'finance', width: 18 },
+    ];
+    ws.addRows([
+      { brand: 'Apple', model: 'iPhone 15', storage: '128GB', category: 'มือ 1', warranty: '', cash: 25000, bestchoice: 27000, finance: 26000 },
+      { brand: 'Apple', model: 'iPhone 15', storage: '128GB', category: 'มือ 2', warranty: 'มีประกัน', cash: 18000, bestchoice: 20000, finance: 19000 },
+      { brand: 'Apple', model: 'iPhone 15', storage: '128GB', category: 'มือ 2', warranty: 'ไม่มีประกัน', cash: 16000, bestchoice: 18000, finance: 17000 },
+      { brand: 'Samsung', model: 'Galaxy S24', storage: '256GB', category: 'มือ 1', warranty: '', cash: 28000, bestchoice: 30000, finance: 29000 },
+    ]);
+
+    // Instruction sheet
+    const wsInstr = wb.addWorksheet('คำอธิบาย');
+    wsInstr.columns = [{ width: 22 }, { width: 60 }];
+    wsInstr.addRows([
+      ['คำอธิบายคอลัมน์', ''],
       ['ยี่ห้อ', 'ชื่อยี่ห้อ เช่น Apple, Samsung, OPPO'],
       ['รุ่น', 'ชื่อรุ่น เช่น iPhone 15, Galaxy S24'],
       ['ความจุ', 'เว้นว่างได้ เช่น 128GB, 256GB'],
@@ -137,67 +145,83 @@ export default function PricingTemplatesPage() {
       ['ราคาผ่อน BESTCHOICE', 'ตัวเลข เช่น 27000'],
       ['ราคาผ่อนไฟแนนซ์', 'ตัวเลข เช่น 26000'],
       [],
-      ['หมายเหตุ'],
-      ['- หากมีข้อมูลซ้ำ (ยี่ห้อ+รุ่น+ความจุ+ประเภท+ประกัน) จะอัปเดตราคาทับ'],
-      ['- มือ 2 ต้องระบุว่า "มีประกัน" หรือ "ไม่มีประกัน"'],
-    ];
-    const wsInstr = XLSX.utils.aoa_to_sheet(instructions);
-    wsInstr['!cols'] = [{ wch: 22 }, { wch: 60 }];
-    XLSX.utils.book_append_sheet(wb, wsInstr, 'คำอธิบาย');
+      ['หมายเหตุ', ''],
+      ['- หากมีข้อมูลซ้ำ (ยี่ห้อ+รุ่น+ความจุ+ประเภท+ประกัน) จะอัปเดตราคาทับ', ''],
+      ['- มือ 2 ต้องระบุว่า "มีประกัน" หรือ "ไม่มีประกัน"', ''],
+    ]);
 
-    XLSX.writeFile(wb, 'แบบฟอร์มราคาตั้งต้น.xlsx');
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'แบบฟอร์มราคาตั้งต้น.xlsx';
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
-  const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (fileInputRef.current) fileInputRef.current.value = '';
 
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      try {
-        const data = new Uint8Array(evt.target?.result as ArrayBuffer);
-        const wb = XLSX.read(data, { type: 'array' });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json<Record<string, any>>(ws);
-
-        if (rows.length === 0) {
-          toast.error('ไฟล์ไม่มีข้อมูล');
-          return;
-        }
-
-        const items = rows.map((row) => {
-          const categoryRaw = String(row['ประเภท'] || '').trim();
-          const category = categoryRaw === 'มือ 2' ? 'PHONE_USED' : 'PHONE_NEW';
-          const warrantyRaw = String(row['ประกัน'] || '').trim();
-          let hasWarranty = false;
-          if (category === 'PHONE_USED') {
-            hasWarranty = warrantyRaw === 'มีประกัน';
-          }
-          return {
-            brand: String(row['ยี่ห้อ'] || '').trim(),
-            model: String(row['รุ่น'] || '').trim(),
-            storage: String(row['ความจุ'] || '').trim() || undefined,
-            category,
-            hasWarranty,
-            cashPrice: Number(row['ราคาเงินสด']) || 0,
-            installmentBestchoicePrice: Number(row['ราคาผ่อน BESTCHOICE']) || 0,
-            installmentFinancePrice: Number(row['ราคาผ่อนไฟแนนซ์']) || 0,
-          };
-        }).filter((item) => item.brand && item.model && item.cashPrice > 0);
-
-        if (items.length === 0) {
-          toast.error('ไม่พบข้อมูลที่ถูกต้อง กรุณาตรวจสอบหัวคอลัมน์');
-          return;
-        }
-
-        toast.success(`พบ ${items.length} รายการ กำลังนำเข้า...`);
-        importMutation.mutate(items);
-      } catch {
-        toast.error('ไม่สามารถอ่านไฟล์ได้ กรุณาใช้ไฟล์ .xlsx');
+    try {
+      const buffer = await file.arrayBuffer();
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(buffer);
+      const ws = wb.worksheets[0];
+      if (!ws || ws.rowCount <= 1) {
+        toast.error('ไฟล์ไม่มีข้อมูล');
+        return;
       }
-    };
-    reader.readAsArrayBuffer(file);
+
+      // Read header row to build column index
+      const headerRow = ws.getRow(1);
+      const colIndex: Record<string, number> = {};
+      headerRow.eachCell((cell, colNumber) => {
+        colIndex[String(cell.value || '').trim()] = colNumber;
+      });
+
+      const rows: Record<string, any>[] = [];
+      ws.eachRow((row, rowNumber) => {
+        if (rowNumber === 1) return; // skip header
+        const obj: Record<string, any> = {};
+        for (const [header, col] of Object.entries(colIndex)) {
+          obj[header] = row.getCell(col).value;
+        }
+        rows.push(obj);
+      });
+
+      const items = rows.map((row) => {
+        const categoryRaw = String(row['ประเภท'] || '').trim();
+        const category = categoryRaw === 'มือ 2' ? 'PHONE_USED' : 'PHONE_NEW';
+        const warrantyRaw = String(row['ประกัน'] || '').trim();
+        let hasWarranty = false;
+        if (category === 'PHONE_USED') {
+          hasWarranty = warrantyRaw === 'มีประกัน';
+        }
+        return {
+          brand: String(row['ยี่ห้อ'] || '').trim(),
+          model: String(row['รุ่น'] || '').trim(),
+          storage: String(row['ความจุ'] || '').trim() || undefined,
+          category,
+          hasWarranty,
+          cashPrice: Number(row['ราคาเงินสด']) || 0,
+          installmentBestchoicePrice: Number(row['ราคาผ่อน BESTCHOICE']) || 0,
+          installmentFinancePrice: Number(row['ราคาผ่อนไฟแนนซ์']) || 0,
+        };
+      }).filter((item) => item.brand && item.model && item.cashPrice > 0);
+
+      if (items.length === 0) {
+        toast.error('ไม่พบข้อมูลที่ถูกต้อง กรุณาตรวจสอบหัวคอลัมน์');
+        return;
+      }
+
+      toast.success(`พบ ${items.length} รายการ กำลังนำเข้า...`);
+      importMutation.mutate(items);
+    } catch {
+      toast.error('ไม่สามารถอ่านไฟล์ได้ กรุณาใช้ไฟล์ .xlsx');
+    }
   };
 
   const openCreate = () => {

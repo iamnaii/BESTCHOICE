@@ -35,10 +35,10 @@ body {
 
 @layer utilities {
   .text-gradient {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary-400 to-sky-400;
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-teal-400 to-emerald-500;
   }
   .bg-hero-gradient {
-    background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 25%, #1d4ed8 50%, #2563eb 75%, #60a5fa 100%);
+    background: linear-gradient(135deg, #064e3b 0%, #065f46 25%, #059669 50%, #10b981 75%, #34d399 100%);
   }
   .glass-card {
     @apply bg-white/80 backdrop-blur-sm border border-white/20;
@@ -109,8 +109,8 @@ body {
 
 /* Variable tag styling inside editor */
 .tiptap.ProseMirror .variable-tag {
-  background-color: #dbeafe;
-  color: #1d4ed8;
+  background-color: #d1fae5;
+  color: #047857;
   padding: 2px 6px;
   border-radius: 4px;
   font-family: 'SF Mono', 'Fira Code', monospace;

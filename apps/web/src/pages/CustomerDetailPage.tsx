@@ -65,9 +65,9 @@ const statusLabels: Record<string, { label: string; className: string }> = {
   ACTIVE: { label: 'ผ่อนอยู่', className: 'bg-green-100 text-green-700' },
   OVERDUE: { label: 'ค้างชำระ', className: 'bg-yellow-100 text-yellow-700' },
   DEFAULT: { label: 'ผิดนัด', className: 'bg-red-100 text-red-700' },
-  EARLY_PAYOFF: { label: 'ปิดก่อน', className: 'bg-blue-100 text-blue-700' },
+  EARLY_PAYOFF: { label: 'ปิดก่อน', className: 'bg-primary-100 text-primary-700' },
   COMPLETED: { label: 'ครบ', className: 'bg-teal-100 text-teal-700' },
-  EXCHANGED: { label: 'เปลี่ยนเครื่อง', className: 'bg-blue-100 text-blue-700' },
+  EXCHANGED: { label: 'เปลี่ยนเครื่อง', className: 'bg-primary-100 text-primary-700' },
   CLOSED_BAD_DEBT: { label: 'หนี้สูญ', className: 'bg-red-200 text-red-800' },
 };
 
@@ -311,7 +311,7 @@ export default function CustomerDetailPage() {
                       {cc.contract && <span className="text-xs text-primary-600">สัญญา: {cc.contract.contractNumber}</span>}
                     </div>
                     {cc.status === 'PENDING' && (
-                      <button onClick={() => analyzeCreditMutation.mutate(cc.id)} disabled={analyzeCreditMutation.isPending} className="px-3 py-1 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                      <button onClick={() => analyzeCreditMutation.mutate(cc.id)} disabled={analyzeCreditMutation.isPending} className="px-3 py-1 text-xs bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50">
                         {analyzeCreditMutation.isPending ? 'กำลังวิเคราะห์...' : 'AI วิเคราะห์'}
                       </button>
                     )}
@@ -328,7 +328,7 @@ export default function CustomerDetailPage() {
                   )}
                   {cc.aiSummary && <div className="text-xs text-gray-600">{cc.aiSummary}</div>}
                   {cc.aiRecommendation && <div className={`text-xs font-medium p-2 rounded ${cc.aiScore && cc.aiScore >= 70 ? 'bg-green-50 text-green-700' : cc.aiScore && cc.aiScore >= 50 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>{cc.aiRecommendation}</div>}
-                  {cc.checkedBy && <div className="text-xs text-blue-600">ตรวจสอบโดย: {cc.checkedBy.name}{cc.reviewNotes ? ` - ${cc.reviewNotes}` : ''}</div>}
+                  {cc.checkedBy && <div className="text-xs text-primary-600">ตรวจสอบโดย: {cc.checkedBy.name}{cc.reviewNotes ? ` - ${cc.reviewNotes}` : ''}</div>}
                 </div>
               );
             })}

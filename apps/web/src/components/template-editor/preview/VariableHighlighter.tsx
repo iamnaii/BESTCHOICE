@@ -73,8 +73,8 @@ export default function VariableHighlighter({ text, previewMode, resolvedText }:
 
   const colorMap = {
     text: '',
-    print: 'bg-blue-100 text-blue-700 px-1 rounded',
-    loop: 'bg-blue-100 text-blue-700 px-1 rounded',
+    print: 'bg-primary-100 text-primary-700 px-1 rounded',
+    loop: 'bg-primary-100 text-primary-700 px-1 rounded',
     condition: 'bg-amber-100 text-amber-700 px-1 rounded',
     signature: 'bg-emerald-100 text-emerald-700 px-1 rounded',
     invalid: 'bg-red-100 text-red-700 px-1 rounded line-through',

@@ -38,12 +38,12 @@ const statusColors: Record<string, string> = {
   REPOSSESSED: 'bg-red-100 text-red-700',
   UNDER_REPAIR: 'bg-yellow-100 text-yellow-700',
   READY_FOR_SALE: 'bg-green-100 text-green-700',
-  SOLD: 'bg-blue-100 text-blue-700',
+  SOLD: 'bg-primary-100 text-primary-700',
 };
 
 const gradeColors: Record<string, string> = {
   A: 'bg-green-100 text-green-700',
-  B: 'bg-blue-100 text-blue-700',
+  B: 'bg-primary-100 text-primary-700',
   C: 'bg-yellow-100 text-yellow-700',
   D: 'bg-red-100 text-red-700',
 };

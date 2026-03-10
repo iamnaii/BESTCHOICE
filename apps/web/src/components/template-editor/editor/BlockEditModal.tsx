@@ -106,7 +106,7 @@ export default function BlockEditModal() {
               <select
                 value={form.type}
                 onChange={e => setForm(prev => ({ ...prev, type: e.target.value as BlockType }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500"
               >
                 {BLOCK_TYPES.map(t => (
                   <option key={t.value} value={t.value}>{t.label} — {t.description}</option>
@@ -161,7 +161,7 @@ export default function BlockEditModal() {
                   onChange={e => setForm(prev => ({ ...prev, content: e.target.value }))}
                   placeholder="เนื้อหาสำหรับ block นี้..."
                   rows={6}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 resize-y"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-primary-500 resize-y"
                 />
               )}
             </div>
@@ -173,7 +173,7 @@ export default function BlockEditModal() {
                   <label className="text-sm font-medium text-gray-700">ข้อย่อย</label>
                   <button
                     onClick={addSubItem}
-                    className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
+                    className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700"
                   >
                     <Plus size={12} /> เพิ่มข้อย่อย
                   </button>
@@ -237,11 +237,11 @@ export default function BlockEditModal() {
                             <button
                               key={v.key}
                               onClick={() => insertVariable(v.key)}
-                              className="w-full flex items-center gap-2 px-2 py-1.5 text-left rounded hover:bg-blue-50 hover:text-blue-700 transition-colors group"
+                              className="w-full flex items-center gap-2 px-2 py-1.5 text-left rounded hover:bg-primary-50 hover:text-primary-700 transition-colors group"
                               title={`ตัวอย่าง: ${v.sampleValue}`}
                             >
-                              <span className="text-xs text-gray-700 group-hover:text-blue-700 truncate flex-1">{v.label}</span>
-                              <span className="text-[9px] px-1 py-0.5 rounded bg-gray-200 text-gray-500 group-hover:bg-blue-100 group-hover:text-blue-600 shrink-0">
+                              <span className="text-xs text-gray-700 group-hover:text-primary-700 truncate flex-1">{v.label}</span>
+                              <span className="text-[9px] px-1 py-0.5 rounded bg-gray-200 text-gray-500 group-hover:bg-primary-100 group-hover:text-primary-600 shrink-0">
                                 แทรก
                               </span>
                             </button>
@@ -279,7 +279,7 @@ export default function BlockEditModal() {
         <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
           <button
             onClick={() => setShowVarPanel(!showVarPanel)}
-            className="text-xs text-gray-500 hover:text-blue-600"
+            className="text-xs text-gray-500 hover:text-primary-600"
           >
             {showVarPanel ? 'ซ่อนตัวแปร' : 'แสดงตัวแปร'}
           </button>
@@ -292,7 +292,7 @@ export default function BlockEditModal() {
             </button>
             <button
               onClick={handleSave}
-              className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700"
             >
               บันทึก
             </button>

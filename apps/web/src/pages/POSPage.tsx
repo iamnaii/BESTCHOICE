@@ -576,9 +576,9 @@ export default function POSPage() {
                 </div>
                 {/* Transfer amount highlight */}
                 {transferAmount > 0 && (
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                    <div className="text-xs text-blue-600">ยอดที่ BESTCHOICE รับผิดชอบ (หลังหักดาวน์)</div>
-                    <div className="text-lg font-bold text-blue-700">{transferAmount.toLocaleString()} ฿</div>
+                  <div className="bg-primary-50 border border-primary-200 rounded-lg p-3">
+                    <div className="text-xs text-primary-600">ยอดที่ BESTCHOICE รับผิดชอบ (หลังหักดาวน์)</div>
+                    <div className="text-lg font-bold text-primary-700">{transferAmount.toLocaleString()} ฿</div>
                   </div>
                 )}
               </div>
@@ -610,9 +610,9 @@ export default function POSPage() {
                 </div>
                 {/* Finance transfer amount highlight */}
                 {transferAmount > 0 && (
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                    <div className="text-xs text-blue-600">ยอดที่ไฟแนนซ์ต้องโอนให้ร้าน (หลังหักดาวน์)</div>
-                    <div className="text-lg font-bold text-blue-700">{transferAmount.toLocaleString()} ฿</div>
+                  <div className="bg-primary-50 border border-primary-200 rounded-lg p-3">
+                    <div className="text-xs text-primary-600">ยอดที่ไฟแนนซ์ต้องโอนให้ร้าน (หลังหักดาวน์)</div>
+                    <div className="text-lg font-bold text-primary-700">{transferAmount.toLocaleString()} ฿</div>
                   </div>
                 )}
               </div>
@@ -697,7 +697,7 @@ export default function POSPage() {
                     <span>{parseFloat(downPayment).toLocaleString()} ฿</span>
                   </div>
                 )}
-                <div className="flex justify-between text-sm font-bold text-blue-600">
+                <div className="flex justify-between text-sm font-bold text-primary-600">
                   <span>ยอดที่ BESTCHOICE รับ</span>
                   <span>{transferAmount.toLocaleString()} ฿</span>
                 </div>
@@ -730,7 +730,7 @@ export default function POSPage() {
                     <span>{parseFloat(downPayment).toLocaleString()} ฿</span>
                   </div>
                 )}
-                <div className="flex justify-between text-sm font-bold text-blue-600">
+                <div className="flex justify-between text-sm font-bold text-primary-600">
                   <span>ยอดที่ไฟแนนซ์ต้องโอน</span>
                   <span>{transferAmount.toLocaleString()} ฿</span>
                 </div>

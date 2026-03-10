@@ -294,7 +294,7 @@ export default function ExchangePage() {
                 </div>
                 <div>
                   <div className="text-xs text-gray-500">ส่วนต่าง</div>
-                  <div className={`text-lg font-bold ${quote.summary.difference >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
+                  <div className={`text-lg font-bold ${quote.summary.difference >= 0 ? 'text-primary-600' : 'text-orange-600'}`}>
                     {quote.summary.difference.toLocaleString()}
                   </div>
                 </div>

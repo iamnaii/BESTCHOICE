@@ -226,7 +226,7 @@ export default function ProductPhotosPanel({
                       <button
                         onClick={() => triggerUpload(angle)}
                         disabled={uploadMutation.isPending || deleteMutation.isPending}
-                        className="flex-1 px-1 py-0.5 bg-blue-50 rounded text-[10px] text-blue-600 hover:bg-blue-100 font-medium disabled:opacity-50"
+                        className="flex-1 px-1 py-0.5 bg-primary-50 rounded text-[10px] text-primary-600 hover:bg-primary-100 font-medium disabled:opacity-50"
                       >
                         เปลี่ยน
                       </button>

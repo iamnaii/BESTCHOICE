@@ -151,7 +151,7 @@ export default function BranchReceivingPage() {
                         {t.product.imeiSerial && <span className="font-mono">IMEI: {t.product.imeiSerial}</span>}
                         {t.dispatchedAt && <span>จัดส่ง: {new Date(t.dispatchedAt).toLocaleDateString('th-TH')}</span>}
                       </div>
-                      {t.trackingNote && <div className="text-xs text-blue-600 mt-1">{t.trackingNote}</div>}
+                      {t.trackingNote && <div className="text-xs text-primary-600 mt-1">{t.trackingNote}</div>}
                     </div>
                     <button
                       onClick={() => openReceiveModal(t)}

@@ -34,7 +34,7 @@ export default function SettingsModal() {
                     name="letterhead"
                     checked={settings.letterhead === opt.value}
                     onChange={() => updateSettings({ letterhead: opt.value as typeof settings.letterhead })}
-                    className="text-blue-600 focus:ring-blue-500"
+                    className="text-primary-600 focus:ring-primary-500"
                   />
                   {opt.label}
                 </label>
@@ -48,7 +48,7 @@ export default function SettingsModal() {
               type="checkbox"
               checked={settings.showPageNumber}
               onChange={e => updateSettings({ showPageNumber: e.target.checked })}
-              className="rounded text-blue-600 focus:ring-blue-500"
+              className="rounded text-primary-600 focus:ring-primary-500"
             />
             เพิ่มเลขหน้า (หน้า X/Y)
           </label>
@@ -59,7 +59,7 @@ export default function SettingsModal() {
               type="checkbox"
               checked={settings.showSignatureExceptLastPage}
               onChange={e => updateSettings({ showSignatureExceptLastPage: e.target.checked })}
-              className="rounded text-blue-600 focus:ring-blue-500"
+              className="rounded text-primary-600 focus:ring-primary-500"
             />
             เพิ่มลายเซ็น ยกเว้นหน้าสุดท้าย
           </label>
@@ -71,7 +71,7 @@ export default function SettingsModal() {
               type="text"
               value={settings.footerText}
               onChange={e => updateSettings({ footerText: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500"
             />
           </div>
 
@@ -136,7 +136,7 @@ export default function SettingsModal() {
         <div className="flex justify-end px-6 py-4 border-t border-gray-200">
           <button
             onClick={() => setShowSettings(false)}
-            className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700"
           >
             ปิด
           </button>

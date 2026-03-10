@@ -78,8 +78,8 @@ function CardReaderSetup() {
     }
   })();
 
-  const bgColor = { green: 'bg-green-50 border-green-200', yellow: 'bg-yellow-50 border-yellow-200', red: 'bg-red-50 border-red-200', blue: 'bg-blue-50 border-blue-200', gray: 'bg-gray-50 border-gray-200' }[statusInfo.color] || 'bg-gray-50 border-gray-200';
-  const textColor = { green: 'text-green-700', yellow: 'text-yellow-700', red: 'text-red-700', blue: 'text-blue-700', gray: 'text-gray-500' }[statusInfo.color] || 'text-gray-500';
+  const bgColor = { green: 'bg-green-50 border-green-200', yellow: 'bg-yellow-50 border-yellow-200', red: 'bg-red-50 border-red-200', blue: 'bg-primary-50 border-primary-200', gray: 'bg-gray-50 border-gray-200' }[statusInfo.color] || 'bg-gray-50 border-gray-200';
+  const textColor = { green: 'text-green-700', yellow: 'text-yellow-700', red: 'text-red-700', blue: 'text-primary-700', gray: 'text-gray-500' }[statusInfo.color] || 'text-gray-500';
 
   return (
     <div className="bg-white rounded-lg border p-6">
@@ -206,12 +206,12 @@ export default function SettingsPage() {
         <CardReaderSetup />
 
         {/* Link to InterestConfig */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center justify-between">
+        <div className="bg-primary-50 border border-primary-200 rounded-lg p-4 flex items-center justify-between">
           <div>
-            <div className="text-sm font-medium text-blue-800">ตั้งค่าอัตราดอกเบี้ยตามประเภทสินค้า</div>
-            <div className="text-xs text-blue-600 mt-0.5">ตั้งค่าดอกเบี้ย เงินดาวน์ขั้นต่ำ จำนวนงวด แยกตามประเภทสินค้า (มือ1, มือ2, แท็บเล็ต ฯลฯ) ซึ่งจะใช้แทนค่า default ด้านล่าง</div>
+            <div className="text-sm font-medium text-primary-800">ตั้งค่าอัตราดอกเบี้ยตามประเภทสินค้า</div>
+            <div className="text-xs text-primary-600 mt-0.5">ตั้งค่าดอกเบี้ย เงินดาวน์ขั้นต่ำ จำนวนงวด แยกตามประเภทสินค้า (มือ1, มือ2, แท็บเล็ต ฯลฯ) ซึ่งจะใช้แทนค่า default ด้านล่าง</div>
           </div>
-          <button onClick={() => navigate('/settings/interest-config')} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 whitespace-nowrap">
+          <button onClick={() => navigate('/settings/interest-config')} className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 whitespace-nowrap">
             ตั้งค่าดอกเบี้ย
           </button>
         </div>

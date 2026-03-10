@@ -320,7 +320,7 @@ export default function PricingTemplatesPage() {
                     <td className="px-4 py-3 text-gray-600">{t.storage || '-'}</td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                        t.category === 'PHONE_NEW' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
+                        t.category === 'PHONE_NEW' ? 'bg-primary-100 text-primary-700' : 'bg-orange-100 text-orange-700'
                       }`}>
                         {t.category === 'PHONE_NEW' ? 'มือ 1' : 'มือ 2'}
                       </span>

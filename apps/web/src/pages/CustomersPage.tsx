@@ -467,11 +467,11 @@ export default function CustomersPage() {
           </div>
 
           {/* ===== OCR Scan ===== */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="bg-primary-50 border border-primary-200 rounded-lg p-4">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-semibold text-blue-800">สแกนบัตรประชาชน (OCR)</h3>
+              <h3 className="text-sm font-semibold text-primary-800">สแกนบัตรประชาชน (OCR)</h3>
             </div>
-            <p className="text-xs text-blue-600 mb-3">ถ่ายรูปบัตรประชาชนเพื่อกรอกข้อมูลอัตโนมัติ</p>
+            <p className="text-xs text-primary-600 mb-3">ถ่ายรูปบัตรประชาชนเพื่อกรอกข้อมูลอัตโนมัติ</p>
             <input
               ref={ocrFileRef}
               type="file"
@@ -484,7 +484,7 @@ export default function CustomersPage() {
               type="button"
               onClick={() => ocrFileRef.current?.click()}
               disabled={ocrLoading}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
             >
               {ocrLoading ? (
                 <>

@@ -130,14 +130,12 @@ function Sidebar() {
   return (
     <aside className="w-64 bg-primary-950 min-h-screen flex flex-col">
       {/* Logo */}
-      <div className="px-5 py-6 border-b border-white/10">
+      <div className="px-5 py-5 border-b border-white/10">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-400 to-sky-400 flex items-center justify-center shadow-lg shadow-primary-500/20">
-            <span className="text-white font-bold text-base">B</span>
-          </div>
+          <img src="/logo-icon.svg" alt="BestChoice" className="w-10 h-10 rounded-xl" />
           <div>
             <h1 className="text-lg font-semibold text-white leading-tight tracking-wide">
-              best<span className="text-primary-400">choice</span>
+              BEST<span className="text-primary-400">CHOICE</span>
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">ระบบจัดการร้าน</p>
           </div>

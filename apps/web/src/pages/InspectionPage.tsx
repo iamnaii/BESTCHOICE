@@ -85,7 +85,7 @@ export default function InspectionPage() {
       render: (i: Inspection) => {
         const grade = i.gradeOverride || i.overallGrade;
         if (!grade) return <span className="text-gray-400">-</span>;
-        const colors: Record<string, string> = { A: 'bg-green-100 text-green-700', B: 'bg-blue-100 text-blue-700', C: 'bg-yellow-100 text-yellow-700', D: 'bg-red-100 text-red-700' };
+        const colors: Record<string, string> = { A: 'bg-green-100 text-green-700', B: 'bg-primary-100 text-primary-700', C: 'bg-yellow-100 text-yellow-700', D: 'bg-red-100 text-red-700' };
         return (
           <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${colors[grade] || 'bg-gray-100'}`}>
             {grade} {i.gradeOverride ? '(override)' : ''}

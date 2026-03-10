@@ -369,7 +369,7 @@ export default function StockTransfersPage() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                       </svg>
                       <div className="flex-1 min-w-0 flex items-center gap-3 flex-wrap">
-                        <span className="font-mono text-sm font-semibold text-blue-600">
+                        <span className="font-mono text-sm font-semibold text-primary-600">
                           {batch.batchNumber || '-'}
                         </span>
                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.className}`}>
@@ -395,7 +395,7 @@ export default function StockTransfersPage() {
                               }
                             }}
                             disabled={dispatchMutation.isPending}
-                            className="px-3 py-1 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700 disabled:opacity-50"
+                            className="px-3 py-1 bg-primary-600 text-white rounded text-xs font-medium hover:bg-primary-700 disabled:opacity-50"
                           >
                             จัดส่งทั้งใบ
                           </button>
@@ -403,7 +403,7 @@ export default function StockTransfersPage() {
                         {batch.status === 'IN_TRANSIT' && (
                           <button
                             onClick={() => openSlipModal(batch.items)}
-                            className="px-3 py-1 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700"
+                            className="px-3 py-1 bg-primary-600 text-white rounded text-xs font-medium hover:bg-primary-700"
                           >
                             ใบโอนสินค้า
                           </button>
@@ -517,7 +517,7 @@ export default function StockTransfersPage() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                       </svg>
                       <div className="flex-1 min-w-0 flex items-center gap-3 flex-wrap">
-                        <span className="font-mono text-sm font-semibold text-blue-600">
+                        <span className="font-mono text-sm font-semibold text-primary-600">
                           {batch.batchNumber || '-'}
                         </span>
                         <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
@@ -573,7 +573,7 @@ export default function StockTransfersPage() {
                           </tbody>
                         </table>
                         {batch.trackingNote && (
-                          <div className="px-4 py-2 bg-yellow-50 text-xs text-blue-600">
+                          <div className="px-4 py-2 bg-yellow-50 text-xs text-primary-600">
                             หมายเหตุจัดส่ง: {batch.trackingNote}
                           </div>
                         )}
@@ -657,7 +657,7 @@ export default function StockTransfersPage() {
                   <h3 className="text-lg font-bold text-gray-800">ใบโอนสินค้า</h3>
                   <p className="text-sm text-gray-500 font-mono mt-0.5">{first.batchNumber || '-'}</p>
                 </div>
-                <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
+                <span className="px-3 py-1 bg-primary-100 text-primary-700 rounded-full text-sm font-medium">
                   {slipBatchItems.length} รายการ
                 </span>
               </div>
@@ -720,9 +720,9 @@ export default function StockTransfersPage() {
 
               {/* Notes */}
               {(first.notes || first.trackingNote) && (
-                <div className="bg-blue-50 rounded-lg p-3">
+                <div className="bg-primary-50 rounded-lg p-3">
                   {first.notes && <div className="text-sm text-gray-700">หมายเหตุ: {first.notes}</div>}
-                  {first.trackingNote && <div className="text-sm text-blue-700">หมายเหตุจัดส่ง: {first.trackingNote}</div>}
+                  {first.trackingNote && <div className="text-sm text-primary-700">หมายเหตุจัดส่ง: {first.trackingNote}</div>}
                 </div>
               )}
 

@@ -25,8 +25,8 @@ const roleLabels: Record<string, string> = {
 };
 
 const roleColors: Record<string, string> = {
-  OWNER: 'bg-blue-100 text-blue-700',
-  BRANCH_MANAGER: 'bg-blue-100 text-blue-700',
+  OWNER: 'bg-primary-100 text-primary-700',
+  BRANCH_MANAGER: 'bg-primary-100 text-primary-700',
   SALES: 'bg-green-100 text-green-700',
   ACCOUNTANT: 'bg-orange-100 text-orange-700',
 };

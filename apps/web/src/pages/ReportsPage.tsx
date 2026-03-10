@@ -120,7 +120,7 @@ function RevenueReport() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <SummaryCard label="รายได้ดอกเบี้ย" value={data?.interestIncome || 0} color="text-green-600" />
         <SummaryCard label="ค่าปรับ" value={data?.lateFeeIncome || 0} color="text-orange-600" />
-        <SummaryCard label="ยอดชำระรับ" value={data?.paymentsReceived || 0} color="text-blue-600" />
+        <SummaryCard label="ยอดชำระรับ" value={data?.paymentsReceived || 0} color="text-primary-600" />
         <SummaryCard label="ยอดค้างชำระ" value={data?.outstandingTotal || 0} color="text-red-600" />
       </div>
     </div>
@@ -293,8 +293,8 @@ function DailyPaymentReport({ date, onDateChange }: { date: string; onDateChange
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
         <SummaryCard label="รายการชำระ" value={data?.totalCount || 0} isCurrency={false} />
         <SummaryCard label="ยอดรวม" value={data?.totalAmount || 0} color="text-green-600" />
-        <SummaryCard label="เงินสด" value={data?.byMethod?.CASH || 0} color="text-blue-600" />
-        <SummaryCard label="โอน" value={data?.byMethod?.TRANSFER || 0} color="text-blue-600" />
+        <SummaryCard label="เงินสด" value={data?.byMethod?.CASH || 0} color="text-primary-600" />
+        <SummaryCard label="โอน" value={data?.byMethod?.TRANSFER || 0} color="text-primary-600" />
       </div>
       {data?.byBranch && data.byBranch.length > 0 && (
         <div className="overflow-x-auto">
@@ -340,7 +340,7 @@ function StockReport() {
         <h3 className="text-sm font-semibold text-gray-700 mb-4">สต็อกตามสถานะ</h3>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
           <SummaryCard label="ทั้งหมด" value={data?.totalCount || 0} isCurrency={false} />
-          <SummaryCard label="มูลค่ารวม" value={data?.totalValue || 0} color="text-blue-600" />
+          <SummaryCard label="มูลค่ารวม" value={data?.totalValue || 0} color="text-primary-600" />
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">

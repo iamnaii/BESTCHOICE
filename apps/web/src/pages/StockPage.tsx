@@ -459,7 +459,7 @@ export default function StockPage() {
               {selectedIds.size > 0 && (
                 <button
                   onClick={() => setShowBulkTransfer(true)}
-                  className="px-4 py-2 border border-blue-300 text-blue-600 rounded-lg text-sm font-medium hover:bg-blue-50 transition-colors"
+                  className="px-4 py-2 border border-primary-300 text-primary-600 rounded-lg text-sm font-medium hover:bg-primary-50 transition-colors"
                 >
                   โอนสินค้า ({selectedIds.size})
                 </button>
@@ -539,19 +539,19 @@ export default function StockPage() {
                   </div>
                 )}
                 {(dashboard.actionRequired.photoPending || 0) > 0 && (
-                  <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
-                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 text-lg font-bold">
+                  <div className="flex items-center gap-3 p-3 bg-primary-50 rounded-lg">
+                    <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center text-primary-600 text-lg font-bold">
                       {dashboard.actionRequired.photoPending}
                     </div>
-                    <div className="text-sm text-blue-700">รอถ่ายรูป</div>
+                    <div className="text-sm text-primary-700">รอถ่ายรูป</div>
                   </div>
                 )}
                 {dashboard.actionRequired.pendingTransfers > 0 && (
-                  <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
-                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 text-lg font-bold">
+                  <div className="flex items-center gap-3 p-3 bg-primary-50 rounded-lg">
+                    <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center text-primary-600 text-lg font-bold">
                       {dashboard.actionRequired.pendingTransfers}
                     </div>
-                    <div className="text-sm text-blue-700">รอยืนยันโอน</div>
+                    <div className="text-sm text-primary-700">รอยืนยันโอน</div>
                   </div>
                 )}
                 {dashboard.actionRequired.repossessed > 0 && (
@@ -580,7 +580,7 @@ export default function StockPage() {
             <div className="bg-white rounded-lg border p-5">
               <SectionTitle>อัตราหมุนเวียนสต๊อค</SectionTitle>
               <div className="grid grid-cols-2 gap-4">
-                <StatCard label="อายุเฉลี่ยในสต๊อค" value={`${dashboard.stockTurnover.avgDaysInStock} วัน`} accent="border-l-blue-500" />
+                <StatCard label="อายุเฉลี่ยในสต๊อค" value={`${dashboard.stockTurnover.avgDaysInStock} วัน`} accent="border-l-primary-500" />
                 <StatCard label="สต๊อคปัจจุบัน" value={dashboard.stockTurnover.currentStock} sub="ชิ้น (IN_STOCK)" accent="border-l-green-500" />
                 <StatCard label="ขายเดือนนี้" value={dashboard.stockTurnover.soldThisMonth} sub="ชิ้น" accent="border-l-indigo-500" />
                 <StatCard label="ขายเดือนที่แล้ว" value={dashboard.stockTurnover.soldLastMonth} sub="ชิ้น" accent="border-l-gray-400" />
@@ -678,7 +678,7 @@ export default function StockPage() {
                     label={categoryLabels[item.name] || item.name}
                     count={item.count}
                     total={dashboard.stockTurnover.currentStock}
-                    color="bg-blue-400"
+                    color="bg-primary-400"
                   />
                 ))}
                 {dashboard.byCategory.length === 0 && <div className="text-sm text-gray-400 text-center py-2">-</div>}
@@ -695,7 +695,7 @@ export default function StockPage() {
                     label={item.name}
                     count={item.count}
                     total={dashboard.stockTurnover.currentStock}
-                    color="bg-blue-400"
+                    color="bg-primary-400"
                   />
                 ))}
                 {dashboard.byBrand.length === 0 && <div className="text-sm text-gray-400 text-center py-2">-</div>}
@@ -749,7 +749,7 @@ export default function StockPage() {
               <StatCard
                 label="มูลค่าขายรวม"
                 value={`${dashboard.marginOverview.totalSell.toLocaleString()} ฿`}
-                accent="border-l-blue-500"
+                accent="border-l-primary-500"
               />
               <StatCard
                 label="กำไรรวม (ถ้าขายหมด)"
@@ -957,7 +957,7 @@ export default function StockPage() {
             <button
               type="submit"
               disabled={bulkTransferMutation.isPending || !transferBranchId}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50 transition-colors"
             >
               {bulkTransferMutation.isPending ? 'กำลังโอน...' : `โอน ${selectedIds.size} รายการ`}
             </button>

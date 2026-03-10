@@ -335,12 +335,12 @@ function ServiceCard({
   full?: boolean;
 }) {
   const bgColors: Record<string, string> = {
-    blue: 'bg-blue-50 border-blue-200',
+    blue: 'bg-primary-50 border-primary-200',
     indigo: 'bg-indigo-50 border-indigo-200',
     emerald: 'bg-emerald-50 border-emerald-200',
   };
   const iconColors: Record<string, string> = {
-    blue: 'text-blue-600',
+    blue: 'text-primary-600',
     indigo: 'text-indigo-600',
     emerald: 'text-emerald-600',
   };

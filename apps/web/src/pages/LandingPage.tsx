@@ -116,7 +116,7 @@ export default function LandingPage() {
                     </div>
                   </div>
                   {/* Decorative circles */}
-                  <div className="absolute -top-8 -right-8 w-24 h-24 bg-blue-500/20 rounded-full blur-xl" />
+                  <div className="absolute -top-8 -right-8 w-24 h-24 bg-primary-500/20 rounded-full blur-xl" />
                   <div className="absolute -bottom-8 -left-8 w-32 h-32 bg-primary-500/20 rounded-full blur-xl" />
                 </div>
               </div>
@@ -318,7 +318,7 @@ export default function LandingPage() {
               <p className="mt-2 text-sm text-gray-500">@bestchoice</p>
             </div>
             <div className="text-center p-6 rounded-2xl bg-gray-50">
-              <div className="w-12 h-12 mx-auto rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center mb-4">
+              <div className="w-12 h-12 mx-auto rounded-xl bg-primary-100 text-primary-600 flex items-center justify-center mb-4">
                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -337,7 +337,7 @@ export default function LandingPage() {
           <div className="grid md:grid-cols-4 gap-8">
             <div className="md:col-span-2">
               <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-400 to-blue-500 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-400 to-primary-500 flex items-center justify-center">
                   <span className="text-white font-bold text-sm">B</span>
                 </div>
                 <span className="text-xl font-bold text-white">

@@ -36,8 +36,8 @@ interface SalesResponse {
 
 const saleTypeLabels: Record<string, { label: string; className: string }> = {
   CASH: { label: 'เงินสด', className: 'bg-green-100 text-green-700' },
-  INSTALLMENT: { label: 'ผ่อนร้าน', className: 'bg-blue-100 text-blue-700' },
-  EXTERNAL_FINANCE: { label: 'ไฟแนนซ์', className: 'bg-blue-100 text-blue-700' },
+  INSTALLMENT: { label: 'ผ่อนร้าน', className: 'bg-primary-100 text-primary-700' },
+  EXTERNAL_FINANCE: { label: 'ไฟแนนซ์', className: 'bg-primary-100 text-primary-700' },
 };
 
 const paymentMethodLabels: Record<string, string> = {
@@ -150,13 +150,13 @@ export default function SalesHistoryPage() {
         <div className="text-xs">
           <div>{paymentMethodLabels[s.paymentMethod] || s.paymentMethod || '-'}</div>
           {s.saleType === 'INSTALLMENT' && s.contract && (
-            <div className="text-blue-600">
+            <div className="text-primary-600">
               ดาวน์ {Number(s.downPaymentAmount || 0).toLocaleString()} ฿
               <br />ผ่อน {Number(s.contract.monthlyPayment).toLocaleString()} x {s.contract.totalMonths} งวด
             </div>
           )}
           {s.saleType === 'EXTERNAL_FINANCE' && s.financeCompany && (
-            <div className="text-blue-600">
+            <div className="text-primary-600">
               {s.financeCompany}
               {s.downPaymentAmount && Number(s.downPaymentAmount) > 0 && (
                 <span> / ดาวน์ {Number(s.downPaymentAmount).toLocaleString()} ฿</span>
@@ -238,13 +238,13 @@ export default function SalesHistoryPage() {
           </div>
           <div className="bg-white rounded-lg border p-4">
             <div className="text-xs text-gray-500 mb-1">ผ่อนร้าน (หน้านี้)</div>
-            <div className="text-xl font-bold text-blue-600">{stats.installmentCount}</div>
-            <div className="text-sm text-blue-600 mt-1">{stats.installmentRevenue.toLocaleString()} ฿</div>
+            <div className="text-xl font-bold text-primary-600">{stats.installmentCount}</div>
+            <div className="text-sm text-primary-600 mt-1">{stats.installmentRevenue.toLocaleString()} ฿</div>
           </div>
           <div className="bg-white rounded-lg border p-4">
             <div className="text-xs text-gray-500 mb-1">ไฟแนนซ์ (หน้านี้)</div>
-            <div className="text-xl font-bold text-blue-600">{stats.financeCount}</div>
-            <div className="text-sm text-blue-600 mt-1">{stats.financeRevenue.toLocaleString()} ฿</div>
+            <div className="text-xl font-bold text-primary-600">{stats.financeCount}</div>
+            <div className="text-sm text-primary-600 mt-1">{stats.financeRevenue.toLocaleString()} ฿</div>
           </div>
         </div>
       )}

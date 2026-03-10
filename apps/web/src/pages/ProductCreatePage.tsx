@@ -370,8 +370,8 @@ export default function ProductCreatePage() {
                             onClick={() => toggleModel(m.name)}
                             className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
                               isSelected
-                                ? 'bg-blue-600 text-white border-blue-600'
-                                : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400 hover:text-blue-600'
+                                ? 'bg-primary-600 text-white border-primary-600'
+                                : 'bg-white text-gray-600 border-gray-300 hover:border-primary-400 hover:text-primary-600'
                             }`}
                           >
                             {m.name}
@@ -380,7 +380,7 @@ export default function ProductCreatePage() {
                       })}
                     </div>
                     {form.model && (
-                      <div className="text-xs text-blue-500 mt-1">เลือกแล้ว {form.model.split(', ').filter(Boolean).length} รุ่น</div>
+                      <div className="text-xs text-primary-500 mt-1">เลือกแล้ว {form.model.split(', ').filter(Boolean).length} รุ่น</div>
                     )}
                   </div>
                 )}
@@ -493,7 +493,7 @@ export default function ProductCreatePage() {
 
           {/* Accessory auto name preview */}
           {form.category === 'ACCESSORY' && (form.accessoryType || form.accessoryBrand) && (
-            <div className="mt-3 text-sm text-blue-600 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+            <div className="mt-3 text-sm text-primary-600 bg-primary-50 border border-primary-200 rounded-lg px-3 py-2">
               ชื่อสินค้าอัตโนมัติ: {(() => {
                 const isCharger = form.accessoryType === 'ชุดชาร์จ';
                 if (isCharger) return [form.accessoryType, form.accessoryBrand, form.model].filter(Boolean).join(' ');

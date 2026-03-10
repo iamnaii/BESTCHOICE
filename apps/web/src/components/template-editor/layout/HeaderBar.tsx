@@ -86,7 +86,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet }
       </select>
 
       {isDirty && <span className="text-xs text-amber-600">*</span>}
-      {isSaving && <span className="text-xs text-blue-600 flex items-center gap-1"><Loader2 size={12} className="animate-spin" /></span>}
+      {isSaving && <span className="text-xs text-primary-600 flex items-center gap-1"><Loader2 size={12} className="animate-spin" /></span>}
 
       <div className="flex-1" />
 
@@ -158,7 +158,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet }
         onClick={() => setPreviewMode(!previewMode)}
         className={`flex items-center gap-1.5 px-3.5 py-2 text-sm rounded-lg transition-colors ${
           previewMode
-            ? 'bg-blue-600 text-white hover:bg-blue-700'
+            ? 'bg-primary-600 text-white hover:bg-primary-700'
             : 'text-slate-600 border border-slate-200 hover:bg-slate-50'
         }`}
       >
@@ -168,7 +168,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet }
 
       <button
         onClick={() => setShowExportModal(true)}
-        className="flex items-center gap-1.5 px-3.5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+        className="flex items-center gap-1.5 px-3.5 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
       >
         <Download size={16} />
         PDF

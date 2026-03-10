@@ -80,7 +80,7 @@ const statusLabels: Record<string, string> = {
 const statusColors: Record<string, string> = {
   PENDING: 'bg-gray-100 text-gray-700',
   DRAFT: 'bg-orange-100 text-orange-700',
-  APPROVED: 'bg-blue-100 text-blue-700',
+  APPROVED: 'bg-primary-100 text-primary-700',
   PARTIALLY_RECEIVED: 'bg-yellow-100 text-yellow-700',
   FULLY_RECEIVED: 'bg-green-100 text-green-700',
   CANCELLED: 'bg-red-100 text-red-700',
@@ -96,7 +96,7 @@ const paymentStatusLabels: Record<string, string> = {
 const paymentStatusColors: Record<string, string> = {
   UNPAID: 'bg-red-100 text-red-700',
   DEPOSIT_PAID: 'bg-yellow-100 text-yellow-700',
-  PARTIALLY_PAID: 'bg-blue-100 text-blue-700',
+  PARTIALLY_PAID: 'bg-primary-100 text-primary-700',
   FULLY_PAID: 'bg-green-100 text-green-700',
 };
 
@@ -604,7 +604,7 @@ export default function PurchaseOrdersPage() {
             <div className="text-xs text-red-500">ส่วนลด -{Number(po.discount).toLocaleString()}</div>
           )}
           {Number(po.vatAmount) > 0 && (
-            <div className="text-xs text-blue-600">รวม VAT {Number(po.vatAmount).toLocaleString()}</div>
+            <div className="text-xs text-primary-600">รวม VAT {Number(po.vatAmount).toLocaleString()}</div>
           )}
         </div>
       ),
@@ -661,7 +661,7 @@ export default function PurchaseOrdersPage() {
           {['APPROVED', 'PARTIALLY_RECEIVED'].includes(po.status) && (
             <button
               onClick={() => openReceiveModal(po)}
-              className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+              className="text-primary-600 hover:text-primary-700 text-sm font-medium"
             >
               รับสินค้า
             </button>
@@ -882,7 +882,7 @@ export default function PurchaseOrdersPage() {
               <div className="mt-1 flex gap-2 flex-wrap">
                 <span
                   className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                    supplierHasVat ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
+                    supplierHasVat ? 'bg-primary-100 text-primary-700' : 'bg-gray-100 text-gray-500'
                   }`}
                 >
                   {supplierHasVat ? 'ผู้ขายมี VAT - จะคำนวณ VAT 7% อัตโนมัติ' : 'ผู้ขายไม่มี VAT'}
@@ -953,7 +953,7 @@ export default function PurchaseOrdersPage() {
                 })() : '';
 
                 return (
-                  <div key={idx} className={`border rounded-lg p-3 space-y-2 relative ${isAccessory ? 'border-blue-200 bg-blue-50' : 'border-gray-200 bg-gray-50'}`}>
+                  <div key={idx} className={`border rounded-lg p-3 space-y-2 relative ${isAccessory ? 'border-primary-200 bg-primary-50' : 'border-gray-200 bg-gray-50'}`}>
                     {items.length > 1 && (
                       <button
                         type="button"
@@ -965,7 +965,7 @@ export default function PurchaseOrdersPage() {
                     )}
                     <div className="text-xs font-medium text-gray-500 mb-1">
                       รายการ #{idx + 1}
-                      {isAccessory && <span className="ml-2 px-1.5 py-0.5 bg-blue-200 text-blue-700 rounded text-xs">อุปกรณ์เสริม</span>}
+                      {isAccessory && <span className="ml-2 px-1.5 py-0.5 bg-primary-200 text-primary-700 rounded text-xs">อุปกรณ์เสริม</span>}
                     </div>
 
                     {/* Row 1: Category FIRST, then Brand/Model or AccessoryType */}
@@ -1087,8 +1087,8 @@ export default function PurchaseOrdersPage() {
                                 onClick={() => toggleModel(idx, m.name)}
                                 className={`px-2 py-0.5 rounded-full text-xs font-medium border transition-colors ${
                                   isSelected
-                                    ? 'bg-blue-600 text-white border-blue-600'
-                                    : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400 hover:text-blue-600'
+                                    ? 'bg-primary-600 text-white border-primary-600'
+                                    : 'bg-white text-gray-600 border-gray-300 hover:border-primary-400 hover:text-primary-600'
                                 }`}
                               >
                                 {m.name}
@@ -1097,7 +1097,7 @@ export default function PurchaseOrdersPage() {
                           })}
                         </div>
                         {selectedModels.length > 0 && (
-                          <div className="text-xs text-blue-500 mt-1">เลือกแล้ว {selectedModels.length} รุ่น</div>
+                          <div className="text-xs text-primary-500 mt-1">เลือกแล้ว {selectedModels.length} รุ่น</div>
                         )}
                       </div>
                     )}
@@ -1140,7 +1140,7 @@ export default function PurchaseOrdersPage() {
                         </div>
                         {/* Auto name preview */}
                         {accessoryAutoName && (
-                          <div className="text-xs text-blue-600 bg-blue-100 rounded px-2 py-1">
+                          <div className="text-xs text-primary-600 bg-primary-100 rounded px-2 py-1">
                             ชื่อสินค้า: {accessoryAutoName}
                           </div>
                         )}
@@ -1308,8 +1308,8 @@ export default function PurchaseOrdersPage() {
                 />
                 {form.paymentStatus !== 'UNPAID' && form.paymentStatus !== 'FULLY_PAID' && netAmount > 0 && (
                   <div className="flex gap-2 mt-1">
-                    <button type="button" onClick={() => setForm({ ...form, paidAmount: String(Math.round(netAmount * 0.3)) })} className="text-xs text-blue-600 hover:underline">30%</button>
-                    <button type="button" onClick={() => setForm({ ...form, paidAmount: String(Math.round(netAmount * 0.5)) })} className="text-xs text-blue-600 hover:underline">50%</button>
+                    <button type="button" onClick={() => setForm({ ...form, paidAmount: String(Math.round(netAmount * 0.3)) })} className="text-xs text-primary-600 hover:underline">30%</button>
+                    <button type="button" onClick={() => setForm({ ...form, paidAmount: String(Math.round(netAmount * 0.5)) })} className="text-xs text-primary-600 hover:underline">50%</button>
                   </div>
                 )}
               </div>
@@ -1331,7 +1331,7 @@ export default function PurchaseOrdersPage() {
               <div className="mt-3">
                 <label className="block text-xs text-gray-500 mb-0.5">แนบสลิป/เอกสาร</label>
                 <div className="flex gap-2">
-                  <label className="flex items-center gap-1 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-xs cursor-pointer hover:bg-blue-100 whitespace-nowrap">
+                  <label className="flex items-center gap-1 px-3 py-2 bg-primary-50 text-primary-700 border border-primary-200 rounded-lg text-xs cursor-pointer hover:bg-primary-100 whitespace-nowrap">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                     เลือกรูป
                     <input
@@ -1379,7 +1379,7 @@ export default function PurchaseOrdersPage() {
                         {att.startsWith('data:image') ? (
                           <img src={att} alt={`แนบ ${idx + 1}`} className="h-16 w-16 object-cover rounded-lg border" />
                         ) : (
-                          <div className="h-16 w-16 flex items-center justify-center bg-blue-50 rounded-lg border text-[10px] text-blue-600 p-1 break-all overflow-hidden">
+                          <div className="h-16 w-16 flex items-center justify-center bg-primary-50 rounded-lg border text-[10px] text-primary-600 p-1 break-all overflow-hidden">
                             <a href={att} target="_blank" rel="noopener noreferrer" className="hover:underline">{att.length > 20 ? att.slice(0, 20) + '...' : att}</a>
                           </div>
                         )}
@@ -1524,7 +1524,7 @@ export default function PurchaseOrdersPage() {
                 </div>
                 <button
                   onClick={() => openPaymentModal(selectedPO)}
-                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                  className="px-3 py-1.5 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
                 >
                   อัปเดตการจ่ายเงิน
                 </button>
@@ -1548,7 +1548,7 @@ export default function PurchaseOrdersPage() {
                         <img src={att} alt={`สลิป ${idx + 1}`} className="h-20 w-20 object-cover rounded-lg border hover:opacity-80 transition-opacity" />
                       </a>
                     ) : (
-                      <a key={idx} href={att} target="_blank" rel="noopener noreferrer" className="block text-xs text-blue-600 hover:underline truncate max-w-[200px]">{att}</a>
+                      <a key={idx} href={att} target="_blank" rel="noopener noreferrer" className="block text-xs text-primary-600 hover:underline truncate max-w-[200px]">{att}</a>
                     )
                   )}
                 </div>
@@ -1576,7 +1576,7 @@ export default function PurchaseOrdersPage() {
                       <td className="px-3 py-2">
                         {item.brand}
                         {item.category === 'ACCESSORY' && (
-                          <div className="text-xs text-blue-600">(อุปกรณ์เสริม)</div>
+                          <div className="text-xs text-primary-600">(อุปกรณ์เสริม)</div>
                         )}
                       </td>
                       <td className="px-3 py-2">{item.model}</td>
@@ -1669,7 +1669,7 @@ export default function PurchaseOrdersPage() {
               <div className="flex justify-end pt-2 border-t">
                 <button
                   onClick={() => openReceiveModal(selectedPO)}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                  className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
                 >
                   รับสินค้า
                 </button>
@@ -1802,8 +1802,8 @@ export default function PurchaseOrdersPage() {
               />
               {Number(selectedPO.netAmount ?? selectedPO.totalAmount) > 0 && paymentForm.paymentStatus !== 'UNPAID' && paymentForm.paymentStatus !== 'FULLY_PAID' && (
                 <div className="flex gap-2 mt-1">
-                  <button type="button" onClick={() => setPaymentForm({ ...paymentForm, paidAmount: String(Math.round(Number(selectedPO.netAmount ?? selectedPO.totalAmount) * 0.3)) })} className="text-xs text-blue-600 hover:underline">30%</button>
-                  <button type="button" onClick={() => setPaymentForm({ ...paymentForm, paidAmount: String(Math.round(Number(selectedPO.netAmount ?? selectedPO.totalAmount) * 0.5)) })} className="text-xs text-blue-600 hover:underline">50%</button>
+                  <button type="button" onClick={() => setPaymentForm({ ...paymentForm, paidAmount: String(Math.round(Number(selectedPO.netAmount ?? selectedPO.totalAmount) * 0.3)) })} className="text-xs text-primary-600 hover:underline">30%</button>
+                  <button type="button" onClick={() => setPaymentForm({ ...paymentForm, paidAmount: String(Math.round(Number(selectedPO.netAmount ?? selectedPO.totalAmount) * 0.5)) })} className="text-xs text-primary-600 hover:underline">50%</button>
                 </div>
               )}
               {(() => {
@@ -1846,7 +1846,7 @@ export default function PurchaseOrdersPage() {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">แนบสลิป/เอกสาร</label>
               <div className="flex gap-2">
-                <label className="flex items-center gap-1.5 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-sm cursor-pointer hover:bg-blue-100 whitespace-nowrap">
+                <label className="flex items-center gap-1.5 px-3 py-2 bg-primary-50 text-primary-700 border border-primary-200 rounded-lg text-sm cursor-pointer hover:bg-primary-100 whitespace-nowrap">
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                   เลือกรูป
                   <input
@@ -1894,7 +1894,7 @@ export default function PurchaseOrdersPage() {
                       {att.startsWith('data:image') ? (
                         <img src={att} alt={`สลิป ${idx + 1}`} className="h-20 w-20 object-cover rounded-lg border" />
                       ) : (
-                        <div className="h-20 w-20 flex items-center justify-center bg-blue-50 rounded-lg border text-xs text-blue-600 p-1 break-all overflow-hidden">
+                        <div className="h-20 w-20 flex items-center justify-center bg-primary-50 rounded-lg border text-xs text-primary-600 p-1 break-all overflow-hidden">
                           <a href={att} target="_blank" rel="noopener noreferrer" className="hover:underline">{att.length > 30 ? att.slice(0, 30) + '...' : att}</a>
                         </div>
                       )}
@@ -1918,7 +1918,7 @@ export default function PurchaseOrdersPage() {
               <button
                 type="submit"
                 disabled={paymentMutation.isPending}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50 transition-colors"
               >
                 {paymentMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
               </button>
@@ -1936,7 +1936,7 @@ export default function PurchaseOrdersPage() {
       >
         {selectedPO && (
           <form onSubmit={handleGoodsReceiving} className="space-y-4">
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-700">
+            <div className="bg-primary-50 border border-primary-200 rounded-lg p-3 text-sm text-primary-700">
               ตรวจรับสินค้าทีละชิ้น ระบุ IMEI/Serial ราคาขาย แล้วเลือกผลตรวจ (ผ่าน/ไม่ผ่าน)
               <br />
               สินค้าที่ผ่านจะเข้าสถานะ QC_PENDING รอยืนยันก่อนเข้าคลัง
@@ -1979,14 +1979,14 @@ export default function PurchaseOrdersPage() {
                       placeholder="IMEI"
                       value={unit.imeiSerial}
                       onChange={(e) => updateReceivingUnit(idx, 'imeiSerial', e.target.value)}
-                      className="px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none font-mono"
+                      className="px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-primary-500 outline-none font-mono"
                     />
                     <input
                       type="text"
                       placeholder="Serial Number"
                       value={unit.serialNumber}
                       onChange={(e) => updateReceivingUnit(idx, 'serialNumber', e.target.value)}
-                      className="px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none font-mono"
+                      className="px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-primary-500 outline-none font-mono"
                     />
                   </div>
                   )}
@@ -2093,8 +2093,8 @@ export default function PurchaseOrdersPage() {
                     </div>
                   )}
                   {unit.status === 'PASS' && (
-                    <div className="mt-2 border border-blue-200 bg-blue-50 rounded-lg p-3 space-y-2">
-                      <div className="text-xs font-medium text-blue-700 mb-1">ราคาขาย</div>
+                    <div className="mt-2 border border-primary-200 bg-primary-50 rounded-lg p-3 space-y-2">
+                      <div className="text-xs font-medium text-primary-700 mb-1">ราคาขาย</div>
                       <div>
                         <label className="block text-xs text-gray-500 mb-0.5">ราคาขาย (บาท)</label>
                         <input
@@ -2102,7 +2102,7 @@ export default function PurchaseOrdersPage() {
                           placeholder="เช่น 15000"
                           value={unit.sellingPrice}
                           onChange={(e) => updateReceivingUnit(idx, 'sellingPrice', e.target.value)}
-                          className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                          className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-primary-500 outline-none"
                           min="0"
                         />
                       </div>
@@ -2143,7 +2143,7 @@ export default function PurchaseOrdersPage() {
                 value={receivingNotes}
                 onChange={(e) => setReceivingNotes(e.target.value)}
                 rows={2}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
                 placeholder="บันทึกเพิ่มเติม..."
               />
             </div>
@@ -2159,7 +2159,7 @@ export default function PurchaseOrdersPage() {
               <button
                 type="submit"
                 disabled={goodsReceivingMutation.isPending || receivingUnits.length === 0}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50 transition-colors"
               >
                 {goodsReceivingMutation.isPending ? 'กำลังรับสินค้า...' : 'ยืนยันรับสินค้า'}
               </button>

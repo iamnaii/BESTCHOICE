@@ -187,7 +187,7 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
             <button
               onClick={() => analyzeMutation.mutate()}
               disabled={analyzeMutation.isPending}
-              className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
             >
               {analyzeMutation.isPending ? 'กำลังวิเคราะห์...' : 'AI วิเคราะห์เครดิต'}
             </button>
@@ -258,9 +258,9 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
 
           {/* Manual review notes */}
           {creditCheck.checkedBy && (
-            <div className="bg-blue-50 rounded-lg p-3">
-              <div className="text-xs text-blue-600">ตรวจสอบโดย: {creditCheck.checkedBy.name}</div>
-              {creditCheck.reviewNotes && <div className="text-sm text-blue-800 mt-1">{creditCheck.reviewNotes}</div>}
+            <div className="bg-primary-50 rounded-lg p-3">
+              <div className="text-xs text-primary-600">ตรวจสอบโดย: {creditCheck.checkedBy.name}</div>
+              {creditCheck.reviewNotes && <div className="text-sm text-primary-800 mt-1">{creditCheck.reviewNotes}</div>}
             </div>
           )}
 
@@ -289,7 +289,7 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
                 <button
                   onClick={() => overrideMutation.mutate()}
                   disabled={!overrideStatus || overrideMutation.isPending}
-                  className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  className="px-4 py-1.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
                 >
                   บันทึก
                 </button>

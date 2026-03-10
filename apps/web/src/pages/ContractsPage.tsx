@@ -32,9 +32,9 @@ const statusLabels: Record<string, { label: string; className: string }> = {
   ACTIVE: { label: 'ผ่อนอยู่', className: 'bg-green-100 text-green-700' },
   OVERDUE: { label: 'ค้างชำระ', className: 'bg-yellow-100 text-yellow-700' },
   DEFAULT: { label: 'ผิดนัด', className: 'bg-red-100 text-red-700' },
-  EARLY_PAYOFF: { label: 'ปิดก่อน', className: 'bg-blue-100 text-blue-700' },
+  EARLY_PAYOFF: { label: 'ปิดก่อน', className: 'bg-primary-100 text-primary-700' },
   COMPLETED: { label: 'ครบ', className: 'bg-teal-100 text-teal-700' },
-  EXCHANGED: { label: 'เปลี่ยนเครื่อง', className: 'bg-blue-100 text-blue-700' },
+  EXCHANGED: { label: 'เปลี่ยนเครื่อง', className: 'bg-primary-100 text-primary-700' },
   CLOSED_BAD_DEBT: { label: 'หนี้สูญ', className: 'bg-red-200 text-red-800' },
 };
 

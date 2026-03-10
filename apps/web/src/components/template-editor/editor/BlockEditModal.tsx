@@ -40,12 +40,9 @@ export default function BlockEditModal() {
     const tag = `{{= ${key}}}`;
     const editor = editorInstanceRef.current;
     if (editor) {
-      // Insert as bold so variables stand out in the document
+      // Insert variable as bold HTML, then continue with previous style
       editor.chain().focus()
-        .toggleBold()
-        .insertContent(tag)
-        .toggleBold()
-        .insertContent(' ')
+        .insertContent(`<strong>${tag}</strong> `)
         .run();
       return;
     }

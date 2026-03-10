@@ -1,6 +1,10 @@
 import { buildSampleContext } from '@/utils/templateRenderer';
 import { AVAILABLE_VARIABLES } from '@/constants/variables';
 
+interface Props {
+  previewMode?: boolean;
+}
+
 // Memoize context
 let _ctx: Record<string, any> | null = null;
 function getCtx() {
@@ -8,9 +12,11 @@ function getCtx() {
   return _ctx;
 }
 
-export default function SignatureBlock() {
+export default function SignatureBlock({ previewMode = false }: Props) {
   const ctx = getCtx();
-  const customerName = ctx['CUSTOMER.FULLNAME'] || '...................................';
+  const customerName = previewMode
+    ? String(ctx['CUSTOMER.FULLNAME'] || '...................................')
+    : '{{= CUSTOMER.FULLNAME}}';
   const managerName = 'เอกนรินทร์ คงเดช';
 
   return (

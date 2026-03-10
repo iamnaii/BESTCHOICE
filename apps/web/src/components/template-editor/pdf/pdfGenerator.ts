@@ -313,7 +313,11 @@ export async function generatePDF(template: Template): Promise<Blob> {
       const paragraphs = parseHtmlSegments(resolvedHtml);
       for (const segments of paragraphs) {
         if (segments.length === 0 || (segments.length === 1 && !segments[0].text.trim())) continue;
-        addRichText(segments, fontSize, {
+        // If bold option is set, force all segments to bold
+        const finalSegments = options?.bold
+          ? segments.map(s => ({ ...s, bold: true }))
+          : segments;
+        addRichText(finalSegments, fontSize, {
           indent: options?.indent,
           firstLineIndent: options?.firstLineIndent,
           align: options?.align,
@@ -543,27 +547,42 @@ export async function generatePDF(template: Template): Promise<Blob> {
         break;
       }
 
-      case 'attachment-list':
-        addContent(block.content, settings.fontSize.body, { bold: false });
+      case 'attachment-list': {
+        if (isHtmlContent(block.content)) {
+          addContent(block.content, settings.fontSize.body);
+        } else {
+          // Plain text: first line bold, rest indented (matches preview)
+          const lines = resolved.split('\n');
+          if (lines[0]) addText(lines[0], settings.fontSize.body, { bold: true });
+          for (let i = 1; i < lines.length; i++) {
+            if (lines[i].trim()) addText(lines[i], settings.fontSize.body, { indent: 4 });
+          }
+        }
         break;
+      }
 
       case 'column':
       case 'column-vertical': {
-        // Collapse newlines from stripHtml before splitting columns
-        const cols = resolved.replace(/\n+/g, ' ').split('||').map(s => s.trim());
-        const colWidth = contentWidth / 2;
-        doc.setFontSize(settings.fontSize.body);
-        doc.setFont(PDF_FONT_FAMILY, 'normal');
-        for (let c = 0; c < Math.min(cols.length, 2); c++) {
-          const x = margin.left + c * colWidth;
-          const lines = doc.splitTextToSize(stripBold(cols[c]), colWidth - 5);
-          let colY = y;
-          for (const line of lines) {
-            doc.text(line, x, colY);
-            colY += settings.fontSize.body * 0.45;
+        if (isHtmlContent(block.content)) {
+          // HTML columns — render with rich text support
+          addContent(block.content, settings.fontSize.body);
+        } else {
+          // Plain text columns separated by ||
+          const cols = resolved.replace(/\n+/g, ' ').split('||').map(s => s.trim());
+          const colWidth = contentWidth / 2;
+          doc.setFontSize(settings.fontSize.body);
+          doc.setFont(PDF_FONT_FAMILY, 'normal');
+          for (let c = 0; c < Math.min(cols.length, 2); c++) {
+            const x = margin.left + c * colWidth;
+            const lines = doc.splitTextToSize(stripBold(cols[c]), colWidth - 5);
+            let colY = y;
+            for (const line of lines) {
+              doc.text(line, x, colY);
+              colY += settings.fontSize.body * 0.45;
+            }
           }
+          y += settings.fontSize.body * 0.45 * 3;
         }
-        y += settings.fontSize.body * 0.45 * 3;
         break;
       }
 

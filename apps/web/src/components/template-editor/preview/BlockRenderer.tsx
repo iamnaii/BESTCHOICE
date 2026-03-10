@@ -9,6 +9,7 @@ import SignatureBlock from './SignatureBlock';
 interface Props {
   block: Block;
   previewMode: boolean;
+  clauseIndex?: number;
 }
 
 // Memoize sample context at module level — AVAILABLE_VARIABLES is static
@@ -42,21 +43,31 @@ function RichHtmlContent({ html, previewMode, ctx }: { html: string; previewMode
   return <div dangerouslySetInnerHTML={{ __html: clean }} />;
 }
 
-export default function BlockRenderer({ block, previewMode }: Props) {
+export default function BlockRenderer({ block, previewMode, clauseIndex }: Props) {
   const ctx = getSampleContext();
   const resolved = previewMode ? renderVariables(block.content, ctx) : '';
   const isRich = isHtmlContent(block.content);
 
   switch (block.type) {
-    case 'contract-header':
+    case 'contract-header': {
+      const headerParts = block.content.split('||');
+      const leftPart = headerParts[0]?.trim() || '';
+      const rightPart = headerParts[1]?.trim() || '';
+      const resolvedLeft = previewMode ? renderVariables(leftPart, ctx) : '';
+      const resolvedRight = previewMode ? renderVariables(rightPart, ctx) : '';
       return (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', fontSize: '15px', color: '#4a4a4a' }}>
-          {isRich
-            ? <RichHtmlContent html={block.content} previewMode={previewMode} ctx={ctx} />
-            : <VariableHighlighter text={block.content} previewMode={previewMode} resolvedText={resolved} />
-          }
+          <div>
+            <VariableHighlighter text={leftPart} previewMode={previewMode} resolvedText={resolvedLeft} />
+          </div>
+          {rightPart && (
+            <div>
+              <VariableHighlighter text={rightPart} previewMode={previewMode} resolvedText={resolvedRight} />
+            </div>
+          )}
         </div>
       );
+    }
 
     case 'heading':
       return (
@@ -127,10 +138,11 @@ export default function BlockRenderer({ block, previewMode }: Props) {
 
     case 'clause': {
       const resolvedClause = previewMode ? renderVariables(block.content, ctx) : '';
+      const displayNumber = clauseIndex ?? block.clauseNumber;
       return (
         <div style={{ margin: '10px 0' }}>
           <p style={{ fontSize: '16px', fontWeight: 700, color: '#111' }}>
-            ข้อ {block.clauseNumber} {block.clauseTitle}
+            ข้อ {displayNumber} {block.clauseTitle}
           </p>
           <div style={{ fontSize: '16px', lineHeight: 1.8, marginTop: '4px', color: '#1a1a1a' }}>
             {isRich
@@ -142,23 +154,6 @@ export default function BlockRenderer({ block, previewMode }: Props) {
               )
             }
           </div>
-          {block.subItems && block.subItems.length > 0 && (
-            <div style={{ marginLeft: '3em', marginTop: '4px' }}>
-              {block.subItems.map((item, i) => {
-                const resolvedItem = previewMode ? renderVariables(item, ctx) : '';
-                const subIsRich = isHtmlContent(item);
-                return subIsRich ? (
-                  <div key={i} style={{ fontSize: '15px', lineHeight: 1.7, marginBottom: '2px', color: '#333' }}>
-                    <RichHtmlContent html={item} previewMode={previewMode} ctx={ctx} />
-                  </div>
-                ) : (
-                  <p key={i} style={{ fontSize: '15px', lineHeight: 1.7, marginBottom: '2px', color: '#333' }}>
-                    <VariableHighlighter text={item} previewMode={previewMode} resolvedText={resolvedItem} />
-                  </p>
-                );
-              })}
-            </div>
-          )}
         </div>
       );
     }

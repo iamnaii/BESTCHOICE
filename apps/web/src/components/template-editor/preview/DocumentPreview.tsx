@@ -37,9 +37,13 @@ export default function DocumentPreview() {
         )}
 
         {/* Blocks */}
-        {blocks.map(block => (
-          <BlockRenderer key={block.id} block={block} previewMode={previewMode} />
-        ))}
+        {(() => {
+          let clauseCounter = 0;
+          return blocks.map(block => {
+            const clauseIndex = block.type === 'clause' ? ++clauseCounter : undefined;
+            return <BlockRenderer key={block.id} block={block} previewMode={previewMode} clauseIndex={clauseIndex} />;
+          });
+        })()}
 
         {/* Footer */}
         <div

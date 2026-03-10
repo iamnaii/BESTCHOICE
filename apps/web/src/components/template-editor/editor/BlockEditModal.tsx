@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { X, Plus, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
+import { X, ChevronDown, ChevronRight } from 'lucide-react';
 import type { Editor } from '@tiptap/react';
 import type { Block, BlockType } from '@/types/template';
 import { BLOCK_TYPES } from '@/constants/blockTypes';
@@ -34,28 +34,6 @@ export default function BlockEditModal() {
   };
 
   const handleClose = () => setEditingBlock(null);
-
-  const addSubItem = () => {
-    setForm(prev => ({
-      ...prev,
-      subItems: [...(prev.subItems || []), ''],
-    }));
-  };
-
-  const updateSubItem = (index: number, value: string) => {
-    setForm(prev => {
-      const items = [...(prev.subItems || [])];
-      items[index] = value;
-      return { ...prev, subItems: items };
-    });
-  };
-
-  const removeSubItem = (index: number) => {
-    setForm(prev => ({
-      ...prev,
-      subItems: (prev.subItems || []).filter((_, i) => i !== index),
-    }));
-  };
 
   // Insert variable into the Tiptap editor at cursor position
   const insertVariable = (key: string) => {
@@ -166,39 +144,6 @@ export default function BlockEditModal() {
               )}
             </div>
 
-            {/* Sub-items for clause type */}
-            {form.type === 'clause' && (
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-medium text-gray-700">ข้อย่อย</label>
-                  <button
-                    onClick={addSubItem}
-                    className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700"
-                  >
-                    <Plus size={12} /> เพิ่มข้อย่อย
-                  </button>
-                </div>
-                <div className="space-y-2">
-                  {(form.subItems || []).map((item, idx) => (
-                    <div key={idx} className="flex items-start gap-2">
-                      <span className="text-xs text-gray-400 mt-2.5 w-6 text-right">{idx + 1})</span>
-                      <textarea
-                        value={item}
-                        onChange={e => updateSubItem(idx, e.target.value)}
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono resize-y"
-                        rows={2}
-                      />
-                      <button
-                        onClick={() => removeSubItem(idx)}
-                        className="p-1.5 text-gray-400 hover:text-red-600 mt-1"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Right: Variable insert panel */}

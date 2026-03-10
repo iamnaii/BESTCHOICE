@@ -150,13 +150,24 @@ export async function generatePDF(template: Template): Promise<Blob> {
   }
 
   // Render blocks
+  let clauseCounter = 0;
   for (const block of blocks) {
     const resolved = renderVariables(block.content, ctx);
 
     switch (block.type) {
-      case 'contract-header':
-        addText(resolved, 13);
+      case 'contract-header': {
+        const headerParts = resolved.split('||').map(s => s.trim());
+        doc.setFontSize(13);
+        doc.setFont(PDF_FONT_FAMILY, 'normal');
+        if (headerParts.length >= 2) {
+          doc.text(stripBold(headerParts[0]), margin.left, y);
+          doc.text(stripBold(headerParts[1]), pageWidth - margin.right, y, { align: 'right' });
+        } else {
+          doc.text(stripBold(headerParts[0] || ''), margin.left, y);
+        }
+        y += 13 * 0.45 + 1;
         break;
+      }
 
       case 'heading':
         y += 2;
@@ -188,15 +199,10 @@ export async function generatePDF(template: Template): Promise<Blob> {
       }
 
       case 'clause': {
+        clauseCounter++;
         y += 1;
-        addText(`ข้อ ${block.clauseNumber} ${block.clauseTitle || ''}`, settings.fontSize.body, { bold: true });
+        addText(`ข้อ ${clauseCounter} ${block.clauseTitle || ''}`, settings.fontSize.body, { bold: true });
         addText(resolved, settings.fontSize.body, { indent: 8 });
-        if (block.subItems) {
-          for (const item of block.subItems) {
-            const resolvedItem = renderVariables(item, ctx);
-            addText(resolvedItem, 13, { indent: 12 });
-          }
-        }
         break;
       }
 

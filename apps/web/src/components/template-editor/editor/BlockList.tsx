@@ -36,9 +36,13 @@ export default function BlockList() {
     <div className="space-y-2 p-4">
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={blocks.map(b => b.id)} strategy={verticalListSortingStrategy}>
-          {blocks.map((block, index) => (
-            <BlockItem key={block.id} block={block} index={index} totalBlocks={blocks.length} />
-          ))}
+          {(() => {
+            let clauseCounter = 0;
+            return blocks.map((block, index) => {
+              const clauseIndex = block.type === 'clause' ? ++clauseCounter : undefined;
+              return <BlockItem key={block.id} block={block} index={index} totalBlocks={blocks.length} clauseIndex={clauseIndex} />;
+            });
+          })()}
         </SortableContext>
       </DndContext>
 

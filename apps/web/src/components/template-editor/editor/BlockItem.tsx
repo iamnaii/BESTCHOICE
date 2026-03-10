@@ -9,10 +9,11 @@ interface Props {
   block: Block;
   index: number;
   totalBlocks: number;
+  clauseIndex?: number;
 }
 
-export default function BlockItem({ block, index, totalBlocks }: Props) {
-  const { updateBlock, deleteBlock, duplicateBlock, moveBlock, setEditingBlock, toggleCollapse } = useTemplateStore();
+export default function BlockItem({ block, index, totalBlocks, clauseIndex }: Props) {
+  const { deleteBlock, duplicateBlock, moveBlock, setEditingBlock, toggleCollapse } = useTemplateStore();
 
   const {
     attributes, listeners, setNodeRef, transform, transition, isDragging,
@@ -70,9 +71,9 @@ export default function BlockItem({ block, index, totalBlocks }: Props) {
         </span>
 
         {/* Clause number */}
-        {block.clauseNumber ? (
+        {block.type === 'clause' && clauseIndex ? (
           <span className="text-xs text-slate-500 font-medium">
-            ข้อ {block.clauseNumber}{block.clauseTitle ? `: ${block.clauseTitle}` : ''}
+            ข้อ {clauseIndex}{block.clauseTitle ? `: ${block.clauseTitle}` : ''}
           </span>
         ) : null}
 
@@ -127,11 +128,6 @@ export default function BlockItem({ block, index, totalBlocks }: Props) {
           onClick={() => setEditingBlock(block)}
         >
           {displayContent || <span className="text-slate-400 italic">คลิกเพื่อเพิ่มเนื้อหา...</span>}
-          {block.subItems && block.subItems.length > 0 && (
-            <div className="mt-1.5 text-xs text-slate-400">
-              {block.subItems.length} ข้อย่อย
-            </div>
-          )}
         </div>
       )}
     </div>

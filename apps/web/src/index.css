@@ -49,6 +49,12 @@ body {
   }
 }
 
+/* ── Ensure bold renders correctly with TH Sarabun PSK ── */
+/* Tailwind preflight uses 'bolder' which may not resolve correctly in all browsers */
+strong, b {
+  font-weight: 700;
+}
+
 /* ── Tiptap Rich Text Editor (uses Sarabun for contracts) */
 .tiptap.ProseMirror {
   min-height: 240px;
@@ -58,6 +64,11 @@ body {
   font-size: 18px;
   line-height: 1.8;
   color: #1a1a1a;
+}
+
+.tiptap.ProseMirror strong,
+.tiptap.ProseMirror b {
+  font-weight: 700;
 }
 
 .tiptap.ProseMirror p {

@@ -251,8 +251,8 @@ export async function generatePDF(template: Template): Promise<Blob> {
           margin: { left: tableMarginLeft, right: margin.right },
           styles: {
             font: PDF_FONT_FAMILY,
-            fontSize: 11,
-            cellPadding: 1.5,
+            fontSize: 12,
+            cellPadding: 2,
           },
           headStyles: {
             fillColor: [240, 240, 240],
@@ -260,9 +260,9 @@ export async function generatePDF(template: Template): Promise<Blob> {
             fontStyle: 'bold',
           },
           columnStyles: {
-            0: { halign: 'center', cellWidth: 16 },
+            0: { halign: 'center', cellWidth: 20 },
             1: { halign: 'center' },
-            2: { halign: 'right', cellWidth: 28 },
+            2: { halign: 'right', cellWidth: 35 },
           },
         });
         y = (doc as any).lastAutoTable.finalY + 5;

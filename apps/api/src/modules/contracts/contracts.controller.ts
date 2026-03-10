@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards } from '@nestjs/common';
 import { ContractsService } from './contracts.service';
 import { CreateContractDto, UpdateContractDto, EarlyPayoffDto, ReviewContractDto, RejectContractDto } from './dto/contract.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -62,6 +62,12 @@ export class ContractsController {
     return this.contractsService.update(id, dto, user.id);
   }
 
+  @Delete(':id')
+  @Roles('OWNER')
+  softDelete(@Param('id') id: string, @CurrentUser() user: { id: string }) {
+    return this.contractsService.softDelete(id, user.id);
+  }
+
   // === WORKFLOW ENDPOINTS ===
 
   @Post(':id/submit-review')
@@ -75,9 +81,9 @@ export class ContractsController {
   approve(
     @Param('id') id: string,
     @Body() dto: ReviewContractDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string; role: string },
   ) {
-    return this.contractsService.approveContract(id, user.id, dto.reviewNotes);
+    return this.contractsService.approveContract(id, user.id, user.role, dto.reviewNotes);
   }
 
   @Post(':id/reject')
@@ -85,9 +91,9 @@ export class ContractsController {
   reject(
     @Param('id') id: string,
     @Body() dto: RejectContractDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string; role: string },
   ) {
-    return this.contractsService.rejectContract(id, user.id, dto.reviewNotes);
+    return this.contractsService.rejectContract(id, user.id, user.role, dto.reviewNotes);
   }
 
   @Post(':id/activate')

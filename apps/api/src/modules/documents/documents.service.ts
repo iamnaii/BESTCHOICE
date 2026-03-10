@@ -450,8 +450,8 @@ ${bodyHtml}
       '{salesperson_name}': esc(contract.salesperson?.name || ''),
       '{date}': new Date().toLocaleDateString('th-TH'),
       '{payment_schedule_table}': `<table border="1" cellpadding="6" style="border-collapse:collapse;width:100%;margin:10px auto"><thead><tr style="background:#f5f5f5"><th style="text-align:center">งวดที่</th><th style="text-align:center">วันที่ครบกำหนดชำระ</th><th style="text-align:center">จำนวนเงิน</th></tr></thead><tbody>${paymentScheduleRows}</tbody></table>`,
-      '{customer_signature}': customerSigSafe ? `<img src="${customerSig.signatureImage}" style="max-height:60px"/>` : '<div style="border-bottom:1px solid #000;width:200px;height:60px"></div>',
-      '{staff_signature}': staffSigSafe ? `<img src="${staffSig.signatureImage}" style="max-height:60px"/>` : '<div style="border-bottom:1px solid #000;width:200px;height:60px"></div>',
+      '{customer_signature}': customerSigSafe ? `<img src="${customerSig.signatureImage}" style="max-height:50px;display:block;margin:0 auto"/>` : '<div style="border-bottom:1px solid #000;width:200px;height:50px"></div>',
+      '{staff_signature}': staffSigSafe ? `<img src="${staffSig.signatureImage}" style="max-height:50px;display:block;margin:0 auto"/>` : '<div style="border-bottom:1px solid #000;width:200px;height:50px"></div>',
     };
 
     let result = html;
@@ -623,21 +623,21 @@ ${bodyHtml}
     );
 
     // Post-process: inject real signature images for templates that lack {staff_signature}/{customer_signature} placeholders
-    // Only applies when template used dots (e.g. "ลงชื่อ..........ผู้ให้เช่าซื้อ") instead of placeholders
+    // Replaces the dots between "ลงชื่อ" and "ผู้ให้เช่าซื้อ/ผู้เช่าซื้อ" with the signature image
     const hadStaffPlaceholder = html.includes('{staff_signature}');
     const hadCustomerPlaceholder = html.includes('{customer_signature}');
-    const sigImgStyle = 'max-height:60px;display:block;margin:4px auto';
+    const sigImgStyle = 'max-height:50px;display:block;margin:0 auto';
 
     if (staffSigSafe && !hadStaffPlaceholder) {
       result = result.replace(
-        /(ลงชื่อ[.…]{3,}ผู้ให้เช่าซื้อ<\/(?:p|div)>)/,
-        `$1<div style="text-align:center"><img src="${staffSig.signatureImage}" style="${sigImgStyle}"/></div>`,
+        /(ลงชื่อ)[.…]{3,}(ผู้ให้เช่าซื้อ)/,
+        `$1</div><div style="min-height:50px;display:flex;align-items:center;justify-content:center"><img src="${staffSig.signatureImage}" style="${sigImgStyle}"/></div><div style="font-size:13px">$2`,
       );
     }
     if (customerSigSafe && !hadCustomerPlaceholder) {
       result = result.replace(
-        /(ลงชื่อ[.…]{3,}ผู้เช่าซื้อ<\/(?:p|div)>)/,
-        `$1<div style="text-align:center"><img src="${customerSig.signatureImage}" style="${sigImgStyle}"/></div>`,
+        /(ลงชื่อ)[.…]{3,}(ผู้เช่าซื้อ)/,
+        `$1</div><div style="min-height:50px;display:flex;align-items:center;justify-content:center"><img src="${customerSig.signatureImage}" style="${sigImgStyle}"/></div><div style="font-size:13px">$2`,
       );
     }
 
@@ -707,14 +707,16 @@ ${bodyHtml}
     <h3 style="margin:0 0 8px;border-bottom:1px solid #eee;padding-bottom:4px">ลงนาม</h3>
     <div style="display:flex;justify-content:space-around;margin-top:20px">
       <div style="text-align:center">
-        <p style="margin:0 0 4px;font-size:12px;color:#666">ผู้ซื้อ (ลูกค้า)</p>
-        {customer_signature}
-        <p style="margin:8px 0 0;font-size:13px">({customer_name})</p>
+        <div style="font-size:13px">ลงชื่อ</div>
+        <div style="min-height:50px;display:flex;align-items:center;justify-content:center">{customer_signature}</div>
+        <div style="font-size:13px">ผู้เช่าซื้อ</div>
+        <p style="margin:4px 0 0;font-size:13px">({customer_name})</p>
       </div>
       <div style="text-align:center">
-        <p style="margin:0 0 4px;font-size:12px;color:#666">ผู้ขาย (พนักงาน)</p>
-        {staff_signature}
-        <p style="margin:8px 0 0;font-size:13px">({salesperson_name})</p>
+        <div style="font-size:13px">ลงชื่อ</div>
+        <div style="min-height:50px;display:flex;align-items:center;justify-content:center">{staff_signature}</div>
+        <div style="font-size:13px">ผู้ให้เช่าซื้อ</div>
+        <p style="margin:4px 0 0;font-size:13px">({salesperson_name})</p>
       </div>
     </div>
   </div>

@@ -50,6 +50,30 @@ export class UsersService {
     });
   }
 
+  async getSavedSignature(userId: string): Promise<string | null> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { savedSignature: true },
+    });
+    return user?.savedSignature || null;
+  }
+
+  async saveSignature(userId: string, signatureImage: string): Promise<{ success: boolean }> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { savedSignature: signatureImage },
+    });
+    return { success: true };
+  }
+
+  async deleteSavedSignature(userId: string): Promise<{ success: boolean }> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { savedSignature: null },
+    });
+    return { success: true };
+  }
+
   async update(id: string, dto: UpdateUserDto) {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('ไม่พบผู้ใช้งาน');

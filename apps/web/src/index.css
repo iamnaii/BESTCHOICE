@@ -21,7 +21,7 @@
 
 body {
   font-family: 'TH Sarabun PSK', 'Noto Sans Thai', sans-serif;
-  font-size: 17px;
+  font-size: 18px;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -30,10 +30,10 @@ body {
 
 @layer utilities {
   .text-gradient {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary-400 to-purple-400;
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary-400 to-sky-400;
   }
   .bg-hero-gradient {
-    background: linear-gradient(135deg, #1e1b4b 0%, #312e81 25%, #4338ca 50%, #6366f1 75%, #818cf8 100%);
+    background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 25%, #1d4ed8 50%, #2563eb 75%, #60a5fa 100%);
   }
   .glass-card {
     @apply bg-white/80 backdrop-blur-sm border border-white/20;
@@ -46,7 +46,7 @@ body {
   padding: 14px 18px;
   outline: none;
   font-family: 'TH Sarabun PSK', 'Noto Sans Thai', sans-serif;
-  font-size: 17px;
+  font-size: 18px;
   line-height: 1.8;
   color: #1a1a1a;
 }
@@ -100,8 +100,8 @@ body {
 
 /* Variable tag styling inside editor */
 .tiptap.ProseMirror .variable-tag {
-  background-color: #ede9fe;
-  color: #6d28d9;
+  background-color: #dbeafe;
+  color: #1d4ed8;
   padding: 1px 4px;
   border-radius: 3px;
   font-family: 'SF Mono', 'Fira Code', monospace;

@@ -42,7 +42,7 @@ export default function BlockItem({ block, index, totalBlocks }: Props) {
       ref={setNodeRef}
       style={style}
       className={`group border rounded-lg bg-white transition-shadow ${
-        isDragging ? 'shadow-lg border-violet-300' : 'border-gray-200 hover:border-violet-200 hover:shadow-sm'
+        isDragging ? 'shadow-lg border-blue-300' : 'border-gray-200 hover:border-blue-200 hover:shadow-sm'
       }`}
     >
       {/* Header */}
@@ -65,7 +65,7 @@ export default function BlockItem({ block, index, totalBlocks }: Props) {
         </button>
 
         {/* Type badge */}
-        <span className="text-xs px-2.5 py-0.5 bg-violet-50 text-violet-700 rounded-full font-medium">
+        <span className="text-xs px-2.5 py-0.5 bg-blue-50 text-blue-700 rounded-full font-medium">
           {label}
         </span>
 

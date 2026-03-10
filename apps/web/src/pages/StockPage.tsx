@@ -539,11 +539,11 @@ export default function StockPage() {
                   </div>
                 )}
                 {(dashboard.actionRequired.photoPending || 0) > 0 && (
-                  <div className="flex items-center gap-3 p-3 bg-violet-50 rounded-lg">
-                    <div className="w-10 h-10 bg-violet-100 rounded-full flex items-center justify-center text-violet-600 text-lg font-bold">
+                  <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
+                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 text-lg font-bold">
                       {dashboard.actionRequired.photoPending}
                     </div>
-                    <div className="text-sm text-violet-700">รอถ่ายรูป</div>
+                    <div className="text-sm text-blue-700">รอถ่ายรูป</div>
                   </div>
                 )}
                 {dashboard.actionRequired.pendingTransfers > 0 && (
@@ -695,7 +695,7 @@ export default function StockPage() {
                     label={item.name}
                     count={item.count}
                     total={dashboard.stockTurnover.currentStock}
-                    color="bg-purple-400"
+                    color="bg-blue-400"
                   />
                 ))}
                 {dashboard.byBrand.length === 0 && <div className="text-sm text-gray-400 text-center py-2">-</div>}

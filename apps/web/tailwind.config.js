@@ -5,17 +5,17 @@ export default {
     extend: {
       /* ── Thai-friendly font scale ─────────────────────────
          TH Sarabun PSK renders smaller than Latin fonts at the
-         same px value.  Bump every step ~1-2px so Thai text
-         stays legible, especially at the small end.
+         same px value.  Bump every step so Thai text stays
+         legible, especially at the small end.
          ──────────────────────────────────────────────────── */
       fontSize: {
-        'xs':   ['13px', { lineHeight: '1.5' }],
-        'sm':   ['15px', { lineHeight: '1.55' }],
-        'base': ['17px', { lineHeight: '1.6' }],
-        'lg':   ['19px', { lineHeight: '1.55' }],
-        'xl':   ['21px', { lineHeight: '1.5' }],
-        '2xl':  ['26px', { lineHeight: '1.4' }],
-        '3xl':  ['32px', { lineHeight: '1.35' }],
+        'xs':   ['14px', { lineHeight: '1.5' }],
+        'sm':   ['16px', { lineHeight: '1.55' }],
+        'base': ['18px', { lineHeight: '1.6' }],
+        'lg':   ['20px', { lineHeight: '1.55' }],
+        'xl':   ['23px', { lineHeight: '1.5' }],
+        '2xl':  ['28px', { lineHeight: '1.4' }],
+        '3xl':  ['34px', { lineHeight: '1.35' }],
       },
       keyframes: {
         fadeIn: {
@@ -38,17 +38,17 @@ export default {
       },
       colors: {
         primary: {
-          50: '#eef2ff',
-          100: '#e0e7ff',
-          200: '#c7d2fe',
-          300: '#a5b4fc',
-          400: '#818cf8',
-          500: '#6366f1',
-          600: '#4f46e5',
-          700: '#4338ca',
-          800: '#3730a3',
-          900: '#312e81',
-          950: '#1e1b4b',
+          50: '#eff6ff',
+          100: '#dbeafe',
+          200: '#bfdbfe',
+          300: '#93c5fd',
+          400: '#60a5fa',
+          500: '#3b82f6',
+          600: '#2563eb',
+          700: '#1d4ed8',
+          800: '#1e40af',
+          900: '#1e3a5f',
+          950: '#0f172a',
         },
       },
     },

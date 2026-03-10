@@ -132,7 +132,7 @@ function Sidebar() {
       {/* Logo */}
       <div className="p-5 border-b border-white/10">
         <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary-400 to-purple-500 flex items-center justify-center shadow-lg shadow-primary-500/20">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary-400 to-sky-400 flex items-center justify-center shadow-lg shadow-primary-500/20">
             <span className="text-white font-bold text-sm">B</span>
           </div>
           <div>
@@ -264,7 +264,7 @@ function Sidebar() {
                       <div key={item.path}>
                         {showGroupHeader && (
                           <div className={clsx('flex items-center gap-2 px-3', idx > 0 ? 'mt-3 mb-1' : 'mb-1')}>
-                            <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-600">
+                            <span className="text-xs font-semibold uppercase tracking-wider text-gray-600">
                               {item.group}
                             </span>
                             <div className="flex-1 h-px bg-white/5" />
@@ -283,7 +283,7 @@ function Sidebar() {
                           }
                         >
                           {item.step != null && (
-                            <span className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center text-[11px] font-bold shrink-0">
+                            <span className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold shrink-0">
                               {item.step}
                             </span>
                           )}

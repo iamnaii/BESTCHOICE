@@ -37,7 +37,7 @@ interface SalesResponse {
 const saleTypeLabels: Record<string, { label: string; className: string }> = {
   CASH: { label: 'เงินสด', className: 'bg-green-100 text-green-700' },
   INSTALLMENT: { label: 'ผ่อนร้าน', className: 'bg-blue-100 text-blue-700' },
-  EXTERNAL_FINANCE: { label: 'ไฟแนนซ์', className: 'bg-purple-100 text-purple-700' },
+  EXTERNAL_FINANCE: { label: 'ไฟแนนซ์', className: 'bg-blue-100 text-blue-700' },
 };
 
 const paymentMethodLabels: Record<string, string> = {
@@ -156,7 +156,7 @@ export default function SalesHistoryPage() {
             </div>
           )}
           {s.saleType === 'EXTERNAL_FINANCE' && s.financeCompany && (
-            <div className="text-purple-600">
+            <div className="text-blue-600">
               {s.financeCompany}
               {s.downPaymentAmount && Number(s.downPaymentAmount) > 0 && (
                 <span> / ดาวน์ {Number(s.downPaymentAmount).toLocaleString()} ฿</span>
@@ -243,8 +243,8 @@ export default function SalesHistoryPage() {
           </div>
           <div className="bg-white rounded-lg border p-4">
             <div className="text-xs text-gray-500 mb-1">ไฟแนนซ์ (หน้านี้)</div>
-            <div className="text-xl font-bold text-purple-600">{stats.financeCount}</div>
-            <div className="text-sm text-purple-600 mt-1">{stats.financeRevenue.toLocaleString()} ฿</div>
+            <div className="text-xl font-bold text-blue-600">{stats.financeCount}</div>
+            <div className="text-sm text-blue-600 mt-1">{stats.financeRevenue.toLocaleString()} ฿</div>
           </div>
         </div>
       )}

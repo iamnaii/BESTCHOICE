@@ -67,7 +67,7 @@ const statusLabels: Record<string, { label: string; className: string }> = {
   DEFAULT: { label: 'ผิดนัด', className: 'bg-red-100 text-red-700' },
   EARLY_PAYOFF: { label: 'ปิดก่อน', className: 'bg-blue-100 text-blue-700' },
   COMPLETED: { label: 'ครบ', className: 'bg-teal-100 text-teal-700' },
-  EXCHANGED: { label: 'เปลี่ยนเครื่อง', className: 'bg-purple-100 text-purple-700' },
+  EXCHANGED: { label: 'เปลี่ยนเครื่อง', className: 'bg-blue-100 text-blue-700' },
   CLOSED_BAD_DEBT: { label: 'หนี้สูญ', className: 'bg-red-200 text-red-800' },
 };
 
@@ -311,7 +311,7 @@ export default function CustomerDetailPage() {
                       {cc.contract && <span className="text-xs text-primary-600">สัญญา: {cc.contract.contractNumber}</span>}
                     </div>
                     {cc.status === 'PENDING' && (
-                      <button onClick={() => analyzeCreditMutation.mutate(cc.id)} disabled={analyzeCreditMutation.isPending} className="px-3 py-1 text-xs bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50">
+                      <button onClick={() => analyzeCreditMutation.mutate(cc.id)} disabled={analyzeCreditMutation.isPending} className="px-3 py-1 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
                         {analyzeCreditMutation.isPending ? 'กำลังวิเคราะห์...' : 'AI วิเคราะห์'}
                       </button>
                     )}

@@ -261,7 +261,7 @@ export default function CreditChecksPage() {
             <button
               onClick={() => analyzeMutation.mutate({ customerId: cc.customer.id, creditCheckId: cc.id })}
               disabled={analyzeMutation.isPending}
-              className="px-3 py-1 text-xs bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+              className="px-3 py-1 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
             >
               AI วิเคราะห์
             </button>
@@ -387,11 +387,11 @@ export default function CreditChecksPage() {
 
                 <div className="mt-4 space-y-3">
                   {/* Book Bank OCR */}
-                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                     <div className="flex items-center justify-between mb-1">
-                      <h4 className="text-sm font-semibold text-purple-800">สแกนหน้าสมุดบัญชี (OCR)</h4>
+                      <h4 className="text-sm font-semibold text-blue-800">สแกนหน้าสมุดบัญชี (OCR)</h4>
                     </div>
-                    <p className="text-xs text-purple-600 mb-2">ถ่ายรูปหน้าสมุดบัญชีเพื่อกรอกชื่อธนาคารอัตโนมัติ</p>
+                    <p className="text-xs text-blue-600 mb-2">ถ่ายรูปหน้าสมุดบัญชีเพื่อกรอกชื่อธนาคารอัตโนมัติ</p>
                     <input
                       ref={bookBankFileRef}
                       type="file"
@@ -404,7 +404,7 @@ export default function CreditChecksPage() {
                       type="button"
                       onClick={() => bookBankFileRef.current?.click()}
                       disabled={bookBankLoading}
-                      className="inline-flex items-center gap-2 px-3 py-1.5 bg-purple-600 text-white rounded-lg text-xs font-medium hover:bg-purple-700 disabled:opacity-50"
+                      className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 disabled:opacity-50"
                     >
                       {bookBankLoading ? (
                         <>
@@ -421,7 +421,7 @@ export default function CreditChecksPage() {
 
                     {/* Book bank OCR result */}
                     {bookBankResult && (
-                      <div className="mt-2 p-2 bg-white rounded border border-purple-200 space-y-1">
+                      <div className="mt-2 p-2 bg-white rounded border border-blue-200 space-y-1">
                         <div className="text-xs text-gray-500">ผลการสแกน:</div>
                         {bookBankResult.accountName && <div className="text-xs"><span className="text-gray-500">ชื่อบัญชี:</span> <span className="font-medium">{bookBankResult.accountName}</span></div>}
                         {bookBankResult.accountNo && <div className="text-xs"><span className="text-gray-500">เลขที่บัญชี:</span> <span className="font-mono">{bookBankResult.accountNo}</span></div>}

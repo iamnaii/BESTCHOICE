@@ -75,7 +75,7 @@ export default function PDFExportModal() {
                 <button
                   onClick={() => handleGenerate('preview')}
                   disabled={isGenerating}
-                  className="flex items-center gap-2 px-6 py-3 text-sm border border-violet-300 text-violet-700 rounded-lg hover:bg-violet-50 disabled:opacity-50 transition-colors"
+                  className="flex items-center gap-2 px-6 py-3 text-sm border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50 disabled:opacity-50 transition-colors"
                 >
                   {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <Eye size={16} />}
                   Preview
@@ -83,7 +83,7 @@ export default function PDFExportModal() {
                 <button
                   onClick={() => handleGenerate('download')}
                   disabled={isGenerating}
-                  className="flex items-center gap-2 px-6 py-3 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 transition-colors"
+                  className="flex items-center gap-2 px-6 py-3 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
                 >
                   {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
                   ดาวน์โหลด PDF
@@ -105,7 +105,7 @@ export default function PDFExportModal() {
             <button
               onClick={() => handleGenerate('download')}
               disabled={isGenerating}
-              className="flex items-center gap-2 px-4 py-2 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
             >
               <Download size={14} />
               ดาวน์โหลด PDF

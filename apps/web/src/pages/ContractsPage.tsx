@@ -34,7 +34,7 @@ const statusLabels: Record<string, { label: string; className: string }> = {
   DEFAULT: { label: 'ผิดนัด', className: 'bg-red-100 text-red-700' },
   EARLY_PAYOFF: { label: 'ปิดก่อน', className: 'bg-blue-100 text-blue-700' },
   COMPLETED: { label: 'ครบ', className: 'bg-teal-100 text-teal-700' },
-  EXCHANGED: { label: 'เปลี่ยนเครื่อง', className: 'bg-purple-100 text-purple-700' },
+  EXCHANGED: { label: 'เปลี่ยนเครื่อง', className: 'bg-blue-100 text-blue-700' },
   CLOSED_BAD_DEBT: { label: 'หนี้สูญ', className: 'bg-red-200 text-red-800' },
 };
 

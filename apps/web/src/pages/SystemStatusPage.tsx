@@ -199,7 +199,7 @@ export default function SystemStatusPage() {
                   { label: 'API Key', value: data!.ai.configured ? 'ตั้งค่าแล้ว' : 'ยังไม่ได้ตั้งค่า' },
                   ...(data!.ai.error ? [{ label: 'Error', value: data!.ai.error }] : []),
                 ]}
-                color="purple"
+                color="blue"
                 full
               />
             </div>
@@ -338,13 +338,11 @@ function ServiceCard({
     blue: 'bg-blue-50 border-blue-200',
     indigo: 'bg-indigo-50 border-indigo-200',
     emerald: 'bg-emerald-50 border-emerald-200',
-    purple: 'bg-purple-50 border-purple-200',
   };
   const iconColors: Record<string, string> = {
     blue: 'text-blue-600',
     indigo: 'text-indigo-600',
     emerald: 'text-emerald-600',
-    purple: 'text-purple-600',
   };
   const statusColors: Record<string, string> = {
     ok: 'text-green-700',

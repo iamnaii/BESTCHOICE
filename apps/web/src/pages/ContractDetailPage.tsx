@@ -70,7 +70,7 @@ const statusLabels: Record<string, { label: string; className: string }> = {
   DEFAULT: { label: 'ผิดนัด', className: 'bg-red-100 text-red-700' },
   EARLY_PAYOFF: { label: 'ปิดก่อน', className: 'bg-blue-100 text-blue-700' },
   COMPLETED: { label: 'ครบ', className: 'bg-teal-100 text-teal-700' },
-  EXCHANGED: { label: 'เปลี่ยนเครื่อง', className: 'bg-purple-100 text-purple-700' },
+  EXCHANGED: { label: 'เปลี่ยนเครื่อง', className: 'bg-blue-100 text-blue-700' },
   CLOSED_BAD_DEBT: { label: 'หนี้สูญ', className: 'bg-red-200 text-red-800' },
 };
 
@@ -223,7 +223,7 @@ export default function ContractDetailPage() {
         subtitle="รายละเอียดสัญญาผ่อนชำระ"
         action={
           <div className="flex gap-2 flex-wrap">
-            <button onClick={() => navigate(`/contracts/${id}/sign`)} className="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700">
+            <button onClick={() => navigate(`/contracts/${id}/sign`)} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">
               ลงนาม/เอกสาร
             </button>
 
@@ -332,7 +332,7 @@ export default function ContractDetailPage() {
               พนักงาน {staffSigned ? 'เซ็นแล้ว' : 'ยังไม่เซ็น'}
             </span>
             {!allSigned && (
-              <button onClick={() => navigate(`/contracts/${id}/sign`)} className="px-2 py-1 bg-purple-600 text-white rounded text-xs hover:bg-purple-700">
+              <button onClick={() => navigate(`/contracts/${id}/sign`)} className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">
                 ไปลงนาม
               </button>
             )}
@@ -379,7 +379,7 @@ export default function ContractDetailPage() {
                 พนักงาน {staffSigned ? 'เซ็นแล้ว' : 'ยังไม่เซ็น'}
               </span>
               {!allSigned && (
-                <button onClick={() => navigate(`/contracts/${id}/sign`)} className="px-2 py-1 bg-purple-600 text-white rounded text-xs hover:bg-purple-700">
+                <button onClick={() => navigate(`/contracts/${id}/sign`)} className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">
                   ไปลงนาม
                 </button>
               )}

@@ -29,7 +29,7 @@ export default function TopBar() {
             {user?.role && roleLabels[user.role]}
           </p>
         </div>
-        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary-500 to-purple-600 flex items-center justify-center">
+        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary-500 to-sky-400 flex items-center justify-center">
           <span className="text-white text-sm font-bold">{user?.name?.charAt(0)}</span>
         </div>
         <button

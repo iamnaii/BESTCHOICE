@@ -294,7 +294,7 @@ function DailyPaymentReport({ date, onDateChange }: { date: string; onDateChange
         <SummaryCard label="รายการชำระ" value={data?.totalCount || 0} isCurrency={false} />
         <SummaryCard label="ยอดรวม" value={data?.totalAmount || 0} color="text-green-600" />
         <SummaryCard label="เงินสด" value={data?.byMethod?.CASH || 0} color="text-blue-600" />
-        <SummaryCard label="โอน" value={data?.byMethod?.TRANSFER || 0} color="text-purple-600" />
+        <SummaryCard label="โอน" value={data?.byMethod?.TRANSFER || 0} color="text-blue-600" />
       </div>
       {data?.byBranch && data.byBranch.length > 0 && (
         <div className="overflow-x-auto">

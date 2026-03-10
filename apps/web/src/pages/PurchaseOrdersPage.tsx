@@ -953,7 +953,7 @@ export default function PurchaseOrdersPage() {
                 })() : '';
 
                 return (
-                  <div key={idx} className={`border rounded-lg p-3 space-y-2 relative ${isAccessory ? 'border-purple-200 bg-purple-50' : 'border-gray-200 bg-gray-50'}`}>
+                  <div key={idx} className={`border rounded-lg p-3 space-y-2 relative ${isAccessory ? 'border-blue-200 bg-blue-50' : 'border-gray-200 bg-gray-50'}`}>
                     {items.length > 1 && (
                       <button
                         type="button"
@@ -965,7 +965,7 @@ export default function PurchaseOrdersPage() {
                     )}
                     <div className="text-xs font-medium text-gray-500 mb-1">
                       รายการ #{idx + 1}
-                      {isAccessory && <span className="ml-2 px-1.5 py-0.5 bg-purple-200 text-purple-700 rounded text-xs">อุปกรณ์เสริม</span>}
+                      {isAccessory && <span className="ml-2 px-1.5 py-0.5 bg-blue-200 text-blue-700 rounded text-xs">อุปกรณ์เสริม</span>}
                     </div>
 
                     {/* Row 1: Category FIRST, then Brand/Model or AccessoryType */}
@@ -1087,8 +1087,8 @@ export default function PurchaseOrdersPage() {
                                 onClick={() => toggleModel(idx, m.name)}
                                 className={`px-2 py-0.5 rounded-full text-xs font-medium border transition-colors ${
                                   isSelected
-                                    ? 'bg-purple-600 text-white border-purple-600'
-                                    : 'bg-white text-gray-600 border-gray-300 hover:border-purple-400 hover:text-purple-600'
+                                    ? 'bg-blue-600 text-white border-blue-600'
+                                    : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400 hover:text-blue-600'
                                 }`}
                               >
                                 {m.name}
@@ -1097,7 +1097,7 @@ export default function PurchaseOrdersPage() {
                           })}
                         </div>
                         {selectedModels.length > 0 && (
-                          <div className="text-xs text-purple-500 mt-1">เลือกแล้ว {selectedModels.length} รุ่น</div>
+                          <div className="text-xs text-blue-500 mt-1">เลือกแล้ว {selectedModels.length} รุ่น</div>
                         )}
                       </div>
                     )}
@@ -1140,7 +1140,7 @@ export default function PurchaseOrdersPage() {
                         </div>
                         {/* Auto name preview */}
                         {accessoryAutoName && (
-                          <div className="text-xs text-purple-600 bg-purple-100 rounded px-2 py-1">
+                          <div className="text-xs text-blue-600 bg-blue-100 rounded px-2 py-1">
                             ชื่อสินค้า: {accessoryAutoName}
                           </div>
                         )}
@@ -1331,7 +1331,7 @@ export default function PurchaseOrdersPage() {
               <div className="mt-3">
                 <label className="block text-xs text-gray-500 mb-0.5">แนบสลิป/เอกสาร</label>
                 <div className="flex gap-2">
-                  <label className="flex items-center gap-1 px-3 py-2 bg-purple-50 text-purple-700 border border-purple-200 rounded-lg text-xs cursor-pointer hover:bg-purple-100 whitespace-nowrap">
+                  <label className="flex items-center gap-1 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-xs cursor-pointer hover:bg-blue-100 whitespace-nowrap">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                     เลือกรูป
                     <input
@@ -1524,7 +1524,7 @@ export default function PurchaseOrdersPage() {
                 </div>
                 <button
                   onClick={() => openPaymentModal(selectedPO)}
-                  className="px-3 py-1.5 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors"
+                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
                 >
                   อัปเดตการจ่ายเงิน
                 </button>
@@ -1576,7 +1576,7 @@ export default function PurchaseOrdersPage() {
                       <td className="px-3 py-2">
                         {item.brand}
                         {item.category === 'ACCESSORY' && (
-                          <div className="text-xs text-purple-600">(อุปกรณ์เสริม)</div>
+                          <div className="text-xs text-blue-600">(อุปกรณ์เสริม)</div>
                         )}
                       </td>
                       <td className="px-3 py-2">{item.model}</td>
@@ -1846,7 +1846,7 @@ export default function PurchaseOrdersPage() {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">แนบสลิป/เอกสาร</label>
               <div className="flex gap-2">
-                <label className="flex items-center gap-1.5 px-3 py-2 bg-purple-50 text-purple-700 border border-purple-200 rounded-lg text-sm cursor-pointer hover:bg-purple-100 whitespace-nowrap">
+                <label className="flex items-center gap-1.5 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-sm cursor-pointer hover:bg-blue-100 whitespace-nowrap">
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                   เลือกรูป
                   <input
@@ -1918,7 +1918,7 @@ export default function PurchaseOrdersPage() {
               <button
                 type="submit"
                 disabled={paymentMutation.isPending}
-                className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50 transition-colors"
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
               >
                 {paymentMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
               </button>

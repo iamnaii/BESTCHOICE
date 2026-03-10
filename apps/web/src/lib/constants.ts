@@ -6,10 +6,10 @@
 export const statusLabels: Record<string, { label: string; className: string }> = {
   PO_RECEIVED: { label: 'รับจาก PO', className: 'bg-blue-100 text-blue-700' },
   QC_PENDING: { label: 'รอตรวจรับ', className: 'bg-amber-100 text-amber-700' },
-  PHOTO_PENDING: { label: 'รอถ่ายรูป', className: 'bg-violet-100 text-violet-700' },
+  PHOTO_PENDING: { label: 'รอถ่ายรูป', className: 'bg-blue-100 text-blue-700' },
   INSPECTION: { label: 'กำลังตรวจ', className: 'bg-yellow-100 text-yellow-700' },
   IN_STOCK: { label: 'พร้อมขาย', className: 'bg-green-100 text-green-700' },
-  RESERVED: { label: 'จอง', className: 'bg-purple-100 text-purple-700' },
+  RESERVED: { label: 'จอง', className: 'bg-blue-100 text-blue-700' },
   SOLD_INSTALLMENT: { label: 'ขายผ่อน', className: 'bg-indigo-100 text-indigo-700' },
   SOLD_CASH: { label: 'ขายสด', className: 'bg-teal-100 text-teal-700' },
   REPOSSESSED: { label: 'ยึดคืน', className: 'bg-red-100 text-red-700' },
@@ -53,7 +53,7 @@ export type SaleType = 'CASH' | 'INSTALLMENT' | 'EXTERNAL_FINANCE';
 export const saleTypeConfig: Record<SaleType, { label: string; color: string; bg: string }> = {
   CASH: { label: 'เงินสด', color: 'text-green-700', bg: 'bg-green-50 border-green-300 ring-green-500' },
   INSTALLMENT: { label: 'ผ่อนกับ BESTCHOICE', color: 'text-blue-700', bg: 'bg-blue-50 border-blue-300 ring-blue-500' },
-  EXTERNAL_FINANCE: { label: 'ผ่อนไฟแนนซ์', color: 'text-purple-700', bg: 'bg-purple-50 border-purple-300 ring-purple-500' },
+  EXTERNAL_FINANCE: { label: 'ผ่อนไฟแนนซ์', color: 'text-blue-700', bg: 'bg-blue-50 border-blue-300 ring-blue-500' },
 };
 
 // --- Plan Type (single type: STORE_DIRECT) ---

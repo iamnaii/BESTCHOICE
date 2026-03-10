@@ -48,6 +48,72 @@ async function loadThaiFont(doc: jsPDF) {
   }
 }
 
+// ---- Rich text segment types ----
+interface TextSegment {
+  text: string;
+  bold: boolean;
+  underline: boolean;
+}
+
+/** Parse HTML into styled text segments, splitting on <strong>/<b>/<u> tags */
+function parseHtmlSegments(html: string): TextSegment[][] {
+  // First split into paragraphs by block-level tags
+  const paragraphs = html
+    .replace(/<\/(?:p|div|li)>/gi, '\n<PARA_BREAK>\n')
+    .replace(/<br\s*\/?>/gi, '\n<PARA_BREAK>\n')
+    .split('<PARA_BREAK>')
+    .map(p => p.trim())
+    .filter(p => p.length > 0);
+
+  return paragraphs.map(para => {
+    const segments: TextSegment[] = [];
+    let bold = false;
+    let underline = false;
+    let buffer = '';
+
+    // Simple state-machine parser for inline tags
+    let i = 0;
+    while (i < para.length) {
+      if (para[i] === '<') {
+        const tagEnd = para.indexOf('>', i);
+        if (tagEnd === -1) { buffer += para[i]; i++; continue; }
+        const tag = para.substring(i, tagEnd + 1);
+        const tagLower = tag.toLowerCase();
+
+        // Flush buffer before style change
+        if (buffer) { segments.push({ text: buffer, bold, underline }); buffer = ''; }
+
+        if (tagLower === '<strong>' || tagLower === '<b>') { bold = true; }
+        else if (tagLower === '</strong>' || tagLower === '</b>') { bold = false; }
+        else if (tagLower === '<u>') { underline = true; }
+        else if (tagLower === '</u>') { underline = false; }
+        // Skip other tags (strip them)
+
+        i = tagEnd + 1;
+      } else {
+        buffer += para[i];
+        i++;
+      }
+    }
+    if (buffer) segments.push({ text: buffer, bold, underline });
+    return segments;
+  });
+}
+
+/** Check if content contains HTML tags */
+function isHtmlContent(content: string): boolean {
+  return /<\/?(?:p|div|span|br|h[1-6]|ul|ol|li|strong|em|u|s|mark|blockquote|a|table|tr|td|th|thead|tbody|img|b)\b[^>]*\/?>/i.test(content);
+}
+
+// Strip HTML tags for plain text rendering, preserving paragraph breaks
+function stripHtml(html: string): string {
+  return html
+    .replace(/<\/(?:p|div|li)>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]*>/g, '')
+    .trim();
+}
+
 // Strip **bold** markers for plain text
 function stripBold(text: string): string {
   return text.replace(/\*\*([^*]+)\*\*/g, '$1');
@@ -107,6 +173,7 @@ export async function generatePDF(template: Template): Promise<Blob> {
     doc.setTextColor(0);
   }
 
+  /** Plain text addText — used for non-HTML content */
   function addText(text: string, fontSize: number, options?: { bold?: boolean; align?: 'left' | 'center' | 'right'; indent?: number; firstLineIndent?: number }) {
     const { bold = false, align = 'left', indent = 0, firstLineIndent } = options || {};
     doc.setFontSize(fontSize);
@@ -134,6 +201,135 @@ export async function generatePDF(template: Template): Promise<Blob> {
     y += 1;
   }
 
+  /**
+   * Render rich text segments with inline bold/underline support.
+   * Handles word-wrapping across segments.
+   */
+  function addRichText(segments: TextSegment[], fontSize: number, options?: { indent?: number; firstLineIndent?: number; align?: 'left' | 'center' | 'right' }) {
+    const { indent = 0, firstLineIndent, align = 'left' } = options || {};
+    const lineHeight = fontSize * 0.45;
+    const effectiveWidth = contentWidth - indent;
+    const baseX = margin.left + indent;
+
+    doc.setFontSize(fontSize);
+
+    // Build word-level tokens with style info
+    interface WordToken { text: string; bold: boolean; underline: boolean; width: number; isSpace: boolean }
+    const tokens: WordToken[] = [];
+    for (const seg of segments) {
+      doc.setFont(PDF_FONT_FAMILY, seg.bold ? 'bold' : 'normal');
+      // Split on spaces but keep spaces as separate tokens for accurate wrapping
+      const parts = seg.text.split(/( +)/);
+      for (const part of parts) {
+        if (part.length === 0) continue;
+        tokens.push({
+          text: part,
+          bold: seg.bold,
+          underline: seg.underline,
+          width: doc.getTextWidth(part),
+          isSpace: /^\s+$/.test(part),
+        });
+      }
+    }
+
+    // Group tokens into lines based on available width
+    type LineData = WordToken[];
+    const lines: LineData[] = [];
+    let currentLine: WordToken[] = [];
+    let currentLineWidth = 0;
+    let isFirstLine = true;
+    const getAvailWidth = () => effectiveWidth - (isFirstLine && firstLineIndent ? firstLineIndent : 0);
+
+    for (const token of tokens) {
+      if (currentLineWidth + token.width > getAvailWidth() && currentLine.length > 0 && !token.isSpace) {
+        // Trim trailing spaces from current line
+        while (currentLine.length > 0 && currentLine[currentLine.length - 1].isSpace) {
+          currentLine.pop();
+        }
+        lines.push(currentLine);
+        currentLine = [];
+        currentLineWidth = 0;
+        isFirstLine = false;
+      }
+      currentLine.push(token);
+      currentLineWidth += token.width;
+    }
+    if (currentLine.length > 0) {
+      // Trim trailing spaces
+      while (currentLine.length > 0 && currentLine[currentLine.length - 1].isSpace) {
+        currentLine.pop();
+      }
+      lines.push(currentLine);
+    }
+
+    // Render each line
+    isFirstLine = true;
+    for (const lineTokens of lines) {
+      checkPageBreak(lineHeight);
+      const extraIndent = (isFirstLine && firstLineIndent) ? firstLineIndent : 0;
+
+      if (align === 'center') {
+        // For centered text, calculate total width and offset
+        const totalWidth = lineTokens.reduce((sum, t) => sum + t.width, 0);
+        let cx = (pageWidth - totalWidth) / 2;
+        for (const token of lineTokens) {
+          doc.setFont(PDF_FONT_FAMILY, token.bold ? 'bold' : 'normal');
+          doc.text(token.text, cx, y);
+          if (token.underline && !token.isSpace) {
+            const tw = doc.getTextWidth(token.text);
+            doc.setDrawColor(0);
+            doc.line(cx, y + 0.5, cx + tw, y + 0.5);
+          }
+          cx += token.width;
+        }
+      } else {
+        let cx = baseX + extraIndent;
+        for (const token of lineTokens) {
+          doc.setFont(PDF_FONT_FAMILY, token.bold ? 'bold' : 'normal');
+          doc.text(token.text, cx, y);
+          if (token.underline && !token.isSpace) {
+            const tw = doc.getTextWidth(token.text);
+            doc.setDrawColor(0);
+            doc.line(cx, y + 0.5, cx + tw, y + 0.5);
+          }
+          cx += token.width;
+        }
+      }
+
+      y += lineHeight;
+      isFirstLine = false;
+    }
+    y += 1;
+  }
+
+  /**
+   * Smart render — detects HTML content and uses rich text rendering with inline bold.
+   * Falls back to plain text addText for non-HTML content.
+   */
+  function addContent(content: string, fontSize: number, options?: { bold?: boolean; indent?: number; firstLineIndent?: number; align?: 'left' | 'center' | 'right' }) {
+    if (isHtmlContent(content)) {
+      // Resolve variables in the HTML before parsing
+      const resolvedHtml = renderVariables(content, ctx);
+      const paragraphs = parseHtmlSegments(resolvedHtml);
+      for (const segments of paragraphs) {
+        if (segments.length === 0 || (segments.length === 1 && !segments[0].text.trim())) continue;
+        addRichText(segments, fontSize, {
+          indent: options?.indent,
+          firstLineIndent: options?.firstLineIndent,
+          align: options?.align,
+        });
+      }
+    } else {
+      // Plain text path
+      const plainContent = stripHtml(content);
+      const resolved = renderVariables(plainContent, ctx);
+      const paragraphs = resolved.split('\n').filter(l => l.trim());
+      for (const para of paragraphs) {
+        addText(para, fontSize, options);
+      }
+    }
+  }
+
   // Letterhead
   if (settings.letterhead === 'bestchoice') {
     doc.setFontSize(14);
@@ -153,19 +349,9 @@ export async function generatePDF(template: Template): Promise<Blob> {
     y += 5;
   }
 
-  // Strip HTML tags for plain text rendering, preserving paragraph breaks
-  function stripHtml(html: string): string {
-    return html
-      .replace(/<\/(?:p|div|li)>/gi, '\n')
-      .replace(/<br\s*\/?>/gi, '\n')
-      .replace(/<[^>]*>/g, '')
-      .trim();
-  }
-
   // Render blocks
   let clauseCounter = 0;
   for (const block of blocks) {
-    // Strip HTML tags from content before rendering
     const plainContent = stripHtml(block.content);
     const resolved = renderVariables(plainContent, ctx);
 
@@ -202,26 +388,21 @@ export async function generatePDF(template: Template): Promise<Blob> {
 
       case 'heading':
         y += 2;
-        addText(resolved, settings.fontSize.heading, { bold: true, align: 'center' });
+        addContent(block.content, settings.fontSize.heading, { bold: true, align: 'center' });
         y += 2;
         break;
 
       case 'subheading':
         y += 1;
-        addText(resolved, 15, { bold: true });
+        addContent(block.content, 15, { bold: true });
         break;
 
       case 'paragraph':
       case 'party-info':
       case 'product-info':
-      case 'agreement': {
-        // Render each paragraph separately with first-line indent (matching preview textIndent: 2em)
-        const paragraphs = resolved.split('\n').filter(l => l.trim());
-        for (const para of paragraphs) {
-          addText(para, settings.fontSize.body, { firstLineIndent: 8 });
-        }
+      case 'agreement':
+        addContent(block.content, settings.fontSize.body, { firstLineIndent: 8 });
         break;
-      }
 
       case 'emergency-contacts': {
         const contacts = ctx['EMERGENCY_CONTACTS'] as any[];
@@ -238,15 +419,21 @@ export async function generatePDF(template: Template): Promise<Blob> {
         clauseCounter++;
         y += 1;
         addText(`ข้อ ${clauseCounter} ${block.clauseTitle || ''}`, settings.fontSize.body, { bold: true });
-        // Split by newlines to render sub-items
-        const clauseLines = resolved.split('\n').filter(l => l.trim());
-        if (clauseLines[0]) addText(clauseLines[0], settings.fontSize.body, { firstLineIndent: 8 });
-        for (let i = 1; i < clauseLines.length; i++) {
-          const line = clauseLines[i].trim();
-          if (line) {
-            // Auto-number sub-items if they don't already have a number prefix
-            const displayLine = /^\d+[).]\s/.test(line) ? line : `${i}) ${line}`;
-            addText(displayLine, 13, { indent: 12 });
+
+        if (isHtmlContent(block.content)) {
+          // Rich text clause — render with inline bold support
+          addContent(block.content, settings.fontSize.body, { firstLineIndent: 8 });
+        } else {
+          // Plain text clause — split by newlines for sub-items
+          const clauseLines = resolved.split('\n').filter(l => l.trim());
+          if (clauseLines[0]) addText(clauseLines[0], settings.fontSize.body, { firstLineIndent: 8 });
+          for (let i = 1; i < clauseLines.length; i++) {
+            const line = clauseLines[i].trim();
+            if (line) {
+              // Auto-number sub-items if they don't already have a number prefix
+              const displayLine = /^\d+[).]\s/.test(line) ? line : `${i}) ${line}`;
+              addText(displayLine, 13, { indent: 12 });
+            }
           }
         }
         break;
@@ -337,14 +524,9 @@ export async function generatePDF(template: Template): Promise<Blob> {
         break;
       }
 
-      case 'attachment-list': {
-        const lines = resolved.split('\n');
-        if (lines[0]) addText(lines[0], settings.fontSize.body, { bold: true });
-        for (let i = 1; i < lines.length; i++) {
-          if (lines[i].trim()) addText(lines[i], settings.fontSize.body, { indent: 4 });
-        }
+      case 'attachment-list':
+        addContent(block.content, settings.fontSize.body, { bold: false });
         break;
-      }
 
       case 'column':
       case 'column-vertical': {
@@ -367,11 +549,11 @@ export async function generatePDF(template: Template): Promise<Blob> {
       }
 
       case 'numbered':
-        addText(resolved, settings.fontSize.body, { indent: 8 });
+        addContent(block.content, settings.fontSize.body, { indent: 8 });
         break;
 
       default:
-        addText(resolved, settings.fontSize.body);
+        addContent(block.content, settings.fontSize.body);
     }
   }
 

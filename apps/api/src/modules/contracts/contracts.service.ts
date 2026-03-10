@@ -300,13 +300,13 @@ export class ContractsService {
         },
       });
 
-      // Delete existing unpaid payments and recreate only remaining installments
+      // Delete only PENDING payments (preserve PAID and PARTIALLY_PAID history)
       const paidCount = await tx.payment.count({
-        where: { contractId: id, status: 'PAID' },
+        where: { contractId: id, status: { in: ['PAID', 'PARTIALLY_PAID'] } },
       });
 
       await tx.payment.deleteMany({
-        where: { contractId: id, status: { not: 'PAID' } },
+        where: { contractId: id, status: { in: ['PENDING', 'OVERDUE'] } },
       });
 
       const remainingMonths = totalMonths - paidCount;
@@ -414,6 +414,12 @@ export class ContractsService {
       throw new BadRequestException('ต้องลงนามครบทั้งลูกค้าและพนักงานก่อนเปิดใช้งานสัญญา');
     }
 
+    // Verify product is still reserved for this contract
+    const product = await this.prisma.product.findUnique({ where: { id: contract.productId } });
+    if (!product || (product.status !== 'RESERVED' && product.status !== 'IN_STOCK')) {
+      throw new BadRequestException('สินค้าไม่พร้อมสำหรับเปิดสัญญา (อาจถูกขายหรือลบไปแล้ว)');
+    }
+
     await this.prisma.$transaction([
       this.prisma.contract.update({ where: { id }, data: { status: 'ACTIVE' } }),
       this.prisma.product.update({ where: { id: contract.productId }, data: { status: 'SOLD_INSTALLMENT' } }),
@@ -432,8 +438,8 @@ export class ContractsService {
 
   async getEarlyPayoffQuote(id: string) {
     const contract = await this.findOne(id);
-    if (!['ACTIVE', 'OVERDUE'].includes(contract.status)) {
-      throw new BadRequestException('สัญญาต้องอยู่ในสถานะ ACTIVE หรือ OVERDUE');
+    if (!['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status)) {
+      throw new BadRequestException('สัญญาต้องอยู่ในสถานะ ACTIVE, OVERDUE หรือ DEFAULT');
     }
 
     const paidPayments = contract.payments.filter((p) => p.status === 'PAID');

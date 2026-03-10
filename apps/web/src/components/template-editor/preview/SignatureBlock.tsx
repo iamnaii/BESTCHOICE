@@ -15,8 +15,8 @@ function getCtx() {
 export default function SignatureBlock({ previewMode = false }: Props) {
   const ctx = getCtx();
   const customerName = previewMode
-    ? String(ctx['CUSTOMER.FULLNAME'] || '...................................')
-    : '{{= CUSTOMER.FULLNAME}}';
+    ? String(ctx['CUSTOMER.NAME'] || '...................................')
+    : '{{= CUSTOMER.NAME}}';
   const managerName = 'เอกนรินทร์ คงเดช';
 
   return (

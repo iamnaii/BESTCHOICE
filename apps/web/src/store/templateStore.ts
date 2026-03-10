@@ -136,12 +136,13 @@ function blocksToHtml(blocks: Block[]): string {
 
     switch (b.type) {
       case 'contract-header': {
-        const plain = rich ? stripHtmlToText(content) : content;
-        if (plain.includes('||')) {
-          const [left, right] = plain.split('||').map(s => s.trim());
+        // Preserve rich HTML (bold, etc.) — only strip block tags to keep inline
+        const inline = rich ? content.replace(/<\/?(?:p|div)[^>]*>/gi, '').trim() : content;
+        if (inline.includes('||')) {
+          const [left, right] = inline.split('||').map(s => s.trim());
           return `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:15px;color:#4a4a4a"><div>${left}</div><div>${right || ''}</div></div>`;
         }
-        return `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:15px;color:#4a4a4a"><div>${plain}</div></div>`;
+        return `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:15px;color:#4a4a4a"><div>${inline}</div></div>`;
       }
 
       case 'heading':
@@ -193,8 +194,8 @@ function blocksToHtml(blocks: Block[]): string {
 
       case 'signature-block':
         return `<div style="margin:24px 0;display:grid;grid-template-columns:1fr 1fr;gap:32px 32px">
-          <div style="text-align:center"><div style="margin-bottom:4px;font-size:13px">ลงชื่อ..................................................ผู้ให้เช่าซื้อ</div><div style="font-size:12px;color:#6b7280">(${' '.repeat(30)})</div></div>
-          <div style="text-align:center"><div style="margin-bottom:4px;font-size:13px">ลงชื่อ..................................................ผู้เช่าซื้อ</div><div style="font-size:12px;color:#6b7280">(${' '.repeat(30)})</div></div>
+          <div style="text-align:center"><div style="margin-bottom:4px;font-size:13px">ลงชื่อ {staff_signature} ผู้ให้เช่าซื้อ</div><div style="font-size:12px;color:#6b7280">( {{= COMPANY.DIRECTOR }} )</div><div style="font-size:11px;color:#999">ผู้จัดการ {{= COMPANY.NAME_TH }}</div></div>
+          <div style="text-align:center"><div style="margin-bottom:4px;font-size:13px">ลงชื่อ {customer_signature} ผู้เช่าซื้อ</div><div style="font-size:12px;color:#6b7280">( {{= CUSTOMER.NAME }} )</div></div>
           <div style="text-align:center"><div style="margin-bottom:4px;font-size:13px">ลงชื่อ..................................................พยาน</div><div style="font-size:12px;color:#6b7280">(${' '.repeat(30)})</div></div>
           <div style="text-align:center"><div style="margin-bottom:4px;font-size:13px">ลงชื่อ..................................................พยาน</div><div style="font-size:12px;color:#6b7280">(${' '.repeat(30)})</div></div>
         </div>`;

@@ -103,7 +103,7 @@ export default function ContractDetailPage() {
   const { data: payoffQuote } = useQuery<EarlyPayoffQuote>({
     queryKey: ['contract-payoff', id],
     queryFn: async () => { const { data } = await api.get(`/contracts/${id}/early-payoff-quote`); return data; },
-    enabled: !!contract && ['ACTIVE', 'OVERDUE'].includes(contract.status),
+    enabled: !!contract && ['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status),
   });
 
   const { data: preview, isLoading: previewLoading } = useQuery<{ html: string }>({
@@ -112,7 +112,12 @@ export default function ContractDetailPage() {
     enabled: activeTab === 'preview',
   });
 
-  const invalidateContract = () => queryClient.invalidateQueries({ queryKey: ['contract', id] });
+  const invalidateContract = () => {
+    queryClient.invalidateQueries({ queryKey: ['contract', id] });
+    queryClient.invalidateQueries({ queryKey: ['contract-preview', id] });
+    queryClient.invalidateQueries({ queryKey: ['contract-payoff', id] });
+    queryClient.invalidateQueries({ queryKey: ['contracts'] });
+  };
 
   const submitReviewMutation = useMutation({
     mutationFn: async () => { const { data } = await api.post(`/contracts/${id}/submit-review`); return data; },
@@ -246,7 +251,7 @@ export default function ContractDetailPage() {
               </button>
             )}
 
-            {['ACTIVE', 'OVERDUE'].includes(contract.status) && (
+            {['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status) && (
               <button onClick={() => setShowPayoffModal(true)} className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700">
                 ปิดก่อนกำหนด
               </button>
@@ -516,7 +521,7 @@ export default function ContractDetailPage() {
       </div>
 
       {/* Early Payoff Quote */}
-      {payoffQuote && ['ACTIVE', 'OVERDUE'].includes(contract.status) && (
+      {payoffQuote && ['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status) && (
         <div className="bg-primary-50 rounded-lg border border-primary-200 p-6 mb-6">
           <h2 className="text-lg font-semibold text-primary-800 mb-3">ประเมินปิดก่อนกำหนด</h2>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">

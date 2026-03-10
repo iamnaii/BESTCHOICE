@@ -22,6 +22,15 @@
   font-display: swap;
 }
 
+/* Direct Bold font — bypasses font-weight matching for <strong>/<b> */
+@font-face {
+  font-family: 'TH Sarabun PSK Bold';
+  src: url('/fonts/THSarabunPSK-Bold.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* ── Base Styles ────────────────────────────────────── */
 body {
   font-family: 'Noto Sans Thai', 'Inter', system-ui, -apple-system, sans-serif;
@@ -49,6 +58,13 @@ body {
   }
 }
 
+/* ── Ensure bold renders correctly with TH Sarabun PSK ── */
+/* Use dedicated Bold font-family to bypass font-weight matching issues */
+strong, b {
+  font-family: 'TH Sarabun PSK Bold', 'TH Sarabun PSK', 'Noto Sans Thai', sans-serif !important;
+  font-weight: 700 !important;
+}
+
 /* ── Tiptap Rich Text Editor (uses Sarabun for contracts) */
 .tiptap.ProseMirror {
   min-height: 240px;
@@ -58,6 +74,12 @@ body {
   font-size: 18px;
   line-height: 1.8;
   color: #1a1a1a;
+}
+
+.tiptap.ProseMirror strong,
+.tiptap.ProseMirror b {
+  font-family: 'TH Sarabun PSK Bold', 'TH Sarabun PSK', 'Noto Sans Thai', sans-serif !important;
+  font-weight: 700 !important;
 }
 
 .tiptap.ProseMirror p {

@@ -13,11 +13,14 @@ import PDFExportModal from '@/components/template-editor/pdf/PDFExportModal';
 // Auto-save interval (30 seconds)
 const AUTO_SAVE_INTERVAL = 30_000;
 
+export type ViewMode = 'split' | 'editor' | 'preview';
+
 export default function ContractTemplatesPage() {
   const navigate = useNavigate();
   const [showCheatSheet, setShowCheatSheet] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>('split');
   const {
-    previewMode, editingBlock, showSettings, showExportModal,
+    editingBlock, showSettings, showExportModal,
     isDirty, saveTemplate, saveTemplateToApi, fetchTemplates, loadFromLocalStorage,
   } = useTemplateStore();
 
@@ -40,25 +43,39 @@ export default function ContractTemplatesPage() {
     return () => clearInterval(timer);
   }, [isDirty, saveTemplate, saveTemplateToApi]);
 
+  const showEditor = viewMode === 'split' || viewMode === 'editor';
+  const showPreview = viewMode === 'split' || viewMode === 'preview';
+
   return (
     <div className="-m-6 flex flex-col bg-gray-100" style={{ fontFamily: "'TH Sarabun PSK', sans-serif", height: 'calc(100vh - 56px)' }}>
       {/* Header Bar */}
-      <HeaderBar onBack={() => {
-        if (isDirty && !confirm('มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก ต้องการออกหรือไม่?')) return;
-        navigate('/');
-      }} onToggleCheatSheet={() => setShowCheatSheet(v => !v)} showCheatSheet={showCheatSheet} />
+      <HeaderBar
+        onBack={() => {
+          if (isDirty && !confirm('มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก ต้องการออกหรือไม่?')) return;
+          navigate('/');
+        }}
+        onToggleCheatSheet={() => setShowCheatSheet(v => !v)}
+        showCheatSheet={showCheatSheet}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+      />
 
       {/* Content Area */}
       <div className="flex-1 flex overflow-hidden">
         {/* Cheat Sheet Panel (collapsible) */}
         {showCheatSheet && <CheatSheet />}
 
-        {/* Main Panel: Editor or Preview */}
-        {previewMode ? (
-          <DocumentPreview />
-        ) : (
-          <div className="flex-1 overflow-y-auto bg-gray-50">
+        {/* Editor Panel */}
+        {showEditor && (
+          <div className={`overflow-y-auto bg-gray-50 ${showPreview ? 'w-1/2 border-r border-slate-200' : 'flex-1'}`}>
             <BlockList />
+          </div>
+        )}
+
+        {/* Preview Panel */}
+        {showPreview && (
+          <div className={showEditor ? 'w-1/2' : 'flex-1'}>
+            <DocumentPreview compact={showEditor} />
           </div>
         )}
       </div>

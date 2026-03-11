@@ -209,7 +209,18 @@ export default function ContractCreatePage() {
       const { data } = await api.get(`/products?${params}&limit=999`);
       return data.data || [];
     },
+    staleTime: 0, // Always fetch fresh prices when entering contract creation
   });
+
+  // Keep selectedProduct in sync with latest products data (e.g. after price edits)
+  useEffect(() => {
+    if (selectedProduct && products.length > 0) {
+      const updated = products.find((p) => p.id === selectedProduct.id);
+      if (updated && JSON.stringify(updated.prices) !== JSON.stringify(selectedProduct.prices)) {
+        setSelectedProduct(updated);
+      }
+    }
+  }, [products, selectedProduct]);
 
   const { data: customers = [] } = useQuery<Customer[]>({
     queryKey: ['customers-search', customerSearch],

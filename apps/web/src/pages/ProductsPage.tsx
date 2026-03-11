@@ -53,6 +53,7 @@ export default function ProductsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['products-available'] });
       toast.success('บันทึกราคาสำเร็จ');
       setEditingPriceId(null);
       setPriceForm({ label: '', amount: '', isDefault: false });
@@ -66,6 +67,7 @@ export default function ProductsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['products-available'] });
       toast.success('ลบราคาสำเร็จ');
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),

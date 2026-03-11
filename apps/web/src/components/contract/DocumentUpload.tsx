@@ -34,6 +34,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
   const [selectedType, setSelectedType] = useState('ID_CARD_COPY');
   const [notes, setNotes] = useState('');
   const [ocrResult, setOcrResult] = useState<OcrResult | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [showOcrPanel, setShowOcrPanel] = useState(false);
 
@@ -67,6 +68,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
       toast.success('อัปโหลดเอกสารสำเร็จ');
       queryClient.invalidateQueries({ queryKey: ['contract-documents', contractId] });
       setNotes('');
+      setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
     },
     onError: (err: unknown) => {
@@ -188,11 +190,16 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
       return;
     }
 
-    uploadMutation.mutate(file);
+    setSelectedFile(file);
+  };
+
+  const handleUpload = () => {
+    if (!selectedFile) return;
+    uploadMutation.mutate(selectedFile);
 
     // Trigger OCR when uploading ID card image
-    if (isIdCard && file.type.startsWith('image/') && !ocrLoading) {
-      performOcr(file);
+    if (selectedType === 'ID_CARD_COPY' && selectedFile.type.startsWith('image/') && !ocrLoading) {
+      performOcr(selectedFile);
     }
   };
 
@@ -238,12 +245,23 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
             />
           </div>
         </div>
-        {uploadMutation.isPending && (
-          <div className="flex items-center gap-2 text-sm text-primary-600">
-            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600" />
-            กำลังอัปโหลด...
-          </div>
-        )}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleUpload}
+            disabled={!selectedFile || uploadMutation.isPending}
+            className="px-5 py-2 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {uploadMutation.isPending ? (
+              <span className="flex items-center gap-2">
+                <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                กำลังอัปโหลด...
+              </span>
+            ) : 'อัปโหลดเอกสาร'}
+          </button>
+          {selectedFile && !uploadMutation.isPending && (
+            <span className="text-xs text-gray-500">{selectedFile.name}</span>
+          )}
+        </div>
       </div>
 
       {/* OCR Loading */}

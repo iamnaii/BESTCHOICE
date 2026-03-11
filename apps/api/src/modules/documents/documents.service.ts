@@ -286,6 +286,30 @@ export class DocumentsService {
       .replace(/'/g, '&#39;');
   }
 
+  /** Parse JSON address string and format as readable Thai address */
+  private formatAddress(jsonStr: string | null | undefined): string {
+    if (!jsonStr) return '-';
+    try {
+      const addr = JSON.parse(jsonStr);
+      if (typeof addr !== 'object' || addr === null) return jsonStr;
+      // If it has a raw field (fallback from OCR), use it
+      if (addr.raw && !addr.province) return addr.raw;
+      const parts: string[] = [];
+      if (addr.houseNo) parts.push(addr.houseNo);
+      if (addr.moo) parts.push(`หมู่ ${addr.moo}`);
+      if (addr.village) parts.push(`หมู่บ้าน ${addr.village}`);
+      if (addr.soi) parts.push(`ซอย ${addr.soi}`);
+      if (addr.road) parts.push(`ถนน ${addr.road}`);
+      if (addr.subdistrict) parts.push(addr.subdistrict);
+      if (addr.district) parts.push(addr.district);
+      if (addr.province) parts.push(addr.province);
+      if (addr.postalCode) parts.push(addr.postalCode);
+      return parts.length > 0 ? parts.join(' ') : '-';
+    } catch {
+      return jsonStr;
+    }
+  }
+
   /** Mask national ID: show first 1 and last 4 digits only */
   private maskNationalId(id: string): string {
     if (!id || id.length < 5) return id;
@@ -419,11 +443,15 @@ ${bodyHtml}
       .join('');
 
     const customerSig = contract.signatures?.find((s: any) => s.signerType === 'CUSTOMER');
-    const staffSig = contract.signatures?.find((s: any) => s.signerType === 'STAFF');
+    const staffSig = contract.signatures?.find((s: any) => s.signerType === 'STAFF' || s.signerType === 'COMPANY');
+    const witness1Sig = contract.signatures?.find((s: any) => s.signerType === 'WITNESS_1');
+    const witness2Sig = contract.signatures?.find((s: any) => s.signerType === 'WITNESS_2');
 
     // Validate signature images are safe data URLs before embedding
     const customerSigSafe = customerSig && this.isSafeImageDataUrl(customerSig.signatureImage);
     const staffSigSafe = staffSig && this.isSafeImageDataUrl(staffSig.signatureImage);
+    const witness1SigSafe = witness1Sig && this.isSafeImageDataUrl(witness1Sig.signatureImage);
+    const witness2SigSafe = witness2Sig && this.isSafeImageDataUrl(witness2Sig.signatureImage);
 
     // Format contract date in Thai
     const contractDate = new Date(contract.createdAt);
@@ -458,16 +486,16 @@ ${bodyHtml}
       '{national_id}': esc(this.maskNationalId(contract.customer?.nationalId || '')),
       '{customer_phone}': esc(contract.customer?.phone || ''),
       '{customer_phone_secondary}': esc(contract.customer?.phoneSecondary || '-'),
-      '{customer_address}': esc(contract.customer?.addressCurrent || contract.customer?.addressIdCard || ''),
-      '{customer_address_id_card}': esc(contract.customer?.addressIdCard || ''),
-      '{customer_address_current}': esc(contract.customer?.addressCurrent || ''),
+      '{customer_address}': esc(this.formatAddress(contract.customer?.addressCurrent || contract.customer?.addressIdCard)),
+      '{customer_address_id_card}': esc(this.formatAddress(contract.customer?.addressIdCard)),
+      '{customer_address_current}': esc(this.formatAddress(contract.customer?.addressCurrent)),
       '{customer_zipcode}': esc(contract.customer?.zipcode || contract.customer?.postalCode || ''),
       '{customer_line_id}': esc(contract.customer?.lineId || '-'),
       '{customer_facebook}': esc(contract.customer?.facebookLink || contract.customer?.facebookName || '-'),
       '{customer_occupation}': esc(contract.customer?.occupation || '-'),
       '{customer_salary}': contract.customer?.salary ? Number(contract.customer.salary).toLocaleString() : '-',
       '{customer_workplace}': esc(contract.customer?.workplace || '-'),
-      '{customer_address_work}': esc(contract.customer?.addressWork || '-'),
+      '{customer_address_work}': esc(this.formatAddress(contract.customer?.addressWork)),
       '{customer_references}': referencesHtml,
       '{product_name}': esc(contract.product?.name || ''),
       '{brand}': esc(contract.product?.brand || ''),
@@ -499,6 +527,8 @@ ${bodyHtml}
       '{payment_schedule_table}': `<table border="1" cellpadding="6" style="border-collapse:collapse;width:100%;margin:10px auto"><thead><tr style="background:#f5f5f5"><th style="text-align:center">งวดที่</th><th style="text-align:center">วันที่ครบกำหนดชำระ</th><th style="text-align:center">จำนวนเงิน</th></tr></thead><tbody>${paymentScheduleRows}</tbody></table>`,
       '{customer_signature}': customerSigSafe ? `<img src="${customerSig.signatureImage}" style="max-height:50px;display:block;margin:0 auto"/>` : '<div style="border-bottom:1px solid #000;width:200px;height:50px"></div>',
       '{staff_signature}': staffSigSafe ? `<img src="${staffSig.signatureImage}" style="max-height:50px;display:block;margin:0 auto"/>` : '<div style="border-bottom:1px solid #000;width:200px;height:50px"></div>',
+      '{witness1_signature}': witness1SigSafe ? `<img src="${witness1Sig.signatureImage}" style="max-height:50px;display:block;margin:0 auto"/>` : '<div style="border-bottom:1px solid #000;width:200px;height:50px"></div>',
+      '{witness2_signature}': witness2SigSafe ? `<img src="${witness2Sig.signatureImage}" style="max-height:50px;display:block;margin:0 auto"/>` : '<div style="border-bottom:1px solid #000;width:200px;height:50px"></div>',
     };
 
     let result = html;
@@ -631,6 +661,23 @@ ${bodyHtml}
 
     // Handle EMERGENCY_CONTACTS block rendering
     if (result.includes('EMERGENCY_CONTACTS')) {
+      // Handle {{for CONTACT in EMERGENCY_CONTACTS}}...{{/for}} loop syntax
+      result = result.replace(
+        /\{\{for\s+(\w+)\s+in\s+EMERGENCY_CONTACTS\s*\}\}([\s\S]*?)\{\{\/for\}\}/g,
+        (_match, itemVar: string, bodyTemplate: string) => {
+          if (emergencyContacts.length === 0) return '';
+          return emergencyContacts.map((c, i) => {
+            let row = bodyTemplate;
+            row = row.replace(new RegExp(`\\{\\{=\\s*@index1\\s*\\}\\}`, 'g'), String(i + 1));
+            row = row.replace(new RegExp(`\\{\\{=\\s*@index\\s*\\}\\}`, 'g'), String(i));
+            row = row.replace(new RegExp(`\\{\\{=\\s*${itemVar}\\.NAME\\s*\\}\\}`, 'g'), esc(c.NAME));
+            row = row.replace(new RegExp(`\\{\\{=\\s*${itemVar}\\.TEL\\s*\\}\\}`, 'g'), esc(c.TEL));
+            row = row.replace(new RegExp(`\\{\\{=\\s*${itemVar}\\.RELATION\\s*\\}\\}`, 'g'), esc(c.RELATION));
+            return row;
+          }).join('');
+        },
+      );
+      // Fallback: handle {{= EMERGENCY_CONTACTS}} as a single block replacement
       const contactsHtml = emergencyContacts.map((c, i) =>
         `<tr><td style="padding:2px 8px 2px 0;width:24px">${i + 1}.</td><td style="padding:2px 8px">ชื่อ-นามสกุล ${esc(c.NAME)}</td><td style="padding:2px 8px">เบอร์โทร ${esc(c.TEL)}</td><td style="padding:2px 8px">ความสัมพันธ์ ${esc(c.RELATION)}</td></tr>`
       ).join('');
@@ -658,6 +705,8 @@ ${bodyHtml}
     // Post-process: fill empty signature names for templates that lack variables in signature section
     const sigStaffName = esc(contract.salesperson?.name || 'เอกนรินทร์ คงเดช');
     const sigCustomerName = esc(contract.customer?.name || '');
+    const sigWitness1Name = witness1Sig?.signerName ? esc(witness1Sig.signerName) : '';
+    const sigWitness2Name = witness2Sig?.signerName ? esc(witness2Sig.signerName) : '';
 
     // Match: "ลงชื่อ...ผู้ให้เช่าซื้อ" followed (within nearby HTML) by "(" whitespace-only ")"
     result = result.replace(
@@ -669,10 +718,32 @@ ${bodyHtml}
       `$1( ${sigCustomerName} )`,
     );
 
-    // Post-process: inject real signature images for templates that lack {staff_signature}/{customer_signature} placeholders
-    // Replaces the dots between "ลงชื่อ" and "ผู้ให้เช่าซื้อ/ผู้เช่าซื้อ" with the signature image
+    // Fill witness names in parentheses near "พยาน" text
+    if (sigWitness1Name) {
+      result = result.replace(
+        /(ลงชื่อ[\s\S]{0,200}?พยาน[\s\S]{0,300}?)\(\s{0,50}\)/,
+        `$1( ${sigWitness1Name} )`,
+      );
+    }
+    if (sigWitness2Name) {
+      // Match the second occurrence of witness pattern
+      let witnessCount = 0;
+      result = result.replace(
+        /(ลงชื่อ[\s\S]{0,200}?พยาน[\s\S]{0,300}?)\(\s{0,50}\)/g,
+        (match, p1) => {
+          witnessCount++;
+          if (witnessCount === 2) return `${p1}( ${sigWitness2Name} )`;
+          return match;
+        },
+      );
+    }
+
+    // Post-process: inject real signature images for templates that lack placeholders
+    // Replaces the dots between "ลงชื่อ" and role text with the signature image
     const hadStaffPlaceholder = html.includes('{staff_signature}');
     const hadCustomerPlaceholder = html.includes('{customer_signature}');
+    const hadWitness1Placeholder = html.includes('{witness1_signature}');
+    const hadWitness2Placeholder = html.includes('{witness2_signature}');
     const sigImgStyle = 'max-height:50px;display:block;margin:0 auto';
 
     if (staffSigSafe && !hadStaffPlaceholder) {
@@ -685,6 +756,29 @@ ${bodyHtml}
       result = result.replace(
         /(ลงชื่อ)[.…]{3,}(ผู้เช่าซื้อ)/,
         `$1</div><div style="min-height:50px;display:flex;align-items:center;justify-content:center"><img src="${customerSig.signatureImage}" style="${sigImgStyle}"/></div><div style="font-size:13px">$2`,
+      );
+    }
+    // Inject witness signatures into "ลงชื่อ...พยาน" patterns
+    if (witness1SigSafe && !hadWitness1Placeholder) {
+      result = result.replace(
+        /(ลงชื่อ)[.…]{3,}(พยาน)/,
+        `$1</div><div style="min-height:50px;display:flex;align-items:center;justify-content:center"><img src="${witness1Sig.signatureImage}" style="${sigImgStyle}"/></div><div style="font-size:13px">$2`,
+      );
+    }
+    if (witness2SigSafe && !hadWitness2Placeholder) {
+      // Match the second "ลงชื่อ...พยาน" pattern
+      let witnessImgCount = 0;
+      result = result.replace(
+        /(ลงชื่อ)[.…]{3,}(พยาน)/g,
+        (match, p1, p2) => {
+          witnessImgCount++;
+          if (witnessImgCount === (witness1SigSafe && !hadWitness1Placeholder ? 1 : 2)) {
+            // If witness1 was already replaced, the second remaining match is witness2
+            // If witness1 was NOT replaced (no dots left), this is the second original match
+            return `${p1}</div><div style="min-height:50px;display:flex;align-items:center;justify-content:center"><img src="${witness2Sig.signatureImage}" style="${sigImgStyle}"/></div><div style="font-size:13px">${p2}`;
+          }
+          return match;
+        },
       );
     }
 
@@ -764,6 +858,18 @@ ${bodyHtml}
         <div style="min-height:50px;display:flex;align-items:center;justify-content:center">{staff_signature}</div>
         <div style="font-size:13px">ผู้ให้เช่าซื้อ</div>
         <p style="margin:4px 0 0;font-size:13px">({salesperson_name})</p>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-around;margin-top:30px">
+      <div style="text-align:center">
+        <div style="font-size:13px">ลงชื่อ</div>
+        <div style="min-height:50px;display:flex;align-items:center;justify-content:center">{witness1_signature}</div>
+        <div style="font-size:13px">พยาน</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:13px">ลงชื่อ</div>
+        <div style="min-height:50px;display:flex;align-items:center;justify-content:center">{witness2_signature}</div>
+        <div style="font-size:13px">พยาน</div>
       </div>
     </div>
   </div>

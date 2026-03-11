@@ -286,7 +286,8 @@ export default function ContractDetailPage() {
       const refs = [...existingRefs];
       while (refs.length < 4) refs.push({});
       setCustReferences(refs);
-    } catch {
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'ไม่สามารถโหลดข้อมูลลูกค้าเต็มได้ ใช้ข้อมูล snapshot แทน');
       const snap = contract.customerSnapshot;
       const cust = contract.customer;
       setCustomerEditForm({
@@ -459,14 +460,24 @@ export default function ContractDetailPage() {
             <button onClick={() => navigate(`/contracts/${id}/sign`)} className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700">
               ลงนาม/เอกสาร
             </button>
+            <button
+              onClick={() => {
+                setActiveTab('preview');
+                setTimeout(() => {
+                  const iframe = document.querySelector('iframe[title="contract-preview"]') as HTMLIFrameElement;
+                  if (iframe?.contentWindow) {
+                    iframe.contentWindow.print();
+                  } else {
+                    window.print();
+                  }
+                }, 500);
+              }}
+              className="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+            >
+              พิมพ์สัญญา
+            </button>
 
             {/* Workflow buttons */}
-            {(contract.workflowStatus === 'CREATING' || contract.workflowStatus === 'REJECTED') && isCreator && (
-              <button onClick={() => submitReviewMutation.mutate()} disabled={submitReviewMutation.isPending} className="px-4 py-2 text-sm bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50">
-                {submitReviewMutation.isPending ? 'กำลังส่ง...' : 'ส่งตรวจสอบ'}
-              </button>
-            )}
-
             {contract.workflowStatus === 'APPROVED' && contract.status === 'DRAFT' && (
               <button onClick={() => activateMutation.mutate()} disabled={activateMutation.isPending || !allSigned} title={!allSigned ? 'ต้องลงนามครบทั้งลูกค้าและพนักงานก่อน' : ''} className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50">
                 {activateMutation.isPending ? 'กำลังเปิด...' : 'เปิดใช้งานสัญญา'}

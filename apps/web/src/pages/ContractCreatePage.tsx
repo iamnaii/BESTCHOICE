@@ -8,6 +8,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import Modal from '@/components/ui/Modal';
 import AddressForm, { AddressData, emptyAddress, serializeAddress } from '@/components/ui/AddressForm';
 import toast from 'react-hot-toast';
+import { maskNationalId } from '@/utils/mask.util';
 
 interface Product {
   id: string;
@@ -917,7 +918,7 @@ export default function ContractCreatePage() {
                     {c.salary && <div className="text-xs text-gray-400 mt-1">เงินเดือน: {parseFloat(c.salary).toLocaleString()} ฿</div>}
                   </div>
                   <div className="text-xs text-gray-400 font-mono">
-                    {c.nationalId.replace(/(\d{1})(\d{4})(\d{5})(\d{2})(\d{1})/, '$1-$2-$3-$4-$5')}
+                    {maskNationalId(c.nationalId)}
                   </div>
                 </div>
               </div>

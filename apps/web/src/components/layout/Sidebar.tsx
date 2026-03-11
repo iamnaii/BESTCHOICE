@@ -51,6 +51,7 @@ const navItems: NavItem[] = [
   { label: 'ตรวจเครดิต', path: '/credit-checks', section: 'sales' },
   { label: 'สัญญาผ่อน', path: '/contracts', section: 'sales' },
   { label: 'ชำระเงิน', path: '/payments', section: 'sales' },
+  { label: 'สถานะเอกสาร', path: '/document-dashboard', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'sales' },
 
   // ติดตาม & จัดการหนี้
   { label: 'ติดตามหนี้', path: '/overdue', section: 'debt' },

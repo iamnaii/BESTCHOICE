@@ -45,6 +45,7 @@ const StockAlertsPage = lazy(() => import('@/pages/StockAlertsPage'));
 const StockAdjustmentsPage = lazy(() => import('@/pages/StockAdjustmentsPage'));
 const StockCountPage = lazy(() => import('@/pages/StockCountPage'));
 const SystemStatusPage = lazy(() => import('@/pages/SystemStatusPage'));
+const DocumentDashboardPage = lazy(() => import('@/pages/DocumentDashboardPage'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -199,6 +200,14 @@ function App() {
             }
           />
           <Route path="/payments" element={<PaymentsPage />} />
+          <Route
+            path="/document-dashboard"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}>
+                <DocumentDashboardPage />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/overdue" element={<OverduePage />} />
           <Route
             path="/exchange"

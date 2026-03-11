@@ -771,4 +771,199 @@ export class ContractsService {
 
     return { ...quote, status: 'EARLY_PAYOFF' };
   }
+
+  // ─── Document Dashboard for Manager/Admin ──────────────
+  async getDocumentDashboard(branchId?: string) {
+    const where: Record<string, unknown> = { deletedAt: null };
+    if (branchId) where.branchId = branchId;
+
+    // Get all active contracts with their documents and signatures
+    const contracts = await this.prisma.contract.findMany({
+      where,
+      select: {
+        id: true,
+        contractNumber: true,
+        status: true,
+        workflowStatus: true,
+        createdAt: true,
+        updatedAt: true,
+        branchId: true,
+        branch: { select: { id: true, name: true } },
+        customer: { select: { name: true } },
+        documents: { select: { id: true, type: true } },
+        signatures: { select: { id: true, signerType: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const REQUIRED_DOCS = ['ID_CARD_COPY', 'KYC_SELFIE', 'DEVICE_PHOTO', 'DEVICE_IMEI_PHOTO', 'DOWN_PAYMENT_RECEIPT', 'PDPA_CONSENT'];
+    const REQUIRED_SIGS = ['CUSTOMER', 'COMPANY', 'WITNESS_1', 'WITNESS_2'];
+
+    let fullyDocumented = 0;
+    let pendingDocuments = 0;
+    let pendingSignatures = 0;
+    let pendingApproval = 0;
+    let overdueContracts = 0;
+
+    const branchMap = new Map<string, { branchId: string; branchName: string; total: number; documented: number; pendingDocs: number; pendingSigs: number }>();
+
+    for (const c of contracts) {
+      const docTypes = new Set(c.documents.map((d: { type: string }) => d.type));
+      const sigTypes = new Set(c.signatures.map((s: { signerType: string }) => s.signerType));
+      const hasAllDocs = REQUIRED_DOCS.every((d) => docTypes.has(d));
+      const hasAllSigs = REQUIRED_SIGS.every((s) => sigTypes.has(s));
+
+      if (hasAllDocs && hasAllSigs) fullyDocumented++;
+      if (!hasAllDocs) pendingDocuments++;
+      if (!hasAllSigs) pendingSignatures++;
+      if (c.workflowStatus === 'PENDING_REVIEW' || c.workflowStatus === 'PENDING_APPROVAL') pendingApproval++;
+      if (c.status === 'OVERDUE' || c.status === 'DEFAULT') overdueContracts++;
+
+      // By branch
+      const bId = c.branchId || 'unknown';
+      const bName = c.branch?.name || 'ไม่ระบุ';
+      if (!branchMap.has(bId)) {
+        branchMap.set(bId, { branchId: bId, branchName: bName, total: 0, documented: 0, pendingDocs: 0, pendingSigs: 0 });
+      }
+      const b = branchMap.get(bId)!;
+      b.total++;
+      if (hasAllDocs && hasAllSigs) b.documented++;
+      if (!hasAllDocs) b.pendingDocs++;
+      if (!hasAllSigs) b.pendingSigs++;
+    }
+
+    // SLA alerts: contracts waiting for approval > 24h
+    const slaAlerts = contracts
+      .filter((c) => ['PENDING_REVIEW', 'PENDING_APPROVAL'].includes(c.workflowStatus || ''))
+      .map((c) => {
+        const hoursWaiting = Math.round((Date.now() - new Date(c.updatedAt).getTime()) / (1000 * 60 * 60));
+        return {
+          id: c.id,
+          contractNumber: c.contractNumber,
+          customerName: c.customer?.name || '',
+          workflowStatus: c.workflowStatus,
+          hoursWaiting,
+          branchName: c.branch?.name || '',
+        };
+      })
+      .filter((a) => a.hoursWaiting >= 24)
+      .sort((a, b) => b.hoursWaiting - a.hoursWaiting)
+      .slice(0, 20);
+
+    // Recent document activity from audit log
+    let recentActivity: Array<{ id: string; contractNumber: string; customerName: string; action: string; createdAt: string; branchName: string }> = [];
+    try {
+      const audits = await this.prisma.documentAuditLog.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+        include: {
+          contract: {
+            select: {
+              contractNumber: true,
+              customer: { select: { name: true } },
+              branch: { select: { name: true } },
+            },
+          },
+        },
+      });
+      recentActivity = audits.map((a) => ({
+        id: a.id,
+        contractNumber: a.contract?.contractNumber || '',
+        customerName: a.contract?.customer?.name || '',
+        action: a.action,
+        createdAt: a.createdAt.toISOString(),
+        branchName: a.contract?.branch?.name || '',
+      }));
+    } catch {
+      // DocumentAuditLog might not exist yet
+    }
+
+    return {
+      totalContracts: contracts.length,
+      fullyDocumented,
+      pendingDocuments,
+      pendingSignatures,
+      pendingApproval,
+      overdueContracts,
+      byBranch: Array.from(branchMap.values()),
+      recentActivity,
+      slaAlerts,
+    };
+  }
+
+  // ─── QR Code Verification ────────────────────────────
+  async verifyContract(id: string, hash?: string) {
+    const contract = await this.prisma.contract.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        contractNumber: true,
+        contractHash: true,
+        status: true,
+        workflowStatus: true,
+        createdAt: true,
+        totalMonths: true,
+        monthlyPayment: true,
+        customer: { select: { name: true } },
+        branch: { select: { name: true } },
+        signatures: {
+          select: { signerType: true, signerName: true, signedAt: true },
+        },
+      },
+    });
+
+    if (!contract || !contract.contractHash) {
+      return { verified: false, reason: 'ไม่พบสัญญาหรือสัญญายังไม่ได้ยืนยัน' };
+    }
+
+    const isHashValid = hash ? contract.contractHash === hash : true;
+    const signerSummary = contract.signatures.map((s) => ({
+      type: s.signerType,
+      name: s.signerName,
+      signedAt: s.signedAt,
+    }));
+
+    return {
+      verified: isHashValid,
+      reason: isHashValid ? 'สัญญาได้รับการยืนยันแล้ว' : 'Hash ไม่ตรงกัน สัญญาอาจถูกแก้ไข',
+      contract: {
+        contractNumber: contract.contractNumber,
+        status: contract.status,
+        workflowStatus: contract.workflowStatus,
+        customerName: contract.customer?.name || '',
+        branchName: contract.branch?.name || '',
+        createdAt: contract.createdAt,
+        totalMonths: contract.totalMonths,
+        monthlyPayment: contract.monthlyPayment,
+      },
+      signatures: signerSummary,
+      hash: contract.contractHash,
+    };
+  }
+
+  async getQrData(id: string) {
+    const contract = await this.prisma.contract.findUnique({
+      where: { id },
+      select: { id: true, contractNumber: true, contractHash: true },
+    });
+
+    if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+
+    // QR code content: verification URL with contract ID and hash
+    const verifyUrl = `/api/contracts/${contract.id}/verify?hash=${contract.contractHash || ''}`;
+
+    return {
+      contractId: contract.id,
+      contractNumber: contract.contractNumber,
+      contractHash: contract.contractHash,
+      verifyUrl,
+      qrContent: JSON.stringify({
+        type: 'BESTCHOICE_CONTRACT',
+        id: contract.id,
+        number: contract.contractNumber,
+        hash: contract.contractHash,
+        verifyUrl,
+      }),
+    };
+  }
 }

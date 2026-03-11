@@ -162,7 +162,7 @@ function PDPAPage() {
         <div className="bg-white rounded-lg border">
           <DataTable
             data={dsarRequests}
-            loading={dsarLoading}
+            isLoading={dsarLoading}
             columns={[
               {
                 key: 'createdAt',
@@ -220,7 +220,7 @@ function PDPAPage() {
                 ),
               },
             ]}
-            emptyText="ไม่มีคำร้อง DSAR"
+            emptyMessage="ไม่มีคำร้อง DSAR"
           />
         </div>
       )}

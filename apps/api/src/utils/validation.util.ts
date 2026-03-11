@@ -164,18 +164,18 @@ export function validateInstallmentMonths(
  * Returns list of missing fields
  */
 export function checkRequiredContractFields(data: {
-  customerName?: string;
-  customerNationalId?: string;
-  customerPhone?: string;
-  customerAddressIdCard?: string;
-  customerAddressCurrent?: string;
-  references?: any[];
-  productName?: string;
-  productImei?: string;
-  sellingPrice?: number;
-  downPayment?: number;
-  totalMonths?: number;
-  monthlyPayment?: number;
+  customerName?: string | null;
+  customerNationalId?: string | null;
+  customerPhone?: string | null;
+  customerAddressIdCard?: string | null;
+  customerAddressCurrent?: string | null;
+  references?: any[] | null;
+  productName?: string | null;
+  productImei?: string | null;
+  sellingPrice?: number | null;
+  downPayment?: number | null;
+  totalMonths?: number | null;
+  monthlyPayment?: number | null;
 }): string[] {
   const missing: string[] = [];
 

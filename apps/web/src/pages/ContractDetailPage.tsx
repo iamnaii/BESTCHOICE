@@ -4,6 +4,7 @@ import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
+import AddressForm, { AddressData, emptyAddress, serializeAddress, deserializeAddress } from '@/components/ui/AddressForm';
 import WorkflowStatusBadge from '@/components/contract/WorkflowStatusBadge';
 import DocumentUpload from '@/components/contract/DocumentUpload';
 import CreditCheckPanel from '@/components/contract/CreditCheckPanel';
@@ -64,6 +65,17 @@ interface EarlyPayoffQuote {
   unpaidLateFees: number;
   totalPayoff: number;
 }
+
+interface CustReferenceData {
+  prefix?: string;
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  relationship?: string;
+}
+
+const custPrefixOptions = ['นาย', 'นาง', 'นางสาว'];
+const custRelationshipOptions = ['บิดา', 'มารดา', 'พี่น้อง', 'คู่สมรส', 'ญาติ', 'เพื่อน', 'อื่นๆ'];
 
 const statusLabels: Record<string, { label: string; className: string }> = {
   DRAFT: { label: 'ร่าง', className: 'bg-gray-100 text-gray-700' },
@@ -195,6 +207,19 @@ export default function ContractDetailPage() {
     occupation: '', occupationDetail: '', salary: '', workplace: '',
   });
   const [customerDataLoading, setCustomerDataLoading] = useState(false);
+  const [custAddrIdCard, setCustAddrIdCard] = useState<AddressData>(emptyAddress);
+  const [custAddrCurrent, setCustAddrCurrent] = useState<AddressData>(emptyAddress);
+  const [custAddrWork, setCustAddrWork] = useState<AddressData>(emptyAddress);
+  const [custSameAddress, setCustSameAddress] = useState(false);
+  const [custReferences, setCustReferences] = useState<CustReferenceData[]>([{}, {}, {}, {}]);
+
+  useEffect(() => {
+    if (custSameAddress) setCustAddrCurrent({ ...custAddrIdCard });
+  }, [custSameAddress, custAddrIdCard]);
+
+  const updateCustRef = (index: number, field: keyof CustReferenceData, value: string) => {
+    setCustReferences(prev => prev.map((r, i) => i === index ? { ...r, [field]: value } : r));
+  };
 
   const updateProductMutation = useMutation({
     mutationFn: async (data: Record<string, unknown>) => {
@@ -247,6 +272,20 @@ export default function ContractDetailPage() {
         salary: fullCustomer.salary || '',
         workplace: fullCustomer.workplace || '',
       });
+      // Load addresses
+      const idCardAddr = deserializeAddress(fullCustomer.addressIdCard);
+      const currentAddr = deserializeAddress(fullCustomer.addressCurrent);
+      setCustAddrIdCard(idCardAddr);
+      setCustAddrCurrent(currentAddr);
+      setCustAddrWork(deserializeAddress(fullCustomer.addressWork));
+      setCustSameAddress(
+        fullCustomer.addressIdCard != null && fullCustomer.addressIdCard === fullCustomer.addressCurrent
+      );
+      // Load references
+      const existingRefs = (fullCustomer.references || []) as CustReferenceData[];
+      const refs = [...existingRefs];
+      while (refs.length < 4) refs.push({});
+      setCustReferences(refs);
     } catch {
       const snap = contract.customerSnapshot;
       const cust = contract.customer;
@@ -259,6 +298,11 @@ export default function ContractDetailPage() {
         occupation: snap?.occupation || '', occupationDetail: '',
         salary: snap?.salary || '', workplace: '',
       });
+      setCustAddrIdCard(emptyAddress);
+      setCustAddrCurrent(emptyAddress);
+      setCustAddrWork(emptyAddress);
+      setCustSameAddress(false);
+      setCustReferences([{}, {}, {}, {}]);
     } finally {
       setCustomerDataLoading(false);
     }
@@ -283,6 +327,19 @@ export default function ContractDetailPage() {
     if (customerEditForm.salary && !isNaN(parseFloat(customerEditForm.salary))) payload.salary = parseFloat(customerEditForm.salary);
     if (customerEditForm.workplace) payload.workplace = customerEditForm.workplace;
     if (customerEditForm.birthDate) payload.birthDate = new Date(customerEditForm.birthDate).toISOString();
+
+    // Addresses
+    const addrIdCard = serializeAddress(custAddrIdCard);
+    const addrCurrent = serializeAddress(custAddrCurrent);
+    const addrWork = serializeAddress(custAddrWork);
+    if (addrIdCard) payload.addressIdCard = addrIdCard;
+    if (addrCurrent) payload.addressCurrent = addrCurrent;
+    if (addrWork) payload.addressWork = addrWork;
+
+    // References
+    const validRefs = custReferences.filter(r => r.firstName || r.lastName || r.phone);
+    payload.references = validRefs.length > 0 ? validRefs : [];
+
     updateCustomerMutation.mutate(payload);
   };
 
@@ -351,6 +408,7 @@ export default function ContractDetailPage() {
   const isCreator = user && contract.salespersonId === user.id;
   const isOwner = user?.role === 'OWNER';
   const canEdit = (isCreator || isOwner) && (contract.workflowStatus === 'CREATING' || contract.workflowStatus === 'REJECTED');
+  const canEditMaster = user && ['OWNER', 'BRANCH_MANAGER'].includes(user.role);
   const canDelete = isOwner && (contract.workflowStatus === 'CREATING' || contract.workflowStatus === 'REJECTED');
   const signedTypes = new Set(contract.signatures?.map((s) => s.signerType === 'STAFF' ? 'COMPANY' : s.signerType) || []);
   const customerSigned = signedTypes.has('CUSTOMER');
@@ -703,7 +761,7 @@ export default function ContractDetailPage() {
                   <span className="text-[10px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded">ณ วันที่สร้างสัญญา</span>
                 )}
               </div>
-              {canEdit && (
+              {canEditMaster && (
                 <button onClick={startEditingCustomer} className="px-3 py-1 text-xs bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200">
                   แก้ไข
                 </button>
@@ -722,7 +780,7 @@ export default function ContractDetailPage() {
           <div className="bg-white rounded-lg border p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-gray-900">ข้อมูลสินค้า</h2>
-              {canEdit && (
+              {canEditMaster && (
                 <button onClick={startEditingProduct} className="px-3 py-1 text-xs bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200">
                   แก้ไข
                 </button>
@@ -932,7 +990,7 @@ export default function ContractDetailPage() {
                   <label className="block text-xs text-gray-500 mb-1">คำนำหน้า</label>
                   <select value={customerEditForm.prefix} onChange={(e) => setCustomerEditForm({ ...customerEditForm, prefix: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white">
                     <option value="">-- เลือก --</option>
-                    {['นาย', 'นาง', 'นางสาว'].map(p => <option key={p} value={p}>{p}</option>)}
+                    {custPrefixOptions.map(p => <option key={p} value={p}>{p}</option>)}
                   </select>
                 </div>
                 <div>
@@ -947,6 +1005,32 @@ export default function ContractDetailPage() {
                   <label className="block text-xs text-gray-500 mb-1">วันเกิด</label>
                   <input type="date" value={customerEditForm.birthDate} onChange={(e) => setCustomerEditForm({ ...customerEditForm, birthDate: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
                 </div>
+              </div>
+            </div>
+
+            {/* ที่อยู่ตามบัตรประชาชน */}
+            <div className="border border-gray-200 rounded-lg p-4">
+              <h3 className="text-sm font-semibold text-gray-800 mb-3">ที่อยู่ตามบัตรประชาชน</h3>
+              <AddressForm value={custAddrIdCard} onChange={setCustAddrIdCard} />
+            </div>
+
+            {/* ที่อยู่ปัจจุบัน */}
+            <div className="border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-800">ที่อยู่ปัจจุบัน</h3>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={custSameAddress} onChange={(e) => setCustSameAddress(e.target.checked)} className="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+                  <span className="text-xs text-gray-600">เหมือนที่อยู่ตามบัตร</span>
+                </label>
+              </div>
+              {custSameAddress ? (
+                <p className="text-xs text-gray-400 italic">ใช้ที่อยู่เดียวกับที่อยู่ตามบัตรประชาชน</p>
+              ) : (
+                <AddressForm value={custAddrCurrent} onChange={setCustAddrCurrent} />
+              )}
+              <div className="mt-3">
+                <label className="block text-xs text-gray-500 mb-1">Link Google Map</label>
+                <input type="url" value={customerEditForm.googleMapLink} onChange={(e) => setCustomerEditForm({ ...customerEditForm, googleMapLink: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="https://maps.google.com/..." />
               </div>
             </div>
 
@@ -982,17 +1066,13 @@ export default function ContractDetailPage() {
                   <label className="block text-xs text-gray-500 mb-1">จำนวนเพื่อน Facebook</label>
                   <input type="text" value={customerEditForm.facebookFriends} onChange={(e) => setCustomerEditForm({ ...customerEditForm, facebookFriends: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
                 </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Link Google Map</label>
-                  <input type="url" value={customerEditForm.googleMapLink} onChange={(e) => setCustomerEditForm({ ...customerEditForm, googleMapLink: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="https://maps.google.com/..." />
-                </div>
               </div>
             </div>
 
             {/* ข้อมูลที่ทำงาน */}
             <div className="border border-gray-200 rounded-lg p-4">
               <h3 className="text-sm font-semibold text-gray-800 mb-3">ข้อมูลที่ทำงาน</h3>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3 mb-3">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">ชื่อที่ทำงาน</label>
                   <input type="text" value={customerEditForm.workplace} onChange={(e) => setCustomerEditForm({ ...customerEditForm, workplace: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
@@ -1010,15 +1090,49 @@ export default function ContractDetailPage() {
                   <input type="number" value={customerEditForm.salary} onChange={(e) => setCustomerEditForm({ ...customerEditForm, salary: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="0.00" />
                 </div>
               </div>
+              <div className="mt-2">
+                <label className="block text-xs text-gray-500 mb-1">ที่อยู่ที่ทำงาน</label>
+                <AddressForm value={custAddrWork} onChange={setCustAddrWork} />
+              </div>
             </div>
 
-            {/* หมายเหตุ */}
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-              <div className="text-xs text-amber-700">
-                หากต้องการแก้ไขที่อยู่หรือบุคคลอ้างอิง กรุณาไปที่{' '}
-                <button type="button" onClick={() => { setIsEditingCustomer(false); navigate(`/customers/${contract.customer.id}`); }} className="underline font-medium">
-                  หน้ารายละเอียดลูกค้า
-                </button>
+            {/* รายชื่อบุคคลอ้างอิง */}
+            <div className="border border-gray-200 rounded-lg p-4">
+              <h3 className="text-sm font-semibold text-gray-800 mb-3">รายชื่อบุคคลอ้างอิง</h3>
+              <div className="space-y-4">
+                {custReferences.map((ref, idx) => (
+                  <div key={idx}>
+                    <div className="text-xs font-medium text-gray-600 mb-2">บุคคลอ้างอิง {idx + 1}</div>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">คำนำหน้า</label>
+                        <select value={ref.prefix || ''} onChange={(e) => updateCustRef(idx, 'prefix', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white">
+                          <option value="">-- เลือก --</option>
+                          {custPrefixOptions.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">ชื่อ</label>
+                        <input type="text" value={ref.firstName || ''} onChange={(e) => updateCustRef(idx, 'firstName', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">นามสกุล</label>
+                        <input type="text" value={ref.lastName || ''} onChange={(e) => updateCustRef(idx, 'lastName', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">เบอร์โทร</label>
+                        <input type="tel" value={ref.phone || ''} onChange={(e) => updateCustRef(idx, 'phone', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">ความสัมพันธ์</label>
+                        <select value={ref.relationship || ''} onChange={(e) => updateCustRef(idx, 'relationship', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white">
+                          <option value="">-- เลือก --</option>
+                          {custRelationshipOptions.map(r => <option key={r} value={r}>{r}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 

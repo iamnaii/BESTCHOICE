@@ -348,8 +348,10 @@ export default function ContractSignPage() {
   const pdpaEndDraw = () => setPdpaDrawing(false);
 
   const pdpaClear = () => {
-    const ctx = pdpaCanvasRef.current?.getContext('2d');
-    if (ctx) ctx.clearRect(0, 0, 460, 160);
+    const canvas = pdpaCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
     setPdpaHasDrawn(false);
   };
 
@@ -409,7 +411,7 @@ export default function ContractSignPage() {
 
       {/* PDPA Consent Modal */}
       {showPdpaModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" role="dialog" aria-modal="true" aria-label="ยินยอม PDPA" onKeyDown={(e) => { if (e.key === 'Escape') setShowPdpaModal(false); }} tabIndex={-1} ref={(el: HTMLDivElement | null) => el?.focus()}>
           <div className="bg-white rounded-xl shadow-xl max-w-lg w-full mx-4 p-6 max-h-[90vh] overflow-y-auto">
             <h2 className="text-lg font-semibold text-gray-900 mb-3">ยินยอม PDPA</h2>
             <div className="bg-gray-50 rounded-lg p-4 text-xs text-gray-700 mb-4 max-h-48 overflow-y-auto leading-relaxed">

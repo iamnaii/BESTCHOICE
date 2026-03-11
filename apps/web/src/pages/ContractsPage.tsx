@@ -148,9 +148,13 @@ export default function ContractsPage() {
       label: 'ลงนาม',
       render: (c: Contract) => {
         const hasCust = c.signatures?.some(s => s.signerType === 'CUSTOMER');
-        const hasStaff = c.signatures?.some(s => s.signerType === 'STAFF');
-        if (hasCust && hasStaff) return <span className="text-xs text-green-600 font-medium">ครบ</span>;
-        if (hasCust || hasStaff) return <span className="text-xs text-amber-600">{hasCust ? 'ลูกค้า' : 'พนักงาน'}</span>;
+        const hasCompany = c.signatures?.some(s => s.signerType === 'COMPANY' || s.signerType === 'STAFF');
+        const hasW1 = c.signatures?.some(s => s.signerType === 'WITNESS_1');
+        const hasW2 = c.signatures?.some(s => s.signerType === 'WITNESS_2');
+        const allFour = hasCust && hasCompany && hasW1 && hasW2;
+        const count = [hasCust, hasCompany, hasW1, hasW2].filter(Boolean).length;
+        if (allFour) return <span className="text-xs text-green-600 font-medium">ครบ ({count}/4)</span>;
+        if (count > 0) return <span className="text-xs text-amber-600">{count}/4</span>;
         return <span className="text-xs text-gray-400">-</span>;
       },
     },

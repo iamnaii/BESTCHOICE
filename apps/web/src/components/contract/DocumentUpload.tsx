@@ -62,6 +62,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
         fileName: file.name,
         fileUrl,
         fileSize: file.size,
+        mimeType: file.type || undefined,
         notes: notes || undefined,
       });
       return data;
@@ -452,7 +453,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
       )}
       {/* Document viewer modal */}
       {viewingDoc && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => setViewingDoc(null)}>
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => setViewingDoc(null)} onKeyDown={(e) => { if (e.key === 'Escape') setViewingDoc(null); }} role="dialog" aria-modal="true" aria-label={`ดูเอกสาร ${viewingDoc.fileName}`} tabIndex={-1} ref={(el) => el?.focus()}>
           <div className="relative max-w-4xl max-h-[90vh] w-full" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between bg-white rounded-t-lg px-4 py-2">
               <div className="text-sm font-medium text-gray-900">

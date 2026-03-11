@@ -523,6 +523,9 @@ ${bodyHtml}
       '{branch_address}': esc(contract.branch?.location || ''),
       '{branch_phone}': esc(contract.branch?.phone || ''),
       '{salesperson_name}': esc(contract.salesperson?.name || ''),
+      '{witness1_name}': witness1Sig?.signerName ? esc(witness1Sig.signerName) : '',
+      '{witness2_name}': witness2Sig?.signerName ? esc(witness2Sig.signerName) : '',
+      '{staff_signer_name}': esc(contract.salesperson?.name || ''),
       '{date}': new Date().toLocaleDateString('th-TH'),
       '{payment_schedule_table}': `<table border="1" cellpadding="6" style="border-collapse:collapse;width:100%;margin:10px auto"><thead><tr style="background:#f5f5f5"><th style="text-align:center">งวดที่</th><th style="text-align:center">วันที่ครบกำหนดชำระ</th><th style="text-align:center">จำนวนเงิน</th></tr></thead><tbody>${paymentScheduleRows}</tbody></table>`,
       '{customer_signature}': customerSigSafe ? `<img src="${customerSig.signatureImage}" style="max-height:50px;display:block;margin:0 auto"/>` : '<div style="border-bottom:1px solid #000;width:200px;height:50px"></div>',
@@ -865,11 +868,13 @@ ${bodyHtml}
         <div style="font-size:13px">ลงชื่อ</div>
         <div style="min-height:50px;display:flex;align-items:center;justify-content:center">{witness1_signature}</div>
         <div style="font-size:13px">พยาน</div>
+        <p style="margin:4px 0 0;font-size:13px">({witness1_name})</p>
       </div>
       <div style="text-align:center">
         <div style="font-size:13px">ลงชื่อ</div>
         <div style="min-height:50px;display:flex;align-items:center;justify-content:center">{witness2_signature}</div>
         <div style="font-size:13px">พยาน</div>
+        <p style="margin:4px 0 0;font-size:13px">({witness2_name})</p>
       </div>
     </div>
   </div>

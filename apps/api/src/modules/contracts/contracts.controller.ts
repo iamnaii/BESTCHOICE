@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Req } from '@nestjs/common';
 import { ContractsService } from './contracts.service';
 import { CreateContractDto, UpdateContractDto, EarlyPayoffDto, ReviewContractDto, RejectContractDto } from './dto/contract.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -130,5 +130,24 @@ export class ContractsController {
   @Get(':id/qr-data')
   getQrData(@Param('id') id: string) {
     return this.contractsService.getQrData(id);
+  }
+
+  // === PDPA Consent: บันทึกความยินยอม PDPA และผูกกับสัญญา ===
+  @Post(':id/pdpa-consent')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
+  recordPdpaConsent(
+    @Param('id') id: string,
+    @Body('signatureImage') signatureImage: string,
+    @Req() req: any,
+  ) {
+    return this.contractsService.recordPdpaConsent(id, signatureImage, {
+      ip: req.ip,
+      userAgent: req.headers?.['user-agent'],
+    });
+  }
+
+  @Get(':id/pdpa-consent')
+  getPdpaConsent(@Param('id') id: string) {
+    return this.contractsService.getPdpaConsent(id);
   }
 }

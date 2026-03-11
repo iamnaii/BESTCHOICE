@@ -886,67 +886,81 @@ export default function ContractDetailPage() {
 
       {/* Product Edit Modal */}
       {isEditingProduct && (
-        <Modal isOpen title="แก้ไขข้อมูลสินค้า" onClose={() => setIsEditingProduct(false)}>
-          <form onSubmit={handleProductEditSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">ชื่อสินค้า</label>
-              <input type="text" value={productEditForm.name} onChange={(e) => setProductEditForm({ ...productEditForm, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required />
+        <Modal isOpen title="แก้ไขข้อมูลสินค้า" onClose={() => setIsEditingProduct(false)} size="lg">
+          <form onSubmit={handleProductEditSubmit} className="space-y-5 max-h-[75vh] overflow-y-auto pr-1">
+
+            {/* ข้อมูลหลัก */}
+            <div className="border border-gray-200 rounded-lg p-4">
+              <h3 className="text-sm font-semibold text-gray-800 mb-3">ข้อมูลสินค้า</h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <div className="col-span-2 md:col-span-3">
+                  <label className="block text-xs text-gray-500 mb-1">ชื่อสินค้า *</label>
+                  <input type="text" value={productEditForm.name} onChange={(e) => setProductEditForm({ ...productEditForm, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required />
+                </div>
+                {contract.product.category !== 'ACCESSORY' ? (
+                  <>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">ยี่ห้อ *</label>
+                      <input type="text" value={productEditForm.brand} onChange={(e) => setProductEditForm({ ...productEditForm, brand: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">รุ่น *</label>
+                      <input type="text" value={productEditForm.model} onChange={(e) => setProductEditForm({ ...productEditForm, model: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">สี</label>
+                      <input type="text" value={productEditForm.color} onChange={(e) => setProductEditForm({ ...productEditForm, color: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">ความจุ</label>
+                      <input type="text" value={productEditForm.storage} onChange={(e) => setProductEditForm({ ...productEditForm, storage: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">ประเภทอุปกรณ์</label>
+                      <input type="text" value={productEditForm.accessoryType} onChange={(e) => setProductEditForm({ ...productEditForm, accessoryType: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">ยี่ห้ออุปกรณ์</label>
+                      <input type="text" value={productEditForm.accessoryBrand} onChange={(e) => setProductEditForm({ ...productEditForm, accessoryBrand: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
-            {contract.product.category !== 'ACCESSORY' ? (
+
+            {/* หมายเลขเครื่อง & ราคา */}
+            <div className="border border-gray-200 rounded-lg p-4">
+              <h3 className="text-sm font-semibold text-gray-800 mb-3">หมายเลขเครื่อง & ราคา</h3>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">ยี่ห้อ</label>
-                  <input type="text" value={productEditForm.brand} onChange={(e) => setProductEditForm({ ...productEditForm, brand: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required />
+                  <label className="block text-xs text-gray-500 mb-1">IMEI / Serial</label>
+                  <input type="text" value={productEditForm.imeiSerial} onChange={(e) => setProductEditForm({ ...productEditForm, imeiSerial: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">รุ่น</label>
-                  <input type="text" value={productEditForm.model} onChange={(e) => setProductEditForm({ ...productEditForm, model: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required />
+                  <label className="block text-xs text-gray-500 mb-1">Serial Number</label>
+                  <input type="text" value={productEditForm.serialNumber} onChange={(e) => setProductEditForm({ ...productEditForm, serialNumber: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">สี</label>
-                  <input type="text" value={productEditForm.color} onChange={(e) => setProductEditForm({ ...productEditForm, color: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                  <label className="block text-xs text-gray-500 mb-1">ราคาทุน (บาท)</label>
+                  <input type="number" step="0.01" value={productEditForm.costPrice} onChange={(e) => setProductEditForm({ ...productEditForm, costPrice: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">ความจุ</label>
-                  <input type="text" value={productEditForm.storage} onChange={(e) => setProductEditForm({ ...productEditForm, storage: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-                </div>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">ประเภทอุปกรณ์</label>
-                  <input type="text" value={productEditForm.accessoryType} onChange={(e) => setProductEditForm({ ...productEditForm, accessoryType: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">ยี่ห้ออุปกรณ์</label>
-                  <input type="text" value={productEditForm.accessoryBrand} onChange={(e) => setProductEditForm({ ...productEditForm, accessoryBrand: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-                </div>
-              </div>
-            )}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">IMEI / Serial</label>
-                <input type="text" value={productEditForm.imeiSerial} onChange={(e) => setProductEditForm({ ...productEditForm, imeiSerial: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Serial Number</label>
-                <input type="text" value={productEditForm.serialNumber} onChange={(e) => setProductEditForm({ ...productEditForm, serialNumber: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono" />
               </div>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">ราคาทุน (บาท)</label>
-              <input type="number" step="0.01" value={productEditForm.costPrice} onChange={(e) => setProductEditForm({ ...productEditForm, costPrice: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-            </div>
+
+            {/* ข้อมูลมือสอง */}
             {contract.product.category === 'PHONE_USED' && (
-              <div className="border-t pt-3 space-y-3">
-                <div className="text-xs font-semibold text-gray-500">ข้อมูลมือสอง</div>
-                <div className="grid grid-cols-2 gap-3">
+              <div className="border border-gray-200 rounded-lg p-4">
+                <h3 className="text-sm font-semibold text-gray-800 mb-3">ข้อมูลมือสอง</h3>
+                <div className="grid grid-cols-2 gap-3 mb-3">
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">แบตเตอรี่ (%)</label>
+                    <label className="block text-xs text-gray-500 mb-1">แบตเตอรี่ (%)</label>
                     <input type="number" min="0" max="100" value={productEditForm.batteryHealth} onChange={(e) => setProductEditForm({ ...productEditForm, batteryHealth: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">วันหมดประกัน</label>
+                    <label className="block text-xs text-gray-500 mb-1">วันหมดประกัน</label>
                     <input type="date" value={productEditForm.warrantyExpireDate} onChange={(e) => setProductEditForm({ ...productEditForm, warrantyExpireDate: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" disabled={productEditForm.warrantyExpired} />
                   </div>
                 </div>
@@ -962,9 +976,11 @@ export default function ContractDetailPage() {
                 </div>
               </div>
             )}
-            <div className="flex justify-end gap-3 pt-2 border-t">
-              <button type="button" onClick={() => setIsEditingProduct(false)} className="px-4 py-2 text-sm text-gray-600">ยกเลิก</button>
-              <button type="submit" disabled={updateProductMutation.isPending} className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
+
+            {/* Submit */}
+            <div className="flex justify-end gap-3 pt-2 sticky bottom-0 bg-white py-3 border-t">
+              <button type="button" onClick={() => setIsEditingProduct(false)} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg">ยกเลิก</button>
+              <button type="submit" disabled={updateProductMutation.isPending} className="px-6 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
                 {updateProductMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
               </button>
             </div>

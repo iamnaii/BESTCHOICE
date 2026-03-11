@@ -51,6 +51,8 @@ const navItems: NavItem[] = [
   { label: 'ตรวจเครดิต', path: '/credit-checks', section: 'sales' },
   { label: 'สัญญาผ่อน', path: '/contracts', section: 'sales' },
   { label: 'ชำระเงิน', path: '/payments', section: 'sales' },
+  { label: 'สถานะเอกสาร', path: '/document-dashboard', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'sales' },
+  { label: 'ใบเสร็จรับเงิน', path: '/receipts', roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'], section: 'sales' },
 
   // ติดตาม & จัดการหนี้
   { label: 'ติดตามหนี้', path: '/overdue', section: 'debt' },
@@ -80,6 +82,7 @@ const navItems: NavItem[] = [
   { label: 'ราคาตั้งต้น', path: '/settings/pricing-templates', roles: ['OWNER'], section: 'system' },
   { label: 'เทมเพลตสัญญา', path: '/contract-templates', roles: ['OWNER'], section: 'system' },
   { label: 'สถานะระบบ', path: '/system-status', roles: ['OWNER'], section: 'system' },
+  { label: 'PDPA', path: '/pdpa', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'system' },
   { label: 'Audit Logs', path: '/audit-logs', roles: ['OWNER'], section: 'system' },
   { label: 'นำเข้าข้อมูล', path: '/migration', roles: ['OWNER'], section: 'system' },
 ];

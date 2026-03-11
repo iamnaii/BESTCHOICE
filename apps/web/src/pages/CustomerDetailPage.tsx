@@ -7,6 +7,7 @@ import { displayAddress } from '@/components/ui/AddressForm';
 import { useState, useRef } from 'react';
 
 import toast from 'react-hot-toast';
+import { maskNationalId } from '@/utils/mask.util';
 
 interface ReferenceData {
   prefix?: string;
@@ -198,7 +199,7 @@ export default function CustomerDetailPage() {
           <Info label="คำนำหน้า" value={customer.prefix} />
           <Info label="ชื่อ-นามสกุล" value={customer.name} />
           <Info label="ชื่อเล่น" value={customer.nickname} />
-          <Info label="เลขบัตร ปชช." value={customer.nationalId.replace(/(\d{1})(\d{4})(\d{5})(\d{2})(\d{1})/, '$1-$2-$3-$4-$5')} />
+          <Info label="เลขบัตร ปชช." value={maskNationalId(customer.nationalId)} />
           <Info label="ต่างด้าว" value={customer.isForeigner ? 'ใช่' : 'ไม่ใช่'} />
           <Info label="วันเกิด" value={customer.birthDate ? new Date(customer.birthDate).toLocaleDateString('th-TH') : null} />
         </div>

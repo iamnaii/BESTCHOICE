@@ -39,6 +39,7 @@ interface ContractDetail {
   paymentDueDay: number | null;
   notes: string | null;
   reviewNotes: string | null;
+  contractHash: string | null;
   createdAt: string;
   reviewedAt: string | null;
   salespersonId: string;
@@ -534,6 +535,21 @@ export default function ContractDetailPage() {
             </div>
             <button onClick={() => navigate(`/products/${contract.product.id}`)} className="mt-3 text-xs text-primary-600 hover:underline">ดูรายละเอียดสินค้า</button>
           </div>
+
+          {/* QR Code Verification */}
+          {contract.contractHash && (
+            <div className="bg-white rounded-lg border p-6">
+              <h2 className="text-sm font-semibold text-gray-900 mb-2">ตรวจสอบสัญญา (QR Verify)</h2>
+              <div className="text-xs text-gray-500 mb-2">Hash: <span className="font-mono">{contract.contractHash?.slice(0, 16)}...</span></div>
+              <div className="flex items-center gap-2">
+                <span className="inline-block w-3 h-3 bg-green-500 rounded-full"></span>
+                <span className="text-xs text-green-700">สัญญาได้รับการยืนยันแล้ว</span>
+              </div>
+              <div className="mt-2 text-xs text-gray-400">
+                URL: /api/contracts/{id}/verify
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

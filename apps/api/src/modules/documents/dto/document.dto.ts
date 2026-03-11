@@ -57,8 +57,28 @@ export class SignContractDto {
   signatureImage: string; // base64 PNG
 
   @IsString()
-  @Matches(/^(CUSTOMER|STAFF)$/, { message: 'signerType ต้องเป็น CUSTOMER หรือ STAFF' })
-  signerType: string; // CUSTOMER, STAFF
+  @IsOptional()
+  signatureSvg?: string; // SVG path data
+
+  @IsString()
+  @Matches(/^(CUSTOMER|COMPANY|STAFF|WITNESS_1|WITNESS_2|GUARDIAN)$/, {
+    message: 'signerType ต้องเป็น CUSTOMER, COMPANY, STAFF, WITNESS_1, WITNESS_2 หรือ GUARDIAN',
+  })
+  signerType: string;
+
+  @IsString()
+  @IsOptional()
+  signerName?: string; // ชื่อผู้เซ็น
+
+  @IsString()
+  @IsOptional()
+  screenSize?: string; // ขนาดหน้าจอ
+
+  @IsOptional()
+  gpsLatitude?: number;
+
+  @IsOptional()
+  gpsLongitude?: number;
 }
 
 export class GenerateDocumentDto {

@@ -1,12 +1,16 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PaymentMethod } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ReceiptsService } from '../receipts/receipts.service';
 
 @Injectable()
 export class PaymentsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private receiptsService: ReceiptsService,
+  ) {}
 
-  // ─── Record a single payment ─────────────────────────
+  // ─── Record a single payment (บังคับ upload หลักฐาน) ──
   async recordPayment(
     contractId: string,
     installmentNo: number,
@@ -15,9 +19,15 @@ export class PaymentsService {
     recordedById: string,
     evidenceUrl?: string,
     notes?: string,
+    transactionRef?: string,
   ) {
     if (!amount || amount <= 0) {
       throw new BadRequestException('จำนวนเงินต้องมากกว่า 0');
+    }
+
+    // บังคับ upload หลักฐานการชำระเงิน (สลิป/เลขอ้างอิง)
+    if (!evidenceUrl && !transactionRef) {
+      throw new BadRequestException('ต้อง upload หลักฐานการชำระเงิน (สลิปโอนเงิน) หรือระบุเลขอ้างอิงธุรกรรม');
     }
 
     const contract = await this.prisma.contract.findUnique({ where: { id: contractId } });
@@ -68,6 +78,24 @@ export class PaymentsService {
 
       return result;
     });
+
+    // Auto-generate e-Receipt after successful payment
+    if (updated.status === 'PAID') {
+      try {
+        await this.receiptsService.generateReceipt(
+          contractId,
+          updated.id,
+          'INSTALLMENT',
+          amount,
+          installmentNo,
+          paymentMethod,
+          transactionRef || null,
+          recordedById,
+        );
+      } catch {
+        // Receipt generation failure should not block payment
+      }
+    }
 
     return updated;
   }
@@ -128,6 +156,24 @@ export class PaymentsService {
         // Check contract completion after each full payment
         if (isPaidInFull) {
           await this.checkContractCompletion(contractId, tx);
+        }
+      }
+
+      // Auto-generate e-Receipts for fully paid installments
+      for (const paid of results.filter(r => r.status === 'PAID')) {
+        try {
+          await this.receiptsService.generateReceipt(
+            contractId,
+            paid.id,
+            'INSTALLMENT',
+            Number(paid.amountPaid),
+            paid.installmentNo,
+            paymentMethod,
+            null,
+            recordedById,
+          );
+        } catch {
+          // Receipt generation failure should not block payment
         }
       }
 

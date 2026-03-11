@@ -53,14 +53,32 @@ export class DocumentsController {
     return this.documentsService.deleteTemplate(id);
   }
 
-  // ─── E-Signature ──────────────────────────────────────
+  // ─── E-Signature (พ.ร.บ.ธุรกรรมทางอิเล็กทรอนิกส์ พ.ศ. 2544) ──
   @Post('contracts/:id/sign')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
-  signContract(@Param('id') id: string, @Body() dto: SignContractDto, @Req() req: any) {
+  signContract(
+    @Param('id') id: string,
+    @Body() dto: SignContractDto,
+    @Req() req: any,
+    @CurrentUser() user: { id: string },
+  ) {
     return this.documentsService.signContract(id, dto.signatureImage, dto.signerType, {
       ip: req.ip,
       userAgent: req.headers?.['user-agent'],
+    }, {
+      signatureSvg: dto.signatureSvg,
+      signerName: dto.signerName,
+      screenSize: dto.screenSize,
+      gpsLatitude: dto.gpsLatitude,
+      gpsLongitude: dto.gpsLongitude,
+      staffUserId: user.id,
     });
+  }
+
+  @Delete('contracts/:id/signatures/:signerType')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
+  deleteSignature(@Param('id') id: string, @Param('signerType') signerType: string) {
+    return this.documentsService.deleteSignature(id, signerType);
   }
 
   @Get('contracts/:id/signatures')

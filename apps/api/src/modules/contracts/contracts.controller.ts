@@ -31,6 +31,12 @@ export class ContractsController {
     });
   }
 
+  @Get('document-dashboard')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  getDocumentDashboard(@Query('branchId') branchId?: string) {
+    return this.contractsService.getDocumentDashboard(branchId);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.contractsService.findOne(id);
@@ -106,5 +112,23 @@ export class ContractsController {
   @Roles('OWNER', 'BRANCH_MANAGER')
   earlyPayoff(@Param('id') id: string, @Body() dto: EarlyPayoffDto, @CurrentUser() user: { id: string }) {
     return this.contractsService.earlyPayoff(id, user.id, dto.paymentMethod);
+  }
+
+  // === VALIDATION: ตรวจสอบความครบถ้วนของสัญญา ===
+  @Get(':id/validate')
+  validateForSubmit(@Param('id') id: string) {
+    return this.contractsService.validateForSubmit(id);
+  }
+
+  // === QR VERIFY: ตรวจสอบสัญญาผ่าน QR Code (public endpoint) ===
+  @Get(':id/verify')
+  verifyContract(@Param('id') id: string, @Query('hash') hash?: string) {
+    return this.contractsService.verifyContract(id, hash);
+  }
+
+  // === QR CODE DATA: ข้อมูลสำหรับสร้าง QR Code ===
+  @Get(':id/qr-data')
+  getQrData(@Param('id') id: string) {
+    return this.contractsService.getQrData(id);
   }
 }

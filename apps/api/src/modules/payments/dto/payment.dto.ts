@@ -17,7 +17,11 @@ export class RecordPaymentDto {
 
   @IsString()
   @IsOptional()
-  evidenceUrl?: string;
+  evidenceUrl?: string; // บังคับ: สลิปโอนเงิน / หลักฐานการชำระ
+
+  @IsString()
+  @IsOptional()
+  transactionRef?: string; // เลขอ้างอิงธุรกรรม
 
   @IsString()
   @IsOptional()

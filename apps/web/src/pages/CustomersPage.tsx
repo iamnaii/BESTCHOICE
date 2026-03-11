@@ -6,6 +6,7 @@ import api, { getErrorMessage } from '@/lib/api';
 import { compressImageForOcr } from '@/lib/compressImage';
 import { checkCardReaderStatus, readSmartCard, type SmartCardData } from '@/lib/cardReader';
 import { useDebounce } from '@/hooks/useDebounce';
+import { maskNationalId } from '@/utils/mask.util';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
@@ -350,7 +351,7 @@ export default function CustomersPage() {
     {
       key: 'nationalId',
       label: 'เลขบัตร ปชช.',
-      render: (c: Customer) => <span className="font-mono text-xs">{c.nationalId.replace(/(\d{1})(\d{4})(\d{5})(\d{2})(\d{1})/, '$1-$2-$3-$4-$5')}</span>,
+      render: (c: Customer) => <span className="font-mono text-xs">{maskNationalId(c.nationalId)}</span>,
     },
     {
       key: 'occupation',

@@ -5,6 +5,16 @@ import { CreateContractDto, UpdateContractDto } from './dto/contract.dto';
 import { calculateInstallment, generatePaymentSchedule } from '../../utils/installment.util';
 import { loadInstallmentConfig, resolveInstallmentParams, BUSINESS_RULES } from '../../utils/config.util';
 import { generateContractNumber } from '../../utils/sequence.util';
+import {
+  validateIMEI,
+  validateThaiPhone,
+  checkAgeEligibility,
+  validateAddress,
+  checkRequiredContractFields,
+  checkRequiredDocuments,
+  checkRequiredSignatures,
+} from '../../utils/validation.util';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class ContractsService {
@@ -87,11 +97,114 @@ export class ContractsService {
     return contract;
   }
 
+  /**
+   * Validate contract completeness before submit (legal compliance check)
+   * ตรวจสอบความครบถ้วนของสัญญาตามกฎหมาย
+   */
+  async validateForSubmit(id: string) {
+    const contract = await this.findOne(id);
+    const customer = contract.customer;
+    const product = contract.product;
+
+    const errors: string[] = [];
+
+    // 1. Check required contract fields (ป.พ.พ. ม.572)
+    const missingFields = checkRequiredContractFields({
+      customerName: customer?.name,
+      customerNationalId: customer?.nationalId,
+      customerPhone: customer?.phone,
+      customerAddressIdCard: customer?.addressIdCard,
+      customerAddressCurrent: customer?.addressCurrent,
+      references: customer?.references as any[],
+      productName: product?.name,
+      productImei: product?.imeiSerial,
+      sellingPrice: Number(contract.sellingPrice),
+      downPayment: Number(contract.downPayment),
+      totalMonths: contract.totalMonths,
+      monthlyPayment: Number(contract.monthlyPayment),
+    });
+    if (missingFields.length > 0) {
+      errors.push(`ข้อมูลไม่ครบ: ${missingFields.join(', ')}`);
+    }
+
+    // 2. Validate IMEI format
+    if (product?.imeiSerial && !validateIMEI(product.imeiSerial)) {
+      errors.push('IMEI ไม่ถูกต้อง (ต้อง 15 หลัก ตรง Luhn algorithm)');
+    }
+
+    // 3. Validate customer phone
+    if (customer?.phone && !validateThaiPhone(customer.phone)) {
+      errors.push('เบอร์โทรศัพท์ไม่ถูกต้อง (ต้อง 10 หลัก ขึ้นต้นด้วย 0)');
+    }
+
+    // 4. Validate customer address
+    if (!validateAddress(customer?.addressIdCard)) {
+      errors.push('ที่อยู่ตามบัตรประชาชนไม่ครบถ้วน');
+    }
+    if (!validateAddress(customer?.addressCurrent)) {
+      errors.push('ที่อยู่ปัจจุบันไม่ครบถ้วน');
+    }
+
+    // 5. Check age eligibility
+    let requiresGuardian = false;
+    if (customer?.birthDate) {
+      const ageCheck = checkAgeEligibility(new Date(customer.birthDate));
+      if (!ageCheck.eligible) {
+        errors.push(ageCheck.message!);
+      }
+      requiresGuardian = ageCheck.requiresGuardian;
+      if (requiresGuardian && !customer.guardianName) {
+        errors.push('ลูกค้าอายุต่ำกว่า 20 ปี ต้องกรอกข้อมูลผู้ปกครอง');
+      }
+    }
+
+    // 6. Check references (ผู้ค้ำประกัน/ผู้ติดต่อฉุกเฉิน)
+    const refs = (customer?.references as any[]) || [];
+    if (refs.length === 0) {
+      errors.push('ต้องมีบุคคลค้ำประกัน/ผู้ติดต่อฉุกเฉิน อย่างน้อย 1 คน');
+    }
+
+    // 7. Check credit check status
+    if (!contract.creditCheck || contract.creditCheck.status !== 'APPROVED') {
+      errors.push('ต้องผ่านการตรวจเครดิตก่อน');
+    }
+
+    // 8. Check PDPA consent
+    if (!contract.pdpaConsentId) {
+      errors.push('ต้องได้รับความยินยอม PDPA ก่อน');
+    }
+
+    // 9. Check signatures
+    const sigCheck = checkRequiredSignatures(
+      contract.signatures || [],
+      requiresGuardian,
+    );
+
+    // 10. Check documents
+    const docCheck = checkRequiredDocuments(
+      contract.contractDocuments || [],
+      requiresGuardian,
+    );
+
+    return {
+      valid: errors.length === 0,
+      errors,
+      signatureStatus: sigCheck,
+      documentStatus: docCheck,
+      requiresGuardian,
+    };
+  }
+
   async create(dto: CreateContractDto, salespersonId: string) {
     // Try to find interest config by product category
     const product = await this.prisma.product.findUnique({ where: { id: dto.productId } });
     if (!product || product.status !== 'IN_STOCK') {
       throw new BadRequestException('สินค้าไม่พร้อมขาย');
+    }
+
+    // Validate IMEI is present (legal requirement)
+    if (!product.imeiSerial) {
+      throw new BadRequestException('สินค้าต้องมี IMEI/Serial Number (บังคับตามกฎหมาย)');
     }
 
     // Find interest config matching the product category
@@ -326,7 +439,7 @@ export class ContractsService {
     return this.findOne(id);
   }
 
-  // === WORKFLOW: ส่งตรวจสอบ ===
+  // === WORKFLOW: ส่งตรวจสอบ (ตรวจ Validation ทั้งหมดก่อนส่ง) ===
   async submitForReview(id: string, userId: string) {
     const contract = await this.findOne(id);
 
@@ -339,15 +452,79 @@ export class ContractsService {
       throw new ForbiddenException('เฉพาะพนักงานที่สร้างสัญญาเท่านั้นที่สามารถส่งตรวจสอบ');
     }
 
+    // Enforce mandatory steps before submit
+    // Step 1: Credit check must be approved
+    if (!contract.creditCheck || contract.creditCheck.status !== 'APPROVED') {
+      throw new BadRequestException('ต้องผ่านการตรวจเครดิตก่อนส่งตรวจสอบ (ขั้นตอนที่ 1)');
+    }
+
+    // Step 2: Required fields validation
+    const customer = contract.customer;
+    const product = contract.product;
+    const missingFields = checkRequiredContractFields({
+      customerName: customer?.name,
+      customerNationalId: customer?.nationalId,
+      customerPhone: customer?.phone,
+      customerAddressIdCard: customer?.addressIdCard,
+      customerAddressCurrent: customer?.addressCurrent,
+      references: customer?.references as any[],
+      productName: product?.name,
+      productImei: product?.imeiSerial,
+      sellingPrice: Number(contract.sellingPrice),
+      downPayment: Number(contract.downPayment),
+      totalMonths: contract.totalMonths,
+      monthlyPayment: Number(contract.monthlyPayment),
+    });
+    if (missingFields.length > 0) {
+      throw new BadRequestException(`ข้อมูลสัญญาไม่ครบ: ${missingFields.join(', ')} (ขั้นตอนที่ 2)`);
+    }
+
+    // Step 3: PDPA consent
+    if (!contract.pdpaConsentId) {
+      throw new BadRequestException('ต้องได้รับความยินยอม PDPA จากลูกค้าก่อน (ขั้นตอนที่ 3)');
+    }
+
+    // Step 5: Signatures (at minimum customer + company)
+    const customerSigned = contract.signatures?.some((s: { signerType: string }) =>
+      s.signerType === 'CUSTOMER'
+    );
+    const companySigned = contract.signatures?.some((s: { signerType: string }) =>
+      s.signerType === 'COMPANY' || s.signerType === 'STAFF'
+    );
+    if (!customerSigned || !companySigned) {
+      throw new BadRequestException('ต้องลงนามครบทั้งลูกค้าและผู้ขายก่อนส่งตรวจสอบ (ขั้นตอนที่ 5)');
+    }
+
+    // Generate contract hash for integrity
+    const contractData = JSON.stringify({
+      contractNumber: contract.contractNumber,
+      customerId: contract.customerId,
+      productId: contract.productId,
+      sellingPrice: contract.sellingPrice,
+      downPayment: contract.downPayment,
+      totalMonths: contract.totalMonths,
+      monthlyPayment: contract.monthlyPayment,
+    });
+    const contractHash = crypto.createHash('sha256').update(contractData).digest('hex');
+
     await this.prisma.contract.update({
       where: { id },
-      data: { workflowStatus: 'PENDING_REVIEW' },
+      data: {
+        workflowStatus: 'PENDING_REVIEW',
+        contractHash,
+        // Set legal clause flags
+        hasOwnershipClause: true,
+        hasRepossessionClause: true,
+        hasEarlyPayoffClause: true,
+        hasNoTransferClause: true,
+        hasAcknowledgement: true,
+      },
     });
 
     return this.findOne(id);
   }
 
-  // === WORKFLOW: อนุมัติสัญญา ===
+  // === WORKFLOW: อนุมัติสัญญา (ตรวจเอกสารครบก่อนอนุมัติ) ===
   async approveContract(id: string, userId: string, userRole: string, reviewNotes?: string) {
     const contract = await this.findOne(id);
 
@@ -359,6 +536,37 @@ export class ContractsService {
     // Exception: OWNER can always approve (for small business where owner is also salesperson)
     if (contract.salespersonId === userId && userRole !== 'OWNER') {
       throw new ForbiddenException('ไม่สามารถอนุมัติสัญญาที่ตัวเองสร้างได้');
+    }
+
+    // Check age for guardian requirement
+    let requiresGuardian = false;
+    if (contract.customer?.birthDate) {
+      const ageCheck = checkAgeEligibility(new Date(contract.customer.birthDate));
+      requiresGuardian = ageCheck.requiresGuardian;
+    }
+
+    // Step 7: Manager ตรวจสอบเอกสารครบ
+    const docCheck = checkRequiredDocuments(
+      contract.contractDocuments || [],
+      requiresGuardian,
+    );
+    if (!docCheck.complete) {
+      const missing = docCheck.checklist
+        .filter((c) => !c.present)
+        .map((c) => c.label);
+      throw new BadRequestException(`เอกสารไม่ครบ ไม่สามารถอนุมัติได้: ${missing.join(', ')}`);
+    }
+
+    // Check signatures completeness
+    const sigCheck = checkRequiredSignatures(
+      contract.signatures || [],
+      requiresGuardian,
+    );
+    if (!sigCheck.complete) {
+      const missing = sigCheck.checklist
+        .filter((c) => !c.signed)
+        .map((c) => c.label);
+      throw new BadRequestException(`ลายเซ็นไม่ครบ ไม่สามารถอนุมัติได้: ${missing.join(', ')}`);
     }
 
     await this.prisma.contract.update({
@@ -411,11 +619,30 @@ export class ContractsService {
       throw new BadRequestException('สัญญาต้องอยู่ในสถานะ DRAFT');
     }
 
-    // Require both signatures before activation
+    // Require all required signatures (customer + company + 2 witnesses)
     const customerSigned = contract.signatures?.some((s: { signerType: string }) => s.signerType === 'CUSTOMER');
-    const staffSigned = contract.signatures?.some((s: { signerType: string }) => s.signerType === 'STAFF');
-    if (!customerSigned || !staffSigned) {
-      throw new BadRequestException('ต้องลงนามครบทั้งลูกค้าและพนักงานก่อนเปิดใช้งานสัญญา');
+    const companySigned = contract.signatures?.some((s: { signerType: string }) =>
+      s.signerType === 'COMPANY' || s.signerType === 'STAFF'
+    );
+    const witness1Signed = contract.signatures?.some((s: { signerType: string }) => s.signerType === 'WITNESS_1');
+    const witness2Signed = contract.signatures?.some((s: { signerType: string }) => s.signerType === 'WITNESS_2');
+
+    if (!customerSigned || !companySigned) {
+      throw new BadRequestException('ต้องลงนามครบทั้งผู้ซื้อและผู้ขายก่อนเปิดใช้งานสัญญา');
+    }
+    if (!witness1Signed || !witness2Signed) {
+      throw new BadRequestException('ต้องมีพยานลงนามครบ 2 คนก่อนเปิดใช้งานสัญญา');
+    }
+
+    // Check guardian signature if required
+    if (contract.customer?.birthDate) {
+      const ageCheck = checkAgeEligibility(new Date(contract.customer.birthDate));
+      if (ageCheck.requiresGuardian) {
+        const guardianSigned = contract.signatures?.some((s: { signerType: string }) => s.signerType === 'GUARDIAN');
+        if (!guardianSigned) {
+          throw new BadRequestException('ลูกค้าอายุต่ำกว่า 20 ปี ต้องมีผู้ปกครองลงนาม');
+        }
+      }
     }
 
     // Verify product is still reserved for this contract
@@ -430,6 +657,7 @@ export class ContractsService {
       if (!prod || (prod.status !== 'RESERVED' && prod.status !== 'IN_STOCK')) {
         throw new BadRequestException('สินค้าไม่พร้อมสำหรับเปิดสัญญา (อาจถูกขายหรือลบไปแล้ว)');
       }
+      // Step 8: สถานะเปลี่ยนเป็น ACTIVE → เริ่มนับงวด
       await tx.contract.update({ where: { id }, data: { status: 'ACTIVE' } });
       await tx.product.update({ where: { id: contract.productId }, data: { status: 'SOLD_INSTALLMENT' } });
     });
@@ -437,12 +665,22 @@ export class ContractsService {
     return this.findOne(id);
   }
 
-  // === SOFT DELETE: ลบสัญญา (เฉพาะ CREATING/REJECTED) ===
+  // === SOFT DELETE: ลบสัญญา (เฉพาะ CREATING/REJECTED, ห้ามลบสัญญาที่ลงนามแล้ว) ===
   async softDelete(id: string, userId: string) {
     const contract = await this.findOne(id);
 
-    if (contract.workflowStatus !== 'CREATING' && contract.workflowStatus !== 'REJECTED') {
-      throw new BadRequestException('ลบได้เฉพาะสัญญาที่อยู่ในสถานะ กำลังสร้าง หรือ ถูกปฏิเสธ เท่านั้น');
+    // ห้ามลบสัญญาที่สถานะ ACTIVE ขึ้นไป (Immutable Contract)
+    if (!['DRAFT'].includes(contract.status) ||
+        (contract.workflowStatus !== 'CREATING' && contract.workflowStatus !== 'REJECTED')) {
+      throw new BadRequestException(
+        'ลบได้เฉพาะสัญญาที่อยู่ในสถานะ DRAFT + กำลังสร้าง/ถูกปฏิเสธ เท่านั้น ' +
+        '(สัญญาที่ลงนามแล้วห้ามลบเด็ดขาด ใช้ soft delete เท่านั้น)'
+      );
+    }
+
+    // ถ้ามีลายเซ็นแล้ว ห้ามลบเด็ดขาด
+    if (contract.signatures && contract.signatures.length > 0) {
+      throw new BadRequestException('ไม่สามารถลบสัญญาที่มีลายเซ็นแล้ว');
     }
 
     await this.prisma.$transaction([
@@ -454,7 +692,7 @@ export class ContractsService {
       }),
     ]);
 
-    return { message: 'ลบสัญญาเรียบร้อย' };
+    return { message: 'ลบสัญญาเรียบร้อย (soft delete)' };
   }
 
   async getSchedule(id: string) {
@@ -532,5 +770,200 @@ export class ContractsService {
     });
 
     return { ...quote, status: 'EARLY_PAYOFF' };
+  }
+
+  // ─── Document Dashboard for Manager/Admin ──────────────
+  async getDocumentDashboard(branchId?: string) {
+    const where: Record<string, unknown> = { deletedAt: null };
+    if (branchId) where.branchId = branchId;
+
+    // Get all active contracts with their documents and signatures
+    const contracts = await this.prisma.contract.findMany({
+      where,
+      select: {
+        id: true,
+        contractNumber: true,
+        status: true,
+        workflowStatus: true,
+        createdAt: true,
+        updatedAt: true,
+        branchId: true,
+        branch: { select: { id: true, name: true } },
+        customer: { select: { name: true } },
+        documents: { select: { id: true, type: true } },
+        signatures: { select: { id: true, signerType: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const REQUIRED_DOCS = ['ID_CARD_COPY', 'KYC_SELFIE', 'DEVICE_PHOTO', 'DEVICE_IMEI_PHOTO', 'DOWN_PAYMENT_RECEIPT', 'PDPA_CONSENT'];
+    const REQUIRED_SIGS = ['CUSTOMER', 'COMPANY', 'WITNESS_1', 'WITNESS_2'];
+
+    let fullyDocumented = 0;
+    let pendingDocuments = 0;
+    let pendingSignatures = 0;
+    let pendingApproval = 0;
+    let overdueContracts = 0;
+
+    const branchMap = new Map<string, { branchId: string; branchName: string; total: number; documented: number; pendingDocs: number; pendingSigs: number }>();
+
+    for (const c of contracts) {
+      const docTypes = new Set(c.documents.map((d: { type: string }) => d.type));
+      const sigTypes = new Set(c.signatures.map((s: { signerType: string }) => s.signerType));
+      const hasAllDocs = REQUIRED_DOCS.every((d) => docTypes.has(d));
+      const hasAllSigs = REQUIRED_SIGS.every((s) => sigTypes.has(s));
+
+      if (hasAllDocs && hasAllSigs) fullyDocumented++;
+      if (!hasAllDocs) pendingDocuments++;
+      if (!hasAllSigs) pendingSignatures++;
+      if (c.workflowStatus === 'PENDING_REVIEW' || c.workflowStatus === 'PENDING_APPROVAL') pendingApproval++;
+      if (c.status === 'OVERDUE' || c.status === 'DEFAULT') overdueContracts++;
+
+      // By branch
+      const bId = c.branchId || 'unknown';
+      const bName = c.branch?.name || 'ไม่ระบุ';
+      if (!branchMap.has(bId)) {
+        branchMap.set(bId, { branchId: bId, branchName: bName, total: 0, documented: 0, pendingDocs: 0, pendingSigs: 0 });
+      }
+      const b = branchMap.get(bId)!;
+      b.total++;
+      if (hasAllDocs && hasAllSigs) b.documented++;
+      if (!hasAllDocs) b.pendingDocs++;
+      if (!hasAllSigs) b.pendingSigs++;
+    }
+
+    // SLA alerts: contracts waiting for approval > 24h
+    const slaAlerts = contracts
+      .filter((c) => ['PENDING_REVIEW', 'PENDING_APPROVAL'].includes(c.workflowStatus || ''))
+      .map((c) => {
+        const hoursWaiting = Math.round((Date.now() - new Date(c.updatedAt).getTime()) / (1000 * 60 * 60));
+        return {
+          id: c.id,
+          contractNumber: c.contractNumber,
+          customerName: c.customer?.name || '',
+          workflowStatus: c.workflowStatus,
+          hoursWaiting,
+          branchName: c.branch?.name || '',
+        };
+      })
+      .filter((a) => a.hoursWaiting >= 24)
+      .sort((a, b) => b.hoursWaiting - a.hoursWaiting)
+      .slice(0, 20);
+
+    // Recent document activity from audit log
+    let recentActivity: Array<{ id: string; contractNumber: string; customerName: string; action: string; createdAt: string; branchName: string }> = [];
+    try {
+      const audits = await this.prisma.documentAuditLog.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+        include: {
+          contract: {
+            select: {
+              contractNumber: true,
+              customer: { select: { name: true } },
+              branch: { select: { name: true } },
+            },
+          },
+        },
+      });
+      recentActivity = audits.map((a) => ({
+        id: a.id,
+        contractNumber: a.contract?.contractNumber || '',
+        customerName: a.contract?.customer?.name || '',
+        action: a.action,
+        createdAt: a.createdAt.toISOString(),
+        branchName: a.contract?.branch?.name || '',
+      }));
+    } catch {
+      // DocumentAuditLog might not exist yet
+    }
+
+    return {
+      totalContracts: contracts.length,
+      fullyDocumented,
+      pendingDocuments,
+      pendingSignatures,
+      pendingApproval,
+      overdueContracts,
+      byBranch: Array.from(branchMap.values()),
+      recentActivity,
+      slaAlerts,
+    };
+  }
+
+  // ─── QR Code Verification ────────────────────────────
+  async verifyContract(id: string, hash?: string) {
+    const contract = await this.prisma.contract.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        contractNumber: true,
+        contractHash: true,
+        status: true,
+        workflowStatus: true,
+        createdAt: true,
+        totalMonths: true,
+        monthlyPayment: true,
+        customer: { select: { name: true } },
+        branch: { select: { name: true } },
+        signatures: {
+          select: { signerType: true, signerName: true, signedAt: true },
+        },
+      },
+    });
+
+    if (!contract || !contract.contractHash) {
+      return { verified: false, reason: 'ไม่พบสัญญาหรือสัญญายังไม่ได้ยืนยัน' };
+    }
+
+    const isHashValid = hash ? contract.contractHash === hash : true;
+    const signerSummary = contract.signatures.map((s) => ({
+      type: s.signerType,
+      name: s.signerName,
+      signedAt: s.signedAt,
+    }));
+
+    return {
+      verified: isHashValid,
+      reason: isHashValid ? 'สัญญาได้รับการยืนยันแล้ว' : 'Hash ไม่ตรงกัน สัญญาอาจถูกแก้ไข',
+      contract: {
+        contractNumber: contract.contractNumber,
+        status: contract.status,
+        workflowStatus: contract.workflowStatus,
+        customerName: contract.customer?.name || '',
+        branchName: contract.branch?.name || '',
+        createdAt: contract.createdAt,
+        totalMonths: contract.totalMonths,
+        monthlyPayment: contract.monthlyPayment,
+      },
+      signatures: signerSummary,
+      hash: contract.contractHash,
+    };
+  }
+
+  async getQrData(id: string) {
+    const contract = await this.prisma.contract.findUnique({
+      where: { id },
+      select: { id: true, contractNumber: true, contractHash: true },
+    });
+
+    if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+
+    // QR code content: verification URL with contract ID and hash
+    const verifyUrl = `/api/contracts/${contract.id}/verify?hash=${contract.contractHash || ''}`;
+
+    return {
+      contractId: contract.id,
+      contractNumber: contract.contractNumber,
+      contractHash: contract.contractHash,
+      verifyUrl,
+      qrContent: JSON.stringify({
+        type: 'BESTCHOICE_CONTRACT',
+        id: contract.id,
+        number: contract.contractNumber,
+        hash: contract.contractHash,
+        verifyUrl,
+      }),
+    };
   }
 }

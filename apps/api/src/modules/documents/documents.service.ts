@@ -58,11 +58,24 @@ export class DocumentsService {
     return this.prisma.contractTemplate.update({ where: { id }, data: { isActive: false } });
   }
 
-  // ─── E-Signature ──────────────────────────────────────
-  async signContract(contractId: string, signatureImage: string, signerType: string, req: { ip?: string; userAgent?: string }) {
+  // ─── E-Signature (พ.ร.บ.ธุรกรรมทางอิเล็กทรอนิกส์ พ.ศ. 2544) ────
+  async signContract(
+    contractId: string,
+    signatureImage: string,
+    signerType: string,
+    req: { ip?: string; userAgent?: string },
+    options?: {
+      signatureSvg?: string;
+      signerName?: string;
+      screenSize?: string;
+      gpsLatitude?: number;
+      gpsLongitude?: number;
+      staffUserId?: string;
+    },
+  ) {
     const contract = await this.prisma.contract.findUnique({
       where: { id: contractId },
-      include: { signatures: true },
+      include: { signatures: true, product: true },
     });
     if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
 
@@ -72,32 +85,66 @@ export class DocumentsService {
       throw new BadRequestException('ไม่สามารถลงนามได้ในสถานะปัจจุบัน');
     }
 
+    // Normalize STAFF to COMPANY for backward compatibility
+    const normalizedType = signerType === 'STAFF' ? 'COMPANY' : signerType;
+
     // Check if already signed by this signer type
-    const existing = contract.signatures.find((s) => s.signerType === signerType);
-    if (existing) throw new BadRequestException(`${signerType} ลงนามไปแล้ว`);
+    const existing = contract.signatures.find((s) => {
+      const existingNormalized = s.signerType === 'STAFF' ? 'COMPANY' : s.signerType;
+      return existingNormalized === normalizedType;
+    });
+    if (existing) throw new BadRequestException(`${signerType} ลงนามไปแล้ว กรุณาเซ็นใหม่โดยลบลายเซ็นเดิมก่อน`);
+
+    // Generate SHA-256 hash of contract content at signing time (พิสูจน์ว่าเอกสารไม่ถูกแก้ไขหลังเซ็น)
+    const contractContent = JSON.stringify({
+      contractNumber: contract.contractNumber,
+      customerId: contract.customerId,
+      productId: contract.productId,
+      sellingPrice: contract.sellingPrice,
+      downPayment: contract.downPayment,
+      totalMonths: contract.totalMonths,
+      monthlyPayment: contract.monthlyPayment,
+      imei: contract.product?.imeiSerial,
+    });
+    const contractHash = crypto.createHash('sha256').update(contractContent).digest('hex');
 
     const signature = await this.prisma.signature.create({
       data: {
         contractId,
         signerType: signerType as SignerType,
         signatureImage,
+        signatureSvg: options?.signatureSvg || null,
+        signerName: options?.signerName || null,
         ipAddress: req.ip || null,
         deviceInfo: req.userAgent || null,
+        screenSize: options?.screenSize || null,
+        gpsLatitude: options?.gpsLatitude || null,
+        gpsLongitude: options?.gpsLongitude || null,
+        staffUserId: options?.staffUserId || null,
+        contractHash,
       },
     });
 
-    // Auto-submit for review when both signatures are collected
-    const allSignatures = [...contract.signatures, { signerType }];
-    const hasCustomer = allSignatures.some((s) => s.signerType === 'CUSTOMER');
-    const hasStaff = allSignatures.some((s) => s.signerType === 'STAFF');
-    if (hasCustomer && hasStaff && (contract.workflowStatus === 'CREATING' || contract.workflowStatus === 'REJECTED')) {
-      await this.prisma.contract.update({
-        where: { id: contractId },
-        data: { workflowStatus: 'PENDING_REVIEW' },
-      });
+    return signature;
+  }
+
+  // ─── Delete Signature (ลบลายเซ็นเพื่อเซ็นใหม่, เฉพาะก่อน ACTIVE) ───
+  async deleteSignature(contractId: string, signerType: string) {
+    const contract = await this.prisma.contract.findUnique({
+      where: { id: contractId },
+      include: { signatures: true },
+    });
+    if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
+
+    if (contract.status !== 'DRAFT') {
+      throw new BadRequestException('ไม่สามารถลบลายเซ็นหลังจากสัญญา ACTIVE แล้ว');
     }
 
-    return signature;
+    const sig = contract.signatures.find((s) => s.signerType === signerType);
+    if (!sig) throw new NotFoundException('ไม่พบลายเซ็นที่ต้องการลบ');
+
+    await this.prisma.signature.delete({ where: { id: sig.id } });
+    return { message: `ลบลายเซ็น ${signerType} สำเร็จ` };
   }
 
   async getSignatures(contractId: string) {

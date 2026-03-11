@@ -45,6 +45,10 @@ const StockAlertsPage = lazy(() => import('@/pages/StockAlertsPage'));
 const StockAdjustmentsPage = lazy(() => import('@/pages/StockAdjustmentsPage'));
 const StockCountPage = lazy(() => import('@/pages/StockCountPage'));
 const SystemStatusPage = lazy(() => import('@/pages/SystemStatusPage'));
+const DocumentDashboardPage = lazy(() => import('@/pages/DocumentDashboardPage'));
+const PDPAPage = lazy(() => import('@/pages/PDPAPage'));
+const ReceiptsPage = lazy(() => import('@/pages/ReceiptsPage'));
+const CustomerPortalPage = lazy(() => import('@/pages/CustomerPortalPage'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -78,6 +82,9 @@ function App() {
           path="/login"
           element={isAuthenticated ? <Navigate to="/" replace /> : <LoginPage />}
         />
+
+        {/* Public Customer Portal (token-based access, no auth) */}
+        <Route path="/customer-access/:token" element={<CustomerPortalPage />} />
 
         {/* Protected Admin Routes */}
         <Route
@@ -199,6 +206,30 @@ function App() {
             }
           />
           <Route path="/payments" element={<PaymentsPage />} />
+          <Route
+            path="/document-dashboard"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}>
+                <DocumentDashboardPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/pdpa"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}>
+                <PDPAPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/receipts"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT']}>
+                <ReceiptsPage />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/overdue" element={<OverduePage />} />
           <Route
             path="/exchange"

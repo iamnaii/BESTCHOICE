@@ -37,6 +37,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [showOcrPanel, setShowOcrPanel] = useState(false);
+  const [viewingDoc, setViewingDoc] = useState<ContractDocument | null>(null);
 
   const { data: documents = [] } = useQuery<ContractDocument[]>({
     queryKey: ['contract-documents', contractId],
@@ -204,6 +205,37 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
   };
 
   const getTypeLabel = (type: string) => DOCUMENT_TYPES.find((t) => t.value === type)?.label || type;
+
+  const openDocument = (doc: ContractDocument) => {
+    if (!doc.fileUrl) return;
+    // For base64 data URLs, convert to blob and open or show in modal
+    if (doc.fileUrl.startsWith('data:')) {
+      const isImage = doc.fileUrl.startsWith('data:image/');
+      if (isImage) {
+        setViewingDoc(doc);
+        return;
+      }
+      // For PDFs and other files, convert base64 to blob URL
+      try {
+        const [header, base64] = doc.fileUrl.split(',');
+        const mimeMatch = header.match(/data:([^;]+)/);
+        const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const blob = new Blob([bytes], { type: mime });
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+      } catch {
+        // Fallback: show in modal
+        setViewingDoc(doc);
+      }
+    } else {
+      // Regular URL, open directly
+      window.open(doc.fileUrl, '_blank');
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -377,14 +409,12 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
                 </div>
                 <div className="flex items-center gap-2">
                   {doc.fileUrl && (
-                    <a
-                      href={doc.fileUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      onClick={() => openDocument(doc)}
                       className="text-xs text-primary-600 hover:text-primary-800 px-2 py-1"
                     >
                       ดู
-                    </a>
+                    </button>
                   )}
                   <button
                     onClick={() => {
@@ -397,6 +427,28 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+      {/* Document viewer modal */}
+      {viewingDoc && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => setViewingDoc(null)}>
+          <div className="relative max-w-4xl max-h-[90vh] w-full" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between bg-white rounded-t-lg px-4 py-2">
+              <div className="text-sm font-medium text-gray-900">
+                {getTypeLabel(viewingDoc.documentType)} - {viewingDoc.fileName}
+              </div>
+              <button onClick={() => setViewingDoc(null)} className="text-gray-500 hover:text-gray-800 text-lg font-bold px-2">
+                &times;
+              </button>
+            </div>
+            <div className="bg-gray-100 rounded-b-lg overflow-auto max-h-[calc(90vh-48px)] flex items-center justify-center">
+              {viewingDoc.fileUrl.startsWith('data:image/') ? (
+                <img src={viewingDoc.fileUrl} alt={viewingDoc.fileName} className="max-w-full max-h-[calc(90vh-48px)] object-contain" />
+              ) : (
+                <iframe src={viewingDoc.fileUrl} title={viewingDoc.fileName} className="w-full h-[80vh] border-0" />
+              )}
+            </div>
           </div>
         </div>
       )}

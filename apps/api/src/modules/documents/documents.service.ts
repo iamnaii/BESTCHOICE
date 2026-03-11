@@ -277,22 +277,28 @@ export class DocumentsService {
 
   // ─── Auto-generate documents after all signatures ────
   async generateSignedDocuments(contractId: string, createdById: string) {
-    const results: { contract?: any; pdpa?: any } = {};
+    const results: { contract?: any; pdpa?: any; errors?: string[] } = {};
+    const errors: string[] = [];
 
     // Generate contract document
     try {
       results.contract = await this.generateDocument(contractId, createdById, 'CONTRACT');
-    } catch (err) {
-      console.error('Failed to auto-generate contract document:', err);
+    } catch (err: any) {
+      const msg = err?.message || 'Unknown error';
+      console.error('Failed to auto-generate contract document:', msg);
+      errors.push(`สัญญา: ${msg}`);
     }
 
     // Generate PDPA document
     try {
       results.pdpa = await this.generatePdpaDocument(contractId, createdById);
-    } catch (err) {
-      console.error('Failed to auto-generate PDPA document:', err);
+    } catch (err: any) {
+      const msg = err?.message || 'Unknown error';
+      console.error('Failed to auto-generate PDPA document:', msg);
+      errors.push(`PDPA: ${msg}`);
     }
 
+    if (errors.length > 0) results.errors = errors;
     return results;
   }
 

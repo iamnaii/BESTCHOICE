@@ -644,6 +644,11 @@ export class ContractsService {
       throw new BadRequestException('สัญญาต้องอยู่ในสถานะ DRAFT');
     }
 
+    // Verify PDPA consent exists (compliance: พ.ร.บ.คุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562)
+    if (!contract.pdpaConsentId) {
+      throw new BadRequestException('ต้องได้รับความยินยอม PDPA ก่อนเปิดใช้งานสัญญา');
+    }
+
     // Require all required signatures (customer + company + 2 witnesses)
     const customerSigned = contract.signatures?.some((s: { signerType: string }) => s.signerType === 'CUSTOMER');
     const companySigned = contract.signatures?.some((s: { signerType: string }) =>
@@ -734,8 +739,16 @@ export class ContractsService {
       throw new BadRequestException('สัญญาต้องอยู่ในสถานะ ACTIVE, OVERDUE หรือ DEFAULT');
     }
 
+    // Count fully paid AND partially paid installments
     const paidPayments = contract.payments.filter((p) => p.status === 'PAID');
-    const remainingMonths = contract.totalMonths - paidPayments.length;
+    const partialPayments = contract.payments.filter((p) => p.status === 'PARTIALLY_PAID');
+    const fullyPaidCount = paidPayments.length;
+    const remainingMonths = contract.totalMonths - fullyPaidCount;
+
+    if (remainingMonths <= 0) {
+      throw new BadRequestException('ไม่มีงวดค้างชำระ ไม่จำเป็นต้องปิดก่อนกำหนด');
+    }
+
     const monthlyInterest = Number(contract.interestTotal) / contract.totalMonths;
     // Use financedAmount (includes commission + VAT) minus interest for true principal
     const truePrincipal = Number(contract.financedAmount) - Number(contract.interestTotal);
@@ -744,7 +757,12 @@ export class ContractsService {
     const remainingPrincipal = monthlyPrincipal * remainingMonths;
     const remainingInterest = monthlyInterest * remainingMonths;
     const discount = remainingInterest * BUSINESS_RULES.EARLY_PAYOFF_DISCOUNT;
-    const totalPayoff = remainingPrincipal + (remainingInterest - discount);
+
+    // Deduct amounts already partially paid
+    const partiallyPaidAmount = partialPayments.reduce(
+      (sum, p) => sum + Number(p.amountPaid || 0), 0,
+    );
+    const totalPayoff = Math.max(0, remainingPrincipal + (remainingInterest - discount) - partiallyPaidAmount);
 
     // Add any unpaid late fees
     const unpaidLateFees = contract.payments
@@ -756,6 +774,7 @@ export class ContractsService {
       remainingPrincipal: Math.round(remainingPrincipal),
       remainingInterest: Math.round(remainingInterest),
       discount: Math.round(discount),
+      partiallyPaidCredit: Math.round(partiallyPaidAmount),
       unpaidLateFees,
       totalPayoff: Math.round(totalPayoff + unpaidLateFees),
     };
@@ -868,32 +887,40 @@ export class ContractsService {
       .sort((a, b) => b.hoursWaiting - a.hoursWaiting)
       .slice(0, 20);
 
-    // Recent document activity from audit log
+    // Recent document activity from audit log (batch fetch to avoid N+1)
     let recentActivity: Array<{ id: string; contractNumber: string; customerName: string; action: string; createdAt: string; branchName: string }> = [];
     try {
       const audits = await this.prisma.documentAuditLog.findMany({
         orderBy: { createdAt: 'desc' },
         take: 20,
       });
-      // Look up contract details for each audit entry
-      for (const a of audits) {
-        const contract = await this.prisma.contract.findUnique({
-          where: { id: a.contractId },
-          select: {
-            contractNumber: true,
-            customer: { select: { name: true } },
-            branch: { select: { name: true } },
-          },
-        });
-        recentActivity.push({
+
+      // Batch-fetch all referenced contracts in one query
+      const contractIds = [...new Set(audits.map((a) => a.contractId))];
+      const auditContracts = contractIds.length > 0
+        ? await this.prisma.contract.findMany({
+            where: { id: { in: contractIds } },
+            select: {
+              id: true,
+              contractNumber: true,
+              customer: { select: { name: true } },
+              branch: { select: { name: true } },
+            },
+          })
+        : [];
+      const contractMap = new Map(auditContracts.map((c) => [c.id, c]));
+
+      recentActivity = audits.map((a) => {
+        const c = contractMap.get(a.contractId);
+        return {
           id: a.id,
-          contractNumber: contract?.contractNumber || '',
-          customerName: contract?.customer?.name || '',
+          contractNumber: c?.contractNumber || '',
+          customerName: c?.customer?.name || '',
           action: a.action,
           createdAt: a.createdAt.toISOString(),
-          branchName: contract?.branch?.name || '',
-        });
-      }
+          branchName: c?.branch?.name || '',
+        };
+      });
     } catch {
       // DocumentAuditLog might not exist yet
     }

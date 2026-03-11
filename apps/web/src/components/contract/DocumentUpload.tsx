@@ -62,6 +62,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
         fileName: file.name,
         fileUrl,
         fileSize: file.size,
+        mimeType: file.type || undefined,
         notes: notes || undefined,
       });
       return data;
@@ -197,12 +198,17 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
 
   const handleUpload = () => {
     if (!selectedFile) return;
-    uploadMutation.mutate(selectedFile);
+    const fileToProcess = selectedFile;
+    const typeToProcess = selectedType;
 
-    // Trigger OCR when uploading ID card image
-    if (selectedType === 'ID_CARD_COPY' && selectedFile.type.startsWith('image/') && !ocrLoading) {
-      performOcr(selectedFile);
-    }
+    uploadMutation.mutate(fileToProcess, {
+      onSuccess: () => {
+        // Trigger OCR only after upload succeeds, using captured references
+        if (typeToProcess === 'ID_CARD_COPY' && fileToProcess.type.startsWith('image/') && !ocrLoading) {
+          performOcr(fileToProcess);
+        }
+      },
+    });
   };
 
   const getTypeLabel = (type: string) => DOCUMENT_TYPES.find((t) => t.value === type)?.label || type;
@@ -218,7 +224,10 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
       }
       // For PDFs and other files, convert base64 to blob URL
       try {
-        const [header, base64] = doc.fileUrl.split(',');
+        const commaIdx = doc.fileUrl.indexOf(',');
+        if (commaIdx === -1) { setViewingDoc(doc); return; }
+        const header = doc.fileUrl.substring(0, commaIdx);
+        const base64 = doc.fileUrl.substring(commaIdx + 1);
         const mimeMatch = header.match(/data:([^;]+)/);
         const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
         const binary = atob(base64);
@@ -226,15 +235,26 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
         for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
         const blob = new Blob([bytes], { type: mime });
         const url = URL.createObjectURL(blob);
-        window.open(url, '_blank');
-        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        const win = window.open(url, '_blank');
+        if (!win) {
+          // Popup blocked - fallback to modal view
+          URL.revokeObjectURL(url);
+          setViewingDoc(doc);
+          return;
+        }
+        // Revoke blob URL after new window loads (cleanup memory)
+        win.addEventListener('load', () => {
+          setTimeout(() => URL.revokeObjectURL(url), 5000);
+        });
       } catch {
         // Fallback: show in modal
         setViewingDoc(doc);
       }
     } else {
-      // Regular URL, open directly
-      window.open(doc.fileUrl, '_blank');
+      const win = window.open(doc.fileUrl, '_blank');
+      if (!win) {
+        toast.error('เบราว์เซอร์บล็อก popup กรุณาอนุญาต popup สำหรับเว็บนี้');
+      }
     }
   };
 
@@ -419,7 +439,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
                   )}
                   <button
                     onClick={() => {
-                      if (confirm('ต้องการลบเอกสารนี้?')) deleteMutation.mutate(doc.id);
+                      if (confirm(`ต้องการลบเอกสาร "${doc.fileName}" (${getTypeLabel(doc.documentType)}) หรือไม่?`)) deleteMutation.mutate(doc.id);
                     }}
                     className="text-xs text-red-600 hover:text-red-800 px-2 py-1"
                   >
@@ -433,7 +453,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
       )}
       {/* Document viewer modal */}
       {viewingDoc && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => setViewingDoc(null)}>
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => setViewingDoc(null)} onKeyDown={(e) => { if (e.key === 'Escape') setViewingDoc(null); }} role="dialog" aria-modal="true" aria-label={`ดูเอกสาร ${viewingDoc.fileName}`} tabIndex={-1} ref={(el) => el?.focus()}>
           <div className="relative max-w-4xl max-h-[90vh] w-full" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between bg-white rounded-t-lg px-4 py-2">
               <div className="text-sm font-medium text-gray-900">

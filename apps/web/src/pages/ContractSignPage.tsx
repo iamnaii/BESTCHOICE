@@ -37,6 +37,41 @@ interface ContractDetail {
   };
 }
 
+/** Normalize STAFF → COMPANY for backward compatibility */
+function normalizeSignerType(type: string): string {
+  return type === 'STAFF' ? 'COMPANY' : type;
+}
+
+/** Canvas drawing helper: get position relative to canvas, accounting for DPI scaling */
+function getCanvasPos(
+  e: React.MouseEvent | React.TouchEvent,
+  canvas: HTMLCanvasElement,
+): { x: number; y: number } {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  if ('touches' in e) {
+    return {
+      x: (e.touches[0].clientX - rect.left) * scaleX,
+      y: (e.touches[0].clientY - rect.top) * scaleY,
+    };
+  }
+  return {
+    x: (e.clientX - rect.left) * scaleX,
+    y: (e.clientY - rect.top) * scaleY,
+  };
+}
+
+/** Setup canvas context for signature drawing */
+function setupCanvasCtx(canvas: HTMLCanvasElement | null) {
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = '#000';
+}
+
 export default function ContractSignPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -47,6 +82,7 @@ export default function ContractSignPage() {
   const [signerName, setSignerName] = useState('');
   const [hasDrawn, setHasDrawn] = useState(false);
   const [signMode, setSignMode] = useState<'choose' | 'draw' | 'saved'>('choose');
+  const [gpsLoading, setGpsLoading] = useState(false);
 
   // Get contract detail to check workflow and customer age
   const { data: contract } = useQuery<ContractDetail>({
@@ -109,29 +145,24 @@ export default function ContractSignPage() {
   // Setup PDPA canvas
   useEffect(() => {
     if (!showPdpaModal) return;
-    const canvas = pdpaCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.lineWidth = 2;
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = '#000';
+    setupCanvasCtx(pdpaCanvasRef.current);
   }, [showPdpaModal]);
 
   // Capture screen size for signature metadata
   const getScreenSize = () => `${window.screen.width}x${window.screen.height}`;
 
-  // Capture GPS location
-  const getGpsLocation = (): Promise<{ lat: number; lng: number } | null> => {
+  // Capture GPS location (non-blocking with short timeout)
+  const getGpsLocation = useCallback((): Promise<{ lat: number; lng: number } | null> => {
     return new Promise((resolve) => {
       if (!navigator.geolocation) { resolve(null); return; }
+      setGpsLoading(true);
       navigator.geolocation.getCurrentPosition(
-        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        () => resolve(null),
-        { timeout: 5000, maximumAge: 60000 },
+        (pos) => { setGpsLoading(false); resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }); },
+        () => { setGpsLoading(false); resolve(null); },
+        { timeout: 3000, maximumAge: 120000 },
       );
     });
-  };
+  }, []);
 
   const signMutation = useMutation({
     mutationFn: async (body: {
@@ -145,19 +176,24 @@ export default function ContractSignPage() {
       const { data } = await api.post(`/contracts/${id}/sign`, body);
       return data;
     },
-    onSuccess: (_data, variables) => {
+    onSuccess: async (_data, variables) => {
       const label = SIGNER_LABELS[variables.signerType as SignerType] || variables.signerType;
       toast.success(`ลงนาม ${label} สำเร็จ`);
-      queryClient.invalidateQueries({ queryKey: ['contract-signatures', id] });
-      queryClient.invalidateQueries({ queryKey: ['contract', id] });
-      queryClient.invalidateQueries({ queryKey: ['contract-preview', id] });
       clearCanvas();
       setSignMode('choose');
       setSignerName('');
-      // Check if all signatures are now complete
-      const updatedSignedTypes = new Set(signatures.map(s => s.signerType === 'STAFF' ? 'COMPANY' : s.signerType));
-      updatedSignedTypes.add(variables.signerType === 'STAFF' ? 'COMPANY' : variables.signerType);
-      const nowAllSigned = requiredSigners.every(t => updatedSignedTypes.has(t));
+
+      // Wait for signatures refetch to get actual server state (avoid stale data race)
+      const freshSignatures = await queryClient.fetchQuery<Signature[]>({
+        queryKey: ['contract-signatures', id],
+        queryFn: async () => { const { data } = await api.get(`/contracts/${id}/signatures`); return data; },
+      });
+      queryClient.invalidateQueries({ queryKey: ['contract', id] });
+      queryClient.invalidateQueries({ queryKey: ['contract-preview', id] });
+
+      const freshSignedTypes = new Set(freshSignatures.map(s => normalizeSignerType(s.signerType)));
+      const nowAllSigned = requiredSigners.every(t => freshSignedTypes.has(t));
+
       if (nowAllSigned) {
         // Auto-generate contract + PDPA documents
         toast.loading('กำลังสร้าง PDF สัญญาและ PDPA...', { id: 'auto-gen' });
@@ -166,7 +202,7 @@ export default function ContractSignPage() {
         });
       } else {
         // Auto-advance to next unsigned signer
-        const nextUnsigned = requiredSigners.find(t => !updatedSignedTypes.has(t));
+        const nextUnsigned = requiredSigners.find(t => !freshSignedTypes.has(t));
         if (nextUnsigned) setSignerType(nextUnsigned);
       }
     },
@@ -189,8 +225,20 @@ export default function ContractSignPage() {
       const { data } = await api.post(`/contracts/${id}/generate-signed-documents`);
       return data;
     },
-    onSuccess: () => {
-      toast.success('สร้างเอกสารสัญญาและ PDPA สำเร็จ');
+    onSuccess: (data) => {
+      // Check if both documents were generated
+      const contractOk = !!data?.contract;
+      const pdpaOk = !!data?.pdpa;
+      if (contractOk && pdpaOk) {
+        toast.success('สร้างเอกสารสัญญาและ PDPA สำเร็จ');
+      } else if (contractOk) {
+        toast.success('สร้างเอกสารสัญญาสำเร็จ (PDPA ไม่สามารถสร้างได้)');
+      } else if (pdpaOk) {
+        toast.success('สร้างเอกสาร PDPA สำเร็จ (สัญญาไม่สามารถสร้างได้)');
+      } else {
+        toast.error('ไม่สามารถสร้างเอกสารได้ กรุณาลองใหม่');
+        return; // Don't navigate away
+      }
       queryClient.invalidateQueries({ queryKey: ['contract', id] });
       queryClient.invalidateQueries({ queryKey: ['contract-documents', id] });
       navigate(`/contracts/${id}`);
@@ -200,39 +248,18 @@ export default function ContractSignPage() {
 
   // Canvas setup
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.lineWidth = 2;
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = '#000';
+    setupCanvasCtx(canvasRef.current);
   }, [signMode]);
-
-  const getPos = (e: React.MouseEvent | React.TouchEvent) => {
-    const canvas = canvasRef.current!;
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    if ('touches' in e) {
-      return {
-        x: (e.touches[0].clientX - rect.left) * scaleX,
-        y: (e.touches[0].clientY - rect.top) * scaleY,
-      };
-    }
-    return {
-      x: (e.clientX - rect.left) * scaleX,
-      y: (e.clientY - rect.top) * scaleY,
-    };
-  };
 
   const startDraw = (e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
+    const canvas = canvasRef.current;
+    if (!canvas) return;
     setIsDrawing(true);
     setHasDrawn(true);
-    const ctx = canvasRef.current?.getContext('2d');
+    const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    const pos = getPos(e);
+    const pos = getCanvasPos(e, canvas);
     ctx.beginPath();
     ctx.moveTo(pos.x, pos.y);
   };
@@ -240,9 +267,11 @@ export default function ContractSignPage() {
   const draw = (e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
     if (!isDrawing) return;
-    const ctx = canvasRef.current?.getContext('2d');
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    const pos = getPos(e);
+    const pos = getCanvasPos(e, canvas);
     ctx.lineTo(pos.x, pos.y);
     ctx.stroke();
   };
@@ -290,11 +319,48 @@ export default function ContractSignPage() {
     });
   };
 
-  // Check which signers have signed (normalize STAFF → COMPANY for backward compat)
-  const signedTypes = new Set(signatures.map(s => s.signerType === 'STAFF' ? 'COMPANY' : s.signerType));
+  // PDPA canvas drawing handlers (reuse getCanvasPos helper)
+  const pdpaStartDraw = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    const canvas = pdpaCanvasRef.current;
+    if (!canvas) return;
+    setPdpaDrawing(true);
+    setPdpaHasDrawn(true);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const pos = getCanvasPos(e, canvas);
+    ctx.beginPath();
+    ctx.moveTo(pos.x, pos.y);
+  };
+
+  const pdpaDraw = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    if (!pdpaDrawing) return;
+    const canvas = pdpaCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const pos = getCanvasPos(e, canvas);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+  };
+
+  const pdpaEndDraw = () => setPdpaDrawing(false);
+
+  const pdpaClear = () => {
+    const canvas = pdpaCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setPdpaHasDrawn(false);
+  };
+
+  // Check which signers have signed
+  const signedTypes = new Set(signatures.map(s => normalizeSignerType(s.signerType)));
   const allSigned = requiredSigners.every(t => signedTypes.has(t));
   const canSign = contract?.status === 'DRAFT';
   const currentAlreadySigned = signedTypes.has(signerType);
+  const isBusy = signMutation.isPending || gpsLoading;
 
   // Show COMPANY option for saved signature
   const showSavedOption = (signerType === 'COMPANY' || signerType === 'WITNESS_1' || signerType === 'WITNESS_2') && savedSignature;
@@ -303,7 +369,7 @@ export default function ContractSignPage() {
     <div>
       <PageHeader
         title="ลงนามสัญญา"
-        subtitle="ลงนามดิจิทัลบนสัญญาผ่อนชำระ (ต้องลงนาม 4 ฝ่าย)"
+        subtitle={`ลงนามดิจิทัลบนสัญญาผ่อนชำระ (ต้องลงนาม ${requiredSigners.length} ฝ่าย)`}
         action={
           <button onClick={() => navigate(`/contracts/${id}`)} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg">
             กลับ
@@ -345,7 +411,7 @@ export default function ContractSignPage() {
 
       {/* PDPA Consent Modal */}
       {showPdpaModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" role="dialog" aria-modal="true" aria-label="ยินยอม PDPA" onKeyDown={(e) => { if (e.key === 'Escape') setShowPdpaModal(false); }} tabIndex={-1} ref={(el: HTMLDivElement | null) => el?.focus()}>
           <div className="bg-white rounded-xl shadow-xl max-w-lg w-full mx-4 p-6 max-h-[90vh] overflow-y-auto">
             <h2 className="text-lg font-semibold text-gray-900 mb-3">ยินยอม PDPA</h2>
             <div className="bg-gray-50 rounded-lg p-4 text-xs text-gray-700 mb-4 max-h-48 overflow-y-auto leading-relaxed">
@@ -370,17 +436,17 @@ export default function ContractSignPage() {
               height={160}
               className="w-full border-2 border-dashed border-gray-300 rounded-lg cursor-crosshair touch-none mb-3"
               style={{ height: '160px' }}
-              onMouseDown={(e) => { e.preventDefault(); setPdpaDrawing(true); setPdpaHasDrawn(true); const ctx = pdpaCanvasRef.current?.getContext('2d'); if (!ctx) return; const rect = pdpaCanvasRef.current!.getBoundingClientRect(); ctx.beginPath(); ctx.moveTo((e.clientX - rect.left) * (460 / rect.width), (e.clientY - rect.top) * (160 / rect.height)); }}
-              onMouseMove={(e) => { e.preventDefault(); if (!pdpaDrawing) return; const ctx = pdpaCanvasRef.current?.getContext('2d'); if (!ctx) return; const rect = pdpaCanvasRef.current!.getBoundingClientRect(); ctx.lineTo((e.clientX - rect.left) * (460 / rect.width), (e.clientY - rect.top) * (160 / rect.height)); ctx.stroke(); }}
-              onMouseUp={() => setPdpaDrawing(false)}
-              onMouseLeave={() => setPdpaDrawing(false)}
-              onTouchStart={(e) => { e.preventDefault(); setPdpaDrawing(true); setPdpaHasDrawn(true); const ctx = pdpaCanvasRef.current?.getContext('2d'); if (!ctx) return; const rect = pdpaCanvasRef.current!.getBoundingClientRect(); ctx.beginPath(); ctx.moveTo((e.touches[0].clientX - rect.left) * (460 / rect.width), (e.touches[0].clientY - rect.top) * (160 / rect.height)); }}
-              onTouchMove={(e) => { e.preventDefault(); if (!pdpaDrawing) return; const ctx = pdpaCanvasRef.current?.getContext('2d'); if (!ctx) return; const rect = pdpaCanvasRef.current!.getBoundingClientRect(); ctx.lineTo((e.touches[0].clientX - rect.left) * (460 / rect.width), (e.touches[0].clientY - rect.top) * (160 / rect.height)); ctx.stroke(); }}
-              onTouchEnd={() => setPdpaDrawing(false)}
+              onMouseDown={pdpaStartDraw}
+              onMouseMove={pdpaDraw}
+              onMouseUp={pdpaEndDraw}
+              onMouseLeave={pdpaEndDraw}
+              onTouchStart={pdpaStartDraw}
+              onTouchMove={pdpaDraw}
+              onTouchEnd={pdpaEndDraw}
             />
             <div className="flex gap-3">
               <button
-                onClick={() => { const ctx = pdpaCanvasRef.current?.getContext('2d'); if (ctx) ctx.clearRect(0, 0, 460, 160); setPdpaHasDrawn(false); }}
+                onClick={pdpaClear}
                 className="px-4 py-2 text-sm border border-gray-300 rounded-lg"
               >
                 ล้าง
@@ -408,7 +474,7 @@ export default function ContractSignPage() {
         <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
           {requiredSigners.map(type => {
             const signed = signedTypes.has(type);
-            const sig = signatures.find(s => (s.signerType === 'STAFF' ? 'COMPANY' : s.signerType) === type);
+            const sig = signatures.find(s => normalizeSignerType(s.signerType) === type);
             return (
               <div key={type} className={`p-2 rounded-lg border text-center ${signed ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
                 <div className={`text-xs font-medium ${signed ? 'text-green-700' : 'text-gray-500'}`}>
@@ -443,7 +509,7 @@ export default function ContractSignPage() {
               <h3 className="text-sm font-semibold text-gray-700 mb-2">ลงนามแล้ว</h3>
               <div className="space-y-2">
                 {signatures.map((sig) => {
-                  const normalizedType = sig.signerType === 'STAFF' ? 'COMPANY' : sig.signerType;
+                  const normalizedType = normalizeSignerType(sig.signerType);
                   return (
                     <div key={sig.id} className="flex items-center gap-3 p-3 bg-green-50 rounded-lg border border-green-200">
                       <img src={sig.signatureImage} alt="signature" className="h-10 border rounded" />
@@ -479,6 +545,14 @@ export default function ContractSignPage() {
                 </select>
               </div>
 
+              {/* GPS loading indicator */}
+              {gpsLoading && (
+                <div className="mb-2 flex items-center gap-2 text-xs text-gray-500">
+                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-400" />
+                  กำลังขอตำแหน่ง GPS...
+                </div>
+              )}
+
               {!currentAlreadySigned && (
                 <div className="bg-white rounded-lg border p-4">
                   {/* Signer name input */}
@@ -505,10 +579,10 @@ export default function ContractSignPage() {
                           <div className="flex gap-2">
                             <button
                               onClick={handleSignFromSaved}
-                              disabled={signMutation.isPending}
+                              disabled={isBusy}
                               className="flex-1 px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
                             >
-                              {signMutation.isPending ? 'กำลังบันทึก...' : 'ใช้ลายเซ็นที่บันทึกไว้'}
+                              {isBusy ? 'กำลังบันทึก...' : 'ใช้ลายเซ็นที่บันทึกไว้'}
                             </button>
                             <button
                               onClick={() => setSignMode('draw')}
@@ -525,7 +599,7 @@ export default function ContractSignPage() {
                         <SignaturePad
                           canvasRef={canvasRef}
                           hasDrawn={hasDrawn}
-                          isPending={signMutation.isPending}
+                          isPending={isBusy}
                           onStartDraw={startDraw}
                           onDraw={draw}
                           onEndDraw={endDraw}
@@ -553,7 +627,7 @@ export default function ContractSignPage() {
                       <SignaturePad
                         canvasRef={canvasRef}
                         hasDrawn={hasDrawn}
-                        isPending={signMutation.isPending}
+                        isPending={isBusy}
                         onStartDraw={startDraw}
                         onDraw={draw}
                         onEndDraw={endDraw}
@@ -578,6 +652,16 @@ export default function ContractSignPage() {
                 <div className="flex items-center justify-center gap-2 text-green-700">
                   <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-green-700" />
                   <span className="text-sm">กำลังสร้าง PDF สัญญาและ PDPA...</span>
+                </div>
+              ) : generateMutation.isError ? (
+                <div>
+                  <p className="text-sm text-red-600 mb-3">สร้างเอกสารไม่สำเร็จ กรุณาลองใหม่</p>
+                  <button
+                    onClick={() => generateMutation.mutate()}
+                    className="px-6 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                  >
+                    ลองสร้างใหม่
+                  </button>
                 </div>
               ) : (
                 <button

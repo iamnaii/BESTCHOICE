@@ -9,7 +9,7 @@ import WorkflowStatusBadge from '@/components/contract/WorkflowStatusBadge';
 import DocumentUpload from '@/components/contract/DocumentUpload';
 import CreditCheckPanel from '@/components/contract/CreditCheckPanel';
 import toast from 'react-hot-toast';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface Payment {
@@ -219,9 +219,12 @@ export default function ContractDetailPage() {
   const [custSameAddress, setCustSameAddress] = useState(false);
   const [custReferences, setCustReferences] = useState<CustReferenceData[]>([{}, {}, {}, {}]);
 
+  // Sync current address with ID card address when "same address" is checked
+  // Use JSON serialization to avoid infinite loop from object reference changes
+  const custAddrIdCardJson = JSON.stringify(custAddrIdCard);
   useEffect(() => {
-    if (custSameAddress) setCustAddrCurrent({ ...custAddrIdCard });
-  }, [custSameAddress, custAddrIdCard]);
+    if (custSameAddress) setCustAddrCurrent(JSON.parse(custAddrIdCardJson));
+  }, [custSameAddress, custAddrIdCardJson]);
 
   const updateCustRef = (index: number, field: keyof CustReferenceData, value: string) => {
     setCustReferences(prev => prev.map((r, i) => i === index ? { ...r, [field]: value } : r));
@@ -333,7 +336,9 @@ export default function ContractDetailPage() {
     if (customerEditForm.occupationDetail) payload.occupationDetail = customerEditForm.occupationDetail;
     if (customerEditForm.salary && !isNaN(parseFloat(customerEditForm.salary))) payload.salary = parseFloat(customerEditForm.salary);
     if (customerEditForm.workplace) payload.workplace = customerEditForm.workplace;
-    if (customerEditForm.birthDate) payload.birthDate = new Date(customerEditForm.birthDate).toISOString();
+    // Send date string as-is (YYYY-MM-DD) to avoid timezone shift when converting to ISO
+    // e.g. "1990-01-01" → new Date("1990-01-01").toISOString() becomes "1989-12-31T17:00:00Z" in UTC+7
+    if (customerEditForm.birthDate) payload.birthDate = customerEditForm.birthDate + 'T00:00:00.000Z';
 
     // Addresses
     const addrIdCard = serializeAddress(custAddrIdCard);

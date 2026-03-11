@@ -56,6 +56,7 @@ export class DocumentsController {
   // ─── E-Signature (พ.ร.บ.ธุรกรรมทางอิเล็กทรอนิกส์ พ.ศ. 2544) ──
   @Post('contracts/:id/sign')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
+  @Throttle({ short: { limit: 10, ttl: 60000 } })
   signContract(
     @Param('id') id: string,
     @Body() dto: SignContractDto,

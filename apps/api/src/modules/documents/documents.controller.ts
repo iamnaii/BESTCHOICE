@@ -97,6 +97,24 @@ export class DocumentsController {
     return this.documentsService.generateDocument(id, user.id, dto.documentType || 'CONTRACT', dto.templateId);
   }
 
+  @Post('contracts/:id/generate-signed-documents')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
+  generateSignedDocuments(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.documentsService.generateSignedDocuments(id, user.id);
+  }
+
+  @Post('contracts/:id/generate-pdpa-document')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
+  generatePdpaDocument(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.documentsService.generatePdpaDocument(id, user.id);
+  }
+
   @Get('contracts/:id/documents')
   getDocuments(@Param('id') id: string) {
     return this.documentsService.getDocuments(id);

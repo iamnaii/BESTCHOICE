@@ -18,6 +18,7 @@ interface ContractDocument {
 
 const DOCUMENT_TYPES = [
   { value: 'SIGNED_CONTRACT', label: 'PDF สัญญาที่เซ็นแล้ว' },
+  { value: 'PDPA_CONSENT', label: 'เอกสารยินยอม PDPA' },
   { value: 'ID_CARD_COPY', label: 'สำเนาบัตรประชาชน' },
   { value: 'KYC', label: 'เอกสาร KYC' },
   { value: 'FACEBOOK_PROFILE', label: 'Profile Facebook' },

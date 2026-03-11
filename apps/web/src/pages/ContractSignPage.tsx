@@ -154,11 +154,21 @@ export default function ContractSignPage() {
       clearCanvas();
       setSignMode('choose');
       setSignerName('');
-      // Auto-advance to next unsigned signer
-      const signedTypes = new Set(signatures.map(s => s.signerType));
-      signedTypes.add(variables.signerType);
-      const nextUnsigned = requiredSigners.find(t => !signedTypes.has(t));
-      if (nextUnsigned) setSignerType(nextUnsigned);
+      // Check if all signatures are now complete
+      const updatedSignedTypes = new Set(signatures.map(s => s.signerType === 'STAFF' ? 'COMPANY' : s.signerType));
+      updatedSignedTypes.add(variables.signerType === 'STAFF' ? 'COMPANY' : variables.signerType);
+      const nowAllSigned = requiredSigners.every(t => updatedSignedTypes.has(t));
+      if (nowAllSigned) {
+        // Auto-generate contract + PDPA documents
+        toast.loading('กำลังสร้าง PDF สัญญาและ PDPA...', { id: 'auto-gen' });
+        generateMutation.mutate(undefined, {
+          onSettled: () => toast.dismiss('auto-gen'),
+        });
+      } else {
+        // Auto-advance to next unsigned signer
+        const nextUnsigned = requiredSigners.find(t => !updatedSignedTypes.has(t));
+        if (nextUnsigned) setSignerType(nextUnsigned);
+      }
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
@@ -176,12 +186,13 @@ export default function ContractSignPage() {
 
   const generateMutation = useMutation({
     mutationFn: async () => {
-      const { data } = await api.post(`/contracts/${id}/generate-document`, { documentType: 'CONTRACT' });
+      const { data } = await api.post(`/contracts/${id}/generate-signed-documents`);
       return data;
     },
     onSuccess: () => {
-      toast.success('สร้างเอกสารสัญญาสำเร็จ');
+      toast.success('สร้างเอกสารสัญญาและ PDPA สำเร็จ');
       queryClient.invalidateQueries({ queryKey: ['contract', id] });
+      queryClient.invalidateQueries({ queryKey: ['contract-documents', id] });
       navigate(`/contracts/${id}`);
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
@@ -561,15 +572,22 @@ export default function ContractSignPage() {
             <div className="bg-green-50 rounded-lg border border-green-200 p-6 text-center">
               <div className="text-green-700 font-semibold text-lg mb-2">ลงนามครบถ้วนแล้ว ({requiredSigners.length} ฝ่าย)</div>
               <p className="text-sm text-green-600 mb-4">
-                ผู้ซื้อ, ผู้ขาย, พยาน 1, พยาน 2{requiresGuardian ? ', ผู้ปกครอง' : ''} ลงนามเรียบร้อย สามารถสร้างเอกสารสัญญาได้
+                ผู้ซื้อ, ผู้ขาย, พยาน 1, พยาน 2{requiresGuardian ? ', ผู้ปกครอง' : ''} ลงนามเรียบร้อย
               </p>
-              <button
-                onClick={() => generateMutation.mutate()}
-                disabled={generateMutation.isPending}
-                className="px-6 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
-              >
-                {generateMutation.isPending ? 'กำลังสร้าง...' : 'สร้างเอกสารสัญญา'}
-              </button>
+              {generateMutation.isPending ? (
+                <div className="flex items-center justify-center gap-2 text-green-700">
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-green-700" />
+                  <span className="text-sm">กำลังสร้าง PDF สัญญาและ PDPA...</span>
+                </div>
+              ) : (
+                <button
+                  onClick={() => generateMutation.mutate()}
+                  disabled={generateMutation.isPending}
+                  className="px-6 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                >
+                  สร้าง PDF สัญญาและ PDPA
+                </button>
+              )}
             </div>
           )}
         </div>

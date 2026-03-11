@@ -186,6 +186,12 @@ export default function ContractDetailPage() {
     accessoryType: '', accessoryBrand: '',
   });
 
+  // Customer edit state
+  const [isEditingCustomer, setIsEditingCustomer] = useState(false);
+  const [customerEditForm, setCustomerEditForm] = useState({
+    name: '', phone: '', nickname: '', occupation: '', salary: '',
+  });
+
   const updateProductMutation = useMutation({
     mutationFn: async (data: Record<string, unknown>) => {
       return api.patch(`/products/${contract!.product.id}`, data);
@@ -199,6 +205,45 @@ export default function ContractDetailPage() {
     },
     onError: (err: any) => toast.error(getErrorMessage(err)),
   });
+
+  const updateCustomerMutation = useMutation({
+    mutationFn: async (data: Record<string, unknown>) => {
+      return api.patch(`/customers/${contract!.customer.id}`, data);
+    },
+    onSuccess: () => {
+      toast.success('แก้ไขข้อมูลลูกค้าสำเร็จ');
+      setIsEditingCustomer(false);
+      invalidateContract();
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+    },
+    onError: (err: any) => toast.error(getErrorMessage(err)),
+  });
+
+  const startEditingCustomer = () => {
+    if (!contract) return;
+    const snap = contract.customerSnapshot;
+    const cust = contract.customer;
+    setCustomerEditForm({
+      name: snap?.name || cust.name || '',
+      phone: snap?.phone || cust.phone || '',
+      nickname: snap?.nickname || '',
+      occupation: snap?.occupation || '',
+      salary: snap?.salary || '',
+    });
+    setIsEditingCustomer(true);
+  };
+
+  const handleCustomerEditSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload: Record<string, unknown> = {
+      name: customerEditForm.name,
+      phone: customerEditForm.phone,
+    };
+    if (customerEditForm.nickname) payload.nickname = customerEditForm.nickname;
+    if (customerEditForm.occupation) payload.occupation = customerEditForm.occupation;
+    if (customerEditForm.salary) payload.salary = Number(customerEditForm.salary);
+    updateCustomerMutation.mutate(payload);
+  };
 
   const startEditingProduct = () => {
     if (!contract) return;
@@ -611,14 +656,24 @@ export default function ContractDetailPage() {
         <div className="space-y-6">
           <div className="bg-white rounded-lg border p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900">ข้อมูลลูกค้า</h2>
-              {contract.customerSnapshot && (
-                <span className="text-[10px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded">ข้อมูล ณ วันที่สร้างสัญญา</span>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-semibold text-gray-900">ข้อมูลลูกค้า</h2>
+                {contract.customerSnapshot && (
+                  <span className="text-[10px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded">ณ วันที่สร้างสัญญา</span>
+                )}
+              </div>
+              {canEdit && (
+                <button onClick={startEditingCustomer} className="px-3 py-1 text-xs bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200">
+                  แก้ไข
+                </button>
               )}
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <Info label="ชื่อ" value={contract.customerSnapshot?.name || contract.customer.name} />
+              <Info label="ชื่อ" value={contract.customerSnapshot?.prefix ? `${contract.customerSnapshot.prefix}${contract.customerSnapshot?.name || contract.customer.name}` : (contract.customerSnapshot?.name || contract.customer.name)} />
+              <Info label="ชื่อเล่น" value={contract.customerSnapshot?.nickname || '-'} />
               <Info label="เบอร์โทร" value={contract.customerSnapshot?.phone || contract.customer.phone} />
+              <Info label="อาชีพ" value={contract.customerSnapshot?.occupation || '-'} />
+              {contract.customerSnapshot?.salary && <Info label="รายได้" value={`${parseFloat(contract.customerSnapshot.salary).toLocaleString()} ฿`} />}
             </div>
             <button onClick={() => navigate(`/customers/${contract.customer.id}`)} className="mt-3 text-xs text-primary-600 hover:underline">ดูรายละเอียดลูกค้า (ข้อมูลปัจจุบัน)</button>
           </div>
@@ -812,6 +867,47 @@ export default function ContractDetailPage() {
               <button type="button" onClick={() => setIsEditingProduct(false)} className="px-4 py-2 text-sm text-gray-600">ยกเลิก</button>
               <button type="submit" disabled={updateProductMutation.isPending} className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
                 {updateProductMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Customer Edit Modal */}
+      {isEditingCustomer && (
+        <Modal isOpen title="แก้ไขข้อมูลลูกค้า" onClose={() => setIsEditingCustomer(false)}>
+          <form onSubmit={handleCustomerEditSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">ชื่อ-นามสกุล</label>
+              <input type="text" value={customerEditForm.name} onChange={(e) => setCustomerEditForm({ ...customerEditForm, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">เบอร์โทร</label>
+                <input type="tel" value={customerEditForm.phone} onChange={(e) => setCustomerEditForm({ ...customerEditForm, phone: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">ชื่อเล่น</label>
+                <input type="text" value={customerEditForm.nickname} onChange={(e) => setCustomerEditForm({ ...customerEditForm, nickname: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">อาชีพ</label>
+                <input type="text" value={customerEditForm.occupation} onChange={(e) => setCustomerEditForm({ ...customerEditForm, occupation: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">รายได้ (บาท)</label>
+                <input type="number" value={customerEditForm.salary} onChange={(e) => setCustomerEditForm({ ...customerEditForm, salary: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+              </div>
+            </div>
+            <div className="text-xs text-gray-400 bg-gray-50 rounded-lg p-3">
+              หมายเหตุ: การแก้ไขข้อมูลลูกค้าจะอัปเดตข้อมูลลูกค้าโดยตรง หากต้องการแก้ไขข้อมูลเพิ่มเติม กรุณาไปที่หน้ารายละเอียดลูกค้า
+            </div>
+            <div className="flex justify-end gap-3 pt-2 border-t">
+              <button type="button" onClick={() => setIsEditingCustomer(false)} className="px-4 py-2 text-sm text-gray-600">ยกเลิก</button>
+              <button type="submit" disabled={updateCustomerMutation.isPending || !customerEditForm.name.trim() || !customerEditForm.phone.trim()} className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
+                {updateCustomerMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
               </button>
             </div>
           </form>

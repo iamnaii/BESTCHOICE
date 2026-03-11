@@ -5,7 +5,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import AddressForm, { AddressData, emptyAddress, displayAddress, serializeAddress, deserializeAddress } from '@/components/ui/AddressForm';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 
 import toast from 'react-hot-toast';
@@ -121,6 +121,11 @@ export default function CustomerDetailPage() {
   const [editAddrCurrent, setEditAddrCurrent] = useState<AddressData>(emptyAddress);
   const [editAddrWork, setEditAddrWork] = useState<AddressData>(emptyAddress);
   const [editRefs, setEditRefs] = useState<ReferenceData[]>([]);
+  const [editSameAddress, setEditSameAddress] = useState(false);
+
+  useEffect(() => {
+    if (editSameAddress) setEditAddrCurrent({ ...editAddrIdCard });
+  }, [editSameAddress, editAddrIdCard]);
 
   const canEdit = user && ['OWNER', 'BRANCH_MANAGER'].includes(user.role);
 
@@ -187,9 +192,14 @@ export default function CustomerDetailPage() {
       workplace: customer.workplace || '',
       birthDate: customer.birthDate ? customer.birthDate.split('T')[0] : '',
     });
-    setEditAddrIdCard(deserializeAddress(customer.addressIdCard));
-    setEditAddrCurrent(deserializeAddress(customer.addressCurrent));
+    const idCardAddr = deserializeAddress(customer.addressIdCard);
+    const currentAddr = deserializeAddress(customer.addressCurrent);
+    setEditAddrIdCard(idCardAddr);
+    setEditAddrCurrent(currentAddr);
     setEditAddrWork(deserializeAddress(customer.addressWork));
+    setEditSameAddress(
+      customer.addressIdCard != null && customer.addressIdCard === customer.addressCurrent
+    );
     // Initialize references with 4 slots
     const existingRefs = (customer.references || []) as ReferenceData[];
     const refs = [...existingRefs];
@@ -487,8 +497,18 @@ export default function CustomerDetailPage() {
             <AddressForm value={editAddrIdCard} onChange={setEditAddrIdCard} />
           </div>
           <div className="border border-gray-200 rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-gray-800 mb-3">ที่อยู่ปัจจุบัน</h3>
-            <AddressForm value={editAddrCurrent} onChange={setEditAddrCurrent} />
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-800">ที่อยู่ปัจจุบัน</h3>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={editSameAddress} onChange={(e) => setEditSameAddress(e.target.checked)} className="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+                <span className="text-xs text-gray-600">เหมือนที่อยู่ตามบัตร</span>
+              </label>
+            </div>
+            {editSameAddress ? (
+              <p className="text-xs text-gray-400 italic">ใช้ที่อยู่เดียวกับที่อยู่ตามบัตรประชาชน</p>
+            ) : (
+              <AddressForm value={editAddrCurrent} onChange={setEditAddrCurrent} />
+            )}
             <div className="mt-3">
               <label className="block text-xs text-gray-500 mb-1">Link Google Map</label>
               <input type="url" value={editForm.googleMapLink} onChange={(e) => setEditForm({ ...editForm, googleMapLink: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="https://maps.google.com/..." />

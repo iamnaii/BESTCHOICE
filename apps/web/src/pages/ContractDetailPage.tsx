@@ -189,8 +189,12 @@ export default function ContractDetailPage() {
   // Customer edit state
   const [isEditingCustomer, setIsEditingCustomer] = useState(false);
   const [customerEditForm, setCustomerEditForm] = useState({
-    name: '', phone: '', nickname: '', occupation: '', salary: '',
+    prefix: '', name: '', nickname: '', birthDate: '',
+    phone: '', phoneSecondary: '', email: '', lineId: '',
+    facebookLink: '', facebookName: '', facebookFriends: '', googleMapLink: '',
+    occupation: '', occupationDetail: '', salary: '', workplace: '',
   });
+  const [customerDataLoading, setCustomerDataLoading] = useState(false);
 
   const updateProductMutation = useMutation({
     mutationFn: async (data: Record<string, unknown>) => {
@@ -219,29 +223,66 @@ export default function ContractDetailPage() {
     onError: (err: any) => toast.error(getErrorMessage(err)),
   });
 
-  const startEditingCustomer = () => {
+  const startEditingCustomer = async () => {
     if (!contract) return;
-    const snap = contract.customerSnapshot;
-    const cust = contract.customer;
-    setCustomerEditForm({
-      name: snap?.name || cust.name || '',
-      phone: snap?.phone || cust.phone || '',
-      nickname: snap?.nickname || '',
-      occupation: snap?.occupation || '',
-      salary: snap?.salary || '',
-    });
+    setCustomerDataLoading(true);
     setIsEditingCustomer(true);
+    try {
+      const { data: fullCustomer } = await api.get(`/customers/${contract.customer.id}`);
+      setCustomerEditForm({
+        prefix: fullCustomer.prefix || '',
+        name: fullCustomer.name || '',
+        nickname: fullCustomer.nickname || '',
+        birthDate: fullCustomer.birthDate ? fullCustomer.birthDate.split('T')[0] : '',
+        phone: fullCustomer.phone || '',
+        phoneSecondary: fullCustomer.phoneSecondary || '',
+        email: fullCustomer.email || '',
+        lineId: fullCustomer.lineId || '',
+        facebookLink: fullCustomer.facebookLink || '',
+        facebookName: fullCustomer.facebookName || '',
+        facebookFriends: fullCustomer.facebookFriends || '',
+        googleMapLink: fullCustomer.googleMapLink || '',
+        occupation: fullCustomer.occupation || '',
+        occupationDetail: fullCustomer.occupationDetail || '',
+        salary: fullCustomer.salary || '',
+        workplace: fullCustomer.workplace || '',
+      });
+    } catch {
+      const snap = contract.customerSnapshot;
+      const cust = contract.customer;
+      setCustomerEditForm({
+        prefix: snap?.prefix || '', name: snap?.name || cust.name || '',
+        nickname: snap?.nickname || '', birthDate: '',
+        phone: snap?.phone || cust.phone || '', phoneSecondary: '',
+        email: '', lineId: '', facebookLink: '', facebookName: '',
+        facebookFriends: '', googleMapLink: '',
+        occupation: snap?.occupation || '', occupationDetail: '',
+        salary: snap?.salary || '', workplace: '',
+      });
+    } finally {
+      setCustomerDataLoading(false);
+    }
   };
 
   const handleCustomerEditSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const payload: Record<string, unknown> = {
-      name: customerEditForm.name,
-      phone: customerEditForm.phone,
-    };
+    const payload: Record<string, unknown> = {};
+    if (customerEditForm.prefix) payload.prefix = customerEditForm.prefix;
+    if (customerEditForm.name) payload.name = customerEditForm.name;
     if (customerEditForm.nickname) payload.nickname = customerEditForm.nickname;
+    if (customerEditForm.phone) payload.phone = customerEditForm.phone;
+    if (customerEditForm.phoneSecondary) payload.phoneSecondary = customerEditForm.phoneSecondary;
+    if (customerEditForm.email) payload.email = customerEditForm.email;
+    if (customerEditForm.lineId) payload.lineId = customerEditForm.lineId;
+    if (customerEditForm.facebookLink) payload.facebookLink = customerEditForm.facebookLink;
+    if (customerEditForm.facebookName) payload.facebookName = customerEditForm.facebookName;
+    if (customerEditForm.facebookFriends) payload.facebookFriends = customerEditForm.facebookFriends;
+    if (customerEditForm.googleMapLink) payload.googleMapLink = customerEditForm.googleMapLink;
     if (customerEditForm.occupation) payload.occupation = customerEditForm.occupation;
-    if (customerEditForm.salary) payload.salary = Number(customerEditForm.salary);
+    if (customerEditForm.occupationDetail) payload.occupationDetail = customerEditForm.occupationDetail;
+    if (customerEditForm.salary && !isNaN(parseFloat(customerEditForm.salary))) payload.salary = parseFloat(customerEditForm.salary);
+    if (customerEditForm.workplace) payload.workplace = customerEditForm.workplace;
+    if (customerEditForm.birthDate) payload.birthDate = new Date(customerEditForm.birthDate).toISOString();
     updateCustomerMutation.mutate(payload);
   };
 
@@ -875,42 +916,121 @@ export default function ContractDetailPage() {
 
       {/* Customer Edit Modal */}
       {isEditingCustomer && (
-        <Modal isOpen title="แก้ไขข้อมูลลูกค้า" onClose={() => setIsEditingCustomer(false)}>
-          <form onSubmit={handleCustomerEditSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">ชื่อ-นามสกุล</label>
-              <input type="text" value={customerEditForm.name} onChange={(e) => setCustomerEditForm({ ...customerEditForm, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required />
+        <Modal isOpen title="แก้ไขข้อมูลลูกค้า" onClose={() => setIsEditingCustomer(false)} size="lg">
+          {customerDataLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">เบอร์โทร</label>
-                <input type="tel" value={customerEditForm.phone} onChange={(e) => setCustomerEditForm({ ...customerEditForm, phone: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">ชื่อเล่น</label>
-                <input type="text" value={customerEditForm.nickname} onChange={(e) => setCustomerEditForm({ ...customerEditForm, nickname: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+          ) : (
+          <form onSubmit={handleCustomerEditSubmit} className="space-y-5 max-h-[75vh] overflow-y-auto pr-1">
+
+            {/* ข้อมูลส่วนตัว */}
+            <div className="border border-gray-200 rounded-lg p-4">
+              <h3 className="text-sm font-semibold text-gray-800 mb-3">ข้อมูลส่วนตัว</h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">คำนำหน้า</label>
+                  <select value={customerEditForm.prefix} onChange={(e) => setCustomerEditForm({ ...customerEditForm, prefix: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white">
+                    <option value="">-- เลือก --</option>
+                    {['นาย', 'นาง', 'นางสาว'].map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">ชื่อ-นามสกุล *</label>
+                  <input type="text" value={customerEditForm.name} onChange={(e) => setCustomerEditForm({ ...customerEditForm, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">ชื่อเล่น</label>
+                  <input type="text" value={customerEditForm.nickname} onChange={(e) => setCustomerEditForm({ ...customerEditForm, nickname: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">วันเกิด</label>
+                  <input type="date" value={customerEditForm.birthDate} onChange={(e) => setCustomerEditForm({ ...customerEditForm, birthDate: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                </div>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">อาชีพ</label>
-                <input type="text" value={customerEditForm.occupation} onChange={(e) => setCustomerEditForm({ ...customerEditForm, occupation: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">รายได้ (บาท)</label>
-                <input type="number" value={customerEditForm.salary} onChange={(e) => setCustomerEditForm({ ...customerEditForm, salary: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+
+            {/* ข้อมูลติดต่อ */}
+            <div className="border border-gray-200 rounded-lg p-4">
+              <h3 className="text-sm font-semibold text-gray-800 mb-3">ข้อมูลติดต่อ</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">เบอร์หลัก *</label>
+                  <input type="tel" value={customerEditForm.phone} onChange={(e) => setCustomerEditForm({ ...customerEditForm, phone: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">เบอร์สำรอง</label>
+                  <input type="tel" value={customerEditForm.phoneSecondary} onChange={(e) => setCustomerEditForm({ ...customerEditForm, phoneSecondary: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">อีเมล</label>
+                  <input type="email" value={customerEditForm.email} onChange={(e) => setCustomerEditForm({ ...customerEditForm, email: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">LINE ID</label>
+                  <input type="text" value={customerEditForm.lineId} onChange={(e) => setCustomerEditForm({ ...customerEditForm, lineId: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">ลิงก์ Facebook</label>
+                  <input type="url" value={customerEditForm.facebookLink} onChange={(e) => setCustomerEditForm({ ...customerEditForm, facebookLink: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">ชื่อ Facebook</label>
+                  <input type="text" value={customerEditForm.facebookName} onChange={(e) => setCustomerEditForm({ ...customerEditForm, facebookName: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">จำนวนเพื่อน Facebook</label>
+                  <input type="text" value={customerEditForm.facebookFriends} onChange={(e) => setCustomerEditForm({ ...customerEditForm, facebookFriends: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Link Google Map</label>
+                  <input type="url" value={customerEditForm.googleMapLink} onChange={(e) => setCustomerEditForm({ ...customerEditForm, googleMapLink: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="https://maps.google.com/..." />
+                </div>
               </div>
             </div>
-            <div className="text-xs text-gray-400 bg-gray-50 rounded-lg p-3">
-              หมายเหตุ: การแก้ไขข้อมูลลูกค้าจะอัปเดตข้อมูลลูกค้าโดยตรง หากต้องการแก้ไขข้อมูลเพิ่มเติม กรุณาไปที่หน้ารายละเอียดลูกค้า
+
+            {/* ข้อมูลที่ทำงาน */}
+            <div className="border border-gray-200 rounded-lg p-4">
+              <h3 className="text-sm font-semibold text-gray-800 mb-3">ข้อมูลที่ทำงาน</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">ชื่อที่ทำงาน</label>
+                  <input type="text" value={customerEditForm.workplace} onChange={(e) => setCustomerEditForm({ ...customerEditForm, workplace: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">อาชีพ</label>
+                  <input type="text" value={customerEditForm.occupation} onChange={(e) => setCustomerEditForm({ ...customerEditForm, occupation: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">รายละเอียดอาชีพ</label>
+                  <input type="text" value={customerEditForm.occupationDetail} onChange={(e) => setCustomerEditForm({ ...customerEditForm, occupationDetail: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">เงินเดือน</label>
+                  <input type="number" value={customerEditForm.salary} onChange={(e) => setCustomerEditForm({ ...customerEditForm, salary: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="0.00" />
+                </div>
+              </div>
             </div>
-            <div className="flex justify-end gap-3 pt-2 border-t">
-              <button type="button" onClick={() => setIsEditingCustomer(false)} className="px-4 py-2 text-sm text-gray-600">ยกเลิก</button>
-              <button type="submit" disabled={updateCustomerMutation.isPending || !customerEditForm.name.trim() || !customerEditForm.phone.trim()} className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
+
+            {/* หมายเหตุ */}
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <div className="text-xs text-amber-700">
+                หากต้องการแก้ไขที่อยู่หรือบุคคลอ้างอิง กรุณาไปที่{' '}
+                <button type="button" onClick={() => { setIsEditingCustomer(false); navigate(`/customers/${contract.customer.id}`); }} className="underline font-medium">
+                  หน้ารายละเอียดลูกค้า
+                </button>
+              </div>
+            </div>
+
+            {/* Submit */}
+            <div className="flex justify-end gap-3 pt-2 sticky bottom-0 bg-white py-3 border-t">
+              <button type="button" onClick={() => setIsEditingCustomer(false)} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg">ยกเลิก</button>
+              <button type="submit" disabled={updateCustomerMutation.isPending || !customerEditForm.name.trim() || !customerEditForm.phone.trim()} className="px-6 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
                 {updateCustomerMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
               </button>
             </div>
           </form>
+          )}
         </Modal>
       )}
 

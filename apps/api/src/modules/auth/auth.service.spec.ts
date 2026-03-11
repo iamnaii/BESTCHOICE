@@ -37,6 +37,7 @@ describe('AuthService', () => {
             },
             refreshToken: {
               create: jest.fn().mockResolvedValue({ id: 'rt-1', token: 'mock-refresh-token' }),
+              findFirst: jest.fn().mockResolvedValue(null),
               findUnique: jest.fn(),
               update: jest.fn().mockResolvedValue({}),
               updateMany: jest.fn().mockResolvedValue({ count: 1 }),

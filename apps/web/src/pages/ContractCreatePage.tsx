@@ -170,7 +170,7 @@ export default function ContractCreatePage() {
   const [custAddrCurrent, setCustAddrCurrent] = useState<AddressData>(emptyAddress);
   const [custSameAddress, setCustSameAddress] = useState(false);
   const [custAddrWork, setCustAddrWork] = useState<AddressData>(emptyAddress);
-  const [custReferences, setCustReferences] = useState<CustReferenceData[]>([{ ...emptyCustReference }, { ...emptyCustReference }]);
+  const [custReferences, setCustReferences] = useState<CustReferenceData[]>([{ ...emptyCustReference }, { ...emptyCustReference }, { ...emptyCustReference }, { ...emptyCustReference }]);
   const queryClient = useQueryClient();
 
   // Sync custAddrCurrent when "same as ID card" is checked
@@ -184,7 +184,7 @@ export default function ContractCreatePage() {
     setCustAddrCurrent(emptyAddress);
     setCustAddrWork(emptyAddress);
     setCustSameAddress(false);
-    setCustReferences([{ ...emptyCustReference }, { ...emptyCustReference }]);
+    setCustReferences([{ ...emptyCustReference }, { ...emptyCustReference }, { ...emptyCustReference }, { ...emptyCustReference }]);
   };
 
   const updateCustRef = (index: number, field: keyof CustReferenceData, value: string) => {
@@ -350,6 +350,66 @@ export default function ContractCreatePage() {
     onError: (err: any) => {
       toast.error(getErrorMessage(err));
     },
+  });
+
+  // Edit product modal state (before contract creation)
+  const [showEditProductModal, setShowEditProductModal] = useState(false);
+  const [editProductForm, setEditProductForm] = useState<Record<string, any>>({});
+
+  const startEditProduct = () => {
+    if (!selectedProduct) return;
+    setEditProductForm({
+      name: selectedProduct.name,
+      brand: selectedProduct.brand,
+      model: selectedProduct.model,
+    });
+    setShowEditProductModal(true);
+  };
+
+  const editProductMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedProduct) return;
+      const { data } = await api.patch(`/products/${selectedProduct.id}`, editProductForm);
+      return data;
+    },
+    onSuccess: (data) => {
+      toast.success('แก้ไขข้อมูลสินค้าสำเร็จ');
+      if (data) setSelectedProduct({ ...selectedProduct!, ...data });
+      queryClient.invalidateQueries({ queryKey: ['products-available'] });
+      setShowEditProductModal(false);
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  // Edit customer modal state (before contract creation)
+  const [showEditCustomerModal, setShowEditCustomerModal] = useState(false);
+  const [editCustForm, setEditCustForm] = useState<Record<string, any>>({});
+
+  const startEditCustomer = () => {
+    if (!selectedCustomer) return;
+    setEditCustForm({
+      name: selectedCustomer.name,
+      phone: selectedCustomer.phone,
+    });
+    setShowEditCustomerModal(true);
+  };
+
+  const editCustomerMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedCustomer) return;
+      const payload: Record<string, unknown> = {};
+      if (editCustForm.name) payload.name = editCustForm.name;
+      if (editCustForm.phone) payload.phone = editCustForm.phone;
+      const { data } = await api.patch(`/customers/${selectedCustomer.id}`, payload);
+      return data;
+    },
+    onSuccess: (data) => {
+      toast.success('แก้ไขข้อมูลลูกค้าสำเร็จ');
+      if (data) setSelectedCustomer({ ...selectedCustomer!, name: data.name, phone: data.phone });
+      queryClient.invalidateQueries({ queryKey: ['customers-search'] });
+      setShowEditCustomerModal(false);
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   // Calculate installment
@@ -1239,13 +1299,19 @@ export default function ContractCreatePage() {
 
             <div className="space-y-3">
               <div className="bg-gray-50 rounded-lg p-4">
-                <div className="text-xs text-gray-500">สินค้า</div>
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-gray-500">สินค้า</div>
+                  <button type="button" onClick={startEditProduct} className="text-xs text-primary-600 hover:text-primary-700 hover:underline">แก้ไข</button>
+                </div>
                 <div className="font-medium">{selectedProduct?.brand} {selectedProduct?.model}</div>
                 <div className="text-sm text-gray-500">{selectedProduct?.name}</div>
               </div>
 
               <div className="bg-gray-50 rounded-lg p-4">
-                <div className="text-xs text-gray-500">ลูกค้า</div>
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-gray-500">ลูกค้า</div>
+                  <button type="button" onClick={startEditCustomer} className="text-xs text-primary-600 hover:text-primary-700 hover:underline">แก้ไข</button>
+                </div>
                 <div className="font-medium">{selectedCustomer?.name}</div>
                 <div className="text-sm text-gray-500">{selectedCustomer?.phone}</div>
               </div>
@@ -1307,6 +1373,52 @@ export default function ContractCreatePage() {
           </div>
         )}
       </div>
+
+      {/* Edit product modal (before contract creation) */}
+      <Modal isOpen={showEditProductModal} onClose={() => setShowEditProductModal(false)} title="แก้ไขข้อมูลสินค้า">
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">ชื่อสินค้า</label>
+            <input type="text" value={editProductForm.name || ''} onChange={(e) => setEditProductForm({ ...editProductForm, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">ยี่ห้อ</label>
+              <input type="text" value={editProductForm.brand || ''} onChange={(e) => setEditProductForm({ ...editProductForm, brand: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">รุ่น</label>
+              <input type="text" value={editProductForm.model || ''} onChange={(e) => setEditProductForm({ ...editProductForm, model: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+            </div>
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" onClick={() => setShowEditProductModal(false)} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg">ยกเลิก</button>
+            <button type="button" onClick={() => editProductMutation.mutate()} disabled={editProductMutation.isPending} className="px-6 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium disabled:opacity-50">
+              {editProductMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Edit customer modal (before contract creation) */}
+      <Modal isOpen={showEditCustomerModal} onClose={() => setShowEditCustomerModal(false)} title="แก้ไขข้อมูลลูกค้า">
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">ชื่อ-นามสกุล</label>
+            <input type="text" value={editCustForm.name || ''} onChange={(e) => setEditCustForm({ ...editCustForm, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">เบอร์โทร</label>
+            <input type="tel" value={editCustForm.phone || ''} onChange={(e) => setEditCustForm({ ...editCustForm, phone: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" onClick={() => setShowEditCustomerModal(false)} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg">ยกเลิก</button>
+            <button type="button" onClick={() => editCustomerMutation.mutate()} disabled={editCustomerMutation.isPending} className="px-6 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium disabled:opacity-50">
+              {editCustomerMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Customer creation modal (full form like CustomersPage) */}
       <Modal isOpen={showCustomerModal} onClose={() => setShowCustomerModal(false)} title="เพิ่มลูกค้าใหม่" size="lg">

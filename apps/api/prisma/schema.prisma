@@ -380,6 +380,9 @@ model Contract {
   // Contract document hash (SHA-256) สำหรับ verify integrity
   contractHash  String? @map("contract_hash")
 
+  // Snapshot ข้อมูลลูกค้า ณ เวลาที่สร้างสัญญา (ป้องกันการเปลี่ยนย้อนหลัง)
+  customerSnapshot Json? @map("customer_snapshot")
+
   // Legal clauses flags (ข้อความตามกฎหมาย)
   hasOwnershipClause     Boolean @default(false) @map("has_ownership_clause") // ม.572
   hasRepossessionClause  Boolean @default(false) @map("has_repossession_clause")

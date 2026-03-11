@@ -126,6 +126,12 @@ export default function ContractDetailPage() {
     enabled: activeTab === 'preview',
   });
 
+  const { data: docChecklist } = useQuery<{ complete: boolean; checklist: { type: string; label: string; present: boolean }[] }>({
+    queryKey: ['contract-doc-checklist', id],
+    queryFn: async () => { const { data } = await api.get(`/contracts/${id}/documents/checklist`); return data; },
+    enabled: !!contract && contract.workflowStatus === 'PENDING_REVIEW',
+  });
+
   const invalidateContract = () => {
     queryClient.invalidateQueries({ queryKey: ['contract', id] });
     queryClient.invalidateQueries({ queryKey: ['contract-preview', id] });
@@ -463,14 +469,17 @@ export default function ContractDetailPage() {
             <button
               onClick={() => {
                 setActiveTab('preview');
-                setTimeout(() => {
+                const tryPrint = (attempts = 0) => {
                   const iframe = document.querySelector('iframe[title="contract-preview"]') as HTMLIFrameElement;
-                  if (iframe?.contentWindow) {
+                  if (iframe?.contentWindow && iframe.contentDocument?.body?.innerHTML) {
                     iframe.contentWindow.print();
+                  } else if (attempts < 10) {
+                    setTimeout(() => tryPrint(attempts + 1), 300);
                   } else {
                     window.print();
                   }
-                }, 500);
+                };
+                setTimeout(() => tryPrint(), 500);
               }}
               className="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
             >
@@ -534,6 +543,23 @@ export default function ContractDetailPage() {
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
           <h3 className="text-sm font-semibold text-amber-800 mb-3">รอการตรวจสอบจากคุณ</h3>
           <div className="space-y-3">
+            {/* Document checklist */}
+            {docChecklist && (
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-amber-700">เอกสารที่ต้องมี:</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+                  {docChecklist.checklist.map((item) => (
+                    <div key={item.type} className={`flex items-center gap-1.5 text-xs ${item.present ? 'text-green-700' : 'text-red-600'}`}>
+                      <span>{item.present ? '✓' : '✗'}</span>
+                      <span>{item.label}</span>
+                    </div>
+                  ))}
+                </div>
+                {!docChecklist.complete && (
+                  <p className="text-xs text-red-600 font-medium mt-1">กรุณาอัปโหลดเอกสารให้ครบก่อนอนุมัติ</p>
+                )}
+              </div>
+            )}
             <div>
               <label className="block text-xs text-amber-700 mb-1">หมายเหตุ (ไม่บังคับ)</label>
               <input
@@ -547,7 +573,8 @@ export default function ContractDetailPage() {
             <div className="flex gap-2">
               <button
                 onClick={() => approveMutation.mutate()}
-                disabled={approveMutation.isPending}
+                disabled={approveMutation.isPending || (docChecklist && !docChecklist.complete)}
+                title={docChecklist && !docChecklist.complete ? 'เอกสารยังไม่ครบ' : ''}
                 className="px-6 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
               >
                 {approveMutation.isPending ? 'กำลังอนุมัติ...' : 'อนุมัติสัญญา'}
@@ -1256,7 +1283,7 @@ function ContractPreviewFrame({ html }: { html: string }) {
       ref={iframeRef}
       title="contract-preview"
       className="w-full h-full border-0"
-      sandbox="allow-same-origin allow-popups"
+      sandbox="allow-same-origin allow-popups allow-modals"
     />
   );
 }

@@ -344,9 +344,10 @@ export default function ContractCreatePage() {
   // Calculate installment
   const getSellingPrice = () => {
     if (!selectedProduct) return 0;
-    // For installment contracts, prefer "ราคาผ่อน" price, then default, then first available
+    // For installment contracts, prefer "ราคาผ่อน BESTCHOICE", then any "ราคาผ่อน*", then default, then first available
     const price =
-      selectedProduct.prices.find((p) => p.label === 'ราคาผ่อน') ||
+      selectedProduct.prices.find((p) => p.label === 'ราคาผ่อน BESTCHOICE') ||
+      selectedProduct.prices.find((p) => p.label.startsWith('ราคาผ่อน')) ||
       selectedProduct.prices.find((p) => p.isDefault) ||
       selectedProduct.prices[0];
     return price ? parseFloat(price.amount) : 0;

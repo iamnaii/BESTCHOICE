@@ -41,6 +41,9 @@ import { PricingTemplatesModule } from './modules/pricing-templates/pricing-temp
 import { ContractDocumentsModule } from './modules/contract-documents/contract-documents.module';
 import { CreditCheckModule } from './modules/credit-check/credit-check.module';
 import { OcrModule } from './modules/ocr/ocr.module';
+import { PDPAModule } from './modules/pdpa/pdpa.module';
+import { ReceiptsModule } from './modules/receipts/receipts.module';
+import { CustomerAccessModule } from './modules/customer-access/customer-access.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
 import { CsrfGuard } from './guards/csrf.guard';
@@ -102,6 +105,10 @@ import { CsrfGuard } from './guards/csrf.guard';
     // MASTER: Polish
     MigrationModule,
     AuditModule,
+    // Legal Compliance & PDPA
+    PDPAModule,
+    ReceiptsModule,
+    CustomerAccessModule,
     // MASTER: Management
     UsersModule,
     SettingsModule,

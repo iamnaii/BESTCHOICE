@@ -2,7 +2,6 @@ import { IsString, IsOptional, IsNumber, MaxLength, Matches } from 'class-valida
 
 export class UploadContractDocumentDto {
   @IsString()
-  @Matches(/^(SIGNED_CONTRACT|ID_CARD_COPY|KYC|FACEBOOK_PROFILE|FACEBOOK_POST|LINE_PROFILE|DEVICE_RECEIPT_PHOTO|BANK_STATEMENT|OTHER)$/, { message: 'ประเภทเอกสารไม่ถูกต้อง' })
   documentType: string; // ContractDocumentType
 
   @IsString()
@@ -17,6 +16,10 @@ export class UploadContractDocumentDto {
   @IsNumber()
   @IsOptional()
   fileSize?: number;
+
+  @IsString()
+  @IsOptional()
+  mimeType?: string;
 
   @IsString()
   @IsOptional()

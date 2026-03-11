@@ -5,11 +5,34 @@ import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import toast from 'react-hot-toast';
 
+type SignerType = 'CUSTOMER' | 'COMPANY' | 'WITNESS_1' | 'WITNESS_2' | 'GUARDIAN';
+
+const SIGNER_LABELS: Record<SignerType, string> = {
+  CUSTOMER: 'ผู้ซื้อ (ผู้เช่าซื้อ)',
+  COMPANY: 'ผู้ขาย (ผู้ให้เช่าซื้อ)',
+  WITNESS_1: 'พยาน 1',
+  WITNESS_2: 'พยาน 2',
+  GUARDIAN: 'ผู้ปกครอง',
+};
+
+const REQUIRED_SIGNERS: SignerType[] = ['CUSTOMER', 'COMPANY', 'WITNESS_1', 'WITNESS_2'];
+
 interface Signature {
   id: string;
   signerType: string;
+  signerName?: string;
   signatureImage: string;
   signedAt: string;
+}
+
+interface ContractDetail {
+  id: string;
+  status: string;
+  workflowStatus: string;
+  contractNumber: string;
+  customer?: {
+    birthDate?: string;
+  };
 }
 
 export default function ContractSignPage() {
@@ -18,15 +41,29 @@ export default function ContractSignPage() {
   const queryClient = useQueryClient();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
-  const [signerType, setSignerType] = useState<'CUSTOMER' | 'STAFF'>('CUSTOMER');
+  const [signerType, setSignerType] = useState<SignerType>('CUSTOMER');
+  const [signerName, setSignerName] = useState('');
   const [hasDrawn, setHasDrawn] = useState(false);
   const [signMode, setSignMode] = useState<'choose' | 'draw' | 'saved'>('choose');
 
-  // Get contract detail to check workflow
-  const { data: contract } = useQuery<{ id: string; status: string; workflowStatus: string; contractNumber: string }>({
+  // Get contract detail to check workflow and customer age
+  const { data: contract } = useQuery<ContractDetail>({
     queryKey: ['contract', id],
     queryFn: async () => { const { data } = await api.get(`/contracts/${id}`); return data; },
   });
+
+  // Determine if guardian signature is required (customer age 17-19)
+  const requiresGuardian = (() => {
+    if (!contract?.customer?.birthDate) return false;
+    const birth = new Date(contract.customer.birthDate);
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const m = today.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+    return age >= 17 && age < 20;
+  })();
+
+  const requiredSigners = requiresGuardian ? [...REQUIRED_SIGNERS, 'GUARDIAN' as SignerType] : REQUIRED_SIGNERS;
 
   // Get contract preview
   const { data: preview } = useQuery<{ html: string }>({
@@ -47,20 +84,47 @@ export default function ContractSignPage() {
   });
   const savedSignature = savedSigData?.signatureImage || null;
 
+  // Capture screen size for signature metadata
+  const getScreenSize = () => `${window.screen.width}x${window.screen.height}`;
+
+  // Capture GPS location
+  const getGpsLocation = (): Promise<{ lat: number; lng: number } | null> => {
+    return new Promise((resolve) => {
+      if (!navigator.geolocation) { resolve(null); return; }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        () => resolve(null),
+        { timeout: 5000, maximumAge: 60000 },
+      );
+    });
+  };
+
   const signMutation = useMutation({
-    mutationFn: async (body: { signatureImage: string; signerType: string }) => {
+    mutationFn: async (body: {
+      signatureImage: string;
+      signerType: string;
+      signerName?: string;
+      screenSize?: string;
+      gpsLatitude?: number;
+      gpsLongitude?: number;
+    }) => {
       const { data } = await api.post(`/contracts/${id}/sign`, body);
       return data;
     },
     onSuccess: (_data, variables) => {
-      toast.success(`ลงนาม ${variables.signerType === 'CUSTOMER' ? 'ลูกค้า' : 'พนักงาน'} สำเร็จ`);
+      const label = SIGNER_LABELS[variables.signerType as SignerType] || variables.signerType;
+      toast.success(`ลงนาม ${label} สำเร็จ`);
       queryClient.invalidateQueries({ queryKey: ['contract-signatures', id] });
       queryClient.invalidateQueries({ queryKey: ['contract', id] });
       queryClient.invalidateQueries({ queryKey: ['contract-preview', id] });
       clearCanvas();
       setSignMode('choose');
-      // Auto-switch to staff if customer just signed
-      if (variables.signerType === 'CUSTOMER') setSignerType('STAFF');
+      setSignerName('');
+      // Auto-advance to next unsigned signer
+      const signedTypes = new Set(signatures.map(s => s.signerType));
+      signedTypes.add(variables.signerType);
+      const nextUnsigned = requiredSigners.find(t => !signedTypes.has(t));
+      if (nextUnsigned) setSignerType(nextUnsigned);
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
@@ -149,36 +213,52 @@ export default function ContractSignPage() {
     setHasDrawn(false);
   };
 
-  const handleSignFromCanvas = () => {
+  const handleSignFromCanvas = async () => {
     const canvas = canvasRef.current;
     if (!canvas || !hasDrawn) { toast.error('กรุณาลงนามก่อน'); return; }
     const signatureImage = canvas.toDataURL('image/png');
-    // Save staff signature for future use
-    if (signerType === 'STAFF') {
+    // Save staff/company signature for future use
+    if (signerType === 'COMPANY') {
       saveSignatureMutation.mutate(signatureImage);
     }
-    signMutation.mutate({ signatureImage, signerType });
+    const gps = await getGpsLocation();
+    signMutation.mutate({
+      signatureImage,
+      signerType,
+      signerName: signerName || undefined,
+      screenSize: getScreenSize(),
+      gpsLatitude: gps?.lat,
+      gpsLongitude: gps?.lng,
+    });
   };
 
-  const handleSignFromSaved = () => {
+  const handleSignFromSaved = async () => {
     if (!savedSignature) { toast.error('ไม่พบลายเซ็นที่บันทึกไว้'); return; }
-    signMutation.mutate({ signatureImage: savedSignature, signerType });
+    const gps = await getGpsLocation();
+    signMutation.mutate({
+      signatureImage: savedSignature,
+      signerType,
+      signerName: signerName || undefined,
+      screenSize: getScreenSize(),
+      gpsLatitude: gps?.lat,
+      gpsLongitude: gps?.lng,
+    });
   };
 
-  const customerSigned = signatures.some((s) => s.signerType === 'CUSTOMER');
-  const staffSigned = signatures.some((s) => s.signerType === 'STAFF');
-  const allSigned = customerSigned && staffSigned;
-  // Allow signing when contract status is DRAFT (any workflow stage)
+  // Check which signers have signed (normalize STAFF → COMPANY for backward compat)
+  const signedTypes = new Set(signatures.map(s => s.signerType === 'STAFF' ? 'COMPANY' : s.signerType));
+  const allSigned = requiredSigners.every(t => signedTypes.has(t));
   const canSign = contract?.status === 'DRAFT';
+  const currentAlreadySigned = signedTypes.has(signerType);
 
-  // Determine if current signer type is already signed
-  const currentAlreadySigned = signerType === 'CUSTOMER' ? customerSigned : staffSigned;
+  // Show COMPANY option for saved signature
+  const showSavedOption = (signerType === 'COMPANY' || signerType === 'WITNESS_1' || signerType === 'WITNESS_2') && savedSignature;
 
   return (
     <div>
       <PageHeader
         title="ลงนามสัญญา"
-        subtitle="ลงนามดิจิทัลบนสัญญาผ่อนชำระ"
+        subtitle="ลงนามดิจิทัลบนสัญญาผ่อนชำระ (ต้องลงนาม 4 ฝ่าย)"
         action={
           <button onClick={() => navigate(`/contracts/${id}`)} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg">
             กลับ
@@ -193,6 +273,26 @@ export default function ContractSignPage() {
           <div className="text-xs text-amber-600 mt-1">สัญญาไม่อยู่ในสถานะร่าง (สถานะปัจจุบัน: {contract.status})</div>
         </div>
       )}
+
+      {/* Signature Checklist */}
+      <div className="mb-6 bg-white rounded-lg border p-4">
+        <h3 className="text-sm font-semibold text-gray-700 mb-3">สถานะการลงนาม ({requiredSigners.filter(t => signedTypes.has(t)).length}/{requiredSigners.length})</h3>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+          {requiredSigners.map(type => {
+            const signed = signedTypes.has(type);
+            const sig = signatures.find(s => (s.signerType === 'STAFF' ? 'COMPANY' : s.signerType) === type);
+            return (
+              <div key={type} className={`p-2 rounded-lg border text-center ${signed ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
+                <div className={`text-xs font-medium ${signed ? 'text-green-700' : 'text-gray-500'}`}>
+                  {signed ? '\u2705' : '\u2B1C'} {SIGNER_LABELS[type]}
+                </div>
+                {sig?.signerName && <div className="text-[10px] text-gray-500 mt-0.5">{sig.signerName}</div>}
+                {sig && <div className="text-[10px] text-gray-400">{new Date(sig.signedAt).toLocaleString('th-TH')}</div>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Contract Preview (A4 via iframe) */}
@@ -214,17 +314,21 @@ export default function ContractSignPage() {
             <div className="mb-4">
               <h3 className="text-sm font-semibold text-gray-700 mb-2">ลงนามแล้ว</h3>
               <div className="space-y-2">
-                {signatures.map((sig) => (
-                  <div key={sig.id} className="flex items-center gap-3 p-3 bg-green-50 rounded-lg border border-green-200">
-                    <img src={sig.signatureImage} alt="signature" className="h-10 border rounded" />
-                    <div>
-                      <div className="text-sm font-medium text-green-700">
-                        {sig.signerType === 'CUSTOMER' ? 'ลูกค้า' : 'พนักงาน'}
+                {signatures.map((sig) => {
+                  const normalizedType = sig.signerType === 'STAFF' ? 'COMPANY' : sig.signerType;
+                  return (
+                    <div key={sig.id} className="flex items-center gap-3 p-3 bg-green-50 rounded-lg border border-green-200">
+                      <img src={sig.signatureImage} alt="signature" className="h-10 border rounded" />
+                      <div>
+                        <div className="text-sm font-medium text-green-700">
+                          {SIGNER_LABELS[normalizedType as SignerType] || normalizedType}
+                        </div>
+                        {sig.signerName && <div className="text-xs text-green-600">{sig.signerName}</div>}
+                        <div className="text-xs text-green-600">{new Date(sig.signedAt).toLocaleString('th-TH')}</div>
                       </div>
-                      <div className="text-xs text-green-600">{new Date(sig.signedAt).toLocaleString('th-TH')}</div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
@@ -236,21 +340,35 @@ export default function ContractSignPage() {
                 <h2 className="text-lg font-semibold text-gray-900">ลงนาม</h2>
                 <select
                   value={signerType}
-                  onChange={(e) => { setSignerType(e.target.value as 'CUSTOMER' | 'STAFF'); setSignMode('choose'); }}
+                  onChange={(e) => { setSignerType(e.target.value as SignerType); setSignMode('choose'); setSignerName(''); }}
                   className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
                 >
-                  <option value="CUSTOMER" disabled={customerSigned}>ลูกค้า {customerSigned ? '(ลงนามแล้ว)' : ''}</option>
-                  <option value="STAFF" disabled={staffSigned}>พนักงาน {staffSigned ? '(ลงนามแล้ว)' : ''}</option>
+                  {requiredSigners.map(type => (
+                    <option key={type} value={type} disabled={signedTypes.has(type)}>
+                      {SIGNER_LABELS[type]} {signedTypes.has(type) ? '(ลงนามแล้ว)' : ''}
+                    </option>
+                  ))}
                 </select>
               </div>
 
               {!currentAlreadySigned && (
                 <div className="bg-white rounded-lg border p-4">
-                  {/* Mode chooser: show saved signature option for STAFF when available */}
+                  {/* Signer name input */}
+                  <div className="mb-3">
+                    <label className="block text-xs text-gray-500 mb-1">ชื่อผู้ลงนาม</label>
+                    <input
+                      type="text"
+                      value={signerName}
+                      onChange={(e) => setSignerName(e.target.value)}
+                      placeholder={`ระบุชื่อ${SIGNER_LABELS[signerType]}`}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                  </div>
+
+                  {/* Mode chooser: show saved signature option for staff-like signers */}
                   {signMode === 'choose' && (
                     <div className="space-y-3">
-                      {/* Show saved signature option for STAFF */}
-                      {signerType === 'STAFF' && savedSignature && (
+                      {showSavedOption && (
                         <div className="border-2 border-primary-200 bg-primary-50 rounded-lg p-4">
                           <div className="text-sm font-medium text-primary-800 mb-2">ลายเซ็นที่บันทึกไว้</div>
                           <div className="bg-white rounded border p-3 flex justify-center mb-3">
@@ -274,8 +392,8 @@ export default function ContractSignPage() {
                         </div>
                       )}
 
-                      {/* If no saved signature or is customer, go straight to draw mode */}
-                      {(signerType === 'CUSTOMER' || !savedSignature) && (
+                      {/* If no saved signature or is customer/guardian, go straight to draw mode */}
+                      {!showSavedOption && (
                         <SignaturePad
                           canvasRef={canvasRef}
                           hasDrawn={hasDrawn}
@@ -295,7 +413,7 @@ export default function ContractSignPage() {
                     <div>
                       <div className="flex items-center justify-between mb-2">
                         <div className="text-xs text-gray-500">เซ็นลายเซ็นใหม่</div>
-                        {signerType === 'STAFF' && savedSignature && (
+                        {showSavedOption && (
                           <button
                             onClick={() => setSignMode('choose')}
                             className="text-xs text-primary-600 hover:underline"
@@ -324,8 +442,10 @@ export default function ContractSignPage() {
           {/* Generate Document */}
           {allSigned && (
             <div className="bg-green-50 rounded-lg border border-green-200 p-6 text-center">
-              <div className="text-green-700 font-semibold text-lg mb-2">ลงนามครบถ้วนแล้ว</div>
-              <p className="text-sm text-green-600 mb-4">ลูกค้าและพนักงานลงนามเรียบร้อย สามารถสร้างเอกสารสัญญาได้</p>
+              <div className="text-green-700 font-semibold text-lg mb-2">ลงนามครบถ้วนแล้ว ({requiredSigners.length} ฝ่าย)</div>
+              <p className="text-sm text-green-600 mb-4">
+                ผู้ซื้อ, ผู้ขาย, พยาน 1, พยาน 2{requiresGuardian ? ', ผู้ปกครอง' : ''} ลงนามเรียบร้อย สามารถสร้างเอกสารสัญญาได้
+              </p>
               <button
                 onClick={() => generateMutation.mutate()}
                 disabled={generateMutation.isPending}

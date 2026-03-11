@@ -116,7 +116,39 @@ enum ConditionGrade {
 
 enum SignerType {
   CUSTOMER
-  STAFF
+  COMPANY // ผู้ขาย/ผู้ให้เช่าซื้อ (พนักงาน)
+  WITNESS_1 // พยานคนที่ 1
+  WITNESS_2 // พยานคนที่ 2
+  GUARDIAN // ผู้ปกครอง (อายุ 17-19)
+  STAFF @map("STAFF") // legacy alias
+}
+
+enum ConsentStatus {
+  PENDING
+  GRANTED
+  REVOKED
+}
+
+enum DSARRequestType {
+  ACCESS // สิทธิ์เข้าถึง
+  RECTIFICATION // สิทธิ์แก้ไข
+  DELETION // สิทธิ์ลบ
+  DATA_PORTABILITY // สิทธิ์โอนข้อมูล
+  OBJECTION // สิทธิ์คัดค้าน
+}
+
+enum DSARStatus {
+  SUBMITTED
+  IN_PROGRESS
+  COMPLETED
+  REJECTED
+}
+
+enum DocumentRetentionStatus {
+  ACTIVE
+  PENDING_DELETION
+  LEGAL_HOLD
+  DELETED
 }
 
 enum NotificationChannel {
@@ -164,12 +196,22 @@ enum CreditCheckStatus {
 enum ContractDocumentType {
   SIGNED_CONTRACT
   ID_CARD_COPY
-  KYC
+  ID_CARD_BACK
+  KYC_SELFIE // รูปถ่ายลูกค้าถือบัตรประชาชน
+  DEVICE_PHOTO // รูปถ่ายสินค้า+IMEI
+  DEVICE_IMEI_PHOTO // รูปหน้าจอแสดง IMEI
+  DOWN_PAYMENT_RECEIPT // หลักฐานการชำระเงินดาวน์
+  PDPA_CONSENT // เอกสาร Consent PDPA
+  GUARDIAN_DOC // เอกสารผู้ปกครอง (อายุ 17-19)
+  PAYMENT_SCHEDULE // ตารางผ่อนชำระ
+  PAYMENT_RECEIPT // ใบเสร็จรับเงิน
+  ADDENDUM // สัญญาแก้ไขเพิ่มเติม
   FACEBOOK_PROFILE
   FACEBOOK_POST
   LINE_PROFILE
   DEVICE_RECEIPT_PHOTO
   BANK_STATEMENT
+  KYC // legacy
   OTHER
 }
 
@@ -266,6 +308,14 @@ model Customer {
   addressWork      String?   @map("address_work") // ที่อยู่ที่ทำงาน
   references       Json? // บุคคลอ้างอิง [{prefix, firstName, lastName, phone, relationship}]
   documents        String[]  @default([]) // array of file URLs
+
+  // Guardian (ผู้ปกครอง) — สำหรับลูกค้าอายุ 17-19
+  guardianName       String?  @map("guardian_name")
+  guardianNationalId String?  @map("guardian_national_id")
+  guardianPhone      String?  @map("guardian_phone")
+  guardianRelation   String?  @map("guardian_relation")
+  guardianAddress    String?  @map("guardian_address")
+
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
   deletedAt        DateTime? @map("deleted_at")
@@ -273,6 +323,8 @@ model Customer {
   contracts    Contract[]
   sales        Sale[]
   creditChecks CreditCheck[]
+  pdpaConsents PDPAConsent[]
+  dsarRequests DSARRequest[]
 
   @@index([phone])
   @@index([name])
@@ -322,6 +374,24 @@ model Contract {
   reviewedBy     User?           @relation("ContractReviewer", fields: [reviewedById], references: [id])
   interestConfig InterestConfig? @relation(fields: [interestConfigId], references: [id])
 
+  // PDPA consent ที่ผูกกับสัญญานี้
+  pdpaConsentId String? @unique @map("pdpa_consent_id")
+
+  // Contract document hash (SHA-256) สำหรับ verify integrity
+  contractHash  String? @map("contract_hash")
+
+  // Legal clauses flags (ข้อความตามกฎหมาย)
+  hasOwnershipClause     Boolean @default(false) @map("has_ownership_clause") // ม.572
+  hasRepossessionClause  Boolean @default(false) @map("has_repossession_clause")
+  hasEarlyPayoffClause   Boolean @default(false) @map("has_early_payoff_clause")
+  hasNoTransferClause    Boolean @default(false) @map("has_no_transfer_clause")
+  hasAcknowledgement     Boolean @default(false) @map("has_acknowledgement") // ผู้ซื้อได้อ่านและเข้าใจ
+
+  // Retention policy
+  retentionStatus       DocumentRetentionStatus @default(ACTIVE) @map("retention_status")
+  retentionExpiry       DateTime? @map("retention_expiry")
+  legalHoldReason       String?   @map("legal_hold_reason")
+
   payments          Payment[]
   signatures        Signature[]
   eDocuments        EDocument[]
@@ -330,6 +400,8 @@ model Contract {
   sale              Sale?
   contractDocuments ContractDocument[]
   creditCheck       CreditCheck?
+  pdpaConsent       PDPAConsent? @relation(fields: [pdpaConsentId], references: [id])
+  receipts          Receipt[]
 
   @@index([customerId])
   @@index([branchId])
@@ -340,6 +412,7 @@ model Contract {
   @@index([status, deletedAt, branchId])
   @@index([workflowStatus])
   @@index([parentContractId])
+  @@index([retentionStatus])
   @@map("contracts")
 }
 
@@ -811,9 +884,16 @@ model Signature {
   id             String     @id @default(uuid())
   contractId     String     @map("contract_id")
   signerType     SignerType @map("signer_type")
-  signatureImage String     @map("signature_image") // file URL
+  signatureImage String     @map("signature_image") @db.Text // base64 PNG
+  signatureSvg   String?    @map("signature_svg") @db.Text // SVG path data
+  signerName     String?    @map("signer_name") // ชื่อผู้เซ็น
   ipAddress      String?    @map("ip_address")
-  deviceInfo     String?    @map("device_info")
+  deviceInfo     String?    @map("device_info") // User-Agent
+  screenSize     String?    @map("screen_size") // ขนาดหน้าจอ
+  gpsLatitude    Float?     @map("gps_latitude")
+  gpsLongitude   Float?     @map("gps_longitude")
+  staffUserId    String?    @map("staff_user_id") // รหัสพนักงานที่ดำเนินการ
+  contractHash   String?    @map("contract_hash") // SHA-256 hash ของสัญญา ณ เวลาเซ็น
   signedAt       DateTime   @default(now()) @map("signed_at")
 
   contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
@@ -1001,21 +1081,28 @@ model InterestConfig {
 }
 
 model ContractDocument {
-  id           String               @id @default(uuid())
-  contractId   String               @map("contract_id")
-  documentType ContractDocumentType @map("document_type")
-  fileName     String               @map("file_name")
-  fileUrl      String               @map("file_url")
-  fileSize     Int?                 @map("file_size")
-  notes        String?
-  uploadedById String               @map("uploaded_by_id")
-  createdAt    DateTime             @default(now()) @map("created_at")
+  id             String               @id @default(uuid())
+  contractId     String               @map("contract_id")
+  documentType   ContractDocumentType  @map("document_type")
+  fileName       String               @map("file_name")
+  originalName   String?              @map("original_name") // ชื่อไฟล์เดิม
+  fileUrl        String               @map("file_url")
+  fileSize       Int?                 @map("file_size")
+  mimeType       String?              @map("mime_type")
+  fileHash       String?              @map("file_hash") // SHA-256
+  version        Int                  @default(1) // version control
+  isLatest       Boolean              @default(true) @map("is_latest")
+  isImmutable    Boolean              @default(false) @map("is_immutable") // ห้ามลบ/แก้ไข
+  notes          String?
+  uploadedById   String               @map("uploaded_by_id")
+  createdAt      DateTime             @default(now()) @map("created_at")
 
   contract   Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
   uploadedBy User     @relation("DocumentUploadedBy", fields: [uploadedById], references: [id])
 
   @@index([contractId])
   @@index([documentType])
+  @@index([contractId, documentType, isLatest])
   @@map("contract_documents")
 }
 
@@ -1197,4 +1284,153 @@ model RefreshToken {
   @@index([userId])
   @@index([expiresAt])
   @@map("refresh_tokens")
+}
+
+// ============================================================
+// PDPA COMPLIANCE (คุ้มครองข้อมูลส่วนบุคคล)
+// ============================================================
+
+model PDPAConsent {
+  id                String        @id @default(uuid())
+  customerId        String        @map("customer_id")
+  consentVersion    String        @map("consent_version") // version ของ Privacy Notice
+  privacyNoticeText String        @map("privacy_notice_text") @db.Text // เนื้อหาที่ยินยอม
+  purposes          String[]      @default([]) // วัตถุประสงค์ที่ยินยอม
+  status            ConsentStatus @default(PENDING)
+  grantedAt         DateTime?     @map("granted_at")
+  revokedAt         DateTime?     @map("revoked_at")
+  revokeReason      String?       @map("revoke_reason")
+  ipAddress         String?       @map("ip_address")
+  deviceInfo        String?       @map("device_info")
+  signatureImage    String?       @map("signature_image") @db.Text // e-Sign ยินยอม
+  createdAt         DateTime      @default(now()) @map("created_at")
+
+  customer  Customer   @relation(fields: [customerId], references: [id])
+  contract  Contract?
+
+  @@index([customerId])
+  @@index([status])
+  @@map("pdpa_consents")
+}
+
+model DSARRequest {
+  id             String         @id @default(uuid())
+  requestNumber  String         @unique @map("request_number") // DSAR-YYYY-NNN
+  customerId     String         @map("customer_id")
+  requestType    DSARRequestType @map("request_type")
+  status         DSARStatus     @default(SUBMITTED)
+  description    String         @db.Text
+  responseNotes  String?        @map("response_notes") @db.Text
+  processedById  String?        @map("processed_by_id")
+  submittedAt    DateTime       @default(now()) @map("submitted_at")
+  processedAt    DateTime?      @map("processed_at")
+  completedAt    DateTime?      @map("completed_at")
+  dueDate        DateTime       @map("due_date") // ต้องดำเนินการภายใน 30 วัน
+
+  customer    Customer @relation(fields: [customerId], references: [id])
+
+  @@index([customerId])
+  @@index([status])
+  @@index([requestType])
+  @@map("dsar_requests")
+}
+
+// ============================================================
+// E-RECEIPT (ใบเสร็จรับเงินอิเล็กทรอนิกส์)
+// ============================================================
+
+model Receipt {
+  id             String   @id @default(uuid())
+  receiptNumber  String   @unique @map("receipt_number") // RC-YYYY-MM-NNNNN
+  contractId     String   @map("contract_id")
+  paymentId      String?  @map("payment_id")
+  receiptType    String   @default("PAYMENT") // PAYMENT, DOWN_PAYMENT, EARLY_PAYOFF, CREDIT_NOTE
+  payerName      String   @map("payer_name")
+  receiverName   String   @map("receiver_name")
+  amount         Decimal  @db.Decimal(12, 2)
+  installmentNo  Int?     @map("installment_no") // งวดที่
+  remainingBalance Decimal? @map("remaining_balance") @db.Decimal(12, 2)
+  remainingMonths  Int?     @map("remaining_months")
+  paymentMethod  String?  @map("payment_method")
+  transactionRef String?  @map("transaction_ref") // เลขอ้างอิงธุรกรรม
+  paidDate       DateTime @map("paid_date")
+  fileUrl        String?  @map("file_url") // PDF URL
+  fileHash       String?  @map("file_hash") // SHA-256
+  isVoided       Boolean  @default(false) @map("is_voided")
+  voidReason     String?  @map("void_reason")
+  voidedReceiptId String? @map("voided_receipt_id") // อ้างอิงใบเสร็จที่ถูกยกเลิก
+  issuedById     String   @map("issued_by_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  contract Contract @relation(fields: [contractId], references: [id])
+
+  @@index([contractId])
+  @@index([receiptNumber])
+  @@index([paymentId])
+  @@index([createdAt])
+  @@map("receipts")
+}
+
+// ============================================================
+// CUSTOMER DOCUMENT ACCESS (ลูกค้าเข้าถึงเอกสาร)
+// ============================================================
+
+model CustomerAccessToken {
+  id          String    @id @default(uuid())
+  token       String    @unique
+  contractId  String    @map("contract_id")
+  expiresAt   DateTime  @map("expires_at")
+  accessedAt  DateTime? @map("accessed_at") // ครั้งแรกที่เข้าถึง
+  accessCount Int       @default(0) @map("access_count")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([token])
+  @@index([contractId])
+  @@index([expiresAt])
+  @@map("customer_access_tokens")
+}
+
+// ============================================================
+// DOCUMENT AUDIT TRAIL (ประวัติการเข้าถึงเอกสาร)
+// ============================================================
+
+model DocumentAuditLog {
+  id           String   @id @default(uuid())
+  documentId   String   @map("document_id") // ContractDocument ID
+  contractId   String   @map("contract_id")
+  action       String   // UPLOAD, VIEW, DOWNLOAD, PRINT, DELETE, HASH_MISMATCH
+  userId       String?  @map("user_id")
+  ipAddress    String?  @map("ip_address")
+  userAgent    String?  @map("user_agent")
+  details      Json?    // additional details
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([documentId])
+  @@index([contractId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("document_audit_logs")
+}
+
+// ============================================================
+// COMPANY INFO (ข้อมูลบริษัท/ร้าน — สำหรับสัญญา)
+// ============================================================
+
+model CompanyInfo {
+  id                   String   @id @default(uuid())
+  nameTh               String   @map("name_th")
+  nameEn               String?  @map("name_en")
+  taxId                String   @map("tax_id") // เลขทะเบียนนิติบุคคล/ผู้เสียภาษี
+  address              String
+  phone                String?
+  directorName         String   @map("director_name") // ชื่อผู้มีอำนาจลงนาม
+  directorPosition     String?  @map("director_position") // ตำแหน่ง
+  directorNationalId   String?  @map("director_national_id")
+  directorAddress      String?  @map("director_address")
+  logoUrl              String?  @map("logo_url")
+  isActive             Boolean  @default(true) @map("is_active")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  @@map("company_info")
 }

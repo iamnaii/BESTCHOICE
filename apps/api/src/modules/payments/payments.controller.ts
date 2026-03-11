@@ -44,6 +44,7 @@ export class PaymentsController {
       user.id,
       dto.evidenceUrl,
       dto.notes,
+      dto.transactionRef,
     );
   }
 

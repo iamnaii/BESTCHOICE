@@ -107,4 +107,10 @@ export class ContractsController {
   earlyPayoff(@Param('id') id: string, @Body() dto: EarlyPayoffDto, @CurrentUser() user: { id: string }) {
     return this.contractsService.earlyPayoff(id, user.id, dto.paymentMethod);
   }
+
+  // === VALIDATION: ตรวจสอบความครบถ้วนของสัญญา ===
+  @Get(':id/validate')
+  validateForSubmit(@Param('id') id: string) {
+    return this.contractsService.validateForSubmit(id);
+  }
 }

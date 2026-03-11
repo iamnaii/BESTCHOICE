@@ -286,6 +286,30 @@ export class DocumentsService {
       .replace(/'/g, '&#39;');
   }
 
+  /** Parse JSON address string and format as readable Thai address */
+  private formatAddress(jsonStr: string | null | undefined): string {
+    if (!jsonStr) return '-';
+    try {
+      const addr = JSON.parse(jsonStr);
+      if (typeof addr !== 'object' || addr === null) return jsonStr;
+      // If it has a raw field (fallback from OCR), use it
+      if (addr.raw && !addr.province) return addr.raw;
+      const parts: string[] = [];
+      if (addr.houseNo) parts.push(addr.houseNo);
+      if (addr.moo) parts.push(`หมู่ ${addr.moo}`);
+      if (addr.village) parts.push(`หมู่บ้าน ${addr.village}`);
+      if (addr.soi) parts.push(`ซอย ${addr.soi}`);
+      if (addr.road) parts.push(`ถนน ${addr.road}`);
+      if (addr.subdistrict) parts.push(addr.subdistrict);
+      if (addr.district) parts.push(addr.district);
+      if (addr.province) parts.push(addr.province);
+      if (addr.postalCode) parts.push(addr.postalCode);
+      return parts.length > 0 ? parts.join(' ') : '-';
+    } catch {
+      return jsonStr;
+    }
+  }
+
   /** Mask national ID: show first 1 and last 4 digits only */
   private maskNationalId(id: string): string {
     if (!id || id.length < 5) return id;
@@ -462,16 +486,16 @@ ${bodyHtml}
       '{national_id}': esc(this.maskNationalId(contract.customer?.nationalId || '')),
       '{customer_phone}': esc(contract.customer?.phone || ''),
       '{customer_phone_secondary}': esc(contract.customer?.phoneSecondary || '-'),
-      '{customer_address}': esc(contract.customer?.addressCurrent || contract.customer?.addressIdCard || ''),
-      '{customer_address_id_card}': esc(contract.customer?.addressIdCard || ''),
-      '{customer_address_current}': esc(contract.customer?.addressCurrent || ''),
+      '{customer_address}': esc(this.formatAddress(contract.customer?.addressCurrent || contract.customer?.addressIdCard)),
+      '{customer_address_id_card}': esc(this.formatAddress(contract.customer?.addressIdCard)),
+      '{customer_address_current}': esc(this.formatAddress(contract.customer?.addressCurrent)),
       '{customer_zipcode}': esc(contract.customer?.zipcode || contract.customer?.postalCode || ''),
       '{customer_line_id}': esc(contract.customer?.lineId || '-'),
       '{customer_facebook}': esc(contract.customer?.facebookLink || contract.customer?.facebookName || '-'),
       '{customer_occupation}': esc(contract.customer?.occupation || '-'),
       '{customer_salary}': contract.customer?.salary ? Number(contract.customer.salary).toLocaleString() : '-',
       '{customer_workplace}': esc(contract.customer?.workplace || '-'),
-      '{customer_address_work}': esc(contract.customer?.addressWork || '-'),
+      '{customer_address_work}': esc(this.formatAddress(contract.customer?.addressWork)),
       '{customer_references}': referencesHtml,
       '{product_name}': esc(contract.product?.name || ''),
       '{brand}': esc(contract.product?.brand || ''),
@@ -637,6 +661,23 @@ ${bodyHtml}
 
     // Handle EMERGENCY_CONTACTS block rendering
     if (result.includes('EMERGENCY_CONTACTS')) {
+      // Handle {{for CONTACT in EMERGENCY_CONTACTS}}...{{/for}} loop syntax
+      result = result.replace(
+        /\{\{for\s+(\w+)\s+in\s+EMERGENCY_CONTACTS\s*\}\}([\s\S]*?)\{\{\/for\}\}/g,
+        (_match, itemVar: string, bodyTemplate: string) => {
+          if (emergencyContacts.length === 0) return '';
+          return emergencyContacts.map((c, i) => {
+            let row = bodyTemplate;
+            row = row.replace(new RegExp(`\\{\\{=\\s*@index1\\s*\\}\\}`, 'g'), String(i + 1));
+            row = row.replace(new RegExp(`\\{\\{=\\s*@index\\s*\\}\\}`, 'g'), String(i));
+            row = row.replace(new RegExp(`\\{\\{=\\s*${itemVar}\\.NAME\\s*\\}\\}`, 'g'), esc(c.NAME));
+            row = row.replace(new RegExp(`\\{\\{=\\s*${itemVar}\\.TEL\\s*\\}\\}`, 'g'), esc(c.TEL));
+            row = row.replace(new RegExp(`\\{\\{=\\s*${itemVar}\\.RELATION\\s*\\}\\}`, 'g'), esc(c.RELATION));
+            return row;
+          }).join('');
+        },
+      );
+      // Fallback: handle {{= EMERGENCY_CONTACTS}} as a single block replacement
       const contactsHtml = emergencyContacts.map((c, i) =>
         `<tr><td style="padding:2px 8px 2px 0;width:24px">${i + 1}.</td><td style="padding:2px 8px">ชื่อ-นามสกุล ${esc(c.NAME)}</td><td style="padding:2px 8px">เบอร์โทร ${esc(c.TEL)}</td><td style="padding:2px 8px">ความสัมพันธ์ ${esc(c.RELATION)}</td></tr>`
       ).join('');

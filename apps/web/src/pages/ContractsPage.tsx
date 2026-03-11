@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useMemo, useCallback } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -51,16 +51,34 @@ type ViewTab = 'all' | 'my' | 'pending_review';
 export default function ContractsPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [workflowFilter, setWorkflowFilter] = useState('');
-  const [viewTab, setViewTab] = useState<ViewTab>('all');
-  const [page, setPage] = useState(1);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const search = searchParams.get('q') || '';
+  const statusFilter = searchParams.get('status') || '';
+  const workflowFilter = searchParams.get('workflow') || '';
+  const viewTab = (searchParams.get('tab') || 'all') as ViewTab;
+  const page = parseInt(searchParams.get('page') || '1', 10);
+
+  const updateParams = useCallback((updates: Record<string, string>) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      for (const [k, v] of Object.entries(updates)) {
+        if (v) next.set(k, v);
+        else next.delete(k);
+      }
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
+
+  const setSearch = useCallback((v: string) => updateParams({ q: v, page: '' }), [updateParams]);
+  const setStatusFilter = useCallback((v: string) => updateParams({ status: v, page: '' }), [updateParams]);
+  const setWorkflowFilter = useCallback((v: string) => updateParams({ workflow: v, page: '' }), [updateParams]);
+  const setViewTab = useCallback((v: ViewTab) => updateParams({ tab: v === 'all' ? '' : v, page: '' }), [updateParams]);
+  const setPage = useCallback((p: number) => updateParams({ page: p > 1 ? String(p) : '' }), [updateParams]);
+
   const debouncedSearch = useDebounce(search);
 
-  useEffect(() => { setPage(1); }, [debouncedSearch, statusFilter, workflowFilter, viewTab]);
-
-  const { data: result, isLoading } = useQuery<PaginatedResponse<Contract>>({
+  const { data: result, isLoading, isError, refetch } = useQuery<PaginatedResponse<Contract>>({
     queryKey: ['contracts', debouncedSearch, statusFilter, workflowFilter, viewTab, page],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -188,20 +206,20 @@ export default function ContractsPage() {
       {/* View Tabs */}
       <div className="flex gap-1 mb-4 border-b">
         <button
-          onClick={() => setViewTab('all')}
+          onClick={() => updateParams({ tab: '', status: '', workflow: '', q: '', page: '' })}
           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${viewTab === 'all' ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
         >
           ทั้งหมด
         </button>
         <button
-          onClick={() => setViewTab('my')}
+          onClick={() => updateParams({ tab: 'my', status: '', workflow: '', q: '', page: '' })}
           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${viewTab === 'my' ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
         >
           สัญญาของฉัน
         </button>
         {isManager && (
           <button
-            onClick={() => setViewTab('pending_review')}
+            onClick={() => updateParams({ tab: 'pending_review', status: '', workflow: '', q: '', page: '' })}
             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${viewTab === 'pending_review' ? 'border-amber-600 text-amber-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
           >
             รอตรวจสอบ
@@ -238,7 +256,14 @@ export default function ContractsPage() {
         )}
       </div>
 
-      <DataTable
+      {isError && (
+        <div className="text-center py-10 bg-white rounded-xl border border-red-200">
+          <div className="text-red-500 mb-2">เกิดข้อผิดพลาดในการโหลดข้อมูล</div>
+          <button onClick={() => refetch()} className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700">ลองใหม่</button>
+        </div>
+      )}
+
+      {!isError && <DataTable
         columns={columns}
         data={contracts}
         isLoading={isLoading}
@@ -249,7 +274,7 @@ export default function ContractsPage() {
           total: result.total,
           onPageChange: setPage,
         } : undefined}
-      />
+      />}
     </div>
   );
 }

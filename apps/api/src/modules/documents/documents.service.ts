@@ -419,11 +419,15 @@ ${bodyHtml}
       .join('');
 
     const customerSig = contract.signatures?.find((s: any) => s.signerType === 'CUSTOMER');
-    const staffSig = contract.signatures?.find((s: any) => s.signerType === 'STAFF');
+    const staffSig = contract.signatures?.find((s: any) => s.signerType === 'STAFF' || s.signerType === 'COMPANY');
+    const witness1Sig = contract.signatures?.find((s: any) => s.signerType === 'WITNESS_1');
+    const witness2Sig = contract.signatures?.find((s: any) => s.signerType === 'WITNESS_2');
 
     // Validate signature images are safe data URLs before embedding
     const customerSigSafe = customerSig && this.isSafeImageDataUrl(customerSig.signatureImage);
     const staffSigSafe = staffSig && this.isSafeImageDataUrl(staffSig.signatureImage);
+    const witness1SigSafe = witness1Sig && this.isSafeImageDataUrl(witness1Sig.signatureImage);
+    const witness2SigSafe = witness2Sig && this.isSafeImageDataUrl(witness2Sig.signatureImage);
 
     // Format contract date in Thai
     const contractDate = new Date(contract.createdAt);
@@ -499,6 +503,8 @@ ${bodyHtml}
       '{payment_schedule_table}': `<table border="1" cellpadding="6" style="border-collapse:collapse;width:100%;margin:10px auto"><thead><tr style="background:#f5f5f5"><th style="text-align:center">งวดที่</th><th style="text-align:center">วันที่ครบกำหนดชำระ</th><th style="text-align:center">จำนวนเงิน</th></tr></thead><tbody>${paymentScheduleRows}</tbody></table>`,
       '{customer_signature}': customerSigSafe ? `<img src="${customerSig.signatureImage}" style="max-height:50px;display:block;margin:0 auto"/>` : '<div style="border-bottom:1px solid #000;width:200px;height:50px"></div>',
       '{staff_signature}': staffSigSafe ? `<img src="${staffSig.signatureImage}" style="max-height:50px;display:block;margin:0 auto"/>` : '<div style="border-bottom:1px solid #000;width:200px;height:50px"></div>',
+      '{witness1_signature}': witness1SigSafe ? `<img src="${witness1Sig.signatureImage}" style="max-height:50px;display:block;margin:0 auto"/>` : '<div style="border-bottom:1px solid #000;width:200px;height:50px"></div>',
+      '{witness2_signature}': witness2SigSafe ? `<img src="${witness2Sig.signatureImage}" style="max-height:50px;display:block;margin:0 auto"/>` : '<div style="border-bottom:1px solid #000;width:200px;height:50px"></div>',
     };
 
     let result = html;
@@ -658,6 +664,8 @@ ${bodyHtml}
     // Post-process: fill empty signature names for templates that lack variables in signature section
     const sigStaffName = esc(contract.salesperson?.name || 'เอกนรินทร์ คงเดช');
     const sigCustomerName = esc(contract.customer?.name || '');
+    const sigWitness1Name = witness1Sig?.signerName ? esc(witness1Sig.signerName) : '';
+    const sigWitness2Name = witness2Sig?.signerName ? esc(witness2Sig.signerName) : '';
 
     // Match: "ลงชื่อ...ผู้ให้เช่าซื้อ" followed (within nearby HTML) by "(" whitespace-only ")"
     result = result.replace(
@@ -669,10 +677,32 @@ ${bodyHtml}
       `$1( ${sigCustomerName} )`,
     );
 
-    // Post-process: inject real signature images for templates that lack {staff_signature}/{customer_signature} placeholders
-    // Replaces the dots between "ลงชื่อ" and "ผู้ให้เช่าซื้อ/ผู้เช่าซื้อ" with the signature image
+    // Fill witness names in parentheses near "พยาน" text
+    if (sigWitness1Name) {
+      result = result.replace(
+        /(ลงชื่อ[\s\S]{0,200}?พยาน[\s\S]{0,300}?)\(\s{0,50}\)/,
+        `$1( ${sigWitness1Name} )`,
+      );
+    }
+    if (sigWitness2Name) {
+      // Match the second occurrence of witness pattern
+      let witnessCount = 0;
+      result = result.replace(
+        /(ลงชื่อ[\s\S]{0,200}?พยาน[\s\S]{0,300}?)\(\s{0,50}\)/g,
+        (match, p1) => {
+          witnessCount++;
+          if (witnessCount === 2) return `${p1}( ${sigWitness2Name} )`;
+          return match;
+        },
+      );
+    }
+
+    // Post-process: inject real signature images for templates that lack placeholders
+    // Replaces the dots between "ลงชื่อ" and role text with the signature image
     const hadStaffPlaceholder = html.includes('{staff_signature}');
     const hadCustomerPlaceholder = html.includes('{customer_signature}');
+    const hadWitness1Placeholder = html.includes('{witness1_signature}');
+    const hadWitness2Placeholder = html.includes('{witness2_signature}');
     const sigImgStyle = 'max-height:50px;display:block;margin:0 auto';
 
     if (staffSigSafe && !hadStaffPlaceholder) {
@@ -685,6 +715,29 @@ ${bodyHtml}
       result = result.replace(
         /(ลงชื่อ)[.…]{3,}(ผู้เช่าซื้อ)/,
         `$1</div><div style="min-height:50px;display:flex;align-items:center;justify-content:center"><img src="${customerSig.signatureImage}" style="${sigImgStyle}"/></div><div style="font-size:13px">$2`,
+      );
+    }
+    // Inject witness signatures into "ลงชื่อ...พยาน" patterns
+    if (witness1SigSafe && !hadWitness1Placeholder) {
+      result = result.replace(
+        /(ลงชื่อ)[.…]{3,}(พยาน)/,
+        `$1</div><div style="min-height:50px;display:flex;align-items:center;justify-content:center"><img src="${witness1Sig.signatureImage}" style="${sigImgStyle}"/></div><div style="font-size:13px">$2`,
+      );
+    }
+    if (witness2SigSafe && !hadWitness2Placeholder) {
+      // Match the second "ลงชื่อ...พยาน" pattern
+      let witnessImgCount = 0;
+      result = result.replace(
+        /(ลงชื่อ)[.…]{3,}(พยาน)/g,
+        (match, p1, p2) => {
+          witnessImgCount++;
+          if (witnessImgCount === (witness1SigSafe && !hadWitness1Placeholder ? 1 : 2)) {
+            // If witness1 was already replaced, the second remaining match is witness2
+            // If witness1 was NOT replaced (no dots left), this is the second original match
+            return `${p1}</div><div style="min-height:50px;display:flex;align-items:center;justify-content:center"><img src="${witness2Sig.signatureImage}" style="${sigImgStyle}"/></div><div style="font-size:13px">${p2}`;
+          }
+          return match;
+        },
       );
     }
 
@@ -764,6 +817,18 @@ ${bodyHtml}
         <div style="min-height:50px;display:flex;align-items:center;justify-content:center">{staff_signature}</div>
         <div style="font-size:13px">ผู้ให้เช่าซื้อ</div>
         <p style="margin:4px 0 0;font-size:13px">({salesperson_name})</p>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-around;margin-top:30px">
+      <div style="text-align:center">
+        <div style="font-size:13px">ลงชื่อ</div>
+        <div style="min-height:50px;display:flex;align-items:center;justify-content:center">{witness1_signature}</div>
+        <div style="font-size:13px">พยาน</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:13px">ลงชื่อ</div>
+        <div style="min-height:50px;display:flex;align-items:center;justify-content:center">{witness2_signature}</div>
+        <div style="font-size:13px">พยาน</div>
       </div>
     </div>
   </div>

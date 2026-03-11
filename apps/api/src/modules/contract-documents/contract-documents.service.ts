@@ -99,69 +99,73 @@ export class ContractDocumentsService {
       throw new BadRequestException(`ประเภทเอกสารไม่ถูกต้อง: ${dto.documentType}`);
     }
 
-    // Compute file hash from URL (in production, hash the actual file content)
-    const fileHash = crypto.createHash('sha256')
-      .update(dto.fileUrl + dto.fileName + Date.now())
-      .digest('hex');
+    // Compute file hash from actual content when available
+    const hashInput = dto.fileUrl.startsWith('data:')
+      ? dto.fileUrl.substring(dto.fileUrl.indexOf(',') + 1)
+      : dto.fileUrl + dto.fileName;
+    const fileHash = crypto.createHash('sha256').update(hashInput).digest('hex');
 
-    // Version control: mark previous versions as not latest
-    const existingLatest = await this.prisma.contractDocument.findFirst({
-      where: { contractId, documentType: dto.documentType as any, isLatest: true },
-    });
+    // Use transaction to ensure version control + audit log are atomic
+    return this.prisma.$transaction(async (tx) => {
+      // Version control: mark previous versions as not latest
+      const existingLatest = await tx.contractDocument.findFirst({
+        where: { contractId, documentType: dto.documentType as any, isLatest: true },
+      });
 
-    let version = 1;
-    if (existingLatest) {
-      // Check if existing doc is immutable
-      if (existingLatest.isImmutable) {
-        throw new BadRequestException(
-          `เอกสารประเภท ${dto.documentType} เป็นเอกสารถาวร ไม่สามารถ upload ทับได้`
-        );
+      let version = 1;
+      if (existingLatest) {
+        // Check if existing doc is immutable
+        if (existingLatest.isImmutable) {
+          throw new BadRequestException(
+            `เอกสารประเภท ${dto.documentType} เป็นเอกสารถาวร ไม่สามารถ upload ทับได้`
+          );
+        }
+
+        version = existingLatest.version + 1;
+        await tx.contractDocument.update({
+          where: { id: existingLatest.id },
+          data: { isLatest: false },
+        });
       }
 
-      version = existingLatest.version + 1;
-      await this.prisma.contractDocument.update({
-        where: { id: existingLatest.id },
-        data: { isLatest: false },
+      // Determine if this document should be immutable
+      const isImmutable = IMMUTABLE_DOC_TYPES.includes(dto.documentType) &&
+        ['ACTIVE', 'OVERDUE', 'DEFAULT', 'COMPLETED', 'EARLY_PAYOFF'].includes(contract.status);
+
+      const doc = await tx.contractDocument.create({
+        data: {
+          contractId,
+          documentType: dto.documentType as ContractDocumentType,
+          fileName: dto.fileName,
+          originalName: dto.fileName,
+          fileUrl: dto.fileUrl,
+          fileSize: dto.fileSize,
+          mimeType: dto.mimeType,
+          fileHash,
+          version,
+          isLatest: true,
+          isImmutable,
+          notes: dto.notes,
+          uploadedById: userId,
+        },
+        include: {
+          uploadedBy: { select: { id: true, name: true } },
+        },
       });
-    }
 
-    // Determine if this document should be immutable
-    const isImmutable = IMMUTABLE_DOC_TYPES.includes(dto.documentType) &&
-      ['ACTIVE', 'OVERDUE', 'DEFAULT', 'COMPLETED', 'EARLY_PAYOFF'].includes(contract.status);
+      // Log document upload
+      await tx.documentAuditLog.create({
+        data: {
+          documentId: doc.id,
+          contractId,
+          action: 'UPLOAD',
+          userId,
+          details: { fileName: dto.fileName, version, fileHash } as any,
+        },
+      });
 
-    const doc = await this.prisma.contractDocument.create({
-      data: {
-        contractId,
-        documentType: dto.documentType as ContractDocumentType,
-        fileName: dto.fileName,
-        originalName: dto.fileName,
-        fileUrl: dto.fileUrl,
-        fileSize: dto.fileSize,
-        mimeType: dto.mimeType,
-        fileHash,
-        version,
-        isLatest: true,
-        isImmutable,
-        notes: dto.notes,
-        uploadedById: userId,
-      },
-      include: {
-        uploadedBy: { select: { id: true, name: true } },
-      },
+      return doc;
     });
-
-    // Log document upload
-    await this.prisma.documentAuditLog.create({
-      data: {
-        documentId: doc.id,
-        contractId,
-        action: 'UPLOAD',
-        userId,
-        details: { fileName: dto.fileName, version, fileHash } as any,
-      },
-    });
-
-    return doc;
   }
 
   /** Record document view in audit log */

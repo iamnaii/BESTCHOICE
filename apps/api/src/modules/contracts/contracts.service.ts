@@ -644,6 +644,11 @@ export class ContractsService {
       throw new BadRequestException('สัญญาต้องอยู่ในสถานะ DRAFT');
     }
 
+    // Verify PDPA consent exists (compliance: พ.ร.บ.คุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562)
+    if (!contract.pdpaConsentId) {
+      throw new BadRequestException('ต้องได้รับความยินยอม PDPA ก่อนเปิดใช้งานสัญญา');
+    }
+
     // Require all required signatures (customer + company + 2 witnesses)
     const customerSigned = contract.signatures?.some((s: { signerType: string }) => s.signerType === 'CUSTOMER');
     const companySigned = contract.signatures?.some((s: { signerType: string }) =>

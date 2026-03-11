@@ -218,6 +218,84 @@ export class DocumentsService {
     return doc;
   }
 
+  // ─── PDPA Consent Document Generation ─────────────────
+  async generatePdpaDocument(contractId: string, createdById: string) {
+    const contract = await this.prisma.contract.findUnique({
+      where: { id: contractId },
+      include: {
+        customer: true,
+        product: true,
+        branch: true,
+        salesperson: true,
+        signatures: true,
+        pdpaConsent: true,
+      },
+    });
+    if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
+    if (!contract.pdpaConsent) throw new BadRequestException('ยังไม่มีความยินยอม PDPA');
+
+    // Get PDPA template or use default
+    const template = await this.prisma.contractTemplate.findFirst({
+      where: { type: 'PDPA_CONSENT', isActive: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    let htmlContent = template?.contentHtml || this.getDefaultTemplate('PDPA_CONSENT');
+
+    // Replace standard placeholders
+    htmlContent = this.replacePlaceholders(htmlContent, contract);
+
+    // Replace PDPA-specific placeholders
+    const pdpaSignature = contract.pdpaConsent.signatureImage && this.isSafeImageDataUrl(contract.pdpaConsent.signatureImage)
+      ? `<img src="${contract.pdpaConsent.signatureImage}" style="max-height:50px;display:block;margin:0 auto"/>`
+      : '<div style="border-bottom:1px solid #000;width:200px;height:50px"></div>';
+
+    const consentDate = contract.pdpaConsent.grantedAt
+      ? new Date(contract.pdpaConsent.grantedAt).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })
+      : new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+
+    htmlContent = htmlContent
+      .replace(/\{pdpa_signature\}/g, pdpaSignature)
+      .replace(/\{pdpa_consent_date\}/g, this.escapeHtml(consentDate));
+
+    const renderedHtml = this.wrapWithA4Styles(htmlContent);
+    const fileHash = crypto.createHash('sha256').update(renderedHtml).digest('hex');
+    const fileUrl = `documents/${contract.contractNumber}_PDPA_${Date.now()}.html`;
+
+    const doc = await this.prisma.eDocument.create({
+      data: {
+        contractId,
+        documentType: 'PDPA_CONSENT',
+        fileUrl,
+        fileHash,
+        createdById,
+      },
+    });
+
+    return { ...doc, renderedHtml };
+  }
+
+  // ─── Auto-generate documents after all signatures ────
+  async generateSignedDocuments(contractId: string, createdById: string) {
+    const results: { contract?: any; pdpa?: any } = {};
+
+    // Generate contract document
+    try {
+      results.contract = await this.generateDocument(contractId, createdById, 'CONTRACT');
+    } catch (err) {
+      console.error('Failed to auto-generate contract document:', err);
+    }
+
+    // Generate PDPA document
+    try {
+      results.pdpa = await this.generatePdpaDocument(contractId, createdById);
+    } catch (err) {
+      console.error('Failed to auto-generate PDPA document:', err);
+    }
+
+    return results;
+  }
+
   // ─── Preview ──────────────────────────────────────────
   async previewContract(contractId: string, templateId?: string) {
     const contract = await this.prisma.contract.findUnique({
@@ -875,6 +953,85 @@ ${bodyHtml}
         <div style="min-height:50px;display:flex;align-items:center;justify-content:center">{witness2_signature}</div>
         <div style="font-size:13px">พยาน</div>
         <p style="margin:4px 0 0;font-size:13px">({witness2_name})</p>
+      </div>
+    </div>
+  </div>
+</div>`;
+    }
+    if (documentType === 'PDPA_CONSENT') {
+      return `
+<div>
+  <h1 style="text-align:center;margin:0 0 4px;font-size:18px">หนังสือยินยอมให้เก็บรวบรวม ใช้ และเปิดเผยข้อมูลส่วนบุคคล</h1>
+  <p style="text-align:center;margin:0 0 2px;font-size:13px;color:#666">ตามพระราชบัญญัติคุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562 (PDPA)</p>
+  <p style="text-align:center;margin:0 0 16px;font-size:13px;color:#666">สัญญาเลขที่: <strong>{contract_number}</strong> | วันที่: {contract_date}</p>
+  <hr style="border:none;border-top:1px solid #ccc;margin:0 0 16px"/>
+
+  <div style="margin-bottom:16px;font-size:14px;line-height:1.8">
+    <p style="text-indent:2em;margin:0 0 8px">ข้าพเจ้า <strong>{customer_name}</strong> เลขบัตรประชาชน <strong>{national_id}</strong></p>
+    <p style="text-indent:2em;margin:0 0 8px">ที่อยู่ {customer_address}</p>
+    <p style="text-indent:2em;margin:0 0 8px">เบอร์โทรศัพท์ {customer_phone}</p>
+  </div>
+
+  <div style="margin-bottom:16px;font-size:14px;line-height:1.8">
+    <p style="text-indent:2em;margin:0 0 8px">ได้อ่านและเข้าใจประกาศความเป็นส่วนตัว (Privacy Notice) ของ <strong>บริษัท เบสท์ช้อยส์โฟน จำกัด</strong> แล้ว จึงให้ความยินยอมในการเก็บรวบรวม ใช้ และเปิดเผยข้อมูลส่วนบุคคลของข้าพเจ้า ตามวัตถุประสงค์ดังต่อไปนี้:</p>
+  </div>
+
+  <div style="margin-bottom:16px;font-size:13px;line-height:1.8">
+    <p style="font-weight:bold;margin:0 0 8px">วัตถุประสงค์ในการเก็บรวบรวมและใช้ข้อมูล:</p>
+    <ol style="margin:0 0 12px;padding-left:2em">
+      <li>เพื่อการทำสัญญาผ่อนชำระสินค้า และการบริหารจัดการสัญญา</li>
+      <li>เพื่อการติดตามหนี้ การเรียกเก็บเงินค่าผ่อนชำระ และการบังคับตามสัญญา</li>
+      <li>เพื่อการจัดทำเอกสารทางกฎหมายที่เกี่ยวข้อง</li>
+      <li>เพื่อการติดต่อสื่อสารเกี่ยวกับสัญญา รวมถึงการแจ้งเตือนกำหนดชำระ</li>
+      <li>เพื่อการตรวจสอบตัวตนและการยืนยันข้อมูล (KYC)</li>
+    </ol>
+
+    <p style="font-weight:bold;margin:0 0 8px">ข้อมูลส่วนบุคคลที่เก็บรวบรวม:</p>
+    <ul style="margin:0 0 12px;padding-left:2em">
+      <li>ชื่อ-นามสกุล, คำนำหน้าชื่อ, วันเดือนปีเกิด</li>
+      <li>เลขบัตรประชาชน, สำเนาบัตรประชาชน</li>
+      <li>ที่อยู่ตามบัตรประชาชน, ที่อยู่ปัจจุบัน, ที่อยู่ที่ทำงาน</li>
+      <li>หมายเลขโทรศัพท์, อีเมล, LINE ID, บัญชี Facebook</li>
+      <li>ข้อมูลอาชีพ, สถานที่ทำงาน, รายได้</li>
+      <li>ข้อมูลบุคคลอ้างอิง/ผู้ค้ำประกัน</li>
+      <li>รูปถ่ายลูกค้าถือบัตรประชาชน (KYC Selfie)</li>
+      <li>ข้อมูลสินค้า (IMEI, Serial Number)</li>
+      <li>ลายมือชื่ออิเล็กทรอนิกส์</li>
+    </ul>
+
+    <p style="font-weight:bold;margin:0 0 8px">การเปิดเผยข้อมูล:</p>
+    <p style="text-indent:2em;margin:0 0 12px">บริษัทอาจเปิดเผยข้อมูลส่วนบุคคลของท่านให้แก่บุคคลหรือหน่วยงานดังต่อไปนี้ เท่าที่จำเป็น:</p>
+    <ul style="margin:0 0 12px;padding-left:2em">
+      <li>พนักงานของบริษัทที่เกี่ยวข้องกับการบริหารสัญญา</li>
+      <li>หน่วยงานบังคับใช้กฎหมาย หากมีคำสั่งศาลหรือกฎหมายกำหนด</li>
+      <li>สำนักงานทนายความ ในกรณีดำเนินคดีตามกฎหมาย</li>
+    </ul>
+
+    <p style="font-weight:bold;margin:0 0 8px">ระยะเวลาการเก็บรักษาข้อมูล:</p>
+    <p style="text-indent:2em;margin:0 0 12px">ตลอดอายุสัญญา และ 5 ปีภายหลังสิ้นสุดสัญญา (ตามอายุความทางกฎหมาย)</p>
+
+    <p style="font-weight:bold;margin:0 0 8px">สิทธิของเจ้าของข้อมูล:</p>
+    <p style="text-indent:2em;margin:0 0 12px">ท่านมีสิทธิเข้าถึง แก้ไข ลบ ระงับการใช้ ขอรับสำเนาข้อมูล หรือถอนความยินยอมได้ทุกเมื่อ โดยติดต่อบริษัทที่สาขา {branch_name} หรือโทร {branch_phone}</p>
+  </div>
+
+  <div style="margin-top:8px;padding:12px;border:1px solid #ddd;border-radius:8px;font-size:13px;background:#f9fafb">
+    <p style="margin:0 0 4px"><strong>ข้าพเจ้ายินยอม</strong> ให้บริษัท เบสท์ช้อยส์โฟน จำกัด เก็บรวบรวม ใช้ และเปิดเผยข้อมูลส่วนบุคคลของข้าพเจ้าตามวัตถุประสงค์ที่ระบุข้างต้น</p>
+  </div>
+
+  <div class="no-break" style="margin-top:30px">
+    <div style="display:flex;justify-content:space-around;margin-top:20px">
+      <div style="text-align:center">
+        <div style="font-size:13px">ลงชื่อ</div>
+        <div style="min-height:50px;display:flex;align-items:center;justify-content:center">{pdpa_signature}</div>
+        <div style="font-size:13px">ผู้ให้ความยินยอม</div>
+        <p style="margin:4px 0 0;font-size:13px">({customer_name})</p>
+        <p style="margin:2px 0 0;font-size:11px;color:#666">วันที่ {pdpa_consent_date}</p>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:13px">ลงชื่อ</div>
+        <div style="min-height:50px;display:flex;align-items:center;justify-content:center">{staff_signature}</div>
+        <div style="font-size:13px">ผู้รับความยินยอม</div>
+        <p style="margin:4px 0 0;font-size:13px">({salesperson_name})</p>
       </div>
     </div>
   </div>

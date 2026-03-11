@@ -120,7 +120,7 @@ enum SignerType {
   WITNESS_1 // พยานคนที่ 1
   WITNESS_2 // พยานคนที่ 2
   GUARDIAN // ผู้ปกครอง (อายุ 17-19)
-  STAFF @map("STAFF") // legacy alias
+  STAFF     @map("STAFF") // legacy alias
 }
 
 enum ConsentStatus {
@@ -310,15 +310,15 @@ model Customer {
   documents        String[]  @default([]) // array of file URLs
 
   // Guardian (ผู้ปกครอง) — สำหรับลูกค้าอายุ 17-19
-  guardianName       String?  @map("guardian_name")
-  guardianNationalId String?  @map("guardian_national_id")
-  guardianPhone      String?  @map("guardian_phone")
-  guardianRelation   String?  @map("guardian_relation")
-  guardianAddress    String?  @map("guardian_address")
+  guardianName       String? @map("guardian_name")
+  guardianNationalId String? @map("guardian_national_id")
+  guardianPhone      String? @map("guardian_phone")
+  guardianRelation   String? @map("guardian_relation")
+  guardianAddress    String? @map("guardian_address")
 
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @updatedAt @map("updated_at")
-  deletedAt        DateTime? @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
 
   contracts    Contract[]
   sales        Sale[]
@@ -378,22 +378,22 @@ model Contract {
   pdpaConsentId String? @unique @map("pdpa_consent_id")
 
   // Contract document hash (SHA-256) สำหรับ verify integrity
-  contractHash  String? @map("contract_hash")
+  contractHash String? @map("contract_hash")
 
   // Snapshot ข้อมูลลูกค้า ณ เวลาที่สร้างสัญญา (ป้องกันการเปลี่ยนย้อนหลัง)
   customerSnapshot Json? @map("customer_snapshot")
 
   // Legal clauses flags (ข้อความตามกฎหมาย)
-  hasOwnershipClause     Boolean @default(false) @map("has_ownership_clause") // ม.572
-  hasRepossessionClause  Boolean @default(false) @map("has_repossession_clause")
-  hasEarlyPayoffClause   Boolean @default(false) @map("has_early_payoff_clause")
-  hasNoTransferClause    Boolean @default(false) @map("has_no_transfer_clause")
-  hasAcknowledgement     Boolean @default(false) @map("has_acknowledgement") // ผู้ซื้อได้อ่านและเข้าใจ
+  hasOwnershipClause    Boolean @default(false) @map("has_ownership_clause") // ม.572
+  hasRepossessionClause Boolean @default(false) @map("has_repossession_clause")
+  hasEarlyPayoffClause  Boolean @default(false) @map("has_early_payoff_clause")
+  hasNoTransferClause   Boolean @default(false) @map("has_no_transfer_clause")
+  hasAcknowledgement    Boolean @default(false) @map("has_acknowledgement") // ผู้ซื้อได้อ่านและเข้าใจ
 
   // Retention policy
-  retentionStatus       DocumentRetentionStatus @default(ACTIVE) @map("retention_status")
-  retentionExpiry       DateTime? @map("retention_expiry")
-  legalHoldReason       String?   @map("legal_hold_reason")
+  retentionStatus DocumentRetentionStatus @default(ACTIVE) @map("retention_status")
+  retentionExpiry DateTime?               @map("retention_expiry")
+  legalHoldReason String?                 @map("legal_hold_reason")
 
   payments          Payment[]
   signatures        Signature[]
@@ -403,7 +403,7 @@ model Contract {
   sale              Sale?
   contractDocuments ContractDocument[]
   creditCheck       CreditCheck?
-  pdpaConsent       PDPAConsent? @relation(fields: [pdpaConsentId], references: [id])
+  pdpaConsent       PDPAConsent?       @relation(fields: [pdpaConsentId], references: [id])
   receipts          Receipt[]
 
   @@index([customerId])
@@ -614,18 +614,18 @@ model Product {
 }
 
 model ProductPhoto {
-  id          String   @id @default(uuid())
-  productId   String   @unique @map("product_id")
-  front       String?  // ด้านหน้า
-  back        String?  // ด้านหลัง
-  left        String?  // ข้างซ้าย
-  right       String?  // ข้างขวา
-  top         String?  // ด้านบน
-  bottom      String?  // ด้านล่าง
-  isCompleted Boolean  @default(false) @map("is_completed")
-  uploadedById String? @map("uploaded_by_id")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id           String   @id @default(uuid())
+  productId    String   @unique @map("product_id")
+  front        String? // ด้านหน้า
+  back         String? // ด้านหลัง
+  left         String? // ข้างซ้าย
+  right        String? // ข้างขวา
+  top          String? // ด้านบน
+  bottom       String? // ด้านล่าง
+  isCompleted  Boolean  @default(false) @map("is_completed")
+  uploadedById String?  @map("uploaded_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   product    Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   uploadedBy User?   @relation("ProductPhotoUploadedBy", fields: [uploadedById], references: [id])
@@ -859,7 +859,7 @@ model ContractTemplate {
   contentHtml  String   @map("content_html")
   placeholders String[] @default([])
   blocks       Json?    @default("[]") // Block-based editor content (JSON array)
-  settings     Json?    // Template settings (letterhead, margins, font sizes, etc.)
+  settings     Json? // Template settings (letterhead, margins, font sizes, etc.)
   isActive     Boolean  @default(true) @map("is_active")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
@@ -1084,21 +1084,21 @@ model InterestConfig {
 }
 
 model ContractDocument {
-  id             String               @id @default(uuid())
-  contractId     String               @map("contract_id")
-  documentType   ContractDocumentType  @map("document_type")
-  fileName       String               @map("file_name")
-  originalName   String?              @map("original_name") // ชื่อไฟล์เดิม
-  fileUrl        String               @map("file_url")
-  fileSize       Int?                 @map("file_size")
-  mimeType       String?              @map("mime_type")
-  fileHash       String?              @map("file_hash") // SHA-256
-  version        Int                  @default(1) // version control
-  isLatest       Boolean              @default(true) @map("is_latest")
-  isImmutable    Boolean              @default(false) @map("is_immutable") // ห้ามลบ/แก้ไข
-  notes          String?
-  uploadedById   String               @map("uploaded_by_id")
-  createdAt      DateTime             @default(now()) @map("created_at")
+  id           String               @id @default(uuid())
+  contractId   String               @map("contract_id")
+  documentType ContractDocumentType @map("document_type")
+  fileName     String               @map("file_name")
+  originalName String?              @map("original_name") // ชื่อไฟล์เดิม
+  fileUrl      String               @map("file_url")
+  fileSize     Int?                 @map("file_size")
+  mimeType     String?              @map("mime_type")
+  fileHash     String?              @map("file_hash") // SHA-256
+  version      Int                  @default(1) // version control
+  isLatest     Boolean              @default(true) @map("is_latest")
+  isImmutable  Boolean              @default(false) @map("is_immutable") // ห้ามลบ/แก้ไข
+  notes        String?
+  uploadedById String               @map("uploaded_by_id")
+  createdAt    DateTime             @default(now()) @map("created_at")
 
   contract   Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
   uploadedBy User     @relation("DocumentUploadedBy", fields: [uploadedById], references: [id])
@@ -1195,16 +1195,16 @@ model StockAlert {
 // ============================================================
 
 model StockCount {
-  id          String   @id @default(uuid())
-  countNumber String   @unique @map("count_number") // SC-YYYY-MM-NNN
-  branchId    String   @map("branch_id")
-  countedById String   @map("counted_by_id")
-  status      String   @default("DRAFT") // DRAFT, IN_PROGRESS, COMPLETED, CANCELLED
+  id          String    @id @default(uuid())
+  countNumber String    @unique @map("count_number") // SC-YYYY-MM-NNN
+  branchId    String    @map("branch_id")
+  countedById String    @map("counted_by_id")
+  status      String    @default("DRAFT") // DRAFT, IN_PROGRESS, COMPLETED, CANCELLED
   notes       String?
   startedAt   DateTime? @map("started_at")
   completedAt DateTime? @map("completed_at")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
 
   branch    Branch           @relation(fields: [branchId], references: [id])
   countedBy User             @relation("StockCountedBy", fields: [countedById], references: [id])
@@ -1275,12 +1275,12 @@ model BranchReceivingItem {
 }
 
 model RefreshToken {
-  id        String   @id @default(uuid())
-  token     String   @unique
-  userId    String   @map("user_id")
-  expiresAt DateTime @map("expires_at")
+  id        String    @id @default(uuid())
+  token     String    @unique
+  userId    String    @map("user_id")
+  expiresAt DateTime  @map("expires_at")
   revokedAt DateTime? @map("revoked_at")
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime  @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -1308,8 +1308,8 @@ model PDPAConsent {
   signatureImage    String?       @map("signature_image") @db.Text // e-Sign ยินยอม
   createdAt         DateTime      @default(now()) @map("created_at")
 
-  customer  Customer   @relation(fields: [customerId], references: [id])
-  contract  Contract?
+  customer Customer  @relation(fields: [customerId], references: [id])
+  contract Contract?
 
   @@index([customerId])
   @@index([status])
@@ -1317,20 +1317,20 @@ model PDPAConsent {
 }
 
 model DSARRequest {
-  id             String         @id @default(uuid())
-  requestNumber  String         @unique @map("request_number") // DSAR-YYYY-NNN
-  customerId     String         @map("customer_id")
-  requestType    DSARRequestType @map("request_type")
-  status         DSARStatus     @default(SUBMITTED)
-  description    String         @db.Text
-  responseNotes  String?        @map("response_notes") @db.Text
-  processedById  String?        @map("processed_by_id")
-  submittedAt    DateTime       @default(now()) @map("submitted_at")
-  processedAt    DateTime?      @map("processed_at")
-  completedAt    DateTime?      @map("completed_at")
-  dueDate        DateTime       @map("due_date") // ต้องดำเนินการภายใน 30 วัน
+  id            String          @id @default(uuid())
+  requestNumber String          @unique @map("request_number") // DSAR-YYYY-NNN
+  customerId    String          @map("customer_id")
+  requestType   DSARRequestType @map("request_type")
+  status        DSARStatus      @default(SUBMITTED)
+  description   String          @db.Text
+  responseNotes String?         @map("response_notes") @db.Text
+  processedById String?         @map("processed_by_id")
+  submittedAt   DateTime        @default(now()) @map("submitted_at")
+  processedAt   DateTime?       @map("processed_at")
+  completedAt   DateTime?       @map("completed_at")
+  dueDate       DateTime        @map("due_date") // ต้องดำเนินการภายใน 30 วัน
 
-  customer    Customer @relation(fields: [customerId], references: [id])
+  customer Customer @relation(fields: [customerId], references: [id])
 
   @@index([customerId])
   @@index([status])
@@ -1343,27 +1343,27 @@ model DSARRequest {
 // ============================================================
 
 model Receipt {
-  id             String   @id @default(uuid())
-  receiptNumber  String   @unique @map("receipt_number") // RC-YYYY-MM-NNNNN
-  contractId     String   @map("contract_id")
-  paymentId      String?  @map("payment_id")
-  receiptType    String   @default("PAYMENT") // PAYMENT, DOWN_PAYMENT, EARLY_PAYOFF, CREDIT_NOTE
-  payerName      String   @map("payer_name")
-  receiverName   String   @map("receiver_name")
-  amount         Decimal  @db.Decimal(12, 2)
-  installmentNo  Int?     @map("installment_no") // งวดที่
+  id               String   @id @default(uuid())
+  receiptNumber    String   @unique @map("receipt_number") // RC-YYYY-MM-NNNNN
+  contractId       String   @map("contract_id")
+  paymentId        String?  @map("payment_id")
+  receiptType      String   @default("PAYMENT") // PAYMENT, DOWN_PAYMENT, EARLY_PAYOFF, CREDIT_NOTE
+  payerName        String   @map("payer_name")
+  receiverName     String   @map("receiver_name")
+  amount           Decimal  @db.Decimal(12, 2)
+  installmentNo    Int?     @map("installment_no") // งวดที่
   remainingBalance Decimal? @map("remaining_balance") @db.Decimal(12, 2)
   remainingMonths  Int?     @map("remaining_months")
-  paymentMethod  String?  @map("payment_method")
-  transactionRef String?  @map("transaction_ref") // เลขอ้างอิงธุรกรรม
-  paidDate       DateTime @map("paid_date")
-  fileUrl        String?  @map("file_url") // PDF URL
-  fileHash       String?  @map("file_hash") // SHA-256
-  isVoided       Boolean  @default(false) @map("is_voided")
-  voidReason     String?  @map("void_reason")
-  voidedReceiptId String? @map("voided_receipt_id") // อ้างอิงใบเสร็จที่ถูกยกเลิก
-  issuedById     String   @map("issued_by_id")
-  createdAt      DateTime @default(now()) @map("created_at")
+  paymentMethod    String?  @map("payment_method")
+  transactionRef   String?  @map("transaction_ref") // เลขอ้างอิงธุรกรรม
+  paidDate         DateTime @map("paid_date")
+  fileUrl          String?  @map("file_url") // PDF URL
+  fileHash         String?  @map("file_hash") // SHA-256
+  isVoided         Boolean  @default(false) @map("is_voided")
+  voidReason       String?  @map("void_reason")
+  voidedReceiptId  String?  @map("voided_receipt_id") // อ้างอิงใบเสร็จที่ถูกยกเลิก
+  issuedById       String   @map("issued_by_id")
+  createdAt        DateTime @default(now()) @map("created_at")
 
   contract Contract @relation(fields: [contractId], references: [id])
 
@@ -1398,15 +1398,15 @@ model CustomerAccessToken {
 // ============================================================
 
 model DocumentAuditLog {
-  id           String   @id @default(uuid())
-  documentId   String   @map("document_id") // ContractDocument ID
-  contractId   String   @map("contract_id")
-  action       String   // UPLOAD, VIEW, DOWNLOAD, PRINT, DELETE, HASH_MISMATCH
-  userId       String?  @map("user_id")
-  ipAddress    String?  @map("ip_address")
-  userAgent    String?  @map("user_agent")
-  details      Json?    // additional details
-  createdAt    DateTime @default(now()) @map("created_at")
+  id         String   @id @default(uuid())
+  documentId String   @map("document_id") // ContractDocument ID
+  contractId String   @map("contract_id")
+  action     String // UPLOAD, VIEW, DOWNLOAD, PRINT, DELETE, HASH_MISMATCH
+  userId     String?  @map("user_id")
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
+  details    Json? // additional details
+  createdAt  DateTime @default(now()) @map("created_at")
 
   @@index([documentId])
   @@index([contractId])
@@ -1420,20 +1420,20 @@ model DocumentAuditLog {
 // ============================================================
 
 model CompanyInfo {
-  id                   String   @id @default(uuid())
-  nameTh               String   @map("name_th")
-  nameEn               String?  @map("name_en")
-  taxId                String   @map("tax_id") // เลขทะเบียนนิติบุคคล/ผู้เสียภาษี
-  address              String
-  phone                String?
-  directorName         String   @map("director_name") // ชื่อผู้มีอำนาจลงนาม
-  directorPosition     String?  @map("director_position") // ตำแหน่ง
-  directorNationalId   String?  @map("director_national_id")
-  directorAddress      String?  @map("director_address")
-  logoUrl              String?  @map("logo_url")
-  isActive             Boolean  @default(true) @map("is_active")
-  createdAt            DateTime @default(now()) @map("created_at")
-  updatedAt            DateTime @updatedAt @map("updated_at")
+  id                 String   @id @default(uuid())
+  nameTh             String   @map("name_th")
+  nameEn             String?  @map("name_en")
+  taxId              String   @map("tax_id") // เลขทะเบียนนิติบุคคล/ผู้เสียภาษี
+  address            String
+  phone              String?
+  directorName       String   @map("director_name") // ชื่อผู้มีอำนาจลงนาม
+  directorPosition   String?  @map("director_position") // ตำแหน่ง
+  directorNationalId String?  @map("director_national_id")
+  directorAddress    String?  @map("director_address")
+  logoUrl            String?  @map("logo_url")
+  isActive           Boolean  @default(true) @map("is_active")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
 
   @@map("company_info")
 }

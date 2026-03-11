@@ -128,7 +128,7 @@ export class SchedulerService {
       const pendingContracts = await this.prisma.contract.findMany({
         where: {
           deletedAt: null,
-          workflowStatus: { in: ['PENDING_REVIEW', 'PENDING_APPROVAL'] },
+          workflowStatus: { in: ['PENDING_REVIEW', 'CREATING'] },
           updatedAt: { lt: threshold24h },
         },
         include: {
@@ -143,29 +143,24 @@ export class SchedulerService {
         const isUrgent = contract.updatedAt < threshold48h;
         const severity = isUrgent ? 'URGENT' : 'WARNING';
 
-        // Create in-app notification for branch manager
+        // Create notification log for branch manager
         try {
-          await this.prisma.notification.create({
+          const title = isUrgent
+            ? `[ด่วน] สัญญา ${contract.contractNumber} รออนุมัติ ${hoursWaiting} ชม.`
+            : `สัญญา ${contract.contractNumber} รออนุมัติ ${hoursWaiting} ชม.`;
+          await this.prisma.notificationLog.create({
             data: {
-              type: 'SLA_ALERT',
-              channel: 'IN_APP',
-              recipientType: 'BRANCH_MANAGER',
-              recipientId: contract.branchId || '',
-              title: isUrgent
-                ? `[ด่วน] สัญญา ${contract.contractNumber} รออนุมัติ ${hoursWaiting} ชม.`
-                : `สัญญา ${contract.contractNumber} รออนุมัติ ${hoursWaiting} ชม.`,
+              channel: 'LINE',
+              recipient: contract.branchId || '',
+              subject: title,
               message: `ลูกค้า: ${contract.customer?.name || '-'} สาขา: ${contract.branch?.name || '-'} สถานะ: ${contract.workflowStatus} (${severity})`,
-              metadata: {
-                contractId: contract.id,
-                contractNumber: contract.contractNumber,
-                hoursWaiting,
-                severity,
-              },
+              status: 'PENDING',
+              relatedId: contract.id,
             },
           });
           sent++;
         } catch {
-          // Skip if notification model doesn't have all fields
+          // Skip if notification log creation fails
         }
       }
 
@@ -177,8 +172,8 @@ export class SchedulerService {
 
   /**
    * Run weekly on Sunday at 02:00: data retention cleanup
-   * - 5 years after COMPLETED/EARLY_PAYOFF → soft-delete personal data
-   * - 2 years after CANCELLED/REPOSSESSED → soft-delete personal data
+   * - 5 years after COMPLETED/EARLY_PAYOFF → soft-delete contract data
+   * - 2 years after CLOSED_BAD_DEBT/EXCHANGED → soft-delete contract data
    * - Clean expired customer access tokens
    */
   @Cron('0 2 * * 0')
@@ -189,21 +184,20 @@ export class SchedulerService {
       const fiveYearsAgo = new Date(now.getFullYear() - 5, now.getMonth(), now.getDate());
       const twoYearsAgo = new Date(now.getFullYear() - 2, now.getMonth(), now.getDate());
 
-      // Anonymize completed contracts older than 5 years
+      // Soft-delete completed contracts older than 5 years
       const completedAnonymized = await this.prisma.contract.updateMany({
         where: {
           status: { in: ['COMPLETED', 'EARLY_PAYOFF'] },
           updatedAt: { lt: fiveYearsAgo },
           deletedAt: null,
-          customer: { isAnonymized: { not: true } },
         },
         data: { deletedAt: now },
       });
 
-      // Anonymize cancelled/repossessed contracts older than 2 years
+      // Soft-delete closed bad debt contracts older than 2 years
       const cancelledAnonymized = await this.prisma.contract.updateMany({
         where: {
-          status: { in: ['CANCELLED', 'REPOSSESSED'] },
+          status: { in: ['CLOSED_BAD_DEBT', 'EXCHANGED'] },
           updatedAt: { lt: twoYearsAgo },
           deletedAt: null,
         },
@@ -226,7 +220,7 @@ export class SchedulerService {
       try {
         const oneYearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
         const result = await this.prisma.pDPAConsent.deleteMany({
-          where: { isActive: false, updatedAt: { lt: oneYearAgo } },
+          where: { status: 'REVOKED', revokedAt: { lt: oneYearAgo } },
         });
         consentsCleared = result.count;
       } catch {

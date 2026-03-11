@@ -780,17 +780,10 @@ export class ContractsService {
     // Get all active contracts with their documents and signatures
     const contracts = await this.prisma.contract.findMany({
       where,
-      select: {
-        id: true,
-        contractNumber: true,
-        status: true,
-        workflowStatus: true,
-        createdAt: true,
-        updatedAt: true,
-        branchId: true,
+      include: {
         branch: { select: { id: true, name: true } },
         customer: { select: { name: true } },
-        documents: { select: { id: true, type: true } },
+        eDocuments: { select: { id: true, documentType: true } },
         signatures: { select: { id: true, signerType: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -808,15 +801,15 @@ export class ContractsService {
     const branchMap = new Map<string, { branchId: string; branchName: string; total: number; documented: number; pendingDocs: number; pendingSigs: number }>();
 
     for (const c of contracts) {
-      const docTypes = new Set(c.documents.map((d: { type: string }) => d.type));
-      const sigTypes = new Set(c.signatures.map((s: { signerType: string }) => s.signerType));
+      const docTypes = new Set(c.eDocuments.map((d) => d.documentType));
+      const sigTypes = new Set(c.signatures.map((s) => s.signerType as string));
       const hasAllDocs = REQUIRED_DOCS.every((d) => docTypes.has(d));
       const hasAllSigs = REQUIRED_SIGS.every((s) => sigTypes.has(s));
 
       if (hasAllDocs && hasAllSigs) fullyDocumented++;
       if (!hasAllDocs) pendingDocuments++;
       if (!hasAllSigs) pendingSignatures++;
-      if (c.workflowStatus === 'PENDING_REVIEW' || c.workflowStatus === 'PENDING_APPROVAL') pendingApproval++;
+      if (c.workflowStatus === 'PENDING_REVIEW' || c.workflowStatus === 'CREATING') pendingApproval++;
       if (c.status === 'OVERDUE' || c.status === 'DEFAULT') overdueContracts++;
 
       // By branch
@@ -834,7 +827,7 @@ export class ContractsService {
 
     // SLA alerts: contracts waiting for approval > 24h
     const slaAlerts = contracts
-      .filter((c) => ['PENDING_REVIEW', 'PENDING_APPROVAL'].includes(c.workflowStatus || ''))
+      .filter((c) => ['PENDING_REVIEW', 'CREATING'].includes(c.workflowStatus || ''))
       .map((c) => {
         const hoursWaiting = Math.round((Date.now() - new Date(c.updatedAt).getTime()) / (1000 * 60 * 60));
         return {
@@ -856,24 +849,26 @@ export class ContractsService {
       const audits = await this.prisma.documentAuditLog.findMany({
         orderBy: { createdAt: 'desc' },
         take: 20,
-        include: {
-          contract: {
-            select: {
-              contractNumber: true,
-              customer: { select: { name: true } },
-              branch: { select: { name: true } },
-            },
-          },
-        },
       });
-      recentActivity = audits.map((a) => ({
-        id: a.id,
-        contractNumber: a.contract?.contractNumber || '',
-        customerName: a.contract?.customer?.name || '',
-        action: a.action,
-        createdAt: a.createdAt.toISOString(),
-        branchName: a.contract?.branch?.name || '',
-      }));
+      // Look up contract details for each audit entry
+      for (const a of audits) {
+        const contract = await this.prisma.contract.findUnique({
+          where: { id: a.contractId },
+          select: {
+            contractNumber: true,
+            customer: { select: { name: true } },
+            branch: { select: { name: true } },
+          },
+        });
+        recentActivity.push({
+          id: a.id,
+          contractNumber: contract?.contractNumber || '',
+          customerName: contract?.customer?.name || '',
+          action: a.action,
+          createdAt: a.createdAt.toISOString(),
+          branchName: contract?.branch?.name || '',
+        });
+      }
     } catch {
       // DocumentAuditLog might not exist yet
     }

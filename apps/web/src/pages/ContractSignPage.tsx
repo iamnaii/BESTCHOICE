@@ -30,7 +30,9 @@ interface ContractDetail {
   status: string;
   workflowStatus: string;
   contractNumber: string;
+  pdpaConsentId: string | null;
   customer?: {
+    id: string;
     birthDate?: string;
   };
 }
@@ -83,6 +85,38 @@ export default function ContractSignPage() {
     queryFn: async () => { const { data } = await api.get('/users/me/signature'); return data; },
   });
   const savedSignature = savedSigData?.signatureImage || null;
+
+  // PDPA consent
+  const hasPdpaConsent = !!contract?.pdpaConsentId;
+  const [showPdpaModal, setShowPdpaModal] = useState(false);
+  const pdpaCanvasRef = useRef<HTMLCanvasElement>(null);
+  const [pdpaDrawing, setPdpaDrawing] = useState(false);
+  const [pdpaHasDrawn, setPdpaHasDrawn] = useState(false);
+
+  const pdpaConsentMutation = useMutation({
+    mutationFn: async (signatureImage: string) => {
+      const { data } = await api.post(`/contracts/${id}/pdpa-consent`, { signatureImage });
+      return data;
+    },
+    onSuccess: () => {
+      toast.success('บันทึกความยินยอม PDPA สำเร็จ');
+      queryClient.invalidateQueries({ queryKey: ['contract', id] });
+      setShowPdpaModal(false);
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  // Setup PDPA canvas
+  useEffect(() => {
+    if (!showPdpaModal) return;
+    const canvas = pdpaCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#000';
+  }, [showPdpaModal]);
 
   // Capture screen size for signature metadata
   const getScreenSize = () => `${window.screen.width}x${window.screen.height}`;
@@ -271,6 +305,89 @@ export default function ContractSignPage() {
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
           <div className="text-sm font-medium text-amber-800">ไม่สามารถลงนามได้</div>
           <div className="text-xs text-amber-600 mt-1">สัญญาไม่อยู่ในสถานะร่าง (สถานะปัจจุบัน: {contract.status})</div>
+        </div>
+      )}
+
+      {/* PDPA Consent Step */}
+      {canSign && !hasPdpaConsent && (
+        <div className="mb-6 bg-amber-50 border border-amber-200 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-amber-800">ขั้นตอนที่ 3: ต้องได้รับความยินยอม PDPA จากลูกค้าก่อน</h3>
+              <p className="text-xs text-amber-600 mt-1">ลูกค้าต้องยินยอมให้เก็บรวบรวม ใช้ และเปิดเผยข้อมูลส่วนบุคคล ตาม พ.ร.บ.คุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562 ก่อนลงนามสัญญา</p>
+            </div>
+            <button
+              onClick={() => setShowPdpaModal(true)}
+              className="ml-4 px-4 py-2 text-sm bg-amber-600 text-white rounded-lg hover:bg-amber-700 whitespace-nowrap"
+            >
+              บันทึกความยินยอม PDPA
+            </button>
+          </div>
+        </div>
+      )}
+
+      {canSign && hasPdpaConsent && (
+        <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-2">
+          <span className="text-green-600 text-sm font-medium">&#10003; ได้รับความยินยอม PDPA แล้ว</span>
+        </div>
+      )}
+
+      {/* PDPA Consent Modal */}
+      {showPdpaModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full mx-4 p-6 max-h-[90vh] overflow-y-auto">
+            <h2 className="text-lg font-semibold text-gray-900 mb-3">ยินยอม PDPA</h2>
+            <div className="bg-gray-50 rounded-lg p-4 text-xs text-gray-700 mb-4 max-h-48 overflow-y-auto leading-relaxed">
+              <p className="font-semibold mb-2">ประกาศความเป็นส่วนตัว (Privacy Notice)</p>
+              <p className="mb-2">บริษัท เบสท์ช้อยส์โฟน จำกัด ให้ความสำคัญกับการคุ้มครองข้อมูลส่วนบุคคลของท่าน ตามพระราชบัญญัติคุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562</p>
+              <p className="font-medium mb-1">วัตถุประสงค์ในการเก็บรวบรวมข้อมูล:</p>
+              <ol className="list-decimal ml-4 mb-2">
+                <li>เพื่อการทำสัญญาผ่อนชำระสินค้า</li>
+                <li>เพื่อการติดตามหนี้และบริหารสัญญา</li>
+                <li>เพื่อการจัดทำเอกสารทางกฎหมาย</li>
+                <li>เพื่อการติดต่อสื่อสารเกี่ยวกับสัญญา</li>
+              </ol>
+              <p className="font-medium mb-1">ข้อมูลที่เก็บรวบรวม:</p>
+              <p className="mb-2">ชื่อ-นามสกุล, เลขบัตรประชาชน, ที่อยู่, เบอร์โทรศัพท์, อีเมล, LINE ID, ข้อมูลอาชีพและรายได้, ข้อมูลบุคคลอ้างอิง, รูปถ่ายบัตรประชาชน, ข้อมูลสินค้า (IMEI/S/N)</p>
+              <p className="font-medium mb-1">ระยะเวลาเก็บข้อมูล:</p>
+              <p>ตลอดอายุสัญญา + 5 ปีหลังปิดสัญญา (ตามอายุความทางกฎหมาย)</p>
+            </div>
+            <p className="text-sm text-gray-700 mb-3 font-medium">ลงลายมือชื่อยินยอม</p>
+            <canvas
+              ref={pdpaCanvasRef}
+              width={460}
+              height={160}
+              className="w-full border-2 border-dashed border-gray-300 rounded-lg cursor-crosshair touch-none mb-3"
+              style={{ height: '160px' }}
+              onMouseDown={(e) => { e.preventDefault(); setPdpaDrawing(true); setPdpaHasDrawn(true); const ctx = pdpaCanvasRef.current?.getContext('2d'); if (!ctx) return; const rect = pdpaCanvasRef.current!.getBoundingClientRect(); ctx.beginPath(); ctx.moveTo((e.clientX - rect.left) * (460 / rect.width), (e.clientY - rect.top) * (160 / rect.height)); }}
+              onMouseMove={(e) => { e.preventDefault(); if (!pdpaDrawing) return; const ctx = pdpaCanvasRef.current?.getContext('2d'); if (!ctx) return; const rect = pdpaCanvasRef.current!.getBoundingClientRect(); ctx.lineTo((e.clientX - rect.left) * (460 / rect.width), (e.clientY - rect.top) * (160 / rect.height)); ctx.stroke(); }}
+              onMouseUp={() => setPdpaDrawing(false)}
+              onMouseLeave={() => setPdpaDrawing(false)}
+              onTouchStart={(e) => { e.preventDefault(); setPdpaDrawing(true); setPdpaHasDrawn(true); const ctx = pdpaCanvasRef.current?.getContext('2d'); if (!ctx) return; const rect = pdpaCanvasRef.current!.getBoundingClientRect(); ctx.beginPath(); ctx.moveTo((e.touches[0].clientX - rect.left) * (460 / rect.width), (e.touches[0].clientY - rect.top) * (160 / rect.height)); }}
+              onTouchMove={(e) => { e.preventDefault(); if (!pdpaDrawing) return; const ctx = pdpaCanvasRef.current?.getContext('2d'); if (!ctx) return; const rect = pdpaCanvasRef.current!.getBoundingClientRect(); ctx.lineTo((e.touches[0].clientX - rect.left) * (460 / rect.width), (e.touches[0].clientY - rect.top) * (160 / rect.height)); ctx.stroke(); }}
+              onTouchEnd={() => setPdpaDrawing(false)}
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => { const ctx = pdpaCanvasRef.current?.getContext('2d'); if (ctx) ctx.clearRect(0, 0, 460, 160); setPdpaHasDrawn(false); }}
+                className="px-4 py-2 text-sm border border-gray-300 rounded-lg"
+              >
+                ล้าง
+              </button>
+              <div className="flex-1" />
+              <button onClick={() => setShowPdpaModal(false)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg">ยกเลิก</button>
+              <button
+                onClick={() => {
+                  if (!pdpaHasDrawn || !pdpaCanvasRef.current) { toast.error('กรุณาลงนามก่อน'); return; }
+                  pdpaConsentMutation.mutate(pdpaCanvasRef.current.toDataURL('image/png'));
+                }}
+                disabled={!pdpaHasDrawn || pdpaConsentMutation.isPending}
+                className="px-6 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+              >
+                {pdpaConsentMutation.isPending ? 'กำลังบันทึก...' : 'ยืนยันยินยอม'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

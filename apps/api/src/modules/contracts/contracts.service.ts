@@ -986,4 +986,64 @@ export class ContractsService {
       }),
     };
   }
+
+  /** Record PDPA consent and link to contract */
+  async recordPdpaConsent(
+    contractId: string,
+    signatureImage: string,
+    req: { ip?: string; userAgent?: string },
+  ) {
+    const contract = await this.prisma.contract.findUnique({
+      where: { id: contractId },
+      include: { customer: true },
+    });
+    if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
+    if (contract.pdpaConsentId) throw new BadRequestException('สัญญานี้มี PDPA consent แล้ว');
+
+    // Get privacy notice version
+    const versionConfig = await this.prisma.systemConfig.findUnique({
+      where: { key: 'pdpa_privacy_notice_version' },
+    });
+
+    const consent = await this.prisma.pDPAConsent.create({
+      data: {
+        customerId: contract.customerId,
+        consentVersion: versionConfig?.value || '1.0',
+        privacyNoticeText: 'ยินยอมตาม พ.ร.บ.คุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562',
+        purposes: [
+          'สัญญาผ่อนชำระสินค้า',
+          'ติดตามหนี้และบริหารสัญญา',
+          'จัดทำเอกสารทางกฎหมาย',
+          'ติดต่อสื่อสารเกี่ยวกับสัญญา',
+        ],
+        status: 'GRANTED',
+        grantedAt: new Date(),
+        ipAddress: req.ip || null,
+        deviceInfo: req.userAgent || null,
+        signatureImage: signatureImage || null,
+      },
+    });
+
+    // Link consent to contract
+    await this.prisma.contract.update({
+      where: { id: contractId },
+      data: { pdpaConsentId: consent.id },
+    });
+
+    return consent;
+  }
+
+  /** Get PDPA consent for contract */
+  async getPdpaConsent(contractId: string) {
+    const contract = await this.prisma.contract.findUnique({
+      where: { id: contractId },
+      select: { pdpaConsentId: true },
+    });
+    if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+    if (!contract.pdpaConsentId) return null;
+
+    return this.prisma.pDPAConsent.findUnique({
+      where: { id: contract.pdpaConsentId },
+    });
+  }
 }

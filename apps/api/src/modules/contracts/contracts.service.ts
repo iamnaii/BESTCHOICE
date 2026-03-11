@@ -35,7 +35,7 @@ export class ContractsService {
     }
 
     const page = filters.page || 1;
-    const limit = filters.limit || 50;
+    const limit = Math.min(filters.limit || 50, 100);
 
     const [data, total] = await Promise.all([
       this.prisma.contract.findMany({
@@ -228,7 +228,8 @@ export class ContractsService {
           }
         }
 
-        throw new InternalServerErrorException(`ไม่สามารถสร้างสัญญาได้: ${err?.message || 'ข้อผิดพลาดไม่ทราบสาเหตุ'}`);
+        this.logger.error(`Contract creation failed: ${err?.message}`, err?.stack);
+        throw new InternalServerErrorException('ไม่สามารถสร้างสัญญาได้ กรุณาลองใหม่อีกครั้ง');
       }
     }
 
@@ -423,10 +424,15 @@ export class ContractsService {
       throw new BadRequestException('สินค้าไม่พร้อมสำหรับเปิดสัญญา (อาจถูกขายหรือลบไปแล้ว)');
     }
 
-    await this.prisma.$transaction([
-      this.prisma.contract.update({ where: { id }, data: { status: 'ACTIVE' } }),
-      this.prisma.product.update({ where: { id: contract.productId }, data: { status: 'SOLD_INSTALLMENT' } }),
-    ]);
+    await this.prisma.$transaction(async (tx) => {
+      // Re-check product status inside transaction to prevent race condition
+      const prod = await tx.product.findUnique({ where: { id: contract.productId } });
+      if (!prod || (prod.status !== 'RESERVED' && prod.status !== 'IN_STOCK')) {
+        throw new BadRequestException('สินค้าไม่พร้อมสำหรับเปิดสัญญา (อาจถูกขายหรือลบไปแล้ว)');
+      }
+      await tx.contract.update({ where: { id }, data: { status: 'ACTIVE' } });
+      await tx.product.update({ where: { id: contract.productId }, data: { status: 'SOLD_INSTALLMENT' } });
+    });
 
     return this.findOne(id);
   }

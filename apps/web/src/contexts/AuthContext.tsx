@@ -24,9 +24,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    try {
+      await api.post('/auth/logout', {});
+    } catch {
+      // ignore logout errors
+    }
     localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
     setUser(null);
   }, []);
 
@@ -78,7 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     const { data } = res;
     localStorage.setItem('access_token', data.accessToken);
-    localStorage.setItem('refresh_token', data.refreshToken);
+    // refresh token is stored in httpOnly cookie by the server
     setUser({
       id: data.user.id,
       email: data.user.email,

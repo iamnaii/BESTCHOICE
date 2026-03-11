@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 
@@ -40,10 +41,7 @@ export class AuthService {
       expiresIn: this.configService.get<string>('JWT_EXPIRATION', '15m'),
     });
 
-    const refreshToken = this.jwtService.sign(payload, {
-      secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
-      expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRATION', '7d'),
-    });
+    const refreshToken = await this.createRefreshToken(user.id);
 
     return {
       accessToken,
@@ -59,42 +57,51 @@ export class AuthService {
     };
   }
 
-  async refreshToken(refreshToken: string) {
-    try {
-      const payload = this.jwtService.verify(refreshToken, {
-        secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
-      });
+  async refreshToken(token: string) {
+    const storedToken = await this.prisma.refreshToken.findUnique({
+      where: { token },
+    });
 
-      const user = await this.prisma.user.findUnique({
-        where: { id: payload.sub },
-      });
-
-      if (!user || !user.isActive) {
-        throw new UnauthorizedException('ผู้ใช้งานไม่ถูกต้อง');
-      }
-
-      const newPayload = {
-        sub: user.id,
-        email: user.email,
-        role: user.role,
-        branchId: user.branchId,
-      };
-
-      const accessToken = this.jwtService.sign(newPayload, {
-        secret: this.configService.get<string>('JWT_SECRET'),
-        expiresIn: this.configService.get<string>('JWT_EXPIRATION', '15m'),
-      });
-
-      // Rotate refresh token for security (old token becomes invalid once a new one is issued)
-      const newRefreshToken = this.jwtService.sign(newPayload, {
-        secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
-        expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRATION', '7d'),
-      });
-
-      return { accessToken, refreshToken: newRefreshToken };
-    } catch {
+    if (!storedToken || storedToken.revokedAt || storedToken.expiresAt < new Date()) {
       throw new UnauthorizedException('Refresh token ไม่ถูกต้องหรือหมดอายุ');
     }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: storedToken.userId },
+    });
+
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException('ผู้ใช้งานไม่ถูกต้อง');
+    }
+
+    // Revoke old token (rotation)
+    await this.prisma.refreshToken.update({
+      where: { id: storedToken.id },
+      data: { revokedAt: new Date() },
+    });
+
+    const payload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      branchId: user.branchId,
+    };
+
+    const accessToken = this.jwtService.sign(payload, {
+      secret: this.configService.get<string>('JWT_SECRET'),
+      expiresIn: this.configService.get<string>('JWT_EXPIRATION', '15m'),
+    });
+
+    const newRefreshToken = await this.createRefreshToken(user.id);
+
+    return { accessToken, refreshToken: newRefreshToken };
+  }
+
+  async logout(refreshToken: string) {
+    await this.prisma.refreshToken.updateMany({
+      where: { token: refreshToken, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
   }
 
   async getMe(userId: string) {
@@ -115,5 +122,26 @@ export class AuthService {
     }
 
     return user;
+  }
+
+  private async createRefreshToken(userId: string): Promise<string> {
+    const token = crypto.randomBytes(64).toString('hex');
+    const expiresIn = this.configService.get<string>('JWT_REFRESH_EXPIRATION', '7d');
+    const expiresAt = new Date();
+    const days = parseInt(expiresIn) || 7;
+    expiresAt.setDate(expiresAt.getDate() + days);
+
+    await this.prisma.refreshToken.create({
+      data: { token, userId, expiresAt },
+    });
+
+    // Clean up expired tokens periodically (1% chance per call to avoid overhead)
+    if (Math.random() < 0.01) {
+      this.prisma.refreshToken.deleteMany({
+        where: { expiresAt: { lt: new Date() } },
+      }).catch(() => { /* ignore cleanup errors */ });
+    }
+
+    return token;
   }
 }

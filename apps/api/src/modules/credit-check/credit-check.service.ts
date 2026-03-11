@@ -32,7 +32,7 @@ export class CreditCheckService {
     }
 
     const page = filters.page || 1;
-    const limit = filters.limit || 50;
+    const limit = Math.min(filters.limit || 50, 100);
 
     const [data, total] = await Promise.all([
       this.prisma.creditCheck.findMany({

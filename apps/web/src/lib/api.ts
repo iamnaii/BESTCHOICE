@@ -5,7 +5,9 @@ const api = axios.create({
   timeout: 15000, // 15 second timeout to prevent hanging forever
   headers: {
     'Content-Type': 'application/json',
+    'X-Requested-With': 'XMLHttpRequest',
   },
+  withCredentials: true, // send httpOnly cookies for refresh token
 });
 
 // Request interceptor: attach JWT token
@@ -43,7 +45,6 @@ api.interceptors.response.use(
       // Don't try to refresh if the failing request IS the refresh or login
       if (originalRequest.url?.includes('/auth/refresh') || originalRequest.url?.includes('/auth/login')) {
         localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
         if (window.location.pathname !== '/login') {
           window.location.href = '/login';
         }
@@ -66,28 +67,16 @@ api.interceptors.response.use(
       originalRequest._retry = true;
       isRefreshing = true;
 
-      const refreshToken = localStorage.getItem('refresh_token');
-      if (!refreshToken) {
-        isRefreshing = false;
-        localStorage.removeItem('access_token');
-        if (window.location.pathname !== '/login' && window.location.pathname !== '/landing') {
-          window.location.href = '/login';
-        }
-        return Promise.reject(error);
-      }
-
       try {
+        // Refresh token is sent via httpOnly cookie automatically
         const { data } = await axios.post(
           `${api.defaults.baseURL}/auth/refresh`,
-          { refreshToken },
-          { timeout: 10000 },
+          {},
+          { timeout: 10000, withCredentials: true, headers: { 'X-Requested-With': 'XMLHttpRequest' } },
         );
 
         const newAccessToken = data.accessToken;
         localStorage.setItem('access_token', newAccessToken);
-        if (data.refreshToken) {
-          localStorage.setItem('refresh_token', data.refreshToken);
-        }
 
         processQueue(null, newAccessToken);
 
@@ -97,7 +86,6 @@ api.interceptors.response.use(
       } catch (refreshError) {
         processQueue(refreshError, null);
         localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
         if (window.location.pathname !== '/login' && window.location.pathname !== '/landing') {
           window.location.href = '/login';
         }

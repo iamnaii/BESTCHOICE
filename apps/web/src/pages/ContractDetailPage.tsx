@@ -44,7 +44,7 @@ interface ContractDetail {
   reviewedAt: string | null;
   salespersonId: string;
   customer: { id: string; name: string; phone: string; nationalId: string };
-  product: { id: string; name: string; brand: string; model: string; serialNumber: string | null; imeiSerial: string | null };
+  product: { id: string; name: string; brand: string; model: string; category: string; color: string | null; storage: string | null; serialNumber: string | null; imeiSerial: string | null; costPrice: string; batteryHealth: number | null; warrantyExpired: boolean | null; warrantyExpireDate: string | null; hasBox: boolean | null; accessoryType: string | null; accessoryBrand: string | null };
   branch: { id: string; name: string };
   salesperson: { id: string; name: string };
   reviewedBy: { id: string; name: string } | null;
@@ -175,6 +175,71 @@ export default function ContractDetailPage() {
     },
     onError: (err: any) => toast.error(getErrorMessage(err)),
   });
+
+  // Product edit state
+  const [isEditingProduct, setIsEditingProduct] = useState(false);
+  const [productEditForm, setProductEditForm] = useState({
+    name: '', brand: '', model: '', color: '', storage: '',
+    imeiSerial: '', serialNumber: '', costPrice: '',
+    batteryHealth: '', warrantyExpired: false, warrantyExpireDate: '', hasBox: false,
+    accessoryType: '', accessoryBrand: '',
+  });
+
+  const updateProductMutation = useMutation({
+    mutationFn: async (data: Record<string, unknown>) => {
+      return api.patch(`/products/${contract!.product.id}`, data);
+    },
+    onSuccess: () => {
+      toast.success('แก้ไขข้อมูลสินค้าสำเร็จ');
+      setIsEditingProduct(false);
+      invalidateContract();
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['products-available'] });
+    },
+    onError: (err: any) => toast.error(getErrorMessage(err)),
+  });
+
+  const startEditingProduct = () => {
+    if (!contract) return;
+    const p = contract.product;
+    setProductEditForm({
+      name: p.name, brand: p.brand, model: p.model,
+      color: p.color || '', storage: p.storage || '',
+      imeiSerial: p.imeiSerial || '', serialNumber: p.serialNumber || '',
+      costPrice: p.costPrice || '',
+      batteryHealth: p.batteryHealth != null ? String(p.batteryHealth) : '',
+      warrantyExpired: p.warrantyExpired ?? false,
+      warrantyExpireDate: p.warrantyExpireDate ? p.warrantyExpireDate.split('T')[0] : '',
+      hasBox: p.hasBox ?? false,
+      accessoryType: p.accessoryType || '', accessoryBrand: p.accessoryBrand || '',
+    });
+    setIsEditingProduct(true);
+  };
+
+  const handleProductEditSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload: Record<string, unknown> = {
+      name: productEditForm.name,
+      brand: productEditForm.brand,
+      model: productEditForm.model,
+      color: productEditForm.color || undefined,
+      storage: productEditForm.storage || undefined,
+      imeiSerial: productEditForm.imeiSerial || undefined,
+      serialNumber: productEditForm.serialNumber || undefined,
+      costPrice: parseFloat(productEditForm.costPrice) || undefined,
+    };
+    if (contract?.product.category === 'PHONE_USED') {
+      payload.batteryHealth = productEditForm.batteryHealth ? Number(productEditForm.batteryHealth) : undefined;
+      payload.warrantyExpired = productEditForm.warrantyExpired;
+      payload.warrantyExpireDate = !productEditForm.warrantyExpired && productEditForm.warrantyExpireDate ? productEditForm.warrantyExpireDate : undefined;
+      payload.hasBox = productEditForm.hasBox;
+    }
+    if (contract?.product.category === 'ACCESSORY') {
+      payload.accessoryType = productEditForm.accessoryType || undefined;
+      payload.accessoryBrand = productEditForm.accessoryBrand || undefined;
+    }
+    updateProductMutation.mutate(payload);
+  };
 
   const startEditing = () => {
     if (!contract) return;
@@ -526,10 +591,19 @@ export default function ContractDetailPage() {
           </div>
 
           <div className="bg-white rounded-lg border p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">ข้อมูลสินค้า</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">ข้อมูลสินค้า</h2>
+              {canEdit && (
+                <button onClick={startEditingProduct} className="px-3 py-1 text-xs bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200">
+                  แก้ไข
+                </button>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <Info label="สินค้า" value={`${contract.product.brand} ${contract.product.model}`} />
               <Info label="ชื่อ" value={contract.product.name} />
+              {contract.product.color && <Info label="สี" value={contract.product.color} />}
+              {contract.product.storage && <Info label="ความจุ" value={contract.product.storage} />}
               {contract.product.serialNumber && <Info label="S/N" value={contract.product.serialNumber} />}
               {contract.product.imeiSerial && <Info label="IMEI" value={contract.product.imeiSerial} />}
             </div>
@@ -621,6 +695,94 @@ export default function ContractDetailPage() {
 
       {activeTab === 'credit' && (
         <CreditCheckPanel contractId={contract.id} />
+      )}
+
+      {/* Product Edit Modal */}
+      {isEditingProduct && (
+        <Modal isOpen title="แก้ไขข้อมูลสินค้า" onClose={() => setIsEditingProduct(false)}>
+          <form onSubmit={handleProductEditSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">ชื่อสินค้า</label>
+              <input type="text" value={productEditForm.name} onChange={(e) => setProductEditForm({ ...productEditForm, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required />
+            </div>
+            {contract.product.category !== 'ACCESSORY' ? (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">ยี่ห้อ</label>
+                  <input type="text" value={productEditForm.brand} onChange={(e) => setProductEditForm({ ...productEditForm, brand: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">รุ่น</label>
+                  <input type="text" value={productEditForm.model} onChange={(e) => setProductEditForm({ ...productEditForm, model: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">สี</label>
+                  <input type="text" value={productEditForm.color} onChange={(e) => setProductEditForm({ ...productEditForm, color: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">ความจุ</label>
+                  <input type="text" value={productEditForm.storage} onChange={(e) => setProductEditForm({ ...productEditForm, storage: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">ประเภทอุปกรณ์</label>
+                  <input type="text" value={productEditForm.accessoryType} onChange={(e) => setProductEditForm({ ...productEditForm, accessoryType: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">ยี่ห้ออุปกรณ์</label>
+                  <input type="text" value={productEditForm.accessoryBrand} onChange={(e) => setProductEditForm({ ...productEditForm, accessoryBrand: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                </div>
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">IMEI / Serial</label>
+                <input type="text" value={productEditForm.imeiSerial} onChange={(e) => setProductEditForm({ ...productEditForm, imeiSerial: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Serial Number</label>
+                <input type="text" value={productEditForm.serialNumber} onChange={(e) => setProductEditForm({ ...productEditForm, serialNumber: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">ราคาทุน (บาท)</label>
+              <input type="number" step="0.01" value={productEditForm.costPrice} onChange={(e) => setProductEditForm({ ...productEditForm, costPrice: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+            </div>
+            {contract.product.category === 'PHONE_USED' && (
+              <div className="border-t pt-3 space-y-3">
+                <div className="text-xs font-semibold text-gray-500">ข้อมูลมือสอง</div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">แบตเตอรี่ (%)</label>
+                    <input type="number" min="0" max="100" value={productEditForm.batteryHealth} onChange={(e) => setProductEditForm({ ...productEditForm, batteryHealth: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">วันหมดประกัน</label>
+                    <input type="date" value={productEditForm.warrantyExpireDate} onChange={(e) => setProductEditForm({ ...productEditForm, warrantyExpireDate: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" disabled={productEditForm.warrantyExpired} />
+                  </div>
+                </div>
+                <div className="flex gap-6">
+                  <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                    <input type="checkbox" checked={productEditForm.warrantyExpired} onChange={(e) => setProductEditForm({ ...productEditForm, warrantyExpired: e.target.checked })} className="rounded text-primary-600" />
+                    หมดประกันแล้ว
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                    <input type="checkbox" checked={productEditForm.hasBox} onChange={(e) => setProductEditForm({ ...productEditForm, hasBox: e.target.checked })} className="rounded text-primary-600" />
+                    มีกล่อง
+                  </label>
+                </div>
+              </div>
+            )}
+            <div className="flex justify-end gap-3 pt-2 border-t">
+              <button type="button" onClick={() => setIsEditingProduct(false)} className="px-4 py-2 text-sm text-gray-600">ยกเลิก</button>
+              <button type="submit" disabled={updateProductMutation.isPending} className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
+                {updateProductMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
 
       {/* Early Payoff Modal */}

@@ -7,7 +7,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import Modal from '@/components/ui/Modal';
 import ProductPhotosPanel from '@/components/product/ProductPhotosPanel';
 import { useAuth } from '@/contexts/AuthContext';
-import { statusLabels, categoryLabels, transferableStatuses } from '@/lib/constants';
+import { statusLabels, categoryLabels, categoryOptions, transferableStatuses } from '@/lib/constants';
 
 interface Price {
   id: string;
@@ -45,6 +45,25 @@ interface Product {
 
 type Tab = 'info' | 'photos';
 
+interface EditForm {
+  name: string;
+  brand: string;
+  model: string;
+  color: string;
+  storage: string;
+  imeiSerial: string;
+  serialNumber: string;
+  category: string;
+  costPrice: string;
+  status: string;
+  batteryHealth: string;
+  warrantyExpired: boolean;
+  warrantyExpireDate: string;
+  hasBox: boolean;
+  accessoryType: string;
+  accessoryBrand: string;
+}
+
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -58,6 +77,15 @@ export default function ProductDetailPage() {
   const [isPriceModalOpen, setIsPriceModalOpen] = useState(false);
   const [editingPrice, setEditingPrice] = useState<Price | null>(null);
   const [priceForm, setPriceForm] = useState({ label: '', amount: '', isDefault: false });
+
+  // Edit product modal state
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editForm, setEditForm] = useState<EditForm>({
+    name: '', brand: '', model: '', color: '', storage: '',
+    imeiSerial: '', serialNumber: '', category: '', costPrice: '',
+    status: '', batteryHealth: '', warrantyExpired: false,
+    warrantyExpireDate: '', hasBox: false, accessoryType: '', accessoryBrand: '',
+  });
 
   // Transfer modal state
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
@@ -136,6 +164,71 @@ export default function ProductDetailPage() {
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
+  // Edit product mutation
+  const editMutation = useMutation({
+    mutationFn: async (data: Record<string, unknown>) => {
+      return api.patch(`/products/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['product', id] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['products-available'] });
+      toast.success('แก้ไขข้อมูลสินค้าสำเร็จ');
+      setIsEditModalOpen(false);
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const openEditProduct = () => {
+    if (!product) return;
+    setEditForm({
+      name: product.name,
+      brand: product.brand,
+      model: product.model,
+      color: product.color || '',
+      storage: product.storage || '',
+      imeiSerial: product.imeiSerial || '',
+      serialNumber: product.serialNumber || '',
+      category: product.category,
+      costPrice: product.costPrice,
+      status: product.status,
+      batteryHealth: product.batteryHealth != null ? String(product.batteryHealth) : '',
+      warrantyExpired: product.warrantyExpired ?? false,
+      warrantyExpireDate: product.warrantyExpireDate ? product.warrantyExpireDate.split('T')[0] : '',
+      hasBox: product.hasBox ?? false,
+      accessoryType: product.accessoryType || '',
+      accessoryBrand: product.accessoryBrand || '',
+    });
+    setIsEditModalOpen(true);
+  };
+
+  const handleEditSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload: Record<string, unknown> = {
+      name: editForm.name,
+      brand: editForm.brand,
+      model: editForm.model,
+      color: editForm.color || undefined,
+      storage: editForm.storage || undefined,
+      imeiSerial: editForm.imeiSerial || undefined,
+      serialNumber: editForm.serialNumber || undefined,
+      category: editForm.category,
+      costPrice: parseFloat(editForm.costPrice) || 0,
+      status: editForm.status,
+    };
+    if (editForm.category === 'PHONE_USED') {
+      payload.batteryHealth = editForm.batteryHealth ? Number(editForm.batteryHealth) : undefined;
+      payload.warrantyExpired = editForm.warrantyExpired;
+      payload.warrantyExpireDate = !editForm.warrantyExpired && editForm.warrantyExpireDate ? editForm.warrantyExpireDate : undefined;
+      payload.hasBox = editForm.hasBox;
+    }
+    if (editForm.category === 'ACCESSORY') {
+      payload.accessoryType = editForm.accessoryType || undefined;
+      payload.accessoryBrand = editForm.accessoryBrand || undefined;
+    }
+    editMutation.mutate(payload);
+  };
+
   const openAddPrice = () => {
     setEditingPrice(null);
     setPriceForm({ label: '', amount: '', isDefault: false });
@@ -183,6 +276,14 @@ export default function ProductDetailPage() {
         subtitle={product.name}
         action={
           <div className="flex gap-2">
+            {isManager && (
+              <button
+                onClick={openEditProduct}
+                className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700"
+              >
+                แก้ไขข้อมูล
+              </button>
+            )}
             {isManager && transferableStatuses.includes(product.status) && (
               <button
                 onClick={() => {
@@ -435,6 +536,120 @@ export default function ProductDetailPage() {
               className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
             >
               {priceMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Edit Product Modal */}
+      <Modal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        title="แก้ไขข้อมูลสินค้า"
+      >
+        <form onSubmit={handleEditSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">ชื่อสินค้า</label>
+            <input type="text" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">ประเภท</label>
+              <select value={editForm.category} onChange={(e) => setEditForm({ ...editForm, category: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                {categoryOptions.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">สถานะ</label>
+              <select value={editForm.status} onChange={(e) => setEditForm({ ...editForm, status: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                {Object.entries(statusLabels).map(([val, s]) => <option key={val} value={val}>{s.label}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {editForm.category !== 'ACCESSORY' && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">ยี่ห้อ</label>
+                <input type="text" value={editForm.brand} onChange={(e) => setEditForm({ ...editForm, brand: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">รุ่น</label>
+                <input type="text" value={editForm.model} onChange={(e) => setEditForm({ ...editForm, model: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">สี</label>
+                <input type="text" value={editForm.color} onChange={(e) => setEditForm({ ...editForm, color: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">ความจุ</label>
+                <input type="text" value={editForm.storage} onChange={(e) => setEditForm({ ...editForm, storage: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+              </div>
+            </div>
+          )}
+
+          {editForm.category === 'ACCESSORY' && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">ประเภทอุปกรณ์</label>
+                <input type="text" value={editForm.accessoryType} onChange={(e) => setEditForm({ ...editForm, accessoryType: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">ยี่ห้ออุปกรณ์</label>
+                <input type="text" value={editForm.accessoryBrand} onChange={(e) => setEditForm({ ...editForm, accessoryBrand: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">IMEI / Serial</label>
+              <input type="text" value={editForm.imeiSerial} onChange={(e) => setEditForm({ ...editForm, imeiSerial: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Serial Number</label>
+              <input type="text" value={editForm.serialNumber} onChange={(e) => setEditForm({ ...editForm, serialNumber: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono" />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">ราคาทุน (บาท)</label>
+            <input type="number" step="0.01" value={editForm.costPrice} onChange={(e) => setEditForm({ ...editForm, costPrice: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required />
+          </div>
+
+          {editForm.category === 'PHONE_USED' && (
+            <div className="border-t pt-3 space-y-3">
+              <div className="text-xs font-semibold text-gray-500">ข้อมูลมือสอง</div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">แบตเตอรี่ (%)</label>
+                  <input type="number" min="0" max="100" value={editForm.batteryHealth} onChange={(e) => setEditForm({ ...editForm, batteryHealth: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">วันหมดประกัน</label>
+                  <input type="date" value={editForm.warrantyExpireDate} onChange={(e) => setEditForm({ ...editForm, warrantyExpireDate: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" disabled={editForm.warrantyExpired} />
+                </div>
+              </div>
+              <div className="flex gap-6">
+                <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                  <input type="checkbox" checked={editForm.warrantyExpired} onChange={(e) => setEditForm({ ...editForm, warrantyExpired: e.target.checked })} className="rounded text-primary-600" />
+                  หมดประกันแล้ว
+                </label>
+                <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                  <input type="checkbox" checked={editForm.hasBox} onChange={(e) => setEditForm({ ...editForm, hasBox: e.target.checked })} className="rounded text-primary-600" />
+                  มีกล่อง
+                </label>
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-3 pt-2 border-t">
+            <button type="button" onClick={() => setIsEditModalOpen(false)} className="px-4 py-2 text-sm text-gray-600">
+              ยกเลิก
+            </button>
+            <button type="submit" disabled={editMutation.isPending} className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
+              {editMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
             </button>
           </div>
         </form>

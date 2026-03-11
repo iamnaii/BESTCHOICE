@@ -44,6 +44,7 @@ interface ContractDetail {
   reviewedAt: string | null;
   salespersonId: string;
   customer: { id: string; name: string; phone: string; nationalId: string };
+  customerSnapshot: { name: string; phone: string; nationalId?: string; prefix?: string; nickname?: string; occupation?: string; salary?: string } | null;
   product: { id: string; name: string; brand: string; model: string; category: string; color: string | null; storage: string | null; serialNumber: string | null; imeiSerial: string | null; costPrice: string; batteryHealth: number | null; warrantyExpired: boolean | null; warrantyExpireDate: string | null; hasBox: boolean | null; accessoryType: string | null; accessoryBrand: string | null };
   branch: { id: string; name: string };
   salesperson: { id: string; name: string };
@@ -265,9 +266,12 @@ export default function ContractDetailPage() {
   const isOwner = user?.role === 'OWNER';
   const canEdit = (isCreator || isOwner) && (contract.workflowStatus === 'CREATING' || contract.workflowStatus === 'REJECTED');
   const canDelete = isOwner && (contract.workflowStatus === 'CREATING' || contract.workflowStatus === 'REJECTED');
-  const customerSigned = contract.signatures?.some((s) => s.signerType === 'CUSTOMER');
-  const staffSigned = contract.signatures?.some((s) => s.signerType === 'STAFF');
-  const allSigned = customerSigned && staffSigned;
+  const signedTypes = new Set(contract.signatures?.map((s) => s.signerType === 'STAFF' ? 'COMPANY' : s.signerType) || []);
+  const customerSigned = signedTypes.has('CUSTOMER');
+  const companySigned = signedTypes.has('COMPANY');
+  const witness1Signed = signedTypes.has('WITNESS_1');
+  const witness2Signed = signedTypes.has('WITNESS_2');
+  const allSigned = customerSigned && companySigned && witness1Signed && witness2Signed;
 
   const paymentColumns = [
     { key: 'installmentNo', label: 'งวดที่', render: (p: Payment) => <span className="font-medium">{p.installmentNo}</span> },
@@ -417,24 +421,34 @@ export default function ContractDetailPage() {
       {(contract.workflowStatus === 'CREATING' || contract.workflowStatus === 'REJECTED') && contract.status === 'DRAFT' && (
         <div className="bg-primary-50 border border-primary-200 rounded-lg p-4 mb-6">
           <h3 className="text-sm font-semibold text-primary-800">ขั้นตอน: ให้ลูกค้าเซ็นสัญญา แล้วส่งตรวจสอบ</h3>
-          <div className="mt-3 flex items-center gap-4 text-xs">
-            <span className="font-medium text-primary-700">ลงนาม:</span>
-            <span className={customerSigned ? 'text-green-700' : 'text-amber-600'}>
-              ลูกค้า {customerSigned ? 'เซ็นแล้ว' : 'ยังไม่เซ็น'}
-            </span>
-            <span className={staffSigned ? 'text-green-700' : 'text-amber-600'}>
-              พนักงาน {staffSigned ? 'เซ็นแล้ว' : 'ยังไม่เซ็น'}
-            </span>
-            {!allSigned && (
-              <button onClick={() => navigate(`/contracts/${id}/sign`)} className="px-2 py-1 bg-primary-600 text-white rounded text-xs hover:bg-primary-700">
-                ไปลงนาม
-              </button>
-            )}
-            {allSigned && isCreator && (
-              <button onClick={() => submitReviewMutation.mutate()} disabled={submitReviewMutation.isPending} className="px-2 py-1 bg-amber-600 text-white rounded text-xs hover:bg-amber-700 disabled:opacity-50">
-                {submitReviewMutation.isPending ? 'กำลังส่ง...' : 'ส่งตรวจสอบ'}
-              </button>
-            )}
+          <div className="mt-3">
+            <div className="flex items-center gap-2 text-xs flex-wrap">
+              <span className="font-medium text-primary-700">ลงนาม ({[customerSigned, companySigned, witness1Signed, witness2Signed].filter(Boolean).length}/4):</span>
+              <span className={customerSigned ? 'text-green-700' : 'text-amber-600'}>
+                ผู้เช่าซื้อ {customerSigned ? '✓' : '✗'}
+              </span>
+              <span className={companySigned ? 'text-green-700' : 'text-amber-600'}>
+                ผู้ให้เช่าซื้อ {companySigned ? '✓' : '✗'}
+              </span>
+              <span className={witness1Signed ? 'text-green-700' : 'text-amber-600'}>
+                พยาน 1 {witness1Signed ? '✓' : '✗'}
+              </span>
+              <span className={witness2Signed ? 'text-green-700' : 'text-amber-600'}>
+                พยาน 2 {witness2Signed ? '✓' : '✗'}
+              </span>
+            </div>
+            <div className="flex gap-2 mt-2">
+              {!allSigned && (
+                <button onClick={() => navigate(`/contracts/${id}/sign`)} className="px-2 py-1 bg-primary-600 text-white rounded text-xs hover:bg-primary-700">
+                  ไปลงนาม
+                </button>
+              )}
+              {allSigned && isCreator && (
+                <button onClick={() => submitReviewMutation.mutate()} disabled={submitReviewMutation.isPending} className="px-2 py-1 bg-amber-600 text-white rounded text-xs hover:bg-amber-700 disabled:opacity-50">
+                  {submitReviewMutation.isPending ? 'กำลังส่ง...' : 'ส่งตรวจสอบ'}
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -443,12 +457,18 @@ export default function ContractDetailPage() {
       {contract.workflowStatus === 'PENDING_REVIEW' && !isReviewer && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
           <h3 className="text-sm font-semibold text-amber-800">รอผู้จัดการตรวจสอบสัญญา</h3>
-          <div className="mt-2 flex items-center gap-4 text-xs">
+          <div className="mt-2 flex items-center gap-2 text-xs flex-wrap">
             <span className={customerSigned ? 'text-green-700' : 'text-amber-600'}>
-              ลูกค้า {customerSigned ? 'เซ็นแล้ว' : 'ยังไม่เซ็น'}
+              ผู้เช่าซื้อ {customerSigned ? '✓' : '✗'}
             </span>
-            <span className={staffSigned ? 'text-green-700' : 'text-amber-600'}>
-              พนักงาน {staffSigned ? 'เซ็นแล้ว' : 'ยังไม่เซ็น'}
+            <span className={companySigned ? 'text-green-700' : 'text-amber-600'}>
+              ผู้ให้เช่าซื้อ {companySigned ? '✓' : '✗'}
+            </span>
+            <span className={witness1Signed ? 'text-green-700' : 'text-amber-600'}>
+              พยาน 1 {witness1Signed ? '✓' : '✗'}
+            </span>
+            <span className={witness2Signed ? 'text-green-700' : 'text-amber-600'}>
+              พยาน 2 {witness2Signed ? '✓' : '✗'}
             </span>
           </div>
         </div>
@@ -464,16 +484,24 @@ export default function ContractDetailPage() {
           </div>
           {/* Signature status */}
           {contract.status === 'DRAFT' && (
-            <div className="mt-3 flex items-center gap-4 text-xs">
-              <span className="font-medium text-green-700">ลงนาม:</span>
-              <span className={customerSigned ? 'text-green-700' : 'text-amber-600'}>
-                ลูกค้า {customerSigned ? 'เซ็นแล้ว' : 'ยังไม่เซ็น'}
-              </span>
-              <span className={staffSigned ? 'text-green-700' : 'text-amber-600'}>
-                พนักงาน {staffSigned ? 'เซ็นแล้ว' : 'ยังไม่เซ็น'}
-              </span>
+            <div className="mt-3">
+              <div className="flex items-center gap-2 text-xs flex-wrap">
+                <span className="font-medium text-green-700">ลงนาม ({[customerSigned, companySigned, witness1Signed, witness2Signed].filter(Boolean).length}/4):</span>
+                <span className={customerSigned ? 'text-green-700' : 'text-amber-600'}>
+                  ผู้เช่าซื้อ {customerSigned ? '✓' : '✗'}
+                </span>
+                <span className={companySigned ? 'text-green-700' : 'text-amber-600'}>
+                  ผู้ให้เช่าซื้อ {companySigned ? '✓' : '✗'}
+                </span>
+                <span className={witness1Signed ? 'text-green-700' : 'text-amber-600'}>
+                  พยาน 1 {witness1Signed ? '✓' : '✗'}
+                </span>
+                <span className={witness2Signed ? 'text-green-700' : 'text-amber-600'}>
+                  พยาน 2 {witness2Signed ? '✓' : '✗'}
+                </span>
+              </div>
               {!allSigned && (
-                <button onClick={() => navigate(`/contracts/${id}/sign`)} className="px-2 py-1 bg-primary-600 text-white rounded text-xs hover:bg-primary-700">
+                <button onClick={() => navigate(`/contracts/${id}/sign`)} className="mt-2 px-3 py-1 bg-primary-600 text-white rounded text-xs hover:bg-primary-700">
                   ไปลงนาม
                 </button>
               )}
@@ -582,12 +610,17 @@ export default function ContractDetailPage() {
 
         <div className="space-y-6">
           <div className="bg-white rounded-lg border p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">ข้อมูลลูกค้า</h2>
-            <div className="grid grid-cols-2 gap-3">
-              <Info label="ชื่อ" value={contract.customer.name} />
-              <Info label="เบอร์โทร" value={contract.customer.phone} />
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">ข้อมูลลูกค้า</h2>
+              {contract.customerSnapshot && (
+                <span className="text-[10px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded">ข้อมูล ณ วันที่สร้างสัญญา</span>
+              )}
             </div>
-            <button onClick={() => navigate(`/customers/${contract.customer.id}`)} className="mt-3 text-xs text-primary-600 hover:underline">ดูรายละเอียดลูกค้า</button>
+            <div className="grid grid-cols-2 gap-3">
+              <Info label="ชื่อ" value={contract.customerSnapshot?.name || contract.customer.name} />
+              <Info label="เบอร์โทร" value={contract.customerSnapshot?.phone || contract.customer.phone} />
+            </div>
+            <button onClick={() => navigate(`/customers/${contract.customer.id}`)} className="mt-3 text-xs text-primary-600 hover:underline">ดูรายละเอียดลูกค้า (ข้อมูลปัจจุบัน)</button>
           </div>
 
           <div className="bg-white rounded-lg border p-6">

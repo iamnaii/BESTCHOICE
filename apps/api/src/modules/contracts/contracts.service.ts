@@ -261,6 +261,30 @@ export class ContractsService {
             throw new BadRequestException('สินค้าไม่พร้อมขาย (อาจถูกจองแล้ว)');
           }
 
+          // Fetch customer data for snapshot (isolation from future edits)
+          const customerData = await tx.customer.findUnique({ where: { id: dto.customerId } });
+          const customerSnapshot: Prisma.InputJsonValue | undefined = customerData ? {
+            name: customerData.name,
+            prefix: customerData.prefix,
+            nickname: customerData.nickname,
+            nationalId: customerData.nationalId,
+            phone: customerData.phone,
+            phoneSecondary: customerData.phoneSecondary,
+            email: customerData.email,
+            lineId: customerData.lineId,
+            occupation: customerData.occupation,
+            salary: customerData.salary ? customerData.salary.toString() : null,
+            workplace: customerData.workplace,
+            addressIdCard: customerData.addressIdCard,
+            addressCurrent: customerData.addressCurrent,
+            addressWork: customerData.addressWork,
+            references: customerData.references,
+            birthDate: customerData.birthDate,
+            facebookLink: customerData.facebookLink,
+            facebookName: customerData.facebookName,
+            googleMapLink: customerData.googleMapLink,
+          } : undefined;
+
           // Generate contract number
           const contractNumber = await generateContractNumber(tx);
 
@@ -284,6 +308,7 @@ export class ContractsService {
               notes: dto.notes,
               paymentDueDay: dto.paymentDueDay,
               interestConfigId: interestConfig?.id,
+              customerSnapshot,
             },
           });
 

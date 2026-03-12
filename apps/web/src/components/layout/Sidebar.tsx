@@ -53,6 +53,7 @@ const navItems: NavItem[] = [
   { label: 'ชำระเงิน', path: '/payments', section: 'sales' },
   { label: 'สถานะเอกสาร', path: '/document-dashboard', roles: ['OWNER', 'BRANCH_MANAGER'], section: 'sales' },
   { label: 'ใบเสร็จรับเงิน', path: '/receipts', roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'], section: 'sales' },
+  { label: 'ตรวจสอบสลิป', path: '/slip-review', roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'], section: 'sales' },
 
   // ติดตาม & จัดการหนี้
   { label: 'ติดตามหนี้', path: '/overdue', section: 'debt' },

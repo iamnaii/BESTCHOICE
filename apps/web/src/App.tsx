@@ -49,6 +49,8 @@ const DocumentDashboardPage = lazy(() => import('@/pages/DocumentDashboardPage')
 const PDPAPage = lazy(() => import('@/pages/PDPAPage'));
 const ReceiptsPage = lazy(() => import('@/pages/ReceiptsPage'));
 const CustomerPortalPage = lazy(() => import('@/pages/CustomerPortalPage'));
+const SlipReviewPage = lazy(() => import('@/pages/SlipReviewPage'));
+const LiffPayment = lazy(() => import('@/pages/liff/LiffPayment'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -85,6 +87,9 @@ function App() {
 
         {/* Public Customer Portal (token-based access, no auth) */}
         <Route path="/customer-access/:token" element={<CustomerPortalPage />} />
+
+        {/* LIFF Payment Page (public, opened from LINE) */}
+        <Route path="/pay/:token" element={<LiffPayment />} />
 
         {/* Protected Admin Routes */}
         <Route
@@ -252,6 +257,14 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}>
                 <NotificationsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/slip-review"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT']}>
+                <SlipReviewPage />
               </ProtectedRoute>
             }
           />

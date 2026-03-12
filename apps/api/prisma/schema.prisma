@@ -278,6 +278,7 @@ model User {
   stockCounts            StockCount[]       @relation("StockCountedBy")
   productPhotosUploaded  ProductPhoto[]     @relation("ProductPhotoUploadedBy")
   refreshTokens          RefreshToken[]
+  reviewedEvidences      PaymentEvidence[]  @relation("EvidenceReviewedBy")
 
   @@index([branchId])
   @@map("users")
@@ -405,6 +406,8 @@ model Contract {
   creditCheck       CreditCheck?
   pdpaConsent       PDPAConsent?       @relation(fields: [pdpaConsentId], references: [id])
   receipts          Receipt[]
+  paymentLinks      PaymentLink[]
+  paymentEvidences  PaymentEvidence[]
 
   @@index([customerId])
   @@index([branchId])
@@ -437,8 +440,10 @@ model Payment {
   createdAt     DateTime       @default(now()) @map("created_at")
   updatedAt     DateTime       @updatedAt @map("updated_at")
 
-  contract   Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
-  recordedBy User?    @relation("RecordedBy", fields: [recordedById], references: [id])
+  contract         Contract          @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  recordedBy       User?             @relation("RecordedBy", fields: [recordedById], references: [id])
+  paymentLinks     PaymentLink[]
+  paymentEvidences PaymentEvidence[]
 
   @@unique([contractId, installmentNo])
   @@index([contractId])
@@ -1436,4 +1441,63 @@ model CompanyInfo {
   updatedAt          DateTime @updatedAt @map("updated_at")
 
   @@map("company_info")
+}
+
+// ============================================================
+// LINE OA PAYMENT (ชำระเงินผ่าน LINE)
+// ============================================================
+
+enum PaymentLinkStatus {
+  ACTIVE
+  USED
+  EXPIRED
+}
+
+enum EvidenceStatus {
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+}
+
+model PaymentLink {
+  id         String            @id @default(uuid())
+  token      String            @unique
+  contractId String            @map("contract_id")
+  paymentId  String?           @map("payment_id")
+  amount     Decimal           @db.Decimal(12, 2)
+  status     PaymentLinkStatus @default(ACTIVE)
+  expiresAt  DateTime          @map("expires_at")
+  usedAt     DateTime?         @map("used_at")
+  createdAt  DateTime          @default(now()) @map("created_at")
+
+  contract Contract @relation(fields: [contractId], references: [id])
+  payment  Payment? @relation(fields: [paymentId], references: [id])
+
+  @@index([token])
+  @@index([contractId])
+  @@index([status])
+  @@map("payment_links")
+}
+
+model PaymentEvidence {
+  id           String         @id @default(uuid())
+  contractId   String         @map("contract_id")
+  paymentId    String?        @map("payment_id")
+  lineUserId   String?        @map("line_user_id")
+  imageUrl     String         @map("image_url")
+  amount       Decimal?       @db.Decimal(12, 2)
+  status       EvidenceStatus @default(PENDING_REVIEW)
+  reviewedById String?        @map("reviewed_by_id")
+  reviewedAt   DateTime?      @map("reviewed_at")
+  reviewNote   String?        @map("review_note")
+  createdAt    DateTime       @default(now()) @map("created_at")
+
+  contract   Contract @relation(fields: [contractId], references: [id])
+  payment    Payment? @relation(fields: [paymentId], references: [id])
+  reviewedBy User?    @relation("EvidenceReviewedBy", fields: [reviewedById], references: [id])
+
+  @@index([contractId])
+  @@index([status])
+  @@index([lineUserId])
+  @@map("payment_evidences")
 }

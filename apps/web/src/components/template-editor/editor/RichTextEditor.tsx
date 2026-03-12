@@ -90,9 +90,9 @@ export default function RichTextEditor({ value, onChange, onEditorReady, placeho
   if (!editor) return null;
 
   return (
-    <div className="border border-gray-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-primary-500">
+    <div className="border border-input rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-primary-500">
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-0.5 px-2 py-1.5 bg-gray-50 border-b border-gray-200">
+      <div className="flex flex-wrap items-center gap-0.5 px-2 py-1.5 bg-muted border-b border-border">
         {/* Undo / Redo */}
         <ToolbarButton
           onClick={() => editor.chain().focus().undo().run()}
@@ -294,7 +294,7 @@ function ToolbarButton({ onClick, active, disabled, title, children }: {
       className={`p-1.5 rounded transition-colors ${
         active
           ? 'bg-primary-100 text-primary-700'
-          : 'text-gray-600 hover:bg-gray-200 hover:text-gray-800'
+          : 'text-foreground hover:bg-muted hover:text-foreground'
       } ${disabled ? 'opacity-30 cursor-not-allowed' : ''}`}
     >
       {children}

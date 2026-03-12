@@ -151,7 +151,7 @@ export default function BlockItem({ block, index, totalBlocks, clauseIndex }: Pr
           className="px-5 py-3.5 text-base leading-relaxed text-foreground cursor-pointer hover:bg-muted/60 rounded-b-xl transition-colors"
           onClick={() => setEditingBlock(block)}
         >
-          {displayContent || <span className="text-slate-400 italic">คลิกเพื่อเพิ่มเนื้อหา...</span>}
+          {displayContent || <span className="text-muted-foreground italic">คลิกเพื่อเพิ่มเนื้อหา...</span>}
         </div>
       )}
     </div>

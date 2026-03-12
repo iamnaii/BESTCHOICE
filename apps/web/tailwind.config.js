@@ -164,8 +164,8 @@ export default {
         sm: "calc(var(--radius) - 4px)",      /* 4px */
       },
       boxShadow: {
-        /* Metronic Demo 9 shadow: soft drop-shadow */
-        'xs': '0 0 50px rgba(49, 52, 122, 0.05)',
+        /* Metronic Demo 9 shadow: soft drop-shadow (light mode blue tint, dark mode neutral) */
+        'xs': '0 1px 3px 0 rgba(0,0,0,0.04), 0 0 40px rgba(49, 52, 122, 0.04)',
         'card': '0 0 50px rgba(49, 52, 122, 0.08)',
         'card-hover': '0 0 50px rgba(49, 52, 122, 0.15)',
         'sidebar': '4px 0 20px rgba(0,0,0,0.15)',

@@ -33,6 +33,8 @@ import {
   ArrowRightLeft,
   ClipboardCheck,
   LogOut,
+  ChevronsRight,
+  ChevronsLeft,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import {
@@ -54,6 +56,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import { useLayout } from './LayoutContext';
 
 interface NavItem {
   label: string;
@@ -146,20 +149,20 @@ const navSections: NavSection[] = [
   },
 ];
 
-/* Mobile sidebar full menu classNames */
-const mobileMenuClassNames: AccordionMenuClassNames = {
-  root: 'space-y-1',
+/* Expanded sidebar menu classNames (dark bg, white text) */
+const expandedMenuClassNames: AccordionMenuClassNames = {
+  root: 'space-y-0.5',
   group: 'gap-px',
   label: 'uppercase text-2xs font-semibold tracking-wider text-white/40 pt-4 pb-1 px-3',
   separator: '',
-  item: 'h-9 rounded-lg text-sm text-white/70 hover:bg-white/10 hover:text-white data-[selected=true]:bg-primary data-[selected=true]:text-white data-[selected=true]:font-medium',
+  item: 'h-9 rounded-lg text-2sm text-white/70 hover:bg-white/10 hover:text-white data-[selected=true]:bg-primary data-[selected=true]:text-white data-[selected=true]:font-medium',
   sub: '',
-  subTrigger: 'h-9 rounded-lg text-sm text-white/70 hover:bg-white/10 hover:text-white data-[selected=true]:text-white data-[selected=true]:font-medium',
+  subTrigger: 'h-9 rounded-lg text-2sm text-white/70 hover:bg-white/10 hover:text-white data-[selected=true]:text-white data-[selected=true]:font-medium',
   subContent: 'py-0',
 };
 
-/* ─── Icon Rail Sidebar (Desktop) — Demo 9 style ─── */
-function IconRailSidebar() {
+/* ─── Collapsed Icon Rail (70px) — Demo 9 default ─── */
+function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
   const { user, logout } = useAuth();
   const { pathname } = useLocation();
   const [openPopover, setOpenPopover] = useState<string | null>(null);
@@ -191,13 +194,22 @@ function IconRailSidebar() {
   );
 
   return (
-    <div className="sidebar fixed top-0 bottom-0 left-0 z-20 w-[70px] flex flex-col items-center bg-sidebar-dark py-5 gap-1">
+    <div className="sidebar fixed top-0 bottom-0 left-0 z-20 w-[70px] flex flex-col items-center bg-sidebar-dark py-5 gap-1 transition-all duration-300">
       {/* Logo */}
-      <Link to="/" className="flex items-center justify-center mb-4 shrink-0">
+      <Link to="/" className="flex items-center justify-center mb-2 shrink-0">
         <div className="size-10 rounded-xl bg-primary flex items-center justify-center">
           <span className="text-white text-lg font-bold">B</span>
         </div>
       </Link>
+
+      {/* Expand toggle */}
+      <button
+        onClick={onToggle}
+        className="flex items-center justify-center size-8 rounded-lg text-white/30 hover:text-white hover:bg-white/10 transition-colors mb-2"
+        aria-label="ขยายเมนู"
+      >
+        <ChevronsRight className="size-4" />
+      </button>
 
       {/* Home icon */}
       <TooltipProvider delayDuration={0}>
@@ -288,7 +300,7 @@ function IconRailSidebar() {
           <TooltipProvider delayDuration={0}>
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="size-9 rounded-full bg-primary/30 flex items-center justify-center">
+                <div className="size-9 rounded-full bg-primary/30 flex items-center justify-center cursor-default">
                   <span className="text-white text-sm font-semibold">{user.name?.charAt(0)}</span>
                 </div>
               </TooltipTrigger>
@@ -321,8 +333,8 @@ function IconRailSidebar() {
   );
 }
 
-/* ─── Mobile Full Sidebar (Sheet) ─── */
-function MobileSidebar() {
+/* ─── Expanded Full Sidebar (264px) ─── */
+function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
   const { user, logout } = useAuth();
   const { pathname } = useLocation();
 
@@ -344,25 +356,34 @@ function MobileSidebar() {
   }, [user]);
 
   return (
-    <div className="w-full h-full flex flex-col bg-sidebar-dark">
+    <div className="sidebar fixed top-0 bottom-0 left-0 z-20 w-[264px] flex flex-col bg-sidebar-dark transition-all duration-300">
       {/* Header */}
-      <div className="flex items-center gap-2.5 px-5 h-[70px] shrink-0 border-b border-white/10">
-        <div className="size-9 rounded-lg bg-primary flex items-center justify-center">
-          <span className="text-white text-base font-bold">B</span>
-        </div>
-        <span className="text-base font-bold text-white leading-tight tracking-tight">
-          BEST<span className="text-primary">CHOICE</span>
-        </span>
+      <div className="flex items-center justify-between px-5 h-[70px] shrink-0 border-b border-white/10">
+        <Link to="/" className="flex items-center gap-2.5">
+          <div className="size-9 rounded-lg bg-primary flex items-center justify-center">
+            <span className="text-white text-base font-bold">B</span>
+          </div>
+          <span className="text-base font-bold text-white leading-tight tracking-tight">
+            BEST<span className="text-primary">CHOICE</span>
+          </span>
+        </Link>
+        <button
+          onClick={onToggle}
+          className="flex items-center justify-center size-8 rounded-lg text-white/30 hover:text-white hover:bg-white/10 transition-colors"
+          aria-label="ย่อเมนู"
+        >
+          <ChevronsLeft className="size-4" />
+        </button>
       </div>
 
       {/* Navigation */}
-      <ScrollArea className="flex-1 py-4 px-4">
+      <ScrollArea className="flex-1 py-3 px-3">
         <AccordionMenu
           selectedValue={pathname}
           matchPath={matchPath}
           type="single"
           collapsible
-          classNames={mobileMenuClassNames}
+          classNames={expandedMenuClassNames}
         >
           <AccordionMenuItem value="/" className="text-sm font-medium">
             <Link to="/" className="flex items-center justify-between grow gap-2">
@@ -410,11 +431,110 @@ function MobileSidebar() {
   );
 }
 
+/* ─── Mobile Full Sidebar (Sheet) ─── */
+function MobileSidebar() {
+  const { user, logout } = useAuth();
+  const { pathname } = useLocation();
+
+  const matchPath = useCallback(
+    (path: string): boolean =>
+      path === pathname || (path.length > 1 && pathname.startsWith(path)),
+    [pathname],
+  );
+
+  const filteredSections = useMemo((): NavSection[] => {
+    return navSections
+      .map((section) => ({
+        ...section,
+        items: section.items.filter(
+          (item) => !item.roles || (user && item.roles.includes(user.role)),
+        ),
+      }))
+      .filter((section) => section.items.length > 0);
+  }, [user]);
+
+  return (
+    <div className="w-full h-full flex flex-col bg-sidebar-dark">
+      {/* Header */}
+      <div className="flex items-center gap-2.5 px-5 h-[70px] shrink-0 border-b border-white/10">
+        <div className="size-9 rounded-lg bg-primary flex items-center justify-center">
+          <span className="text-white text-base font-bold">B</span>
+        </div>
+        <span className="text-base font-bold text-white leading-tight tracking-tight">
+          BEST<span className="text-primary">CHOICE</span>
+        </span>
+      </div>
+
+      {/* Navigation */}
+      <ScrollArea className="flex-1 py-3 px-3">
+        <AccordionMenu
+          selectedValue={pathname}
+          matchPath={matchPath}
+          type="single"
+          collapsible
+          classNames={expandedMenuClassNames}
+        >
+          <AccordionMenuItem value="/" className="text-sm font-medium">
+            <Link to="/" className="flex items-center justify-between grow gap-2">
+              <Home data-slot="accordion-menu-icon" />
+              <span data-slot="accordion-menu-title">หน้าหลัก</span>
+            </Link>
+          </AccordionMenuItem>
+
+          {filteredSections.map((section) => (
+            <div key={section.key}>
+              <AccordionMenuLabel>{section.label}</AccordionMenuLabel>
+              <AccordionMenuGroup>
+                {section.items.map((item) => (
+                  <AccordionMenuItem key={item.path} value={item.path} className="text-2sm">
+                    <Link to={item.path} className="flex items-center gap-2 w-full">
+                      {item.icon && <item.icon data-slot="accordion-menu-icon" className="size-4" />}
+                      <span data-slot="accordion-menu-title">{item.label}</span>
+                    </Link>
+                  </AccordionMenuItem>
+                ))}
+              </AccordionMenuGroup>
+            </div>
+          ))}
+        </AccordionMenu>
+      </ScrollArea>
+
+      {/* User footer */}
+      {user && (
+        <div className="px-4 py-4 border-t border-white/10 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="size-9 rounded-full bg-primary/30 flex items-center justify-center shrink-0">
+              <span className="text-white text-sm font-semibold">{user.name?.charAt(0)}</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-2sm font-medium text-white truncate">{user.name}</p>
+              <p className="text-2xs text-white/50 truncate">{user.branchName}</p>
+            </div>
+            <button onClick={logout} className="text-white/40 hover:text-white transition-colors">
+              <LogOut className="size-4" />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Main Sidebar Component ─── */
 function Sidebar({ mobile = false }: { mobile?: boolean }) {
+  const { sidebarCollapse, setSidebarCollapse } = useLayout();
+
   if (mobile) {
     return <MobileSidebar />;
   }
-  return <IconRailSidebar />;
+
+  const handleToggle = () => setSidebarCollapse(!sidebarCollapse);
+
+  if (sidebarCollapse) {
+    return <CollapsedSidebar onToggle={handleToggle} />;
+  }
+
+  return <ExpandedSidebar onToggle={handleToggle} />;
 }
 
 export default memo(Sidebar);

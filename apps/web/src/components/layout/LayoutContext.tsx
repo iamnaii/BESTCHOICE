@@ -12,9 +12,11 @@ const LayoutContext = createContext<LayoutState | undefined>(undefined);
 export function LayoutProvider({ children }: { children: ReactNode }) {
   const [sidebarCollapse, setSidebarCollapseState] = useState(() => {
     try {
-      return localStorage.getItem('sidebar_collapse') === 'true';
+      const saved = localStorage.getItem('sidebar_collapse');
+      // Default to collapsed (icon rail) if no preference saved
+      return saved === null ? true : saved === 'true';
     } catch {
-      return false;
+      return true;
     }
   });
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);

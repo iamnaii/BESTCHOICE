@@ -118,8 +118,8 @@ export class DocumentsService {
         ipAddress: req.ip || null,
         deviceInfo: req.userAgent || null,
         screenSize: options?.screenSize || null,
-        gpsLatitude: options?.gpsLatitude || null,
-        gpsLongitude: options?.gpsLongitude || null,
+        gpsLatitude: options?.gpsLatitude ?? null,
+        gpsLongitude: options?.gpsLongitude ?? null,
         staffUserId: options?.staffUserId || null,
         contractHash,
       },
@@ -171,9 +171,11 @@ export class DocumentsService {
 
     // Get template
     let htmlContent = '';
+    let templateSettings: any = null;
     if (templateId) {
       const template = await this.findOneTemplate(templateId);
       htmlContent = template.contentHtml;
+      templateSettings = template.settings;
     } else {
       // Find active template (single plan type: STORE_DIRECT)
       const template = await this.prisma.contractTemplate.findFirst({
@@ -181,10 +183,11 @@ export class DocumentsService {
         orderBy: { createdAt: 'desc' },
       });
       htmlContent = template?.contentHtml || this.getDefaultTemplate(documentType);
+      templateSettings = template?.settings;
     }
 
     // Replace placeholders and wrap with A4 styling
-    const renderedHtml = this.wrapWithA4Styles(this.replacePlaceholders(htmlContent, contract));
+    const renderedHtml = this.wrapWithA4Styles(this.replacePlaceholders(htmlContent, contract), templateSettings);
 
     // Generate file hash
     const fileHash = crypto.createHash('sha256').update(renderedHtml).digest('hex');
@@ -258,7 +261,7 @@ export class DocumentsService {
       .replace(/\{pdpa_signature\}/g, pdpaSignature)
       .replace(/\{pdpa_consent_date\}/g, this.escapeHtml(consentDate));
 
-    const renderedHtml = this.wrapWithA4Styles(htmlContent);
+    const renderedHtml = this.wrapWithA4Styles(htmlContent, template?.settings);
     const fileHash = crypto.createHash('sha256').update(renderedHtml).digest('hex');
     const fileUrl = `documents/${contract.contractNumber}_PDPA_${Date.now()}.html`;
 
@@ -318,19 +321,22 @@ export class DocumentsService {
     if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
 
     let htmlContent = '';
+    let templateSettings: any = null;
     if (templateId) {
       const template = await this.findOneTemplate(templateId);
       htmlContent = template.contentHtml;
+      templateSettings = template.settings;
     } else {
       const template = await this.prisma.contractTemplate.findFirst({
         where: { type: 'STORE_DIRECT', isActive: true },
         orderBy: { createdAt: 'desc' },
       });
       htmlContent = template?.contentHtml || this.getDefaultTemplate('CONTRACT');
+      templateSettings = template?.settings;
     }
 
     const bodyHtml = this.replacePlaceholders(htmlContent, contract);
-    return { html: this.wrapWithA4Styles(bodyHtml) };
+    return { html: this.wrapWithA4Styles(bodyHtml, templateSettings) };
   }
 
   // ─── Helpers ──────────────────────────────────────────
@@ -454,32 +460,67 @@ export class DocumentsService {
   }
 
   /** Wrap rendered HTML with A4 page styles and page numbering */
-  private wrapWithA4Styles(bodyHtml: string): string {
+  private wrapWithA4Styles(bodyHtml: string, templateSettings?: any): string {
+    // Use template settings if available, otherwise fallback to defaults
+    const margins = templateSettings?.margins || { top: 25, bottom: 20, left: 30, right: 25 };
+    const fontSize = templateSettings?.fontSize || { body: 16, heading: 20, footer: 12 };
+    const letterhead = templateSettings?.letterhead || 'none';
+    const showPageNumber = templateSettings?.showPageNumber ?? true;
+    const pageNumberFormat = templateSettings?.pageNumberFormat || 'หน้า {page}/{total}';
+    const footerText = templateSettings?.footerText || '';
+
+    // Build letterhead HTML
+    let letterheadHtml = '';
+    if (letterhead === 'bestchoice') {
+      letterheadHtml = `
+        <div style="text-align:center;margin-bottom:20px;padding-bottom:12px;border-bottom:2px solid #059669">
+          <h1 style="font-size:20px;font-weight:700;color:#059669;letter-spacing:1px;margin:0 0 4px">BESTCHOICEPHONE Co., Ltd.</h1>
+          <p style="font-size:14px;color:#4a4a4a;margin:0 0 2px">บริษัท เบสท์ช้อยส์โฟน จำกัด | เลขประจำตัวผู้เสียภาษี 0165568000050</p>
+          <p style="font-size:12px;color:#888;margin:0">456/21 ชั้น 2 ถนนนารายณ์มหาราช ตำบลทะเลชุบศร อำเภอเมือง จังหวัดลพบุรี 15000</p>
+        </div>`;
+    }
+
+    // Build footer HTML
+    let footerHtml = '';
+    if (footerText || showPageNumber) {
+      const pageNum = showPageNumber
+        ? `<span style="color:#9ca3af">${pageNumberFormat.replace('{page}', '<span class="page-num"></span>').replace('{total}', '<span class="page-total"></span>')}</span>`
+        : '';
+      footerHtml = `
+        <div style="margin-top:40px;padding-top:12px;border-top:1px solid #d1d5db;display:flex;justify-content:space-between;align-items:flex-end;font-size:${fontSize.footer}px">
+          <span style="color:#9ca3af">${this.escapeHtml(footerText)}</span>
+          ${pageNum}
+        </div>`;
+    }
+
     return `<!DOCTYPE html>
 <html lang="th">
 <head>
 <meta charset="UTF-8"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap" rel="stylesheet"/>
 <style>
   @page {
     size: A4;
-    margin: 20mm 18mm 25mm 18mm;
+    margin: ${margins.top}mm ${margins.right}mm ${margins.bottom}mm ${margins.left}mm;
     @bottom-center {
       content: counter(page) "/" counter(pages);
       font-size: 10px;
       color: #999;
-      font-family: 'Sarabun', sans-serif;
+      font-family: 'Sarabun', 'TH Sarabun PSK', sans-serif;
     }
   }
   * { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0;
-    font-family: 'Sarabun', 'Noto Sans Thai', sans-serif;
-    font-size: 14px;
-    line-height: 1.6;
-    color: #222;
+    font-family: 'TH Sarabun PSK', 'Sarabun', 'Noto Sans Thai', sans-serif;
+    font-size: ${fontSize.body}px;
+    line-height: 1.7;
+    color: #1a1a1a;
   }
   .a4-page {
-    width: 170mm;
+    width: 100%;
     min-height: 250mm;
     margin: 0 auto;
     padding: 0;
@@ -500,16 +541,18 @@ export class DocumentsService {
       background: #fff;
       width: 210mm;
       min-height: 297mm;
-      padding: 20mm 18mm 25mm 18mm;
+      padding: ${margins.top}mm ${margins.right}mm ${margins.bottom}mm ${margins.left}mm;
       margin: 0 auto 20px auto;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      box-shadow: 0 4px 24px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08);
     }
   }
 </style>
 </head>
 <body>
 <div class="a4-page">
+${letterheadHtml}
 ${bodyHtml}
+${footerHtml}
 </div>
 </body>
 </html>`;

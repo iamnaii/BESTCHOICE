@@ -5,6 +5,9 @@ import { LineMessagePayload } from './dto/webhook-event.dto';
 import { FlexMessagePayload } from './flex-messages/base-template';
 import { buildPaymentSuccessFlex, PaymentSuccessData } from './flex-messages/payment-success.flex';
 import { buildBalanceSummaryFlex, BalanceSummaryData } from './flex-messages/balance-summary.flex';
+import { buildPaymentReminderFlex, PaymentReminderData } from './flex-messages/payment-reminder.flex';
+import { buildOverdueNoticeFlex, OverdueNoticeData } from './flex-messages/overdue-notice.flex';
+import { buildPromptPayQrFlex, PromptPayQrData } from './flex-messages/promptpay-qr.flex';
 
 @Injectable()
 export class LineOaService {
@@ -165,6 +168,18 @@ export class LineOaService {
    */
   buildBalanceSummary(data: BalanceSummaryData): FlexMessagePayload {
     return buildBalanceSummaryFlex(data);
+  }
+
+  buildPaymentReminder(data: PaymentReminderData): FlexMessagePayload {
+    return buildPaymentReminderFlex(data);
+  }
+
+  buildOverdueNotice(data: OverdueNoticeData): FlexMessagePayload {
+    return buildOverdueNoticeFlex(data);
+  }
+
+  buildPromptPayQr(data: PromptPayQrData): FlexMessagePayload {
+    return buildPromptPayQrFlex(data);
   }
 
   // ─── Private Helpers ──────────────────────────────────

@@ -292,13 +292,34 @@ export class LineOaController {
 
     const amount = Number(nextPayment.amountDue) + Number(nextPayment.lateFee) - Number(nextPayment.amountPaid);
 
-    // TODO: Phase 3 will add PromptPay QR Flex Message here
-    await this.lineOaService.replyMessage(replyToken, [
-      {
-        type: 'text',
-        text: `ข้อมูลชำระเงิน:\nสัญญา: ${contract.contractNumber}\nงวดที่: ${nextPayment.installmentNo}/${contract.payments.length}\nยอด: ${amount.toLocaleString()} บาท\nกำหนด: ${new Date(nextPayment.dueDate).toLocaleDateString('th-TH')}\n\nหลังโอนเงินแล้ว ส่งสลิปมาในแชทนี้ได้เลยค่ะ`,
-      },
-    ]);
+    // Generate PromptPay QR and payment link
+    try {
+      const qrDataUrl = await this.promptPayQrService.generateQrDataUrl(amount);
+      const paymentLink = await this.paymentLinkService.createPaymentLink(contract.id, nextPayment.installmentNo);
+
+      const flex = this.lineOaService.buildPromptPayQr({
+        customerName: customer.name,
+        contractNumber: contract.contractNumber,
+        installmentNo: nextPayment.installmentNo,
+        totalInstallments: contract.payments.length,
+        amount,
+        qrImageUrl: qrDataUrl,
+        accountName: this.promptPayQrService.getAccountName(),
+        maskedPromptPayId: this.promptPayQrService.getMaskedPromptPayId(),
+        paymentLinkUrl: paymentLink.url,
+      });
+
+      await this.lineOaService.replyMessage(replyToken, [flex]);
+    } catch (err) {
+      // Fallback to text if QR generation fails
+      this.logger.warn(`QR generation failed, falling back to text: ${err}`);
+      await this.lineOaService.replyMessage(replyToken, [
+        {
+          type: 'text',
+          text: `ข้อมูลชำระเงิน:\nสัญญา: ${contract.contractNumber}\nงวดที่: ${nextPayment.installmentNo}/${contract.payments.length}\nยอด: ${amount.toLocaleString()} บาท\nกำหนด: ${new Date(nextPayment.dueDate).toLocaleDateString('th-TH')}\n\nหลังโอนเงินแล้ว ส่งสลิปมาในแชทนี้ได้เลยค่ะ`,
+        },
+      ]);
+    }
   }
 
   private async handlePostback(event: LinePostbackEvent): Promise<void> {

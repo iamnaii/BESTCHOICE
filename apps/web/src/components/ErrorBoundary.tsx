@@ -30,17 +30,17 @@ export default class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="min-h-screen flex items-center justify-center bg-background">
           <div className="text-center max-w-md px-6">
             <div className="text-5xl mb-4">⚠️</div>
-            <h1 className="text-xl font-bold text-gray-900 mb-2">เกิดข้อผิดพลาด</h1>
-            <p className="text-sm text-gray-500 mb-4">
+            <h1 className="text-xl font-bold text-foreground mb-2">เกิดข้อผิดพลาด</h1>
+            <p className="text-sm text-muted-foreground mb-4">
               {this.state.error?.message || 'ระบบเกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง'}
             </p>
             <div className="flex gap-2 justify-center">
               <button
                 onClick={this.handleReset}
-                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-100"
+                className="px-4 py-2 border border-border text-foreground rounded-lg text-sm font-medium hover:bg-muted"
               >
                 ลองใหม่
               </button>

@@ -63,17 +63,17 @@ export default function BlockItem({ block, index, totalBlocks, clauseIndex }: Pr
     <div
       ref={setNodeRef}
       style={style}
-      className={`group border rounded-xl bg-white transition-all ${
-        isDragging ? 'shadow-lg border-primary-300' : 'border-slate-200 hover:border-primary-200 hover:shadow-md'
+      className={`group border rounded-xl bg-card transition-all ${
+        isDragging ? 'shadow-lg border-primary-300' : 'border-border hover:border-primary-200 hover:shadow-md'
       }`}
     >
       {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3.5 border-b border-slate-100">
+      <div className="flex items-center gap-3 px-4 py-3.5 border-b border-border">
         {/* Drag handle */}
         <button
           {...attributes}
           {...listeners}
-          className="cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 -ml-1"
+          className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground -ml-1"
         >
           <GripVertical size={20} />
         </button>
@@ -81,7 +81,7 @@ export default function BlockItem({ block, index, totalBlocks, clauseIndex }: Pr
         {/* Collapse toggle */}
         <button
           onClick={() => toggleCollapse(block.id)}
-          className="text-slate-400 hover:text-slate-600 -ml-1"
+          className="text-muted-foreground hover:text-foreground -ml-1"
         >
           {block.collapsed ? <ChevronRight size={18} /> : <ChevronDownIcon size={18} />}
         </button>
@@ -93,7 +93,7 @@ export default function BlockItem({ block, index, totalBlocks, clauseIndex }: Pr
 
         {/* Clause number */}
         {block.type === 'clause' && clauseIndex ? (
-          <span className="text-base text-slate-600 font-medium">
+          <span className="text-base text-foreground font-medium">
             ข้อ {clauseIndex}{block.clauseTitle ? ` — ${block.clauseTitle}` : ''}
           </span>
         ) : null}
@@ -105,7 +105,7 @@ export default function BlockItem({ block, index, totalBlocks, clauseIndex }: Pr
           <button
             onClick={() => moveBlock(index, Math.max(0, index - 1))}
             disabled={index === 0}
-            className="p-2 text-slate-400 hover:text-slate-600 disabled:opacity-30 rounded-lg hover:bg-slate-100"
+            className="p-2 text-muted-foreground hover:text-foreground disabled:opacity-30 rounded-lg hover:bg-muted"
             title="เลื่อนขึ้น"
           >
             <ChevronUp size={18} />
@@ -113,31 +113,31 @@ export default function BlockItem({ block, index, totalBlocks, clauseIndex }: Pr
           <button
             onClick={() => moveBlock(index, Math.min(totalBlocks - 1, index + 1))}
             disabled={index === totalBlocks - 1}
-            className="p-2 text-slate-400 hover:text-slate-600 disabled:opacity-30 rounded-lg hover:bg-slate-100"
+            className="p-2 text-muted-foreground hover:text-foreground disabled:opacity-30 rounded-lg hover:bg-muted"
             title="เลื่อนลง"
           >
             <ChevronDown size={18} />
           </button>
 
-          <div className="w-px h-5 bg-slate-200 mx-1" />
+          <div className="w-px h-5 bg-border mx-1" />
 
           <button
             onClick={() => setEditingBlock(block)}
-            className="p-2 text-slate-400 hover:text-primary-600 rounded-lg hover:bg-primary-50"
+            className="p-2 text-muted-foreground hover:text-primary-600 rounded-lg hover:bg-primary-50"
             title="แก้ไข"
           >
             <Edit3 size={18} />
           </button>
           <button
             onClick={() => duplicateBlock(block.id)}
-            className="p-2 text-slate-400 hover:text-emerald-600 rounded-lg hover:bg-emerald-50"
+            className="p-2 text-muted-foreground hover:text-emerald-600 rounded-lg hover:bg-emerald-50"
             title="สำเนา"
           >
             <Copy size={18} />
           </button>
           <button
             onClick={handleDelete}
-            className="p-2 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50"
+            className="p-2 text-muted-foreground hover:text-red-600 rounded-lg hover:bg-red-50"
             title="ลบ"
           >
             <Trash2 size={18} />
@@ -148,7 +148,7 @@ export default function BlockItem({ block, index, totalBlocks, clauseIndex }: Pr
       {/* Content preview */}
       {!block.collapsed && (
         <div
-          className="px-5 py-3.5 text-base leading-relaxed text-slate-600 cursor-pointer hover:bg-slate-50/60 rounded-b-xl transition-colors"
+          className="px-5 py-3.5 text-base leading-relaxed text-foreground cursor-pointer hover:bg-muted/60 rounded-b-xl transition-colors"
           onClick={() => setEditingBlock(block)}
         >
           {displayContent || <span className="text-slate-400 italic">คลิกเพื่อเพิ่มเนื้อหา...</span>}

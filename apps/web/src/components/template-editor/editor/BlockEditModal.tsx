@@ -71,11 +71,11 @@ export default function BlockEditModal() {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
+      <div className="bg-card rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="text-lg font-bold text-gray-800">แก้ไขส่วนประกอบ</h2>
-          <button onClick={handleClose} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <h2 className="text-lg font-bold text-foreground">แก้ไขส่วนประกอบ</h2>
+          <button onClick={handleClose} className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors">
             <X size={20} />
           </button>
         </div>
@@ -86,11 +86,11 @@ export default function BlockEditModal() {
           <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
             {/* Block type */}
             <div>
-              <label className="block text-base font-semibold text-gray-700 mb-1.5">ประเภท</label>
+              <label className="block text-base font-semibold text-foreground mb-1.5">ประเภท</label>
               <select
                 value={form.type}
                 onChange={e => setForm(prev => ({ ...prev, type: e.target.value as BlockType }))}
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-base focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                className="w-full px-3 py-2.5 border border-input rounded-lg text-base focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               >
                 {BLOCK_TYPES.map(t => (
                   <option key={t.value} value={t.value}>{t.label} — {t.description}</option>
@@ -102,22 +102,22 @@ export default function BlockEditModal() {
             {form.type === 'clause' && (
               <div className="flex gap-4">
                 <div className="w-28">
-                  <label className="block text-base font-semibold text-gray-700 mb-1.5">เลขข้อ</label>
+                  <label className="block text-base font-semibold text-foreground mb-1.5">เลขข้อ</label>
                   <input
                     type="number"
                     value={form.clauseNumber || ''}
                     onChange={e => setForm(prev => ({ ...prev, clauseNumber: parseInt(e.target.value) || 0 }))}
-                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-base focus:ring-2 focus:ring-primary-500"
+                    className="w-full px-3 py-2.5 border border-input rounded-lg text-base focus:ring-2 focus:ring-primary-500"
                     min={1}
                   />
                 </div>
                 <div className="flex-1">
-                  <label className="block text-base font-semibold text-gray-700 mb-1.5">ชื่อข้อสัญญา</label>
+                  <label className="block text-base font-semibold text-foreground mb-1.5">ชื่อข้อสัญญา</label>
                   <input
                     type="text"
                     value={form.clauseTitle || ''}
                     onChange={e => setForm(prev => ({ ...prev, clauseTitle: e.target.value }))}
-                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-base focus:ring-2 focus:ring-primary-500"
+                    className="w-full px-3 py-2.5 border border-input rounded-lg text-base focus:ring-2 focus:ring-primary-500"
                     placeholder="เช่น วัตถุประสงค์และข้อจำกัด"
                   />
                 </div>
@@ -126,9 +126,9 @@ export default function BlockEditModal() {
 
             {/* Content - Rich Text Editor or textarea */}
             <div>
-              <label className="block text-base font-semibold text-gray-700 mb-1.5">
+              <label className="block text-base font-semibold text-foreground mb-1.5">
                 เนื้อหา
-                <span className="ml-2 text-sm text-gray-400 font-normal">
+                <span className="ml-2 text-sm text-muted-foreground font-normal">
                   คลิกตัวแปรด้านขวาเพื่อแทรก
                 </span>
               </label>
@@ -145,7 +145,7 @@ export default function BlockEditModal() {
                   onChange={e => setForm(prev => ({ ...prev, content: e.target.value }))}
                   placeholder="เนื้อหาสำหรับ block นี้..."
                   rows={6}
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-base font-mono focus:ring-2 focus:ring-primary-500 resize-y"
+                  className="w-full px-3 py-2.5 border border-input rounded-lg text-base font-mono focus:ring-2 focus:ring-primary-500 resize-y"
                 />
               )}
             </div>
@@ -154,12 +154,12 @@ export default function BlockEditModal() {
 
           {/* Right: Variable insert panel */}
           {showVarPanel && (
-            <div className="w-80 border-l border-gray-200 bg-gray-50 overflow-y-auto flex flex-col">
+            <div className="w-80 border-l border-border bg-muted overflow-y-auto flex flex-col">
               {/* Panel header */}
-              <div className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200 px-4 py-3 flex items-center gap-2">
+              <div className="sticky top-0 z-10 bg-muted border-b border-border px-4 py-3 flex items-center gap-2">
                 <Variable size={16} className="text-primary-600" />
-                <h3 className="text-base font-bold text-gray-600">แทรกตัวแปร</h3>
-                <span className="text-sm text-gray-400 ml-auto">คลิกเพื่อแทรก</span>
+                <h3 className="text-base font-bold text-foreground">แทรกตัวแปร</h3>
+                <span className="text-sm text-muted-foreground ml-auto">คลิกเพื่อแทรก</span>
               </div>
 
               <div className="p-3 space-y-1">
@@ -178,11 +178,11 @@ export default function BlockEditModal() {
                     <div key={group.label}>
                       <button
                         onClick={() => setExpandedGroup(isExpanded ? null : group.label)}
-                        className="w-full flex items-center gap-2 px-3 py-2.5 text-base font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                        className="w-full flex items-center gap-2 px-3 py-2.5 text-base font-semibold text-foreground hover:bg-muted rounded-lg transition-colors"
                       >
                         {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                         {group.label}
-                        <span className="text-sm text-gray-400 ml-auto bg-gray-200 px-1.5 py-0.5 rounded-full">{vars.length}</span>
+                        <span className="text-sm text-muted-foreground ml-auto bg-muted px-1.5 py-0.5 rounded-full">{vars.length}</span>
                       </button>
                       {isExpanded && (
                         <div className="ml-2 space-y-0.5 pb-2 pt-1">
@@ -193,8 +193,8 @@ export default function BlockEditModal() {
                               className="w-full flex items-center gap-2 px-3 py-2 text-left rounded-lg hover:bg-primary-50 hover:text-primary-700 transition-colors group"
                               title={`ตัวอย่าง: ${v.sampleValue}`}
                             >
-                              <span className="text-base text-gray-700 group-hover:text-primary-700 truncate flex-1">{v.label}</span>
-                              <span className="text-xs px-1.5 py-0.5 rounded bg-gray-200 text-gray-500 group-hover:bg-primary-100 group-hover:text-primary-600 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <span className="text-base text-foreground group-hover:text-primary-700 truncate flex-1">{v.label}</span>
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground group-hover:bg-primary-100 group-hover:text-primary-600 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                                 แทรก
                               </span>
                             </button>
@@ -206,18 +206,18 @@ export default function BlockEditModal() {
                 })}
 
                 {/* Special blocks */}
-                <div className="mt-2 pt-3 border-t border-gray-200">
-                  <h4 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2 px-3">ส่วนพิเศษ</h4>
+                <div className="mt-2 pt-3 border-t border-border">
+                  <h4 className="text-sm font-bold text-muted-foreground uppercase tracking-wider mb-2 px-3">ส่วนพิเศษ</h4>
                   <div className="space-y-0.5">
                     <button
                       onClick={() => insertVariable('SIGN_CUSTOMER')}
-                      className="w-full text-left px-3 py-2 text-base text-gray-700 rounded-lg hover:bg-green-50 hover:text-green-700 transition-colors"
+                      className="w-full text-left px-3 py-2 text-base text-foreground rounded-lg hover:bg-green-50 hover:text-green-700 transition-colors"
                     >
                       ลายเซ็นผู้เช่าซื้อ
                     </button>
                     <button
                       onClick={() => insertVariable('SIGN_COMPANY')}
-                      className="w-full text-left px-3 py-2 text-base text-gray-700 rounded-lg hover:bg-green-50 hover:text-green-700 transition-colors"
+                      className="w-full text-left px-3 py-2 text-base text-foreground rounded-lg hover:bg-green-50 hover:text-green-700 transition-colors"
                     >
                       ลายเซ็นผู้ให้เช่าซื้อ
                     </button>
@@ -229,10 +229,10 @@ export default function BlockEditModal() {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100">
+        <div className="flex items-center justify-between px-6 py-4 border-t border-border">
           <button
             onClick={() => setShowVarPanel(!showVarPanel)}
-            className="flex items-center gap-1.5 text-base text-gray-500 hover:text-primary-600 transition-colors"
+            className="flex items-center gap-1.5 text-base text-muted-foreground hover:text-primary-600 transition-colors"
           >
             <Variable size={16} />
             {showVarPanel ? 'ซ่อนตัวแปร' : 'แสดงตัวแปร'}
@@ -240,7 +240,7 @@ export default function BlockEditModal() {
           <div className="flex items-center gap-3">
             <button
               onClick={handleClose}
-              className="px-5 py-2.5 text-base font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              className="px-5 py-2.5 text-base font-medium text-foreground border border-input rounded-lg hover:bg-muted transition-colors"
             >
               ยกเลิก
             </button>

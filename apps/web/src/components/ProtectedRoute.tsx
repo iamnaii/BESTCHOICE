@@ -26,7 +26,7 @@ export default function ProtectedRoute({ children, roles }: ProtectedRouteProps)
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-red-600 mb-2">ไม่มีสิทธิ์เข้าถึง</h1>
-          <p className="text-gray-600">คุณไม่มีสิทธิ์ในการเข้าถึงหน้านี้</p>
+          <p className="text-muted-foreground">คุณไม่มีสิทธิ์ในการเข้าถึงหน้านี้</p>
         </div>
       </div>
     );

@@ -42,7 +42,7 @@ function MainContent() {
       {/* Mobile Sidebar Sheet */}
       {isMobile && <MobileSidebar />}
 
-      {/* Main content - Metronic Demo 1 wrapper pattern */}
+      {/* Main content - Metronic Demo 9 wrapper pattern */}
       <div
         className="wrapper flex-1 flex flex-col min-w-0 transition-all duration-300"
         style={{
@@ -50,7 +50,7 @@ function MainContent() {
         }}
       >
         <TopBar />
-        <main className="flex-1 grow pt-5 px-5 lg:px-7 pb-7" role="content">
+        <main className="flex-1 grow pt-5 px-5 lg:px-7 pb-7 bg-background" role="content">
           <Outlet />
         </main>
       </div>

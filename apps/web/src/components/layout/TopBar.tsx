@@ -22,7 +22,7 @@ const roleLabels: Record<string, string> = {
 };
 
 const roleBadgeColors: Record<string, string> = {
-  OWNER: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  OWNER: 'bg-primary/10 text-primary',
   BRANCH_MANAGER: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
   SALES: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
   ACCOUNTANT: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
@@ -35,23 +35,19 @@ export default function TopBar() {
   const { theme, setTheme } = useTheme();
 
   return (
-    <header
-      className={cn(
-        'header sticky top-0 z-10 flex items-stretch shrink-0 bg-background border-b border-transparent h-[70px]',
-        'border-border',
-      )}
-    >
-      <div className="flex justify-between items-stretch w-full px-4 lg:px-6">
-        {/* Left side */}
-        <div className="flex items-center gap-1">
+    <header className="header sticky top-0 z-10 flex flex-col shrink-0 bg-card border-b border-border">
+      {/* Row 1: Extended topbar — workspace, branch, search */}
+      <div className="flex items-center justify-between h-[44px] px-4 lg:px-6 border-b border-border bg-card">
+        <div className="flex items-center gap-2">
           {/* Mobile hamburger */}
           {isMobile && (
             <Button
               variant="ghost"
               size="icon"
+              className="size-7"
               onClick={() => setMobileSidebarOpen(true)}
             >
-              <Menu className="text-muted-foreground/70" />
+              <Menu className="size-4 text-muted-foreground" />
             </Button>
           )}
 
@@ -61,11 +57,11 @@ export default function TopBar() {
               variant="ghost"
               size="icon"
               onClick={() => setSidebarCollapse(!sidebarCollapse)}
-              className="size-8"
+              className="size-7"
             >
               <ChevronFirst
                 className={cn(
-                  'size-4 text-muted-foreground transition-transform',
+                  'size-3.5 text-muted-foreground transition-transform',
                   sidebarCollapse && 'rotate-180',
                 )}
               />
@@ -75,65 +71,87 @@ export default function TopBar() {
           {/* Branch badge */}
           {user?.branchName && (
             <>
-              <div className="hidden sm:block w-px h-5 bg-border mx-2" />
-              <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary text-xs font-medium text-muted-foreground">
-                <Building2 className="size-3.5" />
+              <div className="hidden sm:block w-px h-4 bg-border" />
+              <span className="hidden sm:inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-muted text-2xs font-medium text-muted-foreground">
+                <Building2 className="size-3" />
                 {user.branchName}
               </span>
             </>
           )}
         </div>
 
-        {/* Right side - Metronic topbar icon pattern */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1">
           {/* Search */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-9 rounded-full hover:bg-primary/10 hover:[&_svg]:text-primary"
-          >
-            <Search className="size-[18px]" />
-          </Button>
-
-          {/* Notifications */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-9 rounded-full hover:bg-primary/10 hover:[&_svg]:text-primary relative"
-          >
-            <Bell className="size-[18px]" />
-            <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-green-500" />
-          </Button>
+          <button className="hidden sm:flex items-center gap-2 h-7 px-3 rounded-md bg-muted text-2xs text-muted-foreground hover:bg-muted/80 transition-colors">
+            <Search className="size-3" />
+            <span>ค้นหา...</span>
+            <kbd className="hidden lg:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-background text-2xs text-muted-foreground/70 border border-border font-mono">
+              ⌘K
+            </kbd>
+          </button>
 
           {/* Dark mode toggle */}
           <Button
             variant="ghost"
             size="icon"
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            className="size-9 rounded-full hover:bg-primary/10 hover:[&_svg]:text-primary"
+            className="size-7"
           >
-            <Sun className="size-[18px] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-            <Moon className="absolute size-[18px] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+            <Sun className="size-3.5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+            <Moon className="absolute size-3.5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
             <span className="sr-only">Toggle theme</span>
           </Button>
+        </div>
+      </div>
 
-          {/* User avatar + dropdown - Metronic pattern */}
+      {/* Row 2: Main header — page context + user controls */}
+      <div className="flex items-center justify-between h-[56px] px-4 lg:px-6">
+        <div className="flex items-center gap-2">
+          {/* Role badge */}
+          {user?.role && (
+            <span className={cn(
+              'inline-flex items-center text-2xs font-medium px-2 py-0.5 rounded-md',
+              roleBadgeColors[user.role] || 'bg-muted text-muted-foreground',
+            )}>
+              {roleLabels[user.role]}
+            </span>
+          )}
+        </div>
+
+        {/* Right side — notifications + user */}
+        <div className="flex items-center gap-1.5">
+          {/* Mobile search */}
+          {isMobile && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8 rounded-full"
+            >
+              <Search className="size-4" />
+            </Button>
+          )}
+
+          {/* Notifications */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8 rounded-full hover:bg-muted relative"
+          >
+            <Bell className="size-4" />
+            <span className="absolute top-1 right-1 size-2 rounded-full bg-green-500" />
+          </Button>
+
+          <div className="w-px h-5 bg-border mx-1" />
+
+          {/* User avatar + dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="flex items-center gap-2.5 outline-none ml-1">
+              <button className="flex items-center gap-2.5 outline-none">
                 <div className="text-right hidden sm:block">
                   <p className="text-2sm font-medium text-foreground leading-tight">{user?.name}</p>
-                  {user?.role && (
-                    <span className={cn(
-                      'inline-block text-2xs font-medium px-1.5 py-0.5 rounded mt-0.5',
-                      roleBadgeColors[user.role] || 'bg-secondary text-muted-foreground',
-                    )}>
-                      {roleLabels[user.role]}
-                    </span>
-                  )}
                 </div>
                 <img
-                  className="size-9 rounded-full border-2 border-green-500 shrink-0 cursor-pointer bg-muted"
+                  className="size-8 rounded-full border-2 border-primary/20 shrink-0 cursor-pointer bg-muted"
                   src={`https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'U')}&background=3b82f6&color=fff&size=36`}
                   alt="User Avatar"
                 />

@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
+import { compressImageForOcr } from '@/lib/compressImage';
+import { Camera, X } from 'lucide-react';
 
 interface User {
   id: string;
@@ -13,6 +15,13 @@ interface User {
   role: string;
   branchId: string | null;
   isActive: boolean;
+  employeeId: string | null;
+  nickname: string | null;
+  phone: string | null;
+  lineId: string | null;
+  address: string | null;
+  avatarUrl: string | null;
+  startDate: string | null;
   createdAt: string;
   branch: { id: string; name: string } | null;
 }
@@ -31,13 +40,19 @@ const roleColors: Record<string, string> = {
   ACCOUNTANT: 'bg-orange-100 text-orange-700',
 };
 
+const inputClass = 'w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none';
+
+const emptyForm = {
+  email: '', password: '', name: '', role: 'SALES', branchId: '',
+  employeeId: '', nickname: '', phone: '', lineId: '', address: '', avatarUrl: '', startDate: '',
+};
+
 export default function UsersPage() {
   const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [form, setForm] = useState({
-    email: '', password: '', name: '', role: 'SALES', branchId: '',
-  });
+  const [form, setForm] = useState(emptyForm);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const { data: users = [], isLoading } = useQuery<User[]>({
     queryKey: ['users'],
@@ -74,17 +89,34 @@ export default function UsersPage() {
 
   const openCreate = () => {
     setEditingUser(null);
-    setForm({ email: '', password: '', name: '', role: 'SALES', branchId: '' });
+    setForm(emptyForm);
     setIsModalOpen(true);
   };
 
   const openEdit = (u: User) => {
     setEditingUser(u);
-    setForm({ email: u.email, password: '', name: u.name, role: u.role, branchId: u.branchId || '' });
+    setForm({
+      email: u.email, password: '', name: u.name, role: u.role, branchId: u.branchId || '',
+      employeeId: u.employeeId || '', nickname: u.nickname || '', phone: u.phone || '',
+      lineId: u.lineId || '', address: u.address || '', avatarUrl: u.avatarUrl || '',
+      startDate: u.startDate ? u.startDate.slice(0, 10) : '',
+    });
     setIsModalOpen(true);
   };
 
   const closeModal = () => { setIsModalOpen(false); setEditingUser(null); };
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const compressed = await compressImageForOcr(file, 200, 0.8);
+      setForm((prev) => ({ ...prev, avatarUrl: compressed }));
+    } catch {
+      toast.error('ไม่สามารถอ่านรูปภาพได้');
+    }
+    e.target.value = '';
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,6 +130,13 @@ export default function UsersPage() {
       data.password = form.password;
     }
     if (form.password) data.password = form.password;
+    if (form.employeeId) data.employeeId = form.employeeId;
+    if (form.nickname) data.nickname = form.nickname;
+    if (form.phone) data.phone = form.phone;
+    if (form.lineId) data.lineId = form.lineId;
+    if (form.address) data.address = form.address;
+    if (form.avatarUrl) data.avatarUrl = form.avatarUrl;
+    if (form.startDate) data.startDate = form.startDate;
     saveMutation.mutate(data);
   };
 
@@ -105,12 +144,25 @@ export default function UsersPage() {
     {
       key: 'name', label: 'ชื่อ',
       render: (u: User) => (
-        <div>
-          <div className="font-medium text-foreground">{u.name}</div>
-          <div className="text-xs text-muted-foreground">{u.email}</div>
+        <div className="flex items-center gap-3">
+          {u.avatarUrl ? (
+            <img src={u.avatarUrl} alt="" className="size-8 rounded-full object-cover shrink-0" />
+          ) : (
+            <div className="size-8 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-muted-foreground shrink-0">
+              {u.name.charAt(0)}
+            </div>
+          )}
+          <div className="min-w-0">
+            <div className="font-medium text-foreground truncate">
+              {u.name}
+              {u.nickname && <span className="text-muted-foreground font-normal"> ({u.nickname})</span>}
+            </div>
+            <div className="text-xs text-muted-foreground truncate">{u.email}</div>
+          </div>
         </div>
       ),
     },
+    { key: 'employeeId', label: 'รหัสพนง.', render: (u: User) => u.employeeId || '-' },
     {
       key: 'role', label: 'ตำแหน่ง',
       render: (u: User) => (
@@ -120,6 +172,12 @@ export default function UsersPage() {
       ),
     },
     { key: 'branch', label: 'สาขา', render: (u: User) => u.branch?.name || '-' },
+    { key: 'phone', label: 'เบอร์โทร', render: (u: User) => u.phone || '-' },
+    { key: 'lineId', label: 'LINE ID', render: (u: User) => u.lineId || '-' },
+    {
+      key: 'startDate', label: 'วันเริ่มงาน',
+      render: (u: User) => u.startDate ? new Date(u.startDate).toLocaleDateString('th-TH') : '-',
+    },
     {
       key: 'isActive', label: 'สถานะ',
       render: (u: User) => (
@@ -130,10 +188,6 @@ export default function UsersPage() {
           {u.isActive ? 'ใช้งาน' : 'ปิดใช้งาน'}
         </button>
       ),
-    },
-    {
-      key: 'createdAt', label: 'สร้างเมื่อ',
-      render: (u: User) => new Date(u.createdAt).toLocaleDateString('th-TH'),
     },
     {
       key: 'actions', label: '',
@@ -161,43 +215,108 @@ export default function UsersPage() {
 
       <Modal isOpen={isModalOpen} onClose={closeModal} title={editingUser ? 'แก้ไขผู้ใช้' : 'เพิ่มผู้ใช้ใหม่'}>
         <form onSubmit={handleSubmit} className="flex flex-col gap-5 lg:gap-7.5">
+          {/* Avatar upload */}
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              {form.avatarUrl ? (
+                <img src={form.avatarUrl} alt="" className="size-16 rounded-full object-cover" />
+              ) : (
+                <div className="size-16 rounded-full bg-muted flex items-center justify-center">
+                  <Camera className="size-6 text-muted-foreground" />
+                </div>
+              )}
+              <input ref={avatarInputRef} type="file" accept="image/*" onChange={handleAvatarChange} className="hidden" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <button type="button" onClick={() => avatarInputRef.current?.click()} className="text-sm text-primary hover:text-primary/80 font-medium">
+                {form.avatarUrl ? 'เปลี่ยนรูป' : 'อัพโหลดรูปโปรไฟล์'}
+              </button>
+              {form.avatarUrl && (
+                <button type="button" onClick={() => setForm((prev) => ({ ...prev, avatarUrl: '' }))} className="text-sm text-red-500 hover:text-red-600 flex items-center gap-1">
+                  <X className="size-3" /> ลบรูป
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Email (create only) */}
           {!editingUser && (
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">อีเมล *</label>
-              <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required
-                className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none" />
+              <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required className={inputClass} />
             </div>
           )}
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">ชื่อ-นามสกุล *</label>
-            <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required
-              className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none" />
+
+          {/* Name + Nickname */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">ชื่อ-นามสกุล *</label>
+              <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className={inputClass} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">ชื่อเล่น</label>
+              <input type="text" value={form.nickname} onChange={(e) => setForm({ ...form, nickname: e.target.value })} placeholder="เช่น นุ๊ก, เอ" className={inputClass} />
+            </div>
           </div>
+
+          {/* Employee ID + Start Date */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">รหัสพนักงาน</label>
+              <input type="text" value={form.employeeId} onChange={(e) => setForm({ ...form, employeeId: e.target.value })} placeholder="EMP-001" className={inputClass} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">วันเริ่มงาน</label>
+              <input type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} className={inputClass} />
+            </div>
+          </div>
+
+          {/* Password */}
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">
               {editingUser ? 'รหัสผ่านใหม่ (เว้นว่างถ้าไม่เปลี่ยน)' : 'รหัสผ่าน *'}
             </label>
             <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })}
-              required={!editingUser} minLength={6}
-              className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none" />
+              required={!editingUser} minLength={6} className={inputClass} />
           </div>
+
+          {/* Role + Branch */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">ตำแหน่ง *</label>
-              <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}
-                className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none">
+              <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className={inputClass}>
                 {Object.entries(roleLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">สาขา</label>
-              <select value={form.branchId} onChange={(e) => setForm({ ...form, branchId: e.target.value })}
-                className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none">
+              <select value={form.branchId} onChange={(e) => setForm({ ...form, branchId: e.target.value })} className={inputClass}>
                 <option value="">ไม่ระบุ (ทุกสาขา)</option>
                 {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
             </div>
           </div>
+
+          {/* Contact info section */}
+          <div className="border-t border-border pt-4">
+            <p className="text-sm font-medium text-muted-foreground mb-3">ข้อมูลติดต่อ</p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">เบอร์โทรศัพท์</label>
+                <input type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                  placeholder="0xx-xxx-xxxx" pattern="0[0-9]{9}" className={inputClass} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">LINE ID</label>
+                <input type="text" value={form.lineId} onChange={(e) => setForm({ ...form, lineId: e.target.value })} className={inputClass} />
+              </div>
+            </div>
+            <div className="mt-4">
+              <label className="block text-sm font-medium text-foreground mb-1">ที่อยู่</label>
+              <textarea value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} rows={2} className={inputClass} />
+            </div>
+          </div>
+
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={closeModal} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground">ยกเลิก</button>
             <button type="submit" disabled={saveMutation.isPending}

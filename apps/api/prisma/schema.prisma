@@ -253,6 +253,13 @@ model User {
   branchId       String?  @map("branch_id")
   isActive       Boolean  @default(true) @map("is_active")
   savedSignature String?  @map("saved_signature") @db.Text
+  employeeId     String?  @unique @map("employee_id")
+  nickname       String?  @map("nickname")
+  phone          String?  @map("phone")
+  lineId         String?  @map("line_id")
+  address        String?  @map("address") @db.Text
+  avatarUrl      String?  @map("avatar_url") @db.Text
+  startDate      DateTime? @map("start_date")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 

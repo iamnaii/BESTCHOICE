@@ -153,13 +153,13 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
                 multiple
                 onChange={handleFileUpload}
                 disabled={uploadMutation.isPending}
-                className="w-full text-sm text-muted-foreground file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
+                className="w-full text-sm text-muted-foreground file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary/5 file:text-primary hover:file:bg-primary/10"
               />
             </div>
           </div>
           {uploadMutation.isPending && (
-            <div className="flex items-center gap-2 text-sm text-primary-600">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600" />
+            <div className="flex items-center gap-2 text-sm text-primary">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary" />
               กำลังอัปโหลด...
             </div>
           )}
@@ -187,7 +187,7 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
             <button
               onClick={() => analyzeMutation.mutate()}
               disabled={analyzeMutation.isPending}
-              className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+              className="px-4 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50"
             >
               {analyzeMutation.isPending ? 'กำลังวิเคราะห์...' : 'AI วิเคราะห์เครดิต'}
             </button>
@@ -258,9 +258,9 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
 
           {/* Manual review notes */}
           {creditCheck.checkedBy && (
-            <div className="bg-primary-50 rounded-lg p-3">
-              <div className="text-xs text-primary-600">ตรวจสอบโดย: {creditCheck.checkedBy.name}</div>
-              {creditCheck.reviewNotes && <div className="text-sm text-primary-800 mt-1">{creditCheck.reviewNotes}</div>}
+            <div className="bg-primary/5 rounded-lg p-3">
+              <div className="text-xs text-primary">ตรวจสอบโดย: {creditCheck.checkedBy.name}</div>
+              {creditCheck.reviewNotes && <div className="text-sm text-primary mt-1">{creditCheck.reviewNotes}</div>}
             </div>
           )}
 
@@ -289,7 +289,7 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
                 <button
                   onClick={() => overrideMutation.mutate()}
                   disabled={!overrideStatus || overrideMutation.isPending}
-                  className="px-4 py-1.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+                  className="px-4 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50"
                 >
                   บันทึก
                 </button>

@@ -62,7 +62,7 @@ export default function DocumentPreview({ compact }: Props) {
   }, [updateScale]);
 
   return (
-    <div ref={containerRef} className="flex-1 bg-slate-100 overflow-y-auto overflow-x-hidden p-4" style={{ height: '100%' }}>
+    <div ref={containerRef} className="flex-1 bg-muted overflow-y-auto overflow-x-hidden p-4" style={{ height: '100%' }}>
       {/* Wrapper — negative marginBottom collapses extra space from CSS scale without clipping */}
       <div style={{ marginBottom: wrapperHeight }}>
         {/* A4 Paper simulation */}

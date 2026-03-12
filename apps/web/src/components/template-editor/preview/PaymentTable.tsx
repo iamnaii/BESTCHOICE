@@ -13,21 +13,21 @@ export default function PaymentTable({ previewMode }: Props) {
 
   if (!previewMode) {
     return (
-      <div className="my-3 border border-gray-300 rounded p-3 text-center text-xs text-gray-500">
+      <div className="my-3 border border-input rounded p-3 text-center text-xs text-muted-foreground">
         <p className="font-mono text-primary-600">{'{{for INSTALLMENT in INSTALLMENTS}}'}</p>
         <table className="w-full mt-2 border-collapse">
           <thead>
-            <tr className="bg-gray-50">
-              <th className="border border-gray-300 px-3 py-1.5 text-left text-xs">งวดที่</th>
-              <th className="border border-gray-300 px-3 py-1.5 text-left text-xs">วันที่ครบกำหนดชำระ</th>
-              <th className="border border-gray-300 px-3 py-1.5 text-right text-xs">จำนวนเงิน</th>
+            <tr className="bg-muted">
+              <th className="border border-input px-3 py-1.5 text-left text-xs">งวดที่</th>
+              <th className="border border-input px-3 py-1.5 text-left text-xs">วันที่ครบกำหนดชำระ</th>
+              <th className="border border-input px-3 py-1.5 text-right text-xs">จำนวนเงิน</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td className="border border-gray-300 px-3 py-1.5 text-xs font-mono text-primary-600">{'{{= INSTALLMENT.NO}}'}</td>
-              <td className="border border-gray-300 px-3 py-1.5 text-xs font-mono text-primary-600">{'{{= INSTALLMENT.DUE_DATE | date:m}}'}</td>
-              <td className="border border-gray-300 px-3 py-1.5 text-xs font-mono text-primary-600 text-right">{'{{= INSTALLMENT.AMOUNT | num:2}}'}</td>
+              <td className="border border-input px-3 py-1.5 text-xs font-mono text-primary-600">{'{{= INSTALLMENT.NO}}'}</td>
+              <td className="border border-input px-3 py-1.5 text-xs font-mono text-primary-600">{'{{= INSTALLMENT.DUE_DATE | date:m}}'}</td>
+              <td className="border border-input px-3 py-1.5 text-xs font-mono text-primary-600 text-right">{'{{= INSTALLMENT.AMOUNT | num:2}}'}</td>
             </tr>
           </tbody>
         </table>

@@ -15,7 +15,7 @@ interface Props {
 const TYPE_COLORS: Record<string, string> = {
   'heading': 'bg-blue-50 text-blue-700',
   'subheading': 'bg-blue-50 text-blue-600',
-  'paragraph': 'bg-slate-100 text-slate-600',
+  'paragraph': 'bg-muted text-foreground',
   'clause': 'bg-amber-50 text-amber-700',
   'party-info': 'bg-emerald-50 text-emerald-700',
   'product-info': 'bg-teal-50 text-teal-700',
@@ -23,12 +23,12 @@ const TYPE_COLORS: Record<string, string> = {
   'signature-block': 'bg-pink-50 text-pink-700',
   'photo-attachment': 'bg-indigo-50 text-indigo-700',
   'contract-header': 'bg-sky-50 text-sky-700',
-  'agreement': 'bg-slate-100 text-slate-600',
+  'agreement': 'bg-muted text-foreground',
   'emergency-contacts': 'bg-orange-50 text-orange-700',
   'attachment-list': 'bg-violet-50 text-violet-700',
   'column': 'bg-cyan-50 text-cyan-700',
   'column-vertical': 'bg-cyan-50 text-cyan-700',
-  'numbered': 'bg-slate-100 text-slate-600',
+  'numbered': 'bg-muted text-foreground',
 };
 
 export default function BlockItem({ block, index, totalBlocks, clauseIndex }: Props) {

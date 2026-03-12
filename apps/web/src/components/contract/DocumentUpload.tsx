@@ -336,10 +336,10 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
           onClick={() => fileInputRef.current?.click()}
           className={`relative border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
             isDragOver
-              ? 'border-primary-500 bg-primary-50'
+              ? 'border-primary bg-primary/5'
               : selectedFile
                 ? 'border-green-400 bg-green-50'
-                : 'border-border hover:border-primary-400 hover:bg-muted'
+                : 'border-border hover:border-primary/40 hover:bg-muted'
           }`}
         >
           <input
@@ -361,10 +361,10 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
               </>
             ) : (
               <>
-                <svg className={`w-8 h-8 ${isDragOver ? 'text-primary-500' : 'text-muted-foreground'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className={`w-8 h-8 ${isDragOver ? 'text-primary' : 'text-muted-foreground'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                 </svg>
-                <div className={`text-sm font-medium ${isDragOver ? 'text-primary-600' : 'text-foreground'}`}>
+                <div className={`text-sm font-medium ${isDragOver ? 'text-primary' : 'text-foreground'}`}>
                   {isDragOver ? 'ปล่อยไฟล์เพื่ออัปโหลด' : 'ลากไฟล์มาวางที่นี่ หรือคลิกเพื่อเลือกไฟล์'}
                 </div>
                 <p className="text-xs text-muted-foreground">รองรับไฟล์ภาพ และ PDF ขนาดไม่เกิน 10MB</p>
@@ -377,7 +377,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
           <button
             onClick={handleUpload}
             disabled={!selectedFile || uploadMutation.isPending}
-            className="px-5 py-2 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-5 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {uploadMutation.isPending ? (
               <span className="flex items-center gap-2">
@@ -391,11 +391,11 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
 
       {/* OCR Loading */}
       {ocrLoading && (
-        <div className="bg-primary-50 border border-primary-200 rounded-lg p-4 flex items-center gap-3">
-          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-600" />
+        <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 flex items-center gap-3">
+          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary" />
           <div>
-            <div className="text-sm font-medium text-primary-800">กำลังอ่านข้อมูลจากบัตรประชาชน...</div>
-            <div className="text-xs text-primary-600">ระบบ AI กำลังประมวลผลรูปภาพ</div>
+            <div className="text-sm font-medium text-primary">กำลังอ่านข้อมูลจากบัตรประชาชน...</div>
+            <div className="text-xs text-primary">ระบบ AI กำลังประมวลผลรูปภาพ</div>
           </div>
         </div>
       )}
@@ -486,7 +486,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
               <div key={doc.id} className="px-4 py-3 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold ${
-                    doc.fileName.endsWith('.pdf') ? 'bg-red-100 text-red-600' : 'bg-primary-100 text-primary-600'
+                    doc.fileName.endsWith('.pdf') ? 'bg-red-100 text-red-600' : 'bg-primary/10 text-primary'
                   }`}>
                     {doc.fileName.endsWith('.pdf') ? 'PDF' : 'IMG'}
                   </div>
@@ -504,7 +504,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
                   {doc.fileUrl && (
                     <button
                       onClick={() => openDocument(doc)}
-                      className="text-xs text-primary-600 hover:text-primary-800 px-2 py-1"
+                      className="text-xs text-primary hover:text-primary/90 px-2 py-1"
                     >
                       ดู
                     </button>

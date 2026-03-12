@@ -193,7 +193,7 @@ export default function ProductPhotosPanel({
       {/* Compact progress bar */}
       <div className="w-full bg-muted rounded-full h-1 mb-2">
         <div
-          className={`h-1 rounded-full transition-all ${isCompleted ? 'bg-green-500' : 'bg-primary-500'}`}
+          className={`h-1 rounded-full transition-all ${isCompleted ? 'bg-green-500' : 'bg-primary'}`}
           style={{ width: `${(completedCount / 6) * 100}%` }}
         />
       </div>
@@ -226,7 +226,7 @@ export default function ProductPhotosPanel({
                       <button
                         onClick={() => triggerUpload(angle)}
                         disabled={uploadMutation.isPending || deleteMutation.isPending}
-                        className="flex-1 px-1 py-0.5 bg-primary-50 rounded text-[10px] text-primary-600 hover:bg-primary-100 font-medium disabled:opacity-50"
+                        className="flex-1 px-1 py-0.5 bg-primary/5 rounded text-[10px] text-primary hover:bg-primary/10 font-medium disabled:opacity-50"
                       >
                         เปลี่ยน
                       </button>
@@ -248,12 +248,12 @@ export default function ProductPhotosPanel({
                   disabled={!canEdit || isUploading}
                   className={`w-full aspect-[4/3] rounded border-2 border-dashed flex flex-col items-center justify-center gap-0.5 transition-colors ${
                     canEdit
-                      ? 'border-border hover:border-primary-400 hover:bg-primary-50 cursor-pointer'
+                      ? 'border-border hover:border-primary/40 hover:bg-primary/5 cursor-pointer'
                       : 'border-border bg-muted cursor-default'
                   }`}
                 >
                   {isUploading ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600" />
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary" />
                   ) : (
                     <>
                       <svg className="w-4 h-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">

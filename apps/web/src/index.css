@@ -1,9 +1,9 @@
+/* ── Google Fonts: Inter + Noto Sans Thai ───────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-/* ── Google Fonts: Inter + Noto Sans Thai ───────────── */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap');
 
 /* ── Metronic v9.4.6 Theme Variables (aligned with config.reui.css) ─ */
 @layer base {

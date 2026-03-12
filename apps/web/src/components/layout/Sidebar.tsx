@@ -40,9 +40,6 @@ import {
   AccordionMenuGroup,
   AccordionMenuItem,
   AccordionMenuLabel,
-  AccordionMenuSub,
-  AccordionMenuSubContent,
-  AccordionMenuSubTrigger,
 } from '@/components/ui/accordion-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useLayout } from './LayoutContext';
@@ -150,7 +147,7 @@ const menuClassNames: AccordionMenuClassNames = {
   subContent: 'py-0',
 };
 
-function Sidebar() {
+function Sidebar({ mobile = false }: { mobile?: boolean }) {
   const { user } = useAuth();
   const { pathname } = useLocation();
   const { sidebarCollapse } = useLayout();
@@ -175,13 +172,18 @@ function Sidebar() {
   return (
     <div
       className={cn(
-        'sidebar fixed top-0 bottom-0 z-20 flex flex-col items-stretch shrink-0 transition-all duration-300',
-        'bg-card border-e border-border',
-        sidebarCollapse ? 'w-[80px]' : 'w-[280px]',
+        'sidebar flex flex-col items-stretch shrink-0 bg-card',
+        mobile
+          ? 'w-full h-full'
+          : 'fixed top-0 bottom-0 z-20 border-e border-border transition-all duration-300',
+        !mobile && (sidebarCollapse ? 'w-[80px]' : 'w-[280px]'),
       )}
     >
       {/* Sidebar Header — Demo 9 light style */}
-      <div className="sidebar-header hidden lg:flex items-center relative justify-between px-3 lg:px-6 shrink-0 h-[70px] border-b border-border">
+      <div className={cn(
+        'sidebar-header items-center relative justify-between px-3 lg:px-6 shrink-0 h-[70px] border-b border-border',
+        mobile ? 'flex' : 'hidden lg:flex',
+      )}>
         <Link to="/" className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center shrink-0">
             <span className="text-white text-base font-bold">B</span>

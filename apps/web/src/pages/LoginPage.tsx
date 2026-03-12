@@ -157,7 +157,7 @@ export default function LoginPage() {
 
         {/* Decorative */}
         <div className="absolute top-20 right-20 w-72 h-72 bg-primary/5 rounded-full blur-3xl" />
-        <div className="absolute bottom-20 left-20 w-56 h-56 bg-primary/3 rounded-full blur-3xl" />
+        <div className="absolute bottom-20 left-20 w-56 h-56 bg-primary/5 rounded-full blur-3xl" />
       </div>
     </div>
   );

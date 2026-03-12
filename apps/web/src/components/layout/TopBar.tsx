@@ -45,6 +45,7 @@ export default function TopBar() {
               variant="ghost"
               size="icon"
               className="size-7"
+              aria-label="เปิดเมนู"
               onClick={() => setMobileSidebarOpen(true)}
             >
               <Menu className="size-4 text-muted-foreground" />
@@ -56,6 +57,7 @@ export default function TopBar() {
             <Button
               variant="ghost"
               size="icon"
+              aria-label={sidebarCollapse ? 'ขยายเมนู' : 'ย่อเมนู'}
               onClick={() => setSidebarCollapse(!sidebarCollapse)}
               className="size-7"
             >
@@ -82,9 +84,12 @@ export default function TopBar() {
 
         <div className="flex items-center gap-1">
           {/* Search */}
-          <button className="hidden sm:flex items-center gap-2 h-7 px-3 rounded-md bg-muted text-2xs text-muted-foreground hover:bg-muted/80 transition-colors">
+          <button
+            className="flex items-center gap-2 h-7 px-3 rounded-md bg-muted text-2xs text-muted-foreground hover:bg-muted/80 transition-colors"
+            aria-label="ค้นหา"
+          >
             <Search className="size-3" />
-            <span>ค้นหา...</span>
+            <span className="hidden sm:inline">ค้นหา...</span>
             <kbd className="hidden lg:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-background text-2xs text-muted-foreground/70 border border-border font-mono">
               ⌘K
             </kbd>
@@ -95,7 +100,7 @@ export default function TopBar() {
             variant="ghost"
             size="icon"
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            className="size-7"
+            className="size-7 relative"
           >
             <Sun className="size-3.5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
             <Moon className="absolute size-3.5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
@@ -120,25 +125,15 @@ export default function TopBar() {
 
         {/* Right side — notifications + user */}
         <div className="flex items-center gap-1.5">
-          {/* Mobile search */}
-          {isMobile && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-8 rounded-full"
-            >
-              <Search className="size-4" />
-            </Button>
-          )}
-
           {/* Notifications */}
           <Button
             variant="ghost"
             size="icon"
+            aria-label="การแจ้งเตือน"
             className="size-8 rounded-full hover:bg-muted relative"
           >
             <Bell className="size-4" />
-            <span className="absolute top-1 right-1 size-2 rounded-full bg-green-500" />
+            <span className="absolute top-1 right-1 size-2 rounded-full bg-green-500" aria-hidden="true" />
           </Button>
 
           <div className="w-px h-5 bg-border mx-1" />
@@ -153,7 +148,7 @@ export default function TopBar() {
                 <img
                   className="size-8 rounded-full border-2 border-primary/20 shrink-0 cursor-pointer bg-muted"
                   src={`https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'U')}&background=3b82f6&color=fff&size=36`}
-                  alt="User Avatar"
+                  alt={`${user?.name || 'User'} avatar`}
                 />
               </button>
             </DropdownMenuTrigger>

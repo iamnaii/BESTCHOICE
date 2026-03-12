@@ -45,11 +45,11 @@ export default function PDFExportModal() {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+      <div className="bg-card rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-          <h2 className="text-lg font-bold text-gray-800">Export PDF</h2>
-          <button onClick={handleClose} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <h2 className="text-lg font-bold text-foreground">Export PDF</h2>
+          <button onClick={handleClose} className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors">
             <X size={20} />
           </button>
         </div>
@@ -59,15 +59,15 @@ export default function PDFExportModal() {
           {previewUrl ? (
             <iframe
               src={previewUrl}
-              className="w-full border border-gray-200 rounded-lg"
+              className="w-full border border-border rounded-lg"
               style={{ height: '65vh' }}
               title="PDF Preview"
             />
           ) : (
             <div className="text-center py-16">
               <div className="text-6xl mb-4">📄</div>
-              <h3 className="text-lg font-medium text-gray-700 mb-2">{currentTemplate.name}</h3>
-              <p className="text-base text-gray-500 mb-6">
+              <h3 className="text-lg font-medium text-foreground mb-2">{currentTemplate.name}</h3>
+              <p className="text-base text-muted-foreground mb-6">
                 {currentTemplate.blocks.length} blocks | A4 | TH Sarabun PSK
               </p>
 
@@ -95,10 +95,10 @@ export default function PDFExportModal() {
 
         {/* Footer */}
         {previewUrl && (
-          <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
+          <div className="flex items-center justify-between px-6 py-4 border-t border-border">
             <button
               onClick={() => { URL.revokeObjectURL(previewUrl); setPreviewUrl(null); }}
-              className="px-5 py-2.5 text-base text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              className="px-5 py-2.5 text-base text-foreground border border-input rounded-lg hover:bg-muted transition-colors"
             >
               กลับ
             </button>

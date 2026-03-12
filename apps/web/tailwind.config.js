@@ -144,6 +144,7 @@ export default {
           fg: "hsl(var(--sidebar-fg))",
           active: "hsl(var(--sidebar-active))",
           hover: "hsl(var(--sidebar-hover))",
+          border: "hsl(var(--sidebar-border))",
         },
         chart: {
           1: "hsl(var(--chart-1))",

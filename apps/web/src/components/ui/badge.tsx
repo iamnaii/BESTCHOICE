@@ -24,9 +24,9 @@ const badgeVariants = cva(
       variant: {
         primary: 'bg-primary text-primary-foreground',
         secondary: 'bg-secondary text-secondary-foreground',
-        success: 'bg-green-500 text-white',
-        warning: 'bg-yellow-500 text-white',
-        info: 'bg-violet-500 text-white',
+        success: 'bg-success text-success-foreground',
+        warning: 'bg-warning text-warning-foreground',
+        info: 'bg-info text-info-foreground',
         outline: 'bg-transparent border border-border text-secondary-foreground',
         destructive: 'bg-destructive text-destructive-foreground',
       },
@@ -54,7 +54,7 @@ const badgeVariants = cva(
       {
         variant: 'primary',
         appearance: 'light',
-        className: 'text-blue-700 bg-blue-50 dark:bg-blue-950 dark:text-blue-600',
+        className: 'text-primary bg-primary/10 dark:bg-primary/15',
       },
       {
         variant: 'secondary',
@@ -64,50 +64,47 @@ const badgeVariants = cva(
       {
         variant: 'success',
         appearance: 'light',
-        className: 'text-green-800 bg-green-100 dark:bg-green-950 dark:text-green-600',
+        className: 'text-success bg-success/10 dark:bg-success/15',
       },
       {
         variant: 'warning',
         appearance: 'light',
-        className: 'text-yellow-700 bg-yellow-100 dark:bg-yellow-950 dark:text-yellow-600',
+        className: 'text-warning bg-warning/10 dark:bg-warning/15',
       },
       {
         variant: 'info',
         appearance: 'light',
-        className: 'text-violet-700 bg-violet-100 dark:bg-violet-950 dark:text-violet-400',
+        className: 'text-info bg-info/10 dark:bg-info/15',
       },
       {
         variant: 'destructive',
         appearance: 'light',
-        className: 'text-red-700 bg-red-50 dark:bg-red-950 dark:text-red-600',
+        className: 'text-destructive bg-destructive/10 dark:bg-destructive/15',
       },
       {
         variant: 'primary',
         appearance: 'outline',
-        className: 'text-blue-700 border-blue-100 bg-blue-50 dark:bg-blue-950 dark:border-blue-900 dark:text-blue-600',
+        className: 'text-primary border-primary/20 bg-primary/5 dark:bg-primary/10 dark:border-primary/30',
       },
       {
         variant: 'success',
         appearance: 'outline',
-        className:
-          'text-green-700 border-green-200 bg-green-50 dark:bg-green-950 dark:border-green-900 dark:text-green-600',
+        className: 'text-success border-success/20 bg-success/5 dark:bg-success/10 dark:border-success/30',
       },
       {
         variant: 'warning',
         appearance: 'outline',
-        className:
-          'text-yellow-700 border-yellow-200 bg-yellow-50 dark:bg-yellow-950 dark:border-yellow-900 dark:text-yellow-600',
+        className: 'text-warning border-warning/20 bg-warning/5 dark:bg-warning/10 dark:border-warning/30',
       },
       {
         variant: 'info',
         appearance: 'outline',
-        className:
-          'text-violet-700 border-violet-100 bg-violet-50 dark:bg-violet-950 dark:border-violet-900 dark:text-violet-400',
+        className: 'text-info border-info/20 bg-info/5 dark:bg-info/10 dark:border-info/30',
       },
       {
         variant: 'destructive',
         appearance: 'outline',
-        className: 'text-red-700 border-red-100 bg-red-50 dark:bg-red-950 dark:border-red-900 dark:text-red-600',
+        className: 'text-destructive border-destructive/20 bg-destructive/5 dark:bg-destructive/10 dark:border-destructive/30',
       },
       {
         variant: 'primary',
@@ -122,17 +119,17 @@ const badgeVariants = cva(
       {
         variant: 'success',
         appearance: 'ghost',
-        className: 'text-green-500',
+        className: 'text-success',
       },
       {
         variant: 'warning',
         appearance: 'ghost',
-        className: 'text-yellow-500',
+        className: 'text-warning',
       },
       {
         variant: 'info',
         appearance: 'ghost',
-        className: 'text-violet-500',
+        className: 'text-info',
       },
       {
         variant: 'destructive',

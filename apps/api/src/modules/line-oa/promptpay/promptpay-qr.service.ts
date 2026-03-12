@@ -83,7 +83,7 @@ export class PromptPayQrService {
 
     try {
       // Try to use qrcode package if available
-      const QRCode = require('qrcode');
+      const QRCode = await import('qrcode');
       return QRCode.toDataURL(payload, {
         errorCorrectionLevel: 'M',
         margin: 2,
@@ -104,7 +104,7 @@ export class PromptPayQrService {
     const payload = this.generatePayload(amount);
 
     try {
-      const QRCode = require('qrcode');
+      const QRCode = await import('qrcode');
       return QRCode.toBuffer(payload, {
         errorCorrectionLevel: 'M',
         margin: 2,

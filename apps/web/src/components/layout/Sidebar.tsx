@@ -40,9 +40,6 @@ import {
   AccordionMenuGroup,
   AccordionMenuItem,
   AccordionMenuLabel,
-  AccordionMenuSub,
-  AccordionMenuSubContent,
-  AccordionMenuSubTrigger,
 } from '@/components/ui/accordion-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useLayout } from './LayoutContext';
@@ -138,19 +135,19 @@ const navSections: { key: string; label: string; icon: LucideIcon; items: NavIte
   },
 ];
 
-/* Metronic v9.4.6 Demo 1 sidebar menu classNames */
+/* Metronic Demo 9 — light sidebar menu classNames */
 const menuClassNames: AccordionMenuClassNames = {
-  root: 'space-y-3',
+  root: 'space-y-1',
   group: 'gap-px',
-  label: 'uppercase text-xs font-medium text-muted-foreground/70 pt-2.5 pb-px',
+  label: 'uppercase text-2xs font-semibold tracking-wider text-muted-foreground/70 pt-4 pb-1 px-3',
   separator: '',
-  item: 'h-8 hover:bg-transparent text-accent-foreground hover:text-primary data-[selected=true]:text-primary data-[selected=true]:bg-muted data-[selected=true]:font-medium',
+  item: 'h-9 rounded-lg text-sm text-foreground/80 hover:bg-muted hover:text-foreground data-[selected=true]:bg-primary/10 data-[selected=true]:text-primary data-[selected=true]:font-medium',
   sub: '',
-  subTrigger: 'h-8 hover:bg-transparent text-accent-foreground hover:text-primary data-[selected=true]:text-primary data-[selected=true]:bg-muted data-[selected=true]:font-medium',
+  subTrigger: 'h-9 rounded-lg text-sm text-foreground/80 hover:bg-muted hover:text-foreground data-[selected=true]:text-primary data-[selected=true]:font-medium',
   subContent: 'py-0',
 };
 
-function Sidebar() {
+function Sidebar({ mobile = false }: { mobile?: boolean }) {
   const { user } = useAuth();
   const { pathname } = useLocation();
   const { sidebarCollapse } = useLayout();
@@ -175,12 +172,18 @@ function Sidebar() {
   return (
     <div
       className={cn(
-        'sidebar dark bg-background border-e border-border fixed top-0 bottom-0 z-20 flex flex-col items-stretch shrink-0 transition-all duration-300',
-        sidebarCollapse ? 'w-[80px]' : 'w-[280px]',
+        'sidebar flex flex-col items-stretch shrink-0 bg-card',
+        mobile
+          ? 'w-full h-full'
+          : 'fixed top-0 bottom-0 z-20 border-e border-border transition-all duration-300',
+        !mobile && (sidebarCollapse ? 'w-[80px]' : 'w-[280px]'),
       )}
     >
-      {/* Sidebar Header - Metronic Demo 1 pattern */}
-      <div className="sidebar-header hidden lg:flex items-center relative justify-between px-3 lg:px-6 shrink-0 h-[70px]">
+      {/* Sidebar Header — Demo 9 light style */}
+      <div className={cn(
+        'sidebar-header items-center relative justify-between px-3 lg:px-6 shrink-0 h-[70px] border-b border-border',
+        mobile ? 'flex' : 'hidden lg:flex',
+      )}>
         <Link to="/" className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center shrink-0">
             <span className="text-white text-base font-bold">B</span>
@@ -193,10 +196,10 @@ function Sidebar() {
         </Link>
       </div>
 
-      {/* Navigation - Metronic Demo 1 sidebar-menu pattern */}
+      {/* Navigation — Demo 9 light sidebar pattern */}
       <div className="overflow-hidden flex-1">
         <div className={sidebarCollapse ? 'w-[80px]' : 'w-[280px]'}>
-          <ScrollArea className="py-5 px-5 lg:max-h-[calc(100vh-5.5rem)]">
+          <ScrollArea className="py-4 px-4 lg:max-h-[calc(100vh-5.5rem)]">
             <AccordionMenu
               selectedValue={pathname}
               matchPath={matchPath}
@@ -232,9 +235,9 @@ function Sidebar() {
         </div>
       </div>
 
-      {/* User info at bottom */}
+      {/* User info at bottom — Demo 9 light style */}
       {user && !sidebarCollapse && (
-        <div className="px-5 py-4 border-t border-border shrink-0">
+        <div className="px-4 py-4 border-t border-border shrink-0">
           <div className="flex items-center gap-3">
             <div className="size-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
               <span className="text-primary text-sm font-semibold">{user.name?.charAt(0)}</span>

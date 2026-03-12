@@ -21,14 +21,14 @@ export default function ProductCard({
   const categoryLabel = categoryLabels[category] || category;
 
   return (
-    <div className="group bg-white rounded-2xl border border-gray-100 overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
+    <div className="group bg-card rounded-2xl border border-border overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
       {/* Image Placeholder */}
-      <div className="relative h-48 bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center overflow-hidden">
+      <div className="relative h-48 bg-gradient-to-br from-muted to-muted/80 flex items-center justify-center overflow-hidden">
         <div className="text-center">
-          <svg className="w-16 h-16 text-gray-300 mx-auto group-hover:scale-110 transition-transform duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className="w-16 h-16 text-muted-foreground/50 mx-auto group-hover:scale-110 transition-transform duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
           </svg>
-          <p className="text-xs text-gray-400 mt-1">{brand}</p>
+          <p className="text-xs text-muted-foreground mt-1">{brand}</p>
         </div>
 
         {/* Category Badge */}
@@ -39,15 +39,15 @@ export default function ProductCard({
 
       {/* Content */}
       <div className="p-4">
-        <h3 className="font-semibold text-gray-900 text-sm">{brand} {model}</h3>
-        <p className="text-xs text-gray-500 mt-0.5">{categoryLabel}</p>
+        <h3 className="font-semibold text-foreground text-sm">{brand} {model}</h3>
+        <p className="text-xs text-muted-foreground mt-0.5">{categoryLabel}</p>
 
         <div className="mt-3 flex items-end justify-between">
           <div>
-            <p className="text-xs text-gray-400">เริ่มต้นที่</p>
+            <p className="text-xs text-muted-foreground">เริ่มต้นที่</p>
             <p className="text-lg font-bold text-primary-600">
               {(Number(price) || 0).toLocaleString()}
-              <span className="text-sm font-normal text-gray-500 ml-1">฿</span>
+              <span className="text-sm font-normal text-muted-foreground ml-1">฿</span>
             </p>
           </div>
           <button className="px-3 py-1.5 text-xs font-medium text-primary-600 bg-primary-50 hover:bg-primary-100 rounded-lg transition-colors">

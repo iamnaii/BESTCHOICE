@@ -9,11 +9,11 @@ export default function SettingsModal() {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+      <div className="bg-card rounded-xl shadow-2xl w-full max-w-lg">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-          <h2 className="text-lg font-bold text-gray-800">ตั้งค่าเทมเพลต</h2>
-          <button onClick={() => setShowSettings(false)} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <h2 className="text-lg font-bold text-foreground">ตั้งค่าเทมเพลต</h2>
+          <button onClick={() => setShowSettings(false)} className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors">
             <X size={20} />
           </button>
         </div>
@@ -21,7 +21,7 @@ export default function SettingsModal() {
         <div className="px-6 py-5 space-y-5">
           {/* Letterhead */}
           <div>
-            <label className="block text-base font-medium text-gray-700 mb-2">แบบพิมพ์</label>
+            <label className="block text-base font-medium text-foreground mb-2">แบบพิมพ์</label>
             <div className="flex gap-4">
               {[
                 { value: 'none', label: 'ไม่มีหัวกระดาษ' },
@@ -66,22 +66,22 @@ export default function SettingsModal() {
 
           {/* Footer text */}
           <div>
-            <label className="block text-base font-medium text-gray-700 mb-1.5">Footer</label>
+            <label className="block text-base font-medium text-foreground mb-1.5">Footer</label>
             <input
               type="text"
               value={settings.footerText}
               onChange={e => updateSettings({ footerText: e.target.value })}
-              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-base focus:ring-2 focus:ring-primary-500"
+              className="w-full px-3 py-2.5 border border-input rounded-lg text-base focus:ring-2 focus:ring-primary-500"
             />
           </div>
 
           {/* Footer content */}
           <div>
-            <label className="block text-base font-medium text-gray-700 mb-1.5">เนื้อหาท้ายเอกสาร</label>
+            <label className="block text-base font-medium text-foreground mb-1.5">เนื้อหาท้ายเอกสาร</label>
             <textarea
               value={settings.footerContent}
               onChange={e => updateSettings({ footerContent: e.target.value })}
-              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-base resize-y"
+              className="w-full px-3 py-2.5 border border-input rounded-lg text-base resize-y"
               rows={3}
               placeholder="ข้อความท้ายเอกสาร (รองรับ template variables)"
             />
@@ -89,16 +89,16 @@ export default function SettingsModal() {
 
           {/* Margins */}
           <div>
-            <label className="block text-base font-medium text-gray-700 mb-2">ระยะขอบ (mm)</label>
+            <label className="block text-base font-medium text-foreground mb-2">ระยะขอบ (mm)</label>
             <div className="grid grid-cols-4 gap-3">
               {(['top', 'bottom', 'left', 'right'] as const).map(side => (
                 <div key={side}>
-                  <label className="block text-sm text-gray-500 mb-1 capitalize">{side === 'top' ? 'บน' : side === 'bottom' ? 'ล่าง' : side === 'left' ? 'ซ้าย' : 'ขวา'}</label>
+                  <label className="block text-sm text-muted-foreground mb-1 capitalize">{side === 'top' ? 'บน' : side === 'bottom' ? 'ล่าง' : side === 'left' ? 'ซ้าย' : 'ขวา'}</label>
                   <input
                     type="number"
                     value={settings.margins[side]}
                     onChange={e => updateSettings({ margins: { ...settings.margins, [side]: parseInt(e.target.value) || 0 } })}
-                    className="w-full px-2 py-2 border border-gray-300 rounded text-base"
+                    className="w-full px-2 py-2 border border-input rounded text-base"
                     min={0}
                     max={50}
                   />
@@ -109,7 +109,7 @@ export default function SettingsModal() {
 
           {/* Font sizes */}
           <div>
-            <label className="block text-base font-medium text-gray-700 mb-2">ขนาดตัวอักษร (px)</label>
+            <label className="block text-base font-medium text-foreground mb-2">ขนาดตัวอักษร (px)</label>
             <div className="grid grid-cols-3 gap-3">
               {[
                 { key: 'body' as const, label: 'เนื้อหา' },
@@ -117,12 +117,12 @@ export default function SettingsModal() {
                 { key: 'footer' as const, label: 'Footer' },
               ].map(item => (
                 <div key={item.key}>
-                  <label className="block text-sm text-gray-500 mb-1">{item.label}</label>
+                  <label className="block text-sm text-muted-foreground mb-1">{item.label}</label>
                   <input
                     type="number"
                     value={settings.fontSize[item.key]}
                     onChange={e => updateSettings({ fontSize: { ...settings.fontSize, [item.key]: parseInt(e.target.value) || 12 } })}
-                    className="w-full px-2 py-2 border border-gray-300 rounded text-base"
+                    className="w-full px-2 py-2 border border-input rounded text-base"
                     min={8}
                     max={36}
                   />
@@ -133,7 +133,7 @@ export default function SettingsModal() {
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end px-6 py-4 border-t border-gray-200">
+        <div className="flex justify-end px-6 py-4 border-t border-border">
           <button
             onClick={() => setShowSettings(false)}
             className="px-5 py-2.5 text-base bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"

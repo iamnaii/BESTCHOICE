@@ -301,15 +301,15 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
   return (
     <div className="space-y-4">
       {/* Upload form */}
-      <div className="bg-white rounded-lg border p-4 space-y-3">
-        <h3 className="text-sm font-semibold text-gray-900">อัปโหลดเอกสาร</h3>
+      <div className="bg-card rounded-lg border p-4 space-y-3">
+        <h3 className="text-sm font-semibold text-foreground">อัปโหลดเอกสาร</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs text-gray-500 mb-1">ประเภทเอกสาร</label>
+            <label className="block text-xs text-muted-foreground mb-1">ประเภทเอกสาร</label>
             <select
               value={selectedType}
               onChange={(e) => setSelectedType(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              className="w-full px-3 py-2 border border-input rounded-lg text-sm"
             >
               {DOCUMENT_TYPES.map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
@@ -317,13 +317,13 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
             </select>
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">หมายเหตุ (ไม่บังคับ)</label>
+            <label className="block text-xs text-muted-foreground mb-1">หมายเหตุ (ไม่บังคับ)</label>
             <input
               type="text"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="หมายเหตุ..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              className="w-full px-3 py-2 border border-input rounded-lg text-sm"
             />
           </div>
         </div>
@@ -336,10 +336,10 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
           onClick={() => fileInputRef.current?.click()}
           className={`relative border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
             isDragOver
-              ? 'border-primary-500 bg-primary-50'
+              ? 'border-primary bg-primary/5'
               : selectedFile
                 ? 'border-green-400 bg-green-50'
-                : 'border-gray-300 hover:border-primary-400 hover:bg-gray-50'
+                : 'border-border hover:border-primary/40 hover:bg-muted'
           }`}
         >
           <input
@@ -361,13 +361,13 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
               </>
             ) : (
               <>
-                <svg className={`w-8 h-8 ${isDragOver ? 'text-primary-500' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className={`w-8 h-8 ${isDragOver ? 'text-primary' : 'text-muted-foreground'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                 </svg>
-                <div className={`text-sm font-medium ${isDragOver ? 'text-primary-600' : 'text-gray-600'}`}>
+                <div className={`text-sm font-medium ${isDragOver ? 'text-primary' : 'text-foreground'}`}>
                   {isDragOver ? 'ปล่อยไฟล์เพื่ออัปโหลด' : 'ลากไฟล์มาวางที่นี่ หรือคลิกเพื่อเลือกไฟล์'}
                 </div>
-                <p className="text-xs text-gray-400">รองรับไฟล์ภาพ และ PDF ขนาดไม่เกิน 10MB</p>
+                <p className="text-xs text-muted-foreground">รองรับไฟล์ภาพ และ PDF ขนาดไม่เกิน 10MB</p>
               </>
             )}
           </div>
@@ -377,7 +377,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
           <button
             onClick={handleUpload}
             disabled={!selectedFile || uploadMutation.isPending}
-            className="px-5 py-2 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-5 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {uploadMutation.isPending ? (
               <span className="flex items-center gap-2">
@@ -391,11 +391,11 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
 
       {/* OCR Loading */}
       {ocrLoading && (
-        <div className="bg-primary-50 border border-primary-200 rounded-lg p-4 flex items-center gap-3">
-          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-600" />
+        <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 flex items-center gap-3">
+          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary" />
           <div>
-            <div className="text-sm font-medium text-primary-800">กำลังอ่านข้อมูลจากบัตรประชาชน...</div>
-            <div className="text-xs text-primary-600">ระบบ AI กำลังประมวลผลรูปภาพ</div>
+            <div className="text-sm font-medium text-primary">กำลังอ่านข้อมูลจากบัตรประชาชน...</div>
+            <div className="text-xs text-primary">ระบบ AI กำลังประมวลผลรูปภาพ</div>
           </div>
         </div>
       )}
@@ -407,52 +407,52 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
             <h3 className={`text-sm font-semibold ${ocrResult.confidence < 0.7 ? 'text-yellow-800' : 'text-green-800'}`}>ข้อมูลที่อ่านจากบัตรประชาชน</h3>
             <div className="flex items-center gap-2">
               <span className={`text-xs ${ocrResult.confidence < 0.5 ? 'text-red-600 font-bold' : ocrResult.confidence < 0.7 ? 'text-yellow-600 font-semibold' : 'text-green-600'}`}>ความมั่นใจ: {(ocrResult.confidence * 100).toFixed(0)}%</span>
-              <button onClick={() => setShowOcrPanel(false)} className="text-xs text-gray-500 hover:text-gray-700">ปิด</button>
+              <button onClick={() => setShowOcrPanel(false)} className="text-xs text-muted-foreground hover:text-foreground">ปิด</button>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             {ocrResult.nationalId && (
               <div>
-                <div className="text-xs text-gray-500">เลขบัตรประชาชน</div>
-                <div className="text-sm font-mono font-medium text-gray-900">
+                <div className="text-xs text-muted-foreground">เลขบัตรประชาชน</div>
+                <div className="text-sm font-mono font-medium text-foreground">
                   {ocrResult.nationalId.replace(/(\d{1})(\d{4})(\d{5})(\d{2})(\d{1})/, '$1-$2-$3-$4-$5')}
                 </div>
               </div>
             )}
             {ocrResult.prefix && (
               <div>
-                <div className="text-xs text-gray-500">คำนำหน้า</div>
-                <div className="text-sm font-medium text-gray-900">{ocrResult.prefix}</div>
+                <div className="text-xs text-muted-foreground">คำนำหน้า</div>
+                <div className="text-sm font-medium text-foreground">{ocrResult.prefix}</div>
               </div>
             )}
             {ocrResult.fullName && (
               <div>
-                <div className="text-xs text-gray-500">ชื่อ-นามสกุล</div>
-                <div className="text-sm font-medium text-gray-900">{ocrResult.fullName}</div>
+                <div className="text-xs text-muted-foreground">ชื่อ-นามสกุล</div>
+                <div className="text-sm font-medium text-foreground">{ocrResult.fullName}</div>
               </div>
             )}
             {ocrResult.birthDate && (
               <div>
-                <div className="text-xs text-gray-500">วันเกิด</div>
-                <div className="text-sm font-medium text-gray-900">{new Date(ocrResult.birthDate).toLocaleDateString('th-TH')}</div>
+                <div className="text-xs text-muted-foreground">วันเกิด</div>
+                <div className="text-sm font-medium text-foreground">{new Date(ocrResult.birthDate).toLocaleDateString('th-TH')}</div>
               </div>
             )}
             {ocrResult.address && (
               <div className="col-span-2">
-                <div className="text-xs text-gray-500">ที่อยู่ตามบัตร</div>
-                <div className="text-sm font-medium text-gray-900">{ocrResult.address}</div>
+                <div className="text-xs text-muted-foreground">ที่อยู่ตามบัตร</div>
+                <div className="text-sm font-medium text-foreground">{ocrResult.address}</div>
               </div>
             )}
             {ocrResult.issueDate && (
               <div>
-                <div className="text-xs text-gray-500">วันออกบัตร</div>
-                <div className="text-sm text-gray-700">{new Date(ocrResult.issueDate).toLocaleDateString('th-TH')}</div>
+                <div className="text-xs text-muted-foreground">วันออกบัตร</div>
+                <div className="text-sm text-foreground">{new Date(ocrResult.issueDate).toLocaleDateString('th-TH')}</div>
               </div>
             )}
             {ocrResult.expiryDate && (
               <div>
-                <div className="text-xs text-gray-500">วันหมดอายุ</div>
-                <div className="text-sm text-gray-700">{new Date(ocrResult.expiryDate).toLocaleDateString('th-TH')}</div>
+                <div className="text-xs text-muted-foreground">วันหมดอายุ</div>
+                <div className="text-sm text-foreground">{new Date(ocrResult.expiryDate).toLocaleDateString('th-TH')}</div>
               </div>
             )}
           </div>
@@ -466,7 +466,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
               </button>
               <button
                 onClick={() => setShowOcrPanel(false)}
-                className="px-4 py-1.5 text-xs border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50"
+                className="px-4 py-1.5 text-xs border border-border text-foreground rounded-lg hover:bg-muted"
               >
                 ข้าม
               </button>
@@ -477,22 +477,22 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
 
       {/* Document list */}
       {documents.length > 0 && (
-        <div className="bg-white rounded-lg border">
+        <div className="bg-card rounded-lg border">
           <div className="px-4 py-3 border-b">
-            <h3 className="text-sm font-semibold text-gray-900">เอกสารที่แนบ ({documents.length})</h3>
+            <h3 className="text-sm font-semibold text-foreground">เอกสารที่แนบ ({documents.length})</h3>
           </div>
           <div className="divide-y">
             {documents.map((doc) => (
               <div key={doc.id} className="px-4 py-3 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold ${
-                    doc.fileName.endsWith('.pdf') ? 'bg-red-100 text-red-600' : 'bg-primary-100 text-primary-600'
+                    doc.fileName.endsWith('.pdf') ? 'bg-red-100 text-red-600' : 'bg-primary/10 text-primary'
                   }`}>
                     {doc.fileName.endsWith('.pdf') ? 'PDF' : 'IMG'}
                   </div>
                   <div>
-                    <div className="text-sm font-medium text-gray-900">{doc.fileName}</div>
-                    <div className="text-xs text-gray-500">
+                    <div className="text-sm font-medium text-foreground">{doc.fileName}</div>
+                    <div className="text-xs text-muted-foreground">
                       {getTypeLabel(doc.documentType)}
                       {doc.notes && ` - ${doc.notes}`}
                       {' | '}อัปโหลดโดย {doc.uploadedBy.name}
@@ -504,7 +504,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
                   {doc.fileUrl && (
                     <button
                       onClick={() => openDocument(doc)}
-                      className="text-xs text-primary-600 hover:text-primary-800 px-2 py-1"
+                      className="text-xs text-primary hover:text-primary/90 px-2 py-1"
                     >
                       ดู
                     </button>
@@ -527,15 +527,15 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
       {viewingDoc && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => setViewingDoc(null)} onKeyDown={(e) => { if (e.key === 'Escape') setViewingDoc(null); }} role="dialog" aria-modal="true" aria-label={`ดูเอกสาร ${viewingDoc.fileName}`} tabIndex={-1} ref={(el) => el?.focus()}>
           <div className="relative max-w-4xl max-h-[90vh] w-full" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between bg-white rounded-t-lg px-4 py-2">
-              <div className="text-sm font-medium text-gray-900">
+            <div className="flex items-center justify-between bg-card rounded-t-lg px-4 py-2">
+              <div className="text-sm font-medium text-foreground">
                 {getTypeLabel(viewingDoc.documentType)} - {viewingDoc.fileName}
               </div>
-              <button onClick={() => setViewingDoc(null)} className="text-gray-500 hover:text-gray-800 text-lg font-bold px-2">
+              <button onClick={() => setViewingDoc(null)} className="text-muted-foreground hover:text-foreground text-lg font-bold px-2">
                 &times;
               </button>
             </div>
-            <div className="bg-gray-100 rounded-b-lg overflow-auto max-h-[calc(90vh-48px)] flex items-center justify-center">
+            <div className="bg-muted rounded-b-lg overflow-auto max-h-[calc(90vh-48px)] flex items-center justify-center">
               {viewingDoc.fileUrl.startsWith('data:image/') ? (
                 <img src={viewingDoc.fileUrl} alt={viewingDoc.fileName} className="max-w-full max-h-[calc(90vh-48px)] object-contain" />
               ) : (

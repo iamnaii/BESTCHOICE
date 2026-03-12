@@ -21,7 +21,7 @@ interface CreditCheckData {
 }
 
 const statusLabels: Record<string, { label: string; className: string }> = {
-  PENDING: { label: 'รอวิเคราะห์', className: 'bg-gray-100 text-gray-700' },
+  PENDING: { label: 'รอวิเคราะห์', className: 'bg-muted text-foreground' },
   APPROVED: { label: 'ผ่าน', className: 'bg-green-100 text-green-700' },
   REJECTED: { label: 'ไม่ผ่าน', className: 'bg-red-100 text-red-700' },
   MANUAL_REVIEW: { label: 'ต้องตรวจเพิ่ม', className: 'bg-amber-100 text-amber-700' },
@@ -130,22 +130,22 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
     <div className="space-y-4">
       {/* Upload Statement */}
       {!creditCheck && (
-        <div className="bg-white rounded-lg border p-4 space-y-3">
-          <h3 className="text-sm font-semibold text-gray-900">ตรวจสอบเครดิตลูกค้า</h3>
-          <p className="text-xs text-gray-500">อัปโหลด Statement ธนาคารย้อนหลัง 3 เดือน เพื่อให้ AI วิเคราะห์ความสามารถในการผ่อนชำระ</p>
+        <div className="bg-card rounded-lg border p-4 space-y-3">
+          <h3 className="text-sm font-semibold text-foreground">ตรวจสอบเครดิตลูกค้า</h3>
+          <p className="text-xs text-muted-foreground">อัปโหลด Statement ธนาคารย้อนหลัง 3 เดือน เพื่อให้ AI วิเคราะห์ความสามารถในการผ่อนชำระ</p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-gray-500 mb-1">ธนาคาร</label>
+              <label className="block text-xs text-muted-foreground mb-1">ธนาคาร</label>
               <input
                 type="text"
                 value={bankName}
                 onChange={(e) => setBankName(e.target.value)}
                 placeholder="เช่น กสิกร, กรุงไทย..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm"
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Statement (ภาพ/PDF, 3 เดือน)</label>
+              <label className="block text-xs text-muted-foreground mb-1">Statement (ภาพ/PDF, 3 เดือน)</label>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -153,13 +153,13 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
                 multiple
                 onChange={handleFileUpload}
                 disabled={uploadMutation.isPending}
-                className="w-full text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
+                className="w-full text-sm text-muted-foreground file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary/5 file:text-primary hover:file:bg-primary/10"
               />
             </div>
           </div>
           {uploadMutation.isPending && (
-            <div className="flex items-center gap-2 text-sm text-primary-600">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600" />
+            <div className="flex items-center gap-2 text-sm text-primary">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary" />
               กำลังอัปโหลด...
             </div>
           )}
@@ -168,16 +168,16 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
 
       {/* Credit Check Result */}
       {creditCheck && (
-        <div className="bg-white rounded-lg border p-4 space-y-4">
+        <div className="bg-card rounded-lg border p-4 space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-900">ผลตรวจสอบเครดิต</h3>
-            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusLabels[creditCheck.status]?.className || 'bg-gray-100'}`}>
+            <h3 className="text-sm font-semibold text-foreground">ผลตรวจสอบเครดิต</h3>
+            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusLabels[creditCheck.status]?.className || 'bg-muted'}`}>
               {statusLabels[creditCheck.status]?.label || creditCheck.status}
             </span>
           </div>
 
           {/* Bank info */}
-          <div className="flex items-center gap-4 text-sm text-gray-600">
+          <div className="flex items-center gap-4 text-sm text-muted-foreground">
             {creditCheck.bankName && <span>ธนาคาร: {creditCheck.bankName}</span>}
             <span>Statement: {creditCheck.statementFiles.length} ไฟล์</span>
           </div>
@@ -187,7 +187,7 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
             <button
               onClick={() => analyzeMutation.mutate()}
               disabled={analyzeMutation.isPending}
-              className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+              className="px-4 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50"
             >
               {analyzeMutation.isPending ? 'กำลังวิเคราะห์...' : 'AI วิเคราะห์เครดิต'}
             </button>
@@ -202,8 +202,8 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
                   {creditCheck.aiScore}
                 </div>
                 <div className="flex-1">
-                  <div className="text-xs text-gray-500 mb-1">คะแนนเครดิต (0-100)</div>
-                  <div className="w-full bg-gray-200 rounded-full h-2.5">
+                  <div className="text-xs text-muted-foreground mb-1">คะแนนเครดิต (0-100)</div>
+                  <div className="w-full bg-muted rounded-full h-2.5">
                     <div
                       className={`h-2.5 rounded-full ${getScoreBg(creditCheck.aiScore)}`}
                       style={{ width: `${creditCheck.aiScore}%` }}
@@ -214,9 +214,9 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
 
               {/* Summary */}
               {creditCheck.aiSummary && (
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <div className="text-xs text-gray-500 mb-1">สรุปผลวิเคราะห์</div>
-                  <div className="text-sm text-gray-800">{creditCheck.aiSummary}</div>
+                <div className="bg-muted rounded-lg p-3">
+                  <div className="text-xs text-muted-foreground mb-1">สรุปผลวิเคราะห์</div>
+                  <div className="text-sm text-foreground">{creditCheck.aiSummary}</div>
                 </div>
               )}
 
@@ -225,7 +225,7 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
                 <div className={`rounded-lg p-3 ${
                   creditCheck.aiScore >= 70 ? 'bg-green-50' : creditCheck.aiScore >= 50 ? 'bg-amber-50' : 'bg-red-50'
                 }`}>
-                  <div className="text-xs text-gray-500 mb-1">คำแนะนำ</div>
+                  <div className="text-xs text-muted-foreground mb-1">คำแนะนำ</div>
                   <div className="text-sm font-medium">{creditCheck.aiRecommendation}</div>
                 </div>
               )}
@@ -234,20 +234,20 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
               {creditCheck.aiAnalysis && (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {creditCheck.aiAnalysis.monthlyIncome > 0 && (
-                    <div className="bg-gray-50 rounded-lg p-2">
-                      <div className="text-xs text-gray-500">รายได้/เดือน</div>
+                    <div className="bg-muted rounded-lg p-2">
+                      <div className="text-xs text-muted-foreground">รายได้/เดือน</div>
                       <div className="text-sm font-medium">{creditCheck.aiAnalysis.monthlyIncome?.toLocaleString()} ฿</div>
                     </div>
                   )}
                   {creditCheck.aiAnalysis.monthlyPayment > 0 && (
-                    <div className="bg-gray-50 rounded-lg p-2">
-                      <div className="text-xs text-gray-500">ค่างวด/เดือน</div>
+                    <div className="bg-muted rounded-lg p-2">
+                      <div className="text-xs text-muted-foreground">ค่างวด/เดือน</div>
                       <div className="text-sm font-medium">{creditCheck.aiAnalysis.monthlyPayment?.toLocaleString()} ฿</div>
                     </div>
                   )}
                   {creditCheck.aiAnalysis.affordabilityRatio != null && !isNaN(creditCheck.aiAnalysis.affordabilityRatio) && (
-                    <div className="bg-gray-50 rounded-lg p-2">
-                      <div className="text-xs text-gray-500">สัดส่วนค่างวด/รายได้</div>
+                    <div className="bg-muted rounded-lg p-2">
+                      <div className="text-xs text-muted-foreground">สัดส่วนค่างวด/รายได้</div>
                       <div className="text-sm font-medium">{(creditCheck.aiAnalysis.affordabilityRatio * 100).toFixed(0)}%</div>
                     </div>
                   )}
@@ -258,21 +258,21 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
 
           {/* Manual review notes */}
           {creditCheck.checkedBy && (
-            <div className="bg-primary-50 rounded-lg p-3">
-              <div className="text-xs text-primary-600">ตรวจสอบโดย: {creditCheck.checkedBy.name}</div>
-              {creditCheck.reviewNotes && <div className="text-sm text-primary-800 mt-1">{creditCheck.reviewNotes}</div>}
+            <div className="bg-primary/5 rounded-lg p-3">
+              <div className="text-xs text-primary">ตรวจสอบโดย: {creditCheck.checkedBy.name}</div>
+              {creditCheck.reviewNotes && <div className="text-sm text-primary mt-1">{creditCheck.reviewNotes}</div>}
             </div>
           )}
 
           {/* Override controls for managers */}
           {canOverride && creditCheck.aiScore !== null && (
             <div className="border-t pt-3 space-y-2">
-              <div className="text-xs text-gray-500 font-medium">Override ผลตรวจสอบ (สำหรับผู้จัดการ)</div>
+              <div className="text-xs text-muted-foreground font-medium">Override ผลตรวจสอบ (สำหรับผู้จัดการ)</div>
               <div className="flex gap-2">
                 <select
                   value={overrideStatus}
                   onChange={(e) => setOverrideStatus(e.target.value)}
-                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
+                  className="px-3 py-1.5 border border-input rounded-lg text-sm"
                 >
                   <option value="">เลือกสถานะ...</option>
                   <option value="APPROVED">อนุมัติ</option>
@@ -284,12 +284,12 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
                   value={overrideNotes}
                   onChange={(e) => setOverrideNotes(e.target.value)}
                   placeholder="หมายเหตุ..."
-                  className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
+                  className="flex-1 px-3 py-1.5 border border-input rounded-lg text-sm"
                 />
                 <button
                   onClick={() => overrideMutation.mutate()}
                   disabled={!overrideStatus || overrideMutation.isPending}
-                  className="px-4 py-1.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+                  className="px-4 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50"
                 >
                   บันทึก
                 </button>

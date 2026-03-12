@@ -261,13 +261,13 @@ export default function RichTextEditor({ value, onChange, placeholder, minHeight
   }, [showSource, sourceValue, value, onChange]);
 
   return (
-    <div className="border border-gray-300 rounded-lg overflow-hidden bg-white flex flex-col">
+    <div className="border border-input rounded-lg overflow-hidden bg-card flex flex-col">
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-0.5 px-2 py-1.5 bg-gray-50 border-b border-gray-200">
+      <div className="flex flex-wrap items-center gap-0.5 px-2 py-1.5 bg-muted border-b border-border">
         {/* Heading select */}
         <select
           onChange={(e) => handleHeading(e.target.value)}
-          className="px-1.5 py-1 text-xs border border-gray-200 rounded bg-white hover:bg-gray-100 mr-1"
+          className="px-1.5 py-1 text-xs border border-border rounded bg-card hover:bg-muted mr-1"
           defaultValue="p"
         >
           <option value="p">ย่อหน้า</option>
@@ -281,7 +281,7 @@ export default function RichTextEditor({ value, onChange, placeholder, minHeight
         <select
           value={fontSize}
           onChange={(e) => handleFontSize(e.target.value)}
-          className="px-1.5 py-1 text-xs border border-gray-200 rounded bg-white hover:bg-gray-100 mr-1"
+          className="px-1.5 py-1 text-xs border border-border rounded bg-card hover:bg-muted mr-1"
         >
           <option value="1">เล็กมาก</option>
           <option value="2">เล็ก</option>
@@ -292,7 +292,7 @@ export default function RichTextEditor({ value, onChange, placeholder, minHeight
         </select>
 
         {/* Divider */}
-        <div className="w-px h-5 bg-gray-300 mx-1" />
+        <div className="w-px h-5 bg-border mx-1" />
 
         {/* Button groups */}
         {TOOLBAR.map((group, gi) => (
@@ -306,24 +306,24 @@ export default function RichTextEditor({ value, onChange, placeholder, minHeight
                 className={`p-1.5 rounded transition-colors ${
                   btn.active && activeStates[btn.active]
                     ? 'bg-primary-100 text-primary-700'
-                    : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                 }`}
               >
                 <ToolbarIcon icon={btn.icon} />
               </button>
             ))}
-            {gi < TOOLBAR.length - 1 && <div className="w-px h-5 bg-gray-300 mx-1" />}
+            {gi < TOOLBAR.length - 1 && <div className="w-px h-5 bg-border mx-1" />}
           </div>
         ))}
 
         {/* Source toggle */}
-        <div className="w-px h-5 bg-gray-300 mx-1" />
+        <div className="w-px h-5 bg-border mx-1" />
         <button
           type="button"
           title={showSource ? 'โหมดแก้ไข' : 'ดู HTML'}
           onMouseDown={(e) => { e.preventDefault(); toggleSource(); }}
           className={`px-2 py-1 text-xs rounded transition-colors ${
-            showSource ? 'bg-gray-700 text-white' : 'text-gray-500 hover:bg-gray-200'
+            showSource ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-muted'
           }`}
         >
           {'</>'}

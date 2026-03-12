@@ -12,16 +12,16 @@ export default function CheatSheet() {
   };
 
   return (
-    <div className="w-[300px] bg-white border-r border-slate-200 overflow-y-auto">
-      <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b border-slate-200 px-4 py-3">
-        <h3 className="text-base font-bold text-slate-600">Template Syntax</h3>
-        <p className="text-sm text-slate-400 mt-0.5">คลิกเพื่อ copy syntax</p>
+    <div className="w-[300px] bg-card border-r border-border overflow-y-auto">
+      <div className="sticky top-0 z-10 bg-card/95 backdrop-blur-sm border-b border-border px-4 py-3">
+        <h3 className="text-base font-bold text-foreground">Template Syntax</h3>
+        <p className="text-sm text-muted-foreground mt-0.5">คลิกเพื่อ copy syntax</p>
       </div>
 
       <div className="p-4 space-y-5">
         {SYNTAX_REFERENCE.map(group => (
           <div key={group.group}>
-            <div className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2.5">{group.group}</div>
+            <div className="text-sm font-bold text-muted-foreground uppercase tracking-wider mb-2.5">{group.group}</div>
             <div className="flex flex-wrap gap-2">
               {group.items.map(item => (
                 <button
@@ -43,9 +43,9 @@ export default function CheatSheet() {
         ))}
 
         {/* Quick variable reference */}
-        <div className="pt-4 border-t border-slate-200">
-          <div className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2.5">ตัวอย่าง</div>
-          <div className="space-y-1.5 text-sm text-slate-600 font-mono bg-slate-50 rounded-lg p-3 leading-relaxed">
+        <div className="pt-4 border-t border-border">
+          <div className="text-sm font-bold text-muted-foreground uppercase tracking-wider mb-2.5">ตัวอย่าง</div>
+          <div className="space-y-1.5 text-sm text-foreground font-mono bg-muted rounded-lg p-3 leading-relaxed">
             <p><span className="text-primary-600">{'{{= CONTRACT.NUMBER}}'}</span></p>
             <p><span className="text-teal-600">{'{{= CONTRACT.DATE | date:l}}'}</span></p>
             <p><span className="text-teal-600">{'{{= CONTRACT.TOTAL_AMOUNT | num:2}}'}</span></p>

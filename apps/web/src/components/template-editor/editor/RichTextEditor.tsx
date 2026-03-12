@@ -303,7 +303,7 @@ function ToolbarButton({ onClick, active, disabled, title, children }: {
 }
 
 function Divider() {
-  return <div className="w-px h-5 bg-gray-300 mx-1" />;
+  return <div className="w-px h-5 bg-border mx-1" />;
 }
 
 function ColorDropdown({ icon, colors, activeColor, onSelect, onClear, title }: {
@@ -319,7 +319,7 @@ function ColorDropdown({ icon, colors, activeColor, onSelect, onClear, title }: 
       <button
         type="button"
         className={`p-1.5 rounded transition-colors flex items-center gap-0.5 ${
-          activeColor ? 'bg-primary-50 text-primary-700' : 'text-gray-600 hover:bg-gray-200'
+          activeColor ? 'bg-primary-50 text-primary-700' : 'text-foreground hover:bg-muted'
         }`}
         title={title}
       >
@@ -328,7 +328,7 @@ function ColorDropdown({ icon, colors, activeColor, onSelect, onClear, title }: 
           <div className="w-3 h-1 rounded-sm" style={{ backgroundColor: activeColor }} />
         )}
       </button>
-      <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-50 p-2 hidden group-hover:block w-[176px]">
+      <div className="absolute left-0 top-full mt-1 bg-card border border-border rounded-lg shadow-xl z-50 p-2 hidden group-hover:block w-[176px]">
         <div className="grid grid-cols-4 gap-1 mb-2">
           {colors.map(color => (
             <button
@@ -336,7 +336,7 @@ function ColorDropdown({ icon, colors, activeColor, onSelect, onClear, title }: 
               type="button"
               onClick={() => onSelect(color)}
               className={`w-8 h-8 rounded border-2 transition-transform hover:scale-110 ${
-                activeColor === color ? 'border-primary-500 ring-1 ring-primary-300' : 'border-gray-200'
+                activeColor === color ? 'border-primary-500 ring-1 ring-primary-300' : 'border-border'
               }`}
               style={{ backgroundColor: color }}
               title={color}
@@ -346,7 +346,7 @@ function ColorDropdown({ icon, colors, activeColor, onSelect, onClear, title }: 
         <button
           type="button"
           onClick={onClear}
-          className="w-full text-xs text-gray-500 hover:text-gray-700 py-1 hover:bg-gray-50 rounded"
+          className="w-full text-xs text-muted-foreground hover:text-foreground py-1 hover:bg-muted rounded"
         >
           ล้างสี
         </button>

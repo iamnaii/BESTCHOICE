@@ -79,6 +79,7 @@ export default function ContractSignPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [signerType, setSignerType] = useState<SignerType>('CUSTOMER');
+  const [initialSignerSet, setInitialSignerSet] = useState(false);
   const [signerName, setSignerName] = useState('');
   const [hasDrawn, setHasDrawn] = useState(false);
   const [signMode, setSignMode] = useState<'choose' | 'draw' | 'saved'>('choose');
@@ -394,9 +395,20 @@ export default function ContractSignPage() {
   // COMPANY auto-handled from settings — don't show manual signing for COMPANY if lessor sig is configured
   const companyAutoSigned = !!lessorSignatureImage && !!lessorSignerName;
 
-  // Show saved staff signature option for witnesses (COMPANY is now auto-handled from settings)
-  const showSavedOption = !companyAutoSigned && (signerType === 'COMPANY' || signerType === 'WITNESS_1' || signerType === 'WITNESS_2') && savedSignature
-    || (signerType === 'WITNESS_1' || signerType === 'WITNESS_2') && savedSignature;
+  // Auto-skip COMPANY in dropdown when lessor sig is configured from settings
+  useEffect(() => {
+    if (initialSignerSet || !companyAutoSigned) return;
+    // If currently on COMPANY, switch to first unsigned non-COMPANY signer
+    if (signerType === 'COMPANY') {
+      const next = requiredSigners.find(t => t !== 'COMPANY' && !signedTypes.has(t));
+      if (next) setSignerType(next);
+    }
+    setInitialSignerSet(true);
+  }, [companyAutoSigned, initialSignerSet, signerType, requiredSigners, signedTypes]);
+
+  // Show saved staff signature option for witnesses only (COMPANY is auto-handled from settings)
+  const showSavedOption = (signerType === 'WITNESS_1' || signerType === 'WITNESS_2') && !!savedSignature
+    || (!companyAutoSigned && signerType === 'COMPANY' && !!savedSignature);
 
   return (
     <div>
@@ -497,6 +509,21 @@ export default function ContractSignPage() {
                 {pdpaConsentMutation.isPending ? 'กำลังบันทึก...' : 'ยืนยันยินยอม'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lessor auto-sign from settings info */}
+      {canSign && companyAutoSigned && !signedTypes.has('COMPANY') && (
+        <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-3">
+          <div className="flex-shrink-0">
+            {lessorSignatureImage && (
+              <img src={lessorSignatureImage} alt="ลายเซ็นบริษัท" className="h-8 border rounded bg-white px-1" />
+            )}
+          </div>
+          <div className="text-sm text-blue-700">
+            <span className="font-medium">ผู้ขาย (ผู้ให้เช่าซื้อ)</span> — ลายเซ็นจะถูกใส่อัตโนมัติจากตั้งค่าระบบ ({lessorSignerName})
+            {!hasPdpaConsent && <span className="text-blue-500 ml-1">(รอยินยอม PDPA ก่อน)</span>}
           </div>
         </div>
       )}

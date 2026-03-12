@@ -193,11 +193,16 @@ function blocksToHtml(blocks: Block[]): string {
         return `<div style="margin:12px 0">{{= INSTALLMENTS }}</div>`;
 
       case 'signature-block':
-        return `<div style="margin:24px 0;display:grid;grid-template-columns:1fr 1fr;gap:32px 32px">
-          <div style="text-align:center"><div style="font-size:13px">ลงชื่อ</div><div style="min-height:50px;display:flex;align-items:center;justify-content:center">{staff_signature}</div><div style="font-size:13px">ผู้ให้เช่าซื้อ</div><div style="font-size:12px;color:#6b7280">( {{= COMPANY.DIRECTOR }} )</div><div style="font-size:11px;color:#999">ผู้จัดการ {{= COMPANY.NAME_TH }}</div></div>
-          <div style="text-align:center"><div style="font-size:13px">ลงชื่อ</div><div style="min-height:50px;display:flex;align-items:center;justify-content:center">{customer_signature}</div><div style="font-size:13px">ผู้เช่าซื้อ</div><div style="font-size:12px;color:#6b7280">( {{= CUSTOMER.NAME }} )</div></div>
-          <div style="text-align:center"><div style="font-size:13px">ลงชื่อ</div><div style="min-height:50px;border-bottom:1px dotted #000;width:80%;margin:0 auto"></div><div style="font-size:13px">พยาน</div><div style="font-size:12px;color:#6b7280">(${' '.repeat(30)})</div></div>
-          <div style="text-align:center"><div style="font-size:13px">ลงชื่อ</div><div style="min-height:50px;border-bottom:1px dotted #000;width:80%;margin:0 auto"></div><div style="font-size:13px">พยาน</div><div style="font-size:12px;color:#6b7280">(${' '.repeat(30)})</div></div>
+        // Must match SignatureBlock.tsx exactly: 2 rows, dot-line style, 16px font, line-height 2
+        return `<div style="margin:32px 0;font-size:16px;line-height:2">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 32px;margin-bottom:32px">
+            <div style="text-align:center"><div>ลงชื่อ..................................................ผู้ให้เช่าซื้อ</div><div>( {{= COMPANY.DIRECTOR }} )</div><div style="font-size:14px;color:#666">ผู้จัดการ {{= COMPANY.NAME_TH }}</div></div>
+            <div style="text-align:center"><div>ลงชื่อ..................................................ผู้เช่าซื้อ</div><div>( {{= CUSTOMER.NAME }} )</div></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 32px">
+            <div style="text-align:center"><div>ลงชื่อ..................................................พยาน</div><div>(${' '.repeat(30)})</div></div>
+            <div style="text-align:center"><div>ลงชื่อ..................................................พยาน</div><div>(${' '.repeat(30)})</div></div>
+          </div>
         </div>`;
 
       case 'photo-attachment':

@@ -38,9 +38,10 @@ import type { LucideIcon } from 'lucide-react';
 import {
   AccordionMenu,
   AccordionMenuClassNames,
-  AccordionMenuGroup,
   AccordionMenuItem,
-  AccordionMenuLabel,
+  AccordionMenuSub,
+  AccordionMenuSubTrigger,
+  AccordionMenuSubContent,
 } from '@/components/ui/accordion-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -156,14 +157,11 @@ const navSections: NavSection[] = [
 
 /* Expanded sidebar menu classNames (dark bg, white text) */
 const expandedMenuClassNames: AccordionMenuClassNames = {
-  root: 'space-y-0.5',
-  group: 'gap-px',
-  label: 'uppercase text-2xs font-semibold tracking-wider text-white/40 pt-4 pb-1 px-3',
-  separator: '',
+  root: 'space-y-1',
   item: 'h-9 rounded-lg text-2sm text-white/70 hover:bg-white/10 hover:text-white data-[selected=true]:bg-primary data-[selected=true]:text-white data-[selected=true]:font-medium',
   sub: '',
-  subTrigger: 'h-9 rounded-lg text-2sm text-white/70 hover:bg-white/10 hover:text-white data-[selected=true]:text-white data-[selected=true]:font-medium',
-  subContent: 'py-0',
+  subTrigger: 'h-10 rounded-lg text-2sm font-medium text-white/50 hover:bg-white/10 hover:text-white data-[state=open]:text-white',
+  subContent: 'py-0 pl-3',
 };
 
 /* ─── Collapsed Icon Rail (70px) — Demo 9 default ─── */
@@ -386,8 +384,7 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
         <AccordionMenu
           selectedValue={pathname}
           matchPath={matchPath}
-          type="single"
-          collapsible
+          type="multiple"
           classNames={expandedMenuClassNames}
         >
           <AccordionMenuItem value="/" className="text-sm font-medium">
@@ -398,9 +395,12 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
           </AccordionMenuItem>
 
           {filteredSections.map((section) => (
-            <div key={section.key}>
-              <AccordionMenuLabel>{section.label}</AccordionMenuLabel>
-              <AccordionMenuGroup>
+            <AccordionMenuSub key={section.key} value={section.key}>
+              <AccordionMenuSubTrigger>
+                <section.icon data-slot="accordion-menu-icon" className="size-4" />
+                <span data-slot="accordion-menu-title">{section.label}</span>
+              </AccordionMenuSubTrigger>
+              <AccordionMenuSubContent parentValue={section.key} type="single" collapsible>
                 {section.items.map((item) => (
                   <AccordionMenuItem key={item.path} value={item.path} className="text-2sm">
                     <Link to={item.path} className="flex items-center gap-2 w-full">
@@ -409,8 +409,8 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
                     </Link>
                   </AccordionMenuItem>
                 ))}
-              </AccordionMenuGroup>
-            </div>
+              </AccordionMenuSubContent>
+            </AccordionMenuSub>
           ))}
         </AccordionMenu>
       </ScrollArea>
@@ -475,8 +475,7 @@ function MobileSidebar() {
         <AccordionMenu
           selectedValue={pathname}
           matchPath={matchPath}
-          type="single"
-          collapsible
+          type="multiple"
           classNames={expandedMenuClassNames}
         >
           <AccordionMenuItem value="/" className="text-sm font-medium">
@@ -487,9 +486,12 @@ function MobileSidebar() {
           </AccordionMenuItem>
 
           {filteredSections.map((section) => (
-            <div key={section.key}>
-              <AccordionMenuLabel>{section.label}</AccordionMenuLabel>
-              <AccordionMenuGroup>
+            <AccordionMenuSub key={section.key} value={section.key}>
+              <AccordionMenuSubTrigger>
+                <section.icon data-slot="accordion-menu-icon" className="size-4" />
+                <span data-slot="accordion-menu-title">{section.label}</span>
+              </AccordionMenuSubTrigger>
+              <AccordionMenuSubContent parentValue={section.key} type="single" collapsible>
                 {section.items.map((item) => (
                   <AccordionMenuItem key={item.path} value={item.path} className="text-2sm">
                     <Link to={item.path} className="flex items-center gap-2 w-full">
@@ -498,8 +500,8 @@ function MobileSidebar() {
                     </Link>
                   </AccordionMenuItem>
                 ))}
-              </AccordionMenuGroup>
-            </div>
+              </AccordionMenuSubContent>
+            </AccordionMenuSub>
           ))}
         </AccordionMenu>
       </ScrollArea>

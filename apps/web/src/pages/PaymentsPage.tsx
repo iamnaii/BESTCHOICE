@@ -5,7 +5,7 @@ import { compressImageForOcr } from '@/lib/compressImage';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
-import toast from 'react-hot-toast';
+import { toast } from 'sonner';
 
 interface OcrPaymentSlipResult {
   amount: number | null;
@@ -188,7 +188,7 @@ export default function PaymentsPage() {
       if (data.confidence < 0.5) {
         toast.error(`อ่านสลิปได้ แต่ความมั่นใจต่ำมาก (${pct}%) กรุณาตรวจสอบข้อมูล`);
       } else if (data.confidence < 0.7) {
-        toast(`อ่านสลิปสำเร็จ ความมั่นใจ ${pct}% กรุณาตรวจสอบ`, { icon: '!' });
+        toast.warning(`อ่านสลิปสำเร็จ ความมั่นใจ ${pct}% กรุณาตรวจสอบ`);
       } else {
         toast.success(`อ่านสลิปสำเร็จ (ความมั่นใจ ${pct}%)`);
       }

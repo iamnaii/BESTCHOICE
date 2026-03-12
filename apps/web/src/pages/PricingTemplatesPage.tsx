@@ -4,7 +4,7 @@ import ExcelJS from 'exceljs';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import Modal from '@/components/ui/Modal';
-import toast from 'react-hot-toast';
+import { toast } from 'sonner';
 
 interface PricingTemplate {
   id: string;

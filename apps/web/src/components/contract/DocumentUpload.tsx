@@ -2,7 +2,7 @@ import { useState, useRef, useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { compressImageForOcr } from '@/lib/compressImage';
-import toast from 'react-hot-toast';
+import { toast } from 'sonner';
 import type { OcrResult } from '@/types/ocr';
 
 interface ContractDocument {
@@ -110,7 +110,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
       if (data.confidence < 0.5) {
         toast.error(`อ่านบัตรได้ แต่ความมั่นใจต่ำมาก (${pct}%) กรุณาตรวจสอบข้อมูล`);
       } else if (data.confidence < 0.7) {
-        toast(`อ่านบัตรสำเร็จ แต่ความมั่นใจค่อนข้างต่ำ (${pct}%)`, { icon: '⚠️' });
+        toast.warning(`อ่านบัตรสำเร็จ แต่ความมั่นใจค่อนข้างต่ำ (${pct}%)`);
       } else {
         toast.success(`อ่านบัตรประชาชนสำเร็จ (ความมั่นใจ ${pct}%)`);
       }

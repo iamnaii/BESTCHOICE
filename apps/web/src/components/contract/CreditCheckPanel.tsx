@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
-import toast from 'react-hot-toast';
+import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface CreditCheckData {

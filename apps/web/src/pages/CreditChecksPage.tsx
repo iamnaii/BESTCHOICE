@@ -7,7 +7,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
-import toast from 'react-hot-toast';
+import { toast } from 'sonner';
 
 interface OcrBookBankResult {
   accountName: string | null;
@@ -189,7 +189,7 @@ export default function CreditChecksPage() {
 
       const pct = (data.confidence * 100).toFixed(0);
       if (data.confidence < 0.7) {
-        toast(`อ่านสมุดบัญชีสำเร็จ ความมั่นใจ ${pct}%`, { icon: '!' });
+        toast.warning(`อ่านสมุดบัญชีสำเร็จ ความมั่นใจ ${pct}%`);
       } else {
         toast.success(`อ่านสมุดบัญชีสำเร็จ (ความมั่นใจ ${pct}%)`);
       }

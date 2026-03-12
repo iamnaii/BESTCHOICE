@@ -8,7 +8,7 @@ import AddressForm, { AddressData, emptyAddress, serializeAddress, deserializeAd
 import WorkflowStatusBadge from '@/components/contract/WorkflowStatusBadge';
 import DocumentUpload from '@/components/contract/DocumentUpload';
 import CreditCheckPanel from '@/components/contract/CreditCheckPanel';
-import toast from 'react-hot-toast';
+import { toast } from 'sonner';
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 

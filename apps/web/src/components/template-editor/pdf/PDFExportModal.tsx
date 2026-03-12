@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { X, Download, Eye, Loader2 } from 'lucide-react';
 import { useTemplateStore } from '@/store/templateStore';
 import { generatePDF } from './pdfGenerator';
-import toast from 'react-hot-toast';
+import { toast } from 'sonner';
 
 export default function PDFExportModal() {
   const { showExportModal, setShowExportModal, currentTemplate } = useTemplateStore();

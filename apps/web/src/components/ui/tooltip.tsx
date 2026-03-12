@@ -27,7 +27,7 @@ const tooltipVariants = cva(
     variants: {
       variant: {
         light: 'border border-border bg-background text-foreground shadow-md shadow-black/5',
-        dark: 'dark:border dark:border-border bg-zinc-950 text-white dark:bg-zinc-300 dark:text-black shadow-md shadow-black/5',
+        dark: 'bg-foreground text-background shadow-md shadow-black/5',
       },
     },
     defaultVariants: {

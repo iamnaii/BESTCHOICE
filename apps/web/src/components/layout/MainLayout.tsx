@@ -18,7 +18,7 @@ function MobileSidebar() {
 
   return (
     <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
-      <SheetContent className="p-0 gap-0 w-[275px] bg-primary-950" side="left" close={false}>
+      <SheetContent className="p-0 gap-0 w-[265px] bg-[#111827]" side="left" close={false}>
         <SheetHeader className="p-0 space-y-0" />
         <SheetBody className="p-0">
           <ScrollArea className="h-full">
@@ -46,11 +46,11 @@ function MainContent() {
       <div
         className="flex-1 flex flex-col min-w-0 transition-all duration-300"
         style={{
-          marginLeft: isMobile ? 0 : sidebarCollapse ? 70 : 256,
+          marginLeft: isMobile ? 0 : sidebarCollapse ? 70 : 265,
         }}
       >
         <TopBar />
-        <main className="flex-1 p-6 lg:p-8 animate-fadeIn">
+        <main className="flex-1 p-5 lg:p-7 animate-fadeIn">
           <Outlet />
         </main>
       </div>

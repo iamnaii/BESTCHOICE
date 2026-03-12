@@ -7,7 +7,7 @@ import { checkCardReaderStatus, readSmartCard } from '@/lib/cardReader';
 import PageHeader from '@/components/ui/PageHeader';
 import Modal from '@/components/ui/Modal';
 import AddressForm, { AddressData, emptyAddress, serializeAddress } from '@/components/ui/AddressForm';
-import toast from 'react-hot-toast';
+import { toast } from 'sonner';
 import { maskNationalId } from '@/utils/mask.util';
 
 interface Product {
@@ -658,7 +658,7 @@ export default function ContractCreatePage() {
       if (data.confidence < 0.5) {
         toast.error(`อ่านบัตรได้ แต่ความมั่นใจต่ำมาก (${pct}%) กรุณาตรวจสอบข้อมูลทุกช่อง`);
       } else if (data.confidence < 0.7) {
-        toast(`อ่านบัตรสำเร็จ แต่ความมั่นใจค่อนข้างต่ำ (${pct}%) กรุณาตรวจสอบข้อมูล`, { icon: '⚠️' });
+        toast.warning(`อ่านบัตรสำเร็จ แต่ความมั่นใจค่อนข้างต่ำ (${pct}%) กรุณาตรวจสอบข้อมูล`);
       }
 
       // Validate nationalId checksum (from backend)
@@ -822,7 +822,7 @@ export default function ContractCreatePage() {
           if (data.confidence < 0.5) {
             toast.error(`อ่านบัตรได้ แต่ความมั่นใจต่ำมาก (${pct}%) กรุณาตรวจสอบข้อมูล`);
           } else if (data.confidence < 0.7) {
-            toast(`อ่านบัตรสำเร็จ แต่ความมั่นใจค่อนข้างต่ำ (${pct}%)`, { icon: '⚠️' });
+            toast.warning(`อ่านบัตรสำเร็จ แต่ความมั่นใจค่อนข้างต่ำ (${pct}%)`);
           } else {
             toast.success(`อ่านบัตรประชาชนสำเร็จ (ความมั่นใจ ${pct}%)`);
           }

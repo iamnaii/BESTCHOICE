@@ -8,7 +8,7 @@ import AddressForm, { AddressData, emptyAddress, displayAddress, serializeAddres
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 
-import toast from 'react-hot-toast';
+import { toast } from 'sonner';
 import { maskNationalId } from '@/utils/mask.util';
 
 interface ReferenceData {

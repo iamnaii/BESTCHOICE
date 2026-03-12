@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import toast from 'react-hot-toast';
+import { toast } from 'sonner';
 import api from '@/lib/api';
 import type { Block, Template, TemplateSettings } from '@/types/template';
 import { DEFAULT_SETTINGS } from '@/types/template';

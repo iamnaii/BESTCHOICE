@@ -273,7 +273,6 @@ export default function ContractSignPage() {
       signerName: lessorSignerName,
       screenSize: getScreenSize(),
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lessorSignatureImage, lessorSignerName, contract?.status, contract?.pdpaConsentId, signatures.length, autoSignedCompany]);
 
   // Canvas setup

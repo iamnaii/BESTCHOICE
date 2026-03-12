@@ -2,6 +2,7 @@ import { CanActivate, ExecutionContext, Injectable, Logger, UnauthorizedExceptio
 import { ConfigService } from '@nestjs/config';
 import { createHmac } from 'crypto';
 import { Request } from 'express';
+import { PrismaService } from '../../prisma/prisma.service';
 
 /**
  * Guard for LINE Webhook signature verification
@@ -11,16 +12,33 @@ import { Request } from 'express';
 @Injectable()
 export class LineWebhookGuard implements CanActivate {
   private readonly logger = new Logger(LineWebhookGuard.name);
-  private readonly channelSecret: string | undefined;
+  private channelSecret: string | undefined;
 
-  constructor(private configService: ConfigService) {
+  constructor(
+    private configService: ConfigService,
+    private prisma: PrismaService,
+  ) {
     this.channelSecret = this.configService.get<string>('LINE_CHANNEL_SECRET');
   }
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
 
-    // Skip verification in development if no secret is configured
+    // Try loading from DB if not set via env
+    if (!this.channelSecret) {
+      try {
+        const config = await this.prisma.systemConfig.findUnique({
+          where: { key: 'line_channel_secret' },
+        });
+        if (config?.value) {
+          this.channelSecret = config.value;
+        }
+      } catch {
+        // DB not ready
+      }
+    }
+
+    // Skip verification if no secret configured anywhere
     if (!this.channelSecret) {
       this.logger.warn('LINE_CHANNEL_SECRET not configured, skipping webhook verification');
       return true;

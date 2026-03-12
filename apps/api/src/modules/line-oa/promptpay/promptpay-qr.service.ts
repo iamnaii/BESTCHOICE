@@ -11,12 +11,22 @@ import { ConfigService } from '@nestjs/config';
 @Injectable()
 export class PromptPayQrService {
   private readonly logger = new Logger(PromptPayQrService.name);
-  private readonly promptPayId: string | undefined;
-  private readonly accountName: string | undefined;
+  private promptPayId: string | undefined;
+  private accountName: string | undefined;
 
   constructor(private configService: ConfigService) {
     this.promptPayId = this.configService.get<string>('PROMPTPAY_ID');
     this.accountName = this.configService.get<string>('PROMPTPAY_ACCOUNT_NAME');
+  }
+
+  reloadConfig(): void {
+    // Will be called after DB config update; values loaded via ConfigService env
+    // For DB-stored values, the controller passes them directly
+  }
+
+  setConfig(promptPayId: string, accountName: string): void {
+    this.promptPayId = promptPayId;
+    this.accountName = accountName;
   }
 
   /**

@@ -79,6 +79,7 @@ const navItems: NavItem[] = [
   { label: 'สาขา', path: '/branches', roles: ['OWNER'], section: 'system' },
   { label: 'จัดการผู้ใช้', path: '/users', roles: ['OWNER'], section: 'system' },
   { label: 'ตั้งค่าระบบ', path: '/settings', roles: ['OWNER'], section: 'system' },
+  { label: 'เชื่อมต่อ LINE OA', path: '/settings/line-oa', roles: ['OWNER'], section: 'system' },
   { label: 'ตั้งค่าดอกเบี้ย', path: '/settings/interest-config', roles: ['OWNER'], section: 'system' },
   { label: 'ราคาตั้งต้น', path: '/settings/pricing-templates', roles: ['OWNER'], section: 'system' },
   { label: 'เทมเพลตสัญญา', path: '/contract-templates', roles: ['OWNER'], section: 'system' },

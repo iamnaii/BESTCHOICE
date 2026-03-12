@@ -12,7 +12,7 @@ import { buildPromptPayQrFlex, PromptPayQrData } from './flex-messages/promptpay
 @Injectable()
 export class LineOaService {
   private readonly logger = new Logger(LineOaService.name);
-  private readonly lineChannelAccessToken: string | undefined;
+  private lineChannelAccessToken: string | undefined;
   private readonly lineApiBaseUrl = 'https://api.line.me/v2/bot';
   private readonly lineDataApiBaseUrl = 'https://api-data.line.me/v2/bot';
 
@@ -21,6 +21,43 @@ export class LineOaService {
     private prisma: PrismaService,
   ) {
     this.lineChannelAccessToken = this.configService.get<string>('LINE_CHANNEL_ACCESS_TOKEN');
+    // Load from DB on startup (async)
+    this.loadConfigFromDb();
+  }
+
+  private async loadConfigFromDb(): Promise<void> {
+    try {
+      const config = await this.prisma.systemConfig.findUnique({
+        where: { key: 'line_channel_access_token' },
+      });
+      if (config?.value) {
+        this.lineChannelAccessToken = config.value;
+        this.logger.log('[LINE] Config loaded from database');
+      }
+    } catch {
+      // DB might not be ready yet on startup, that's fine
+    }
+  }
+
+  async reloadConfig(): Promise<void> {
+    await this.loadConfigFromDb();
+  }
+
+  async testConnection(): Promise<{ displayName: string; userId: string; pictureUrl?: string }> {
+    if (!this.lineChannelAccessToken) {
+      throw new Error('LINE Channel Access Token ยังไม่ได้ตั้งค่า');
+    }
+
+    const response = await fetch(`${this.lineApiBaseUrl}/info`, {
+      headers: { Authorization: `Bearer ${this.lineChannelAccessToken}` },
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(`LINE API error ${response.status}: ${errorBody}`);
+    }
+
+    return response.json();
   }
 
   // ─── LINE API Methods ─────────────────────────────────

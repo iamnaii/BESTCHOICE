@@ -637,4 +637,115 @@ export class LineOaController {
       ...result,
     };
   }
+
+  // ─── LINE OA Settings (Owner) ───────────────────────
+
+  private static readonly LINE_CONFIG_KEYS = [
+    'line_channel_access_token',
+    'line_channel_secret',
+    'liff_id',
+    'promptpay_id',
+    'promptpay_account_name',
+    'payment_link_base_url',
+  ];
+
+  @Get('settings')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER')
+  async getLineSettings() {
+    const configs = await this.prisma.systemConfig.findMany({
+      where: { key: { in: LineOaController.LINE_CONFIG_KEYS } },
+    });
+
+    const settings: Record<string, string> = {};
+    for (const c of configs) {
+      settings[c.key] = c.value;
+    }
+
+    // Mask sensitive values for display
+    const masked = { ...settings };
+    if (masked.line_channel_access_token) {
+      const v = masked.line_channel_access_token;
+      masked.line_channel_access_token = v.length > 10
+        ? v.substring(0, 6) + '****' + v.substring(v.length - 4)
+        : '****';
+    }
+    if (masked.line_channel_secret) {
+      const v = masked.line_channel_secret;
+      masked.line_channel_secret = v.length > 8
+        ? v.substring(0, 4) + '****' + v.substring(v.length - 4)
+        : '****';
+    }
+
+    return {
+      settings: masked,
+      raw: settings, // full values for form (sent over HTTPS, OWNER only)
+      isConfigured: !!settings.line_channel_access_token && !!settings.line_channel_secret,
+    };
+  }
+
+  @Post('settings')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER')
+  async saveLineSettings(
+    @Body() body: Record<string, string>,
+  ) {
+    const labels: Record<string, string> = {
+      line_channel_access_token: 'LINE Channel Access Token',
+      line_channel_secret: 'LINE Channel Secret',
+      liff_id: 'LIFF ID',
+      promptpay_id: 'PromptPay ID',
+      promptpay_account_name: 'PromptPay Account Name',
+      payment_link_base_url: 'Payment Link Base URL',
+    };
+
+    for (const key of LineOaController.LINE_CONFIG_KEYS) {
+      if (body[key] !== undefined && body[key] !== '') {
+        await this.prisma.systemConfig.upsert({
+          where: { key },
+          create: { key, value: body[key], label: labels[key] || key },
+          update: { value: body[key] },
+        });
+      }
+    }
+
+    // Reload config in services
+    await this.lineOaService.reloadConfig();
+    if (body.promptpay_id || body.promptpay_account_name) {
+      this.promptPayQrService.setConfig(
+        body.promptpay_id || '',
+        body.promptpay_account_name || '',
+      );
+    }
+
+    this.logger.log('[LINE] Settings updated by admin');
+    return { success: true, message: 'บันทึกการตั้งค่า LINE OA เรียบร้อย' };
+  }
+
+  @Post('settings/test-connection')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER')
+  async testLineConnection() {
+    try {
+      // Test by calling LINE Bot Info endpoint
+      const result = await this.lineOaService.testConnection();
+      return { success: true, botInfo: result };
+    } catch (err) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'ไม่สามารถเชื่อมต่อ LINE ได้',
+      };
+    }
+  }
+
+  @Get('settings/webhook-url')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER')
+  async getWebhookUrl(@Req() req: Request) {
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+    const host = req.headers['x-forwarded-host'] || req.get('host');
+    const webhookUrl = `${protocol}://${host}/api/line-oa/webhook`;
+
+    return { webhookUrl };
+  }
 }

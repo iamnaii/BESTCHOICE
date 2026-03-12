@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { compressImageForOcr } from '@/lib/compressImage';
 import PageHeader from '@/components/ui/PageHeader';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { toast } from 'sonner';
@@ -48,7 +49,7 @@ interface DailySummary {
 }
 
 const paymentStatusLabels: Record<string, { label: string; className: string }> = {
-  PENDING: { label: 'รอชำระ', className: 'bg-gray-100 text-gray-700' },
+  PENDING: { label: 'รอชำระ', className: 'bg-muted text-foreground' },
   PAID: { label: 'ชำระแล้ว', className: 'bg-green-100 text-green-700' },
   OVERDUE: { label: 'เกินกำหนด', className: 'bg-red-100 text-red-700' },
   PARTIALLY_PAID: { label: 'ชำระบางส่วน', className: 'bg-yellow-100 text-yellow-700' },
@@ -210,8 +211,8 @@ export default function PaymentsPage() {
       label: 'สัญญา',
       render: (p: PendingPayment) => (
         <div>
-          <div className="font-mono text-sm text-primary-600">{p.contract.contractNumber}</div>
-          <div className="text-xs text-gray-500">{p.contract.customer.name}</div>
+          <div className="font-mono text-sm text-primary">{p.contract.contractNumber}</div>
+          <div className="text-xs text-muted-foreground">{p.contract.customer.name}</div>
         </div>
       ),
     },
@@ -226,17 +227,17 @@ export default function PaymentsPage() {
     }},
     { key: 'amountPaid', label: 'ชำระแล้ว', render: (p: PendingPayment) => {
       const paid = parseFloat(p.amountPaid);
-      return paid > 0 ? <span className="text-sm text-green-600">{paid.toLocaleString()} ฿</span> : <span className="text-xs text-gray-400">-</span>;
+      return paid > 0 ? <span className="text-sm text-green-600">{paid.toLocaleString()} ฿</span> : <span className="text-xs text-muted-foreground">-</span>;
     }},
     { key: 'lateFee', label: 'ค่าปรับ', render: (p: PendingPayment) => {
       const fee = parseFloat(p.lateFee);
-      return fee > 0 ? <span className="text-sm text-red-600">{fee.toLocaleString()} ฿</span> : <span className="text-xs text-gray-400">-</span>;
+      return fee > 0 ? <span className="text-sm text-red-600">{fee.toLocaleString()} ฿</span> : <span className="text-xs text-muted-foreground">-</span>;
     }},
     {
       key: 'status',
       label: 'สถานะ',
       render: (p: PendingPayment) => {
-        const s = paymentStatusLabels[p.status] || { label: p.status, className: 'bg-gray-100' };
+        const s = paymentStatusLabels[p.status] || { label: p.status, className: 'bg-muted' };
         return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.className}`}>{s.label}</span>;
       },
     },
@@ -257,11 +258,11 @@ export default function PaymentsPage() {
       <PageHeader title="ชำระเงิน" subtitle="บันทึกการรับชำระค่างวด" />
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-4 bg-gray-100 rounded-lg p-1 w-fit">
-        <button onClick={() => setTab('pending')} className={`px-4 py-2 text-sm rounded-md ${tab === 'pending' ? 'bg-white shadow font-medium' : 'text-gray-600'}`}>
+      <div className="flex gap-1 mb-4 bg-muted rounded-lg p-1 w-fit">
+        <button onClick={() => setTab('pending')} className={`px-4 py-2 text-sm rounded-md ${tab === 'pending' ? 'bg-card shadow-xs shadow-black/5 font-medium' : 'text-muted-foreground'}`}>
           รายการรอชำระ
         </button>
-        <button onClick={() => setTab('summary')} className={`px-4 py-2 text-sm rounded-md ${tab === 'summary' ? 'bg-white shadow font-medium' : 'text-gray-600'}`}>
+        <button onClick={() => setTab('summary')} className={`px-4 py-2 text-sm rounded-md ${tab === 'summary' ? 'bg-card shadow-xs shadow-black/5 font-medium' : 'text-muted-foreground'}`}>
           สรุปรายวัน
         </button>
       </div>
@@ -270,7 +271,7 @@ export default function PaymentsPage() {
       {tab === 'pending' && (
         <div>
           <div className="flex gap-3 mb-4">
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm">
               <option value="">ทุกสถานะ</option>
               <option value="PENDING">รอชำระ</option>
               <option value="OVERDUE">เกินกำหนด</option>
@@ -279,7 +280,7 @@ export default function PaymentsPage() {
           </div>
 
           {loadingPending ? (
-            <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div></div>
+            <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>
           ) : (
             <DataTable columns={pendingColumns} data={pendingPayments} emptyMessage="ไม่มีรายการรอชำระ" />
           )}
@@ -294,44 +295,52 @@ export default function PaymentsPage() {
               type="date"
               value={summaryDate}
               onChange={(e) => setSummaryDate(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              className="px-3 py-2 border border-input rounded-lg text-sm"
             />
           </div>
 
           {loadingSummary ? (
-            <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div></div>
+            <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>
           ) : summary ? (
             <div>
               {/* Summary Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                <div className="bg-white rounded-lg border p-4">
-                  <div className="text-xs text-gray-500 mb-1">จำนวนรายการ</div>
-                  <div className="text-2xl font-bold">{summary.totalPayments}</div>
-                </div>
-                <div className="bg-white rounded-lg border p-4">
-                  <div className="text-xs text-gray-500 mb-1">ยอดรวม</div>
-                  <div className="text-2xl font-bold text-green-600">{summary.totalAmount.toLocaleString()} ฿</div>
-                </div>
-                <div className="bg-white rounded-lg border p-4">
-                  <div className="text-xs text-gray-500 mb-1">ค่าปรับรวม</div>
-                  <div className="text-2xl font-bold text-red-600">{summary.totalLateFees.toLocaleString()} ฿</div>
-                </div>
-                <div className="bg-white rounded-lg border p-4">
-                  <div className="text-xs text-gray-500 mb-1">แยกตามวิธี</div>
-                  {Object.entries(summary.byMethod).map(([method, amount]) => (
-                    <div key={method} className="flex justify-between text-sm">
-                      <span className="text-gray-600">{methodLabels[method] || method}</span>
-                      <span className="font-medium">{amount.toLocaleString()} ฿</span>
-                    </div>
-                  ))}
-                </div>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-5 lg:gap-7.5 mb-6">
+                <Card>
+                  <CardContent>
+                    <div className="text-xs text-muted-foreground mb-1">จำนวนรายการ</div>
+                    <div className="text-2xl font-bold">{summary.totalPayments}</div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent>
+                    <div className="text-xs text-muted-foreground mb-1">ยอดรวม</div>
+                    <div className="text-2xl font-bold text-green-600">{summary.totalAmount.toLocaleString()} ฿</div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent>
+                    <div className="text-xs text-muted-foreground mb-1">ค่าปรับรวม</div>
+                    <div className="text-2xl font-bold text-red-600">{summary.totalLateFees.toLocaleString()} ฿</div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent>
+                    <div className="text-xs text-muted-foreground mb-1">แยกตามวิธี</div>
+                    {Object.entries(summary.byMethod).map(([method, amount]) => (
+                      <div key={method} className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">{methodLabels[method] || method}</span>
+                        <span className="font-medium">{amount.toLocaleString()} ฿</span>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
               </div>
 
               {/* Payment List */}
               {summary.payments.length > 0 && (
-                <div className="bg-white rounded-lg border overflow-hidden">
+                <Card className="overflow-hidden">
                   <table className="w-full text-sm">
-                    <thead className="bg-gray-50">
+                    <thead className="bg-muted">
                       <tr>
                         <th className="text-left p-3">สัญญา</th>
                         <th className="text-left p-3">ลูกค้า</th>
@@ -356,7 +365,7 @@ export default function PaymentsPage() {
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </Card>
               )}
             </div>
           ) : null}
@@ -366,13 +375,13 @@ export default function PaymentsPage() {
       {/* Record Payment Modal */}
       {showPayModal && selectedPayment && (
         <Modal isOpen title="บันทึกการรับชำระ" onClose={() => { setShowPayModal(false); setSelectedPayment(null); setSlipResult(null); setPayForm({ amount: 0, paymentMethod: 'CASH', notes: '' }); }}>
-          <div className="space-y-4">
-            <div className="bg-gray-50 rounded-lg p-4">
-              <div className="text-sm"><span className="text-gray-500">สัญญา: </span><span className="font-mono font-medium">{selectedPayment.contract.contractNumber}</span></div>
-              <div className="text-sm"><span className="text-gray-500">ลูกค้า: </span>{selectedPayment.contract.customer.name}</div>
-              <div className="text-sm"><span className="text-gray-500">งวดที่: </span>{selectedPayment.installmentNo}</div>
+          <div className="flex flex-col gap-5 lg:gap-7.5">
+            <div className="bg-muted rounded-lg p-4">
+              <div className="text-sm"><span className="text-muted-foreground">สัญญา: </span><span className="font-mono font-medium">{selectedPayment.contract.contractNumber}</span></div>
+              <div className="text-sm"><span className="text-muted-foreground">ลูกค้า: </span>{selectedPayment.contract.customer.name}</div>
+              <div className="text-sm"><span className="text-muted-foreground">งวดที่: </span>{selectedPayment.installmentNo}</div>
               <div className="text-sm mt-2">
-                <span className="text-gray-500">ยอดคงค้าง: </span>
+                <span className="text-muted-foreground">ยอดคงค้าง: </span>
                 <span className="font-bold text-lg">{(parseFloat(selectedPayment.amountDue) + parseFloat(selectedPayment.lateFee) - parseFloat(selectedPayment.amountPaid)).toLocaleString()} ฿</span>
               </div>
               {parseFloat(selectedPayment.lateFee) > 0 && (
@@ -415,32 +424,32 @@ export default function PaymentsPage() {
 
               {/* Show OCR slip result */}
               {slipResult && (
-                <div className="mt-2 p-2 bg-white rounded border border-green-200 space-y-1">
-                  <div className="text-xs text-gray-500">ผลการสแกน:</div>
-                  {slipResult.amount && <div className="text-xs"><span className="text-gray-500">จำนวนเงิน:</span> <span className="font-bold text-green-700">{slipResult.amount.toLocaleString()} ฿</span></div>}
-                  {slipResult.senderName && <div className="text-xs"><span className="text-gray-500">ผู้โอน:</span> {slipResult.senderName} {slipResult.senderBank && `(${slipResult.senderBank})`}</div>}
-                  {slipResult.receiverName && <div className="text-xs"><span className="text-gray-500">ผู้รับ:</span> {slipResult.receiverName} {slipResult.receiverBank && `(${slipResult.receiverBank})`}</div>}
-                  {slipResult.transactionRef && <div className="text-xs"><span className="text-gray-500">Ref:</span> <span className="font-mono">{slipResult.transactionRef}</span></div>}
-                  {slipResult.transactionDate && <div className="text-xs"><span className="text-gray-500">วันเวลา:</span> {slipResult.transactionDate} {slipResult.transactionTime || ''}</div>}
-                  {slipResult.slipType && <div className="text-xs"><span className="text-gray-500">ประเภท:</span> {slipTypeLabels[slipResult.slipType] || slipResult.slipType}</div>}
+                <div className="mt-2 p-2 rounded border border-green-200 space-y-1">
+                  <div className="text-xs text-muted-foreground">ผลการสแกน:</div>
+                  {slipResult.amount && <div className="text-xs"><span className="text-muted-foreground">จำนวนเงิน:</span> <span className="font-bold text-green-700">{slipResult.amount.toLocaleString()} ฿</span></div>}
+                  {slipResult.senderName && <div className="text-xs"><span className="text-muted-foreground">ผู้โอน:</span> {slipResult.senderName} {slipResult.senderBank && `(${slipResult.senderBank})`}</div>}
+                  {slipResult.receiverName && <div className="text-xs"><span className="text-muted-foreground">ผู้รับ:</span> {slipResult.receiverName} {slipResult.receiverBank && `(${slipResult.receiverBank})`}</div>}
+                  {slipResult.transactionRef && <div className="text-xs"><span className="text-muted-foreground">Ref:</span> <span className="font-mono">{slipResult.transactionRef}</span></div>}
+                  {slipResult.transactionDate && <div className="text-xs"><span className="text-muted-foreground">วันเวลา:</span> {slipResult.transactionDate} {slipResult.transactionTime || ''}</div>}
+                  {slipResult.slipType && <div className="text-xs"><span className="text-muted-foreground">ประเภท:</span> {slipTypeLabels[slipResult.slipType] || slipResult.slipType}</div>}
                 </div>
               )}
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนเงินที่รับ</label>
+              <label className="block text-sm font-medium text-foreground mb-1">จำนวนเงินที่รับ</label>
               <input
                 type="number"
                 value={payForm.amount}
                 onChange={(e) => setPayForm({ ...payForm, amount: Number(e.target.value) })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm"
                 min={0}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">วิธีชำระ</label>
-              <select value={payForm.paymentMethod} onChange={(e) => setPayForm({ ...payForm, paymentMethod: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+              <label className="block text-sm font-medium text-foreground mb-1">วิธีชำระ</label>
+              <select value={payForm.paymentMethod} onChange={(e) => setPayForm({ ...payForm, paymentMethod: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm">
                 <option value="CASH">เงินสด</option>
                 <option value="BANK_TRANSFER">โอนเงิน</option>
                 <option value="QR_EWALLET">QR/E-Wallet</option>
@@ -448,17 +457,17 @@ export default function PaymentsPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ</label>
+              <label className="block text-sm font-medium text-foreground mb-1">หมายเหตุ</label>
               <input
                 type="text"
                 value={payForm.notes}
                 onChange={(e) => setPayForm({ ...payForm, notes: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm"
               />
             </div>
 
             <div className="flex gap-3 pt-2">
-              <button onClick={() => { setShowPayModal(false); setSelectedPayment(null); setSlipResult(null); setPayForm({ amount: 0, paymentMethod: 'CASH', notes: '' }); }} className="flex-1 px-4 py-2 text-sm border border-gray-300 rounded-lg">ยกเลิก</button>
+              <button onClick={() => { setShowPayModal(false); setSelectedPayment(null); setSlipResult(null); setPayForm({ amount: 0, paymentMethod: 'CASH', notes: '' }); }} className="flex-1 px-4 py-2 text-sm border border-input rounded-lg">ยกเลิก</button>
               <button onClick={handlePay} disabled={recordMutation.isPending || payForm.amount <= 0} className="flex-1 px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50">
                 {recordMutation.isPending ? 'กำลังบันทึก...' : 'ยืนยันรับชำระ'}
               </button>

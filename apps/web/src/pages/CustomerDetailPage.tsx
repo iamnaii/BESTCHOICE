@@ -5,6 +5,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import AddressForm, { AddressData, emptyAddress, displayAddress, serializeAddress, deserializeAddress } from '@/components/ui/AddressForm';
+import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card';
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -64,7 +65,7 @@ interface RiskFlag {
 }
 
 const statusLabels: Record<string, { label: string; className: string }> = {
-  DRAFT: { label: 'ร่าง', className: 'bg-gray-100 text-gray-700' },
+  DRAFT: { label: 'ร่าง', className: 'bg-muted text-foreground' },
   ACTIVE: { label: 'ผ่อนอยู่', className: 'bg-green-100 text-green-700' },
   OVERDUE: { label: 'ค้างชำระ', className: 'bg-yellow-100 text-yellow-700' },
   DEFAULT: { label: 'ผิดนัด', className: 'bg-red-100 text-red-700' },
@@ -91,7 +92,7 @@ interface CreditCheckItem {
 }
 
 const creditStatusLabels: Record<string, { label: string; className: string }> = {
-  PENDING: { label: 'รอวิเคราะห์', className: 'bg-gray-100 text-gray-700' },
+  PENDING: { label: 'รอวิเคราะห์', className: 'bg-muted text-foreground' },
   APPROVED: { label: 'ผ่าน', className: 'bg-green-100 text-green-700' },
   REJECTED: { label: 'ไม่ผ่าน', className: 'bg-red-100 text-red-700' },
   MANUAL_REVIEW: { label: 'ต้องตรวจเพิ่ม', className: 'bg-amber-100 text-amber-700' },
@@ -266,14 +267,14 @@ export default function CustomerDetailPage() {
   });
 
   if (isLoading || !customer) {
-    return <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div></div>;
+    return <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>;
   }
 
   const contractColumns = [
     { key: 'contractNumber', label: 'เลขสัญญา', render: (c: CustomerDetail['contracts'][0]) => <span className="font-mono text-sm">{c.contractNumber}</span> },
     { key: 'product', label: 'สินค้า', render: (c: CustomerDetail['contracts'][0]) => <span className="text-sm">{c.product.brand} {c.product.model}</span> },
     { key: 'status', label: 'สถานะ', render: (c: CustomerDetail['contracts'][0]) => {
-      const s = statusLabels[c.status] || { label: c.status, className: 'bg-gray-100' };
+      const s = statusLabels[c.status] || { label: c.status, className: 'bg-muted' };
       return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.className}`}>{s.label}</span>;
     }},
     { key: 'monthlyPayment', label: 'ค่างวด', render: (c: CustomerDetail['contracts'][0]) => <span className="text-sm">{parseFloat(c.monthlyPayment).toLocaleString()} ฿/เดือน</span> },
@@ -292,7 +293,7 @@ export default function CustomerDetailPage() {
               แก้ไขข้อมูล
             </button>
           )}
-          <button onClick={() => navigate('/customers')} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg">กลับ</button>
+          <button onClick={() => navigate('/customers')} className="px-4 py-2 text-sm text-muted-foreground border border-input rounded-lg">กลับ</button>
         </div>
       } />
 
@@ -309,56 +310,71 @@ export default function CustomerDetailPage() {
       )}
 
       {/* Customer Info */}
-      <div className="bg-white rounded-lg border p-6 mb-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">ข้อมูลส่วนตัว</h2>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          <Info label="คำนำหน้า" value={customer.prefix} />
-          <Info label="ชื่อ-นามสกุล" value={customer.name} />
-          <Info label="ชื่อเล่น" value={customer.nickname} />
-          <Info label="เลขบัตร ปชช." value={maskNationalId(customer.nationalId)} />
-          <Info label="ต่างด้าว" value={customer.isForeigner ? 'ใช่' : 'ไม่ใช่'} />
-          <Info label="วันเกิด" value={customer.birthDate ? new Date(customer.birthDate).toLocaleDateString('th-TH') : null} />
-        </div>
-      </div>
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>ข้อมูลส่วนตัว</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-5 lg:gap-7.5">
+            <Info label="คำนำหน้า" value={customer.prefix} />
+            <Info label="ชื่อ-นามสกุล" value={customer.name} />
+            <Info label="ชื่อเล่น" value={customer.nickname} />
+            <Info label="เลขบัตร ปชช." value={maskNationalId(customer.nationalId)} />
+            <Info label="ต่างด้าว" value={customer.isForeigner ? 'ใช่' : 'ไม่ใช่'} />
+            <Info label="วันเกิด" value={customer.birthDate ? new Date(customer.birthDate).toLocaleDateString('th-TH') : null} />
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Address */}
-      <div className="bg-white rounded-lg border p-6 mb-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">ที่อยู่</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Info label="ที่อยู่ตามบัตร" value={displayAddress(customer.addressIdCard)} />
-          <Info label="ที่อยู่ปัจจุบัน" value={displayAddress(customer.addressCurrent)} />
-          {customer.googleMapLink && (
-            <div className="col-span-2">
-              <div className="text-xs text-gray-500 mb-0.5">Link Google Map</div>
-              <a href={customer.googleMapLink} target="_blank" rel="noopener noreferrer" className="text-sm text-primary-600 hover:underline break-all">{customer.googleMapLink}</a>
-            </div>
-          )}
-        </div>
-      </div>
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>ที่อยู่</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 lg:gap-7.5">
+            <Info label="ที่อยู่ตามบัตร" value={displayAddress(customer.addressIdCard)} />
+            <Info label="ที่อยู่ปัจจุบัน" value={displayAddress(customer.addressCurrent)} />
+            {customer.googleMapLink && (
+              <div className="col-span-2">
+                <div className="text-xs text-muted-foreground mb-0.5">Link Google Map</div>
+                <a href={customer.googleMapLink} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline break-all">{customer.googleMapLink}</a>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Contact */}
-      <div className="bg-white rounded-lg border p-6 mb-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">ข้อมูลติดต่อ</h2>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          <Info label="เบอร์โทร" value={customer.phone} />
-          <Info label="เบอร์สำรอง" value={customer.phoneSecondary} />
-          <Info label="อีเมล" value={customer.email} />
-          <Info label="LINE ID" value={customer.lineId} />
-          {customer.facebookLink && (
-            <div>
-              <div className="text-xs text-gray-500 mb-0.5">ลิงก์ Facebook</div>
-              <a href={customer.facebookLink} target="_blank" rel="noopener noreferrer" className="text-sm text-primary-600 hover:underline break-all">{customer.facebookLink}</a>
-            </div>
-          )}
-          <Info label="ชื่อ Facebook" value={customer.facebookName} />
-          <Info label="จำนวนเพื่อน Facebook" value={customer.facebookFriends} />
-        </div>
-      </div>
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>ข้อมูลติดต่อ</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-5 lg:gap-7.5">
+            <Info label="เบอร์โทร" value={customer.phone} />
+            <Info label="เบอร์สำรอง" value={customer.phoneSecondary} />
+            <Info label="อีเมล" value={customer.email} />
+            <Info label="LINE ID" value={customer.lineId} />
+            {customer.facebookLink && (
+              <div>
+                <div className="text-xs text-muted-foreground mb-0.5">ลิงก์ Facebook</div>
+                <a href={customer.facebookLink} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline break-all">{customer.facebookLink}</a>
+              </div>
+            )}
+            <Info label="ชื่อ Facebook" value={customer.facebookName} />
+            <Info label="จำนวนเพื่อน Facebook" value={customer.facebookFriends} />
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Work */}
-      <div className="bg-white rounded-lg border p-6 mb-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">ข้อมูลที่ทำงาน</h2>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>ข้อมูลที่ทำงาน</CardTitle>
+        </CardHeader>
+        <CardContent>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-5 lg:gap-7.5">
           <Info label="ชื่อที่ทำงาน" value={customer.workplace} />
           <Info label="อาชีพ" value={customer.occupation} />
           <Info label="รายละเอียดอาชีพ" value={customer.occupationDetail} />
@@ -367,16 +383,20 @@ export default function CustomerDetailPage() {
             <Info label="ที่อยู่ที่ทำงาน" value={displayAddress(customer.addressWork)} />
           </div>
         </div>
-      </div>
+        </CardContent>
+      </Card>
 
       {/* References */}
       {refs && refs.length > 0 && (
-        <div className="bg-white rounded-lg border p-6 mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">รายชื่อบุคคลอ้างอิง</h2>
-          <div className="space-y-4">
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>รายชื่อบุคคลอ้างอิง</CardTitle>
+          </CardHeader>
+          <CardContent>
+          <div className="flex flex-col gap-5 lg:gap-7.5">
             {refs.map((ref, idx) => (
-              <div key={idx} className="border border-gray-100 rounded-lg p-3">
-                <div className="text-xs font-medium text-gray-500 mb-2">บุคคลอ้างอิง {idx + 1}</div>
+              <div key={idx} className="border border-border rounded-lg p-3">
+                <div className="text-xs font-medium text-muted-foreground mb-2">บุคคลอ้างอิง {idx + 1}</div>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   <Info label="ชื่อ" value={[ref.prefix, ref.firstName, ref.lastName].filter(Boolean).join(' ')} />
                   <Info label="เบอร์โทร" value={ref.phone} />
@@ -385,50 +405,56 @@ export default function CustomerDetailPage() {
               </div>
             ))}
           </div>
-        </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Other info */}
-      <div className="bg-white rounded-lg border p-6 mb-6">
+      <Card className="mb-6">
+        <CardContent className="pt-6">
         <Info label="วันที่เพิ่ม" value={new Date(customer.createdAt).toLocaleDateString('th-TH')} />
-      </div>
+        </CardContent>
+      </Card>
 
       {/* Credit Check */}
-      <div className="bg-white rounded-lg border p-6 mb-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">ตรวจสอบเครดิต</h2>
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>ตรวจสอบเครดิต</CardTitle>
+        </CardHeader>
+        <CardContent>
 
         {/* Upload new credit check */}
-        <div className="bg-gray-50 rounded-lg p-4 mb-4 space-y-3">
-          <p className="text-xs text-gray-500">อัปโหลด Statement ธนาคารย้อนหลัง 3 เดือน เพื่อเช็คเครดิตก่อนทำสัญญา</p>
+        <div className="bg-muted rounded-lg p-4 mb-4 space-y-3">
+          <p className="text-xs text-muted-foreground">อัปโหลด Statement ธนาคารย้อนหลัง 3 เดือน เพื่อเช็คเครดิตก่อนทำสัญญา</p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
-              <label className="block text-xs text-gray-500 mb-1">ธนาคาร</label>
-              <input type="text" value={creditBankName} onChange={(e) => setCreditBankName(e.target.value)} placeholder="เช่น กสิกร, กรุงไทย..." className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+              <label className="block text-xs text-muted-foreground mb-1">ธนาคาร</label>
+              <input type="text" value={creditBankName} onChange={(e) => setCreditBankName(e.target.value)} placeholder="เช่น กสิกร, กรุงไทย..." className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Statement (ภาพ/PDF)</label>
-              <input ref={creditFileRef} type="file" accept="image/*,.pdf" multiple onChange={(e) => e.target.files && uploadCreditMutation.mutate(e.target.files)} disabled={uploadCreditMutation.isPending} className="w-full text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary-50 file:text-primary-700" />
+              <label className="block text-xs text-muted-foreground mb-1">Statement (ภาพ/PDF)</label>
+              <input ref={creditFileRef} type="file" accept="image/*,.pdf" multiple onChange={(e) => e.target.files && uploadCreditMutation.mutate(e.target.files)} disabled={uploadCreditMutation.isPending} className="w-full text-sm text-muted-foreground file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary-50 file:text-primary-700" />
             </div>
           </div>
-          {uploadCreditMutation.isPending && <div className="text-sm text-primary-600">กำลังอัปโหลด...</div>}
+          {uploadCreditMutation.isPending && <div className="text-sm text-primary">กำลังอัปโหลด...</div>}
         </div>
 
         {/* Credit check history */}
         {creditChecks.length > 0 ? (
           <div className="space-y-3">
             {creditChecks.map((cc) => {
-              const cs = creditStatusLabels[cc.status] || { label: cc.status, className: 'bg-gray-100' };
+              const cs = creditStatusLabels[cc.status] || { label: cc.status, className: 'bg-muted' };
               return (
                 <div key={cc.id} className="border rounded-lg p-4 space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cs.className}`}>{cs.label}</span>
-                      {cc.bankName && <span className="text-xs text-gray-500">ธนาคาร: {cc.bankName}</span>}
-                      <span className="text-xs text-gray-400">{new Date(cc.createdAt).toLocaleDateString('th-TH')}</span>
-                      {cc.contract && <span className="text-xs text-primary-600">สัญญา: {cc.contract.contractNumber}</span>}
+                      {cc.bankName && <span className="text-xs text-muted-foreground">ธนาคาร: {cc.bankName}</span>}
+                      <span className="text-xs text-muted-foreground">{new Date(cc.createdAt).toLocaleDateString('th-TH')}</span>
+                      {cc.contract && <span className="text-xs text-primary">สัญญา: {cc.contract.contractNumber}</span>}
                     </div>
                     {cc.status === 'PENDING' && (
-                      <button onClick={() => analyzeCreditMutation.mutate(cc.id)} disabled={analyzeCreditMutation.isPending} className="px-3 py-1 text-xs bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50">
+                      <button onClick={() => analyzeCreditMutation.mutate(cc.id)} disabled={analyzeCreditMutation.isPending} className="px-3 py-1 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50">
                         {analyzeCreditMutation.isPending ? 'กำลังวิเคราะห์...' : 'AI วิเคราะห์'}
                       </button>
                     )}
@@ -437,27 +463,28 @@ export default function CustomerDetailPage() {
                     <div className="flex items-center gap-4">
                       <div className={`text-2xl font-bold ${cc.aiScore >= 70 ? 'text-green-600' : cc.aiScore >= 50 ? 'text-amber-600' : 'text-red-600'}`}>{cc.aiScore}</div>
                       <div className="flex-1">
-                        <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div className="w-full bg-border rounded-full h-2">
                           <div className={`h-2 rounded-full ${cc.aiScore >= 70 ? 'bg-green-500' : cc.aiScore >= 50 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${cc.aiScore}%` }} />
                         </div>
                       </div>
                     </div>
                   )}
-                  {cc.aiSummary && <div className="text-xs text-gray-600">{cc.aiSummary}</div>}
+                  {cc.aiSummary && <div className="text-xs text-muted-foreground">{cc.aiSummary}</div>}
                   {cc.aiRecommendation && <div className={`text-xs font-medium p-2 rounded ${cc.aiScore && cc.aiScore >= 70 ? 'bg-green-50 text-green-700' : cc.aiScore && cc.aiScore >= 50 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>{cc.aiRecommendation}</div>}
-                  {cc.checkedBy && <div className="text-xs text-primary-600">ตรวจสอบโดย: {cc.checkedBy.name}{cc.reviewNotes ? ` - ${cc.reviewNotes}` : ''}</div>}
+                  {cc.checkedBy && <div className="text-xs text-primary">ตรวจสอบโดย: {cc.checkedBy.name}{cc.reviewNotes ? ` - ${cc.reviewNotes}` : ''}</div>}
                 </div>
               );
             })}
           </div>
         ) : (
-          <div className="text-center py-6 text-sm text-gray-400">ยังไม่มีประวัติการตรวจเครดิต</div>
+          <div className="text-center py-6 text-sm text-muted-foreground">ยังไม่มีประวัติการตรวจเครดิต</div>
         )}
-      </div>
+        </CardContent>
+      </Card>
 
       {/* Contracts */}
       <div>
-        <h2 className="text-lg font-semibold text-gray-900 mb-3">สัญญาทั้งหมด ({customer.contracts.length})</h2>
+        <h2 className="text-lg font-semibold text-foreground mb-3">สัญญาทั้งหมด ({customer.contracts.length})</h2>
         <DataTable columns={contractColumns} data={customer.contracts} emptyMessage="ยังไม่มีสัญญา" />
       </div>
 

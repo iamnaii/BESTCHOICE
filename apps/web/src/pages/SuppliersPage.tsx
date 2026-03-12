@@ -248,7 +248,7 @@ export default function SuppliersPage() {
       key: 'name',
       label: 'ชื่อผู้ขาย',
       render: (s: Supplier) => (
-        <span className="font-medium text-gray-900">{s.name}</span>
+        <span className="font-medium text-foreground">{s.name}</span>
       ),
     },
     {
@@ -256,8 +256,8 @@ export default function SuppliersPage() {
       label: 'ผู้ติดต่อ',
       render: (s: Supplier) => (
         <div>
-          <div className="text-gray-700">{s.contactName || '-'}</div>
-          {s.nickname && <div className="text-xs text-gray-400">({s.nickname})</div>}
+          <div className="text-foreground">{s.contactName || '-'}</div>
+          {s.nickname && <div className="text-xs text-muted-foreground">({s.nickname})</div>}
         </div>
       ),
     },
@@ -267,7 +267,7 @@ export default function SuppliersPage() {
       render: (s: Supplier) => (
         <div>
           <div>{s.phone}</div>
-          {s.phoneSecondary && <div className="text-xs text-gray-400">{s.phoneSecondary}</div>}
+          {s.phoneSecondary && <div className="text-xs text-muted-foreground">{s.phoneSecondary}</div>}
         </div>
       ),
     },
@@ -277,7 +277,7 @@ export default function SuppliersPage() {
       render: (s: Supplier) => (
         <span
           className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-            s.hasVat ? 'bg-primary-100 text-primary-700' : 'bg-gray-100 text-gray-500'
+            s.hasVat ? 'bg-primary-100 text-primary-700' : 'bg-muted text-muted-foreground'
           }`}
         >
           {s.hasVat ? 'มี VAT' : 'ไม่มี VAT'}
@@ -293,8 +293,8 @@ export default function SuppliersPage() {
             s.paymentMethods.map((pm, i) => (
               <div key={i} className="flex items-center gap-1">
                 <span className="text-sm">{paymentMethodLabels[pm.paymentMethod] || pm.paymentMethod}</span>
-                {pm.isDefault && <span className="text-[10px] bg-yellow-100 text-yellow-700 px-1 rounded">หลัก</span>}
-                {pm.bankName && <span className="text-xs text-gray-400">({pm.bankName})</span>}
+                {pm.isDefault && <span className="text-2xs bg-yellow-100 text-yellow-700 px-1 rounded">หลัก</span>}
+                {pm.bankName && <span className="text-xs text-muted-foreground">({pm.bankName})</span>}
               </div>
             ))
           ) : (

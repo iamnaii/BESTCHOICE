@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
 import PageHeader from '@/components/ui/PageHeader';
+import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
 import { saleTypeConfig, paymentMethods, type SaleType } from '@/lib/constants';
 
@@ -264,182 +265,196 @@ export default function POSPage() {
     setBundleSearch('');
   };
 
-  const inputClass = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500';
-  const selectClass = `${inputClass} bg-white`;
+  const inputClass = 'w-full px-3 py-2 border border-input rounded-lg text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background';
+  const selectClass = inputClass;
 
   return (
     <div>
       <PageHeader title="POS - ขายสินค้า" subtitle="ระบบขายหน้าร้าน" />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 lg:gap-7.5">
         {/* Left Column - Main Form */}
-        <div className="lg:col-span-2 space-y-4">
+        <div className="lg:col-span-2 flex flex-col gap-5 lg:gap-7.5">
 
           {/* Sale Type Selector */}
-          <div className="bg-white rounded-lg border p-4">
-            <div className="text-sm font-semibold text-gray-800 mb-3">ประเภทการขาย</div>
-            <div className="grid grid-cols-3 gap-3">
-              {(Object.entries(saleTypeConfig) as [SaleType, typeof saleTypeConfig[SaleType]][]).map(([type, config]) => (
-                <button
-                  key={type}
-                  onClick={() => setSaleType(type)}
-                  className={`p-3 rounded-lg border-2 text-center transition-all ${
-                    saleType === type
-                      ? `${config.bg} ring-2`
-                      : 'bg-white border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  <div className={`text-sm font-semibold ${saleType === type ? config.color : 'text-gray-600'}`}>
-                    {config.label}
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
+          <Card>
+            <CardHeader>
+              <div className="text-sm font-semibold text-foreground">ประเภทการขาย</div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-3 gap-3">
+                {(Object.entries(saleTypeConfig) as [SaleType, typeof saleTypeConfig[SaleType]][]).map(([type, config]) => (
+                  <button
+                    key={type}
+                    onClick={() => setSaleType(type)}
+                    className={`p-3 rounded-lg border-2 text-center transition-all ${
+                      saleType === type
+                        ? `${config.bg} ring-2`
+                        : 'border-border hover:border-input'
+                    }`}
+                  >
+                    <div className={`text-sm font-semibold ${saleType === type ? config.color : 'text-muted-foreground'}`}>
+                      {config.label}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Product Selection */}
-          <div className="bg-white rounded-lg border p-4">
-            <div className="text-sm font-semibold text-gray-800 mb-3">สินค้าหลัก</div>
-            {selectedProduct ? (
-              <div className="flex items-center justify-between bg-gray-50 rounded-lg p-3">
-                <div>
-                  <div className="text-sm font-medium">{selectedProduct.brand} {selectedProduct.model}</div>
-                  <div className="text-xs text-gray-500">
-                    {selectedProduct.imeiSerial && <span className="font-mono">IMEI: {selectedProduct.imeiSerial}</span>}
-                    {selectedProduct.branch && <span className="ml-2">| {selectedProduct.branch.name}</span>}
+          <Card>
+            <CardHeader>
+              <div className="text-sm font-semibold text-foreground">สินค้าหลัก</div>
+            </CardHeader>
+            <CardContent>
+              {selectedProduct ? (
+                <div className="flex items-center justify-between bg-muted rounded-lg p-3">
+                  <div>
+                    <div className="text-sm font-medium">{selectedProduct.brand} {selectedProduct.model}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {selectedProduct.imeiSerial && <span className="font-mono">IMEI: {selectedProduct.imeiSerial}</span>}
+                      {selectedProduct.branch && <span className="ml-2">| {selectedProduct.branch.name}</span>}
+                    </div>
+                    {selectedProduct.prices.length > 0 && (
+                      <div className="flex gap-2 mt-1">
+                        {selectedProduct.prices.map(p => (
+                          <span key={p.id} className={`text-xs px-2 py-0.5 rounded ${p.isDefault ? 'bg-primary-100 text-primary-700' : 'bg-secondary text-muted-foreground'}`}>
+                            {p.label}: {parseFloat(p.amount).toLocaleString()}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  {selectedProduct.prices.length > 0 && (
-                    <div className="flex gap-2 mt-1">
-                      {selectedProduct.prices.map(p => (
-                        <span key={p.id} className={`text-xs px-2 py-0.5 rounded ${p.isDefault ? 'bg-primary-100 text-primary-700' : 'bg-gray-100 text-gray-600'}`}>
-                          {p.label}: {parseFloat(p.amount).toLocaleString()}
-                        </span>
-                      ))}
+                  <button onClick={() => setSelectedProduct(null)} className="text-xs text-red-500 hover:underline">เปลี่ยน</button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={productSearch}
+                    onChange={(e) => setProductSearch(e.target.value)}
+                    placeholder="พิมพ์อย่างน้อย 2 ตัวอักษร เช่น IMEI, ชื่อ, รุ่น..."
+                    className={inputClass}
+                  />
+                  {productSearch.length >= 2 && (
+                    <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                      {productsFetching ? (
+                        <div className="px-3 py-4 text-center text-sm text-muted-foreground">
+                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary mx-auto mb-2"></div>
+                          กำลังค้นหา...
+                        </div>
+                      ) : products && products.length > 0 ? (
+                        products.map((p) => (
+                          <button
+                            key={p.id}
+                            onClick={() => handleSelectProduct(p)}
+                            className="w-full text-left px-3 py-2 hover:bg-muted/50 border-b last:border-b-0"
+                          >
+                            <div className="text-sm font-medium">{p.brand} {p.model}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {p.imeiSerial && <span className="font-mono">IMEI: {p.imeiSerial}</span>}
+                              <span className="ml-2">{p.branch?.name}</span>
+                              {p.prices.find(pr => pr.isDefault) && (
+                                <span className="ml-2 text-primary font-medium">
+                                  {parseFloat(p.prices.find(pr => pr.isDefault)!.amount).toLocaleString()} ฿
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                        ))
+                      ) : (
+                        <div className="px-3 py-4 text-center text-sm text-muted-foreground">
+                          ไม่พบสินค้าที่ตรงกับ &quot;{productSearch}&quot;
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
-                <button onClick={() => setSelectedProduct(null)} className="text-xs text-red-500 hover:underline">เปลี่ยน</button>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Bundle / Freebie Products */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between w-full">
+                <div className="text-sm font-semibold text-foreground">ของแถม / อุปกรณ์เสริม</div>
+                <span className="text-xs text-muted-foreground">ตัดสต๊อกให้ลูกค้า (ราคา 0 บาท)</span>
               </div>
-            ) : (
+            </CardHeader>
+            <CardContent>
+              {/* Selected bundle products */}
+              {bundleProducts.length > 0 && (
+                <div className="space-y-2 mb-3">
+                  {bundleProducts.map((p) => (
+                    <div key={p.id} className="flex items-center justify-between bg-green-50 rounded-lg px-3 py-2 border border-green-200">
+                      <div>
+                        <div className="text-sm font-medium text-green-800">{p.brand} {p.model}</div>
+                        <div className="text-xs text-green-600">
+                          {p.imeiSerial && <span className="font-mono">IMEI: {p.imeiSerial}</span>}
+                          {p.category === 'ACCESSORY' && <span className="ml-1">({p.name})</span>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-green-600 font-medium">ของแถม</span>
+                        <button onClick={() => handleRemoveBundle(p.id)} className="text-xs text-red-500 hover:underline">ลบ</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Bundle search */}
               <div className="relative">
                 <input
                   type="text"
-                  value={productSearch}
-                  onChange={(e) => setProductSearch(e.target.value)}
-                  placeholder="พิมพ์อย่างน้อย 2 ตัวอักษร เช่น IMEI, ชื่อ, รุ่น..."
+                  value={bundleSearch}
+                  onChange={(e) => setBundleSearch(e.target.value)}
+                  placeholder="ค้นหาของแถม เช่น ฟิล์ม, เคส, ชุดชาร์จ..."
                   className={inputClass}
                 />
-                {productSearch.length >= 2 && (
-                  <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                    {productsFetching ? (
-                      <div className="px-3 py-4 text-center text-sm text-gray-500">
-                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-600 mx-auto mb-2"></div>
-                        กำลังค้นหา...
-                      </div>
-                    ) : products && products.length > 0 ? (
-                      products.map((p) => (
+                {bundleSearch.length >= 2 && (
+                  <div className="absolute z-40 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                    {bundleSearchFetching ? (
+                      <div className="px-3 py-3 text-center text-sm text-muted-foreground">กำลังค้นหา...</div>
+                    ) : bundleSearchResults && bundleSearchResults.length > 0 ? (
+                      bundleSearchResults.map((p) => (
                         <button
                           key={p.id}
-                          onClick={() => handleSelectProduct(p)}
-                          className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b last:border-b-0"
+                          onClick={() => handleAddBundle(p)}
+                          className="w-full text-left px-3 py-2 hover:bg-green-50 border-b last:border-b-0"
                         >
                           <div className="text-sm font-medium">{p.brand} {p.model}</div>
-                          <div className="text-xs text-gray-500">
-                            {p.imeiSerial && <span className="font-mono">IMEI: {p.imeiSerial}</span>}
-                            <span className="ml-2">{p.branch?.name}</span>
-                            {p.prices.find(pr => pr.isDefault) && (
-                              <span className="ml-2 text-primary-600 font-medium">
-                                {parseFloat(p.prices.find(pr => pr.isDefault)!.amount).toLocaleString()} ฿
-                              </span>
-                            )}
+                          <div className="text-xs text-muted-foreground">
+                            {p.name}
+                            {p.imeiSerial && <span className="ml-2 font-mono">IMEI: {p.imeiSerial}</span>}
+                            <span className="ml-2">ทุน: {parseFloat(p.costPrice).toLocaleString()} ฿</span>
                           </div>
                         </button>
                       ))
                     ) : (
-                      <div className="px-3 py-4 text-center text-sm text-gray-500">
-                        ไม่พบสินค้าที่ตรงกับ &quot;{productSearch}&quot;
+                      <div className="px-3 py-3 text-center text-sm text-muted-foreground">
+                        ไม่พบสินค้า &quot;{bundleSearch}&quot;
                       </div>
                     )}
                   </div>
                 )}
               </div>
-            )}
-          </div>
-
-          {/* Bundle / Freebie Products */}
-          <div className="bg-white rounded-lg border p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-sm font-semibold text-gray-800">ของแถม / อุปกรณ์เสริม</div>
-              <span className="text-xs text-gray-400">ตัดสต๊อกให้ลูกค้า (ราคา 0 บาท)</span>
-            </div>
-
-            {/* Selected bundle products */}
-            {bundleProducts.length > 0 && (
-              <div className="space-y-2 mb-3">
-                {bundleProducts.map((p) => (
-                  <div key={p.id} className="flex items-center justify-between bg-green-50 rounded-lg px-3 py-2 border border-green-200">
-                    <div>
-                      <div className="text-sm font-medium text-green-800">{p.brand} {p.model}</div>
-                      <div className="text-xs text-green-600">
-                        {p.imeiSerial && <span className="font-mono">IMEI: {p.imeiSerial}</span>}
-                        {p.category === 'ACCESSORY' && <span className="ml-1">({p.name})</span>}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-green-600 font-medium">ของแถม</span>
-                      <button onClick={() => handleRemoveBundle(p.id)} className="text-xs text-red-500 hover:underline">ลบ</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Bundle search */}
-            <div className="relative">
-              <input
-                type="text"
-                value={bundleSearch}
-                onChange={(e) => setBundleSearch(e.target.value)}
-                placeholder="ค้นหาของแถม เช่น ฟิล์ม, เคส, ชุดชาร์จ..."
-                className={inputClass}
-              />
-              {bundleSearch.length >= 2 && (
-                <div className="absolute z-40 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                  {bundleSearchFetching ? (
-                    <div className="px-3 py-3 text-center text-sm text-gray-500">กำลังค้นหา...</div>
-                  ) : bundleSearchResults && bundleSearchResults.length > 0 ? (
-                    bundleSearchResults.map((p) => (
-                      <button
-                        key={p.id}
-                        onClick={() => handleAddBundle(p)}
-                        className="w-full text-left px-3 py-2 hover:bg-green-50 border-b last:border-b-0"
-                      >
-                        <div className="text-sm font-medium">{p.brand} {p.model}</div>
-                        <div className="text-xs text-gray-500">
-                          {p.name}
-                          {p.imeiSerial && <span className="ml-2 font-mono">IMEI: {p.imeiSerial}</span>}
-                          <span className="ml-2">ทุน: {parseFloat(p.costPrice).toLocaleString()} ฿</span>
-                        </div>
-                      </button>
-                    ))
-                  ) : (
-                    <div className="px-3 py-3 text-center text-sm text-gray-500">
-                      ไม่พบสินค้า &quot;{bundleSearch}&quot;
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
+            </CardContent>
+          </Card>
 
           {/* Customer Selection */}
-          <div className="bg-white rounded-lg border p-4">
-            <div className="text-sm font-semibold text-gray-800 mb-3">เลือกลูกค้า</div>
+          <Card>
+            <CardHeader>
+              <div className="text-sm font-semibold text-foreground">เลือกลูกค้า</div>
+            </CardHeader>
+            <CardContent>
             {selectedCustomer ? (
-              <div className="flex items-center justify-between bg-gray-50 rounded-lg p-3">
+              <div className="flex items-center justify-between bg-muted rounded-lg p-3">
                 <div>
                   <div className="text-sm font-medium">{selectedCustomer.name}</div>
-                  <div className="text-xs text-gray-500">{selectedCustomer.phone} | สัญญา {selectedCustomer._count.contracts} รายการ</div>
+                  <div className="text-xs text-muted-foreground">{selectedCustomer.phone} | สัญญา {selectedCustomer._count.contracts} รายการ</div>
                 </div>
                 <button onClick={() => setSelectedCustomer(null)} className="text-xs text-red-500 hover:underline">เปลี่ยน</button>
               </div>
@@ -455,8 +470,8 @@ export default function POSPage() {
                 {customerSearch.length >= 2 && (
                   <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
                     {customersFetching ? (
-                      <div className="px-3 py-4 text-center text-sm text-gray-500">
-                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-600 mx-auto mb-2"></div>
+                      <div className="px-3 py-4 text-center text-sm text-muted-foreground">
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary mx-auto mb-2"></div>
                         กำลังค้นหา...
                       </div>
                     ) : customers && customers.length > 0 ? (
@@ -464,14 +479,14 @@ export default function POSPage() {
                         <button
                           key={c.id}
                           onClick={() => { setSelectedCustomer(c); setCustomerSearch(''); }}
-                          className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b last:border-b-0"
+                          className="w-full text-left px-3 py-2 hover:bg-muted/50 border-b last:border-b-0"
                         >
                           <div className="text-sm font-medium">{c.name}</div>
-                          <div className="text-xs text-gray-500">{c.phone}</div>
+                          <div className="text-xs text-muted-foreground">{c.phone}</div>
                         </button>
                       ))
                     ) : (
-                      <div className="px-3 py-4 text-center text-sm text-gray-500">
+                      <div className="px-3 py-4 text-center text-sm text-muted-foreground">
                         ไม่พบลูกค้าที่ตรงกับ &quot;{customerSearch}&quot;
                       </div>
                     )}
@@ -479,16 +494,20 @@ export default function POSPage() {
                 )}
               </div>
             )}
-          </div>
+            </CardContent>
+          </Card>
 
           {/* Sale Details */}
-          <div className="bg-white rounded-lg border p-4">
-            <div className="text-sm font-semibold text-gray-800 mb-3">รายละเอียดการขาย</div>
+          <Card>
+            <CardHeader>
+              <div className="text-sm font-semibold text-foreground">รายละเอียดการขาย</div>
+            </CardHeader>
+            <CardContent>
 
             {/* Price picker from product system */}
             {selectedProduct && selectedProduct.prices.length > 0 && (
               <div className="mb-3">
-                <label className="block text-xs text-gray-500 mb-2">เลือกราคาขาย (จากระบบ) *</label>
+                <label className="block text-xs text-muted-foreground mb-2">เลือกราคาขาย (จากระบบ) *</label>
                 <div className="flex flex-wrap gap-2">
                   {selectedProduct.prices.map((p) => (
                     <button
@@ -497,12 +516,12 @@ export default function POSPage() {
                       onClick={() => handlePriceSelect(p.id)}
                       className={`px-3 py-2 rounded-lg border-2 text-sm transition-all ${
                         selectedPriceId === p.id
-                          ? 'border-primary-500 bg-primary-50 text-primary-700 ring-2 ring-primary-200'
-                          : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                          ? 'border-primary bg-primary/10 text-primary ring-2 ring-primary/20'
+                          : 'border-border text-foreground hover:border-input'
                       }`}
                     >
                       <div className="font-semibold">{parseFloat(p.amount).toLocaleString()} ฿</div>
-                      <div className="text-xs text-gray-500">{p.label}{p.isDefault ? ' (ค่าเริ่มต้น)' : ''}</div>
+                      <div className="text-xs text-muted-foreground">{p.label}{p.isDefault ? ' (ค่าเริ่มต้น)' : ''}</div>
                     </button>
                   ))}
                 </div>
@@ -511,20 +530,20 @@ export default function POSPage() {
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">
+                <label className="block text-xs text-muted-foreground mb-1">
                   ราคาขาย *
-                  <span className="ml-1 text-primary-500">(จากระบบ)</span>
+                  <span className="ml-1 text-primary">(จากระบบ)</span>
                 </label>
                 <input
                   type="number"
                   value={sellingPrice}
-                  className={`${inputClass} bg-gray-50`}
+                  className={`${inputClass} bg-muted`}
                   placeholder="0"
                   readOnly
                 />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">ส่วนลด</label>
+                <label className="block text-xs text-muted-foreground mb-1">ส่วนลด</label>
                 <input type="number" value={discount} onChange={(e) => setDiscount(e.target.value)} className={inputClass} placeholder="0" />
               </div>
             </div>
@@ -533,13 +552,13 @@ export default function POSPage() {
             {saleType === 'CASH' && (
               <div className="grid grid-cols-2 gap-3 mt-3">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">วิธีชำระเงิน</label>
+                  <label className="block text-xs text-muted-foreground mb-1">วิธีชำระเงิน</label>
                   <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className={selectClass}>
                     {paymentMethods.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">เงินที่รับ</label>
+                  <label className="block text-xs text-muted-foreground mb-1">เงินที่รับ</label>
                   <input type="number" value={amountReceived} onChange={(e) => setAmountReceived(e.target.value)} className={inputClass} placeholder={String(netAmount)} />
                 </div>
               </div>
@@ -549,11 +568,11 @@ export default function POSPage() {
               <div className="space-y-3 mt-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">เลขที่สัญญา</label>
+                    <label className="block text-xs text-muted-foreground mb-1">เลขที่สัญญา</label>
                     <input type="text" value={contractNumber} onChange={(e) => setContractNumber(e.target.value)} className={inputClass} placeholder="ระบบจะสร้างให้อัตโนมัติ" />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">จำนวนงวด</label>
+                    <label className="block text-xs text-muted-foreground mb-1">จำนวนงวด</label>
                     <select value={totalMonths} onChange={(e) => setTotalMonths(e.target.value)} className={selectClass}>
                       {Array.from(
                         { length: (posConfig?.maxInstallmentMonths ?? 12) - (posConfig?.minInstallmentMonths ?? 6) + 1 },
@@ -564,11 +583,11 @@ export default function POSPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">เงินดาวน์</label>
+                    <label className="block text-xs text-muted-foreground mb-1">เงินดาวน์</label>
                     <input type="number" value={downPayment} onChange={(e) => setDownPayment(e.target.value)} className={inputClass} placeholder="0" />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">รับเงินดาวน์โดย</label>
+                    <label className="block text-xs text-muted-foreground mb-1">รับเงินดาวน์โดย</label>
                     <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className={selectClass}>
                       {paymentMethods.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                     </select>
@@ -576,9 +595,9 @@ export default function POSPage() {
                 </div>
                 {/* Transfer amount highlight */}
                 {transferAmount > 0 && (
-                  <div className="bg-primary-50 border border-primary-200 rounded-lg p-3">
-                    <div className="text-xs text-primary-600">ยอดที่ BESTCHOICE รับผิดชอบ (หลังหักดาวน์)</div>
-                    <div className="text-lg font-bold text-primary-700">{transferAmount.toLocaleString()} ฿</div>
+                  <div className="bg-primary/10 border border-primary/20 rounded-lg p-3">
+                    <div className="text-xs text-primary">ยอดที่ BESTCHOICE รับผิดชอบ (หลังหักดาวน์)</div>
+                    <div className="text-lg font-bold text-primary">{transferAmount.toLocaleString()} ฿</div>
                   </div>
                 )}
               </div>
@@ -588,21 +607,21 @@ export default function POSPage() {
               <div className="space-y-3 mt-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">บริษัทไฟแนนซ์ *</label>
+                    <label className="block text-xs text-muted-foreground mb-1">บริษัทไฟแนนซ์ *</label>
                     <input type="text" value={financeCompany} onChange={(e) => setFinanceCompany(e.target.value)} className={inputClass} placeholder="ชื่อบริษัทไฟแนนซ์" />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">เลขที่สัญญา</label>
+                    <label className="block text-xs text-muted-foreground mb-1">เลขที่สัญญา</label>
                     <input type="text" value={contractNumber} onChange={(e) => setContractNumber(e.target.value)} className={inputClass} placeholder="เลขที่สัญญาไฟแนนซ์" />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">เงินดาวน์</label>
+                    <label className="block text-xs text-muted-foreground mb-1">เงินดาวน์</label>
                     <input type="number" value={downPayment} onChange={(e) => setDownPayment(e.target.value)} className={inputClass} placeholder="0" />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">รับเงินดาวน์โดย</label>
+                    <label className="block text-xs text-muted-foreground mb-1">รับเงินดาวน์โดย</label>
                     <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className={selectClass}>
                       {paymentMethods.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                     </select>
@@ -610,9 +629,9 @@ export default function POSPage() {
                 </div>
                 {/* Finance transfer amount highlight */}
                 {transferAmount > 0 && (
-                  <div className="bg-primary-50 border border-primary-200 rounded-lg p-3">
-                    <div className="text-xs text-primary-600">ยอดที่ไฟแนนซ์ต้องโอนให้ร้าน (หลังหักดาวน์)</div>
-                    <div className="text-lg font-bold text-primary-700">{transferAmount.toLocaleString()} ฿</div>
+                  <div className="bg-primary/10 border border-primary/20 rounded-lg p-3">
+                    <div className="text-xs text-primary">ยอดที่ไฟแนนซ์ต้องโอนให้ร้าน (หลังหักดาวน์)</div>
+                    <div className="text-lg font-bold text-primary">{transferAmount.toLocaleString()} ฿</div>
                   </div>
                 )}
               </div>
@@ -620,16 +639,20 @@ export default function POSPage() {
 
             {/* Notes */}
             <div className="mt-3">
-              <label className="block text-xs text-gray-500 mb-1">หมายเหตุ</label>
+              <label className="block text-xs text-muted-foreground mb-1">หมายเหตุ</label>
               <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} className={inputClass} placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)" />
             </div>
-          </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Right Column - Summary */}
-        <div className="space-y-4">
-          <div className="bg-white rounded-lg border p-4 sticky top-4">
-            <div className="text-sm font-semibold text-gray-800 mb-4">สรุปรายการ</div>
+        <div className="flex flex-col gap-5 lg:gap-7.5">
+          <Card className="sticky top-4">
+            <CardHeader>
+              <div className="text-sm font-semibold text-foreground">สรุปรายการ</div>
+            </CardHeader>
+            <CardContent>
 
             {/* Sale type badge */}
             <div className={`inline-block px-3 py-1 rounded-full text-xs font-medium mb-4 ${saleTypeConfig[saleType].bg} ${saleTypeConfig[saleType].color}`}>
@@ -639,16 +662,16 @@ export default function POSPage() {
             {/* Product info */}
             {selectedProduct && (
               <div className="mb-3">
-                <div className="text-xs text-gray-500">สินค้าหลัก</div>
+                <div className="text-xs text-muted-foreground">สินค้าหลัก</div>
                 <div className="text-sm font-medium">{selectedProduct.brand} {selectedProduct.model}</div>
-                {selectedProduct.imeiSerial && <div className="text-xs text-gray-400 font-mono">{selectedProduct.imeiSerial}</div>}
+                {selectedProduct.imeiSerial && <div className="text-xs text-muted-foreground font-mono">{selectedProduct.imeiSerial}</div>}
               </div>
             )}
 
             {/* Bundle products info */}
             {bundleProducts.length > 0 && (
               <div className="mb-3">
-                <div className="text-xs text-gray-500 mb-1">ของแถม ({bundleProducts.length} รายการ)</div>
+                <div className="text-xs text-muted-foreground mb-1">ของแถม ({bundleProducts.length} รายการ)</div>
                 {bundleProducts.map((p) => (
                   <div key={p.id} className="text-xs text-green-700 flex items-center gap-1">
                     <span>+</span>
@@ -661,16 +684,16 @@ export default function POSPage() {
             {/* Customer info */}
             {selectedCustomer && (
               <div className="mb-4">
-                <div className="text-xs text-gray-500">ลูกค้า</div>
+                <div className="text-xs text-muted-foreground">ลูกค้า</div>
                 <div className="text-sm font-medium">{selectedCustomer.name}</div>
-                <div className="text-xs text-gray-400">{selectedCustomer.phone}</div>
+                <div className="text-xs text-muted-foreground">{selectedCustomer.phone}</div>
               </div>
             )}
 
             {/* Price breakdown */}
             <div className="border-t pt-3 space-y-2">
               <div className="flex justify-between text-sm">
-                <span className="text-gray-500">ราคาขาย</span>
+                <span className="text-muted-foreground">ราคาขาย</span>
                 <span>{(parseFloat(sellingPrice) || 0).toLocaleString()} ฿</span>
               </div>
               {parseFloat(discount) > 0 && (
@@ -681,23 +704,23 @@ export default function POSPage() {
               )}
               <div className="flex justify-between text-base font-bold border-t pt-2">
                 <span>ยอดสุทธิ</span>
-                <span className="text-primary-600">{netAmount.toLocaleString()} ฿</span>
+                <span className="text-primary">{netAmount.toLocaleString()} ฿</span>
               </div>
             </div>
 
             {/* Installment summary */}
             {saleType === 'INSTALLMENT' && (
               <div className="border-t mt-3 pt-3 space-y-2">
-                <div className="text-xs font-semibold text-gray-600 mb-1">สรุปผ่อนชำระ</div>
-                {contractNumber && <div className="text-xs text-gray-500">เลขที่สัญญา: <span className="text-gray-800 font-mono">{contractNumber}</span></div>}
-                {totalMonths && <div className="text-xs text-gray-500">จำนวนงวด: <span className="text-gray-800 font-medium">{totalMonths} เดือน</span></div>}
+                <div className="text-xs font-semibold text-muted-foreground mb-1">สรุปผ่อนชำระ</div>
+                {contractNumber && <div className="text-xs text-muted-foreground">เลขที่สัญญา: <span className="text-foreground font-mono">{contractNumber}</span></div>}
+                {totalMonths && <div className="text-xs text-muted-foreground">จำนวนงวด: <span className="text-foreground font-medium">{totalMonths} เดือน</span></div>}
                 {parseFloat(downPayment) > 0 && (
                   <div className="flex justify-between text-xs">
-                    <span className="text-gray-500">เงินดาวน์</span>
+                    <span className="text-muted-foreground">เงินดาวน์</span>
                     <span>{parseFloat(downPayment).toLocaleString()} ฿</span>
                   </div>
                 )}
-                <div className="flex justify-between text-sm font-bold text-primary-600">
+                <div className="flex justify-between text-sm font-bold text-primary">
                   <span>ยอดที่ BESTCHOICE รับ</span>
                   <span>{transferAmount.toLocaleString()} ฿</span>
                 </div>
@@ -708,7 +731,7 @@ export default function POSPage() {
             {saleType === 'CASH' && parseFloat(amountReceived) > 0 && (
               <div className="border-t mt-3 pt-3">
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">เงินรับ</span>
+                  <span className="text-muted-foreground">เงินรับ</span>
                   <span>{parseFloat(amountReceived).toLocaleString()} ฿</span>
                 </div>
                 <div className={`flex justify-between text-sm font-bold ${changeAmount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -721,16 +744,16 @@ export default function POSPage() {
             {/* External finance summary */}
             {saleType === 'EXTERNAL_FINANCE' && (
               <div className="border-t mt-3 pt-3 space-y-2">
-                <div className="text-xs font-semibold text-gray-600 mb-1">สรุปไฟแนนซ์</div>
-                {financeCompany && <div className="text-xs text-gray-500">บริษัท: <span className="text-gray-800 font-medium">{financeCompany}</span></div>}
-                {contractNumber && <div className="text-xs text-gray-500">เลขที่สัญญา: <span className="text-gray-800 font-mono">{contractNumber}</span></div>}
+                <div className="text-xs font-semibold text-muted-foreground mb-1">สรุปไฟแนนซ์</div>
+                {financeCompany && <div className="text-xs text-muted-foreground">บริษัท: <span className="text-foreground font-medium">{financeCompany}</span></div>}
+                {contractNumber && <div className="text-xs text-muted-foreground">เลขที่สัญญา: <span className="text-foreground font-mono">{contractNumber}</span></div>}
                 {parseFloat(downPayment) > 0 && (
                   <div className="flex justify-between text-xs">
-                    <span className="text-gray-500">เงินดาวน์</span>
+                    <span className="text-muted-foreground">เงินดาวน์</span>
                     <span>{parseFloat(downPayment).toLocaleString()} ฿</span>
                   </div>
                 )}
-                <div className="flex justify-between text-sm font-bold text-primary-600">
+                <div className="flex justify-between text-sm font-bold text-primary">
                   <span>ยอดที่ไฟแนนซ์ต้องโอน</span>
                   <span>{transferAmount.toLocaleString()} ฿</span>
                 </div>
@@ -742,18 +765,19 @@ export default function POSPage() {
               <button
                 onClick={() => createSaleMutation.mutate()}
                 disabled={!selectedProduct || !selectedCustomer || !sellingPrice || createSaleMutation.isPending}
-                className="w-full py-3 bg-primary-600 text-white rounded-lg text-sm font-semibold disabled:opacity-50 hover:bg-primary-700 transition-colors"
+                className="w-full py-3 bg-primary text-primary-foreground rounded-lg text-sm font-semibold disabled:opacity-50 hover:bg-primary/90 transition-colors"
               >
                 {createSaleMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกการขาย'}
               </button>
               <button
                 onClick={resetForm}
-                className="w-full py-2 text-sm text-gray-500 hover:text-gray-700"
+                className="w-full py-2 text-sm text-muted-foreground hover:text-foreground"
               >
                 ล้างข้อมูล
               </button>
             </div>
-          </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>

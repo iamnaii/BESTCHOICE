@@ -83,15 +83,15 @@ interface StockDashboard {
 // --- Small Reusable Components ---
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <h2 className="text-sm font-semibold text-gray-700 mb-3">{children}</h2>;
+  return <h2 className="text-sm font-semibold text-foreground mb-3">{children}</h2>;
 }
 
 function StatCard({ label, value, sub, accent }: { label: string; value: string | number; sub?: string; accent?: string }) {
   return (
-    <div className={`bg-white rounded-lg border p-4 ${accent ? `border-l-4 ${accent}` : ''}`}>
-      <div className="text-xs text-gray-500 mb-1">{label}</div>
-      <div className="text-xl font-bold text-gray-900">{typeof value === 'number' ? value.toLocaleString() : value}</div>
-      {sub && <div className="text-xs text-gray-400 mt-1">{sub}</div>}
+    <div className={`rounded-lg border p-4 ${accent ? `border-l-4 ${accent}` : ''}`}>
+      <div className="text-xs text-muted-foreground mb-1">{label}</div>
+      <div className="text-xl font-bold text-foreground">{typeof value === 'number' ? value.toLocaleString() : value}</div>
+      {sub && <div className="text-xs text-muted-foreground mt-1">{sub}</div>}
     </div>
   );
 }
@@ -100,11 +100,11 @@ function BarInline({ label, count, total, color }: { label: string; count: numbe
   const pct = total > 0 ? (count / total) * 100 : 0;
   return (
     <div className="flex items-center gap-2 text-sm">
-      <span className="w-24 truncate text-gray-600" title={label}>{label}</span>
-      <div className="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden">
+      <span className="w-24 truncate text-muted-foreground" title={label}>{label}</span>
+      <div className="flex-1 bg-muted rounded-full h-4 overflow-hidden">
         <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.max(pct, 2)}%` }} />
       </div>
-      <span className="w-8 text-right text-gray-700 font-medium">{count}</span>
+      <span className="w-8 text-right text-foreground font-medium">{count}</span>
     </div>
   );
 }
@@ -466,7 +466,7 @@ export default function StockPage() {
               )}
               <button
                 onClick={handleExport}
-                className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+                className="px-4 py-2 border border-input rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
               >
                 {selectedIds.size > 0 ? `Export (${selectedIds.size})` : 'Export CSV'}
               </button>
@@ -839,12 +839,12 @@ export default function StockPage() {
               placeholder="ค้นหาชื่อ, ยี่ห้อ, รุ่น, IMEI..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="flex-1 min-w-[200px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+              className="flex-1 min-w-[200px] px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
             />
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+              className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
             >
               <option value="">ทุกสถานะ</option>
               {Object.entries(statusLabels).map(([key, val]) => (
@@ -854,7 +854,7 @@ export default function StockPage() {
             <select
               value={filterCategory}
               onChange={(e) => setFilterCategory(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+              className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
             >
               <option value="">ทุกประเภท</option>
               {Object.entries(categoryLabels).map(([key, val]) => (
@@ -864,7 +864,7 @@ export default function StockPage() {
             <select
               value={filterBranch}
               onChange={(e) => setFilterBranch(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+              className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
             >
               <option value="">ทุกสาขา</option>
               {branches.map((b) => (
@@ -923,7 +923,7 @@ export default function StockPage() {
             <select
               value={transferBranchId}
               onChange={(e) => setTransferBranchId(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+              className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
               required
             >
               <option value="">เลือกสาขา...</option>
@@ -940,7 +940,7 @@ export default function StockPage() {
               value={transferNotes}
               onChange={(e) => setTransferNotes(e.target.value)}
               rows={2}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none resize-none"
+              className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none resize-none"
               placeholder="เช่น ส่งไปเปิดสาขาใหม่..."
             />
           </div>
@@ -950,7 +950,7 @@ export default function StockPage() {
             <button
               type="button"
               onClick={() => setShowBulkTransfer(false)}
-              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg"
+              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-input rounded-lg"
             >
               ยกเลิก
             </button>
@@ -992,7 +992,7 @@ export default function StockPage() {
                           value={priceForm.label}
                           onChange={(e) => setPriceForm({ ...priceForm, label: e.target.value })}
                           placeholder="ชื่อราคา"
-                          className="px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                          className="px-2 py-1.5 border border-gray-300 rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
                           required
                         />
                         <input
@@ -1001,7 +1001,7 @@ export default function StockPage() {
                           value={priceForm.amount}
                           onChange={(e) => setPriceForm({ ...priceForm, amount: e.target.value })}
                           placeholder="ราคา (บาท)"
-                          className="px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                          className="px-2 py-1.5 border border-gray-300 rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
                           required
                         />
                       </div>
@@ -1092,7 +1092,7 @@ export default function StockPage() {
                     value={priceForm.label}
                     onChange={(e) => setPriceForm({ ...priceForm, label: e.target.value })}
                     placeholder='เช่น "ราคาเงินสด"'
-                    className="px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                    className="px-2 py-1.5 border border-gray-300 rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
                     required
                   />
                   <input
@@ -1101,7 +1101,7 @@ export default function StockPage() {
                     value={priceForm.amount}
                     onChange={(e) => setPriceForm({ ...priceForm, amount: e.target.value })}
                     placeholder="ราคา (บาท)"
-                    className="px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                    className="px-2 py-1.5 border border-gray-300 rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
                     required
                   />
                 </div>

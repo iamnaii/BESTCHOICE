@@ -189,7 +189,7 @@ export default function ProductsPage() {
           type="checkbox"
           checked={products.length > 0 && selectedIds.size === products.length}
           onChange={toggleSelectAll}
-          className="rounded text-primary-600"
+          className="rounded text-primary"
         />
       ) as unknown as string,
       render: (p: Product) => (
@@ -197,7 +197,7 @@ export default function ProductsPage() {
           type="checkbox"
           checked={selectedIds.has(p.id)}
           onChange={(e) => { e.stopPropagation(); toggleSelect(p.id); }}
-          className="rounded text-primary-600"
+          className="rounded text-primary"
         />
       ),
     }] : []),
@@ -209,8 +209,8 @@ export default function ProductsPage() {
           onClick={() => navigateToProduct(p.id)}
           className="text-left hover:underline"
         >
-          <div className="text-primary-600 font-medium">{p.brand} {p.model}</div>
-          <div className="text-xs text-gray-400">{p.name}</div>
+          <div className="text-primary font-medium">{p.brand} {p.model}</div>
+          <div className="text-xs text-muted-foreground">{p.name}</div>
         </button>
       ),
     },
@@ -239,14 +239,14 @@ export default function ProductsPage() {
               {defaultPrice ? (
                 <div className="font-medium">{parseFloat(defaultPrice.amount).toLocaleString()} ฿</div>
               ) : (
-                <span className="text-gray-400">-</span>
+                <span className="text-muted-foreground">-</span>
               )}
-              <div className="text-xs text-gray-400">ทุน: {parseFloat(p.costPrice).toLocaleString()} ฿</div>
+              <div className="text-xs text-muted-foreground">ทุน: {parseFloat(p.costPrice).toLocaleString()} ฿</div>
             </div>
             {isManager && (
               <button
                 onClick={(e) => { e.stopPropagation(); openPriceEdit(p); }}
-                className="text-gray-400 hover:text-primary-600 transition-colors"
+                className="text-muted-foreground hover:text-primary transition-colors"
                 title="แก้ไขราคา"
               >
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -262,7 +262,7 @@ export default function ProductsPage() {
       key: 'status',
       label: 'สถานะ',
       render: (p: Product) => {
-        const s = statusLabels[p.status] || { label: p.status, className: 'bg-gray-100 text-gray-700' };
+        const s = statusLabels[p.status] || { label: p.status, className: 'bg-muted text-foreground' };
         return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.className}`}>{s.label}</span>;
       },
     },
@@ -283,13 +283,13 @@ export default function ProductsPage() {
             <div className="flex gap-2">
               <button
                 onClick={handleExport}
-                className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+                className="px-4 py-2 border border-border rounded-lg text-sm font-medium hover:bg-muted/50 transition-colors"
               >
                 {selectedIds.size > 0 ? `Export (${selectedIds.size})` : 'Export CSV'}
               </button>
               <button
                 onClick={() => navigate('/products/create')}
-                className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
               >
                 + เพิ่มสินค้า
               </button>
@@ -305,12 +305,12 @@ export default function ProductsPage() {
           placeholder="ค้นหาชื่อ, ยี่ห้อ, รุ่น, IMEI..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 min-w-[200px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+          className="flex-1 min-w-[200px] px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
         />
         <select
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+          className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
         >
           <option value="">ทุกสถานะ</option>
           {Object.entries(statusLabels).map(([key, val]) => (
@@ -320,7 +320,7 @@ export default function ProductsPage() {
         <select
           value={filterCategory}
           onChange={(e) => setFilterCategory(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+          className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
         >
           <option value="">ทุกประเภท</option>
           {Object.entries(categoryLabels).map(([key, val]) => (
@@ -330,7 +330,7 @@ export default function ProductsPage() {
         <select
           value={filterBranch}
           onChange={(e) => setFilterBranch(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+          className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
         >
           <option value="">ทุกสาขา</option>
           {branches.map((b) => (
@@ -360,10 +360,10 @@ export default function ProductsPage() {
         size="sm"
       >
         {editingProduct && (
-          <div className="space-y-4">
+          <div className="flex flex-col gap-5 lg:gap-7.5">
             {/* Cost price reference */}
-            <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3">
-              ราคาทุน: <span className="font-medium text-gray-700">{parseFloat(editingProduct.costPrice).toLocaleString()} ฿</span>
+            <div className="text-xs text-muted-foreground bg-muted rounded-lg p-3">
+              ราคาทุน: <span className="font-medium text-foreground">{parseFloat(editingProduct.costPrice).toLocaleString()} ฿</span>
             </div>
 
             {/* Existing prices list */}
@@ -379,7 +379,7 @@ export default function ProductsPage() {
                           value={priceForm.label}
                           onChange={(e) => setPriceForm({ ...priceForm, label: e.target.value })}
                           placeholder="ชื่อราคา"
-                          className="px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                          className="px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
                           required
                         />
                         <input
@@ -388,28 +388,28 @@ export default function ProductsPage() {
                           value={priceForm.amount}
                           onChange={(e) => setPriceForm({ ...priceForm, amount: e.target.value })}
                           placeholder="ราคา (บาท)"
-                          className="px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                          className="px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
                           required
                         />
                       </div>
                       <div className="flex items-center justify-between">
-                        <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                        <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
                           <input
                             type="checkbox"
                             checked={priceForm.isDefault}
                             onChange={(e) => setPriceForm({ ...priceForm, isDefault: e.target.checked })}
-                            className="rounded text-primary-600"
+                            className="rounded text-primary"
                           />
                           ค่าเริ่มต้น
                         </label>
                         <div className="flex gap-2">
-                          <button type="button" onClick={cancelEditPrice} className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700">
+                          <button type="button" onClick={cancelEditPrice} className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground">
                             ยกเลิก
                           </button>
                           <button
                             type="submit"
                             disabled={priceMutation.isPending}
-                            className="px-3 py-1 bg-primary-600 text-white rounded text-xs font-medium hover:bg-primary-700 disabled:opacity-50"
+                            className="px-3 py-1 bg-primary text-primary-foreground rounded text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
                           >
                             {priceMutation.isPending ? 'บันทึก...' : 'บันทึก'}
                           </button>
@@ -423,9 +423,9 @@ export default function ProductsPage() {
                     </form>
                   ) : (
                     /* Display row */
-                    <div className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-gray-50 border border-transparent hover:border-gray-200">
+                    <div className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-muted/50 border border-transparent hover:border-border">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-gray-900">{price.label}</span>
+                        <span className="text-sm font-medium text-foreground">{price.label}</span>
                         {price.isDefault && (
                           <span className="px-1.5 py-0.5 bg-primary-100 text-primary-700 text-xs rounded font-medium">
                             ค่าเริ่มต้น
@@ -479,7 +479,7 @@ export default function ProductsPage() {
                     value={priceForm.label}
                     onChange={(e) => setPriceForm({ ...priceForm, label: e.target.value })}
                     placeholder='เช่น "ราคาเงินสด"'
-                    className="px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                    className="px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
                     required
                   />
                   <input
@@ -488,22 +488,22 @@ export default function ProductsPage() {
                     value={priceForm.amount}
                     onChange={(e) => setPriceForm({ ...priceForm, amount: e.target.value })}
                     placeholder="ราคา (บาท)"
-                    className="px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                    className="px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
                     required
                   />
                 </div>
                 <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
                     <input
                       type="checkbox"
                       checked={priceForm.isDefault}
                       onChange={(e) => setPriceForm({ ...priceForm, isDefault: e.target.checked })}
-                      className="rounded text-primary-600"
+                      className="rounded text-primary"
                     />
                     ค่าเริ่มต้น
                   </label>
                   <div className="flex gap-2">
-                    <button type="button" onClick={cancelEditPrice} className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700">
+                    <button type="button" onClick={cancelEditPrice} className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground">
                       ยกเลิก
                     </button>
                     <button

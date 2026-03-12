@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import Modal from '@/components/ui/Modal';
+import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card';
 import ProductPhotosPanel from '@/components/product/ProductPhotosPanel';
 import { useAuth } from '@/contexts/AuthContext';
 import { statusLabels, categoryLabels, categoryOptions, transferableStatuses } from '@/lib/constants';
@@ -258,16 +259,16 @@ export default function ProductDetailPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
       </div>
     );
   }
 
   if (!product) {
-    return <div className="text-center py-12 text-gray-500">ไม่พบสินค้า</div>;
+    return <div className="text-center py-12 text-muted-foreground">ไม่พบสินค้า</div>;
   }
 
-  const s = statusLabels[product.status] || { label: product.status, className: 'bg-gray-100 text-gray-700' };
+  const s = statusLabels[product.status] || { label: product.status, className: 'bg-muted text-foreground' };
 
   return (
     <div>
@@ -279,7 +280,7 @@ export default function ProductDetailPage() {
             {isManager && (
               <button
                 onClick={openEditProduct}
-                className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700"
+                className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
               >
                 แก้ไขข้อมูล
               </button>
@@ -290,14 +291,14 @@ export default function ProductDetailPage() {
                   setTransferForm({ toBranchId: '', notes: '' });
                   setIsTransferModalOpen(true);
                 }}
-                className="px-4 py-2 text-sm text-primary-600 border border-primary-300 rounded-lg hover:bg-primary-50"
+                className="px-4 py-2 text-sm text-primary border border-input rounded-lg hover:bg-muted/50"
               >
                 โอนสาขา
               </button>
             )}
             <button
               onClick={() => navigate('/products')}
-              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg"
+              className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground border border-input rounded-lg"
             >
               กลับ
             </button>
@@ -317,8 +318,8 @@ export default function ProductDetailPage() {
               onClick={() => setActiveTab(tab.key)}
               className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === tab.key
-                  ? 'border-primary-600 text-primary-700'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}
             >
               {tab.label}
@@ -337,16 +338,20 @@ export default function ProductDetailPage() {
 
           {/* Legacy Photos (from goods receiving) */}
           {product.photos && product.photos.length > 0 && (
-            <div className="bg-white rounded-lg border p-4 mb-4">
-              <h2 className="text-sm font-semibold text-gray-900 mb-2">รูปถ่ายจากการตรวจรับ</h2>
-              <div className="flex flex-wrap gap-2">
-                {product.photos.map((photo, i) => (
-                  <div key={i} className="w-20 h-20 rounded overflow-hidden border">
-                    <img src={photo} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
-                  </div>
-                ))}
-              </div>
-            </div>
+            <Card className="mb-5">
+              <CardHeader>
+                <CardTitle className="text-sm">รูปถ่ายจากการตรวจรับ</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-2">
+                  {product.photos.map((photo, i) => (
+                    <div key={i} className="w-20 h-20 rounded overflow-hidden border border-border">
+                      <img src={photo} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
           )}
         </div>
       )}
@@ -355,12 +360,13 @@ export default function ProductDetailPage() {
       {(activeTab === 'info' || product.category !== 'PHONE_USED') && (
       <>
       {/* Product Info */}
-      <div className="bg-white rounded-lg border p-6 mb-6">
-        <div className="flex items-start justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gray-900">ข้อมูลสินค้า</h2>
+      <Card className="mb-5 lg:mb-7.5">
+        <CardHeader>
+          <CardTitle>ข้อมูลสินค้า</CardTitle>
           <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${s.className}`}>{s.label}</span>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        </CardHeader>
+        <CardContent>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-5 lg:gap-7.5">
           {product.category === 'ACCESSORY' ? (
             <>
               <InfoField label="ประเภทอุปกรณ์" value={product.accessoryType} />
@@ -397,7 +403,8 @@ export default function ProductDetailPage() {
           <InfoField label="PO" value={product.po?.poNumber} mono />
           <InfoField label="วันที่เพิ่ม" value={new Date(product.createdAt).toLocaleDateString('th-TH')} />
         </div>
-      </div>
+        </CardContent>
+      </Card>
 
       {/* Price Summary */}
       <div className="grid grid-cols-3 gap-4 mb-6">

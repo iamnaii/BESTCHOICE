@@ -106,15 +106,15 @@ export default function UsersPage() {
       key: 'name', label: 'ชื่อ',
       render: (u: User) => (
         <div>
-          <div className="font-medium text-gray-900">{u.name}</div>
-          <div className="text-xs text-gray-500">{u.email}</div>
+          <div className="font-medium text-foreground">{u.name}</div>
+          <div className="text-xs text-muted-foreground">{u.email}</div>
         </div>
       ),
     },
     {
       key: 'role', label: 'ตำแหน่ง',
       render: (u: User) => (
-        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${roleColors[u.role] || 'bg-gray-100 text-gray-700'}`}>
+        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${roleColors[u.role] || 'bg-muted text-foreground'}`}>
           {roleLabels[u.role] || u.role}
         </span>
       ),
@@ -138,7 +138,7 @@ export default function UsersPage() {
     {
       key: 'actions', label: '',
       render: (u: User) => (
-        <button onClick={() => openEdit(u)} className="text-primary-600 hover:text-primary-700 text-sm font-medium">
+        <button onClick={() => openEdit(u)} className="text-primary hover:text-primary/80 text-sm font-medium">
           แก้ไข
         </button>
       ),
@@ -151,7 +151,7 @@ export default function UsersPage() {
         title="จัดการผู้ใช้"
         subtitle={`ทั้งหมด ${users.length} คน`}
         action={
-          <button onClick={openCreate} className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors">
+          <button onClick={openCreate} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">
             + เพิ่มผู้ใช้
           </button>
         }

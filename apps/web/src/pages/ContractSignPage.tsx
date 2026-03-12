@@ -416,7 +416,7 @@ export default function ContractSignPage() {
         title="ลงนามสัญญา"
         subtitle={`ลงนามดิจิทัลบนสัญญาผ่อนชำระ (ต้องลงนาม ${requiredSigners.length} ฝ่าย)`}
         action={
-          <button onClick={() => navigate(`/contracts/${id}`)} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg">
+          <button onClick={() => navigate(`/contracts/${id}`)} className="px-4 py-2 text-sm text-muted-foreground border border-input rounded-lg">
             กลับ
           </button>
         }
@@ -457,9 +457,9 @@ export default function ContractSignPage() {
       {/* PDPA Consent Modal */}
       {showPdpaModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" role="dialog" aria-modal="true" aria-label="ยินยอม PDPA" onKeyDown={(e) => { if (e.key === 'Escape') setShowPdpaModal(false); }} tabIndex={-1} ref={(el: HTMLDivElement | null) => el?.focus()}>
-          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full mx-4 p-6 max-h-[90vh] overflow-y-auto">
-            <h2 className="text-lg font-semibold text-gray-900 mb-3">ยินยอม PDPA</h2>
-            <div className="bg-gray-50 rounded-lg p-4 text-xs text-gray-700 mb-4 max-h-48 overflow-y-auto leading-relaxed">
+          <div className="rounded-xl shadow-xl max-w-lg w-full mx-4 p-6 max-h-[90vh] overflow-y-auto">
+            <h2 className="text-lg font-semibold text-foreground mb-3">ยินยอม PDPA</h2>
+            <div className="bg-muted rounded-lg p-4 text-xs text-foreground mb-4 max-h-48 overflow-y-auto leading-relaxed">
               <p className="font-semibold mb-2">ประกาศความเป็นส่วนตัว (Privacy Notice)</p>
               <p className="mb-2">บริษัท เบสท์ช้อยส์โฟน จำกัด ให้ความสำคัญกับการคุ้มครองข้อมูลส่วนบุคคลของท่าน ตามพระราชบัญญัติคุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562</p>
               <p className="font-medium mb-1">วัตถุประสงค์ในการเก็บรวบรวมข้อมูล:</p>
@@ -474,12 +474,12 @@ export default function ContractSignPage() {
               <p className="font-medium mb-1">ระยะเวลาเก็บข้อมูล:</p>
               <p>ตลอดอายุสัญญา + 5 ปีหลังปิดสัญญา (ตามอายุความทางกฎหมาย)</p>
             </div>
-            <p className="text-sm text-gray-700 mb-3 font-medium">ลงลายมือชื่อยินยอม</p>
+            <p className="text-sm text-foreground mb-3 font-medium">ลงลายมือชื่อยินยอม</p>
             <canvas
               ref={pdpaCanvasRef}
               width={600}
               height={210}
-              className="w-full border-2 border-dashed border-gray-300 rounded-lg cursor-crosshair touch-none mb-3"
+              className="w-full border-2 border-dashed border-input rounded-lg cursor-crosshair touch-none mb-3"
               style={{ height: 'auto', aspectRatio: '20 / 7' }}
               onMouseDown={pdpaStartDraw}
               onMouseMove={pdpaDraw}
@@ -492,19 +492,19 @@ export default function ContractSignPage() {
             <div className="flex gap-3">
               <button
                 onClick={pdpaClear}
-                className="px-4 py-2 min-h-[44px] text-sm border border-gray-300 rounded-lg"
+                className="px-4 py-2 min-h-[44px] text-sm border border-input rounded-lg"
               >
                 ล้าง
               </button>
               <div className="flex-1" />
-              <button onClick={() => setShowPdpaModal(false)} className="px-4 py-2 min-h-[44px] text-sm border border-gray-300 rounded-lg">ยกเลิก</button>
+              <button onClick={() => setShowPdpaModal(false)} className="px-4 py-2 min-h-[44px] text-sm border border-input rounded-lg">ยกเลิก</button>
               <button
                 onClick={() => {
                   if (!pdpaHasDrawn || !pdpaCanvasRef.current) { toast.error('กรุณาลงนามก่อน'); return; }
                   pdpaConsentMutation.mutate(pdpaCanvasRef.current.toDataURL('image/png'));
                 }}
                 disabled={!pdpaHasDrawn || pdpaConsentMutation.isPending}
-                className="px-6 py-2 min-h-[44px] text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+                className="px-6 py-2 min-h-[44px] text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
               >
                 {pdpaConsentMutation.isPending ? 'กำลังบันทึก...' : 'ยืนยันยินยอม'}
               </button>
@@ -529,19 +529,19 @@ export default function ContractSignPage() {
       )}
 
       {/* Signature Checklist */}
-      <div className="mb-6 bg-white rounded-lg border p-4">
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">สถานะการลงนาม ({requiredSigners.filter(t => signedTypes.has(t)).length}/{requiredSigners.length})</h3>
+      <div className="mb-6 rounded-lg border p-4">
+        <h3 className="text-sm font-semibold text-foreground mb-3">สถานะการลงนาม ({requiredSigners.filter(t => signedTypes.has(t)).length}/{requiredSigners.length})</h3>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
           {requiredSigners.map(type => {
             const signed = signedTypes.has(type);
             const sig = signatures.find(s => normalizeSignerType(s.signerType) === type);
             return (
-              <div key={type} className={`p-2 rounded-lg border text-center ${signed ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
-                <div className={`text-xs font-medium ${signed ? 'text-green-700' : 'text-gray-500'}`}>
+              <div key={type} className={`p-2 rounded-lg border text-center ${signed ? 'bg-green-50 border-green-200' : 'bg-muted border-border'}`}>
+                <div className={`text-xs font-medium ${signed ? 'text-green-700' : 'text-muted-foreground'}`}>
                   {signed ? '\u2705' : '\u2B1C'} {SIGNER_LABELS[type]}
                 </div>
-                {sig?.signerName && <div className="text-[10px] text-gray-500 mt-0.5">{sig.signerName}</div>}
-                {sig && <div className="text-[10px] text-gray-400">{new Date(sig.signedAt).toLocaleString('th-TH')}</div>}
+                {sig?.signerName && <div className="text-2xs text-muted-foreground mt-0.5">{sig.signerName}</div>}
+                {sig && <div className="text-2xs text-muted-foreground">{new Date(sig.signedAt).toLocaleString('th-TH')}</div>}
               </div>
             );
           })}
@@ -551,8 +551,8 @@ export default function ContractSignPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Contract Preview (A4 via iframe) */}
         <div>
-          <h2 className="text-lg font-semibold text-gray-900 mb-3">ตัวอย่างสัญญา</h2>
-          <div className="bg-gray-200 rounded-lg border overflow-hidden" style={{ height: '70vh' }}>
+          <h2 className="text-lg font-semibold text-foreground mb-3">ตัวอย่างสัญญา</h2>
+          <div className="bg-muted rounded-lg border overflow-hidden" style={{ height: '70vh' }}>
             {preview ? (
               <ContractPreviewFrame html={preview.html} />
             ) : (
@@ -566,7 +566,7 @@ export default function ContractSignPage() {
           {/* Existing Signatures */}
           {signatures.length > 0 && (
             <div className="mb-4">
-              <h3 className="text-sm font-semibold text-gray-700 mb-2">ลงนามแล้ว</h3>
+              <h3 className="text-sm font-semibold text-foreground mb-2">ลงนามแล้ว</h3>
               <div className="space-y-2">
                 {signatures.map((sig) => {
                   const normalizedType = normalizeSignerType(sig.signerType);
@@ -591,11 +591,11 @@ export default function ContractSignPage() {
           {!allSigned && canSign && (
             <div>
               <div className="flex items-center gap-3 mb-3">
-                <h2 className="text-lg font-semibold text-gray-900">ลงนาม</h2>
+                <h2 className="text-lg font-semibold text-foreground">ลงนาม</h2>
                 <select
                   value={signerType}
                   onChange={(e) => { setSignerType(e.target.value as SignerType); setSignMode('choose'); setSignerName(''); }}
-                  className="px-3 py-2 min-h-[44px] border border-gray-300 rounded-lg text-sm"
+                  className="px-3 py-2 min-h-[44px] border border-input rounded-lg text-sm"
                 >
                   {requiredSigners.map(type => (
                     <option key={type} value={type} disabled={signedTypes.has(type) || (type === 'COMPANY' && companyAutoSigned)}>
@@ -607,7 +607,7 @@ export default function ContractSignPage() {
 
               {/* GPS loading indicator */}
               {gpsLoading && (
-                <div className="mb-2 flex items-center gap-2 text-xs text-gray-500">
+                <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
                   <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-400" />
                   กำลังขอตำแหน่ง GPS...
                 </div>
@@ -615,28 +615,28 @@ export default function ContractSignPage() {
 
               {/* Show auto-sign message for COMPANY when lessor sig is in settings */}
               {signerType === 'COMPANY' && companyAutoSigned && !currentAlreadySigned && (
-                <div className="bg-primary-50 rounded-lg border border-primary-200 p-4 text-center">
-                  <div className="text-sm text-primary-700 font-medium mb-2">ลายเซ็นผู้ให้เช่าซื้อจะถูกใส่อัตโนมัติจากการตั้งค่าระบบ</div>
+                <div className="bg-primary/5 rounded-lg border border-primary/30 p-4 text-center">
+                  <div className="text-sm text-primary font-medium mb-2">ลายเซ็นผู้ให้เช่าซื้อจะถูกใส่อัตโนมัติจากการตั้งค่าระบบ</div>
                   {lessorSignatureImage && (
                     <div className="bg-white rounded border p-2 inline-block">
                       <img src={lessorSignatureImage} alt="ลายเซ็นบริษัท" style={{ maxHeight: '60px' }} />
                     </div>
                   )}
-                  <div className="text-xs text-primary-600 mt-2">({lessorSignerName})</div>
+                  <div className="text-xs text-primary mt-2">({lessorSignerName})</div>
                 </div>
               )}
 
               {!currentAlreadySigned && !(signerType === 'COMPANY' && companyAutoSigned) && (
-                <div className="bg-white rounded-lg border p-4">
+                <div className="rounded-lg border p-4">
                   {/* Signer name input */}
                   <div className="mb-3">
-                    <label className="block text-xs text-gray-500 mb-1">ชื่อผู้ลงนาม</label>
+                    <label className="block text-xs text-muted-foreground mb-1">ชื่อผู้ลงนาม</label>
                     <input
                       type="text"
                       value={signerName}
                       onChange={(e) => setSignerName(e.target.value)}
                       placeholder={`ระบุชื่อ${SIGNER_LABELS[signerType]}`}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
                     />
                   </div>
 
@@ -644,8 +644,8 @@ export default function ContractSignPage() {
                   {signMode === 'choose' && (
                     <div className="space-y-3">
                       {showSavedOption && (
-                        <div className="border-2 border-primary-200 bg-primary-50 rounded-lg p-4">
-                          <div className="text-sm font-medium text-primary-800 mb-2">ลายเซ็นที่บันทึกไว้</div>
+                        <div className="border-2 border-primary/30 bg-primary/5 rounded-lg p-4">
+                          <div className="text-sm font-medium text-primary mb-2">ลายเซ็นที่บันทึกไว้</div>
                           <div className="bg-white rounded border p-3 flex justify-center mb-3">
                             <img src={savedSignature} alt="saved-signature" className="h-16" />
                           </div>
@@ -653,13 +653,13 @@ export default function ContractSignPage() {
                             <button
                               onClick={handleSignFromSaved}
                               disabled={isBusy}
-                              className="flex-1 px-4 py-2 min-h-[44px] text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+                              className="flex-1 px-4 py-2 min-h-[44px] text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
                             >
                               {isBusy ? 'กำลังบันทึก...' : 'ใช้ลายเซ็นที่บันทึกไว้'}
                             </button>
                             <button
                               onClick={() => setSignMode('draw')}
-                              className="px-4 py-2 min-h-[44px] text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+                              className="px-4 py-2 min-h-[44px] text-sm border border-input rounded-lg hover:bg-muted"
                             >
                               เซ็นใหม่
                             </button>
@@ -687,11 +687,11 @@ export default function ContractSignPage() {
                   {signMode === 'draw' && (
                     <div>
                       <div className="flex items-center justify-between mb-2">
-                        <div className="text-xs text-gray-500">เซ็นลายเซ็นใหม่</div>
+                        <div className="text-xs text-muted-foreground">เซ็นลายเซ็นใหม่</div>
                         {showSavedOption && (
                           <button
                             onClick={() => setSignMode('choose')}
-                            className="text-xs text-primary-600 hover:underline"
+                            className="text-xs text-primary hover:underline"
                           >
                             ใช้ลายเซ็นที่บันทึกไว้
                           </button>
@@ -775,12 +775,12 @@ function SignaturePad({
 }) {
   return (
     <>
-      <div className="text-xs text-gray-500 mb-2 text-center">กรุณาลงนามในกรอบด้านล่าง</div>
+      <div className="text-xs text-muted-foreground mb-2 text-center">กรุณาลงนามในกรอบด้านล่าง</div>
       <canvas
         ref={canvasRef}
         width={600}
         height={240}
-        className="w-full border-2 border-dashed border-gray-300 rounded-lg cursor-crosshair touch-none"
+        className="w-full border-2 border-dashed border-input rounded-lg cursor-crosshair touch-none"
         style={{ height: 'auto', aspectRatio: '5 / 2' }}
         onMouseDown={onStartDraw}
         onMouseMove={onDraw}
@@ -791,14 +791,14 @@ function SignaturePad({
         onTouchEnd={onEndDraw}
       />
       <div className="flex gap-3 mt-3">
-        <button onClick={onClear} className="px-4 py-2 min-h-[44px] text-sm border border-gray-300 rounded-lg hover:bg-gray-50">
+        <button onClick={onClear} className="px-4 py-2 min-h-[44px] text-sm border border-input rounded-lg hover:bg-muted">
           ล้าง
         </button>
         <div className="flex-1" />
         <button
           onClick={onSign}
           disabled={!hasDrawn || isPending}
-          className="px-6 py-2 min-h-[44px] text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+          className="px-6 py-2 min-h-[44px] text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
         >
           {isPending ? 'กำลังบันทึก...' : 'ยืนยันลงนาม'}
         </button>

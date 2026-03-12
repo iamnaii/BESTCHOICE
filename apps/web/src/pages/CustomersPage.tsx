@@ -334,7 +334,7 @@ export default function CustomersPage() {
       key: 'index',
       label: '#',
       render: (_c: Customer, _col: unknown, idx?: number) => (
-        <span className="text-xs text-gray-400">{((result?.page || 1) - 1) * (result?.limit || 50) + (idx ?? 0) + 1}</span>
+        <span className="text-xs text-muted-foreground">{((result?.page || 1) - 1) * (result?.limit || 50) + (idx ?? 0) + 1}</span>
       ),
     },
     {
@@ -342,8 +342,8 @@ export default function CustomersPage() {
       label: 'ชื่อ',
       render: (c: Customer) => (
         <button onClick={() => navigateToCustomer(c.id)} className="text-left hover:underline">
-          <div className="text-primary-600 font-medium">{c.name}</div>
-          {c.nickname && <div className="text-xs text-gray-400">({c.nickname})</div>}
+          <div className="text-primary font-medium">{c.name}</div>
+          {c.nickname && <div className="text-xs text-muted-foreground">({c.nickname})</div>}
         </button>
       ),
     },
@@ -380,18 +380,18 @@ export default function CustomersPage() {
       key: 'credit',
       label: 'เครดิต',
       render: (c: Customer) => {
-        if (!c.latestCreditStatus) return <span className="text-xs text-gray-400">-</span>;
+        if (!c.latestCreditStatus) return <span className="text-xs text-muted-foreground">-</span>;
         const statusMap: Record<string, { label: string; cls: string }> = {
           APPROVED: { label: 'ผ่าน', cls: 'bg-green-100 text-green-700' },
           REJECTED: { label: 'ไม่ผ่าน', cls: 'bg-red-100 text-red-700' },
           PENDING: { label: 'รอตรวจ', cls: 'bg-yellow-100 text-yellow-700' },
           MANUAL_REVIEW: { label: 'รอรีวิว', cls: 'bg-orange-100 text-orange-700' },
         };
-        const s = statusMap[c.latestCreditStatus] || { label: c.latestCreditStatus, cls: 'bg-gray-100 text-gray-700' };
+        const s = statusMap[c.latestCreditStatus] || { label: c.latestCreditStatus, cls: 'bg-muted text-foreground' };
         return (
           <div className="text-xs">
             <span className={`px-1.5 py-0.5 rounded-full font-medium ${s.cls}`}>{s.label}</span>
-            {c.latestCreditScore != null && <div className="text-gray-400 mt-0.5">{c.latestCreditScore}/100</div>}
+            {c.latestCreditScore != null && <div className="text-muted-foreground mt-0.5">{c.latestCreditScore}/100</div>}
           </div>
         );
       },
@@ -403,10 +403,10 @@ export default function CustomersPage() {
     },
   ], [navigateToCustomer, result?.page]);
 
-  const inputClass = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500';
-  const selectClass = `${inputClass} bg-white`;
-  const sectionClass = 'border border-gray-200 rounded-lg p-4';
-  const sectionTitle = 'text-sm font-semibold text-gray-800 mb-3';
+  const inputClass = 'w-full px-3 py-2 border border-input rounded-lg text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background';
+  const selectClass = `${inputClass}`;
+  const sectionClass = 'border border-border rounded-lg p-4';
+  const sectionTitle = 'text-sm font-semibold text-foreground mb-3';
 
   return (
     <div>
@@ -414,14 +414,14 @@ export default function CustomersPage() {
         title="ลูกค้า"
         subtitle={`ทั้งหมด ${result?.total ?? 0} ราย`}
         action={
-          <button onClick={() => { resetForm(); setIsModalOpen(true); }} className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700">
+          <button onClick={() => { resetForm(); setIsModalOpen(true); }} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90">
             + เพิ่มลูกค้า
           </button>
         }
       />
 
       <div className="mb-4">
-        <input type="text" placeholder="ค้นหาชื่อ, เบอร์โทร, เลขบัตร ปชช..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none" />
+        <input type="text" placeholder="ค้นหาชื่อ, เบอร์โทร, เลขบัตร ปชช..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full max-w-md px-3 py-2 border border-input rounded-lg text-sm outline-none" />
       </div>
 
       <DataTable
@@ -439,7 +439,7 @@ export default function CustomersPage() {
       />
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="เพิ่มลูกค้าใหม่" size="lg">
-        <form onSubmit={(e) => { e.preventDefault(); createMutation.mutate(); }} className="space-y-5 max-h-[75vh] overflow-y-auto pr-1">
+        <form onSubmit={(e) => { e.preventDefault(); createMutation.mutate(); }} className="flex flex-col gap-5 lg:gap-7.5 max-h-[75vh] overflow-y-auto pr-1">
 
           {/* ===== Smart Card Reader ===== */}
           <div className="bg-green-50 border border-green-200 rounded-lg p-4">
@@ -485,7 +485,7 @@ export default function CustomersPage() {
               type="button"
               onClick={() => ocrFileRef.current?.click()}
               disabled={ocrLoading}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
             >
               {ocrLoading ? (
                 <>
@@ -506,39 +506,39 @@ export default function CustomersPage() {
             <h3 className={sectionTitle}>ข้อมูลส่วนตัว</h3>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">คำนำหน้า</label>
+                <label className="block text-xs text-muted-foreground mb-1">คำนำหน้า</label>
                 <select value={form.prefix} onChange={(e) => setForm({ ...form, prefix: e.target.value })} className={selectClass}>
                   <option value="">-- เลือก --</option>
                   {prefixOptions.map(p => <option key={p} value={p}>{p}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">ชื่อ *</label>
+                <label className="block text-xs text-muted-foreground mb-1">ชื่อ *</label>
                 <input type="text" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} className={inputClass} required />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">นามสกุล *</label>
+                <label className="block text-xs text-muted-foreground mb-1">นามสกุล *</label>
                 <input type="text" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} className={inputClass} required />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">ชื่อเล่น</label>
+                <label className="block text-xs text-muted-foreground mb-1">ชื่อเล่น</label>
                 <input type="text" value={form.nickname} onChange={(e) => setForm({ ...form, nickname: e.target.value })} className={inputClass} />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">เลขบัตรประชาชน (13 หลัก) *</label>
+                <label className="block text-xs text-muted-foreground mb-1">เลขบัตรประชาชน (13 หลัก) *</label>
                 <input type="text" maxLength={13} value={form.nationalId} onChange={(e) => setForm({ ...form, nationalId: e.target.value.replace(/\D/g, '') })} className={`${inputClass} font-mono`} required />
               </div>
               <div className="flex items-end gap-3">
                 <div className="flex items-center gap-2 pb-2">
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input type="checkbox" checked={form.isForeigner} onChange={(e) => setForm({ ...form, isForeigner: e.target.checked })} className="sr-only peer" />
-                    <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary-600"></div>
-                    <span className="ml-2 text-xs text-gray-600">ต่างด้าว</span>
+                    <div className="w-9 h-5 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-input after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                    <span className="ml-2 text-xs text-muted-foreground">ต่างด้าว</span>
                   </label>
                 </div>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">วันเกิด</label>
+                <label className="block text-xs text-muted-foreground mb-1">วันเกิด</label>
                 <input type="date" value={form.birthDate} onChange={(e) => setForm({ ...form, birthDate: e.target.value })} className={inputClass} />
               </div>
             </div>
@@ -553,21 +553,21 @@ export default function CustomersPage() {
           {/* ===== ที่อยู่ปัจจุบัน ===== */}
           <div className={sectionClass}>
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-gray-800">ที่อยู่ปัจจุบัน</h3>
+              <h3 className="text-sm font-semibold text-foreground">ที่อยู่ปัจจุบัน</h3>
               <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={sameAddress} onChange={(e) => setSameAddress(e.target.checked)} className="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
-                <span className="text-xs text-gray-600">เหมือนที่อยู่ตามบัตร</span>
+                <input type="checkbox" checked={sameAddress} onChange={(e) => setSameAddress(e.target.checked)} className="rounded border-input text-primary focus-visible:ring-ring/30" />
+                <span className="text-xs text-muted-foreground">เหมือนที่อยู่ตามบัตร</span>
               </label>
             </div>
             {sameAddress ? (
-              <p className="text-xs text-gray-400 italic">ใช้ที่อยู่เดียวกับที่อยู่ตามบัตรประชาชน</p>
+              <p className="text-xs text-muted-foreground italic">ใช้ที่อยู่เดียวกับที่อยู่ตามบัตรประชาชน</p>
             ) : (
               <AddressForm value={addressCurrent} onChange={setAddressCurrent} />
             )}
 
             {/* Google Map Link */}
             <div className="mt-3">
-              <label className="block text-xs text-gray-500 mb-1">Link Google Map</label>
+              <label className="block text-xs text-muted-foreground mb-1">Link Google Map</label>
               <input type="url" value={form.googleMapLink} onChange={(e) => setForm({ ...form, googleMapLink: e.target.value })} className={inputClass} placeholder="https://maps.google.com/..." />
             </div>
           </div>
@@ -577,31 +577,31 @@ export default function CustomersPage() {
             <h3 className={sectionTitle}>ข้อมูลติดต่อ</h3>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">เบอร์หลัก *</label>
+                <label className="block text-xs text-muted-foreground mb-1">เบอร์หลัก *</label>
                 <input type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className={inputClass} required />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">เบอร์สำรอง</label>
+                <label className="block text-xs text-muted-foreground mb-1">เบอร์สำรอง</label>
                 <input type="tel" value={form.phoneSecondary} onChange={(e) => setForm({ ...form, phoneSecondary: e.target.value })} className={inputClass} />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">อีเมล</label>
+                <label className="block text-xs text-muted-foreground mb-1">อีเมล</label>
                 <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={inputClass} />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">LINE ID</label>
+                <label className="block text-xs text-muted-foreground mb-1">LINE ID</label>
                 <input type="text" value={form.lineId} onChange={(e) => setForm({ ...form, lineId: e.target.value })} className={inputClass} />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">ลิงก์ Facebook</label>
+                <label className="block text-xs text-muted-foreground mb-1">ลิงก์ Facebook</label>
                 <input type="url" value={form.facebookLink} onChange={(e) => setForm({ ...form, facebookLink: e.target.value })} className={inputClass} placeholder="https://facebook.com/..." />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">ชื่อ Facebook</label>
+                <label className="block text-xs text-muted-foreground mb-1">ชื่อ Facebook</label>
                 <input type="text" value={form.facebookName} onChange={(e) => setForm({ ...form, facebookName: e.target.value })} className={inputClass} />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">จำนวนเพื่อน Facebook</label>
+                <label className="block text-xs text-muted-foreground mb-1">จำนวนเพื่อน Facebook</label>
                 <input type="text" value={form.facebookFriends} onChange={(e) => setForm({ ...form, facebookFriends: e.target.value })} className={inputClass} />
               </div>
             </div>
@@ -612,24 +612,24 @@ export default function CustomersPage() {
             <h3 className={sectionTitle}>ข้อมูลที่ทำงาน</h3>
             <div className="grid grid-cols-2 gap-3 mb-3">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">ชื่อที่ทำงาน</label>
+                <label className="block text-xs text-muted-foreground mb-1">ชื่อที่ทำงาน</label>
                 <input type="text" value={form.workplace} onChange={(e) => setForm({ ...form, workplace: e.target.value })} className={inputClass} />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">อาชีพ</label>
+                <label className="block text-xs text-muted-foreground mb-1">อาชีพ</label>
                 <input type="text" value={form.occupation} onChange={(e) => setForm({ ...form, occupation: e.target.value })} className={inputClass} />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">รายละเอียดอาชีพ</label>
+                <label className="block text-xs text-muted-foreground mb-1">รายละเอียดอาชีพ</label>
                 <input type="text" value={form.occupationDetail} onChange={(e) => setForm({ ...form, occupationDetail: e.target.value })} className={inputClass} />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">เงินเดือน</label>
+                <label className="block text-xs text-muted-foreground mb-1">เงินเดือน</label>
                 <input type="number" value={form.salary} onChange={(e) => setForm({ ...form, salary: e.target.value })} className={inputClass} placeholder="0.00" />
               </div>
             </div>
             <div className="mt-2">
-              <label className="block text-xs text-gray-500 mb-1">ที่อยู่ที่ทำงาน</label>
+              <label className="block text-xs text-muted-foreground mb-1">ที่อยู่ที่ทำงาน</label>
               <AddressForm value={addressWork} onChange={setAddressWork} />
             </div>
           </div>
@@ -637,32 +637,32 @@ export default function CustomersPage() {
           {/* ===== รายชื่อบุคคลอ้างอิง ===== */}
           <div className={sectionClass}>
             <h3 className={sectionTitle}>รายชื่อบุคคลอ้างอิง</h3>
-            <div className="space-y-4">
+            <div className="flex flex-col gap-5 lg:gap-7.5">
               {references.map((ref, idx) => (
                 <div key={idx}>
-                  <div className="text-xs font-medium text-gray-600 mb-2">บุคคลอ้างอิง {idx + 1}</div>
+                  <div className="text-xs font-medium text-muted-foreground mb-2">บุคคลอ้างอิง {idx + 1}</div>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">คำนำหน้า</label>
+                      <label className="block text-xs text-muted-foreground mb-1">คำนำหน้า</label>
                       <select value={ref.prefix} onChange={(e) => updateRef(idx, 'prefix', e.target.value)} className={selectClass}>
                         <option value="">-- เลือก --</option>
                         {prefixOptions.map(p => <option key={p} value={p}>{p}</option>)}
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">ชื่อ</label>
+                      <label className="block text-xs text-muted-foreground mb-1">ชื่อ</label>
                       <input type="text" value={ref.firstName} onChange={(e) => updateRef(idx, 'firstName', e.target.value)} className={inputClass} />
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">นามสกุล</label>
+                      <label className="block text-xs text-muted-foreground mb-1">นามสกุล</label>
                       <input type="text" value={ref.lastName} onChange={(e) => updateRef(idx, 'lastName', e.target.value)} className={inputClass} />
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">เบอร์หลัก</label>
+                      <label className="block text-xs text-muted-foreground mb-1">เบอร์หลัก</label>
                       <input type="tel" value={ref.phone} onChange={(e) => updateRef(idx, 'phone', e.target.value)} className={inputClass} />
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">ความสัมพันธ์</label>
+                      <label className="block text-xs text-muted-foreground mb-1">ความสัมพันธ์</label>
                       <select value={ref.relationship} onChange={(e) => updateRef(idx, 'relationship', e.target.value)} className={selectClass}>
                         <option value="">-- เลือก --</option>
                         {relationshipOptions.map(r => <option key={r} value={r}>{r}</option>)}
@@ -675,9 +675,9 @@ export default function CustomersPage() {
           </div>
 
           {/* ===== Submit ===== */}
-          <div className="flex justify-end gap-3 pt-2 sticky bottom-0 bg-white py-3 border-t">
-            <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg">ยกเลิก</button>
-            <button type="submit" disabled={createMutation.isPending} className="px-6 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium disabled:opacity-50">
+          <div className="flex justify-end gap-3 pt-2 sticky bottom-0 bg-background py-3 border-t border-border">
+            <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm text-muted-foreground border border-input rounded-lg">ยกเลิก</button>
+            <button type="submit" disabled={createMutation.isPending} className="px-6 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium disabled:opacity-50">
               {createMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
             </button>
           </div>

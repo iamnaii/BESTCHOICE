@@ -56,12 +56,12 @@
   }
 
   .dark {
-    /* zinc-950 bg, zinc-50 fg */
+    /* Demo 9 dark: slightly lighter card on dark bg for contrast */
     --background: 240 10% 4%;
     --foreground: 0 0% 98%;
-    --card: 240 10% 4%;
+    --card: 240 10% 8%;
     --card-foreground: 0 0% 98%;
-    --popover: 240 10% 4%;
+    --popover: 240 10% 8%;
     --popover-foreground: 0 0% 98%;
     /* Primary: blue-600 in dark */
     --primary: 217 91% 60%;

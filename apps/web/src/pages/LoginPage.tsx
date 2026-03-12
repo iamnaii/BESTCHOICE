@@ -37,8 +37,8 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="grid lg:grid-cols-2 grow min-h-screen">
-      {/* Left Side - Login Form (Metronic branded auth pattern) */}
+    <div className="grid lg:grid-cols-2 grow min-h-screen bg-background">
+      {/* Left Side - Login Form (Metronic Demo 9 auth pattern) */}
       <div className="flex justify-center items-center p-8 lg:p-10 order-2 lg:order-1">
         <div className="w-full max-w-[400px]">
           {/* Mobile logo */}
@@ -109,9 +109,9 @@ export default function LoginPage() {
             </form>
 
             {import.meta.env.DEV && (
-              <div className="mt-5 p-3.5 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-800/30">
-                <p className="font-medium text-blue-700 dark:text-blue-400 text-xs mb-0.5">บัญชีทดสอบ:</p>
-                <p className="text-blue-600 dark:text-blue-400/80 text-xs">admin@bestchoice.com / admin1234</p>
+              <div className="mt-5 p-3.5 bg-primary/5 rounded-lg border border-primary/10">
+                <p className="font-medium text-primary text-xs mb-0.5">บัญชีทดสอบ:</p>
+                <p className="text-primary/80 text-xs">admin@bestchoice.com / admin1234</p>
               </div>
             )}
           </div>
@@ -125,39 +125,39 @@ export default function LoginPage() {
       </div>
 
       {/* Right Side - Branded panel (Metronic branded auth pattern) */}
-      <div className="hidden lg:flex lg:rounded-xl lg:border lg:border-border lg:m-5 order-1 lg:order-2 bg-zinc-950 relative overflow-hidden flex-col p-16 gap-4 justify-center">
+      <div className="hidden lg:flex lg:rounded-xl lg:border lg:border-border lg:m-5 order-1 lg:order-2 bg-card relative overflow-hidden flex-col p-16 gap-4 justify-center">
         <Link to="/landing" className="flex items-center gap-3 mb-8">
           <div className="size-10 rounded-lg bg-primary flex items-center justify-center">
-            <span className="text-white font-bold text-lg">B</span>
+            <span className="text-primary-foreground font-bold text-lg">B</span>
           </div>
-          <span className="text-2xl font-bold text-white tracking-tight">
-            BEST<span className="text-blue-400">CHOICE</span>
+          <span className="text-2xl font-bold text-foreground tracking-tight">
+            BEST<span className="text-primary">CHOICE</span>
           </span>
         </Link>
 
-        <h3 className="text-2xl font-semibold text-white">
+        <h3 className="text-2xl font-semibold text-foreground">
           ระบบจัดการร้านครบวงจร
         </h3>
-        <div className="text-base font-medium text-zinc-400">
+        <div className="text-base font-medium text-muted-foreground">
           จัดการสินค้า ลูกค้า สัญญาผ่อนชำระ และติดตามยอดขาย
           <br />ทั้งหมดในที่เดียว ด้วย{' '}
-          <span className="text-white font-semibold">BESTCHOICE</span>
+          <span className="text-foreground font-semibold">BESTCHOICE</span>
         </div>
 
         <div className="mt-8 grid grid-cols-2 gap-4">
-          <div className="bg-white/[0.05] border border-white/[0.07] rounded-xl p-5">
-            <div className="text-2xl font-bold text-white">500+</div>
-            <div className="text-sm text-zinc-500 mt-1">สินค้าในระบบ</div>
+          <div className="bg-muted/50 border border-border rounded-xl p-5">
+            <div className="text-2xl font-bold text-foreground">500+</div>
+            <div className="text-sm text-muted-foreground mt-1">สินค้าในระบบ</div>
           </div>
-          <div className="bg-white/[0.05] border border-white/[0.07] rounded-xl p-5">
-            <div className="text-2xl font-bold text-white">1,000+</div>
-            <div className="text-sm text-zinc-500 mt-1">ลูกค้าทั้งหมด</div>
+          <div className="bg-muted/50 border border-border rounded-xl p-5">
+            <div className="text-2xl font-bold text-foreground">1,000+</div>
+            <div className="text-sm text-muted-foreground mt-1">ลูกค้าทั้งหมด</div>
           </div>
         </div>
 
         {/* Decorative */}
-        <div className="absolute top-20 right-20 w-72 h-72 bg-blue-500/5 rounded-full blur-3xl" />
-        <div className="absolute bottom-20 left-20 w-56 h-56 bg-blue-400/5 rounded-full blur-3xl" />
+        <div className="absolute top-20 right-20 w-72 h-72 bg-primary/5 rounded-full blur-3xl" />
+        <div className="absolute bottom-20 left-20 w-56 h-56 bg-primary/3 rounded-full blur-3xl" />
       </div>
     </div>
   );

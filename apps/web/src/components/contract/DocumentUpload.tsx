@@ -192,7 +192,10 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setIsDragOver(false);
+    // Only clear drag state when actually leaving the drop zone (not moving over children)
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setIsDragOver(false);
+    }
   }, []);
 
   const handleDrop = useCallback((e: React.DragEvent) => {

@@ -9,7 +9,7 @@ import WorkflowStatusBadge from '@/components/contract/WorkflowStatusBadge';
 import DocumentUpload from '@/components/contract/DocumentUpload';
 import CreditCheckPanel from '@/components/contract/CreditCheckPanel';
 import toast from 'react-hot-toast';
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface Payment {
@@ -475,13 +475,15 @@ export default function ContractDetailPage() {
               onClick={() => {
                 setActiveTab('preview');
                 const tryPrint = (attempts = 0) => {
+                  // Guard: stop polling if component/iframe no longer in DOM
                   const iframe = document.querySelector('iframe[title="contract-preview"]') as HTMLIFrameElement;
-                  if (iframe?.contentWindow && iframe.contentDocument?.body?.innerHTML) {
+                  if (!iframe || !document.body.contains(iframe)) return;
+                  if (iframe.contentWindow && iframe.contentDocument?.body?.innerHTML) {
                     // Wait for fonts to load inside iframe before printing
                     const iframeDoc = iframe.contentDocument;
                     const fontsReady = iframeDoc?.fonts?.ready;
                     if (fontsReady) {
-                      fontsReady.then(() => iframe.contentWindow!.print()).catch(() => iframe.contentWindow!.print());
+                      fontsReady.then(() => iframe.contentWindow?.print()).catch(() => iframe.contentWindow?.print());
                     } else {
                       iframe.contentWindow.print();
                     }

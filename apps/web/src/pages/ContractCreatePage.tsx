@@ -1200,7 +1200,7 @@ export default function ContractCreatePage() {
                     {/* Drop zone */}
                     <div
                       onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragOverType(dt.value); }}
-                      onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setDragOverType(null); }}
+                      onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverType(null); }}
                       onDrop={(e) => handleDropForType(e, dt.value)}
                       onClick={() => fileInputRefs.current[dt.value]?.click()}
                       className={`border-2 border-dashed rounded-lg py-3 px-4 text-center cursor-pointer transition-colors ${
@@ -1267,7 +1267,7 @@ export default function ContractCreatePage() {
                     )}
                     <div
                       onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragOverType(dt.value); }}
-                      onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setDragOverType(null); }}
+                      onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverType(null); }}
                       onDrop={(e) => handleDropForType(e, dt.value)}
                       onClick={() => fileInputRefs.current[dt.value]?.click()}
                       className={`border-2 border-dashed rounded-lg py-3 px-4 text-center cursor-pointer transition-colors ${

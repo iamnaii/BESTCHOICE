@@ -28,10 +28,11 @@ function MobileSidebar() {
 
 function MainContent() {
   const isMobile = useIsMobile();
+  const { sidebarCollapse } = useLayout();
 
   return (
     <div className="flex min-h-screen bg-background">
-      {/* Desktop: Icon Rail Sidebar (70px fixed) */}
+      {/* Desktop Sidebar */}
       {!isMobile && <Sidebar />}
 
       {/* Mobile: Sheet Sidebar */}
@@ -41,7 +42,7 @@ function MainContent() {
       <div
         className="wrapper flex-1 flex flex-col min-w-0 transition-all duration-300"
         style={{
-          paddingLeft: isMobile ? 0 : 70,
+          paddingLeft: isMobile ? 0 : sidebarCollapse ? 70 : 264,
         }}
       >
         <TopBar />

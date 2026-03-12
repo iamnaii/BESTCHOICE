@@ -44,6 +44,7 @@ import { OcrModule } from './modules/ocr/ocr.module';
 import { PDPAModule } from './modules/pdpa/pdpa.module';
 import { ReceiptsModule } from './modules/receipts/receipts.module';
 import { CustomerAccessModule } from './modules/customer-access/customer-access.module';
+import { LineOaModule } from './modules/line-oa/line-oa.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
 import { CsrfGuard } from './guards/csrf.guard';
@@ -109,6 +110,8 @@ import { CsrfGuard } from './guards/csrf.guard';
     PDPAModule,
     ReceiptsModule,
     CustomerAccessModule,
+    // LINE OA Integration
+    LineOaModule,
     // MASTER: Management
     UsersModule,
     SettingsModule,

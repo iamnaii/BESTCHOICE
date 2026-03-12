@@ -61,4 +61,40 @@ export class DashboardController {
   getBranchComparison() {
     return this.dashboardService.getBranchComparison();
   }
+
+  @Get('monthly-revenue')
+  getMonthlyRevenue(
+    @CurrentUser() user: { role: string; branchId: string | null },
+    @Query('branchId') branchId?: string,
+  ) {
+    const effectiveBranch =
+      user.role === 'SALES' || user.role === 'BRANCH_MANAGER'
+        ? user.branchId || undefined
+        : branchId || undefined;
+    return this.dashboardService.getMonthlyRevenue(effectiveBranch);
+  }
+
+  @Get('aging-summary')
+  getAgingSummary(
+    @CurrentUser() user: { role: string; branchId: string | null },
+    @Query('branchId') branchId?: string,
+  ) {
+    const effectiveBranch =
+      user.role === 'SALES' || user.role === 'BRANCH_MANAGER'
+        ? user.branchId || undefined
+        : branchId || undefined;
+    return this.dashboardService.getAgingSummary(effectiveBranch);
+  }
+
+  @Get('staff-performance')
+  getStaffPerformance(
+    @CurrentUser() user: { role: string; branchId: string | null },
+    @Query('branchId') branchId?: string,
+  ) {
+    const effectiveBranch =
+      user.role === 'SALES' || user.role === 'BRANCH_MANAGER'
+        ? user.branchId || undefined
+        : branchId || undefined;
+    return this.dashboardService.getStaffPerformance(effectiveBranch);
+  }
 }

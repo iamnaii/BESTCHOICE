@@ -4,8 +4,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import {
   ShoppingCart,
-  Clock,
-  Package,
   Warehouse,
   BarChart3,
   Settings,
@@ -75,24 +73,31 @@ interface NavSection {
 const navSections: NavSection[] = [
   {
     key: 'sales',
-    label: 'ขาย & ผ่อนชำระ',
+    label: 'ขายสินค้า',
     icon: ShoppingCart,
     items: [
       { label: 'POS ขายสินค้า', path: '/pos', icon: ShoppingCart },
       { label: 'ประวัติการขาย', path: '/sales', icon: Receipt },
       { label: 'ลูกค้า', path: '/customers', icon: Users },
       { label: 'ตรวจเครดิต', path: '/credit-checks', icon: CreditCard },
+    ],
+  },
+  {
+    key: 'contracts',
+    label: 'สัญญา & ชำระเงิน',
+    icon: FileCheck,
+    items: [
       { label: 'สัญญาผ่อน', path: '/contracts', icon: FileCheck },
       { label: 'ชำระเงิน', path: '/payments', icon: DollarSign },
-      { label: 'สถานะเอกสาร', path: '/document-dashboard', icon: FileText, roles: ['OWNER', 'BRANCH_MANAGER'] },
       { label: 'ใบเสร็จรับเงิน', path: '/receipts', icon: Receipt, roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
       { label: 'ตรวจสอบสลิป', path: '/slip-review', icon: FileCheck, roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
+      { label: 'สถานะเอกสาร', path: '/document-dashboard', icon: FileText, roles: ['OWNER', 'BRANCH_MANAGER'] },
     ],
   },
   {
     key: 'debt',
-    label: 'ติดตาม & จัดการหนี้',
-    icon: Clock,
+    label: 'ติดตามหนี้',
+    icon: AlertTriangle,
     items: [
       { label: 'ติดตามหนี้', path: '/overdue', icon: AlertTriangle },
       { label: 'เปลี่ยนเครื่อง', path: '/exchange', icon: RefreshCw, roles: ['OWNER', 'BRANCH_MANAGER'] },
@@ -100,23 +105,16 @@ const navSections: NavSection[] = [
     ],
   },
   {
-    key: 'purchasing',
-    label: 'จัดซื้อ',
-    icon: Package,
-    items: [
-      { label: 'สั่งซื้อ', path: '/purchase-orders', icon: ClipboardList, roles: ['OWNER', 'BRANCH_MANAGER'] },
-      { label: 'แจ้งเตือนสต็อก', path: '/stock/alerts', icon: Bell, roles: ['OWNER', 'BRANCH_MANAGER'] },
-    ],
-  },
-  {
-    key: 'warehouse',
-    label: 'คลังสินค้า',
+    key: 'inventory',
+    label: 'คลังสินค้า & จัดซื้อ',
     icon: Warehouse,
     items: [
       { label: 'คลังสินค้า', path: '/stock', icon: Warehouse, roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES'] },
+      { label: 'สั่งซื้อ', path: '/purchase-orders', icon: ClipboardList, roles: ['OWNER', 'BRANCH_MANAGER'] },
       { label: 'โอนสาขา', path: '/stock/transfers', icon: ArrowRightLeft, roles: ['OWNER', 'BRANCH_MANAGER'] },
       { label: 'ปรับสต็อก', path: '/stock/adjustments', icon: Sliders, roles: ['OWNER', 'BRANCH_MANAGER'] },
-      { label: 'ตรวจนับสต๊อก', path: '/stock/count', icon: ClipboardCheck, roles: ['OWNER', 'BRANCH_MANAGER'] },
+      { label: 'ตรวจนับสต็อก', path: '/stock/count', icon: ClipboardCheck, roles: ['OWNER', 'BRANCH_MANAGER'] },
+      { label: 'แจ้งเตือนสต็อก', path: '/stock/alerts', icon: Bell, roles: ['OWNER', 'BRANCH_MANAGER'] },
     ],
   },
   {
@@ -129,8 +127,8 @@ const navSections: NavSection[] = [
     ],
   },
   {
-    key: 'system',
-    label: 'ระบบ',
+    key: 'settings',
+    label: 'ตั้งค่า & ผู้ใช้',
     icon: Settings,
     items: [
       { label: 'ผู้ขาย', path: '/suppliers', icon: Building2, roles: ['OWNER', 'BRANCH_MANAGER'] },
@@ -141,9 +139,16 @@ const navSections: NavSection[] = [
       { label: 'ตั้งค่าดอกเบี้ย', path: '/settings/interest-config', icon: Percent, roles: ['OWNER'] },
       { label: 'ราคาตั้งต้น', path: '/settings/pricing-templates', icon: DollarSign, roles: ['OWNER'] },
       { label: 'เทมเพลตสัญญา', path: '/contract-templates', icon: FileSignature, roles: ['OWNER'] },
-      { label: 'สถานะระบบ', path: '/system-status', icon: Activity, roles: ['OWNER'] },
+    ],
+  },
+  {
+    key: 'admin',
+    label: 'ผู้ดูแลระบบ',
+    icon: Shield,
+    items: [
       { label: 'PDPA', path: '/pdpa', icon: Shield, roles: ['OWNER', 'BRANCH_MANAGER'] },
       { label: 'Audit Logs', path: '/audit-logs', icon: ScrollText, roles: ['OWNER'] },
+      { label: 'สถานะระบบ', path: '/system-status', icon: Activity, roles: ['OWNER'] },
       { label: 'นำเข้าข้อมูล', path: '/migration', icon: Database, roles: ['OWNER'] },
     ],
   },

@@ -187,7 +187,8 @@ export class DocumentsService {
     }
 
     // Replace placeholders and wrap with A4 styling
-    const renderedHtml = this.wrapWithA4Styles(this.replacePlaceholders(htmlContent, contract), templateSettings);
+    const lessorSig = await this.getSystemLessorSignature();
+    const renderedHtml = this.wrapWithA4Styles(this.replacePlaceholders(htmlContent, contract, lessorSig), templateSettings);
 
     // Generate file hash
     const fileHash = crypto.createHash('sha256').update(renderedHtml).digest('hex');
@@ -246,7 +247,8 @@ export class DocumentsService {
     let htmlContent = template?.contentHtml || this.getDefaultTemplate('PDPA_CONSENT');
 
     // Replace standard placeholders
-    htmlContent = this.replacePlaceholders(htmlContent, contract);
+    const lessorSigPdpa = await this.getSystemLessorSignature();
+    htmlContent = this.replacePlaceholders(htmlContent, contract, lessorSigPdpa);
 
     // Replace PDPA-specific placeholders
     const pdpaSignature = contract.pdpaConsent.signatureImage && this.isSafeImageDataUrl(contract.pdpaConsent.signatureImage)
@@ -335,7 +337,8 @@ export class DocumentsService {
       templateSettings = template?.settings;
     }
 
-    const bodyHtml = this.replacePlaceholders(htmlContent, contract);
+    const lessorSigPreview = await this.getSystemLessorSignature();
+    const bodyHtml = this.replacePlaceholders(htmlContent, contract, lessorSigPreview);
     return { html: this.wrapWithA4Styles(bodyHtml, templateSettings) };
   }
 
@@ -484,10 +487,10 @@ export class DocumentsService {
     let footerHtml = '';
     if (footerText || showPageNumber) {
       const pageNum = showPageNumber
-        ? `<span style="color:#9ca3af">${pageNumberFormat.replace('{page}', '<span class="page-num"></span>').replace('{total}', '<span class="page-total"></span>')}</span>`
+        ? `<span style="color:#9ca3af">${pageNumberFormat.replace('{page}', '1').replace('{total}', '1')}</span>`
         : '';
       footerHtml = `
-        <div style="margin-top:40px;padding-top:12px;border-top:1px solid #d1d5db;display:flex;justify-content:space-between;align-items:flex-end;font-size:${fontSize.footer}px">
+        <div style="margin-top:2.5rem;padding-top:0.75rem;border-top:1px solid #d1d5db;display:flex;justify-content:space-between;align-items:flex-end;font-size:${fontSize.footer}px">
           <span style="color:#9ca3af">${this.escapeHtml(footerText)}</span>
           ${pageNum}
         </div>`;
@@ -501,15 +504,26 @@ export class DocumentsService {
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap" rel="stylesheet"/>
 <style>
+  /* TH Sarabun PSK — local font files (matches template editor) */
+  @font-face {
+    font-family: 'TH Sarabun PSK';
+    src: url('/fonts/THSarabunPSK-Regular.ttf') format('truetype');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+  }
+  @font-face {
+    font-family: 'TH Sarabun PSK';
+    src: url('/fonts/THSarabunPSK-Bold.ttf') format('truetype');
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+  }
+</style>
+<style>
   @page {
     size: A4;
     margin: ${margins.top}mm ${margins.right}mm ${margins.bottom}mm ${margins.left}mm;
-    @bottom-center {
-      content: counter(page) "/" counter(pages);
-      font-size: 10px;
-      color: #999;
-      font-family: 'Sarabun', 'TH Sarabun PSK', sans-serif;
-    }
   }
   * { box-sizing: border-box; }
   html, body {
@@ -558,7 +572,17 @@ ${footerHtml}
 </html>`;
   }
 
-  private replacePlaceholders(html: string, contract: any): string {
+  private async getSystemLessorSignature(): Promise<{ image: string; name: string } | null> {
+    const rows = await this.prisma.systemConfig.findMany({
+      where: { key: { in: ['lessor_signature_image', 'lessor_signer_name'] } },
+    });
+    const image = rows.find(r => r.key === 'lessor_signature_image')?.value || '';
+    const name = rows.find(r => r.key === 'lessor_signer_name')?.value || '';
+    if (image && name) return { image, name };
+    return null;
+  }
+
+  private replacePlaceholders(html: string, contract: any, lessorSig?: { image: string; name: string } | null): string {
     const esc = this.escapeHtml.bind(this);
 
     const payments = contract.payments || [];
@@ -570,9 +594,14 @@ ${footerHtml}
       .join('');
 
     const customerSig = contract.signatures?.find((s: any) => s.signerType === 'CUSTOMER');
-    const staffSig = contract.signatures?.find((s: any) => s.signerType === 'STAFF' || s.signerType === 'COMPANY');
+    let staffSig = contract.signatures?.find((s: any) => s.signerType === 'STAFF' || s.signerType === 'COMPANY');
     const witness1Sig = contract.signatures?.find((s: any) => s.signerType === 'WITNESS_1');
     const witness2Sig = contract.signatures?.find((s: any) => s.signerType === 'WITNESS_2');
+
+    // Fallback to system settings lessor signature if no COMPANY/STAFF signature on contract
+    if (!staffSig && lessorSig) {
+      staffSig = { signatureImage: lessorSig.image, signerName: lessorSig.name, signerType: 'COMPANY' };
+    }
 
     // Validate signature images are safe data URLs before embedding
     const customerSigSafe = customerSig && this.isSafeImageDataUrl(customerSig.signatureImage);
@@ -821,9 +850,10 @@ ${footerHtml}
       const installmentsRows = payments.map((p: any) => {
         const d = new Date(p.dueDate);
         const dateStr = `${d.getDate()} ${monthsShort[d.getMonth()]} ${d.getFullYear() + 543}`;
-        return `<tr><td style="text-align:center;padding:4px 8px">${p.installmentNo}</td><td style="text-align:center;padding:4px 8px">${dateStr}</td><td style="text-align:right;padding:4px 8px">${Number(p.amountDue).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>`;
+        return `<tr><td style="text-align:center;padding:4px 12px;border:1px solid #9ca3af">${p.installmentNo}</td><td style="text-align:center;padding:4px 12px;border:1px solid #9ca3af">${dateStr}</td><td style="text-align:right;padding:4px 12px;border:1px solid #9ca3af">${Number(p.amountDue).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>`;
       }).join('');
-      const installmentsTable = `<table style="width:100%;border-collapse:collapse;border:1px solid #d1d5db"><thead><tr style="background:#f3f4f6"><th style="padding:6px 8px;border:1px solid #d1d5db;text-align:center">งวดที่</th><th style="padding:6px 8px;border:1px solid #d1d5db;text-align:center">วันครบกำหนด</th><th style="padding:6px 8px;border:1px solid #d1d5db;text-align:center">จำนวนเงิน (บาท)</th></tr></thead><tbody>${installmentsRows}</tbody></table>`;
+      // Match PaymentTable.tsx: 75% width, centered, border-gray-400, matching column headers
+      const installmentsTable = `<table style="width:75%;margin:12px auto;border-collapse:collapse;font-size:13px"><thead><tr style="background:#f9fafb"><th style="padding:6px 12px;border:1px solid #9ca3af;text-align:center;width:64px">งวดที่</th><th style="padding:6px 12px;border:1px solid #9ca3af;text-align:center">วันที่ครบกำหนดชำระ</th><th style="padding:6px 12px;border:1px solid #9ca3af;text-align:right;width:112px">จำนวนเงิน</th></tr></thead><tbody>${installmentsRows}</tbody></table>`;
       result = result.replace(/\{\{=\s*INSTALLMENTS\s*\}\}/g, installmentsTable);
     }
 
@@ -876,23 +906,26 @@ ${footerHtml}
     const hadWitness2Placeholder = html.includes('{witness2_signature}');
     const sigImgStyle = 'max-height:50px;display:block;margin:0 auto';
 
+    // Signature image injection style — inline image replaces dots
+    const sigInlineImg = (src: string) => `<img src="${src}" style="${sigImgStyle};display:inline-block;vertical-align:middle"/>`;
+
     if (staffSigSafe && !hadStaffPlaceholder) {
       result = result.replace(
         /(ลงชื่อ)[.…]{3,}(ผู้ให้เช่าซื้อ)/,
-        `$1</div><div style="min-height:50px;display:flex;align-items:center;justify-content:center"><img src="${staffSig.signatureImage}" style="${sigImgStyle}"/></div><div style="font-size:13px">$2`,
+        `$1 ${sigInlineImg(staffSig.signatureImage)} $2`,
       );
     }
     if (customerSigSafe && !hadCustomerPlaceholder) {
       result = result.replace(
         /(ลงชื่อ)[.…]{3,}(ผู้เช่าซื้อ)/,
-        `$1</div><div style="min-height:50px;display:flex;align-items:center;justify-content:center"><img src="${customerSig.signatureImage}" style="${sigImgStyle}"/></div><div style="font-size:13px">$2`,
+        `$1 ${sigInlineImg(customerSig.signatureImage)} $2`,
       );
     }
     // Inject witness signatures into "ลงชื่อ...พยาน" patterns
     if (witness1SigSafe && !hadWitness1Placeholder) {
       result = result.replace(
         /(ลงชื่อ)[.…]{3,}(พยาน)/,
-        `$1</div><div style="min-height:50px;display:flex;align-items:center;justify-content:center"><img src="${witness1Sig.signatureImage}" style="${sigImgStyle}"/></div><div style="font-size:13px">$2`,
+        `$1 ${sigInlineImg(witness1Sig.signatureImage)} $2`,
       );
     }
     if (witness2SigSafe && !hadWitness2Placeholder) {
@@ -903,9 +936,7 @@ ${footerHtml}
         (match, p1, p2) => {
           witnessImgCount++;
           if (witnessImgCount === (witness1SigSafe && !hadWitness1Placeholder ? 1 : 2)) {
-            // If witness1 was already replaced, the second remaining match is witness2
-            // If witness1 was NOT replaced (no dots left), this is the second original match
-            return `${p1}</div><div style="min-height:50px;display:flex;align-items:center;justify-content:center"><img src="${witness2Sig.signatureImage}" style="${sigImgStyle}"/></div><div style="font-size:13px">${p2}`;
+            return `${p1} ${sigInlineImg(witness2Sig.signatureImage)} ${p2}`;
           }
           return match;
         },

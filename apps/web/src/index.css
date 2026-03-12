@@ -5,81 +5,99 @@
 /* ── Google Fonts: Inter + Noto Sans Thai ───────────── */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap');
 
-/* ── Metronic Demo 9 (Sales Manager) Theme Variables ─ */
+/* ── Metronic v9.4.6 Theme Variables (aligned with config.reui.css) ─ */
 @layer base {
   :root {
-    --background: 220 15% 97%;
-    --foreground: 225 25% 18%;
+    /* Core: white bg, zinc-950 fg (matches Metronic exactly) */
+    --background: 0 0% 100%;
+    --foreground: 240 6% 10%;
     --card: 0 0% 100%;
-    --card-foreground: 225 25% 18%;
+    --card-foreground: 240 6% 10%;
     --popover: 0 0% 100%;
-    --popover-foreground: 225 25% 18%;
-    --primary: 215 100% 55%;
+    --popover-foreground: 240 6% 10%;
+    /* Primary: blue-500 */
+    --primary: 217 91% 60%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 14% 96%;
-    --secondary-foreground: 225 25% 18%;
-    --muted: 220 14% 96%;
-    --muted-foreground: 220 9% 46%;
-    --accent: 220 14% 96%;
-    --accent-foreground: 225 25% 18%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 98%;
-    --success: 152 69% 41%;
+    /* Secondary/Muted/Accent: zinc-100 */
+    --secondary: 240 5% 96%;
+    --secondary-foreground: 240 6% 10%;
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 46%;
+    --accent: 240 5% 96%;
+    --accent-foreground: 240 6% 10%;
+    /* Destructive: red-600 */
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    /* Semantic */
+    --success: 142 71% 45%;
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
     --info: 262 83% 58%;
     --info-foreground: 0 0% 100%;
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 215 100% 55%;
-    --radius: 0.625rem;
-    --sidebar-bg: 228 33% 10%;
+    /* Border: between zinc-100 and zinc-200 */
+    --border: 240 6% 90%;
+    --input: 240 6% 83%;
+    --ring: 240 5% 65%;
+    /* Metronic uses 0.5rem (8px) base radius */
+    --radius: 0.5rem;
+    /* Sidebar */
+    --sidebar-bg: 224 71% 4%;
     --sidebar-fg: 220 14% 71%;
-    --sidebar-active: 215 100% 55%;
+    --sidebar-active: 217 91% 60%;
     --sidebar-hover: 228 25% 15%;
-    --chart-1: 215 100% 55%;
-    --chart-2: 152 69% 41%;
-    --chart-3: 262 83% 58%;
-    --chart-4: 38 92% 50%;
-    --chart-5: 0 84% 60%;
+    /* Charts: blue, green, yellow, red, purple */
+    --chart-1: 217 91% 60%;
+    --chart-2: 142 71% 45%;
+    --chart-3: 48 96% 53%;
+    --chart-4: 0 84% 60%;
+    --chart-5: 271 91% 65%;
   }
 
   .dark {
-    --background: 228 33% 8%;
-    --foreground: 220 14% 90%;
-    --card: 228 33% 11%;
-    --card-foreground: 220 14% 90%;
-    --popover: 228 33% 11%;
-    --popover-foreground: 220 14% 90%;
-    --primary: 215 100% 55%;
+    /* zinc-950 bg, zinc-50 fg */
+    --background: 240 10% 4%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 4%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 4%;
+    --popover-foreground: 0 0% 98%;
+    /* Primary: blue-600 in dark */
+    --primary: 217 91% 60%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 228 25% 15%;
-    --secondary-foreground: 220 14% 90%;
-    --muted: 228 25% 15%;
-    --muted-foreground: 220 9% 55%;
-    --accent: 228 25% 15%;
-    --accent-foreground: 220 14% 90%;
-    --destructive: 0 63% 31%;
-    --destructive-foreground: 0 0% 98%;
-    --success: 152 69% 35%;
+    /* Secondary/Muted/Accent: zinc-800 */
+    --secondary: 240 4% 16%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 4% 16%;
+    --muted-foreground: 240 4% 46%;
+    --accent: 240 4% 16%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 71% 40%;
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 45%;
     --warning-foreground: 0 0% 100%;
-    --info: 262 83% 50%;
+    --info: 262 83% 55%;
     --info-foreground: 0 0% 100%;
-    --border: 228 25% 18%;
-    --input: 228 25% 18%;
-    --ring: 215 100% 55%;
+    /* Border: zinc-800 */
+    --border: 240 4% 16%;
+    --input: 240 4% 16%;
+    --ring: 240 5% 40%;
     --sidebar-bg: 228 40% 6%;
     --sidebar-fg: 220 14% 60%;
-    --sidebar-active: 215 100% 55%;
+    --sidebar-active: 217 91% 60%;
     --sidebar-hover: 228 25% 12%;
-    --chart-1: 215 100% 60%;
-    --chart-2: 152 69% 45%;
-    --chart-3: 262 83% 62%;
-    --chart-4: 38 92% 55%;
-    --chart-5: 0 84% 55%;
+    --chart-1: 217 91% 60%;
+    --chart-2: 142 71% 45%;
+    --chart-3: 48 96% 53%;
+    --chart-4: 0 84% 60%;
+    --chart-5: 271 91% 65%;
+  }
+
+  /* Metronic global focus style */
+  *:focus-visible {
+    @apply outline-none ring-2 ring-ring/30 ring-offset-[3px] ring-offset-background rounded-sm;
   }
 }
 
@@ -109,17 +127,20 @@
   font-display: swap;
 }
 
-/* ── Base Styles (Metronic-inspired) ───────────────── */
+/* ── Base Styles (Metronic v9.4.6) ───────────────── */
 body {
   font-family: 'Inter', 'Noto Sans Thai', system-ui, -apple-system, sans-serif;
-  font-size: 13px;
-  line-height: 1.6;
+  font-size: 0.875rem; /* 14px - Metronic default text-sm */
+  line-height: 1.5;
   color: hsl(var(--foreground));
   background-color: hsl(var(--background));
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
-  letter-spacing: 0.01em;
+}
+
+/* Metronic border-border default on all elements */
+*, *::before, *::after {
+  border-color: hsl(var(--border));
 }
 
 @layer utilities {

@@ -18,7 +18,7 @@ function MobileSidebar() {
 
   return (
     <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
-      <SheetContent className="p-0 gap-0 w-[265px] bg-[#111827]" side="left" close={false}>
+      <SheetContent className="p-0 gap-0 w-[280px]" side="left" close={false}>
         <SheetHeader className="p-0 space-y-0" />
         <SheetBody className="p-0">
           <ScrollArea className="h-full">
@@ -42,15 +42,15 @@ function MainContent() {
       {/* Mobile Sidebar Sheet */}
       {isMobile && <MobileSidebar />}
 
-      {/* Main content area */}
+      {/* Main content - Metronic Demo 1 wrapper pattern */}
       <div
-        className="flex-1 flex flex-col min-w-0 transition-all duration-300"
+        className="wrapper flex-1 flex flex-col min-w-0 transition-all duration-300"
         style={{
-          marginLeft: isMobile ? 0 : sidebarCollapse ? 70 : 265,
+          paddingLeft: isMobile ? 0 : sidebarCollapse ? 80 : 280,
         }}
       >
         <TopBar />
-        <main className="flex-1 p-5 lg:p-7 animate-fadeIn">
+        <main className="flex-1 grow pt-5 px-5 lg:px-7 pb-7" role="content">
           <Outlet />
         </main>
       </div>

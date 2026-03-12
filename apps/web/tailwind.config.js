@@ -10,16 +10,18 @@ export default {
         sans: ["'Inter'", "'Noto Sans Thai'", 'system-ui', '-apple-system', 'sans-serif'],
         sarabun: ["'TH Sarabun PSK'", "'Noto Sans Thai'", 'sans-serif'],
       },
-      /* ── Metronic-inspired font scale ─────────────────── */
+      /* ── Metronic v9.4.6 font scale (default Tailwind + custom 2xs/2sm) ─ */
       fontSize: {
-        'xs':   ['11px', { lineHeight: '1.5' }],
-        'sm':   ['12px', { lineHeight: '1.55' }],
-        'base': ['13px', { lineHeight: '1.65' }],
-        'lg':   ['15px', { lineHeight: '1.55' }],
-        'xl':   ['17px', { lineHeight: '1.5' }],
-        '2xl':  ['21px', { lineHeight: '1.4' }],
-        '3xl':  ['25px', { lineHeight: '1.35' }],
-        '4xl':  ['32px', { lineHeight: '1.25' }],
+        '2xs':  ['0.6875rem', { lineHeight: '1.2' }],   /* 11px */
+        'xs':   ['0.75rem',   { lineHeight: '1.33' }],   /* 12px */
+        '2sm':  ['0.8125rem', { lineHeight: '1.32' }],   /* 13px - Metronic custom */
+        'sm':   ['0.875rem',  { lineHeight: '1.43' }],   /* 14px */
+        'base': ['1rem',      { lineHeight: '1.5' }],    /* 16px */
+        'lg':   ['1.125rem',  { lineHeight: '1.56' }],   /* 18px */
+        'xl':   ['1.25rem',   { lineHeight: '1.4' }],    /* 20px */
+        '2xl':  ['1.5rem',    { lineHeight: '1.33' }],   /* 24px */
+        '3xl':  ['1.875rem',  { lineHeight: '1.27' }],   /* 30px */
+        '4xl':  ['2.25rem',   { lineHeight: '1.11' }],   /* 36px */
       },
       keyframes: {
         fadeIn: {
@@ -152,14 +154,17 @@ export default {
         },
       },
       borderRadius: {
-        'xl': '12px',
-        '2xl': '16px',
-        lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
+        /* Metronic radius scale: 0.5rem base */
+        'xl': 'calc(var(--radius) + 4px)',   /* 12px */
+        '2xl': 'calc(var(--radius) + 8px)',  /* 16px */
+        lg: "var(--radius)",                  /* 8px */
+        md: "calc(var(--radius) - 2px)",      /* 6px */
+        sm: "calc(var(--radius) - 4px)",      /* 4px */
       },
       boxShadow: {
-        'card': '0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02)',
+        /* Metronic uses shadow-xs shadow-black/5 pattern */
+        'xs': '0 1px 2px 0 rgba(0,0,0,0.05)',
+        'card': '0 1px 2px 0 rgba(0,0,0,0.05)',
         'card-hover': '0 4px 12px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.03)',
         'sidebar': '4px 0 20px rgba(0,0,0,0.15)',
         'topbar': '0 1px 0 rgba(0,0,0,0.05)',

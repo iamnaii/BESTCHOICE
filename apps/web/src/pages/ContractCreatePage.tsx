@@ -147,10 +147,8 @@ export default function ContractCreatePage() {
 
   // Documents
   const [pendingDocs, setPendingDocs] = useState<PendingDoc[]>([]);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [selectedDocType, setSelectedDocType] = useState('ID_CARD_COPY');
-
-  const [isDragOver, setIsDragOver] = useState(false);
+  const [dragOverType, setDragOverType] = useState<string | null>(null);
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const submitForReviewRef = useRef(false);
 
@@ -797,7 +795,7 @@ export default function ContractCreatePage() {
     setNewCustomerPhone('');
   };
 
-  const addDocFile = useCallback((file: File) => {
+  const addDocFileForType = useCallback((file: File, docType: string) => {
     if (file.size > 10 * 1024 * 1024) {
       toast.error('ไฟล์ต้องมีขนาดไม่เกิน 10MB');
       return;
@@ -808,10 +806,10 @@ export default function ContractCreatePage() {
       return;
     }
     const preview = URL.createObjectURL(file);
-    setPendingDocs((prev) => [...prev, { id: crypto.randomUUID(), type: selectedDocType, file, preview }]);
+    setPendingDocs((prev) => [...prev, { id: crypto.randomUUID(), type: docType, file, preview }]);
 
-    // Trigger OCR when uploading ID card image in Step 4
-    if (selectedDocType === 'ID_CARD_COPY' && file.type.startsWith('image/') && !ocrLoading) {
+    // Trigger OCR when uploading ID card image
+    if (docType === 'ID_CARD_COPY' && file.type.startsWith('image/') && !ocrLoading) {
       (async () => {
         setOcrLoading(true);
         try {
@@ -839,34 +837,22 @@ export default function ContractCreatePage() {
         }
       })();
     }
-  }, [selectedDocType, ocrLoading]);
+  }, [ocrLoading]);
 
-  const handleDragOver = useCallback((e: React.DragEvent) => {
+  const handleDropForType = useCallback((e: React.DragEvent, docType: string) => {
     e.preventDefault();
     e.stopPropagation();
-    setIsDragOver(true);
-  }, []);
+    setDragOverType(null);
+    const file = e.dataTransfer.files?.[0];
+    if (file) addDocFileForType(file, docType);
+  }, [addDocFileForType]);
 
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragOver(false);
-  }, []);
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragOver(false);
-    const files = Array.from(e.dataTransfer.files);
-    files.forEach((file) => addDocFile(file));
-  }, [addDocFile]);
-
-  const handleAddDoc = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileInputForType = useCallback((e: React.ChangeEvent<HTMLInputElement>, docType: string) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    addDocFile(file);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
+    addDocFileForType(file, docType);
+    e.target.value = '';
+  }, [addDocFileForType]);
 
   const handleRemoveDoc = (id: string) => {
     setPendingDocs((prev) => {
@@ -1169,53 +1155,145 @@ export default function ContractCreatePage() {
 
       {/* Step 4: Document Attachments */}
       {step === 3 && (
-        <div className="max-w-2xl space-y-4">
-          <div className="bg-white rounded-lg border p-6 space-y-4">
+        <div className="max-w-3xl space-y-4">
+          <div className="bg-white rounded-lg border p-6 space-y-2">
             <h3 className="text-sm font-semibold text-gray-900">แนบเอกสาร</h3>
-            <p className="text-xs text-gray-500">แนบเอกสารที่จำเป็นสำหรับสัญญา เช่น สำเนาบัตรประชาชน, KYC, Profile Facebook/LINE, รูปรับเครื่อง</p>
+            <p className="text-xs text-gray-500">ลากไฟล์มาวางในช่องของเอกสารแต่ละประเภท หรือคลิกเพื่อเลือกไฟล์ (สามารถแนบภายหลังได้)</p>
+          </div>
 
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">ประเภทเอกสาร</label>
-              <select
-                value={selectedDocType}
-                onChange={(e) => setSelectedDocType(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-              >
-                {DOCUMENT_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>{t.label}{t.required ? ' *' : ''}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Drag & Drop Zone */}
-            <div
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-              onClick={() => fileInputRef.current?.click()}
-              className={`relative border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
-                isDragOver
-                  ? 'border-primary-500 bg-primary-50'
-                  : 'border-gray-300 hover:border-primary-400 hover:bg-gray-50'
-              }`}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*,.pdf"
-                onChange={handleAddDoc}
-                className="hidden"
-              />
-              <div className="flex flex-col items-center gap-2">
-                <svg className={`w-10 h-10 ${isDragOver ? 'text-primary-500' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                </svg>
-                <div className={`text-sm font-medium ${isDragOver ? 'text-primary-600' : 'text-gray-600'}`}>
-                  {isDragOver ? 'ปล่อยไฟล์เพื่ออัปโหลด' : 'ลากไฟล์มาวางที่นี่ หรือคลิกเพื่อเลือกไฟล์'}
+          {/* Per-type drop zones — required first */}
+          <div className="space-y-3">
+            {DOCUMENT_TYPES.filter((dt) => dt.required).map((dt) => {
+              const docs = pendingDocs.filter((d) => d.type === dt.value);
+              const isOver = dragOverType === dt.value;
+              return (
+                <div key={dt.value} className="bg-white rounded-lg border overflow-hidden">
+                  <div className="flex items-center gap-2 px-4 py-2 border-b bg-gray-50">
+                    {docs.length > 0 ? (
+                      <span className="text-green-500 text-sm font-bold">&#10003;</span>
+                    ) : (
+                      <span className="text-red-400 text-sm">&#9675;</span>
+                    )}
+                    <span className="text-sm font-medium text-gray-800">{dt.label} <span className="text-red-500">*</span></span>
+                    {docs.length > 0 && <span className="text-xs text-gray-400 ml-auto">{docs.length} ไฟล์</span>}
+                  </div>
+                  <div className="p-3">
+                    {/* Attached files */}
+                    {docs.length > 0 && (
+                      <div className="mb-2 space-y-1">
+                        {docs.map((doc) => (
+                          <div key={doc.id} className="flex items-center gap-2 bg-gray-50 rounded px-3 py-1.5">
+                            {doc.file.type.startsWith('image/') ? (
+                              <img src={doc.preview} alt="" className="w-8 h-8 rounded object-cover flex-shrink-0" />
+                            ) : (
+                              <div className="w-8 h-8 rounded bg-red-100 flex items-center justify-center text-[10px] font-bold text-red-600 flex-shrink-0">PDF</div>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <div className="text-xs font-medium text-gray-700 truncate">{doc.file.name}</div>
+                              <div className="text-[10px] text-gray-400">{(doc.file.size / 1024).toFixed(0)} KB</div>
+                            </div>
+                            <button onClick={() => handleRemoveDoc(doc.id)} className="text-[10px] text-red-500 hover:text-red-700 flex-shrink-0">ลบ</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {/* Drop zone */}
+                    <div
+                      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragOverType(dt.value); }}
+                      onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setDragOverType(null); }}
+                      onDrop={(e) => handleDropForType(e, dt.value)}
+                      onClick={() => fileInputRefs.current[dt.value]?.click()}
+                      className={`border-2 border-dashed rounded-lg py-3 px-4 text-center cursor-pointer transition-colors ${
+                        isOver ? 'border-primary-500 bg-primary-50' : 'border-gray-200 hover:border-primary-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      <input
+                        ref={(el) => { fileInputRefs.current[dt.value] = el; }}
+                        type="file"
+                        accept="image/*,.pdf"
+                        onChange={(e) => handleFileInputForType(e, dt.value)}
+                        className="hidden"
+                      />
+                      <div className="flex items-center justify-center gap-2">
+                        <svg className={`w-5 h-5 ${isOver ? 'text-primary-500' : 'text-gray-300'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                        <span className={`text-xs ${isOver ? 'text-primary-600 font-medium' : 'text-gray-400'}`}>
+                          {isOver ? 'ปล่อยไฟล์ที่นี่' : 'ลากไฟล์มาวาง หรือคลิก'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <p className="text-xs text-gray-400">รองรับไฟล์ภาพ และ PDF ขนาดไม่เกิน 10MB</p>
-              </div>
-            </div>
+              );
+            })}
+          </div>
+
+          {/* Optional documents */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1">เอกสารเพิ่มเติม (ไม่บังคับ)</h4>
+            {DOCUMENT_TYPES.filter((dt) => !dt.required).map((dt) => {
+              const docs = pendingDocs.filter((d) => d.type === dt.value);
+              const isOver = dragOverType === dt.value;
+              return (
+                <div key={dt.value} className="bg-white rounded-lg border overflow-hidden">
+                  <div className="flex items-center gap-2 px-4 py-2 border-b bg-gray-50">
+                    {docs.length > 0 ? (
+                      <span className="text-green-500 text-sm font-bold">&#10003;</span>
+                    ) : (
+                      <span className="text-gray-300 text-sm">&#9675;</span>
+                    )}
+                    <span className="text-sm font-medium text-gray-600">{dt.label}</span>
+                    {docs.length > 0 && <span className="text-xs text-gray-400 ml-auto">{docs.length} ไฟล์</span>}
+                  </div>
+                  <div className="p-3">
+                    {docs.length > 0 && (
+                      <div className="mb-2 space-y-1">
+                        {docs.map((doc) => (
+                          <div key={doc.id} className="flex items-center gap-2 bg-gray-50 rounded px-3 py-1.5">
+                            {doc.file.type.startsWith('image/') ? (
+                              <img src={doc.preview} alt="" className="w-8 h-8 rounded object-cover flex-shrink-0" />
+                            ) : (
+                              <div className="w-8 h-8 rounded bg-red-100 flex items-center justify-center text-[10px] font-bold text-red-600 flex-shrink-0">PDF</div>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <div className="text-xs font-medium text-gray-700 truncate">{doc.file.name}</div>
+                              <div className="text-[10px] text-gray-400">{(doc.file.size / 1024).toFixed(0)} KB</div>
+                            </div>
+                            <button onClick={() => handleRemoveDoc(doc.id)} className="text-[10px] text-red-500 hover:text-red-700 flex-shrink-0">ลบ</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div
+                      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragOverType(dt.value); }}
+                      onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setDragOverType(null); }}
+                      onDrop={(e) => handleDropForType(e, dt.value)}
+                      onClick={() => fileInputRefs.current[dt.value]?.click()}
+                      className={`border-2 border-dashed rounded-lg py-3 px-4 text-center cursor-pointer transition-colors ${
+                        isOver ? 'border-primary-500 bg-primary-50' : 'border-gray-200 hover:border-primary-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      <input
+                        ref={(el) => { fileInputRefs.current[dt.value] = el; }}
+                        type="file"
+                        accept="image/*,.pdf"
+                        onChange={(e) => handleFileInputForType(e, dt.value)}
+                        className="hidden"
+                      />
+                      <div className="flex items-center justify-center gap-2">
+                        <svg className={`w-5 h-5 ${isOver ? 'text-primary-500' : 'text-gray-300'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                        <span className={`text-xs ${isOver ? 'text-primary-600 font-medium' : 'text-gray-400'}`}>
+                          {isOver ? 'ปล่อยไฟล์ที่นี่' : 'ลากไฟล์มาวาง หรือคลิก'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           {/* OCR Loading */}
@@ -1301,64 +1379,6 @@ export default function ContractCreatePage() {
               </div>
             </div>
           )}
-
-          {/* Pending documents list */}
-          {pendingDocs.length > 0 && (
-            <div className="bg-white rounded-lg border">
-              <div className="px-4 py-3 border-b">
-                <h3 className="text-sm font-semibold text-gray-900">เอกสารที่เลือก ({pendingDocs.length})</h3>
-              </div>
-              <div className="divide-y">
-                {pendingDocs.map((doc) => (
-                  <div key={doc.id} className="px-4 py-3 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      {doc.file.type.startsWith('image/') ? (
-                        <img src={doc.preview} alt="" className="w-10 h-10 rounded object-cover" />
-                      ) : (
-                        <div className="w-10 h-10 rounded bg-red-100 flex items-center justify-center text-xs font-bold text-red-600">PDF</div>
-                      )}
-                      <div>
-                        <div className="text-sm font-medium text-gray-900">{doc.file.name}</div>
-                        <div className="text-xs text-gray-500">
-                          {DOCUMENT_TYPES.find((t) => t.value === doc.type)?.label}
-                          {' | '}{(doc.file.size / 1024).toFixed(0)} KB
-                        </div>
-                      </div>
-                    </div>
-                    <button onClick={() => handleRemoveDoc(doc.id)} className="text-xs text-red-600 hover:text-red-800">ลบ</button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {pendingDocs.length === 0 && (
-            <div className="text-center py-6 text-gray-400 text-sm bg-white rounded-lg border">
-              ยังไม่มีเอกสารที่แนบ — ลากไฟล์มาวางในกรอบด้านบน หรือคลิกเพื่อเลือกไฟล์ (สามารถแนบภายหลังได้)
-            </div>
-          )}
-
-          {/* Document checklist */}
-          <div className="bg-white rounded-lg border p-4">
-            <h4 className="text-xs font-semibold text-gray-700 mb-2">รายการเอกสารที่ต้องแนบ</h4>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
-              {DOCUMENT_TYPES.map((dt) => {
-                const attached = pendingDocs.some((d) => d.type === dt.value);
-                return (
-                  <div key={dt.value} className="flex items-center gap-2 text-xs py-0.5">
-                    {attached ? (
-                      <span className="text-green-500 font-bold">&#10003;</span>
-                    ) : (
-                      <span className={dt.required ? 'text-red-400' : 'text-gray-300'}>&#9675;</span>
-                    )}
-                    <span className={attached ? 'text-gray-700' : dt.required ? 'text-gray-600' : 'text-gray-400'}>
-                      {dt.label}{dt.required ? ' *' : ''}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
         </div>
       )}
 

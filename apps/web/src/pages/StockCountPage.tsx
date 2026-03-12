@@ -123,7 +123,7 @@ export default function StockCountPage() {
   };
 
   const statusColors: Record<string, string> = {
-    DRAFT: 'bg-gray-100 text-gray-700',
+    DRAFT: 'bg-muted text-foreground',
     IN_PROGRESS: 'bg-yellow-100 text-yellow-700',
     COMPLETED: 'bg-green-100 text-green-700',
     CANCELLED: 'bg-red-100 text-red-700',
@@ -139,7 +139,7 @@ export default function StockCountPage() {
         <select
           value={selectedBranch}
           onChange={(e) => setSelectedBranch(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+          className="px-3 py-2 border border-input rounded-lg text-sm"
         >
           <option value="">ทุกสาขา</option>
           {(branches || []).map((b: { id: string; name: string }) => (
@@ -148,43 +148,43 @@ export default function StockCountPage() {
         </select>
         <button
           onClick={() => setIsCreateModalOpen(true)}
-          className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700"
+          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm hover:bg-primary/90"
         >
           + สร้างรายการตรวจนับ
         </button>
       </div>
 
       {isLoading ? (
-        <div className="text-center py-10 text-gray-500">กำลังโหลด...</div>
+        <div className="text-center py-10 text-muted-foreground">กำลังโหลด...</div>
       ) : counts.length === 0 ? (
-        <div className="text-center py-10 text-gray-500">ยังไม่มีรายการตรวจนับ</div>
+        <div className="text-center py-10 text-muted-foreground">ยังไม่มีรายการตรวจนับ</div>
       ) : (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="rounded-lg border border-border overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50">
+            <thead className="bg-muted">
               <tr>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">เลขที่</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">สาขา</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">ผู้ตรวจ</th>
-                <th className="text-center px-4 py-3 font-medium text-gray-600">จำนวน</th>
-                <th className="text-center px-4 py-3 font-medium text-gray-600">สถานะ</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">วันที่</th>
-                <th className="text-center px-4 py-3 font-medium text-gray-600">จัดการ</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">เลขที่</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">สาขา</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">ผู้ตรวจ</th>
+                <th className="text-center px-4 py-3 font-medium text-muted-foreground">จำนวน</th>
+                <th className="text-center px-4 py-3 font-medium text-muted-foreground">สถานะ</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">วันที่</th>
+                <th className="text-center px-4 py-3 font-medium text-muted-foreground">จัดการ</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-border">
               {counts.map((sc) => (
-                <tr key={sc.id} className="hover:bg-gray-50">
+                <tr key={sc.id} className="hover:bg-muted/50">
                   <td className="px-4 py-3 font-mono text-xs">{sc.countNumber}</td>
                   <td className="px-4 py-3">{sc.branch.name}</td>
                   <td className="px-4 py-3">{sc.countedBy.name}</td>
                   <td className="px-4 py-3 text-center">{sc._count?.items || '-'}</td>
                   <td className="px-4 py-3 text-center">
-                    <span className={`px-2 py-0.5 rounded-full text-xs ${statusColors[sc.status] || 'bg-gray-100'}`}>
+                    <span className={`px-2 py-0.5 rounded-full text-xs ${statusColors[sc.status] || 'bg-muted'}`}>
                       {sc.status}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-xs text-gray-500">
+                  <td className="px-4 py-3 text-xs text-muted-foreground">
                     {new Date(sc.createdAt).toLocaleDateString('th-TH')}
                   </td>
                   <td className="px-4 py-3 text-center">
@@ -215,14 +215,14 @@ export default function StockCountPage() {
       {/* Create Modal */}
       <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="สร้างรายการตรวจนับ">
         <div className="space-y-4">
-          <p className="text-sm text-gray-600">เลือกสาขาที่ต้องการตรวจนับ ระบบจะดึงรายการสินค้าที่อยู่ในสาขานั้นมาให้อัตโนมัติ</p>
+          <p className="text-sm text-muted-foreground">เลือกสาขาที่ต้องการตรวจนับ ระบบจะดึงรายการสินค้าที่อยู่ในสาขานั้นมาให้อัตโนมัติ</p>
           <div className="space-y-2">
             {(branches || []).map((b: { id: string; name: string }) => (
               <button
                 key={b.id}
                 onClick={() => createMutation.mutate(b.id)}
                 disabled={createMutation.isPending}
-                className="w-full p-3 border border-gray-200 rounded-lg text-left hover:bg-primary-50 hover:border-primary-300 transition-colors"
+                className="w-full p-3 border border-border rounded-lg text-left hover:bg-primary-50 hover:border-primary-300 transition-colors"
               >
                 <span className="font-medium">{b.name}</span>
               </button>
@@ -250,7 +250,7 @@ export default function StockCountPage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="text-sm font-medium">{item.product.name}</div>
-                      <div className="text-xs text-gray-500 font-mono">
+                      <div className="text-xs text-muted-foreground font-mono">
                         {item.product.imeiSerial || item.product.serialNumber || '-'}
                       </div>
                     </div>
@@ -259,7 +259,7 @@ export default function StockCountPage() {
                         type="button"
                         onClick={() => updateItem(idx, 'actualFound', true)}
                         className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-                          countItems[idx]?.actualFound ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600'
+                          countItems[idx]?.actualFound ? 'bg-green-600 text-white' : 'bg-muted text-muted-foreground'
                         }`}
                       >
                         พบ
@@ -268,7 +268,7 @@ export default function StockCountPage() {
                         type="button"
                         onClick={() => updateItem(idx, 'actualFound', false)}
                         className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-                          !countItems[idx]?.actualFound ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-600'
+                          !countItems[idx]?.actualFound ? 'bg-red-600 text-white' : 'bg-muted text-muted-foreground'
                         }`}
                       >
                         ไม่พบ
@@ -290,7 +290,7 @@ export default function StockCountPage() {
 
             {selectedCount.status !== 'COMPLETED' && countItems.length > 0 && (
               <>
-                <div className="bg-gray-50 rounded-lg p-3 text-sm">
+                <div className="bg-muted rounded-lg p-3 text-sm">
                   <div className="flex gap-4">
                     <span>ทั้งหมด: <strong>{countItems.length}</strong></span>
                     <span className="text-green-700">พบ: <strong>{countItems.filter((i) => i.actualFound).length}</strong></span>
@@ -300,7 +300,7 @@ export default function StockCountPage() {
                 <button
                   type="submit"
                   disabled={submitMutation.isPending}
-                  className="w-full py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 disabled:opacity-50"
+                  className="w-full py-2 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 disabled:opacity-50"
                 >
                   {submitMutation.isPending ? 'กำลังบันทึก...' : 'ยืนยันผลตรวจนับ'}
                 </button>

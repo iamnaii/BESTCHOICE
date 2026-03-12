@@ -64,10 +64,10 @@ function App() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto"></div>
-          <p className="mt-3 text-sm text-gray-500">กำลังตรวจสอบผู้ใช้...</p>
+          <p className="mt-3 text-[13px] text-muted-foreground">กำลังตรวจสอบผู้ใช้...</p>
         </div>
       </div>
     );

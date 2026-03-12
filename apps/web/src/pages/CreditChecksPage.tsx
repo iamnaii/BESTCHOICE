@@ -46,7 +46,7 @@ interface CreditCheckItem {
 }
 
 const statusLabels: Record<string, { label: string; className: string }> = {
-  PENDING: { label: 'รอวิเคราะห์', className: 'bg-gray-100 text-gray-700' },
+  PENDING: { label: 'รอวิเคราะห์', className: 'bg-muted text-foreground' },
   APPROVED: { label: 'ผ่าน', className: 'bg-green-100 text-green-700' },
   REJECTED: { label: 'ไม่ผ่าน', className: 'bg-red-100 text-red-700' },
   MANUAL_REVIEW: { label: 'ต้องตรวจเพิ่ม', className: 'bg-amber-100 text-amber-700' },
@@ -210,8 +210,8 @@ export default function CreditChecksPage() {
       label: 'ลูกค้า',
       render: (cc: CreditCheckItem) => (
         <div>
-          <button onClick={() => navigate(`/customers/${cc.customer.id}`)} className="text-sm font-medium text-primary-600 hover:underline">{cc.customer.name}</button>
-          <div className="text-xs text-gray-400">{cc.customer.phone}</div>
+          <button onClick={() => navigate(`/customers/${cc.customer.id}`)} className="text-sm font-medium text-primary hover:underline">{cc.customer.name}</button>
+          <div className="text-xs text-muted-foreground">{cc.customer.phone}</div>
         </div>
       ),
     },
@@ -219,7 +219,7 @@ export default function CreditChecksPage() {
       key: 'status',
       label: 'สถานะ',
       render: (cc: CreditCheckItem) => {
-        const s = statusLabels[cc.status] || { label: cc.status, className: 'bg-gray-100' };
+        const s = statusLabels[cc.status] || { label: cc.status, className: 'bg-muted' };
         return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.className}`}>{s.label}</span>;
       },
     },
@@ -229,11 +229,11 @@ export default function CreditChecksPage() {
       render: (cc: CreditCheckItem) => cc.aiScore !== null ? (
         <div className="flex items-center gap-2">
           <span className={`text-sm font-bold ${cc.aiScore >= 70 ? 'text-green-600' : cc.aiScore >= 50 ? 'text-amber-600' : 'text-red-600'}`}>{cc.aiScore}</span>
-          <div className="w-16 bg-gray-200 rounded-full h-1.5">
+          <div className="w-16 bg-muted rounded-full h-1.5">
             <div className={`h-1.5 rounded-full ${cc.aiScore >= 70 ? 'bg-green-500' : cc.aiScore >= 50 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${cc.aiScore}%` }} />
           </div>
         </div>
-      ) : <span className="text-xs text-gray-400">-</span>,
+      ) : <span className="text-xs text-muted-foreground">-</span>,
     },
     {
       key: 'bankName',
@@ -244,13 +244,13 @@ export default function CreditChecksPage() {
       key: 'contract',
       label: 'สัญญา',
       render: (cc: CreditCheckItem) => cc.contract ? (
-        <button onClick={() => navigate(`/contracts/${cc.contract!.id}`)} className="text-xs text-primary-600 hover:underline font-mono">{cc.contract.contractNumber}</button>
-      ) : <span className="text-xs text-gray-400">ยังไม่มีสัญญา</span>,
+        <button onClick={() => navigate(`/contracts/${cc.contract!.id}`)} className="text-xs text-primary hover:underline font-mono">{cc.contract.contractNumber}</button>
+      ) : <span className="text-xs text-muted-foreground">ยังไม่มีสัญญา</span>,
     },
     {
       key: 'createdAt',
       label: 'วันที่',
-      render: (cc: CreditCheckItem) => <span className="text-xs text-gray-500">{new Date(cc.createdAt).toLocaleDateString('th-TH')}</span>,
+      render: (cc: CreditCheckItem) => <span className="text-xs text-muted-foreground">{new Date(cc.createdAt).toLocaleDateString('th-TH')}</span>,
     },
     {
       key: 'actions',
@@ -261,7 +261,7 @@ export default function CreditChecksPage() {
             <button
               onClick={() => analyzeMutation.mutate({ customerId: cc.customer.id, creditCheckId: cc.id })}
               disabled={analyzeMutation.isPending}
-              className="px-3 py-1 text-xs bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+              className="px-3 py-1 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
             >
               AI วิเคราะห์
             </button>
@@ -287,7 +287,7 @@ export default function CreditChecksPage() {
         action={
           <button
             onClick={() => setShowCreateModal(true)}
-            className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700"
+            className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
           >
             + ตรวจเครดิตใหม่
           </button>
@@ -301,12 +301,12 @@ export default function CreditChecksPage() {
           placeholder="ค้นหาชื่อลูกค้า..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-64"
+          className="px-3 py-2 border border-input rounded-lg text-sm w-64"
         />
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+          className="px-3 py-2 border border-input rounded-lg text-sm"
         >
           <option value="">ทุกสถานะ</option>
           <option value="PENDING">รอวิเคราะห์</option>
@@ -317,9 +317,9 @@ export default function CreditChecksPage() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white rounded-lg border p-4">
-          <div className="text-xs text-gray-500">ทั้งหมด</div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-5 lg:gap-7.5 mb-6">
+        <div className="bg-card rounded-lg border p-4">
+          <div className="text-xs text-muted-foreground">ทั้งหมด</div>
           <div className="text-xl font-bold">{creditChecks.length}</div>
         </div>
         <div className="bg-green-50 rounded-lg border border-green-200 p-4">
@@ -351,13 +351,13 @@ export default function CreditChecksPage() {
             {/* Customer selection */}
             {!selectedCustomer ? (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">เลือกลูกค้า</label>
+                <label className="block text-sm font-medium text-foreground mb-2">เลือกลูกค้า</label>
                 <input
                   type="text"
                   placeholder="ค้นหาชื่อ, เบอร์โทร, เลขบัตร..."
                   value={customerSearch}
                   onChange={(e) => setCustomerSearch(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm mb-3"
+                  className="w-full px-3 py-2 border border-input rounded-lg text-sm mb-3"
                 />
                 <div className="max-h-60 overflow-y-auto space-y-2">
                   {customers.map((c) => (
@@ -367,11 +367,11 @@ export default function CreditChecksPage() {
                       className="p-3 rounded-lg border cursor-pointer hover:border-primary-400 hover:bg-primary-50 transition-colors"
                     >
                       <div className="text-sm font-medium">{c.name}</div>
-                      <div className="text-xs text-gray-500">{c.phone} {c.salary ? `| เงินเดือน ${parseFloat(c.salary).toLocaleString()} ฿` : ''}</div>
+                      <div className="text-xs text-muted-foreground">{c.phone} {c.salary ? `| เงินเดือน ${parseFloat(c.salary).toLocaleString()} ฿` : ''}</div>
                     </div>
                   ))}
                   {customers.length === 0 && customerSearch && (
-                    <div className="text-center py-4 text-sm text-gray-400">ไม่พบลูกค้า</div>
+                    <div className="text-center py-4 text-sm text-muted-foreground">ไม่พบลูกค้า</div>
                   )}
                 </div>
               </div>
@@ -380,9 +380,9 @@ export default function CreditChecksPage() {
                 <div className="bg-primary-50 rounded-lg p-3 flex items-center justify-between">
                   <div>
                     <div className="text-sm font-medium text-primary-800">{selectedCustomer.name}</div>
-                    <div className="text-xs text-primary-600">{selectedCustomer.phone} {selectedCustomer.salary ? `| เงินเดือน ${parseFloat(selectedCustomer.salary).toLocaleString()} ฿` : ''}</div>
+                    <div className="text-xs text-primary">{selectedCustomer.phone} {selectedCustomer.salary ? `| เงินเดือน ${parseFloat(selectedCustomer.salary).toLocaleString()} ฿` : ''}</div>
                   </div>
-                  <button onClick={() => setSelectedCustomer(null)} className="text-xs text-primary-600 hover:text-primary-800">เปลี่ยน</button>
+                  <button onClick={() => setSelectedCustomer(null)} className="text-xs text-primary hover:text-primary/80">เปลี่ยน</button>
                 </div>
 
                 <div className="mt-4 space-y-3">
@@ -391,7 +391,7 @@ export default function CreditChecksPage() {
                     <div className="flex items-center justify-between mb-1">
                       <h4 className="text-sm font-semibold text-primary-800">สแกนหน้าสมุดบัญชี (OCR)</h4>
                     </div>
-                    <p className="text-xs text-primary-600 mb-2">ถ่ายรูปหน้าสมุดบัญชีเพื่อกรอกชื่อธนาคารอัตโนมัติ</p>
+                    <p className="text-xs text-primary mb-2">ถ่ายรูปหน้าสมุดบัญชีเพื่อกรอกชื่อธนาคารอัตโนมัติ</p>
                     <input
                       ref={bookBankFileRef}
                       type="file"
@@ -404,7 +404,7 @@ export default function CreditChecksPage() {
                       type="button"
                       onClick={() => bookBankFileRef.current?.click()}
                       disabled={bookBankLoading}
-                      className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary-600 text-white rounded-lg text-xs font-medium hover:bg-primary-700 disabled:opacity-50"
+                      className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
                     >
                       {bookBankLoading ? (
                         <>
@@ -421,29 +421,29 @@ export default function CreditChecksPage() {
 
                     {/* Book bank OCR result */}
                     {bookBankResult && (
-                      <div className="mt-2 p-2 bg-white rounded border border-primary-200 space-y-1">
-                        <div className="text-xs text-gray-500">ผลการสแกน:</div>
-                        {bookBankResult.accountName && <div className="text-xs"><span className="text-gray-500">ชื่อบัญชี:</span> <span className="font-medium">{bookBankResult.accountName}</span></div>}
-                        {bookBankResult.accountNo && <div className="text-xs"><span className="text-gray-500">เลขที่บัญชี:</span> <span className="font-mono">{bookBankResult.accountNo}</span></div>}
-                        {bookBankResult.bankName && <div className="text-xs"><span className="text-gray-500">ธนาคาร:</span> {bookBankResult.bankName} {bookBankResult.branchName && `(${bookBankResult.branchName})`}</div>}
-                        {bookBankResult.accountType && <div className="text-xs"><span className="text-gray-500">ประเภท:</span> {bookBankResult.accountType}</div>}
-                        {bookBankResult.balance !== null && <div className="text-xs"><span className="text-gray-500">ยอดเงิน:</span> <span className="font-bold text-green-700">{bookBankResult.balance.toLocaleString()} ฿</span></div>}
+                      <div className="mt-2 p-2 bg-card rounded border border-primary-200 space-y-1">
+                        <div className="text-xs text-muted-foreground">ผลการสแกน:</div>
+                        {bookBankResult.accountName && <div className="text-xs"><span className="text-muted-foreground">ชื่อบัญชี:</span> <span className="font-medium">{bookBankResult.accountName}</span></div>}
+                        {bookBankResult.accountNo && <div className="text-xs"><span className="text-muted-foreground">เลขที่บัญชี:</span> <span className="font-mono">{bookBankResult.accountNo}</span></div>}
+                        {bookBankResult.bankName && <div className="text-xs"><span className="text-muted-foreground">ธนาคาร:</span> {bookBankResult.bankName} {bookBankResult.branchName && `(${bookBankResult.branchName})`}</div>}
+                        {bookBankResult.accountType && <div className="text-xs"><span className="text-muted-foreground">ประเภท:</span> {bookBankResult.accountType}</div>}
+                        {bookBankResult.balance !== null && <div className="text-xs"><span className="text-muted-foreground">ยอดเงิน:</span> <span className="font-bold text-green-700">{bookBankResult.balance.toLocaleString()} ฿</span></div>}
                       </div>
                     )}
                   </div>
 
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">ธนาคาร</label>
+                    <label className="block text-xs text-muted-foreground mb-1">ธนาคาร</label>
                     <input
                       type="text"
                       value={bankName}
                       onChange={(e) => setBankName(e.target.value)}
                       placeholder="เช่น กสิกร, กรุงไทย..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">Statement ย้อนหลัง 3 เดือน (ภาพ/PDF)</label>
+                    <label className="block text-xs text-muted-foreground mb-1">Statement ย้อนหลัง 3 เดือน (ภาพ/PDF)</label>
                     <input
                       ref={fileRef}
                       type="file"
@@ -451,11 +451,11 @@ export default function CreditChecksPage() {
                       multiple
                       onChange={(e) => e.target.files && uploadMutation.mutate(e.target.files)}
                       disabled={uploadMutation.isPending}
-                      className="w-full text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary-50 file:text-primary-700"
+                      className="w-full text-sm text-muted-foreground file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary-50 file:text-primary-700"
                     />
                   </div>
                   {uploadMutation.isPending && (
-                    <div className="flex items-center gap-2 text-sm text-primary-600">
+                    <div className="flex items-center gap-2 text-sm text-primary">
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600" />
                       กำลังอัปโหลดและสร้างรายการ...
                     </div>
@@ -472,11 +472,11 @@ export default function CreditChecksPage() {
         <Modal isOpen title="Override สถานะเครดิตเช็ค" onClose={() => { setOverrideId(null); setOverrideCustomerId(null); }}>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">สถานะใหม่</label>
+              <label className="block text-sm font-medium text-foreground mb-1">สถานะใหม่</label>
               <select
                 value={overrideStatus}
                 onChange={(e) => setOverrideStatus(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm"
               >
                 <option value="">เลือกสถานะ...</option>
                 <option value="APPROVED">อนุมัติ</option>
@@ -485,21 +485,21 @@ export default function CreditChecksPage() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ</label>
+              <label className="block text-sm font-medium text-foreground mb-1">หมายเหตุ</label>
               <textarea
                 value={overrideNotes}
                 onChange={(e) => setOverrideNotes(e.target.value)}
                 rows={2}
                 placeholder="ระบุเหตุผล..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm"
               />
             </div>
             <div className="flex gap-3">
-              <button onClick={() => { setOverrideId(null); setOverrideCustomerId(null); }} className="flex-1 px-4 py-2 text-sm border border-gray-300 rounded-lg">ยกเลิก</button>
+              <button onClick={() => { setOverrideId(null); setOverrideCustomerId(null); }} className="flex-1 px-4 py-2 text-sm border border-input rounded-lg">ยกเลิก</button>
               <button
                 onClick={() => overrideMutation.mutate()}
                 disabled={!overrideStatus || overrideMutation.isPending}
-                className="flex-1 px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+                className="flex-1 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
               >
                 {overrideMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
               </button>

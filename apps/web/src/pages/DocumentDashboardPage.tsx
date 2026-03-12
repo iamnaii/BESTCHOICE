@@ -114,7 +114,7 @@ function DocumentDashboardPage() {
       )}
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-5 lg:gap-7.5 mb-6">
         <StatCard icon="📋" label="สัญญาทั้งหมด" value={s.totalContracts} color="blue" />
         <StatCard icon="✅" label="เอกสารครบ" value={s.fullyDocumented} color="green" />
         <StatCard icon="📎" label="รอเอกสาร" value={s.pendingDocuments} color="yellow" />
@@ -123,28 +123,28 @@ function DocumentDashboardPage() {
         <StatCard icon="🔴" label="ค้างชำระ" value={s.overdueContracts} color="red" />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:gap-7.5">
         {/* SLA Alerts */}
-        <div className="bg-white rounded-lg border p-4">
+        <div className="bg-card rounded-lg border p-4">
           <h3 className="text-sm font-semibold text-red-700 mb-3">
             แจ้งเตือน SLA - สัญญารออนุมัตินาน
           </h3>
           {s.slaAlerts.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-4">ไม่มีรายการ</p>
+            <p className="text-sm text-muted-foreground text-center py-4">ไม่มีรายการ</p>
           ) : (
             <div className="space-y-2 max-h-80 overflow-y-auto">
               {s.slaAlerts.map((alert) => (
                 <div key={alert.id} className="flex items-center justify-between p-2 bg-red-50 rounded text-sm">
                   <div>
                     <span className="font-medium">{alert.contractNumber}</span>
-                    <span className="text-gray-500 ml-2">{alert.customerName}</span>
-                    {alert.branchName && <span className="text-xs text-gray-400 ml-2">({alert.branchName})</span>}
+                    <span className="text-muted-foreground ml-2">{alert.customerName}</span>
+                    {alert.branchName && <span className="text-xs text-muted-foreground ml-2">({alert.branchName})</span>}
                   </div>
                   <div className="text-right">
                     <span className={`font-medium ${alert.hoursWaiting >= 48 ? 'text-red-600' : 'text-yellow-600'}`}>
                       {alert.hoursWaiting >= 24 ? `${Math.floor(alert.hoursWaiting / 24)} วัน` : `${alert.hoursWaiting} ชม.`}
                     </span>
-                    <div className="text-xs text-gray-400">{alert.workflowStatus}</div>
+                    <div className="text-xs text-muted-foreground">{alert.workflowStatus}</div>
                   </div>
                 </div>
               ))}
@@ -153,10 +153,10 @@ function DocumentDashboardPage() {
         </div>
 
         {/* By Branch */}
-        <div className="bg-white rounded-lg border p-4">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3">สถานะตามสาขา</h3>
+        <div className="bg-card rounded-lg border p-4">
+          <h3 className="text-sm font-semibold text-foreground mb-3">สถานะตามสาขา</h3>
           {s.byBranch.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-4">ไม่มีข้อมูล</p>
+            <p className="text-sm text-muted-foreground text-center py-4">ไม่มีข้อมูล</p>
           ) : (
             <div className="space-y-2 max-h-80 overflow-y-auto">
               {s.byBranch.map((branch) => {
@@ -165,15 +165,15 @@ function DocumentDashboardPage() {
                   <div key={branch.branchId} className="p-2 border rounded text-sm">
                     <div className="flex justify-between mb-1">
                       <span className="font-medium">{branch.branchName}</span>
-                      <span className="text-gray-500">{pct}% สมบูรณ์</span>
+                      <span className="text-muted-foreground">{pct}% สมบูรณ์</span>
                     </div>
-                    <div className="w-full bg-gray-100 rounded-full h-2 mb-1">
+                    <div className="w-full bg-muted rounded-full h-2 mb-1">
                       <div
                         className="bg-green-500 h-2 rounded-full transition-all"
                         style={{ width: `${pct}%` }}
                       />
                     </div>
-                    <div className="flex gap-3 text-xs text-gray-500">
+                    <div className="flex gap-3 text-xs text-muted-foreground">
                       <span>ทั้งหมด: {branch.total}</span>
                       <span>รอเอกสาร: {branch.pendingDocs}</span>
                       <span>รอเซ็น: {branch.pendingSigs}</span>
@@ -186,21 +186,21 @@ function DocumentDashboardPage() {
         </div>
 
         {/* Recent Activity */}
-        <div className="bg-white rounded-lg border p-4 lg:col-span-2">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3">กิจกรรมล่าสุด</h3>
+        <div className="bg-card rounded-lg border p-4 lg:col-span-2">
+          <h3 className="text-sm font-semibold text-foreground mb-3">กิจกรรมล่าสุด</h3>
           {s.recentActivity.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-4">ไม่มีกิจกรรม</p>
+            <p className="text-sm text-muted-foreground text-center py-4">ไม่มีกิจกรรม</p>
           ) : (
             <div className="space-y-2 max-h-60 overflow-y-auto">
               {s.recentActivity.map((act) => (
-                <div key={act.id} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                <div key={act.id} className="flex items-center justify-between p-2 bg-muted rounded text-sm">
                   <div>
                     <span className="font-medium">{act.contractNumber}</span>
-                    <span className="text-gray-500 ml-2">{act.customerName}</span>
+                    <span className="text-muted-foreground ml-2">{act.customerName}</span>
                     <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">{act.action}</span>
-                    {act.branchName && <span className="text-xs text-gray-400 ml-2">({act.branchName})</span>}
+                    {act.branchName && <span className="text-xs text-muted-foreground ml-2">({act.branchName})</span>}
                   </div>
-                  <span className="text-xs text-gray-400 whitespace-nowrap">
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">
                     {new Date(act.createdAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}
                   </span>
                 </div>

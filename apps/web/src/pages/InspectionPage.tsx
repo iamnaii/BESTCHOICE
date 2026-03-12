@@ -69,11 +69,11 @@ export default function InspectionPage() {
       label: 'สินค้า',
       render: (i: Inspection) => (
         <button onClick={() => navigate(`/inspections/${i.id}`)} className="text-left hover:underline">
-          <div className="text-primary-600 font-medium">
+          <div className="text-primary font-medium">
             {i.products[0]?.brand} {i.products[0]?.model}
           </div>
           {i.products[0]?.imeiSerial && (
-            <div className="text-xs text-gray-400 font-mono">{i.products[0].imeiSerial}</div>
+            <div className="text-xs text-muted-foreground font-mono">{i.products[0].imeiSerial}</div>
           )}
         </button>
       ),
@@ -84,10 +84,10 @@ export default function InspectionPage() {
       label: 'เกรด',
       render: (i: Inspection) => {
         const grade = i.gradeOverride || i.overallGrade;
-        if (!grade) return <span className="text-gray-400">-</span>;
-        const colors: Record<string, string> = { A: 'bg-green-100 text-green-700', B: 'bg-primary-100 text-primary-700', C: 'bg-yellow-100 text-yellow-700', D: 'bg-red-100 text-red-700' };
+        if (!grade) return <span className="text-muted-foreground">-</span>;
+        const colors: Record<string, string> = { A: 'bg-green-100 text-green-700', B: 'bg-primary/10 text-primary', C: 'bg-yellow-100 text-yellow-700', D: 'bg-red-100 text-red-700' };
         return (
-          <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${colors[grade] || 'bg-gray-100'}`}>
+          <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${colors[grade] || 'bg-muted'}`}>
             {grade} {i.gradeOverride ? '(override)' : ''}
           </span>
         );
@@ -118,14 +118,14 @@ export default function InspectionPage() {
         title="ตรวจเช็คมือถือ"
         subtitle={`ทั้งหมด ${inspections.length} รายการ`}
         action={
-          <button onClick={() => setIsNewModalOpen(true)} className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700">
+          <button onClick={() => setIsNewModalOpen(true)} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90">
             + เริ่มตรวจเช็ค
           </button>
         }
       />
 
       <div className="flex gap-3 mb-4">
-        <select value={filter} onChange={(e) => setFilter(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none">
+        <select value={filter} onChange={(e) => setFilter(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm outline-none">
           <option value="">ทั้งหมด</option>
           <option value="false">กำลังตรวจ</option>
           <option value="true">ตรวจเสร็จ</option>
@@ -137,22 +137,22 @@ export default function InspectionPage() {
       <Modal isOpen={isNewModalOpen} onClose={() => setIsNewModalOpen(false)} title="เริ่มตรวจเช็คสินค้า">
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Product ID *</label>
+            <label className="block text-sm font-medium text-foreground mb-1">Product ID *</label>
             <input
               type="text"
               value={newForm.productId}
               onChange={(e) => setNewForm({ ...newForm, productId: e.target.value })}
               placeholder="ระบุ ID สินค้า"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none text-sm"
+              className="w-full px-3 py-2 border border-input rounded-lg outline-none text-sm"
               required
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Template *</label>
+            <label className="block text-sm font-medium text-foreground mb-1">Template *</label>
             <select
               value={newForm.templateId}
               onChange={(e) => setNewForm({ ...newForm, templateId: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none text-sm"
+              className="w-full px-3 py-2 border border-input rounded-lg outline-none text-sm"
               required
             >
               <option value="">เลือก Template</option>
@@ -162,11 +162,11 @@ export default function InspectionPage() {
             </select>
           </div>
           <div className="flex justify-end gap-3 pt-2">
-            <button onClick={() => setIsNewModalOpen(false)} className="px-4 py-2 text-sm text-gray-600">ยกเลิก</button>
+            <button onClick={() => setIsNewModalOpen(false)} className="px-4 py-2 text-sm text-muted-foreground">ยกเลิก</button>
             <button
               onClick={() => createMutation.mutate()}
               disabled={!newForm.productId || !newForm.templateId || createMutation.isPending}
-              className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
             >
               เริ่มตรวจ
             </button>

@@ -79,18 +79,18 @@ const custPrefixOptions = ['นาย', 'นาง', 'นางสาว'];
 const custRelationshipOptions = ['บิดา', 'มารดา', 'พี่น้อง', 'คู่สมรส', 'ญาติ', 'เพื่อน', 'อื่นๆ'];
 
 const statusLabels: Record<string, { label: string; className: string }> = {
-  DRAFT: { label: 'ร่าง', className: 'bg-gray-100 text-gray-700' },
+  DRAFT: { label: 'ร่าง', className: 'bg-secondary text-foreground' },
   ACTIVE: { label: 'ผ่อนอยู่', className: 'bg-green-100 text-green-700' },
   OVERDUE: { label: 'ค้างชำระ', className: 'bg-yellow-100 text-yellow-700' },
   DEFAULT: { label: 'ผิดนัด', className: 'bg-red-100 text-red-700' },
-  EARLY_PAYOFF: { label: 'ปิดก่อน', className: 'bg-primary-100 text-primary-700' },
+  EARLY_PAYOFF: { label: 'ปิดก่อน', className: 'bg-primary/10 text-primary' },
   COMPLETED: { label: 'ครบ', className: 'bg-teal-100 text-teal-700' },
-  EXCHANGED: { label: 'เปลี่ยนเครื่อง', className: 'bg-primary-100 text-primary-700' },
+  EXCHANGED: { label: 'เปลี่ยนเครื่อง', className: 'bg-primary/10 text-primary' },
   CLOSED_BAD_DEBT: { label: 'หนี้สูญ', className: 'bg-red-200 text-red-800' },
 };
 
 const paymentStatusLabels: Record<string, { label: string; className: string }> = {
-  PENDING: { label: 'รอชำระ', className: 'bg-gray-100 text-gray-700' },
+  PENDING: { label: 'รอชำระ', className: 'bg-secondary text-foreground' },
   PAID: { label: 'ชำระแล้ว', className: 'bg-green-100 text-green-700' },
   OVERDUE: { label: 'เกินกำหนด', className: 'bg-red-100 text-red-700' },
   PARTIALLY_PAID: { label: 'ชำระบางส่วน', className: 'bg-yellow-100 text-yellow-700' },
@@ -412,10 +412,10 @@ export default function ContractDetailPage() {
   };
 
   if (isLoading || !contract) {
-    return <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div></div>;
+    return <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>;
   }
 
-  const s = statusLabels[contract.status] || { label: contract.status, className: 'bg-gray-100' };
+  const s = statusLabels[contract.status] || { label: contract.status, className: 'bg-secondary' };
   const paidCount = contract.payments.filter((p) => p.status === 'PAID').length;
   const isReviewer = user && ['OWNER', 'BRANCH_MANAGER'].includes(user.role) && (user.role === 'OWNER' || contract.salespersonId !== user.id);
   const isCreator = user && contract.salespersonId === user.id;
@@ -437,28 +437,28 @@ export default function ContractDetailPage() {
     {
       key: 'amountPaid',
       label: 'ยอดที่ชำระ',
-      render: (p: Payment) => p.amountPaid ? <span className="text-sm text-green-600">{parseFloat(p.amountPaid).toLocaleString()} ฿</span> : <span className="text-xs text-gray-400">-</span>,
+      render: (p: Payment) => p.amountPaid ? <span className="text-sm text-green-600">{parseFloat(p.amountPaid).toLocaleString()} ฿</span> : <span className="text-xs text-muted-foreground">-</span>,
     },
     {
       key: 'lateFee',
       label: 'ค่าปรับ',
       render: (p: Payment) => {
         const fee = parseFloat(p.lateFee);
-        return fee > 0 ? <span className="text-sm text-red-600">{fee.toLocaleString()} ฿</span> : <span className="text-xs text-gray-400">-</span>;
+        return fee > 0 ? <span className="text-sm text-red-600">{fee.toLocaleString()} ฿</span> : <span className="text-xs text-muted-foreground">-</span>;
       },
     },
     {
       key: 'status',
       label: 'สถานะ',
       render: (p: Payment) => {
-        const ps = paymentStatusLabels[p.status] || { label: p.status, className: 'bg-gray-100' };
+        const ps = paymentStatusLabels[p.status] || { label: p.status, className: 'bg-secondary' };
         return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ps.className}`}>{ps.label}</span>;
       },
     },
     {
       key: 'paidDate',
       label: 'วันที่ชำระ',
-      render: (p: Payment) => p.paidDate ? <span className="text-xs">{new Date(p.paidDate).toLocaleDateString('th-TH')}</span> : <span className="text-xs text-gray-400">-</span>,
+      render: (p: Payment) => p.paidDate ? <span className="text-xs">{new Date(p.paidDate).toLocaleDateString('th-TH')}</span> : <span className="text-xs text-muted-foreground">-</span>,
     },
   ];
 
@@ -469,7 +469,7 @@ export default function ContractDetailPage() {
         subtitle="รายละเอียดสัญญาผ่อนชำระ"
         action={
           <div className="flex gap-2 flex-wrap">
-            <button onClick={() => navigate(`/contracts/${id}/sign`)} className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700">
+            <button onClick={() => navigate(`/contracts/${id}/sign`)} className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90">
               ลงนาม/เอกสาร
             </button>
             <button
@@ -496,7 +496,7 @@ export default function ContractDetailPage() {
                 };
                 setTimeout(() => tryPrint(), 600);
               }}
-              className="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+              className="px-4 py-2 text-sm border border-input text-foreground rounded-lg hover:bg-muted"
             >
               พิมพ์สัญญา
             </button>
@@ -509,7 +509,7 @@ export default function ContractDetailPage() {
             )}
 
             {['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status) && (
-              <button onClick={() => setShowPayoffModal(true)} className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700">
+              <button onClick={() => setShowPayoffModal(true)} className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90">
                 ปิดก่อนกำหนด
               </button>
             )}
@@ -522,7 +522,7 @@ export default function ContractDetailPage() {
                 {deleteMutation.isPending ? 'กำลังลบ...' : 'ลบสัญญา'}
               </button>
             )}
-            <button onClick={() => navigate('/contracts')} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg">
+            <button onClick={() => navigate('/contracts')} className="px-4 py-2 text-sm text-muted-foreground border border-input rounded-lg">
               กลับ
             </button>
           </div>
@@ -557,29 +557,29 @@ export default function ContractDetailPage() {
         const hint = currentStep >= 0 ? stepHints[currentStep] : null;
 
         return (
-          <div className="bg-white rounded-lg border p-4 mb-6">
+          <div className="rounded-lg border p-4 mb-6">
             <div className="flex items-center justify-between mb-3">
               {steps.map((step, i) => (
                 <div key={i} className="flex items-center flex-1 last:flex-none">
                   <div className="flex flex-col items-center gap-1 min-w-0">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${step.done ? 'bg-green-600 text-white' : i === currentStep ? 'bg-primary-600 text-white ring-2 ring-primary-300 ring-offset-1' : 'bg-gray-200 text-gray-500'}`}>
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${step.done ? 'bg-green-600 text-white' : i === currentStep ? 'bg-primary text-primary-foreground ring-2 ring-primary/30 ring-offset-1' : 'bg-muted text-muted-foreground'}`}>
                       {step.done ? '✓' : i + 1}
                     </div>
-                    <span className={`text-[10px] md:text-xs text-center leading-tight ${step.done ? 'text-green-700 font-medium' : i === currentStep ? 'text-primary-700 font-medium' : 'text-gray-400'}`}>
+                    <span className={`text-2xs md:text-xs text-center leading-tight ${step.done ? 'text-green-700 font-medium' : i === currentStep ? 'text-primary font-medium' : 'text-muted-foreground'}`}>
                       {step.label}
                     </span>
                   </div>
                   {i < steps.length - 1 && (
-                    <div className={`flex-1 h-0.5 mx-1 mt-[-16px] ${step.done ? 'bg-green-500' : 'bg-gray-200'}`} />
+                    <div className={`flex-1 h-0.5 mx-1 mt-[-16px] ${step.done ? 'bg-green-500' : 'bg-muted'}`} />
                   )}
                 </div>
               ))}
             </div>
             {hint && hint.text && (
-              <div className="flex items-center justify-between bg-primary-50 rounded-lg px-3 py-2 mt-1">
-                <span className="text-sm text-primary-700">{hint.text}</span>
+              <div className="flex items-center justify-between bg-primary/5 rounded-lg px-3 py-2 mt-1">
+                <span className="text-sm text-primary">{hint.text}</span>
                 {hint.action && hint.actionLabel && (
-                  <button onClick={hint.action} className="px-3 py-1.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 shrink-0 ml-2">
+                  <button onClick={hint.action} className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 shrink-0 ml-2">
                     {hint.actionLabel}
                   </button>
                 )}
@@ -591,24 +591,24 @@ export default function ContractDetailPage() {
 
       {/* Status + Workflow + Summary */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-        <div className="bg-white rounded-lg border p-4">
-          <div className="text-xs text-gray-500 mb-1">สถานะสัญญา</div>
+        <div className="rounded-lg border p-4">
+          <div className="text-xs text-muted-foreground mb-1">สถานะสัญญา</div>
           <span className={`px-3 py-1 rounded-full text-sm font-medium ${s.className}`}>{s.label}</span>
         </div>
-        <div className="bg-white rounded-lg border p-4">
-          <div className="text-xs text-gray-500 mb-1">Workflow</div>
+        <div className="rounded-lg border p-4">
+          <div className="text-xs text-muted-foreground mb-1">Workflow</div>
           <WorkflowStatusBadge status={contract.workflowStatus} />
         </div>
-        <div className="bg-white rounded-lg border p-4">
-          <div className="text-xs text-gray-500 mb-1">ค่างวด/เดือน</div>
-          <div className="text-xl font-bold text-primary-700">{parseFloat(contract.monthlyPayment).toLocaleString()} ฿</div>
+        <div className="rounded-lg border p-4">
+          <div className="text-xs text-muted-foreground mb-1">ค่างวด/เดือน</div>
+          <div className="text-xl font-bold text-primary">{parseFloat(contract.monthlyPayment).toLocaleString()} ฿</div>
         </div>
-        <div className="bg-white rounded-lg border p-4">
-          <div className="text-xs text-gray-500 mb-1">ชำระแล้ว</div>
+        <div className="rounded-lg border p-4">
+          <div className="text-xs text-muted-foreground mb-1">ชำระแล้ว</div>
           <div className="text-xl font-bold text-green-600">{paidCount}/{contract.totalMonths} งวด</div>
         </div>
-        <div className="bg-white rounded-lg border p-4">
-          <div className="text-xs text-gray-500 mb-1">ยอดผ่อนรวม</div>
+        <div className="rounded-lg border p-4">
+          <div className="text-xs text-muted-foreground mb-1">ยอดผ่อนรวม</div>
           <div className="text-xl font-bold">{parseFloat(contract.financedAmount).toLocaleString()} ฿</div>
         </div>
       </div>
@@ -680,9 +680,9 @@ export default function ContractDetailPage() {
 
       {/* Contract Info */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-        <div className="bg-white rounded-lg border p-6">
+        <div className="rounded-lg border p-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">ข้อมูลสัญญา</h2>
+            <h2 className="text-lg font-semibold text-foreground">ข้อมูลสัญญา</h2>
             {canEdit && !isEditing && (
               <button onClick={startEditing} className="px-3 py-1 text-xs bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200">
                 แก้ไข
@@ -694,24 +694,24 @@ export default function ContractDetailPage() {
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">ราคาขาย</label>
-                  <input type="number" value={editForm.sellingPrice} onChange={(e) => setEditForm({ ...editForm, sellingPrice: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                  <label className="block text-xs text-muted-foreground mb-1">ราคาขาย</label>
+                  <input type="number" value={editForm.sellingPrice} onChange={(e) => setEditForm({ ...editForm, sellingPrice: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">เงินดาวน์</label>
-                  <input type="number" value={editForm.downPayment} onChange={(e) => setEditForm({ ...editForm, downPayment: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                  <label className="block text-xs text-muted-foreground mb-1">เงินดาวน์</label>
+                  <input type="number" value={editForm.downPayment} onChange={(e) => setEditForm({ ...editForm, downPayment: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">จำนวนงวด (เดือน)</label>
-                  <input type="number" value={editForm.totalMonths} onChange={(e) => setEditForm({ ...editForm, totalMonths: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                  <label className="block text-xs text-muted-foreground mb-1">จำนวนงวด (เดือน)</label>
+                  <input type="number" value={editForm.totalMonths} onChange={(e) => setEditForm({ ...editForm, totalMonths: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">อัตราดอกเบี้ย (ทศนิยม เช่น 0.08)</label>
-                  <input type="number" step="0.01" value={editForm.interestRate} onChange={(e) => setEditForm({ ...editForm, interestRate: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                  <label className="block text-xs text-muted-foreground mb-1">อัตราดอกเบี้ย (ทศนิยม เช่น 0.08)</label>
+                  <input type="number" step="0.01" value={editForm.interestRate} onChange={(e) => setEditForm({ ...editForm, interestRate: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">วันชำระ</label>
-                  <select value={editForm.paymentDueDay} onChange={(e) => setEditForm({ ...editForm, paymentDueDay: parseInt(e.target.value) || 1 })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                  <label className="block text-xs text-muted-foreground mb-1">วันชำระ</label>
+                  <select value={editForm.paymentDueDay} onChange={(e) => setEditForm({ ...editForm, paymentDueDay: parseInt(e.target.value) || 1 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm">
                     {[...Array.from({ length: 28 }, (_, i) => i + 1), 31].map((d) => (
                       <option key={d} value={d}>{d === 31 ? 'สิ้นเดือน' : `วันที่ ${d}`}</option>
                     ))}
@@ -719,8 +719,8 @@ export default function ContractDetailPage() {
                 </div>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">หมายเหตุ</label>
-                <textarea value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                <label className="block text-xs text-muted-foreground mb-1">หมายเหตุ</label>
+                <textarea value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} rows={2} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
               </div>
               {/* Preview calculation */}
               {editForm.sellingPrice > 0 && editForm.downPayment >= 0 && editForm.totalMonths > 0 && editForm.downPayment < editForm.sellingPrice && (() => {
@@ -733,7 +733,7 @@ export default function ContractDetailPage() {
                 const total = p + comm + interest + vat;
                 const monthly = Math.ceil(total / editForm.totalMonths);
                 return (
-                  <div className="bg-gray-50 rounded-lg p-3 text-xs space-y-1">
+                  <div className="bg-muted rounded-lg p-3 text-xs space-y-1">
                     <div>ยอดปล่อย: {p.toLocaleString()} ฿</div>
                     <div>ค่าคอมหน้าร้าน ({(commPct * 100).toFixed(0)}%): {comm.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</div>
                     <div>ดอกเบี้ยรวม: {interest.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</div>
@@ -747,11 +747,11 @@ export default function ContractDetailPage() {
               {editForm.sellingPrice <= 0 && <div className="text-xs text-red-600">ราคาขายต้องมากกว่า 0</div>}
               {(editForm.paymentDueDay < 1 || (editForm.paymentDueDay > 28 && editForm.paymentDueDay !== 31)) && <div className="text-xs text-red-600">วันชำระต้องอยู่ระหว่าง 1-28 หรือสิ้นเดือน</div>}
               <div className="flex gap-2 pt-2">
-                <button onClick={() => setIsEditing(false)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg">ยกเลิก</button>
+                <button onClick={() => setIsEditing(false)} className="px-4 py-2 text-sm border border-input rounded-lg">ยกเลิก</button>
                 <button
                   onClick={() => updateMutation.mutate()}
                   disabled={updateMutation.isPending || editForm.totalMonths <= 0 || editForm.sellingPrice <= 0 || editForm.downPayment >= editForm.sellingPrice || editForm.paymentDueDay < 1 || (editForm.paymentDueDay > 28 && editForm.paymentDueDay !== 31)}
-                  className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+                  className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
                 >
                   {updateMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
                 </button>
@@ -777,12 +777,12 @@ export default function ContractDetailPage() {
         </div>
 
         <div className="space-y-6">
-          <div className="bg-white rounded-lg border p-6">
+          <div className="rounded-lg border p-6">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-semibold text-gray-900">ข้อมูลลูกค้า</h2>
+                <h2 className="text-lg font-semibold text-foreground">ข้อมูลลูกค้า</h2>
                 {contract.customerSnapshot && (
-                  <span className="text-[10px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded">ณ วันที่สร้างสัญญา</span>
+                  <span className="text-2xs text-muted-foreground bg-secondary px-2 py-0.5 rounded">ณ วันที่สร้างสัญญา</span>
                 )}
               </div>
               {canEditMaster && (
@@ -798,12 +798,12 @@ export default function ContractDetailPage() {
               <Info label="อาชีพ" value={contract.customerSnapshot?.occupation || '-'} />
               {contract.customerSnapshot?.salary && <Info label="รายได้" value={`${parseFloat(contract.customerSnapshot.salary).toLocaleString()} ฿`} />}
             </div>
-            <button onClick={() => navigate(`/customers/${contract.customer.id}`)} className="mt-3 text-xs text-primary-600 hover:underline">ดูรายละเอียดลูกค้า (ข้อมูลปัจจุบัน)</button>
+            <button onClick={() => navigate(`/customers/${contract.customer.id}`)} className="mt-3 text-xs text-primary hover:underline">ดูรายละเอียดลูกค้า (ข้อมูลปัจจุบัน)</button>
           </div>
 
-          <div className="bg-white rounded-lg border p-6">
+          <div className="rounded-lg border p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900">ข้อมูลสินค้า</h2>
+              <h2 className="text-lg font-semibold text-foreground">ข้อมูลสินค้า</h2>
               {canEditMaster && (
                 <button onClick={startEditingProduct} className="px-3 py-1 text-xs bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200">
                   แก้ไข
@@ -818,19 +818,19 @@ export default function ContractDetailPage() {
               {contract.product.serialNumber && <Info label="S/N" value={contract.product.serialNumber} />}
               {contract.product.imeiSerial && <Info label="IMEI" value={contract.product.imeiSerial} />}
             </div>
-            <button onClick={() => navigate(`/products/${contract.product.id}`)} className="mt-3 text-xs text-primary-600 hover:underline">ดูรายละเอียดสินค้า</button>
+            <button onClick={() => navigate(`/products/${contract.product.id}`)} className="mt-3 text-xs text-primary hover:underline">ดูรายละเอียดสินค้า</button>
           </div>
 
           {/* QR Code Verification */}
           {contract.contractHash && (
-            <div className="bg-white rounded-lg border p-6">
-              <h2 className="text-sm font-semibold text-gray-900 mb-2">ตรวจสอบสัญญา (QR Verify)</h2>
-              <div className="text-xs text-gray-500 mb-2">Hash: <span className="font-mono">{contract.contractHash?.slice(0, 16)}...</span></div>
+            <div className="rounded-lg border p-6">
+              <h2 className="text-sm font-semibold text-foreground mb-2">ตรวจสอบสัญญา (QR Verify)</h2>
+              <div className="text-xs text-muted-foreground mb-2">Hash: <span className="font-mono">{contract.contractHash?.slice(0, 16)}...</span></div>
               <div className="flex items-center gap-2">
                 <span className="inline-block w-3 h-3 bg-green-500 rounded-full"></span>
                 <span className="text-xs text-green-700">สัญญาได้รับการยืนยันแล้ว</span>
               </div>
-              <div className="mt-2 text-xs text-gray-400">
+              <div className="mt-2 text-xs text-muted-foreground">
                 URL: /api/contracts/{id}/verify
               </div>
             </div>
@@ -840,15 +840,15 @@ export default function ContractDetailPage() {
 
       {/* Early Payoff Quote */}
       {payoffQuote && ['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status) && (
-        <div className="bg-primary-50 rounded-lg border border-primary-200 p-6 mb-6">
-          <h2 className="text-lg font-semibold text-primary-800 mb-3">ประเมินปิดก่อนกำหนด</h2>
+        <div className="bg-primary/5 rounded-lg border border-primary/30 p-6 mb-6">
+          <h2 className="text-lg font-semibold text-primary mb-3">ประเมินปิดก่อนกำหนด</h2>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            <div><div className="text-xs text-primary-600">งวดคงเหลือ</div><div className="font-medium">{payoffQuote.remainingMonths} งวด</div></div>
-            <div><div className="text-xs text-primary-600">เงินต้นคงเหลือ</div><div className="font-medium">{payoffQuote.remainingPrincipal.toLocaleString()} ฿</div></div>
-            <div><div className="text-xs text-primary-600">ดอกเบี้ยคงเหลือ</div><div className="font-medium">{payoffQuote.remainingInterest.toLocaleString()} ฿</div></div>
+            <div><div className="text-xs text-primary">งวดคงเหลือ</div><div className="font-medium">{payoffQuote.remainingMonths} งวด</div></div>
+            <div><div className="text-xs text-primary">เงินต้นคงเหลือ</div><div className="font-medium">{payoffQuote.remainingPrincipal.toLocaleString()} ฿</div></div>
+            <div><div className="text-xs text-primary">ดอกเบี้ยคงเหลือ</div><div className="font-medium">{payoffQuote.remainingInterest.toLocaleString()} ฿</div></div>
             <div><div className="text-xs text-green-600">ส่วนลดดอกเบี้ย (50%)</div><div className="font-medium text-green-700">-{payoffQuote.discount.toLocaleString()} ฿</div></div>
             {payoffQuote.unpaidLateFees > 0 && <div><div className="text-xs text-red-600">ค่าปรับค้างชำระ</div><div className="font-medium text-red-700">{payoffQuote.unpaidLateFees.toLocaleString()} ฿</div></div>}
-            <div><div className="text-xs text-primary-600 font-semibold">ยอดปิดสัญญา</div><div className="text-xl font-bold text-primary-800">{payoffQuote.totalPayoff.toLocaleString()} ฿</div></div>
+            <div><div className="text-xs text-primary font-semibold">ยอดปิดสัญญา</div><div className="text-xl font-bold text-primary">{payoffQuote.totalPayoff.toLocaleString()} ฿</div></div>
           </div>
         </div>
       )}
@@ -857,25 +857,25 @@ export default function ContractDetailPage() {
       <div className="flex gap-1 mb-4 border-b">
         <button
           onClick={() => setActiveTab('schedule')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'schedule' ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'schedule' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           ตารางผ่อน ({paidCount}/{contract.totalMonths})
         </button>
         <button
           onClick={() => setActiveTab('preview')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'preview' ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'preview' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           ดูสัญญา
         </button>
         <button
           onClick={() => setActiveTab('documents')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'documents' ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'documents' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           เอกสาร ({contract.contractDocuments.length})
         </button>
         <button
           onClick={() => setActiveTab('credit')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'credit' ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'credit' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           ตรวจเครดิต
         </button>
@@ -883,15 +883,15 @@ export default function ContractDetailPage() {
 
       {/* Tab Content */}
       {activeTab === 'preview' && (
-        <div className="bg-gray-200 rounded-lg border overflow-hidden" style={{ height: '80vh' }}>
+        <div className="bg-muted rounded-lg border overflow-hidden" style={{ height: '80vh' }}>
           {previewLoading ? (
-            <div className="flex items-center justify-center py-12 bg-white">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+            <div className="flex items-center justify-center py-12 bg-background">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
             </div>
           ) : preview ? (
             <ContractPreviewFrame html={preview.html} />
           ) : (
-            <div className="flex items-center justify-center py-12 bg-white text-gray-500">ไม่สามารถโหลดตัวอย่างสัญญาได้</div>
+            <div className="flex items-center justify-center py-12 bg-background text-muted-foreground">ไม่สามารถโหลดตัวอย่างสัญญาได้</div>
           )}
         </div>
       )}
@@ -914,41 +914,41 @@ export default function ContractDetailPage() {
           <form onSubmit={handleProductEditSubmit} className="space-y-5 max-h-[75vh] overflow-y-auto pr-1">
 
             {/* ข้อมูลหลัก */}
-            <div className="border border-gray-200 rounded-lg p-4">
-              <h3 className="text-sm font-semibold text-gray-800 mb-3">ข้อมูลสินค้า</h3>
+            <div className="border border-border rounded-lg p-4">
+              <h3 className="text-sm font-semibold text-foreground mb-3">ข้อมูลสินค้า</h3>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 <div className="col-span-2 md:col-span-3">
-                  <label className="block text-xs text-gray-500 mb-1">ชื่อสินค้า *</label>
-                  <input type="text" value={productEditForm.name} onChange={(e) => setProductEditForm({ ...productEditForm, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required />
+                  <label className="block text-xs text-muted-foreground mb-1">ชื่อสินค้า *</label>
+                  <input type="text" value={productEditForm.name} onChange={(e) => setProductEditForm({ ...productEditForm, name: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" required />
                 </div>
                 {contract.product.category !== 'ACCESSORY' ? (
                   <>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">ยี่ห้อ *</label>
-                      <input type="text" value={productEditForm.brand} onChange={(e) => setProductEditForm({ ...productEditForm, brand: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required />
+                      <label className="block text-xs text-muted-foreground mb-1">ยี่ห้อ *</label>
+                      <input type="text" value={productEditForm.brand} onChange={(e) => setProductEditForm({ ...productEditForm, brand: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" required />
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">รุ่น *</label>
-                      <input type="text" value={productEditForm.model} onChange={(e) => setProductEditForm({ ...productEditForm, model: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required />
+                      <label className="block text-xs text-muted-foreground mb-1">รุ่น *</label>
+                      <input type="text" value={productEditForm.model} onChange={(e) => setProductEditForm({ ...productEditForm, model: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" required />
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">สี</label>
-                      <input type="text" value={productEditForm.color} onChange={(e) => setProductEditForm({ ...productEditForm, color: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                      <label className="block text-xs text-muted-foreground mb-1">สี</label>
+                      <input type="text" value={productEditForm.color} onChange={(e) => setProductEditForm({ ...productEditForm, color: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">ความจุ</label>
-                      <input type="text" value={productEditForm.storage} onChange={(e) => setProductEditForm({ ...productEditForm, storage: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                      <label className="block text-xs text-muted-foreground mb-1">ความจุ</label>
+                      <input type="text" value={productEditForm.storage} onChange={(e) => setProductEditForm({ ...productEditForm, storage: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                     </div>
                   </>
                 ) : (
                   <>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">ประเภทอุปกรณ์</label>
-                      <input type="text" value={productEditForm.accessoryType} onChange={(e) => setProductEditForm({ ...productEditForm, accessoryType: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                      <label className="block text-xs text-muted-foreground mb-1">ประเภทอุปกรณ์</label>
+                      <input type="text" value={productEditForm.accessoryType} onChange={(e) => setProductEditForm({ ...productEditForm, accessoryType: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">ยี่ห้ออุปกรณ์</label>
-                      <input type="text" value={productEditForm.accessoryBrand} onChange={(e) => setProductEditForm({ ...productEditForm, accessoryBrand: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                      <label className="block text-xs text-muted-foreground mb-1">ยี่ห้ออุปกรณ์</label>
+                      <input type="text" value={productEditForm.accessoryBrand} onChange={(e) => setProductEditForm({ ...productEditForm, accessoryBrand: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                     </div>
                   </>
                 )}
@@ -956,45 +956,45 @@ export default function ContractDetailPage() {
             </div>
 
             {/* หมายเลขเครื่อง & ราคา */}
-            <div className="border border-gray-200 rounded-lg p-4">
-              <h3 className="text-sm font-semibold text-gray-800 mb-3">หมายเลขเครื่อง & ราคา</h3>
+            <div className="border border-border rounded-lg p-4">
+              <h3 className="text-sm font-semibold text-foreground mb-3">หมายเลขเครื่อง & ราคา</h3>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">IMEI / Serial</label>
-                  <input type="text" value={productEditForm.imeiSerial} onChange={(e) => setProductEditForm({ ...productEditForm, imeiSerial: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono" />
+                  <label className="block text-xs text-muted-foreground mb-1">IMEI / Serial</label>
+                  <input type="text" value={productEditForm.imeiSerial} onChange={(e) => setProductEditForm({ ...productEditForm, imeiSerial: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm font-mono" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Serial Number</label>
-                  <input type="text" value={productEditForm.serialNumber} onChange={(e) => setProductEditForm({ ...productEditForm, serialNumber: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono" />
+                  <label className="block text-xs text-muted-foreground mb-1">Serial Number</label>
+                  <input type="text" value={productEditForm.serialNumber} onChange={(e) => setProductEditForm({ ...productEditForm, serialNumber: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm font-mono" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">ราคาทุน (บาท)</label>
-                  <input type="number" step="0.01" value={productEditForm.costPrice} onChange={(e) => setProductEditForm({ ...productEditForm, costPrice: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                  <label className="block text-xs text-muted-foreground mb-1">ราคาทุน (บาท)</label>
+                  <input type="number" step="0.01" value={productEditForm.costPrice} onChange={(e) => setProductEditForm({ ...productEditForm, costPrice: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                 </div>
               </div>
             </div>
 
             {/* ข้อมูลมือสอง */}
             {contract.product.category === 'PHONE_USED' && (
-              <div className="border border-gray-200 rounded-lg p-4">
-                <h3 className="text-sm font-semibold text-gray-800 mb-3">ข้อมูลมือสอง</h3>
+              <div className="border border-border rounded-lg p-4">
+                <h3 className="text-sm font-semibold text-foreground mb-3">ข้อมูลมือสอง</h3>
                 <div className="grid grid-cols-2 gap-3 mb-3">
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">แบตเตอรี่ (%)</label>
-                    <input type="number" min="0" max="100" value={productEditForm.batteryHealth} onChange={(e) => setProductEditForm({ ...productEditForm, batteryHealth: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                    <label className="block text-xs text-muted-foreground mb-1">แบตเตอรี่ (%)</label>
+                    <input type="number" min="0" max="100" value={productEditForm.batteryHealth} onChange={(e) => setProductEditForm({ ...productEditForm, batteryHealth: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">วันหมดประกัน</label>
-                    <input type="date" value={productEditForm.warrantyExpireDate} onChange={(e) => setProductEditForm({ ...productEditForm, warrantyExpireDate: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" disabled={productEditForm.warrantyExpired} />
+                    <label className="block text-xs text-muted-foreground mb-1">วันหมดประกัน</label>
+                    <input type="date" value={productEditForm.warrantyExpireDate} onChange={(e) => setProductEditForm({ ...productEditForm, warrantyExpireDate: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" disabled={productEditForm.warrantyExpired} />
                   </div>
                 </div>
                 <div className="flex gap-6">
-                  <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                    <input type="checkbox" checked={productEditForm.warrantyExpired} onChange={(e) => setProductEditForm({ ...productEditForm, warrantyExpired: e.target.checked })} className="rounded text-primary-600" />
+                  <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
+                    <input type="checkbox" checked={productEditForm.warrantyExpired} onChange={(e) => setProductEditForm({ ...productEditForm, warrantyExpired: e.target.checked })} className="rounded text-primary" />
                     หมดประกันแล้ว
                   </label>
-                  <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                    <input type="checkbox" checked={productEditForm.hasBox} onChange={(e) => setProductEditForm({ ...productEditForm, hasBox: e.target.checked })} className="rounded text-primary-600" />
+                  <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
+                    <input type="checkbox" checked={productEditForm.hasBox} onChange={(e) => setProductEditForm({ ...productEditForm, hasBox: e.target.checked })} className="rounded text-primary" />
                     มีกล่อง
                   </label>
                 </div>
@@ -1002,9 +1002,9 @@ export default function ContractDetailPage() {
             )}
 
             {/* Submit */}
-            <div className="flex justify-end gap-3 pt-2 sticky bottom-0 bg-white py-3 border-t">
-              <button type="button" onClick={() => setIsEditingProduct(false)} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg">ยกเลิก</button>
-              <button type="submit" disabled={updateProductMutation.isPending} className="px-6 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
+            <div className="flex justify-end gap-3 pt-2 sticky bottom-0 bg-background py-3 border-t">
+              <button type="button" onClick={() => setIsEditingProduct(false)} className="px-4 py-2 text-sm text-muted-foreground border border-input rounded-lg">ยกเลิก</button>
+              <button type="submit" disabled={updateProductMutation.isPending} className="px-6 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50">
                 {updateProductMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
               </button>
             </div>
@@ -1017,155 +1017,155 @@ export default function ContractDetailPage() {
         <Modal isOpen title="แก้ไขข้อมูลลูกค้า" onClose={() => setIsEditingCustomer(false)} size="lg">
           {customerDataLoading ? (
             <div className="flex items-center justify-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
             </div>
           ) : (
           <form onSubmit={handleCustomerEditSubmit} className="space-y-5 max-h-[75vh] overflow-y-auto pr-1">
 
             {/* ข้อมูลส่วนตัว */}
-            <div className="border border-gray-200 rounded-lg p-4">
-              <h3 className="text-sm font-semibold text-gray-800 mb-3">ข้อมูลส่วนตัว</h3>
+            <div className="border border-border rounded-lg p-4">
+              <h3 className="text-sm font-semibold text-foreground mb-3">ข้อมูลส่วนตัว</h3>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">คำนำหน้า</label>
-                  <select value={customerEditForm.prefix} onChange={(e) => setCustomerEditForm({ ...customerEditForm, prefix: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white">
+                  <label className="block text-xs text-muted-foreground mb-1">คำนำหน้า</label>
+                  <select value={customerEditForm.prefix} onChange={(e) => setCustomerEditForm({ ...customerEditForm, prefix: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background">
                     <option value="">-- เลือก --</option>
                     {custPrefixOptions.map(p => <option key={p} value={p}>{p}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">ชื่อ-นามสกุล *</label>
-                  <input type="text" value={customerEditForm.name} onChange={(e) => setCustomerEditForm({ ...customerEditForm, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required />
+                  <label className="block text-xs text-muted-foreground mb-1">ชื่อ-นามสกุล *</label>
+                  <input type="text" value={customerEditForm.name} onChange={(e) => setCustomerEditForm({ ...customerEditForm, name: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" required />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">ชื่อเล่น</label>
-                  <input type="text" value={customerEditForm.nickname} onChange={(e) => setCustomerEditForm({ ...customerEditForm, nickname: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                  <label className="block text-xs text-muted-foreground mb-1">ชื่อเล่น</label>
+                  <input type="text" value={customerEditForm.nickname} onChange={(e) => setCustomerEditForm({ ...customerEditForm, nickname: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">วันเกิด</label>
-                  <input type="date" value={customerEditForm.birthDate} onChange={(e) => setCustomerEditForm({ ...customerEditForm, birthDate: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                  <label className="block text-xs text-muted-foreground mb-1">วันเกิด</label>
+                  <input type="date" value={customerEditForm.birthDate} onChange={(e) => setCustomerEditForm({ ...customerEditForm, birthDate: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                 </div>
               </div>
             </div>
 
             {/* ที่อยู่ตามบัตรประชาชน */}
-            <div className="border border-gray-200 rounded-lg p-4">
-              <h3 className="text-sm font-semibold text-gray-800 mb-3">ที่อยู่ตามบัตรประชาชน</h3>
+            <div className="border border-border rounded-lg p-4">
+              <h3 className="text-sm font-semibold text-foreground mb-3">ที่อยู่ตามบัตรประชาชน</h3>
               <AddressForm value={custAddrIdCard} onChange={setCustAddrIdCard} />
             </div>
 
             {/* ที่อยู่ปัจจุบัน */}
-            <div className="border border-gray-200 rounded-lg p-4">
+            <div className="border border-border rounded-lg p-4">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-gray-800">ที่อยู่ปัจจุบัน</h3>
+                <h3 className="text-sm font-semibold text-foreground">ที่อยู่ปัจจุบัน</h3>
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={custSameAddress} onChange={(e) => setCustSameAddress(e.target.checked)} className="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
-                  <span className="text-xs text-gray-600">เหมือนที่อยู่ตามบัตร</span>
+                  <input type="checkbox" checked={custSameAddress} onChange={(e) => setCustSameAddress(e.target.checked)} className="rounded border-input text-primary focus-visible:ring-2 focus-visible:ring-ring/30" />
+                  <span className="text-xs text-muted-foreground">เหมือนที่อยู่ตามบัตร</span>
                 </label>
               </div>
               {custSameAddress ? (
-                <p className="text-xs text-gray-400 italic">ใช้ที่อยู่เดียวกับที่อยู่ตามบัตรประชาชน</p>
+                <p className="text-xs text-muted-foreground italic">ใช้ที่อยู่เดียวกับที่อยู่ตามบัตรประชาชน</p>
               ) : (
                 <AddressForm value={custAddrCurrent} onChange={setCustAddrCurrent} />
               )}
               <div className="mt-3">
-                <label className="block text-xs text-gray-500 mb-1">Link Google Map</label>
-                <input type="url" value={customerEditForm.googleMapLink} onChange={(e) => setCustomerEditForm({ ...customerEditForm, googleMapLink: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="https://maps.google.com/..." />
+                <label className="block text-xs text-muted-foreground mb-1">Link Google Map</label>
+                <input type="url" value={customerEditForm.googleMapLink} onChange={(e) => setCustomerEditForm({ ...customerEditForm, googleMapLink: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" placeholder="https://maps.google.com/..." />
               </div>
             </div>
 
             {/* ข้อมูลติดต่อ */}
-            <div className="border border-gray-200 rounded-lg p-4">
-              <h3 className="text-sm font-semibold text-gray-800 mb-3">ข้อมูลติดต่อ</h3>
+            <div className="border border-border rounded-lg p-4">
+              <h3 className="text-sm font-semibold text-foreground mb-3">ข้อมูลติดต่อ</h3>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">เบอร์หลัก *</label>
-                  <input type="tel" value={customerEditForm.phone} onChange={(e) => setCustomerEditForm({ ...customerEditForm, phone: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required />
+                  <label className="block text-xs text-muted-foreground mb-1">เบอร์หลัก *</label>
+                  <input type="tel" value={customerEditForm.phone} onChange={(e) => setCustomerEditForm({ ...customerEditForm, phone: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" required />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">เบอร์สำรอง</label>
-                  <input type="tel" value={customerEditForm.phoneSecondary} onChange={(e) => setCustomerEditForm({ ...customerEditForm, phoneSecondary: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                  <label className="block text-xs text-muted-foreground mb-1">เบอร์สำรอง</label>
+                  <input type="tel" value={customerEditForm.phoneSecondary} onChange={(e) => setCustomerEditForm({ ...customerEditForm, phoneSecondary: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">อีเมล</label>
-                  <input type="email" value={customerEditForm.email} onChange={(e) => setCustomerEditForm({ ...customerEditForm, email: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                  <label className="block text-xs text-muted-foreground mb-1">อีเมล</label>
+                  <input type="email" value={customerEditForm.email} onChange={(e) => setCustomerEditForm({ ...customerEditForm, email: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">LINE ID</label>
-                  <input type="text" value={customerEditForm.lineId} onChange={(e) => setCustomerEditForm({ ...customerEditForm, lineId: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                  <label className="block text-xs text-muted-foreground mb-1">LINE ID</label>
+                  <input type="text" value={customerEditForm.lineId} onChange={(e) => setCustomerEditForm({ ...customerEditForm, lineId: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">ลิงก์ Facebook</label>
-                  <input type="url" value={customerEditForm.facebookLink} onChange={(e) => setCustomerEditForm({ ...customerEditForm, facebookLink: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                  <label className="block text-xs text-muted-foreground mb-1">ลิงก์ Facebook</label>
+                  <input type="url" value={customerEditForm.facebookLink} onChange={(e) => setCustomerEditForm({ ...customerEditForm, facebookLink: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">ชื่อ Facebook</label>
-                  <input type="text" value={customerEditForm.facebookName} onChange={(e) => setCustomerEditForm({ ...customerEditForm, facebookName: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                  <label className="block text-xs text-muted-foreground mb-1">ชื่อ Facebook</label>
+                  <input type="text" value={customerEditForm.facebookName} onChange={(e) => setCustomerEditForm({ ...customerEditForm, facebookName: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">จำนวนเพื่อน Facebook</label>
-                  <input type="text" value={customerEditForm.facebookFriends} onChange={(e) => setCustomerEditForm({ ...customerEditForm, facebookFriends: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                  <label className="block text-xs text-muted-foreground mb-1">จำนวนเพื่อน Facebook</label>
+                  <input type="text" value={customerEditForm.facebookFriends} onChange={(e) => setCustomerEditForm({ ...customerEditForm, facebookFriends: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                 </div>
               </div>
             </div>
 
             {/* ข้อมูลที่ทำงาน */}
-            <div className="border border-gray-200 rounded-lg p-4">
-              <h3 className="text-sm font-semibold text-gray-800 mb-3">ข้อมูลที่ทำงาน</h3>
+            <div className="border border-border rounded-lg p-4">
+              <h3 className="text-sm font-semibold text-foreground mb-3">ข้อมูลที่ทำงาน</h3>
               <div className="grid grid-cols-2 gap-3 mb-3">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">ชื่อที่ทำงาน</label>
-                  <input type="text" value={customerEditForm.workplace} onChange={(e) => setCustomerEditForm({ ...customerEditForm, workplace: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                  <label className="block text-xs text-muted-foreground mb-1">ชื่อที่ทำงาน</label>
+                  <input type="text" value={customerEditForm.workplace} onChange={(e) => setCustomerEditForm({ ...customerEditForm, workplace: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">อาชีพ</label>
-                  <input type="text" value={customerEditForm.occupation} onChange={(e) => setCustomerEditForm({ ...customerEditForm, occupation: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                  <label className="block text-xs text-muted-foreground mb-1">อาชีพ</label>
+                  <input type="text" value={customerEditForm.occupation} onChange={(e) => setCustomerEditForm({ ...customerEditForm, occupation: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">รายละเอียดอาชีพ</label>
-                  <input type="text" value={customerEditForm.occupationDetail} onChange={(e) => setCustomerEditForm({ ...customerEditForm, occupationDetail: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                  <label className="block text-xs text-muted-foreground mb-1">รายละเอียดอาชีพ</label>
+                  <input type="text" value={customerEditForm.occupationDetail} onChange={(e) => setCustomerEditForm({ ...customerEditForm, occupationDetail: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">เงินเดือน</label>
-                  <input type="number" value={customerEditForm.salary} onChange={(e) => setCustomerEditForm({ ...customerEditForm, salary: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="0.00" />
+                  <label className="block text-xs text-muted-foreground mb-1">เงินเดือน</label>
+                  <input type="number" value={customerEditForm.salary} onChange={(e) => setCustomerEditForm({ ...customerEditForm, salary: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" placeholder="0.00" />
                 </div>
               </div>
               <div className="mt-2">
-                <label className="block text-xs text-gray-500 mb-1">ที่อยู่ที่ทำงาน</label>
+                <label className="block text-xs text-muted-foreground mb-1">ที่อยู่ที่ทำงาน</label>
                 <AddressForm value={custAddrWork} onChange={setCustAddrWork} />
               </div>
             </div>
 
             {/* รายชื่อบุคคลอ้างอิง */}
-            <div className="border border-gray-200 rounded-lg p-4">
-              <h3 className="text-sm font-semibold text-gray-800 mb-3">รายชื่อบุคคลอ้างอิง</h3>
+            <div className="border border-border rounded-lg p-4">
+              <h3 className="text-sm font-semibold text-foreground mb-3">รายชื่อบุคคลอ้างอิง</h3>
               <div className="space-y-4">
                 {custReferences.map((ref, idx) => (
                   <div key={idx}>
-                    <div className="text-xs font-medium text-gray-600 mb-2">บุคคลอ้างอิง {idx + 1}</div>
+                    <div className="text-xs font-medium text-muted-foreground mb-2">บุคคลอ้างอิง {idx + 1}</div>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                       <div>
-                        <label className="block text-xs text-gray-500 mb-1">คำนำหน้า</label>
-                        <select value={ref.prefix || ''} onChange={(e) => updateCustRef(idx, 'prefix', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white">
+                        <label className="block text-xs text-muted-foreground mb-1">คำนำหน้า</label>
+                        <select value={ref.prefix || ''} onChange={(e) => updateCustRef(idx, 'prefix', e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background">
                           <option value="">-- เลือก --</option>
                           {custPrefixOptions.map(p => <option key={p} value={p}>{p}</option>)}
                         </select>
                       </div>
                       <div>
-                        <label className="block text-xs text-gray-500 mb-1">ชื่อ</label>
-                        <input type="text" value={ref.firstName || ''} onChange={(e) => updateCustRef(idx, 'firstName', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                        <label className="block text-xs text-muted-foreground mb-1">ชื่อ</label>
+                        <input type="text" value={ref.firstName || ''} onChange={(e) => updateCustRef(idx, 'firstName', e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                       </div>
                       <div>
-                        <label className="block text-xs text-gray-500 mb-1">นามสกุล</label>
-                        <input type="text" value={ref.lastName || ''} onChange={(e) => updateCustRef(idx, 'lastName', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                        <label className="block text-xs text-muted-foreground mb-1">นามสกุล</label>
+                        <input type="text" value={ref.lastName || ''} onChange={(e) => updateCustRef(idx, 'lastName', e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                       </div>
                       <div>
-                        <label className="block text-xs text-gray-500 mb-1">เบอร์โทร</label>
-                        <input type="tel" value={ref.phone || ''} onChange={(e) => updateCustRef(idx, 'phone', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                        <label className="block text-xs text-muted-foreground mb-1">เบอร์โทร</label>
+                        <input type="tel" value={ref.phone || ''} onChange={(e) => updateCustRef(idx, 'phone', e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                       </div>
                       <div>
-                        <label className="block text-xs text-gray-500 mb-1">ความสัมพันธ์</label>
-                        <select value={ref.relationship || ''} onChange={(e) => updateCustRef(idx, 'relationship', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white">
+                        <label className="block text-xs text-muted-foreground mb-1">ความสัมพันธ์</label>
+                        <select value={ref.relationship || ''} onChange={(e) => updateCustRef(idx, 'relationship', e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background">
                           <option value="">-- เลือก --</option>
                           {custRelationshipOptions.map(r => <option key={r} value={r}>{r}</option>)}
                         </select>
@@ -1177,9 +1177,9 @@ export default function ContractDetailPage() {
             </div>
 
             {/* Submit */}
-            <div className="flex justify-end gap-3 pt-2 sticky bottom-0 bg-white py-3 border-t">
-              <button type="button" onClick={() => setIsEditingCustomer(false)} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg">ยกเลิก</button>
-              <button type="submit" disabled={updateCustomerMutation.isPending || !customerEditForm.name.trim() || !customerEditForm.phone.trim()} className="px-6 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
+            <div className="flex justify-end gap-3 pt-2 sticky bottom-0 bg-background py-3 border-t">
+              <button type="button" onClick={() => setIsEditingCustomer(false)} className="px-4 py-2 text-sm text-muted-foreground border border-input rounded-lg">ยกเลิก</button>
+              <button type="submit" disabled={updateCustomerMutation.isPending || !customerEditForm.name.trim() || !customerEditForm.phone.trim()} className="px-6 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50">
                 {updateCustomerMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
               </button>
             </div>
@@ -1192,22 +1192,22 @@ export default function ContractDetailPage() {
       {showPayoffModal && payoffQuote && (
         <Modal isOpen title="ปิดสัญญาก่อนกำหนด" onClose={() => setShowPayoffModal(false)}>
           <div className="space-y-4">
-            <div className="bg-primary-50 rounded-lg p-4">
+            <div className="bg-primary/5 rounded-lg p-4">
               <div className="text-sm">ยอดที่ต้องชำระ</div>
-              <div className="text-2xl font-bold text-primary-800">{payoffQuote.totalPayoff.toLocaleString()} ฿</div>
-              <div className="text-xs text-primary-600 mt-1">(รวมส่วนลดดอกเบี้ย 50% แล้ว)</div>
+              <div className="text-2xl font-bold text-primary">{payoffQuote.totalPayoff.toLocaleString()} ฿</div>
+              <div className="text-xs text-primary mt-1">(รวมส่วนลดดอกเบี้ย 50% แล้ว)</div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">วิธีชำระ</label>
-              <select value={payoffMethod} onChange={(e) => setPayoffMethod(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+              <label className="block text-sm font-medium text-foreground mb-1">วิธีชำระ</label>
+              <select value={payoffMethod} onChange={(e) => setPayoffMethod(e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm">
                 <option value="CASH">เงินสด</option>
                 <option value="BANK_TRANSFER">โอนเงิน</option>
                 <option value="QR_EWALLET">QR/E-Wallet</option>
               </select>
             </div>
             <div className="flex gap-3 pt-2">
-              <button onClick={() => setShowPayoffModal(false)} className="flex-1 px-4 py-2 text-sm border border-gray-300 rounded-lg">ยกเลิก</button>
-              <button onClick={() => earlyPayoffMutation.mutate()} disabled={earlyPayoffMutation.isPending} className="flex-1 px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50">
+              <button onClick={() => setShowPayoffModal(false)} className="flex-1 px-4 py-2 text-sm border border-input rounded-lg">ยกเลิก</button>
+              <button onClick={() => earlyPayoffMutation.mutate()} disabled={earlyPayoffMutation.isPending} className="flex-1 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50">
                 {earlyPayoffMutation.isPending ? 'กำลังปิด...' : 'ยืนยันปิดสัญญา'}
               </button>
             </div>
@@ -1220,17 +1220,17 @@ export default function ContractDetailPage() {
         <Modal isOpen title="ปฏิเสธสัญญา" onClose={() => setShowRejectModal(false)}>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">เหตุผลที่ปฏิเสธ *</label>
+              <label className="block text-sm font-medium text-foreground mb-1">เหตุผลที่ปฏิเสธ *</label>
               <textarea
                 value={rejectNotes}
                 onChange={(e) => setRejectNotes(e.target.value)}
                 rows={3}
                 placeholder="ระบุเหตุผลที่ปฏิเสธสัญญา..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm"
               />
             </div>
             <div className="flex gap-3">
-              <button onClick={() => setShowRejectModal(false)} className="flex-1 px-4 py-2 text-sm border border-gray-300 rounded-lg">ยกเลิก</button>
+              <button onClick={() => setShowRejectModal(false)} className="flex-1 px-4 py-2 text-sm border border-input rounded-lg">ยกเลิก</button>
               <button
                 onClick={() => rejectMutation.mutate()}
                 disabled={!rejectNotes.trim() || rejectMutation.isPending}
@@ -1247,7 +1247,7 @@ export default function ContractDetailPage() {
 }
 
 function Info({ label, value }: { label: string; value: string | null | undefined }) {
-  return <div><div className="text-xs text-gray-500 mb-0.5">{label}</div><div className="text-sm text-gray-900">{value || '-'}</div></div>;
+  return <div><div className="text-xs text-muted-foreground mb-0.5">{label}</div><div className="text-sm text-foreground">{value || '-'}</div></div>;
 }
 
 /** Renders contract HTML in a sandboxed iframe */

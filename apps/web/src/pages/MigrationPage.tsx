@@ -136,18 +136,18 @@ export default function MigrationPage() {
             { label: 'สาขา', count: status.branches },
             { label: 'ผู้ใช้', count: status.users },
           ].map((item) => (
-            <div key={item.label} className="bg-white rounded-lg border p-4 text-center">
-              <div className="text-2xl font-bold text-gray-900">{item.count}</div>
-              <div className="text-xs text-gray-500">{item.label}</div>
+            <div key={item.label} className="bg-card rounded-lg border border-border p-4 text-center">
+              <div className="text-2xl font-bold text-foreground">{item.count}</div>
+              <div className="text-xs text-muted-foreground">{item.label}</div>
             </div>
           ))}
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:gap-7.5">
         {/* Import Form */}
-        <div className="bg-white rounded-lg border p-5">
-          <h3 className="text-sm font-semibold text-gray-700 mb-4">นำเข้าข้อมูล</h3>
+        <div className="bg-card rounded-lg border border-border p-5">
+          <h3 className="text-sm font-semibold text-foreground mb-4">นำเข้าข้อมูล</h3>
 
           {/* Mode Selection */}
           <div className="flex gap-2 mb-4">
@@ -165,8 +165,8 @@ export default function MigrationPage() {
                 }}
                 className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
                   importMode === mode.key
-                    ? 'bg-primary-600 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted text-muted-foreground hover:bg-muted'
                 }`}
               >
                 {mode.label}
@@ -179,7 +179,7 @@ export default function MigrationPage() {
             value={jsonInput}
             onChange={(e) => setJsonInput(e.target.value)}
             rows={16}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs font-mono focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+            className="w-full px-3 py-2 border border-input rounded-lg text-xs font-mono focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
             placeholder={`วาง JSON ข้อมูล${importMode === 'customers' ? 'ลูกค้า' : importMode === 'contracts' ? 'สัญญา' : ''} ที่นี่...`}
           />
 
@@ -187,13 +187,13 @@ export default function MigrationPage() {
             <button
               onClick={handleImport}
               disabled={!jsonInput.trim() || importMutation.isPending}
-              className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
             >
               {importMutation.isPending ? 'กำลังนำเข้า...' : 'นำเข้าข้อมูล'}
             </button>
             <button
               onClick={loadSampleData}
-              className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-200"
+              className="px-4 py-2 bg-muted text-muted-foreground rounded-lg text-sm font-medium hover:bg-muted"
             >
               ตัวอย่างข้อมูล
             </button>
@@ -201,8 +201,8 @@ export default function MigrationPage() {
         </div>
 
         {/* Import Result */}
-        <div className="bg-white rounded-lg border p-5">
-          <h3 className="text-sm font-semibold text-gray-700 mb-4">ผลลัพธ์การนำเข้า</h3>
+        <div className="bg-card rounded-lg border border-border p-5">
+          <h3 className="text-sm font-semibold text-foreground mb-4">ผลลัพธ์การนำเข้า</h3>
 
           {importResult ? (
             <div>
@@ -227,7 +227,7 @@ export default function MigrationPage() {
                       <div key={i} className="text-xs bg-red-50 rounded p-2">
                         <span className="font-medium">แถว {err.row}</span>
                         {err.field && (
-                          <span className="text-gray-500"> [{err.field}]</span>
+                          <span className="text-muted-foreground"> [{err.field}]</span>
                         )}
                         : {err.message}
                       </div>
@@ -237,7 +237,7 @@ export default function MigrationPage() {
               )}
             </div>
           ) : (
-            <div className="text-center text-gray-400 py-16">
+            <div className="text-center text-muted-foreground py-16">
               <div className="text-4xl mb-2">&#128230;</div>
               <div className="text-sm">ยังไม่มีผลลัพธ์</div>
               <div className="text-xs mt-1">วาง JSON แล้วกดนำเข้าข้อมูล</div>
@@ -246,8 +246,8 @@ export default function MigrationPage() {
 
           {/* Instructions */}
           <div className="mt-6 border-t pt-4">
-            <h4 className="text-xs font-medium text-gray-700 mb-2">คำแนะนำ</h4>
-            <ul className="text-xs text-gray-500 space-y-1">
+            <h4 className="text-xs font-medium text-foreground mb-2">คำแนะนำ</h4>
+            <ul className="text-xs text-muted-foreground space-y-1">
               <li>- ข้อมูลลูกค้าต้องมี: name, nationalId (13 หลัก), phone</li>
               <li>- เลข ปชช. ที่มีอยู่แล้วจะถูกอัปเดต (upsert)</li>
               <li>- ข้อมูลสัญญาต้องมี: customerNationalId, productName, branchName, salespersonEmail</li>

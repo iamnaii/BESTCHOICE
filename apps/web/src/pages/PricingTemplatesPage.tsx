@@ -271,7 +271,7 @@ export default function PricingTemplatesPage() {
           <div className="flex gap-2">
             <button
               onClick={downloadTemplate}
-              className="px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+              className="px-3 py-2 text-sm text-muted-foreground border border-input rounded-lg hover:bg-muted/50"
             >
               ดาวน์โหลดแบบฟอร์ม
             </button>
@@ -283,7 +283,7 @@ export default function PricingTemplatesPage() {
               {importMutation.isPending ? 'กำลังนำเข้า...' : 'นำเข้า Excel'}
             </button>
             <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileImport} />
-            <button onClick={openCreate} className="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700">
+            <button onClick={openCreate} className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90">
               + เพิ่มราคาตั้งต้น
             </button>
           </div>
@@ -295,7 +295,7 @@ export default function PricingTemplatesPage() {
         <select
           value={filterCategory}
           onChange={(e) => setFilterCategory(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+          className="px-3 py-2 border border-input rounded-lg text-sm"
         >
           <option value="">ทุกประเภท</option>
           {CATEGORIES.map((c) => (
@@ -307,41 +307,41 @@ export default function PricingTemplatesPage() {
           placeholder="ค้นหายี่ห้อ..."
           value={filterBrand}
           onChange={(e) => setFilterBrand(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg text-sm flex-1 max-w-xs"
+          className="px-3 py-2 border border-input rounded-lg text-sm flex-1 max-w-xs"
         />
       </div>
 
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600" />
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
         </div>
       ) : templates.length === 0 ? (
-        <div className="text-center py-12 bg-white rounded-lg border">
-          <div className="text-gray-400 text-sm mb-3">ยังไม่มีราคาตั้งต้น</div>
-          <button onClick={openCreate} className="text-sm text-primary-600 hover:underline">เพิ่มราคาตั้งต้นรายการแรก</button>
+        <div className="text-center py-12 bg-card rounded-lg border">
+          <div className="text-muted-foreground text-sm mb-3">ยังไม่มีราคาตั้งต้น</div>
+          <button onClick={openCreate} className="text-sm text-primary hover:underline">เพิ่มราคาตั้งต้นรายการแรก</button>
         </div>
       ) : (
-        <div className="bg-white rounded-lg border overflow-hidden">
+        <div className="bg-card rounded-lg border overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 border-b">
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">ยี่ห้อ / รุ่น</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">ความจุ</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">ประเภท</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600">เงินสด</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600">ผ่อน BESTCHOICE</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600">ผ่อนไฟแนนซ์</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600"></th>
+                <tr className="bg-muted border-b">
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">ยี่ห้อ / รุ่น</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">ความจุ</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">ประเภท</th>
+                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">เงินสด</th>
+                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">ผ่อน BESTCHOICE</th>
+                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">ผ่อนไฟแนนซ์</th>
+                  <th className="text-right px-4 py-3 font-medium text-muted-foreground"></th>
                 </tr>
               </thead>
               <tbody>
                 {templates.map((t) => (
-                  <tr key={t.id} className="border-b last:border-b-0 hover:bg-gray-50">
+                  <tr key={t.id} className="border-b last:border-b-0 hover:bg-muted/50">
                     <td className="px-4 py-3">
-                      <div className="font-medium text-gray-900">{t.brand} {t.model}</div>
+                      <div className="font-medium text-foreground">{t.brand} {t.model}</div>
                     </td>
-                    <td className="px-4 py-3 text-gray-600">{t.storage || '-'}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{t.storage || '-'}</td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                         t.category === 'PHONE_NEW' ? 'bg-primary-100 text-primary-700' : 'bg-orange-100 text-orange-700'
@@ -350,7 +350,7 @@ export default function PricingTemplatesPage() {
                       </span>
                       {t.category === 'PHONE_USED' && warrantyLabel(t.hasWarranty) && (
                         <span className={`ml-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                          t.hasWarranty ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                          t.hasWarranty ? 'bg-green-100 text-green-700' : 'bg-muted text-muted-foreground'
                         }`}>
                           {warrantyLabel(t.hasWarranty)}
                         </span>
@@ -360,7 +360,7 @@ export default function PricingTemplatesPage() {
                     <td className="px-4 py-3 text-right font-medium">{fmt(t.installmentBestchoicePrice)} ฿</td>
                     <td className="px-4 py-3 text-right font-medium">{fmt(t.installmentFinancePrice)} ฿</td>
                     <td className="px-4 py-3 text-right">
-                      <button onClick={() => openEdit(t)} className="text-xs text-primary-600 hover:underline mr-2">แก้ไข</button>
+                      <button onClick={() => openEdit(t)} className="text-xs text-primary hover:underline mr-2">แก้ไข</button>
                       <button
                         onClick={() => { if (confirm('ต้องการลบ?')) deleteMutation.mutate(t.id); }}
                         className="text-xs text-red-600 hover:underline"
@@ -384,43 +384,43 @@ export default function PricingTemplatesPage() {
               <>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">ยี่ห้อ *</label>
+                    <label className="block text-sm font-medium text-foreground mb-1">ยี่ห้อ *</label>
                     <input
                       type="text"
                       value={form.brand}
                       onChange={(e) => setForm((f) => ({ ...f, brand: e.target.value }))}
                       placeholder="เช่น Apple, Samsung"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">รุ่น *</label>
+                    <label className="block text-sm font-medium text-foreground mb-1">รุ่น *</label>
                     <input
                       type="text"
                       value={form.model}
                       onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
                       placeholder="เช่น iPhone 15, Galaxy S24"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
                     />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">ความจุ</label>
+                    <label className="block text-sm font-medium text-foreground mb-1">ความจุ</label>
                     <input
                       type="text"
                       value={form.storage}
                       onChange={(e) => setForm((f) => ({ ...f, storage: e.target.value }))}
                       placeholder="เช่น 128GB, 256GB (เว้นว่าง = ทุกความจุ)"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">ประเภท *</label>
+                    <label className="block text-sm font-medium text-foreground mb-1">ประเภท *</label>
                     <select
                       value={form.category}
                       onChange={(e) => setForm((f) => ({ ...f, category: e.target.value, hasWarranty: e.target.value === 'PHONE_USED' ? f.hasWarranty : null }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
                     >
                       {CATEGORIES.map((c) => (
                         <option key={c.value} value={c.value}>{c.label}</option>
@@ -430,7 +430,7 @@ export default function PricingTemplatesPage() {
                 </div>
                 {form.category === 'PHONE_USED' && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">ประกันศูนย์</label>
+                    <label className="block text-sm font-medium text-foreground mb-1">ประกันศูนย์</label>
                     <div className="flex gap-2">
                       {[
                         { value: true, label: 'มีประกัน' },
@@ -441,8 +441,8 @@ export default function PricingTemplatesPage() {
                           onClick={() => setForm((f) => ({ ...f, hasWarranty: opt.value }))}
                           className={`px-4 py-2 rounded-lg text-sm border transition-colors ${
                             form.hasWarranty === opt.value
-                              ? 'bg-primary-600 text-white border-primary-600'
-                              : 'bg-white text-gray-700 border-gray-300 hover:border-primary-300'
+                              ? 'bg-primary text-primary-foreground border-primary'
+                              : 'bg-card text-foreground border-input hover:border-primary/50'
                           }`}
                         >
                           {opt.label}
@@ -455,11 +455,11 @@ export default function PricingTemplatesPage() {
             )}
 
             {editId && (
-              <div className="bg-gray-50 rounded-lg p-3">
-                <div className="text-sm font-medium text-gray-900">
+              <div className="bg-muted rounded-lg p-3">
+                <div className="text-sm font-medium text-foreground">
                   {form.brand} {form.model} {form.storage && `(${form.storage})`}
                 </div>
-                <div className="text-xs text-gray-500 mt-0.5">
+                <div className="text-xs text-muted-foreground mt-0.5">
                   {form.category === 'PHONE_NEW' ? 'มือ 1' : 'มือ 2'}
                   {form.hasWarranty === true && ' - มีประกัน'}
                   {form.hasWarranty === false && ' - ไม่มีประกัน'}
@@ -469,43 +469,43 @@ export default function PricingTemplatesPage() {
 
             <div className="space-y-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">ราคาเงินสด (บาท) *</label>
+                <label className="block text-sm font-medium text-foreground mb-1">ราคาเงินสด (บาท) *</label>
                 <input
                   type="number"
                   value={form.cashPrice}
                   onChange={(e) => setForm((f) => ({ ...f, cashPrice: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  className="w-full px-3 py-2 border border-input rounded-lg text-sm"
                   min="0"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">ราคาผ่อน BESTCHOICE (บาท) *</label>
+                <label className="block text-sm font-medium text-foreground mb-1">ราคาผ่อน BESTCHOICE (บาท) *</label>
                 <input
                   type="number"
                   value={form.installmentBestchoicePrice}
                   onChange={(e) => setForm((f) => ({ ...f, installmentBestchoicePrice: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  className="w-full px-3 py-2 border border-input rounded-lg text-sm"
                   min="0"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">ราคาผ่อนไฟแนนซ์ (บาท) *</label>
+                <label className="block text-sm font-medium text-foreground mb-1">ราคาผ่อนไฟแนนซ์ (บาท) *</label>
                 <input
                   type="number"
                   value={form.installmentFinancePrice}
                   onChange={(e) => setForm((f) => ({ ...f, installmentFinancePrice: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  className="w-full px-3 py-2 border border-input rounded-lg text-sm"
                   min="0"
                 />
               </div>
             </div>
 
             <div className="flex gap-3 pt-2">
-              <button onClick={closeModal} className="flex-1 px-4 py-2 text-sm border border-gray-300 rounded-lg">ยกเลิก</button>
+              <button onClick={closeModal} className="flex-1 px-4 py-2 text-sm border border-input rounded-lg">ยกเลิก</button>
               <button
                 onClick={() => saveMutation.mutate()}
                 disabled={!canSave || saveMutation.isPending}
-                className="flex-1 px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+                className="flex-1 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
               >
                 {saveMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
               </button>

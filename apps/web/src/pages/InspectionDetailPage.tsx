@@ -46,7 +46,7 @@ interface InspectionDetail {
 
 const gradeColors: Record<string, string> = {
   A: 'bg-green-100 text-green-700 border-green-200',
-  B: 'bg-primary-100 text-primary-700 border-primary-200',
+  B: 'bg-primary/10 text-primary border-primary/20',
   C: 'bg-yellow-100 text-yellow-700 border-yellow-200',
   D: 'bg-red-100 text-red-700 border-red-200',
 };
@@ -131,7 +131,7 @@ export default function InspectionDetailPage() {
   };
 
   if (isLoading || !inspection) {
-    return <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div></div>;
+    return <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>;
   }
 
   const product = inspection.products[0];
@@ -153,7 +153,7 @@ export default function InspectionDetailPage() {
           <div className="flex gap-2">
             {!inspection.isCompleted && (
               <>
-                <button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} className="px-4 py-2 text-sm text-primary-600 border border-primary-300 rounded-lg hover:bg-primary-50 disabled:opacity-50">
+                <button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} className="px-4 py-2 text-sm text-primary border border-primary/30 rounded-lg hover:bg-primary/5 disabled:opacity-50">
                   บันทึก
                 </button>
                 <button onClick={() => completeMutation.mutate()} disabled={completeMutation.isPending} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50">
@@ -166,7 +166,7 @@ export default function InspectionDetailPage() {
                 Override เกรด
               </button>
             )}
-            <button onClick={() => navigate('/inspections')} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg">กลับ</button>
+            <button onClick={() => navigate('/inspections')} className="px-4 py-2 text-sm text-muted-foreground border border-input rounded-lg">กลับ</button>
           </div>
         }
       />
@@ -190,17 +190,17 @@ export default function InspectionDetailPage() {
       )}
 
       {/* Checklist */}
-      <div className="space-y-6">
+      <div className="flex flex-col gap-5 lg:gap-7.5">
         {Object.entries(grouped).map(([category, items]) => (
-          <div key={category} className="bg-white rounded-lg border p-6">
-            <h3 className="text-base font-semibold text-gray-900 mb-4">{category}</h3>
+          <div key={category} className="bg-card rounded-lg border border-border p-6 shadow-xs shadow-black/5">
+            <h3 className="text-base font-semibold text-foreground mb-4">{category}</h3>
             <div className="space-y-4">
               {items.map((item) => {
                 const val = resultValues[item.id] || {};
                 return (
-                  <div key={item.id} className="flex items-start gap-4 py-2 border-b border-gray-50 last:border-0">
+                  <div key={item.id} className="flex items-start gap-4 py-2 border-b border-border/50 last:border-0">
                     <div className="flex-1">
-                      <div className="text-sm font-medium text-gray-800">
+                      <div className="text-sm font-medium text-foreground">
                         {item.itemName}
                         {item.isRequired && <span className="text-red-500 ml-1">*</span>}
                       </div>
@@ -212,13 +212,13 @@ export default function InspectionDetailPage() {
                             type="button"
                             disabled={inspection.isCompleted}
                             onClick={() => updateResult(item.id, 'passFail', true)}
-                            className={`px-3 py-1 rounded text-xs font-medium ${val.passFail === true ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600'}`}
+                            className={`px-3 py-1 rounded text-xs font-medium ${val.passFail === true ? 'bg-green-600 text-white' : 'bg-muted text-muted-foreground'}`}
                           >ผ่าน</button>
                           <button
                             type="button"
                             disabled={inspection.isCompleted}
                             onClick={() => updateResult(item.id, 'passFail', false)}
-                            className={`px-3 py-1 rounded text-xs font-medium ${val.passFail === false ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-600'}`}
+                            className={`px-3 py-1 rounded text-xs font-medium ${val.passFail === false ? 'bg-red-600 text-white' : 'bg-muted text-muted-foreground'}`}
                           >ไม่ผ่าน</button>
                         </div>
                       )}
@@ -230,7 +230,7 @@ export default function InspectionDetailPage() {
                               type="button"
                               disabled={inspection.isCompleted}
                               onClick={() => updateResult(item.id, 'grade', g)}
-                              className={`px-2.5 py-1 rounded text-xs font-bold ${val.grade === g ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600'}`}
+                              className={`px-2.5 py-1 rounded text-xs font-bold ${val.grade === g ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
                             >{g}</button>
                           ))}
                         </div>
@@ -243,7 +243,7 @@ export default function InspectionDetailPage() {
                               type="button"
                               disabled={inspection.isCompleted}
                               onClick={() => updateResult(item.id, 'score', s)}
-                              className={`w-8 h-8 rounded text-xs font-bold ${Number(val.score) === s ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600'}`}
+                              className={`w-8 h-8 rounded text-xs font-bold ${Number(val.score) === s ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
                             >{s}</button>
                           ))}
                         </div>
@@ -271,18 +271,18 @@ export default function InspectionDetailPage() {
       <Modal isOpen={isOverrideModalOpen} onClose={() => setIsOverrideModalOpen(false)} title="Override เกรด">
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">เกรดใหม่ *</label>
+            <label className="block text-sm font-medium text-foreground mb-1">เกรดใหม่ *</label>
             <select value={overrideForm.grade} onChange={(e) => setOverrideForm({ ...overrideForm, grade: e.target.value })} className="w-full px-3 py-2 border rounded-lg outline-none text-sm">
               <option value="">เลือกเกรด</option>
               {['A', 'B', 'C', 'D'].map((g) => <option key={g} value={g}>{g}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">เหตุผล *</label>
+            <label className="block text-sm font-medium text-foreground mb-1">เหตุผล *</label>
             <textarea value={overrideForm.reason} onChange={(e) => setOverrideForm({ ...overrideForm, reason: e.target.value })} rows={3} className="w-full px-3 py-2 border rounded-lg outline-none text-sm resize-none" required />
           </div>
           <div className="flex justify-end gap-3">
-            <button onClick={() => setIsOverrideModalOpen(false)} className="px-4 py-2 text-sm text-gray-600">ยกเลิก</button>
+            <button onClick={() => setIsOverrideModalOpen(false)} className="px-4 py-2 text-sm text-muted-foreground">ยกเลิก</button>
             <button onClick={() => overrideMutation.mutate()} disabled={!overrideForm.grade || !overrideForm.reason} className="px-4 py-2 bg-orange-600 text-white rounded-lg text-sm font-medium disabled:opacity-50">ยืนยัน</button>
           </div>
         </div>

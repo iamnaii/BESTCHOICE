@@ -29,7 +29,7 @@ interface Contract {
 }
 
 const statusLabels: Record<string, { label: string; className: string }> = {
-  DRAFT: { label: 'ร่าง', className: 'bg-gray-100 text-gray-700' },
+  DRAFT: { label: 'ร่าง', className: 'bg-muted text-foreground' },
   ACTIVE: { label: 'ผ่อนอยู่', className: 'bg-green-100 text-green-700' },
   OVERDUE: { label: 'ค้างชำระ', className: 'bg-yellow-100 text-yellow-700' },
   DEFAULT: { label: 'ผิดนัด', className: 'bg-red-100 text-red-700' },
@@ -111,7 +111,7 @@ export default function ContractsPage() {
       key: 'contractNumber',
       label: 'เลขสัญญา',
       render: (c: Contract) => (
-        <button onClick={() => navigateToContract(c.id)} className="font-mono text-sm text-primary-600 hover:underline">
+        <button onClick={() => navigateToContract(c.id)} className="font-mono text-sm text-primary hover:underline">
           {c.contractNumber}
         </button>
       ),
@@ -122,7 +122,7 @@ export default function ContractsPage() {
       render: (c: Contract) => (
         <div>
           <div className="text-sm font-medium">{c.customer.name}</div>
-          <div className="text-xs text-gray-500">{c.customer.phone}</div>
+          <div className="text-xs text-muted-foreground">{c.customer.phone}</div>
         </div>
       ),
     },
@@ -132,7 +132,7 @@ export default function ContractsPage() {
       render: (c: Contract) => (
         <div>
           <span className="text-sm">{c.product.brand} {c.product.model}</span>
-          <span className="ml-1 text-[10px] px-1 py-0.5 bg-gray-100 rounded">
+          <span className="ml-1 text-2xs px-1 py-0.5 bg-muted rounded">
             {c.product.category === 'PHONE_NEW' ? 'มือ1' : c.product.category === 'PHONE_USED' ? 'มือ2' : c.product.category}
           </span>
         </div>
@@ -155,14 +155,14 @@ export default function ContractsPage() {
         const count = [hasCust, hasCompany, hasW1, hasW2].filter(Boolean).length;
         if (allFour) return <span className="text-xs text-green-600 font-medium">ครบ ({count}/4)</span>;
         if (count > 0) return <span className="text-xs text-amber-600">{count}/4</span>;
-        return <span className="text-xs text-gray-400">-</span>;
+        return <span className="text-xs text-muted-foreground">-</span>;
       },
     },
     {
       key: 'status',
       label: 'สถานะ',
       render: (c: Contract) => {
-        const s = statusLabels[c.status] || { label: c.status, className: 'bg-gray-100' };
+        const s = statusLabels[c.status] || { label: c.status, className: 'bg-muted' };
         return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.className}`}>{s.label}</span>;
       },
     },
@@ -172,7 +172,7 @@ export default function ContractsPage() {
       render: (c: Contract) => (
         <div>
           <span className="text-sm">{parseFloat(c.monthlyPayment).toLocaleString()} ฿ x {c.totalMonths}</span>
-          {c.paymentDueDay && <div className="text-[10px] text-gray-400">วันที่ {c.paymentDueDay}</div>}
+          {c.paymentDueDay && <div className="text-2xs text-muted-foreground">วันที่ {c.paymentDueDay}</div>}
         </div>
       ),
     },
@@ -180,7 +180,7 @@ export default function ContractsPage() {
       key: 'docs',
       label: 'เอกสาร',
       render: (c: Contract) => (
-        <span className="text-xs text-gray-500">{c._count.contractDocuments} ไฟล์</span>
+        <span className="text-xs text-muted-foreground">{c._count.contractDocuments} ไฟล์</span>
       ),
     },
     {
@@ -201,7 +201,7 @@ export default function ContractsPage() {
         title="สัญญาผ่อนชำระ"
         subtitle="จัดการสัญญาผ่อนชำระทั้งหมด"
         action={
-          <button onClick={() => navigate('/contracts/create')} className="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700">
+          <button onClick={() => navigate('/contracts/create')} className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90">
             + สร้างสัญญา
           </button>
         }
@@ -211,20 +211,20 @@ export default function ContractsPage() {
       <div className="flex gap-1 mb-4 border-b">
         <button
           onClick={() => updateParams({ tab: '', status: '', workflow: '', q: '', page: '' })}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${viewTab === 'all' ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${viewTab === 'all' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           ทั้งหมด
         </button>
         <button
           onClick={() => updateParams({ tab: 'my', status: '', workflow: '', q: '', page: '' })}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${viewTab === 'my' ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${viewTab === 'my' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           สัญญาของฉัน
         </button>
         {isManager && (
           <button
             onClick={() => updateParams({ tab: 'pending_review', status: '', workflow: '', q: '', page: '' })}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${viewTab === 'pending_review' ? 'border-amber-600 text-amber-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${viewTab === 'pending_review' ? 'border-amber-600 text-amber-700' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
           >
             รอตรวจสอบ
           </button>
@@ -238,9 +238,9 @@ export default function ContractsPage() {
           placeholder="ค้นหาเลขสัญญา, ชื่อลูกค้า..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 min-w-[200px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+          className="flex-1 min-w-[200px] px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background focus:border-transparent"
         />
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm">
           <option value="">ทุกสถานะ</option>
           <option value="DRAFT">ร่าง</option>
           <option value="ACTIVE">ผ่อนอยู่</option>
@@ -250,7 +250,7 @@ export default function ContractsPage() {
           <option value="COMPLETED">ครบ</option>
         </select>
         {viewTab === 'all' && (
-          <select value={workflowFilter} onChange={(e) => setWorkflowFilter(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+          <select value={workflowFilter} onChange={(e) => setWorkflowFilter(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm">
             <option value="">ทุก Workflow</option>
             <option value="CREATING">กำลังสร้าง</option>
             <option value="PENDING_REVIEW">รอตรวจสอบ</option>
@@ -261,9 +261,9 @@ export default function ContractsPage() {
       </div>
 
       {isError && (
-        <div className="text-center py-10 bg-white rounded-xl border border-red-200">
+        <div className="text-center py-10 rounded-xl border border-red-200">
           <div className="text-red-500 mb-2">เกิดข้อผิดพลาดในการโหลดข้อมูล</div>
-          <button onClick={() => refetch()} className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700">ลองใหม่</button>
+          <button onClick={() => refetch()} className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90">ลองใหม่</button>
         </div>
       )}
 

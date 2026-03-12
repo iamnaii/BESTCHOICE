@@ -248,7 +248,7 @@ export default function SuppliersPage() {
       key: 'name',
       label: 'ชื่อผู้ขาย',
       render: (s: Supplier) => (
-        <span className="font-medium text-gray-900">{s.name}</span>
+        <span className="font-medium text-foreground">{s.name}</span>
       ),
     },
     {
@@ -256,8 +256,8 @@ export default function SuppliersPage() {
       label: 'ผู้ติดต่อ',
       render: (s: Supplier) => (
         <div>
-          <div className="text-gray-700">{s.contactName || '-'}</div>
-          {s.nickname && <div className="text-xs text-gray-400">({s.nickname})</div>}
+          <div className="text-foreground">{s.contactName || '-'}</div>
+          {s.nickname && <div className="text-xs text-muted-foreground">({s.nickname})</div>}
         </div>
       ),
     },
@@ -267,7 +267,7 @@ export default function SuppliersPage() {
       render: (s: Supplier) => (
         <div>
           <div>{s.phone}</div>
-          {s.phoneSecondary && <div className="text-xs text-gray-400">{s.phoneSecondary}</div>}
+          {s.phoneSecondary && <div className="text-xs text-muted-foreground">{s.phoneSecondary}</div>}
         </div>
       ),
     },
@@ -277,7 +277,7 @@ export default function SuppliersPage() {
       render: (s: Supplier) => (
         <span
           className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-            s.hasVat ? 'bg-primary-100 text-primary-700' : 'bg-gray-100 text-gray-500'
+            s.hasVat ? 'bg-primary-100 text-primary-700' : 'bg-muted text-muted-foreground'
           }`}
         >
           {s.hasVat ? 'มี VAT' : 'ไม่มี VAT'}
@@ -293,12 +293,12 @@ export default function SuppliersPage() {
             s.paymentMethods.map((pm, i) => (
               <div key={i} className="flex items-center gap-1">
                 <span className="text-sm">{paymentMethodLabels[pm.paymentMethod] || pm.paymentMethod}</span>
-                {pm.isDefault && <span className="text-[10px] bg-yellow-100 text-yellow-700 px-1 rounded">หลัก</span>}
-                {pm.bankName && <span className="text-xs text-gray-400">({pm.bankName})</span>}
+                {pm.isDefault && <span className="text-2xs bg-yellow-100 text-yellow-700 px-1 rounded">หลัก</span>}
+                {pm.bankName && <span className="text-xs text-muted-foreground">({pm.bankName})</span>}
               </div>
             ))
           ) : (
-            <span className="text-sm text-gray-400">-</span>
+            <span className="text-sm text-muted-foreground">-</span>
           )}
         </div>
       ),
@@ -325,7 +325,7 @@ export default function SuppliersPage() {
             e.stopPropagation();
             navigate(`/suppliers/${s.id}`);
           }}
-          className="text-primary-600 hover:text-primary-700 text-sm font-medium hover:underline"
+          className="text-primary hover:text-primary/90 text-sm font-medium hover:underline"
         >
           ดูข้อมูล
         </button>
@@ -341,7 +341,7 @@ export default function SuppliersPage() {
               e.stopPropagation();
               openEdit(s);
             }}
-            className="text-primary-600 hover:text-primary-700 text-sm font-medium hover:underline"
+            className="text-primary hover:text-primary/90 text-sm font-medium hover:underline"
           >
             แก้ไข
           </button>
@@ -361,7 +361,7 @@ export default function SuppliersPage() {
               }
             }}
             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-              s.isActive ? 'bg-green-500' : 'bg-gray-300'
+              s.isActive ? 'bg-green-500' : 'bg-border'
             }`}
           >
             <span
@@ -371,7 +371,7 @@ export default function SuppliersPage() {
             />
           </button>
         ) : (
-          <span className="text-xs text-gray-400">{s.isActive ? 'เปิด' : 'ปิด'}</span>
+          <span className="text-xs text-muted-foreground">{s.isActive ? 'เปิด' : 'ปิด'}</span>
         ),
     },
   ];
@@ -385,7 +385,7 @@ export default function SuppliersPage() {
           isManager ? (
             <button
               onClick={openCreate}
-              className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
             >
               + เพิ่มผู้ขาย
             </button>
@@ -400,12 +400,12 @@ export default function SuppliersPage() {
           placeholder="ค้นหาชื่อ, ผู้ติดต่อ, ชื่อเล่น, เบอร์โทร, Tax ID..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+          className="flex-1 px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
         />
         <select
           value={filterActive}
           onChange={(e) => setFilterActive(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+          className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
         >
           <option value="all">ทั้งหมด</option>
           <option value="true">เปิดใช้งาน</option>
@@ -436,85 +436,85 @@ export default function SuppliersPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อผู้ขาย / บริษัท *</label>
+              <label className="block text-sm font-medium text-foreground mb-1">ชื่อผู้ขาย / บริษัท *</label>
               <input
                 type="text"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
                 required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อ - นามสกุล (ผู้ติดต่อ) *</label>
+              <label className="block text-sm font-medium text-foreground mb-1">ชื่อ - นามสกุล (ผู้ติดต่อ) *</label>
               <input
                 type="text"
                 value={form.contactName}
                 onChange={(e) => setForm({ ...form, contactName: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
                 required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อเล่น</label>
+              <label className="block text-sm font-medium text-foreground mb-1">ชื่อเล่น</label>
               <input
                 type="text"
                 value={form.nickname}
                 onChange={(e) => setForm({ ...form, nickname: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">เบอร์โทรศัพท์ *</label>
+              <label className="block text-sm font-medium text-foreground mb-1">เบอร์โทรศัพท์ *</label>
               <input
                 type="text"
                 value={form.phone}
                 onChange={(e) => setForm({ ...form, phone: formatPhone(e.target.value) })}
                 placeholder="0XX-XXX-XXXX"
                 maxLength={12}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
                 required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">เบอร์โทรสำรอง</label>
+              <label className="block text-sm font-medium text-foreground mb-1">เบอร์โทรสำรอง</label>
               <input
                 type="text"
                 value={form.phoneSecondary}
                 onChange={(e) => setForm({ ...form, phoneSecondary: formatPhone(e.target.value) })}
                 placeholder="0XX-XXX-XXXX"
                 maxLength={12}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">LINE ID</label>
+              <label className="block text-sm font-medium text-foreground mb-1">LINE ID</label>
               <input
                 type="text"
                 value={form.lineId}
                 onChange={(e) => setForm({ ...form, lineId: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">เลขประจำตัวผู้เสียภาษี (Tax ID Number)</label>
+              <label className="block text-sm font-medium text-foreground mb-1">เลขประจำตัวผู้เสียภาษี (Tax ID Number)</label>
               <input
                 type="text"
                 value={form.taxId}
                 onChange={(e) => setForm({ ...form, taxId: formatTaxId(e.target.value) })}
                 placeholder="X-XXXX-XXXXX-XX-X"
                 maxLength={17}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
               />
             </div>
             <div className="col-span-2">
               <label className="flex items-center gap-3 cursor-pointer">
-                <span className="text-sm font-medium text-gray-700">จดทะเบียน VAT</span>
+                <span className="text-sm font-medium text-foreground">จดทะเบียน VAT</span>
                 <button
                   type="button"
                   onClick={() => setForm({ ...form, hasVat: !form.hasVat })}
                   className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    form.hasVat ? 'bg-primary-600' : 'bg-gray-300'
+                    form.hasVat ? 'bg-primary' : 'bg-border'
                   }`}
                 >
                   <span
@@ -523,7 +523,7 @@ export default function SuppliersPage() {
                     }`}
                   />
                 </button>
-                <span className={`text-sm font-medium ${form.hasVat ? 'text-primary-600' : 'text-gray-400'}`}>
+                <span className={`text-sm font-medium ${form.hasVat ? 'text-primary' : 'text-muted-foreground'}`}>
                   {form.hasVat ? 'มี VAT (7%)' : 'ไม่มี VAT'}
                 </span>
               </label>
@@ -532,34 +532,34 @@ export default function SuppliersPage() {
             {/* Payment Methods Section */}
             <div className="col-span-2 border-t pt-4 mt-2">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-gray-800">ข้อมูลการชำระเงิน</h3>
+                <h3 className="text-sm font-semibold text-foreground">ข้อมูลการชำระเงิน</h3>
                 <button
                   type="button"
                   onClick={addPaymentMethod}
-                  className="px-3 py-1 text-xs bg-primary-50 text-primary-600 rounded-lg hover:bg-primary-100 transition-colors font-medium"
+                  className="px-3 py-1 text-xs bg-primary-50 text-primary rounded-lg hover:bg-primary-100 transition-colors font-medium"
                 >
                   + เพิ่มวิธีชำระเงิน
                 </button>
               </div>
 
               {paymentMethods.length === 0 && (
-                <p className="text-sm text-gray-400 text-center py-3 bg-gray-50 rounded-lg">ยังไม่มีข้อมูลการชำระเงิน กดปุ่ม "เพิ่มวิธีชำระเงิน" เพื่อเพิ่ม</p>
+                <p className="text-sm text-muted-foreground text-center py-3 bg-muted rounded-lg">ยังไม่มีข้อมูลการชำระเงิน กดปุ่ม "เพิ่มวิธีชำระเงิน" เพื่อเพิ่ม</p>
               )}
 
               {paymentMethods.map((pm, index) => (
-                <div key={index} className="border border-gray-200 rounded-lg p-3 mb-3 bg-gray-50">
+                <div key={index} className="border border-border rounded-lg p-3 mb-3 bg-muted">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold text-gray-500">วิธีที่ {index + 1}</span>
+                      <span className="text-xs font-semibold text-muted-foreground">วิธีที่ {index + 1}</span>
                       <label className="flex items-center gap-1 cursor-pointer">
                         <input
                           type="radio"
                           name="defaultPayment"
                           checked={pm.isDefault}
                           onChange={() => updatePaymentMethod(index, 'isDefault', true)}
-                          className="text-primary-600"
+                          className="text-primary"
                         />
-                        <span className="text-xs text-gray-500">ค่าเริ่มต้น</span>
+                        <span className="text-xs text-muted-foreground">ค่าเริ่มต้น</span>
                       </label>
                     </div>
                     <button
@@ -572,11 +572,11 @@ export default function SuppliersPage() {
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">วิธีชำระเงิน *</label>
+                      <label className="block text-xs text-muted-foreground mb-1">วิธีชำระเงิน *</label>
                       <select
                         value={pm.paymentMethod}
                         onChange={(e) => updatePaymentMethod(index, 'paymentMethod', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none text-sm"
+                        className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none text-sm"
                         required
                       >
                         <option value="">-- เลือก --</option>
@@ -587,45 +587,45 @@ export default function SuppliersPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">เครดิต (วัน)</label>
+                      <label className="block text-xs text-muted-foreground mb-1">เครดิต (วัน)</label>
                       <input
                         type="number"
                         value={pm.creditTermDays}
                         onChange={(e) => updatePaymentMethod(index, 'creditTermDays', e.target.value)}
                         placeholder="เช่น 30"
                         min={0}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none text-sm"
+                        className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none text-sm"
                       />
                     </div>
                     {(pm.paymentMethod === 'BANK_TRANSFER' || pm.paymentMethod === 'CHECK') && (
                       <>
                         <div>
-                          <label className="block text-xs text-gray-500 mb-1">ธนาคาร</label>
+                          <label className="block text-xs text-muted-foreground mb-1">ธนาคาร</label>
                           <input
                             type="text"
                             value={pm.bankName}
                             onChange={(e) => updatePaymentMethod(index, 'bankName', e.target.value)}
                             placeholder="เช่น กสิกรไทย, กรุงเทพ"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none text-sm"
+                            className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none text-sm"
                           />
                         </div>
                         <div>
-                          <label className="block text-xs text-gray-500 mb-1">ชื่อบัญชี</label>
+                          <label className="block text-xs text-muted-foreground mb-1">ชื่อบัญชี</label>
                           <input
                             type="text"
                             value={pm.bankAccountName}
                             onChange={(e) => updatePaymentMethod(index, 'bankAccountName', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none text-sm"
+                            className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none text-sm"
                           />
                         </div>
                         <div className="col-span-2">
-                          <label className="block text-xs text-gray-500 mb-1">เลขบัญชี</label>
+                          <label className="block text-xs text-muted-foreground mb-1">เลขบัญชี</label>
                           <input
                             type="text"
                             value={pm.bankAccountNumber}
                             onChange={(e) => updatePaymentMethod(index, 'bankAccountNumber', e.target.value)}
                             placeholder="XXX-X-XXXXX-X"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none text-sm"
+                            className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none text-sm"
                           />
                         </div>
                       </>
@@ -639,12 +639,12 @@ export default function SuppliersPage() {
               <AddressForm value={supplierAddress} onChange={setSupplierAddress} label="ที่อยู่" />
             </div>
             <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ</label>
+              <label className="block text-sm font-medium text-foreground mb-1">หมายเหตุ</label>
               <textarea
                 value={form.notes}
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
                 rows={2}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none resize-none"
+                className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none resize-none"
               />
             </div>
           </div>
@@ -652,14 +652,14 @@ export default function SuppliersPage() {
             <button
               type="button"
               onClick={closeModal}
-              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
+              className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground"
             >
               ยกเลิก
             </button>
             <button
               type="submit"
               disabled={saveMutation.isPending}
-              className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
             >
               {saveMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
             </button>

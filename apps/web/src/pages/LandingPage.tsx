@@ -48,7 +48,7 @@ export default function LandingPage() {
   const products = productsResult?.data?.slice(0, 8) ?? [];
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-background">
       <LandingNav onScrollTo={scrollTo} />
 
       {/* Hero Section */}
@@ -75,7 +75,7 @@ export default function LandingPage() {
                 <div className="mt-8 flex flex-wrap gap-4">
                   <button
                     onClick={() => scrollTo('products')}
-                    className="px-8 py-3 text-sm font-semibold text-white bg-primary-600 hover:bg-primary-500 rounded-xl transition-all hover:shadow-lg hover:shadow-primary-600/30"
+                    className="px-8 py-3 text-sm font-semibold text-primary-foreground bg-primary hover:bg-primary/90 rounded-xl transition-all hover:shadow-lg hover:shadow-primary/30"
                   >
                     ดูสินค้าทั้งหมด
                   </button>
@@ -126,16 +126,16 @@ export default function LandingPage() {
       </section>
 
       {/* Products Section */}
-      <section ref={productsRef} className="py-20 bg-gray-50">
+      <section ref={productsRef} className="py-20 bg-muted">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
-            <span className="inline-block px-4 py-1.5 text-xs font-semibold text-primary-600 bg-primary-50 rounded-full mb-4">
+            <span className="inline-block px-4 py-1.5 text-xs font-semibold text-primary bg-primary/10 rounded-full mb-4">
               สินค้าของเรา
             </span>
-            <h2 className="text-3xl lg:text-4xl font-bold text-gray-900">
-              สินค้า<span className="text-primary-600">แนะนำ</span>
+            <h2 className="text-3xl lg:text-4xl font-bold text-foreground">
+              สินค้า<span className="text-primary">แนะนำ</span>
             </h2>
-            <p className="mt-4 text-gray-500 max-w-2xl mx-auto">
+            <p className="mt-4 text-muted-foreground max-w-2xl mx-auto">
               เลือกชมสมาร์ทโฟนคุณภาพ ทั้งเครื่องใหม่และมือสองสภาพดี พร้อมรับประกันคุณภาพ
             </p>
           </div>
@@ -182,7 +182,7 @@ export default function LandingPage() {
           <div className="text-center mt-12">
             <Link
               to="/login"
-              className="inline-flex items-center gap-2 px-8 py-3 text-sm font-semibold text-primary-600 bg-white border-2 border-primary-200 hover:border-primary-400 rounded-xl transition-all hover:shadow-lg"
+              className="inline-flex items-center gap-2 px-8 py-3 text-sm font-semibold text-primary bg-card border-2 border-primary/20 hover:border-primary/40 rounded-xl transition-all hover:shadow-lg"
             >
               ดูสินค้าทั้งหมด
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -194,14 +194,14 @@ export default function LandingPage() {
       </section>
 
       {/* Services Section */}
-      <section ref={servicesRef} className="py-20 bg-white">
+      <section ref={servicesRef} className="py-20 bg-background">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
-            <span className="inline-block px-4 py-1.5 text-xs font-semibold text-primary-600 bg-primary-50 rounded-full mb-4">
+            <span className="inline-block px-4 py-1.5 text-xs font-semibold text-primary bg-primary/10 rounded-full mb-4">
               ทำไมถึงเลือกเรา
             </span>
-            <h2 className="text-3xl lg:text-4xl font-bold text-gray-900">
-              บริการ<span className="text-primary-600">ของเรา</span>
+            <h2 className="text-3xl lg:text-4xl font-bold text-foreground">
+              บริการ<span className="text-primary">ของเรา</span>
             </h2>
           </div>
 
@@ -247,13 +247,13 @@ export default function LandingPage() {
             ].map((service, i) => (
               <div
                 key={i}
-                className="text-center p-6 rounded-2xl bg-gray-50 hover:bg-white hover:shadow-xl border border-transparent hover:border-gray-100 transition-all duration-300 group"
+                className="text-center p-6 rounded-2xl bg-muted hover:bg-card hover:shadow-xl border border-transparent hover:border-border transition-all duration-300 group"
               >
-                <div className="w-14 h-14 mx-auto rounded-xl bg-primary-100 text-primary-600 flex items-center justify-center group-hover:bg-primary-600 group-hover:text-white transition-colors duration-300">
+                <div className="w-14 h-14 mx-auto rounded-xl bg-primary/10 text-primary flex items-center justify-center group-hover:bg-primary group-hover:text-primary-foreground transition-colors duration-300">
                   {service.icon}
                 </div>
-                <h3 className="mt-4 font-semibold text-gray-900">{service.title}</h3>
-                <p className="mt-2 text-sm text-gray-500 leading-relaxed">{service.desc}</p>
+                <h3 className="mt-4 font-semibold text-foreground">{service.title}</h3>
+                <p className="mt-2 text-sm text-muted-foreground leading-relaxed">{service.desc}</p>
               </div>
             ))}
           </div>
@@ -272,7 +272,7 @@ export default function LandingPage() {
           <div className="mt-8 flex justify-center gap-4">
             <Link
               to="/login"
-              className="px-8 py-3 text-sm font-semibold text-primary-900 bg-white hover:bg-gray-100 rounded-xl transition-all hover:shadow-lg"
+              className="px-8 py-3 text-sm font-semibold text-primary-900 bg-card hover:bg-muted rounded-xl transition-all hover:shadow-lg"
             >
               เข้าสู่ระบบ
             </Link>
@@ -287,45 +287,45 @@ export default function LandingPage() {
       </section>
 
       {/* Contact Section */}
-      <section ref={contactRef} className="py-20 bg-white">
+      <section ref={contactRef} className="py-20 bg-background">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
-            <span className="inline-block px-4 py-1.5 text-xs font-semibold text-primary-600 bg-primary-50 rounded-full mb-4">
+            <span className="inline-block px-4 py-1.5 text-xs font-semibold text-primary bg-primary/10 rounded-full mb-4">
               ติดต่อเรา
             </span>
-            <h2 className="text-3xl lg:text-4xl font-bold text-gray-900">
-              ช่องทาง<span className="text-primary-600">ติดต่อ</span>
+            <h2 className="text-3xl lg:text-4xl font-bold text-foreground">
+              ช่องทาง<span className="text-primary">ติดต่อ</span>
             </h2>
           </div>
 
           <div className="grid md:grid-cols-3 gap-8 max-w-4xl mx-auto">
-            <div className="text-center p-6 rounded-2xl bg-gray-50">
-              <div className="w-12 h-12 mx-auto rounded-xl bg-primary-100 text-primary-600 flex items-center justify-center mb-4">
+            <div className="text-center p-6 rounded-2xl bg-muted">
+              <div className="w-12 h-12 mx-auto rounded-xl bg-primary/10 text-primary flex items-center justify-center mb-4">
                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
                 </svg>
               </div>
-              <h3 className="font-semibold text-gray-900">โทรศัพท์</h3>
-              <p className="mt-2 text-sm text-gray-500">02-xxx-xxxx</p>
+              <h3 className="font-semibold text-foreground">โทรศัพท์</h3>
+              <p className="mt-2 text-sm text-muted-foreground">02-xxx-xxxx</p>
             </div>
-            <div className="text-center p-6 rounded-2xl bg-gray-50">
+            <div className="text-center p-6 rounded-2xl bg-muted">
               <div className="w-12 h-12 mx-auto rounded-xl bg-green-100 text-green-600 flex items-center justify-center mb-4">
                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                 </svg>
               </div>
-              <h3 className="font-semibold text-gray-900">LINE</h3>
-              <p className="mt-2 text-sm text-gray-500">@bestchoice</p>
+              <h3 className="font-semibold text-foreground">LINE</h3>
+              <p className="mt-2 text-sm text-muted-foreground">@bestchoice</p>
             </div>
-            <div className="text-center p-6 rounded-2xl bg-gray-50">
-              <div className="w-12 h-12 mx-auto rounded-xl bg-primary-100 text-primary-600 flex items-center justify-center mb-4">
+            <div className="text-center p-6 rounded-2xl bg-muted">
+              <div className="w-12 h-12 mx-auto rounded-xl bg-primary/10 text-primary flex items-center justify-center mb-4">
                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
               </div>
-              <h3 className="font-semibold text-gray-900">ที่ตั้งร้าน</h3>
-              <p className="mt-2 text-sm text-gray-500">สาขาใกล้บ้านคุณ</p>
+              <h3 className="font-semibold text-foreground">ที่ตั้งร้าน</h3>
+              <p className="mt-2 text-sm text-muted-foreground">สาขาใกล้บ้านคุณ</p>
             </div>
           </div>
         </div>

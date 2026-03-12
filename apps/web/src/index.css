@@ -2,64 +2,102 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Google Fonts: Noto Sans Thai (UI) ──────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap');
+/* ── Google Fonts: Inter + Noto Sans Thai ───────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap');
 
-/* ── shadcn/ui Theme Variables ─────────────────────── */
+/* ── Metronic v9.4.6 Theme Variables (aligned with config.reui.css) ─ */
 @layer base {
   :root {
+    /* Core: white bg, zinc-950 fg (matches Metronic exactly) */
     --background: 0 0% 100%;
-    --foreground: 240 10% 30%;
+    --foreground: 240 6% 10%;
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 30%;
+    --card-foreground: 240 6% 10%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 30%;
-    --primary: 160 84% 39%;
+    --popover-foreground: 240 6% 10%;
+    /* Primary: blue-500 */
+    --primary: 217 91% 60%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222 47% 11%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
-    --accent: 210 40% 96%;
-    --accent-foreground: 222 47% 11%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 160 84% 39%;
-    --radius: 0.75rem;
-    --chart-1: 160 84% 39%;
-    --chart-2: 173 80% 40%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 96% 56%;
-    --chart-5: 27 87% 67%;
+    /* Secondary/Muted/Accent: zinc-100 */
+    --secondary: 240 5% 96%;
+    --secondary-foreground: 240 6% 10%;
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 46%;
+    --accent: 240 5% 96%;
+    --accent-foreground: 240 6% 10%;
+    /* Destructive: red-600 */
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    /* Semantic */
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --info: 262 83% 58%;
+    --info-foreground: 0 0% 100%;
+    /* Border: between zinc-100 and zinc-200 */
+    --border: 240 6% 90%;
+    --input: 240 6% 83%;
+    --ring: 240 5% 65%;
+    /* Metronic uses 0.5rem (8px) base radius */
+    --radius: 0.5rem;
+    /* Sidebar */
+    --sidebar-bg: 224 71% 4%;
+    --sidebar-fg: 220 14% 71%;
+    --sidebar-active: 217 91% 60%;
+    --sidebar-hover: 228 25% 15%;
+    /* Charts: blue, green, yellow, red, purple */
+    --chart-1: 217 91% 60%;
+    --chart-2: 142 71% 45%;
+    --chart-3: 48 96% 53%;
+    --chart-4: 0 84% 60%;
+    --chart-5: 271 91% 65%;
   }
 
   .dark {
-    --background: 222 47% 6%;
-    --foreground: 210 40% 98%;
-    --card: 222 47% 8%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222 47% 8%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 160 84% 39%;
+    /* zinc-950 bg, zinc-50 fg */
+    --background: 240 10% 4%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 4%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 4%;
+    --popover-foreground: 0 0% 98%;
+    /* Primary: blue-600 in dark */
+    --primary: 217 91% 60%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 217 33% 17%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217 33% 17%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 217 33% 17%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 63% 31%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 217 33% 17%;
-    --input: 217 33% 17%;
-    --ring: 160 84% 39%;
-    --chart-1: 160 84% 45%;
-    --chart-2: 173 80% 45%;
-    --chart-3: 197 37% 70%;
-    --chart-4: 43 96% 56%;
-    --chart-5: 27 87% 67%;
+    /* Secondary/Muted/Accent: zinc-800 */
+    --secondary: 240 4% 16%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 4% 16%;
+    --muted-foreground: 240 4% 46%;
+    --accent: 240 4% 16%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 71% 40%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 45%;
+    --warning-foreground: 0 0% 100%;
+    --info: 262 83% 55%;
+    --info-foreground: 0 0% 100%;
+    /* Border: zinc-800 */
+    --border: 240 4% 16%;
+    --input: 240 4% 16%;
+    --ring: 240 5% 40%;
+    --sidebar-bg: 228 40% 6%;
+    --sidebar-fg: 220 14% 60%;
+    --sidebar-active: 217 91% 60%;
+    --sidebar-hover: 228 25% 12%;
+    --chart-1: 217 91% 60%;
+    --chart-2: 142 71% 45%;
+    --chart-3: 48 96% 53%;
+    --chart-4: 0 84% 60%;
+    --chart-5: 271 91% 65%;
+  }
+
+  /* Metronic global focus style */
+  *:focus-visible {
+    @apply outline-none ring-2 ring-ring/30 ring-offset-[3px] ring-offset-background rounded-sm;
   }
 }
 
@@ -89,23 +127,28 @@
   font-display: swap;
 }
 
-/* ── Base Styles ────────────────────────────────────── */
+/* ── Base Styles (Metronic v9.4.6) ───────────────── */
 body {
-  font-family: 'Noto Sans Thai', 'Inter', system-ui, -apple-system, sans-serif;
-  font-size: 15px;
-  line-height: 1.6;
-  color: #3b3c66;
+  font-family: 'Inter', 'Noto Sans Thai', system-ui, -apple-system, sans-serif;
+  font-size: 0.875rem; /* 14px - Metronic default text-sm */
+  line-height: 1.5;
+  color: hsl(var(--foreground));
+  background-color: hsl(var(--background));
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
+}
+
+/* Metronic border-border default on all elements */
+*, *::before, *::after {
+  border-color: hsl(var(--border));
 }
 
 @layer utilities {
   .text-gradient {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-teal-400 to-emerald-500;
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-indigo-500;
   }
   .bg-hero-gradient {
-    background: linear-gradient(135deg, #064e3b 0%, #065f46 25%, #059669 50%, #10b981 75%, #34d399 100%);
+    background: linear-gradient(135deg, #1b2559 0%, #1b3a8a 25%, #1b84ff 50%, #3699ff 75%, #69b3ff 100%);
   }
   .glass-card {
     @apply bg-white/80 backdrop-blur-sm border border-white/20;
@@ -113,6 +156,14 @@ body {
   /* Font shortcut for document/contract areas */
   .font-sarabun {
     font-family: 'TH Sarabun PSK', 'Noto Sans Thai', sans-serif;
+  }
+  /* Metronic-style stat card */
+  .stat-card {
+    @apply bg-card rounded-xl border border-border p-5 transition-shadow hover:shadow-md;
+  }
+  /* Metronic-style section separator */
+  .kt-separator {
+    @apply border-t border-border my-5;
   }
 }
 

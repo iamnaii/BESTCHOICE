@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
+import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
 
 interface OverduePayment {
@@ -64,8 +65,8 @@ export default function OverduePage() {
       label: 'สัญญา',
       render: (p: OverduePayment) => (
         <button onClick={() => navigateToContract(p.contract.id)} className="text-left">
-          <div className="font-mono text-sm text-primary-600 hover:underline">{p.contract.contractNumber}</div>
-          <div className="text-xs text-gray-500">{p.contract.customer.name}</div>
+          <div className="font-mono text-sm text-primary hover:underline">{p.contract.contractNumber}</div>
+          <div className="text-xs text-muted-foreground">{p.contract.customer.name}</div>
         </button>
       ),
     },
@@ -110,7 +111,7 @@ export default function OverduePage() {
         return fee > 0 ? (
           <span className="text-sm font-medium text-red-600">{fee.toLocaleString()} ฿</span>
         ) : (
-          <span className="text-xs text-gray-400">-</span>
+          <span className="text-xs text-muted-foreground">-</span>
         );
       },
     },
@@ -146,23 +147,31 @@ export default function OverduePage() {
       />
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white rounded-lg border p-4">
-          <div className="text-xs text-gray-500 mb-1">สัญญาค้างชำระ</div>
-          <div className="text-2xl font-bold text-red-600">{uniqueContracts}</div>
-        </div>
-        <div className="bg-white rounded-lg border p-4">
-          <div className="text-xs text-gray-500 mb-1">รายการค้างชำระ</div>
-          <div className="text-2xl font-bold">{overduePayments.length}</div>
-        </div>
-        <div className="bg-white rounded-lg border p-4">
-          <div className="text-xs text-gray-500 mb-1">ยอดค้างรวม</div>
-          <div className="text-2xl font-bold">{totalOutstanding.toLocaleString()} ฿</div>
-        </div>
-        <div className="bg-white rounded-lg border p-4">
-          <div className="text-xs text-gray-500 mb-1">ค่าปรับรวม</div>
-          <div className="text-2xl font-bold text-red-600">{totalLateFees.toLocaleString()} ฿</div>
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-5 lg:gap-7.5 mb-6">
+        <Card className="shadow-xs shadow-black/5">
+          <CardContent className="p-4">
+            <div className="text-xs text-muted-foreground mb-1">สัญญาค้างชำระ</div>
+            <div className="text-2xl font-bold text-red-600">{uniqueContracts}</div>
+          </CardContent>
+        </Card>
+        <Card className="shadow-xs shadow-black/5">
+          <CardContent className="p-4">
+            <div className="text-xs text-muted-foreground mb-1">รายการค้างชำระ</div>
+            <div className="text-2xl font-bold">{overduePayments.length}</div>
+          </CardContent>
+        </Card>
+        <Card className="shadow-xs shadow-black/5">
+          <CardContent className="p-4">
+            <div className="text-xs text-muted-foreground mb-1">ยอดค้างรวม</div>
+            <div className="text-2xl font-bold">{totalOutstanding.toLocaleString()} ฿</div>
+          </CardContent>
+        </Card>
+        <Card className="shadow-xs shadow-black/5">
+          <CardContent className="p-4">
+            <div className="text-xs text-muted-foreground mb-1">ค่าปรับรวม</div>
+            <div className="text-2xl font-bold text-red-600">{totalLateFees.toLocaleString()} ฿</div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Info box */}
@@ -178,7 +187,7 @@ export default function OverduePage() {
         <select
           value={filter}
           onChange={(e) => setFilter(e.target.value as 'OVERDUE' | 'all')}
-          className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+          className="px-3 py-2 border border-input rounded-lg text-sm"
         >
           <option value="OVERDUE">เฉพาะเกินกำหนด</option>
           <option value="all">ทั้งหมด</option>
@@ -186,7 +195,7 @@ export default function OverduePage() {
       </div>
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div></div>
+        <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>
       ) : (
         <DataTable columns={columns} data={overduePayments} emptyMessage="ไม่มีรายการค้างชำระ" />
       )}

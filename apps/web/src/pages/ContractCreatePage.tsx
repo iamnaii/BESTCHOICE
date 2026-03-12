@@ -906,7 +906,7 @@ export default function ContractCreatePage() {
         title="สร้างสัญญาผ่อนชำระ"
         subtitle={STEPS[step]}
         action={
-          <button onClick={() => navigate('/contracts')} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg">
+          <button onClick={() => navigate('/contracts')} className="px-4 py-2 text-sm text-muted-foreground border border-input rounded-lg">
             ยกเลิก
           </button>
         }
@@ -916,11 +916,11 @@ export default function ContractCreatePage() {
       <div className="flex items-center gap-1 mb-6 flex-wrap">
         {STEPS.map((s, i) => (
           <div key={s} className="flex items-center gap-1">
-            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium ${i <= step ? 'bg-primary-600 text-white' : 'bg-gray-200 text-gray-500'}`}>
+            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium ${i <= step ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
               {i + 1}
             </div>
-            <span className={`text-xs ${i <= step ? 'text-primary-700 font-medium' : 'text-gray-400'} hidden md:inline`}>{s}</span>
-            {i < STEPS.length - 1 && <div className={`w-4 h-0.5 ${i < step ? 'bg-primary-600' : 'bg-gray-200'}`} />}
+            <span className={`text-xs ${i <= step ? 'text-primary font-medium' : 'text-muted-foreground'} hidden md:inline`}>{s}</span>
+            {i < STEPS.length - 1 && <div className={`w-4 h-0.5 ${i < step ? 'bg-primary' : 'bg-muted'}`} />}
           </div>
         ))}
       </div>
@@ -933,7 +933,7 @@ export default function ContractCreatePage() {
             placeholder="ค้นหาสินค้า (ชื่อ, ยี่ห้อ, รุ่น, IMEI)..."
             value={productSearch}
             onChange={(e) => setProductSearch(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm mb-4"
+            className="w-full px-3 py-2 border border-input rounded-lg text-sm mb-4"
           />
           <div className="grid gap-3">
             {products.map((p) => (
@@ -941,23 +941,23 @@ export default function ContractCreatePage() {
                 key={p.id}
                 onClick={() => setSelectedProduct(p)}
                 onDoubleClick={() => { setSelectedProduct(p); goToStep(1); }}
-                className={`p-4 rounded-lg border cursor-pointer transition-colors ${selectedProduct?.id === p.id ? 'border-primary-500 bg-primary-50' : 'border-gray-200 hover:border-gray-300'}`}
+                className={`p-4 rounded-lg border cursor-pointer transition-colors ${selectedProduct?.id === p.id ? 'border-primary bg-primary/5' : 'border-border hover:border-border'}`}
               >
                 <div className="flex justify-between items-start">
                   <div>
                     <div className="font-medium text-sm">{p.brand} {p.model}</div>
-                    <div className="text-xs text-gray-500 mt-1">{p.name}</div>
-                    <div className="text-xs text-gray-400 mt-1">
+                    <div className="text-xs text-muted-foreground mt-1">{p.name}</div>
+                    <div className="text-xs text-muted-foreground mt-1">
                       สาขา: {p.branch?.name}
-                      <span className="ml-2 px-1.5 py-0.5 bg-gray-100 rounded text-[10px]">{p.category === 'PHONE_NEW' ? 'มือ 1' : p.category === 'PHONE_USED' ? 'มือ 2' : p.category}</span>
+                      <span className="ml-2 px-1.5 py-0.5 bg-secondary rounded text-2xs">{p.category === 'PHONE_NEW' ? 'มือ 1' : p.category === 'PHONE_USED' ? 'มือ 2' : p.category}</span>
                     </div>
                   </div>
                   <div className="text-right">
                     {p.prices.map((pr) => (
                       <div key={pr.id} className="text-xs">
-                        <span className="text-gray-500">{pr.label}: </span>
+                        <span className="text-muted-foreground">{pr.label}: </span>
                         <span className="font-medium">{parseFloat(pr.amount).toLocaleString()} ฿</span>
-                        {pr.isDefault && <span className="ml-1 text-primary-600">(หลัก)</span>}
+                        {pr.isDefault && <span className="ml-1 text-primary">(หลัก)</span>}
                       </div>
                     ))}
                   </div>
@@ -965,7 +965,7 @@ export default function ContractCreatePage() {
               </div>
             ))}
             {products.length === 0 && (
-              <div className="text-center py-8 text-gray-400 text-sm">ไม่พบสินค้าที่พร้อมขาย</div>
+              <div className="text-center py-8 text-muted-foreground text-sm">ไม่พบสินค้าที่พร้อมขาย</div>
             )}
           </div>
         </div>
@@ -977,7 +977,7 @@ export default function ContractCreatePage() {
           {/* Add new customer button - at top */}
           <button
             onClick={() => { resetCustForm(); setShowCustomerModal(true); }}
-            className="w-full mb-4 py-3 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors flex items-center justify-center gap-2"
+            className="w-full mb-4 py-3 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
               <path d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" />
@@ -990,7 +990,7 @@ export default function ContractCreatePage() {
             placeholder="ค้นหาลูกค้า (ชื่อ, เบอร์โทร, เลขบัตร)..."
             value={customerSearch}
             onChange={(e) => setCustomerSearch(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm mb-4"
+            className="w-full px-3 py-2 border border-input rounded-lg text-sm mb-4"
           />
           <div className="grid gap-3">
             {customers.map((c) => (
@@ -998,22 +998,22 @@ export default function ContractCreatePage() {
                 key={c.id}
                 onClick={() => setSelectedCustomer(c)}
                 onDoubleClick={() => { setSelectedCustomer(c); goToStep(2); }}
-                className={`p-4 rounded-lg border cursor-pointer transition-colors ${selectedCustomer?.id === c.id ? 'border-primary-500 bg-primary-50' : 'border-gray-200 hover:border-gray-300'}`}
+                className={`p-4 rounded-lg border cursor-pointer transition-colors ${selectedCustomer?.id === c.id ? 'border-primary bg-primary/5' : 'border-border hover:border-border'}`}
               >
                 <div className="flex justify-between items-center">
                   <div>
                     <div className="font-medium text-sm">{c.name}</div>
-                    <div className="text-xs text-gray-500 mt-1">{c.phone}</div>
-                    {c.salary && <div className="text-xs text-gray-400 mt-1">เงินเดือน: {parseFloat(c.salary).toLocaleString()} ฿</div>}
+                    <div className="text-xs text-muted-foreground mt-1">{c.phone}</div>
+                    {c.salary && <div className="text-xs text-muted-foreground mt-1">เงินเดือน: {parseFloat(c.salary).toLocaleString()} ฿</div>}
                   </div>
-                  <div className="text-xs text-gray-400 font-mono">
+                  <div className="text-xs text-muted-foreground font-mono">
                     {maskNationalId(c.nationalId)}
                   </div>
                 </div>
               </div>
             ))}
             {customers.length === 0 && (
-              <div className="text-center py-8 text-gray-400 text-sm">ไม่พบลูกค้า</div>
+              <div className="text-center py-8 text-muted-foreground text-sm">ไม่พบลูกค้า</div>
             )}
           </div>
 
@@ -1036,7 +1036,7 @@ export default function ContractCreatePage() {
                 {!customerCreditApproved && (
                   <button
                     onClick={() => navigate('/credit-checks')}
-                    className="px-3 py-1.5 text-xs bg-primary-600 text-white rounded-lg hover:bg-primary-700"
+                    className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
                   >
                     ไปตรวจเครดิต
                   </button>
@@ -1050,37 +1050,37 @@ export default function ContractCreatePage() {
       {/* Step 3: Plan Details + Due Date */}
       {step === 2 && (
         <div className="max-w-xl">
-          <div className="bg-white rounded-lg border p-6 space-y-4">
+          <div className="rounded-lg border p-6 space-y-4">
             {/* Interest Config Badge */}
             {interestConfig && (
-              <div className="bg-primary-50 border border-primary-200 rounded-lg p-3 flex items-center gap-2">
-                <span className="text-xs text-primary-600">ใช้ดอกเบี้ยตาม:</span>
-                <span className="text-sm font-medium text-primary-800">{interestConfig.name}</span>
-                <span className="text-xs text-primary-500">({(interestRate * 100).toFixed(1)}% | ดาวน์ขั้นต่ำ {(minDownPct * 100).toFixed(0)}% | {minMonths}-{maxMonths} เดือน)</span>
+              <div className="bg-primary/5 border border-primary/30 rounded-lg p-3 flex items-center gap-2">
+                <span className="text-xs text-primary">ใช้ดอกเบี้ยตาม:</span>
+                <span className="text-sm font-medium text-primary">{interestConfig.name}</span>
+                <span className="text-xs text-primary">({(interestRate * 100).toFixed(1)}% | ดาวน์ขั้นต่ำ {(minDownPct * 100).toFixed(0)}% | {minMonths}-{maxMonths} เดือน)</span>
               </div>
             )}
 
 
-            <div className="bg-gray-50 rounded-lg p-4">
-              <div className="text-sm font-medium text-gray-700 mb-2">สินค้า: {selectedProduct?.brand} {selectedProduct?.model}</div>
-              <div className="text-lg font-bold text-primary-700">{sellingPrice.toLocaleString()} ฿</div>
+            <div className="bg-muted rounded-lg p-4">
+              <div className="text-sm font-medium text-foreground mb-2">สินค้า: {selectedProduct?.brand} {selectedProduct?.model}</div>
+              <div className="text-lg font-bold text-primary">{sellingPrice.toLocaleString()} ฿</div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">เงินดาวน์</label>
+              <label className="block text-sm font-medium text-foreground mb-1">เงินดาวน์</label>
               <input
                 type="number"
                 value={downPayment}
                 onChange={(e) => { setDownPaymentTouched(true); setDownPayment(Number(e.target.value)); }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm"
                 min={0}
               />
-              <div className="text-xs text-gray-400 mt-1">ขั้นต่ำ {(minDownPct * 100).toFixed(0)}% = {(sellingPrice * minDownPct).toLocaleString()} ฿</div>
+              <div className="text-xs text-muted-foreground mt-1">ขั้นต่ำ {(minDownPct * 100).toFixed(0)}% = {(sellingPrice * minDownPct).toLocaleString()} ฿</div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนงวด (เดือน)</label>
-              <select value={totalMonths} onChange={(e) => setTotalMonths(Number(e.target.value))} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+              <label className="block text-sm font-medium text-foreground mb-1">จำนวนงวด (เดือน)</label>
+              <select value={totalMonths} onChange={(e) => setTotalMonths(Number(e.target.value))} className="w-full px-3 py-2 border border-input rounded-lg text-sm">
                 {monthOptions.map((m) => (
                   <option key={m} value={m}>{m} เดือน</option>
                 ))}
@@ -1089,65 +1089,65 @@ export default function ContractCreatePage() {
 
             {/* Payment Due Day */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">วันที่ครบกำหนดชำระ (ตามวันเงินเดือนออก)</label>
+              <label className="block text-sm font-medium text-foreground mb-1">วันที่ครบกำหนดชำระ (ตามวันเงินเดือนออก)</label>
               <select
                 value={paymentDueDay}
                 onChange={(e) => setPaymentDueDay(Number(e.target.value))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm"
               >
                 {[...Array.from({ length: 28 }, (_, i) => i + 1), 31].map((d) => (
                   <option key={d} value={d}>{d === 31 ? 'สิ้นเดือน (วันสุดท้ายของเดือน)' : `วันที่ ${d} ของทุกเดือน`}</option>
                 ))}
               </select>
-              <div className="text-xs text-gray-400 mt-1">ลูกค้าจะต้องชำระเงิน{paymentDueDay === 31 ? 'ทุกสิ้นเดือน' : `ทุกวันที่ ${paymentDueDay} ของเดือน`}</div>
+              <div className="text-xs text-muted-foreground mt-1">ลูกค้าจะต้องชำระเงิน{paymentDueDay === 31 ? 'ทุกสิ้นเดือน' : `ทุกวันที่ ${paymentDueDay} ของเดือน`}</div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ</label>
+              <label className="block text-sm font-medium text-foreground mb-1">หมายเหตุ</label>
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={2}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm"
               />
             </div>
 
             {/* Calculation Summary */}
-            <div className="bg-primary-50 rounded-lg p-4 space-y-2">
-              <h3 className="text-sm font-semibold text-primary-800">สรุปการคำนวณ</h3>
+            <div className="bg-primary/5 rounded-lg p-4 space-y-2">
+              <h3 className="text-sm font-semibold text-primary">สรุปการคำนวณ</h3>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">ราคาขาย</span>
+                <span className="text-muted-foreground">ราคาขาย</span>
                 <span>{sellingPrice.toLocaleString()} ฿</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">เงินดาวน์</span>
+                <span className="text-muted-foreground">เงินดาวน์</span>
                 <span>-{downPayment.toLocaleString()} ฿</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">ยอดปล่อย (Loan)</span>
+                <span className="text-muted-foreground">ยอดปล่อย (Loan)</span>
                 <span>{principal.toLocaleString()} ฿</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">ค่าคอมหน้าร้าน ({(storeCommPct * 100).toFixed(0)}%)</span>
+                <span className="text-muted-foreground">ค่าคอมหน้าร้าน ({(storeCommPct * 100).toFixed(0)}%)</span>
                 <span>{storeCommission.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">ดอกเบี้ยรวม ({(interestRate * 100).toFixed(1)}% x {totalMonths} เดือน)</span>
+                <span className="text-muted-foreground">ดอกเบี้ยรวม ({(interestRate * 100).toFixed(1)}% x {totalMonths} เดือน)</span>
                 <span>{interestTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">VAT ({(vatPct * 100).toFixed(0)}%)</span>
+                <span className="text-muted-foreground">VAT ({(vatPct * 100).toFixed(0)}%)</span>
                 <span>{vatAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">รวมยอดจัดไฟแนนซ์</span>
+                <span className="text-muted-foreground">รวมยอดจัดไฟแนนซ์</span>
                 <span>{financedAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span>
               </div>
-              <div className="border-t pt-2 flex justify-between text-base font-bold text-primary-700">
+              <div className="border-t pt-2 flex justify-between text-base font-bold text-primary">
                 <span>ค่างวด/เดือน</span>
                 <span>{monthlyPayment.toLocaleString()} ฿</span>
               </div>
-              <div className="text-xs text-gray-500 text-right">ชำระ{paymentDueDay === 31 ? 'ทุกสิ้นเดือน' : `ทุกวันที่ ${paymentDueDay}`}</div>
+              <div className="text-xs text-muted-foreground text-right">ชำระ{paymentDueDay === 31 ? 'ทุกสิ้นเดือน' : `ทุกวันที่ ${paymentDueDay}`}</div>
             </div>
           </div>
         </div>
@@ -1156,9 +1156,9 @@ export default function ContractCreatePage() {
       {/* Step 4: Document Attachments */}
       {step === 3 && (
         <div className="max-w-3xl space-y-4">
-          <div className="bg-white rounded-lg border p-6 space-y-2">
-            <h3 className="text-sm font-semibold text-gray-900">แนบเอกสาร</h3>
-            <p className="text-xs text-gray-500">ลากไฟล์มาวางในช่องของเอกสารแต่ละประเภท หรือคลิกเพื่อเลือกไฟล์ (สามารถแนบภายหลังได้)</p>
+          <div className="rounded-lg border p-6 space-y-2">
+            <h3 className="text-sm font-semibold text-foreground">แนบเอกสาร</h3>
+            <p className="text-xs text-muted-foreground">ลากไฟล์มาวางในช่องของเอกสารแต่ละประเภท หรือคลิกเพื่อเลือกไฟล์ (สามารถแนบภายหลังได้)</p>
           </div>
 
           {/* Per-type drop zones — required first */}
@@ -1167,32 +1167,32 @@ export default function ContractCreatePage() {
               const docs = pendingDocs.filter((d) => d.type === dt.value);
               const isOver = dragOverType === dt.value;
               return (
-                <div key={dt.value} className="bg-white rounded-lg border overflow-hidden">
-                  <div className="flex items-center gap-2 px-4 py-2 border-b bg-gray-50">
+                <div key={dt.value} className="rounded-lg border overflow-hidden">
+                  <div className="flex items-center gap-2 px-4 py-2 border-b bg-muted">
                     {docs.length > 0 ? (
                       <span className="text-green-500 text-sm font-bold">&#10003;</span>
                     ) : (
                       <span className="text-red-400 text-sm">&#9675;</span>
                     )}
-                    <span className="text-sm font-medium text-gray-800">{dt.label} <span className="text-red-500">*</span></span>
-                    {docs.length > 0 && <span className="text-xs text-gray-400 ml-auto">{docs.length} ไฟล์</span>}
+                    <span className="text-sm font-medium text-foreground">{dt.label} <span className="text-red-500">*</span></span>
+                    {docs.length > 0 && <span className="text-xs text-muted-foreground ml-auto">{docs.length} ไฟล์</span>}
                   </div>
                   <div className="p-3">
                     {/* Attached files */}
                     {docs.length > 0 && (
                       <div className="mb-2 space-y-1">
                         {docs.map((doc) => (
-                          <div key={doc.id} className="flex items-center gap-2 bg-gray-50 rounded px-3 py-1.5">
+                          <div key={doc.id} className="flex items-center gap-2 bg-muted rounded px-3 py-1.5">
                             {doc.file.type.startsWith('image/') ? (
                               <img src={doc.preview} alt="" className="w-8 h-8 rounded object-cover flex-shrink-0" />
                             ) : (
-                              <div className="w-8 h-8 rounded bg-red-100 flex items-center justify-center text-[10px] font-bold text-red-600 flex-shrink-0">PDF</div>
+                              <div className="w-8 h-8 rounded bg-red-100 flex items-center justify-center text-2xs font-bold text-red-600 flex-shrink-0">PDF</div>
                             )}
                             <div className="min-w-0 flex-1">
-                              <div className="text-xs font-medium text-gray-700 truncate">{doc.file.name}</div>
-                              <div className="text-[10px] text-gray-400">{(doc.file.size / 1024).toFixed(0)} KB</div>
+                              <div className="text-xs font-medium text-foreground truncate">{doc.file.name}</div>
+                              <div className="text-2xs text-muted-foreground">{(doc.file.size / 1024).toFixed(0)} KB</div>
                             </div>
-                            <button onClick={() => handleRemoveDoc(doc.id)} className="text-[10px] text-red-500 hover:text-red-700 flex-shrink-0">ลบ</button>
+                            <button onClick={() => handleRemoveDoc(doc.id)} className="text-2xs text-red-500 hover:text-red-700 flex-shrink-0">ลบ</button>
                           </div>
                         ))}
                       </div>
@@ -1204,7 +1204,7 @@ export default function ContractCreatePage() {
                       onDrop={(e) => handleDropForType(e, dt.value)}
                       onClick={() => fileInputRefs.current[dt.value]?.click()}
                       className={`border-2 border-dashed rounded-lg py-3 px-4 text-center cursor-pointer transition-colors ${
-                        isOver ? 'border-primary-500 bg-primary-50' : 'border-gray-200 hover:border-primary-300 hover:bg-gray-50'
+                        isOver ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/30 hover:bg-muted'
                       }`}
                     >
                       <input
@@ -1215,10 +1215,10 @@ export default function ContractCreatePage() {
                         className="hidden"
                       />
                       <div className="flex items-center justify-center gap-2">
-                        <svg className={`w-5 h-5 ${isOver ? 'text-primary-500' : 'text-gray-300'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className={`w-5 h-5 ${isOver ? 'text-primary' : 'text-muted-foreground/50'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                         </svg>
-                        <span className={`text-xs ${isOver ? 'text-primary-600 font-medium' : 'text-gray-400'}`}>
+                        <span className={`text-xs ${isOver ? 'text-primary font-medium' : 'text-muted-foreground'}`}>
                           {isOver ? 'ปล่อยไฟล์ที่นี่' : 'ลากไฟล์มาวาง หรือคลิก'}
                         </span>
                       </div>
@@ -1231,36 +1231,36 @@ export default function ContractCreatePage() {
 
           {/* Optional documents */}
           <div className="space-y-3">
-            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1">เอกสารเพิ่มเติม (ไม่บังคับ)</h4>
+            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1">เอกสารเพิ่มเติม (ไม่บังคับ)</h4>
             {DOCUMENT_TYPES.filter((dt) => !dt.required).map((dt) => {
               const docs = pendingDocs.filter((d) => d.type === dt.value);
               const isOver = dragOverType === dt.value;
               return (
-                <div key={dt.value} className="bg-white rounded-lg border overflow-hidden">
-                  <div className="flex items-center gap-2 px-4 py-2 border-b bg-gray-50">
+                <div key={dt.value} className="rounded-lg border overflow-hidden">
+                  <div className="flex items-center gap-2 px-4 py-2 border-b bg-muted">
                     {docs.length > 0 ? (
                       <span className="text-green-500 text-sm font-bold">&#10003;</span>
                     ) : (
-                      <span className="text-gray-300 text-sm">&#9675;</span>
+                      <span className="text-muted-foreground/50 text-sm">&#9675;</span>
                     )}
-                    <span className="text-sm font-medium text-gray-600">{dt.label}</span>
-                    {docs.length > 0 && <span className="text-xs text-gray-400 ml-auto">{docs.length} ไฟล์</span>}
+                    <span className="text-sm font-medium text-muted-foreground">{dt.label}</span>
+                    {docs.length > 0 && <span className="text-xs text-muted-foreground ml-auto">{docs.length} ไฟล์</span>}
                   </div>
                   <div className="p-3">
                     {docs.length > 0 && (
                       <div className="mb-2 space-y-1">
                         {docs.map((doc) => (
-                          <div key={doc.id} className="flex items-center gap-2 bg-gray-50 rounded px-3 py-1.5">
+                          <div key={doc.id} className="flex items-center gap-2 bg-muted rounded px-3 py-1.5">
                             {doc.file.type.startsWith('image/') ? (
                               <img src={doc.preview} alt="" className="w-8 h-8 rounded object-cover flex-shrink-0" />
                             ) : (
-                              <div className="w-8 h-8 rounded bg-red-100 flex items-center justify-center text-[10px] font-bold text-red-600 flex-shrink-0">PDF</div>
+                              <div className="w-8 h-8 rounded bg-red-100 flex items-center justify-center text-2xs font-bold text-red-600 flex-shrink-0">PDF</div>
                             )}
                             <div className="min-w-0 flex-1">
-                              <div className="text-xs font-medium text-gray-700 truncate">{doc.file.name}</div>
-                              <div className="text-[10px] text-gray-400">{(doc.file.size / 1024).toFixed(0)} KB</div>
+                              <div className="text-xs font-medium text-foreground truncate">{doc.file.name}</div>
+                              <div className="text-2xs text-muted-foreground">{(doc.file.size / 1024).toFixed(0)} KB</div>
                             </div>
-                            <button onClick={() => handleRemoveDoc(doc.id)} className="text-[10px] text-red-500 hover:text-red-700 flex-shrink-0">ลบ</button>
+                            <button onClick={() => handleRemoveDoc(doc.id)} className="text-2xs text-red-500 hover:text-red-700 flex-shrink-0">ลบ</button>
                           </div>
                         ))}
                       </div>
@@ -1271,7 +1271,7 @@ export default function ContractCreatePage() {
                       onDrop={(e) => handleDropForType(e, dt.value)}
                       onClick={() => fileInputRefs.current[dt.value]?.click()}
                       className={`border-2 border-dashed rounded-lg py-3 px-4 text-center cursor-pointer transition-colors ${
-                        isOver ? 'border-primary-500 bg-primary-50' : 'border-gray-200 hover:border-primary-300 hover:bg-gray-50'
+                        isOver ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/30 hover:bg-muted'
                       }`}
                     >
                       <input
@@ -1282,10 +1282,10 @@ export default function ContractCreatePage() {
                         className="hidden"
                       />
                       <div className="flex items-center justify-center gap-2">
-                        <svg className={`w-5 h-5 ${isOver ? 'text-primary-500' : 'text-gray-300'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className={`w-5 h-5 ${isOver ? 'text-primary' : 'text-muted-foreground/50'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                         </svg>
-                        <span className={`text-xs ${isOver ? 'text-primary-600 font-medium' : 'text-gray-400'}`}>
+                        <span className={`text-xs ${isOver ? 'text-primary font-medium' : 'text-muted-foreground'}`}>
                           {isOver ? 'ปล่อยไฟล์ที่นี่' : 'ลากไฟล์มาวาง หรือคลิก'}
                         </span>
                       </div>
@@ -1298,11 +1298,11 @@ export default function ContractCreatePage() {
 
           {/* OCR Loading */}
           {ocrLoading && (
-            <div className="bg-primary-50 border border-primary-200 rounded-lg p-4 flex items-center gap-3">
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-600" />
+            <div className="bg-primary/5 border border-primary/30 rounded-lg p-4 flex items-center gap-3">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary" />
               <div>
-                <div className="text-sm font-medium text-primary-800">กำลังอ่านข้อมูลจากบัตรประชาชน...</div>
-                <div className="text-xs text-primary-600">ระบบ AI กำลังประมวลผลรูปภาพ</div>
+                <div className="text-sm font-medium text-primary">กำลังอ่านข้อมูลจากบัตรประชาชน...</div>
+                <div className="text-xs text-primary">ระบบ AI กำลังประมวลผลรูปภาพ</div>
               </div>
             </div>
           )}
@@ -1314,52 +1314,52 @@ export default function ContractCreatePage() {
                 <h3 className="text-sm font-semibold text-green-800">ข้อมูลที่อ่านจากบัตรประชาชน</h3>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-green-600">ความมั่นใจ: {(ocrResult.confidence * 100).toFixed(0)}%</span>
-                  <button onClick={() => setShowOcrPanel(false)} className="text-xs text-gray-500 hover:text-gray-700">ปิด</button>
+                  <button onClick={() => setShowOcrPanel(false)} className="text-xs text-muted-foreground hover:text-foreground">ปิด</button>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 {ocrResult.nationalId && (
                   <div>
-                    <div className="text-xs text-gray-500">เลขบัตรประชาชน</div>
-                    <div className="text-sm font-mono font-medium text-gray-900">
+                    <div className="text-xs text-muted-foreground">เลขบัตรประชาชน</div>
+                    <div className="text-sm font-mono font-medium text-foreground">
                       {ocrResult.nationalId.replace(/(\d{1})(\d{4})(\d{5})(\d{2})(\d{1})/, '$1-$2-$3-$4-$5')}
                     </div>
                   </div>
                 )}
                 {ocrResult.prefix && (
                   <div>
-                    <div className="text-xs text-gray-500">คำนำหน้า</div>
-                    <div className="text-sm font-medium text-gray-900">{ocrResult.prefix}</div>
+                    <div className="text-xs text-muted-foreground">คำนำหน้า</div>
+                    <div className="text-sm font-medium text-foreground">{ocrResult.prefix}</div>
                   </div>
                 )}
                 {ocrResult.fullName && (
                   <div>
-                    <div className="text-xs text-gray-500">ชื่อ-นามสกุล</div>
-                    <div className="text-sm font-medium text-gray-900">{ocrResult.fullName}</div>
+                    <div className="text-xs text-muted-foreground">ชื่อ-นามสกุล</div>
+                    <div className="text-sm font-medium text-foreground">{ocrResult.fullName}</div>
                   </div>
                 )}
                 {ocrResult.birthDate && (
                   <div>
-                    <div className="text-xs text-gray-500">วันเกิด</div>
-                    <div className="text-sm font-medium text-gray-900">{new Date(ocrResult.birthDate).toLocaleDateString('th-TH')}</div>
+                    <div className="text-xs text-muted-foreground">วันเกิด</div>
+                    <div className="text-sm font-medium text-foreground">{new Date(ocrResult.birthDate).toLocaleDateString('th-TH')}</div>
                   </div>
                 )}
                 {ocrResult.address && (
                   <div className="col-span-2">
-                    <div className="text-xs text-gray-500">ที่อยู่ตามบัตร</div>
-                    <div className="text-sm font-medium text-gray-900">{ocrResult.address}</div>
+                    <div className="text-xs text-muted-foreground">ที่อยู่ตามบัตร</div>
+                    <div className="text-sm font-medium text-foreground">{ocrResult.address}</div>
                   </div>
                 )}
                 {ocrResult.issueDate && (
                   <div>
-                    <div className="text-xs text-gray-500">วันออกบัตร</div>
-                    <div className="text-sm text-gray-700">{new Date(ocrResult.issueDate).toLocaleDateString('th-TH')}</div>
+                    <div className="text-xs text-muted-foreground">วันออกบัตร</div>
+                    <div className="text-sm text-foreground">{new Date(ocrResult.issueDate).toLocaleDateString('th-TH')}</div>
                   </div>
                 )}
                 {ocrResult.expiryDate && (
                   <div>
-                    <div className="text-xs text-gray-500">วันหมดอายุ</div>
-                    <div className="text-sm text-gray-700">{new Date(ocrResult.expiryDate).toLocaleDateString('th-TH')}</div>
+                    <div className="text-xs text-muted-foreground">วันหมดอายุ</div>
+                    <div className="text-sm text-foreground">{new Date(ocrResult.expiryDate).toLocaleDateString('th-TH')}</div>
                   </div>
                 )}
               </div>
@@ -1372,7 +1372,7 @@ export default function ContractCreatePage() {
                 </button>
                 <button
                   onClick={() => setShowOcrPanel(false)}
-                  className="px-4 py-1.5 text-xs border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50"
+                  className="px-4 py-1.5 text-xs border border-input text-muted-foreground rounded-lg hover:bg-muted"
                 >
                   ข้าม
                 </button>
@@ -1385,42 +1385,42 @@ export default function ContractCreatePage() {
       {/* Step 5: Confirm */}
       {step === 4 && (
         <div className="max-w-xl">
-          <div className="bg-white rounded-lg border p-6 space-y-4">
+          <div className="rounded-lg border p-6 space-y-4">
             <h3 className="text-lg font-semibold">ยืนยันสัญญาผ่อนชำระ</h3>
 
             <div className="space-y-3">
-              <div className="bg-gray-50 rounded-lg p-4">
+              <div className="bg-muted rounded-lg p-4">
                 <div className="flex items-center justify-between">
-                  <div className="text-xs text-gray-500">สินค้า</div>
-                  <button type="button" onClick={startEditProduct} className="text-xs text-primary-600 hover:text-primary-700 hover:underline">แก้ไข</button>
+                  <div className="text-xs text-muted-foreground">สินค้า</div>
+                  <button type="button" onClick={startEditProduct} className="text-xs text-primary hover:text-primary hover:underline">แก้ไข</button>
                 </div>
                 <div className="font-medium">{selectedProduct?.brand} {selectedProduct?.model}</div>
-                <div className="text-sm text-gray-500">{selectedProduct?.name}</div>
+                <div className="text-sm text-muted-foreground">{selectedProduct?.name}</div>
               </div>
 
-              <div className="bg-gray-50 rounded-lg p-4">
+              <div className="bg-muted rounded-lg p-4">
                 <div className="flex items-center justify-between">
-                  <div className="text-xs text-gray-500">ลูกค้า</div>
-                  <button type="button" onClick={startEditCustomer} className="text-xs text-primary-600 hover:text-primary-700 hover:underline">แก้ไข</button>
+                  <div className="text-xs text-muted-foreground">ลูกค้า</div>
+                  <button type="button" onClick={startEditCustomer} className="text-xs text-primary hover:text-primary hover:underline">แก้ไข</button>
                 </div>
                 <div className="font-medium">{selectedCustomer?.name}</div>
-                <div className="text-sm text-gray-500">{selectedCustomer?.phone}</div>
+                <div className="text-sm text-muted-foreground">{selectedCustomer?.phone}</div>
               </div>
 
-              <div className="bg-gray-50 rounded-lg p-4 grid grid-cols-2 gap-3">
-                <div><div className="text-xs text-gray-500">ประเภท</div><div className="text-sm font-medium">ผ่อนกับร้าน</div></div>
-                <div><div className="text-xs text-gray-500">ราคาขาย</div><div className="text-sm font-medium">{sellingPrice.toLocaleString()} ฿</div></div>
-                <div><div className="text-xs text-gray-500">เงินดาวน์</div><div className="text-sm font-medium">{downPayment.toLocaleString()} ฿</div></div>
-                <div><div className="text-xs text-gray-500">จำนวนงวด</div><div className="text-sm font-medium">{totalMonths} เดือน</div></div>
-                <div><div className="text-xs text-gray-500">ดอกเบี้ย</div><div className="text-sm font-medium">{(interestRate * 100).toFixed(1)}%{interestConfig ? ` (${interestConfig.name})` : ''}</div></div>
-                <div><div className="text-xs text-gray-500">ค่างวด/เดือน</div><div className="text-lg font-bold text-primary-700">{monthlyPayment.toLocaleString()} ฿</div></div>
-                <div><div className="text-xs text-gray-500">วันชำระ</div><div className="text-sm font-medium">{paymentDueDay === 31 ? 'สิ้นเดือน' : `ทุกวันที่ ${paymentDueDay}`}</div></div>
-                <div><div className="text-xs text-gray-500">เอกสารแนบ</div><div className="text-sm font-medium">{pendingDocs.length} ไฟล์</div></div>
+              <div className="bg-muted rounded-lg p-4 grid grid-cols-2 gap-3">
+                <div><div className="text-xs text-muted-foreground">ประเภท</div><div className="text-sm font-medium">ผ่อนกับร้าน</div></div>
+                <div><div className="text-xs text-muted-foreground">ราคาขาย</div><div className="text-sm font-medium">{sellingPrice.toLocaleString()} ฿</div></div>
+                <div><div className="text-xs text-muted-foreground">เงินดาวน์</div><div className="text-sm font-medium">{downPayment.toLocaleString()} ฿</div></div>
+                <div><div className="text-xs text-muted-foreground">จำนวนงวด</div><div className="text-sm font-medium">{totalMonths} เดือน</div></div>
+                <div><div className="text-xs text-muted-foreground">ดอกเบี้ย</div><div className="text-sm font-medium">{(interestRate * 100).toFixed(1)}%{interestConfig ? ` (${interestConfig.name})` : ''}</div></div>
+                <div><div className="text-xs text-muted-foreground">ค่างวด/เดือน</div><div className="text-lg font-bold text-primary">{monthlyPayment.toLocaleString()} ฿</div></div>
+                <div><div className="text-xs text-muted-foreground">วันชำระ</div><div className="text-sm font-medium">{paymentDueDay === 31 ? 'สิ้นเดือน' : `ทุกวันที่ ${paymentDueDay}`}</div></div>
+                <div><div className="text-xs text-muted-foreground">เอกสารแนบ</div><div className="text-sm font-medium">{pendingDocs.length} ไฟล์</div></div>
               </div>
 
               {notes && (
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <div className="text-xs text-gray-500">หมายเหตุ</div>
+                <div className="bg-muted rounded-lg p-4">
+                  <div className="text-xs text-muted-foreground">หมายเหตุ</div>
                   <div className="text-sm">{notes}</div>
                 </div>
               )}
@@ -1433,7 +1433,7 @@ export default function ContractCreatePage() {
       <div className="flex justify-between mt-6">
         <button
           onClick={() => step > 0 && goToStep(step - 1)}
-          className={`px-6 py-2 text-sm rounded-lg border ${step === 0 ? 'invisible' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}
+          className={`px-6 py-2 text-sm rounded-lg border ${step === 0 ? 'invisible' : 'border-input text-muted-foreground hover:bg-muted'}`}
         >
           ย้อนกลับ
         </button>
@@ -1441,7 +1441,7 @@ export default function ContractCreatePage() {
           <button
             onClick={() => canNext() && goToStep(step + 1)}
             disabled={!canNext()}
-            className="px-6 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-6 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             ถัดไป
           </button>
@@ -1450,7 +1450,7 @@ export default function ContractCreatePage() {
             <button
               onClick={() => handleSubmit(false)}
               disabled={createMutation.isPending}
-              className="px-6 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              className="px-6 py-2 text-sm border border-input text-foreground rounded-lg hover:bg-muted disabled:opacity-50"
             >
               {createMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกร่าง'}
             </button>
@@ -1469,22 +1469,22 @@ export default function ContractCreatePage() {
       <Modal isOpen={showEditProductModal} onClose={() => setShowEditProductModal(false)} title="แก้ไขข้อมูลสินค้า">
         <div className="space-y-3">
           <div>
-            <label className="block text-xs text-gray-500 mb-1">ชื่อสินค้า</label>
-            <input type="text" value={editProductForm.name || ''} onChange={(e) => setEditProductForm({ ...editProductForm, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+            <label className="block text-xs text-muted-foreground mb-1">ชื่อสินค้า</label>
+            <input type="text" value={editProductForm.name || ''} onChange={(e) => setEditProductForm({ ...editProductForm, name: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-gray-500 mb-1">ยี่ห้อ</label>
-              <input type="text" value={editProductForm.brand || ''} onChange={(e) => setEditProductForm({ ...editProductForm, brand: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+              <label className="block text-xs text-muted-foreground mb-1">ยี่ห้อ</label>
+              <input type="text" value={editProductForm.brand || ''} onChange={(e) => setEditProductForm({ ...editProductForm, brand: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">รุ่น</label>
-              <input type="text" value={editProductForm.model || ''} onChange={(e) => setEditProductForm({ ...editProductForm, model: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+              <label className="block text-xs text-muted-foreground mb-1">รุ่น</label>
+              <input type="text" value={editProductForm.model || ''} onChange={(e) => setEditProductForm({ ...editProductForm, model: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
             </div>
           </div>
           <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={() => setShowEditProductModal(false)} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg">ยกเลิก</button>
-            <button type="button" onClick={() => editProductMutation.mutate()} disabled={editProductMutation.isPending} className="px-6 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium disabled:opacity-50">
+            <button type="button" onClick={() => setShowEditProductModal(false)} className="px-4 py-2 text-sm text-muted-foreground border border-input rounded-lg">ยกเลิก</button>
+            <button type="button" onClick={() => editProductMutation.mutate()} disabled={editProductMutation.isPending} className="px-6 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium disabled:opacity-50">
               {editProductMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
             </button>
           </div>
@@ -1495,16 +1495,16 @@ export default function ContractCreatePage() {
       <Modal isOpen={showEditCustomerModal} onClose={() => setShowEditCustomerModal(false)} title="แก้ไขข้อมูลลูกค้า">
         <div className="space-y-3">
           <div>
-            <label className="block text-xs text-gray-500 mb-1">ชื่อ-นามสกุล</label>
-            <input type="text" value={editCustForm.name || ''} onChange={(e) => setEditCustForm({ ...editCustForm, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+            <label className="block text-xs text-muted-foreground mb-1">ชื่อ-นามสกุล</label>
+            <input type="text" value={editCustForm.name || ''} onChange={(e) => setEditCustForm({ ...editCustForm, name: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">เบอร์โทร</label>
-            <input type="tel" value={editCustForm.phone || ''} onChange={(e) => setEditCustForm({ ...editCustForm, phone: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+            <label className="block text-xs text-muted-foreground mb-1">เบอร์โทร</label>
+            <input type="tel" value={editCustForm.phone || ''} onChange={(e) => setEditCustForm({ ...editCustForm, phone: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
           </div>
           <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={() => setShowEditCustomerModal(false)} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg">ยกเลิก</button>
-            <button type="button" onClick={() => editCustomerMutation.mutate()} disabled={editCustomerMutation.isPending} className="px-6 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium disabled:opacity-50">
+            <button type="button" onClick={() => setShowEditCustomerModal(false)} className="px-4 py-2 text-sm text-muted-foreground border border-input rounded-lg">ยกเลิก</button>
+            <button type="button" onClick={() => editCustomerMutation.mutate()} disabled={editCustomerMutation.isPending} className="px-6 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium disabled:opacity-50">
               {editCustomerMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
             </button>
           </div>
@@ -1540,166 +1540,166 @@ export default function ContractCreatePage() {
           </div>
 
           {/* ข้อมูลส่วนตัว */}
-          <div className="border border-gray-200 rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-gray-800 mb-3">ข้อมูลส่วนตัว</h3>
+          <div className="border border-border rounded-lg p-4">
+            <h3 className="text-sm font-semibold text-foreground mb-3">ข้อมูลส่วนตัว</h3>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">คำนำหน้า</label>
-                <select value={custForm.prefix} onChange={(e) => setCustForm({ ...custForm, prefix: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white">
+                <label className="block text-xs text-muted-foreground mb-1">คำนำหน้า</label>
+                <select value={custForm.prefix} onChange={(e) => setCustForm({ ...custForm, prefix: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background">
                   <option value="">-- เลือก --</option>
                   {custPrefixOptions.map(p => <option key={p} value={p}>{p}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">ชื่อ *</label>
-                <input type="text" value={custForm.firstName} onChange={(e) => setCustForm({ ...custForm, firstName: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required />
+                <label className="block text-xs text-muted-foreground mb-1">ชื่อ *</label>
+                <input type="text" value={custForm.firstName} onChange={(e) => setCustForm({ ...custForm, firstName: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" required />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">นามสกุล *</label>
-                <input type="text" value={custForm.lastName} onChange={(e) => setCustForm({ ...custForm, lastName: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required />
+                <label className="block text-xs text-muted-foreground mb-1">นามสกุล *</label>
+                <input type="text" value={custForm.lastName} onChange={(e) => setCustForm({ ...custForm, lastName: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" required />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">ชื่อเล่น</label>
-                <input type="text" value={custForm.nickname} onChange={(e) => setCustForm({ ...custForm, nickname: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                <label className="block text-xs text-muted-foreground mb-1">ชื่อเล่น</label>
+                <input type="text" value={custForm.nickname} onChange={(e) => setCustForm({ ...custForm, nickname: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">เลขบัตรประชาชน (13 หลัก) *</label>
-                <input type="text" maxLength={13} value={custForm.nationalId} onChange={(e) => setCustForm({ ...custForm, nationalId: e.target.value.replace(/\D/g, '') })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono" required />
+                <label className="block text-xs text-muted-foreground mb-1">เลขบัตรประชาชน (13 หลัก) *</label>
+                <input type="text" maxLength={13} value={custForm.nationalId} onChange={(e) => setCustForm({ ...custForm, nationalId: e.target.value.replace(/\D/g, '') })} className="w-full px-3 py-2 border border-input rounded-lg text-sm font-mono" required />
               </div>
               <div className="flex items-end gap-3">
                 <div className="flex items-center gap-2 pb-2">
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input type="checkbox" checked={custForm.isForeigner} onChange={(e) => setCustForm({ ...custForm, isForeigner: e.target.checked })} className="sr-only peer" />
-                    <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary-600"></div>
-                    <span className="ml-2 text-xs text-gray-600">ต่างด้าว</span>
+                    <div className="w-9 h-5 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-input after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                    <span className="ml-2 text-xs text-muted-foreground">ต่างด้าว</span>
                   </label>
                 </div>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">วันเกิด</label>
-                <input type="date" value={custForm.birthDate} onChange={(e) => setCustForm({ ...custForm, birthDate: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                <label className="block text-xs text-muted-foreground mb-1">วันเกิด</label>
+                <input type="date" value={custForm.birthDate} onChange={(e) => setCustForm({ ...custForm, birthDate: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
               </div>
             </div>
           </div>
 
           {/* ที่อยู่ตามบัตรประชาชน */}
-          <div className="border border-gray-200 rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-gray-800 mb-3">ที่อยู่ตามบัตรประชาชน</h3>
+          <div className="border border-border rounded-lg p-4">
+            <h3 className="text-sm font-semibold text-foreground mb-3">ที่อยู่ตามบัตรประชาชน</h3>
             <AddressForm value={custAddrIdCard} onChange={setCustAddrIdCard} />
           </div>
 
           {/* ที่อยู่ปัจจุบัน */}
-          <div className="border border-gray-200 rounded-lg p-4">
+          <div className="border border-border rounded-lg p-4">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-gray-800">ที่อยู่ปัจจุบัน</h3>
+              <h3 className="text-sm font-semibold text-foreground">ที่อยู่ปัจจุบัน</h3>
               <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={custSameAddress} onChange={(e) => setCustSameAddress(e.target.checked)} className="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
-                <span className="text-xs text-gray-600">เหมือนที่อยู่ตามบัตร</span>
+                <input type="checkbox" checked={custSameAddress} onChange={(e) => setCustSameAddress(e.target.checked)} className="rounded border-input text-primary focus-visible:ring-2 focus-visible:ring-ring/30" />
+                <span className="text-xs text-muted-foreground">เหมือนที่อยู่ตามบัตร</span>
               </label>
             </div>
             {custSameAddress ? (
-              <p className="text-xs text-gray-400 italic">ใช้ที่อยู่เดียวกับที่อยู่ตามบัตรประชาชน</p>
+              <p className="text-xs text-muted-foreground italic">ใช้ที่อยู่เดียวกับที่อยู่ตามบัตรประชาชน</p>
             ) : (
               <AddressForm value={custAddrCurrent} onChange={setCustAddrCurrent} />
             )}
             <div className="mt-3">
-              <label className="block text-xs text-gray-500 mb-1">Link Google Map</label>
-              <input type="url" value={custForm.googleMapLink} onChange={(e) => setCustForm({ ...custForm, googleMapLink: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="https://maps.google.com/..." />
+              <label className="block text-xs text-muted-foreground mb-1">Link Google Map</label>
+              <input type="url" value={custForm.googleMapLink} onChange={(e) => setCustForm({ ...custForm, googleMapLink: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" placeholder="https://maps.google.com/..." />
             </div>
           </div>
 
           {/* ข้อมูลติดต่อ */}
-          <div className="border border-gray-200 rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-gray-800 mb-3">ข้อมูลติดต่อ</h3>
+          <div className="border border-border rounded-lg p-4">
+            <h3 className="text-sm font-semibold text-foreground mb-3">ข้อมูลติดต่อ</h3>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">เบอร์หลัก *</label>
-                <input type="tel" value={custForm.phone} onChange={(e) => setCustForm({ ...custForm, phone: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required />
+                <label className="block text-xs text-muted-foreground mb-1">เบอร์หลัก *</label>
+                <input type="tel" value={custForm.phone} onChange={(e) => setCustForm({ ...custForm, phone: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" required />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">เบอร์สำรอง</label>
-                <input type="tel" value={custForm.phoneSecondary} onChange={(e) => setCustForm({ ...custForm, phoneSecondary: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                <label className="block text-xs text-muted-foreground mb-1">เบอร์สำรอง</label>
+                <input type="tel" value={custForm.phoneSecondary} onChange={(e) => setCustForm({ ...custForm, phoneSecondary: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">อีเมล</label>
-                <input type="email" value={custForm.email} onChange={(e) => setCustForm({ ...custForm, email: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                <label className="block text-xs text-muted-foreground mb-1">อีเมล</label>
+                <input type="email" value={custForm.email} onChange={(e) => setCustForm({ ...custForm, email: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">LINE ID</label>
-                <input type="text" value={custForm.lineId} onChange={(e) => setCustForm({ ...custForm, lineId: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                <label className="block text-xs text-muted-foreground mb-1">LINE ID</label>
+                <input type="text" value={custForm.lineId} onChange={(e) => setCustForm({ ...custForm, lineId: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">ลิงก์ Facebook</label>
-                <input type="url" value={custForm.facebookLink} onChange={(e) => setCustForm({ ...custForm, facebookLink: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="https://facebook.com/..." />
+                <label className="block text-xs text-muted-foreground mb-1">ลิงก์ Facebook</label>
+                <input type="url" value={custForm.facebookLink} onChange={(e) => setCustForm({ ...custForm, facebookLink: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" placeholder="https://facebook.com/..." />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">ชื่อ Facebook</label>
-                <input type="text" value={custForm.facebookName} onChange={(e) => setCustForm({ ...custForm, facebookName: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                <label className="block text-xs text-muted-foreground mb-1">ชื่อ Facebook</label>
+                <input type="text" value={custForm.facebookName} onChange={(e) => setCustForm({ ...custForm, facebookName: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">จำนวนเพื่อน Facebook</label>
-                <input type="text" value={custForm.facebookFriends} onChange={(e) => setCustForm({ ...custForm, facebookFriends: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                <label className="block text-xs text-muted-foreground mb-1">จำนวนเพื่อน Facebook</label>
+                <input type="text" value={custForm.facebookFriends} onChange={(e) => setCustForm({ ...custForm, facebookFriends: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
               </div>
             </div>
           </div>
 
           {/* ข้อมูลที่ทำงาน */}
-          <div className="border border-gray-200 rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-gray-800 mb-3">ข้อมูลที่ทำงาน</h3>
+          <div className="border border-border rounded-lg p-4">
+            <h3 className="text-sm font-semibold text-foreground mb-3">ข้อมูลที่ทำงาน</h3>
             <div className="grid grid-cols-2 gap-3 mb-3">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">ชื่อที่ทำงาน</label>
-                <input type="text" value={custForm.workplace} onChange={(e) => setCustForm({ ...custForm, workplace: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                <label className="block text-xs text-muted-foreground mb-1">ชื่อที่ทำงาน</label>
+                <input type="text" value={custForm.workplace} onChange={(e) => setCustForm({ ...custForm, workplace: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">อาชีพ</label>
-                <input type="text" value={custForm.occupation} onChange={(e) => setCustForm({ ...custForm, occupation: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                <label className="block text-xs text-muted-foreground mb-1">อาชีพ</label>
+                <input type="text" value={custForm.occupation} onChange={(e) => setCustForm({ ...custForm, occupation: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">รายละเอียดอาชีพ</label>
-                <input type="text" value={custForm.occupationDetail} onChange={(e) => setCustForm({ ...custForm, occupationDetail: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                <label className="block text-xs text-muted-foreground mb-1">รายละเอียดอาชีพ</label>
+                <input type="text" value={custForm.occupationDetail} onChange={(e) => setCustForm({ ...custForm, occupationDetail: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">เงินเดือน</label>
-                <input type="number" value={custForm.salary} onChange={(e) => setCustForm({ ...custForm, salary: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="0.00" />
+                <label className="block text-xs text-muted-foreground mb-1">เงินเดือน</label>
+                <input type="number" value={custForm.salary} onChange={(e) => setCustForm({ ...custForm, salary: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" placeholder="0.00" />
               </div>
             </div>
             <div className="mt-2">
-              <label className="block text-xs text-gray-500 mb-1">ที่อยู่ที่ทำงาน</label>
+              <label className="block text-xs text-muted-foreground mb-1">ที่อยู่ที่ทำงาน</label>
               <AddressForm value={custAddrWork} onChange={setCustAddrWork} />
             </div>
           </div>
 
           {/* รายชื่อบุคคลอ้างอิง */}
-          <div className="border border-gray-200 rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-gray-800 mb-3">รายชื่อบุคคลอ้างอิง</h3>
+          <div className="border border-border rounded-lg p-4">
+            <h3 className="text-sm font-semibold text-foreground mb-3">รายชื่อบุคคลอ้างอิง</h3>
             <div className="space-y-4">
               {custReferences.map((ref, idx) => (
                 <div key={idx}>
-                  <div className="text-xs font-medium text-gray-600 mb-2">บุคคลอ้างอิง {idx + 1}</div>
+                  <div className="text-xs font-medium text-muted-foreground mb-2">บุคคลอ้างอิง {idx + 1}</div>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">คำนำหน้า</label>
-                      <select value={ref.prefix} onChange={(e) => updateCustRef(idx, 'prefix', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white">
+                      <label className="block text-xs text-muted-foreground mb-1">คำนำหน้า</label>
+                      <select value={ref.prefix} onChange={(e) => updateCustRef(idx, 'prefix', e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background">
                         <option value="">-- เลือก --</option>
                         {custPrefixOptions.map(p => <option key={p} value={p}>{p}</option>)}
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">ชื่อ</label>
-                      <input type="text" value={ref.firstName} onChange={(e) => updateCustRef(idx, 'firstName', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                      <label className="block text-xs text-muted-foreground mb-1">ชื่อ</label>
+                      <input type="text" value={ref.firstName} onChange={(e) => updateCustRef(idx, 'firstName', e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">นามสกุล</label>
-                      <input type="text" value={ref.lastName} onChange={(e) => updateCustRef(idx, 'lastName', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                      <label className="block text-xs text-muted-foreground mb-1">นามสกุล</label>
+                      <input type="text" value={ref.lastName} onChange={(e) => updateCustRef(idx, 'lastName', e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">เบอร์หลัก</label>
-                      <input type="tel" value={ref.phone} onChange={(e) => updateCustRef(idx, 'phone', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                      <label className="block text-xs text-muted-foreground mb-1">เบอร์หลัก</label>
+                      <input type="tel" value={ref.phone} onChange={(e) => updateCustRef(idx, 'phone', e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">ความสัมพันธ์</label>
-                      <select value={ref.relationship} onChange={(e) => updateCustRef(idx, 'relationship', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white">
+                      <label className="block text-xs text-muted-foreground mb-1">ความสัมพันธ์</label>
+                      <select value={ref.relationship} onChange={(e) => updateCustRef(idx, 'relationship', e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background">
                         <option value="">-- เลือก --</option>
                         {custRelationshipOptions.map(r => <option key={r} value={r}>{r}</option>)}
                       </select>
@@ -1711,9 +1711,9 @@ export default function ContractCreatePage() {
           </div>
 
           {/* Submit */}
-          <div className="flex justify-end gap-3 pt-2 sticky bottom-0 bg-white py-3 border-t">
-            <button type="button" onClick={() => setShowCustomerModal(false)} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg">ยกเลิก</button>
-            <button type="submit" disabled={createCustomerMutation.isPending} className="px-6 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium disabled:opacity-50">
+          <div className="flex justify-end gap-3 pt-2 sticky bottom-0 bg-background py-3 border-t">
+            <button type="button" onClick={() => setShowCustomerModal(false)} className="px-4 py-2 text-sm text-muted-foreground border border-input rounded-lg">ยกเลิก</button>
+            <button type="submit" disabled={createCustomerMutation.isPending} className="px-6 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium disabled:opacity-50">
               {createCustomerMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
             </button>
           </div>

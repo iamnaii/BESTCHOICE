@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
+import { Card, CardContent } from '@/components/ui/card';
 
 interface Sale {
   id: string;
@@ -81,14 +82,14 @@ export default function SalesHistoryPage() {
       key: 'index',
       label: '#',
       render: (_s: Sale, _col: unknown, idx?: number) => (
-        <span className="text-xs text-gray-400">{((salesData?.page ?? 1) - 1) * limit + (idx ?? 0) + 1}</span>
+        <span className="text-xs text-muted-foreground">{((salesData?.page ?? 1) - 1) * limit + (idx ?? 0) + 1}</span>
       ),
     },
     {
       key: 'saleNumber',
       label: 'เลขที่',
       render: (s: Sale) => (
-        <span className="font-mono text-sm text-primary-600 font-medium">{s.saleNumber}</span>
+        <span className="font-mono text-sm text-primary font-medium">{s.saleNumber}</span>
       ),
     },
     {
@@ -97,7 +98,7 @@ export default function SalesHistoryPage() {
       render: (s: Sale) => (
         <div>
           <div className="text-sm">{new Date(s.createdAt).toLocaleDateString('th-TH')}</div>
-          <div className="text-xs text-gray-400">{new Date(s.createdAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</div>
+          <div className="text-xs text-muted-foreground">{new Date(s.createdAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</div>
         </div>
       ),
     },
@@ -105,7 +106,7 @@ export default function SalesHistoryPage() {
       key: 'saleType',
       label: 'ประเภท',
       render: (s: Sale) => {
-        const st = saleTypeLabels[s.saleType] || { label: s.saleType, className: 'bg-gray-100 text-gray-700' };
+        const st = saleTypeLabels[s.saleType] || { label: s.saleType, className: 'bg-muted text-foreground' };
         return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${st.className}`}>{st.label}</span>;
       },
     },
@@ -116,7 +117,7 @@ export default function SalesHistoryPage() {
         <div>
           <div className="text-sm font-medium">{s.product.brand} {s.product.model}</div>
           {(s.product.imeiSerial || s.product.serialNumber) && (
-            <div className="text-xs text-gray-400 font-mono">{s.product.imeiSerial || s.product.serialNumber}</div>
+            <div className="text-xs text-muted-foreground font-mono">{s.product.imeiSerial || s.product.serialNumber}</div>
           )}
         </div>
       ),
@@ -126,8 +127,8 @@ export default function SalesHistoryPage() {
       label: 'ลูกค้า',
       render: (s: Sale) => (
         <button onClick={(e) => { e.stopPropagation(); navigate(`/customers/${s.customer.id}`); }} className="text-left hover:underline">
-          <div className="text-sm text-primary-600">{s.customer.name}</div>
-          <div className="text-xs text-gray-400">{s.customer.phone}</div>
+          <div className="text-sm text-primary">{s.customer.name}</div>
+          <div className="text-xs text-muted-foreground">{s.customer.phone}</div>
         </button>
       ),
     },
@@ -150,13 +151,13 @@ export default function SalesHistoryPage() {
         <div className="text-xs">
           <div>{paymentMethodLabels[s.paymentMethod] || s.paymentMethod || '-'}</div>
           {s.saleType === 'INSTALLMENT' && s.contract && (
-            <div className="text-primary-600">
+            <div className="text-primary">
               ดาวน์ {Number(s.downPaymentAmount || 0).toLocaleString()} ฿
               <br />ผ่อน {Number(s.contract.monthlyPayment).toLocaleString()} x {s.contract.totalMonths} งวด
             </div>
           )}
           {s.saleType === 'EXTERNAL_FINANCE' && s.financeCompany && (
-            <div className="text-primary-600">
+            <div className="text-primary">
               {s.financeCompany}
               {s.downPaymentAmount && Number(s.downPaymentAmount) > 0 && (
                 <span> / ดาวน์ {Number(s.downPaymentAmount).toLocaleString()} ฿</span>
@@ -170,18 +171,18 @@ export default function SalesHistoryPage() {
       key: 'contract',
       label: 'สัญญา',
       render: (s: Sale) => {
-        if (!s.contract) return <span className="text-xs text-gray-400">-</span>;
+        if (!s.contract) return <span className="text-xs text-muted-foreground">-</span>;
         const statusMap: Record<string, { label: string; cls: string }> = {
-          DRAFT: { label: 'ร่าง', cls: 'text-gray-500' },
+          DRAFT: { label: 'ร่าง', cls: 'text-muted-foreground' },
           ACTIVE: { label: 'ใช้งาน', cls: 'text-green-600' },
           OVERDUE: { label: 'ค้างชำระ', cls: 'text-red-600' },
           DEFAULT: { label: 'ผิดนัด', cls: 'text-red-700 font-semibold' },
-          COMPLETED: { label: 'ปิดแล้ว', cls: 'text-gray-500' },
+          COMPLETED: { label: 'ปิดแล้ว', cls: 'text-muted-foreground' },
         };
-        const cs = statusMap[s.contract.status] || { label: s.contract.status, cls: 'text-gray-500' };
+        const cs = statusMap[s.contract.status] || { label: s.contract.status, cls: 'text-muted-foreground' };
         return (
           <div className="text-xs">
-            <div className="font-mono text-primary-600">{s.contract.contractNumber}</div>
+            <div className="font-mono text-primary">{s.contract.contractNumber}</div>
             <div className={cs.cls}>{cs.label}</div>
           </div>
         );
@@ -225,27 +226,35 @@ export default function SalesHistoryPage() {
 
       {/* Summary Cards */}
       {stats && salesData && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white rounded-lg border p-4">
-            <div className="text-xs text-gray-500 mb-1">ทั้งหมด {salesData.total.toLocaleString()} รายการ (หน้านี้ {salesData.data.length})</div>
-            <div className="text-xl font-bold">{stats.totalRevenue.toLocaleString()} <span className="text-sm font-normal text-gray-400">฿ (หน้านี้)</span></div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-5 lg:gap-7.5 mb-6">
+          <Card>
+            <CardContent className="pt-6">
+            <div className="text-xs text-muted-foreground mb-1">ทั้งหมด {salesData.total.toLocaleString()} รายการ (หน้านี้ {salesData.data.length})</div>
+            <div className="text-xl font-bold">{stats.totalRevenue.toLocaleString()} <span className="text-sm font-normal text-muted-foreground">฿ (หน้านี้)</span></div>
             {stats.totalDiscount > 0 && <div className="text-xs text-red-500">ส่วนลดรวม {stats.totalDiscount.toLocaleString()} ฿</div>}
-          </div>
-          <div className="bg-white rounded-lg border p-4">
-            <div className="text-xs text-gray-500 mb-1">เงินสด (หน้านี้)</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+            <div className="text-xs text-muted-foreground mb-1">เงินสด (หน้านี้)</div>
             <div className="text-xl font-bold text-green-600">{stats.cashCount}</div>
             <div className="text-sm text-green-600 mt-1">{stats.cashRevenue.toLocaleString()} ฿</div>
-          </div>
-          <div className="bg-white rounded-lg border p-4">
-            <div className="text-xs text-gray-500 mb-1">ผ่อนร้าน (หน้านี้)</div>
-            <div className="text-xl font-bold text-primary-600">{stats.installmentCount}</div>
-            <div className="text-sm text-primary-600 mt-1">{stats.installmentRevenue.toLocaleString()} ฿</div>
-          </div>
-          <div className="bg-white rounded-lg border p-4">
-            <div className="text-xs text-gray-500 mb-1">ไฟแนนซ์ (หน้านี้)</div>
-            <div className="text-xl font-bold text-primary-600">{stats.financeCount}</div>
-            <div className="text-sm text-primary-600 mt-1">{stats.financeRevenue.toLocaleString()} ฿</div>
-          </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+            <div className="text-xs text-muted-foreground mb-1">ผ่อนร้าน (หน้านี้)</div>
+            <div className="text-xl font-bold text-primary">{stats.installmentCount}</div>
+            <div className="text-sm text-primary mt-1">{stats.installmentRevenue.toLocaleString()} ฿</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+            <div className="text-xs text-muted-foreground mb-1">ไฟแนนซ์ (หน้านี้)</div>
+            <div className="text-xl font-bold text-primary">{stats.financeCount}</div>
+            <div className="text-sm text-primary mt-1">{stats.financeRevenue.toLocaleString()} ฿</div>
+            </CardContent>
+          </Card>
         </div>
       )}
 
@@ -254,7 +263,7 @@ export default function SalesHistoryPage() {
         <select
           value={saleTypeFilter}
           onChange={(e) => { setSaleTypeFilter(e.target.value); setPage(1); }}
-          className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+          className="px-3 py-2 border border-input rounded-lg text-sm bg-background"
         >
           <option value="">ทุกประเภท</option>
           <option value="CASH">เงินสด</option>
@@ -266,7 +275,7 @@ export default function SalesHistoryPage() {
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
           placeholder="ค้นหาเลขที่ขาย, ชื่อลูกค้า, ชื่อสินค้า..."
-          className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-72"
+          className="px-3 py-2 border border-input rounded-lg text-sm w-72"
         />
       </div>
 

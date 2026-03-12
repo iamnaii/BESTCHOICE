@@ -23,8 +23,8 @@ const useCardContext = () => {
 const cardVariants = cva('flex flex-col items-stretch text-card-foreground rounded-xl', {
   variants: {
     variant: {
-      default: 'bg-card border border-border shadow-sm shadow-black/5',
-      accent: 'bg-muted shadow-sm p-1',
+      default: 'bg-card border border-border shadow-xs shadow-black/5',
+      accent: 'bg-muted shadow-xs p-1',
     },
   },
   defaultVariants: {
@@ -32,7 +32,7 @@ const cardVariants = cva('flex flex-col items-stretch text-card-foreground round
   },
 });
 
-const cardHeaderVariants = cva('flex items-center justify-between flex-wrap px-5 min-h-[56px] gap-2.5', {
+const cardHeaderVariants = cva('flex items-center justify-between flex-wrap px-5 min-h-14 gap-2.5', {
   variants: {
     variant: {
       default: 'border-b border-border',
@@ -68,7 +68,7 @@ const cardTableVariants = cva('grid grow', {
   },
 });
 
-const cardFooterVariants = cva('flex items-center px-5 min-h-[56px]', {
+const cardFooterVariants = cva('flex items-center px-5 min-h-14', {
   variants: {
     variant: {
       default: 'border-t border-border',

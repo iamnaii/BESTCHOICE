@@ -96,7 +96,7 @@ function ReceiptsPage() {
       />
 
       {/* Search */}
-      <div className="bg-white rounded-lg border p-4 mb-6">
+      <div className="bg-card rounded-lg border p-4 mb-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="flex gap-2">
             <input
@@ -107,7 +107,7 @@ function ReceiptsPage() {
               onKeyDown={(e) => e.key === 'Enter' && searchByContract()}
               className="flex-1 px-3 py-2 border rounded-lg text-sm"
             />
-            <button onClick={searchByContract} className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700">
+            <button onClick={searchByContract} className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90">
               ค้นหาตามสัญญา
             </button>
           </div>
@@ -120,7 +120,7 @@ function ReceiptsPage() {
               onKeyDown={(e) => e.key === 'Enter' && searchByNumber()}
               className="flex-1 px-3 py-2 border rounded-lg text-sm"
             />
-            <button onClick={searchByNumber} className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700">
+            <button onClick={searchByNumber} className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90">
               ค้นหาเลขใบเสร็จ
             </button>
           </div>
@@ -135,9 +135,9 @@ function ReceiptsPage() {
       )}
 
       {!loading && receipts.length > 0 && (
-        <div className="bg-white rounded-lg border overflow-hidden">
+        <div className="bg-card rounded-lg border overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-xs text-gray-500">
+            <thead className="bg-muted text-xs text-muted-foreground">
               <tr>
                 <th className="px-4 py-3 text-left">เลขใบเสร็จ</th>
                 <th className="px-4 py-3 text-left">ประเภท</th>
@@ -171,7 +171,7 @@ function ReceiptsPage() {
                     <div className="flex gap-1">
                       <button
                         onClick={() => setSelectedDetail(r)}
-                        className="px-2 py-1 text-xs text-primary-600 hover:bg-primary-50 rounded"
+                        className="px-2 py-1 text-xs text-primary hover:bg-primary/10 rounded"
                       >
                         ดูรายละเอียด
                       </button>
@@ -193,7 +193,7 @@ function ReceiptsPage() {
       )}
 
       {!loading && receipts.length === 0 && (searchContractId || searchReceiptNo) && (
-        <div className="text-center py-10 text-gray-400 text-sm">ไม่พบใบเสร็จ</div>
+        <div className="text-center py-10 text-muted-foreground text-sm">ไม่พบใบเสร็จ</div>
       )}
 
       {/* Receipt Detail Modal */}
@@ -201,22 +201,22 @@ function ReceiptsPage() {
         <Modal title={`ใบเสร็จ ${selectedDetail.receiptNumber}`} onClose={() => setSelectedDetail(null)}>
           <div className="space-y-3 text-sm">
             <div className="grid grid-cols-2 gap-3">
-              <div><span className="text-gray-500">เลขใบเสร็จ:</span> <span className="font-mono">{selectedDetail.receiptNumber}</span></div>
-              <div><span className="text-gray-500">ประเภท:</span> {receiptTypeLabels[selectedDetail.receiptType] || selectedDetail.receiptType}</div>
-              <div><span className="text-gray-500">ผู้ชำระ:</span> {selectedDetail.payerName}</div>
-              <div><span className="text-gray-500">ผู้รับ:</span> {selectedDetail.receiverName}</div>
-              <div><span className="text-gray-500">จำนวนเงิน:</span> <span className="font-bold">{Number(selectedDetail.amount).toLocaleString()} ฿</span></div>
-              <div><span className="text-gray-500">งวดที่:</span> {selectedDetail.installmentNo || '-'}</div>
-              <div><span className="text-gray-500">ยอดคงเหลือ:</span> {selectedDetail.remainingBalance != null ? `${Number(selectedDetail.remainingBalance).toLocaleString()} ฿` : '-'}</div>
-              <div><span className="text-gray-500">งวดคงเหลือ:</span> {selectedDetail.remainingMonths ?? '-'}</div>
-              <div><span className="text-gray-500">วิธีชำระ:</span> {selectedDetail.paymentMethod || '-'}</div>
-              <div><span className="text-gray-500">เลขอ้างอิง:</span> {selectedDetail.transactionRef || '-'}</div>
-              <div><span className="text-gray-500">วันที่ชำระ:</span> {new Date(selectedDetail.paidDate).toLocaleString('th-TH')}</div>
-              <div><span className="text-gray-500">วันที่ออก:</span> {new Date(selectedDetail.createdAt).toLocaleString('th-TH')}</div>
+              <div><span className="text-muted-foreground">เลขใบเสร็จ:</span> <span className="font-mono">{selectedDetail.receiptNumber}</span></div>
+              <div><span className="text-muted-foreground">ประเภท:</span> {receiptTypeLabels[selectedDetail.receiptType] || selectedDetail.receiptType}</div>
+              <div><span className="text-muted-foreground">ผู้ชำระ:</span> {selectedDetail.payerName}</div>
+              <div><span className="text-muted-foreground">ผู้รับ:</span> {selectedDetail.receiverName}</div>
+              <div><span className="text-muted-foreground">จำนวนเงิน:</span> <span className="font-bold">{Number(selectedDetail.amount).toLocaleString()} ฿</span></div>
+              <div><span className="text-muted-foreground">งวดที่:</span> {selectedDetail.installmentNo || '-'}</div>
+              <div><span className="text-muted-foreground">ยอดคงเหลือ:</span> {selectedDetail.remainingBalance != null ? `${Number(selectedDetail.remainingBalance).toLocaleString()} ฿` : '-'}</div>
+              <div><span className="text-muted-foreground">งวดคงเหลือ:</span> {selectedDetail.remainingMonths ?? '-'}</div>
+              <div><span className="text-muted-foreground">วิธีชำระ:</span> {selectedDetail.paymentMethod || '-'}</div>
+              <div><span className="text-muted-foreground">เลขอ้างอิง:</span> {selectedDetail.transactionRef || '-'}</div>
+              <div><span className="text-muted-foreground">วันที่ชำระ:</span> {new Date(selectedDetail.paidDate).toLocaleString('th-TH')}</div>
+              <div><span className="text-muted-foreground">วันที่ออก:</span> {new Date(selectedDetail.createdAt).toLocaleString('th-TH')}</div>
             </div>
             {selectedDetail.fileHash && (
-              <div className="mt-3 p-2 bg-gray-50 rounded text-xs">
-                <span className="text-gray-500">File Hash (SHA-256):</span>
+              <div className="mt-3 p-2 bg-muted rounded text-xs">
+                <span className="text-muted-foreground">File Hash (SHA-256):</span>
                 <div className="font-mono break-all mt-1">{selectedDetail.fileHash}</div>
               </div>
             )}
@@ -242,7 +242,7 @@ function ReceiptsPage() {
               <div>จำนวนเงิน: {Number(selectedReceipt.amount).toLocaleString()} ฿</div>
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">เหตุผลในการยกเลิก *</label>
+              <label className="block text-xs text-muted-foreground mb-1">เหตุผลในการยกเลิก *</label>
               <textarea
                 value={voidReason}
                 onChange={(e) => setVoidReason(e.target.value)}

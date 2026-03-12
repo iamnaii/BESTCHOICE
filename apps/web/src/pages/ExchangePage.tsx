@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
+import { Card, CardContent } from '@/components/ui/card';
 
 interface Contract {
   id: string;
@@ -168,11 +169,11 @@ export default function ExchangePage() {
           const isActive = idx <= stepIdx;
           return (
             <div key={label} className="flex items-center gap-2">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${isActive ? 'bg-primary-600 text-white' : 'bg-gray-200 text-gray-500'}`}>
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${isActive ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
                 {idx + 1}
               </div>
-              <span className={`text-sm ${isActive ? 'text-primary-700 font-medium' : 'text-gray-400'}`}>{label}</span>
-              {idx < 3 && <div className={`w-8 h-0.5 ${isActive ? 'bg-primary-300' : 'bg-gray-200'}`} />}
+              <span className={`text-sm ${isActive ? 'text-primary font-medium' : 'text-muted-foreground'}`}>{label}</span>
+              {idx < 3 && <div className={`w-8 h-0.5 ${isActive ? 'bg-primary/30' : 'bg-muted'}`} />}
             </div>
           );
         })}
@@ -180,13 +181,14 @@ export default function ExchangePage() {
 
       {/* Step 1: Select */}
       {step === 'select' && (
-        <div className="bg-white rounded-lg border p-6 space-y-6">
+        <Card className="shadow-xs shadow-black/5">
+          <CardContent className="p-6 flex flex-col gap-5 lg:gap-7.5">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">เลือกสัญญาเดิม (ACTIVE/OVERDUE) *</label>
+            <label className="block text-sm font-medium text-foreground mb-1">เลือกสัญญาเดิม (ACTIVE/OVERDUE) *</label>
             <select
               value={selectedContractId}
               onChange={(e) => setSelectedContractId(e.target.value)}
-              className="w-full max-w-lg px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+              className="w-full max-w-lg px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
             >
               <option value="">-- เลือกสัญญา --</option>
               {contracts.map((c) => (
@@ -198,11 +200,11 @@ export default function ExchangePage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">เลือกสินค้าใหม่ (IN_STOCK) *</label>
+            <label className="block text-sm font-medium text-foreground mb-1">เลือกสินค้าใหม่ (IN_STOCK) *</label>
             <select
               value={selectedProductId}
               onChange={(e) => { setSelectedProductId(e.target.value); setSelectedPriceId(''); }}
-              className="w-full max-w-lg px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+              className="w-full max-w-lg px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
             >
               <option value="">-- เลือกสินค้า --</option>
               {products.map((p) => (
@@ -215,11 +217,11 @@ export default function ExchangePage() {
 
           {selectedProduct && selectedProduct.prices.length > 0 && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">เลือกราคา *</label>
+              <label className="block text-sm font-medium text-foreground mb-1">เลือกราคา *</label>
               <select
                 value={selectedPriceId}
                 onChange={(e) => setSelectedPriceId(e.target.value)}
-                className="w-full max-w-lg px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+                className="w-full max-w-lg px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
               >
                 <option value="">-- เลือกราคา --</option>
                 {selectedProduct.prices.map((pr) => (
@@ -241,18 +243,20 @@ export default function ExchangePage() {
             <button
               onClick={handleGetQuote}
               disabled={!selectedContractId || !selectedProductId || !selectedPriceId || quoteMutation.isPending}
-              className="px-6 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50 transition-colors"
+              className="px-6 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
             >
               {quoteMutation.isPending ? 'กำลังคำนวณ...' : 'คำนวณใบเสนอราคา'}
             </button>
           </div>
-        </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Step 2: Quote */}
       {step === 'quote' && quote && (
-        <div className="space-y-6">
-          <div className="bg-white rounded-lg border p-6">
+        <div className="flex flex-col gap-5 lg:gap-7.5">
+          <Card className="shadow-xs shadow-black/5">
+            <CardContent className="p-6">
             <h3 className="text-lg font-medium mb-4">ใบเสนอราคาเปลี่ยนเครื่อง</h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
@@ -281,20 +285,20 @@ export default function ExchangePage() {
             </div>
 
             {/* Summary */}
-            <div className="bg-gray-50 rounded-lg p-4 mb-6">
-              <div className="text-sm font-medium text-gray-700 mb-2">สรุป</div>
+            <div className="bg-muted rounded-lg p-4 mb-6">
+              <div className="text-sm font-medium text-foreground mb-2">สรุป</div>
               <div className="grid grid-cols-3 gap-4 text-center">
                 <div>
-                  <div className="text-xs text-gray-500">ยอดค้างเดิม</div>
+                  <div className="text-xs text-muted-foreground">ยอดค้างเดิม</div>
                   <div className="text-lg font-bold text-red-600">{quote.summary.outstandingBalance.toLocaleString()}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-gray-500">ราคาเครื่องใหม่</div>
+                  <div className="text-xs text-muted-foreground">ราคาเครื่องใหม่</div>
                   <div className="text-lg font-bold text-green-600">{quote.summary.newProductPrice.toLocaleString()}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-gray-500">ส่วนต่าง</div>
-                  <div className={`text-lg font-bold ${quote.summary.difference >= 0 ? 'text-primary-600' : 'text-orange-600'}`}>
+                  <div className="text-xs text-muted-foreground">ส่วนต่าง</div>
+                  <div className={`text-lg font-bold ${quote.summary.difference >= 0 ? 'text-primary' : 'text-orange-600'}`}>
                     {quote.summary.difference.toLocaleString()}
                   </div>
                 </div>
@@ -305,24 +309,24 @@ export default function ExchangePage() {
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">เงินดาวน์ (บาท) *</label>
+                  <label className="block text-sm font-medium text-foreground mb-1">เงินดาวน์ (บาท) *</label>
                   <input
                     type="number"
                     value={downPayment}
                     onChange={(e) => setDownPayment(e.target.value)}
                     placeholder="ขั้นต่ำ 15% ของราคาสินค้า"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+                    className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
                   />
-                  <div className="text-xs text-gray-400 mt-1">
+                  <div className="text-xs text-muted-foreground mt-1">
                     ขั้นต่ำ ~{Math.ceil(quote.newProduct.selectedPrice.amount * 0.15).toLocaleString()} บาท (15%)
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนงวด *</label>
+                  <label className="block text-sm font-medium text-foreground mb-1">จำนวนงวด *</label>
                   <select
                     value={totalMonths}
                     onChange={(e) => setTotalMonths(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+                    className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
                   >
                     {[6, 7, 8, 9, 10, 11, 12].map((m) => (
                       <option key={m} value={m}>{m} เดือน</option>
@@ -332,12 +336,12 @@ export default function ExchangePage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ</label>
+                <label className="block text-sm font-medium text-foreground mb-1">หมายเหตุ</label>
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   rows={2}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+                  className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
                   placeholder="หมายเหตุเพิ่มเติม..."
                 />
               </div>
@@ -346,25 +350,27 @@ export default function ExchangePage() {
             <div className="flex justify-between pt-4">
               <button
                 onClick={() => setStep('select')}
-                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
+                className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground"
               >
                 ย้อนกลับ
               </button>
               <button
                 onClick={handleConfirm}
                 disabled={!downPayment || Number(downPayment) <= 0}
-                className="px-6 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50 transition-colors"
+                className="px-6 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
               >
                 ดำเนินการต่อ
               </button>
             </div>
-          </div>
+            </CardContent>
+          </Card>
         </div>
       )}
 
       {/* Step 3: Confirm */}
       {step === 'confirm' && quote && (
-        <div className="bg-white rounded-lg border p-6">
+        <Card className="shadow-xs shadow-black/5">
+          <CardContent className="p-6">
           <h3 className="text-lg font-medium mb-4">ยืนยันการเปลี่ยนเครื่อง</h3>
 
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
@@ -376,31 +382,31 @@ export default function ExchangePage() {
 
           <div className="space-y-3 text-sm mb-6">
             <div className="flex justify-between py-2 border-b">
-              <span className="text-gray-500">ลูกค้า</span>
+              <span className="text-muted-foreground">ลูกค้า</span>
               <span className="font-medium">{quote.oldContract.customer.name}</span>
             </div>
             <div className="flex justify-between py-2 border-b">
-              <span className="text-gray-500">สัญญาเดิม</span>
+              <span className="text-muted-foreground">สัญญาเดิม</span>
               <span className="font-medium">{quote.oldContract.contractNumber}</span>
             </div>
             <div className="flex justify-between py-2 border-b">
-              <span className="text-gray-500">เครื่องเดิม</span>
+              <span className="text-muted-foreground">เครื่องเดิม</span>
               <span>{quote.oldContract.product.brand} {quote.oldContract.product.model}</span>
             </div>
             <div className="flex justify-between py-2 border-b">
-              <span className="text-gray-500">เครื่องใหม่</span>
-              <span className="font-medium text-primary-600">{quote.newProduct.brand} {quote.newProduct.model}</span>
+              <span className="text-muted-foreground">เครื่องใหม่</span>
+              <span className="font-medium text-primary">{quote.newProduct.brand} {quote.newProduct.model}</span>
             </div>
             <div className="flex justify-between py-2 border-b">
-              <span className="text-gray-500">ราคาเครื่องใหม่</span>
+              <span className="text-muted-foreground">ราคาเครื่องใหม่</span>
               <span>{quote.newProduct.selectedPrice.amount.toLocaleString()} บาท</span>
             </div>
             <div className="flex justify-between py-2 border-b">
-              <span className="text-gray-500">เงินดาวน์</span>
+              <span className="text-muted-foreground">เงินดาวน์</span>
               <span>{Number(downPayment).toLocaleString()} บาท</span>
             </div>
             <div className="flex justify-between py-2 border-b">
-              <span className="text-gray-500">จำนวนงวด</span>
+              <span className="text-muted-foreground">จำนวนงวด</span>
               <span>{totalMonths} เดือน</span>
             </div>
           </div>
@@ -408,7 +414,7 @@ export default function ExchangePage() {
           <div className="flex justify-between">
             <button
               onClick={() => setStep('quote')}
-              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
+              className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground"
             >
               ย้อนกลับ
             </button>
@@ -420,49 +426,52 @@ export default function ExchangePage() {
               {exchangeMutation.isPending ? 'กำลังดำเนินการ...' : 'ยืนยันเปลี่ยนเครื่อง'}
             </button>
           </div>
-        </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Step 4: Done */}
       {step === 'done' && exchangeResult && (
-        <div className="bg-white rounded-lg border p-6 text-center">
+        <Card className="shadow-xs shadow-black/5">
+          <CardContent className="p-6 text-center">
           <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">เปลี่ยนเครื่องสำเร็จ!</h3>
+          <h3 className="text-lg font-medium text-foreground mb-2">เปลี่ยนเครื่องสำเร็จ!</h3>
 
-          <div className="bg-gray-50 rounded-lg p-4 text-sm text-left max-w-md mx-auto mb-6 space-y-2">
+          <div className="bg-muted rounded-lg p-4 text-sm text-left max-w-md mx-auto mb-6 space-y-2">
             <div className="flex justify-between">
-              <span className="text-gray-500">สัญญาเดิม</span>
-              <span className="line-through text-gray-400">{exchangeResult.oldContract.contractNumber}</span>
+              <span className="text-muted-foreground">สัญญาเดิม</span>
+              <span className="line-through text-muted-foreground">{exchangeResult.oldContract.contractNumber}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500">สัญญาใหม่</span>
-              <span className="font-medium text-primary-600">{exchangeResult.newContract.contractNumber}</span>
+              <span className="text-muted-foreground">สัญญาใหม่</span>
+              <span className="font-medium text-primary">{exchangeResult.newContract.contractNumber}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500">ค่างวด/เดือน</span>
+              <span className="text-muted-foreground">ค่างวด/เดือน</span>
               <span className="font-medium">{exchangeResult.newContract.monthlyPayment.toLocaleString()} บาท</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500">จำนวนงวด</span>
+              <span className="text-muted-foreground">จำนวนงวด</span>
               <span>{exchangeResult.newContract.totalMonths} เดือน</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500">ยอมผ่อนรวม</span>
+              <span className="text-muted-foreground">ยอมผ่อนรวม</span>
               <span>{exchangeResult.newContract.financedAmount.toLocaleString()} บาท</span>
             </div>
           </div>
 
           <button
             onClick={resetForm}
-            className="px-6 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
+            className="px-6 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
           >
             เปลี่ยนเครื่องรายการใหม่
           </button>
-        </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

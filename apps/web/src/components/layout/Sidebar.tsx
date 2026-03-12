@@ -1,5 +1,5 @@
 import { useMemo, useCallback, memo } from 'react';
-import { Link, NavLink, useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import {
@@ -138,12 +138,15 @@ const navSections: { key: string; label: string; icon: LucideIcon; items: NavIte
   },
 ];
 
+/* Metronic v9.4.6 Demo 1 sidebar menu classNames */
 const menuClassNames: AccordionMenuClassNames = {
-  root: 'space-y-1',
+  root: 'space-y-3',
   group: 'gap-px',
-  label: 'uppercase text-xs font-medium text-primary-400/70 pt-2 pb-0.5',
-  item: 'h-9 text-slate-400 hover:bg-white/5 hover:text-white data-[selected=true]:bg-primary-600 data-[selected=true]:text-white data-[selected=true]:font-medium',
-  subTrigger: 'h-9 text-slate-400 hover:bg-white/5 hover:text-white',
+  label: 'uppercase text-xs font-medium text-muted-foreground/70 pt-2.5 pb-px',
+  separator: '',
+  item: 'h-8 hover:bg-transparent text-accent-foreground hover:text-primary data-[selected=true]:text-primary data-[selected=true]:bg-muted data-[selected=true]:font-medium',
+  sub: '',
+  subTrigger: 'h-8 hover:bg-transparent text-accent-foreground hover:text-primary data-[selected=true]:text-primary data-[selected=true]:bg-muted data-[selected=true]:font-medium',
   subContent: 'py-0',
 };
 
@@ -172,112 +175,73 @@ function Sidebar() {
   return (
     <div
       className={cn(
-        'sidebar fixed top-0 bottom-0 z-20 flex flex-col items-stretch shrink-0 bg-primary-950 transition-all duration-300',
-        sidebarCollapse ? 'w-[70px]' : 'w-64',
+        'sidebar dark bg-background border-e border-border fixed top-0 bottom-0 z-20 flex flex-col items-stretch shrink-0 transition-all duration-300',
+        sidebarCollapse ? 'w-[80px]' : 'w-[280px]',
       )}
     >
-      {/* Logo */}
-      <div className="px-5 py-5 border-b border-white/10 shrink-0">
-        <Link to="/" className="flex items-center gap-3">
-          <img src="/logo-icon.svg" alt="BestChoice" className="w-10 h-10 rounded-xl shrink-0" />
+      {/* Sidebar Header - Metronic Demo 1 pattern */}
+      <div className="sidebar-header hidden lg:flex items-center relative justify-between px-3 lg:px-6 shrink-0 h-[70px]">
+        <Link to="/" className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center shrink-0">
+            <span className="text-white text-base font-bold">B</span>
+          </div>
           {!sidebarCollapse && (
-            <div>
-              <h1 className="text-lg font-semibold text-white leading-tight tracking-wide">
-                BEST<span className="text-primary-400">CHOICE</span>
-              </h1>
-              <p className="text-xs text-slate-500 mt-0.5">ระบบจัดการร้าน</p>
-            </div>
+            <span className="text-base font-bold text-foreground leading-tight tracking-tight">
+              BEST<span className="text-primary">CHOICE</span>
+            </span>
           )}
         </Link>
       </div>
 
-      {/* Navigation */}
-      <ScrollArea className="flex-1 py-4 px-3">
-        {/* Home */}
-        <div className="mb-2">
-          <NavLink
-            to="/"
-            end
-            className={({ isActive }) =>
-              cn(
-                'flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm font-medium transition-colors',
-                isActive
-                  ? 'bg-primary-600 text-white'
-                  : 'text-slate-400 hover:bg-white/5 hover:text-white',
-              )
-            }
-          >
-            <Home className="w-4 h-4 shrink-0" />
-            {!sidebarCollapse && <span>หน้าหลัก</span>}
-          </NavLink>
+      {/* Navigation - Metronic Demo 1 sidebar-menu pattern */}
+      <div className="overflow-hidden flex-1">
+        <div className={sidebarCollapse ? 'w-[80px]' : 'w-[280px]'}>
+          <ScrollArea className="py-5 px-5 lg:max-h-[calc(100vh-5.5rem)]">
+            <AccordionMenu
+              selectedValue={pathname}
+              matchPath={matchPath}
+              type="single"
+              collapsible
+              classNames={menuClassNames}
+            >
+              {/* Home - direct link */}
+              <AccordionMenuItem value="/" className="text-sm font-medium">
+                <Link to="/" className="flex items-center justify-between grow gap-2">
+                  <Home data-slot="accordion-menu-icon" />
+                  {!sidebarCollapse && <span data-slot="accordion-menu-title">หน้าหลัก</span>}
+                </Link>
+              </AccordionMenuItem>
+
+              {filteredSections.map((section) => (
+                <div key={section.key}>
+                  <AccordionMenuLabel>{section.label}</AccordionMenuLabel>
+                  <AccordionMenuGroup>
+                    {section.items.map((item) => (
+                      <AccordionMenuItem key={item.path} value={item.path} className="text-2sm">
+                        <Link to={item.path} className="flex items-center gap-2 w-full">
+                          {item.icon && <item.icon data-slot="accordion-menu-icon" className="size-4" />}
+                          {!sidebarCollapse && <span data-slot="accordion-menu-title">{item.label}</span>}
+                        </Link>
+                      </AccordionMenuItem>
+                    ))}
+                  </AccordionMenuGroup>
+                </div>
+              ))}
+            </AccordionMenu>
+          </ScrollArea>
         </div>
-
-        {/* Sections with AccordionMenu */}
-        <AccordionMenu
-          selectedValue={pathname}
-          matchPath={matchPath}
-          type="single"
-          collapsible
-          classNames={menuClassNames}
-        >
-          {filteredSections.map((section) => {
-            const SectionIcon = section.icon;
-
-            // Single-item section: render as direct link
-            if (section.items.length === 1) {
-              const item = section.items[0];
-              return (
-                <AccordionMenuItem key={section.key} value={item.path}>
-                  <Link to={item.path} className="flex items-center gap-2.5 w-full">
-                    <SectionIcon className="w-4 h-4 shrink-0" />
-                    {!sidebarCollapse && <span>{section.label}</span>}
-                  </Link>
-                </AccordionMenuItem>
-              );
-            }
-
-            // Multi-item section: collapsible
-            return (
-              <div key={section.key}>
-                <AccordionMenuLabel className="text-slate-600 mt-3">
-                  {!sidebarCollapse && (
-                    <div className="flex items-center gap-2">
-                      <SectionIcon className="w-3.5 h-3.5 shrink-0 opacity-60" />
-                      <span>{section.label}</span>
-                    </div>
-                  )}
-                  {sidebarCollapse && (
-                    <div className="flex justify-center">
-                      <SectionIcon className="w-3.5 h-3.5 shrink-0 opacity-60" />
-                    </div>
-                  )}
-                </AccordionMenuLabel>
-                <AccordionMenuGroup>
-                  {section.items.map((item) => (
-                    <AccordionMenuItem key={item.path} value={item.path}>
-                      <Link to={item.path} className="flex items-center gap-2.5 w-full">
-                        {item.icon && <item.icon className="w-4 h-4 shrink-0 opacity-60" />}
-                        {!sidebarCollapse && <span>{item.label}</span>}
-                      </Link>
-                    </AccordionMenuItem>
-                  ))}
-                </AccordionMenuGroup>
-              </div>
-            );
-          })}
-        </AccordionMenu>
-      </ScrollArea>
+      </div>
 
       {/* User info at bottom */}
       {user && !sidebarCollapse && (
-        <div className="px-4 py-5 border-t border-white/10 shrink-0">
+        <div className="px-5 py-4 border-t border-border shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-primary-700 flex items-center justify-center shrink-0">
-              <span className="text-white text-sm font-semibold">{user.name?.charAt(0)}</span>
+            <div className="size-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+              <span className="text-primary text-sm font-semibold">{user.name?.charAt(0)}</span>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-white truncate">{user.name}</p>
-              <p className="text-xs text-slate-500 truncate">{user.branchName}</p>
+              <p className="text-2sm font-medium text-foreground truncate">{user.name}</p>
+              <p className="text-2xs text-muted-foreground truncate">{user.branchName}</p>
             </div>
           </div>
         </div>

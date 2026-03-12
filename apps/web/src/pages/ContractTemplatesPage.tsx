@@ -47,7 +47,7 @@ export default function ContractTemplatesPage() {
   const showPreview = viewMode === 'split' || viewMode === 'preview';
 
   return (
-    <div className="-m-6 flex flex-col bg-slate-50" style={{ fontFamily: "'TH Sarabun PSK', sans-serif", height: 'calc(100vh - 56px)' }}>
+    <div className="-m-6 flex flex-col bg-secondary" style={{ fontFamily: "'TH Sarabun PSK', sans-serif", height: 'calc(100vh - 56px)' }}>
       {/* Header Bar */}
       <HeaderBar
         onBack={() => {
@@ -67,7 +67,7 @@ export default function ContractTemplatesPage() {
 
         {/* Editor Panel */}
         {showEditor && (
-          <div className={`overflow-y-auto bg-slate-50 ${showPreview ? 'w-1/2 border-r border-slate-200' : 'flex-1'}`}>
+          <div className={`overflow-y-auto bg-secondary ${showPreview ? 'w-1/2 border-r border-border' : 'flex-1'}`}>
             <BlockList />
           </div>
         )}

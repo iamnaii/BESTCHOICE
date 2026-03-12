@@ -120,7 +120,7 @@ export default function BranchReceivingPage() {
         <select
           value={selectedBranch}
           onChange={(e) => setSelectedBranch(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+          className="px-3 py-2 border border-input rounded-lg text-sm"
         >
           <option value="">เลือกสาขา</option>
           {(branches || []).map((b: { id: string; name: string }) => (
@@ -130,28 +130,28 @@ export default function BranchReceivingPage() {
       </div>
 
       {!selectedBranch ? (
-        <div className="text-center py-10 text-gray-500">กรุณาเลือกสาขา</div>
+        <div className="text-center py-10 text-muted-foreground">กรุณาเลือกสาขา</div>
       ) : (
-        <div className="space-y-6">
+        <div className="flex flex-col gap-5 lg:gap-7.5">
           {/* Pending Deliveries */}
           <div>
             <h3 className="text-lg font-semibold mb-3">รอรับเข้า ({pendingList.length})</h3>
             {loadingPending ? (
-              <div className="text-center py-4 text-gray-500">กำลังโหลด...</div>
+              <div className="text-center py-4 text-muted-foreground">กำลังโหลด...</div>
             ) : pendingList.length === 0 ? (
-              <div className="text-center py-4 text-gray-400 text-sm">ไม่มีสินค้ารอรับ</div>
+              <div className="text-center py-4 text-muted-foreground text-sm">ไม่มีสินค้ารอรับ</div>
             ) : (
               <div className="grid gap-3">
                 {pendingList.map((t) => (
-                  <div key={t.id} className="bg-white border border-yellow-200 rounded-lg p-4 flex items-center justify-between">
+                  <div key={t.id} className="bg-card border border-yellow-200 rounded-lg p-4 flex items-center justify-between shadow-xs shadow-black/5">
                     <div>
                       <div className="font-medium">{t.product.name}</div>
-                      <div className="text-xs text-gray-500 space-x-3">
+                      <div className="text-xs text-muted-foreground space-x-3">
                         <span>จาก: {t.fromBranch.name}</span>
                         {t.product.imeiSerial && <span className="font-mono">IMEI: {t.product.imeiSerial}</span>}
                         {t.dispatchedAt && <span>จัดส่ง: {new Date(t.dispatchedAt).toLocaleDateString('th-TH')}</span>}
                       </div>
-                      {t.trackingNote && <div className="text-xs text-primary-600 mt-1">{t.trackingNote}</div>}
+                      {t.trackingNote && <div className="text-xs text-primary mt-1">{t.trackingNote}</div>}
                     </div>
                     <button
                       onClick={() => openReceiveModal(t)}
@@ -169,25 +169,25 @@ export default function BranchReceivingPage() {
           <div>
             <h3 className="text-lg font-semibold mb-3">ประวัติการรับ</h3>
             {historyList.length === 0 ? (
-              <div className="text-center py-4 text-gray-400 text-sm">ยังไม่มีประวัติ</div>
+              <div className="text-center py-4 text-muted-foreground text-sm">ยังไม่มีประวัติ</div>
             ) : (
-              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+              <div className="bg-card rounded-lg border border-border overflow-hidden shadow-xs shadow-black/5">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50">
+                  <thead className="bg-muted">
                     <tr>
-                      <th className="text-left px-4 py-3 font-medium text-gray-600">สินค้า</th>
-                      <th className="text-left px-4 py-3 font-medium text-gray-600">จาก</th>
-                      <th className="text-left px-4 py-3 font-medium text-gray-600">ผู้รับ</th>
-                      <th className="text-center px-4 py-3 font-medium text-gray-600">สถานะ</th>
-                      <th className="text-left px-4 py-3 font-medium text-gray-600">วันที่</th>
+                      <th className="text-left px-4 py-3 font-medium text-muted-foreground">สินค้า</th>
+                      <th className="text-left px-4 py-3 font-medium text-muted-foreground">จาก</th>
+                      <th className="text-left px-4 py-3 font-medium text-muted-foreground">ผู้รับ</th>
+                      <th className="text-center px-4 py-3 font-medium text-muted-foreground">สถานะ</th>
+                      <th className="text-left px-4 py-3 font-medium text-muted-foreground">วันที่</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody className="divide-y divide-border">
                     {historyList.map((r: any) => (
-                      <tr key={r.id} className="hover:bg-gray-50">
+                      <tr key={r.id} className="hover:bg-muted/50">
                         <td className="px-4 py-3">
                           <div className="font-medium">{r.transfer?.product?.name || '-'}</div>
-                          <div className="text-xs text-gray-400 font-mono">{r.transfer?.product?.imeiSerial || ''}</div>
+                          <div className="text-xs text-muted-foreground font-mono">{r.transfer?.product?.imeiSerial || ''}</div>
                         </td>
                         <td className="px-4 py-3">{r.transfer?.fromBranch?.name || '-'}</td>
                         <td className="px-4 py-3">{r.receivedBy?.name || '-'}</td>
@@ -198,7 +198,7 @@ export default function BranchReceivingPage() {
                             {r.status === 'COMPLETED' ? 'ผ่าน' : 'ไม่ผ่าน'}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-xs text-gray-500">
+                        <td className="px-4 py-3 text-xs text-muted-foreground">
                           {new Date(r.createdAt).toLocaleDateString('th-TH')}
                         </td>
                       </tr>
@@ -215,9 +215,9 @@ export default function BranchReceivingPage() {
       <Modal isOpen={isReceiveModalOpen} onClose={() => setIsReceiveModalOpen(false)} title="ตรวจรับสินค้า">
         {selectedTransfer && (
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="bg-gray-50 rounded-lg p-3">
+            <div className="bg-muted rounded-lg p-3">
               <div className="font-medium">{selectedTransfer.product.name}</div>
-              <div className="text-xs text-gray-500 mt-1 space-y-0.5">
+              <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
                 <div>จาก: {selectedTransfer.fromBranch.name} → {selectedTransfer.toBranch.name}</div>
                 {selectedTransfer.product.imeiSerial && (
                   <div className="font-mono">IMEI ที่ต้องตรง: {selectedTransfer.product.imeiSerial}</div>
@@ -227,13 +227,13 @@ export default function BranchReceivingPage() {
 
             {selectedTransfer.product.imeiSerial && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">สแกน IMEI ยืนยัน</label>
+                <label className="block text-sm font-medium text-foreground mb-1">สแกน IMEI ยืนยัน</label>
                 <input
                   type="text"
                   value={scannedImei}
                   onChange={(e) => setScannedImei(e.target.value)}
                   placeholder="สแกนหรือพิมพ์ IMEI"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono"
+                  className="w-full px-3 py-2 border border-input rounded-lg text-sm font-mono"
                 />
                 {scannedImei && scannedImei === selectedTransfer.product.imeiSerial && (
                   <div className="text-xs text-green-600 mt-1">IMEI ตรงกัน</div>
@@ -245,13 +245,13 @@ export default function BranchReceivingPage() {
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">ผลตรวจ</label>
+              <label className="block text-sm font-medium text-foreground mb-1">ผลตรวจ</label>
               <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={() => setStatus('PASS')}
                   className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    status === 'PASS' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-green-100'
+                    status === 'PASS' ? 'bg-green-600 text-white' : 'bg-muted text-muted-foreground hover:bg-green-100'
                   }`}
                 >
                   ผ่าน - รับเข้าสาขา
@@ -260,7 +260,7 @@ export default function BranchReceivingPage() {
                   type="button"
                   onClick={() => setStatus('REJECT')}
                   className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    status === 'REJECT' ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-red-100'
+                    status === 'REJECT' ? 'bg-red-600 text-white' : 'bg-muted text-muted-foreground hover:bg-red-100'
                   }`}
                 >
                   ไม่ผ่าน - ส่งกลับ
@@ -269,13 +269,13 @@ export default function BranchReceivingPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุสภาพ</label>
+              <label className="block text-sm font-medium text-foreground mb-1">หมายเหตุสภาพ</label>
               <input
                 type="text"
                 value={conditionNotes}
                 onChange={(e) => setConditionNotes(e.target.value)}
                 placeholder="สภาพสินค้าตอนรับ"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm"
               />
             </div>
 
@@ -294,11 +294,11 @@ export default function BranchReceivingPage() {
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุเพิ่มเติม</label>
+              <label className="block text-sm font-medium text-foreground mb-1">หมายเหตุเพิ่มเติม</label>
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm"
                 rows={2}
               />
             </div>

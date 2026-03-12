@@ -211,8 +211,8 @@ export default function StockAlertsPage() {
       label: 'สินค้า',
       render: (r: ReorderPoint) => (
         <div>
-          <div className="font-medium text-gray-900">{r.brand} {r.model}</div>
-          <div className="text-xs text-gray-500">
+          <div className="font-medium text-foreground">{r.brand} {r.model}</div>
+          <div className="text-xs text-muted-foreground">
             {r.storage && <span>{r.storage} | </span>}
             {categoryLabels[r.category] || r.category}
           </div>
@@ -254,7 +254,7 @@ export default function StockAlertsPage() {
             <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">ปกติ</span>
           )}
           {!r.isActive && (
-            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">ปิดใช้งาน</span>
+            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground">ปิดใช้งาน</span>
           )}
         </div>
       ),
@@ -278,7 +278,7 @@ export default function StockAlertsPage() {
                     reorderQuantity: r.reorderQuantity.toString(),
                   });
                 }}
-                className="text-gray-400 hover:text-primary-600"
+                className="text-muted-foreground hover:text-primary"
                 title="แก้ไข"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -287,7 +287,7 @@ export default function StockAlertsPage() {
               </button>
               <button
                 onClick={() => updateMutation.mutate({ id: r.id, data: { isActive: !r.isActive } })}
-                className={`text-xs ${r.isActive ? 'text-gray-400 hover:text-red-600' : 'text-gray-400 hover:text-green-600'}`}
+                className={`text-xs ${r.isActive ? 'text-muted-foreground hover:text-red-600' : 'text-muted-foreground hover:text-green-600'}`}
                 title={r.isActive ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}
               >
                 {r.isActive ? 'ปิด' : 'เปิด'}
@@ -295,7 +295,7 @@ export default function StockAlertsPage() {
               {user?.role === 'OWNER' && (
                 <button
                   onClick={() => { if (confirm('ลบ Reorder Point นี้?')) deleteMutation.mutate(r.id); }}
-                  className="text-gray-400 hover:text-red-600"
+                  className="text-muted-foreground hover:text-red-600"
                   title="ลบ"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -315,8 +315,8 @@ export default function StockAlertsPage() {
       label: 'สินค้า',
       render: (a: StockAlert) => (
         <div>
-          <div className="font-medium text-gray-900">{a.brand} {a.model}</div>
-          <div className="text-xs text-gray-500">
+          <div className="font-medium text-foreground">{a.brand} {a.model}</div>
+          <div className="text-xs text-muted-foreground">
             {a.storage && <span>{a.storage} | </span>}
             {categoryLabels[a.category] || a.category}
           </div>
@@ -329,7 +329,7 @@ export default function StockAlertsPage() {
       render: (a: StockAlert) => (
         <span className="text-sm">
           <span className="font-bold text-red-600">{a.currentStock}</span>
-          <span className="text-gray-400"> / {a.minQuantity}</span>
+          <span className="text-muted-foreground"> / {a.minQuantity}</span>
         </span>
       ),
     },
@@ -353,7 +353,7 @@ export default function StockAlertsPage() {
           RESOLVED: 'แก้ไขแล้ว',
         };
         return (
-          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${styles[a.status] || 'bg-gray-100 text-gray-700'}`}>
+          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${styles[a.status] || 'bg-muted text-foreground'}`}>
             {labels[a.status] || a.status}
           </span>
         );
@@ -363,7 +363,7 @@ export default function StockAlertsPage() {
       key: 'createdAt',
       label: 'วันที่แจ้ง',
       render: (a: StockAlert) => (
-        <span className="text-xs text-gray-500">
+        <span className="text-xs text-muted-foreground">
           {new Date(a.createdAt).toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: '2-digit' })}
         </span>
       ),
@@ -376,7 +376,7 @@ export default function StockAlertsPage() {
             a.status === 'ACTIVE' ? (
               <button
                 onClick={() => resolveMutation.mutate(a.id)}
-                className="text-xs text-primary-600 hover:text-primary-700 font-medium"
+                className="text-xs text-primary hover:text-primary/90 font-medium"
               >
                 แก้ไขแล้ว
               </button>
@@ -400,14 +400,14 @@ export default function StockAlertsPage() {
                 <button
                   onClick={() => checkStockMutation.mutate()}
                   disabled={checkStockMutation.isPending}
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+                  className="px-4 py-2 border border-input rounded-lg text-sm font-medium hover:bg-muted/50 disabled:opacity-50"
                 >
                   {checkStockMutation.isPending ? 'กำลังตรวจ...' : 'ตรวจสอบสต็อก'}
                 </button>
               )}
               <button
                 onClick={() => { resetForm(); setShowCreateModal(true); }}
-                className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700"
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90"
               >
                 + Reorder Point
               </button>
@@ -417,7 +417,7 @@ export default function StockAlertsPage() {
       />
 
       {/* Sub-tabs */}
-      <div className="flex gap-1 mb-6 bg-gray-100 rounded-lg p-1 w-fit">
+      <div className="flex gap-1 mb-6 bg-muted rounded-lg p-1 w-fit">
         {(['dashboard', 'reorder-points', 'alerts'] as const).map((tab) => {
           const labels = { dashboard: 'ภาพรวม', 'reorder-points': 'Reorder Points', alerts: 'แจ้งเตือน' };
           return (
@@ -425,7 +425,7 @@ export default function StockAlertsPage() {
               key={tab}
               onClick={() => setActiveTab(tab)}
               className={`px-4 py-2 text-sm rounded-md font-medium transition-colors ${
-                activeTab === tab ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                activeTab === tab ? 'bg-white text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               {labels[tab]}
@@ -442,7 +442,7 @@ export default function StockAlertsPage() {
         <select
           value={filterBranch}
           onChange={(e) => setFilterBranch(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+          className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
         >
           <option value="">ทุกสาขา</option>
           {branches?.map((b) => (
@@ -453,7 +453,7 @@ export default function StockAlertsPage() {
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+            className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
           >
             <option value="">ทุกสถานะ</option>
             <option value="ACTIVE">ต้องดำเนินการ</option>
@@ -465,23 +465,23 @@ export default function StockAlertsPage() {
 
       {/* Dashboard Tab */}
       {activeTab === 'dashboard' && (
-        <div className="space-y-6">
+        <div className="flex flex-col gap-5 lg:gap-7.5">
           {/* Summary Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-white rounded-lg border p-4 border-l-4 border-l-red-500">
-              <div className="text-xs text-gray-500 mb-1">สินค้าต่ำกว่าเกณฑ์</div>
+            <div className="rounded-lg border p-4 border-l-4 border-l-red-500">
+              <div className="text-xs text-muted-foreground mb-1">สินค้าต่ำกว่าเกณฑ์</div>
               <div className="text-2xl font-bold text-red-600">{dashboard?.totalLowStock || 0}</div>
             </div>
-            <div className="bg-white rounded-lg border p-4 border-l-4 border-l-orange-500">
-              <div className="text-xs text-gray-500 mb-1">แจ้งเตือนรอดำเนินการ</div>
+            <div className="rounded-lg border p-4 border-l-4 border-l-orange-500">
+              <div className="text-xs text-muted-foreground mb-1">แจ้งเตือนรอดำเนินการ</div>
               <div className="text-2xl font-bold text-orange-600">{activeAlerts}</div>
             </div>
-            <div className="bg-white rounded-lg border p-4 border-l-4 border-l-primary-500">
-              <div className="text-xs text-gray-500 mb-1">Reorder Points ทั้งหมด</div>
-              <div className="text-2xl font-bold text-primary-600">{reorderPoints?.length || 0}</div>
+            <div className="rounded-lg border p-4 border-l-4 border-l-primary-500">
+              <div className="text-xs text-muted-foreground mb-1">Reorder Points ทั้งหมด</div>
+              <div className="text-2xl font-bold text-primary">{reorderPoints?.length || 0}</div>
             </div>
-            <div className="bg-white rounded-lg border p-4 border-l-4 border-l-green-500">
-              <div className="text-xs text-gray-500 mb-1">สินค้าปกติ</div>
+            <div className="rounded-lg border p-4 border-l-4 border-l-green-500">
+              <div className="text-xs text-muted-foreground mb-1">สินค้าปกติ</div>
               <div className="text-2xl font-bold text-green-600">
                 {(reorderPoints?.filter((r) => !r.isLow).length) || 0}
               </div>
@@ -490,31 +490,31 @@ export default function StockAlertsPage() {
 
           {/* Low Stock Items */}
           {dashboard && dashboard.items.length > 0 && (
-            <div className="bg-white rounded-lg border p-5">
-              <h2 className="text-sm font-semibold text-gray-700 mb-3">สินค้าที่ต้องสั่งซื้อเพิ่ม</h2>
+            <div className="rounded-lg border p-5">
+              <h2 className="text-sm font-semibold text-foreground mb-3">สินค้าที่ต้องสั่งซื้อเพิ่ม</h2>
               <div className="space-y-2">
                 {dashboard.items.map((item) => {
                   const ratio = item.minQuantity > 0 ? (item.currentStock / item.minQuantity) * 100 : 0;
                   return (
-                    <div key={item.reorderPointId} className="flex items-center gap-4 py-2 border-b border-gray-50 last:border-0">
+                    <div key={item.reorderPointId} className="flex items-center gap-4 py-2 border-b border-border last:border-0">
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium text-gray-900 text-sm">{item.brand} {item.model} {item.storage || ''}</div>
-                        <div className="text-xs text-gray-500">{item.branch.name} | {categoryLabels[item.category] || item.category}</div>
+                        <div className="font-medium text-foreground text-sm">{item.brand} {item.model} {item.storage || ''}</div>
+                        <div className="text-xs text-muted-foreground">{item.branch.name} | {categoryLabels[item.category] || item.category}</div>
                       </div>
                       <div className="w-32">
                         <div className="flex justify-between text-xs mb-1">
                           <span className="text-red-600 font-medium">{item.currentStock}</span>
-                          <span className="text-gray-400">/ {item.minQuantity}</span>
+                          <span className="text-muted-foreground">/ {item.minQuantity}</span>
                         </div>
-                        <div className="bg-gray-100 rounded-full h-2 overflow-hidden">
+                        <div className="bg-muted rounded-full h-2 overflow-hidden">
                           <div
                             className={`h-full rounded-full ${ratio > 50 ? 'bg-yellow-400' : 'bg-red-400'}`}
                             style={{ width: `${Math.min(ratio, 100)}%` }}
                           />
                         </div>
                       </div>
-                      <div className="text-sm text-gray-700">
-                        ควรสั่ง <span className="font-bold text-primary-600">{item.reorderQuantity}</span>
+                      <div className="text-sm text-foreground">
+                        ควรสั่ง <span className="font-bold text-primary">{item.reorderQuantity}</span>
                       </div>
                       {item.hasActiveAlert && (
                         <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">แจ้งเตือนแล้ว</span>
@@ -527,7 +527,7 @@ export default function StockAlertsPage() {
           )}
 
           {dashboard && dashboard.items.length === 0 && (
-            <div className="bg-white rounded-lg border p-8 text-center text-gray-400">
+            <div className="rounded-lg border p-8 text-center text-muted-foreground">
               สต็อกทุกรายการอยู่ในเกณฑ์ปกติ
             </div>
           )}
@@ -572,11 +572,11 @@ export default function StockAlertsPage() {
             <>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">ประเภท</label>
+                  <label className="block text-sm font-medium text-foreground mb-1">ประเภท</label>
                   <select
                     value={form.category}
                     onChange={(e) => setForm({ ...form, category: e.target.value, brand: '', model: '', storage: '' })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                    className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
                   >
                     {Object.entries(categoryLabels).filter(([key]) => key !== 'ACCESSORY').map(([key, val]) => (
                       <option key={key} value={key}>{val}</option>
@@ -584,11 +584,11 @@ export default function StockAlertsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">แบรนด์</label>
+                  <label className="block text-sm font-medium text-foreground mb-1">แบรนด์</label>
                   <select
                     value={form.brand}
                     onChange={(e) => setForm({ ...form, brand: e.target.value, model: '', storage: '' })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                    className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
                     required
                   >
                     <option value="">-- เลือกแบรนด์ --</option>
@@ -600,7 +600,7 @@ export default function StockAlertsPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">รุ่น</label>
+                  <label className="block text-sm font-medium text-foreground mb-1">รุ่น</label>
                   <select
                     value={form.model}
                     onChange={(e) => {
@@ -608,7 +608,7 @@ export default function StockAlertsPage() {
                       const info = form.brand ? getModelInfo(form.brand, modelName) : undefined;
                       setForm({ ...form, model: modelName, storage: '', category: info?.category || form.category });
                     }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                    className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
                     required
                     disabled={!form.brand}
                   >
@@ -619,11 +619,11 @@ export default function StockAlertsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">ความจุ (ไม่บังคับ)</label>
+                  <label className="block text-sm font-medium text-foreground mb-1">ความจุ (ไม่บังคับ)</label>
                   <select
                     value={form.storage}
                     onChange={(e) => setForm({ ...form, storage: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                    className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
                     disabled={!form.model}
                   >
                     <option value="">ทุกความจุ</option>
@@ -634,11 +634,11 @@ export default function StockAlertsPage() {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">สาขา</label>
+                <label className="block text-sm font-medium text-foreground mb-1">สาขา</label>
                 <select
                   value={form.branchId}
                   onChange={(e) => setForm({ ...form, branchId: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                  className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
                   required
                 >
                   <option value="">เลือกสาขา</option>
@@ -651,24 +651,24 @@ export default function StockAlertsPage() {
           )}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนขั้นต่ำ (แจ้งเตือนเมื่อเหลือเท่านี้)</label>
+              <label className="block text-sm font-medium text-foreground mb-1">จำนวนขั้นต่ำ (แจ้งเตือนเมื่อเหลือเท่านี้)</label>
               <input
                 type="number"
                 min="1"
                 value={form.minQuantity}
                 onChange={(e) => setForm({ ...form, minQuantity: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
                 required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนที่ควรสั่งซื้อ</label>
+              <label className="block text-sm font-medium text-foreground mb-1">จำนวนที่ควรสั่งซื้อ</label>
               <input
                 type="number"
                 min="1"
                 value={form.reorderQuantity}
                 onChange={(e) => setForm({ ...form, reorderQuantity: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
                 required
               />
             </div>
@@ -677,14 +677,14 @@ export default function StockAlertsPage() {
             <button
               type="button"
               onClick={() => { setShowCreateModal(false); setEditingPoint(null); resetForm(); }}
-              className="px-4 py-2 text-sm text-gray-600"
+              className="px-4 py-2 text-sm text-muted-foreground"
             >
               ยกเลิก
             </button>
             <button
               type="submit"
               disabled={createMutation.isPending || updateMutation.isPending}
-              className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
             >
               {(createMutation.isPending || updateMutation.isPending) ? 'กำลังบันทึก...' : 'บันทึก'}
             </button>

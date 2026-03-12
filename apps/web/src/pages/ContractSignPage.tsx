@@ -440,7 +440,7 @@ export default function ContractSignPage() {
             </div>
             <button
               onClick={() => setShowPdpaModal(true)}
-              className="ml-4 px-4 py-2 text-sm bg-amber-600 text-white rounded-lg hover:bg-amber-700 whitespace-nowrap"
+              className="ml-4 px-4 py-2 min-h-[44px] text-sm bg-amber-600 text-white rounded-lg hover:bg-amber-700 whitespace-nowrap"
             >
               บันทึกความยินยอม PDPA
             </button>
@@ -477,10 +477,10 @@ export default function ContractSignPage() {
             <p className="text-sm text-gray-700 mb-3 font-medium">ลงลายมือชื่อยินยอม</p>
             <canvas
               ref={pdpaCanvasRef}
-              width={460}
-              height={160}
+              width={600}
+              height={210}
               className="w-full border-2 border-dashed border-gray-300 rounded-lg cursor-crosshair touch-none mb-3"
-              style={{ height: '160px' }}
+              style={{ height: 'auto', aspectRatio: '20 / 7' }}
               onMouseDown={pdpaStartDraw}
               onMouseMove={pdpaDraw}
               onMouseUp={pdpaEndDraw}
@@ -492,19 +492,19 @@ export default function ContractSignPage() {
             <div className="flex gap-3">
               <button
                 onClick={pdpaClear}
-                className="px-4 py-2 text-sm border border-gray-300 rounded-lg"
+                className="px-4 py-2 min-h-[44px] text-sm border border-gray-300 rounded-lg"
               >
                 ล้าง
               </button>
               <div className="flex-1" />
-              <button onClick={() => setShowPdpaModal(false)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg">ยกเลิก</button>
+              <button onClick={() => setShowPdpaModal(false)} className="px-4 py-2 min-h-[44px] text-sm border border-gray-300 rounded-lg">ยกเลิก</button>
               <button
                 onClick={() => {
                   if (!pdpaHasDrawn || !pdpaCanvasRef.current) { toast.error('กรุณาลงนามก่อน'); return; }
                   pdpaConsentMutation.mutate(pdpaCanvasRef.current.toDataURL('image/png'));
                 }}
                 disabled={!pdpaHasDrawn || pdpaConsentMutation.isPending}
-                className="px-6 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+                className="px-6 py-2 min-h-[44px] text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
               >
                 {pdpaConsentMutation.isPending ? 'กำลังบันทึก...' : 'ยืนยันยินยอม'}
               </button>
@@ -595,7 +595,7 @@ export default function ContractSignPage() {
                 <select
                   value={signerType}
                   onChange={(e) => { setSignerType(e.target.value as SignerType); setSignMode('choose'); setSignerName(''); }}
-                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
+                  className="px-3 py-2 min-h-[44px] border border-gray-300 rounded-lg text-sm"
                 >
                   {requiredSigners.map(type => (
                     <option key={type} value={type} disabled={signedTypes.has(type) || (type === 'COMPANY' && companyAutoSigned)}>
@@ -653,13 +653,13 @@ export default function ContractSignPage() {
                             <button
                               onClick={handleSignFromSaved}
                               disabled={isBusy}
-                              className="flex-1 px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+                              className="flex-1 px-4 py-2 min-h-[44px] text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
                             >
                               {isBusy ? 'กำลังบันทึก...' : 'ใช้ลายเซ็นที่บันทึกไว้'}
                             </button>
                             <button
                               onClick={() => setSignMode('draw')}
-                              className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+                              className="px-4 py-2 min-h-[44px] text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
                             >
                               เซ็นใหม่
                             </button>
@@ -778,10 +778,10 @@ function SignaturePad({
       <div className="text-xs text-gray-500 mb-2 text-center">กรุณาลงนามในกรอบด้านล่าง</div>
       <canvas
         ref={canvasRef}
-        width={500}
-        height={200}
+        width={600}
+        height={240}
         className="w-full border-2 border-dashed border-gray-300 rounded-lg cursor-crosshair touch-none"
-        style={{ height: '200px' }}
+        style={{ height: 'auto', aspectRatio: '5 / 2' }}
         onMouseDown={onStartDraw}
         onMouseMove={onDraw}
         onMouseUp={onEndDraw}
@@ -791,14 +791,14 @@ function SignaturePad({
         onTouchEnd={onEndDraw}
       />
       <div className="flex gap-3 mt-3">
-        <button onClick={onClear} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">
+        <button onClick={onClear} className="px-4 py-2 min-h-[44px] text-sm border border-gray-300 rounded-lg hover:bg-gray-50">
           ล้าง
         </button>
         <div className="flex-1" />
         <button
           onClick={onSign}
           disabled={!hasDrawn || isPending}
-          className="px-6 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+          className="px-6 py-2 min-h-[44px] text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
         >
           {isPending ? 'กำลังบันทึก...' : 'ยืนยันลงนาม'}
         </button>

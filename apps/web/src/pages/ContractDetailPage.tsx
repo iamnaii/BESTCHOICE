@@ -41,6 +41,7 @@ interface ContractDetail {
   notes: string | null;
   reviewNotes: string | null;
   contractHash: string | null;
+  pdpaConsentId: string | null;
   createdAt: string;
   reviewedAt: string | null;
   salespersonId: string;
@@ -528,6 +529,66 @@ export default function ContractDetailPage() {
         }
       />
 
+      {/* Workflow Stepper - only show for DRAFT contracts */}
+      {contract.status === 'DRAFT' && (() => {
+        const steps = [
+          { label: 'สร้างสัญญา', done: true },
+          { label: 'แนบเอกสาร', done: contract.contractDocuments.length >= 3 },
+          { label: 'ลงนาม & PDPA', done: !!contract.pdpaConsentId && allSigned },
+          { label: 'ตรวจสอบ & อนุมัติ', done: contract.workflowStatus === 'APPROVED' },
+          { label: 'เปิดใช้งาน', done: false },
+        ];
+        const currentStep = steps.findIndex(s => !s.done);
+        const stepHints: { text: string; action?: () => void; actionLabel?: string }[] = [
+          { text: '' },
+          { text: 'อัปโหลดเอกสารที่จำเป็น', action: () => setActiveTab('documents'), actionLabel: 'ไปแนบเอกสาร' },
+          { text: 'ให้ลูกค้ายินยอม PDPA และลงนามสัญญา', action: () => navigate(`/contracts/${id}/sign`), actionLabel: 'ไปลงนาม' },
+          {
+            text: isCreator && allSigned ? 'ลงนามครบแล้ว พร้อมส่งตรวจสอบ' : !allSigned ? 'ลงนามให้ครบก่อนส่งตรวจสอบ' : 'รอผู้จัดการตรวจสอบสัญญา',
+            action: isCreator && allSigned ? () => submitReviewMutation.mutate() : undefined,
+            actionLabel: isCreator && allSigned ? 'ส่งตรวจสอบ' : undefined,
+          },
+          {
+            text: allSigned ? 'สัญญาอนุมัติแล้ว พร้อมเปิดใช้งาน' : 'ต้องลงนามครบก่อนเปิดใช้งาน',
+            action: allSigned ? () => activateMutation.mutate() : undefined,
+            actionLabel: allSigned ? 'เปิดใช้งานสัญญา' : undefined,
+          },
+        ];
+        const hint = currentStep >= 0 ? stepHints[currentStep] : null;
+
+        return (
+          <div className="bg-white rounded-lg border p-4 mb-6">
+            <div className="flex items-center justify-between mb-3">
+              {steps.map((step, i) => (
+                <div key={i} className="flex items-center flex-1 last:flex-none">
+                  <div className="flex flex-col items-center gap-1 min-w-0">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${step.done ? 'bg-green-600 text-white' : i === currentStep ? 'bg-primary-600 text-white ring-2 ring-primary-300 ring-offset-1' : 'bg-gray-200 text-gray-500'}`}>
+                      {step.done ? '✓' : i + 1}
+                    </div>
+                    <span className={`text-[10px] md:text-xs text-center leading-tight ${step.done ? 'text-green-700 font-medium' : i === currentStep ? 'text-primary-700 font-medium' : 'text-gray-400'}`}>
+                      {step.label}
+                    </span>
+                  </div>
+                  {i < steps.length - 1 && (
+                    <div className={`flex-1 h-0.5 mx-1 mt-[-16px] ${step.done ? 'bg-green-500' : 'bg-gray-200'}`} />
+                  )}
+                </div>
+              ))}
+            </div>
+            {hint && hint.text && (
+              <div className="flex items-center justify-between bg-primary-50 rounded-lg px-3 py-2 mt-1">
+                <span className="text-sm text-primary-700">{hint.text}</span>
+                {hint.action && hint.actionLabel && (
+                  <button onClick={hint.action} className="px-3 py-1.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 shrink-0 ml-2">
+                    {hint.actionLabel}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Status + Workflow + Summary */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
         <div className="bg-white rounded-lg border p-4">
@@ -613,98 +674,9 @@ export default function ContractDetailPage() {
         </div>
       )}
 
-      {/* Signing guide for CREATING/REJECTED (sign first, review later) */}
-      {(contract.workflowStatus === 'CREATING' || contract.workflowStatus === 'REJECTED') && contract.status === 'DRAFT' && (
-        <div className="bg-primary-50 border border-primary-200 rounded-lg p-4 mb-6">
-          <h3 className="text-sm font-semibold text-primary-800">ขั้นตอน: ให้ลูกค้าเซ็นสัญญา แล้วส่งตรวจสอบ</h3>
-          <div className="mt-3">
-            <div className="flex items-center gap-2 text-xs flex-wrap">
-              <span className="font-medium text-primary-700">ลงนาม ({[customerSigned, companySigned, witness1Signed, witness2Signed].filter(Boolean).length}/4):</span>
-              <span className={customerSigned ? 'text-green-700' : 'text-amber-600'}>
-                ผู้เช่าซื้อ {customerSigned ? '✓' : '✗'}
-              </span>
-              <span className={companySigned ? 'text-green-700' : 'text-amber-600'}>
-                ผู้ให้เช่าซื้อ {companySigned ? '✓' : '✗'}
-              </span>
-              <span className={witness1Signed ? 'text-green-700' : 'text-amber-600'}>
-                พยาน 1 {witness1Signed ? '✓' : '✗'}
-              </span>
-              <span className={witness2Signed ? 'text-green-700' : 'text-amber-600'}>
-                พยาน 2 {witness2Signed ? '✓' : '✗'}
-              </span>
-            </div>
-            <div className="flex gap-2 mt-2">
-              {!allSigned && (
-                <button onClick={() => navigate(`/contracts/${id}/sign`)} className="px-2 py-1 bg-primary-600 text-white rounded text-xs hover:bg-primary-700">
-                  ไปลงนาม
-                </button>
-              )}
-              {allSigned && isCreator && (
-                <button onClick={() => submitReviewMutation.mutate()} disabled={submitReviewMutation.isPending} className="px-2 py-1 bg-amber-600 text-white rounded text-xs hover:bg-amber-700 disabled:opacity-50">
-                  {submitReviewMutation.isPending ? 'กำลังส่ง...' : 'ส่งตรวจสอบ'}
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Signing guide removed — replaced by workflow stepper above */}
 
-      {/* Pending review info */}
-      {contract.workflowStatus === 'PENDING_REVIEW' && !isReviewer && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
-          <h3 className="text-sm font-semibold text-amber-800">รอผู้จัดการตรวจสอบสัญญา</h3>
-          <div className="mt-2 flex items-center gap-2 text-xs flex-wrap">
-            <span className={customerSigned ? 'text-green-700' : 'text-amber-600'}>
-              ผู้เช่าซื้อ {customerSigned ? '✓' : '✗'}
-            </span>
-            <span className={companySigned ? 'text-green-700' : 'text-amber-600'}>
-              ผู้ให้เช่าซื้อ {companySigned ? '✓' : '✗'}
-            </span>
-            <span className={witness1Signed ? 'text-green-700' : 'text-amber-600'}>
-              พยาน 1 {witness1Signed ? '✓' : '✗'}
-            </span>
-            <span className={witness2Signed ? 'text-green-700' : 'text-amber-600'}>
-              พยาน 2 {witness2Signed ? '✓' : '✗'}
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Approved info */}
-      {contract.workflowStatus === 'APPROVED' && contract.reviewedBy && (
-        <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
-          <h3 className="text-sm font-semibold text-green-800">สัญญาอนุมัติแล้ว</h3>
-          <div className="text-xs text-green-600 mt-1">
-            อนุมัติโดย: {contract.reviewedBy.name} | {contract.reviewedAt && new Date(contract.reviewedAt).toLocaleString('th-TH')}
-            {contract.reviewNotes && ` | หมายเหตุ: ${contract.reviewNotes}`}
-          </div>
-          {/* Signature status */}
-          {contract.status === 'DRAFT' && (
-            <div className="mt-3">
-              <div className="flex items-center gap-2 text-xs flex-wrap">
-                <span className="font-medium text-green-700">ลงนาม ({[customerSigned, companySigned, witness1Signed, witness2Signed].filter(Boolean).length}/4):</span>
-                <span className={customerSigned ? 'text-green-700' : 'text-amber-600'}>
-                  ผู้เช่าซื้อ {customerSigned ? '✓' : '✗'}
-                </span>
-                <span className={companySigned ? 'text-green-700' : 'text-amber-600'}>
-                  ผู้ให้เช่าซื้อ {companySigned ? '✓' : '✗'}
-                </span>
-                <span className={witness1Signed ? 'text-green-700' : 'text-amber-600'}>
-                  พยาน 1 {witness1Signed ? '✓' : '✗'}
-                </span>
-                <span className={witness2Signed ? 'text-green-700' : 'text-amber-600'}>
-                  พยาน 2 {witness2Signed ? '✓' : '✗'}
-                </span>
-              </div>
-              {!allSigned && (
-                <button onClick={() => navigate(`/contracts/${id}/sign`)} className="mt-2 px-3 py-1 bg-primary-600 text-white rounded text-xs hover:bg-primary-700">
-                  ไปลงนาม
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+      {/* Pending review & Approved banners removed — replaced by workflow stepper above */}
 
       {/* Contract Info */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">

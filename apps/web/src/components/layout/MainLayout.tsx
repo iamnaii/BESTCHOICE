@@ -28,21 +28,20 @@ function MobileSidebar() {
 
 function MainContent() {
   const isMobile = useIsMobile();
-  const { sidebarCollapse } = useLayout();
 
   return (
     <div className="flex min-h-screen bg-background">
-      {/* Desktop Sidebar */}
+      {/* Desktop: Icon Rail Sidebar (70px fixed) */}
       {!isMobile && <Sidebar />}
 
-      {/* Mobile Sidebar Sheet */}
+      {/* Mobile: Sheet Sidebar */}
       {isMobile && <MobileSidebar />}
 
-      {/* Main content - Metronic Demo 9 wrapper pattern */}
+      {/* Main content wrapper — Demo 9 pattern */}
       <div
         className="wrapper flex-1 flex flex-col min-w-0 transition-all duration-300"
         style={{
-          paddingLeft: isMobile ? 0 : sidebarCollapse ? 80 : 280,
+          paddingLeft: isMobile ? 0 : 70,
         }}
       >
         <TopBar />

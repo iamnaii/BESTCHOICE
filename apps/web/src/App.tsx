@@ -51,6 +51,7 @@ const ReceiptsPage = lazy(() => import('@/pages/ReceiptsPage'));
 const CustomerPortalPage = lazy(() => import('@/pages/CustomerPortalPage'));
 const SlipReviewPage = lazy(() => import('@/pages/SlipReviewPage'));
 const LiffPayment = lazy(() => import('@/pages/liff/LiffPayment'));
+const LineOaSettingsPage = lazy(() => import('@/pages/LineOaSettingsPage'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -329,6 +330,14 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER']}>
                 <MigrationPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings/line-oa"
+            element={
+              <ProtectedRoute roles={['OWNER']}>
+                <LineOaSettingsPage />
               </ProtectedRoute>
             }
           />

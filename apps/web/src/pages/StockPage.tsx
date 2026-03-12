@@ -349,7 +349,7 @@ export default function StockPage() {
           type="checkbox"
           checked={listProducts.length > 0 && selectedIds.size === listProducts.length}
           onChange={toggleSelectAll}
-          className="rounded text-primary-600"
+          className="rounded text-primary"
         />
       ) as unknown as string,
       render: (p: StockProduct) => (
@@ -357,7 +357,7 @@ export default function StockPage() {
           type="checkbox"
           checked={selectedIds.has(p.id)}
           onChange={(e) => { e.stopPropagation(); toggleSelect(p.id); }}
-          className="rounded text-primary-600"
+          className="rounded text-primary"
         />
       ),
     }] : []),
@@ -369,8 +369,8 @@ export default function StockPage() {
           onClick={() => navigateToProduct(p.id)}
           className="text-left hover:underline"
         >
-          <div className="text-primary-600 font-medium">{p.brand} {p.model}</div>
-          {p.imeiSerial && <div className="text-xs text-gray-400 font-mono">{p.imeiSerial}</div>}
+          <div className="text-primary font-medium">{p.brand} {p.model}</div>
+          {p.imeiSerial && <div className="text-xs text-muted-foreground font-mono">{p.imeiSerial}</div>}
         </button>
       ),
     },
@@ -400,14 +400,14 @@ export default function StockPage() {
               {defaultPrice ? (
                 <div className="font-medium">{parseFloat(defaultPrice.amount).toLocaleString()} ฿</div>
               ) : (
-                <span className="text-gray-400">-</span>
+                <span className="text-muted-foreground">-</span>
               )}
-              <div className="text-xs text-gray-400">ทุน: {parseFloat(p.costPrice).toLocaleString()} ฿</div>
+              <div className="text-xs text-muted-foreground">ทุน: {parseFloat(p.costPrice).toLocaleString()} ฿</div>
             </div>
             {isManager && (
               <button
                 onClick={(e) => { e.stopPropagation(); openPriceEdit(p); }}
-                className="text-gray-400 hover:text-primary-600 transition-colors"
+                className="text-muted-foreground hover:text-primary transition-colors"
                 title="จัดการราคา"
               >
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -423,7 +423,7 @@ export default function StockPage() {
       key: 'status',
       label: 'สถานะ',
       render: (p: StockProduct) => {
-        const s = statusLabels[p.status] || { label: p.status, className: 'bg-gray-100 text-gray-700' };
+        const s = statusLabels[p.status] || { label: p.status, className: 'bg-muted text-foreground' };
         return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.className}`}>{s.label}</span>;
       },
     },
@@ -459,20 +459,20 @@ export default function StockPage() {
               {selectedIds.size > 0 && (
                 <button
                   onClick={() => setShowBulkTransfer(true)}
-                  className="px-4 py-2 border border-primary-300 text-primary-600 rounded-lg text-sm font-medium hover:bg-primary-50 transition-colors"
+                  className="px-4 py-2 border border-primary-300 text-primary rounded-lg text-sm font-medium hover:bg-primary-50 transition-colors"
                 >
                   โอนสินค้า ({selectedIds.size})
                 </button>
               )}
               <button
                 onClick={handleExport}
-                className="px-4 py-2 border border-input rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+                className="px-4 py-2 border border-input rounded-lg text-sm font-medium hover:bg-muted/50 transition-colors"
               >
                 {selectedIds.size > 0 ? `Export (${selectedIds.size})` : 'Export CSV'}
               </button>
               <button
                 onClick={() => navigate('/products/create')}
-                className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
               >
                 + เพิ่มสินค้า
               </button>
@@ -487,26 +487,26 @@ export default function StockPage() {
           <button
             key={s.branch.id}
             onClick={() => setFilterBranch(filterBranch === s.branch.id ? '' : s.branch.id)}
-            className={`bg-white rounded-lg border p-4 text-left transition-colors ${
-              filterBranch === s.branch.id ? 'border-primary-500 ring-2 ring-primary-100' : 'hover:border-gray-300'
+            className={`rounded-lg border p-4 text-left transition-colors ${
+              filterBranch === s.branch.id ? 'border-primary-500 ring-2 ring-primary-100' : 'hover:border-input'
             }`}
           >
-            <div className="text-sm font-medium text-gray-900 mb-2">{s.branch.name}</div>
-            <div className="flex justify-between text-xs text-gray-500">
+            <div className="text-sm font-medium text-foreground mb-2">{s.branch.name}</div>
+            <div className="flex justify-between text-xs text-muted-foreground">
               <span>พร้อมขาย: {s.inStock}</span>
               <span>ทั้งหมด: {s.total}</span>
             </div>
-            <div className="text-xs text-gray-400 mt-1">มูลค่า: {s.totalValue.toLocaleString()} ฿</div>
+            <div className="text-xs text-muted-foreground mt-1">มูลค่า: {s.totalValue.toLocaleString()} ฿</div>
           </button>
         ))}
       </div>
 
       {/* Tabs: Dashboard / List */}
-      <div className="flex gap-1 mb-6 bg-gray-100 rounded-lg p-1 w-fit">
+      <div className="flex gap-1 mb-6 bg-muted rounded-lg p-1 w-fit">
         <button
           onClick={() => handleTabChange('dashboard')}
           className={`px-4 py-2 text-sm rounded-md font-medium transition-colors ${
-            activeTab === 'dashboard' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            activeTab === 'dashboard' ? 'bg-white text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
           }`}
         >
           Dashboard
@@ -514,7 +514,7 @@ export default function StockPage() {
         <button
           onClick={() => handleTabChange('list')}
           className={`px-4 py-2 text-sm rounded-md font-medium transition-colors ${
-            activeTab === 'list' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            activeTab === 'list' ? 'bg-white text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
           }`}
         >
           รายการสินค้า {listResult ? `(${listResult.total})` : ''}
@@ -522,12 +522,12 @@ export default function StockPage() {
       </div>
 
       {activeTab === 'dashboard' && dashboard && (
-        <div className="space-y-6">
+        <div className="flex flex-col gap-5 lg:gap-7.5">
 
           {/* Row 1: Action Required + Stock Turnover */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:gap-7.5">
             {/* Action Required */}
-            <div className="bg-white rounded-lg border p-5">
+            <div className="rounded-lg border p-5">
               <SectionTitle>รอดำเนินการ ({actionTotal})</SectionTitle>
               <div className="grid grid-cols-2 gap-3">
                 {dashboard.actionRequired.inspection > 0 && (
@@ -540,7 +540,7 @@ export default function StockPage() {
                 )}
                 {(dashboard.actionRequired.photoPending || 0) > 0 && (
                   <div className="flex items-center gap-3 p-3 bg-primary-50 rounded-lg">
-                    <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center text-primary-600 text-lg font-bold">
+                    <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center text-primary text-lg font-bold">
                       {dashboard.actionRequired.photoPending}
                     </div>
                     <div className="text-sm text-primary-700">รอถ่ายรูป</div>
@@ -548,7 +548,7 @@ export default function StockPage() {
                 )}
                 {dashboard.actionRequired.pendingTransfers > 0 && (
                   <div className="flex items-center gap-3 p-3 bg-primary-50 rounded-lg">
-                    <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center text-primary-600 text-lg font-bold">
+                    <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center text-primary text-lg font-bold">
                       {dashboard.actionRequired.pendingTransfers}
                     </div>
                     <div className="text-sm text-primary-700">รอยืนยันโอน</div>
@@ -571,13 +571,13 @@ export default function StockPage() {
                   </div>
                 )}
                 {actionTotal === 0 && (
-                  <div className="col-span-2 text-center text-sm text-gray-400 py-4">ไม่มีรายการรอดำเนินการ</div>
+                  <div className="col-span-2 text-center text-sm text-muted-foreground py-4">ไม่มีรายการรอดำเนินการ</div>
                 )}
               </div>
             </div>
 
             {/* Stock Turnover */}
-            <div className="bg-white rounded-lg border p-5">
+            <div className="rounded-lg border p-5">
               <SectionTitle>อัตราหมุนเวียนสต๊อค</SectionTitle>
               <div className="grid grid-cols-2 gap-4">
                 <StatCard label="อายุเฉลี่ยในสต๊อค" value={`${dashboard.stockTurnover.avgDaysInStock} วัน`} accent="border-l-primary-500" />
@@ -589,16 +589,16 @@ export default function StockPage() {
           </div>
 
           {/* Row 2: Stock Aging */}
-          <div className="bg-white rounded-lg border p-5">
+          <div className="rounded-lg border p-5">
             <SectionTitle>อายุสต๊อค (Stock Aging)</SectionTitle>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {dashboard.stockAging.map((bucket, i) => {
                 const colors = ['border-l-green-500', 'border-l-yellow-500', 'border-l-orange-500', 'border-l-red-500'];
                 return (
-                  <div key={bucket.label} className={`bg-gray-50 rounded-lg p-4 border-l-4 ${colors[i]}`}>
-                    <div className="text-sm font-medium text-gray-700">{bucket.label}</div>
-                    <div className="text-2xl font-bold text-gray-900 mt-1">{bucket.count} <span className="text-sm font-normal text-gray-500">ชิ้น</span></div>
-                    <div className="text-xs text-gray-400 mt-1">{bucket.value.toLocaleString()} ฿</div>
+                  <div key={bucket.label} className={`bg-muted rounded-lg p-4 border-l-4 ${colors[i]}`}>
+                    <div className="text-sm font-medium text-foreground">{bucket.label}</div>
+                    <div className="text-2xl font-bold text-foreground mt-1">{bucket.count} <span className="text-sm font-normal text-muted-foreground">ชิ้น</span></div>
+                    <div className="text-xs text-muted-foreground mt-1">{bucket.value.toLocaleString()} ฿</div>
                   </div>
                 );
               })}
@@ -606,27 +606,27 @@ export default function StockPage() {
           </div>
 
           {/* Row 3: Value by Status + Stock Movement */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:gap-7.5">
             {/* Value by Status */}
-            <div className="bg-white rounded-lg border p-5">
+            <div className="rounded-lg border p-5">
               <SectionTitle>มูลค่าสต๊อคตามสถานะ</SectionTitle>
               <div className="space-y-2">
                 {dashboard.valueByStatus.map((item) => {
-                  const s = statusLabels[item.status] || { label: item.status, className: 'bg-gray-100 text-gray-700' };
+                  const s = statusLabels[item.status] || { label: item.status, className: 'bg-muted text-foreground' };
                   return (
-                    <div key={item.status} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                    <div key={item.status} className="flex items-center justify-between py-2 border-b border-border last:border-0">
                       <div className="flex items-center gap-2">
                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.className}`}>{s.label}</span>
-                        <span className="text-sm text-gray-500">{item.count} ชิ้น</span>
+                        <span className="text-sm text-muted-foreground">{item.count} ชิ้น</span>
                       </div>
-                      <span className="text-sm font-medium text-gray-900">{item.value.toLocaleString()} ฿</span>
+                      <span className="text-sm font-medium text-foreground">{item.value.toLocaleString()} ฿</span>
                     </div>
                   );
                 })}
                 {dashboard.valueByStatus.length > 0 && (
-                  <div className="flex items-center justify-between pt-2 border-t border-gray-200 font-medium">
-                    <span className="text-sm text-gray-700">รวมทั้งหมด</span>
-                    <span className="text-sm text-gray-900">
+                  <div className="flex items-center justify-between pt-2 border-t border-border font-medium">
+                    <span className="text-sm text-foreground">รวมทั้งหมด</span>
+                    <span className="text-sm text-foreground">
                       {dashboard.valueByStatus.reduce((s, i) => s + i.value, 0).toLocaleString()} ฿
                     </span>
                   </div>
@@ -635,10 +635,10 @@ export default function StockPage() {
             </div>
 
             {/* Stock Movement */}
-            <div className="bg-white rounded-lg border p-5">
+            <div className="rounded-lg border p-5">
               <SectionTitle>การเคลื่อนไหวสต๊อค (6 เดือน)</SectionTitle>
               <div className="space-y-3">
-                <div className="flex items-center gap-4 text-xs text-gray-500 mb-2">
+                <div className="flex items-center gap-4 text-xs text-muted-foreground mb-2">
                   <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-400 inline-block" /> รับเข้า</span>
                   <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-indigo-400 inline-block" /> ขายออก</span>
                 </div>
@@ -646,16 +646,16 @@ export default function StockPage() {
                   const maxVal = Math.max(...dashboard.stockMovement.map((x) => Math.max(x.in, x.out)), 1);
                   return dashboard.stockMovement.map((m) => (
                     <div key={m.month} className="space-y-1">
-                      <div className="text-xs text-gray-500 font-medium">{m.month}</div>
+                      <div className="text-xs text-muted-foreground font-medium">{m.month}</div>
                       <div className="flex items-center gap-2">
                         <div className="w-12 text-xs text-right text-green-600">{m.in}</div>
-                        <div className="flex-1 bg-gray-100 rounded-full h-3 overflow-hidden">
+                        <div className="flex-1 bg-muted rounded-full h-3 overflow-hidden">
                           <div className="h-full bg-green-400 rounded-full" style={{ width: `${(m.in / maxVal) * 100}%` }} />
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
                         <div className="w-12 text-xs text-right text-indigo-600">{m.out}</div>
-                        <div className="flex-1 bg-gray-100 rounded-full h-3 overflow-hidden">
+                        <div className="flex-1 bg-muted rounded-full h-3 overflow-hidden">
                           <div className="h-full bg-indigo-400 rounded-full" style={{ width: `${(m.out / maxVal) * 100}%` }} />
                         </div>
                       </div>
@@ -667,9 +667,9 @@ export default function StockPage() {
           </div>
 
           {/* Row 4: Category + Brand + Color + Storage Breakdown */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 lg:gap-7.5">
             {/* By Category */}
-            <div className="bg-white rounded-lg border p-5">
+            <div className="rounded-lg border p-5">
               <SectionTitle>ตามประเภท</SectionTitle>
               <div className="space-y-2">
                 {dashboard.byCategory.map((item) => (
@@ -681,12 +681,12 @@ export default function StockPage() {
                     color="bg-primary-400"
                   />
                 ))}
-                {dashboard.byCategory.length === 0 && <div className="text-sm text-gray-400 text-center py-2">-</div>}
+                {dashboard.byCategory.length === 0 && <div className="text-sm text-muted-foreground text-center py-2">-</div>}
               </div>
             </div>
 
             {/* By Brand */}
-            <div className="bg-white rounded-lg border p-5">
+            <div className="rounded-lg border p-5">
               <SectionTitle>ตามแบรนด์</SectionTitle>
               <div className="space-y-2">
                 {dashboard.byBrand.slice(0, 8).map((item) => (
@@ -698,12 +698,12 @@ export default function StockPage() {
                     color="bg-primary-400"
                   />
                 ))}
-                {dashboard.byBrand.length === 0 && <div className="text-sm text-gray-400 text-center py-2">-</div>}
+                {dashboard.byBrand.length === 0 && <div className="text-sm text-muted-foreground text-center py-2">-</div>}
               </div>
             </div>
 
             {/* By Color */}
-            <div className="bg-white rounded-lg border p-5">
+            <div className="rounded-lg border p-5">
               <SectionTitle>ตามสี</SectionTitle>
               <div className="space-y-2">
                 {dashboard.byColor.slice(0, 8).map((item) => (
@@ -715,12 +715,12 @@ export default function StockPage() {
                     color="bg-pink-400"
                   />
                 ))}
-                {dashboard.byColor.length === 0 && <div className="text-sm text-gray-400 text-center py-2">-</div>}
+                {dashboard.byColor.length === 0 && <div className="text-sm text-muted-foreground text-center py-2">-</div>}
               </div>
             </div>
 
             {/* By Storage */}
-            <div className="bg-white rounded-lg border p-5">
+            <div className="rounded-lg border p-5">
               <SectionTitle>ตามความจุ</SectionTitle>
               <div className="space-y-2">
                 {dashboard.byStorage.slice(0, 8).map((item) => (
@@ -732,13 +732,13 @@ export default function StockPage() {
                     color="bg-teal-400"
                   />
                 ))}
-                {dashboard.byStorage.length === 0 && <div className="text-sm text-gray-400 text-center py-2">-</div>}
+                {dashboard.byStorage.length === 0 && <div className="text-sm text-muted-foreground text-center py-2">-</div>}
               </div>
             </div>
           </div>
 
           {/* Row 5: Margin Overview */}
-          <div className="bg-white rounded-lg border p-5">
+          <div className="rounded-lg border p-5">
             <SectionTitle>กำไรเฉลี่ย (Margin Overview) - สินค้าพร้อมขาย</SectionTitle>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <StatCard
@@ -767,9 +767,9 @@ export default function StockPage() {
           </div>
 
           {/* Row 7: Top Sellers + Slow Movers */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:gap-7.5">
             {/* Top Sellers */}
-            <div className="bg-white rounded-lg border p-5">
+            <div className="rounded-lg border p-5">
               <SectionTitle>สินค้าขายดี (6 เดือนล่าสุด)</SectionTitle>
               {dashboard.topSellers.length > 0 ? (
                 <div className="space-y-2">
@@ -777,24 +777,24 @@ export default function StockPage() {
                     <div key={item.name} className="flex items-center gap-3">
                       <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
                         i === 0 ? 'bg-yellow-100 text-yellow-700' :
-                        i === 1 ? 'bg-gray-100 text-gray-600' :
+                        i === 1 ? 'bg-muted text-muted-foreground' :
                         i === 2 ? 'bg-orange-100 text-orange-700' :
-                        'bg-gray-50 text-gray-500'
+                        'bg-muted text-muted-foreground'
                       }`}>{i + 1}</span>
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-gray-900 truncate">{item.name}</div>
+                        <div className="text-sm font-medium text-foreground truncate">{item.name}</div>
                       </div>
                       <span className="text-sm font-bold text-indigo-600">{item.count} ชิ้น</span>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="text-sm text-gray-400 text-center py-4">ยังไม่มีข้อมูลการขาย</div>
+                <div className="text-sm text-muted-foreground text-center py-4">ยังไม่มีข้อมูลการขาย</div>
               )}
             </div>
 
             {/* Slow Movers */}
-            <div className="bg-white rounded-lg border p-5">
+            <div className="rounded-lg border p-5">
               <SectionTitle>สินค้าค้างสต๊อคนานสุด</SectionTitle>
               {dashboard.slowMovers.length > 0 ? (
                 <div className="space-y-2">
@@ -806,8 +806,8 @@ export default function StockPage() {
                         'bg-yellow-100 text-yellow-700'
                       }`}>{i + 1}</span>
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-gray-900 truncate">{item.name}</div>
-                        <div className="text-xs text-gray-400">{(Number(item.costPrice) || 0).toLocaleString()} ฿</div>
+                        <div className="text-sm font-medium text-foreground truncate">{item.name}</div>
+                        <div className="text-xs text-muted-foreground">{(Number(item.costPrice) || 0).toLocaleString()} ฿</div>
                       </div>
                       <span className={`text-sm font-bold ${item.days > 90 ? 'text-red-600' : item.days > 60 ? 'text-orange-600' : 'text-yellow-600'}`}>
                         {item.days} วัน
@@ -816,7 +816,7 @@ export default function StockPage() {
                   ))}
                 </div>
               ) : (
-                <div className="text-sm text-gray-400 text-center py-4">ไม่มีสินค้าในสต๊อค</div>
+                <div className="text-sm text-muted-foreground text-center py-4">ไม่มีสินค้าในสต๊อค</div>
               )}
             </div>
           </div>
@@ -824,7 +824,7 @@ export default function StockPage() {
       )}
 
       {activeTab === 'dashboard' && !dashboard && (
-        <div className="bg-white rounded-lg border p-8 text-center text-gray-500">
+        <div className="rounded-lg border p-8 text-center text-muted-foreground">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-3"></div>
           กำลังโหลด Dashboard...
         </div>
@@ -874,7 +874,7 @@ export default function StockPage() {
             {filterBranch && (
               <button
                 onClick={() => setFilterBranch('')}
-                className="px-3 py-2 text-sm text-primary-600 hover:text-primary-700"
+                className="px-3 py-2 text-sm text-primary hover:text-primary-700"
               >
                 ล้างตัวกรอง
               </button>
@@ -905,13 +905,13 @@ export default function StockPage() {
       >
         <form onSubmit={handleBulkTransfer} className="space-y-4">
           {/* Selected items summary */}
-          <div className="bg-gray-50 rounded-lg p-3 max-h-48 overflow-y-auto">
-            <div className="text-xs font-medium text-gray-500 mb-2">สินค้าที่เลือก:</div>
+          <div className="bg-muted rounded-lg p-3 max-h-48 overflow-y-auto">
+            <div className="text-xs font-medium text-muted-foreground mb-2">สินค้าที่เลือก:</div>
             <div className="space-y-1">
               {listProducts.filter(p => selectedIds.has(p.id)).map(p => (
                 <div key={p.id} className="flex items-center justify-between text-sm">
-                  <span className="text-gray-700">{p.brand} {p.model}</span>
-                  <span className="text-xs text-gray-400 font-mono">{p.imeiSerial || '-'}</span>
+                  <span className="text-foreground">{p.brand} {p.model}</span>
+                  <span className="text-xs text-muted-foreground font-mono">{p.imeiSerial || '-'}</span>
                 </div>
               ))}
             </div>
@@ -919,7 +919,7 @@ export default function StockPage() {
 
           {/* Destination branch */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">สาขาปลายทาง</label>
+            <label className="block text-sm font-medium text-foreground mb-1">สาขาปลายทาง</label>
             <select
               value={transferBranchId}
               onChange={(e) => setTransferBranchId(e.target.value)}
@@ -935,7 +935,7 @@ export default function StockPage() {
 
           {/* Notes */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ (ไม่บังคับ)</label>
+            <label className="block text-sm font-medium text-foreground mb-1">หมายเหตุ (ไม่บังคับ)</label>
             <textarea
               value={transferNotes}
               onChange={(e) => setTransferNotes(e.target.value)}
@@ -950,14 +950,14 @@ export default function StockPage() {
             <button
               type="button"
               onClick={() => setShowBulkTransfer(false)}
-              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-input rounded-lg"
+              className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground border border-input rounded-lg"
             >
               ยกเลิก
             </button>
             <button
               type="submit"
               disabled={bulkTransferMutation.isPending || !transferBranchId}
-              className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50 transition-colors"
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
             >
               {bulkTransferMutation.isPending ? 'กำลังโอน...' : `โอน ${selectedIds.size} รายการ`}
             </button>
@@ -975,8 +975,8 @@ export default function StockPage() {
         {editingProduct && (
           <div className="space-y-4">
             {/* Cost price reference */}
-            <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3">
-              ราคาทุน: <span className="font-medium text-gray-700">{parseFloat(editingProduct.costPrice).toLocaleString()} ฿</span>
+            <div className="text-xs text-muted-foreground bg-muted rounded-lg p-3">
+              ราคาทุน: <span className="font-medium text-foreground">{parseFloat(editingProduct.costPrice).toLocaleString()} ฿</span>
             </div>
 
             {/* Existing prices list */}
@@ -992,7 +992,7 @@ export default function StockPage() {
                           value={priceForm.label}
                           onChange={(e) => setPriceForm({ ...priceForm, label: e.target.value })}
                           placeholder="ชื่อราคา"
-                          className="px-2 py-1.5 border border-gray-300 rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                          className="px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
                           required
                         />
                         <input
@@ -1001,28 +1001,28 @@ export default function StockPage() {
                           value={priceForm.amount}
                           onChange={(e) => setPriceForm({ ...priceForm, amount: e.target.value })}
                           placeholder="ราคา (บาท)"
-                          className="px-2 py-1.5 border border-gray-300 rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                          className="px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
                           required
                         />
                       </div>
                       <div className="flex items-center justify-between">
-                        <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                        <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
                           <input
                             type="checkbox"
                             checked={priceForm.isDefault}
                             onChange={(e) => setPriceForm({ ...priceForm, isDefault: e.target.checked })}
-                            className="rounded text-primary-600"
+                            className="rounded text-primary"
                           />
                           ค่าเริ่มต้น
                         </label>
                         <div className="flex gap-2">
-                          <button type="button" onClick={cancelEditPrice} className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700">
+                          <button type="button" onClick={cancelEditPrice} className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground">
                             ยกเลิก
                           </button>
                           <button
                             type="submit"
                             disabled={priceMutation.isPending}
-                            className="px-3 py-1 bg-primary-600 text-white rounded text-xs font-medium hover:bg-primary-700 disabled:opacity-50"
+                            className="px-3 py-1 bg-primary text-primary-foreground rounded text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
                           >
                             {priceMutation.isPending ? 'บันทึก...' : 'บันทึก'}
                           </button>
@@ -1036,9 +1036,9 @@ export default function StockPage() {
                     </form>
                   ) : (
                     /* Display row */
-                    <div className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-gray-50 border border-transparent hover:border-gray-200">
+                    <div className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-muted/50 border border-transparent hover:border-border">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-gray-900">{price.label}</span>
+                        <span className="text-sm font-medium text-foreground">{price.label}</span>
                         {price.isDefault && (
                           <span className="px-1.5 py-0.5 bg-primary-100 text-primary-700 text-xs rounded font-medium">
                             ค่าเริ่มต้น
@@ -1050,7 +1050,7 @@ export default function StockPage() {
                         <div className="flex gap-1">
                           <button
                             onClick={() => startEditPrice(price)}
-                            className="p-1 text-gray-400 hover:text-primary-600 transition-colors"
+                            className="p-1 text-muted-foreground hover:text-primary transition-colors"
                             title="แก้ไข"
                           >
                             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1063,7 +1063,7 @@ export default function StockPage() {
                                 deletePriceMutation.mutate({ productId: editingProduct.id, priceId: price.id });
                               }
                             }}
-                            className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                            className="p-1 text-muted-foreground hover:text-red-500 transition-colors"
                             title="ลบ"
                           >
                             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1078,7 +1078,7 @@ export default function StockPage() {
               ))}
 
               {editingProduct.prices.length === 0 && !editingPriceId && (
-                <p className="text-sm text-gray-400 text-center py-3">ยังไม่มีราคาขาย</p>
+                <p className="text-sm text-muted-foreground text-center py-3">ยังไม่มีราคาขาย</p>
               )}
             </div>
 
@@ -1092,7 +1092,7 @@ export default function StockPage() {
                     value={priceForm.label}
                     onChange={(e) => setPriceForm({ ...priceForm, label: e.target.value })}
                     placeholder='เช่น "ราคาเงินสด"'
-                    className="px-2 py-1.5 border border-gray-300 rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                    className="px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
                     required
                   />
                   <input
@@ -1101,22 +1101,22 @@ export default function StockPage() {
                     value={priceForm.amount}
                     onChange={(e) => setPriceForm({ ...priceForm, amount: e.target.value })}
                     placeholder="ราคา (บาท)"
-                    className="px-2 py-1.5 border border-gray-300 rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                    className="px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
                     required
                   />
                 </div>
                 <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
                     <input
                       type="checkbox"
                       checked={priceForm.isDefault}
                       onChange={(e) => setPriceForm({ ...priceForm, isDefault: e.target.checked })}
-                      className="rounded text-primary-600"
+                      className="rounded text-primary"
                     />
                     ค่าเริ่มต้น
                   </label>
                   <div className="flex gap-2">
-                    <button type="button" onClick={cancelEditPrice} className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700">
+                    <button type="button" onClick={cancelEditPrice} className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground">
                       ยกเลิก
                     </button>
                     <button
@@ -1133,7 +1133,7 @@ export default function StockPage() {
               <button
                 type="button"
                 onClick={startAddPrice}
-                className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-primary-400 hover:text-primary-600 transition-colors"
+                className="w-full py-2 border-2 border-dashed border-input rounded-lg text-sm text-muted-foreground hover:border-primary-400 hover:text-primary transition-colors"
               >
                 + เพิ่มราคาใหม่
               </button>
@@ -1144,7 +1144,7 @@ export default function StockPage() {
               <button
                 type="button"
                 onClick={() => setEditingProduct(null)}
-                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
+                className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground"
               >
                 ปิด
               </button>

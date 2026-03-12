@@ -176,8 +176,8 @@ export default function InterestConfigPage() {
     return { down, loan, interest, commission, vatAmount, total, monthly, months };
   };
 
-  const inputClass = 'w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500';
-  const errorInputClass = 'w-full px-3 py-2 border border-red-400 rounded-lg text-sm outline-none focus:ring-2 focus:ring-red-400 focus:border-red-400';
+  const inputClass = 'w-full px-3 py-2 border rounded-lg text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background';
+  const errorInputClass = 'w-full px-3 py-2 border border-red-400 rounded-lg text-sm outline-none focus-visible:ring-2 focus-visible:ring-red-400';
 
   return (
     <div>
@@ -185,7 +185,7 @@ export default function InterestConfigPage() {
         title="ตั้งค่าดอกเบี้ย"
         subtitle="กำหนดอัตราดอกเบี้ยและเงื่อนไขตามประเภทสินค้า"
         action={
-          <button onClick={openCreate} className="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700">
+          <button onClick={openCreate} className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90">
             + สร้าง Config
           </button>
         }
@@ -193,24 +193,24 @@ export default function InterestConfigPage() {
 
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600" />
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
         </div>
       ) : configs.length === 0 ? (
-        <div className="text-center py-12 bg-white rounded-lg border">
-          <div className="text-gray-400 text-sm mb-3">ยังไม่มีการตั้งค่าดอกเบี้ย</div>
-          <button onClick={openCreate} className="text-sm text-primary-600 hover:underline">สร้างตั้งค่าแรก</button>
+        <div className="text-center py-12 bg-card rounded-lg border">
+          <div className="text-muted-foreground text-sm mb-3">ยังไม่มีการตั้งค่าดอกเบี้ย</div>
+          <button onClick={openCreate} className="text-sm text-primary hover:underline">สร้างตั้งค่าแรก</button>
         </div>
       ) : (
-        <div className="grid gap-4">
+        <div className="grid gap-5 lg:gap-7.5">
           {configs.map((config) => {
             const sim = simulateCalc(config);
             return (
-              <div key={config.id} className={`bg-white rounded-lg border p-5 ${!config.isActive ? 'opacity-50' : ''}`}>
+              <div key={config.id} className={`bg-card rounded-lg border p-5 ${!config.isActive ? 'opacity-50' : ''}`}>
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
-                      <h3 className="text-lg font-semibold text-gray-900">{config.name}</h3>
-                      {!config.isActive && <span className="text-xs px-2 py-0.5 bg-gray-200 rounded-full">ปิดใช้งาน</span>}
+                      <h3 className="text-lg font-semibold text-foreground">{config.name}</h3>
+                      {!config.isActive && <span className="text-xs px-2 py-0.5 bg-muted rounded-full">ปิดใช้งาน</span>}
                     </div>
                     <div className="flex flex-wrap gap-1 mb-3">
                       {config.productCategories.map((cat) => (
@@ -221,47 +221,47 @@ export default function InterestConfigPage() {
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                       <div>
-                        <div className="text-xs text-gray-500">ดอกเบี้ย</div>
+                        <div className="text-xs text-muted-foreground">ดอกเบี้ย</div>
                         <div className="text-lg font-bold text-primary-700">{(parseFloat(config.interestRate) * 100).toFixed(1)}%</div>
                       </div>
                       <div>
-                        <div className="text-xs text-gray-500">ดาวน์ขั้นต่ำ</div>
+                        <div className="text-xs text-muted-foreground">ดาวน์ขั้นต่ำ</div>
                         <div className="text-lg font-bold">{(parseFloat(config.minDownPaymentPct) * 100).toFixed(0)}%</div>
                       </div>
                       <div>
-                        <div className="text-xs text-gray-500">ค่าคอมหน้าร้าน</div>
+                        <div className="text-xs text-muted-foreground">ค่าคอมหน้าร้าน</div>
                         <div className="text-lg font-bold">{(parseFloat(config.storeCommissionPct) * 100).toFixed(0)}%</div>
                       </div>
                       <div>
-                        <div className="text-xs text-gray-500">VAT</div>
+                        <div className="text-xs text-muted-foreground">VAT</div>
                         <div className="text-lg font-bold">{(parseFloat(config.vatPct) * 100).toFixed(0)}%</div>
                       </div>
                       <div>
-                        <div className="text-xs text-gray-500">งวดต่ำสุด</div>
+                        <div className="text-xs text-muted-foreground">งวดต่ำสุด</div>
                         <div className="text-lg font-bold">{config.minInstallmentMonths} เดือน</div>
                       </div>
                       <div>
-                        <div className="text-xs text-gray-500">งวดสูงสุด</div>
+                        <div className="text-xs text-muted-foreground">งวดสูงสุด</div>
                         <div className="text-lg font-bold">{config.maxInstallmentMonths} เดือน</div>
                       </div>
                     </div>
 
                     {/* Simulation */}
-                    <div className="mt-3 bg-gray-50 rounded-lg p-3">
-                      <div className="text-xs text-gray-500 mb-1">ตัวอย่างคำนวณ (ราคา 12,900 บาท / {sim.months} งวด)</div>
+                    <div className="mt-3 bg-muted rounded-lg p-3">
+                      <div className="text-xs text-muted-foreground mb-1">ตัวอย่างคำนวณ (ราคา 12,900 บาท / {sim.months} งวด)</div>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-                        <div><span className="text-gray-500">ดาวน์:</span> <span className="font-medium">{sim.down.toLocaleString()} ฿</span></div>
-                        <div><span className="text-gray-500">ยอดปล่อย:</span> <span className="font-medium">{sim.loan.toLocaleString()} ฿</span></div>
-                        <div><span className="text-gray-500">ดอกเบี้ย:</span> <span className="font-medium">{sim.interest.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span></div>
-                        <div><span className="text-gray-500">ค่าคอม:</span> <span className="font-medium">{sim.commission.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span></div>
-                        <div><span className="text-gray-500">VAT:</span> <span className="font-medium">{sim.vatAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span></div>
-                        <div><span className="text-gray-500">รวมจัดไฟแนนซ์:</span> <span className="font-medium">{sim.total.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span></div>
-                        <div className="col-span-2"><span className="text-gray-500">ค่างวด/เดือน:</span> <span className="font-bold text-primary-700">{sim.monthly.toLocaleString()} ฿</span></div>
+                        <div><span className="text-muted-foreground">ดาวน์:</span> <span className="font-medium">{sim.down.toLocaleString()} ฿</span></div>
+                        <div><span className="text-muted-foreground">ยอดปล่อย:</span> <span className="font-medium">{sim.loan.toLocaleString()} ฿</span></div>
+                        <div><span className="text-muted-foreground">ดอกเบี้ย:</span> <span className="font-medium">{sim.interest.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span></div>
+                        <div><span className="text-muted-foreground">ค่าคอม:</span> <span className="font-medium">{sim.commission.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span></div>
+                        <div><span className="text-muted-foreground">VAT:</span> <span className="font-medium">{sim.vatAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span></div>
+                        <div><span className="text-muted-foreground">รวมจัดไฟแนนซ์:</span> <span className="font-medium">{sim.total.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span></div>
+                        <div className="col-span-2"><span className="text-muted-foreground">ค่างวด/เดือน:</span> <span className="font-bold text-primary-700">{sim.monthly.toLocaleString()} ฿</span></div>
                       </div>
                     </div>
                   </div>
                   <div className="flex gap-2 ml-4">
-                    <button onClick={() => openEdit(config)} className="text-xs text-primary-600 hover:underline px-2 py-1">แก้ไข</button>
+                    <button onClick={() => openEdit(config)} className="text-xs text-primary hover:underline px-2 py-1">แก้ไข</button>
                     <button
                       onClick={() => { if (confirm('ต้องการลบ?')) deleteMutation.mutate(config.id); }}
                       className="text-xs text-red-600 hover:underline px-2 py-1"
@@ -282,20 +282,20 @@ export default function InterestConfigPage() {
           <div className="space-y-4">
             {/* ชื่อ */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อ</label>
+              <label className="block text-sm font-medium text-foreground mb-1">ชื่อ</label>
               <input
                 type="text"
                 value={form.name}
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                 placeholder="เช่น มือ 1, มือ 2..."
-                className={touched && errors.name ? errorInputClass : `${inputClass} border-gray-300`}
+                className={touched && errors.name ? errorInputClass : `${inputClass} border-input`}
               />
               {touched && errors.name && <p className="text-xs text-red-500 mt-1">{errors.name}</p>}
             </div>
 
             {/* ประเภทสินค้า */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">ประเภทสินค้า</label>
+              <label className="block text-sm font-medium text-foreground mb-1">ประเภทสินค้า</label>
               <div className="flex flex-wrap gap-2">
                 {CATEGORIES.map((cat) => (
                   <button
@@ -304,8 +304,8 @@ export default function InterestConfigPage() {
                     onClick={() => toggleCategory(cat.value)}
                     className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
                       form.productCategories.includes(cat.value)
-                        ? 'bg-primary-600 text-white border-primary-600'
-                        : 'bg-white text-gray-700 border-gray-300 hover:border-primary-300'
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'bg-card text-foreground border-input hover:border-primary/50'
                     }`}
                   >
                     {cat.label}
@@ -318,7 +318,7 @@ export default function InterestConfigPage() {
             {/* ดอกเบี้ย + ดาวน์ขั้นต่ำ */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">ดอกเบี้ย (%)</label>
+                <label className="block text-sm font-medium text-foreground mb-1">ดอกเบี้ย (%)</label>
                 <input
                   type="number"
                   value={form.interestRate}
@@ -326,12 +326,12 @@ export default function InterestConfigPage() {
                   step="0.1"
                   min="0"
                   max="100"
-                  className={touched && errors.interestRate ? errorInputClass : `${inputClass} border-gray-300`}
+                  className={touched && errors.interestRate ? errorInputClass : `${inputClass} border-input`}
                 />
                 {touched && errors.interestRate && <p className="text-xs text-red-500 mt-1">{errors.interestRate}</p>}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">ดาวน์ขั้นต่ำ (%)</label>
+                <label className="block text-sm font-medium text-foreground mb-1">ดาวน์ขั้นต่ำ (%)</label>
                 <input
                   type="number"
                   value={form.minDownPaymentPct}
@@ -339,7 +339,7 @@ export default function InterestConfigPage() {
                   step="1"
                   min="0"
                   max="100"
-                  className={touched && errors.minDownPaymentPct ? errorInputClass : `${inputClass} border-gray-300`}
+                  className={touched && errors.minDownPaymentPct ? errorInputClass : `${inputClass} border-input`}
                 />
                 {touched && errors.minDownPaymentPct && <p className="text-xs text-red-500 mt-1">{errors.minDownPaymentPct}</p>}
               </div>
@@ -348,7 +348,7 @@ export default function InterestConfigPage() {
             {/* ค่าคอม + VAT */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">ค่าคอมหน้าร้าน (%)</label>
+                <label className="block text-sm font-medium text-foreground mb-1">ค่าคอมหน้าร้าน (%)</label>
                 <input
                   type="number"
                   value={form.storeCommissionPct}
@@ -356,12 +356,12 @@ export default function InterestConfigPage() {
                   step="1"
                   min="0"
                   max="100"
-                  className={touched && errors.storeCommissionPct ? errorInputClass : `${inputClass} border-gray-300`}
+                  className={touched && errors.storeCommissionPct ? errorInputClass : `${inputClass} border-input`}
                 />
                 {touched && errors.storeCommissionPct && <p className="text-xs text-red-500 mt-1">{errors.storeCommissionPct}</p>}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">VAT (%)</label>
+                <label className="block text-sm font-medium text-foreground mb-1">VAT (%)</label>
                 <input
                   type="number"
                   value={form.vatPct}
@@ -369,7 +369,7 @@ export default function InterestConfigPage() {
                   step="0.1"
                   min="0"
                   max="100"
-                  className={touched && errors.vatPct ? errorInputClass : `${inputClass} border-gray-300`}
+                  className={touched && errors.vatPct ? errorInputClass : `${inputClass} border-input`}
                 />
                 {touched && errors.vatPct && <p className="text-xs text-red-500 mt-1">{errors.vatPct}</p>}
               </div>
@@ -378,24 +378,24 @@ export default function InterestConfigPage() {
             {/* งวดต่ำสุด + สูงสุด */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">งวดต่ำสุด (เดือน)</label>
+                <label className="block text-sm font-medium text-foreground mb-1">งวดต่ำสุด (เดือน)</label>
                 <input
                   type="number"
                   value={form.minInstallmentMonths}
                   onChange={(e) => setForm((f) => ({ ...f, minInstallmentMonths: Number(e.target.value) }))}
                   min="1"
-                  className={touched && errors.minInstallmentMonths ? errorInputClass : `${inputClass} border-gray-300`}
+                  className={touched && errors.minInstallmentMonths ? errorInputClass : `${inputClass} border-input`}
                 />
                 {touched && errors.minInstallmentMonths && <p className="text-xs text-red-500 mt-1">{errors.minInstallmentMonths}</p>}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">งวดสูงสุด (เดือน)</label>
+                <label className="block text-sm font-medium text-foreground mb-1">งวดสูงสุด (เดือน)</label>
                 <input
                   type="number"
                   value={form.maxInstallmentMonths}
                   onChange={(e) => setForm((f) => ({ ...f, maxInstallmentMonths: Number(e.target.value) }))}
                   min="1"
-                  className={touched && errors.maxInstallmentMonths ? errorInputClass : `${inputClass} border-gray-300`}
+                  className={touched && errors.maxInstallmentMonths ? errorInputClass : `${inputClass} border-input`}
                 />
                 {touched && errors.maxInstallmentMonths && <p className="text-xs text-red-500 mt-1">{errors.maxInstallmentMonths}</p>}
               </div>
@@ -403,8 +403,8 @@ export default function InterestConfigPage() {
 
             {/* Preview Calculation */}
             {form.name && form.interestRate > 0 && form.minDownPaymentPct > 0 && (
-              <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-                <div className="text-xs font-medium text-gray-600 mb-2">ตัวอย่างคำนวณ (ราคาสินค้า 12,900 บาท / {form.maxInstallmentMonths} งวด)</div>
+              <div className="bg-muted rounded-lg p-3 border border-border">
+                <div className="text-xs font-medium text-muted-foreground mb-2">ตัวอย่างคำนวณ (ราคาสินค้า 12,900 บาท / {form.maxInstallmentMonths} งวด)</div>
                 {(() => {
                   const price = 12900;
                   const down = price * (form.minDownPaymentPct / 100);
@@ -422,8 +422,8 @@ export default function InterestConfigPage() {
                       <div>ค่าคอม 10%: <span className="font-medium">{commission.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span></div>
                       <div>VAT: <span className="font-medium">{vatAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span></div>
                       <div>รวมจัดไฟแนนซ์: <span className="font-medium">{total.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span></div>
-                      <div className="col-span-2 pt-1 border-t border-gray-200">
-                        <span className="text-gray-600">ค่างวด/เดือน:</span> <span className="font-bold text-primary-700">{monthly.toLocaleString()} ฿</span>
+                      <div className="col-span-2 pt-1 border-t border-border">
+                        <span className="text-muted-foreground">ค่างวด/เดือน:</span> <span className="font-bold text-primary-700">{monthly.toLocaleString()} ฿</span>
                       </div>
                     </div>
                   );
@@ -433,11 +433,11 @@ export default function InterestConfigPage() {
 
             {/* Buttons */}
             <div className="flex gap-3 pt-2">
-              <button onClick={closeModal} className="flex-1 px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">ยกเลิก</button>
+              <button onClick={closeModal} className="flex-1 px-4 py-2 text-sm border border-input rounded-lg hover:bg-muted/50">ยกเลิก</button>
               <button
                 onClick={handleSave}
                 disabled={saveMutation.isPending}
-                className="flex-1 px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+                className="flex-1 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
               >
                 {saveMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
               </button>

@@ -84,7 +84,7 @@ export default function SlipReviewPage() {
       REJECTED: 'ปฏิเสธ',
     };
     return (
-      <span className={`px-2 py-1 rounded-full text-xs font-medium ${styles[status] || 'bg-gray-100'}`}>
+      <span className={`px-2 py-1 rounded-full text-xs font-medium ${styles[status] || 'bg-muted'}`}>
         {labels[status] || status}
       </span>
     );
@@ -105,8 +105,8 @@ export default function SlipReviewPage() {
             onClick={() => setStatusFilter(status)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               statusFilter === status
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted text-muted-foreground hover:bg-muted/80'
             }`}
           >
             {{ PENDING_REVIEW: 'รอตรวจ', APPROVED: 'อนุมัติแล้ว', REJECTED: 'ปฏิเสธแล้ว' }[status]}
@@ -116,15 +116,15 @@ export default function SlipReviewPage() {
 
       {/* Evidence List */}
       {isLoading ? (
-        <div className="text-center py-12 text-gray-500">กำลังโหลด...</div>
+        <div className="text-center py-12 text-muted-foreground">กำลังโหลด...</div>
       ) : evidences.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">ไม่มีสลิปที่ต้องตรวจสอบ</div>
+        <div className="text-center py-12 text-muted-foreground">ไม่มีสลิปที่ต้องตรวจสอบ</div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {evidences.map((ev) => (
             <div
               key={ev.id}
-              className="bg-white rounded-xl shadow-sm border p-4 cursor-pointer hover:shadow-md transition-shadow"
+              className="bg-card rounded-xl shadow-xs shadow-black/5 border p-4 cursor-pointer hover:shadow-md transition-shadow"
               onClick={() => {
                 setSelectedEvidence(ev);
                 setApproveAmount(ev.amount?.toString() || '');
@@ -133,7 +133,7 @@ export default function SlipReviewPage() {
               <div className="flex justify-between items-start mb-3">
                 <div>
                   <p className="font-medium">{ev.contract.customer.name}</p>
-                  <p className="text-sm text-gray-500">{ev.contract.contractNumber}</p>
+                  <p className="text-sm text-muted-foreground">{ev.contract.contractNumber}</p>
                 </div>
                 {statusBadge(ev.status)}
               </div>
@@ -141,10 +141,10 @@ export default function SlipReviewPage() {
               <img
                 src={ev.imageUrl}
                 alt="สลิป"
-                className="w-full h-40 object-cover rounded-lg bg-gray-100 mb-3"
+                className="w-full h-40 object-cover rounded-lg bg-muted mb-3"
               />
 
-              <div className="flex justify-between text-sm text-gray-500">
+              <div className="flex justify-between text-sm text-muted-foreground">
                 <span>{new Date(ev.createdAt).toLocaleString('th-TH')}</span>
                 {ev.amount && (
                   <span className="font-medium text-green-600">
@@ -181,21 +181,21 @@ export default function SlipReviewPage() {
             {/* Details & Actions */}
             <div className="space-y-4">
               <div>
-                <h3 className="text-sm font-medium text-gray-500">ข้อมูลสัญญา</h3>
+                <h3 className="text-sm font-medium text-muted-foreground">ข้อมูลสัญญา</h3>
                 <p className="font-medium">{selectedEvidence.contract.contractNumber}</p>
-                <p className="text-sm text-gray-600">{selectedEvidence.contract.customer.name}</p>
-                <p className="text-sm text-gray-600">{selectedEvidence.contract.customer.phone}</p>
+                <p className="text-sm text-muted-foreground">{selectedEvidence.contract.customer.name}</p>
+                <p className="text-sm text-muted-foreground">{selectedEvidence.contract.customer.phone}</p>
               </div>
 
               <div>
-                <h3 className="text-sm font-medium text-gray-500">เวลาส่ง</h3>
+                <h3 className="text-sm font-medium text-muted-foreground">เวลาส่ง</h3>
                 <p>{new Date(selectedEvidence.createdAt).toLocaleString('th-TH')}</p>
               </div>
 
               {selectedEvidence.status === 'PENDING_REVIEW' && (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-sm font-medium text-foreground mb-1">
                       จำนวนเงิน (บาท)
                     </label>
                     <input
@@ -208,7 +208,7 @@ export default function SlipReviewPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-sm font-medium text-foreground mb-1">
                       ช่องทาง
                     </label>
                     <select
@@ -222,7 +222,7 @@ export default function SlipReviewPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-sm font-medium text-foreground mb-1">
                       หมายเหตุ
                     </label>
                     <textarea
@@ -238,14 +238,14 @@ export default function SlipReviewPage() {
                     <button
                       onClick={() => approveMutation.mutate(selectedEvidence.id)}
                       disabled={!approveAmount || approveMutation.isPending}
-                      className="flex-1 bg-green-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                      className="flex-1 bg-green-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-green-700 disabled:bg-muted disabled:cursor-not-allowed"
                     >
                       {approveMutation.isPending ? 'กำลังบันทึก...' : 'อนุมัติ'}
                     </button>
                     <button
                       onClick={() => rejectMutation.mutate(selectedEvidence.id)}
                       disabled={rejectMutation.isPending}
-                      className="flex-1 bg-red-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-red-700 disabled:bg-gray-300"
+                      className="flex-1 bg-red-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-red-700 disabled:bg-muted"
                     >
                       {rejectMutation.isPending ? 'กำลังบันทึก...' : 'ปฏิเสธ'}
                     </button>
@@ -255,11 +255,11 @@ export default function SlipReviewPage() {
 
               {selectedEvidence.status !== 'PENDING_REVIEW' && (
                 <div>
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm text-muted-foreground">
                     ตรวจสอบโดย: {selectedEvidence.reviewedBy?.name || '-'}
                   </p>
                   {selectedEvidence.reviewNote && (
-                    <p className="text-sm text-gray-500 mt-1">
+                    <p className="text-sm text-muted-foreground mt-1">
                       หมายเหตุ: {selectedEvidence.reviewNote}
                     </p>
                   )}

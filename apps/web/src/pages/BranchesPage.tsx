@@ -122,7 +122,7 @@ export default function BranchesPage() {
       key: '_count',
       label: 'ข้อมูล',
       render: (b: Branch) => (
-        <div className="text-xs text-gray-500">
+        <div className="text-xs text-muted-foreground">
           {b._count.users} ผู้ใช้ | {b._count.products} สินค้า | {b._count.contracts} สัญญา
         </div>
       ),
@@ -135,7 +135,7 @@ export default function BranchesPage() {
           <div className="flex gap-2">
             <button
               onClick={() => openEdit(b)}
-              className="text-primary-600 hover:text-primary-700 text-sm font-medium"
+              className="text-primary hover:text-primary/80 text-sm font-medium"
             >
               แก้ไข
             </button>
@@ -146,7 +146,7 @@ export default function BranchesPage() {
                     setMainWarehouseMutation.mutate(b.id);
                   }
                 }}
-                className="text-primary-600 hover:text-primary-700 text-sm font-medium"
+                className="text-primary hover:text-primary/80 text-sm font-medium"
               >
                 ตั้งเป็นคลังกลาง
               </button>
@@ -165,7 +165,7 @@ export default function BranchesPage() {
           user?.role === 'OWNER' ? (
             <button
               onClick={openCreate}
-              className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
             >
               + เพิ่มสาขา
             </button>
@@ -180,39 +180,39 @@ export default function BranchesPage() {
         onClose={closeModal}
         title={editingBranch ? 'แก้ไขสาขา' : 'เพิ่มสาขาใหม่'}
       >
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-5 lg:gap-7.5">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อสาขา *</label>
+            <label className="block text-sm font-medium text-foreground mb-1">ชื่อสาขา *</label>
             <input
               type="text"
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+              className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
               required
             />
           </div>
           <AddressForm value={address} onChange={setAddress} label="ที่ตั้ง" />
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">โทรศัพท์</label>
+            <label className="block text-sm font-medium text-foreground mb-1">โทรศัพท์</label>
             <input
               type="text"
               value={form.phone}
               onChange={(e) => setForm({ ...form, phone: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+              className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
             />
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <button
               type="button"
               onClick={closeModal}
-              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
+              className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground"
             >
               ยกเลิก
             </button>
             <button
               type="submit"
               disabled={saveMutation.isPending}
-              className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
             >
               {saveMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
             </button>

@@ -192,7 +192,7 @@ export default function NotificationsPage() {
       key: 'message',
       label: 'ข้อความ',
       render: (l: NotificationLog) => (
-        <div className="max-w-xs truncate text-sm text-gray-600">{l.message}</div>
+        <div className="max-w-xs truncate text-sm text-muted-foreground">{l.message}</div>
       ),
     },
     {
@@ -208,7 +208,7 @@ export default function NotificationsPage() {
       key: 'sentAt',
       label: 'เวลาส่ง',
       render: (l: NotificationLog) => (
-        <span className="text-xs text-gray-500">
+        <span className="text-xs text-muted-foreground">
           {l.sentAt ? new Date(l.sentAt).toLocaleString('th-TH') : '-'}
         </span>
       ),
@@ -235,14 +235,14 @@ export default function NotificationsPage() {
       key: 'messageTemplate',
       label: 'ข้อความ',
       render: (t: NotificationTemplate) => (
-        <div className="max-w-xs truncate text-sm text-gray-600">{t.messageTemplate}</div>
+        <div className="max-w-xs truncate text-sm text-muted-foreground">{t.messageTemplate}</div>
       ),
     },
     {
       key: 'isActive',
       label: 'สถานะ',
       render: (t: NotificationTemplate) => (
-        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${t.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${t.isActive ? 'bg-green-100 text-green-700' : 'bg-muted text-muted-foreground'}`}>
           {t.isActive ? 'เปิดใช้งาน' : 'ปิด'}
         </span>
       ),
@@ -253,7 +253,7 @@ export default function NotificationsPage() {
       render: (t: NotificationTemplate) => (
         <button
           onClick={() => openEditTemplate(t)}
-          className="text-primary-600 hover:text-primary-700 text-sm font-medium"
+          className="text-primary hover:text-primary/80 text-sm font-medium"
         >
           แก้ไข
         </button>
@@ -268,20 +268,20 @@ export default function NotificationsPage() {
       {/* Stats */}
       {stats && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white rounded-lg border p-4">
-            <div className="text-sm text-gray-500">ทั้งหมด</div>
+          <div className="bg-card rounded-lg border border-border p-4">
+            <div className="text-sm text-muted-foreground">ทั้งหมด</div>
             <div className="text-2xl font-bold">{stats.total}</div>
           </div>
-          <div className="bg-white rounded-lg border p-4">
-            <div className="text-sm text-gray-500">ส่งสำเร็จ</div>
+          <div className="bg-card rounded-lg border border-border p-4">
+            <div className="text-sm text-muted-foreground">ส่งสำเร็จ</div>
             <div className="text-2xl font-bold text-green-600">{stats.sent}</div>
           </div>
-          <div className="bg-white rounded-lg border p-4">
-            <div className="text-sm text-gray-500">ล้มเหลว</div>
+          <div className="bg-card rounded-lg border border-border p-4">
+            <div className="text-sm text-muted-foreground">ล้มเหลว</div>
             <div className="text-2xl font-bold text-red-600">{stats.failed}</div>
           </div>
-          <div className="bg-white rounded-lg border p-4">
-            <div className="text-sm text-gray-500">รอส่ง</div>
+          <div className="bg-card rounded-lg border border-border p-4">
+            <div className="text-sm text-muted-foreground">รอส่ง</div>
             <div className="text-2xl font-bold text-yellow-600">{stats.pending}</div>
           </div>
         </div>
@@ -292,7 +292,7 @@ export default function NotificationsPage() {
         <button
           onClick={() => sendRemindersMutation.mutate()}
           disabled={sendRemindersMutation.isPending}
-          className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
+          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
         >
           {sendRemindersMutation.isPending ? 'กำลังส่ง...' : 'ส่งเตือนก่อนครบกำหนด'}
         </button>
@@ -309,13 +309,13 @@ export default function NotificationsPage() {
       <div className="flex gap-1 mb-4 border-b">
         <button
           onClick={() => setActiveTab('logs')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${activeTab === 'logs' ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${activeTab === 'logs' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           ประวัติการส่ง
         </button>
         <button
           onClick={() => setActiveTab('templates')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${activeTab === 'templates' ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${activeTab === 'templates' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           Template ข้อความ
         </button>
@@ -327,7 +327,7 @@ export default function NotificationsPage() {
             <select
               value={channelFilter}
               onChange={(e) => setChannelFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+              className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
             >
               <option value="">ทุกช่องทาง</option>
               <option value="LINE">LINE</option>
@@ -337,7 +337,7 @@ export default function NotificationsPage() {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+              className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
             >
               <option value="">ทุกสถานะ</option>
               <option value="SENT">ส่งแล้ว</option>
@@ -354,7 +354,7 @@ export default function NotificationsPage() {
           <div className="mb-4">
             <button
               onClick={openCreateTemplate}
-              className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700"
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90"
             >
               + สร้าง Template
             </button>
@@ -370,24 +370,24 @@ export default function NotificationsPage() {
         title={editingTemplate ? 'แก้ไข Template' : 'สร้าง Template ใหม่'}
         size="lg"
       >
-        <form onSubmit={handleTemplateSave} className="space-y-4">
+        <form onSubmit={handleTemplateSave} className="flex flex-col gap-5 lg:gap-7.5">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อ Template *</label>
+            <label className="block text-sm font-medium text-foreground mb-1">ชื่อ Template *</label>
             <input
               type="text"
               value={templateForm.name}
               onChange={(e) => setTemplateForm({ ...templateForm, name: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+              className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
               required
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">ประเภทเหตุการณ์ *</label>
+              <label className="block text-sm font-medium text-foreground mb-1">ประเภทเหตุการณ์ *</label>
               <select
                 value={templateForm.eventType}
                 onChange={(e) => setTemplateForm({ ...templateForm, eventType: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
               >
                 <option value="PAYMENT_REMINDER">เตือนชำระ</option>
                 <option value="OVERDUE_NOTICE">ทวงหนี้</option>
@@ -396,11 +396,11 @@ export default function NotificationsPage() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">ช่องทาง *</label>
+              <label className="block text-sm font-medium text-foreground mb-1">ช่องทาง *</label>
               <select
                 value={templateForm.channel}
                 onChange={(e) => setTemplateForm({ ...templateForm, channel: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
               >
                 <option value="LINE">LINE</option>
                 <option value="SMS">SMS</option>
@@ -408,12 +408,12 @@ export default function NotificationsPage() {
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">ข้อความ *</label>
+            <label className="block text-sm font-medium text-foreground mb-1">ข้อความ *</label>
             <textarea
               value={templateForm.messageTemplate}
               onChange={(e) => setTemplateForm({ ...templateForm, messageTemplate: e.target.value })}
               rows={5}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none font-mono"
+              className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none font-mono"
               placeholder="สวัสดีค่ะ คุณ{customer_name}&#10;แจ้งเตือนค่างวดที่ {installment_no}..."
               required
             />
@@ -428,7 +428,7 @@ export default function NotificationsPage() {
                       messageTemplate: templateForm.messageTemplate + p,
                     })
                   }
-                  className="px-2 py-0.5 bg-gray-100 rounded text-xs text-gray-600 hover:bg-gray-200"
+                  className="px-2 py-0.5 bg-muted rounded text-xs text-muted-foreground hover:bg-muted"
                 >
                   {p}
                 </button>
@@ -436,22 +436,22 @@ export default function NotificationsPage() {
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">คำอธิบาย</label>
+            <label className="block text-sm font-medium text-foreground mb-1">คำอธิบาย</label>
             <input
               type="text"
               value={templateForm.description}
               onChange={(e) => setTemplateForm({ ...templateForm, description: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+              className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
             />
           </div>
           <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={() => setIsTemplateModalOpen(false)} className="px-4 py-2 text-sm text-gray-600">
+            <button type="button" onClick={() => setIsTemplateModalOpen(false)} className="px-4 py-2 text-sm text-muted-foreground">
               ยกเลิก
             </button>
             <button
               type="submit"
               disabled={saveTemplateMutation.isPending}
-              className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
             >
               {saveTemplateMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
             </button>

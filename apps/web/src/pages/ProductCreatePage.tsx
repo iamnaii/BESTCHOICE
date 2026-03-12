@@ -4,6 +4,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
+import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card';
 import { brands, getModels, getModelInfo } from '@/data/productCatalog';
 import { categoryOptions, createProductStatusOptions } from '@/lib/constants';
 
@@ -298,27 +299,30 @@ export default function ProductCreatePage() {
     createMutation.mutate();
   };
 
-  const inputCls = 'w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none';
+  const inputCls = 'w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none';
 
   return (
     <div>
       <PageHeader
         title="เพิ่มสินค้าใหม่"
         action={
-          <button onClick={() => navigate('/products')} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg">
+          <button onClick={() => navigate('/products')} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground border border-input rounded-lg">
             กลับ
           </button>
         }
       />
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-5 lg:gap-7.5">
         {/* Product Info */}
-        <div className="bg-white rounded-lg border p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">ข้อมูลสินค้า</h2>
-          <div className="grid grid-cols-2 gap-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>ข้อมูลสินค้า</CardTitle>
+          </CardHeader>
+          <CardContent>
+          <div className="grid grid-cols-2 gap-5 lg:gap-7.5">
             {/* ประเภท - FIRST */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">ประเภท *</label>
+              <label className="block text-sm font-medium text-foreground mb-1">ประเภท *</label>
               <select value={form.category} onChange={(e) => handleCategoryChange(e.target.value)} className={inputCls}>
                 {categoryOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
               </select>
@@ -328,7 +332,7 @@ export default function ProductCreatePage() {
               <>
                 {/* ประเภทอุปกรณ์ */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">ประเภทอุปกรณ์ *</label>
+                  <label className="block text-sm font-medium text-foreground mb-1">ประเภทอุปกรณ์ *</label>
                   <select value={form.accessoryType} onChange={(e) => handleAccessoryTypeChange(e.target.value)} className={inputCls} required>
                     <option value="">เลือกประเภทอุปกรณ์</option>
                     {accessoryTypes.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
@@ -338,7 +342,7 @@ export default function ProductCreatePage() {
                 {form.accessoryType === 'ชุดชาร์จ' ? (
                   /* Charger: connector type */
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">ชนิด *</label>
+                    <label className="block text-sm font-medium text-foreground mb-1">ชนิด *</label>
                     <select value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} className={inputCls} required>
                       <option value="">เลือกชนิด</option>
                       {chargerConnectorTypes.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
@@ -347,7 +351,7 @@ export default function ProductCreatePage() {
                 ) : form.accessoryType ? (
                   /* Non-charger: compatible phone brand */
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">สำหรับยี่ห้อ</label>
+                    <label className="block text-sm font-medium text-foreground mb-1">สำหรับยี่ห้อ</label>
                     <select value={form.brand} onChange={(e) => handleBrandChange(e.target.value)} className={inputCls}>
                       <option value="">เลือกยี่ห้อโทรศัพท์</option>
                       {brands.map((b) => <option key={b} value={b}>{b}</option>)}
@@ -358,8 +362,8 @@ export default function ProductCreatePage() {
                 {/* Multi-model selection for non-charger accessories */}
                 {form.accessoryType && form.accessoryType !== 'ชุดชาร์จ' && form.brand && availableModels.length > 0 && (
                   <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">สำหรับรุ่น (เลือกได้หลายรุ่น)</label>
-                    <div className="flex flex-wrap gap-1.5 p-2 border border-gray-300 rounded-lg bg-gray-50 max-h-40 overflow-y-auto">
+                    <label className="block text-sm font-medium text-foreground mb-1">สำหรับรุ่น (เลือกได้หลายรุ่น)</label>
+                    <div className="flex flex-wrap gap-1.5 p-2 border border-input rounded-lg bg-muted max-h-40 overflow-y-auto">
                       {availableModels.map((m) => {
                         const selectedModels = form.model ? form.model.split(', ').filter(Boolean) : [];
                         const isSelected = selectedModels.includes(m.name);
@@ -370,8 +374,8 @@ export default function ProductCreatePage() {
                             onClick={() => toggleModel(m.name)}
                             className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
                               isSelected
-                                ? 'bg-primary-600 text-white border-primary-600'
-                                : 'bg-white text-gray-600 border-gray-300 hover:border-primary-400 hover:text-primary-600'
+                                ? 'bg-primary text-primary-foreground border-primary'
+                                : 'bg-card text-muted-foreground border-input hover:border-primary/60 hover:text-primary'
                             }`}
                           >
                             {m.name}
@@ -380,14 +384,14 @@ export default function ProductCreatePage() {
                       })}
                     </div>
                     {form.model && (
-                      <div className="text-xs text-primary-500 mt-1">เลือกแล้ว {form.model.split(', ').filter(Boolean).length} รุ่น</div>
+                      <div className="text-xs text-primary mt-1">เลือกแล้ว {form.model.split(', ').filter(Boolean).length} รุ่น</div>
                     )}
                   </div>
                 )}
 
                 {/* ยี่ห้ออุปกรณ์ */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">ยี่ห้ออุปกรณ์</label>
+                  <label className="block text-sm font-medium text-foreground mb-1">ยี่ห้ออุปกรณ์</label>
                   <input
                     type="text"
                     value={form.accessoryBrand}
@@ -401,7 +405,7 @@ export default function ProductCreatePage() {
               <>
                 {/* ยี่ห้อ */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">ยี่ห้อ *</label>
+                  <label className="block text-sm font-medium text-foreground mb-1">ยี่ห้อ *</label>
                   <select value={form.brand} onChange={(e) => handleBrandChange(e.target.value)} className={inputCls} required>
                     <option value="">เลือกยี่ห้อ</option>
                     {brands.map((b) => <option key={b} value={b}>{b}</option>)}
@@ -410,19 +414,19 @@ export default function ProductCreatePage() {
 
                 {/* รุ่น */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">รุ่น *</label>
+                  <label className="block text-sm font-medium text-foreground mb-1">รุ่น *</label>
                   <select value={form.model} onChange={(e) => handleModelChange(e.target.value)} className={inputCls} required disabled={!form.brand}>
                     <option value="">เลือกรุ่น</option>
                     {availableModels.map((m) => <option key={m.name} value={m.name}>{m.name}</option>)}
                   </select>
                   {form.brand && availableModels.length === 0 && (
-                    <p className="text-xs text-gray-400 mt-1">ไม่พบรุ่นสำหรับประเภทนี้</p>
+                    <p className="text-xs text-muted-foreground mt-1">ไม่พบรุ่นสำหรับประเภทนี้</p>
                   )}
                 </div>
 
                 {/* สี */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">สี</label>
+                  <label className="block text-sm font-medium text-foreground mb-1">สี</label>
                   <select value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} className={inputCls} disabled={!form.model}>
                     <option value="">เลือกสี</option>
                     {availableColors.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -431,7 +435,7 @@ export default function ProductCreatePage() {
 
                 {/* ความจุ */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">ความจุ</label>
+                  <label className="block text-sm font-medium text-foreground mb-1">ความจุ</label>
                   <select value={form.storage} onChange={(e) => setForm({ ...form, storage: e.target.value })} className={inputCls} disabled={!form.model}>
                     <option value="">เลือกความจุ</option>
                     {availableStorage.map((s) => <option key={s} value={s}>{s}</option>)}
@@ -442,7 +446,7 @@ export default function ProductCreatePage() {
 
             {/* ชื่อสินค้า */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อสินค้า</label>
+              <label className="block text-sm font-medium text-foreground mb-1">ชื่อสินค้า</label>
               <input
                 type="text"
                 value={form.name}
@@ -456,7 +460,7 @@ export default function ProductCreatePage() {
               <>
                 {/* IMEI */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">IMEI</label>
+                  <label className="block text-sm font-medium text-foreground mb-1">IMEI</label>
                   <input
                     type="text"
                     value={form.imeiSerial}
@@ -469,7 +473,7 @@ export default function ProductCreatePage() {
 
                 {/* Serial Number */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Serial Number</label>
+                  <label className="block text-sm font-medium text-foreground mb-1">Serial Number</label>
                   <input
                     type="text"
                     value={form.serialNumber}
@@ -483,7 +487,7 @@ export default function ProductCreatePage() {
 
             {/* สถานะ */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">สถานะ *</label>
+              <label className="block text-sm font-medium text-foreground mb-1">สถานะ *</label>
               <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} className={inputCls}>
                 {statusOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
               </select>
@@ -493,7 +497,7 @@ export default function ProductCreatePage() {
 
           {/* Accessory auto name preview */}
           {form.category === 'ACCESSORY' && (form.accessoryType || form.accessoryBrand) && (
-            <div className="mt-3 text-sm text-primary-600 bg-primary-50 border border-primary-200 rounded-lg px-3 py-2">
+            <div className="mt-3 text-sm text-primary bg-primary/5 border border-primary/20 rounded-lg px-3 py-2">
               ชื่อสินค้าอัตโนมัติ: {(() => {
                 const isCharger = form.accessoryType === 'ชุดชาร์จ';
                 if (isCharger) return [form.accessoryType, form.accessoryBrand, form.model].filter(Boolean).join(' ');
@@ -509,7 +513,7 @@ export default function ProductCreatePage() {
               <h3 className="text-sm font-semibold text-orange-700">ข้อมูลมือสอง</h3>
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">% แบตเตอรี่</label>
+                  <label className="block text-sm font-medium text-foreground mb-1">% แบตเตอรี่</label>
                   <input
                     type="number"
                     value={form.batteryHealth}
@@ -521,7 +525,7 @@ export default function ProductCreatePage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">ประกันศูนย์</label>
+                  <label className="block text-sm font-medium text-foreground mb-1">ประกันศูนย์</label>
                   <div className="flex items-center gap-3 mt-1">
                     <label className="flex items-center gap-1.5 cursor-pointer">
                       <input
@@ -530,7 +534,7 @@ export default function ProductCreatePage() {
                         onChange={(e) => setForm({ ...form, warrantyExpired: e.target.checked, warrantyExpireDate: e.target.checked ? '' : form.warrantyExpireDate })}
                         className="rounded"
                       />
-                      <span className="text-sm text-gray-600">หมดประกันแล้ว</span>
+                      <span className="text-sm text-muted-foreground">หมดประกันแล้ว</span>
                     </label>
                   </div>
                   {!form.warrantyExpired && (
@@ -543,19 +547,19 @@ export default function ProductCreatePage() {
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">กล่อง</label>
+                  <label className="block text-sm font-medium text-foreground mb-1">กล่อง</label>
                   <div className="flex gap-2 mt-1">
                     <button
                       type="button"
                       onClick={() => setForm({ ...form, hasBox: true })}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${form.hasBox ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-green-100'}`}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${form.hasBox ? 'bg-green-600 text-white' : 'bg-secondary text-muted-foreground hover:bg-green-100'}`}
                     >
                       มีกล่อง
                     </button>
                     <button
                       type="button"
                       onClick={() => setForm({ ...form, hasBox: false })}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${!form.hasBox ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-red-100'}`}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${!form.hasBox ? 'bg-red-600 text-white' : 'bg-secondary text-muted-foreground hover:bg-red-100'}`}
                     >
                       ไม่มีกล่อง
                     </button>
@@ -564,11 +568,15 @@ export default function ProductCreatePage() {
               </div>
             </div>
           )}
-        </div>
+          </CardContent>
+        </Card>
 
         {/* Photos */}
-        <div className="bg-white rounded-lg border p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">รูปถ่ายสินค้า</h2>
+        <Card>
+          <CardHeader>
+            <CardTitle>รูปถ่ายสินค้า</CardTitle>
+          </CardHeader>
+          <CardContent>
           <div className="flex flex-wrap gap-3 mb-3">
             {photoPreviews.map((preview, index) => (
               <div key={index} className="relative w-24 h-24 rounded-lg overflow-hidden border">
@@ -582,35 +590,39 @@ export default function ProductCreatePage() {
                 </button>
               </div>
             ))}
-            <label className="w-24 h-24 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 hover:bg-primary-50 transition-colors">
-              <span className="text-2xl text-gray-400">+</span>
-              <span className="text-xs text-gray-400">เพิ่มรูป</span>
+            <label className="w-24 h-24 border-2 border-dashed border-input rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary/60 hover:bg-primary/5 transition-colors">
+              <span className="text-2xl text-muted-foreground">+</span>
+              <span className="text-xs text-muted-foreground">เพิ่มรูป</span>
               <input type="file" accept="image/*" multiple onChange={handlePhotoAdd} className="hidden" />
             </label>
           </div>
-          <p className="text-xs text-gray-400">รองรับ JPG, PNG สูงสุด {MAX_PHOTOS} รูป (ไม่เกิน 5MB/รูป) - ใช้ไป {photoPreviews.length}/{MAX_PHOTOS}</p>
-        </div>
+          <p className="text-xs text-muted-foreground">รองรับ JPG, PNG สูงสุด {MAX_PHOTOS} รูป (ไม่เกิน 5MB/รูป) - ใช้ไป {photoPreviews.length}/{MAX_PHOTOS}</p>
+          </CardContent>
+        </Card>
 
         {/* Branch & Supplier */}
-        <div className="bg-white rounded-lg border p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">สาขา & ผู้ขาย</h2>
-          <div className="grid grid-cols-2 gap-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>สาขา & ผู้ขาย</CardTitle>
+          </CardHeader>
+          <CardContent>
+          <div className="grid grid-cols-2 gap-5 lg:gap-7.5">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">สาขา *</label>
+              <label className="block text-sm font-medium text-foreground mb-1">สาขา *</label>
               <select value={form.branchId} onChange={(e) => setForm({ ...form, branchId: e.target.value })} className={inputCls} required>
                 <option value="">เลือกสาขา</option>
                 {branchList.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">ผู้ขาย</label>
+              <label className="block text-sm font-medium text-foreground mb-1">ผู้ขาย</label>
               <select value={form.supplierId} onChange={(e) => setForm({ ...form, supplierId: e.target.value })} className={inputCls}>
                 <option value="">{suppliersLoading ? 'กำลังโหลด...' : suppliersError ? '⚠ โหลดข้อมูลไม่ได้' : 'ไม่ระบุ'}</option>
                 {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">ราคาทุน (บาท) *</label>
+              <label className="block text-sm font-medium text-foreground mb-1">ราคาทุน (บาท) *</label>
               <input
                 type="number"
                 step="0.01"
@@ -621,16 +633,18 @@ export default function ProductCreatePage() {
               />
             </div>
           </div>
-        </div>
+          </CardContent>
+        </Card>
 
         {/* Multi-Price */}
-        <div className="bg-white rounded-lg border p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">ราคาขาย</h2>
-            <button type="button" onClick={addPriceRow} className="text-sm text-primary-600 hover:text-primary-700 font-medium">
+        <Card>
+          <CardHeader>
+            <CardTitle>ราคาขาย</CardTitle>
+            <button type="button" onClick={addPriceRow} className="text-sm text-primary hover:text-primary/80 font-medium">
               + เพิ่มราคา
             </button>
-          </div>
+          </CardHeader>
+          <CardContent>
           <div className="space-y-3">
             {prices.map((price, index) => (
               <div key={index} className="flex items-center gap-3">
@@ -639,7 +653,7 @@ export default function ProductCreatePage() {
                   placeholder="ชื่อราคา เช่น ราคาผ่อน"
                   value={price.label}
                   onChange={(e) => updatePrice(index, 'label', e.target.value)}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none text-sm"
+                  className="flex-1 px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none text-sm"
                 />
                 <input
                   type="number"
@@ -647,10 +661,10 @@ export default function ProductCreatePage() {
                   placeholder="จำนวนเงิน"
                   value={price.amount}
                   onChange={(e) => updatePrice(index, 'amount', e.target.value)}
-                  className="w-40 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none text-sm"
+                  className="w-40 px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none text-sm"
                 />
-                <label className="flex items-center gap-1.5 text-sm text-gray-600 whitespace-nowrap cursor-pointer">
-                  <input type="radio" name="defaultPrice" checked={price.isDefault} onChange={() => updatePrice(index, 'isDefault', true)} className="text-primary-600" />
+                <label className="flex items-center gap-1.5 text-sm text-muted-foreground whitespace-nowrap cursor-pointer">
+                  <input type="radio" name="defaultPrice" checked={price.isDefault} onChange={() => updatePrice(index, 'isDefault', true)} className="text-primary" />
                   ค่าเริ่มต้น
                 </label>
                 {prices.length > 1 && (
@@ -661,20 +675,21 @@ export default function ProductCreatePage() {
               </div>
             ))}
           </div>
-          <p className="text-xs text-gray-400 mt-3">
+          <p className="text-xs text-muted-foreground mt-3">
             ราคา "ค่าเริ่มต้น" จะถูกใช้ตอนสร้างสัญญาผ่อน (พนักงานสามารถเปลี่ยนได้)
           </p>
-        </div>
+          </CardContent>
+        </Card>
 
         {/* Submit */}
         <div className="flex justify-end gap-3">
-          <button type="button" onClick={() => navigate('/products')} className="px-6 py-2.5 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg">
+          <button type="button" onClick={() => navigate('/products')} className="px-6 py-2.5 text-sm text-muted-foreground hover:text-foreground border border-input rounded-lg">
             ยกเลิก
           </button>
           <button
             type="submit"
             disabled={createMutation.isPending}
-            className="px-6 py-2.5 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
+            className="px-6 py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
           >
             {createMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกสินค้า'}
           </button>

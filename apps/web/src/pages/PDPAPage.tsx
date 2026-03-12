@@ -135,7 +135,7 @@ function PDPAPage() {
         action={
           <button
             onClick={() => setShowCreateDSAR(true)}
-            className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700"
+            className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
           >
             สร้างคำร้อง DSAR
           </button>
@@ -146,20 +146,20 @@ function PDPAPage() {
       <div className="flex gap-2 mb-6">
         <button
           onClick={() => setTab('dsar')}
-          className={`px-4 py-2 text-sm rounded-lg ${tab === 'dsar' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600'}`}
+          className={`px-4 py-2 text-sm rounded-lg ${tab === 'dsar' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
         >
           คำร้อง DSAR
         </button>
         <button
           onClick={() => setTab('consent-lookup')}
-          className={`px-4 py-2 text-sm rounded-lg ${tab === 'consent-lookup' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600'}`}
+          className={`px-4 py-2 text-sm rounded-lg ${tab === 'consent-lookup' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
         >
           ค้นหา Consent
         </button>
       </div>
 
       {tab === 'dsar' && (
-        <div className="bg-white rounded-lg border">
+        <div className="bg-card rounded-lg border border-border">
           <DataTable
             data={dsarRequests}
             isLoading={dsarLoading}
@@ -177,7 +177,7 @@ function PDPAPage() {
                 render: (r: DSARRequest) => (
                   <div>
                     <div className="text-sm font-medium">{r.customer?.name || '-'}</div>
-                    <div className="text-xs text-gray-400 font-mono">{r.customer ? maskNationalId(r.customer.nationalId) : '-'}</div>
+                    <div className="text-xs text-muted-foreground font-mono">{r.customer ? maskNationalId(r.customer.nationalId) : '-'}</div>
                   </div>
                 ),
               },
@@ -192,14 +192,14 @@ function PDPAPage() {
                 key: 'description',
                 label: 'รายละเอียด',
                 render: (r: DSARRequest) => (
-                  <span className="text-xs text-gray-600 truncate max-w-[200px] block">{r.description}</span>
+                  <span className="text-xs text-muted-foreground truncate max-w-[200px] block">{r.description}</span>
                 ),
               },
               {
                 key: 'status',
                 label: 'สถานะ',
                 render: (r: DSARRequest) => {
-                  const s = dsarStatusLabels[r.status] || { label: r.status, className: 'bg-gray-100 text-gray-700' };
+                  const s = dsarStatusLabels[r.status] || { label: r.status, className: 'bg-muted text-foreground' };
                   return <span className={`px-2 py-1 rounded-full text-xs font-medium ${s.className}`}>{s.label}</span>;
                 },
               },
@@ -210,12 +210,12 @@ function PDPAPage() {
                   r.status === 'PENDING' && user?.role === 'OWNER' ? (
                     <button
                       onClick={() => { setSelectedDSAR(r); setProcessForm({ status: 'COMPLETED', responseNotes: '' }); setShowProcessModal(true); }}
-                      className="px-3 py-1 text-xs bg-primary-600 text-white rounded hover:bg-primary-700"
+                      className="px-3 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90"
                     >
                       ดำเนินการ
                     </button>
                   ) : r.responseNotes ? (
-                    <span className="text-xs text-gray-400" title={r.responseNotes}>ดูหมายเหตุ</span>
+                    <span className="text-xs text-muted-foreground" title={r.responseNotes}>ดูหมายเหตุ</span>
                   ) : null
                 ),
               },
@@ -226,7 +226,7 @@ function PDPAPage() {
       )}
 
       {tab === 'consent-lookup' && (
-        <div className="bg-white rounded-lg border p-6">
+        <div className="bg-card rounded-lg border border-border p-6">
           <div className="flex gap-3 mb-6">
             <input
               type="text"
@@ -237,13 +237,13 @@ function PDPAPage() {
             />
             <button
               onClick={() => refetchConsents()}
-              className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700"
+              className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
             >
               ค้นหา
             </button>
           </div>
 
-          {consentLoading && <p className="text-sm text-gray-400">กำลังค้นหา...</p>}
+          {consentLoading && <p className="text-sm text-muted-foreground">กำลังค้นหา...</p>}
 
           {consents && consents.length > 0 && (
             <div className="space-y-3">
@@ -254,9 +254,9 @@ function PDPAPage() {
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${c.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                         {c.isActive ? 'Active' : 'Revoked'}
                       </span>
-                      <span className="text-xs text-gray-500 ml-2">Version: {c.consentVersion}</span>
+                      <span className="text-xs text-muted-foreground ml-2">Version: {c.consentVersion}</span>
                     </div>
-                    <div className="text-xs text-gray-400">
+                    <div className="text-xs text-muted-foreground">
                       ให้ consent: {new Date(c.consentedAt).toLocaleString('th-TH')}
                       {c.revokedAt && <span className="text-red-500 ml-2">ถอน: {new Date(c.revokedAt).toLocaleString('th-TH')}</span>}
                     </div>
@@ -275,7 +275,7 @@ function PDPAPage() {
             </div>
           )}
           {consents && consents.length === 0 && customerIdSearch && (
-            <p className="text-sm text-gray-400 text-center py-4">ไม่พบ consent สำหรับลูกค้านี้</p>
+            <p className="text-sm text-muted-foreground text-center py-4">ไม่พบ consent สำหรับลูกค้านี้</p>
           )}
         </div>
       )}
@@ -283,14 +283,14 @@ function PDPAPage() {
       {/* Process DSAR Modal */}
       {showProcessModal && selectedDSAR && (
         <Modal title="ดำเนินการคำร้อง DSAR" onClose={() => setShowProcessModal(false)}>
-          <div className="space-y-4">
+          <div className="flex flex-col gap-5 lg:gap-7.5">
             <div>
-              <div className="text-sm text-gray-500">ลูกค้า: {selectedDSAR.customer?.name}</div>
-              <div className="text-sm text-gray-500">ประเภท: {requestTypeLabels[selectedDSAR.requestType]}</div>
-              <div className="text-sm text-gray-500 mt-1">{selectedDSAR.description}</div>
+              <div className="text-sm text-muted-foreground">ลูกค้า: {selectedDSAR.customer?.name}</div>
+              <div className="text-sm text-muted-foreground">ประเภท: {requestTypeLabels[selectedDSAR.requestType]}</div>
+              <div className="text-sm text-muted-foreground mt-1">{selectedDSAR.description}</div>
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">สถานะ</label>
+              <label className="block text-xs text-muted-foreground mb-1">สถานะ</label>
               <select
                 value={processForm.status}
                 onChange={(e) => setProcessForm({ ...processForm, status: e.target.value })}
@@ -302,7 +302,7 @@ function PDPAPage() {
               </select>
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">หมายเหตุ</label>
+              <label className="block text-xs text-muted-foreground mb-1">หมายเหตุ</label>
               <textarea
                 value={processForm.responseNotes}
                 onChange={(e) => setProcessForm({ ...processForm, responseNotes: e.target.value })}
@@ -315,7 +315,7 @@ function PDPAPage() {
               <button
                 onClick={() => processMutation.mutate()}
                 disabled={!processForm.responseNotes || processMutation.isPending}
-                className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+                className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
               >
                 {processMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
               </button>
@@ -330,9 +330,9 @@ function PDPAPage() {
       {/* Create DSAR Modal */}
       {showCreateDSAR && (
         <Modal title="สร้างคำร้อง DSAR" onClose={() => setShowCreateDSAR(false)}>
-          <div className="space-y-4">
+          <div className="flex flex-col gap-5 lg:gap-7.5">
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Customer ID</label>
+              <label className="block text-xs text-muted-foreground mb-1">Customer ID</label>
               <input
                 type="text"
                 value={dsarForm.customerId}
@@ -342,7 +342,7 @@ function PDPAPage() {
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">ประเภทคำร้อง</label>
+              <label className="block text-xs text-muted-foreground mb-1">ประเภทคำร้อง</label>
               <select
                 value={dsarForm.requestType}
                 onChange={(e) => setDsarForm({ ...dsarForm, requestType: e.target.value })}
@@ -354,7 +354,7 @@ function PDPAPage() {
               </select>
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">รายละเอียด</label>
+              <label className="block text-xs text-muted-foreground mb-1">รายละเอียด</label>
               <textarea
                 value={dsarForm.description}
                 onChange={(e) => setDsarForm({ ...dsarForm, description: e.target.value })}
@@ -367,7 +367,7 @@ function PDPAPage() {
               <button
                 onClick={() => submitDSARMutation.mutate()}
                 disabled={!dsarForm.customerId || !dsarForm.description || submitDSARMutation.isPending}
-                className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+                className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
               >
                 {submitDSARMutation.isPending ? 'กำลังส่ง...' : 'ส่งคำร้อง'}
               </button>

@@ -33,12 +33,12 @@ function StatusDot({ ok }: { ok: boolean }) {
 function A4Page({ pageNum, totalPages, children }: { pageNum: number; totalPages: number; children: React.ReactNode }) {
   return (
     <div
-      className="bg-white border border-gray-200 shadow-sm mx-auto mb-6 relative"
+      className="bg-card border border-border shadow-xs shadow-black/5 mx-auto mb-6 relative"
       style={{ width: '210mm', minHeight: '297mm', maxWidth: '100%', padding: '20mm 18mm 25mm 18mm' }}
     >
       {children}
       {/* Page number footer */}
-      <div className="absolute bottom-[10mm] left-0 right-0 text-center text-xs text-gray-400">
+      <div className="absolute bottom-[10mm] left-0 right-0 text-center text-xs text-muted-foreground">
         {pageNum}/{totalPages}
       </div>
     </div>
@@ -65,7 +65,7 @@ export default function SystemStatusPage() {
       <div>
         <PageHeader title="สถานะระบบ" subtitle="ตรวจสอบการเชื่อมต่อ API, ฐานข้อมูล และ AI" />
         <div className="flex items-center justify-center py-20">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600" />
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
         </div>
       </div>
     );
@@ -99,7 +99,7 @@ export default function SystemStatusPage() {
           <button
             onClick={handleRefresh}
             disabled={isRefreshing}
-            className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 flex items-center gap-2 print:hidden"
+            className="px-4 py-2 text-sm border border-input rounded-lg hover:bg-muted/50 disabled:opacity-50 flex items-center gap-2 print:hidden"
           >
             <svg className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
             รีเฟรช
@@ -111,8 +111,8 @@ export default function SystemStatusPage() {
       <A4Page pageNum={1} totalPages={totalPages}>
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-xl font-bold text-gray-800">รายงานสถานะระบบ</h1>
-          <p className="text-sm text-gray-500 mt-1">
+          <h1 className="text-xl font-bold text-foreground">รายงานสถานะระบบ</h1>
+          <p className="text-sm text-muted-foreground mt-1">
             วันที่: {new Date(data!.timestamp).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}
             {' '}เวลา: {new Date(data!.timestamp).toLocaleTimeString('th-TH')}
           </p>
@@ -125,12 +125,12 @@ export default function SystemStatusPage() {
             <p className={`font-semibold ${allOk ? 'text-green-800' : 'text-amber-800'}`}>
               {allOk ? 'ระบบทั้งหมดทำงานปกติ' : 'มีบางบริการที่ไม่พร้อมใช้งาน'}
             </p>
-            <p className="text-xs text-gray-500 mt-0.5">รีเฟรชอัตโนมัติทุก 30 วินาที</p>
+            <p className="text-xs text-muted-foreground mt-0.5">รีเฟรชอัตโนมัติทุก 30 วินาที</p>
           </div>
         </div>
 
         {/* Architecture Diagram */}
-        <h2 className="text-base font-bold text-gray-700 mb-4 border-b pb-2">แผนภาพการเชื่อมต่อระบบ</h2>
+        <h2 className="text-base font-bold text-foreground mb-4 border-b pb-2">แผนภาพการเชื่อมต่อระบบ</h2>
 
         <div className="flex flex-col items-center">
           {/* Frontend */}
@@ -210,52 +210,52 @@ export default function SystemStatusPage() {
       {/* ═══════════════════ Page 2: Detail & Features ═══════════════════ */}
       <A4Page pageNum={2} totalPages={totalPages}>
         <div className="text-center mb-8">
-          <h1 className="text-xl font-bold text-gray-800">รายงานสถานะระบบ (ต่อ)</h1>
+          <h1 className="text-xl font-bold text-foreground">รายงานสถานะระบบ (ต่อ)</h1>
         </div>
 
         {/* Summary Table */}
-        <h2 className="text-base font-bold text-gray-700 mb-4 border-b pb-2">สรุปสถานะบริการ</h2>
+        <h2 className="text-base font-bold text-foreground mb-4 border-b pb-2">สรุปสถานะบริการ</h2>
         <table className="w-full text-sm mb-8 border-collapse">
           <thead>
-            <tr className="bg-gray-50">
-              <th className="text-left p-3 border border-gray-200 font-semibold text-gray-700">บริการ</th>
-              <th className="text-left p-3 border border-gray-200 font-semibold text-gray-700">สถานะ</th>
-              <th className="text-left p-3 border border-gray-200 font-semibold text-gray-700">รายละเอียด</th>
+            <tr className="bg-muted">
+              <th className="text-left p-3 border border-border font-semibold text-foreground">บริการ</th>
+              <th className="text-left p-3 border border-border font-semibold text-foreground">สถานะ</th>
+              <th className="text-left p-3 border border-border font-semibold text-foreground">รายละเอียด</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td className="p-3 border border-gray-200 font-medium">Frontend</td>
-              <td className="p-3 border border-gray-200">
+              <td className="p-3 border border-border font-medium">Frontend</td>
+              <td className="p-3 border border-border">
                 <span className="inline-flex items-center gap-1.5"><StatusDot ok={true} /> เชื่อมต่อแล้ว</span>
               </td>
-              <td className="p-3 border border-gray-200 text-gray-600">เว็บแอปทำงานปกติ</td>
+              <td className="p-3 border border-border text-muted-foreground">เว็บแอปทำงานปกติ</td>
             </tr>
             <tr>
-              <td className="p-3 border border-gray-200 font-medium">API Server</td>
-              <td className="p-3 border border-gray-200">
+              <td className="p-3 border border-border font-medium">API Server</td>
+              <td className="p-3 border border-border">
                 <span className="inline-flex items-center gap-1.5"><StatusDot ok={data!.api.status === 'ok'} /> {data!.api.status === 'ok' ? 'ทำงานปกติ' : 'มีปัญหา'}</span>
               </td>
-              <td className="p-3 border border-gray-200 text-gray-600">v{data!.api.version} | Uptime: {formatUptime(data!.api.uptime)} | {data!.api.nodeVersion}</td>
+              <td className="p-3 border border-border text-muted-foreground">v{data!.api.version} | Uptime: {formatUptime(data!.api.uptime)} | {data!.api.nodeVersion}</td>
             </tr>
             <tr>
-              <td className="p-3 border border-gray-200 font-medium">Database</td>
-              <td className="p-3 border border-gray-200">
+              <td className="p-3 border border-border font-medium">Database</td>
+              <td className="p-3 border border-border">
                 <span className="inline-flex items-center gap-1.5"><StatusDot ok={data!.database.connected} /> {data!.database.connected ? 'เชื่อมต่อแล้ว' : 'ไม่สามารถเชื่อมต่อ'}</span>
               </td>
-              <td className="p-3 border border-gray-200 text-gray-600">
+              <td className="p-3 border border-border text-muted-foreground">
                 {data!.database.connected ? `Latency: ${data!.database.latencyMs} ms` : data!.database.error || '-'}
               </td>
             </tr>
             <tr>
-              <td className="p-3 border border-gray-200 font-medium">AI (Claude)</td>
-              <td className="p-3 border border-gray-200">
+              <td className="p-3 border border-border font-medium">AI (Claude)</td>
+              <td className="p-3 border border-border">
                 <span className="inline-flex items-center gap-1.5">
                   <StatusDot ok={data!.ai.connected} />
                   {data!.ai.connected ? 'เชื่อมต่อแล้ว' : data!.ai.configured ? 'เชื่อมต่อไม่ได้' : 'ยังไม่ตั้งค่า'}
                 </span>
               </td>
-              <td className="p-3 border border-gray-200 text-gray-600">
+              <td className="p-3 border border-border text-muted-foreground">
                 Model: {data!.ai.model}{data!.ai.error ? ` | Error: ${data!.ai.error}` : ''}
               </td>
             </tr>
@@ -263,7 +263,7 @@ export default function SystemStatusPage() {
         </table>
 
         {/* Memory */}
-        <h2 className="text-base font-bold text-gray-700 mb-4 border-b pb-2">ทรัพยากรระบบ</h2>
+        <h2 className="text-base font-bold text-foreground mb-4 border-b pb-2">ทรัพยากรระบบ</h2>
         <div className="grid grid-cols-3 gap-4 mb-8">
           <MemoryCard label="Heap ใช้งาน" value={`${data!.memory.heapUsedMB} MB`} total={`${data!.memory.heapTotalMB} MB`} pct={Math.round((data!.memory.heapUsedMB / data!.memory.heapTotalMB) * 100)} />
           <MemoryCard label="Heap ทั้งหมด" value={`${data!.memory.heapTotalMB} MB`} />
@@ -271,7 +271,7 @@ export default function SystemStatusPage() {
         </div>
 
         {/* AI Features */}
-        <h2 className="text-base font-bold text-gray-700 mb-4 border-b pb-2">ฟีเจอร์ที่ต้องใช้ AI</h2>
+        <h2 className="text-base font-bold text-foreground mb-4 border-b pb-2">ฟีเจอร์ที่ต้องใช้ AI</h2>
         <div className="grid grid-cols-2 gap-3">
           {[
             { name: 'สร้างเทมเพลตจากไฟล์', desc: 'สร้าง contract template จากไฟล์ PDF/รูปภาพ' },
@@ -281,11 +281,11 @@ export default function SystemStatusPage() {
           ].map(f => {
             const ok = data!.ai.connected;
             return (
-              <div key={f.name} className={`flex items-start gap-3 p-3 rounded-lg border ${ok ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
+              <div key={f.name} className={`flex items-start gap-3 p-3 rounded-lg border ${ok ? 'bg-green-50 border-green-200' : 'bg-muted border-border'}`}>
                 <StatusDot ok={ok} />
                 <div>
-                  <p className={`text-sm font-medium ${ok ? 'text-green-800' : 'text-gray-500'}`}>{f.name}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">{f.desc}</p>
+                  <p className={`text-sm font-medium ${ok ? 'text-green-800' : 'text-muted-foreground'}`}>{f.name}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{f.desc}</p>
                 </div>
               </div>
             );
@@ -308,15 +308,15 @@ function VerticalLine({ ok }: { ok: boolean }) {
 
 function MemoryCard({ label, value, total, pct }: { label: string; value: string; total?: string; pct?: number }) {
   return (
-    <div className="border border-gray-200 rounded-lg p-3">
-      <p className="text-xs text-gray-500 mb-1">{label}</p>
-      <p className="text-lg font-bold text-gray-800">{value}</p>
+    <div className="border border-border rounded-lg p-3">
+      <p className="text-xs text-muted-foreground mb-1">{label}</p>
+      <p className="text-lg font-bold text-foreground">{value}</p>
       {total && pct !== undefined && (
         <>
-          <div className="w-full bg-gray-200 rounded-full h-1.5 mt-2">
+          <div className="w-full bg-muted rounded-full h-1.5 mt-2">
             <div className={`h-1.5 rounded-full ${pct > 80 ? 'bg-red-500' : pct > 60 ? 'bg-amber-500' : 'bg-green-500'}`} style={{ width: `${pct}%` }} />
           </div>
-          <p className="text-xs text-gray-400 mt-1">{pct}% ของ {total}</p>
+          <p className="text-xs text-muted-foreground mt-1">{pct}% ของ {total}</p>
         </>
       )}
     </div>
@@ -340,7 +340,7 @@ function ServiceCard({
     emerald: 'bg-emerald-50 border-emerald-200',
   };
   const iconColors: Record<string, string> = {
-    blue: 'text-primary-600',
+    blue: 'text-primary',
     indigo: 'text-indigo-600',
     emerald: 'text-emerald-600',
   };
@@ -351,10 +351,10 @@ function ServiceCard({
   };
 
   return (
-    <div className={`rounded-lg border p-4 ${bgColors[color] || 'bg-gray-50 border-gray-200'} ${full ? 'w-full' : 'w-72'}`}>
+    <div className={`rounded-lg border p-4 ${bgColors[color] || 'bg-muted border-border'} ${full ? 'w-full' : 'w-72'}`}>
       <div className="flex items-center gap-2 mb-2">
-        <div className={iconColors[color] || 'text-gray-600'}>{icon}</div>
-        <h3 className="text-sm font-semibold text-gray-800">{title}</h3>
+        <div className={iconColors[color] || 'text-muted-foreground'}>{icon}</div>
+        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
       </div>
       <div className="flex items-center gap-1.5 mb-2">
         <StatusDot ok={status === 'ok'} />
@@ -363,8 +363,8 @@ function ServiceCard({
       <div className="space-y-1">
         {details.map(d => (
           <div key={d.label} className="flex justify-between text-xs">
-            <span className="text-gray-500">{d.label}</span>
-            <span className="text-gray-700 font-mono truncate max-w-[150px]" title={d.value}>{d.value}</span>
+            <span className="text-muted-foreground">{d.label}</span>
+            <span className="text-foreground font-mono truncate max-w-[150px]" title={d.value}>{d.value}</span>
           </div>
         ))}
       </div>

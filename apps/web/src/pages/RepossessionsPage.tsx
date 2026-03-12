@@ -5,6 +5,7 @@ import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
+import { Card, CardHeader, CardContent } from '@/components/ui/card';
 
 interface Repossession {
   id: string;
@@ -156,8 +157,8 @@ export default function RepossessionsPage() {
       label: 'สัญญา',
       render: (r: Repossession) => (
         <div>
-          <div className="font-medium text-primary-600">{r.contract.contractNumber}</div>
-          <div className="text-xs text-gray-500">{r.contract.customer.name}</div>
+          <div className="font-medium text-primary">{r.contract.contractNumber}</div>
+          <div className="text-xs text-muted-foreground">{r.contract.customer.name}</div>
         </div>
       ),
     },
@@ -168,7 +169,7 @@ export default function RepossessionsPage() {
         <div className="text-sm">
           {r.product.brand} {r.product.model}
           {r.product.imeiSerial && (
-            <div className="text-xs text-gray-400">{r.product.imeiSerial}</div>
+            <div className="text-xs text-muted-foreground">{r.product.imeiSerial}</div>
           )}
         </div>
       ),
@@ -196,7 +197,7 @@ export default function RepossessionsPage() {
         r.resellPrice ? (
           <span className="text-sm">{Number(r.resellPrice).toLocaleString()} บาท</span>
         ) : (
-          <span className="text-xs text-gray-400">ยังไม่กำหนด</span>
+          <span className="text-xs text-muted-foreground">ยังไม่กำหนด</span>
         ),
     },
     {
@@ -221,7 +222,7 @@ export default function RepossessionsPage() {
       render: (r: Repossession) => (
         <button
           onClick={() => openUpdate(r)}
-          className="text-primary-600 hover:text-primary-700 text-sm font-medium"
+          className="text-primary hover:text-primary/80 text-sm font-medium"
         >
           จัดการ
         </button>
@@ -237,7 +238,7 @@ export default function RepossessionsPage() {
         action={
           <button
             onClick={() => setIsCreateModalOpen(true)}
-            className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
           >
             + บันทึกการยึดคืน
           </button>
@@ -246,41 +247,51 @@ export default function RepossessionsPage() {
 
       {/* Profit/Loss Summary */}
       {profitLoss?.summary && (
-        <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 mb-6">
-          <div className="bg-white rounded-lg border p-4">
-            <div className="text-sm text-gray-500">เครื่องที่ขายแล้ว</div>
-            <div className="text-2xl font-bold">{profitLoss.summary.count}</div>
-          </div>
-          <div className="bg-white rounded-lg border p-4">
-            <div className="text-sm text-gray-500">ราคาตีรวม</div>
-            <div className="text-lg font-bold">{profitLoss.summary.totalAppraisal?.toLocaleString()} บาท</div>
-          </div>
-          <div className="bg-white rounded-lg border p-4">
-            <div className="text-sm text-gray-500">ค่าซ่อมรวม</div>
-            <div className="text-lg font-bold">{profitLoss.summary.totalRepairCost?.toLocaleString()} บาท</div>
-          </div>
-          <div className="bg-white rounded-lg border p-4">
-            <div className="text-sm text-gray-500">ราคาขายรวม</div>
-            <div className="text-lg font-bold">{profitLoss.summary.totalResellPrice?.toLocaleString()} บาท</div>
-          </div>
-          <div className="bg-white rounded-lg border p-4">
-            <div className="text-sm text-gray-500">กำไร/ขาดทุน</div>
-            <div className={`text-lg font-bold ${(profitLoss.summary.totalProfit ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {profitLoss.summary.totalProfit?.toLocaleString()} บาท
-            </div>
-          </div>
+        <div className="grid grid-cols-1 sm:grid-cols-5 gap-5 lg:gap-7.5 mb-6">
+          <Card className="shadow-xs shadow-black/5">
+            <CardContent className="p-4">
+              <div className="text-sm text-muted-foreground">เครื่องที่ขายแล้ว</div>
+              <div className="text-2xl font-bold">{profitLoss.summary.count}</div>
+            </CardContent>
+          </Card>
+          <Card className="shadow-xs shadow-black/5">
+            <CardContent className="p-4">
+              <div className="text-sm text-muted-foreground">ราคาตีรวม</div>
+              <div className="text-lg font-bold">{profitLoss.summary.totalAppraisal?.toLocaleString()} บาท</div>
+            </CardContent>
+          </Card>
+          <Card className="shadow-xs shadow-black/5">
+            <CardContent className="p-4">
+              <div className="text-sm text-muted-foreground">ค่าซ่อมรวม</div>
+              <div className="text-lg font-bold">{profitLoss.summary.totalRepairCost?.toLocaleString()} บาท</div>
+            </CardContent>
+          </Card>
+          <Card className="shadow-xs shadow-black/5">
+            <CardContent className="p-4">
+              <div className="text-sm text-muted-foreground">ราคาขายรวม</div>
+              <div className="text-lg font-bold">{profitLoss.summary.totalResellPrice?.toLocaleString()} บาท</div>
+            </CardContent>
+          </Card>
+          <Card className="shadow-xs shadow-black/5">
+            <CardContent className="p-4">
+              <div className="text-sm text-muted-foreground">กำไร/ขาดทุน</div>
+              <div className={`text-lg font-bold ${(profitLoss.summary.totalProfit ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {profitLoss.summary.totalProfit?.toLocaleString()} บาท
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
 
       {/* Itemized P&L Table */}
       {(profitLoss?.items?.length ?? 0) > 0 && (
-        <div className="bg-white rounded-lg border mb-6 overflow-hidden">
-          <div className="px-4 py-3 border-b bg-gray-50">
-            <h3 className="text-sm font-medium text-gray-700">รายละเอียดกำไร/ขาดทุน</h3>
-          </div>
+        <Card className="shadow-xs shadow-black/5 mb-6 overflow-hidden">
+          <CardHeader className="px-4 py-3 border-b bg-secondary">
+            <h3 className="text-sm font-medium text-foreground">รายละเอียดกำไร/ขาดทุน</h3>
+          </CardHeader>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
-              <thead className="bg-gray-50 text-gray-600 text-xs">
+              <thead className="bg-secondary text-muted-foreground text-xs">
                 <tr>
                   <th className="px-4 py-2 text-left">สัญญา</th>
                   <th className="px-4 py-2 text-left">ลูกค้า</th>
@@ -295,8 +306,8 @@ export default function RepossessionsPage() {
               </thead>
               <tbody className="divide-y">
                 {profitLoss?.items?.map((item: { id: string; contract: string; customer: string; product: string; conditionGrade: string; appraisalPrice: number; repairCost: number; resellPrice: number; profit: number; marginPct: string }) => (
-                  <tr key={item.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-2 font-medium text-primary-600">{item.contract}</td>
+                  <tr key={item.id} className="hover:bg-muted/50">
+                    <td className="px-4 py-2 font-medium text-primary">{item.contract}</td>
                     <td className="px-4 py-2">{item.customer}</td>
                     <td className="px-4 py-2">{item.product}</td>
                     <td className="px-4 py-2 text-center">
@@ -310,13 +321,13 @@ export default function RepossessionsPage() {
                     <td className={`px-4 py-2 text-right font-medium ${item.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                       {item.profit.toLocaleString()}
                     </td>
-                    <td className="px-4 py-2 text-right text-gray-500">{item.marginPct}%</td>
+                    <td className="px-4 py-2 text-right text-muted-foreground">{item.marginPct}%</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Filter */}
@@ -324,7 +335,7 @@ export default function RepossessionsPage() {
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+          className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
         >
           <option value="">ทุกสถานะ</option>
           <option value="REPOSSESSED">ยึดคืนแล้ว</option>
@@ -340,11 +351,11 @@ export default function RepossessionsPage() {
       <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="บันทึกการยึดคืน" size="lg">
         <form onSubmit={handleCreate} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">เลือกสัญญา (OVERDUE/DEFAULT) *</label>
+            <label className="block text-sm font-medium text-foreground mb-1">เลือกสัญญา (OVERDUE/DEFAULT) *</label>
             <select
               value={createForm.contractId}
               onChange={(e) => setCreateForm({ ...createForm, contractId: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+              className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
               required
             >
               <option value="">-- เลือกสัญญา --</option>
@@ -357,21 +368,21 @@ export default function RepossessionsPage() {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">วันที่ยึดคืน *</label>
+              <label className="block text-sm font-medium text-foreground mb-1">วันที่ยึดคืน *</label>
               <input
                 type="date"
                 value={createForm.repossessedDate}
                 onChange={(e) => setCreateForm({ ...createForm, repossessedDate: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
                 required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">สภาพเครื่อง *</label>
+              <label className="block text-sm font-medium text-foreground mb-1">สภาพเครื่อง *</label>
               <select
                 value={createForm.conditionGrade}
                 onChange={(e) => setCreateForm({ ...createForm, conditionGrade: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
               >
                 <option value="A">A - ดีมาก</option>
                 <option value="B">B - ดี</option>
@@ -382,42 +393,42 @@ export default function RepossessionsPage() {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">ราคาตี (บาท) *</label>
+              <label className="block text-sm font-medium text-foreground mb-1">ราคาตี (บาท) *</label>
               <input
                 type="number"
                 value={createForm.appraisalPrice}
                 onChange={(e) => setCreateForm({ ...createForm, appraisalPrice: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
                 required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">ค่าซ่อม (บาท)</label>
+              <label className="block text-sm font-medium text-foreground mb-1">ค่าซ่อม (บาท)</label>
               <input
                 type="number"
                 value={createForm.repairCost}
                 onChange={(e) => setCreateForm({ ...createForm, repairCost: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
               />
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ</label>
+            <label className="block text-sm font-medium text-foreground mb-1">หมายเหตุ</label>
             <textarea
               value={createForm.notes}
               onChange={(e) => setCreateForm({ ...createForm, notes: e.target.value })}
               rows={2}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+              className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
             />
           </div>
           <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={() => setIsCreateModalOpen(false)} className="px-4 py-2 text-sm text-gray-600">
+            <button type="button" onClick={() => setIsCreateModalOpen(false)} className="px-4 py-2 text-sm text-muted-foreground">
               ยกเลิก
             </button>
             <button
               type="submit"
               disabled={createMutation.isPending}
-              className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
             >
               {createMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
             </button>
@@ -429,17 +440,17 @@ export default function RepossessionsPage() {
       <Modal isOpen={isUpdateModalOpen} onClose={() => setIsUpdateModalOpen(false)} title="จัดการเครื่องยึดคืน">
         {selectedRepo && (
           <form onSubmit={handleUpdate} className="space-y-4">
-            <div className="bg-gray-50 rounded-lg p-3 text-sm">
+            <div className="bg-muted rounded-lg p-3 text-sm">
               <div><strong>สินค้า:</strong> {selectedRepo.product.brand} {selectedRepo.product.model}</div>
               <div><strong>สัญญา:</strong> {selectedRepo.contract.contractNumber}</div>
               <div><strong>ลูกค้า:</strong> {selectedRepo.contract.customer.name}</div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">สถานะ</label>
+              <label className="block text-sm font-medium text-foreground mb-1">สถานะ</label>
               <select
                 value={updateForm.status}
                 onChange={(e) => setUpdateForm({ ...updateForm, status: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
               >
                 <option value="REPOSSESSED">ยึดคืนแล้ว</option>
                 <option value="UNDER_REPAIR">กำลังซ่อม</option>
@@ -449,41 +460,41 @@ export default function RepossessionsPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">ค่าซ่อม (บาท)</label>
+                <label className="block text-sm font-medium text-foreground mb-1">ค่าซ่อม (บาท)</label>
                 <input
                   type="number"
                   value={updateForm.repairCost}
                   onChange={(e) => setUpdateForm({ ...updateForm, repairCost: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+                  className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">ราคาขายต่อ (บาท)</label>
+                <label className="block text-sm font-medium text-foreground mb-1">ราคาขายต่อ (บาท)</label>
                 <input
                   type="number"
                   value={updateForm.resellPrice}
                   onChange={(e) => setUpdateForm({ ...updateForm, resellPrice: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+                  className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
                 />
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ</label>
+              <label className="block text-sm font-medium text-foreground mb-1">หมายเหตุ</label>
               <textarea
                 value={updateForm.notes}
                 onChange={(e) => setUpdateForm({ ...updateForm, notes: e.target.value })}
                 rows={2}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
               />
             </div>
             <div className="flex justify-end gap-3 pt-2">
-              <button type="button" onClick={() => setIsUpdateModalOpen(false)} className="px-4 py-2 text-sm text-gray-600">
+              <button type="button" onClick={() => setIsUpdateModalOpen(false)} className="px-4 py-2 text-sm text-muted-foreground">
                 ยกเลิก
               </button>
               <button
                 type="submit"
                 disabled={updateMutation.isPending}
-                className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
               >
                 {updateMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
               </button>

@@ -128,20 +128,20 @@ export default function AuditLogsPage() {
       {/* Stats Cards */}
       {stats && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white rounded-lg border p-4">
-            <p className="text-xs text-gray-500">วันนี้</p>
-            <p className="text-2xl font-bold text-gray-900">{stats.todayCount.toLocaleString()}</p>
+          <div className="bg-card rounded-lg border border-border p-4">
+            <p className="text-xs text-muted-foreground">วันนี้</p>
+            <p className="text-2xl font-bold text-foreground">{stats.todayCount.toLocaleString()}</p>
           </div>
-          <div className="bg-white rounded-lg border p-4">
-            <p className="text-xs text-gray-500">7 วันล่าสุด</p>
-            <p className="text-2xl font-bold text-gray-900">{stats.weekCount.toLocaleString()}</p>
+          <div className="bg-card rounded-lg border border-border p-4">
+            <p className="text-xs text-muted-foreground">7 วันล่าสุด</p>
+            <p className="text-2xl font-bold text-foreground">{stats.weekCount.toLocaleString()}</p>
           </div>
-          <div className="bg-white rounded-lg border p-4">
-            <p className="text-xs text-gray-500">ทั้งหมด</p>
-            <p className="text-2xl font-bold text-gray-900">{stats.totalCount.toLocaleString()}</p>
+          <div className="bg-card rounded-lg border border-border p-4">
+            <p className="text-xs text-muted-foreground">ทั้งหมด</p>
+            <p className="text-2xl font-bold text-foreground">{stats.totalCount.toLocaleString()}</p>
           </div>
-          <div className="bg-white rounded-lg border p-4">
-            <p className="text-xs text-gray-500">Error (7 วัน)</p>
+          <div className="bg-card rounded-lg border border-border p-4">
+            <p className="text-xs text-muted-foreground">Error (7 วัน)</p>
             <p className={`text-2xl font-bold ${stats.recentErrors > 0 ? 'text-red-600' : 'text-green-600'}`}>
               {stats.recentErrors}
             </p>
@@ -150,10 +150,10 @@ export default function AuditLogsPage() {
       )}
 
       {/* Filters */}
-      <div className="bg-white rounded-lg border p-4 mb-6">
+      <div className="bg-card rounded-lg border border-border p-4 mb-6">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Entity</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Entity</label>
             <input
               type="text"
               value={entity}
@@ -163,7 +163,7 @@ export default function AuditLogsPage() {
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Action</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Action</label>
             <select
               value={action}
               onChange={(e) => { setAction(e.target.value); setPage(1); }}
@@ -181,7 +181,7 @@ export default function AuditLogsPage() {
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">จากวันที่</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">จากวันที่</label>
             <input
               type="date"
               value={dateFrom}
@@ -190,7 +190,7 @@ export default function AuditLogsPage() {
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">ถึงวันที่</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">ถึงวันที่</label>
             <input
               type="date"
               value={dateTo}
@@ -202,25 +202,25 @@ export default function AuditLogsPage() {
       </div>
 
       {/* Logs Table */}
-      <div className="bg-white rounded-lg border overflow-hidden">
+      <div className="bg-card rounded-lg border border-border overflow-hidden">
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
           </div>
         ) : logs.length === 0 ? (
-          <div className="text-center py-12 text-gray-500">ไม่พบข้อมูล</div>
+          <div className="text-center py-12 text-muted-foreground">ไม่พบข้อมูล</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-muted border-b">
                 <tr>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">เวลา</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">ผู้ใช้</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Action</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Entity</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Entity ID</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">IP</th>
-                  <th className="text-center px-4 py-3 font-medium text-gray-600">ms</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">เวลา</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">ผู้ใช้</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Action</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Entity</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Entity ID</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">IP</th>
+                  <th className="text-center px-4 py-3 font-medium text-muted-foreground">ms</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -229,10 +229,10 @@ export default function AuditLogsPage() {
                     <td colSpan={7} className="p-0">
                       <button
                         onClick={() => setExpandedId(expandedId === log.id ? null : log.id)}
-                        className="w-full text-left hover:bg-gray-50 transition-colors"
+                        className="w-full text-left hover:bg-muted/50 transition-colors"
                       >
                         <div className="flex items-center">
-                          <div className="px-4 py-3 w-44 shrink-0 text-gray-500 text-xs">
+                          <div className="px-4 py-3 w-44 shrink-0 text-muted-foreground text-xs">
                             {formatDate(log.createdAt)}
                           </div>
                           <div className="px-4 py-3 w-36 shrink-0 truncate">
@@ -241,21 +241,21 @@ export default function AuditLogsPage() {
                           <div className="px-4 py-3 w-32 shrink-0">
                             <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                               actionColors[log.action] ||
-                              (log.action.endsWith('_ERROR') ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700')
+                              (log.action.endsWith('_ERROR') ? 'bg-red-100 text-red-700' : 'bg-muted text-foreground')
                             }`}>
                               {actionLabels[log.action] || log.action}
                             </span>
                           </div>
-                          <div className="px-4 py-3 w-28 shrink-0 text-gray-700">
+                          <div className="px-4 py-3 w-28 shrink-0 text-foreground">
                             {entityLabels[log.entity] || log.entity}
                           </div>
-                          <div className="px-4 py-3 w-32 shrink-0 font-mono text-xs text-gray-400 truncate">
+                          <div className="px-4 py-3 w-32 shrink-0 font-mono text-xs text-muted-foreground truncate">
                             {log.entityId ? log.entityId.substring(0, 8) + '...' : '-'}
                           </div>
-                          <div className="px-4 py-3 w-28 shrink-0 text-xs text-gray-400">
+                          <div className="px-4 py-3 w-28 shrink-0 text-xs text-muted-foreground">
                             {log.ipAddress || '-'}
                           </div>
-                          <div className="px-4 py-3 w-16 shrink-0 text-center text-xs text-gray-400">
+                          <div className="px-4 py-3 w-16 shrink-0 text-center text-xs text-muted-foreground">
                             {log.duration ?? '-'}
                           </div>
                         </div>
@@ -263,20 +263,20 @@ export default function AuditLogsPage() {
 
                       {/* Expanded Detail */}
                       {expandedId === log.id && (
-                        <div className="px-4 py-3 bg-gray-50 border-t">
+                        <div className="px-4 py-3 bg-muted border-t">
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                             {log.newValue && (
                               <div>
-                                <p className="font-medium text-gray-600 mb-1">New Value:</p>
-                                <pre className="bg-white border rounded p-2 overflow-x-auto max-h-48 text-gray-700">
+                                <p className="font-medium text-muted-foreground mb-1">New Value:</p>
+                                <pre className="bg-card border rounded p-2 overflow-x-auto max-h-48 text-foreground">
                                   {JSON.stringify(log.newValue, null, 2)}
                                 </pre>
                               </div>
                             )}
                             {log.oldValue && (
                               <div>
-                                <p className="font-medium text-gray-600 mb-1">Old Value:</p>
-                                <pre className="bg-white border rounded p-2 overflow-x-auto max-h-48 text-gray-700">
+                                <p className="font-medium text-muted-foreground mb-1">Old Value:</p>
+                                <pre className="bg-card border rounded p-2 overflow-x-auto max-h-48 text-foreground">
                                   {JSON.stringify(log.oldValue, null, 2)}
                                 </pre>
                               </div>
@@ -284,11 +284,11 @@ export default function AuditLogsPage() {
                           </div>
                           {log.userAgent && (
                             <div className="mt-2">
-                              <p className="font-medium text-gray-600 mb-1 text-xs">User Agent:</p>
-                              <p className="text-xs text-gray-500 break-all">{log.userAgent}</p>
+                              <p className="font-medium text-muted-foreground mb-1 text-xs">User Agent:</p>
+                              <p className="text-xs text-muted-foreground break-all">{log.userAgent}</p>
                             </div>
                           )}
-                          <div className="mt-2 text-xs text-gray-400">
+                          <div className="mt-2 text-xs text-muted-foreground">
                             Full Entity ID: {log.entityId || '-'}
                           </div>
                         </div>
@@ -303,25 +303,25 @@ export default function AuditLogsPage() {
 
         {/* Pagination */}
         {totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t bg-gray-50">
-            <p className="text-xs text-gray-500">
+          <div className="flex items-center justify-between px-4 py-3 border-t bg-muted">
+            <p className="text-xs text-muted-foreground">
               แสดง {logs.length} จาก {result?.total?.toLocaleString()} รายการ
             </p>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page <= 1}
-                className="px-3 py-1.5 text-xs border rounded-lg disabled:opacity-50 hover:bg-white"
+                className="px-3 py-1.5 text-xs border rounded-lg disabled:opacity-50 hover:bg-muted/50"
               >
                 ก่อนหน้า
               </button>
-              <span className="text-xs text-gray-600">
+              <span className="text-xs text-muted-foreground">
                 {page} / {totalPages}
               </span>
               <button
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={page >= totalPages}
-                className="px-3 py-1.5 text-xs border rounded-lg disabled:opacity-50 hover:bg-white"
+                className="px-3 py-1.5 text-xs border rounded-lg disabled:opacity-50 hover:bg-muted/50"
               >
                 ถัดไป
               </button>

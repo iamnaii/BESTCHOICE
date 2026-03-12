@@ -518,7 +518,7 @@ export default function ContractSignPage() {
         <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-3">
           <div className="flex-shrink-0">
             {lessorSignatureImage && (
-              <img src={lessorSignatureImage} alt="ลายเซ็นบริษัท" className="h-8 border rounded bg-white px-1" />
+              <img src={lessorSignatureImage} alt="ลายเซ็นบริษัท" className="h-8 border rounded bg-background px-1" />
             )}
           </div>
           <div className="text-sm text-blue-700">
@@ -556,7 +556,7 @@ export default function ContractSignPage() {
             {preview ? (
               <ContractPreviewFrame html={preview.html} />
             ) : (
-              <div className="flex items-center justify-center py-12 bg-white"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div></div>
+              <div className="flex items-center justify-center py-12 bg-background"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>
             )}
           </div>
         </div>
@@ -608,7 +608,7 @@ export default function ContractSignPage() {
               {/* GPS loading indicator */}
               {gpsLoading && (
                 <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
-                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-400" />
+                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-border" />
                   กำลังขอตำแหน่ง GPS...
                 </div>
               )}
@@ -618,7 +618,7 @@ export default function ContractSignPage() {
                 <div className="bg-primary/5 rounded-lg border border-primary/30 p-4 text-center">
                   <div className="text-sm text-primary font-medium mb-2">ลายเซ็นผู้ให้เช่าซื้อจะถูกใส่อัตโนมัติจากการตั้งค่าระบบ</div>
                   {lessorSignatureImage && (
-                    <div className="bg-white rounded border p-2 inline-block">
+                    <div className="bg-background rounded border p-2 inline-block">
                       <img src={lessorSignatureImage} alt="ลายเซ็นบริษัท" style={{ maxHeight: '60px' }} />
                     </div>
                   )}
@@ -646,7 +646,7 @@ export default function ContractSignPage() {
                       {showSavedOption && (
                         <div className="border-2 border-primary/30 bg-primary/5 rounded-lg p-4">
                           <div className="text-sm font-medium text-primary mb-2">ลายเซ็นที่บันทึกไว้</div>
-                          <div className="bg-white rounded border p-3 flex justify-center mb-3">
+                          <div className="bg-background rounded border p-3 flex justify-center mb-3">
                             <img src={savedSignature} alt="saved-signature" className="h-16" />
                           </div>
                           <div className="flex gap-2">

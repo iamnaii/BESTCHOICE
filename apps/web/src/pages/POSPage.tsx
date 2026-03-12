@@ -319,7 +319,7 @@ export default function POSPage() {
                     {selectedProduct.prices.length > 0 && (
                       <div className="flex gap-2 mt-1">
                         {selectedProduct.prices.map(p => (
-                          <span key={p.id} className={`text-xs px-2 py-0.5 rounded ${p.isDefault ? 'bg-primary-100 text-primary-700' : 'bg-secondary text-muted-foreground'}`}>
+                          <span key={p.id} className={`text-xs px-2 py-0.5 rounded ${p.isDefault ? 'bg-primary/10 text-primary' : 'bg-secondary text-muted-foreground'}`}>
                             {p.label}: {parseFloat(p.amount).toLocaleString()}
                           </span>
                         ))}

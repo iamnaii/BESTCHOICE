@@ -52,7 +52,7 @@ const statusLabels: Record<string, string> = {
 
 const paymentStatusColors: Record<string, string> = {
   PAID: 'bg-green-100 text-green-700',
-  PENDING: 'bg-gray-100 text-gray-600',
+  PENDING: 'bg-muted text-muted-foreground',
   OVERDUE: 'bg-red-100 text-red-700',
   PARTIALLY_PAID: 'bg-yellow-100 text-yellow-700',
 };
@@ -75,10 +75,10 @@ function CustomerPortalPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-muted flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-3 text-sm text-gray-500">กำลังโหลดข้อมูล...</p>
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-3 text-sm text-muted-foreground">กำลังโหลดข้อมูล...</p>
         </div>
       </div>
     );
@@ -86,12 +86,12 @@ function CustomerPortalPage() {
 
   if (error || !data) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="bg-white rounded-lg border p-8 max-w-md text-center">
+      <div className="min-h-screen bg-muted flex items-center justify-center">
+        <div className="bg-card rounded-lg border border-border p-8 max-w-md text-center shadow-xs shadow-black/5">
           <div className="text-4xl mb-4">🔒</div>
-          <h1 className="text-lg font-semibold text-gray-900 mb-2">ไม่สามารถเข้าถึงได้</h1>
-          <p className="text-sm text-gray-500">{error || 'ลิงก์ไม่ถูกต้องหรือหมดอายุ'}</p>
-          <p className="text-xs text-gray-400 mt-3">กรุณาติดต่อร้านเพื่อขอลิงก์ใหม่</p>
+          <h1 className="text-lg font-semibold text-foreground mb-2">ไม่สามารถเข้าถึงได้</h1>
+          <p className="text-sm text-muted-foreground">{error || 'ลิงก์ไม่ถูกต้องหรือหมดอายุ'}</p>
+          <p className="text-xs text-muted-foreground mt-3">กรุณาติดต่อร้านเพื่อขอลิงก์ใหม่</p>
         </div>
       </div>
     );
@@ -103,28 +103,28 @@ function CustomerPortalPage() {
   const paidCount = data.payments.filter((p) => p.status === 'PAID').length;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-muted">
       {/* Header */}
-      <div className="bg-white border-b">
+      <div className="bg-card border-b border-border">
         <div className="max-w-3xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-lg font-bold text-gray-900">BESTCHOICE</h1>
-              <p className="text-xs text-gray-500">ข้อมูลสัญญาผ่อนชำระ</p>
+              <h1 className="text-lg font-bold text-foreground">BESTCHOICE</h1>
+              <p className="text-xs text-muted-foreground">ข้อมูลสัญญาผ่อนชำระ</p>
             </div>
-            <div className="text-xs text-gray-400">
+            <div className="text-xs text-muted-foreground">
               หมดอายุ: {new Date(data.expiresAt).toLocaleString('th-TH')}
             </div>
           </div>
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
+      <div className="max-w-3xl mx-auto px-4 py-6 flex flex-col gap-5 lg:gap-7.5">
         {/* Contract Summary */}
-        <div className="bg-white rounded-lg border p-4">
+        <div className="bg-card rounded-lg border border-border p-4 shadow-xs shadow-black/5">
           <div className="flex justify-between items-start mb-3">
             <div>
-              <div className="text-xs text-gray-500">สัญญาเลขที่</div>
+              <div className="text-xs text-muted-foreground">สัญญาเลขที่</div>
               <div className="font-bold text-lg">{c.contractNumber}</div>
             </div>
             <span className={`px-3 py-1 rounded-full text-xs font-medium ${
@@ -136,42 +136,42 @@ function CustomerPortalPage() {
             </span>
           </div>
           <div className="grid grid-cols-2 gap-3 text-sm">
-            <div><span className="text-gray-500">ลูกค้า:</span> {c.customer.name}</div>
-            <div><span className="text-gray-500">สินค้า:</span> {c.product.brand} {c.product.model}</div>
-            <div><span className="text-gray-500">ยอดจัดไฟแนนซ์:</span> {Number(c.financedAmount).toLocaleString()} ฿</div>
-            <div><span className="text-gray-500">ค่างวด:</span> {Number(c.monthlyPayment).toLocaleString()} ฿/เดือน</div>
+            <div><span className="text-muted-foreground">ลูกค้า:</span> {c.customer.name}</div>
+            <div><span className="text-muted-foreground">สินค้า:</span> {c.product.brand} {c.product.model}</div>
+            <div><span className="text-muted-foreground">ยอดจัดไฟแนนซ์:</span> {Number(c.financedAmount).toLocaleString()} ฿</div>
+            <div><span className="text-muted-foreground">ค่างวด:</span> {Number(c.monthlyPayment).toLocaleString()} ฿/เดือน</div>
           </div>
         </div>
 
         {/* Progress */}
-        <div className="bg-white rounded-lg border p-4">
+        <div className="bg-card rounded-lg border border-border p-4 shadow-xs shadow-black/5">
           <div className="flex justify-between items-center mb-2">
             <span className="text-sm font-medium">ความคืบหน้า</span>
-            <span className="text-sm text-gray-500">{paidCount}/{c.totalMonths} งวด</span>
+            <span className="text-sm text-muted-foreground">{paidCount}/{c.totalMonths} งวด</span>
           </div>
-          <div className="w-full bg-gray-100 rounded-full h-3 mb-2">
+          <div className="w-full bg-muted rounded-full h-3 mb-2">
             <div
               className="bg-green-500 h-3 rounded-full transition-all"
               style={{ width: `${(paidCount / c.totalMonths) * 100}%` }}
             />
           </div>
-          <div className="flex justify-between text-xs text-gray-500">
+          <div className="flex justify-between text-xs text-muted-foreground">
             <span>ชำระแล้ว: {totalPaid.toLocaleString()} ฿</span>
             <span>คงเหลือ: {Math.max(0, totalDue - totalPaid).toLocaleString()} ฿</span>
           </div>
         </div>
 
         {/* Payment Schedule */}
-        <div className="bg-white rounded-lg border">
-          <div className="px-4 py-3 border-b">
+        <div className="bg-card rounded-lg border border-border shadow-xs shadow-black/5">
+          <div className="px-4 py-3 border-b border-border">
             <h3 className="text-sm font-semibold">ตารางผ่อนชำระ</h3>
           </div>
-          <div className="divide-y max-h-80 overflow-y-auto">
+          <div className="divide-y divide-border max-h-80 overflow-y-auto">
             {data.payments.map((p) => (
               <div key={p.installmentNo} className="px-4 py-3 flex items-center justify-between">
                 <div>
                   <div className="text-sm font-medium">งวดที่ {p.installmentNo}</div>
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-muted-foreground">
                     กำหนด: {new Date(p.dueDate).toLocaleDateString('th-TH')}
                   </div>
                 </div>
@@ -180,7 +180,7 @@ function CustomerPortalPage() {
                   {Number(p.lateFee) > 0 && (
                     <div className="text-xs text-red-500">+ค่าปรับ {Number(p.lateFee).toLocaleString()} ฿</div>
                   )}
-                  <span className={`px-2 py-0.5 rounded-full text-xs ${paymentStatusColors[p.status] || 'bg-gray-100 text-gray-600'}`}>
+                  <span className={`px-2 py-0.5 rounded-full text-xs ${paymentStatusColors[p.status] || 'bg-muted text-muted-foreground'}`}>
                     {statusLabels[p.status] || p.status}
                   </span>
                 </div>
@@ -191,16 +191,16 @@ function CustomerPortalPage() {
 
         {/* Receipts */}
         {data.receipts.length > 0 && (
-          <div className="bg-white rounded-lg border">
-            <div className="px-4 py-3 border-b">
+          <div className="bg-card rounded-lg border border-border shadow-xs shadow-black/5">
+            <div className="px-4 py-3 border-b border-border">
               <h3 className="text-sm font-semibold">ใบเสร็จรับเงิน</h3>
             </div>
-            <div className="divide-y">
+            <div className="divide-y divide-border">
               {data.receipts.map((r, i) => (
                 <div key={i} className="px-4 py-3 flex items-center justify-between">
                   <div>
                     <div className="text-xs font-mono">{r.receiptNumber}</div>
-                    <div className="text-xs text-gray-500">{new Date(r.paidDate).toLocaleDateString('th-TH')}</div>
+                    <div className="text-xs text-muted-foreground">{new Date(r.paidDate).toLocaleDateString('th-TH')}</div>
                   </div>
                   <div className="text-sm font-medium">{Number(r.amount).toLocaleString()} ฿</div>
                 </div>
@@ -211,13 +211,13 @@ function CustomerPortalPage() {
 
         {/* Signatures */}
         {data.signatures.length > 0 && (
-          <div className="bg-white rounded-lg border p-4">
+          <div className="bg-card rounded-lg border border-border p-4 shadow-xs shadow-black/5">
             <h3 className="text-sm font-semibold mb-2">การลงนาม</h3>
             <div className="grid grid-cols-2 gap-2">
               {data.signatures.map((s, i) => (
                 <div key={i} className="text-xs p-2 bg-green-50 rounded">
                   <div className="font-medium">{s.signerName}</div>
-                  <div className="text-gray-500">{s.signerType} - {new Date(s.signedAt).toLocaleDateString('th-TH')}</div>
+                  <div className="text-muted-foreground">{s.signerType} - {new Date(s.signedAt).toLocaleDateString('th-TH')}</div>
                 </div>
               ))}
             </div>
@@ -225,7 +225,7 @@ function CustomerPortalPage() {
         )}
 
         {/* Footer */}
-        <div className="text-center text-xs text-gray-400 py-4">
+        <div className="text-center text-xs text-muted-foreground py-4">
           <p>เอกสารนี้สร้างโดยระบบ BESTCHOICE อัตโนมัติ</p>
           <p>ข้อมูล ณ วันที่ {new Date().toLocaleDateString('th-TH')}</p>
         </div>

@@ -29,15 +29,15 @@ export default function ReportsPage() {
       <PageHeader title="รายงาน" subtitle="รายงานสรุปข้อมูลต่างๆ" />
 
       {/* Tabs */}
-      <div className="flex flex-wrap gap-1 mb-6 bg-gray-100 rounded-lg p-1">
+      <div className="flex flex-wrap gap-1 mb-6 bg-muted rounded-lg p-1">
         {reportTabs.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
             className={`px-3 py-2 text-xs font-medium rounded-md transition-colors ${
               activeTab === tab.key
-                ? 'bg-white text-primary-700 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
+                ? 'bg-card text-primary shadow-xs shadow-black/5'
+                : 'text-muted-foreground hover:text-foreground'
             }`}
           >
             {tab.label}
@@ -69,12 +69,12 @@ function AgingReport() {
   const total = data?.total || { count: 0, amount: 0 };
 
   return (
-    <div className="bg-white rounded-lg border p-5">
-      <h3 className="text-sm font-semibold text-gray-700 mb-4">รายงานอายุหนี้ (Aging Report)</h3>
+    <div className="bg-card rounded-lg border border-border p-5">
+      <h3 className="text-sm font-semibold text-foreground mb-4">รายงานอายุหนี้ (Aging Report)</h3>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b text-left text-gray-500">
+            <tr className="border-b text-left text-muted-foreground">
               <th className="pb-2 font-medium">ช่วงวัน</th>
               <th className="pb-2 font-medium text-right">จำนวนสัญญา</th>
               <th className="pb-2 font-medium text-right">ยอดค้างชำระ (บาท)</th>
@@ -87,12 +87,12 @@ function AgingReport() {
                 <td className="py-2 font-medium">{b.range}</td>
                 <td className="py-2 text-right">{b.count}</td>
                 <td className="py-2 text-right text-red-600">{fmt(b.amount)}</td>
-                <td className="py-2 text-right text-gray-500">
+                <td className="py-2 text-right text-muted-foreground">
                   {total.amount > 0 ? ((b.amount / total.amount) * 100).toFixed(1) : 0}%
                 </td>
               </tr>
             ))}
-            <tr className="font-semibold bg-gray-50">
+            <tr className="font-semibold bg-muted">
               <td className="py-2">รวม</td>
               <td className="py-2 text-right">{total.count}</td>
               <td className="py-2 text-right text-red-600">{fmt(total.amount)}</td>
@@ -115,12 +115,12 @@ function RevenueReport() {
   if (isLoading) return <LoadingState />;
 
   return (
-    <div className="bg-white rounded-lg border p-5">
-      <h3 className="text-sm font-semibold text-gray-700 mb-4">รายงานรายได้ / กำไร-ขาดทุน</h3>
+    <div className="bg-card rounded-lg border border-border p-5">
+      <h3 className="text-sm font-semibold text-foreground mb-4">รายงานรายได้ / กำไร-ขาดทุน</h3>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <SummaryCard label="รายได้ดอกเบี้ย" value={data?.interestIncome || 0} color="text-green-600" />
         <SummaryCard label="ค่าปรับ" value={data?.lateFeeIncome || 0} color="text-orange-600" />
-        <SummaryCard label="ยอดชำระรับ" value={data?.paymentsReceived || 0} color="text-primary-600" />
+        <SummaryCard label="ยอดชำระรับ" value={data?.paymentsReceived || 0} color="text-primary" />
         <SummaryCard label="ยอดค้างชำระ" value={data?.outstandingTotal || 0} color="text-red-600" />
       </div>
     </div>
@@ -137,12 +137,12 @@ function HighRiskReport() {
   if (isLoading) return <LoadingState />;
 
   return (
-    <div className="bg-white rounded-lg border p-5">
-      <h3 className="text-sm font-semibold text-gray-700 mb-4">ลูกค้าเสี่ยงสูง</h3>
+    <div className="bg-card rounded-lg border border-border p-5">
+      <h3 className="text-sm font-semibold text-foreground mb-4">ลูกค้าเสี่ยงสูง</h3>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b text-left text-gray-500">
+            <tr className="border-b text-left text-muted-foreground">
               <th className="pb-2 font-medium">ลูกค้า</th>
               <th className="pb-2 font-medium">เบอร์โทร</th>
               <th className="pb-2 font-medium text-right">สัญญาค้าง</th>
@@ -153,7 +153,7 @@ function HighRiskReport() {
             {(data as { name: string; phone: string; overdueContracts: number; totalOutstanding: number }[]).map((c) => (
               <tr key={c.phone || c.name} className="border-b last:border-0">
                 <td className="py-2 font-medium">{c.name}</td>
-                <td className="py-2 text-gray-500">{c.phone}</td>
+                <td className="py-2 text-muted-foreground">{c.phone}</td>
                 <td className="py-2 text-right">{c.overdueContracts}</td>
                 <td className="py-2 text-right text-red-600 font-medium">
                   {fmt(c.totalOutstanding)}
@@ -162,7 +162,7 @@ function HighRiskReport() {
             ))}
             {data.length === 0 && (
               <tr>
-                <td colSpan={4} className="py-8 text-center text-gray-400">ไม่พบข้อมูล</td>
+                <td colSpan={4} className="py-8 text-center text-muted-foreground">ไม่พบข้อมูล</td>
               </tr>
             )}
           </tbody>
@@ -182,12 +182,12 @@ function SalesReport() {
   if (isLoading) return <LoadingState />;
 
   return (
-    <div className="bg-white rounded-lg border p-5">
-      <h3 className="text-sm font-semibold text-gray-700 mb-4">เปรียบเทียบพนักงานขาย</h3>
+    <div className="bg-card rounded-lg border border-border p-5">
+      <h3 className="text-sm font-semibold text-foreground mb-4">เปรียบเทียบพนักงานขาย</h3>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b text-left text-gray-500">
+            <tr className="border-b text-left text-muted-foreground">
               <th className="pb-2 font-medium">พนักงาน</th>
               <th className="pb-2 font-medium text-right">สัญญาทั้งหมด</th>
               <th className="pb-2 font-medium text-right">ยอดขาย (บาท)</th>
@@ -238,12 +238,12 @@ function BranchReport() {
   if (isLoading) return <LoadingState />;
 
   return (
-    <div className="bg-white rounded-lg border p-5">
-      <h3 className="text-sm font-semibold text-gray-700 mb-4">เปรียบเทียบสาขา</h3>
+    <div className="bg-card rounded-lg border border-border p-5">
+      <h3 className="text-sm font-semibold text-foreground mb-4">เปรียบเทียบสาขา</h3>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b text-left text-gray-500">
+            <tr className="border-b text-left text-muted-foreground">
               <th className="pb-2 font-medium">สาขา</th>
               <th className="pb-2 font-medium text-right">สัญญา</th>
               <th className="pb-2 font-medium text-right">ยอดขาย (บาท)</th>
@@ -280,9 +280,9 @@ function DailyPaymentReport({ date, onDateChange }: { date: string; onDateChange
   if (isLoading) return <LoadingState />;
 
   return (
-    <div className="bg-white rounded-lg border p-5">
+    <div className="bg-card rounded-lg border border-border p-5">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold text-gray-700">สรุปชำระรายวัน</h3>
+        <h3 className="text-sm font-semibold text-foreground">สรุปชำระรายวัน</h3>
         <input
           type="date"
           value={date}
@@ -293,14 +293,14 @@ function DailyPaymentReport({ date, onDateChange }: { date: string; onDateChange
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
         <SummaryCard label="รายการชำระ" value={data?.totalCount || 0} isCurrency={false} />
         <SummaryCard label="ยอดรวม" value={data?.totalAmount || 0} color="text-green-600" />
-        <SummaryCard label="เงินสด" value={data?.byMethod?.CASH || 0} color="text-primary-600" />
-        <SummaryCard label="โอน" value={data?.byMethod?.TRANSFER || 0} color="text-primary-600" />
+        <SummaryCard label="เงินสด" value={data?.byMethod?.CASH || 0} color="text-primary" />
+        <SummaryCard label="โอน" value={data?.byMethod?.TRANSFER || 0} color="text-primary" />
       </div>
       {data?.byBranch && data.byBranch.length > 0 && (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b text-left text-gray-500">
+              <tr className="border-b text-left text-muted-foreground">
                 <th className="pb-2 font-medium">สาขา</th>
                 <th className="pb-2 font-medium text-right">รายการ</th>
                 <th className="pb-2 font-medium text-right">ยอดรวม (บาท)</th>
@@ -335,17 +335,17 @@ function StockReport() {
   const byBranch = data?.byBranch || [];
 
   return (
-    <div className="space-y-6">
-      <div className="bg-white rounded-lg border p-5">
-        <h3 className="text-sm font-semibold text-gray-700 mb-4">สต็อกตามสถานะ</h3>
+    <div className="flex flex-col gap-5 lg:gap-7.5">
+      <div className="bg-card rounded-lg border border-border p-5">
+        <h3 className="text-sm font-semibold text-foreground mb-4">สต็อกตามสถานะ</h3>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
           <SummaryCard label="ทั้งหมด" value={data?.totalCount || 0} isCurrency={false} />
-          <SummaryCard label="มูลค่ารวม" value={data?.totalValue || 0} color="text-primary-600" />
+          <SummaryCard label="มูลค่ารวม" value={data?.totalValue || 0} color="text-primary" />
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b text-left text-gray-500">
+              <tr className="border-b text-left text-muted-foreground">
                 <th className="pb-2 font-medium">สถานะ</th>
                 <th className="pb-2 font-medium text-right">จำนวน</th>
                 <th className="pb-2 font-medium text-right">มูลค่า (บาท)</th>
@@ -365,12 +365,12 @@ function StockReport() {
       </div>
 
       {byBranch.length > 0 && (
-        <div className="bg-white rounded-lg border p-5">
-          <h3 className="text-sm font-semibold text-gray-700 mb-4">สต็อกตามสาขา</h3>
+        <div className="bg-card rounded-lg border border-border p-5">
+          <h3 className="text-sm font-semibold text-foreground mb-4">สต็อกตามสาขา</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b text-left text-gray-500">
+                <tr className="border-b text-left text-muted-foreground">
                   <th className="pb-2 font-medium">สาขา</th>
                   <th className="pb-2 font-medium text-right">จำนวน</th>
                   <th className="pb-2 font-medium text-right">มูลค่า (บาท)</th>
@@ -396,7 +396,7 @@ function StockReport() {
 function SummaryCard({
   label,
   value,
-  color = 'text-gray-900',
+  color = 'text-foreground',
   isCurrency = true,
 }: {
   label: string;
@@ -405,30 +405,30 @@ function SummaryCard({
   isCurrency?: boolean;
 }) {
   return (
-    <div className="bg-gray-50 rounded-lg p-3">
-      <div className="text-xs text-gray-500">{label}</div>
+    <div className="bg-muted rounded-lg p-3">
+      <div className="text-xs text-muted-foreground">{label}</div>
       <div className={`text-lg font-bold ${color}`}>
         {isCurrency ? fmt(value) : value}
       </div>
-      {isCurrency && <div className="text-xs text-gray-400">บาท</div>}
+      {isCurrency && <div className="text-xs text-muted-foreground">บาท</div>}
     </div>
   );
 }
 
 function LoadingState() {
   return (
-    <div className="bg-white rounded-lg border p-8 text-center">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-3" />
-      <div className="text-sm text-gray-500">กำลังโหลดข้อมูล...</div>
+    <div className="bg-card rounded-lg border border-border p-8 text-center">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-3" />
+      <div className="text-sm text-muted-foreground">กำลังโหลดข้อมูล...</div>
     </div>
   );
 }
 
 function ErrorState({ onRetry }: { onRetry: () => void }) {
   return (
-    <div className="bg-white rounded-lg border p-8 text-center">
+    <div className="bg-card rounded-lg border border-border p-8 text-center">
       <div className="text-red-500 text-lg mb-2">!</div>
-      <div className="text-sm text-gray-600 mb-3">ไม่สามารถโหลดข้อมูลรายงานได้</div>
+      <div className="text-sm text-muted-foreground mb-3">ไม่สามารถโหลดข้อมูลรายงานได้</div>
       <button onClick={onRetry} className="px-4 py-2 bg-red-50 text-red-600 rounded-lg text-sm hover:bg-red-100">
         ลองใหม่
       </button>

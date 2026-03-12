@@ -86,7 +86,7 @@ const statusLabels: Record<string, { label: string; className: string }> = {
 };
 
 const poStatusLabels: Record<string, { label: string; className: string }> = {
-  DRAFT: { label: 'ร่าง', className: 'bg-gray-100 text-gray-700' },
+  DRAFT: { label: 'ร่าง', className: 'bg-muted text-foreground' },
   PENDING: { label: 'รอรับสินค้า', className: 'bg-orange-100 text-orange-700' },
   APPROVED: { label: 'อนุมัติ', className: 'bg-primary-100 text-primary-700' },
   PARTIALLY_RECEIVED: { label: 'รับบางส่วน', className: 'bg-yellow-100 text-yellow-700' },
@@ -144,13 +144,13 @@ export default function SupplierDetailPage() {
   if (supplierLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
       </div>
     );
   }
 
   if (!supplier) {
-    return <div className="text-center py-12 text-gray-500">ไม่พบข้อมูลผู้ขาย</div>;
+    return <div className="text-center py-12 text-muted-foreground">ไม่พบข้อมูลผู้ขาย</div>;
   }
 
   const totalCost = history?.products.reduce((sum, p) => sum + parseFloat(p.costPrice), 0) || 0;
@@ -159,7 +159,7 @@ export default function SupplierDetailPage() {
     { key: 'name', label: 'สินค้า', render: (p: ProductRecord) => (
       <div>
         <div className="font-medium">{p.brand} {p.model}</div>
-        <div className="text-xs text-gray-400">{p.name}</div>
+        <div className="text-xs text-muted-foreground">{p.name}</div>
       </div>
     )},
     { key: 'imeiSerial', label: 'IMEI/Serial', render: (p: ProductRecord) => (
@@ -172,7 +172,7 @@ export default function SupplierDetailPage() {
       <span className="font-medium">{parseFloat(p.costPrice).toLocaleString()} ฿</span>
     )},
     { key: 'status', label: 'สถานะ', render: (p: ProductRecord) => {
-      const s = statusLabels[p.status] || { label: p.status, className: 'bg-gray-100 text-gray-700' };
+      const s = statusLabels[p.status] || { label: p.status, className: 'bg-muted text-foreground' };
       return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.className}`}>{s.label}</span>;
     }},
     { key: 'branch', label: 'สาขา', render: (p: ProductRecord) => (
@@ -191,7 +191,7 @@ export default function SupplierDetailPage() {
       <span className="text-sm">{new Date(po.orderDate).toLocaleDateString('th-TH')}</span>
     )},
     { key: 'status', label: 'สถานะ', render: (po: PORecord) => {
-      const s = poStatusLabels[po.status] || { label: po.status, className: 'bg-gray-100 text-gray-700' };
+      const s = poStatusLabels[po.status] || { label: po.status, className: 'bg-muted text-foreground' };
       return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.className}`}>{s.label}</span>;
     }},
     { key: 'items', label: 'รายการ', render: (po: PORecord) => (
@@ -211,15 +211,15 @@ export default function SupplierDetailPage() {
         PARTIALLY_PAID: { label: 'จ่ายบางส่วน', className: 'bg-orange-100 text-orange-700' },
         FULLY_PAID: { label: 'จ่ายครบ', className: 'bg-green-100 text-green-700' },
       };
-      const ps = psLabels[po.paymentStatus || 'UNPAID'] || { label: po.paymentStatus || '-', className: 'bg-gray-100 text-gray-700' };
+      const ps = psLabels[po.paymentStatus || 'UNPAID'] || { label: po.paymentStatus || '-', className: 'bg-muted text-foreground' };
       return (
         <div>
           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ps.className}`}>{ps.label}</span>
           {po.paymentMethod && (
-            <div className="text-xs text-gray-400 mt-0.5">{paymentMethodLabels[po.paymentMethod] || po.paymentMethod}</div>
+            <div className="text-xs text-muted-foreground mt-0.5">{paymentMethodLabels[po.paymentMethod] || po.paymentMethod}</div>
           )}
           {po.paidAmount && Number(po.paidAmount) > 0 && (
-            <div className="text-xs text-gray-500 mt-0.5">{Number(po.paidAmount).toLocaleString()} ฿</div>
+            <div className="text-xs text-muted-foreground mt-0.5">{Number(po.paidAmount).toLocaleString()} ฿</div>
           )}
         </div>
       );
@@ -256,7 +256,7 @@ export default function SupplierDetailPage() {
             )}
             <button
               onClick={() => navigate('/suppliers')}
-              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg"
+              className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground border border-input rounded-lg"
             >
               กลับ
             </button>
@@ -265,9 +265,9 @@ export default function SupplierDetailPage() {
       />
 
       {/* ข้อมูลผู้ขาย */}
-      <div className="bg-white rounded-lg border p-6 mb-6">
+      <div className="rounded-lg border border-border p-6 mb-6">
         <div className="flex items-start justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gray-900">ข้อมูลผู้ขาย</h2>
+          <h2 className="text-lg font-semibold text-foreground">ข้อมูลผู้ขาย</h2>
           <span
             className={`px-2 py-0.5 rounded-full text-xs font-medium ${
               supplier.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
@@ -284,10 +284,10 @@ export default function SupplierDetailPage() {
           <InfoField label="LINE ID" value={supplier.lineId} />
           <InfoField label="เลขประจำตัวผู้เสียภาษี (Tax ID Number)" value={supplier.taxId} />
           <div>
-            <div className="text-xs text-gray-500 mb-0.5">สถานะ VAT</div>
+            <div className="text-xs text-muted-foreground mb-0.5">สถานะ VAT</div>
             <span
               className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                supplier.hasVat ? 'bg-primary-100 text-primary-700' : 'bg-gray-100 text-gray-500'
+                supplier.hasVat ? 'bg-primary-100 text-primary-700' : 'bg-muted text-muted-foreground'
               }`}
             >
               {supplier.hasVat ? 'มี VAT (7%)' : 'ไม่มี VAT'}
@@ -303,18 +303,18 @@ export default function SupplierDetailPage() {
       </div>
 
       {/* Payment Methods Card */}
-      <div className="bg-white rounded-lg border p-6 mb-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">ข้อมูลการชำระเงิน ({supplier.paymentMethods?.length || 0} วิธี)</h2>
+      <div className="rounded-lg border border-border p-6 mb-6">
+        <h2 className="text-lg font-semibold text-foreground mb-4">ข้อมูลการชำระเงิน ({supplier.paymentMethods?.length || 0} วิธี)</h2>
         {supplier.paymentMethods?.length ? (
           <div className="space-y-3">
             {supplier.paymentMethods.map((pm) => (
-              <div key={pm.id} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+              <div key={pm.id} className="border border-border rounded-lg p-4 bg-muted">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
                     {paymentMethodLabels[pm.paymentMethod] || pm.paymentMethod}
                   </span>
                   {pm.isDefault && (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-yellow-100 text-yellow-700">
+                    <span className="px-2 py-0.5 rounded-full text-2xs font-medium bg-yellow-100 text-yellow-700">
                       ค่าเริ่มต้น
                     </span>
                   )}
@@ -331,7 +331,7 @@ export default function SupplierDetailPage() {
             ))}
           </div>
         ) : (
-          <p className="text-sm text-gray-400">ยังไม่มีข้อมูลการชำระเงิน</p>
+          <p className="text-sm text-muted-foreground">ยังไม่มีข้อมูลการชำระเงิน</p>
         )}
       </div>
 
@@ -344,7 +344,7 @@ export default function SupplierDetailPage() {
 
       {/* Purchase Orders */}
       <div className="mb-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-3">
+        <h2 className="text-lg font-semibold text-foreground mb-3">
           Purchase Orders ({history?.purchaseOrders.length || 0})
         </h2>
         <DataTable
@@ -357,7 +357,7 @@ export default function SupplierDetailPage() {
 
       {/* Products (Purchase History) */}
       <div>
-        <h2 className="text-lg font-semibold text-gray-900 mb-3">
+        <h2 className="text-lg font-semibold text-foreground mb-3">
           ประวัติการซื้อสินค้า ({history?.products.length || 0})
         </h2>
         <DataTable
@@ -374,17 +374,17 @@ export default function SupplierDetailPage() {
 function InfoField({ label, value }: { label: string; value: string | null | undefined }) {
   return (
     <div>
-      <div className="text-xs text-gray-500 mb-0.5">{label}</div>
-      <div className="text-sm text-gray-900">{value || '-'}</div>
+      <div className="text-xs text-muted-foreground mb-0.5">{label}</div>
+      <div className="text-sm text-foreground">{value || '-'}</div>
     </div>
   );
 }
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="bg-white rounded-lg border p-4">
-      <div className="text-xs text-gray-500 mb-1">{label}</div>
-      <div className="text-lg font-semibold text-gray-900">{value}</div>
+    <div className="rounded-lg border border-border p-4">
+      <div className="text-xs text-muted-foreground mb-1">{label}</div>
+      <div className="text-lg font-semibold text-foreground">{value}</div>
     </div>
   );
 }

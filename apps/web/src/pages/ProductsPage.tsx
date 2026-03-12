@@ -299,7 +299,7 @@ export default function ProductsPage() {
       />
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3 mb-4">
+      <div className="flex flex-wrap gap-3 mb-5 lg:mb-7.5">
         <input
           type="text"
           placeholder="ค้นหาชื่อ, ยี่ห้อ, รุ่น, IMEI..."
@@ -372,7 +372,7 @@ export default function ProductsPage() {
                 <div key={price.id}>
                   {editingPriceId === price.id ? (
                     /* Inline edit form */
-                    <form onSubmit={handlePriceSubmit} className="border-2 border-primary-200 rounded-lg p-3 bg-primary-50 space-y-2">
+                    <form onSubmit={handlePriceSubmit} className="border-2 border-primary/20 rounded-lg p-3 bg-primary/5 space-y-2">
                       <div className="grid grid-cols-2 gap-2">
                         <input
                           type="text"
@@ -427,7 +427,7 @@ export default function ProductsPage() {
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium text-foreground">{price.label}</span>
                         {price.isDefault && (
-                          <span className="px-1.5 py-0.5 bg-primary-100 text-primary-700 text-xs rounded font-medium">
+                          <span className="px-1.5 py-0.5 bg-primary/10 text-primary text-xs rounded font-medium">
                             ค่าเริ่มต้น
                           </span>
                         )}
@@ -437,7 +437,7 @@ export default function ProductsPage() {
                         <div className="flex gap-1">
                           <button
                             onClick={() => startEditPrice(price)}
-                            className="p-1 text-gray-400 hover:text-primary-600 transition-colors"
+                            className="p-1 text-muted-foreground hover:text-primary transition-colors"
                             title="แก้ไข"
                           >
                             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -450,7 +450,7 @@ export default function ProductsPage() {
                                 deletePriceMutation.mutate({ productId: editingProduct.id, priceId: price.id });
                               }
                             }}
-                            className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                            className="p-1 text-muted-foreground hover:text-red-500 transition-colors"
                             title="ลบ"
                           >
                             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -465,7 +465,7 @@ export default function ProductsPage() {
               ))}
 
               {editingProduct.prices.length === 0 && !editingPriceId && (
-                <p className="text-sm text-gray-400 text-center py-3">ยังไม่มีราคาขาย</p>
+                <p className="text-sm text-muted-foreground text-center py-3">ยังไม่มีราคาขาย</p>
               )}
             </div>
 
@@ -520,7 +520,7 @@ export default function ProductsPage() {
               <button
                 type="button"
                 onClick={startAddPrice}
-                className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-primary-400 hover:text-primary-600 transition-colors"
+                className="w-full py-2 border-2 border-dashed border-border rounded-lg text-sm text-muted-foreground hover:border-primary/40 hover:text-primary transition-colors"
               >
                 + เพิ่มราคาใหม่
               </button>
@@ -531,7 +531,7 @@ export default function ProductsPage() {
               <button
                 type="button"
                 onClick={() => setEditingProduct(null)}
-                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
+                className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground"
               >
                 ปิด
               </button>

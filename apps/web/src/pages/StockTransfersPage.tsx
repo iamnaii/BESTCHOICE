@@ -298,7 +298,7 @@ export default function StockTransfersPage() {
       />
 
       {/* Tab Bar */}
-      <div className="mb-4 border-b border-gray-200">
+      <div className="mb-4 border-b border-border">
         <nav className="-mb-px flex gap-1">
           {tabs.map((tab) => (
             <button
@@ -307,8 +307,8 @@ export default function StockTransfersPage() {
               className={clsx(
                 'whitespace-nowrap px-4 py-3 text-sm font-medium border-b-2 transition-colors cursor-pointer',
                 activeTab === tab.key
-                  ? 'border-primary-600 text-primary-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300',
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-input',
               )}
             >
               {tab.label}
@@ -329,7 +329,7 @@ export default function StockTransfersPage() {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+              className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
             >
               <option value="PENDING">รอจัดส่ง</option>
               <option value="IN_TRANSIT">ระหว่างโอนสินค้า</option>
@@ -340,12 +340,12 @@ export default function StockTransfersPage() {
           </div>
 
           {loadingTransfers ? (
-            <div className="bg-white rounded-lg border p-8 text-center text-gray-500">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-3"></div>
+            <div className="rounded-lg border p-8 text-center text-muted-foreground">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-3"></div>
               กำลังโหลด...
             </div>
           ) : batchGroups.length === 0 ? (
-            <div className="bg-white rounded-lg border p-8 text-center text-gray-500">
+            <div className="rounded-lg border p-8 text-center text-muted-foreground">
               {statusFilter === 'PENDING' ? 'ไม่มีรายการรอจัดส่ง'
                 : statusFilter === 'IN_TRANSIT' ? 'ไม่มีรายการระหว่างโอนสินค้า'
                 : 'ไม่พบรายการโอน'}
@@ -354,32 +354,32 @@ export default function StockTransfersPage() {
             <div className="space-y-2">
               {batchGroups.map((batch) => {
                 const isExpanded = expandedBatches.has(batch.batchKey);
-                const s = transferStatusLabels[batch.status] || { label: batch.status, className: 'bg-gray-100 text-gray-700' };
+                const s = transferStatusLabels[batch.status] || { label: batch.status, className: 'bg-muted text-foreground' };
                 return (
-                  <div key={batch.batchKey} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                  <div key={batch.batchKey} className="rounded-lg border border-border overflow-hidden">
                     {/* Batch Header */}
                     <button
                       onClick={() => toggleBatch(batch.batchKey)}
-                      className="w-full px-4 py-3 flex items-center gap-4 hover:bg-gray-50 transition-colors text-left"
+                      className="w-full px-4 py-3 flex items-center gap-4 hover:bg-muted/50 transition-colors text-left"
                     >
                       <svg
-                        className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-90' : ''}`}
+                        className={`w-4 h-4 text-muted-foreground transition-transform flex-shrink-0 ${isExpanded ? 'rotate-90' : ''}`}
                         fill="none" viewBox="0 0 24 24" stroke="currentColor"
                       >
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                       </svg>
                       <div className="flex-1 min-w-0 flex items-center gap-3 flex-wrap">
-                        <span className="font-mono text-sm font-semibold text-primary-600">
+                        <span className="font-mono text-sm font-semibold text-primary">
                           {batch.batchNumber || '-'}
                         </span>
                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.className}`}>
                           {s.label}
                         </span>
-                        <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                        <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
                           {batch.items.length} รายการ
                         </span>
                       </div>
-                      <div className="flex items-center gap-4 text-xs text-gray-500 flex-shrink-0">
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground flex-shrink-0">
                         <span>{batch.fromBranch.name} → {batch.toBranch.name}</span>
                         <span>{new Date(batch.createdAt).toLocaleDateString('th-TH')}</span>
                       </div>
@@ -395,7 +395,7 @@ export default function StockTransfersPage() {
                               }
                             }}
                             disabled={dispatchMutation.isPending}
-                            className="px-3 py-1 bg-primary-600 text-white rounded text-xs font-medium hover:bg-primary-700 disabled:opacity-50"
+                            className="px-3 py-1 bg-primary text-primary-foreground rounded text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
                           >
                             จัดส่งทั้งใบ
                           </button>
@@ -403,7 +403,7 @@ export default function StockTransfersPage() {
                         {batch.status === 'IN_TRANSIT' && (
                           <button
                             onClick={() => openSlipModal(batch.items)}
-                            className="px-3 py-1 bg-primary-600 text-white rounded text-xs font-medium hover:bg-primary-700"
+                            className="px-3 py-1 bg-primary text-primary-foreground rounded text-xs font-medium hover:bg-primary/90"
                           >
                             ใบโอนสินค้า
                           </button>
@@ -413,38 +413,38 @@ export default function StockTransfersPage() {
 
                     {/* Expanded Product List */}
                     {isExpanded && (
-                      <div className="border-t border-gray-100">
+                      <div className="border-t border-border">
                         <table className="w-full text-sm">
                           <thead>
-                            <tr className="bg-gray-50">
-                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 w-8">#</th>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">สินค้า</th>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">IMEI / S/N</th>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">สี / ความจุ</th>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">สถานะ</th>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">หมายเหตุ</th>
+                            <tr className="bg-muted">
+                              <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground w-8">#</th>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">สินค้า</th>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">IMEI / S/N</th>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">สี / ความจุ</th>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">สถานะ</th>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">หมายเหตุ</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-gray-50">
+                          <tbody className="divide-y divide-border">
                             {batch.items.map((t, idx) => {
-                              const itemStatus = transferStatusLabels[t.status] || { label: t.status, className: 'bg-gray-100 text-gray-700' };
+                              const itemStatus = transferStatusLabels[t.status] || { label: t.status, className: 'bg-muted text-foreground' };
                               return (
-                                <tr key={t.id} className="hover:bg-gray-50">
-                                  <td className="px-4 py-2 text-xs text-gray-400">{idx + 1}</td>
+                                <tr key={t.id} className="hover:bg-muted/50">
+                                  <td className="px-4 py-2 text-xs text-muted-foreground">{idx + 1}</td>
                                   <td className="px-4 py-2">
                                     <button
                                       onClick={() => navigate(`/products/${t.product.id}`)}
                                       className="text-left hover:underline"
                                     >
-                                      <span className="text-primary-600 font-medium">
+                                      <span className="text-primary font-medium">
                                         {t.product.brand} {t.product.model}
                                       </span>
                                     </button>
                                   </td>
-                                  <td className="px-4 py-2 font-mono text-xs text-gray-500">
+                                  <td className="px-4 py-2 font-mono text-xs text-muted-foreground">
                                     {t.product.imeiSerial || t.product.serialNumber || '-'}
                                   </td>
-                                  <td className="px-4 py-2 text-xs text-gray-500">
+                                  <td className="px-4 py-2 text-xs text-muted-foreground">
                                     {[t.product.color, t.product.storage].filter(Boolean).join(' / ') || '-'}
                                   </td>
                                   <td className="px-4 py-2">
@@ -452,7 +452,7 @@ export default function StockTransfersPage() {
                                       {itemStatus.label}
                                     </span>
                                   </td>
-                                  <td className="px-4 py-2 text-xs text-gray-500">
+                                  <td className="px-4 py-2 text-xs text-muted-foreground">
                                     {t.trackingNote || t.notes || '-'}
                                   </td>
                                 </tr>
@@ -461,7 +461,7 @@ export default function StockTransfersPage() {
                           </tbody>
                         </table>
                         {/* Batch footer info */}
-                        <div className="px-4 py-2 bg-gray-50 text-xs text-gray-500 flex gap-4 flex-wrap">
+                        <div className="px-4 py-2 bg-muted text-xs text-muted-foreground flex gap-4 flex-wrap">
                           {batch.dispatchedBy && <span>จัดส่งโดย: {batch.dispatchedBy.name}</span>}
                           {batch.dispatchedAt && <span>วันจัดส่ง: {new Date(batch.dispatchedAt).toLocaleString('th-TH')}</span>}
                           {batch.confirmedBy && <span>ยืนยันโดย: {batch.confirmedBy.name}</span>}
@@ -484,7 +484,7 @@ export default function StockTransfersPage() {
             <select
               value={selectedBranch}
               onChange={(e) => setSelectedBranch(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              className="px-3 py-2 border border-input rounded-lg text-sm"
             >
               <option value="">เลือกสาขา</option>
               {(branches || []).map((b: { id: string; name: string }) => (
@@ -494,40 +494,40 @@ export default function StockTransfersPage() {
           </div>
 
           {!selectedBranch ? (
-            <div className="text-center py-10 text-gray-500">กรุณาเลือกสาขาเพื่อดูรายการรอรับ</div>
+            <div className="text-center py-10 text-muted-foreground">กรุณาเลือกสาขาเพื่อดูรายการรอรับ</div>
           ) : loadingPending ? (
-            <div className="text-center py-4 text-gray-500">กำลังโหลด...</div>
+            <div className="text-center py-4 text-muted-foreground">กำลังโหลด...</div>
           ) : incomingBatchGroups.length === 0 ? (
-            <div className="text-center py-10 text-gray-400 text-sm">ไม่มีสินค้ารอรับเข้าสาขานี้</div>
+            <div className="text-center py-10 text-muted-foreground text-sm">ไม่มีสินค้ารอรับเข้าสาขานี้</div>
           ) : (
             <div className="space-y-2">
               {incomingBatchGroups.map((batch) => {
                 const isExpanded = expandedIncoming.has(batch.batchKey);
                 return (
-                  <div key={batch.batchKey} className="bg-white rounded-lg border border-yellow-200 overflow-hidden">
+                  <div key={batch.batchKey} className="rounded-lg border border-yellow-200 overflow-hidden">
                     {/* Batch Header */}
                     <button
                       onClick={() => toggleIncoming(batch.batchKey)}
                       className="w-full px-4 py-3 flex items-center gap-4 hover:bg-yellow-50 transition-colors text-left"
                     >
                       <svg
-                        className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-90' : ''}`}
+                        className={`w-4 h-4 text-muted-foreground transition-transform flex-shrink-0 ${isExpanded ? 'rotate-90' : ''}`}
                         fill="none" viewBox="0 0 24 24" stroke="currentColor"
                       >
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                       </svg>
                       <div className="flex-1 min-w-0 flex items-center gap-3 flex-wrap">
-                        <span className="font-mono text-sm font-semibold text-primary-600">
+                        <span className="font-mono text-sm font-semibold text-primary">
                           {batch.batchNumber || '-'}
                         </span>
                         <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
                           รอตรวจรับ
                         </span>
-                        <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                        <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
                           {batch.items.length} รายการ
                         </span>
                       </div>
-                      <div className="flex items-center gap-4 text-xs text-gray-500 flex-shrink-0">
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground flex-shrink-0">
                         <span>จาก: {batch.fromBranch.name}</span>
                         {batch.dispatchedAt && <span>ส่ง: {new Date(batch.dispatchedAt).toLocaleDateString('th-TH')}</span>}
                       </div>
@@ -547,25 +547,25 @@ export default function StockTransfersPage() {
                         <table className="w-full text-sm">
                           <thead>
                             <tr className="bg-yellow-50">
-                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 w-8">#</th>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">สินค้า</th>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">IMEI / S/N</th>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">สี / ความจุ</th>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground w-8">#</th>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">สินค้า</th>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">IMEI / S/N</th>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">สี / ความจุ</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-yellow-50">
                             {batch.items.map((t, idx) => (
                               <tr key={t.id} className="hover:bg-yellow-50">
-                                <td className="px-4 py-2 text-xs text-gray-400">{idx + 1}</td>
+                                <td className="px-4 py-2 text-xs text-muted-foreground">{idx + 1}</td>
                                 <td className="px-4 py-2">
-                                  <span className="font-medium text-gray-800">
+                                  <span className="font-medium text-foreground">
                                     {t.product.brand} {t.product.model}
                                   </span>
                                 </td>
-                                <td className="px-4 py-2 font-mono text-xs text-gray-500">
+                                <td className="px-4 py-2 font-mono text-xs text-muted-foreground">
                                   {t.product.imeiSerial || t.product.serialNumber || '-'}
                                 </td>
-                                <td className="px-4 py-2 text-xs text-gray-500">
+                                <td className="px-4 py-2 text-xs text-muted-foreground">
                                   {[t.product.color, t.product.storage].filter(Boolean).join(' / ') || '-'}
                                 </td>
                               </tr>
@@ -573,7 +573,7 @@ export default function StockTransfersPage() {
                           </tbody>
                         </table>
                         {batch.trackingNote && (
-                          <div className="px-4 py-2 bg-yellow-50 text-xs text-primary-600">
+                          <div className="px-4 py-2 bg-yellow-50 text-xs text-primary">
                             หมายเหตุจัดส่ง: {batch.trackingNote}
                           </div>
                         )}
@@ -594,7 +594,7 @@ export default function StockTransfersPage() {
             <select
               value={selectedBranch}
               onChange={(e) => setSelectedBranch(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              className="px-3 py-2 border border-input rounded-lg text-sm"
             >
               <option value="">ทุกสาขา</option>
               {(branches || []).map((b: { id: string; name: string }) => (
@@ -604,25 +604,25 @@ export default function StockTransfersPage() {
           </div>
 
           {historyList.length === 0 ? (
-            <div className="text-center py-10 text-gray-400 text-sm">ยังไม่มีประวัติการรับ</div>
+            <div className="text-center py-10 text-muted-foreground text-sm">ยังไม่มีประวัติการรับ</div>
           ) : (
-            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            <div className="rounded-lg border border-border overflow-hidden">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50">
+                <thead className="bg-muted">
                   <tr>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">สินค้า</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">จาก</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">ผู้รับ</th>
-                    <th className="text-center px-4 py-3 font-medium text-gray-600">สถานะ</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">วันที่</th>
+                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">สินค้า</th>
+                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">จาก</th>
+                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">ผู้รับ</th>
+                    <th className="text-center px-4 py-3 font-medium text-muted-foreground">สถานะ</th>
+                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">วันที่</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-border">
                   {historyList.map((r: any) => (
-                    <tr key={r.id} className="hover:bg-gray-50">
+                    <tr key={r.id} className="hover:bg-muted/50">
                       <td className="px-4 py-3">
                         <div className="font-medium">{r.transfer?.product?.name || '-'}</div>
-                        <div className="text-xs text-gray-400 font-mono">{r.transfer?.product?.imeiSerial || ''}</div>
+                        <div className="text-xs text-muted-foreground font-mono">{r.transfer?.product?.imeiSerial || ''}</div>
                       </td>
                       <td className="px-4 py-3">{r.transfer?.fromBranch?.name || '-'}</td>
                       <td className="px-4 py-3">{r.receivedBy?.name || '-'}</td>
@@ -633,7 +633,7 @@ export default function StockTransfersPage() {
                           {r.status === 'COMPLETED' ? 'ผ่าน' : 'ไม่ผ่าน'}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-xs text-gray-500">
+                      <td className="px-4 py-3 text-xs text-muted-foreground">
                         {new Date(r.createdAt).toLocaleDateString('th-TH')}
                       </td>
                     </tr>
@@ -652,10 +652,10 @@ export default function StockTransfersPage() {
           return (
             <div className="space-y-5">
               {/* Header */}
-              <div className="flex items-center justify-between border-b border-dashed border-gray-300 pb-4">
+              <div className="flex items-center justify-between border-b border-dashed border-input pb-4">
                 <div>
-                  <h3 className="text-lg font-bold text-gray-800">ใบโอนสินค้า</h3>
-                  <p className="text-sm text-gray-500 font-mono mt-0.5">{first.batchNumber || '-'}</p>
+                  <h3 className="text-lg font-bold text-foreground">ใบโอนสินค้า</h3>
+                  <p className="text-sm text-muted-foreground font-mono mt-0.5">{first.batchNumber || '-'}</p>
                 </div>
                 <span className="px-3 py-1 bg-primary-100 text-primary-700 rounded-full text-sm font-medium">
                   {slipBatchItems.length} รายการ
@@ -666,27 +666,27 @@ export default function StockTransfersPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-orange-50 rounded-lg p-3">
                   <div className="text-xs text-orange-600 font-medium mb-1">ต้นทาง</div>
-                  <div className="font-semibold text-gray-800">{first.fromBranch.name}</div>
+                  <div className="font-semibold text-foreground">{first.fromBranch.name}</div>
                 </div>
                 <div className="bg-green-50 rounded-lg p-3">
                   <div className="text-xs text-green-600 font-medium mb-1">ปลายทาง</div>
-                  <div className="font-semibold text-gray-800">{first.toBranch.name}</div>
+                  <div className="font-semibold text-foreground">{first.toBranch.name}</div>
                 </div>
               </div>
 
               {/* Product List */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <div className="text-xs text-gray-500 font-medium mb-3">รายการสินค้า ({slipBatchItems.length})</div>
+              <div className="bg-muted rounded-lg p-4">
+                <div className="text-xs text-muted-foreground font-medium mb-3">รายการสินค้า ({slipBatchItems.length})</div>
                 <div className="space-y-3">
                   {slipBatchItems.map((t, idx) => (
                     <div key={t.id} className="flex items-start gap-3">
-                      <span className="text-xs text-gray-400 mt-1 w-5">{idx + 1}.</span>
+                      <span className="text-xs text-muted-foreground mt-1 w-5">{idx + 1}.</span>
                       {t.product.photos?.[0] && (
                         <img src={t.product.photos[0]} alt="" className="w-12 h-12 object-cover rounded-lg border" />
                       )}
                       <div className="flex-1">
-                        <div className="font-semibold text-gray-800 text-sm">{t.product.brand} {t.product.model}</div>
-                        <div className="text-xs text-gray-500 space-y-0.5">
+                        <div className="font-semibold text-foreground text-sm">{t.product.brand} {t.product.model}</div>
+                        <div className="text-xs text-muted-foreground space-y-0.5">
                           {t.product.color && <span>สี: {t.product.color} </span>}
                           {t.product.storage && <span>ความจุ: {t.product.storage}</span>}
                           {t.product.imeiSerial && <div className="font-mono">IMEI: {t.product.imeiSerial}</div>}
@@ -701,18 +701,18 @@ export default function StockTransfersPage() {
               {/* Transfer Info */}
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
-                  <span className="text-gray-500">วันที่สร้างใบโอน:</span>
+                  <span className="text-muted-foreground">วันที่สร้างใบโอน:</span>
                   <span className="ml-2 font-medium">{new Date(first.createdAt).toLocaleDateString('th-TH')}</span>
                 </div>
                 {first.dispatchedAt && (
                   <div>
-                    <span className="text-gray-500">วันที่จัดส่ง:</span>
+                    <span className="text-muted-foreground">วันที่จัดส่ง:</span>
                     <span className="ml-2 font-medium">{new Date(first.dispatchedAt).toLocaleDateString('th-TH')}</span>
                   </div>
                 )}
                 {first.dispatchedBy && (
                   <div>
-                    <span className="text-gray-500">จัดส่งโดย:</span>
+                    <span className="text-muted-foreground">จัดส่งโดย:</span>
                     <span className="ml-2 font-medium">{first.dispatchedBy.name}</span>
                   </div>
                 )}
@@ -721,15 +721,15 @@ export default function StockTransfersPage() {
               {/* Notes */}
               {(first.notes || first.trackingNote) && (
                 <div className="bg-primary-50 rounded-lg p-3">
-                  {first.notes && <div className="text-sm text-gray-700">หมายเหตุ: {first.notes}</div>}
+                  {first.notes && <div className="text-sm text-foreground">หมายเหตุ: {first.notes}</div>}
                   {first.trackingNote && <div className="text-sm text-primary-700">หมายเหตุจัดส่ง: {first.trackingNote}</div>}
                 </div>
               )}
 
-              <div className="border-t border-gray-200 pt-4">
+              <div className="border-t border-border pt-4">
                 <button
                   onClick={() => setIsSlipModalOpen(false)}
-                  className="w-full py-2.5 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors"
+                  className="w-full py-2.5 bg-muted text-foreground rounded-lg font-medium hover:bg-muted transition-colors"
                 >
                   ปิด
                 </button>
@@ -749,12 +749,12 @@ export default function StockTransfersPage() {
         {receivingBatch.length > 0 && (
           <form onSubmit={handleBatchReceiveSubmit} className="space-y-4">
             {/* Batch info */}
-            <div className="bg-gray-50 rounded-lg p-3 text-sm">
+            <div className="bg-muted rounded-lg p-3 text-sm">
               <div className="flex justify-between">
-                <span className="text-gray-500">จาก: <span className="font-medium text-gray-800">{receivingBatch[0].fromBranch.name}</span></span>
-                <span className="text-gray-500">ไป: <span className="font-medium text-gray-800">{receivingBatch[0].toBranch.name}</span></span>
+                <span className="text-muted-foreground">จาก: <span className="font-medium text-foreground">{receivingBatch[0].fromBranch.name}</span></span>
+                <span className="text-muted-foreground">ไป: <span className="font-medium text-foreground">{receivingBatch[0].toBranch.name}</span></span>
               </div>
-              <div className="text-xs text-gray-400 mt-1">{receivingBatch.length} รายการ</div>
+              <div className="text-xs text-muted-foreground mt-1">{receivingBatch.length} รายการ</div>
             </div>
 
             {/* Per-item QC */}
@@ -763,13 +763,13 @@ export default function StockTransfersPage() {
                 const s = itemStatuses[t.id];
                 if (!s) return null;
                 return (
-                  <div key={t.id} className={`border rounded-lg p-3 ${s.status === 'REJECT' ? 'border-red-200 bg-red-50' : 'border-gray-200'}`}>
+                  <div key={t.id} className={`border rounded-lg p-3 ${s.status === 'REJECT' ? 'border-red-200 bg-red-50' : 'border-border'}`}>
                     {/* Item header */}
                     <div className="flex items-start gap-3 mb-2">
-                      <span className="text-xs text-gray-400 mt-0.5 w-5 flex-shrink-0">{idx + 1}.</span>
+                      <span className="text-xs text-muted-foreground mt-0.5 w-5 flex-shrink-0">{idx + 1}.</span>
                       <div className="flex-1 min-w-0">
                         <div className="font-medium text-sm">{t.product.brand} {t.product.model}</div>
-                        <div className="text-xs text-gray-500">
+                        <div className="text-xs text-muted-foreground">
                           {t.product.imeiSerial && <span className="font-mono">IMEI: {t.product.imeiSerial} </span>}
                           {t.product.color && <span>สี: {t.product.color} </span>}
                           {t.product.storage && <span>{t.product.storage}</span>}
@@ -781,7 +781,7 @@ export default function StockTransfersPage() {
                           type="button"
                           onClick={() => updateItemStatus(t.id, 'status', 'PASS')}
                           className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
-                            s.status === 'PASS' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-green-100'
+                            s.status === 'PASS' ? 'bg-green-600 text-white' : 'bg-muted text-muted-foreground hover:bg-green-100'
                           }`}
                         >
                           ผ่าน
@@ -790,7 +790,7 @@ export default function StockTransfersPage() {
                           type="button"
                           onClick={() => updateItemStatus(t.id, 'status', 'REJECT')}
                           className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
-                            s.status === 'REJECT' ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-red-100'
+                            s.status === 'REJECT' ? 'bg-red-600 text-white' : 'bg-muted text-muted-foreground hover:bg-red-100'
                           }`}
                         >
                           ไม่ผ่าน
@@ -806,7 +806,7 @@ export default function StockTransfersPage() {
                           value={s.imei}
                           onChange={(e) => updateItemStatus(t.id, 'imei', e.target.value)}
                           placeholder="สแกน IMEI ยืนยัน"
-                          className="w-full px-2 py-1 border border-gray-300 rounded text-xs font-mono"
+                          className="w-full px-2 py-1 border border-input rounded text-xs font-mono"
                         />
                         {s.imei && s.imei === t.product.imeiSerial && (
                           <span className="text-xs text-green-600">IMEI ตรงกัน</span>
@@ -824,7 +824,7 @@ export default function StockTransfersPage() {
                         value={s.conditionNotes}
                         onChange={(e) => updateItemStatus(t.id, 'conditionNotes', e.target.value)}
                         placeholder="หมายเหตุสภาพ"
-                        className="w-full px-2 py-1 border border-gray-200 rounded text-xs"
+                        className="w-full px-2 py-1 border border-border rounded text-xs"
                       />
                     </div>
 
@@ -848,20 +848,20 @@ export default function StockTransfersPage() {
 
             {/* Batch notes */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุรวม</label>
+              <label className="block text-sm font-medium text-foreground mb-1">หมายเหตุรวม</label>
               <textarea
                 value={batchReceiveNotes}
                 onChange={(e) => setBatchReceiveNotes(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm"
                 rows={2}
                 placeholder="หมายเหตุสำหรับใบโอนนี้"
               />
             </div>
 
             {/* Summary & Submit */}
-            <div className="border-t border-gray-200 pt-3">
+            <div className="border-t border-border pt-3">
               <div className="flex items-center justify-between mb-3 text-sm">
-                <span className="text-gray-500">
+                <span className="text-muted-foreground">
                   ผ่าน: <span className="text-green-600 font-medium">{Object.values(itemStatuses).filter((s) => s.status === 'PASS').length}</span>
                   {' / '}
                   ไม่ผ่าน: <span className="text-red-600 font-medium">{Object.values(itemStatuses).filter((s) => s.status === 'REJECT').length}</span>

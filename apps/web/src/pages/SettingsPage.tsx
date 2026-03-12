@@ -136,26 +136,26 @@ function LessorSignatureSetup({ savedImage, savedName, onSave }: { savedImage: s
   };
 
   return (
-    <div className="bg-white rounded-lg border p-6">
-      <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2 mb-1">
-        <svg className="w-5 h-5 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+    <div className="bg-card rounded-lg border border-border p-6">
+      <h3 className="text-lg font-semibold text-foreground flex items-center gap-2 mb-1">
+        <svg className="w-5 h-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
         ลายเซ็นผู้ให้เช่าซื้อ (บริษัท)
       </h3>
-      <p className="text-sm text-gray-500 mb-4">
+      <p className="text-sm text-muted-foreground mb-4">
         ลายเซ็นนี้จะถูกใช้อัตโนมัติในทุกสัญญา ไม่ต้องเซ็นใหม่ทุกครั้ง
       </p>
 
       {savedImage && !showCanvas ? (
         <div className="space-y-3">
-          <div className="border rounded-lg p-4 bg-gray-50">
-            <div className="text-xs text-gray-500 mb-2">ลายเซ็นปัจจุบัน</div>
-            <div className="flex items-center justify-center bg-white rounded border p-2" style={{ minHeight: '80px' }}>
+          <div className="border border-border rounded-lg p-4 bg-muted">
+            <div className="text-xs text-muted-foreground mb-2">ลายเซ็นปัจจุบัน</div>
+            <div className="flex items-center justify-center bg-card rounded border p-2" style={{ minHeight: '80px' }}>
               <img src={savedImage} alt="ลายเซ็น" style={{ maxHeight: '80px' }} />
             </div>
-            <div className="text-sm text-gray-700 mt-2 text-center">({savedName})</div>
+            <div className="text-sm text-foreground mt-2 text-center">({savedName})</div>
           </div>
           <div className="flex gap-2">
-            <button onClick={() => setShowCanvas(true)} className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">
+            <button onClick={() => setShowCanvas(true)} className="px-3 py-1.5 text-sm border border-input rounded-lg hover:bg-muted/50">
               เปลี่ยนลายเซ็น
             </button>
             <button onClick={handleRemove} className="px-3 py-1.5 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50">
@@ -164,24 +164,24 @@ function LessorSignatureSetup({ savedImage, savedName, onSave }: { savedImage: s
           </div>
         </div>
       ) : !showCanvas ? (
-        <button onClick={() => setShowCanvas(true)} className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700">
+        <button onClick={() => setShowCanvas(true)} className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90">
           ตั้งค่าลายเซ็น
         </button>
       ) : (
         <div className="space-y-3">
           <div>
-            <label className="text-sm text-gray-700 block mb-1">ชื่อผู้ให้เช่าซื้อ</label>
+            <label className="text-sm text-foreground block mb-1">ชื่อผู้ให้เช่าซื้อ</label>
             <input
               type="text"
               value={signerName}
               onChange={(e) => setSignerName(e.target.value)}
               placeholder="เช่น เอกนรินทร์ คงเดช"
-              className="w-full max-w-sm px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+              className="w-full max-w-sm px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
             />
           </div>
           <div>
-            <label className="text-sm text-gray-700 block mb-1">ลายเซ็น</label>
-            <div className="border-2 border-dashed border-gray-300 rounded-lg bg-white inline-block" style={{ touchAction: 'none' }}>
+            <label className="text-sm text-foreground block mb-1">ลายเซ็น</label>
+            <div className="border-2 border-dashed border-input rounded-lg bg-card inline-block" style={{ touchAction: 'none' }}>
               <canvas
                 ref={canvasRef}
                 width={500}
@@ -198,13 +198,13 @@ function LessorSignatureSetup({ savedImage, savedName, onSave }: { savedImage: s
             </div>
           </div>
           <div className="flex gap-2">
-            <button onClick={handleSave} disabled={!hasDrawn || !signerName.trim()} className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50">
+            <button onClick={handleSave} disabled={!hasDrawn || !signerName.trim()} className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50">
               บันทึกลายเซ็น
             </button>
-            <button onClick={clearCanvas} className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">
+            <button onClick={clearCanvas} className="px-3 py-1.5 text-sm border border-input rounded-lg hover:bg-muted/50">
               ล้าง
             </button>
-            <button onClick={() => { setShowCanvas(false); setHasDrawn(false); }} className="px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700">
+            <button onClick={() => { setShowCanvas(false); setHasDrawn(false); }} className="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
               ยกเลิก
             </button>
           </div>
@@ -240,18 +240,18 @@ function CardReaderSetup() {
     }
   })();
 
-  const bgColor = { green: 'bg-green-50 border-green-200', yellow: 'bg-yellow-50 border-yellow-200', red: 'bg-red-50 border-red-200', blue: 'bg-primary-50 border-primary-200', gray: 'bg-gray-50 border-gray-200' }[statusInfo.color] || 'bg-gray-50 border-gray-200';
-  const textColor = { green: 'text-green-700', yellow: 'text-yellow-700', red: 'text-red-700', blue: 'text-primary-700', gray: 'text-gray-500' }[statusInfo.color] || 'text-gray-500';
+  const bgColor = { green: 'bg-green-50 border-green-200', yellow: 'bg-yellow-50 border-yellow-200', red: 'bg-red-50 border-red-200', blue: 'bg-primary-50 border-primary-200', gray: 'bg-muted border-border' }[statusInfo.color] || 'bg-muted border-border';
+  const textColor = { green: 'text-green-700', yellow: 'text-yellow-700', red: 'text-red-700', blue: 'text-primary-700', gray: 'text-muted-foreground' }[statusInfo.color] || 'text-muted-foreground';
 
   return (
-    <div className="bg-white rounded-lg border p-6">
+    <div className="bg-card rounded-lg border border-border p-6">
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1">
-          <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-            <svg className="w-5 h-5 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" /></svg>
+          <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
+            <svg className="w-5 h-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" /></svg>
             เครื่องอ่านบัตรประชาชน
           </h3>
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="text-sm text-muted-foreground mt-1">
             โปรแกรมสำหรับอ่านบัตรประชาชนผ่านเครื่องอ่านบัตร USB — ติดตั้งบนเครื่องคอมที่ร้าน
           </p>
 
@@ -259,18 +259,18 @@ function CardReaderSetup() {
           <div className={`mt-4 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm ${bgColor} ${textColor}`}>
             <span>{statusInfo.icon}</span>
             <span>{statusInfo.text}</span>
-            <button onClick={checkStatus} className="ml-1 text-gray-400 hover:text-gray-600" title="ตรวจสอบใหม่">
+            <button onClick={checkStatus} className="ml-1 text-muted-foreground hover:text-foreground" title="ตรวจสอบใหม่">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
             </button>
           </div>
 
           {/* Install steps */}
           {!isConnected && (
-            <div className="mt-4 text-sm text-gray-600 space-y-1">
-              <p className="font-medium text-gray-700">วิธีติดตั้ง:</p>
+            <div className="mt-4 text-sm text-muted-foreground space-y-1">
+              <p className="font-medium text-foreground">วิธีติดตั้ง:</p>
               <ol className="list-decimal list-inside space-y-0.5 ml-1">
                 <li>กดปุ่ม <strong>"ดาวน์โหลด"</strong> ด้านขวา</li>
-                <li>โหลดไฟล์ <code className="bg-gray-100 px-1 rounded text-xs">.zip</code> → คลิกขวา → <strong>Extract All</strong></li>
+                <li>โหลดไฟล์ <code className="bg-muted px-1 rounded text-xs">.zip</code> → คลิกขวา → <strong>Extract All</strong></li>
                 <li>เปิดโฟลเดอร์ → ดับเบิลคลิก <strong>setup.bat</strong></li>
                 <li>เสร็จ! ดับเบิลคลิก <strong>"BESTCHOICE Card Reader"</strong> บน Desktop</li>
               </ol>
@@ -284,12 +284,12 @@ function CardReaderSetup() {
             href={CARD_READER_DOWNLOAD_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="px-5 py-2.5 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors flex items-center gap-2 shadow-sm"
+            className="px-5 py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors flex items-center gap-2 shadow-xs shadow-black/5"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
             ดาวน์โหลด
           </a>
-          <span className="text-xs text-gray-400">Windows 10+</span>
+          <span className="text-xs text-muted-foreground">Windows 10+</span>
         </div>
       </div>
     </div>
@@ -342,7 +342,7 @@ export default function SettingsPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
       </div>
     );
   }
@@ -356,14 +356,14 @@ export default function SettingsPage() {
           <button
             onClick={handleSave}
             disabled={!hasChanges || saveMutation.isPending}
-            className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50 transition-colors"
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
           >
             {saveMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกการตั้งค่า'}
           </button>
         }
       />
 
-      <div className="space-y-6">
+      <div className="flex flex-col gap-5 lg:gap-7.5">
         {/* Lessor Signature */}
         <LessorSignatureSetup
           savedImage={values['lessor_signature_image'] || ''}
@@ -386,30 +386,30 @@ export default function SettingsPage() {
         <div className="bg-primary-50 border border-primary-200 rounded-lg p-4 flex items-center justify-between">
           <div>
             <div className="text-sm font-medium text-primary-800">ตั้งค่าอัตราดอกเบี้ยตามประเภทสินค้า</div>
-            <div className="text-xs text-primary-600 mt-0.5">ตั้งค่าดอกเบี้ย เงินดาวน์ขั้นต่ำ จำนวนงวด แยกตามประเภทสินค้า (มือ1, มือ2, แท็บเล็ต ฯลฯ) ซึ่งจะใช้แทนค่า default ด้านล่าง</div>
+            <div className="text-xs text-primary mt-0.5">ตั้งค่าดอกเบี้ย เงินดาวน์ขั้นต่ำ จำนวนงวด แยกตามประเภทสินค้า (มือ1, มือ2, แท็บเล็ต ฯลฯ) ซึ่งจะใช้แทนค่า default ด้านล่าง</div>
           </div>
-          <button onClick={() => navigate('/settings/interest-config')} className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 whitespace-nowrap">
+          <button onClick={() => navigate('/settings/interest-config')} className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 whitespace-nowrap">
             ตั้งค่าดอกเบี้ย
           </button>
         </div>
 
         {configGroups.map((group) => (
-          <div key={group.title} className="bg-white rounded-lg border p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">{group.title}</h3>
+          <div key={group.title} className="bg-card rounded-lg border border-border p-6">
+            <h3 className="text-lg font-semibold text-foreground mb-4">{group.title}</h3>
             {group.title === 'อัตราดอกเบี้ยและเงินดาวน์' && (
-              <div className="text-xs text-gray-500 mb-3 bg-gray-50 p-2 rounded">ค่าด้านล่างเป็นค่า default ใช้เมื่อไม่มีการตั้งค่าดอกเบี้ยตามประเภทสินค้า</div>
+              <div className="text-xs text-muted-foreground mb-3 bg-muted p-2 rounded">ค่าด้านล่างเป็นค่า default ใช้เมื่อไม่มีการตั้งค่าดอกเบี้ยตามประเภทสินค้า</div>
             )}
-            <div className="space-y-4">
+            <div className="flex flex-col gap-4">
               {group.items.map((item) => (
                 <div key={item.key} className="flex items-center gap-4">
-                  <label className="flex-1 text-sm text-gray-700">{item.label}</label>
+                  <label className="flex-1 text-sm text-foreground">{item.label}</label>
                   <div className="w-48">
                     <input
                       type={item.type}
                       step={item.step}
                       value={values[item.key] ?? ''}
                       onChange={(e) => handleChange(item.key, e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-right focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                      className="w-full px-3 py-2 border border-input rounded-lg text-sm text-right focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
                     />
                   </div>
                 </div>
@@ -425,7 +425,7 @@ export default function SettingsPage() {
           <button
             onClick={handleSave}
             disabled={saveMutation.isPending}
-            className="px-3 py-1.5 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
+            className="px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
           >
             บันทึก
           </button>

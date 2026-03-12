@@ -86,7 +86,7 @@ export default function LineOaSettingsPage() {
   if (isLoading) {
     return (
       <div className="p-6">
-        <div className="text-center py-12 text-gray-500">กำลังโหลด...</div>
+        <div className="text-center py-12 text-muted-foreground">กำลังโหลด...</div>
       </div>
     );
   }
@@ -124,7 +124,7 @@ export default function LineOaSettingsPage() {
                   ? 'ตั้งค่าแล้ว — กดทดสอบเพื่อยืนยัน'
                   : 'ยังไม่ได้เชื่อมต่อ LINE OA'}
             </h3>
-            <p className="text-sm text-gray-600 mt-1">
+            <p className="text-sm text-muted-foreground mt-1">
               {data?.isConfigured
                 ? 'ระบบพร้อมส่งแจ้งเตือนค่างวด, รับสลิป, และแจ้งเตือนค้างชำระอัตโนมัติ'
                 : 'ทำตาม 3 ขั้นตอนด้านล่างเพื่อเชื่อมต่อ LINE OA กับระบบ'}
@@ -137,7 +137,7 @@ export default function LineOaSettingsPage() {
             <button
               onClick={() => testMutation.mutate()}
               disabled={testMutation.isPending}
-              className="px-5 py-2.5 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 disabled:bg-gray-300 shrink-0"
+              className="px-5 py-2.5 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 disabled:bg-muted shrink-0"
             >
               {testMutation.isPending ? 'กำลังทดสอบ...' : 'ทดสอบการเชื่อมต่อ'}
             </button>
@@ -161,17 +161,17 @@ export default function LineOaSettingsPage() {
         <div className="mb-6">
           <div className="flex items-center gap-3 mb-4">
             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-              hasToken && hasSecret ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-600'
+              hasToken && hasSecret ? 'bg-green-500 text-white' : 'bg-muted text-muted-foreground'
             }`}>
               {hasToken && hasSecret ? '✓' : '1'}
             </div>
             <div>
               <h3 className="font-semibold">ขั้นตอนที่ 1: เชื่อมต่อ LINE Channel</h3>
-              <p className="text-xs text-gray-500">สำคัญที่สุด — ระบบจะส่งข้อความผ่าน Channel นี้</p>
+              <p className="text-xs text-muted-foreground">สำคัญที่สุด — ระบบจะส่งข้อความผ่าน Channel นี้</p>
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border p-5 ml-4 border-l-4 border-l-blue-400">
+          <div className="bg-card rounded-xl shadow-xs shadow-black/5 border p-5 ml-4 border-l-4 border-l-blue-400">
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-5">
               <p className="text-sm text-blue-800 font-medium mb-2">วิธีหา Token:</p>
               <ol className="text-sm text-blue-700 space-y-1.5 list-decimal list-inside">
@@ -185,7 +185,7 @@ export default function LineOaSettingsPage() {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-foreground mb-1">
                   Channel Access Token <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
@@ -194,12 +194,12 @@ export default function LineOaSettingsPage() {
                     value={form.line_channel_access_token || ''}
                     onChange={(e) => handleChange('line_channel_access_token', e.target.value)}
                     placeholder="วาง Channel Access Token ที่นี่"
-                    className="w-full border rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 pr-16 font-mono"
+                    className="w-full border rounded-lg px-3 py-2.5 text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background pr-16 font-mono"
                   />
                   <button
                     type="button"
                     onClick={() => setShowSecrets((p) => ({ ...p, token: !p.token }))}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-blue-600 hover:text-blue-800 px-2 py-1 bg-blue-50 rounded"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-primary hover:text-primary/80 px-2 py-1 bg-blue-50 rounded"
                   >
                     {showSecrets['token'] ? 'ซ่อน' : 'แสดง'}
                   </button>
@@ -207,7 +207,7 @@ export default function LineOaSettingsPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-foreground mb-1">
                   Channel Secret <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
@@ -216,12 +216,12 @@ export default function LineOaSettingsPage() {
                     value={form.line_channel_secret || ''}
                     onChange={(e) => handleChange('line_channel_secret', e.target.value)}
                     placeholder="วาง Channel Secret ที่นี่"
-                    className="w-full border rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 pr-16 font-mono"
+                    className="w-full border rounded-lg px-3 py-2.5 text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background pr-16 font-mono"
                   />
                   <button
                     type="button"
                     onClick={() => setShowSecrets((p) => ({ ...p, secret: !p.secret }))}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-blue-600 hover:text-blue-800 px-2 py-1 bg-blue-50 rounded"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-primary hover:text-primary/80 px-2 py-1 bg-blue-50 rounded"
                   >
                     {showSecrets['secret'] ? 'ซ่อน' : 'แสดง'}
                   </button>
@@ -235,17 +235,17 @@ export default function LineOaSettingsPage() {
         <div className="mb-6">
           <div className="flex items-center gap-3 mb-4">
             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-              hasToken && hasSecret ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'
+              hasToken && hasSecret ? 'bg-blue-500 text-white' : 'bg-muted text-muted-foreground'
             }`}>
               2
             </div>
             <div>
               <h3 className="font-semibold">ขั้นตอนที่ 2: ตั้งค่า Webhook</h3>
-              <p className="text-xs text-gray-500">เพื่อให้ระบบรับข้อความจากลูกค้า</p>
+              <p className="text-xs text-muted-foreground">เพื่อให้ระบบรับข้อความจากลูกค้า</p>
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border p-5 ml-4 border-l-4 border-l-green-400">
+          <div className="bg-card rounded-xl shadow-xs shadow-black/5 border p-5 ml-4 border-l-4 border-l-green-400">
             <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
               <p className="text-sm text-green-800 font-medium mb-2">คัดลอก URL ด้านล่าง แล้วไปวางใน LINE Developers Console:</p>
               <ol className="text-sm text-green-700 space-y-1 list-decimal list-inside">
@@ -259,7 +259,7 @@ export default function LineOaSettingsPage() {
 
             {webhookData?.webhookUrl && (
               <div className="flex items-center gap-2">
-                <code className="flex-1 text-sm bg-gray-100 px-4 py-3 rounded-lg border text-gray-800 font-mono break-all">
+                <code className="flex-1 text-sm bg-muted px-4 py-3 rounded-lg border text-foreground font-mono break-all">
                   {webhookData.webhookUrl}
                 </code>
                 <button
@@ -278,20 +278,20 @@ export default function LineOaSettingsPage() {
         <div className="mb-6">
           <div className="flex items-center gap-3 mb-4">
             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-              hasPromptPay ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-600'
+              hasPromptPay ? 'bg-green-500 text-white' : 'bg-muted text-muted-foreground'
             }`}>
               {hasPromptPay ? '✓' : '3'}
             </div>
             <div>
-              <h3 className="font-semibold">ขั้นตอนที่ 3: ตั้งค่า PromptPay <span className="text-xs font-normal text-gray-400">(ไม่บังคับ)</span></h3>
-              <p className="text-xs text-gray-500">สร้าง QR พร้อมเพย์ให้ลูกค้าสแกนจ่ายผ่านไลน์</p>
+              <h3 className="font-semibold">ขั้นตอนที่ 3: ตั้งค่า PromptPay <span className="text-xs font-normal text-muted-foreground">(ไม่บังคับ)</span></h3>
+              <p className="text-xs text-muted-foreground">สร้าง QR พร้อมเพย์ให้ลูกค้าสแกนจ่ายผ่านไลน์</p>
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border p-5 ml-4 border-l-4 border-l-purple-400">
+          <div className="bg-card rounded-xl shadow-xs shadow-black/5 border p-5 ml-4 border-l-4 border-l-purple-400">
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-foreground mb-1">
                   เลข PromptPay
                 </label>
                 <input
@@ -299,13 +299,13 @@ export default function LineOaSettingsPage() {
                   value={form.promptpay_id || ''}
                   onChange={(e) => handleChange('promptpay_id', e.target.value)}
                   placeholder="เช่น 0812345678 หรือ เลขบัตรประชาชน 13 หลัก"
-                  className="w-full border rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full border rounded-lg px-3 py-2.5 text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background"
                 />
-                <p className="text-xs text-gray-400 mt-1">ใส่เบอร์โทรหรือเลขบัตรประชาชนที่ผูกกับ PromptPay</p>
+                <p className="text-xs text-muted-foreground mt-1">ใส่เบอร์โทรหรือเลขบัตรประชาชนที่ผูกกับ PromptPay</p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-foreground mb-1">
                   ชื่อบัญชี (แสดงบน QR)
                 </label>
                 <input
@@ -313,7 +313,7 @@ export default function LineOaSettingsPage() {
                   value={form.promptpay_account_name || ''}
                   onChange={(e) => handleChange('promptpay_account_name', e.target.value)}
                   placeholder="เช่น BESTCHOICE Co.,Ltd."
-                  className="w-full border rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full border rounded-lg px-3 py-2.5 text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background"
                 />
               </div>
             </div>
@@ -324,17 +324,17 @@ export default function LineOaSettingsPage() {
         <div className="mb-6">
           <div className="flex items-center gap-3 mb-4">
             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-              hasLiff ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-600'
+              hasLiff ? 'bg-green-500 text-white' : 'bg-muted text-muted-foreground'
             }`}>
               {hasLiff ? '✓' : '4'}
             </div>
             <div>
-              <h3 className="font-semibold">ขั้นตอนที่ 4: ตั้งค่า LIFF <span className="text-xs font-normal text-gray-400">(ไม่บังคับ)</span></h3>
-              <p className="text-xs text-gray-500">หน้าชำระเงินแบบ Mini App ภายในไลน์</p>
+              <h3 className="font-semibold">ขั้นตอนที่ 4: ตั้งค่า LIFF <span className="text-xs font-normal text-muted-foreground">(ไม่บังคับ)</span></h3>
+              <p className="text-xs text-muted-foreground">หน้าชำระเงินแบบ Mini App ภายในไลน์</p>
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border p-5 ml-4 border-l-4 border-l-orange-400">
+          <div className="bg-card rounded-xl shadow-xs shadow-black/5 border p-5 ml-4 border-l-4 border-l-orange-400">
             <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-4">
               <p className="text-sm text-orange-800 font-medium mb-2">วิธีสร้าง LIFF App:</p>
               <ol className="text-sm text-orange-700 space-y-1 list-decimal list-inside">
@@ -348,7 +348,7 @@ export default function LineOaSettingsPage() {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-foreground mb-1">
                   LIFF ID
                 </label>
                 <input
@@ -356,12 +356,12 @@ export default function LineOaSettingsPage() {
                   value={form.liff_id || ''}
                   onChange={(e) => handleChange('liff_id', e.target.value)}
                   placeholder="เช่น 1234567890-xxxxxxxx"
-                  className="w-full border rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono"
+                  className="w-full border rounded-lg px-3 py-2.5 text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background font-mono"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-foreground mb-1">
                   Payment Link URL
                 </label>
                 <input
@@ -369,13 +369,13 @@ export default function LineOaSettingsPage() {
                   value={form.payment_link_base_url || ''}
                   onChange={(e) => handleChange('payment_link_base_url', e.target.value)}
                   placeholder={form.liff_id ? `https://liff.line.me/${form.liff_id}` : 'ใส่ LIFF ID ก่อน จะสร้าง URL ให้อัตโนมัติ'}
-                  className="w-full border rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono"
+                  className="w-full border rounded-lg px-3 py-2.5 text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background font-mono"
                 />
                 {form.liff_id && !form.payment_link_base_url && (
                   <button
                     type="button"
                     onClick={() => handleChange('payment_link_base_url', `https://liff.line.me/${form.liff_id}`)}
-                    className="mt-2 text-xs text-blue-600 hover:text-blue-800 underline"
+                    className="mt-2 text-xs text-primary hover:text-primary/80 underline"
                   >
                     ใช้ URL อัตโนมัติ: https://liff.line.me/{form.liff_id}
                   </button>
@@ -390,7 +390,7 @@ export default function LineOaSettingsPage() {
           <button
             type="submit"
             disabled={saveMutation.isPending || (!hasToken && !hasSecret)}
-            className="px-8 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-base shadow-sm"
+            className="px-8 py-3 bg-primary text-primary-foreground rounded-xl font-semibold hover:bg-primary/90 disabled:bg-muted disabled:cursor-not-allowed text-base shadow-xs shadow-black/5"
           >
             {saveMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกการตั้งค่า'}
           </button>
@@ -399,7 +399,7 @@ export default function LineOaSettingsPage() {
               type="button"
               onClick={() => testMutation.mutate()}
               disabled={testMutation.isPending}
-              className="px-6 py-3 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 disabled:bg-gray-300 text-base shadow-sm"
+              className="px-6 py-3 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 disabled:bg-muted text-base shadow-xs shadow-black/5"
             >
               {testMutation.isPending ? 'กำลังทดสอบ...' : 'ทดสอบการเชื่อมต่อ'}
             </button>
@@ -409,7 +409,7 @@ export default function LineOaSettingsPage() {
 
       {/* Features Info */}
       <div className="mt-10 bg-gradient-to-br from-green-50 to-blue-50 rounded-2xl border border-green-200 p-6">
-        <h3 className="font-semibold text-gray-800 mb-4">เมื่อเชื่อมต่อแล้ว ระบบจะทำสิ่งนี้ได้อัตโนมัติ</h3>
+        <h3 className="font-semibold text-foreground mb-4">เมื่อเชื่อมต่อแล้ว ระบบจะทำสิ่งนี้ได้อัตโนมัติ</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {[
             { icon: '📢', title: 'แจ้งเตือนค่างวด', desc: 'ส่ง Flex Message สวยๆ ก่อนถึงกำหนด 1 และ 3 วัน' },
@@ -422,8 +422,8 @@ export default function LineOaSettingsPage() {
             <div key={f.title} className="flex items-start gap-3 bg-white/70 rounded-lg p-3">
               <span className="text-xl">{f.icon}</span>
               <div>
-                <p className="text-sm font-medium text-gray-800">{f.title}</p>
-                <p className="text-xs text-gray-500">{f.desc}</p>
+                <p className="text-sm font-medium text-foreground">{f.title}</p>
+                <p className="text-xs text-muted-foreground">{f.desc}</p>
               </div>
             </div>
           ))}

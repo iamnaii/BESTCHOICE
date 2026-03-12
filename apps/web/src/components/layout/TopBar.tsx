@@ -1,8 +1,9 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { useTheme } from 'next-themes';
 import { useLayout } from './LayoutContext';
 import { cn } from '@/lib/utils';
-import { Menu, LogOut, ChevronFirst } from 'lucide-react';
+import { Menu, LogOut, ChevronFirst, Sun, Moon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
@@ -25,6 +26,7 @@ export default function TopBar() {
   const { user, logout } = useAuth();
   const isMobile = useIsMobile();
   const { sidebarCollapse, setSidebarCollapse, setMobileSidebarOpen } = useLayout();
+  const { theme, setTheme } = useTheme();
 
   return (
     <header className="sticky top-0 z-10 h-16 bg-background border-b border-border flex items-center justify-between px-4 lg:px-8">
@@ -67,6 +69,18 @@ export default function TopBar() {
       </div>
 
       <div className="flex items-center gap-3">
+        {/* Dark mode toggle */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          className="h-9 w-9"
+        >
+          <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+          <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+          <span className="sr-only">Toggle theme</span>
+        </Button>
+
         {/* User dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

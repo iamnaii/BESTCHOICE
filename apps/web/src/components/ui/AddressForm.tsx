@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
+import { cn } from '@/lib/utils';
+import { Input } from '@/components/ui/input';
 
 // Lazy-loaded address data (loaded only when AddressForm mounts, ~400KB separate chunk)
 let cachedData: [string, string, string, string][] | null = null;
@@ -97,6 +99,9 @@ export function displayAddress(str: string | null | undefined): string {
   return str;
 }
 
+const selectClass =
+  'flex h-[34px] w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50';
+
 interface Props {
   value: AddressData;
   onChange: (addr: AddressData) => void;
@@ -170,69 +175,59 @@ export default function AddressForm({ value, onChange, label }: Props) {
     });
   };
 
-  const inputClass =
-    'w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none text-sm';
-  const selectClass =
-    'w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none text-sm bg-white';
-
   return (
     <div>
       {label && (
-        <div className="text-sm font-medium text-gray-700 mb-2">{label}</div>
+        <div className="text-sm font-medium text-foreground mb-2">{label}</div>
       )}
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs text-gray-500 mb-1">บ้านเลขที่</label>
-          <input
+          <label className="block text-xs text-muted-foreground mb-1">บ้านเลขที่</label>
+          <Input
             type="text"
             value={value.houseNo}
             onChange={(e) => update('houseNo', e.target.value)}
-            className={inputClass}
             placeholder="123/45"
           />
         </div>
         <div>
-          <label className="block text-xs text-gray-500 mb-1">หมู่</label>
-          <input
+          <label className="block text-xs text-muted-foreground mb-1">หมู่</label>
+          <Input
             type="text"
             value={value.moo}
             onChange={(e) => update('moo', e.target.value)}
-            className={inputClass}
             placeholder="5"
           />
         </div>
         <div>
-          <label className="block text-xs text-gray-500 mb-1">หมู่บ้าน/อาคาร</label>
-          <input
+          <label className="block text-xs text-muted-foreground mb-1">หมู่บ้าน/อาคาร</label>
+          <Input
             type="text"
             value={value.village}
             onChange={(e) => update('village', e.target.value)}
-            className={inputClass}
             placeholder="หมู่บ้าน/คอนโด"
           />
         </div>
         <div>
-          <label className="block text-xs text-gray-500 mb-1">ซอย</label>
-          <input
+          <label className="block text-xs text-muted-foreground mb-1">ซอย</label>
+          <Input
             type="text"
             value={value.soi}
             onChange={(e) => update('soi', e.target.value)}
-            className={inputClass}
             placeholder="สุขุมวิท 71"
           />
         </div>
         <div className="col-span-2">
-          <label className="block text-xs text-gray-500 mb-1">ถนน</label>
-          <input
+          <label className="block text-xs text-muted-foreground mb-1">ถนน</label>
+          <Input
             type="text"
             value={value.road}
             onChange={(e) => update('road', e.target.value)}
-            className={inputClass}
             placeholder="สุขุมวิท"
           />
         </div>
         <div>
-          <label className="block text-xs text-gray-500 mb-1">จังหวัด *</label>
+          <label className="block text-xs text-muted-foreground mb-1">จังหวัด *</label>
           <select
             value={value.province}
             onChange={(e) => handleProvinceChange(e.target.value)}
@@ -247,11 +242,11 @@ export default function AddressForm({ value, onChange, label }: Props) {
           </select>
         </div>
         <div>
-          <label className="block text-xs text-gray-500 mb-1">อำเภอ/เขต *</label>
+          <label className="block text-xs text-muted-foreground mb-1">อำเภอ/เขต *</label>
           <select
             value={value.district}
             onChange={(e) => handleDistrictChange(e.target.value)}
-            className={selectClass}
+            className={cn(selectClass, !selectedProvince && 'opacity-50 cursor-not-allowed')}
             disabled={!selectedProvince}
           >
             <option value="">-- เลือกอำเภอ/เขต --</option>
@@ -263,11 +258,11 @@ export default function AddressForm({ value, onChange, label }: Props) {
           </select>
         </div>
         <div>
-          <label className="block text-xs text-gray-500 mb-1">ตำบล/แขวง *</label>
+          <label className="block text-xs text-muted-foreground mb-1">ตำบล/แขวง *</label>
           <select
             value={value.subdistrict}
             onChange={(e) => handleSubdistrictChange(e.target.value)}
-            className={selectClass}
+            className={cn(selectClass, !selectedDistrict && 'opacity-50 cursor-not-allowed')}
             disabled={!selectedDistrict}
           >
             <option value="">-- เลือกตำบล/แขวง --</option>
@@ -279,12 +274,12 @@ export default function AddressForm({ value, onChange, label }: Props) {
           </select>
         </div>
         <div>
-          <label className="block text-xs text-gray-500 mb-1">รหัสไปรษณีย์</label>
-          <input
+          <label className="block text-xs text-muted-foreground mb-1">รหัสไปรษณีย์</label>
+          <Input
             type="text"
             value={value.postalCode}
             readOnly
-            className={`${inputClass} bg-gray-50`}
+            className="bg-muted"
             placeholder="รหัสไปรษณีย์"
           />
         </div>

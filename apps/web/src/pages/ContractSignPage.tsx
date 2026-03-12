@@ -122,8 +122,19 @@ export default function ContractSignPage() {
   });
   const savedSignature = savedSigData?.signatureImage || null;
 
+  // Get lessor (company) signature from system settings
+  const { data: systemSettings = [] } = useQuery<{ key: string; value: string }[]>({
+    queryKey: ['settings'],
+    queryFn: async () => { const { data } = await api.get('/settings'); return data; },
+  });
+  const lessorSignatureImage = systemSettings.find(s => s.key === 'lessor_signature_image')?.value || '';
+  const lessorSignerName = systemSettings.find(s => s.key === 'lessor_signer_name')?.value || '';
+
   // PDPA consent
   const hasPdpaConsent = !!contract?.pdpaConsentId;
+
+  // Auto-sign COMPANY from system settings (lessor signature)
+  const [autoSignedCompany, setAutoSignedCompany] = useState(false);
   const [showPdpaModal, setShowPdpaModal] = useState(false);
   const pdpaCanvasRef = useRef<HTMLCanvasElement>(null);
   const [pdpaDrawing, setPdpaDrawing] = useState(false);
@@ -246,6 +257,25 @@ export default function ContractSignPage() {
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
+  // Auto-sign COMPANY from system settings (lessor signature)
+  useEffect(() => {
+    if (
+      autoSignedCompany || !lessorSignatureImage || !lessorSignerName ||
+      !contract || contract.status !== 'DRAFT' || !hasPdpaConsent ||
+      signMutation.isPending
+    ) return;
+    const alreadySigned = signatures.some(s => normalizeSignerType(s.signerType) === 'COMPANY');
+    if (alreadySigned) { setAutoSignedCompany(true); return; }
+    setAutoSignedCompany(true);
+    signMutation.mutate({
+      signatureImage: lessorSignatureImage,
+      signerType: 'COMPANY',
+      signerName: lessorSignerName,
+      screenSize: getScreenSize(),
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lessorSignatureImage, lessorSignerName, contract?.status, contract?.pdpaConsentId, signatures.length, autoSignedCompany]);
+
   // Canvas setup
   useEffect(() => {
     setupCanvasCtx(canvasRef.current);
@@ -362,8 +392,12 @@ export default function ContractSignPage() {
   const currentAlreadySigned = signedTypes.has(signerType);
   const isBusy = signMutation.isPending || gpsLoading;
 
-  // Show COMPANY option for saved signature
-  const showSavedOption = (signerType === 'COMPANY' || signerType === 'WITNESS_1' || signerType === 'WITNESS_2') && savedSignature;
+  // COMPANY auto-handled from settings — don't show manual signing for COMPANY if lessor sig is configured
+  const companyAutoSigned = !!lessorSignatureImage && !!lessorSignerName;
+
+  // Show saved staff signature option for witnesses (COMPANY is now auto-handled from settings)
+  const showSavedOption = !companyAutoSigned && (signerType === 'COMPANY' || signerType === 'WITNESS_1' || signerType === 'WITNESS_2') && savedSignature
+    || (signerType === 'WITNESS_1' || signerType === 'WITNESS_2') && savedSignature;
 
   return (
     <div>
@@ -538,8 +572,8 @@ export default function ContractSignPage() {
                   className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
                 >
                   {requiredSigners.map(type => (
-                    <option key={type} value={type} disabled={signedTypes.has(type)}>
-                      {SIGNER_LABELS[type]} {signedTypes.has(type) ? '(ลงนามแล้ว)' : ''}
+                    <option key={type} value={type} disabled={signedTypes.has(type) || (type === 'COMPANY' && companyAutoSigned)}>
+                      {SIGNER_LABELS[type]} {signedTypes.has(type) ? '(ลงนามแล้ว)' : type === 'COMPANY' && companyAutoSigned ? '(อัตโนมัติจากตั้งค่า)' : ''}
                     </option>
                   ))}
                 </select>
@@ -553,7 +587,20 @@ export default function ContractSignPage() {
                 </div>
               )}
 
-              {!currentAlreadySigned && (
+              {/* Show auto-sign message for COMPANY when lessor sig is in settings */}
+              {signerType === 'COMPANY' && companyAutoSigned && !currentAlreadySigned && (
+                <div className="bg-primary-50 rounded-lg border border-primary-200 p-4 text-center">
+                  <div className="text-sm text-primary-700 font-medium mb-2">ลายเซ็นผู้ให้เช่าซื้อจะถูกใส่อัตโนมัติจากการตั้งค่าระบบ</div>
+                  {lessorSignatureImage && (
+                    <div className="bg-white rounded border p-2 inline-block">
+                      <img src={lessorSignatureImage} alt="ลายเซ็นบริษัท" style={{ maxHeight: '60px' }} />
+                    </div>
+                  )}
+                  <div className="text-xs text-primary-600 mt-2">({lessorSignerName})</div>
+                </div>
+              )}
+
+              {!currentAlreadySigned && !(signerType === 'COMPANY' && companyAutoSigned) && (
                 <div className="bg-white rounded-lg border p-4">
                   {/* Signer name input */}
                   <div className="mb-3">

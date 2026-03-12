@@ -187,7 +187,8 @@ export class DocumentsService {
     }
 
     // Replace placeholders and wrap with A4 styling
-    const renderedHtml = this.wrapWithA4Styles(this.replacePlaceholders(htmlContent, contract), templateSettings);
+    const lessorSig = await this.getSystemLessorSignature();
+    const renderedHtml = this.wrapWithA4Styles(this.replacePlaceholders(htmlContent, contract, lessorSig), templateSettings);
 
     // Generate file hash
     const fileHash = crypto.createHash('sha256').update(renderedHtml).digest('hex');
@@ -246,7 +247,8 @@ export class DocumentsService {
     let htmlContent = template?.contentHtml || this.getDefaultTemplate('PDPA_CONSENT');
 
     // Replace standard placeholders
-    htmlContent = this.replacePlaceholders(htmlContent, contract);
+    const lessorSigPdpa = await this.getSystemLessorSignature();
+    htmlContent = this.replacePlaceholders(htmlContent, contract, lessorSigPdpa);
 
     // Replace PDPA-specific placeholders
     const pdpaSignature = contract.pdpaConsent.signatureImage && this.isSafeImageDataUrl(contract.pdpaConsent.signatureImage)
@@ -335,7 +337,8 @@ export class DocumentsService {
       templateSettings = template?.settings;
     }
 
-    const bodyHtml = this.replacePlaceholders(htmlContent, contract);
+    const lessorSigPreview = await this.getSystemLessorSignature();
+    const bodyHtml = this.replacePlaceholders(htmlContent, contract, lessorSigPreview);
     return { html: this.wrapWithA4Styles(bodyHtml, templateSettings) };
   }
 
@@ -484,10 +487,10 @@ export class DocumentsService {
     let footerHtml = '';
     if (footerText || showPageNumber) {
       const pageNum = showPageNumber
-        ? `<span style="color:#9ca3af">${pageNumberFormat.replace('{page}', '<span class="page-num"></span>').replace('{total}', '<span class="page-total"></span>')}</span>`
+        ? `<span style="color:#9ca3af">${pageNumberFormat.replace('{page}', '1').replace('{total}', '1')}</span>`
         : '';
       footerHtml = `
-        <div style="margin-top:40px;padding-top:12px;border-top:1px solid #d1d5db;display:flex;justify-content:space-between;align-items:flex-end;font-size:${fontSize.footer}px">
+        <div style="margin-top:2.5rem;padding-top:0.75rem;border-top:1px solid #d1d5db;display:flex;justify-content:space-between;align-items:flex-end;font-size:${fontSize.footer}px">
           <span style="color:#9ca3af">${this.escapeHtml(footerText)}</span>
           ${pageNum}
         </div>`;
@@ -500,6 +503,23 @@ export class DocumentsService {
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap" rel="stylesheet"/>
+<style>
+  /* TH Sarabun PSK — local font files (matches template editor) */
+  @font-face {
+    font-family: 'TH Sarabun PSK';
+    src: url('/fonts/THSarabunPSK-Regular.ttf') format('truetype');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+  }
+  @font-face {
+    font-family: 'TH Sarabun PSK';
+    src: url('/fonts/THSarabunPSK-Bold.ttf') format('truetype');
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+  }
+</style>
 <style>
   @page {
     size: A4;
@@ -558,7 +578,17 @@ ${footerHtml}
 </html>`;
   }
 
-  private replacePlaceholders(html: string, contract: any): string {
+  private async getSystemLessorSignature(): Promise<{ image: string; name: string } | null> {
+    const rows = await this.prisma.systemConfig.findMany({
+      where: { key: { in: ['lessor_signature_image', 'lessor_signer_name'] } },
+    });
+    const image = rows.find(r => r.key === 'lessor_signature_image')?.value || '';
+    const name = rows.find(r => r.key === 'lessor_signer_name')?.value || '';
+    if (image && name) return { image, name };
+    return null;
+  }
+
+  private replacePlaceholders(html: string, contract: any, lessorSig?: { image: string; name: string } | null): string {
     const esc = this.escapeHtml.bind(this);
 
     const payments = contract.payments || [];
@@ -570,9 +600,14 @@ ${footerHtml}
       .join('');
 
     const customerSig = contract.signatures?.find((s: any) => s.signerType === 'CUSTOMER');
-    const staffSig = contract.signatures?.find((s: any) => s.signerType === 'STAFF' || s.signerType === 'COMPANY');
+    let staffSig = contract.signatures?.find((s: any) => s.signerType === 'STAFF' || s.signerType === 'COMPANY');
     const witness1Sig = contract.signatures?.find((s: any) => s.signerType === 'WITNESS_1');
     const witness2Sig = contract.signatures?.find((s: any) => s.signerType === 'WITNESS_2');
+
+    // Fallback to system settings lessor signature if no COMPANY/STAFF signature on contract
+    if (!staffSig && lessorSig) {
+      staffSig = { signatureImage: lessorSig.image, signerName: lessorSig.name, signerType: 'COMPANY' };
+    }
 
     // Validate signature images are safe data URLs before embedding
     const customerSigSafe = customerSig && this.isSafeImageDataUrl(customerSig.signatureImage);

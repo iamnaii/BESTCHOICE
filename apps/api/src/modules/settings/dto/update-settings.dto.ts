@@ -8,7 +8,7 @@ export class SettingItemDto {
   key: string;
 
   @IsString()
-  @MaxLength(1000, { message: 'value ต้องไม่เกิน 1000 ตัวอักษร' })
+  @MaxLength(500000, { message: 'value ต้องไม่เกิน 500000 ตัวอักษร' })
   value: string;
 }
 

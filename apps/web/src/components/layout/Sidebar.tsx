@@ -75,6 +75,7 @@ const navSections: { key: string; label: string; icon: LucideIcon; items: NavIte
       { label: 'ชำระเงิน', path: '/payments', icon: DollarSign },
       { label: 'สถานะเอกสาร', path: '/document-dashboard', icon: FileText, roles: ['OWNER', 'BRANCH_MANAGER'] },
       { label: 'ใบเสร็จรับเงิน', path: '/receipts', icon: Receipt, roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
+      { label: 'ตรวจสอบสลิป', path: '/slip-review', icon: FileCheck, roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
     ],
   },
   {
@@ -125,6 +126,7 @@ const navSections: { key: string; label: string; icon: LucideIcon; items: NavIte
       { label: 'สาขา', path: '/branches', icon: Building2, roles: ['OWNER'] },
       { label: 'จัดการผู้ใช้', path: '/users', icon: UserCog, roles: ['OWNER'] },
       { label: 'ตั้งค่าระบบ', path: '/settings', icon: Settings, roles: ['OWNER'] },
+      { label: 'เชื่อมต่อ LINE OA', path: '/settings/line-oa', icon: Settings, roles: ['OWNER'] },
       { label: 'ตั้งค่าดอกเบี้ย', path: '/settings/interest-config', icon: Percent, roles: ['OWNER'] },
       { label: 'ราคาตั้งต้น', path: '/settings/pricing-templates', icon: DollarSign, roles: ['OWNER'] },
       { label: 'เทมเพลตสัญญา', path: '/contract-templates', icon: FileSignature, roles: ['OWNER'] },

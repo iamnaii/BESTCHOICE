@@ -1,0 +1,751 @@
+import {
+  Controller,
+  Post,
+  Get,
+  Param,
+  Body,
+  Query,
+  Req,
+  Res,
+  UseGuards,
+  Logger,
+  HttpCode,
+  UseInterceptors,
+  UploadedFile,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { Request, Response } from 'express';
+import { LineOaService } from './line-oa.service';
+import { LineWebhookGuard } from './line-webhook.guard';
+import { LineWebhookBody, LineMessageEvent, LinePostbackEvent } from './dto/webhook-event.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { PrismaService } from '../../prisma/prisma.service';
+import { PromptPayQrService } from './promptpay/promptpay-qr.service';
+import { PaymentLinkService } from './payment-links/payment-link.service';
+import * as fs from 'fs';
+import * as path from 'path';
+
+@Controller('line-oa')
+export class LineOaController {
+  private readonly logger = new Logger(LineOaController.name);
+
+  constructor(
+    private lineOaService: LineOaService,
+    private prisma: PrismaService,
+    private promptPayQrService: PromptPayQrService,
+    private paymentLinkService: PaymentLinkService,
+  ) {}
+
+  // ─── LINE Webhook ─────────────────────────────────────
+
+  @Post('webhook')
+  @UseGuards(LineWebhookGuard)
+  @HttpCode(200)
+  async handleWebhook(@Req() req: Request): Promise<string> {
+    const body = req.body as LineWebhookBody;
+
+    if (!body.events || body.events.length === 0) {
+      return 'OK'; // LINE sends empty events for webhook verification
+    }
+
+    // Process events asynchronously (don't block webhook response)
+    for (const event of body.events) {
+      try {
+        await this.processEvent(event);
+      } catch (err) {
+        this.logger.error(`Error processing LINE event: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+
+    return 'OK';
+  }
+
+  private async processEvent(event: LineWebhookBody['events'][number]): Promise<void> {
+    switch (event.type) {
+      case 'message': {
+        const msgEvent = event as LineMessageEvent;
+        if (msgEvent.message.type === 'text') {
+          await this.handleTextMessage(msgEvent);
+        } else if (msgEvent.message.type === 'image') {
+          await this.handleImageMessage(msgEvent);
+        }
+        break;
+      }
+      case 'follow':
+        await this.lineOaService.linkLineId(event.source.userId);
+        break;
+      case 'unfollow':
+        await this.lineOaService.unlinkLineId(event.source.userId);
+        break;
+      case 'postback':
+        await this.handlePostback(event as LinePostbackEvent);
+        break;
+    }
+  }
+
+  // ─── Text Message Handler ─────────────────────────────
+
+  private async handleTextMessage(event: LineMessageEvent): Promise<void> {
+    if (event.message.type !== 'text') return;
+    const text = event.message.text.trim().toLowerCase();
+    const userId = event.source.userId;
+
+    if (['ยอด', 'เช็คยอด', 'ยอดค้าง', 'balance'].includes(text)) {
+      await this.handleCheckBalance(userId, event.replyToken);
+    } else if (['งวด', 'ตารางงวด', 'installment'].includes(text)) {
+      await this.handleCheckInstallments(userId, event.replyToken);
+    } else if (['ชำระ', 'จ่าย', 'pay', 'payment'].includes(text)) {
+      await this.handlePaymentRequest(userId, event.replyToken);
+    } else if (['ช่วยเหลือ', 'help', 'เมนู', 'menu'].includes(text)) {
+      await this.handleHelp(event.replyToken);
+    } else {
+      await this.lineOaService.replyMessage(event.replyToken, [
+        {
+          type: 'text',
+          text: 'สวัสดีค่ะ พิมพ์คำสั่งได้เลยนะคะ:\n• "เช็คยอด" - ดูยอดค้างชำระ\n• "งวด" - ดูตารางค่างวด\n• "ชำระ" - ชำระเงิน\n• "ช่วยเหลือ" - ดูเมนูทั้งหมด',
+        },
+      ]);
+    }
+  }
+
+  // ─── Image (Slip) Handler ─────────────────────────────
+
+  private async handleImageMessage(event: LineMessageEvent): Promise<void> {
+    if (event.message.type !== 'image') return;
+    const userId = event.source.userId;
+
+    const customer = await this.lineOaService.findCustomerByLineId(userId);
+
+    if (!customer) {
+      await this.lineOaService.replyMessage(event.replyToken, [
+        {
+          type: 'text',
+          text: 'ขออภัยค่ะ ไม่พบข้อมูลลูกค้าในระบบ กรุณาติดต่อสาขาเพื่อลงทะเบียน LINE ID',
+        },
+      ]);
+      return;
+    }
+
+    const activeContract = customer.contracts.find((c) =>
+      c.payments.some((p) => p.status !== 'PAID'),
+    );
+
+    if (!activeContract) {
+      await this.lineOaService.replyMessage(event.replyToken, [
+        { type: 'text', text: 'ไม่พบงวดค้างชำระ ชำระครบทุกงวดแล้วค่ะ' },
+      ]);
+      return;
+    }
+
+    try {
+      // Download image from LINE Content API
+      const imageBuffer = await this.lineOaService.downloadContent(event.message.id);
+
+      // Save to uploads directory
+      const uploadDir = path.resolve(process.cwd(), 'uploads', 'slips');
+      fs.mkdirSync(uploadDir, { recursive: true });
+
+      const filename = `slip-${userId}-${Date.now()}.jpg`;
+      const filePath = path.join(uploadDir, filename);
+      fs.writeFileSync(filePath, imageBuffer);
+
+      const imageUrl = `/uploads/slips/${filename}`;
+
+      // Create PaymentEvidence record
+      const evidence = await this.prisma.paymentEvidence.create({
+        data: {
+          contractId: activeContract.id,
+          lineUserId: userId,
+          imageUrl,
+          status: 'PENDING_REVIEW',
+        },
+      });
+
+      // Notify staff via IN_APP
+      await this.prisma.notificationLog.create({
+        data: {
+          channel: 'IN_APP',
+          recipient: 'STAFF',
+          subject: `สลิปใหม่จาก ${customer.name}`,
+          message: `ลูกค้า ${customer.name} ส่งสลิปชำระเงิน สัญญา ${activeContract.contractNumber} รอตรวจสอบ`,
+          status: 'SENT',
+          relatedId: evidence.id,
+          sentAt: new Date(),
+        },
+      });
+
+      await this.lineOaService.replyMessage(event.replyToken, [
+        {
+          type: 'text',
+          text: `รับสลิปเรียบร้อยแล้วค่ะ คุณ${customer.name}\nสัญญา: ${activeContract.contractNumber}\n\nกำลังตรวจสอบ จะแจ้งผลให้ทราบภายหลังค่ะ`,
+        },
+      ]);
+
+      this.logger.log(`[LINE] Slip received from ${customer.name} for contract ${activeContract.contractNumber}`);
+    } catch (err) {
+      this.logger.error(`Error processing slip: ${err instanceof Error ? err.message : err}`);
+      await this.lineOaService.replyMessage(event.replyToken, [
+        { type: 'text', text: 'ขออภัยค่ะ เกิดข้อผิดพลาดในการรับสลิป กรุณาลองใหม่อีกครั้ง' },
+      ]);
+    }
+  }
+
+  // ─── Auto-reply Command Handlers ──────────────────────
+
+  private async handleCheckBalance(userId: string, replyToken: string): Promise<void> {
+    const customer = await this.lineOaService.findCustomerByLineId(userId);
+
+    if (!customer) {
+      await this.lineOaService.replyMessage(replyToken, [
+        { type: 'text', text: 'ไม่พบข้อมูลในระบบ กรุณาติดต่อสาขาเพื่อลงทะเบียน LINE ID' },
+      ]);
+      return;
+    }
+
+    if (customer.contracts.length === 0) {
+      await this.lineOaService.replyMessage(replyToken, [
+        { type: 'text', text: `คุณ${customer.name} ไม่มีสัญญาที่ใช้งานอยู่ค่ะ` },
+      ]);
+      return;
+    }
+
+    const contractsData = customer.contracts.map((c) => {
+      const paidPayments = c.payments.filter((p) => p.status === 'PAID');
+      const nextPending = c.payments.find((p) => p.status !== 'PAID');
+      const totalOutstanding = c.payments
+        .filter((p) => p.status !== 'PAID')
+        .reduce((sum, p) => sum + Number(p.amountDue) + Number(p.lateFee) - Number(p.amountPaid), 0);
+
+      return {
+        contractNumber: c.contractNumber,
+        totalInstallments: c.payments.length,
+        paidInstallments: paidPayments.length,
+        nextDueDate: nextPending
+          ? new Date(nextPending.dueDate).toLocaleDateString('th-TH')
+          : null,
+        nextAmountDue: nextPending
+          ? Number(nextPending.amountDue) + Number(nextPending.lateFee) - Number(nextPending.amountPaid)
+          : 0,
+        totalOutstanding: Math.round(totalOutstanding),
+        status: c.status,
+      };
+    });
+
+    const flex = this.lineOaService.buildBalanceSummary({
+      customerName: customer.name,
+      contracts: contractsData,
+    });
+
+    await this.lineOaService.replyMessage(replyToken, [flex]);
+  }
+
+  private async handleCheckInstallments(userId: string, replyToken: string): Promise<void> {
+    const customer = await this.lineOaService.findCustomerByLineId(userId);
+
+    if (!customer || customer.contracts.length === 0) {
+      await this.lineOaService.replyMessage(replyToken, [
+        { type: 'text', text: 'ไม่พบข้อมูลสัญญาในระบบค่ะ' },
+      ]);
+      return;
+    }
+
+    const contract = customer.contracts[0];
+    const lines = contract.payments.map((p) => {
+      const status =
+        p.status === 'PAID' ? '✅'
+        : p.status === 'OVERDUE' ? '❌'
+        : p.status === 'PARTIALLY_PAID' ? '⏳'
+        : '⬜';
+      const date = new Date(p.dueDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
+      return `${status} งวด ${p.installmentNo} | ${date} | ${Number(p.amountDue).toLocaleString()} บาท`;
+    });
+
+    await this.lineOaService.replyMessage(replyToken, [
+      {
+        type: 'text',
+        text: `ตารางค่างวด: ${contract.contractNumber}\n\n${lines.join('\n')}\n\n✅ ชำระแล้ว  ⬜ รอชำระ  ❌ ค้างชำระ`,
+      },
+    ]);
+  }
+
+  private async handlePaymentRequest(userId: string, replyToken: string): Promise<void> {
+    const customer = await this.lineOaService.findCustomerByLineId(userId);
+
+    if (!customer || customer.contracts.length === 0) {
+      await this.lineOaService.replyMessage(replyToken, [
+        { type: 'text', text: 'ไม่พบข้อมูลสัญญาในระบบค่ะ' },
+      ]);
+      return;
+    }
+
+    const contract = customer.contracts[0];
+    const nextPayment = contract.payments.find((p) => p.status !== 'PAID');
+
+    if (!nextPayment) {
+      await this.lineOaService.replyMessage(replyToken, [
+        { type: 'text', text: 'ชำระครบทุกงวดแล้วค่ะ ขอบคุณค่ะ' },
+      ]);
+      return;
+    }
+
+    const amount = Number(nextPayment.amountDue) + Number(nextPayment.lateFee) - Number(nextPayment.amountPaid);
+
+    // Generate PromptPay QR and payment link
+    try {
+      const qrDataUrl = await this.promptPayQrService.generateQrDataUrl(amount);
+      const paymentLink = await this.paymentLinkService.createPaymentLink(contract.id, nextPayment.installmentNo);
+
+      const flex = this.lineOaService.buildPromptPayQr({
+        customerName: customer.name,
+        contractNumber: contract.contractNumber,
+        installmentNo: nextPayment.installmentNo,
+        totalInstallments: contract.payments.length,
+        amount,
+        qrImageUrl: qrDataUrl,
+        accountName: this.promptPayQrService.getAccountName(),
+        maskedPromptPayId: this.promptPayQrService.getMaskedPromptPayId(),
+        paymentLinkUrl: paymentLink.url,
+      });
+
+      await this.lineOaService.replyMessage(replyToken, [flex]);
+    } catch (err) {
+      // Fallback to text if QR generation fails
+      this.logger.warn(`QR generation failed, falling back to text: ${err}`);
+      await this.lineOaService.replyMessage(replyToken, [
+        {
+          type: 'text',
+          text: `ข้อมูลชำระเงิน:\nสัญญา: ${contract.contractNumber}\nงวดที่: ${nextPayment.installmentNo}/${contract.payments.length}\nยอด: ${amount.toLocaleString()} บาท\nกำหนด: ${new Date(nextPayment.dueDate).toLocaleDateString('th-TH')}\n\nหลังโอนเงินแล้ว ส่งสลิปมาในแชทนี้ได้เลยค่ะ`,
+        },
+      ]);
+    }
+  }
+
+  private async handlePostback(event: LinePostbackEvent): Promise<void> {
+    const data = event.postback.data;
+    const userId = event.source.userId;
+    const params = new URLSearchParams(data);
+    const action = params.get('action');
+
+    switch (action) {
+      case 'check_balance':
+        await this.handleCheckBalance(userId, event.replyToken);
+        break;
+      case 'check_installments':
+        await this.handleCheckInstallments(userId, event.replyToken);
+        break;
+      case 'pay':
+        await this.handlePaymentRequest(userId, event.replyToken);
+        break;
+      default:
+        this.logger.warn(`Unknown postback action: ${action}`);
+    }
+  }
+
+  private async handleHelp(replyToken: string): Promise<void> {
+    await this.lineOaService.replyMessage(replyToken, [
+      {
+        type: 'text',
+        text: '📋 คำสั่งที่ใช้ได้:\n\n💰 "เช็คยอด" - ดูยอดค้างชำระ\n📊 "งวด" - ดูตารางค่างวดทั้งหมด\n💳 "ชำระ" - ข้อมูลการชำระเงิน\n📷 ส่งรูปสลิป - แจ้งชำระเงิน\n❓ "ช่วยเหลือ" - แสดงเมนูนี้\n\nหรือกดเมนูด้านล่างได้เลยค่ะ',
+      },
+    ]);
+  }
+
+  // ─── Slip Review API (Staff) ──────────────────────────
+
+  @Get('evidence')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  async getEvidenceList(@Query('status') status?: string) {
+    const where: Record<string, unknown> = {};
+    if (status) where.status = status;
+
+    return this.prisma.paymentEvidence.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      include: {
+        contract: {
+          select: {
+            contractNumber: true,
+            customer: { select: { name: true, phone: true } },
+          },
+        },
+        reviewedBy: { select: { name: true } },
+      },
+    });
+  }
+
+  @Post('evidence/:id/approve')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  async approveEvidence(
+    @Param('id') id: string,
+    @Body() body: { installmentNo: number; amount: number; paymentMethod: string; reviewNote?: string },
+    @Req() req: Request,
+  ) {
+    const userId = (req as any).user?.id;
+    const evidence = await this.prisma.paymentEvidence.findUnique({
+      where: { id },
+      include: {
+        contract: {
+          include: {
+            customer: true,
+            payments: { orderBy: { installmentNo: 'asc' } },
+          },
+        },
+      },
+    });
+
+    if (!evidence) {
+      return { error: 'ไม่พบหลักฐาน' };
+    }
+
+    // Update evidence status
+    await this.prisma.paymentEvidence.update({
+      where: { id },
+      data: {
+        status: 'APPROVED',
+        amount: body.amount,
+        reviewedById: userId,
+        reviewedAt: new Date(),
+        reviewNote: body.reviewNote,
+      },
+    });
+
+    // Send success notification to customer via LINE
+    if (evidence.lineUserId) {
+      const customer = evidence.contract.customer;
+      const contract = evidence.contract;
+      const totalInstallments = contract.payments.length;
+      const paidCount = contract.payments.filter((p) => p.status === 'PAID').length;
+
+      const flex = this.lineOaService.buildPaymentSuccess({
+        customerName: customer.name,
+        contractNumber: contract.contractNumber,
+        installmentNo: body.installmentNo,
+        totalInstallments,
+        amountPaid: body.amount,
+        paymentMethod: body.paymentMethod,
+        paidDate: new Date().toLocaleDateString('th-TH'),
+        remainingInstallments: totalInstallments - paidCount - 1,
+      });
+
+      try {
+        await this.lineOaService.sendFlexMessage(evidence.lineUserId, flex);
+      } catch (err) {
+        this.logger.error(`Failed to send payment success notification: ${err}`);
+      }
+    }
+
+    return { success: true, message: 'อนุมัติสลิปเรียบร้อย' };
+  }
+
+  @Post('evidence/:id/reject')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  async rejectEvidence(
+    @Param('id') id: string,
+    @Body() body: { reviewNote?: string },
+    @Req() req: Request,
+  ) {
+    const userId = (req as any).user?.id;
+    const evidence = await this.prisma.paymentEvidence.findUnique({
+      where: { id },
+      include: { contract: { include: { customer: true } } },
+    });
+
+    if (!evidence) {
+      return { error: 'ไม่พบหลักฐาน' };
+    }
+
+    await this.prisma.paymentEvidence.update({
+      where: { id },
+      data: {
+        status: 'REJECTED',
+        reviewedById: userId,
+        reviewedAt: new Date(),
+        reviewNote: body.reviewNote,
+      },
+    });
+
+    // Notify customer via LINE
+    if (evidence.lineUserId) {
+      try {
+        await this.lineOaService.pushMessage(evidence.lineUserId, [
+          {
+            type: 'text',
+            text: `ขออภัยค่ะ สลิปที่ส่งมาไม่ผ่านการตรวจสอบ${body.reviewNote ? `\nเหตุผล: ${body.reviewNote}` : ''}\n\nกรุณาส่งสลิปใหม่ หรือติดต่อสาขาค่ะ`,
+          },
+        ]);
+      } catch (err) {
+        this.logger.error(`Failed to send rejection notification: ${err}`);
+      }
+    }
+
+    return { success: true, message: 'ปฏิเสธสลิปเรียบร้อย' };
+  }
+
+  // ─── PromptPay QR Code ──────────────────────────────
+
+  @Get('payment/:paymentId/qr')
+  @UseGuards(JwtAuthGuard)
+  async generateQrCode(
+    @Param('paymentId') paymentId: string,
+    @Query('amount') amountStr: string,
+    @Res() res: Response,
+  ) {
+    const amount = amountStr ? Number(amountStr) : undefined;
+
+    try {
+      const buffer = await this.promptPayQrService.generateQrBuffer(amount);
+      res.set({
+        'Content-Type': 'image/png',
+        'Content-Disposition': `inline; filename="promptpay-qr-${paymentId}.png"`,
+        'Cache-Control': 'no-cache',
+      });
+      res.send(buffer);
+    } catch (err) {
+      this.logger.error(`QR generation failed: ${err}`);
+      res.status(500).json({ error: 'ไม่สามารถสร้าง QR Code ได้' });
+    }
+  }
+
+  // ─── Payment Link (LIFF) ────────────────────────────
+
+  @Get('pay/:token')
+  async resolvePaymentLink(@Param('token') token: string) {
+    const link = await this.paymentLinkService.getPaymentLink(token);
+
+    if (!link) {
+      return { error: 'ลิงก์ชำระเงินไม่ถูกต้อง', valid: false };
+    }
+
+    if (link.status !== 'ACTIVE') {
+      return { error: 'ลิงก์ชำระเงินหมดอายุหรือถูกใช้แล้ว', valid: false, status: link.status };
+    }
+
+    const payment = link.payment!;
+    const contract = link.contract;
+    const amount = Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid);
+
+    // Generate PromptPay QR as data URL for the LIFF page
+    let qrDataUrl: string | null = null;
+    try {
+      qrDataUrl = await this.promptPayQrService.generateQrDataUrl(amount);
+    } catch (err) {
+      this.logger.warn(`QR generation failed for payment link: ${err}`);
+    }
+
+    return {
+      valid: true,
+      token,
+      contract: {
+        contractNumber: contract.contractNumber,
+        customerName: contract.customer.name,
+      },
+      payment: {
+        installmentNo: payment.installmentNo,
+        amountDue: amount,
+        dueDate: payment.dueDate,
+      },
+      promptPay: {
+        qrDataUrl,
+        accountName: this.promptPayQrService.getAccountName(),
+        maskedId: this.promptPayQrService.getMaskedPromptPayId(),
+      },
+      expiresAt: link.expiresAt,
+    };
+  }
+
+  // ─── LIFF Slip Upload ───────────────────────────────
+
+  @Post('slip-upload')
+  @UseInterceptors(FileInterceptor('slip'))
+  async uploadSlipFromLiff(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: { token: string; amount?: string },
+  ) {
+    if (!file) {
+      return { error: 'กรุณาอัพโหลดรูปสลิป' };
+    }
+
+    const link = await this.paymentLinkService.getPaymentLink(body.token);
+    if (!link || link.status !== 'ACTIVE') {
+      return { error: 'ลิงก์ชำระเงินไม่ถูกต้องหรือหมดอายุ' };
+    }
+
+    // Save uploaded file
+    const uploadDir = path.resolve(process.cwd(), 'uploads', 'slips');
+    fs.mkdirSync(uploadDir, { recursive: true });
+
+    const filename = `slip-liff-${Date.now()}-${Math.random().toString(36).substring(2, 8)}.jpg`;
+    const filePath = path.join(uploadDir, filename);
+    fs.writeFileSync(filePath, file.buffer);
+
+    const imageUrl = `/uploads/slips/${filename}`;
+
+    // Create PaymentEvidence
+    const evidence = await this.prisma.paymentEvidence.create({
+      data: {
+        contractId: link.contract.id,
+        paymentId: link.payment!.id,
+        lineUserId: link.contract.customer.lineId || null,
+        imageUrl,
+        amount: body.amount ? Number(body.amount) : null,
+        status: 'PENDING_REVIEW',
+      },
+    });
+
+    // Notify staff
+    await this.prisma.notificationLog.create({
+      data: {
+        channel: 'IN_APP',
+        recipient: 'STAFF',
+        subject: `สลิปใหม่จาก ${link.contract.customer.name} (LIFF)`,
+        message: `ลูกค้า ${link.contract.customer.name} ส่งสลิปผ่านลิงก์ชำระเงิน สัญญา ${link.contract.contractNumber}`,
+        status: 'SENT',
+        relatedId: evidence.id,
+        sentAt: new Date(),
+      },
+    });
+
+    // Mark payment link as used
+    await this.paymentLinkService.markAsUsed(body.token);
+
+    this.logger.log(`[LIFF] Slip uploaded for contract ${link.contract.contractNumber}`);
+
+    return { success: true, message: 'อัพโหลดสลิปเรียบร้อย กำลังตรวจสอบ' };
+  }
+
+  // ─── Create Payment Link (Staff) ────────────────────
+
+  @Post('payment-link')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  async createPaymentLink(
+    @Body() body: { contractId: string; installmentNo?: number },
+  ) {
+    const result = await this.paymentLinkService.createPaymentLink(
+      body.contractId,
+      body.installmentNo,
+    );
+
+    return {
+      success: true,
+      ...result,
+    };
+  }
+
+  // ─── LINE OA Settings (Owner) ───────────────────────
+
+  private static readonly LINE_CONFIG_KEYS = [
+    'line_channel_access_token',
+    'line_channel_secret',
+    'liff_id',
+    'promptpay_id',
+    'promptpay_account_name',
+    'payment_link_base_url',
+  ];
+
+  @Get('settings')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER')
+  async getLineSettings() {
+    const configs = await this.prisma.systemConfig.findMany({
+      where: { key: { in: LineOaController.LINE_CONFIG_KEYS } },
+    });
+
+    const settings: Record<string, string> = {};
+    for (const c of configs) {
+      settings[c.key] = c.value;
+    }
+
+    // Mask sensitive values for display
+    const masked = { ...settings };
+    if (masked.line_channel_access_token) {
+      const v = masked.line_channel_access_token;
+      masked.line_channel_access_token = v.length > 10
+        ? v.substring(0, 6) + '****' + v.substring(v.length - 4)
+        : '****';
+    }
+    if (masked.line_channel_secret) {
+      const v = masked.line_channel_secret;
+      masked.line_channel_secret = v.length > 8
+        ? v.substring(0, 4) + '****' + v.substring(v.length - 4)
+        : '****';
+    }
+
+    return {
+      settings: masked,
+      raw: settings, // full values for form (sent over HTTPS, OWNER only)
+      isConfigured: !!settings.line_channel_access_token && !!settings.line_channel_secret,
+    };
+  }
+
+  @Post('settings')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER')
+  async saveLineSettings(
+    @Body() body: Record<string, string>,
+  ) {
+    const labels: Record<string, string> = {
+      line_channel_access_token: 'LINE Channel Access Token',
+      line_channel_secret: 'LINE Channel Secret',
+      liff_id: 'LIFF ID',
+      promptpay_id: 'PromptPay ID',
+      promptpay_account_name: 'PromptPay Account Name',
+      payment_link_base_url: 'Payment Link Base URL',
+    };
+
+    for (const key of LineOaController.LINE_CONFIG_KEYS) {
+      if (body[key] !== undefined && body[key] !== '') {
+        await this.prisma.systemConfig.upsert({
+          where: { key },
+          create: { key, value: body[key], label: labels[key] || key },
+          update: { value: body[key] },
+        });
+      }
+    }
+
+    // Reload config in services
+    await this.lineOaService.reloadConfig();
+    if (body.promptpay_id || body.promptpay_account_name) {
+      this.promptPayQrService.setConfig(
+        body.promptpay_id || '',
+        body.promptpay_account_name || '',
+      );
+    }
+
+    this.logger.log('[LINE] Settings updated by admin');
+    return { success: true, message: 'บันทึกการตั้งค่า LINE OA เรียบร้อย' };
+  }
+
+  @Post('settings/test-connection')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER')
+  async testLineConnection() {
+    try {
+      // Test by calling LINE Bot Info endpoint
+      const result = await this.lineOaService.testConnection();
+      return { success: true, botInfo: result };
+    } catch (err) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'ไม่สามารถเชื่อมต่อ LINE ได้',
+      };
+    }
+  }
+
+  @Get('settings/webhook-url')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER')
+  async getWebhookUrl(@Req() req: Request) {
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+    const host = req.headers['x-forwarded-host'] || req.get('host');
+    const webhookUrl = `${protocol}://${host}/api/line-oa/webhook`;
+
+    return { webhookUrl };
+  }
+}

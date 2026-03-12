@@ -3,6 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SendNotificationDto, CreateNotificationTemplateDto, UpdateNotificationTemplateDto } from './dto/create-notification.dto';
 import { NotificationChannel } from '@prisma/client';
+import { buildPaymentReminderFlex } from '../line-oa/flex-messages/payment-reminder.flex';
+import { buildOverdueNoticeFlex } from '../line-oa/flex-messages/overdue-notice.flex';
+import { FlexMessagePayload } from '../line-oa/flex-messages/base-template';
 
 @Injectable()
 export class NotificationsService {
@@ -123,6 +126,37 @@ export class NotificationsService {
     }
 
     this.logger.log(`[LINE] Message sent to ${recipient}`);
+  }
+
+  /**
+   * Send a LINE Flex Message via LINE Messaging API (Push Message)
+   */
+  private async sendLineFlexMessage(recipient: string, flexMessage: FlexMessagePayload): Promise<void> {
+    if (!this.lineChannelAccessToken) {
+      throw new Error('LINE channel access token not configured');
+    }
+
+    const url = 'https://api.line.me/v2/bot/message/push';
+    const body = {
+      to: recipient,
+      messages: [flexMessage],
+    };
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.lineChannelAccessToken}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(`LINE API error ${response.status}: ${errorBody}`);
+    }
+
+    this.logger.log(`[LINE] Flex message sent to ${recipient}`);
   }
 
   /**
@@ -410,6 +444,7 @@ export class NotificationsService {
         contract: {
           include: {
             customer: { select: { name: true, phone: true, lineId: true } },
+            _count: { select: { payments: true } },
           },
         },
       },
@@ -424,16 +459,42 @@ export class NotificationsService {
 
       const message = `สวัสดีค่ะ คุณ${customer.name}\nแจ้งเตือน: ค่างวดที่ ${payment.installmentNo} สัญญา ${payment.contract.contractNumber}\nจำนวน ${Number(payment.amountDue).toLocaleString()} บาท\nครบกำหนดชำระอีก ${daysUntil} วัน (${new Date(payment.dueDate).toLocaleDateString('th-TH')})\nกรุณาชำระตามกำหนด ขอบคุณค่ะ`;
 
-      // Try LINE first, fallback to SMS
+      // Try LINE Flex Message first, fallback to text, then SMS
       if (customer.lineId) {
-        await this.send({
-          channel: 'LINE',
-          recipient: customer.lineId,
-          message,
-          relatedId: payment.contractId,
-          fallbackPhone: customer.phone || undefined,
-        });
-        sent++;
+        try {
+          const flex = buildPaymentReminderFlex({
+            customerName: customer.name,
+            contractNumber: payment.contract.contractNumber,
+            installmentNo: payment.installmentNo,
+            totalInstallments: payment.contract._count.payments,
+            amountDue: Number(payment.amountDue),
+            dueDate: new Date(payment.dueDate).toLocaleDateString('th-TH'),
+            daysUntilDue: daysUntil,
+          });
+          await this.sendLineFlexMessage(customer.lineId, flex);
+          await this.prisma.notificationLog.create({
+            data: {
+              channel: 'LINE',
+              recipient: customer.lineId,
+              subject: 'แจ้งเตือนค่างวด',
+              message: `Flex: งวด ${payment.installmentNo} จำนวน ${Number(payment.amountDue).toLocaleString()} บาท`,
+              status: 'SENT',
+              relatedId: payment.contractId,
+              sentAt: new Date(),
+            },
+          });
+          sent++;
+        } catch (err) {
+          this.logger.warn(`Flex message failed, falling back to text: ${err instanceof Error ? err.message : err}`);
+          await this.send({
+            channel: 'LINE',
+            recipient: customer.lineId,
+            message,
+            relatedId: payment.contractId,
+            fallbackPhone: customer.phone || undefined,
+          });
+          sent++;
+        }
       } else if (customer.phone) {
         await this.send({
           channel: 'SMS',
@@ -474,6 +535,7 @@ export class NotificationsService {
         contract: {
           include: {
             customer: { select: { name: true, phone: true, lineId: true } },
+            _count: { select: { payments: true } },
           },
         },
       },
@@ -489,16 +551,44 @@ export class NotificationsService {
       const outstanding = Number(payment.amountDue) - Number(payment.amountPaid) + Number(payment.lateFee);
       const message = `แจ้งเตือน: คุณ${customer.name}\nค่างวดที่ ${payment.installmentNo} สัญญา ${payment.contract.contractNumber}\nเลยกำหนดชำระ ${daysOverdue} วัน\nยอดค้างชำระ ${outstanding.toLocaleString()} บาท (รวมค่าปรับ)\nกรุณาชำระโดยเร็ว`;
 
-      // Send via both channels if available
+      // Try LINE Flex Message first, fallback to text, then SMS
       if (customer.lineId) {
-        await this.send({
-          channel: 'LINE',
-          recipient: customer.lineId,
-          message,
-          relatedId: payment.contractId,
-          fallbackPhone: customer.phone || undefined,
-        });
-        sent++;
+        try {
+          const flex = buildOverdueNoticeFlex({
+            customerName: customer.name,
+            contractNumber: payment.contract.contractNumber,
+            installmentNo: payment.installmentNo,
+            totalInstallments: payment.contract._count.payments,
+            amountDue: Number(payment.amountDue),
+            lateFee: Number(payment.lateFee),
+            totalOutstanding: outstanding,
+            dueDate: new Date(payment.dueDate).toLocaleDateString('th-TH'),
+            daysOverdue,
+          });
+          await this.sendLineFlexMessage(customer.lineId, flex);
+          await this.prisma.notificationLog.create({
+            data: {
+              channel: 'LINE',
+              recipient: customer.lineId,
+              subject: 'แจ้งค้างชำระ',
+              message: `Flex: งวด ${payment.installmentNo} ค้าง ${outstanding.toLocaleString()} บาท เลยกำหนด ${daysOverdue} วัน`,
+              status: 'SENT',
+              relatedId: payment.contractId,
+              sentAt: new Date(),
+            },
+          });
+          sent++;
+        } catch (err) {
+          this.logger.warn(`Flex message failed, falling back to text: ${err instanceof Error ? err.message : err}`);
+          await this.send({
+            channel: 'LINE',
+            recipient: customer.lineId,
+            message,
+            relatedId: payment.contractId,
+            fallbackPhone: customer.phone || undefined,
+          });
+          sent++;
+        }
       } else if (customer.phone) {
         await this.send({
           channel: 'SMS',

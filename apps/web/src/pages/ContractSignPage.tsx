@@ -757,7 +757,7 @@ function ContractPreviewFrame({ html }: { html: string }) {
       ref={iframeRef}
       title="contract-preview"
       className="w-full h-full border-0"
-      sandbox="allow-same-origin"
+      sandbox="allow-same-origin allow-scripts"
     />
   );
 }

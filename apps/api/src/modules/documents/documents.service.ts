@@ -261,7 +261,7 @@ export class DocumentsService {
       .replace(/\{pdpa_signature\}/g, pdpaSignature)
       .replace(/\{pdpa_consent_date\}/g, this.escapeHtml(consentDate));
 
-    const renderedHtml = this.wrapWithA4Styles(htmlContent);
+    const renderedHtml = this.wrapWithA4Styles(htmlContent, template?.settings);
     const fileHash = crypto.createHash('sha256').update(renderedHtml).digest('hex');
     const fileUrl = `documents/${contract.contractNumber}_PDPA_${Date.now()}.html`;
 
@@ -497,8 +497,10 @@ export class DocumentsService {
 <html lang="th">
 <head>
 <meta charset="UTF-8"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap" rel="stylesheet"/>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap');
   @page {
     size: A4;
     margin: ${margins.top}mm ${margins.right}mm ${margins.bottom}mm ${margins.left}mm;

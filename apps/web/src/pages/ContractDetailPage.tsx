@@ -477,14 +477,21 @@ export default function ContractDetailPage() {
                 const tryPrint = (attempts = 0) => {
                   const iframe = document.querySelector('iframe[title="contract-preview"]') as HTMLIFrameElement;
                   if (iframe?.contentWindow && iframe.contentDocument?.body?.innerHTML) {
-                    iframe.contentWindow.print();
-                  } else if (attempts < 10) {
-                    setTimeout(() => tryPrint(attempts + 1), 300);
+                    // Wait for fonts to load inside iframe before printing
+                    const iframeDoc = iframe.contentDocument;
+                    const fontsReady = iframeDoc?.fonts?.ready;
+                    if (fontsReady) {
+                      fontsReady.then(() => iframe.contentWindow!.print()).catch(() => iframe.contentWindow!.print());
+                    } else {
+                      iframe.contentWindow.print();
+                    }
+                  } else if (attempts < 15) {
+                    setTimeout(() => tryPrint(attempts + 1), 400);
                   } else {
                     window.print();
                   }
                 };
-                setTimeout(() => tryPrint(), 500);
+                setTimeout(() => tryPrint(), 600);
               }}
               className="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
             >
@@ -1288,7 +1295,7 @@ function ContractPreviewFrame({ html }: { html: string }) {
       ref={iframeRef}
       title="contract-preview"
       className="w-full h-full border-0"
-      sandbox="allow-same-origin allow-popups allow-modals"
+      sandbox="allow-same-origin allow-popups allow-modals allow-scripts"
     />
   );
 }

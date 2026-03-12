@@ -145,6 +145,7 @@ export default {
           active: "hsl(var(--sidebar-active))",
           hover: "hsl(var(--sidebar-hover))",
           border: "hsl(var(--sidebar-border))",
+          dark: "#1b1b28",
         },
         chart: {
           1: "hsl(var(--chart-1))",
@@ -163,10 +164,10 @@ export default {
         sm: "calc(var(--radius) - 4px)",      /* 4px */
       },
       boxShadow: {
-        /* Metronic uses shadow-xs shadow-black/5 pattern */
-        'xs': '0 1px 2px 0 rgba(0,0,0,0.05)',
-        'card': '0 1px 2px 0 rgba(0,0,0,0.05)',
-        'card-hover': '0 4px 12px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.03)',
+        /* Metronic Demo 9 shadow: soft drop-shadow */
+        'xs': '0 0 50px rgba(49, 52, 122, 0.05)',
+        'card': '0 0 50px rgba(49, 52, 122, 0.08)',
+        'card-hover': '0 0 50px rgba(49, 52, 122, 0.15)',
         'sidebar': '4px 0 20px rgba(0,0,0,0.15)',
         'topbar': '0 1px 0 rgba(0,0,0,0.05)',
       },

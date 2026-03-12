@@ -1,4 +1,4 @@
-import { useMemo, useCallback, memo } from 'react';
+import { useMemo, useCallback, memo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
@@ -32,6 +32,7 @@ import {
   Database,
   ArrowRightLeft,
   ClipboardCheck,
+  LogOut,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import {
@@ -42,7 +43,17 @@ import {
   AccordionMenuLabel,
 } from '@/components/ui/accordion-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { useLayout } from './LayoutContext';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 
 interface NavItem {
   label: string;
@@ -58,7 +69,7 @@ interface NavSection {
   items: NavItem[];
 }
 
-const navSections: { key: string; label: string; icon: LucideIcon; items: NavItem[] }[] = [
+const navSections: NavSection[] = [
   {
     key: 'sales',
     label: 'ขาย & ผ่อนชำระ',
@@ -135,22 +146,185 @@ const navSections: { key: string; label: string; icon: LucideIcon; items: NavIte
   },
 ];
 
-/* Metronic Demo 9 — light sidebar menu classNames */
-const menuClassNames: AccordionMenuClassNames = {
+/* Mobile sidebar full menu classNames */
+const mobileMenuClassNames: AccordionMenuClassNames = {
   root: 'space-y-1',
   group: 'gap-px',
-  label: 'uppercase text-2xs font-semibold tracking-wider text-muted-foreground/70 pt-4 pb-1 px-3',
+  label: 'uppercase text-2xs font-semibold tracking-wider text-white/40 pt-4 pb-1 px-3',
   separator: '',
-  item: 'h-9 rounded-lg text-sm text-foreground/80 hover:bg-muted hover:text-foreground data-[selected=true]:bg-primary/10 data-[selected=true]:text-primary data-[selected=true]:font-medium',
+  item: 'h-9 rounded-lg text-sm text-white/70 hover:bg-white/10 hover:text-white data-[selected=true]:bg-primary data-[selected=true]:text-white data-[selected=true]:font-medium',
   sub: '',
-  subTrigger: 'h-9 rounded-lg text-sm text-foreground/80 hover:bg-muted hover:text-foreground data-[selected=true]:text-primary data-[selected=true]:font-medium',
+  subTrigger: 'h-9 rounded-lg text-sm text-white/70 hover:bg-white/10 hover:text-white data-[selected=true]:text-white data-[selected=true]:font-medium',
   subContent: 'py-0',
 };
 
-function Sidebar({ mobile = false }: { mobile?: boolean }) {
-  const { user } = useAuth();
+/* ─── Icon Rail Sidebar (Desktop) — Demo 9 style ─── */
+function IconRailSidebar() {
+  const { user, logout } = useAuth();
   const { pathname } = useLocation();
-  const { sidebarCollapse } = useLayout();
+  const [openPopover, setOpenPopover] = useState<string | null>(null);
+
+  const filteredSections = useMemo((): NavSection[] => {
+    return navSections
+      .map((section) => ({
+        ...section,
+        items: section.items.filter(
+          (item) => !item.roles || (user && item.roles.includes(user.role)),
+        ),
+      }))
+      .filter((section) => section.items.length > 0);
+  }, [user]);
+
+  const isSectionActive = useCallback(
+    (section: NavSection): boolean => {
+      return section.items.some(
+        (item) => item.path === pathname || (item.path.length > 1 && pathname.startsWith(item.path)),
+      );
+    },
+    [pathname],
+  );
+
+  const isItemActive = useCallback(
+    (path: string): boolean =>
+      path === pathname || (path.length > 1 && pathname.startsWith(path)),
+    [pathname],
+  );
+
+  return (
+    <div className="sidebar fixed top-0 bottom-0 left-0 z-20 w-[70px] flex flex-col items-center bg-sidebar-dark py-5 gap-1">
+      {/* Logo */}
+      <Link to="/" className="flex items-center justify-center mb-4 shrink-0">
+        <div className="size-10 rounded-xl bg-primary flex items-center justify-center">
+          <span className="text-white text-lg font-bold">B</span>
+        </div>
+      </Link>
+
+      {/* Home icon */}
+      <TooltipProvider delayDuration={0}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Link
+              to="/"
+              className={cn(
+                'flex items-center justify-center size-10 rounded-xl transition-colors',
+                pathname === '/'
+                  ? 'bg-primary text-white'
+                  : 'text-white/50 hover:text-white hover:bg-white/10',
+              )}
+            >
+              <Home className="size-5" />
+            </Link>
+          </TooltipTrigger>
+          <TooltipContent side="right" sideOffset={8}>
+            หน้าหลัก
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+
+      {/* Section icons with popovers */}
+      <div className="flex-1 flex flex-col items-center gap-1 py-2 overflow-y-auto">
+        <TooltipProvider delayDuration={0}>
+          {filteredSections.map((section) => (
+            <Popover
+              key={section.key}
+              open={openPopover === section.key}
+              onOpenChange={(open) => setOpenPopover(open ? section.key : null)}
+            >
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <PopoverTrigger asChild>
+                    <button
+                      className={cn(
+                        'flex items-center justify-center size-10 rounded-xl transition-colors',
+                        isSectionActive(section)
+                          ? 'bg-primary text-white'
+                          : 'text-white/50 hover:text-white hover:bg-white/10',
+                      )}
+                    >
+                      <section.icon className="size-5" />
+                    </button>
+                  </PopoverTrigger>
+                </TooltipTrigger>
+                {openPopover !== section.key && (
+                  <TooltipContent side="right" sideOffset={8}>
+                    {section.label}
+                  </TooltipContent>
+                )}
+              </Tooltip>
+              <PopoverContent
+                side="right"
+                sideOffset={12}
+                align="start"
+                className="w-56 p-2"
+              >
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-2 py-1.5 mb-1">
+                  {section.label}
+                </div>
+                {section.items.map((item) => (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    onClick={() => setOpenPopover(null)}
+                    className={cn(
+                      'flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm transition-colors',
+                      isItemActive(item.path)
+                        ? 'bg-primary/10 text-primary font-medium'
+                        : 'text-foreground/80 hover:bg-muted hover:text-foreground',
+                    )}
+                  >
+                    {item.icon && <item.icon className="size-4 shrink-0" />}
+                    <span>{item.label}</span>
+                  </Link>
+                ))}
+              </PopoverContent>
+            </Popover>
+          ))}
+        </TooltipProvider>
+      </div>
+
+      {/* Bottom: User avatar + logout */}
+      <div className="flex flex-col items-center gap-2 mt-auto pt-2">
+        {user && (
+          <TooltipProvider delayDuration={0}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="size-9 rounded-full bg-primary/30 flex items-center justify-center">
+                  <span className="text-white text-sm font-semibold">{user.name?.charAt(0)}</span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="right" sideOffset={8}>
+                <div>
+                  <p className="font-medium">{user.name}</p>
+                  <p className="text-xs text-muted-foreground">{user.branchName}</p>
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+        <TooltipProvider delayDuration={0}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={logout}
+                className="flex items-center justify-center size-10 rounded-xl text-white/40 hover:text-white hover:bg-white/10 transition-colors"
+              >
+                <LogOut className="size-5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right" sideOffset={8}>
+              ออกจากระบบ
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Mobile Full Sidebar (Sheet) ─── */
+function MobileSidebar() {
+  const { user, logout } = useAuth();
+  const { pathname } = useLocation();
 
   const matchPath = useCallback(
     (path: string): boolean =>
@@ -170,87 +344,77 @@ function Sidebar({ mobile = false }: { mobile?: boolean }) {
   }, [user]);
 
   return (
-    <div
-      className={cn(
-        'sidebar flex flex-col items-stretch shrink-0 bg-card',
-        mobile
-          ? 'w-full h-full'
-          : 'fixed top-0 bottom-0 z-20 border-e border-border transition-all duration-300',
-        !mobile && (sidebarCollapse ? 'w-[80px]' : 'w-[280px]'),
-      )}
-    >
-      {/* Sidebar Header — Demo 9 light style */}
-      <div className={cn(
-        'sidebar-header items-center relative justify-between px-3 lg:px-6 shrink-0 h-[70px] border-b border-border',
-        mobile ? 'flex' : 'hidden lg:flex',
-      )}>
-        <Link to="/" className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center shrink-0">
-            <span className="text-white text-base font-bold">B</span>
-          </div>
-          {!sidebarCollapse && (
-            <span className="text-base font-bold text-foreground leading-tight tracking-tight">
-              BEST<span className="text-primary">CHOICE</span>
-            </span>
-          )}
-        </Link>
-      </div>
-
-      {/* Navigation — Demo 9 light sidebar pattern */}
-      <div className="overflow-hidden flex-1">
-        <div className={sidebarCollapse ? 'w-[80px]' : 'w-[280px]'}>
-          <ScrollArea className="py-4 px-4 lg:max-h-[calc(100vh-5.5rem)]">
-            <AccordionMenu
-              selectedValue={pathname}
-              matchPath={matchPath}
-              type="single"
-              collapsible
-              classNames={menuClassNames}
-            >
-              {/* Home - direct link */}
-              <AccordionMenuItem value="/" className="text-sm font-medium">
-                <Link to="/" className="flex items-center justify-between grow gap-2">
-                  <Home data-slot="accordion-menu-icon" />
-                  {!sidebarCollapse && <span data-slot="accordion-menu-title">หน้าหลัก</span>}
-                </Link>
-              </AccordionMenuItem>
-
-              {filteredSections.map((section) => (
-                <div key={section.key}>
-                  <AccordionMenuLabel>{section.label}</AccordionMenuLabel>
-                  <AccordionMenuGroup>
-                    {section.items.map((item) => (
-                      <AccordionMenuItem key={item.path} value={item.path} className="text-2sm">
-                        <Link to={item.path} className="flex items-center gap-2 w-full">
-                          {item.icon && <item.icon data-slot="accordion-menu-icon" className="size-4" />}
-                          {!sidebarCollapse && <span data-slot="accordion-menu-title">{item.label}</span>}
-                        </Link>
-                      </AccordionMenuItem>
-                    ))}
-                  </AccordionMenuGroup>
-                </div>
-              ))}
-            </AccordionMenu>
-          </ScrollArea>
+    <div className="w-full h-full flex flex-col bg-sidebar-dark">
+      {/* Header */}
+      <div className="flex items-center gap-2.5 px-5 h-[70px] shrink-0 border-b border-white/10">
+        <div className="size-9 rounded-lg bg-primary flex items-center justify-center">
+          <span className="text-white text-base font-bold">B</span>
         </div>
+        <span className="text-base font-bold text-white leading-tight tracking-tight">
+          BEST<span className="text-primary">CHOICE</span>
+        </span>
       </div>
 
-      {/* User info at bottom — Demo 9 light style */}
-      {user && !sidebarCollapse && (
-        <div className="px-4 py-4 border-t border-border shrink-0">
+      {/* Navigation */}
+      <ScrollArea className="flex-1 py-4 px-4">
+        <AccordionMenu
+          selectedValue={pathname}
+          matchPath={matchPath}
+          type="single"
+          collapsible
+          classNames={mobileMenuClassNames}
+        >
+          <AccordionMenuItem value="/" className="text-sm font-medium">
+            <Link to="/" className="flex items-center justify-between grow gap-2">
+              <Home data-slot="accordion-menu-icon" />
+              <span data-slot="accordion-menu-title">หน้าหลัก</span>
+            </Link>
+          </AccordionMenuItem>
+
+          {filteredSections.map((section) => (
+            <div key={section.key}>
+              <AccordionMenuLabel>{section.label}</AccordionMenuLabel>
+              <AccordionMenuGroup>
+                {section.items.map((item) => (
+                  <AccordionMenuItem key={item.path} value={item.path} className="text-2sm">
+                    <Link to={item.path} className="flex items-center gap-2 w-full">
+                      {item.icon && <item.icon data-slot="accordion-menu-icon" className="size-4" />}
+                      <span data-slot="accordion-menu-title">{item.label}</span>
+                    </Link>
+                  </AccordionMenuItem>
+                ))}
+              </AccordionMenuGroup>
+            </div>
+          ))}
+        </AccordionMenu>
+      </ScrollArea>
+
+      {/* User footer */}
+      {user && (
+        <div className="px-4 py-4 border-t border-white/10 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="size-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-              <span className="text-primary text-sm font-semibold">{user.name?.charAt(0)}</span>
+            <div className="size-9 rounded-full bg-primary/30 flex items-center justify-center shrink-0">
+              <span className="text-white text-sm font-semibold">{user.name?.charAt(0)}</span>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-2sm font-medium text-foreground truncate">{user.name}</p>
-              <p className="text-2xs text-muted-foreground truncate">{user.branchName}</p>
+              <p className="text-2sm font-medium text-white truncate">{user.name}</p>
+              <p className="text-2xs text-white/50 truncate">{user.branchName}</p>
             </div>
+            <button onClick={logout} className="text-white/40 hover:text-white transition-colors">
+              <LogOut className="size-4" />
+            </button>
           </div>
         </div>
       )}
     </div>
   );
+}
+
+function Sidebar({ mobile = false }: { mobile?: boolean }) {
+  if (mobile) {
+    return <MobileSidebar />;
+  }
+  return <IconRailSidebar />;
 }
 
 export default memo(Sidebar);

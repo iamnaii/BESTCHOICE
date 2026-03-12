@@ -483,18 +483,9 @@ export class DocumentsService {
         </div>`;
     }
 
-    // Build footer HTML
-    let footerHtml = '';
-    if (footerText || showPageNumber) {
-      const pageNum = showPageNumber
-        ? `<span style="color:#9ca3af">${pageNumberFormat.replace('{page}', '1').replace('{total}', '1')}</span>`
-        : '';
-      footerHtml = `
-        <div style="margin-top:2.5rem;padding-top:0.75rem;border-top:1px solid #d1d5db;display:flex;justify-content:space-between;align-items:flex-end;font-size:${fontSize.footer}px">
-          <span style="color:#9ca3af">${this.escapeHtml(footerText)}</span>
-          ${pageNum}
-        </div>`;
-    }
+    // Build fixed footer content (appears on every printed page)
+    const hasFooter = footerText || showPageNumber;
+    const footerLeftText = footerText ? this.escapeHtml(footerText) : '';
 
     return `<!DOCTYPE html>
 <html lang="th">
@@ -523,7 +514,7 @@ export class DocumentsService {
 <style>
   @page {
     size: A4;
-    margin: ${margins.top}mm ${margins.right}mm ${margins.bottom}mm ${margins.left}mm;
+    margin: ${margins.top}mm ${margins.right}mm ${hasFooter ? Math.max(margins.bottom, 20) : margins.bottom}mm ${margins.left}mm;
   }
   * { box-sizing: border-box; }
   html, body {
@@ -543,10 +534,30 @@ export class DocumentsService {
   /* Page break helpers that templates can use */
   .page-break { page-break-after: always; break-after: page; }
   .no-break { page-break-inside: avoid; break-inside: avoid; }
-  /* Print styles */
+
+  /* Fixed footer — repeats on every printed page */
+  .page-footer-fixed {
+    display: none;
+  }
   @media print {
     body { margin: 0; padding: 0; }
     .a4-page { width: 100%; min-height: auto; }
+    .page-footer-fixed {
+      display: flex;
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      justify-content: space-between;
+      align-items: flex-end;
+      font-size: ${fontSize.footer}px;
+      color: #9ca3af;
+      border-top: 1px solid #d1d5db;
+      padding-top: 6px;
+      padding-bottom: 2px;
+    }
+    /* Hide the screen-only footer when printing */
+    .page-footer-screen { display: none; }
   }
   /* Screen preview: simulate A4 pages */
   @media screen {
@@ -559,14 +570,25 @@ export class DocumentsService {
       margin: 0 auto 20px auto;
       box-shadow: 0 4px 24px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08);
     }
+    .page-footer-screen {
+      margin-top: 2.5rem;
+      padding-top: 0.75rem;
+      border-top: 1px solid #d1d5db;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      font-size: ${fontSize.footer}px;
+      color: #9ca3af;
+    }
   }
 </style>
 </head>
 <body>
+${hasFooter ? `<div class="page-footer-fixed"><span>${footerLeftText}</span>${showPageNumber ? '<span>สัญญาเช่าซื้อ</span>' : ''}</div>` : ''}
 <div class="a4-page">
 ${letterheadHtml}
 ${bodyHtml}
-${footerHtml}
+${hasFooter ? `<div class="page-footer-screen"><span>${footerLeftText}</span>${showPageNumber ? `<span>${pageNumberFormat.replace('{page}', '1').replace('{total}', '1')}</span>` : ''}</div>` : ''}
 </div>
 </body>
 </html>`;

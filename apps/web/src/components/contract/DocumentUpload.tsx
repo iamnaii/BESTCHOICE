@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { compressImageForOcr } from '@/lib/compressImage';
@@ -17,12 +17,18 @@ interface ContractDocument {
 }
 
 const DOCUMENT_TYPES = [
+  { value: 'ID_CARD_COPY', label: 'สำเนาบัตรประชาชน (หน้า)' },
+  { value: 'ID_CARD_BACK', label: 'สำเนาบัตรประชาชน (หลัง)' },
+  { value: 'KYC_SELFIE', label: 'รูปถ่ายลูกค้าถือบัตรประชาชน' },
+  { value: 'DEVICE_PHOTO', label: 'รูปถ่ายสินค้า' },
+  { value: 'DEVICE_IMEI_PHOTO', label: 'รูปถ่าย IMEI สินค้า' },
+  { value: 'DOWN_PAYMENT_RECEIPT', label: 'หลักฐานการชำระเงินดาวน์' },
+  { value: 'PDPA_CONSENT', label: 'เอกสาร Consent PDPA' },
   { value: 'SIGNED_CONTRACT', label: 'PDF สัญญาที่เซ็นแล้ว' },
-  { value: 'PDPA_CONSENT', label: 'เอกสารยินยอม PDPA' },
-  { value: 'ID_CARD_COPY', label: 'สำเนาบัตรประชาชน' },
-  { value: 'KYC', label: 'เอกสาร KYC' },
+  { value: 'GUARDIAN_DOC', label: 'เอกสารผู้ปกครอง (อายุ 17-19)' },
+  { value: 'KYC', label: 'เอกสาร KYC อื่นๆ' },
   { value: 'FACEBOOK_PROFILE', label: 'Profile Facebook' },
-  { value: 'FACEBOOK_POST', label: 'Post Facebook ล่าสุด' },
+  { value: 'FACEBOOK_POST', label: 'Post Facebook ล่าสุด (ไม่เกิน 1 เดือน)' },
   { value: 'LINE_PROFILE', label: 'Profile LINE' },
   { value: 'DEVICE_RECEIPT_PHOTO', label: 'รูปรับเครื่อง' },
   { value: 'BANK_STATEMENT', label: 'Statement ธนาคาร' },
@@ -39,6 +45,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
   const [ocrLoading, setOcrLoading] = useState(false);
   const [showOcrPanel, setShowOcrPanel] = useState(false);
   const [viewingDoc, setViewingDoc] = useState<ContractDocument | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
 
   const { data: documents = [] } = useQuery<ContractDocument[]>({
     queryKey: ['contract-documents', contractId],
@@ -176,6 +183,36 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
     }
   };
 
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('ไฟล์ต้องมีขนาดไม่เกิน 10MB');
+      return;
+    }
+    const validTypes = ['image/', 'application/pdf'];
+    if (!validTypes.some((t) => file.type.startsWith(t))) {
+      toast.error('รองรับเฉพาะไฟล์รูปภาพหรือ PDF เท่านั้น');
+      return;
+    }
+    setSelectedFile(file);
+  }, []);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -263,7 +300,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
       {/* Upload form */}
       <div className="bg-white rounded-lg border p-4 space-y-3">
         <h3 className="text-sm font-semibold text-gray-900">อัปโหลดเอกสาร</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <label className="block text-xs text-gray-500 mb-1">ประเภทเอกสาร</label>
             <select
@@ -286,18 +323,53 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
             />
           </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">เลือกไฟล์</label>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*,.pdf"
-              onChange={handleFileChange}
-              disabled={uploadMutation.isPending}
-              className="w-full text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100 disabled:opacity-50"
-            />
+        </div>
+
+        {/* Drag & Drop Zone */}
+        <div
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          onClick={() => fileInputRef.current?.click()}
+          className={`relative border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
+            isDragOver
+              ? 'border-primary-500 bg-primary-50'
+              : selectedFile
+                ? 'border-green-400 bg-green-50'
+                : 'border-gray-300 hover:border-primary-400 hover:bg-gray-50'
+          }`}
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,.pdf"
+            onChange={handleFileChange}
+            disabled={uploadMutation.isPending}
+            className="hidden"
+          />
+          <div className="flex flex-col items-center gap-2">
+            {selectedFile ? (
+              <>
+                <svg className="w-8 h-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div className="text-sm font-medium text-green-700">{selectedFile.name}</div>
+                <p className="text-xs text-green-500">{(selectedFile.size / 1024).toFixed(0)} KB — คลิก &quot;อัปโหลดเอกสาร&quot; หรือเลือกไฟล์ใหม่</p>
+              </>
+            ) : (
+              <>
+                <svg className={`w-8 h-8 ${isDragOver ? 'text-primary-500' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+                <div className={`text-sm font-medium ${isDragOver ? 'text-primary-600' : 'text-gray-600'}`}>
+                  {isDragOver ? 'ปล่อยไฟล์เพื่ออัปโหลด' : 'ลากไฟล์มาวางที่นี่ หรือคลิกเพื่อเลือกไฟล์'}
+                </div>
+                <p className="text-xs text-gray-400">รองรับไฟล์ภาพ และ PDF ขนาดไม่เกิน 10MB</p>
+              </>
+            )}
           </div>
         </div>
+
         <div className="flex items-center gap-3">
           <button
             onClick={handleUpload}
@@ -311,9 +383,6 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
               </span>
             ) : 'อัปโหลดเอกสาร'}
           </button>
-          {selectedFile && !uploadMutation.isPending && (
-            <span className="text-xs text-gray-500">{selectedFile.name}</span>
-          )}
         </div>
       </div>
 

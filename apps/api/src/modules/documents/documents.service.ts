@@ -188,7 +188,7 @@ export class DocumentsService {
 
     // Replace placeholders and wrap with A4 styling
     const lessorSig = await this.getSystemLessorSignature();
-    const renderedHtml = this.wrapWithA4Styles(this.replacePlaceholders(htmlContent, contract, lessorSig), templateSettings);
+    const renderedHtml = this.wrapWithA4Styles(this.replacePlaceholders(htmlContent, contract, lessorSig), templateSettings, contract.contractNumber);
 
     // Generate file hash
     const fileHash = crypto.createHash('sha256').update(renderedHtml).digest('hex');
@@ -263,7 +263,7 @@ export class DocumentsService {
       .replace(/\{pdpa_signature\}/g, pdpaSignature)
       .replace(/\{pdpa_consent_date\}/g, this.escapeHtml(consentDate));
 
-    const renderedHtml = this.wrapWithA4Styles(htmlContent, template?.settings);
+    const renderedHtml = this.wrapWithA4Styles(htmlContent, template?.settings, contract.contractNumber);
     const fileHash = crypto.createHash('sha256').update(renderedHtml).digest('hex');
     const fileUrl = `documents/${contract.contractNumber}_PDPA_${Date.now()}.html`;
 
@@ -339,7 +339,7 @@ export class DocumentsService {
 
     const lessorSigPreview = await this.getSystemLessorSignature();
     const bodyHtml = this.replacePlaceholders(htmlContent, contract, lessorSigPreview);
-    return { html: this.wrapWithA4Styles(bodyHtml, templateSettings) };
+    return { html: this.wrapWithA4Styles(bodyHtml, templateSettings, contract.contractNumber) };
   }
 
   // ─── Helpers ──────────────────────────────────────────
@@ -463,14 +463,20 @@ export class DocumentsService {
   }
 
   /** Wrap rendered HTML with A4 page styles and page numbering */
-  private wrapWithA4Styles(bodyHtml: string, templateSettings?: any): string {
+  private wrapWithA4Styles(bodyHtml: string, templateSettings?: any, contractNumber?: string): string {
     // Use template settings if available, otherwise fallback to defaults
     const margins = templateSettings?.margins || { top: 25, bottom: 20, left: 30, right: 25 };
     const fontSize = templateSettings?.fontSize || { body: 16, heading: 20, footer: 12 };
     const letterhead = templateSettings?.letterhead || 'none';
     const showPageNumber = templateSettings?.showPageNumber ?? true;
     const pageNumberFormat = templateSettings?.pageNumberFormat || 'หน้า {page}/{total}';
-    const footerText = templateSettings?.footerText || '';
+    let footerText: string = templateSettings?.footerText || '';
+    // Resolve variables in footer text (e.g. {{= CONTRACT_NUMBER}}, {contract_number})
+    if (contractNumber && footerText) {
+      footerText = footerText
+        .replace(/\{\{=\s*CONTRACT\.?NUMBER\s*\}\}/g, contractNumber)
+        .replace(/\{contract_number\}/g, contractNumber);
+    }
 
     // Build letterhead HTML
     let letterheadHtml = '';

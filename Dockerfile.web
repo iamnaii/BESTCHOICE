@@ -15,6 +15,11 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# Pass VITE env vars at build time (Vite embeds them during build)
+ARG VITE_API_URL=""
+ARG VITE_LIFF_ID=""
+ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_LIFF_ID=$VITE_LIFF_ID
 RUN cd apps/web && npm run build
 
 # ============================================

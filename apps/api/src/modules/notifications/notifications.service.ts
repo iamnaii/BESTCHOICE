@@ -211,7 +211,39 @@ export class NotificationsService {
   }
 
   /**
+   * Replace {placeholders} in a string with data values
+   */
+  private replacePlaceholders(text: string, data: Record<string, string>): string {
+    let result = text;
+    for (const [key, value] of Object.entries(data)) {
+      result = result.replace(new RegExp(`\\{${key}\\}`, 'g'), value);
+    }
+    return result;
+  }
+
+  /**
+   * Replace {placeholders} in a JSON object recursively
+   */
+  private replacePlaceholdersInJson(obj: unknown, data: Record<string, string>): unknown {
+    if (typeof obj === 'string') {
+      return this.replacePlaceholders(obj, data);
+    }
+    if (Array.isArray(obj)) {
+      return obj.map((item) => this.replacePlaceholdersInJson(item, data));
+    }
+    if (obj && typeof obj === 'object') {
+      const result: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(obj)) {
+        result[key] = this.replacePlaceholdersInJson(value, data);
+      }
+      return result;
+    }
+    return obj;
+  }
+
+  /**
    * Send notification using a template with data substitution
+   * Supports both text and Flex Message JSON templates
    */
   async sendFromTemplate(
     templateId: string,
@@ -233,12 +265,35 @@ export class NotificationsService {
       return { id: null, status: 'SKIPPED', reason: 'Template is inactive' };
     }
 
-    let message = templateData.messageTemplate as string;
+    // If format is 'flex' and channel is LINE, send as Flex Message
+    if (templateData.format === 'flex' && templateData.channel === 'LINE' && templateData.flexTemplate) {
+      try {
+        const flexJson = JSON.parse(templateData.flexTemplate);
+        const resolvedFlex = this.replacePlaceholdersInJson(flexJson, data) as FlexMessagePayload;
+        await this.sendLineFlexMessage(recipient, resolvedFlex);
 
-    // Replace placeholders
-    for (const [key, value] of Object.entries(data)) {
-      message = message.replace(new RegExp(`\\{${key}\\}`, 'g'), value);
+        const textSummary = this.replacePlaceholders(templateData.messageTemplate || templateData.name, data);
+        const log = await this.prisma.notificationLog.create({
+          data: {
+            channel: 'LINE',
+            recipient,
+            subject: templateData.subject || templateData.name,
+            message: `Flex: ${textSummary}`,
+            status: 'SENT',
+            relatedId,
+            sentAt: new Date(),
+          },
+        });
+
+        return { id: log.id, status: 'SENT' };
+      } catch (err) {
+        this.logger.warn(`Flex template send failed, falling back to text: ${err instanceof Error ? err.message : err}`);
+        // Fall through to text message
+      }
     }
+
+    let message = templateData.messageTemplate as string;
+    message = this.replacePlaceholders(message, data);
 
     return this.send({
       channel: templateData.channel,
@@ -353,24 +408,32 @@ export class NotificationsService {
       // Update existing
       return this.updateTemplate(id, {
         name: dto.name,
+        format: dto.format,
         subject: dto.subject,
         messageTemplate: dto.messageTemplate,
+        flexTemplate: dto.flexTemplate,
         description: dto.description,
       });
+    }
+
+    const templateValue: Record<string, unknown> = {
+      name: dto.name,
+      eventType: dto.eventType,
+      channel: dto.channel,
+      format: dto.format || 'text',
+      subject: dto.subject,
+      messageTemplate: dto.messageTemplate,
+      description: dto.description,
+      isActive: true,
+    };
+    if (dto.flexTemplate) {
+      templateValue.flexTemplate = dto.flexTemplate;
     }
 
     const config = await this.prisma.systemConfig.create({
       data: {
         key: `notification_template_${id}`,
-        value: JSON.stringify({
-          name: dto.name,
-          eventType: dto.eventType,
-          channel: dto.channel,
-          subject: dto.subject,
-          messageTemplate: dto.messageTemplate,
-          description: dto.description,
-          isActive: true,
-        }),
+        value: JSON.stringify(templateValue),
         label: `Template: ${dto.name}`,
       },
     });
@@ -387,8 +450,10 @@ export class NotificationsService {
     const existing = JSON.parse(config.value);
     const updated = { ...existing };
     if (dto.name !== undefined) updated.name = dto.name;
+    if (dto.format !== undefined) updated.format = dto.format;
     if (dto.subject !== undefined) updated.subject = dto.subject;
     if (dto.messageTemplate !== undefined) updated.messageTemplate = dto.messageTemplate;
+    if (dto.flexTemplate !== undefined) updated.flexTemplate = dto.flexTemplate;
     if (dto.description !== undefined) updated.description = dto.description;
     if (dto.isActive !== undefined) updated.isActive = dto.isActive;
 

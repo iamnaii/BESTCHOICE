@@ -362,6 +362,42 @@ export default function LineOaSettingsPage() {
                   className="w-full border rounded-lg px-3 py-2.5 text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background"
                 />
               </div>
+
+              <div className="border-t pt-4 mt-4">
+                <p className="text-sm font-medium text-foreground mb-3">บัญชีธนาคาร (สำรอง)</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">ชื่อธนาคาร</label>
+                    <input
+                      type="text"
+                      value={form.bank_name || ''}
+                      onChange={(e) => handleChange('bank_name', e.target.value)}
+                      placeholder="เช่น กสิกรไทย"
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">เลขบัญชี</label>
+                    <input
+                      type="text"
+                      value={form.bank_account_number || ''}
+                      onChange={(e) => handleChange('bank_account_number', e.target.value)}
+                      placeholder="xxx-x-xxxxx-x"
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">ชื่อบัญชี</label>
+                    <input
+                      type="text"
+                      value={form.bank_account_name || ''}
+                      onChange={(e) => handleChange('bank_account_name', e.target.value)}
+                      placeholder="ชื่อเจ้าของบัญชี"
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background"
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -383,13 +419,22 @@ export default function LineOaSettingsPage() {
           <div className="bg-card rounded-xl shadow-xs shadow-black/5 border p-5 ml-4 border-l-4 border-l-orange-400">
             <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-4">
               <p className="text-sm text-orange-800 font-medium mb-2">วิธีสร้าง LIFF App:</p>
-              <ol className="text-sm text-orange-700 space-y-1 list-decimal list-inside">
+              <ol className="text-sm text-orange-700 space-y-1.5 list-decimal list-inside">
                 <li>เปิด LINE Developers Console &rarr; เลือก Channel</li>
                 <li>ไปที่ tab <strong>"LIFF"</strong> &rarr; กด <strong>"Add"</strong></li>
-                <li>ตั้ง Size: <strong>Full</strong>, Scope: เลือก <strong>profile</strong></li>
-                <li>ใส่ Endpoint URL: <strong>{`${window.location.origin}/pay`}</strong></li>
+                <li>ตั้งค่า:
+                  <ul className="ml-5 mt-1 space-y-0.5 list-disc">
+                    <li><strong>Size</strong>: Full</li>
+                    <li><strong>Endpoint URL</strong>: <code className="bg-orange-100 px-1 rounded">{`${window.location.origin}/liff/contract`}</code></li>
+                    <li><strong>Scope</strong>: เลือก <strong>profile</strong> และ <strong>openid</strong></li>
+                    <li><strong>Bot link feature</strong>: Aggressive</li>
+                  </ul>
+                </li>
                 <li>คัดลอก <strong>LIFF ID</strong> มาวางด้านล่าง</li>
               </ol>
+              <div className="mt-2 text-xs text-orange-600">
+                LIFF จะเปิดหน้าต่างๆ ใน LINE: ดูสัญญา, ชำระเงิน, ลงทะเบียน
+              </div>
             </div>
 
             <div className="space-y-4">

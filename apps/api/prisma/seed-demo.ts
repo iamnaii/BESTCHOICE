@@ -15,11 +15,13 @@ async function main() {
   console.log('=== Creating DEMO data for LINE OA ===');
 
   // ── ตรวจสอบข้อมูลที่ต้องใช้ ──
-  const branch = await prisma.branch.findFirst({ where: { isActive: true } });
-  if (!branch) throw new Error('ไม่มี branch ในระบบ กรุณารัน seed หลักก่อน');
+  const branchResult = await prisma.branch.findFirst({ where: { isActive: true } });
+  if (!branchResult) throw new Error('ไม่มี branch ในระบบ กรุณารัน seed หลักก่อน');
+  const branch = branchResult;
 
-  const salesperson = await prisma.user.findFirst({ where: { role: 'SALES', isActive: true } });
-  if (!salesperson) throw new Error('ไม่มี salesperson ในระบบ');
+  const salespersonResult = await prisma.user.findFirst({ where: { role: 'SALES', isActive: true } });
+  if (!salespersonResult) throw new Error('ไม่มี salesperson ในระบบ');
+  const salesperson = salespersonResult;
 
   const reviewer = await prisma.user.findFirst({ where: { role: { in: ['BRANCH_MANAGER', 'OWNER'] }, isActive: true } });
 

@@ -309,6 +309,134 @@ export class LineOaService {
     return { linkedCustomers, pendingSlips, todayNotifications };
   }
 
+  // ─── LIFF API Methods ──────────────────────────────────
+
+  /**
+   * Find customer with full contract details (for LIFF contract page)
+   */
+  async findCustomerContractsFull(lineId: string) {
+    return this.prisma.customer.findFirst({
+      where: { lineId, deletedAt: null },
+      select: {
+        id: true,
+        name: true,
+        contracts: {
+          where: {
+            status: { in: ['ACTIVE', 'OVERDUE', 'COMPLETED', 'EARLY_PAYOFF'] },
+            deletedAt: null,
+          },
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            contractNumber: true,
+            status: true,
+            sellingPrice: true,
+            downPayment: true,
+            totalMonths: true,
+            createdAt: true,
+            product: {
+              select: { name: true, brand: true, model: true },
+            },
+            payments: {
+              orderBy: { installmentNo: 'asc' },
+              select: {
+                id: true,
+                installmentNo: true,
+                dueDate: true,
+                amountDue: true,
+                amountPaid: true,
+                lateFee: true,
+                status: true,
+                paidDate: true,
+                paymentMethod: true,
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  /**
+   * Lookup customer by phone for LIFF registration
+   */
+  async lookupCustomerByPhone(phone: string, lineId: string): Promise<{ customerId: string; maskedName: string } | null> {
+    // Check if this lineId is already linked
+    const alreadyLinked = await this.prisma.customer.findFirst({
+      where: { lineId, deletedAt: null },
+    });
+    if (alreadyLinked) {
+      return null; // Already linked
+    }
+
+    // Find customer by phone (not already linked to another LINE)
+    const customer = await this.prisma.customer.findFirst({
+      where: { phone, deletedAt: null },
+    });
+
+    if (!customer) return null;
+
+    return {
+      customerId: customer.id,
+      maskedName: this.maskThaiName(customer.name),
+    };
+  }
+
+  /**
+   * Confirm LINE linking from LIFF registration
+   */
+  async confirmLinkLine(customerId: string, lineId: string): Promise<{ success: boolean; error?: string }> {
+    // Check if lineId already linked to another customer
+    const existingLink = await this.prisma.customer.findFirst({
+      where: { lineId, deletedAt: null },
+    });
+    if (existingLink) {
+      return { success: false, error: 'บัญชี LINE นี้เชื่อมต่อกับลูกค้ารายอื่นแล้ว' };
+    }
+
+    // Check if customer exists and not already linked
+    const customer = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+    });
+    if (!customer || customer.deletedAt) {
+      return { success: false, error: 'ไม่พบข้อมูลลูกค้า' };
+    }
+    if (customer.lineId && customer.lineId !== lineId) {
+      return { success: false, error: 'ลูกค้ารายนี้เชื่อมต่อกับบัญชี LINE อื่นแล้ว' };
+    }
+
+    await this.prisma.customer.update({
+      where: { id: customerId },
+      data: { lineId },
+    });
+
+    this.logger.log(`[LIFF] Linked LINE ${lineId} to customer ${customer.name} via registration`);
+    return { success: true };
+  }
+
+  /**
+   * Check if a lineId is already linked to a customer
+   */
+  async isLineIdLinked(lineId: string): Promise<boolean> {
+    const customer = await this.prisma.customer.findFirst({
+      where: { lineId, deletedAt: null },
+    });
+    return !!customer;
+  }
+
+  /**
+   * Mask a Thai name for privacy: "สมชาย จันทร์ดี" → "สม*** จั***"
+   */
+  maskThaiName(name: string): string {
+    return name
+      .split(' ')
+      .map((part) => {
+        if (part.length <= 2) return part + '***';
+        return part.substring(0, 2) + '***';
+      })
+      .join(' ');
+  }
+
   // ─── Private Helpers ──────────────────────────────────
 
   private async callLineApi(url: string, body: unknown): Promise<void> {

@@ -169,16 +169,16 @@ export default function UsersPage() {
     }
     if (form.password) data.password = form.password;
     if (editingUser) {
-      // Send all fields (including empty strings) so backend can clear them
-      data.employeeId = form.employeeId || '';
-      data.nickname = form.nickname || '';
-      data.phone = form.phone || '';
-      data.lineId = form.lineId || '';
-      data.address = form.address || '';
-      data.avatarUrl = form.avatarUrl || '';
-      data.startDate = form.startDate || '';
-      data.nationalId = form.nationalId || '';
-      data.birthDate = form.birthDate || '';
+      // Send null for empty fields so backend clears them (empty string fails DTO validation)
+      data.employeeId = form.employeeId || null;
+      data.nickname = form.nickname || null;
+      data.phone = form.phone || null;
+      data.lineId = form.lineId || null;
+      data.address = form.address || null;
+      data.avatarUrl = form.avatarUrl || null;
+      data.startDate = form.startDate || null;
+      data.nationalId = form.nationalId || null;
+      data.birthDate = form.birthDate || null;
     } else {
       // Create mode: only send non-empty values
       if (form.employeeId) data.employeeId = form.employeeId;

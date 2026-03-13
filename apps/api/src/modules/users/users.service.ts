@@ -136,6 +136,8 @@ export class UsersService {
         address: true,
         avatarUrl: true,
         startDate: true,
+        nationalId: true,
+        birthDate: true,
         branch: { select: { id: true, name: true } },
       },
     });

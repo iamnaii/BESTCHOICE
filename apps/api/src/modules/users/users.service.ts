@@ -18,6 +18,15 @@ export class UsersService {
         role: true,
         branchId: true,
         isActive: true,
+        employeeId: true,
+        nickname: true,
+        phone: true,
+        lineId: true,
+        address: true,
+        avatarUrl: true,
+        startDate: true,
+        nationalId: true,
+        birthDate: true,
         createdAt: true,
         branch: { select: { id: true, name: true } },
       },
@@ -37,6 +46,15 @@ export class UsersService {
         name: dto.name,
         role: dto.role as UserRole,
         branchId: dto.branchId || null,
+        employeeId: dto.employeeId || null,
+        nickname: dto.nickname || null,
+        phone: dto.phone || null,
+        lineId: dto.lineId || null,
+        address: dto.address || null,
+        avatarUrl: dto.avatarUrl || null,
+        startDate: dto.startDate ? new Date(dto.startDate) : null,
+        nationalId: dto.nationalId || null,
+        birthDate: dto.birthDate ? new Date(dto.birthDate) : null,
       },
       select: {
         id: true,
@@ -45,6 +63,13 @@ export class UsersService {
         role: true,
         branchId: true,
         isActive: true,
+        employeeId: true,
+        nickname: true,
+        phone: true,
+        lineId: true,
+        address: true,
+        avatarUrl: true,
+        startDate: true,
         branch: { select: { id: true, name: true } },
       },
     });
@@ -84,6 +109,15 @@ export class UsersService {
     if (dto.branchId !== undefined) data.branchId = dto.branchId || null;
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
     if (dto.password) data.password = await bcrypt.hash(dto.password, 10);
+    if (dto.employeeId !== undefined) data.employeeId = dto.employeeId || null;
+    if (dto.nickname !== undefined) data.nickname = dto.nickname || null;
+    if (dto.phone !== undefined) data.phone = dto.phone || null;
+    if (dto.lineId !== undefined) data.lineId = dto.lineId || null;
+    if (dto.address !== undefined) data.address = dto.address || null;
+    if (dto.avatarUrl !== undefined) data.avatarUrl = dto.avatarUrl || null;
+    if (dto.startDate !== undefined) data.startDate = dto.startDate ? new Date(dto.startDate) : null;
+    if (dto.nationalId !== undefined) data.nationalId = dto.nationalId || null;
+    if (dto.birthDate !== undefined) data.birthDate = dto.birthDate ? new Date(dto.birthDate) : null;
 
     return this.prisma.user.update({
       where: { id },
@@ -95,6 +129,15 @@ export class UsersService {
         role: true,
         branchId: true,
         isActive: true,
+        employeeId: true,
+        nickname: true,
+        phone: true,
+        lineId: true,
+        address: true,
+        avatarUrl: true,
+        startDate: true,
+        nationalId: true,
+        birthDate: true,
         branch: { select: { id: true, name: true } },
       },
     });

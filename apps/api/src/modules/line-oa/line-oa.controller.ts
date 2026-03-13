@@ -12,6 +12,8 @@ import {
   HttpCode,
   UseInterceptors,
   UploadedFile,
+  BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Request, Response } from 'express';
@@ -530,14 +532,19 @@ export class LineOaController {
   }
 
   private async getLiffBaseUrl(): Promise<string> {
-    const config = await this.prisma.systemConfig.findUnique({ where: { key: 'payment_link_base_url' } });
-    if (config?.value) {
-      // payment_link_base_url is like https://liff.line.me/XXXX — reuse same LIFF app
-      return config.value.replace(/\/pay\/.*$/, '');
-    }
     const liffConfig = await this.prisma.systemConfig.findUnique({ where: { key: 'liff_id' } });
     if (liffConfig?.value) {
       return `https://liff.line.me/${liffConfig.value}`;
+    }
+    // Fallback: try to extract from payment_link_base_url
+    const config = await this.prisma.systemConfig.findUnique({ where: { key: 'payment_link_base_url' } });
+    if (config?.value) {
+      try {
+        const url = new URL(config.value);
+        return `${url.origin}${url.pathname.replace(/\/pay\/?.*$/, '')}`;
+      } catch {
+        // invalid URL
+      }
     }
     return '';
   }
@@ -889,17 +896,17 @@ export class LineOaController {
 
   @Get('liff/contracts')
   @SkipCsrf()
-  async getLiffContracts(@Query('lineId') lineId: string, @Res() res: Response) {
+  async getLiffContracts(@Query('lineId') lineId: string) {
     if (!lineId) {
-      return res.status(400).json({ error: 'lineId is required' });
+      throw new BadRequestException('lineId is required');
     }
 
     const customer = await this.lineOaService.findCustomerContractsFull(lineId);
     if (!customer) {
-      return res.status(404).json({ error: 'ไม่พบข้อมูลลูกค้า กรุณาลงทะเบียนก่อน' });
+      throw new NotFoundException('ไม่พบข้อมูลลูกค้า กรุณาลงทะเบียนก่อน');
     }
 
-    return res.json({
+    return {
       customer: { name: customer.name },
       contracts: customer.contracts.map((c) => {
         const totalPaid = c.payments.filter((p) => p.status === 'PAID').length;
@@ -930,7 +937,7 @@ export class LineOaController {
           })),
         };
       }),
-    });
+    };
   }
 
   @Post('liff/register/lookup')

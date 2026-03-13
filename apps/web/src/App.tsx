@@ -51,6 +51,8 @@ const ReceiptsPage = lazy(() => import('@/pages/ReceiptsPage'));
 const CustomerPortalPage = lazy(() => import('@/pages/CustomerPortalPage'));
 const SlipReviewPage = lazy(() => import('@/pages/SlipReviewPage'));
 const LiffPayment = lazy(() => import('@/pages/liff/LiffPayment'));
+const LiffContract = lazy(() => import('@/pages/liff/LiffContract'));
+const LiffRegister = lazy(() => import('@/pages/liff/LiffRegister'));
 const LineOaSettingsPage = lazy(() => import('@/pages/LineOaSettingsPage'));
 
 const PageLoader = () => (
@@ -89,8 +91,10 @@ function App() {
         {/* Public Customer Portal (token-based access, no auth) */}
         <Route path="/customer-access/:token" element={<CustomerPortalPage />} />
 
-        {/* LIFF Payment Page (public, opened from LINE) */}
+        {/* LIFF Pages (public, opened from LINE) */}
         <Route path="/pay/:token" element={<LiffPayment />} />
+        <Route path="/liff/contract" element={<LiffContract />} />
+        <Route path="/liff/register" element={<LiffRegister />} />
 
         {/* Protected Admin Routes */}
         <Route

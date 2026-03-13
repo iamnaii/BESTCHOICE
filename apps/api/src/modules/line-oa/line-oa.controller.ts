@@ -12,6 +12,8 @@ import {
   HttpCode,
   UseInterceptors,
   UploadedFile,
+  BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Request, Response } from 'express';
@@ -145,13 +147,17 @@ export class LineOaController {
       await this.handleReceipt(userId, event.replyToken);
     } else if (['ติดต่อ', 'contact'].includes(textLower)) {
       await this.handleContact(userId, event.replyToken);
+    } else if (['สัญญา', 'contract'].includes(textLower)) {
+      await this.handleContractLink(userId, event.replyToken);
+    } else if (['ลงทะเบียน', 'register', 'สมัคร'].includes(textLower)) {
+      await this.handleRegisterLink(userId, event.replyToken);
     } else if (['ช่วยเหลือ', 'help', 'เมนู', 'menu'].includes(textLower)) {
       await this.handleHelp(event.replyToken);
     } else {
       await this.lineOaService.replyMessage(event.replyToken, [
         {
           type: 'text',
-          text: 'สวัสดีค่ะ พิมพ์คำสั่งได้เลยนะคะ:\n• "เช็คยอด" - ดูยอดค้างชำระ\n• "งวด" - ดูตารางค่างวด\n• "ชำระ" - ชำระเงิน\n• "ใบเสร็จ" - ดูประวัติการชำระ\n• "ติดต่อ" - ข้อมูลสาขา\n• "ช่วยเหลือ" - ดูเมนูทั้งหมด',
+          text: 'สวัสดีค่ะ พิมพ์คำสั่งได้เลยนะคะ:\n• "เช็คยอด" - ดูยอดค้างชำระ\n• "งวด" - ดูตารางค่างวด\n• "ชำระ" - ชำระเงิน\n• "สัญญา" - ดูข้อมูลสัญญา\n• "ใบเสร็จ" - ดูประวัติการชำระ\n• "ติดต่อ" - ข้อมูลสาขา\n• "ลงทะเบียน" - ผูกบัญชี LINE\n• "ช่วยเหลือ" - ดูเมนูทั้งหมด',
         },
       ]);
     }
@@ -525,11 +531,77 @@ export class LineOaController {
     }
   }
 
+  private async getLiffBaseUrl(): Promise<string> {
+    const liffConfig = await this.prisma.systemConfig.findUnique({ where: { key: 'liff_id' } });
+    if (liffConfig?.value) {
+      return `https://liff.line.me/${liffConfig.value}`;
+    }
+    // Fallback: try to extract from payment_link_base_url
+    const config = await this.prisma.systemConfig.findUnique({ where: { key: 'payment_link_base_url' } });
+    if (config?.value) {
+      try {
+        const url = new URL(config.value);
+        return `${url.origin}${url.pathname.replace(/\/pay\/?.*$/, '')}`;
+      } catch {
+        // invalid URL
+      }
+    }
+    return '';
+  }
+
+  private async handleContractLink(userId: string, replyToken: string): Promise<void> {
+    const customer = await this.lineOaService.findCustomerByLineId(userId);
+    const liffBase = await this.getLiffBaseUrl();
+
+    if (!customer) {
+      const registerUrl = liffBase ? `${liffBase}/liff/register` : '';
+      await this.lineOaService.replyMessage(replyToken, [
+        {
+          type: 'text',
+          text: `ยังไม่ได้เชื่อมบัญชีค่ะ กรุณาลงทะเบียนก่อนนะคะ${registerUrl ? `\n\n👉 ${registerUrl}` : '\n\nพิมพ์ "ลงทะเบียน" หรือพิมพ์เบอร์โทรเพื่อเชื่อมบัญชี'}`,
+        },
+      ]);
+      return;
+    }
+
+    const contractUrl = liffBase ? `${liffBase}/liff/contract` : '';
+    await this.lineOaService.replyMessage(replyToken, [
+      {
+        type: 'text',
+        text: `คุณ${customer.name} สามารถดูข้อมูลสัญญาทั้งหมดได้ที่ลิงก์ด้านล่างค่ะ${contractUrl ? `\n\n📋 ดูสัญญา:\n${contractUrl}` : ''}`,
+      },
+    ]);
+  }
+
+  private async handleRegisterLink(userId: string, replyToken: string): Promise<void> {
+    const customer = await this.lineOaService.findCustomerByLineId(userId);
+    const liffBase = await this.getLiffBaseUrl();
+
+    if (customer) {
+      const contractUrl = liffBase ? `${liffBase}/liff/contract` : '';
+      await this.lineOaService.replyMessage(replyToken, [
+        {
+          type: 'text',
+          text: `คุณ${customer.name} ลงทะเบียนแล้วค่ะ${contractUrl ? `\n\n📋 ดูสัญญา:\n${contractUrl}` : ''}`,
+        },
+      ]);
+      return;
+    }
+
+    const registerUrl = liffBase ? `${liffBase}/liff/register` : '';
+    await this.lineOaService.replyMessage(replyToken, [
+      {
+        type: 'text',
+        text: `กรุณาลงทะเบียนเพื่อผูกบัญชี LINE กับระบบค่ะ${registerUrl ? `\n\n👉 ลงทะเบียน:\n${registerUrl}` : '\n\nหรือพิมพ์เบอร์โทรที่ลงทะเบียนไว้เพื่อเชื่อมบัญชี'}`,
+      },
+    ]);
+  }
+
   private async handleHelp(replyToken: string): Promise<void> {
     await this.lineOaService.replyMessage(replyToken, [
       {
         type: 'text',
-        text: '📋 คำสั่งที่ใช้ได้:\n\n💰 "เช็คยอด" - ดูยอดค้างชำระ\n📊 "งวด" - ดูตารางค่างวดทั้งหมด\n💳 "ชำระ" - ข้อมูลการชำระเงิน\n🧾 "ใบเสร็จ" - ดูประวัติการชำระ\n📞 "ติดต่อ" - ข้อมูลติดต่อสาขา\n📷 ส่งรูปสลิป - แจ้งชำระเงิน\n❓ "ช่วยเหลือ" - แสดงเมนูนี้\n\nหรือกดเมนูด้านล่างได้เลยค่ะ',
+        text: '📋 คำสั่งที่ใช้ได้:\n\n💰 "เช็คยอด" - ดูยอดค้างชำระ\n📊 "งวด" - ดูตารางค่างวดทั้งหมด\n💳 "ชำระ" - ข้อมูลการชำระเงิน\n📋 "สัญญา" - ดูข้อมูลสัญญา\n🧾 "ใบเสร็จ" - ดูประวัติการชำระ\n📞 "ติดต่อ" - ข้อมูลติดต่อสาขา\n🔗 "ลงทะเบียน" - ผูกบัญชี LINE\n📷 ส่งรูปสลิป - แจ้งชำระเงิน\n❓ "ช่วยเหลือ" - แสดงเมนูนี้\n\nหรือกดเมนูด้านล่างได้เลยค่ะ',
       },
     ]);
   }
@@ -818,6 +890,95 @@ export class LineOaController {
       success: true,
       ...result,
     };
+  }
+
+  // ─── LIFF API (Public) ─────────────────────────────
+
+  @Get('liff/contracts')
+  @SkipCsrf()
+  async getLiffContracts(@Query('lineId') lineId: string) {
+    if (!lineId) {
+      throw new BadRequestException('lineId is required');
+    }
+
+    const customer = await this.lineOaService.findCustomerContractsFull(lineId);
+    if (!customer) {
+      throw new NotFoundException('ไม่พบข้อมูลลูกค้า กรุณาลงทะเบียนก่อน');
+    }
+
+    return {
+      customer: { name: customer.name },
+      contracts: customer.contracts.map((c) => {
+        const totalPaid = c.payments.filter((p) => p.status === 'PAID').length;
+        const totalOutstanding = c.payments
+          .filter((p) => p.status !== 'PAID')
+          .reduce((sum, p) => sum + Number(p.amountDue) + Number(p.lateFee) - Number(p.amountPaid), 0);
+
+        return {
+          id: c.id,
+          contractNumber: c.contractNumber,
+          status: c.status,
+          product: c.product ? `${c.product.brand || ''} ${c.product.model || c.product.name}`.trim() : '-',
+          sellingPrice: Number(c.sellingPrice),
+          downPayment: Number(c.downPayment),
+          totalMonths: c.totalMonths,
+          paidInstallments: totalPaid,
+          totalOutstanding: Math.round(totalOutstanding),
+          createdAt: c.createdAt,
+          payments: c.payments.map((p) => ({
+            installmentNo: p.installmentNo,
+            dueDate: p.dueDate,
+            amountDue: Number(p.amountDue),
+            amountPaid: Number(p.amountPaid),
+            lateFee: Number(p.lateFee),
+            status: p.status,
+            paidDate: p.paidDate,
+            paymentMethod: p.paymentMethod,
+          })),
+        };
+      }),
+    };
+  }
+
+  @Post('liff/register/lookup')
+  @SkipCsrf()
+  async liffRegisterLookup(@Body() body: { phone: string; lineId: string }) {
+    if (!body.phone || !body.lineId) {
+      return { error: 'phone and lineId are required' };
+    }
+
+    // Validate phone format
+    if (!/^0\d{8,9}$/.test(body.phone)) {
+      return { error: 'รูปแบบเบอร์โทรไม่ถูกต้อง' };
+    }
+
+    // Check if already linked
+    const isLinked = await this.lineOaService.isLineIdLinked(body.lineId);
+    if (isLinked) {
+      return { error: 'บัญชี LINE นี้เชื่อมต่อกับลูกค้าแล้ว', alreadyLinked: true };
+    }
+
+    const result = await this.lineOaService.lookupCustomerByPhone(body.phone, body.lineId);
+    if (!result) {
+      return { error: 'ไม่พบเบอร์โทรนี้ในระบบ กรุณาตรวจสอบเบอร์โทร หรือติดต่อสาขา' };
+    }
+
+    return result;
+  }
+
+  @Post('liff/register/confirm')
+  @SkipCsrf()
+  async liffRegisterConfirm(@Body() body: { customerId: string; lineId: string; displayName?: string }) {
+    if (!body.customerId || !body.lineId) {
+      return { error: 'customerId and lineId are required' };
+    }
+
+    const result = await this.lineOaService.confirmLinkLine(body.customerId, body.lineId);
+    if (!result.success) {
+      return { error: result.error };
+    }
+
+    return { success: true, message: 'ลงทะเบียนสำเร็จ' };
   }
 
   // ─── LINE OA Settings (Owner) ───────────────────────

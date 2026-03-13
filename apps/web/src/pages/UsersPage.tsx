@@ -6,7 +6,8 @@ import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { compressImageForOcr } from '@/lib/compressImage';
-import { Camera, X } from 'lucide-react';
+import { Camera, X, CreditCard } from 'lucide-react';
+import { checkCardReaderStatus, readSmartCard } from '@/lib/cardReader';
 
 interface User {
   id: string;
@@ -22,6 +23,8 @@ interface User {
   address: string | null;
   avatarUrl: string | null;
   startDate: string | null;
+  nationalId: string | null;
+  birthDate: string | null;
   createdAt: string;
   branch: { id: string; name: string } | null;
 }
@@ -45,6 +48,7 @@ const inputClass = 'w-full px-3 py-2 border border-input rounded-lg focus-visibl
 const emptyForm = {
   email: '', password: '', name: '', role: 'SALES', branchId: '',
   employeeId: '', nickname: '', phone: '', lineId: '', address: '', avatarUrl: '', startDate: '',
+  nationalId: '', birthDate: '',
 };
 
 export default function UsersPage() {
@@ -53,6 +57,7 @@ export default function UsersPage() {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [form, setForm] = useState(emptyForm);
   const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [isReadingCard, setIsReadingCard] = useState(false);
 
   const { data: users = [], isLoading } = useQuery<User[]>({
     queryKey: ['users'],
@@ -100,6 +105,7 @@ export default function UsersPage() {
       employeeId: u.employeeId || '', nickname: u.nickname || '', phone: u.phone || '',
       lineId: u.lineId || '', address: u.address || '', avatarUrl: u.avatarUrl || '',
       startDate: u.startDate ? u.startDate.slice(0, 10) : '',
+      nationalId: u.nationalId || '', birthDate: u.birthDate ? u.birthDate.slice(0, 10) : '',
     });
     setIsModalOpen(true);
   };
@@ -116,6 +122,38 @@ export default function UsersPage() {
       toast.error('ไม่สามารถอ่านรูปภาพได้');
     }
     e.target.value = '';
+  };
+
+  const handleReadCard = async () => {
+    setIsReadingCard(true);
+    try {
+      const status = await checkCardReaderStatus();
+      if (!status) {
+        toast.error('ไม่พบเครื่องอ่านบัตร กรุณาตรวจสอบว่าเปิดโปรแกรมอ่านบัตรแล้ว');
+        return;
+      }
+      if (status.status === 'no_reader') {
+        toast.error('ไม่พบเครื่องอ่านบัตร กรุณาเสียบเครื่องอ่านบัตร');
+        return;
+      }
+      if (status.status === 'waiting') {
+        toast.error('กรุณาเสียบบัตรประชาชนก่อน');
+        return;
+      }
+      const card = await readSmartCard();
+      setForm((prev) => ({
+        ...prev,
+        name: `${card.prefix}${card.firstName} ${card.lastName}`,
+        nationalId: card.nationalId,
+        birthDate: card.birthDate,
+        address: card.address,
+      }));
+      toast.success('อ่านบัตรประชาชนสำเร็จ');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'อ่านบัตรไม่สำเร็จ');
+    } finally {
+      setIsReadingCard(false);
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -139,6 +177,8 @@ export default function UsersPage() {
       data.address = form.address || '';
       data.avatarUrl = form.avatarUrl || '';
       data.startDate = form.startDate || '';
+      data.nationalId = form.nationalId || '';
+      data.birthDate = form.birthDate || '';
     } else {
       // Create mode: only send non-empty values
       if (form.employeeId) data.employeeId = form.employeeId;
@@ -148,6 +188,8 @@ export default function UsersPage() {
       if (form.address) data.address = form.address;
       if (form.avatarUrl) data.avatarUrl = form.avatarUrl;
       if (form.startDate) data.startDate = form.startDate;
+      if (form.nationalId) data.nationalId = form.nationalId;
+      if (form.birthDate) data.birthDate = form.birthDate;
     }
     saveMutation.mutate(data);
   };
@@ -227,28 +269,35 @@ export default function UsersPage() {
 
       <Modal isOpen={isModalOpen} onClose={closeModal} title={editingUser ? 'แก้ไขผู้ใช้' : 'เพิ่มผู้ใช้ใหม่'}>
         <form onSubmit={handleSubmit} className="flex flex-col gap-5 lg:gap-7.5">
-          {/* Avatar upload */}
-          <div className="flex items-center gap-4">
-            <div className="relative">
-              {form.avatarUrl ? (
-                <img src={form.avatarUrl} alt="" className="size-16 rounded-full object-cover" />
-              ) : (
-                <div className="size-16 rounded-full bg-muted flex items-center justify-center">
-                  <Camera className="size-6 text-muted-foreground" />
-                </div>
-              )}
-              <input ref={avatarInputRef} type="file" accept="image/*" onChange={handleAvatarChange} className="hidden" />
-            </div>
-            <div className="flex flex-col gap-1">
-              <button type="button" onClick={() => avatarInputRef.current?.click()} className="text-sm text-primary hover:text-primary/80 font-medium">
-                {form.avatarUrl ? 'เปลี่ยนรูป' : 'อัพโหลดรูปโปรไฟล์'}
-              </button>
-              {form.avatarUrl && (
-                <button type="button" onClick={() => setForm((prev) => ({ ...prev, avatarUrl: '' }))} className="text-sm text-red-500 hover:text-red-600 flex items-center gap-1">
-                  <X className="size-3" /> ลบรูป
+          {/* Avatar upload + Card reader */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="relative">
+                {form.avatarUrl ? (
+                  <img src={form.avatarUrl} alt="" className="size-16 rounded-full object-cover" />
+                ) : (
+                  <div className="size-16 rounded-full bg-muted flex items-center justify-center">
+                    <Camera className="size-6 text-muted-foreground" />
+                  </div>
+                )}
+                <input ref={avatarInputRef} type="file" accept="image/*" onChange={handleAvatarChange} className="hidden" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <button type="button" onClick={() => avatarInputRef.current?.click()} className="text-sm text-primary hover:text-primary/80 font-medium">
+                  {form.avatarUrl ? 'เปลี่ยนรูป' : 'อัพโหลดรูปโปรไฟล์'}
                 </button>
-              )}
+                {form.avatarUrl && (
+                  <button type="button" onClick={() => setForm((prev) => ({ ...prev, avatarUrl: '' }))} className="text-sm text-red-500 hover:text-red-600 flex items-center gap-1">
+                    <X className="size-3" /> ลบรูป
+                  </button>
+                )}
+              </div>
             </div>
+            <button type="button" onClick={handleReadCard} disabled={isReadingCard}
+              className="flex items-center gap-2 px-3 py-2 text-sm font-medium border border-input rounded-lg hover:bg-muted transition-colors disabled:opacity-50">
+              <CreditCard className="size-4" />
+              {isReadingCard ? 'กำลังอ่าน...' : 'อ่านบัตรประชาชน'}
+            </button>
           </div>
 
           {/* Email (create only) */}
@@ -280,6 +329,19 @@ export default function UsersPage() {
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">วันเริ่มงาน</label>
               <input type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} className={inputClass} />
+            </div>
+          </div>
+
+          {/* National ID + Birth Date */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">เลขบัตรประชาชน</label>
+              <input type="text" value={form.nationalId} onChange={(e) => setForm({ ...form, nationalId: e.target.value })}
+                placeholder="x-xxxx-xxxxx-xx-x" maxLength={13} pattern="\d{13}" className={inputClass} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">วันเกิด</label>
+              <input type="date" value={form.birthDate} onChange={(e) => setForm({ ...form, birthDate: e.target.value })} className={inputClass} />
             </div>
           </div>
 

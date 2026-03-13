@@ -25,6 +25,8 @@ export class UsersService {
         address: true,
         avatarUrl: true,
         startDate: true,
+        nationalId: true,
+        birthDate: true,
         createdAt: true,
         branch: { select: { id: true, name: true } },
       },
@@ -51,6 +53,8 @@ export class UsersService {
         address: dto.address || null,
         avatarUrl: dto.avatarUrl || null,
         startDate: dto.startDate ? new Date(dto.startDate) : null,
+        nationalId: dto.nationalId || null,
+        birthDate: dto.birthDate ? new Date(dto.birthDate) : null,
       },
       select: {
         id: true,
@@ -112,6 +116,8 @@ export class UsersService {
     if (dto.address !== undefined) data.address = dto.address || null;
     if (dto.avatarUrl !== undefined) data.avatarUrl = dto.avatarUrl || null;
     if (dto.startDate !== undefined) data.startDate = dto.startDate ? new Date(dto.startDate) : null;
+    if (dto.nationalId !== undefined) data.nationalId = dto.nationalId || null;
+    if (dto.birthDate !== undefined) data.birthDate = dto.birthDate ? new Date(dto.birthDate) : null;
 
     return this.prisma.user.update({
       where: { id },

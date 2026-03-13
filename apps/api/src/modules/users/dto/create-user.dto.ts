@@ -49,4 +49,13 @@ export class CreateUserDto {
   @IsOptional()
   @IsDateString()
   startDate?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{13}$/, { message: 'เลขบัตรประชาชนต้องเป็นตัวเลข 13 หลัก' })
+  nationalId?: string;
+
+  @IsOptional()
+  @IsDateString()
+  birthDate?: string;
 }

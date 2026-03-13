@@ -260,6 +260,8 @@ model User {
   address        String?  @map("address") @db.Text
   avatarUrl      String?  @map("avatar_url") @db.Text
   startDate      DateTime? @map("start_date")
+  nationalId     String?   @map("national_id")
+  birthDate      DateTime? @map("birth_date")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 

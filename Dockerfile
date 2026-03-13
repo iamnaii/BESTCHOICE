@@ -6,7 +6,7 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 COPY apps/api/package.json apps/api/
 COPY packages/ packages/
-RUN npm ci 2>/dev/null || npm install
+RUN --mount=type=cache,target=/root/.npm npm ci
 
 # ============================================
 # Stage 2: Build API
@@ -14,11 +14,11 @@ RUN npm ci 2>/dev/null || npm install
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
-COPY . .
-# Generate Prisma client
-RUN cd apps/api && npx prisma generate
-# Build NestJS API
-RUN cd apps/api && npm run build
+COPY package.json ./
+COPY apps/api ./apps/api
+COPY packages ./packages
+# Generate Prisma client + Build NestJS API
+RUN cd apps/api && npx prisma generate && npm run build
 
 # ============================================
 # Stage 3: Production Runtime

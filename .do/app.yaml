@@ -54,6 +54,27 @@ services:
       - key: FRONTEND_URL
         scope: RUN_TIME
         value: ${APP_URL}
+      # LINE OA (ตั้งค่าผ่านหน้า Settings ก็ได้ หรือใส่ตรงนี้)
+      - key: LINE_CHANNEL_ACCESS_TOKEN
+        scope: RUN_TIME
+        type: SECRET
+        value: ""
+      - key: LINE_CHANNEL_SECRET
+        scope: RUN_TIME
+        type: SECRET
+        value: ""
+      - key: LIFF_ID
+        scope: RUN_TIME
+        value: ""
+      - key: PROMPTPAY_ID
+        scope: RUN_TIME
+        value: ""
+      - key: PROMPTPAY_ACCOUNT_NAME
+        scope: RUN_TIME
+        value: ""
+      - key: PAYMENT_LINK_BASE_URL
+        scope: RUN_TIME
+        value: ""
 
 # ============================================
 # Web Frontend (Static Site)
@@ -74,6 +95,9 @@ static_sites:
       - key: VITE_API_URL
         scope: BUILD_TIME
         value: ${API_URL}
+      - key: VITE_LIFF_ID
+        scope: BUILD_TIME
+        value: ""
 
 # ============================================
 # Managed Database (PostgreSQL 16)

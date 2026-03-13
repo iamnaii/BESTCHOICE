@@ -490,16 +490,33 @@ export default function LineOaSettingsPage() {
                 <label className="block text-sm font-medium text-foreground mb-1">
                   LINE User ID ของเจ้าของ
                 </label>
-                <input
-                  type="text"
-                  value={form.owner_line_id || ''}
-                  onChange={(e) => handleChange('owner_line_id', e.target.value)}
-                  placeholder="เช่น U1234567890abcdef..."
-                  className="w-full border rounded-lg px-3 py-2.5 text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background font-mono"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  หาได้จาก LINE Developers Console &rarr; Your channel &rarr; ส่งข้อความอะไรก็ได้มาที่ Bot แล้วดู User ID ใน webhook log
-                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={form.owner_line_id || ''}
+                    onChange={(e) => handleChange('owner_line_id', e.target.value)}
+                    placeholder="พิมพ์ #owner ในแชท Bot หรือวาง User ID ที่นี่"
+                    className="flex-1 border rounded-lg px-3 py-2.5 text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      queryClient.invalidateQueries({ queryKey: ['line-oa-settings'] });
+                      toast.success('โหลดข้อมูลใหม่แล้ว');
+                    }}
+                    className="px-4 py-2.5 bg-blue-100 text-blue-700 text-sm rounded-lg hover:bg-blue-200 shrink-0 font-medium"
+                  >
+                    ดึง User ID
+                  </button>
+                </div>
+                <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-sm text-yellow-800 font-medium mb-1">วิธีง่ายที่สุด:</p>
+                  <ol className="text-xs text-yellow-700 space-y-1 list-decimal list-inside">
+                    <li>เพิ่ม Bot เป็นเพื่อนในไลน์</li>
+                    <li>พิมพ์ <strong>#owner</strong> ส่งไปในแชท Bot</li>
+                    <li>กลับมากดปุ่ม <strong>"ดึง User ID"</strong> ด้านบน</li>
+                  </ol>
+                </div>
               </div>
 
               <div>

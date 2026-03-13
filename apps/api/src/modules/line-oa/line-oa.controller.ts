@@ -95,6 +95,25 @@ export class LineOaController {
     const textLower = text.toLowerCase();
     const userId = event.source.userId;
 
+    // Owner self-register: save LINE User ID as owner_line_id
+    if (textLower === '#owner') {
+      try {
+        await this.prisma.systemConfig.upsert({
+          where: { key: 'owner_line_id' },
+          create: { key: 'owner_line_id', value: userId, label: 'LINE User ID เจ้าของ' },
+          update: { value: userId },
+        });
+        await this.lineOaService.replyMessage(event.replyToken, [
+          { type: 'text', text: `บันทึก Owner LINE ID เรียบร้อยแล้วค่ะ\n\nUser ID: ${userId}\n\nตอนนี้สามารถใช้ "ส่งทดสอบ" จากหน้าตั้งค่า LINE OA ได้เลยค่ะ` },
+        ]);
+      } catch {
+        await this.lineOaService.replyMessage(event.replyToken, [
+          { type: 'text', text: 'ไม่สามารถบันทึกได้ กรุณาลองใหม่อีกครั้ง' },
+        ]);
+      }
+      return;
+    }
+
     // Self-link: if text is a phone number and user is not linked yet
     if (/^0\d{9}$/.test(text)) {
       const result = await this.lineOaService.selfLinkByPhone(userId, text);

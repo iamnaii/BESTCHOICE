@@ -130,13 +130,25 @@ export default function UsersPage() {
       data.password = form.password;
     }
     if (form.password) data.password = form.password;
-    if (form.employeeId) data.employeeId = form.employeeId;
-    if (form.nickname) data.nickname = form.nickname;
-    if (form.phone) data.phone = form.phone;
-    if (form.lineId) data.lineId = form.lineId;
-    if (form.address) data.address = form.address;
-    if (form.avatarUrl) data.avatarUrl = form.avatarUrl;
-    if (form.startDate) data.startDate = form.startDate;
+    if (editingUser) {
+      // Send all fields (including empty strings) so backend can clear them
+      data.employeeId = form.employeeId || '';
+      data.nickname = form.nickname || '';
+      data.phone = form.phone || '';
+      data.lineId = form.lineId || '';
+      data.address = form.address || '';
+      data.avatarUrl = form.avatarUrl || '';
+      data.startDate = form.startDate || '';
+    } else {
+      // Create mode: only send non-empty values
+      if (form.employeeId) data.employeeId = form.employeeId;
+      if (form.nickname) data.nickname = form.nickname;
+      if (form.phone) data.phone = form.phone;
+      if (form.lineId) data.lineId = form.lineId;
+      if (form.address) data.address = form.address;
+      if (form.avatarUrl) data.avatarUrl = form.avatarUrl;
+      if (form.startDate) data.startDate = form.startDate;
+    }
     saveMutation.mutate(data);
   };
 

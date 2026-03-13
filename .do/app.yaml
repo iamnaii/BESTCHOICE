@@ -26,7 +26,10 @@ services:
     envs:
       - key: DATABASE_URL
         scope: RUN_TIME
-        value: ${db.DATABASE_URL}?connection_limit=3&pool_timeout=30
+        value: ${db.DATABASE_URL}?connection_limit=3&pool_timeout=30&pgbouncer=true
+      - key: DATABASE_URL_DIRECT
+        scope: RUN_TIME
+        value: ${db.DATABASE_URL}
       - key: NODE_ENV
         scope: RUN_AND_BUILD_TIME
         value: production

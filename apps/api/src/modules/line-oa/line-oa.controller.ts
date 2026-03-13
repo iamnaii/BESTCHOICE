@@ -169,7 +169,7 @@ export class LineOaController {
       await this.lineOaService.replyMessage(event.replyToken, [
         {
           type: 'text',
-          text: 'ขออภัยค่ะ ไม่พบข้อมูลลูกค้าในระบบ กรุณาติดต่อสาขาเพื่อลงทะเบียน LINE ID',
+          text: 'ยังไม่ได้เชื่อมบัญชีค่ะ กรุณาพิมพ์เบอร์โทรศัพท์ที่ลงทะเบียนไว้เพื่อเชื่อมบัญชีก่อนนะคะ\n\nตัวอย่าง: 0812345678',
         },
       ]);
       return;
@@ -246,7 +246,7 @@ export class LineOaController {
 
     if (!customer) {
       await this.lineOaService.replyMessage(replyToken, [
-        { type: 'text', text: 'ไม่พบข้อมูลในระบบ กรุณาติดต่อสาขาเพื่อลงทะเบียน LINE ID' },
+        { type: 'text', text: 'ยังไม่ได้เชื่อมบัญชีค่ะ กรุณาพิมพ์เบอร์โทรศัพท์ที่ลงทะเบียนไว้เพื่อเชื่อมบัญชีก่อนนะคะ\n\nตัวอย่าง: 0812345678' },
       ]);
       return;
     }
@@ -291,9 +291,16 @@ export class LineOaController {
   private async handleCheckInstallments(userId: string, replyToken: string, contractNumber?: string): Promise<void> {
     const customer = await this.lineOaService.findCustomerByLineId(userId);
 
-    if (!customer || customer.contracts.length === 0) {
+    if (!customer) {
       await this.lineOaService.replyMessage(replyToken, [
-        { type: 'text', text: 'ไม่พบข้อมูลสัญญาในระบบค่ะ' },
+        { type: 'text', text: 'ยังไม่ได้เชื่อมบัญชีค่ะ กรุณาพิมพ์เบอร์โทรศัพท์ที่ลงทะเบียนไว้เพื่อเชื่อมบัญชีก่อนนะคะ\n\nตัวอย่าง: 0812345678' },
+      ]);
+      return;
+    }
+
+    if (customer.contracts.length === 0) {
+      await this.lineOaService.replyMessage(replyToken, [
+        { type: 'text', text: `คุณ${customer.name} ไม่มีสัญญาที่ใช้งานอยู่ค่ะ` },
       ]);
       return;
     }
@@ -337,9 +344,16 @@ export class LineOaController {
   private async handlePaymentRequest(userId: string, replyToken: string, contractNumber?: string): Promise<void> {
     const customer = await this.lineOaService.findCustomerByLineId(userId);
 
-    if (!customer || customer.contracts.length === 0) {
+    if (!customer) {
       await this.lineOaService.replyMessage(replyToken, [
-        { type: 'text', text: 'ไม่พบข้อมูลสัญญาในระบบค่ะ' },
+        { type: 'text', text: 'ยังไม่ได้เชื่อมบัญชีค่ะ กรุณาพิมพ์เบอร์โทรศัพท์ที่ลงทะเบียนไว้เพื่อเชื่อมบัญชีก่อนนะคะ\n\nตัวอย่าง: 0812345678' },
+      ]);
+      return;
+    }
+
+    if (customer.contracts.length === 0) {
+      await this.lineOaService.replyMessage(replyToken, [
+        { type: 'text', text: `คุณ${customer.name} ไม่มีสัญญาที่ใช้งานอยู่ค่ะ` },
       ]);
       return;
     }
@@ -423,7 +437,7 @@ export class LineOaController {
 
     if (!customer) {
       await this.lineOaService.replyMessage(replyToken, [
-        { type: 'text', text: 'ไม่พบข้อมูลในระบบ กรุณาติดต่อสาขาเพื่อลงทะเบียน LINE ID' },
+        { type: 'text', text: 'ยังไม่ได้เชื่อมบัญชีค่ะ กรุณาพิมพ์เบอร์โทรศัพท์ที่ลงทะเบียนไว้เพื่อเชื่อมบัญชีก่อนนะคะ\n\nตัวอย่าง: 0812345678' },
       ]);
       return;
     }

@@ -799,6 +799,7 @@ export class LineOaController {
     'bank_name',
     'bank_account_number',
     'bank_account_name',
+    'owner_line_id',
   ];
 
   @Get('settings')
@@ -852,6 +853,7 @@ export class LineOaController {
       bank_name: 'ชื่อธนาคาร',
       bank_account_number: 'เลขบัญชีธนาคาร',
       bank_account_name: 'ชื่อบัญชีธนาคาร',
+      owner_line_id: 'LINE User ID เจ้าของ',
     };
 
     for (const key of LineOaController.LINE_CONFIG_KEYS) {
@@ -902,6 +904,104 @@ export class LineOaController {
     const webhookUrl = `${protocol}://${host}/api/line-oa/webhook`;
 
     return { webhookUrl };
+  }
+
+  // ─── Test Send (Owner Preview) ──────────────────────
+
+  @Post('test-send')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER')
+  async testSendMessage(
+    @Body() body: { lineUserId?: string; messageType: string },
+  ) {
+    // Resolve target LINE user ID
+    let targetLineId = body.lineUserId;
+    if (!targetLineId) {
+      const config = await this.prisma.systemConfig.findUnique({
+        where: { key: 'owner_line_id' },
+      });
+      targetLineId = config?.value;
+    }
+
+    if (!targetLineId) {
+      return { success: false, error: 'กรุณาใส่ LINE User ID หรือบันทึก owner_line_id ในการตั้งค่า' };
+    }
+
+    const sampleData = {
+      customerName: 'ทดสอบ สมมุติ',
+      contractNumber: 'BC-2026-0001',
+      installmentNo: 3,
+      totalInstallments: 12,
+    };
+
+    try {
+      let flex;
+      switch (body.messageType) {
+        case 'payment_reminder':
+          flex = this.lineOaService.buildPaymentReminder({
+            customerName: sampleData.customerName,
+            contractNumber: sampleData.contractNumber,
+            installmentNo: sampleData.installmentNo,
+            totalInstallments: sampleData.totalInstallments,
+            amountDue: 3500,
+            dueDate: '20/03/2026',
+            daysUntilDue: 3,
+          });
+          break;
+        case 'overdue_notice':
+          flex = this.lineOaService.buildOverdueNotice({
+            customerName: sampleData.customerName,
+            contractNumber: sampleData.contractNumber,
+            installmentNo: sampleData.installmentNo,
+            totalInstallments: sampleData.totalInstallments,
+            amountDue: 3500,
+            lateFee: 150,
+            totalOutstanding: 3650,
+            dueDate: '10/03/2026',
+            daysOverdue: 3,
+          });
+          break;
+        case 'payment_success':
+          flex = this.lineOaService.buildPaymentSuccess({
+            customerName: sampleData.customerName,
+            contractNumber: sampleData.contractNumber,
+            installmentNo: sampleData.installmentNo,
+            totalInstallments: sampleData.totalInstallments,
+            amountPaid: 3500,
+            paymentMethod: 'BANK_TRANSFER',
+            paidDate: '13/03/2026',
+            remainingInstallments: 9,
+          });
+          break;
+        case 'balance_summary':
+          flex = this.lineOaService.buildBalanceSummary({
+            customerName: sampleData.customerName,
+            contracts: [
+              {
+                contractNumber: sampleData.contractNumber,
+                totalInstallments: sampleData.totalInstallments,
+                paidInstallments: 2,
+                status: 'ACTIVE',
+                totalOutstanding: 31500,
+                nextDueDate: '20/04/2026',
+                nextAmountDue: 3500,
+              },
+            ],
+          });
+          break;
+        default:
+          return { success: false, error: `ไม่รู้จักประเภทข้อความ: ${body.messageType}` };
+      }
+
+      await this.lineOaService.sendFlexMessage(targetLineId, flex);
+      this.logger.log(`[LINE] Test message '${body.messageType}' sent to ${targetLineId}`);
+      return { success: true, message: `ส่งข้อความทดสอบ "${body.messageType}" สำเร็จ` };
+    } catch (err) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'ส่งข้อความล้มเหลว',
+      };
+    }
   }
 
   // ─── LINE OA Statistics ──────────────────────────────

@@ -11,3 +11,7 @@ coverage
 .next
 .cache
 *.log
+apps/web/dist
+**/*.test.ts
+**/*.spec.ts
+**/__tests__

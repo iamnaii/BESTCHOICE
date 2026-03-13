@@ -35,10 +35,18 @@ export class CreateNotificationTemplateDto {
 
   @IsString()
   @IsOptional()
+  format?: string; // 'text' | 'flex' — default 'text'
+
+  @IsString()
+  @IsOptional()
   subject?: string;
 
   @IsString()
-  messageTemplate: string; // with placeholders like {customer_name}, {amount}, etc.
+  messageTemplate: string; // text message or JSON string for flex
+
+  @IsString()
+  @IsOptional()
+  flexTemplate?: string; // LINE Flex Message JSON (with placeholders)
 
   @IsString()
   @IsOptional()
@@ -52,11 +60,19 @@ export class UpdateNotificationTemplateDto {
 
   @IsString()
   @IsOptional()
+  format?: string; // 'text' | 'flex'
+
+  @IsString()
+  @IsOptional()
   subject?: string;
 
   @IsString()
   @IsOptional()
   messageTemplate?: string;
+
+  @IsString()
+  @IsOptional()
+  flexTemplate?: string; // LINE Flex Message JSON
 
   @IsString()
   @IsOptional()

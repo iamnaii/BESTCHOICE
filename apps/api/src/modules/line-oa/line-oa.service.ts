@@ -8,6 +8,8 @@ import { buildBalanceSummaryFlex, BalanceSummaryData } from './flex-messages/bal
 import { buildPaymentReminderFlex, PaymentReminderData } from './flex-messages/payment-reminder.flex';
 import { buildOverdueNoticeFlex, OverdueNoticeData } from './flex-messages/overdue-notice.flex';
 import { buildPromptPayQrFlex, PromptPayQrData } from './flex-messages/promptpay-qr.flex';
+import { buildReceiptHistory, ReceiptHistoryData } from './flex-messages/receipt-history.flex';
+import { buildContractSelector, ContractOption } from './flex-messages/contract-selector.flex';
 
 @Injectable()
 export class LineOaService {
@@ -152,9 +154,48 @@ export class LineOaService {
       return;
     }
 
-    this.logger.log(`[LINE] New follow from ${lineUserId} - no matching customer found`);
-    // Note: Customer must be linked manually by staff (matching LINE ID to customer record)
-    // Could also send a welcome message asking for phone/contract number
+    this.logger.log(`[LINE] New follow from ${lineUserId} - sending welcome message`);
+    try {
+      await this.pushMessage(lineUserId, [
+        {
+          type: 'text',
+          text: 'สวัสดีค่ะ ยินดีต้อนรับสู่ BEST CHOICE 🎉\n\nกรุณาพิมพ์เบอร์โทรศัพท์ที่ลงทะเบียนไว้ เพื่อเชื่อมบัญชีกับระบบค่ะ\n\nตัวอย่าง: 0812345678',
+        } as unknown as LineMessagePayload,
+      ]);
+    } catch (err) {
+      this.logger.warn(`[LINE] Failed to send welcome message: ${err}`);
+    }
+  }
+
+  /**
+   * Self-link: customer sends phone number to link their LINE account
+   */
+  async selfLinkByPhone(lineUserId: string, phone: string): Promise<{ success: boolean; customerName?: string }> {
+    // Check if already linked
+    const alreadyLinked = await this.prisma.customer.findFirst({
+      where: { lineId: lineUserId, deletedAt: null },
+    });
+    if (alreadyLinked) {
+      return { success: true, customerName: alreadyLinked.name };
+    }
+
+    // Find customer by phone
+    const customer = await this.prisma.customer.findFirst({
+      where: { phone, deletedAt: null, lineId: null },
+    });
+
+    if (!customer) {
+      return { success: false };
+    }
+
+    // Link
+    await this.prisma.customer.update({
+      where: { id: customer.id },
+      data: { lineId: lineUserId },
+    });
+
+    this.logger.log(`[LINE] Self-linked ${lineUserId} to customer ${customer.name} via phone ${phone}`);
+    return { success: true, customerName: customer.name };
   }
 
   /**
@@ -217,6 +258,55 @@ export class LineOaService {
 
   buildPromptPayQr(data: PromptPayQrData): FlexMessagePayload {
     return buildPromptPayQrFlex(data);
+  }
+
+  buildReceiptHistory(data: ReceiptHistoryData): FlexMessagePayload {
+    return buildReceiptHistory(data);
+  }
+
+  buildContractSelector(customerName: string, contracts: ContractOption[], action: string): FlexMessagePayload {
+    return buildContractSelector(customerName, contracts, action);
+  }
+
+  // ─── Branch Contact ─────────────────────────────────
+
+  async findBranchForCustomer(lineUserId: string) {
+    const customer = await this.prisma.customer.findFirst({
+      where: { lineId: lineUserId, deletedAt: null },
+      include: {
+        contracts: {
+          where: { deletedAt: null },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          include: { branch: { select: { name: true, phone: true, location: true } } },
+        },
+      },
+    });
+
+    if (customer?.contracts?.[0]?.branch) {
+      return customer.contracts[0].branch;
+    }
+
+    // Fallback to main warehouse branch
+    return this.prisma.branch.findFirst({
+      where: { isMainWarehouse: true, isActive: true },
+      select: { name: true, phone: true, location: true },
+    });
+  }
+
+  // ─── Statistics ─────────────────────────────────────
+
+  async getLineStats() {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const [linkedCustomers, pendingSlips, todayNotifications] = await Promise.all([
+      this.prisma.customer.count({ where: { lineId: { not: null }, deletedAt: null } }),
+      this.prisma.paymentEvidence.count({ where: { status: 'PENDING_REVIEW' } }),
+      this.prisma.notificationLog.count({ where: { channel: 'LINE', sentAt: { gte: today } } }),
+    ]);
+
+    return { linkedCustomers, pendingSlips, todayNotifications };
   }
 
   // ─── Private Helpers ──────────────────────────────────

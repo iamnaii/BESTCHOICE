@@ -10,6 +10,12 @@ interface BotInfo {
   pictureUrl?: string;
 }
 
+interface LineStats {
+  linkedCustomers: number;
+  pendingSlips: number;
+  todayNotifications: number;
+}
+
 export default function LineOaSettingsPage() {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<Record<string, string>>({});
@@ -30,6 +36,15 @@ export default function LineOaSettingsPage() {
       const res = await api.get('/line-oa/settings/webhook-url');
       return res.data as { webhookUrl: string };
     },
+  });
+
+  const { data: stats } = useQuery({
+    queryKey: ['line-oa-stats'],
+    queryFn: async () => {
+      const res = await api.get('/line-oa/stats');
+      return res.data as LineStats;
+    },
+    enabled: !!data?.isConfigured,
   });
 
   useEffect(() => {
@@ -406,6 +421,29 @@ export default function LineOaSettingsPage() {
           )}
         </div>
       </form>
+
+      {/* LINE OA Statistics */}
+      {data?.isConfigured && stats && (
+        <div className="mt-10 mb-6">
+          <h3 className="font-semibold text-foreground mb-4 ml-4">สถิติ LINE OA</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 ml-4">
+            <div className="bg-card rounded-xl shadow-xs shadow-black/5 border p-5 text-center">
+              <div className="text-3xl font-bold text-primary">{stats.linkedCustomers}</div>
+              <div className="text-sm text-muted-foreground mt-1">ลูกค้าเชื่อมต่อ LINE</div>
+            </div>
+            <div className="bg-card rounded-xl shadow-xs shadow-black/5 border p-5 text-center">
+              <div className={`text-3xl font-bold ${stats.pendingSlips > 0 ? 'text-orange-500' : 'text-green-500'}`}>
+                {stats.pendingSlips}
+              </div>
+              <div className="text-sm text-muted-foreground mt-1">สลิปรอตรวจสอบ</div>
+            </div>
+            <div className="bg-card rounded-xl shadow-xs shadow-black/5 border p-5 text-center">
+              <div className="text-3xl font-bold text-blue-500">{stats.todayNotifications}</div>
+              <div className="text-sm text-muted-foreground mt-1">ข้อความวันนี้</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Features Info */}
       <div className="mt-10 bg-gradient-to-br from-green-50 to-blue-50 rounded-2xl border border-green-200 p-6">

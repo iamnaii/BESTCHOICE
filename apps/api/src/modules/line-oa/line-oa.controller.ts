@@ -91,22 +91,48 @@ export class LineOaController {
 
   private async handleTextMessage(event: LineMessageEvent): Promise<void> {
     if (event.message.type !== 'text') return;
-    const text = event.message.text.trim().toLowerCase();
+    const text = event.message.text.trim();
+    const textLower = text.toLowerCase();
     const userId = event.source.userId;
 
-    if (['ยอด', 'เช็คยอด', 'ยอดค้าง', 'balance'].includes(text)) {
+    // Self-link: if text is a phone number and user is not linked yet
+    if (/^0\d{9}$/.test(text)) {
+      const result = await this.lineOaService.selfLinkByPhone(userId, text);
+      if (result.success && result.customerName) {
+        await this.lineOaService.replyMessage(event.replyToken, [
+          { type: 'text', text: `ผูกบัญชีสำเร็จค่ะ คุณ${result.customerName} 🎉\n\nตอนนี้สามารถใช้คำสั่งต่างๆ ได้แล้วค่ะ:\n• "เช็คยอด" - ดูยอดค้างชำระ\n• "งวด" - ดูตารางค่างวด\n• "ชำระ" - ชำระเงิน` },
+        ]);
+        return;
+      }
+      // If already linked, check if it was an existing link (not a failed search)
+      const existing = await this.lineOaService.findCustomerByLineId(userId);
+      if (existing) {
+        // User is already linked, treat phone as unknown command — fall through
+      } else {
+        await this.lineOaService.replyMessage(event.replyToken, [
+          { type: 'text', text: 'ไม่พบข้อมูลเบอร์โทรนี้ในระบบค่ะ กรุณาตรวจสอบเบอร์โทร หรือติดต่อสาขาเพื่อลงทะเบียน' },
+        ]);
+        return;
+      }
+    }
+
+    if (['ยอด', 'เช็คยอด', 'ยอดค้าง', 'balance'].includes(textLower)) {
       await this.handleCheckBalance(userId, event.replyToken);
-    } else if (['งวด', 'ตารางงวด', 'installment'].includes(text)) {
+    } else if (['งวด', 'ตารางงวด', 'installment'].includes(textLower)) {
       await this.handleCheckInstallments(userId, event.replyToken);
-    } else if (['ชำระ', 'จ่าย', 'pay', 'payment'].includes(text)) {
+    } else if (['ชำระ', 'จ่าย', 'pay', 'payment'].includes(textLower)) {
       await this.handlePaymentRequest(userId, event.replyToken);
-    } else if (['ช่วยเหลือ', 'help', 'เมนู', 'menu'].includes(text)) {
+    } else if (['ใบเสร็จ', 'receipt'].includes(textLower)) {
+      await this.handleReceipt(userId, event.replyToken);
+    } else if (['ติดต่อ', 'contact'].includes(textLower)) {
+      await this.handleContact(userId, event.replyToken);
+    } else if (['ช่วยเหลือ', 'help', 'เมนู', 'menu'].includes(textLower)) {
       await this.handleHelp(event.replyToken);
     } else {
       await this.lineOaService.replyMessage(event.replyToken, [
         {
           type: 'text',
-          text: 'สวัสดีค่ะ พิมพ์คำสั่งได้เลยนะคะ:\n• "เช็คยอด" - ดูยอดค้างชำระ\n• "งวด" - ดูตารางค่างวด\n• "ชำระ" - ชำระเงิน\n• "ช่วยเหลือ" - ดูเมนูทั้งหมด',
+          text: 'สวัสดีค่ะ พิมพ์คำสั่งได้เลยนะคะ:\n• "เช็คยอด" - ดูยอดค้างชำระ\n• "งวด" - ดูตารางค่างวด\n• "ชำระ" - ชำระเงิน\n• "ใบเสร็จ" - ดูประวัติการชำระ\n• "ติดต่อ" - ข้อมูลสาขา\n• "ช่วยเหลือ" - ดูเมนูทั้งหมด',
         },
       ]);
     }
@@ -243,7 +269,7 @@ export class LineOaController {
     await this.lineOaService.replyMessage(replyToken, [flex]);
   }
 
-  private async handleCheckInstallments(userId: string, replyToken: string): Promise<void> {
+  private async handleCheckInstallments(userId: string, replyToken: string, contractNumber?: string): Promise<void> {
     const customer = await this.lineOaService.findCustomerByLineId(userId);
 
     if (!customer || customer.contracts.length === 0) {
@@ -253,7 +279,24 @@ export class LineOaController {
       return;
     }
 
-    const contract = customer.contracts[0];
+    // Multi-contract: if no specific contract and multiple contracts, show selector
+    if (!contractNumber && customer.contracts.length > 1) {
+      const options = customer.contracts.map((c) => ({
+        contractNumber: c.contractNumber,
+        status: c.status,
+        totalOutstanding: c.payments
+          .filter((p) => p.status !== 'PAID')
+          .reduce((sum, p) => sum + Number(p.amountDue) + Number(p.lateFee) - Number(p.amountPaid), 0),
+      }));
+      const flex = this.lineOaService.buildContractSelector(customer.name, options, 'check_installments');
+      await this.lineOaService.replyMessage(replyToken, [flex]);
+      return;
+    }
+
+    const contract = contractNumber
+      ? customer.contracts.find((c) => c.contractNumber === contractNumber) || customer.contracts[0]
+      : customer.contracts[0];
+
     const lines = contract.payments.map((p) => {
       const status =
         p.status === 'PAID' ? '✅'
@@ -272,7 +315,7 @@ export class LineOaController {
     ]);
   }
 
-  private async handlePaymentRequest(userId: string, replyToken: string): Promise<void> {
+  private async handlePaymentRequest(userId: string, replyToken: string, contractNumber?: string): Promise<void> {
     const customer = await this.lineOaService.findCustomerByLineId(userId);
 
     if (!customer || customer.contracts.length === 0) {
@@ -282,7 +325,24 @@ export class LineOaController {
       return;
     }
 
-    const contract = customer.contracts[0];
+    // Multi-contract: if no specific contract and multiple contracts, show selector
+    if (!contractNumber && customer.contracts.length > 1) {
+      const options = customer.contracts.map((c) => ({
+        contractNumber: c.contractNumber,
+        status: c.status,
+        totalOutstanding: c.payments
+          .filter((p) => p.status !== 'PAID')
+          .reduce((sum, p) => sum + Number(p.amountDue) + Number(p.lateFee) - Number(p.amountPaid), 0),
+      }));
+      const flex = this.lineOaService.buildContractSelector(customer.name, options, 'pay');
+      await this.lineOaService.replyMessage(replyToken, [flex]);
+      return;
+    }
+
+    const contract = contractNumber
+      ? customer.contracts.find((c) => c.contractNumber === contractNumber) || customer.contracts[0]
+      : customer.contracts[0];
+
     const nextPayment = contract.payments.find((p) => p.status !== 'PAID');
 
     if (!nextPayment) {
@@ -313,15 +373,101 @@ export class LineOaController {
 
       await this.lineOaService.replyMessage(replyToken, [flex]);
     } catch (err) {
-      // Fallback to text if QR generation fails
+      // Fallback to text with bank account info if QR generation fails
       this.logger.warn(`QR generation failed, falling back to text: ${err}`);
+
+      let bankInfo = '';
+      try {
+        const [bankName, bankAccount, bankAccountName] = await Promise.all([
+          this.prisma.systemConfig.findUnique({ where: { key: 'bank_name' } }),
+          this.prisma.systemConfig.findUnique({ where: { key: 'bank_account_number' } }),
+          this.prisma.systemConfig.findUnique({ where: { key: 'bank_account_name' } }),
+        ]);
+        if (bankAccount?.value) {
+          bankInfo = `\n\nโอนเงินได้ที่:\n🏦 ${bankName?.value || 'ธนาคาร'}\nเลขบัญชี: ${bankAccount.value}\nชื่อบัญชี: ${bankAccountName?.value || '-'}`;
+        }
+      } catch {
+        // ignore config lookup failure
+      }
+
       await this.lineOaService.replyMessage(replyToken, [
         {
           type: 'text',
-          text: `ข้อมูลชำระเงิน:\nสัญญา: ${contract.contractNumber}\nงวดที่: ${nextPayment.installmentNo}/${contract.payments.length}\nยอด: ${amount.toLocaleString()} บาท\nกำหนด: ${new Date(nextPayment.dueDate).toLocaleDateString('th-TH')}\n\nหลังโอนเงินแล้ว ส่งสลิปมาในแชทนี้ได้เลยค่ะ`,
+          text: `ข้อมูลชำระเงิน:\nสัญญา: ${contract.contractNumber}\nงวดที่: ${nextPayment.installmentNo}/${contract.payments.length}\nยอด: ${amount.toLocaleString()} บาท\nกำหนด: ${new Date(nextPayment.dueDate).toLocaleDateString('th-TH')}${bankInfo}\n\nหลังโอนเงินแล้ว ส่งสลิปมาในแชทนี้ได้เลยค่ะ`,
         },
       ]);
     }
+  }
+
+  private async handleReceipt(userId: string, replyToken: string): Promise<void> {
+    const customer = await this.lineOaService.findCustomerByLineId(userId);
+
+    if (!customer) {
+      await this.lineOaService.replyMessage(replyToken, [
+        { type: 'text', text: 'ไม่พบข้อมูลในระบบ กรุณาติดต่อสาขาเพื่อลงทะเบียน LINE ID' },
+      ]);
+      return;
+    }
+
+    if (customer.contracts.length === 0) {
+      await this.lineOaService.replyMessage(replyToken, [
+        { type: 'text', text: `คุณ${customer.name} ไม่มีสัญญาที่ใช้งานอยู่ค่ะ` },
+      ]);
+      return;
+    }
+
+    const contractsData = customer.contracts.map((c) => {
+      const paidPayments = c.payments
+        .filter((p) => p.status === 'PAID')
+        .sort((a, b) => b.installmentNo - a.installmentNo)
+        .slice(0, 5);
+
+      return {
+        contractNumber: c.contractNumber,
+        payments: paidPayments.map((p) => ({
+          installmentNo: p.installmentNo,
+          amountPaid: Number(p.amountPaid),
+          paidDate: p.paidDate
+            ? new Date(p.paidDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })
+            : '-',
+        })),
+        remainingCount: c.payments.filter((p) => p.status !== 'PAID').length,
+      };
+    });
+
+    if (contractsData.every((c) => c.payments.length === 0)) {
+      await this.lineOaService.replyMessage(replyToken, [
+        { type: 'text', text: 'ยังไม่มีรายการชำระเงินค่ะ' },
+      ]);
+      return;
+    }
+
+    const flex = this.lineOaService.buildReceiptHistory({
+      customerName: customer.name,
+      contracts: contractsData,
+    });
+
+    await this.lineOaService.replyMessage(replyToken, [flex]);
+  }
+
+  private async handleContact(userId: string, replyToken: string): Promise<void> {
+    const branch = await this.lineOaService.findBranchForCustomer(userId);
+
+    if (!branch) {
+      await this.lineOaService.replyMessage(replyToken, [
+        { type: 'text', text: 'กรุณาติดต่อสาขา BEST CHOICE ใกล้บ้านค่ะ' },
+      ]);
+      return;
+    }
+
+    const parts = ['📍 ข้อมูลติดต่อสาขา\n'];
+    parts.push(`🏢 ${branch.name}`);
+    if (branch.phone) parts.push(`📞 ${branch.phone}`);
+    if (branch.location) parts.push(`📍 ${branch.location}`);
+
+    await this.lineOaService.replyMessage(replyToken, [
+      { type: 'text', text: parts.join('\n') },
+    ]);
   }
 
   private async handlePostback(event: LinePostbackEvent): Promise<void> {
@@ -329,16 +475,17 @@ export class LineOaController {
     const userId = event.source.userId;
     const params = new URLSearchParams(data);
     const action = params.get('action');
+    const contractNumber = params.get('contract') || undefined;
 
     switch (action) {
       case 'check_balance':
         await this.handleCheckBalance(userId, event.replyToken);
         break;
       case 'check_installments':
-        await this.handleCheckInstallments(userId, event.replyToken);
+        await this.handleCheckInstallments(userId, event.replyToken, contractNumber);
         break;
       case 'pay':
-        await this.handlePaymentRequest(userId, event.replyToken);
+        await this.handlePaymentRequest(userId, event.replyToken, contractNumber);
         break;
       default:
         this.logger.warn(`Unknown postback action: ${action}`);
@@ -349,7 +496,7 @@ export class LineOaController {
     await this.lineOaService.replyMessage(replyToken, [
       {
         type: 'text',
-        text: '📋 คำสั่งที่ใช้ได้:\n\n💰 "เช็คยอด" - ดูยอดค้างชำระ\n📊 "งวด" - ดูตารางค่างวดทั้งหมด\n💳 "ชำระ" - ข้อมูลการชำระเงิน\n📷 ส่งรูปสลิป - แจ้งชำระเงิน\n❓ "ช่วยเหลือ" - แสดงเมนูนี้\n\nหรือกดเมนูด้านล่างได้เลยค่ะ',
+        text: '📋 คำสั่งที่ใช้ได้:\n\n💰 "เช็คยอด" - ดูยอดค้างชำระ\n📊 "งวด" - ดูตารางค่างวดทั้งหมด\n💳 "ชำระ" - ข้อมูลการชำระเงิน\n🧾 "ใบเสร็จ" - ดูประวัติการชำระ\n📞 "ติดต่อ" - ข้อมูลติดต่อสาขา\n📷 ส่งรูปสลิป - แจ้งชำระเงิน\n❓ "ช่วยเหลือ" - แสดงเมนูนี้\n\nหรือกดเมนูด้านล่างได้เลยค่ะ',
       },
     ]);
   }
@@ -649,6 +796,9 @@ export class LineOaController {
     'promptpay_id',
     'promptpay_account_name',
     'payment_link_base_url',
+    'bank_name',
+    'bank_account_number',
+    'bank_account_name',
   ];
 
   @Get('settings')
@@ -699,6 +849,9 @@ export class LineOaController {
       promptpay_id: 'PromptPay ID',
       promptpay_account_name: 'PromptPay Account Name',
       payment_link_base_url: 'Payment Link Base URL',
+      bank_name: 'ชื่อธนาคาร',
+      bank_account_number: 'เลขบัญชีธนาคาร',
+      bank_account_name: 'ชื่อบัญชีธนาคาร',
     };
 
     for (const key of LineOaController.LINE_CONFIG_KEYS) {
@@ -749,5 +902,14 @@ export class LineOaController {
     const webhookUrl = `${protocol}://${host}/api/line-oa/webhook`;
 
     return { webhookUrl };
+  }
+
+  // ─── LINE OA Statistics ──────────────────────────────
+
+  @Get('stats')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  async getLineStats() {
+    return this.lineOaService.getLineStats();
   }
 }

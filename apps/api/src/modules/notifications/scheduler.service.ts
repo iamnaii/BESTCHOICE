@@ -4,6 +4,8 @@ import { NotificationsService } from './notifications.service';
 import { OverdueService } from '../overdue/overdue.service';
 import { ReorderPointsService } from '../reorder-points/reorder-points.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { LineOaService } from '../line-oa/line-oa.service';
+import { buildOverdueNoticeFlex } from '../line-oa/flex-messages/overdue-notice.flex';
 
 @Injectable()
 export class SchedulerService {
@@ -14,6 +16,7 @@ export class SchedulerService {
     private overdueService: OverdueService,
     private reorderPointsService: ReorderPointsService,
     private prisma: PrismaService,
+    private lineOaService: LineOaService,
   ) {}
 
   /**
@@ -39,9 +42,68 @@ export class SchedulerService {
     try {
       const result = await this.overdueService.updateContractStatuses();
       this.logger.log(`Status update complete: ${result.overdueUpdated} overdue, ${result.defaultUpdated} default`);
+
+      // Send LINE notifications to customers whose contracts changed status
+      const changedIds = [...result.overdueIds, ...result.defaultIds];
+      if (changedIds.length > 0) {
+        await this.notifyStatusChangedCustomers(changedIds);
+      }
     } catch (error) {
       this.logger.error(`Contract status update failed: ${error instanceof Error ? error.message : error}`);
     }
+  }
+
+  /**
+   * Send LINE overdue/default notice to customers whose contracts just changed status
+   */
+  private async notifyStatusChangedCustomers(contractIds: string[]) {
+    const contracts = await this.prisma.contract.findMany({
+      where: { id: { in: contractIds } },
+      include: {
+        customer: { select: { name: true, lineId: true, phone: true } },
+        payments: {
+          where: { status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] }, dueDate: { lt: new Date() } },
+          orderBy: { installmentNo: 'asc' },
+        },
+      },
+    });
+
+    let sent = 0;
+    for (const contract of contracts) {
+      const lineId = contract.customer?.lineId;
+      if (!lineId) continue;
+
+      try {
+        const totalOverdue = contract.payments.reduce(
+          (sum, p) => sum + (Number(p.amountDue) - Number(p.amountPaid) + Number(p.lateFee)),
+          0,
+        );
+        const oldestDue = contract.payments[0]?.dueDate;
+        const daysOverdue = oldestDue
+          ? Math.floor((Date.now() - oldestDue.getTime()) / (1000 * 60 * 60 * 24))
+          : 0;
+
+        const lateFee = contract.payments.reduce((sum, p) => sum + Number(p.lateFee), 0);
+        const flex = buildOverdueNoticeFlex({
+          customerName: contract.customer?.name || '-',
+          contractNumber: contract.contractNumber,
+          installmentNo: contract.payments[0]?.installmentNo || 0,
+          totalInstallments: contract.totalMonths,
+          amountDue: totalOverdue,
+          lateFee,
+          totalOutstanding: totalOverdue,
+          dueDate: oldestDue?.toLocaleDateString('th-TH') || '-',
+          daysOverdue,
+        });
+
+        await this.lineOaService.sendFlexMessage(lineId, flex);
+        sent++;
+      } catch (err) {
+        this.logger.warn(`Failed to notify customer for contract ${contract.contractNumber}: ${err}`);
+      }
+    }
+
+    this.logger.log(`Status change LINE notifications: ${sent} sent out of ${contracts.length} contracts`);
   }
 
   /**

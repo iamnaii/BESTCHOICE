@@ -24,6 +24,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptPayQrService } from './promptpay/promptpay-qr.service';
 import { PaymentLinkService } from './payment-links/payment-link.service';
+import { SkipCsrf } from '../../guards/skip-csrf.decorator';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -41,6 +42,7 @@ export class LineOaController {
   // ─── LINE Webhook ─────────────────────────────────────
 
   @Post('webhook')
+  @SkipCsrf()
   @UseGuards(LineWebhookGuard)
   @HttpCode(200)
   async handleWebhook(@Req() req: Request): Promise<string> {

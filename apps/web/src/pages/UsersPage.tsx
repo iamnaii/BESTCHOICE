@@ -161,7 +161,7 @@ export default function UsersPage() {
     const data: Record<string, unknown> = {
       name: form.name,
       role: form.role,
-      branchId: form.branchId || undefined,
+      branchId: form.branchId || null,
     };
     if (!editingUser) {
       data.email = form.email;

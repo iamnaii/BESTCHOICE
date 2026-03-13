@@ -10,11 +10,26 @@ interface BotInfo {
   pictureUrl?: string;
 }
 
+interface LineStats {
+  linkedCustomers: number;
+  pendingSlips: number;
+  todayNotifications: number;
+}
+
+const TEST_MESSAGE_TYPES = [
+  { value: 'payment_reminder', label: 'แจ้งเตือนค่างวด (ก่อนครบกำหนด)' },
+  { value: 'overdue_notice', label: 'แจ้งเตือนค้างชำระ' },
+  { value: 'payment_success', label: 'แจ้งชำระเงินสำเร็จ' },
+  { value: 'balance_summary', label: 'สรุปยอดคงเหลือ' },
+];
+
 export default function LineOaSettingsPage() {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<Record<string, string>>({});
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
   const [testResult, setTestResult] = useState<{ success: boolean; botInfo?: BotInfo; error?: string } | null>(null);
+  const [testMsgType, setTestMsgType] = useState('payment_reminder');
+  const [testSendResult, setTestSendResult] = useState<{ success: boolean; message?: string; error?: string } | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['line-oa-settings'],
@@ -30,6 +45,15 @@ export default function LineOaSettingsPage() {
       const res = await api.get('/line-oa/settings/webhook-url');
       return res.data as { webhookUrl: string };
     },
+  });
+
+  const { data: stats } = useQuery({
+    queryKey: ['line-oa-stats'],
+    queryFn: async () => {
+      const res = await api.get('/line-oa/stats');
+      return res.data as LineStats;
+    },
+    enabled: !!data?.isConfigured,
   });
 
   useEffect(() => {
@@ -64,6 +88,28 @@ export default function LineOaSettingsPage() {
     },
     onError: (err) => {
       setTestResult({ success: false, error: getErrorMessage(err) });
+      toast.error(getErrorMessage(err));
+    },
+  });
+
+  const testSendMutation = useMutation({
+    mutationFn: async () => {
+      const res = await api.post('/line-oa/test-send', {
+        lineUserId: form.owner_line_id || undefined,
+        messageType: testMsgType,
+      });
+      return res.data as { success: boolean; message?: string; error?: string };
+    },
+    onSuccess: (result) => {
+      setTestSendResult(result);
+      if (result.success) {
+        toast.success(result.message || 'ส่งสำเร็จ');
+      } else {
+        toast.error(result.error || 'ส่งไม่สำเร็จ');
+      }
+    },
+    onError: (err) => {
+      setTestSendResult({ success: false, error: getErrorMessage(err) });
       toast.error(getErrorMessage(err));
     },
   });
@@ -406,6 +452,114 @@ export default function LineOaSettingsPage() {
           )}
         </div>
       </form>
+
+      {/* LINE OA Statistics */}
+      {data?.isConfigured && stats && (
+        <div className="mt-10 mb-6">
+          <h3 className="font-semibold text-foreground mb-4 ml-4">สถิติ LINE OA</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 ml-4">
+            <div className="bg-card rounded-xl shadow-xs shadow-black/5 border p-5 text-center">
+              <div className="text-3xl font-bold text-primary">{stats.linkedCustomers}</div>
+              <div className="text-sm text-muted-foreground mt-1">ลูกค้าเชื่อมต่อ LINE</div>
+            </div>
+            <div className="bg-card rounded-xl shadow-xs shadow-black/5 border p-5 text-center">
+              <div className={`text-3xl font-bold ${stats.pendingSlips > 0 ? 'text-orange-500' : 'text-green-500'}`}>
+                {stats.pendingSlips}
+              </div>
+              <div className="text-sm text-muted-foreground mt-1">สลิปรอตรวจสอบ</div>
+            </div>
+            <div className="bg-card rounded-xl shadow-xs shadow-black/5 border p-5 text-center">
+              <div className="text-3xl font-bold text-blue-500">{stats.todayNotifications}</div>
+              <div className="text-sm text-muted-foreground mt-1">ข้อความวันนี้</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Test Send Messages */}
+      {data?.isConfigured && (
+        <div className="mt-10 mb-6">
+          <h3 className="font-semibold text-foreground mb-4 ml-4">ทดสอบส่งข้อความ</h3>
+          <div className="bg-card rounded-xl shadow-xs shadow-black/5 border p-5 ml-4 border-l-4 border-l-yellow-400">
+            <p className="text-sm text-muted-foreground mb-4">
+              ส่งตัวอย่าง Flex Message ให้ตัวเองดูก่อน เพื่อตรวจสอบว่าข้อความแสดงผลถูกต้อง
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">
+                  LINE User ID ของเจ้าของ
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={form.owner_line_id || ''}
+                    onChange={(e) => handleChange('owner_line_id', e.target.value)}
+                    placeholder="พิมพ์ #owner ในแชท Bot หรือวาง User ID ที่นี่"
+                    className="flex-1 border rounded-lg px-3 py-2.5 text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      queryClient.invalidateQueries({ queryKey: ['line-oa-settings'] });
+                      toast.success('โหลดข้อมูลใหม่แล้ว');
+                    }}
+                    className="px-4 py-2.5 bg-blue-100 text-blue-700 text-sm rounded-lg hover:bg-blue-200 shrink-0 font-medium"
+                  >
+                    ดึง User ID
+                  </button>
+                </div>
+                <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-sm text-yellow-800 font-medium mb-1">วิธีง่ายที่สุด:</p>
+                  <ol className="text-xs text-yellow-700 space-y-1 list-decimal list-inside">
+                    <li>เพิ่ม Bot เป็นเพื่อนในไลน์</li>
+                    <li>พิมพ์ <strong>#owner</strong> ส่งไปในแชท Bot</li>
+                    <li>กลับมากดปุ่ม <strong>"ดึง User ID"</strong> ด้านบน</li>
+                  </ol>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">
+                  ประเภทข้อความ
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {TEST_MESSAGE_TYPES.map((t) => (
+                    <button
+                      key={t.value}
+                      type="button"
+                      onClick={() => setTestMsgType(t.value)}
+                      className={`px-3 py-2 text-sm rounded-lg border text-left transition-colors ${
+                        testMsgType === t.value
+                          ? 'border-primary bg-primary/10 text-primary font-medium'
+                          : 'border-border hover:border-primary/50 text-foreground'
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => testSendMutation.mutate()}
+                  disabled={testSendMutation.isPending || !form.owner_line_id}
+                  className="px-6 py-2.5 bg-yellow-500 text-white rounded-xl font-semibold hover:bg-yellow-600 disabled:bg-muted disabled:cursor-not-allowed text-sm shadow-xs shadow-black/5"
+                >
+                  {testSendMutation.isPending ? 'กำลังส่ง...' : 'ส่งทดสอบ'}
+                </button>
+                {testSendResult && (
+                  <span className={`text-sm ${testSendResult.success ? 'text-green-600' : 'text-red-600'}`}>
+                    {testSendResult.success ? testSendResult.message : testSendResult.error}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Features Info */}
       <div className="mt-10 bg-gradient-to-br from-green-50 to-blue-50 rounded-2xl border border-green-200 p-6">

@@ -373,6 +373,6 @@ export class OverdueService {
     }
 
     this.logger.log(`Contract status update: ${overdueUpdated} overdue, ${defaultUpdated} default`);
-    return { overdueUpdated, defaultUpdated, timestamp: now };
+    return { overdueUpdated, defaultUpdated, overdueIds: activeIds, defaultIds, timestamp: now };
   }
 }

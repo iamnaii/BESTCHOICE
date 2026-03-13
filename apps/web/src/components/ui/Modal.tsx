@@ -28,7 +28,7 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' }:
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
-        <div className="py-2">{children}</div>
+        <div className="py-2 overflow-y-auto max-h-[calc(100vh-10rem)]">{children}</div>
       </DialogContent>
     </Dialog>
   );

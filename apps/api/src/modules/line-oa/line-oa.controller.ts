@@ -23,6 +23,7 @@ import { LineWebhookBody, LineMessageEvent, LinePostbackEvent } from './dto/webh
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { ContractsService } from '../contracts/contracts.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptPayQrService } from './promptpay/promptpay-qr.service';
 import { PaymentLinkService } from './payment-links/payment-link.service';
@@ -39,6 +40,7 @@ export class LineOaController {
     private prisma: PrismaService,
     private promptPayQrService: PromptPayQrService,
     private paymentLinkService: PaymentLinkService,
+    private contractsService: ContractsService,
   ) {}
 
   // ─── LINE Webhook ─────────────────────────────────────
@@ -1025,6 +1027,85 @@ export class LineOaController {
       return { url: result.url, token: result.token };
     } catch (err) {
       return { error: err instanceof Error ? err.message : 'ไม่สามารถสร้างลิงก์ชำระเงินได้' };
+    }
+  }
+
+  // ─── LIFF Early Payoff (ปิดยอดก่อนกำหนด) ────────────
+
+  @Get('liff/early-payoff-quote')
+  @SkipCsrf()
+  async getLiffEarlyPayoffQuote(
+    @Query('lineId') lineId: string,
+    @Query('contractId') contractId: string,
+  ) {
+    if (!lineId || !contractId) {
+      return { error: 'lineId and contractId are required' };
+    }
+
+    const customer = await this.prisma.customer.findFirst({
+      where: { lineId, deletedAt: null },
+      select: { id: true, name: true },
+    });
+    if (!customer) {
+      return { error: 'ไม่พบข้อมูลลูกค้า' };
+    }
+
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: contractId, customerId: customer.id, deletedAt: null },
+      select: { id: true, contractNumber: true, status: true },
+    });
+    if (!contract) {
+      return { error: 'ไม่พบสัญญา' };
+    }
+
+    if (!['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status)) {
+      return { error: 'สัญญานี้ไม่สามารถปิดยอดก่อนกำหนดได้' };
+    }
+
+    try {
+      const quote = await this.contractsService.getEarlyPayoffQuote(contractId);
+      return {
+        ...quote,
+        contractNumber: contract.contractNumber,
+        customerName: customer.name,
+      };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : 'ไม่สามารถคำนวณยอดปิดได้' };
+    }
+  }
+
+  @Post('liff/early-payoff')
+  @SkipCsrf()
+  async liffEarlyPayoff(@Body() body: { lineId: string; contractId: string }) {
+    if (!body.lineId || !body.contractId) {
+      return { error: 'lineId and contractId are required' };
+    }
+
+    const customer = await this.prisma.customer.findFirst({
+      where: { lineId: body.lineId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!customer) {
+      return { error: 'ไม่พบข้อมูลลูกค้า' };
+    }
+
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: body.contractId, customerId: customer.id, deletedAt: null },
+    });
+    if (!contract) {
+      return { error: 'ไม่พบสัญญา' };
+    }
+
+    try {
+      const quote = await this.contractsService.getEarlyPayoffQuote(body.contractId);
+      const result = await this.paymentLinkService.createPaymentLink(
+        body.contractId,
+        undefined,
+        quote.totalPayoff,
+      );
+      return { url: result.url, token: result.token, totalPayoff: quote.totalPayoff };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : 'ไม่สามารถสร้างลิงก์ปิดยอดได้' };
     }
   }
 

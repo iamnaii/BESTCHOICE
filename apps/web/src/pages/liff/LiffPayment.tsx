@@ -8,7 +8,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useMockPayment } from './useMockPayment';
 
-const API_BASE = import.meta.env.VITE_API_URL || '';
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 interface PaymentLinkData {
   id: string;
@@ -57,7 +57,7 @@ export default function LiffPayment() {
       return;
     }
 
-    fetch(`${API_BASE}/api/line-oa/pay/${token}`)
+    fetch(`${API_BASE}/line-oa/pay/${token}`)
       .then((res) => res.json())
       .then((result) => {
         if (!result || result.status === 'EXPIRED') {
@@ -68,7 +68,7 @@ export default function LiffPayment() {
           setView('error');
         } else {
           setData(result);
-          setQrUrl(`${API_BASE}/api/line-oa/payment/${result.payment?.id || 'default'}/qr`);
+          setQrUrl(`${API_BASE}/line-oa/payment/${result.payment?.id || 'default'}/qr`);
           setView('select-method');
         }
       })
@@ -113,7 +113,7 @@ export default function LiffPayment() {
       formData.append('contractId', data.contract.contractNumber);
       formData.append('token', data.token);
 
-      const res = await fetch(`${API_BASE}/api/line-oa/slip-upload`, {
+      const res = await fetch(`${API_BASE}/line-oa/slip-upload`, {
         method: 'POST',
         body: formData,
       });

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 
-const API_BASE = import.meta.env.VITE_API_URL || '';
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 const LIFF_ID = import.meta.env.VITE_LIFF_ID || '';
 
 interface Payment {
@@ -101,7 +101,7 @@ export default function LiffContract() {
 
   async function fetchContracts(lineId: string) {
     try {
-      const res = await fetch(`${API_BASE}/api/line-oa/liff/contracts?lineId=${encodeURIComponent(lineId)}`);
+      const res = await fetch(`${API_BASE}/line-oa/liff/contracts?lineId=${encodeURIComponent(lineId)}`);
       if (res.status === 404) {
         setError('ยังไม่ได้ลงทะเบียน กรุณาลงทะเบียนก่อน');
         return;

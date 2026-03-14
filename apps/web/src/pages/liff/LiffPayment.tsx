@@ -48,6 +48,7 @@ export default function LiffPayment() {
   const [cardForm, setCardForm] = useState({ number: '', expiry: '', cvv: '', name: '' });
 
   const mock = useMockPayment();
+  const queryLineId = new URLSearchParams(window.location.search).get('lineId') || '';
 
   // Fetch payment link data
   useEffect(() => {
@@ -222,7 +223,7 @@ export default function LiffPayment() {
 
             <div className="space-y-2">
               <Button variant="outline" size="lg" className="w-full" asChild>
-                <a href="/liff/contract">ดูสัญญาของฉัน</a>
+                <a href={`/liff/contract${queryLineId ? `?lineId=${encodeURIComponent(queryLineId)}` : ''}`}>ดูสัญญาของฉัน</a>
               </Button>
               <Button variant="ghost" size="lg" className="w-full text-muted-foreground">
                 ปิดหน้านี้

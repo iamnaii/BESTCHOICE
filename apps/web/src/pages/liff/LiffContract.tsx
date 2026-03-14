@@ -59,6 +59,7 @@ export default function LiffContract() {
   const [error, setError] = useState<string | null>(null);
   const [selectedContract, setSelectedContract] = useState(0);
   const [showAllPayments, setShowAllPayments] = useState(false);
+  const [lineId, setLineId] = useState('');
 
   useEffect(() => {
     initLiff();
@@ -75,12 +76,14 @@ export default function LiffContract() {
         }
 
         const profile = await liff.getProfile();
+        setLineId(profile.userId);
         await fetchContracts(profile.userId);
       } else {
         const params = new URLSearchParams(window.location.search);
-        const lineId = params.get('lineId');
-        if (lineId) {
-          await fetchContracts(lineId);
+        const qLineId = params.get('lineId');
+        if (qLineId) {
+          setLineId(qLineId);
+          await fetchContracts(qLineId);
         } else {
           setError('ไม่สามารถระบุตัวตนได้ กรุณาเปิดผ่าน LINE');
         }
@@ -88,9 +91,10 @@ export default function LiffContract() {
     } catch (err) {
       console.error('LIFF init error:', err);
       const params = new URLSearchParams(window.location.search);
-      const lineId = params.get('lineId');
-      if (lineId) {
-        await fetchContracts(lineId);
+      const qLineId = params.get('lineId');
+      if (qLineId) {
+        setLineId(qLineId);
+        await fetchContracts(qLineId);
       } else {
         setError('ไม่สามารถเชื่อมต่อ LINE ได้ กรุณาลองใหม่');
       }
@@ -136,7 +140,7 @@ export default function LiffContract() {
             <p className="text-muted-foreground text-sm">{error}</p>
             {error.includes('ลงทะเบียน') && (
               <Button variant="primary" size="lg" className="mt-6" asChild>
-                <a href="/liff/register">ลงทะเบียนเลย</a>
+                <a href={`/liff/register${lineId ? `?lineId=${encodeURIComponent(lineId)}` : ''}`}>ลงทะเบียนเลย</a>
               </Button>
             )}
           </CardContent>
@@ -252,7 +256,7 @@ export default function LiffContract() {
               </p>
             </div>
             <Button variant="primary" size="md" className="gap-1.5" asChild>
-              <a href={`/liff/contract`}>
+              <a href={`/liff/contract${lineId ? `?lineId=${encodeURIComponent(lineId)}` : ''}`}>
                 <CreditCard className="size-4" />
                 ชำระเงิน
               </a>

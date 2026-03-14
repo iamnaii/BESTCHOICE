@@ -277,20 +277,18 @@ export default function LiffPayment() {
               </p>
             )}
 
-            {/* Mock simulate button (dev only) */}
-            {import.meta.env.DEV && (
-              <div className="mt-6 pt-4 border-t border-dashed">
-                <p className="text-xs text-muted-foreground mb-2">[ Dev Mode ]</p>
-                <Button
-                  variant="primary"
-                  size="lg"
-                  className="w-full"
-                  onClick={mock.simulateSuccess}
-                >
-                  จำลองจ่ายสำเร็จ
-                </Button>
-              </div>
-            )}
+            {/* Mock simulate button — TODO: remove when real payment gateway is integrated */}
+            <div className="mt-6 pt-4 border-t border-dashed">
+              <p className="text-xs text-muted-foreground mb-2">[ ทดสอบ ]</p>
+              <Button
+                variant="primary"
+                size="lg"
+                className="w-full"
+                onClick={mock.simulateSuccess}
+              >
+                จำลองจ่ายสำเร็จ
+              </Button>
+            </div>
           </CardContent>
         </Card>
 

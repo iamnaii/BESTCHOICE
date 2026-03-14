@@ -59,6 +59,8 @@ export default function LiffContract() {
   const [error, setError] = useState<string | null>(null);
   const [selectedContract, setSelectedContract] = useState(0);
   const [showAllPayments, setShowAllPayments] = useState(false);
+  const [lineId, setLineId] = useState('');
+  const [creatingPayLink, setCreatingPayLink] = useState(false);
 
   useEffect(() => {
     initLiff();
@@ -75,12 +77,14 @@ export default function LiffContract() {
         }
 
         const profile = await liff.getProfile();
+        setLineId(profile.userId);
         await fetchContracts(profile.userId);
       } else {
         const params = new URLSearchParams(window.location.search);
-        const lineId = params.get('lineId');
-        if (lineId) {
-          await fetchContracts(lineId);
+        const qLineId = params.get('lineId');
+        if (qLineId) {
+          setLineId(qLineId);
+          await fetchContracts(qLineId);
         } else {
           setError('ไม่สามารถระบุตัวตนได้ กรุณาเปิดผ่าน LINE');
         }
@@ -88,9 +92,10 @@ export default function LiffContract() {
     } catch (err) {
       console.error('LIFF init error:', err);
       const params = new URLSearchParams(window.location.search);
-      const lineId = params.get('lineId');
-      if (lineId) {
-        await fetchContracts(lineId);
+      const qLineId = params.get('lineId');
+      if (qLineId) {
+        setLineId(qLineId);
+        await fetchContracts(qLineId);
       } else {
         setError('ไม่สามารถเชื่อมต่อ LINE ได้ กรุณาลองใหม่');
       }
@@ -136,7 +141,7 @@ export default function LiffContract() {
             <p className="text-muted-foreground text-sm">{error}</p>
             {error.includes('ลงทะเบียน') && (
               <Button variant="primary" size="lg" className="mt-6" asChild>
-                <a href="/liff/register">ลงทะเบียนเลย</a>
+                <a href={`/liff/register${lineId ? `?lineId=${encodeURIComponent(lineId)}` : ''}`}>ลงทะเบียนเลย</a>
               </Button>
             )}
           </CardContent>
@@ -168,6 +173,28 @@ export default function LiffContract() {
 
   // Find next unpaid installment for "ชำระงวดถัดไป" button
   const nextUnpaid = payments.find((p) => p.status !== 'PAID');
+
+  async function handlePayClick() {
+    if (creatingPayLink) return;
+    setCreatingPayLink(true);
+    try {
+      const res = await fetch(`${API_BASE}/line-oa/liff/create-payment-link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lineId, contractId: contract.id }),
+      });
+      const result = await res.json();
+      if (result.url) {
+        window.location.href = result.url;
+      } else {
+        alert(result.error || 'ไม่สามารถสร้างลิงก์ชำระเงินได้');
+      }
+    } catch {
+      alert('เกิดข้อผิดพลาด กรุณาลองใหม่');
+    } finally {
+      setCreatingPayLink(false);
+    }
+  }
 
   return (
     <div className="min-h-screen bg-background p-4 pb-8">
@@ -251,11 +278,15 @@ export default function LiffContract() {
                 })}
               </p>
             </div>
-            <Button variant="primary" size="md" className="gap-1.5" asChild>
-              <a href={`/liff/contract`}>
-                <CreditCard className="size-4" />
-                ชำระเงิน
-              </a>
+            <Button
+              variant="primary"
+              size="md"
+              className="gap-1.5"
+              onClick={handlePayClick}
+              disabled={creatingPayLink}
+            >
+              <CreditCard className="size-4" />
+              {creatingPayLink ? 'กำลังสร้าง...' : 'ชำระเงิน'}
             </Button>
           </CardContent>
         </Card>
@@ -329,6 +360,22 @@ export default function LiffContract() {
               <ChevronDown className="size-4" />
             </Button>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Navigation Links */}
+      <Card className="mb-4">
+        <CardContent className="py-3 space-y-2">
+          <Button variant="outline" size="md" className="w-full" asChild>
+            <a href={`/liff/history${lineId ? `?lineId=${encodeURIComponent(lineId)}` : ''}`}>
+              ประวัติชำระเงิน
+            </a>
+          </Button>
+          <Button variant="outline" size="md" className="w-full" asChild>
+            <a href={`/liff/profile${lineId ? `?lineId=${encodeURIComponent(lineId)}` : ''}`}>
+              โปรไฟล์ของฉัน
+            </a>
+          </Button>
         </CardContent>
       </Card>
 

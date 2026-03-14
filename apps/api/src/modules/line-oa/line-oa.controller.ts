@@ -795,13 +795,17 @@ export class LineOaController {
     return {
       valid: true,
       token,
+      amount,
+      status: link.status,
+      expiresAt: link.expiresAt,
       contract: {
         contractNumber: contract.contractNumber,
-        customerName: contract.customer.name,
+        customer: { name: contract.customer.name },
       },
       payment: {
         installmentNo: payment.installmentNo,
-        amountDue: amount,
+        amountDue: Number(payment.amountDue),
+        lateFee: Number(payment.lateFee),
         dueDate: payment.dueDate,
       },
       promptPay: {
@@ -809,13 +813,13 @@ export class LineOaController {
         accountName: this.promptPayQrService.getAccountName(),
         maskedId: this.promptPayQrService.getMaskedPromptPayId(),
       },
-      expiresAt: link.expiresAt,
     };
   }
 
   // ─── LIFF Slip Upload ───────────────────────────────
 
   @Post('slip-upload')
+  @SkipCsrf()
   @UseInterceptors(FileInterceptor('slip'))
   async uploadSlipFromLiff(
     @UploadedFile() file: Express.Multer.File,
@@ -867,6 +871,33 @@ export class LineOaController {
 
     // Mark payment link as used
     await this.paymentLinkService.markAsUsed(body.token);
+
+    // Send LINE confirmation message to customer
+    const customerLineId = link.contract.customer.lineId;
+    if (customerLineId) {
+      try {
+        const payment = link.payment!;
+        const paidCount = await this.prisma.payment.count({
+          where: { contractId: link.contract.id, status: 'PAID' },
+        });
+        const totalInstallments = link.contract.totalMonths;
+        const amount = body.amount ? Number(body.amount) : (Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid));
+
+        const flex = this.lineOaService.buildPaymentSuccess({
+          customerName: link.contract.customer.name,
+          contractNumber: link.contract.contractNumber,
+          installmentNo: payment.installmentNo,
+          totalInstallments,
+          amountPaid: amount,
+          paymentMethod: 'BANK_TRANSFER',
+          paidDate: new Date().toLocaleDateString('th-TH'),
+          remainingInstallments: totalInstallments - paidCount,
+        });
+        await this.lineOaService.sendFlexMessage(customerLineId, flex);
+      } catch (err) {
+        this.logger.warn(`Failed to send slip confirmation: ${err}`);
+      }
+    }
 
     this.logger.log(`[LIFF] Slip uploaded for contract ${link.contract.contractNumber}`);
 
@@ -966,6 +997,37 @@ export class LineOaController {
     return result;
   }
 
+  @Post('liff/create-payment-link')
+  @SkipCsrf()
+  async liffCreatePaymentLink(@Body() body: { lineId: string; contractId: string }) {
+    if (!body.lineId || !body.contractId) {
+      return { error: 'lineId and contractId are required' };
+    }
+
+    // Verify the lineId owns this contract
+    const customer = await this.prisma.customer.findFirst({
+      where: { lineId: body.lineId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!customer) {
+      return { error: 'ไม่พบข้อมูลลูกค้า' };
+    }
+
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: body.contractId, customerId: customer.id, deletedAt: null },
+    });
+    if (!contract) {
+      return { error: 'ไม่พบสัญญา' };
+    }
+
+    try {
+      const result = await this.paymentLinkService.createPaymentLink(body.contractId);
+      return { url: result.url, token: result.token };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : 'ไม่สามารถสร้างลิงก์ชำระเงินได้' };
+    }
+  }
+
   @Post('liff/register/confirm')
   @SkipCsrf()
   async liffRegisterConfirm(@Body() body: { customerId: string; lineId: string; displayName?: string }) {
@@ -979,6 +1041,57 @@ export class LineOaController {
     }
 
     return { success: true, message: 'ลงทะเบียนสำเร็จ' };
+  }
+
+  // ─── LIFF History & Profile ─────────────────────────
+
+  @Get('liff/history')
+  @SkipCsrf()
+  async getLiffPaymentHistory(@Query('lineId') lineId: string) {
+    if (!lineId) {
+      throw new BadRequestException('lineId is required');
+    }
+
+    const result = await this.lineOaService.findCustomerPaymentHistory(lineId);
+    if (!result) {
+      throw new NotFoundException('ไม่พบข้อมูลลูกค้า กรุณาลงทะเบียนก่อน');
+    }
+
+    return result;
+  }
+
+  @Get('liff/profile')
+  @SkipCsrf()
+  async getLiffProfile(@Query('lineId') lineId: string) {
+    if (!lineId) {
+      throw new BadRequestException('lineId is required');
+    }
+
+    const customer = await this.lineOaService.findCustomerProfile(lineId);
+    if (!customer) {
+      throw new NotFoundException('ไม่พบข้อมูลลูกค้า กรุณาลงทะเบียนก่อน');
+    }
+
+    // Try to get LINE display name from profile query param (sent by frontend)
+    return {
+      ...customer,
+      lineDisplayName: '-', // Frontend will overlay with LIFF profile displayName
+    };
+  }
+
+  @Post('liff/unlink')
+  @SkipCsrf()
+  async unlinkLine(@Body() body: { lineId: string }) {
+    if (!body.lineId) {
+      return { error: 'lineId is required' };
+    }
+
+    const result = await this.lineOaService.unlinkLineAccount(body.lineId);
+    if (!result.success) {
+      return { error: result.error };
+    }
+
+    return { success: true, message: 'ยกเลิกผูก LINE เรียบร้อย' };
   }
 
   // ─── LINE OA Settings (Owner) ───────────────────────

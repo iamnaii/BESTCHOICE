@@ -53,6 +53,8 @@ const SlipReviewPage = lazy(() => import('@/pages/SlipReviewPage'));
 const LiffPayment = lazy(() => import('@/pages/liff/LiffPayment'));
 const LiffContract = lazy(() => import('@/pages/liff/LiffContract'));
 const LiffRegister = lazy(() => import('@/pages/liff/LiffRegister'));
+const LiffHistory = lazy(() => import('@/pages/liff/LiffHistory'));
+const LiffProfile = lazy(() => import('@/pages/liff/LiffProfile'));
 const LineOaSettingsPage = lazy(() => import('@/pages/LineOaSettingsPage'));
 
 const PageLoader = () => (
@@ -95,6 +97,8 @@ function App() {
         <Route path="/pay/:token" element={<LiffPayment />} />
         <Route path="/liff/contract" element={<LiffContract />} />
         <Route path="/liff/register" element={<LiffRegister />} />
+        <Route path="/liff/history" element={<LiffHistory />} />
+        <Route path="/liff/profile" element={<LiffProfile />} />
 
         {/* Protected Admin Routes */}
         <Route

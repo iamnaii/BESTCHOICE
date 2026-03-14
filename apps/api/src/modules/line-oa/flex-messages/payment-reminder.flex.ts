@@ -6,6 +6,7 @@ import {
   createDetailRow,
   createAmountRow,
   createPostbackButton,
+  createUriButton,
   wrapFlexMessage,
 } from './base-template';
 
@@ -70,7 +71,9 @@ export function buildPaymentReminderFlex(data: PaymentReminderData): FlexMessage
       type: 'box',
       layout: 'vertical',
       contents: [
-        createPostbackButton('ชำระเงิน', `action=pay&contract=${data.contractNumber}`, COLORS.PRIMARY),
+        data.paymentUrl
+          ? createUriButton('ชำระเงิน', data.paymentUrl, COLORS.PRIMARY)
+          : createPostbackButton('ชำระเงิน', `action=pay&contract=${data.contractNumber}`, COLORS.PRIMARY),
         createPostbackButton('ดูรายละเอียด', `action=check_installments&contract=${data.contractNumber}`, '#AAAAAA'),
       ],
       paddingAll: '15px',

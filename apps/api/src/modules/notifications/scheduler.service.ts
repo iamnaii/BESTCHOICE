@@ -5,7 +5,9 @@ import { OverdueService } from '../overdue/overdue.service';
 import { ReorderPointsService } from '../reorder-points/reorder-points.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LineOaService } from '../line-oa/line-oa.service';
+import { PaymentLinkService } from '../line-oa/payment-links/payment-link.service';
 import { buildOverdueNoticeFlex } from '../line-oa/flex-messages/overdue-notice.flex';
+import { buildPaymentReminderFlex } from '../line-oa/flex-messages/payment-reminder.flex';
 
 @Injectable()
 export class SchedulerService {
@@ -17,6 +19,7 @@ export class SchedulerService {
     private reorderPointsService: ReorderPointsService,
     private prisma: PrismaService,
     private lineOaService: LineOaService,
+    private paymentLinkService: PaymentLinkService,
   ) {}
 
   /**
@@ -229,6 +232,78 @@ export class SchedulerService {
       this.logger.log(`SLA check complete: ${pendingContracts.length} contracts pending, ${sent} notifications sent`);
     } catch (error) {
       this.logger.error(`SLA notification check failed: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+
+  /**
+   * Run daily at 08:30: auto-send payment links 3 days before due
+   */
+  @Cron('30 8 * * *')
+  async handleAutoPaymentLinks() {
+    this.logger.log('Starting auto payment link generation...');
+    try {
+      const threeDaysFromNow = new Date();
+      threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
+      const startOfDay = new Date(threeDaysFromNow.getFullYear(), threeDaysFromNow.getMonth(), threeDaysFromNow.getDate());
+      const endOfDay = new Date(startOfDay);
+      endOfDay.setDate(endOfDay.getDate() + 1);
+
+      // Find PENDING payments due in 3 days with LINE-linked customers
+      const payments = await this.prisma.payment.findMany({
+        where: {
+          status: 'PENDING',
+          dueDate: { gte: startOfDay, lt: endOfDay },
+          contract: {
+            deletedAt: null,
+            status: { in: ['ACTIVE'] },
+            customer: { lineId: { not: null }, deletedAt: null },
+          },
+        },
+        include: {
+          contract: {
+            include: {
+              customer: { select: { name: true, lineId: true } },
+            },
+          },
+        },
+      });
+
+      let sent = 0;
+      for (const payment of payments) {
+        const lineId = payment.contract.customer?.lineId;
+        if (!lineId) continue;
+
+        try {
+          // Create payment link
+          const link = await this.paymentLinkService.createPaymentLink(
+            payment.contractId,
+            payment.installmentNo,
+          );
+
+          const amountDue = Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid);
+
+          // Send LINE reminder with payment link
+          const flex = buildPaymentReminderFlex({
+            customerName: payment.contract.customer?.name || '-',
+            contractNumber: payment.contract.contractNumber,
+            installmentNo: payment.installmentNo,
+            totalInstallments: payment.contract.totalMonths,
+            amountDue,
+            dueDate: payment.dueDate.toLocaleDateString('th-TH'),
+            daysUntilDue: 3,
+            paymentUrl: link.url,
+          });
+
+          await this.lineOaService.sendFlexMessage(lineId, flex);
+          sent++;
+        } catch (err) {
+          this.logger.warn(`Failed to send auto payment link for contract ${payment.contract.contractNumber}: ${err}`);
+        }
+      }
+
+      this.logger.log(`Auto payment links complete: ${sent} sent out of ${payments.length} payments`);
+    } catch (error) {
+      this.logger.error(`Auto payment links failed: ${error instanceof Error ? error.message : error}`);
     }
   }
 

@@ -370,8 +370,21 @@ export class LineOaService {
     }
 
     // Find customer by phone (not already linked to another LINE)
+    // Normalize: strip dashes/spaces so "0922222222" matches "092-222-2222"
+    const digits = phone.replace(/\D/g, '');
+    // Generate common Thai phone formats: 0922222222, 092-222-2222, 092-2222222
+    const phoneVariants = [digits];
+    if (digits.length === 10) {
+      phoneVariants.push(`${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`);
+      phoneVariants.push(`${digits.slice(0, 3)}-${digits.slice(3)}`);
+    } else if (digits.length === 9) {
+      phoneVariants.push(`${digits.slice(0, 2)}-${digits.slice(2, 5)}-${digits.slice(5)}`);
+    }
     const customer = await this.prisma.customer.findFirst({
-      where: { phone, deletedAt: null },
+      where: {
+        deletedAt: null,
+        phone: { in: phoneVariants },
+      },
     });
 
     if (!customer) return null;

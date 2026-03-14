@@ -169,7 +169,7 @@ export default function LiffRegister() {
           <h2 className="text-xl font-bold text-gray-800 mb-2">ลงทะเบียนแล้ว</h2>
           <p className="text-gray-600 mb-6">บัญชี LINE ของคุณเชื่อมต่อกับระบบแล้ว</p>
           <a
-            href="/liff/contract"
+            href={`/liff/contract?lineId=${encodeURIComponent(profile?.userId || '')}`}
             className="inline-block bg-green-600 text-white px-6 py-3 rounded-xl font-medium hover:bg-green-700 transition-colors"
           >
             ดูสัญญาของฉัน
@@ -189,7 +189,7 @@ export default function LiffRegister() {
           <p className="text-gray-600 mb-2">เชื่อมบัญชี LINE กับระบบเรียบร้อยแล้ว</p>
           <p className="text-gray-500 text-sm mb-6">ตอนนี้คุณสามารถใช้คำสั่งต่างๆ ผ่าน LINE ได้แล้ว</p>
           <a
-            href="/liff/contract"
+            href={`/liff/contract?lineId=${encodeURIComponent(profile?.userId || '')}`}
             className="inline-block bg-green-600 text-white px-6 py-3 rounded-xl font-medium hover:bg-green-700 transition-colors"
           >
             ดูสัญญาของฉัน

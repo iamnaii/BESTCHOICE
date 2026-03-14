@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import liff from '@line/liff';
 
-const API_BASE = import.meta.env.VITE_API_URL || '';
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 const LIFF_ID = import.meta.env.VITE_LIFF_ID || '';
 
 type Step = 'loading' | 'phone' | 'confirm' | 'success' | 'already_linked' | 'error';
@@ -39,7 +39,7 @@ export default function LiffRegister() {
         setProfile({ userId: p.userId, displayName: p.displayName, pictureUrl: p.pictureUrl });
 
         // Check if already linked
-        const res = await fetch(`${API_BASE}/api/line-oa/liff/contracts?lineId=${encodeURIComponent(p.userId)}`);
+        const res = await fetch(`${API_BASE}/line-oa/liff/contracts?lineId=${encodeURIComponent(p.userId)}`);
         if (res.ok) {
           setStep('already_linked');
           return;
@@ -78,7 +78,7 @@ export default function LiffRegister() {
 
     setSubmitting(true);
     try {
-      const res = await fetch(`${API_BASE}/api/line-oa/liff/register/lookup`, {
+      const res = await fetch(`${API_BASE}/line-oa/liff/register/lookup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: cleaned, lineId: profile!.userId }),
@@ -109,7 +109,7 @@ export default function LiffRegister() {
 
     setSubmitting(true);
     try {
-      const res = await fetch(`${API_BASE}/api/line-oa/liff/register/confirm`, {
+      const res = await fetch(`${API_BASE}/line-oa/liff/register/confirm`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

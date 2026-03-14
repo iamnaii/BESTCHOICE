@@ -19,6 +19,7 @@ export default function LiffProfile() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lineId, setLineId] = useState('');
+  const [lineDisplayName, setLineDisplayName] = useState('');
   const [unlinking, setUnlinking] = useState(false);
   const [unlinked, setUnlinked] = useState(false);
 
@@ -38,6 +39,7 @@ export default function LiffProfile() {
 
         const profile = await liff.getProfile();
         setLineId(profile.userId);
+        setLineDisplayName(profile.displayName);
         await fetchProfile(profile.userId);
       } else {
         const params = new URLSearchParams(window.location.search);
@@ -173,7 +175,7 @@ export default function LiffProfile() {
             </div>
             <div className="flex justify-between items-center py-2 border-b border-border/50">
               <span className="text-sm text-muted-foreground">LINE</span>
-              <span className="text-sm font-medium">{data.lineDisplayName}</span>
+              <span className="text-sm font-medium">{lineDisplayName || data.lineDisplayName || '-'}</span>
             </div>
             <div className="flex justify-between items-center py-2">
               <span className="text-sm text-muted-foreground">จำนวนสัญญา</span>

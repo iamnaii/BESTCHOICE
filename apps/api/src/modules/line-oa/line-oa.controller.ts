@@ -997,6 +997,37 @@ export class LineOaController {
     return result;
   }
 
+  @Post('liff/create-payment-link')
+  @SkipCsrf()
+  async liffCreatePaymentLink(@Body() body: { lineId: string; contractId: string }) {
+    if (!body.lineId || !body.contractId) {
+      return { error: 'lineId and contractId are required' };
+    }
+
+    // Verify the lineId owns this contract
+    const customer = await this.prisma.customer.findFirst({
+      where: { lineId: body.lineId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!customer) {
+      return { error: 'ไม่พบข้อมูลลูกค้า' };
+    }
+
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: body.contractId, customerId: customer.id, deletedAt: null },
+    });
+    if (!contract) {
+      return { error: 'ไม่พบสัญญา' };
+    }
+
+    try {
+      const result = await this.paymentLinkService.createPaymentLink(body.contractId);
+      return { url: result.url, token: result.token };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : 'ไม่สามารถสร้างลิงก์ชำระเงินได้' };
+    }
+  }
+
   @Post('liff/register/confirm')
   @SkipCsrf()
   async liffRegisterConfirm(@Body() body: { customerId: string; lineId: string; displayName?: string }) {

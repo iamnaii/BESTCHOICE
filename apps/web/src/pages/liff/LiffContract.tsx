@@ -60,6 +60,7 @@ export default function LiffContract() {
   const [selectedContract, setSelectedContract] = useState(0);
   const [showAllPayments, setShowAllPayments] = useState(false);
   const [lineId, setLineId] = useState('');
+  const [creatingPayLink, setCreatingPayLink] = useState(false);
 
   useEffect(() => {
     initLiff();
@@ -173,6 +174,28 @@ export default function LiffContract() {
   // Find next unpaid installment for "ชำระงวดถัดไป" button
   const nextUnpaid = payments.find((p) => p.status !== 'PAID');
 
+  async function handlePayClick() {
+    if (creatingPayLink) return;
+    setCreatingPayLink(true);
+    try {
+      const res = await fetch(`${API_BASE}/line-oa/liff/create-payment-link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lineId, contractId: contract.id }),
+      });
+      const result = await res.json();
+      if (result.url) {
+        window.location.href = result.url;
+      } else {
+        alert(result.error || 'ไม่สามารถสร้างลิงก์ชำระเงินได้');
+      }
+    } catch {
+      alert('เกิดข้อผิดพลาด กรุณาลองใหม่');
+    } finally {
+      setCreatingPayLink(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background p-4 pb-8">
       {/* Header */}
@@ -255,11 +278,15 @@ export default function LiffContract() {
                 })}
               </p>
             </div>
-            <Button variant="primary" size="md" className="gap-1.5" asChild>
-              <a href={`/liff/contract${lineId ? `?lineId=${encodeURIComponent(lineId)}` : ''}`}>
-                <CreditCard className="size-4" />
-                ชำระเงิน
-              </a>
+            <Button
+              variant="primary"
+              size="md"
+              className="gap-1.5"
+              onClick={handlePayClick}
+              disabled={creatingPayLink}
+            >
+              <CreditCard className="size-4" />
+              {creatingPayLink ? 'กำลังสร้าง...' : 'ชำระเงิน'}
             </Button>
           </CardContent>
         </Card>

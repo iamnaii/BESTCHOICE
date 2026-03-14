@@ -126,7 +126,7 @@ export default function LiffPayment() {
         setView('slip-uploaded');
       } else {
         const err = await res.json();
-        alert(err.message || 'อัปโหลดสลิปไม่สำเร็จ');
+        alert(err.error || err.message || 'อัปโหลดสลิปไม่สำเร็จ');
       }
     } catch {
       alert('เกิดข้อผิดพลาด กรุณาลองใหม่');

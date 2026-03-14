@@ -336,6 +336,22 @@ export default function LiffContract() {
         </CardContent>
       </Card>
 
+      {/* Navigation Links */}
+      <Card className="mb-4">
+        <CardContent className="py-3 space-y-2">
+          <Button variant="outline" size="md" className="w-full" asChild>
+            <a href={`/liff/history${lineId ? `?lineId=${encodeURIComponent(lineId)}` : ''}`}>
+              ประวัติชำระเงิน
+            </a>
+          </Button>
+          <Button variant="outline" size="md" className="w-full" asChild>
+            <a href={`/liff/profile${lineId ? `?lineId=${encodeURIComponent(lineId)}` : ''}`}>
+              โปรไฟล์ของฉัน
+            </a>
+          </Button>
+        </CardContent>
+      </Card>
+
       {/* Legend */}
       <div className="text-center text-xs text-muted-foreground space-x-3 mb-4">
         <span>✅ ชำระแล้ว</span>

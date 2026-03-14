@@ -872,6 +872,33 @@ export class LineOaController {
     // Mark payment link as used
     await this.paymentLinkService.markAsUsed(body.token);
 
+    // Send LINE confirmation message to customer
+    const customerLineId = link.contract.customer.lineId;
+    if (customerLineId) {
+      try {
+        const payment = link.payment!;
+        const paidCount = await this.prisma.payment.count({
+          where: { contractId: link.contract.id, status: 'PAID' },
+        });
+        const totalInstallments = link.contract.totalMonths;
+        const amount = body.amount ? Number(body.amount) : (Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid));
+
+        const flex = this.lineOaService.buildPaymentSuccess({
+          customerName: link.contract.customer.name,
+          contractNumber: link.contract.contractNumber,
+          installmentNo: payment.installmentNo,
+          totalInstallments,
+          amountPaid: amount,
+          paymentMethod: 'BANK_TRANSFER',
+          paidDate: new Date().toLocaleDateString('th-TH'),
+          remainingInstallments: totalInstallments - paidCount,
+        });
+        await this.lineOaService.sendFlexMessage(customerLineId, flex);
+      } catch (err) {
+        this.logger.warn(`Failed to send slip confirmation: ${err}`);
+      }
+    }
+
     this.logger.log(`[LIFF] Slip uploaded for contract ${link.contract.contractNumber}`);
 
     return { success: true, message: 'อัพโหลดสลิปเรียบร้อย กำลังตรวจสอบ' };
@@ -983,6 +1010,57 @@ export class LineOaController {
     }
 
     return { success: true, message: 'ลงทะเบียนสำเร็จ' };
+  }
+
+  // ─── LIFF History & Profile ─────────────────────────
+
+  @Get('liff/history')
+  @SkipCsrf()
+  async getLiffPaymentHistory(@Query('lineId') lineId: string) {
+    if (!lineId) {
+      throw new BadRequestException('lineId is required');
+    }
+
+    const result = await this.lineOaService.findCustomerPaymentHistory(lineId);
+    if (!result) {
+      throw new NotFoundException('ไม่พบข้อมูลลูกค้า กรุณาลงทะเบียนก่อน');
+    }
+
+    return result;
+  }
+
+  @Get('liff/profile')
+  @SkipCsrf()
+  async getLiffProfile(@Query('lineId') lineId: string) {
+    if (!lineId) {
+      throw new BadRequestException('lineId is required');
+    }
+
+    const customer = await this.lineOaService.findCustomerProfile(lineId);
+    if (!customer) {
+      throw new NotFoundException('ไม่พบข้อมูลลูกค้า กรุณาลงทะเบียนก่อน');
+    }
+
+    // Try to get LINE display name from profile query param (sent by frontend)
+    return {
+      ...customer,
+      lineDisplayName: '-', // Frontend will overlay with LIFF profile displayName
+    };
+  }
+
+  @Post('liff/unlink')
+  @SkipCsrf()
+  async unlinkLine(@Body() body: { lineId: string }) {
+    if (!body.lineId) {
+      return { error: 'lineId is required' };
+    }
+
+    const result = await this.lineOaService.unlinkLineAccount(body.lineId);
+    if (!result.success) {
+      return { error: result.error };
+    }
+
+    return { success: true, message: 'ยกเลิกผูก LINE เรียบร้อย' };
   }
 
   // ─── LINE OA Settings (Owner) ───────────────────────

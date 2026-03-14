@@ -450,6 +450,101 @@ export class LineOaService {
       .join(' ');
   }
 
+  // ─── LIFF History & Profile ──────────────────────────
+
+  /**
+   * Get payment history for a customer (all PAID payments across contracts)
+   */
+  async findCustomerPaymentHistory(lineId: string) {
+    const customer = await this.prisma.customer.findFirst({
+      where: { lineId, deletedAt: null },
+      select: {
+        name: true,
+        contracts: {
+          where: { deletedAt: null },
+          select: {
+            contractNumber: true,
+            payments: {
+              where: { status: 'PAID' },
+              orderBy: { paidDate: 'desc' },
+              select: {
+                installmentNo: true,
+                amountPaid: true,
+                paidDate: true,
+                paymentMethod: true,
+                lateFee: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!customer) return null;
+
+    const payments = customer.contracts.flatMap((c) =>
+      c.payments.map((p) => ({
+        contractNumber: c.contractNumber,
+        installmentNo: p.installmentNo,
+        amountPaid: Number(p.amountPaid),
+        paidDate: p.paidDate,
+        paymentMethod: p.paymentMethod,
+        lateFee: Number(p.lateFee),
+      })),
+    );
+
+    // Sort by paidDate descending
+    payments.sort((a, b) => {
+      if (!a.paidDate || !b.paidDate) return 0;
+      return new Date(b.paidDate).getTime() - new Date(a.paidDate).getTime();
+    });
+
+    return { customer: { name: customer.name }, payments };
+  }
+
+  /**
+   * Get customer profile for LIFF
+   */
+  async findCustomerProfile(lineId: string) {
+    const customer = await this.prisma.customer.findFirst({
+      where: { lineId, deletedAt: null },
+      select: {
+        name: true,
+        phone: true,
+        _count: { select: { contracts: { where: { deletedAt: null } } } },
+      },
+    });
+
+    if (!customer) return null;
+
+    return {
+      name: customer.name,
+      phone: customer.phone || '-',
+      contractCount: customer._count.contracts,
+    };
+  }
+
+  /**
+   * Unlink LINE account from customer
+   */
+  async unlinkLineAccount(lineId: string): Promise<{ success: boolean; error?: string }> {
+    const customer = await this.prisma.customer.findFirst({
+      where: { lineId, deletedAt: null },
+    });
+
+    if (!customer) {
+      return { success: false, error: 'ไม่พบบัญชีที่ผูกกับ LINE นี้' };
+    }
+
+    await this.prisma.customer.update({
+      where: { id: customer.id },
+      data: { lineId: null },
+    });
+
+    this.logger.log(`[LIFF] Unlinked LINE ${lineId} from customer ${customer.name}`);
+    return { success: true };
+  }
+
   // ─── Private Helpers ──────────────────────────────────
 
   private async callLineApi(url: string, body: unknown): Promise<void> {

@@ -20,7 +20,7 @@ export class PaymentLinkService {
   /**
    * Create a payment link for a specific contract/installment
    */
-  async createPaymentLink(contractId: string, installmentNo?: number): Promise<{
+  async createPaymentLink(contractId: string, installmentNo?: number, overrideAmount?: number): Promise<{
     token: string;
     url: string;
     expiresAt: Date;
@@ -47,7 +47,7 @@ export class PaymentLinkService {
       throw new NotFoundException('ไม่พบงวดค้างชำระ');
     }
 
-    const amount = Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid);
+    const amount = overrideAmount ?? (Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid));
 
     // Generate unique token
     const token = randomBytes(32).toString('hex');

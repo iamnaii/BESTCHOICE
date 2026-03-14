@@ -292,6 +292,17 @@ export default function LiffContract() {
         </Card>
       )}
 
+      {/* Early Payoff CTA */}
+      {['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status) && contract.totalOutstanding > 0 && (
+        <div className="mb-4 text-center">
+          <Button variant="outline" size="md" asChild>
+            <a href={`/liff/early-payoff?lineId=${encodeURIComponent(lineId)}&contractId=${encodeURIComponent(contract.id)}`}>
+              ปิดยอดก่อนกำหนด (ลดดอกเบี้ย 50%)
+            </a>
+          </Button>
+        </div>
+      )}
+
       {/* Payment Schedule */}
       <Card className="mb-4">
         <CardContent>

@@ -11,7 +11,7 @@ import { useMockPayment } from './useMockPayment';
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 interface PaymentLinkData {
-  id: string;
+  valid: boolean;
   token: string;
   amount: number;
   status: string;
@@ -19,20 +19,18 @@ interface PaymentLinkData {
   contract: {
     contractNumber: string;
     customer: { name: string };
-    payments: Array<{
-      installmentNo: number;
-      amountDue: string;
-      lateFee: string;
-      dueDate: string;
-      status: string;
-    }>;
   };
   payment: {
     installmentNo: number;
-    amountDue: string;
-    lateFee: string;
+    amountDue: number;
+    lateFee: number;
     dueDate: string;
   } | null;
+  promptPay?: {
+    qrDataUrl: string | null;
+    accountName: string;
+    maskedId: string;
+  };
 }
 
 type View = 'loading' | 'select-method' | 'promptpay-pending' | 'success' | 'slip-uploaded' | 'error';
@@ -67,10 +65,15 @@ export default function LiffPayment() {
         } else if (result.status === 'USED') {
           setErrorMessage('ลิงก์นี้ถูกใช้งานแล้ว');
           setView('error');
-        } else {
+        } else if (result.valid) {
           setData(result);
-          setQrUrl(`${API_BASE}/line-oa/payment/${result.payment?.id || 'default'}/qr`);
+          if (result.promptPay?.qrDataUrl) {
+            setQrUrl(result.promptPay.qrDataUrl);
+          }
           setView('select-method');
+        } else {
+          setErrorMessage(result.error || 'ลิงก์ไม่ถูกต้อง');
+          setView('error');
         }
       })
       .catch(() => {
@@ -275,17 +278,19 @@ export default function LiffPayment() {
             )}
 
             {/* Mock simulate button (dev only) */}
-            <div className="mt-6 pt-4 border-t border-dashed">
-              <p className="text-xs text-muted-foreground mb-2">[ Dev Mode ]</p>
-              <Button
-                variant="primary"
-                size="lg"
-                className="w-full"
-                onClick={mock.simulateSuccess}
-              >
-                จำลองจ่ายสำเร็จ
-              </Button>
-            </div>
+            {import.meta.env.DEV && (
+              <div className="mt-6 pt-4 border-t border-dashed">
+                <p className="text-xs text-muted-foreground mb-2">[ Dev Mode ]</p>
+                <Button
+                  variant="primary"
+                  size="lg"
+                  className="w-full"
+                  onClick={mock.simulateSuccess}
+                >
+                  จำลองจ่ายสำเร็จ
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -460,7 +465,7 @@ export default function LiffPayment() {
             {/* ── Tab: Manual Transfer + Slip ── */}
             <TabsContent value="transfer">
               <div className="py-2">
-                {/* PromptPay QR (existing) */}
+                {/* PromptPay QR + Account Info */}
                 {qrUrl && (
                   <div className="text-center mb-4">
                     <img
@@ -469,9 +474,29 @@ export default function LiffPayment() {
                       className="mx-auto w-48 h-48 rounded-lg border"
                       onError={() => setQrUrl(null)}
                     />
-                    <p className="text-xs text-muted-foreground mt-2">
-                      สแกน QR แล้วโอนเงิน {amount.toLocaleString()} บาท
+                    <p className="text-sm font-medium mt-3">
+                      สแกน QR แล้วโอนเงิน <span className="text-primary font-bold">{amount.toLocaleString()} บาท</span>
                     </p>
+                  </div>
+                )}
+                {data?.promptPay && (
+                  <div className="bg-muted/50 rounded-lg p-3 mb-4 text-sm space-y-1">
+                    {data.promptPay.accountName && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">ชื่อบัญชี</span>
+                        <span className="font-medium">{data.promptPay.accountName}</span>
+                      </div>
+                    )}
+                    {data.promptPay.maskedId && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">PromptPay</span>
+                        <span className="font-medium">{data.promptPay.maskedId}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">ยอดโอน</span>
+                      <span className="font-bold text-primary">{amount.toLocaleString()} บาท</span>
+                    </div>
                   </div>
                 )}
 

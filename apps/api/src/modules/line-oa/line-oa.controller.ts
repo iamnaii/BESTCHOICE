@@ -795,13 +795,17 @@ export class LineOaController {
     return {
       valid: true,
       token,
+      amount,
+      status: link.status,
+      expiresAt: link.expiresAt,
       contract: {
         contractNumber: contract.contractNumber,
-        customerName: contract.customer.name,
+        customer: { name: contract.customer.name },
       },
       payment: {
         installmentNo: payment.installmentNo,
-        amountDue: amount,
+        amountDue: Number(payment.amountDue),
+        lateFee: Number(payment.lateFee),
         dueDate: payment.dueDate,
       },
       promptPay: {
@@ -809,13 +813,13 @@ export class LineOaController {
         accountName: this.promptPayQrService.getAccountName(),
         maskedId: this.promptPayQrService.getMaskedPromptPayId(),
       },
-      expiresAt: link.expiresAt,
     };
   }
 
   // ─── LIFF Slip Upload ───────────────────────────────
 
   @Post('slip-upload')
+  @SkipCsrf()
   @UseInterceptors(FileInterceptor('slip'))
   async uploadSlipFromLiff(
     @UploadedFile() file: Express.Multer.File,

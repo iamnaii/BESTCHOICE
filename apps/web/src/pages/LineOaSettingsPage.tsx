@@ -412,7 +412,7 @@ export default function LineOaSettingsPage() {
             </div>
             <div>
               <h3 className="font-semibold">ขั้นตอนที่ 4: ตั้งค่า LIFF <span className="text-xs font-normal text-muted-foreground">(ไม่บังคับ)</span></h3>
-              <p className="text-xs text-muted-foreground">หน้าชำระเงินแบบ Mini App ภายในไลน์</p>
+              <p className="text-xs text-muted-foreground">ลงทะเบียน, ดูสัญญา และชำระเงินผ่าน LINE</p>
             </div>
           </div>
 
@@ -425,7 +425,7 @@ export default function LineOaSettingsPage() {
                 <li>ตั้งค่า:
                   <ul className="ml-5 mt-1 space-y-0.5 list-disc">
                     <li><strong>Size</strong>: Full</li>
-                    <li><strong>Endpoint URL</strong>: <code className="bg-orange-100 px-1 rounded">{`${window.location.origin}/liff/contract`}</code></li>
+                    <li><strong>Endpoint URL</strong>: <code className="bg-orange-100 px-1 rounded">{`${window.location.origin}/liff/register`}</code></li>
                     <li><strong>Scope</strong>: เลือก <strong>profile</strong> และ <strong>openid</strong></li>
                     <li><strong>Bot link feature</strong>: Aggressive</li>
                   </ul>
@@ -433,7 +433,7 @@ export default function LineOaSettingsPage() {
                 <li>คัดลอก <strong>LIFF ID</strong> มาวางด้านล่าง</li>
               </ol>
               <div className="mt-2 text-xs text-orange-600">
-                LIFF จะเปิดหน้าต่างๆ ใน LINE: ดูสัญญา, ชำระเงิน, ลงทะเบียน
+                LIFF จะเปิดหน้าลงทะเบียนผูก LINE ให้ลูกค้าเชื่อมบัญชีกับระบบ
               </div>
             </div>
 

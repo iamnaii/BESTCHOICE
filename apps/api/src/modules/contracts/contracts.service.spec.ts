@@ -133,14 +133,14 @@ describe('ContractsService', () => {
   describe('update - schedule recalculation protection', () => {
     it('should allow update when no payments have been made', async () => {
       // paidOrPartialCount = 0 (default mock), change sellingPrice but also raise downPayment to pass validation
-      const result = await service.update('contract-1', { sellingPrice: 20000, downPayment: 3000 }, 'user-1');
+      await service.update('contract-1', { sellingPrice: 20000, downPayment: 3000 }, 'user-1');
       // Should not throw
       expect(prisma.$transaction).toHaveBeenCalled();
     });
 
     it('should reject financial changes when payments exist', async () => {
       // Override $transaction to make payment count return > 0
-      prisma.$transaction.mockImplementation(async (cb: Function) => {
+      prisma.$transaction.mockImplementation(async (cb: (tx: any) => Promise<any>) => {
         const txWithPayments = {
           contract: {
             findUnique: jest.fn().mockResolvedValue(mockContract),
@@ -162,7 +162,7 @@ describe('ContractsService', () => {
     });
 
     it('should allow non-financial updates when payments exist', async () => {
-      prisma.$transaction.mockImplementation(async (cb: Function) => {
+      prisma.$transaction.mockImplementation(async (cb: (tx: any) => Promise<any>) => {
         const txWithPayments = {
           contract: {
             findUnique: jest.fn().mockResolvedValue(mockContract),
@@ -178,7 +178,7 @@ describe('ContractsService', () => {
       });
 
       // Only updating notes (no financial change)
-      const result = await service.update('contract-1', { notes: 'updated note' }, 'user-1');
+      await service.update('contract-1', { notes: 'updated note' }, 'user-1');
       expect(prisma.$transaction).toHaveBeenCalled();
     });
 
@@ -202,7 +202,7 @@ describe('ContractsService', () => {
     it('should allow OWNER to edit any contract', async () => {
       prisma.user.findUnique.mockResolvedValue({ role: 'OWNER' });
 
-      const result = await service.update('contract-1', { notes: 'owner note' }, 'user-2');
+      await service.update('contract-1', { notes: 'owner note' }, 'user-2');
       expect(prisma.$transaction).toHaveBeenCalled();
     });
   });

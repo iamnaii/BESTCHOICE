@@ -251,7 +251,7 @@ describe('PaymentsService', () => {
       const payments = [mockPayment];
       prisma.payment.findMany.mockResolvedValue(payments);
 
-      const result = await service.getContractPayments('contract-1');
+      await service.getContractPayments('contract-1');
       expect(prisma.payment.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { contractId: 'contract-1' },

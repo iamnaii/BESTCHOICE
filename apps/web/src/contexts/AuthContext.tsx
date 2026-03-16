@@ -68,7 +68,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (cancelled) return;
     });
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {

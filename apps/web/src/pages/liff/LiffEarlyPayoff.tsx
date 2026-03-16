@@ -33,7 +33,6 @@ export default function LiffEarlyPayoff() {
 
   useEffect(() => {
     initLiff();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function initLiff() {

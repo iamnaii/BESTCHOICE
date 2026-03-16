@@ -864,7 +864,7 @@ export class LineOaController {
     const imageUrl = `/uploads/slips/${filename}`;
 
     // Atomic: create evidence + notification + mark link used in single transaction
-    const evidence = await this.prisma.$transaction(async (tx) => {
+    await this.prisma.$transaction(async (tx) => {
       // Re-check link status inside transaction to prevent TOCTOU race
       const freshLink = await tx.paymentLink.findUnique({
         where: { id: link.id },

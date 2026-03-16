@@ -6,7 +6,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 
 describe('PaymentsController', () => {
   let controller: PaymentsController;
-  let prisma: any;
+  let _prisma: any;
   let paymentsService: any;
 
   const mockContract = {
@@ -37,7 +37,7 @@ describe('PaymentsController', () => {
     }).compile();
 
     controller = module.get<PaymentsController>(PaymentsController);
-    prisma = module.get<PrismaService>(PrismaService);
+    _prisma = module.get<PrismaService>(PrismaService);
     paymentsService = module.get<PaymentsService>(PaymentsService);
   });
 

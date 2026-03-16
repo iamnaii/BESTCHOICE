@@ -9,3 +9,8 @@ coverage/
 .prisma/
 prisma/*.db
 uploads/
+
+# Playwright
+playwright-report/
+test-results/
+blob-report/

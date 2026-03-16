@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, InternalServerErrorException, Optional, Inject, forwardRef } from '@nestjs/common';
 import { PaymentMethod, PlanType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -22,6 +22,7 @@ export class ContractsService {
   private readonly logger = new Logger(ContractsService.name);
   constructor(
     private prisma: PrismaService,
+    @Optional() @Inject(forwardRef(() => NotificationsService))
     private notificationsService: NotificationsService,
   ) {}
 
@@ -737,6 +738,7 @@ export class ContractsService {
   }
 
   private async sendContractActivatedNotification(contract: any) {
+    if (!this.notificationsService) return;
     const customer = contract.customer;
     if (!customer) return;
 

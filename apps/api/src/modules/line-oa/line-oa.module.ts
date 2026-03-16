@@ -1,13 +1,14 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { LineOaController } from './line-oa.controller';
 import { LineOaService } from './line-oa.service';
 import { LineWebhookGuard } from './line-webhook.guard';
 import { PromptPayQrService } from './promptpay/promptpay-qr.service';
 import { PaymentLinkService } from './payment-links/payment-link.service';
 import { RichMenuService } from './rich-menu/rich-menu.service';
-import { ContractsService } from '../contracts/contracts.service';
+import { ContractsModule } from '../contracts/contracts.module';
 
 @Module({
+  imports: [forwardRef(() => ContractsModule)],
   controllers: [LineOaController],
   providers: [
     LineOaService,
@@ -15,7 +16,6 @@ import { ContractsService } from '../contracts/contracts.service';
     PromptPayQrService,
     PaymentLinkService,
     RichMenuService,
-    ContractsService,
   ],
   exports: [LineOaService, PromptPayQrService, PaymentLinkService, RichMenuService],
 })

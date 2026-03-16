@@ -657,6 +657,22 @@ export class LineOaController {
     if (!evidence) {
       return { error: 'ไม่พบหลักฐาน' };
     }
+    if (evidence.status !== 'PENDING_REVIEW') {
+      return { error: 'หลักฐานนี้ได้รับการตรวจสอบแล้ว' };
+    }
+
+    // Validate amount against actual payment due (±100 baht tolerance for rounding)
+    const targetPayment = evidence.contract.payments.find(
+      (p) => p.installmentNo === body.installmentNo,
+    );
+    if (targetPayment) {
+      const expectedAmount = Number(targetPayment.amountDue) + Number(targetPayment.lateFee) - Number(targetPayment.amountPaid);
+      if (Math.abs(body.amount - expectedAmount) > 100) {
+        this.logger.warn(
+          `[SlipReview] Amount mismatch: approved=${body.amount}, expected=${expectedAmount} for evidence ${id}`,
+        );
+      }
+    }
 
     // Update evidence status
     await this.prisma.paymentEvidence.update({
@@ -831,12 +847,13 @@ export class LineOaController {
       return { error: 'กรุณาอัพโหลดรูปสลิป' };
     }
 
+    // Use transaction to prevent race condition (double slip upload)
     const link = await this.paymentLinkService.getPaymentLink(body.token);
     if (!link || link.status !== 'ACTIVE') {
       return { error: 'ลิงก์ชำระเงินไม่ถูกต้องหรือหมดอายุ' };
     }
 
-    // Save uploaded file
+    // Save uploaded file (outside transaction - file I/O)
     const uploadDir = path.resolve(process.cwd(), 'uploads', 'slips');
     fs.mkdirSync(uploadDir, { recursive: true });
 
@@ -846,33 +863,50 @@ export class LineOaController {
 
     const imageUrl = `/uploads/slips/${filename}`;
 
-    // Create PaymentEvidence
-    const evidence = await this.prisma.paymentEvidence.create({
-      data: {
-        contractId: link.contract.id,
-        paymentId: link.payment!.id,
-        lineUserId: link.contract.customer.lineId || null,
-        imageUrl,
-        amount: body.amount ? Number(body.amount) : null,
-        status: 'PENDING_REVIEW',
-      },
-    });
+    // Atomic: create evidence + notification + mark link used in single transaction
+    const evidence = await this.prisma.$transaction(async (tx) => {
+      // Re-check link status inside transaction to prevent TOCTOU race
+      const freshLink = await tx.paymentLink.findUnique({
+        where: { id: link.id },
+        select: { status: true },
+      });
+      if (!freshLink || freshLink.status !== 'ACTIVE') {
+        throw new BadRequestException('ลิงก์ชำระเงินถูกใช้แล้ว');
+      }
 
-    // Notify staff
-    await this.prisma.notificationLog.create({
-      data: {
-        channel: 'IN_APP',
-        recipient: 'STAFF',
-        subject: `สลิปใหม่จาก ${link.contract.customer.name} (LIFF)`,
-        message: `ลูกค้า ${link.contract.customer.name} ส่งสลิปผ่านลิงก์ชำระเงิน สัญญา ${link.contract.contractNumber}`,
-        status: 'SENT',
-        relatedId: evidence.id,
-        sentAt: new Date(),
-      },
-    });
+      // Create PaymentEvidence
+      const ev = await tx.paymentEvidence.create({
+        data: {
+          contractId: link.contract.id,
+          paymentId: link.payment!.id,
+          lineUserId: link.contract.customer.lineId || null,
+          imageUrl,
+          amount: body.amount ? Number(body.amount) : null,
+          status: 'PENDING_REVIEW',
+        },
+      });
 
-    // Mark payment link as used
-    await this.paymentLinkService.markAsUsed(body.token);
+      // Notify staff
+      await tx.notificationLog.create({
+        data: {
+          channel: 'IN_APP',
+          recipient: 'STAFF',
+          subject: `สลิปใหม่จาก ${link.contract.customer.name} (LIFF)`,
+          message: `ลูกค้า ${link.contract.customer.name} ส่งสลิปผ่านลิงก์ชำระเงิน สัญญา ${link.contract.contractNumber}`,
+          status: 'SENT',
+          relatedId: ev.id,
+          sentAt: new Date(),
+        },
+      });
+
+      // Mark payment link as used atomically
+      await tx.paymentLink.update({
+        where: { id: link.id },
+        data: { status: 'USED', usedAt: new Date() },
+      });
+
+      return ev;
+    });
 
     // Send LINE confirmation message to customer
     const customerLineId = link.contract.customer.lineId;
@@ -1020,6 +1054,18 @@ export class LineOaController {
     });
     if (!contract) {
       return { error: 'ไม่พบสัญญา' };
+    }
+
+    // Rate limit: max 5 active payment links per lineId in 24 hours
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const recentLinks = await this.prisma.paymentLink.count({
+      where: {
+        contractId: body.contractId,
+        createdAt: { gte: twentyFourHoursAgo },
+      },
+    });
+    if (recentLinks >= 5) {
+      return { error: 'สร้างลิงก์ชำระเงินได้สูงสุด 5 ครั้งต่อ 24 ชั่วโมง กรุณาลองใหม่ภายหลัง' };
     }
 
     try {

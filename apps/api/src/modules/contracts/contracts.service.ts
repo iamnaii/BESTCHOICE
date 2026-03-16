@@ -425,6 +425,26 @@ export class ContractsService {
 
     // Update contract + recreate payment schedule
     await this.prisma.$transaction(async (tx) => {
+      // Prevent schedule recalculation when any payments have been made
+      const paidOrPartialCount = await tx.payment.count({
+        where: { contractId: id, status: { in: ['PAID', 'PARTIALLY_PAID'] } },
+      });
+
+      if (paidOrPartialCount > 0) {
+        // If payments exist, only allow updating notes/non-financial fields
+        const financialsChanged =
+          sellingPrice !== Number(contract.sellingPrice) ||
+          downPayment !== Number(contract.downPayment) ||
+          totalMonths !== contract.totalMonths;
+
+        if (financialsChanged) {
+          throw new BadRequestException(
+            'ไม่สามารถแก้ไขเงื่อนไขทางการเงินได้ เนื่องจากมีการชำระเงินแล้ว ' +
+            `(ชำระแล้ว ${paidOrPartialCount} งวด) กรุณาสร้างสัญญาใหม่แทน`,
+          );
+        }
+      }
+
       await tx.contract.update({
         where: { id },
         data: {
@@ -440,24 +460,14 @@ export class ContractsService {
         },
       });
 
-      // Delete only PENDING payments (preserve PAID and PARTIALLY_PAID history)
-      const paidCount = await tx.payment.count({
-        where: { contractId: id, status: { in: ['PAID', 'PARTIALLY_PAID'] } },
-      });
+      // Only recreate schedule if no payments have been made
+      if (paidOrPartialCount === 0) {
+        await tx.payment.deleteMany({
+          where: { contractId: id, status: { in: ['PENDING', 'OVERDUE'] } },
+        });
 
-      await tx.payment.deleteMany({
-        where: { contractId: id, status: { in: ['PENDING', 'OVERDUE'] } },
-      });
-
-      const remainingMonths = totalMonths - paidCount;
-      if (remainingMonths > 0) {
-        const payments = generatePaymentSchedule(id, remainingMonths, financedAmount - (monthlyPayment * paidCount), monthlyPayment, paymentDueDay);
-        // Offset installment numbers to continue after paid ones
-        const offsetPayments = payments.map((p) => ({
-          ...p,
-          installmentNo: p.installmentNo + paidCount,
-        }));
-        await tx.payment.createMany({ data: offsetPayments });
+        const payments = generatePaymentSchedule(id, totalMonths, financedAmount, monthlyPayment, paymentDueDay);
+        await tx.payment.createMany({ data: payments });
       }
     });
 

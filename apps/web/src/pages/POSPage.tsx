@@ -78,7 +78,7 @@ export default function POSPage() {
   const [financeCompany, setFinanceCompany] = useState('');
 
   // Product search query
-  const { data: products, isFetching: productsFetching } = useQuery<Product[]>({
+  const { data: products, isFetching: productsFetching, isError: productsError } = useQuery<Product[]>({
     queryKey: ['pos-products', debouncedProductSearch],
     queryFn: async () => {
       if (!debouncedProductSearch || debouncedProductSearch.length < 2) return [];
@@ -111,7 +111,7 @@ export default function POSPage() {
   });
 
   // Customer search query
-  const { data: customers, isFetching: customersFetching } = useQuery<Customer[]>({
+  const { data: customers, isFetching: customersFetching, isError: customersError } = useQuery<Customer[]>({
     queryKey: ['pos-customers', debouncedCustomerSearch],
     queryFn: async () => {
       if (!debouncedCustomerSearch || debouncedCustomerSearch.length < 2) return [];
@@ -339,7 +339,11 @@ export default function POSPage() {
                   />
                   {productSearch.length >= 2 && (
                     <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                      {productsFetching ? (
+                      {productsError ? (
+                        <div className="px-3 py-4 text-center text-sm text-destructive">
+                          ค้นหาสินค้าไม่สำเร็จ กรุณาลองใหม่
+                        </div>
+                      ) : productsFetching ? (
                         <div className="px-3 py-4 text-center text-sm text-muted-foreground">
                           <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary mx-auto mb-2"></div>
                           กำลังค้นหา...
@@ -469,7 +473,11 @@ export default function POSPage() {
                 />
                 {customerSearch.length >= 2 && (
                   <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                    {customersFetching ? (
+                    {customersError ? (
+                      <div className="px-3 py-4 text-center text-sm text-destructive">
+                        ค้นหาลูกค้าไม่สำเร็จ กรุณาลองใหม่
+                      </div>
+                    ) : customersFetching ? (
                       <div className="px-3 py-4 text-center text-sm text-muted-foreground">
                         <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary mx-auto mb-2"></div>
                         กำลังค้นหา...

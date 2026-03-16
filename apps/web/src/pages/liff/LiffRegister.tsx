@@ -47,21 +47,32 @@ export default function LiffRegister() {
 
         setStep('phone');
       } else {
-        // Dev fallback
-        const params = new URLSearchParams(window.location.search);
-        const lineId = params.get('lineId') || 'dev-test-user';
-        setProfile({ userId: lineId, displayName: 'Dev User' });
-        setStep('phone');
+        // Dev-only fallback: accept lineId from URL only in development
+        if (import.meta.env.DEV) {
+          const params = new URLSearchParams(window.location.search);
+          const lineId = params.get('lineId') || 'dev-test-user';
+          setProfile({ userId: lineId, displayName: 'Dev User' });
+          setStep('phone');
+        } else {
+          setErrorMessage('ไม่สามารถระบุตัวตนได้ กรุณาเปิดผ่าน LINE');
+          setStep('error');
+        }
       }
     } catch (err) {
       console.error('LIFF init error:', err);
-      const params = new URLSearchParams(window.location.search);
-      const lineId = params.get('lineId');
-      if (lineId) {
-        setProfile({ userId: lineId, displayName: 'Dev User' });
-        setStep('phone');
+      // Dev-only fallback: accept lineId from URL only in development
+      if (import.meta.env.DEV) {
+        const params = new URLSearchParams(window.location.search);
+        const lineId = params.get('lineId');
+        if (lineId) {
+          setProfile({ userId: lineId, displayName: 'Dev User' });
+          setStep('phone');
+        } else {
+          setErrorMessage('ไม่สามารถเชื่อมต่อ LINE ได้ กรุณาลองใหม่');
+          setStep('error');
+        }
       } else {
-        setErrorMessage('ไม่สามารถเชื่อมต่อ LINE ได้ กรุณาเปิดผ่าน LINE');
+        setErrorMessage('ไม่สามารถเชื่อมต่อ LINE ได้ กรุณาลองใหม่');
         setStep('error');
       }
     }

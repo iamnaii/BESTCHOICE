@@ -30,34 +30,53 @@ export class PaymentsService {
       throw new BadRequestException('ต้อง upload หลักฐานการชำระเงิน (สลิปโอนเงิน) หรือระบุเลขอ้างอิงธุรกรรม');
     }
 
-    const contract = await this.prisma.contract.findUnique({ where: { id: contractId } });
-    if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
-    if (!['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status)) {
-      throw new BadRequestException('ไม่สามารถชำระเงินได้ สัญญาต้องอยู่ในสถานะ ACTIVE, OVERDUE หรือ DEFAULT');
+    // Idempotency: reject duplicate transactionRef for the same contract
+    if (transactionRef) {
+      const existing = await this.prisma.payment.findFirst({
+        where: {
+          contractId,
+          notes: { contains: `ref:${transactionRef}` },
+          status: 'PAID',
+        },
+      });
+      if (existing) {
+        throw new BadRequestException(`ธุรกรรมนี้ถูกบันทึกแล้ว (อ้างอิง: ${transactionRef})`);
+      }
     }
 
-    const payment = await this.prisma.payment.findFirst({
-      where: { contractId, installmentNo },
-    });
-    if (!payment) throw new NotFoundException('ไม่พบงวดที่ต้องการ');
-    if (payment.status === 'PAID') throw new BadRequestException('งวดนี้ชำระแล้ว');
-
-    const amountDue = Number(payment.amountDue) + Number(payment.lateFee);
-    const prevPaid = Number(payment.amountPaid);
-    const remaining = amountDue - prevPaid;
-
-    // Prevent overpayment: cap amount at what is owed for this installment
-    if (amount > remaining) {
-      throw new BadRequestException(
-        `จำนวนเงินเกินยอดค้างชำระ (ยอดค้าง ${remaining.toLocaleString()} บาท, ชำระ ${amount.toLocaleString()} บาท) กรุณาใช้ระบบจัดสรรอัตโนมัติสำหรับการชำระหลายงวด`,
-      );
-    }
-    const totalPaid = prevPaid + amount;
-
-    const isPaidInFull = totalPaid >= amountDue;
-
-    // Wrap payment update + contract completion check in a transaction
+    // Use serializable transaction to prevent concurrent duplicate payments
     const updated = await this.prisma.$transaction(async (tx) => {
+      const contract = await tx.contract.findUnique({ where: { id: contractId } });
+      if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
+      if (!['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status)) {
+        throw new BadRequestException('ไม่สามารถชำระเงินได้ สัญญาต้องอยู่ในสถานะ ACTIVE, OVERDUE หรือ DEFAULT');
+      }
+
+      const payment = await tx.payment.findFirst({
+        where: { contractId, installmentNo },
+      });
+      if (!payment) throw new NotFoundException('ไม่พบงวดที่ต้องการ');
+      if (payment.status === 'PAID') throw new BadRequestException('งวดนี้ชำระแล้ว');
+
+      const amountDue = Number(payment.amountDue) + Number(payment.lateFee);
+      const prevPaid = Number(payment.amountPaid);
+      const remaining = amountDue - prevPaid;
+
+      // Prevent overpayment: cap amount at what is owed for this installment
+      if (amount > remaining) {
+        throw new BadRequestException(
+          `จำนวนเงินเกินยอดค้างชำระ (ยอดค้าง ${remaining.toLocaleString()} บาท, ชำระ ${amount.toLocaleString()} บาท) กรุณาใช้ระบบจัดสรรอัตโนมัติสำหรับการชำระหลายงวด`,
+        );
+      }
+      const totalPaid = prevPaid + amount;
+
+      const isPaidInFull = totalPaid >= amountDue;
+
+      // Append transactionRef to notes for idempotency tracking
+      const updatedNotes = transactionRef
+        ? [notes, `ref:${transactionRef}`].filter(Boolean).join(' | ')
+        : (notes || payment.notes);
+
       const result = await tx.payment.update({
         where: { id: payment.id },
         data: {
@@ -67,7 +86,7 @@ export class PaymentsService {
           status: isPaidInFull ? 'PAID' : 'PARTIALLY_PAID',
           recordedById,
           evidenceUrl: evidenceUrl || payment.evidenceUrl,
-          notes: notes || payment.notes,
+          notes: updatedNotes,
         },
       });
 

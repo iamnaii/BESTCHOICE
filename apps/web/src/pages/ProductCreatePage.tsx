@@ -162,7 +162,7 @@ export default function ProductCreatePage() {
         } : {}),
         photos: photoPreviews.length > 0 ? photoPreviews : undefined,
         prices: prices
-          .filter((p) => p.label && p.amount)
+          .filter((p) => p.label && p.amount && !isNaN(parseFloat(p.amount)))
           .map((p) => ({
             label: p.label,
             amount: parseFloat(p.amount),

@@ -291,6 +291,30 @@ export class SalesService {
     return loadInstallmentConfig(this.prisma);
   }
 
+  async getTopSellingProducts(limit = 6) {
+    const results = await this.prisma.sale.groupBy({
+      by: ['productId'],
+      _count: { productId: true },
+      orderBy: { _count: { productId: 'desc' } },
+      take: limit,
+    });
+
+    if (results.length === 0) return [];
+
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: results.map(r => r.productId) } },
+      select: { id: true, name: true, brand: true, model: true },
+    });
+
+    const productMap = new Map(products.map(p => [p.id, p]));
+    return results
+      .map(r => {
+        const p = productMap.get(r.productId);
+        return p ? { ...p, count: r._count.productId } : null;
+      })
+      .filter(Boolean);
+  }
+
   async getDailySummary(date: string, branchId?: string) {
     const startOfDay = new Date(date);
     startOfDay.setHours(0, 0, 0, 0);

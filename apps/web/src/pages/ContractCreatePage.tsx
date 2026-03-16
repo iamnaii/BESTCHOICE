@@ -43,7 +43,7 @@ interface InterestConfig {
   maxInstallmentMonths: number;
 }
 
-const STEPS = ['เลือกสินค้า', 'เลือกลูกค้า', 'เลือกแผนผ่อน', 'แนบเอกสาร', 'ยืนยัน'];
+const STEPS = ['เลือกสินค้า', 'เลือกลูกค้า', 'เลือกแผนผ่อน', 'แนบเอกสาร + ยืนยัน'];
 
 const DOCUMENT_TYPES = [
   { value: 'ID_CARD_COPY', label: 'สำเนาบัตรประชาชน (หน้า)', required: true },
@@ -1382,51 +1382,23 @@ export default function ContractCreatePage() {
         </div>
       )}
 
-      {/* Step 5: Confirm */}
-      {step === 4 && (
-        <div className="max-w-xl">
-          <div className="rounded-lg border p-6 space-y-4">
-            <h3 className="text-lg font-semibold">ยืนยันสัญญาผ่อนชำระ</h3>
-
-            <div className="space-y-3">
-              <div className="bg-muted rounded-lg p-4">
-                <div className="flex items-center justify-between">
-                  <div className="text-xs text-muted-foreground">สินค้า</div>
-                  <button type="button" onClick={startEditProduct} className="text-xs text-primary hover:text-primary hover:underline">แก้ไข</button>
-                </div>
-                <div className="font-medium">{selectedProduct?.brand} {selectedProduct?.model}</div>
-                <div className="text-sm text-muted-foreground">{selectedProduct?.name}</div>
-              </div>
-
-              <div className="bg-muted rounded-lg p-4">
-                <div className="flex items-center justify-between">
-                  <div className="text-xs text-muted-foreground">ลูกค้า</div>
-                  <button type="button" onClick={startEditCustomer} className="text-xs text-primary hover:text-primary hover:underline">แก้ไข</button>
-                </div>
-                <div className="font-medium">{selectedCustomer?.name}</div>
-                <div className="text-sm text-muted-foreground">{selectedCustomer?.phone}</div>
-              </div>
-
-              <div className="bg-muted rounded-lg p-4 grid grid-cols-2 gap-3">
-                <div><div className="text-xs text-muted-foreground">ประเภท</div><div className="text-sm font-medium">ผ่อนกับร้าน</div></div>
-                <div><div className="text-xs text-muted-foreground">ราคาขาย</div><div className="text-sm font-medium">{sellingPrice.toLocaleString()} ฿</div></div>
-                <div><div className="text-xs text-muted-foreground">เงินดาวน์</div><div className="text-sm font-medium">{downPayment.toLocaleString()} ฿</div></div>
-                <div><div className="text-xs text-muted-foreground">จำนวนงวด</div><div className="text-sm font-medium">{totalMonths} เดือน</div></div>
-                <div><div className="text-xs text-muted-foreground">ดอกเบี้ย</div><div className="text-sm font-medium">{(interestRate * 100).toFixed(1)}%{interestConfig ? ` (${interestConfig.name})` : ''}</div></div>
-                <div><div className="text-xs text-muted-foreground">ค่างวด/เดือน</div><div className="text-lg font-bold text-primary">{monthlyPayment.toLocaleString()} ฿</div></div>
-                <div><div className="text-xs text-muted-foreground">วันชำระ</div><div className="text-sm font-medium">{paymentDueDay === 31 ? 'สิ้นเดือน' : `ทุกวันที่ ${paymentDueDay}`}</div></div>
-                <div><div className="text-xs text-muted-foreground">เอกสารแนบ</div><div className="text-sm font-medium">{pendingDocs.length} ไฟล์</div></div>
-              </div>
-
-              {notes && (
-                <div className="bg-muted rounded-lg p-4">
-                  <div className="text-xs text-muted-foreground">หมายเหตุ</div>
-                  <div className="text-sm">{notes}</div>
-                </div>
-              )}
+      {/* Summary panel (embedded in Step 4 Documents) */}
+      {step === 3 && selectedProduct && selectedCustomer && (
+        <details className="mt-4">
+          <summary className="cursor-pointer text-sm font-semibold text-foreground hover:text-primary">สรุปสัญญาก่อนยืนยัน</summary>
+          <div className="mt-3 rounded-lg border p-4 space-y-3">
+            <div className="bg-muted rounded-lg p-3 grid grid-cols-2 gap-2 text-sm">
+              <div><span className="text-xs text-muted-foreground">สินค้า</span><div className="font-medium">{selectedProduct.brand} {selectedProduct.model}</div></div>
+              <div><span className="text-xs text-muted-foreground">ลูกค้า</span><div className="font-medium">{selectedCustomer.name}</div></div>
+              <div><span className="text-xs text-muted-foreground">ราคาขาย</span><div className="font-medium">{sellingPrice.toLocaleString()} ฿</div></div>
+              <div><span className="text-xs text-muted-foreground">เงินดาวน์</span><div className="font-medium">{downPayment.toLocaleString()} ฿</div></div>
+              <div><span className="text-xs text-muted-foreground">จำนวนงวด</span><div className="font-medium">{totalMonths} เดือน</div></div>
+              <div><span className="text-xs text-muted-foreground">ค่างวด/เดือน</span><div className="font-bold text-primary">{monthlyPayment.toLocaleString()} ฿</div></div>
+              <div><span className="text-xs text-muted-foreground">ดอกเบี้ย</span><div className="font-medium">{(interestRate * 100).toFixed(1)}%{interestConfig ? ` (${interestConfig.name})` : ''}</div></div>
+              <div><span className="text-xs text-muted-foreground">เอกสารแนบ</span><div className="font-medium">{pendingDocs.length} ไฟล์</div></div>
             </div>
           </div>
-        </div>
+        </details>
       )}
 
       {/* Navigation buttons */}
@@ -1437,7 +1409,7 @@ export default function ContractCreatePage() {
         >
           ย้อนกลับ
         </button>
-        {step < 4 ? (
+        {step < 3 ? (
           <button
             onClick={() => canNext() && goToStep(step + 1)}
             disabled={!canNext()}

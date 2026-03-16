@@ -1,10 +1,11 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, InternalServerErrorException } from '@nestjs/common';
 import { PaymentMethod, PlanType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateContractDto, UpdateContractDto } from './dto/contract.dto';
 import { calculateInstallment, generatePaymentSchedule } from '../../utils/installment.util';
 import { loadInstallmentConfig, resolveInstallmentParams, BUSINESS_RULES } from '../../utils/config.util';
-import { generateContractNumber } from '../../utils/sequence.util';
+import { generateContractNumber, generateSaleNumber } from '../../utils/sequence.util';
 import {
   validateIMEI,
   validateThaiPhone,
@@ -19,7 +20,10 @@ import * as crypto from 'crypto';
 @Injectable()
 export class ContractsService {
   private readonly logger = new Logger(ContractsService.name);
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notificationsService: NotificationsService,
+  ) {}
 
   async findAll(filters: {
     status?: string;
@@ -700,9 +704,75 @@ export class ContractsService {
       // Step 8: สถานะเปลี่ยนเป็น ACTIVE → เริ่มนับงวด
       await tx.contract.update({ where: { id }, data: { status: 'ACTIVE' } });
       await tx.product.update({ where: { id: contract.productId }, data: { status: 'SOLD_INSTALLMENT' } });
+
+      // Auto-create Sale record for this contract activation
+      const saleNumber = await generateSaleNumber(tx);
+      await tx.sale.create({
+        data: {
+          saleNumber,
+          saleType: 'INSTALLMENT',
+          customerId: contract.customerId,
+          productId: contract.productId,
+          branchId: contract.branchId,
+          salespersonId: contract.salespersonId,
+          sellingPrice: contract.sellingPrice,
+          discount: 0,
+          netAmount: contract.sellingPrice,
+          paymentMethod: 'CASH',
+          amountReceived: contract.downPayment,
+          downPaymentAmount: contract.downPayment,
+          contractId: contract.id,
+          bundleProductIds: [],
+          notes: `สร้างอัตโนมัติจากสัญญา ${contract.contractNumber}`,
+        },
+      });
     });
 
+    // Send LINE notification to customer (non-blocking)
+    this.sendContractActivatedNotification(contract).catch(err =>
+      this.logger.warn(`Failed to send contract activation notification: ${err?.message || err}`),
+    );
+
     return this.findOne(id);
+  }
+
+  private async sendContractActivatedNotification(contract: any) {
+    const customer = contract.customer;
+    if (!customer) return;
+
+    const firstPayment = await this.prisma.payment.findFirst({
+      where: { contractId: contract.id, installmentNo: 1 },
+      select: { dueDate: true },
+    });
+    const firstDueDate = firstPayment
+      ? new Date(firstPayment.dueDate).toLocaleDateString('th-TH')
+      : 'ตามสัญญา';
+
+    const message = [
+      `สัญญาผ่อนชำระ ${contract.contractNumber} อนุมัติแล้ว`,
+      `สินค้า: ${contract.product?.brand || ''} ${contract.product?.model || ''}`,
+      `ค่างวด: ${Number(contract.monthlyPayment).toLocaleString()} ฿/เดือน`,
+      `งวดแรก: ${firstDueDate}`,
+      `ขอบคุณที่ไว้วางใจ BESTCHOICE`,
+    ].join('\n');
+
+    const lineId = customer.lineId;
+    if (lineId) {
+      await this.notificationsService.send({
+        channel: 'LINE',
+        recipient: lineId,
+        message,
+        relatedId: contract.id,
+        fallbackPhone: customer.phone || undefined,
+      });
+    } else if (customer.phone) {
+      await this.notificationsService.send({
+        channel: 'SMS',
+        recipient: customer.phone,
+        message,
+        relatedId: contract.id,
+      });
+    }
   }
 
   // === SOFT DELETE: ลบสัญญา (เฉพาะ CREATING/REJECTED, ห้ามลบสัญญาที่ลงนามแล้ว) ===

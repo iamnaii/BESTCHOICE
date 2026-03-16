@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
@@ -38,6 +38,8 @@ export default function OverduePage() {
     },
   });
 
+  const hasAutoCalcRun = useRef(false);
+
   const runCronMutation = useMutation({
     mutationFn: async () => {
       const { data } = await api.post('/cron/run-daily');
@@ -49,6 +51,19 @@ export default function OverduePage() {
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
+
+  // Auto-calculate late fees on page load (once per mount)
+  useEffect(() => {
+    if (!hasAutoCalcRun.current) {
+      hasAutoCalcRun.current = true;
+      api.post('/cron/run-daily').then(() => {
+        queryClient.invalidateQueries({ queryKey: ['overdue-payments'] });
+        toast.success('อัพเดตค่าปรับแล้ว');
+      }).catch(() => {
+        // Silent fail - manual button still available
+      });
+    }
+  }, [queryClient]);
 
   // Calculate summary stats (memoized to avoid recomputing on every render)
   const { totalLateFees, totalOutstanding, uniqueContracts } = useMemo(() => ({

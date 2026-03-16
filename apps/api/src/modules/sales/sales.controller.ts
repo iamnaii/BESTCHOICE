@@ -32,6 +32,11 @@ export class SalesController {
     return this.salesService.getPosConfig();
   }
 
+  @Get('top-products')
+  getTopProducts() {
+    return this.salesService.getTopSellingProducts();
+  }
+
   @Get('daily-summary')
   getDailySummary(
     @Query('date') date?: string,

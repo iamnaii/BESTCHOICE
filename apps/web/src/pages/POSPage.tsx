@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -7,6 +8,17 @@ import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
 import { saleTypeConfig, paymentMethods, type SaleType } from '@/lib/constants';
+
+// Only show CASH and EXTERNAL_FINANCE in POS (INSTALLMENT requires formal contract via /contracts/create)
+const posSaleTypes = Object.entries(saleTypeConfig).filter(([type]) => type !== 'INSTALLMENT') as [SaleType, typeof saleTypeConfig[SaleType]][];
+
+interface TopProduct {
+  id: string;
+  name: string;
+  brand: string;
+  model: string;
+  count: number;
+}
 
 interface Product {
   id: string;
@@ -39,6 +51,7 @@ interface PosConfig {
 export default function POSPage() {
   useAuth(); // ensure user is authenticated
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   // Sale type
   const [saleType, setSaleType] = useState<SaleType>('CASH');
@@ -129,6 +142,16 @@ export default function POSPage() {
       return data;
     },
     staleTime: 5 * 60 * 1000, // cache 5 minutes
+  });
+
+  // Top selling products for quick picks
+  const { data: topProducts = [] } = useQuery<TopProduct[]>({
+    queryKey: ['top-products'],
+    queryFn: async () => {
+      const { data } = await api.get('/sales/top-products');
+      return data;
+    },
+    staleTime: 10 * 60 * 1000,
   });
 
   // Calculations
@@ -282,8 +305,8 @@ export default function POSPage() {
               <div className="text-sm font-semibold text-foreground">ประเภทการขาย</div>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-3 gap-3">
-                {(Object.entries(saleTypeConfig) as [SaleType, typeof saleTypeConfig[SaleType]][]).map(([type, config]) => (
+              <div className="grid grid-cols-2 gap-3">
+                {posSaleTypes.map(([type, config]) => (
                   <button
                     key={type}
                     onClick={() => setSaleType(type)}
@@ -299,8 +322,38 @@ export default function POSPage() {
                   </button>
                 ))}
               </div>
+              <div className="mt-3 text-center">
+                <button onClick={() => navigate('/contracts/create')} className="text-xs text-primary hover:underline">
+                  ต้องการผ่อนกับ BESTCHOICE? → ไปสร้างสัญญาผ่อนชำระ
+                </button>
+              </div>
             </CardContent>
           </Card>
+
+          {/* Quick Picks - Top Selling Products */}
+          {!selectedProduct && topProducts.length > 0 && (
+            <Card>
+              <CardHeader>
+                <div className="text-sm font-semibold text-foreground">สินค้าขายดี</div>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                  {topProducts.slice(0, 6).map((tp) => (
+                    <button
+                      key={tp.id}
+                      onClick={() => {
+                        setProductSearch(tp.brand + ' ' + tp.model);
+                      }}
+                      className="p-2 rounded-lg border border-border hover:border-primary hover:bg-primary/5 text-left transition-all"
+                    >
+                      <div className="text-xs font-medium truncate">{tp.brand} {tp.model}</div>
+                      <div className="text-[10px] text-muted-foreground">ขายแล้ว {tp.count} เครื่อง</div>
+                    </button>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Product Selection */}
           <Card>
@@ -553,6 +606,15 @@ export default function POSPage() {
               <div>
                 <label className="block text-xs text-muted-foreground mb-1">ส่วนลด</label>
                 <input type="number" value={discount} onChange={(e) => setDiscount(e.target.value)} className={inputClass} placeholder="0" />
+                {parseFloat(sellingPrice) > 0 && (
+                  <div className="flex gap-1 mt-1">
+                    {[0, 5, 10].map(pct => (
+                      <button key={pct} type="button" onClick={() => setDiscount(pct === 0 ? '' : String(Math.round(parseFloat(sellingPrice) * pct / 100)))} className={`px-2 py-0.5 text-[10px] rounded border ${parseFloat(discount) === Math.round(parseFloat(sellingPrice) * pct / 100) && pct > 0 ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-input'}`}>
+                        {pct}%
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -569,45 +631,6 @@ export default function POSPage() {
                   <label className="block text-xs text-muted-foreground mb-1">เงินที่รับ</label>
                   <input type="number" value={amountReceived} onChange={(e) => setAmountReceived(e.target.value)} className={inputClass} placeholder={String(netAmount)} />
                 </div>
-              </div>
-            )}
-
-            {saleType === 'INSTALLMENT' && (
-              <div className="space-y-3 mt-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs text-muted-foreground mb-1">เลขที่สัญญา</label>
-                    <input type="text" value={contractNumber} onChange={(e) => setContractNumber(e.target.value)} className={inputClass} placeholder="ระบบจะสร้างให้อัตโนมัติ" />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-muted-foreground mb-1">จำนวนงวด</label>
-                    <select value={totalMonths} onChange={(e) => setTotalMonths(e.target.value)} className={selectClass}>
-                      {Array.from(
-                        { length: (posConfig?.maxInstallmentMonths ?? 12) - (posConfig?.minInstallmentMonths ?? 6) + 1 },
-                        (_, i) => (posConfig?.minInstallmentMonths ?? 6) + i,
-                      ).map(m => <option key={m} value={m}>{m} เดือน</option>)}
-                    </select>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs text-muted-foreground mb-1">เงินดาวน์</label>
-                    <input type="number" value={downPayment} onChange={(e) => setDownPayment(e.target.value)} className={inputClass} placeholder="0" />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-muted-foreground mb-1">รับเงินดาวน์โดย</label>
-                    <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className={selectClass}>
-                      {paymentMethods.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                    </select>
-                  </div>
-                </div>
-                {/* Transfer amount highlight */}
-                {transferAmount > 0 && (
-                  <div className="bg-primary/10 border border-primary/20 rounded-lg p-3">
-                    <div className="text-xs text-primary">ยอดที่ BESTCHOICE รับผิดชอบ (หลังหักดาวน์)</div>
-                    <div className="text-lg font-bold text-primary">{transferAmount.toLocaleString()} ฿</div>
-                  </div>
-                )}
               </div>
             )}
 
@@ -715,25 +738,6 @@ export default function POSPage() {
                 <span className="text-primary">{netAmount.toLocaleString()} ฿</span>
               </div>
             </div>
-
-            {/* Installment summary */}
-            {saleType === 'INSTALLMENT' && (
-              <div className="border-t mt-3 pt-3 space-y-2">
-                <div className="text-xs font-semibold text-muted-foreground mb-1">สรุปผ่อนชำระ</div>
-                {contractNumber && <div className="text-xs text-muted-foreground">เลขที่สัญญา: <span className="text-foreground font-mono">{contractNumber}</span></div>}
-                {totalMonths && <div className="text-xs text-muted-foreground">จำนวนงวด: <span className="text-foreground font-medium">{totalMonths} เดือน</span></div>}
-                {parseFloat(downPayment) > 0 && (
-                  <div className="flex justify-between text-xs">
-                    <span className="text-muted-foreground">เงินดาวน์</span>
-                    <span>{parseFloat(downPayment).toLocaleString()} ฿</span>
-                  </div>
-                )}
-                <div className="flex justify-between text-sm font-bold text-primary">
-                  <span>ยอดที่ BESTCHOICE รับ</span>
-                  <span>{transferAmount.toLocaleString()} ฿</span>
-                </div>
-              </div>
-            )}
 
             {/* Cash change */}
             {saleType === 'CASH' && parseFloat(amountReceived) > 0 && (

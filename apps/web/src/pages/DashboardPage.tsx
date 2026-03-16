@@ -300,15 +300,21 @@ export default function DashboardPage() {
 
       {/* ═══ Two-Column: Shortcuts + Monthly Revenue ═══ */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-7">
-        {/* Quick Action Shortcuts */}
+        {/* Quick Action Shortcuts — role-based */}
         <div className="lg:col-span-5">
           <div className="grid grid-cols-2 gap-4">
             <ShortcutCard icon={ShoppingCart} label="POS ขายสินค้า" path="/pos" color="bg-blue-500" />
             <ShortcutCard icon={FileCheck} label="สัญญาผ่อน" path="/contracts" color="bg-indigo-500" />
-            <ShortcutCard icon={DollarSign} label="ชำระเงิน" path="/payments" color="bg-green-500" />
+            {(user?.role !== 'SALES') && (
+              <ShortcutCard icon={DollarSign} label="ชำระเงิน" path="/payments" color="bg-green-500" />
+            )}
             <ShortcutCard icon={Users} label="ลูกค้า" path="/customers" color="bg-purple-500" />
-            <ShortcutCard icon={Warehouse} label="คลังสินค้า" path="/stock" color="bg-orange-500" />
-            <ShortcutCard icon={BarChart3} label="รายงาน" path="/reports" color="bg-cyan-500" />
+            {(user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER') && (
+              <ShortcutCard icon={Warehouse} label="คลังสินค้า" path="/stock" color="bg-orange-500" />
+            )}
+            {(user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER' || user?.role === 'ACCOUNTANT') && (
+              <ShortcutCard icon={BarChart3} label="รายงาน" path="/reports" color="bg-cyan-500" />
+            )}
           </div>
         </div>
 
@@ -424,8 +430,8 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ═══ Aging Buckets (full-width) ═══ */}
-      <Card>
+      {/* ═══ Aging Buckets (full-width) — hide for SALES ═══ */}
+      {user?.role !== 'SALES' && <Card>
         <CardHeader>
           <CardTitle>อายุหนี้ค้างชำระ (Aging)</CardTitle>
           <CardToolbar>
@@ -464,10 +470,10 @@ export default function DashboardPage() {
             <div className="text-center text-muted-foreground py-8 text-sm">กำลังโหลด...</div>
           )}
         </CardContent>
-      </Card>
+      </Card>}
 
-      {/* ═══ Staff Performance (Tabs) ═══ */}
-      <Card>
+      {/* ═══ Staff Performance (Tabs) — hide for SALES ═══ */}
+      {user?.role !== 'SALES' && <Card>
         <CardHeader>
           <CardTitle>กำกับพนักงาน</CardTitle>
           <CardToolbar>
@@ -584,7 +590,7 @@ export default function DashboardPage() {
             <div className="text-center text-muted-foreground py-8 text-sm">กำลังโหลด...</div>
           )}
         </CardContent>
-      </Card>
+      </Card>}
 
       {/* ═══ Two-Column: Trend + Status Distribution ═══ */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-7">

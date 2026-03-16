@@ -77,6 +77,17 @@ export default function PaymentsPage() {
   const [selectedPayment, setSelectedPayment] = useState<PendingPayment | null>(null);
   const [payForm, setPayForm] = useState({ amount: 0, paymentMethod: 'CASH', notes: '' });
 
+  // Batch selection state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showBatchModal, setShowBatchModal] = useState(false);
+  const [batchPayMethod, setBatchPayMethod] = useState('CASH');
+
+  // Advance payment state
+  const [showAdvanceModal, setShowAdvanceModal] = useState(false);
+  const [advanceContract, setAdvanceContract] = useState<PendingPayment | null>(null);
+  const [advanceAmount, setAdvanceAmount] = useState('');
+  const [advanceMethod, setAdvanceMethod] = useState('CASH');
+
   // OCR slip state
   const slipFileRef = useRef<HTMLInputElement>(null);
   const [ocrSlipLoading, setOcrSlipLoading] = useState(false);
@@ -119,6 +130,77 @@ export default function PaymentsPage() {
     },
     onError: (err: any) => toast.error(getErrorMessage(err)),
   });
+
+  // Batch payment mutation
+  const batchMutation = useMutation({
+    mutationFn: async (payments: { contractId: string; installmentNo: number; amount: number; paymentMethod: string }[]) => {
+      const results = [];
+      for (const p of payments) {
+        const { data } = await api.post('/payments/record', { ...p, notes: 'ชำระแบบรวม (batch)' });
+        results.push(data);
+      }
+      return results;
+    },
+    onSuccess: (data) => {
+      toast.success(`รับชำระสำเร็จ ${data.length} รายการ`);
+      queryClient.invalidateQueries({ queryKey: ['pending-payments'] });
+      queryClient.invalidateQueries({ queryKey: ['daily-summary'] });
+      setSelectedIds(new Set());
+      setShowBatchModal(false);
+    },
+    onError: (err: any) => toast.error(getErrorMessage(err)),
+  });
+
+  // Advance payment mutation (auto-allocate)
+  const advanceMutation = useMutation({
+    mutationFn: async (body: { contractId: string; amount: number; paymentMethod: string }) => {
+      const { data } = await api.post('/payments/auto-allocate', body);
+      return data;
+    },
+    onSuccess: (data) => {
+      toast.success(`จ่ายล่วงหน้าสำเร็จ — จัดสรรให้ ${data.allocations?.length || 0} งวด`);
+      queryClient.invalidateQueries({ queryKey: ['pending-payments'] });
+      setShowAdvanceModal(false);
+      setAdvanceContract(null);
+      setAdvanceAmount('');
+    },
+    onError: (err: any) => toast.error(getErrorMessage(err)),
+  });
+
+  // Batch helpers
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleAll = useCallback(() => {
+    if (selectedIds.size === pendingPayments.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(pendingPayments.map(p => p.id)));
+    }
+  }, [pendingPayments, selectedIds.size]);
+
+  const batchSelectedPayments = useMemo(() =>
+    pendingPayments.filter(p => selectedIds.has(p.id)),
+  [pendingPayments, selectedIds]);
+
+  const batchTotal = useMemo(() =>
+    batchSelectedPayments.reduce((sum, p) => sum + parseFloat(p.amountDue) + parseFloat(p.lateFee) - parseFloat(p.amountPaid), 0),
+  [batchSelectedPayments]);
+
+  const handleBatchPay = () => {
+    const items = batchSelectedPayments.map(p => ({
+      contractId: p.contract.id,
+      installmentNo: p.installmentNo,
+      amount: Math.round((parseFloat(p.amountDue) + parseFloat(p.lateFee) - parseFloat(p.amountPaid)) * 100) / 100,
+      paymentMethod: batchPayMethod,
+    }));
+    batchMutation.mutate(items);
+  };
 
   const openPayModal = useCallback((payment: PendingPayment) => {
     setSelectedPayment(payment);
@@ -207,6 +289,13 @@ export default function PaymentsPage() {
 
   const pendingColumns = useMemo(() => [
     {
+      key: 'select',
+      label: '',
+      render: (p: PendingPayment) => (
+        <input type="checkbox" checked={selectedIds.has(p.id)} onChange={() => toggleSelect(p.id)} className="rounded border-input" />
+      ),
+    },
+    {
       key: 'contract',
       label: 'สัญญา',
       render: (p: PendingPayment) => (
@@ -246,12 +335,17 @@ export default function PaymentsPage() {
       key: 'actions',
       label: '',
       render: (p: PendingPayment) => (
-        <button onClick={() => openPayModal(p)} className="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700">
-          รับชำระ
-        </button>
+        <div className="flex gap-1">
+          <button onClick={() => openPayModal(p)} className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700">
+            รับชำระ
+          </button>
+          <button onClick={() => { setAdvanceContract(p); setAdvanceAmount(''); setAdvanceMethod('CASH'); setShowAdvanceModal(true); }} className="px-2 py-1 text-xs border border-primary text-primary rounded hover:bg-primary/10">
+            ล่วงหน้า
+          </button>
+        </div>
       ),
     },
-  ], [openPayModal]);
+  ], [openPayModal, selectedIds, pendingPayments.length, toggleAll, toggleSelect]);
 
   return (
     <div>
@@ -283,6 +377,17 @@ export default function PaymentsPage() {
             <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>
           ) : (
             <DataTable columns={pendingColumns} data={pendingPayments} emptyMessage="ไม่มีรายการรอชำระ" />
+          )}
+
+          {/* Batch action bar */}
+          {selectedIds.size > 0 && (
+            <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground px-6 py-3 rounded-xl shadow-lg flex items-center gap-4 z-50">
+              <span className="text-sm font-medium">เลือก {selectedIds.size} รายการ ({Math.round(batchTotal).toLocaleString()} ฿)</span>
+              <button onClick={() => setShowBatchModal(true)} className="px-4 py-1.5 bg-white text-primary rounded-lg text-sm font-medium hover:bg-white/90">
+                รับชำระรวม
+              </button>
+              <button onClick={() => setSelectedIds(new Set())} className="text-xs text-white/70 hover:text-white">ยกเลิก</button>
+            </div>
           )}
         </div>
       )}
@@ -470,6 +575,78 @@ export default function PaymentsPage() {
               <button onClick={() => { setShowPayModal(false); setSelectedPayment(null); setSlipResult(null); setPayForm({ amount: 0, paymentMethod: 'CASH', notes: '' }); }} className="flex-1 px-4 py-2 text-sm border border-input rounded-lg">ยกเลิก</button>
               <button onClick={handlePay} disabled={recordMutation.isPending || payForm.amount <= 0} className="flex-1 px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50">
                 {recordMutation.isPending ? 'กำลังบันทึก...' : 'ยืนยันรับชำระ'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Batch Payment Modal */}
+      {showBatchModal && (
+        <Modal isOpen title={`รับชำระรวม ${batchSelectedPayments.length} รายการ`} onClose={() => setShowBatchModal(false)}>
+          <div className="flex flex-col gap-4">
+            <div className="bg-muted rounded-lg p-4 space-y-2 max-h-48 overflow-y-auto">
+              {batchSelectedPayments.map(p => {
+                const remaining = parseFloat(p.amountDue) + parseFloat(p.lateFee) - parseFloat(p.amountPaid);
+                return (
+                  <div key={p.id} className="flex justify-between text-sm">
+                    <span>{p.contract.contractNumber} งวด {p.installmentNo}</span>
+                    <span className="font-medium">{remaining.toLocaleString()} ฿</span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex justify-between text-base font-bold border-t pt-3">
+              <span>ยอดรวม</span>
+              <span className="text-primary">{Math.round(batchTotal).toLocaleString()} ฿</span>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">วิธีชำระ</label>
+              <select value={batchPayMethod} onChange={(e) => setBatchPayMethod(e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm">
+                <option value="CASH">เงินสด</option>
+                <option value="BANK_TRANSFER">โอนเงิน</option>
+                <option value="QR_EWALLET">QR/E-Wallet</option>
+              </select>
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button onClick={() => setShowBatchModal(false)} className="flex-1 px-4 py-2 text-sm border border-input rounded-lg">ยกเลิก</button>
+              <button onClick={handleBatchPay} disabled={batchMutation.isPending} className="flex-1 px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50">
+                {batchMutation.isPending ? 'กำลังชำระ...' : `ยืนยันชำระ ${batchSelectedPayments.length} รายการ`}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Advance Payment Modal */}
+      {showAdvanceModal && advanceContract && (
+        <Modal isOpen title="จ่ายล่วงหน้าหลายงวด" onClose={() => { setShowAdvanceModal(false); setAdvanceContract(null); }}>
+          <div className="flex flex-col gap-4">
+            <div className="bg-muted rounded-lg p-4">
+              <div className="text-sm"><span className="text-muted-foreground">สัญญา: </span><span className="font-mono font-medium">{advanceContract.contract.contractNumber}</span></div>
+              <div className="text-sm"><span className="text-muted-foreground">ลูกค้า: </span>{advanceContract.contract.customer.name}</div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">จำนวนเงินรวมที่ต้องการจ่าย</label>
+              <input type="number" value={advanceAmount} onChange={(e) => setAdvanceAmount(e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm" placeholder="ใส่ยอดรวม ระบบจะจัดสรรให้หลายงวดอัตโนมัติ" />
+              <p className="text-xs text-muted-foreground mt-1">ระบบจะจัดสรรเงินให้งวดที่ค้างตามลำดับอัตโนมัติ</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">วิธีชำระ</label>
+              <select value={advanceMethod} onChange={(e) => setAdvanceMethod(e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm">
+                <option value="CASH">เงินสด</option>
+                <option value="BANK_TRANSFER">โอนเงิน</option>
+                <option value="QR_EWALLET">QR/E-Wallet</option>
+              </select>
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button onClick={() => { setShowAdvanceModal(false); setAdvanceContract(null); }} className="flex-1 px-4 py-2 text-sm border border-input rounded-lg">ยกเลิก</button>
+              <button
+                onClick={() => advanceMutation.mutate({ contractId: advanceContract.contract.id, amount: parseFloat(advanceAmount) || 0, paymentMethod: advanceMethod })}
+                disabled={advanceMutation.isPending || !advanceAmount || parseFloat(advanceAmount) <= 0}
+                className="flex-1 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
+              >
+                {advanceMutation.isPending ? 'กำลังจัดสรร...' : 'ยืนยันจ่ายล่วงหน้า'}
               </button>
             </div>
           </div>

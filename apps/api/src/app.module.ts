@@ -66,7 +66,7 @@ import { CsrfGuard } from './guards/csrf.guard';
       {
         name: 'short',
         ttl: 1000,
-        limit: 30, // Allow 30 req/sec (dashboard fires many parallel queries)
+        limit: 50, // Allow 50 req/sec per IP (was 30 — increased for concurrent user support)
       },
     ]),
     PrismaModule,

@@ -15,7 +15,10 @@ export class SecurityMiddleware implements NestMiddleware {
   ];
 
   // Paths that carry HTML/base64 content and would false-positive on XSS patterns
+  // Also skip auth endpoints — login/refresh payloads are simple email+password, no need for regex scanning
   private static readonly skipScanPaths = [
+    '/auth/login',
+    '/auth/refresh',
     '/ocr/',
     '/product-photos',
     '/documents',

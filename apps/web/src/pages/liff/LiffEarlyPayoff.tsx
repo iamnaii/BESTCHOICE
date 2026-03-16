@@ -48,10 +48,16 @@ export default function LiffEarlyPayoff() {
         setLineId(profile.userId);
         await fetchQuote(profile.userId);
       } else {
-        const qLineId = params.get('lineId') || '';
-        if (qLineId && contractId) {
-          setLineId(qLineId);
-          await fetchQuote(qLineId);
+        // Dev-only fallback: accept lineId from URL only in development
+        if (import.meta.env.DEV) {
+          const qLineId = params.get('lineId') || '';
+          if (qLineId && contractId) {
+            setLineId(qLineId);
+            await fetchQuote(qLineId);
+          } else {
+            setErrorMessage('ไม่สามารถระบุตัวตนได้ กรุณาเปิดผ่าน LINE');
+            setView('error');
+          }
         } else {
           setErrorMessage('ไม่สามารถระบุตัวตนได้ กรุณาเปิดผ่าน LINE');
           setView('error');
@@ -59,12 +65,18 @@ export default function LiffEarlyPayoff() {
       }
     } catch (err) {
       console.error('LIFF init error:', err);
-      const qLineId = params.get('lineId') || '';
-      if (qLineId && contractId) {
-        setLineId(qLineId);
-        await fetchQuote(qLineId);
+      // Dev-only fallback: accept lineId from URL only in development
+      if (import.meta.env.DEV) {
+        const qLineId = params.get('lineId') || '';
+        if (qLineId && contractId) {
+          setLineId(qLineId);
+          await fetchQuote(qLineId);
+        } else {
+          setErrorMessage('ไม่สามารถเชื่อมต่อ LINE ได้');
+          setView('error');
+        }
       } else {
-        setErrorMessage('ไม่สามารถเชื่อมต่อ LINE ได้');
+        setErrorMessage('ไม่สามารถเชื่อมต่อ LINE ได้ กรุณาลองใหม่');
         setView('error');
       }
     }

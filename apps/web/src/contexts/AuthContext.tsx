@@ -63,8 +63,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [logout]);
 
   useEffect(() => {
-    fetchMe();
-  }, [fetchMe]);
+    let cancelled = false;
+    fetchMe().finally(() => {
+      if (cancelled) return;
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const login = useCallback(async (email: string, password: string) => {
     const doLogin = () => api.post('/auth/login', { email, password }, { timeout: 30000 });
@@ -73,8 +78,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       res = await doLogin();
     } catch (err: unknown) {
       const axErr = err as { code?: string };
-      // Auto-retry once on timeout (server cold start)
-      if (axErr.code === 'ECONNABORTED') {
+      // Auto-retry once on timeout or network error (server cold start)
+      if (axErr.code === 'ECONNABORTED' || axErr.code === 'ECONNREFUSED' || axErr.code === 'ERR_NETWORK') {
         res = await doLogin();
       } else {
         throw err;

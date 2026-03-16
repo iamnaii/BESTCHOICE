@@ -53,22 +53,32 @@ export default function LiffHistory() {
         setLineId(profile.userId);
         await fetchHistory(profile.userId);
       } else {
-        const params = new URLSearchParams(window.location.search);
-        const qLineId = params.get('lineId');
-        if (qLineId) {
-          setLineId(qLineId);
-          await fetchHistory(qLineId);
+        // Dev-only fallback: accept lineId from URL only in development
+        if (import.meta.env.DEV) {
+          const params = new URLSearchParams(window.location.search);
+          const qLineId = params.get('lineId');
+          if (qLineId) {
+            setLineId(qLineId);
+            await fetchHistory(qLineId);
+          } else {
+            setError('ไม่สามารถระบุตัวตนได้ กรุณาเปิดผ่าน LINE');
+          }
         } else {
           setError('ไม่สามารถระบุตัวตนได้ กรุณาเปิดผ่าน LINE');
         }
       }
     } catch (err) {
       console.error('LIFF init error:', err);
-      const params = new URLSearchParams(window.location.search);
-      const qLineId = params.get('lineId');
-      if (qLineId) {
-        setLineId(qLineId);
-        await fetchHistory(qLineId);
+      // Dev-only fallback: accept lineId from URL only in development
+      if (import.meta.env.DEV) {
+        const params = new URLSearchParams(window.location.search);
+        const qLineId = params.get('lineId');
+        if (qLineId) {
+          setLineId(qLineId);
+          await fetchHistory(qLineId);
+        } else {
+          setError('ไม่สามารถเชื่อมต่อ LINE ได้ กรุณาลองใหม่');
+        }
       } else {
         setError('ไม่สามารถเชื่อมต่อ LINE ได้ กรุณาลองใหม่');
       }

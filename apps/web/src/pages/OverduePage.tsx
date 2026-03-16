@@ -52,8 +52,8 @@ export default function OverduePage() {
 
   // Calculate summary stats (memoized to avoid recomputing on every render)
   const { totalLateFees, totalOutstanding, uniqueContracts } = useMemo(() => ({
-    totalLateFees: overduePayments.reduce((sum, p) => sum + parseFloat(p.lateFee), 0),
-    totalOutstanding: overduePayments.reduce((sum, p) => sum + (parseFloat(p.amountDue) - parseFloat(p.amountPaid)), 0),
+    totalLateFees: overduePayments.reduce((sum, p) => { const v = parseFloat(p.lateFee); return sum + (isNaN(v) ? 0 : v); }, 0),
+    totalOutstanding: overduePayments.reduce((sum, p) => { const due = parseFloat(p.amountDue); const paid = parseFloat(p.amountPaid); return sum + ((isNaN(due) ? 0 : due) - (isNaN(paid) ? 0 : paid)); }, 0),
     uniqueContracts: new Set(overduePayments.map((p) => p.contract.id)).size,
   }), [overduePayments]);
 
@@ -119,7 +119,7 @@ export default function OverduePage() {
       key: 'total',
       label: 'ยอดรวม',
       render: (p: OverduePayment) => {
-        const total = parseFloat(p.amountDue) + parseFloat(p.lateFee) - parseFloat(p.amountPaid);
+        const total = (parseFloat(p.amountDue) || 0) + (parseFloat(p.lateFee) || 0) - (parseFloat(p.amountPaid) || 0);
         return <span className="text-sm font-bold text-red-700">{total.toLocaleString()} ฿</span>;
       },
     },

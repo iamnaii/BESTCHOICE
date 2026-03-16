@@ -98,8 +98,8 @@ function CustomerPortalPage() {
   }
 
   const c = data.contract;
-  const totalPaid = data.payments.reduce((sum, p) => sum + Number(p.amountPaid), 0);
-  const totalDue = data.payments.reduce((sum, p) => sum + Number(p.amountDue) + Number(p.lateFee), 0);
+  const totalPaid = data.payments.reduce((sum, p) => sum + (Number(p.amountPaid) || 0), 0);
+  const totalDue = data.payments.reduce((sum, p) => sum + (Number(p.amountDue) || 0) + (Number(p.lateFee) || 0), 0);
   const paidCount = data.payments.filter((p) => p.status === 'PAID').length;
 
   return (

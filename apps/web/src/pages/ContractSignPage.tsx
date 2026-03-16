@@ -274,7 +274,7 @@ export default function ContractSignPage() {
       signerName: lessorSignerName,
       screenSize: getScreenSize(),
     });
-  }, [lessorSignatureImage, lessorSignerName, contract?.status, contract?.pdpaConsentId, signatures.length, autoSignedCompany]);
+  }, [lessorSignatureImage, lessorSignerName, contract?.status, contract?.pdpaConsentId, signatures.length, autoSignedCompany, hasPdpaConsent]);
 
   // Canvas setup
   useEffect(() => {

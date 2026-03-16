@@ -19,6 +19,14 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Dedicated axios instance for token refresh (avoids interceptor loop)
+const refreshApi = axios.create({
+  baseURL: import.meta.env.VITE_API_URL || '/api',
+  timeout: 10000,
+  withCredentials: true,
+  headers: { 'X-Requested-With': 'XMLHttpRequest' },
+});
+
 // Flag to prevent multiple simultaneous refresh attempts
 let isRefreshing = false;
 let failedQueue: { resolve: (token: string) => void; reject: (err: unknown) => void }[] = [];
@@ -69,11 +77,7 @@ api.interceptors.response.use(
 
       try {
         // Refresh token is sent via httpOnly cookie automatically
-        const { data } = await axios.post(
-          `${api.defaults.baseURL}/auth/refresh`,
-          {},
-          { timeout: 10000, withCredentials: true, headers: { 'X-Requested-With': 'XMLHttpRequest' } },
-        );
+        const { data } = await refreshApi.post('/auth/refresh', {});
 
         const newAccessToken = data.accessToken;
         localStorage.setItem('access_token', newAccessToken);

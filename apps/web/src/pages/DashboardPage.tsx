@@ -164,7 +164,11 @@ function timeAgo(dateStr: string): string {
   const hours = Math.floor(mins / 60);
   if (hours < 24) return `${hours} ชม.ที่แล้ว`;
   const days = Math.floor(hours / 24);
-  return `${days} วันที่แล้ว`;
+  if (days < 30) return `${days} วันที่แล้ว`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months} เดือนที่แล้ว`;
+  const years = Math.floor(months / 12);
+  return `${years} ปีที่แล้ว`;
 }
 
 /* ═══════════════════════════════════════════════════════════════ */
@@ -228,7 +232,10 @@ export default function DashboardPage() {
 
   /* ─── Computed ─── */
   const totalStatusCount = useMemo(() => statusDist.reduce((sum, s) => sum + s.count, 0), [statusDist]);
-  const trendMax = useMemo(() => Math.max(...trend.map((t) => Math.max(t.newContracts, t.paymentsReceived)), 1), [trend]);
+  const trendMax = useMemo(() => {
+    if (trend.length === 0) return 1;
+    return Math.max(...trend.map((t) => Math.max(t.newContracts, t.paymentsReceived)), 1);
+  }, [trend]);
   const agingMax = useMemo(() => (aging ? Math.max(...aging.buckets.map((b) => b.amount), 1) : 1), [aging]);
 
   return (
@@ -268,8 +275,8 @@ export default function DashboardPage() {
                 <AlertTriangle className="size-4 opacity-70" />
                 <span className="text-xs text-white/70 font-medium">ค้าง/ผิดนัด</span>
               </div>
-              <div className="text-2xl lg:text-3xl font-bold">{kpis.contracts.overdue + kpis.contracts.default}</div>
-              <div className="text-xs text-white/60 mt-1">{kpis.overdueRate.toFixed(1)}%</div>
+              <div className="text-2xl lg:text-3xl font-bold">{(kpis.contracts.overdue ?? 0) + (kpis.contracts.default ?? 0)}</div>
+              <div className="text-xs text-white/60 mt-1">{(kpis.overdueRate ?? 0).toFixed(1)}%</div>
             </div>
             <div className="cursor-pointer" onClick={() => navigate('/payments')}>
               <div className="flex items-center gap-2 mb-2">

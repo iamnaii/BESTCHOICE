@@ -184,7 +184,7 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
   const isSectionActive = useCallback(
     (section: NavSection): boolean => {
       return section.items.some(
-        (item) => item.path === pathname || (item.path.length > 1 && pathname.startsWith(item.path)),
+        (item) => item.path === pathname || (item.path.length > 1 && (pathname.startsWith(item.path + '/') || pathname === item.path)),
       );
     },
     [pathname],
@@ -192,7 +192,7 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
 
   const isItemActive = useCallback(
     (path: string): boolean =>
-      path === pathname || (path.length > 1 && pathname.startsWith(path)),
+      path === pathname || (path.length > 1 && (pathname.startsWith(path + '/') || pathname === path)),
     [pathname],
   );
 

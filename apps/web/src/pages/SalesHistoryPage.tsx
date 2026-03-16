@@ -285,7 +285,7 @@ export default function SalesHistoryPage() {
         data={salesData?.data || []}
         isLoading={isLoading}
         emptyMessage="ยังไม่มีรายการขาย"
-        onRowClick={(sale) => navigate(`/sales/${sale.id}`)}
+        onRowClick={(sale) => sale.contract ? navigate(`/contracts/${sale.contract.id}`) : undefined}
         pagination={salesData ? {
           page: salesData.page,
           totalPages: salesData.totalPages,

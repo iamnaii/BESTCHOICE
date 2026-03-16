@@ -251,32 +251,32 @@ export default function RepossessionsPage() {
           <Card className="shadow-xs shadow-black/5">
             <CardContent className="p-4">
               <div className="text-sm text-muted-foreground">เครื่องที่ขายแล้ว</div>
-              <div className="text-2xl font-bold">{profitLoss.summary.count}</div>
+              <div className="text-2xl font-bold">{profitLoss.summary.count ?? 0}</div>
             </CardContent>
           </Card>
           <Card className="shadow-xs shadow-black/5">
             <CardContent className="p-4">
               <div className="text-sm text-muted-foreground">ราคาตีรวม</div>
-              <div className="text-lg font-bold">{profitLoss.summary.totalAppraisal?.toLocaleString()} บาท</div>
+              <div className="text-lg font-bold">{(profitLoss.summary.totalAppraisal ?? 0).toLocaleString()} บาท</div>
             </CardContent>
           </Card>
           <Card className="shadow-xs shadow-black/5">
             <CardContent className="p-4">
               <div className="text-sm text-muted-foreground">ค่าซ่อมรวม</div>
-              <div className="text-lg font-bold">{profitLoss.summary.totalRepairCost?.toLocaleString()} บาท</div>
+              <div className="text-lg font-bold">{(profitLoss.summary.totalRepairCost ?? 0).toLocaleString()} บาท</div>
             </CardContent>
           </Card>
           <Card className="shadow-xs shadow-black/5">
             <CardContent className="p-4">
               <div className="text-sm text-muted-foreground">ราคาขายรวม</div>
-              <div className="text-lg font-bold">{profitLoss.summary.totalResellPrice?.toLocaleString()} บาท</div>
+              <div className="text-lg font-bold">{(profitLoss.summary.totalResellPrice ?? 0).toLocaleString()} บาท</div>
             </CardContent>
           </Card>
           <Card className="shadow-xs shadow-black/5">
             <CardContent className="p-4">
               <div className="text-sm text-muted-foreground">กำไร/ขาดทุน</div>
               <div className={`text-lg font-bold ${(profitLoss.summary.totalProfit ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {profitLoss.summary.totalProfit?.toLocaleString()} บาท
+                {(profitLoss.summary.totalProfit ?? 0).toLocaleString()} บาท
               </div>
             </CardContent>
           </Card>
@@ -452,10 +452,23 @@ export default function RepossessionsPage() {
                 onChange={(e) => setUpdateForm({ ...updateForm, status: e.target.value })}
                 className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
               >
-                <option value="REPOSSESSED">ยึดคืนแล้ว</option>
-                <option value="UNDER_REPAIR">กำลังซ่อม</option>
-                <option value="READY_FOR_SALE">พร้อมขาย</option>
-                <option value="SOLD">ขายแล้ว</option>
+                {/* Show only valid status transitions based on current status */}
+                {selectedRepo.status === 'REPOSSESSED' && <>
+                  <option value="REPOSSESSED">ยึดคืนแล้ว</option>
+                  <option value="UNDER_REPAIR">กำลังซ่อม</option>
+                  <option value="READY_FOR_SALE">พร้อมขาย</option>
+                </>}
+                {selectedRepo.status === 'UNDER_REPAIR' && <>
+                  <option value="UNDER_REPAIR">กำลังซ่อม</option>
+                  <option value="READY_FOR_SALE">พร้อมขาย</option>
+                </>}
+                {selectedRepo.status === 'READY_FOR_SALE' && <>
+                  <option value="READY_FOR_SALE">พร้อมขาย</option>
+                  <option value="SOLD">ขายแล้ว</option>
+                </>}
+                {selectedRepo.status === 'SOLD' && <>
+                  <option value="SOLD">ขายแล้ว</option>
+                </>}
               </select>
             </div>
             <div className="grid grid-cols-2 gap-4">

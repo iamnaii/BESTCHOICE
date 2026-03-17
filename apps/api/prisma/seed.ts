@@ -590,8 +590,10 @@ async function main() {
         }
       }
 
+      const paymentId = `pay-${contractId}-${String(i).padStart(2, '0')}`;
       await prisma.payment.create({
         data: {
+          id: paymentId,
           contractId,
           installmentNo: i,
           dueDate,
@@ -634,6 +636,74 @@ async function main() {
   await createPayments('cont-demo-005', cd5.monthlyPayment, 10, 20, new Date('2025-04-01'), 10, 0);
 
   console.log('Payments created:', paymentCount);
+
+  // ============================================================
+  // STEP 15.5: Sample Receipts (for paid installments)
+  // ============================================================
+  console.log('STEP 15.5: Creating sample Receipts...');
+
+  // Receipts for cont-001 (สมชาย ใจดี, สาขาลาดพร้าว) — 4 paid installments
+  const receiptsSeed = [
+    {
+      id: 'rcpt-001', receiptNumber: 'RCP-2025-11-00001', contractId: 'cont-001', paymentId: 'pay-cont-001-01', receiptType: 'PAYMENT',
+      payerName: 'สมชาย ใจดี', receiverName: 'BESTCHOICE Mobile สาขาลาดพร้าว',
+      amount: c1.monthlyPayment, installmentNo: 1,
+      remainingBalance: c1.monthlyPayment * 9, remainingMonths: 9,
+      paymentMethod: 'CASH', paidDate: new Date('2025-11-03'), issuedById: 'user-004',
+    },
+    {
+      id: 'rcpt-002', receiptNumber: 'RCP-2025-12-00001', contractId: 'cont-001', paymentId: 'pay-cont-001-02', receiptType: 'PAYMENT',
+      payerName: 'สมชาย ใจดี', receiverName: 'BESTCHOICE Mobile สาขาลาดพร้าว',
+      amount: c1.monthlyPayment, installmentNo: 2,
+      remainingBalance: c1.monthlyPayment * 8, remainingMonths: 8,
+      paymentMethod: 'BANK_TRANSFER', transactionRef: 'TRF-20251205-001',
+      paidDate: new Date('2025-12-05'), issuedById: 'user-004',
+    },
+    {
+      id: 'rcpt-003', receiptNumber: 'RCP-2026-01-00001', contractId: 'cont-001', paymentId: 'pay-cont-001-03', receiptType: 'PAYMENT',
+      payerName: 'สมชาย ใจดี', receiverName: 'BESTCHOICE Mobile สาขาลาดพร้าว',
+      amount: c1.monthlyPayment, installmentNo: 3,
+      remainingBalance: c1.monthlyPayment * 7, remainingMonths: 7,
+      paymentMethod: 'QR_EWALLET', transactionRef: 'QR-20260104-999',
+      paidDate: new Date('2026-01-04'), issuedById: 'user-004',
+    },
+    {
+      id: 'rcpt-004', receiptNumber: 'RCP-2026-02-00001', contractId: 'cont-001', paymentId: 'pay-cont-001-04', receiptType: 'PAYMENT',
+      payerName: 'สมชาย ใจดี', receiverName: 'BESTCHOICE Mobile สาขาลาดพร้าว',
+      amount: c1.monthlyPayment, installmentNo: 4,
+      remainingBalance: c1.monthlyPayment * 6, remainingMonths: 6,
+      paymentMethod: 'CASH', paidDate: new Date('2026-02-03'), issuedById: 'user-004',
+    },
+    // Receipts for cont-004 (สุดารัตน์, สาขาลาดพร้าว) — 2 paid installments
+    {
+      id: 'rcpt-005', receiptNumber: 'RCP-2025-11-00002', contractId: 'cont-004', paymentId: 'pay-cont-004-01', receiptType: 'PAYMENT',
+      payerName: 'สุดารัตน์ แม่ค้าส้มตำ', receiverName: 'BESTCHOICE Mobile สาขาลาดพร้าว',
+      amount: c4.monthlyPayment, installmentNo: 1,
+      remainingBalance: c4.monthlyPayment * 9, remainingMonths: 9,
+      paymentMethod: 'CASH', paidDate: new Date('2025-10-30'), issuedById: 'user-004',
+    },
+    {
+      id: 'rcpt-006', receiptNumber: 'RCP-2025-12-00002', contractId: 'cont-004', paymentId: 'pay-cont-004-02', receiptType: 'PAYMENT',
+      payerName: 'สุดารัตน์ แม่ค้าส้มตำ', receiverName: 'BESTCHOICE Mobile สาขาลาดพร้าว',
+      amount: c4.monthlyPayment, installmentNo: 2,
+      remainingBalance: c4.monthlyPayment * 8, remainingMonths: 8,
+      paymentMethod: 'BANK_TRANSFER', transactionRef: 'TRF-20251201-003',
+      paidDate: new Date('2025-12-01'), issuedById: 'user-004',
+    },
+    // Down payment receipt for cont-001 (ใบเสร็จเงินดาวน์)
+    {
+      id: 'rcpt-007', receiptNumber: 'RCP-2025-10-00001', contractId: 'cont-001', receiptType: 'DOWN_PAYMENT',
+      payerName: 'สมชาย ใจดี', receiverName: 'BESTCHOICE Mobile สาขาลาดพร้าว',
+      amount: 11000, installmentNo: null,
+      remainingBalance: c1.monthlyPayment * 10, remainingMonths: 10,
+      paymentMethod: 'CASH', paidDate: new Date('2025-10-01'), issuedById: 'user-004',
+    },
+  ];
+
+  for (const r of receiptsSeed) {
+    await prisma.receipt.create({ data: r as any });
+  }
+  console.log(`Receipts created: ${receiptsSeed.length}`);
 
   console.log('=== Part 4: Contracts & Payments seeded ===');
 

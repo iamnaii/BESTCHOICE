@@ -103,8 +103,8 @@ export default function FinancialAuditPage() {
           <div className="text-xs max-w-[300px]">
             {amount !== undefined && <span className="font-medium">{amount.toLocaleString()} ฿</span>}
             {installmentNo !== undefined && <span className="text-muted-foreground ml-1">งวด {installmentNo}</span>}
-            {val.reason && <div className="text-muted-foreground truncate">{String(val.reason)}</div>}
-            {val.from && val.to && <div className="text-muted-foreground">{String(val.from)} → {String(val.to)}</div>}
+            {val.reason ? <div className="text-muted-foreground truncate">{String(val.reason)}</div> : null}
+            {val.from && val.to ? <div className="text-muted-foreground">{String(val.from)} → {String(val.to)}</div> : null}
           </div>
         );
       },

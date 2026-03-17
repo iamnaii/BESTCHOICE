@@ -52,6 +52,8 @@ interface ContractDetail {
   salesperson: { id: string; name: string };
   reviewedBy: { id: string; name: string } | null;
   interestConfig: { id: string; name: string; storeCommissionPct?: string; vatPct?: string } | null;
+  creditBalance: string | null;
+  dunningStage: string | null;
   payments: Payment[];
   signatures: { id: string; signerType: string; signedAt: string }[];
   contractDocuments: any[];

@@ -7,6 +7,7 @@ import DataTable from '@/components/ui/DataTable';
 import { toast } from 'sonner';
 
 interface ImportError {
+  id: string;
   row: number;
   message: string;
 }
@@ -103,12 +104,12 @@ export default function PaymentCsvImportPage() {
     {
       key: 'row',
       label: 'แถว',
-      render: (e: ImportError) => <span className="font-mono text-sm">{e.row}</span>,
+      render: (e: { row: number }) => <span className="font-mono text-sm">{e.row}</span>,
     },
     {
       key: 'message',
       label: 'ข้อผิดพลาด',
-      render: (e: ImportError) => <span className="text-sm text-red-600">{e.message}</span>,
+      render: (e: { message: string }) => <span className="text-sm text-red-600">{e.message}</span>,
     },
   ];
 
@@ -246,7 +247,7 @@ export default function PaymentCsvImportPage() {
           </div>
 
           {result.errors.length > 0 && (
-            <DataTable columns={errorColumns} data={result.errors} emptyMessage="ไม่มีข้อผิดพลาด" />
+            <DataTable columns={errorColumns} data={result.errors.map((e, i) => ({ ...e, id: `err-${i}` }))} emptyMessage="ไม่มีข้อผิดพลาด" />
           )}
         </>
       )}

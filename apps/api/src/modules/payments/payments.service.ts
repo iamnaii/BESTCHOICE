@@ -450,6 +450,79 @@ export class PaymentsService {
     return { creditBalance: Number(contract.creditBalance) };
   }
 
+  // ─── Batch CSV Payment Import ────────────────────────
+  /**
+   * Parse CSV and record payments in batch.
+   * Expected CSV format: contractNumber,installmentNo,amount,paymentMethod,transactionRef,notes
+   * First row is header (skipped).
+   */
+  async importPaymentsFromCsv(
+    csvText: string,
+    defaultPaymentMethod: string,
+    recordedById: string,
+  ): Promise<{ total: number; success: number; errors: { row: number; message: string }[] }> {
+    const lines = csvText.trim().split('\n');
+    if (lines.length < 2) {
+      throw new BadRequestException('CSV ต้องมีอย่างน้อย 1 แถวข้อมูล (ไม่รวม header)');
+    }
+
+    // Skip header row
+    const dataRows = lines.slice(1);
+    const errors: { row: number; message: string }[] = [];
+    let success = 0;
+
+    for (let i = 0; i < dataRows.length; i++) {
+      const row = i + 2; // 1-indexed, +1 for header
+      const line = dataRows[i].trim();
+      if (!line) continue;
+
+      const cols = line.split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
+      if (cols.length < 3) {
+        errors.push({ row, message: 'ข้อมูลไม่ครบ ต้องมีอย่างน้อย contractNumber, installmentNo, amount' });
+        continue;
+      }
+
+      const [contractNumber, installmentNoStr, amountStr, paymentMethod, transactionRef, notes] = cols;
+      const installmentNo = parseInt(installmentNoStr);
+      const amount = parseFloat(amountStr);
+
+      if (!contractNumber || isNaN(installmentNo) || isNaN(amount) || amount <= 0) {
+        errors.push({ row, message: `ข้อมูลไม่ถูกต้อง: contractNumber=${contractNumber}, installmentNo=${installmentNoStr}, amount=${amountStr}` });
+        continue;
+      }
+
+      try {
+        // Lookup contract by number
+        const contract = await this.prisma.contract.findUnique({
+          where: { contractNumber },
+          select: { id: true },
+        });
+        if (!contract) {
+          errors.push({ row, message: `ไม่พบสัญญา ${contractNumber}` });
+          continue;
+        }
+
+        await this.recordPayment(
+          contract.id,
+          installmentNo,
+          amount,
+          paymentMethod || defaultPaymentMethod,
+          recordedById,
+          undefined, // evidenceUrl
+          notes || `CSV import row ${row}`,
+          transactionRef || `CSV-${Date.now()}-${row}`,
+        );
+        success++;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        errors.push({ row, message });
+      }
+    }
+
+    this.logger.log(`CSV payment import: ${success} success, ${errors.length} errors out of ${dataRows.length} rows`);
+    return { total: dataRows.length, success, errors };
+  }
+
   // ─── Waive late fee ─────────────────────────────────
   async waiveLateFee(paymentId: string, reason: string, userId: string) {
     const payment = await this.prisma.payment.findUnique({ where: { id: paymentId } });

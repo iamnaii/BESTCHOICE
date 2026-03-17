@@ -2,6 +2,7 @@ import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards, ForbiddenE
 import { Throttle } from '@nestjs/throttler';
 import { PaymentsService } from './payments.service';
 import { RecordPaymentDto, BulkRecordPaymentDto, WaiveLateFeeDto } from './dto/payment.dto';
+import { ImportPaymentsCsvDto } from './dto/csv-import.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { UserThrottlerGuard } from '../../guards/user-throttler.guard';
@@ -101,6 +102,21 @@ export class PaymentsController {
   ) {
     await this.validateBranchAccess(contractId, user);
     return this.paymentsService.applyCreditBalance(contractId, user.id);
+  }
+
+  @Post('import-csv')
+  @Roles('OWNER', 'ACCOUNTANT')
+  @UseGuards(UserThrottlerGuard)
+  @Throttle({ short: { ttl: 60000, limit: 5 } }) // Max 5 CSV imports per minute
+  async importPaymentsCsv(
+    @Body() dto: ImportPaymentsCsvDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.paymentsService.importPaymentsFromCsv(
+      dto.csv,
+      dto.paymentMethod || 'BANK_TRANSFER',
+      user.id,
+    );
   }
 
   @Patch(':paymentId/waive-late-fee')

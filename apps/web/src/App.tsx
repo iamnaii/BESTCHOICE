@@ -33,6 +33,7 @@ const UsersPage = lazy(() => import('@/pages/UsersPage'));
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
 const ExchangePage = lazy(() => import('@/pages/ExchangePage'));
 const AuditLogsPage = lazy(() => import('@/pages/AuditLogsPage'));
+const FinancialAuditPage = lazy(() => import('@/pages/FinancialAuditPage'));
 const POSPage = lazy(() => import('@/pages/POSPage'));
 const SalesHistoryPage = lazy(() => import('@/pages/SalesHistoryPage'));
 const InterestConfigPage = lazy(() => import('@/pages/InterestConfigPage'));
@@ -328,6 +329,14 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER']}>
                 <AuditLogsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/financial-audit"
+            element={
+              <ProtectedRoute roles={['OWNER', 'ACCOUNTANT']}>
+                <FinancialAuditPage />
               </ProtectedRoute>
             }
           />

@@ -189,6 +189,29 @@ export default function OverduePage() {
         </Card>
       </div>
 
+      {/* Dunning Workflow Pipeline */}
+      <Card className="shadow-xs shadow-black/5 mb-6">
+        <CardContent className="p-4">
+          <div className="text-xs font-medium text-muted-foreground mb-3">Dunning Pipeline (ระดับการติดตามหนี้)</div>
+          <div className="flex items-center gap-2 overflow-x-auto">
+            {[
+              { stage: 'REMINDER', label: 'แจ้งเตือน', color: 'bg-yellow-100 text-yellow-800 border-yellow-300', desc: '1-7 วัน' },
+              { stage: 'NOTICE', label: 'แจ้งค้างชำระ', color: 'bg-orange-100 text-orange-800 border-orange-300', desc: '8-30 วัน' },
+              { stage: 'FINAL_WARNING', label: 'เตือนครั้งสุดท้าย', color: 'bg-red-100 text-red-800 border-red-300', desc: '31-60 วัน' },
+              { stage: 'LEGAL_ACTION', label: 'ดำเนินคดี', color: 'bg-red-200 text-red-900 border-red-500', desc: '>60 วัน' },
+            ].map((s, i) => (
+              <div key={s.stage} className="flex items-center gap-2">
+                {i > 0 && <div className="text-muted-foreground">→</div>}
+                <div className={`px-3 py-1.5 rounded-lg border text-xs font-medium ${s.color}`}>
+                  <div>{s.label}</div>
+                  <div className="text-[10px] opacity-70">{s.desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Info box */}
       <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
         <div className="text-sm text-yellow-800">

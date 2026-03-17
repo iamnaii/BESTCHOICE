@@ -16,6 +16,27 @@ class VoidReceiptDto {
 export class ReceiptsController {
   constructor(private receiptsService: ReceiptsService) {}
 
+  @Get()
+  findAll(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('receiptType') receiptType?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    @Query('branchId') branchId?: string,
+  ) {
+    return this.receiptsService.findAll({
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? Math.min(parseInt(limit, 10), 10000) : undefined,
+      search,
+      receiptType,
+      dateFrom,
+      dateTo,
+      branchId,
+    });
+  }
+
   @Get('contract/:contractId')
   getContractReceipts(@Param('contractId') contractId: string) {
     return this.receiptsService.getContractReceipts(contractId);

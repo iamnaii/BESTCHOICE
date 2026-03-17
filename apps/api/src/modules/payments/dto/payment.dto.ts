@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, Matches, Min } from 'class-validator';
+import { IsString, IsNumber, IsOptional, Matches, Min, IsNotEmpty } from 'class-validator';
 
 export class RecordPaymentDto {
   @IsString()
@@ -43,4 +43,10 @@ export class BulkRecordPaymentDto {
   @IsString()
   @IsOptional()
   notes?: string;
+}
+
+export class WaiveLateFeeDto {
+  @IsString()
+  @IsNotEmpty({ message: 'กรุณาระบุเหตุผลการยกเว้นค่าปรับ' })
+  reason: string;
 }

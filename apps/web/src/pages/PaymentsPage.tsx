@@ -2,10 +2,13 @@ import { useState, useMemo, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { compressImageForOcr } from '@/lib/compressImage';
+import { useDebounce } from '@/hooks/useDebounce';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
+import PaymentHistorySheet from '@/components/payment/PaymentHistorySheet';
+import ReceiptModal from '@/components/payment/ReceiptModal';
 import { toast } from 'sonner';
 
 interface OcrPaymentSlipResult {
@@ -72,7 +75,13 @@ export default function PaymentsPage() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<'pending' | 'summary'>('pending');
   const [statusFilter, setStatusFilter] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearch = useDebounce(searchTerm, 400);
   const [summaryDate, setSummaryDate] = useState(new Date().toISOString().split('T')[0]);
+
+  // History sheet & receipt modal state
+  const [historyContractId, setHistoryContractId] = useState<string | null>(null);
+  const [receiptId, setReceiptId] = useState<string | null>(null);
   const [showPayModal, setShowPayModal] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<PendingPayment | null>(null);
   const [payForm, setPayForm] = useState({ amount: 0, paymentMethod: 'CASH', notes: '' });
@@ -105,10 +114,11 @@ export default function PaymentsPage() {
 
   // Pending payments
   const { data: pendingPayments = [], isLoading: loadingPending } = useQuery<PendingPayment[]>({
-    queryKey: ['pending-payments', statusFilter],
+    queryKey: ['pending-payments', statusFilter, debouncedSearch],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (statusFilter) params.set('status', statusFilter);
+      if (debouncedSearch) params.set('search', debouncedSearch);
       const { data } = await api.get(`/payments/pending?${params}`);
       return data;
     },
@@ -398,6 +408,9 @@ export default function PaymentsPage() {
           <button onClick={() => { setAdvanceContract(p); setAdvanceAmount(''); setAdvanceMethod('CASH'); setShowAdvanceModal(true); }} className="px-2 py-1 text-xs border border-primary text-primary rounded hover:bg-primary/10">
             ล่วงหน้า
           </button>
+          <button onClick={() => setHistoryContractId(p.contract.id)} className="px-2 py-1 text-xs border border-muted-foreground/30 text-muted-foreground rounded hover:bg-muted">
+            ประวัติ
+          </button>
         </div>
       ),
     },
@@ -421,6 +434,13 @@ export default function PaymentsPage() {
       {tab === 'pending' && (
         <div>
           <div className="flex gap-3 mb-4">
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="ค้นหาเลขสัญญา, ชื่อ, เบอร์โทร..."
+              className="px-3 py-2 border border-input rounded-lg text-sm w-72"
+            />
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm">
               <option value="">ทุกสถานะ</option>
               <option value="PENDING">รอชำระ</option>
@@ -777,6 +797,19 @@ export default function PaymentsPage() {
           </div>
         </Modal>
       )}
+
+      {/* Payment History Sheet */}
+      <PaymentHistorySheet
+        contractId={historyContractId}
+        onClose={() => setHistoryContractId(null)}
+        onViewReceipt={(id) => setReceiptId(id)}
+      />
+
+      {/* Receipt Modal */}
+      <ReceiptModal
+        receiptId={receiptId}
+        onClose={() => setReceiptId(null)}
+      />
     </div>
   );
 }

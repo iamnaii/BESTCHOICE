@@ -1,6 +1,6 @@
-import { Controller, Get, Post, Param, Body, Query, UseGuards, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards, ForbiddenException } from '@nestjs/common';
 import { PaymentsService } from './payments.service';
-import { RecordPaymentDto, BulkRecordPaymentDto } from './dto/payment.dto';
+import { RecordPaymentDto, BulkRecordPaymentDto, WaiveLateFeeDto } from './dto/payment.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -20,11 +20,12 @@ export class PaymentsController {
     @Query('branchId') branchId?: string,
     @Query('date') date?: string,
     @Query('status') status?: string,
+    @Query('search') search?: string,
     @CurrentUser() user?: { role: string; branchId: string | null },
   ) {
     // Enforce branch filtering for non-OWNER/ACCOUNTANT roles
     const effectiveBranchId = this.getEffectiveBranchId(branchId, user);
-    return this.paymentsService.getPendingPayments({ branchId: effectiveBranchId, date, status });
+    return this.paymentsService.getPendingPayments({ branchId: effectiveBranchId, date, status, search });
   }
 
   @Get('daily-summary')
@@ -78,6 +79,16 @@ export class PaymentsController {
       user.id,
       dto.notes,
     );
+  }
+
+  @Patch(':paymentId/waive-late-fee')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  waiveLateFee(
+    @Param('paymentId') paymentId: string,
+    @Body() dto: WaiveLateFeeDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.paymentsService.waiveLateFee(paymentId, dto.reason, user.id);
   }
 
   /** Enforce branch-level access: SALES/BRANCH_MANAGER can only operate on their own branch */

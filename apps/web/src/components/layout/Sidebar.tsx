@@ -30,6 +30,7 @@ import {
   Database,
   ArrowRightLeft,
   ClipboardCheck,
+  Upload,
   LogOut,
   ChevronsRight,
   ChevronsLeft,
@@ -92,6 +93,7 @@ const navSections: NavSection[] = [
       { label: 'ชำระเงิน', path: '/payments', icon: DollarSign },
       { label: 'ใบเสร็จรับเงิน', path: '/receipts', icon: Receipt, roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
       { label: 'ตรวจสอบสลิป', path: '/slip-review', icon: FileCheck, roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
+      { label: 'นำเข้าชำระเงิน (CSV)', path: '/payments/import-csv', icon: Upload, roles: ['OWNER', 'ACCOUNTANT'] },
       { label: 'สถานะเอกสาร', path: '/document-dashboard', icon: FileText, roles: ['OWNER', 'BRANCH_MANAGER'] },
     ],
   },
@@ -149,6 +151,7 @@ const navSections: NavSection[] = [
     items: [
       { label: 'PDPA', path: '/pdpa', icon: Shield, roles: ['OWNER', 'BRANCH_MANAGER'] },
       { label: 'Audit Logs', path: '/audit-logs', icon: ScrollText, roles: ['OWNER'] },
+      { label: 'Financial Audit', path: '/financial-audit', icon: FileText, roles: ['OWNER', 'ACCOUNTANT'] },
       { label: 'สถานะระบบ', path: '/system-status', icon: Activity, roles: ['OWNER'] },
       { label: 'นำเข้าข้อมูล', path: '/migration', icon: Database, roles: ['OWNER'] },
     ],

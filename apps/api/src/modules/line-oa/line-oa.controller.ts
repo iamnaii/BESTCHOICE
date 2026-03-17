@@ -16,6 +16,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { ParseFilePipe, MaxFileSizeValidator, FileTypeValidator } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { LineOaService } from './line-oa.service';
 import { LineWebhookGuard } from './line-webhook.guard';
@@ -1024,12 +1025,19 @@ export class LineOaController {
   @SkipCsrf()
   @UseInterceptors(FileInterceptor('slip'))
   async uploadSlipFromLiff(
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024, message: 'ไฟล์มีขนาดเกิน 5MB' }),
+          new FileTypeValidator({ fileType: /^image\/(jpeg|png|webp|heic|heif)$/ }),
+        ],
+        fileIsRequired: true,
+        errorHttpStatusCode: 400,
+      }),
+    )
+    file: Express.Multer.File,
     @Body() body: { token: string; amount?: string },
   ) {
-    if (!file) {
-      return { error: 'กรุณาอัพโหลดรูปสลิป' };
-    }
 
     // Use transaction to prevent race condition (double slip upload)
     const link = await this.paymentLinkService.getPaymentLink(body.token);
@@ -1037,11 +1045,18 @@ export class LineOaController {
       return { error: 'ลิงก์ชำระเงินไม่ถูกต้องหรือหมดอายุ' };
     }
 
+    // Determine safe file extension from MIME type
+    const extMap: Record<string, string> = {
+      'image/jpeg': '.jpg', 'image/png': '.png',
+      'image/webp': '.webp', 'image/heic': '.heic', 'image/heif': '.heif',
+    };
+    const ext = extMap[file.mimetype] || '.jpg';
+
     // Save uploaded file (outside transaction - file I/O)
     const uploadDir = path.resolve(process.cwd(), 'uploads', 'slips');
     fs.mkdirSync(uploadDir, { recursive: true });
 
-    const filename = `slip-liff-${Date.now()}-${Math.random().toString(36).substring(2, 8)}.jpg`;
+    const filename = `slip-liff-${Date.now()}-${Math.random().toString(36).substring(2, 8)}${ext}`;
     const filePath = path.join(uploadDir, filename);
     fs.writeFileSync(filePath, file.buffer);
 

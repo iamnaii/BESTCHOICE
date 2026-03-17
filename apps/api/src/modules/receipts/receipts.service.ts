@@ -9,6 +9,7 @@ export class ReceiptsService {
 
   /**
    * Generate receipt number: RC-YYYY-MM-NNNNN
+   * Uses SELECT FOR UPDATE to prevent race conditions with concurrent payments.
    */
   private async generateReceiptNumber(tx?: any): Promise<string> {
     const db = tx || this.prisma;
@@ -17,15 +18,19 @@ export class ReceiptsService {
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const prefix = `RC-${year}-${month}-`;
 
-    const lastReceipt = await db.receipt.findFirst({
-      where: { receiptNumber: { startsWith: prefix } },
-      orderBy: { receiptNumber: 'desc' },
-      select: { receiptNumber: true },
-    });
+    // Use raw query with FOR UPDATE to lock the row and prevent concurrent reads
+    // from getting the same sequence number
+    const result = await db.$queryRaw<Array<{ receiptNumber: string }>>`
+      SELECT "receiptNumber" FROM "Receipt"
+      WHERE "receiptNumber" LIKE ${prefix + '%'}
+      ORDER BY "receiptNumber" DESC
+      LIMIT 1
+      FOR UPDATE
+    `;
 
     let seq = 1;
-    if (lastReceipt) {
-      const lastSeq = parseInt(lastReceipt.receiptNumber.replace(prefix, ''));
+    if (result.length > 0) {
+      const lastSeq = parseInt(result[0].receiptNumber.replace(prefix, ''));
       seq = lastSeq + 1;
     }
 
@@ -33,7 +38,9 @@ export class ReceiptsService {
   }
 
   /**
-   * Auto-generate e-Receipt after payment recording
+   * Auto-generate e-Receipt after payment recording.
+   * Wrapped in a transaction with FOR UPDATE lock on sequence to prevent
+   * duplicate receipt numbers under concurrent payments.
    */
   async generateReceipt(
     contractId: string,
@@ -45,59 +52,62 @@ export class ReceiptsService {
     transactionRef: string | null,
     issuedById: string,
   ) {
-    const contract = await this.prisma.contract.findUnique({
-      where: { id: contractId },
-      include: {
-        customer: { select: { name: true } },
-        payments: { where: { status: 'PAID' }, select: { amountPaid: true } },
-      },
-    });
-    if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+    return this.prisma.$transaction(async (tx) => {
+      const contract = await tx.contract.findUnique({
+        where: { id: contractId },
+        include: {
+          customer: { select: { name: true } },
+          payments: { where: { status: 'PAID' }, select: { amountPaid: true } },
+        },
+      });
+      if (!contract) throw new NotFoundException('ไม่พบสัญญา');
 
-    // Get company info
-    const company = await this.prisma.companyInfo.findFirst({ where: { isActive: true } });
-    const receiverName = company?.nameTh || 'บริษัท เบสท์ช้อยส์โฟน จำกัด';
+      // Get company info
+      const company = await tx.companyInfo.findFirst({ where: { isActive: true } });
+      const receiverName = company?.nameTh || 'บริษัท เบสท์ช้อยส์โฟน จำกัด';
 
-    // Calculate remaining balance
-    const totalPaid = contract.payments.reduce((sum, p) => sum + Number(p.amountPaid), 0);
-    const remainingBalance = Number(contract.financedAmount) - totalPaid;
-    const totalMonths = contract.totalMonths;
-    const paidMonths = contract.payments.length;
-    const remainingMonths = totalMonths - paidMonths;
+      // Calculate remaining balance
+      const totalPaid = contract.payments.reduce((sum, p) => sum + Number(p.amountPaid), 0);
+      const remainingBalance = Number(contract.financedAmount) - totalPaid;
+      const totalMonths = contract.totalMonths;
+      const paidMonths = contract.payments.length;
+      const remainingMonths = totalMonths - paidMonths;
 
-    const receiptNumber = await this.generateReceiptNumber();
+      // Generate receipt number inside transaction (uses FOR UPDATE lock)
+      const receiptNumber = await this.generateReceiptNumber(tx);
 
-    // Generate receipt content hash
-    const receiptContent = JSON.stringify({
-      receiptNumber,
-      contractId,
-      amount,
-      installmentNo,
-      paidDate: new Date().toISOString(),
-    });
-    const fileHash = crypto.createHash('sha256').update(receiptContent).digest('hex');
-
-    const receipt = await this.prisma.receipt.create({
-      data: {
+      // Generate receipt content hash
+      const receiptContent = JSON.stringify({
         receiptNumber,
         contractId,
-        paymentId,
-        receiptType,
-        payerName: contract.customer?.name || '',
-        receiverName,
         amount,
         installmentNo,
-        remainingBalance: Math.max(0, remainingBalance),
-        remainingMonths: Math.max(0, remainingMonths),
-        paymentMethod,
-        transactionRef,
-        paidDate: new Date(),
-        fileHash,
-        issuedById,
-      },
-    });
+        paidDate: new Date().toISOString(),
+      });
+      const fileHash = crypto.createHash('sha256').update(receiptContent).digest('hex');
 
-    return receipt;
+      const receipt = await tx.receipt.create({
+        data: {
+          receiptNumber,
+          contractId,
+          paymentId,
+          receiptType,
+          payerName: contract.customer?.name || '',
+          receiverName,
+          amount,
+          installmentNo,
+          remainingBalance: Math.max(0, remainingBalance),
+          remainingMonths: Math.max(0, remainingMonths),
+          paymentMethod,
+          transactionRef,
+          paidDate: new Date(),
+          fileHash,
+          issuedById,
+        },
+      });
+
+      return receipt;
+    });
   }
 
   /** List receipts with search, filter, pagination */
@@ -209,35 +219,37 @@ export class ReceiptsService {
    * ใบเสร็จที่ออกแล้วห้ามแก้ไข/ลบ
    */
   async voidReceipt(id: string, reason: string, issuedById: string) {
-    const receipt = await this.prisma.receipt.findUnique({ where: { id } });
-    if (!receipt) throw new NotFoundException('ไม่พบใบเสร็จ');
-    if (receipt.isVoided) throw new BadRequestException('ใบเสร็จนี้ถูกยกเลิกแล้ว');
+    return this.prisma.$transaction(async (tx) => {
+      const receipt = await tx.receipt.findUnique({ where: { id } });
+      if (!receipt) throw new NotFoundException('ไม่พบใบเสร็จ');
+      if (receipt.isVoided) throw new BadRequestException('ใบเสร็จนี้ถูกยกเลิกแล้ว');
 
-    // Create credit note receipt
-    const creditNoteNumber = await this.generateReceiptNumber();
-    const creditNote = await this.prisma.receipt.create({
-      data: {
-        receiptNumber: creditNoteNumber,
-        contractId: receipt.contractId,
-        paymentId: receipt.paymentId,
-        receiptType: 'CREDIT_NOTE',
-        payerName: receipt.payerName,
-        receiverName: receipt.receiverName,
-        amount: receipt.amount,
-        installmentNo: receipt.installmentNo,
-        paymentMethod: receipt.paymentMethod,
-        paidDate: new Date(),
-        voidedReceiptId: receipt.id,
-        issuedById,
-      },
+      // Generate credit note number inside transaction (uses FOR UPDATE lock)
+      const creditNoteNumber = await this.generateReceiptNumber(tx);
+      const creditNote = await tx.receipt.create({
+        data: {
+          receiptNumber: creditNoteNumber,
+          contractId: receipt.contractId,
+          paymentId: receipt.paymentId,
+          receiptType: 'CREDIT_NOTE',
+          payerName: receipt.payerName,
+          receiverName: receipt.receiverName,
+          amount: receipt.amount,
+          installmentNo: receipt.installmentNo,
+          paymentMethod: receipt.paymentMethod,
+          paidDate: new Date(),
+          voidedReceiptId: receipt.id,
+          issuedById,
+        },
+      });
+
+      // Mark original as voided
+      await tx.receipt.update({
+        where: { id },
+        data: { isVoided: true, voidReason: reason },
+      });
+
+      return { voidedReceipt: receipt, creditNote };
     });
-
-    // Mark original as voided
-    await this.prisma.receipt.update({
-      where: { id },
-      data: { isVoided: true, voidReason: reason },
-    });
-
-    return { voidedReceipt: receipt, creditNote };
   }
 }

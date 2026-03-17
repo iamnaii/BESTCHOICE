@@ -116,11 +116,14 @@ export default function LoginPage() {
             )}
           </div>
 
-          <p className="mt-5 text-center text-sm text-muted-foreground">
+          <div className="mt-5 flex items-center justify-between text-sm">
+            <Link to="/forgot-password" className="text-muted-foreground hover:text-primary transition-colors">
+              ลืมรหัสผ่าน?
+            </Link>
             <Link to="/landing" className="text-primary hover:text-primary/80 font-medium">
               กลับหน้าแรก
             </Link>
-          </p>
+          </div>
         </div>
       </div>
 

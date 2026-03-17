@@ -611,6 +611,30 @@ export default function ContractDetailPage() {
           <div className="text-xs text-muted-foreground mb-1">ยอดผ่อนรวม</div>
           <div className="text-xl font-bold">{parseFloat(contract.financedAmount).toLocaleString()} ฿</div>
         </div>
+        {contract.creditBalance && parseFloat(contract.creditBalance) > 0 && (
+          <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+            <div className="text-xs text-green-700 mb-1">ยอดเครดิตคงเหลือ</div>
+            <div className="text-xl font-bold text-green-600">{parseFloat(contract.creditBalance).toLocaleString()} ฿</div>
+          </div>
+        )}
+        {contract.dunningStage && contract.dunningStage !== 'NONE' && (
+          <div className={`rounded-lg border p-4 ${
+            contract.dunningStage === 'LEGAL_ACTION' ? 'border-red-400 bg-red-50' :
+            contract.dunningStage === 'FINAL_WARNING' ? 'border-red-300 bg-red-50' :
+            contract.dunningStage === 'NOTICE' ? 'border-orange-300 bg-orange-50' :
+            'border-yellow-300 bg-yellow-50'
+          }`}>
+            <div className="text-xs text-muted-foreground mb-1">ระดับติดตามหนี้</div>
+            <div className={`text-sm font-bold ${
+              contract.dunningStage === 'LEGAL_ACTION' ? 'text-red-700' :
+              contract.dunningStage === 'FINAL_WARNING' ? 'text-red-600' :
+              contract.dunningStage === 'NOTICE' ? 'text-orange-600' :
+              'text-yellow-600'
+            }`}>
+              {{ REMINDER: 'แจ้งเตือน', NOTICE: 'แจ้งค้างชำระ', FINAL_WARNING: 'เตือนครั้งสุดท้าย', LEGAL_ACTION: 'ดำเนินคดี' }[contract.dunningStage]}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Workflow Actions for Reviewer */}

@@ -1,0 +1,170 @@
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import api from '@/lib/api';
+import PageHeader from '@/components/ui/PageHeader';
+import DataTable from '@/components/ui/DataTable';
+import { Card, CardContent } from '@/components/ui/card';
+
+interface AuditEntry {
+  id: string;
+  action: string;
+  entity: string;
+  entityId: string;
+  oldValue: Record<string, unknown> | null;
+  newValue: Record<string, unknown> | null;
+  createdAt: string;
+  user: { id: string; name: string; email: string; role: string };
+}
+
+const ACTION_LABELS: Record<string, string> = {
+  PAYMENT_RECORDED: 'บันทึกชำระเงิน',
+  PAYMENT_PARTIAL: 'ชำระบางส่วน',
+  LATE_FEE_WAIVED: 'ยกเว้นค่าปรับ',
+  CREDIT_APPLIED: 'ใช้เครดิต',
+  RECEIPT_GENERATED: 'ออกใบเสร็จ',
+  RECEIPT_VOIDED: 'ยกเลิกใบเสร็จ',
+  CREDIT_NOTE_ISSUED: 'ออกใบลดหนี้',
+  OVERPAYMENT_CREDITED: 'บันทึกเครดิตเกิน',
+  CREDIT_BALANCE_APPLIED: 'ใช้ยอดเครดิต',
+  CONTRACT_COMPLETED: 'ปิดสัญญา',
+  DUNNING_ESCALATION: 'ยกระดับติดตามหนี้',
+  STATUS_CHANGE: 'เปลี่ยนสถานะ',
+};
+
+const ACTION_COLORS: Record<string, string> = {
+  PAYMENT_RECORDED: 'bg-green-100 text-green-800',
+  PAYMENT_PARTIAL: 'bg-blue-100 text-blue-800',
+  LATE_FEE_WAIVED: 'bg-yellow-100 text-yellow-800',
+  CREDIT_APPLIED: 'bg-purple-100 text-purple-800',
+  RECEIPT_GENERATED: 'bg-emerald-100 text-emerald-800',
+  RECEIPT_VOIDED: 'bg-red-100 text-red-800',
+  CREDIT_NOTE_ISSUED: 'bg-orange-100 text-orange-800',
+  DUNNING_ESCALATION: 'bg-red-100 text-red-800',
+  STATUS_CHANGE: 'bg-gray-100 text-gray-800',
+};
+
+export default function FinancialAuditPage() {
+  const [contractId, setContractId] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+
+  const { data, isLoading } = useQuery<{ data: AuditEntry[]; total: number }>({
+    queryKey: ['financial-audit', contractId],
+    queryFn: async () => {
+      if (!contractId) return { data: [], total: 0 };
+      const { data } = await api.get(`/audit/financial/${contractId}`);
+      return data;
+    },
+    enabled: !!contractId,
+  });
+
+  const handleSearch = () => {
+    setContractId(searchInput.trim());
+  };
+
+  const columns = [
+    {
+      key: 'createdAt',
+      label: 'วันที่',
+      render: (e: AuditEntry) => (
+        <div className="text-xs">
+          <div>{new Date(e.createdAt).toLocaleDateString('th-TH')}</div>
+          <div className="text-muted-foreground">{new Date(e.createdAt).toLocaleTimeString('th-TH')}</div>
+        </div>
+      ),
+    },
+    {
+      key: 'action',
+      label: 'เหตุการณ์',
+      render: (e: AuditEntry) => (
+        <span className={`px-2 py-0.5 rounded text-xs font-medium ${ACTION_COLORS[e.action] || 'bg-gray-100 text-gray-800'}`}>
+          {ACTION_LABELS[e.action] || e.action}
+        </span>
+      ),
+    },
+    {
+      key: 'user',
+      label: 'ผู้ดำเนินการ',
+      render: (e: AuditEntry) => (
+        <div className="text-xs">
+          <div className="font-medium">{e.user.name}</div>
+          <div className="text-muted-foreground">{e.user.role}</div>
+        </div>
+      ),
+    },
+    {
+      key: 'details',
+      label: 'รายละเอียด',
+      render: (e: AuditEntry) => {
+        const val = e.newValue;
+        if (!val) return '-';
+        const amount = val.amount as number | undefined;
+        const installmentNo = val.installmentNo as number | undefined;
+        return (
+          <div className="text-xs max-w-[300px]">
+            {amount !== undefined && <span className="font-medium">{amount.toLocaleString()} ฿</span>}
+            {installmentNo !== undefined && <span className="text-muted-foreground ml-1">งวด {installmentNo}</span>}
+            {val.reason && <div className="text-muted-foreground truncate">{String(val.reason)}</div>}
+            {val.from && val.to && <div className="text-muted-foreground">{String(val.from)} → {String(val.to)}</div>}
+          </div>
+        );
+      },
+    },
+  ];
+
+  return (
+    <div>
+      <PageHeader
+        title="Financial Audit Trail"
+        subtitle="ประวัติธุรกรรมการเงินของสัญญา"
+      />
+
+      <Card className="shadow-xs shadow-black/5 mb-6">
+        <CardContent className="p-4">
+          <div className="flex gap-3">
+            <input
+              type="text"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              placeholder="ค้นหาด้วย Contract ID..."
+              className="flex-1 h-10 px-3.5 border border-input rounded-lg text-sm outline-none bg-background text-foreground placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/30"
+            />
+            <button
+              onClick={handleSearch}
+              className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90"
+            >
+              ค้นหา
+            </button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {contractId && (
+        <Card className="shadow-xs shadow-black/5 mb-4">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-muted-foreground">
+                สัญญา: <span className="font-mono text-foreground">{contractId}</span>
+              </div>
+              <div className="text-sm text-muted-foreground">
+                {data?.total || 0} รายการ
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        </div>
+      ) : data?.data && data.data.length > 0 ? (
+        <DataTable columns={columns} data={data.data} emptyMessage="ไม่พบรายการ" />
+      ) : contractId ? (
+        <div className="text-center py-12 text-muted-foreground text-sm">ไม่พบรายการธุรกรรมสำหรับสัญญานี้</div>
+      ) : (
+        <div className="text-center py-12 text-muted-foreground text-sm">กรอก Contract ID เพื่อดูประวัติธุรกรรมการเงิน</div>
+      )}
+    </div>
+  );
+}

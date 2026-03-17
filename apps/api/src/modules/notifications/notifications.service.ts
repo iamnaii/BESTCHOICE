@@ -94,6 +94,11 @@ export class NotificationsService {
       },
     });
 
+    // If failed, schedule for persistent retry queue
+    if (status === 'FAILED' && dto.channel !== 'IN_APP') {
+      await this.markForRetry(log.id, 0);
+    }
+
     return { id: log.id, status };
   }
 
@@ -338,6 +343,90 @@ export class NotificationsService {
     }
 
     return { total: contractIds.length, results };
+  }
+
+  // ============================================================
+  // NOTIFICATION RETRY QUEUE
+  // ============================================================
+
+  /**
+   * Mark failed notification for retry with exponential backoff.
+   * Max 5 retries: 5m, 15m, 45m, 2h, 6h
+   */
+  private async markForRetry(logId: string, retryCount: number) {
+    const maxRetries = 5;
+    if (retryCount >= maxRetries) {
+      this.logger.warn(`Notification ${logId} exceeded max retries (${maxRetries}), marking as permanently failed`);
+      return;
+    }
+
+    // Exponential backoff: 5min * 3^retryCount
+    const backoffMs = 5 * 60 * 1000 * Math.pow(3, retryCount);
+    const nextRetryAt = new Date(Date.now() + backoffMs);
+
+    await this.prisma.notificationLog.update({
+      where: { id: logId },
+      data: {
+        status: 'RETRY_PENDING',
+        retryCount: retryCount + 1,
+        nextRetryAt,
+      },
+    });
+  }
+
+  /**
+   * Process the retry queue: find RETRY_PENDING notifications whose
+   * nextRetryAt has passed, and attempt to resend them.
+   * Called by the scheduler cron job.
+   */
+  async processRetryQueue(): Promise<{ retried: number; succeeded: number; failed: number }> {
+    const now = new Date();
+
+    const pendingRetries = await this.prisma.notificationLog.findMany({
+      where: {
+        status: 'RETRY_PENDING',
+        nextRetryAt: { lte: now },
+      },
+      orderBy: { nextRetryAt: 'asc' },
+      take: 50, // Process max 50 per batch to avoid blocking
+    });
+
+    let succeeded = 0;
+    let failed = 0;
+
+    for (const notification of pendingRetries) {
+      try {
+        if (notification.channel === 'LINE') {
+          await this.sendLine(notification.recipient, notification.message);
+        } else if (notification.channel === 'SMS') {
+          await this.sendSms(notification.recipient, notification.message);
+        }
+        // Mark as sent
+        await this.prisma.notificationLog.update({
+          where: { id: notification.id },
+          data: { status: 'SENT', sentAt: now, errorMsg: null },
+        });
+        succeeded++;
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+        this.logger.warn(`Retry failed for notification ${notification.id} (attempt ${notification.retryCount}): ${errorMsg}`);
+
+        await this.prisma.notificationLog.update({
+          where: { id: notification.id },
+          data: { errorMsg },
+        });
+
+        // Schedule next retry or mark as permanently failed
+        await this.markForRetry(notification.id, notification.retryCount);
+        failed++;
+      }
+    }
+
+    if (pendingRetries.length > 0) {
+      this.logger.log(`Retry queue processed: ${succeeded} succeeded, ${failed} failed out of ${pendingRetries.length}`);
+    }
+
+    return { retried: pendingRetries.length, succeeded, failed };
   }
 
   // ============================================================

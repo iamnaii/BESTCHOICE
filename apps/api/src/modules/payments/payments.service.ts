@@ -1,13 +1,17 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PaymentMethod } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ReceiptsService } from '../receipts/receipts.service';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class PaymentsService {
+  private readonly logger = new Logger(PaymentsService.name);
+
   constructor(
     private prisma: PrismaService,
     private receiptsService: ReceiptsService,
+    private auditService: AuditService,
   ) {}
 
   // ─── Record a single payment (บังคับ upload หลักฐาน) ──
@@ -98,6 +102,17 @@ export class PaymentsService {
       return result;
     });
 
+    // Financial audit trail
+    await this.auditService.logPaymentEvent({
+      userId: recordedById,
+      contractId,
+      paymentId: updated.id,
+      action: updated.status === 'PAID' ? 'PAYMENT_RECORDED' : 'PAYMENT_PARTIAL',
+      amount,
+      installmentNo,
+      details: { paymentMethod, transactionRef, totalPaid: Number(updated.amountPaid) },
+    });
+
     // Auto-generate e-Receipt after successful payment
     if (updated.status === 'PAID') {
       try {
@@ -111,8 +126,12 @@ export class PaymentsService {
           transactionRef || null,
           recordedById,
         );
-      } catch {
-        // Receipt generation failure should not block payment
+      } catch (error) {
+        // Receipt generation failure should not block payment, but must be logged
+        this.logger.error(
+          `Failed to generate receipt for payment ${updated.id} (contract: ${contractId}, installment: ${installmentNo})`,
+          error instanceof Error ? error.stack : String(error),
+        );
       }
     }
 
@@ -191,15 +210,37 @@ export class PaymentsService {
             null,
             recordedById,
           );
-        } catch {
-          // Receipt generation failure should not block payment
+        } catch (error) {
+          this.logger.error(
+            `Failed to generate receipt for payment ${paid.id} (contract: ${contractId}, installment: ${paid.installmentNo})`,
+            error instanceof Error ? error.stack : String(error),
+          );
         }
+      }
+
+      const overpayment = remaining > 0 ? remaining : 0;
+      if (overpayment > 0) {
+        // Store overpayment as credit balance on the contract
+        await tx.contract.update({
+          where: { id: contractId },
+          data: {
+            creditBalance: { increment: overpayment },
+          },
+        });
+
+        this.logger.warn(
+          `Overpayment of ${overpayment} THB credited to contract ${contractId}. ` +
+          `Customer paid ${amount} THB, ${amount - remaining} THB allocated, ${overpayment} THB stored as credit.`,
+        );
       }
 
       return {
         allocatedPayments: results,
         totalAllocated: amount - remaining,
-        overpayment: remaining > 0 ? remaining : 0,
+        overpayment,
+        overpaymentMessage: overpayment > 0
+          ? `มีเงินเกินจำนวน ${overpayment.toLocaleString()} บาท บันทึกเป็นยอดเครดิตในสัญญา`
+          : null,
       };
     });
   }
@@ -333,6 +374,155 @@ export class PaymentsService {
     }
   }
 
+  // ─── Apply credit balance to next pending installment ─
+  async applyCreditBalance(contractId: string, recordedById: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const contract = await tx.contract.findUnique({
+        where: { id: contractId },
+        include: { payments: { orderBy: { installmentNo: 'asc' } } },
+      });
+      if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+
+      const credit = Number(contract.creditBalance);
+      if (credit <= 0) {
+        throw new BadRequestException('ไม่มียอดเครดิตในสัญญานี้');
+      }
+
+      // Find next unpaid installment
+      const unpaid = contract.payments.filter((p) => p.status !== 'PAID');
+      if (unpaid.length === 0) {
+        throw new BadRequestException('ไม่มีงวดค้างชำระ');
+      }
+
+      let remaining = credit;
+      const results: any[] = [];
+
+      for (const payment of unpaid) {
+        if (remaining <= 0) break;
+
+        const amountDue = Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid);
+        const payAmount = Math.min(remaining, amountDue);
+        const totalPaid = Number(payment.amountPaid) + payAmount;
+        const isPaidInFull = totalPaid >= (Number(payment.amountDue) + Number(payment.lateFee));
+
+        const updated = await tx.payment.update({
+          where: { id: payment.id },
+          data: {
+            amountPaid: totalPaid,
+            paidDate: isPaidInFull ? new Date() : null,
+            paymentMethod: 'CREDIT_BALANCE' as any,
+            status: isPaidInFull ? 'PAID' : 'PARTIALLY_PAID',
+            recordedById,
+            notes: [payment.notes, `ใช้เครดิต ${payAmount.toLocaleString()} บาท`].filter(Boolean).join(' | '),
+          },
+        });
+
+        results.push(updated);
+        remaining -= payAmount;
+
+        if (isPaidInFull) {
+          await this.checkContractCompletion(contractId, tx);
+        }
+      }
+
+      // Update credit balance
+      const usedCredit = credit - remaining;
+      await tx.contract.update({
+        where: { id: contractId },
+        data: { creditBalance: remaining },
+      });
+
+      return {
+        allocatedPayments: results,
+        creditUsed: usedCredit,
+        creditRemaining: remaining,
+      };
+    });
+  }
+
+  // ─── Get credit balance for a contract ─────────────
+  async getCreditBalance(contractId: string) {
+    const contract = await this.prisma.contract.findUnique({
+      where: { id: contractId },
+      select: { id: true, contractNumber: true, creditBalance: true },
+    });
+    if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+    return { creditBalance: Number(contract.creditBalance) };
+  }
+
+  // ─── Batch CSV Payment Import ────────────────────────
+  /**
+   * Parse CSV and record payments in batch.
+   * Expected CSV format: contractNumber,installmentNo,amount,paymentMethod,transactionRef,notes
+   * First row is header (skipped).
+   */
+  async importPaymentsFromCsv(
+    csvText: string,
+    defaultPaymentMethod: string,
+    recordedById: string,
+  ): Promise<{ total: number; success: number; errors: { row: number; message: string }[] }> {
+    const lines = csvText.trim().split('\n');
+    if (lines.length < 2) {
+      throw new BadRequestException('CSV ต้องมีอย่างน้อย 1 แถวข้อมูล (ไม่รวม header)');
+    }
+
+    // Skip header row
+    const dataRows = lines.slice(1);
+    const errors: { row: number; message: string }[] = [];
+    let success = 0;
+
+    for (let i = 0; i < dataRows.length; i++) {
+      const row = i + 2; // 1-indexed, +1 for header
+      const line = dataRows[i].trim();
+      if (!line) continue;
+
+      const cols = line.split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
+      if (cols.length < 3) {
+        errors.push({ row, message: 'ข้อมูลไม่ครบ ต้องมีอย่างน้อย contractNumber, installmentNo, amount' });
+        continue;
+      }
+
+      const [contractNumber, installmentNoStr, amountStr, paymentMethod, transactionRef, notes] = cols;
+      const installmentNo = parseInt(installmentNoStr);
+      const amount = parseFloat(amountStr);
+
+      if (!contractNumber || isNaN(installmentNo) || isNaN(amount) || amount <= 0) {
+        errors.push({ row, message: `ข้อมูลไม่ถูกต้อง: contractNumber=${contractNumber}, installmentNo=${installmentNoStr}, amount=${amountStr}` });
+        continue;
+      }
+
+      try {
+        // Lookup contract by number
+        const contract = await this.prisma.contract.findUnique({
+          where: { contractNumber },
+          select: { id: true },
+        });
+        if (!contract) {
+          errors.push({ row, message: `ไม่พบสัญญา ${contractNumber}` });
+          continue;
+        }
+
+        await this.recordPayment(
+          contract.id,
+          installmentNo,
+          amount,
+          paymentMethod || defaultPaymentMethod,
+          recordedById,
+          undefined, // evidenceUrl
+          notes || `CSV import row ${row}`,
+          transactionRef || `CSV-${Date.now()}-${row}`,
+        );
+        success++;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        errors.push({ row, message });
+      }
+    }
+
+    this.logger.log(`CSV payment import: ${success} success, ${errors.length} errors out of ${dataRows.length} rows`);
+    return { total: dataRows.length, success, errors };
+  }
+
   // ─── Waive late fee ─────────────────────────────────
   async waiveLateFee(paymentId: string, reason: string, userId: string) {
     const payment = await this.prisma.payment.findUnique({ where: { id: paymentId } });
@@ -362,6 +552,17 @@ export class PaymentsService {
     if (isNowFullyPaid && payment.status !== 'PAID') {
       await this.checkContractCompletion(payment.contractId);
     }
+
+    // Financial audit trail for late fee waiver
+    await this.auditService.logPaymentEvent({
+      userId,
+      contractId: payment.contractId,
+      paymentId,
+      action: 'LATE_FEE_WAIVED',
+      amount: originalLateFee,
+      installmentNo: payment.installmentNo,
+      details: { reason, wasFeeAmount: originalLateFee, becameFullyPaid: isNowFullyPaid },
+    });
 
     return { ...updated, originalLateFee };
   }

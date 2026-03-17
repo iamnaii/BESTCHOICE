@@ -82,6 +82,121 @@ export class AuditService {
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
+  // ─── Financial Audit Trail Methods ────────────────────────────
+
+  /**
+   * Log a payment event with full financial context.
+   * Immutable record for accountant review.
+   */
+  async logPaymentEvent(params: {
+    userId: string;
+    contractId: string;
+    paymentId: string;
+    action: 'PAYMENT_RECORDED' | 'PAYMENT_PARTIAL' | 'LATE_FEE_WAIVED' | 'CREDIT_APPLIED';
+    amount: number;
+    installmentNo?: number;
+    details?: Record<string, unknown>;
+  }) {
+    return this.log({
+      userId: params.userId,
+      action: params.action,
+      entity: 'payment',
+      entityId: params.paymentId,
+      newValue: {
+        contractId: params.contractId,
+        amount: params.amount,
+        installmentNo: params.installmentNo,
+        timestamp: new Date().toISOString(),
+        ...params.details,
+      },
+    });
+  }
+
+  /**
+   * Log receipt lifecycle events (generation, void, credit note).
+   */
+  async logReceiptEvent(params: {
+    userId: string;
+    receiptId: string;
+    action: 'RECEIPT_GENERATED' | 'RECEIPT_VOIDED' | 'CREDIT_NOTE_ISSUED';
+    receiptNumber: string;
+    amount: number;
+    details?: Record<string, unknown>;
+  }) {
+    return this.log({
+      userId: params.userId,
+      action: params.action,
+      entity: 'receipt',
+      entityId: params.receiptId,
+      newValue: {
+        receiptNumber: params.receiptNumber,
+        amount: params.amount,
+        timestamp: new Date().toISOString(),
+        ...params.details,
+      },
+    });
+  }
+
+  /**
+   * Log contract financial state changes (status, credit balance, dunning).
+   */
+  async logContractFinancialEvent(params: {
+    userId: string;
+    contractId: string;
+    action: 'OVERPAYMENT_CREDITED' | 'CREDIT_BALANCE_APPLIED' | 'CONTRACT_COMPLETED' | 'DUNNING_ESCALATION';
+    oldValue?: Record<string, unknown>;
+    newValue: Record<string, unknown>;
+  }) {
+    return this.log({
+      userId: params.userId,
+      action: params.action,
+      entity: 'contract',
+      entityId: params.contractId,
+      oldValue: params.oldValue,
+      newValue: { ...params.newValue, timestamp: new Date().toISOString() },
+    });
+  }
+
+  /**
+   * Get financial audit trail for a specific contract.
+   * Used by accountants to review all financial events.
+   */
+  async getFinancialAuditTrail(contractId: string, options?: { page?: number; limit?: number }) {
+    const page = options?.page || 1;
+    const limit = Math.min(options?.limit || 50, 100);
+
+    const financialActions = [
+      'PAYMENT_RECORDED', 'PAYMENT_PARTIAL', 'LATE_FEE_WAIVED', 'CREDIT_APPLIED',
+      'RECEIPT_GENERATED', 'RECEIPT_VOIDED', 'CREDIT_NOTE_ISSUED',
+      'OVERPAYMENT_CREDITED', 'CREDIT_BALANCE_APPLIED', 'CONTRACT_COMPLETED',
+      'DUNNING_ESCALATION', 'STATUS_CHANGE',
+    ];
+
+    const where: Prisma.AuditLogWhereInput = {
+      OR: [
+        { entityId: contractId, entity: 'contract' },
+        // Also find payment/receipt events linked to this contract via newValue JSON
+        { entity: { in: ['payment', 'receipt'] }, newValue: { path: ['contractId'], equals: contractId } },
+      ],
+      action: { in: financialActions },
+    };
+
+    const [data, total] = await Promise.all([
+      this.prisma.auditLog.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+        include: {
+          user: { select: { id: true, name: true, email: true, role: true } },
+        },
+      }),
+      this.prisma.auditLog.count({ where }),
+    ]);
+
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
+
   async getAuditStats() {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());

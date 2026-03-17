@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCallLogDto } from './dto/create-call-log.dto';
-import { Prisma } from '@prisma/client';
+import { Prisma, DunningStage } from '@prisma/client';
 import { BUSINESS_RULES } from '../../utils/config.util';
 
 @Injectable()
@@ -374,5 +374,130 @@ export class OverdueService {
 
     this.logger.log(`Contract status update: ${overdueUpdated} overdue, ${defaultUpdated} default`);
     return { overdueUpdated, defaultUpdated, overdueIds: activeIds, defaultIds, timestamp: now };
+  }
+
+  /**
+   * Dunning workflow: auto-escalate contracts through dunning stages
+   * Based on oldest overdue payment days:
+   *   NONE → REMINDER (1-7 days overdue)
+   *   REMINDER → NOTICE (8-30 days)
+   *   NOTICE → FINAL_WARNING (31-60 days)
+   *   FINAL_WARNING → LEGAL_ACTION (>60 days)
+   *
+   * Returns list of contracts that were escalated (for notification dispatch).
+   */
+  async escalateDunningStages() {
+    const now = new Date();
+
+    // Dunning thresholds (days overdue → target stage)
+    const stages: { minDays: number; stage: DunningStage }[] = [
+      { minDays: 61, stage: 'LEGAL_ACTION' },
+      { minDays: 31, stage: 'FINAL_WARNING' },
+      { minDays: 8, stage: 'NOTICE' },
+      { minDays: 1, stage: 'REMINDER' },
+    ];
+
+    // Find all overdue/default contracts with their oldest unpaid payment
+    const contracts = await this.prisma.contract.findMany({
+      where: {
+        status: { in: ['OVERDUE', 'DEFAULT'] },
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        contractNumber: true,
+        dunningStage: true,
+        payments: {
+          where: {
+            status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] },
+            dueDate: { lt: now },
+          },
+          orderBy: { dueDate: 'asc' },
+          take: 1,
+          select: { dueDate: true },
+        },
+      },
+    });
+
+    const escalated: { contractId: string; contractNumber: string; from: DunningStage; to: DunningStage; daysOverdue: number }[] = [];
+
+    // Get system user for audit
+    const systemUser = await this.prisma.user.findFirst({
+      where: { role: 'OWNER', isActive: true },
+      select: { id: true },
+    });
+
+    for (const contract of contracts) {
+      if (contract.payments.length === 0) continue;
+
+      const oldestDue = contract.payments[0].dueDate;
+      const daysOverdue = Math.floor((now.getTime() - oldestDue.getTime()) / (1000 * 60 * 60 * 24));
+
+      // Determine target stage
+      let targetStage: DunningStage = 'NONE';
+      for (const { minDays, stage } of stages) {
+        if (daysOverdue >= minDays) {
+          targetStage = stage;
+          break;
+        }
+      }
+
+      // Only escalate (never de-escalate)
+      const stageOrder: DunningStage[] = ['NONE', 'REMINDER', 'NOTICE', 'FINAL_WARNING', 'LEGAL_ACTION'];
+      const currentIdx = stageOrder.indexOf(contract.dunningStage);
+      const targetIdx = stageOrder.indexOf(targetStage);
+
+      if (targetIdx > currentIdx) {
+        await this.prisma.contract.update({
+          where: { id: contract.id },
+          data: {
+            dunningStage: targetStage,
+            dunningEscalatedAt: now,
+            dunningLastActionAt: now,
+          },
+        });
+
+        // Audit log
+        if (systemUser) {
+          await this.prisma.auditLog.create({
+            data: {
+              userId: systemUser.id,
+              action: 'DUNNING_ESCALATION',
+              entity: 'contract',
+              entityId: contract.id,
+              oldValue: { dunningStage: contract.dunningStage },
+              newValue: { dunningStage: targetStage, daysOverdue },
+              ipAddress: 'system-cron',
+            },
+          });
+        }
+
+        escalated.push({
+          contractId: contract.id,
+          contractNumber: contract.contractNumber,
+          from: contract.dunningStage,
+          to: targetStage,
+          daysOverdue,
+        });
+      }
+    }
+
+    this.logger.log(`Dunning escalation: ${escalated.length} contracts escalated`);
+    return { escalated, timestamp: now };
+  }
+
+  /**
+   * Reset dunning stage when a contract is no longer overdue
+   * (e.g., after a payment brings it back to ACTIVE)
+   */
+  async resetDunningStage(contractId: string) {
+    return this.prisma.contract.update({
+      where: { id: contractId },
+      data: {
+        dunningStage: 'NONE',
+        dunningEscalatedAt: null,
+        dunningLastActionAt: null,
+      },
+    });
   }
 }

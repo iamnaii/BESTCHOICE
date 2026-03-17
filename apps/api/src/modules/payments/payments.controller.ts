@@ -1,8 +1,11 @@
 import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards, ForbiddenException } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { PaymentsService } from './payments.service';
 import { RecordPaymentDto, BulkRecordPaymentDto, WaiveLateFeeDto } from './dto/payment.dto';
+import { ImportPaymentsCsvDto } from './dto/csv-import.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { UserThrottlerGuard } from '../../guards/user-throttler.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -45,6 +48,8 @@ export class PaymentsController {
 
   @Post('record')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'ACCOUNTANT')
+  @UseGuards(UserThrottlerGuard)
+  @Throttle({ short: { ttl: 10000, limit: 5 } }) // Max 5 payment records per 10s per user
   async recordPayment(
     @Body() dto: RecordPaymentDto,
     @CurrentUser() user: { id: string; role: string; branchId: string | null },
@@ -66,6 +71,8 @@ export class PaymentsController {
 
   @Post('auto-allocate')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'ACCOUNTANT')
+  @UseGuards(UserThrottlerGuard)
+  @Throttle({ short: { ttl: 10000, limit: 5 } }) // Max 5 auto-allocations per 10s per user
   async autoAllocatePayment(
     @Body() dto: BulkRecordPaymentDto,
     @CurrentUser() user: { id: string; role: string; branchId: string | null },
@@ -78,6 +85,37 @@ export class PaymentsController {
       dto.paymentMethod,
       user.id,
       dto.notes,
+    );
+  }
+
+  @Get('credit-balance/:contractId')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'ACCOUNTANT')
+  getCreditBalance(@Param('contractId') contractId: string) {
+    return this.paymentsService.getCreditBalance(contractId);
+  }
+
+  @Post('apply-credit/:contractId')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  async applyCreditBalance(
+    @Param('contractId') contractId: string,
+    @CurrentUser() user: { id: string; role: string; branchId: string | null },
+  ) {
+    await this.validateBranchAccess(contractId, user);
+    return this.paymentsService.applyCreditBalance(contractId, user.id);
+  }
+
+  @Post('import-csv')
+  @Roles('OWNER', 'ACCOUNTANT')
+  @UseGuards(UserThrottlerGuard)
+  @Throttle({ short: { ttl: 60000, limit: 5 } }) // Max 5 CSV imports per minute
+  async importPaymentsCsv(
+    @Body() dto: ImportPaymentsCsvDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.paymentsService.importPaymentsFromCsv(
+      dto.csv,
+      dto.paymentMethod || 'BANK_TRANSFER',
+      user.id,
     );
   }
 

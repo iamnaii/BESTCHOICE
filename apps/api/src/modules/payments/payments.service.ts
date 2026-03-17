@@ -1,10 +1,12 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PaymentMethod } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ReceiptsService } from '../receipts/receipts.service';
 
 @Injectable()
 export class PaymentsService {
+  private readonly logger = new Logger(PaymentsService.name);
+
   constructor(
     private prisma: PrismaService,
     private receiptsService: ReceiptsService,
@@ -111,8 +113,12 @@ export class PaymentsService {
           transactionRef || null,
           recordedById,
         );
-      } catch {
-        // Receipt generation failure should not block payment
+      } catch (error) {
+        // Receipt generation failure should not block payment, but must be logged
+        this.logger.error(
+          `Failed to generate receipt for payment ${updated.id} (contract: ${contractId}, installment: ${installmentNo})`,
+          error instanceof Error ? error.stack : String(error),
+        );
       }
     }
 
@@ -191,15 +197,37 @@ export class PaymentsService {
             null,
             recordedById,
           );
-        } catch {
-          // Receipt generation failure should not block payment
+        } catch (error) {
+          this.logger.error(
+            `Failed to generate receipt for payment ${paid.id} (contract: ${contractId}, installment: ${paid.installmentNo})`,
+            error instanceof Error ? error.stack : String(error),
+          );
         }
+      }
+
+      const overpayment = remaining > 0 ? remaining : 0;
+      if (overpayment > 0) {
+        // Store overpayment as credit balance on the contract
+        await tx.contract.update({
+          where: { id: contractId },
+          data: {
+            creditBalance: { increment: overpayment },
+          },
+        });
+
+        this.logger.warn(
+          `Overpayment of ${overpayment} THB credited to contract ${contractId}. ` +
+          `Customer paid ${amount} THB, ${amount - remaining} THB allocated, ${overpayment} THB stored as credit.`,
+        );
       }
 
       return {
         allocatedPayments: results,
         totalAllocated: amount - remaining,
-        overpayment: remaining > 0 ? remaining : 0,
+        overpayment,
+        overpaymentMessage: overpayment > 0
+          ? `มีเงินเกินจำนวน ${overpayment.toLocaleString()} บาท บันทึกเป็นยอดเครดิตในสัญญา`
+          : null,
       };
     });
   }
@@ -331,6 +359,82 @@ export class PaymentsService {
         data: { status: 'COMPLETED' },
       });
     }
+  }
+
+  // ─── Apply credit balance to next pending installment ─
+  async applyCreditBalance(contractId: string, recordedById: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const contract = await tx.contract.findUnique({
+        where: { id: contractId },
+        include: { payments: { orderBy: { installmentNo: 'asc' } } },
+      });
+      if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+
+      const credit = Number(contract.creditBalance);
+      if (credit <= 0) {
+        throw new BadRequestException('ไม่มียอดเครดิตในสัญญานี้');
+      }
+
+      // Find next unpaid installment
+      const unpaid = contract.payments.filter((p) => p.status !== 'PAID');
+      if (unpaid.length === 0) {
+        throw new BadRequestException('ไม่มีงวดค้างชำระ');
+      }
+
+      let remaining = credit;
+      const results: any[] = [];
+
+      for (const payment of unpaid) {
+        if (remaining <= 0) break;
+
+        const amountDue = Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid);
+        const payAmount = Math.min(remaining, amountDue);
+        const totalPaid = Number(payment.amountPaid) + payAmount;
+        const isPaidInFull = totalPaid >= (Number(payment.amountDue) + Number(payment.lateFee));
+
+        const updated = await tx.payment.update({
+          where: { id: payment.id },
+          data: {
+            amountPaid: totalPaid,
+            paidDate: isPaidInFull ? new Date() : null,
+            paymentMethod: 'CREDIT_BALANCE' as any,
+            status: isPaidInFull ? 'PAID' : 'PARTIALLY_PAID',
+            recordedById,
+            notes: [payment.notes, `ใช้เครดิต ${payAmount.toLocaleString()} บาท`].filter(Boolean).join(' | '),
+          },
+        });
+
+        results.push(updated);
+        remaining -= payAmount;
+
+        if (isPaidInFull) {
+          await this.checkContractCompletion(contractId, tx);
+        }
+      }
+
+      // Update credit balance
+      const usedCredit = credit - remaining;
+      await tx.contract.update({
+        where: { id: contractId },
+        data: { creditBalance: remaining },
+      });
+
+      return {
+        allocatedPayments: results,
+        creditUsed: usedCredit,
+        creditRemaining: remaining,
+      };
+    });
+  }
+
+  // ─── Get credit balance for a contract ─────────────
+  async getCreditBalance(contractId: string) {
+    const contract = await this.prisma.contract.findUnique({
+      where: { id: contractId },
+      select: { id: true, contractNumber: true, creditBalance: true },
+    });
+    if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+    return { creditBalance: Number(contract.creditBalance) };
   }
 
   // ─── Waive late fee ─────────────────────────────────

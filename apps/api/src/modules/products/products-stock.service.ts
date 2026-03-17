@@ -57,41 +57,37 @@ export class ProductsStockService {
   }
 
   async transfer(productId: string, dto: TransferProductDto, userId: string) {
-    const product = await this.prisma.product.findUnique({
-      where: { id: productId },
-      include: { branch: { select: { id: true, name: true, isMainWarehouse: true } } },
-    });
-    if (!product || product.deletedAt) throw new NotFoundException('ไม่พบสินค้า');
-
-    // Workflow enforcement: Only IN_STOCK products from Main Warehouse can be transferred
-    if (product.status !== 'IN_STOCK') {
-      throw new BadRequestException('ไม่สามารถโอนสินค้าที่ไม่ได้อยู่ในสถานะ IN_STOCK ได้ (ต้องผ่าน QC เข้าคลังก่อน)');
-    }
-
-    // Verify source is main warehouse
-    if (!product.branch?.isMainWarehouse) {
-      throw new BadRequestException('ต้องโอนสินค้าจากคลังหลักเท่านั้น');
-    }
-
-    if (product.branchId === dto.toBranchId) {
-      throw new BadRequestException('สาขาปลายทางต้องไม่ใช่สาขาเดียวกับสาขาต้นทาง');
-    }
-
-    // Check for existing pending/in-transit transfer for this product
-    const existingTransfer = await this.prisma.stockTransfer.findFirst({
-      where: { productId, status: { in: ['PENDING', 'IN_TRANSIT'] } },
-      select: { id: true },
-    });
-    if (existingTransfer) {
-      throw new BadRequestException('สินค้านี้มีรายการโอนที่รออยู่แล้ว');
-    }
-
-    // Verify destination branch exists
+    // Verify destination branch exists (safe to check outside transaction)
     const toBranch = await this.prisma.branch.findUnique({ where: { id: dto.toBranchId } });
     if (!toBranch) throw new NotFoundException('ไม่พบสาขาปลายทาง');
 
-    // Create transfer record with PENDING status (product doesn't move yet)
+    // All validation + creation inside transaction to prevent race conditions
     const transfer = await this.prisma.$transaction(async (tx) => {
+      const product = await tx.product.findUnique({
+        where: { id: productId },
+        include: { branch: { select: { id: true, name: true, isMainWarehouse: true } } },
+      });
+      if (!product || product.deletedAt) throw new NotFoundException('ไม่พบสินค้า');
+
+      if (product.status !== 'IN_STOCK') {
+        throw new BadRequestException('ไม่สามารถโอนสินค้าที่ไม่ได้อยู่ในสถานะ IN_STOCK ได้ (ต้องผ่าน QC เข้าคลังก่อน)');
+      }
+      if (!product.branch?.isMainWarehouse) {
+        throw new BadRequestException('ต้องโอนสินค้าจากคลังหลักเท่านั้น');
+      }
+      if (product.branchId === dto.toBranchId) {
+        throw new BadRequestException('สาขาปลายทางต้องไม่ใช่สาขาเดียวกับสาขาต้นทาง');
+      }
+
+      // Duplicate check INSIDE transaction to prevent race condition
+      const existingTransfer = await tx.stockTransfer.findFirst({
+        where: { productId, status: { in: ['PENDING', 'IN_TRANSIT'] } },
+        select: { id: true },
+      });
+      if (existingTransfer) {
+        throw new BadRequestException('สินค้านี้มีรายการโอนที่รออยู่แล้ว');
+      }
+
       const batchNumber = await this.generateBatchNumber(tx);
 
       return tx.stockTransfer.create({

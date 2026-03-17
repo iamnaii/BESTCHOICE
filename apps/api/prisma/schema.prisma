@@ -287,6 +287,7 @@ model User {
   stockCounts            StockCount[]       @relation("StockCountedBy")
   productPhotosUploaded  ProductPhoto[]     @relation("ProductPhotoUploadedBy")
   refreshTokens          RefreshToken[]
+  passwordResetTokens    PasswordResetToken[]
   reviewedEvidences      PaymentEvidence[]  @relation("EvidenceReviewedBy")
 
   @@index([branchId])
@@ -399,6 +400,9 @@ model Contract {
   hasEarlyPayoffClause  Boolean @default(false) @map("has_early_payoff_clause")
   hasNoTransferClause   Boolean @default(false) @map("has_no_transfer_clause")
   hasAcknowledgement    Boolean @default(false) @map("has_acknowledgement") // ผู้ซื้อได้อ่านและเข้าใจ
+
+  // Credit balance: เงินเกินที่ลูกค้าชำระเกินยอดค้าง (สำหรับ apply ในงวดถัดไป)
+  creditBalance Decimal @default(0) @map("credit_balance") @db.Decimal(12, 2)
 
   // Retention policy
   retentionStatus DocumentRetentionStatus @default(ACTIVE) @map("retention_status")
@@ -1301,6 +1305,21 @@ model RefreshToken {
   @@index([userId])
   @@index([expiresAt])
   @@map("refresh_tokens")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  token     String    @unique
+  userId    String    @map("user_id")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
 }
 
 // ============================================================

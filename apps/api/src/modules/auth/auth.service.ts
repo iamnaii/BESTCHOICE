@@ -1,10 +1,11 @@
-import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
+import { ForgotPasswordDto, ResetPasswordDto } from './dto/password-reset.dto';
 
 @Injectable()
 export class AuthService {
@@ -135,6 +136,87 @@ export class AuthService {
     }
 
     return user;
+  }
+
+  /**
+   * Request a password reset token.
+   * Always returns success to prevent email enumeration.
+   */
+  async forgotPassword(dto: ForgotPasswordDto): Promise<{ message: string }> {
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+      select: { id: true, isActive: true },
+    });
+
+    // Always return success to prevent email enumeration attacks
+    const successMessage = 'หากอีเมลนี้มีอยู่ในระบบ คุณจะได้รับลิงก์รีเซ็ตรหัสผ่าน';
+
+    if (!user || !user.isActive) {
+      return { message: successMessage };
+    }
+
+    // Invalidate any existing unused reset tokens for this user
+    await this.prisma.passwordResetToken.updateMany({
+      where: { userId: user.id, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+
+    // Create a new reset token (valid for 1 hour)
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date();
+    expiresAt.setHours(expiresAt.getHours() + 1);
+
+    await this.prisma.passwordResetToken.create({
+      data: { token, userId: user.id, expiresAt },
+    });
+
+    // In production, send email with reset link:
+    // const resetUrl = `${frontendUrl}/reset-password?token=${token}`;
+    // await emailService.send(user.email, 'Password Reset', resetUrl);
+    this.logger.log(`Password reset token generated for user ${user.id} (token: ${token.substring(0, 8)}...)`);
+
+    return { message: successMessage, ...(process.env.NODE_ENV !== 'production' ? { token } : {}) };
+  }
+
+  /**
+   * Reset password using a valid token.
+   */
+  async resetPassword(dto: ResetPasswordDto): Promise<{ message: string }> {
+    const resetToken = await this.prisma.passwordResetToken.findUnique({
+      where: { token: dto.token },
+      include: { user: { select: { id: true, isActive: true } } },
+    });
+
+    if (!resetToken || resetToken.usedAt || resetToken.expiresAt < new Date()) {
+      throw new BadRequestException('ลิงก์รีเซ็ตรหัสผ่านไม่ถูกต้องหรือหมดอายุ');
+    }
+
+    if (!resetToken.user || !resetToken.user.isActive) {
+      throw new BadRequestException('ผู้ใช้งานไม่ถูกต้อง');
+    }
+
+    const hashedPassword = await bcrypt.hash(dto.newPassword, 10);
+
+    await this.prisma.$transaction([
+      // Update password
+      this.prisma.user.update({
+        where: { id: resetToken.userId },
+        data: { password: hashedPassword },
+      }),
+      // Mark token as used
+      this.prisma.passwordResetToken.update({
+        where: { id: resetToken.id },
+        data: { usedAt: new Date() },
+      }),
+      // Revoke all refresh tokens for security
+      this.prisma.refreshToken.updateMany({
+        where: { userId: resetToken.userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      }),
+    ]);
+
+    this.logger.log(`Password reset completed for user ${resetToken.userId}`);
+    return { message: 'รีเซ็ตรหัสผ่านสำเร็จ กรุณาเข้าสู่ระบบด้วยรหัสผ่านใหม่' };
   }
 
   private async createRefreshToken(userId: string, payload: Record<string, unknown>): Promise<string> {

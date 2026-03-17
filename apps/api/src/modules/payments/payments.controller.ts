@@ -81,6 +81,22 @@ export class PaymentsController {
     );
   }
 
+  @Get('credit-balance/:contractId')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'ACCOUNTANT')
+  getCreditBalance(@Param('contractId') contractId: string) {
+    return this.paymentsService.getCreditBalance(contractId);
+  }
+
+  @Post('apply-credit/:contractId')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  async applyCreditBalance(
+    @Param('contractId') contractId: string,
+    @CurrentUser() user: { id: string; role: string; branchId: string | null },
+  ) {
+    await this.validateBranchAccess(contractId, user);
+    return this.paymentsService.applyCreditBalance(contractId, user.id);
+  }
+
   @Patch(':paymentId/waive-late-fee')
   @Roles('OWNER', 'BRANCH_MANAGER')
   waiveLateFee(

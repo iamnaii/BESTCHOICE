@@ -340,11 +340,12 @@ model Customer {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  contracts    Contract[]
-  sales        Sale[]
-  creditChecks CreditCheck[]
-  pdpaConsents PDPAConsent[]
-  dsarRequests DSARRequest[]
+  contracts        Contract[]
+  sales            Sale[]
+  creditChecks     CreditCheck[]
+  pdpaConsents     PDPAConsent[]
+  dsarRequests     DSARRequest[]
+  kycVerifications KycVerification[]
 
   @@index([phone])
   @@index([name])
@@ -435,6 +436,7 @@ model Contract {
   receipts          Receipt[]
   paymentLinks      PaymentLink[]
   paymentEvidences  PaymentEvidence[]
+  kycVerifications  KycVerification[]
 
   @@index([customerId])
   @@index([branchId])
@@ -1386,6 +1388,43 @@ model DSARRequest {
   @@index([status])
   @@index([requestType])
   @@map("dsar_requests")
+}
+
+// ============================================================
+// KYC VERIFICATION (Identity Verification before signing)
+// ============================================================
+
+model KycVerification {
+  id             String   @id @default(uuid())
+  contractId     String   @map("contract_id")
+  customerId     String   @map("customer_id")
+
+  // OTP verification
+  otpHash        String?  @map("otp_hash") // SHA-256 hash of OTP (never store plaintext)
+  otpPhone       String   @map("otp_phone") // phone number OTP was sent to
+  otpChannel     String   @map("otp_channel") // SMS | LINE
+  otpAttempts    Int      @default(0) @map("otp_attempts") // failed attempts
+  otpSentCount   Int      @default(0) @map("otp_sent_count") // times OTP was sent
+  otpVerifiedAt  DateTime? @map("otp_verified_at")
+
+  // ID Card photo verification
+  idCardImageUrl String?  @map("id_card_image_url") // S3 path
+  idCardVerified Boolean  @default(false) @map("id_card_verified")
+
+  // Metadata
+  ipAddress      String?  @map("ip_address")
+  deviceInfo     String?  @map("device_info") // User-Agent
+  status         String   @default("PENDING") // PENDING, OTP_VERIFIED, VERIFIED, EXPIRED, FAILED
+  expiresAt      DateTime @map("expires_at") // OTP expiry (10 min)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  contract Contract @relation(fields: [contractId], references: [id])
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@index([contractId])
+  @@index([customerId])
+  @@index([status])
+  @@map("kyc_verifications")
 }
 
 // ============================================================

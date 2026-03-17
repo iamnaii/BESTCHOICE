@@ -273,6 +273,37 @@ export default function LiffContract() {
         </CardContent>
       </Card>
 
+      {/* Download Contract PDF */}
+      <Card className="mb-4">
+        <CardContent className="py-3">
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={async () => {
+              try {
+                const res = await fetch(`${API_BASE}/contracts/${contract.id}/documents`, {
+                  headers: { 'Content-Type': 'application/json' },
+                });
+                if (!res.ok) return;
+                const docs = await res.json();
+                const contractDoc = docs.find((d: { documentType: string }) => d.documentType === 'CONTRACT');
+                if (contractDoc) {
+                  const urlRes = await fetch(`${API_BASE}/documents/${contractDoc.id}/signed-url`);
+                  if (urlRes.ok) {
+                    const { url } = await urlRes.json();
+                    window.open(url, '_blank');
+                  }
+                }
+              } catch {
+                // ignore
+              }
+            }}
+          >
+            ดาวน์โหลดสัญญา PDF
+          </Button>
+        </CardContent>
+      </Card>
+
       {/* Pay Next Installment CTA */}
       {nextUnpaid && contract.totalOutstanding > 0 && (
         <Card className="mb-4 border-primary/20 bg-primary/5">

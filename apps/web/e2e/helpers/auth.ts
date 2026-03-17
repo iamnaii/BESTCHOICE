@@ -9,13 +9,13 @@ export const TEST_USER = {
  * Login via the UI and store auth state
  */
 export async function loginAsAdmin(page: Page) {
-  await page.goto('/login');
+  await page.goto('/login', { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('#email');
   await page.fill('#email', TEST_USER.email);
   await page.fill('#password', TEST_USER.password);
   await page.click('button[type="submit"]');
   // Wait for redirect to dashboard
-  await page.waitForURL('/', { timeout: 15000 });
+  await page.waitForURL('/', { timeout: 15000, waitUntil: 'domcontentloaded' });
 }
 
 /**
@@ -36,7 +36,7 @@ export async function loginViaAPI(page: Page) {
   const data = await response.json();
 
   // Set the access token in localStorage
-  await page.goto('/');
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.evaluate((token: string) => {
     localStorage.setItem('access_token', token);
   }, data.accessToken);
@@ -53,5 +53,5 @@ export async function logout(page: Page) {
   await page.evaluate(() => {
     localStorage.removeItem('access_token');
   });
-  await page.goto('/login');
+  await page.goto('/login', { waitUntil: 'domcontentloaded' });
 }

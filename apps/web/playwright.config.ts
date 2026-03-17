@@ -12,6 +12,10 @@ export default defineConfig({
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'on-first-retry',
+    // Use domcontentloaded to avoid timeout on external resources (e.g. Google Fonts)
+    // when running in offline/restricted network environments
+    navigationTimeout: 15000,
+    actionTimeout: 10000,
   },
   projects: [
     {

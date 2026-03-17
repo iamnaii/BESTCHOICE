@@ -84,13 +84,16 @@ export class KycService {
     // Send OTP via notification service
     const message = `[BESTCHOICE] รหัส OTP ของคุณคือ ${otp} (หมดอายุใน ${OTP_EXPIRY_MINUTES} นาที) สำหรับสัญญาเลขที่ ${contract.contractNumber}`;
     try {
-      await this.notificationsService.send({
+      const result = await this.notificationsService.send({
         channel: channel as 'SMS' | 'LINE',
         recipient,
         message,
         relatedId: contractId,
         fallbackPhone: channel === 'LINE' ? customer.phone : undefined,
       });
+      if (result.status === 'FAILED') {
+        throw new Error('Notification service returned FAILED status');
+      }
     } catch (err) {
       this.logger.error(`Failed to send OTP: ${err}`);
       throw new BadRequestException('ไม่สามารถส่ง OTP ได้ กรุณาลองใหม่');

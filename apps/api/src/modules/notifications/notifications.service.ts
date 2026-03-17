@@ -170,6 +170,11 @@ export class NotificationsService {
    */
   private async sendSms(recipient: string, message: string): Promise<void> {
     if (!this.smsApiKey) {
+      // In development, log the SMS instead of sending it
+      if (this.configService.get('NODE_ENV') !== 'production') {
+        this.logger.warn(`[SMS-DEV] SMS_API_KEY not configured. Message to ${recipient}: ${message}`);
+        return;
+      }
       throw new Error('SMS API key not configured');
     }
 

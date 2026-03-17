@@ -2,10 +2,13 @@ import { useState, useMemo, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { compressImageForOcr } from '@/lib/compressImage';
+import { useDebounce } from '@/hooks/useDebounce';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
+import PaymentHistorySheet from '@/components/payment/PaymentHistorySheet';
+import ReceiptModal from '@/components/payment/ReceiptModal';
 import { toast } from 'sonner';
 
 interface OcrPaymentSlipResult {
@@ -72,7 +75,13 @@ export default function PaymentsPage() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<'pending' | 'summary'>('pending');
   const [statusFilter, setStatusFilter] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearch = useDebounce(searchTerm, 400);
   const [summaryDate, setSummaryDate] = useState(new Date().toISOString().split('T')[0]);
+
+  // History sheet & receipt modal state
+  const [historyContractId, setHistoryContractId] = useState<string | null>(null);
+  const [receiptId, setReceiptId] = useState<string | null>(null);
   const [showPayModal, setShowPayModal] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<PendingPayment | null>(null);
   const [payForm, setPayForm] = useState({ amount: 0, paymentMethod: 'CASH', notes: '' });
@@ -93,12 +102,23 @@ export default function PaymentsPage() {
   const [ocrSlipLoading, setOcrSlipLoading] = useState(false);
   const [slipResult, setSlipResult] = useState<OcrPaymentSlipResult | null>(null);
 
+  // Batch slip state
+  const batchSlipFileRef = useRef<HTMLInputElement>(null);
+  const [batchOcrLoading, setBatchOcrLoading] = useState(false);
+  const [batchSlipResult, setBatchSlipResult] = useState<OcrPaymentSlipResult | null>(null);
+
+  // Advance slip state
+  const advanceSlipFileRef = useRef<HTMLInputElement>(null);
+  const [advanceOcrLoading, setAdvanceOcrLoading] = useState(false);
+  const [advanceSlipResult, setAdvanceSlipResult] = useState<OcrPaymentSlipResult | null>(null);
+
   // Pending payments
   const { data: pendingPayments = [], isLoading: loadingPending } = useQuery<PendingPayment[]>({
-    queryKey: ['pending-payments', statusFilter],
+    queryKey: ['pending-payments', statusFilter, debouncedSearch],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (statusFilter) params.set('status', statusFilter);
+      if (debouncedSearch) params.set('search', debouncedSearch);
       const { data } = await api.get(`/payments/pending?${params}`);
       return data;
     },
@@ -147,6 +167,7 @@ export default function PaymentsPage() {
       queryClient.invalidateQueries({ queryKey: ['daily-summary'] });
       setSelectedIds(new Set());
       setShowBatchModal(false);
+      setBatchSlipResult(null);
     },
     onError: (err: any) => toast.error(getErrorMessage(err)),
   });
@@ -166,6 +187,7 @@ export default function PaymentsPage() {
       setShowAdvanceModal(false);
       setAdvanceContract(null);
       setAdvanceAmount('');
+      setAdvanceSlipResult(null);
     },
     onError: (err: any) => toast.error(getErrorMessage(err)),
   });
@@ -196,7 +218,11 @@ export default function PaymentsPage() {
   [batchSelectedPayments]);
 
   const handleBatchPay = () => {
-    const batchRef = `BATCH-${Date.now()}`;
+    if (isSlipRequired(batchPayMethod) && !batchSlipResult) {
+      toast.error('กรุณาแนบสลิปก่อนยืนยันการชำระ');
+      return;
+    }
+    const batchRef = batchSlipResult?.transactionRef || `BATCH-${Date.now()}`;
     const items = batchSelectedPayments.map((p, i) => ({
       contractId: p.contract.id,
       installmentNo: p.installmentNo,
@@ -232,27 +258,49 @@ export default function PaymentsPage() {
     });
   };
 
-  // OCR Slip Scanner
-  const handleSlipScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('ไฟล์ต้องมีขนาดไม่เกิน 10MB');
-      return;
-    }
-    if (!file.type.startsWith('image/')) {
-      toast.error('กรุณาเลือกไฟล์รูปภาพ');
-      return;
-    }
+  // Generic OCR slip scan helper
+  const scanSlip = async (
+    file: File,
+    setLoading: (v: boolean) => void,
+    setResult: (v: OcrPaymentSlipResult | null) => void,
+    fileRef: React.RefObject<HTMLInputElement | null>,
+    onAutoFill?: (data: OcrPaymentSlipResult) => void,
+  ) => {
+    if (file.size > 10 * 1024 * 1024) { toast.error('ไฟล์ต้องมีขนาดไม่เกิน 10MB'); return; }
+    if (!file.type.startsWith('image/')) { toast.error('กรุณาเลือกไฟล์รูปภาพ'); return; }
 
-    setOcrSlipLoading(true);
+    setLoading(true);
     try {
       const imageBase64 = await compressImageForOcr(file);
       const { data } = await api.post<OcrPaymentSlipResult>('/ocr/payment-slip', { imageBase64 }, { timeout: 90000 });
+      setResult(data);
+      if (onAutoFill) onAutoFill(data);
 
-      setSlipResult(data);
+      const pct = (data.confidence * 100).toFixed(0);
+      if (data.confidence < 0.5) {
+        toast.error(`อ่านสลิปได้ แต่ความมั่นใจต่ำมาก (${pct}%) กรุณาตรวจสอบข้อมูล`);
+      } else if (data.confidence < 0.7) {
+        toast.warning(`อ่านสลิปสำเร็จ ความมั่นใจ ${pct}% กรุณาตรวจสอบ`);
+      } else {
+        toast.success(`อ่านสลิปสำเร็จ (ความมั่นใจ ${pct}%)`);
+      }
+    } catch (err: any) {
+      if (err.code === 'ECONNABORTED' || !err.response) {
+        toast.error('ไม่สามารถเชื่อมต่อ OCR ได้ กรุณาลองใหม่');
+      } else {
+        toast.error(getErrorMessage(err));
+      }
+    } finally {
+      setLoading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
 
-      // Auto-fill form from OCR result
+  // OCR Slip Scanner (single payment)
+  const handleSlipScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await scanSlip(file, setOcrSlipLoading, setSlipResult, slipFileRef, (data) => {
       if (data.amount && data.amount > 0) {
         const slipType = data.slipType;
         let method = 'BANK_TRANSFER';
@@ -272,26 +320,38 @@ export default function PaymentsPage() {
           notes: notesParts.join(' | '),
         }));
       }
-
-      const pct = (data.confidence * 100).toFixed(0);
-      if (data.confidence < 0.5) {
-        toast.error(`อ่านสลิปได้ แต่ความมั่นใจต่ำมาก (${pct}%) กรุณาตรวจสอบข้อมูล`);
-      } else if (data.confidence < 0.7) {
-        toast.warning(`อ่านสลิปสำเร็จ ความมั่นใจ ${pct}% กรุณาตรวจสอบ`);
-      } else {
-        toast.success(`อ่านสลิปสำเร็จ (ความมั่นใจ ${pct}%)`);
-      }
-    } catch (err: any) {
-      if (err.code === 'ECONNABORTED' || !err.response) {
-        toast.error('ไม่สามารถเชื่อมต่อ OCR ได้ กรุณาลองใหม่');
-      } else {
-        toast.error(getErrorMessage(err));
-      }
-    } finally {
-      setOcrSlipLoading(false);
-      if (slipFileRef.current) slipFileRef.current.value = '';
-    }
+    });
   };
+
+  // OCR Slip Scanner (batch payment)
+  const handleBatchSlipScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await scanSlip(file, setBatchOcrLoading, setBatchSlipResult, batchSlipFileRef, (data) => {
+      if (data.slipType === 'QR_PAYMENT' || data.slipType === 'PROMPTPAY') {
+        setBatchPayMethod('QR_EWALLET');
+      } else if (data.slipType) {
+        setBatchPayMethod('BANK_TRANSFER');
+      }
+    });
+  };
+
+  // OCR Slip Scanner (advance payment)
+  const handleAdvanceSlipScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await scanSlip(file, setAdvanceOcrLoading, setAdvanceSlipResult, advanceSlipFileRef, (data) => {
+      if (data.amount && data.amount > 0) setAdvanceAmount(String(data.amount));
+      if (data.slipType === 'QR_PAYMENT' || data.slipType === 'PROMPTPAY') {
+        setAdvanceMethod('QR_EWALLET');
+      } else if (data.slipType) {
+        setAdvanceMethod('BANK_TRANSFER');
+      }
+    });
+  };
+
+  // Check if slip is required (non-CASH methods)
+  const isSlipRequired = (method: string) => method !== 'CASH';
 
   const pendingColumns = useMemo(() => [
     {
@@ -348,6 +408,9 @@ export default function PaymentsPage() {
           <button onClick={() => { setAdvanceContract(p); setAdvanceAmount(''); setAdvanceMethod('CASH'); setShowAdvanceModal(true); }} className="px-2 py-1 text-xs border border-primary text-primary rounded hover:bg-primary/10">
             ล่วงหน้า
           </button>
+          <button onClick={() => setHistoryContractId(p.contract.id)} className="px-2 py-1 text-xs border border-muted-foreground/30 text-muted-foreground rounded hover:bg-muted">
+            ประวัติ
+          </button>
         </div>
       ),
     },
@@ -371,6 +434,13 @@ export default function PaymentsPage() {
       {tab === 'pending' && (
         <div>
           <div className="flex gap-3 mb-4">
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="ค้นหาเลขสัญญา, ชื่อ, เบอร์โทร..."
+              className="px-3 py-2 border border-input rounded-lg text-sm w-72"
+            />
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm">
               <option value="">ทุกสถานะ</option>
               <option value="PENDING">รอชำระ</option>
@@ -614,9 +684,38 @@ export default function PaymentsPage() {
                 <option value="QR_EWALLET">QR/E-Wallet</option>
               </select>
             </div>
+
+            {/* Slip upload for batch - required for non-CASH */}
+            {isSlipRequired(batchPayMethod) && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                <div className="flex items-center justify-between mb-1">
+                  <h4 className="text-sm font-semibold text-green-800">แนบสลิปโอนเงิน <span className="text-red-500">*</span></h4>
+                </div>
+                <p className="text-xs text-green-600 mb-2">กรุณาแนบสลิปเพื่อยืนยันการชำระ</p>
+                <input ref={batchSlipFileRef} type="file" accept="image/*" capture="environment" onChange={handleBatchSlipScan} className="hidden" />
+                <button type="button" onClick={() => batchSlipFileRef.current?.click()} disabled={batchOcrLoading} className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700 disabled:opacity-50">
+                  {batchOcrLoading ? (
+                    <><div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white" /> กำลังอ่านสลิป...</>
+                  ) : (
+                    <><svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg> สแกนสลิป</>
+                  )}
+                </button>
+                {batchSlipResult && (
+                  <div className="mt-2 p-2 rounded border border-green-200 space-y-1">
+                    <div className="text-xs text-muted-foreground">ผลการสแกน:</div>
+                    {batchSlipResult.amount && <div className="text-xs"><span className="text-muted-foreground">จำนวนเงิน:</span> <span className="font-bold text-green-700">{batchSlipResult.amount.toLocaleString()} ฿</span></div>}
+                    {batchSlipResult.senderName && <div className="text-xs"><span className="text-muted-foreground">ผู้โอน:</span> {batchSlipResult.senderName}</div>}
+                    {batchSlipResult.transactionRef && <div className="text-xs"><span className="text-muted-foreground">Ref:</span> <span className="font-mono">{batchSlipResult.transactionRef}</span></div>}
+                    {batchSlipResult.transactionDate && <div className="text-xs"><span className="text-muted-foreground">วันเวลา:</span> {batchSlipResult.transactionDate} {batchSlipResult.transactionTime || ''}</div>}
+                  </div>
+                )}
+                {!batchSlipResult && <p className="text-xs text-red-500 mt-1">* จำเป็นต้องแนบสลิปสำหรับการโอนเงิน/QR</p>}
+              </div>
+            )}
+
             <div className="flex gap-3 pt-2">
               <button onClick={() => setShowBatchModal(false)} className="flex-1 px-4 py-2 text-sm border border-input rounded-lg">ยกเลิก</button>
-              <button onClick={handleBatchPay} disabled={batchMutation.isPending} className="flex-1 px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50">
+              <button onClick={handleBatchPay} disabled={batchMutation.isPending || (isSlipRequired(batchPayMethod) && !batchSlipResult)} className="flex-1 px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50">
                 {batchMutation.isPending ? 'กำลังชำระ...' : `ยืนยันชำระ ${batchSelectedPayments.length} รายการ`}
               </button>
             </div>
@@ -645,11 +744,51 @@ export default function PaymentsPage() {
                 <option value="QR_EWALLET">QR/E-Wallet</option>
               </select>
             </div>
+
+            {/* Slip upload for advance - required for non-CASH */}
+            {isSlipRequired(advanceMethod) && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                <div className="flex items-center justify-between mb-1">
+                  <h4 className="text-sm font-semibold text-green-800">แนบสลิปโอนเงิน <span className="text-red-500">*</span></h4>
+                </div>
+                <p className="text-xs text-green-600 mb-2">กรุณาแนบสลิปเพื่อยืนยันการชำระ</p>
+                <input ref={advanceSlipFileRef} type="file" accept="image/*" capture="environment" onChange={handleAdvanceSlipScan} className="hidden" />
+                <button type="button" onClick={() => advanceSlipFileRef.current?.click()} disabled={advanceOcrLoading} className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700 disabled:opacity-50">
+                  {advanceOcrLoading ? (
+                    <><div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white" /> กำลังอ่านสลิป...</>
+                  ) : (
+                    <><svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg> สแกนสลิป</>
+                  )}
+                </button>
+                {advanceSlipResult && (
+                  <div className="mt-2 p-2 rounded border border-green-200 space-y-1">
+                    <div className="text-xs text-muted-foreground">ผลการสแกน:</div>
+                    {advanceSlipResult.amount && <div className="text-xs"><span className="text-muted-foreground">จำนวนเงิน:</span> <span className="font-bold text-green-700">{advanceSlipResult.amount.toLocaleString()} ฿</span></div>}
+                    {advanceSlipResult.senderName && <div className="text-xs"><span className="text-muted-foreground">ผู้โอน:</span> {advanceSlipResult.senderName}</div>}
+                    {advanceSlipResult.transactionRef && <div className="text-xs"><span className="text-muted-foreground">Ref:</span> <span className="font-mono">{advanceSlipResult.transactionRef}</span></div>}
+                    {advanceSlipResult.transactionDate && <div className="text-xs"><span className="text-muted-foreground">วันเวลา:</span> {advanceSlipResult.transactionDate} {advanceSlipResult.transactionTime || ''}</div>}
+                  </div>
+                )}
+                {!advanceSlipResult && <p className="text-xs text-red-500 mt-1">* จำเป็นต้องแนบสลิปสำหรับการโอนเงิน/QR</p>}
+              </div>
+            )}
+
             <div className="flex gap-3 pt-2">
-              <button onClick={() => { setShowAdvanceModal(false); setAdvanceContract(null); }} className="flex-1 px-4 py-2 text-sm border border-input rounded-lg">ยกเลิก</button>
+              <button onClick={() => { setShowAdvanceModal(false); setAdvanceContract(null); setAdvanceSlipResult(null); }} className="flex-1 px-4 py-2 text-sm border border-input rounded-lg">ยกเลิก</button>
               <button
-                onClick={() => advanceMutation.mutate({ contractId: advanceContract.contract.id, amount: parseFloat(advanceAmount) || 0, paymentMethod: advanceMethod })}
-                disabled={advanceMutation.isPending || !advanceAmount || parseFloat(advanceAmount) <= 0}
+                onClick={() => {
+                  if (isSlipRequired(advanceMethod) && !advanceSlipResult) {
+                    toast.error('กรุณาแนบสลิปก่อนยืนยันการชำระ');
+                    return;
+                  }
+                  advanceMutation.mutate({
+                    contractId: advanceContract.contract.id,
+                    amount: parseFloat(advanceAmount) || 0,
+                    paymentMethod: advanceMethod,
+                    transactionRef: advanceSlipResult?.transactionRef || `ADV-${Date.now()}`,
+                  } as any);
+                }}
+                disabled={advanceMutation.isPending || !advanceAmount || parseFloat(advanceAmount) <= 0 || (isSlipRequired(advanceMethod) && !advanceSlipResult)}
                 className="flex-1 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
               >
                 {advanceMutation.isPending ? 'กำลังจัดสรร...' : 'ยืนยันจ่ายล่วงหน้า'}
@@ -658,6 +797,19 @@ export default function PaymentsPage() {
           </div>
         </Modal>
       )}
+
+      {/* Payment History Sheet */}
+      <PaymentHistorySheet
+        contractId={historyContractId}
+        onClose={() => setHistoryContractId(null)}
+        onViewReceipt={(id) => setReceiptId(id)}
+      />
+
+      {/* Receipt Modal */}
+      <ReceiptModal
+        receiptId={receiptId}
+        onClose={() => setReceiptId(null)}
+      />
     </div>
   );
 }

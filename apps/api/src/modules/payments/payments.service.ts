@@ -219,7 +219,7 @@ export class PaymentsService {
   }
 
   // ─── Get all pending payments (for payment queue view) ─
-  async getPendingPayments(filters: { branchId?: string; date?: string; status?: string }) {
+  async getPendingPayments(filters: { branchId?: string; date?: string; status?: string; search?: string }) {
     const where: Record<string, unknown> = {};
 
     if (filters.status) {
@@ -230,6 +230,18 @@ export class PaymentsService {
 
     if (filters.branchId) {
       where.contract = { branchId: filters.branchId };
+    }
+
+    if (filters.search) {
+      const search = filters.search.trim();
+      where.contract = {
+        ...(where.contract as Record<string, unknown> || {}),
+        OR: [
+          { contractNumber: { contains: search, mode: 'insensitive' } },
+          { customer: { name: { contains: search, mode: 'insensitive' } } },
+          { customer: { phone: { contains: search } } },
+        ],
+      };
     }
 
     if (filters.date) {
@@ -319,5 +331,38 @@ export class PaymentsService {
         data: { status: 'COMPLETED' },
       });
     }
+  }
+
+  // ─── Waive late fee ─────────────────────────────────
+  async waiveLateFee(paymentId: string, reason: string, userId: string) {
+    const payment = await this.prisma.payment.findUnique({ where: { id: paymentId } });
+    if (!payment) throw new NotFoundException('ไม่พบรายการชำระ');
+    if (payment.lateFeeWaived) throw new BadRequestException('รายการนี้ยกเว้นค่าปรับแล้ว');
+    if (Number(payment.lateFee) <= 0) throw new BadRequestException('รายการนี้ไม่มีค่าปรับ');
+
+    const originalLateFee = Number(payment.lateFee);
+    const notes = [payment.notes, `ยกเว้นค่าปรับ ${originalLateFee.toLocaleString()} บาท — ${reason}`].filter(Boolean).join(' | ');
+
+    // Check if payment becomes fully paid after waiving late fee
+    const totalOwed = Number(payment.amountDue); // without late fee
+    const amountPaid = Number(payment.amountPaid);
+    const isNowFullyPaid = amountPaid >= totalOwed;
+
+    const updated = await this.prisma.payment.update({
+      where: { id: paymentId },
+      data: {
+        lateFee: 0,
+        lateFeeWaived: true,
+        notes,
+        ...(isNowFullyPaid && payment.status !== 'PAID' ? { status: 'PAID', paidDate: new Date() } : {}),
+      },
+    });
+
+    // Check contract completion if status changed to PAID
+    if (isNowFullyPaid && payment.status !== 'PAID') {
+      await this.checkContractCompletion(payment.contractId);
+    }
+
+    return { ...updated, originalLateFee };
   }
 }

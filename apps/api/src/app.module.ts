@@ -46,6 +46,8 @@ import { PDPAModule } from './modules/pdpa/pdpa.module';
 import { ReceiptsModule } from './modules/receipts/receipts.module';
 import { CustomerAccessModule } from './modules/customer-access/customer-access.module';
 import { LineOaModule } from './modules/line-oa/line-oa.module';
+import { KycModule } from './modules/kyc/kyc.module';
+import { StorageModule } from './modules/storage/storage.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
 import { CsrfGuard } from './guards/csrf.guard';
@@ -70,6 +72,7 @@ import { CsrfGuard } from './guards/csrf.guard';
         limit: 200, // Allow 200 req/sec per IP (supports 20+ concurrent employees on same network)
       },
     ]),
+    StorageModule,
     PrismaModule,
     AuthModule,
     BranchesModule,
@@ -110,6 +113,7 @@ import { CsrfGuard } from './guards/csrf.guard';
     AuditModule,
     // Legal Compliance & PDPA
     PDPAModule,
+    KycModule,
     ReceiptsModule,
     CustomerAccessModule,
     // LINE OA Integration

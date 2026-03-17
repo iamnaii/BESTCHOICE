@@ -1,12 +1,20 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { SignerType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { StorageService } from '../storage/storage.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateTemplateDto, UpdateTemplateDto } from './dto/document.dto';
 import * as crypto from 'crypto';
 
 @Injectable()
 export class DocumentsService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(DocumentsService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private storageService: StorageService,
+    private notificationsService: NotificationsService,
+  ) {}
 
   // ─── Contract Templates ──────────────────────────────
   async findAllTemplates(type?: string) {
@@ -190,11 +198,24 @@ export class DocumentsService {
     const lessorSig = await this.getSystemLessorSignature();
     const renderedHtml = this.wrapWithA4Styles(this.replacePlaceholders(htmlContent, contract, lessorSig), templateSettings, contract.contractNumber);
 
-    // Generate file hash
-    const fileHash = crypto.createHash('sha256').update(renderedHtml).digest('hex');
+    // Generate PDF from HTML via Puppeteer (if available), otherwise store HTML
+    let fileUrl: string;
+    let fileHash: string;
+    let pdfGenerated = false;
 
-    // Store as HTML document (production would use Puppeteer for PDF)
-    const fileUrl = `documents/${contract.contractNumber}_${documentType}_${Date.now()}.html`;
+    try {
+      const pdfBuffer = await this.htmlToPdf(renderedHtml);
+      fileHash = crypto.createHash('sha256').update(pdfBuffer).digest('hex');
+      const s3Key = `contracts/${new Date().getFullYear()}/${contract.contractNumber}/${documentType}_${Date.now()}.pdf`;
+      fileUrl = await this.storageService.upload(s3Key, pdfBuffer, 'application/pdf');
+      pdfGenerated = true;
+      this.logger.log(`PDF generated and uploaded: ${fileUrl} (${pdfBuffer.length} bytes)`);
+    } catch (err) {
+      // Fallback to HTML storage if Puppeteer is not available
+      this.logger.warn(`PDF generation failed, storing HTML: ${err instanceof Error ? err.message : err}`);
+      fileHash = crypto.createHash('sha256').update(renderedHtml).digest('hex');
+      fileUrl = `documents/${contract.contractNumber}_${documentType}_${Date.now()}.html`;
+    }
 
     const doc = await this.prisma.eDocument.create({
       data: {
@@ -206,7 +227,7 @@ export class DocumentsService {
       },
     });
 
-    return { ...doc, renderedHtml };
+    return { ...doc, renderedHtml, pdfGenerated };
   }
 
   async getDocuments(contractId: string) {
@@ -304,6 +325,42 @@ export class DocumentsService {
     }
 
     if (errors.length > 0) results.errors = errors;
+
+    // Send LINE notification to customer after document generation
+    try {
+      const contract = await this.prisma.contract.findUnique({
+        where: { id: contractId },
+        include: { customer: true, product: true, signatures: true },
+      });
+      if (contract?.customer?.lineId) {
+        const signatureCount = contract.signatures?.length || 0;
+        await this.notificationsService.send({
+          channel: 'LINE',
+          recipient: contract.customer.lineId,
+          message: `สัญญาเลขที่ ${contract.contractNumber} เซ็นเรียบร้อยแล้ว (${signatureCount} ลายเซ็น)\nสินค้า: ${contract.product?.name || '-'}\nดาวน์โหลดเอกสารผ่าน LINE`,
+          relatedId: contractId,
+        });
+        this.logger.log(`Sent contract-signed notification to LINE: ${contract.customer.lineId}`);
+      }
+    } catch (notifyErr) {
+      this.logger.warn(`Failed to send contract-signed notification: ${notifyErr instanceof Error ? notifyErr.message : notifyErr}`);
+    }
+
+    // Audit log
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          userId: createdById,
+          action: 'CONTRACT_SIGNED',
+          entity: 'contract',
+          entityId: contractId,
+          newValue: { documentCount: (results.contract ? 1 : 0) + (results.pdpa ? 1 : 0), errors: errors.length },
+        },
+      });
+    } catch (auditErr) {
+      this.logger.warn(`Failed to create audit log: ${auditErr instanceof Error ? auditErr.message : auditErr}`);
+    }
+
     return results;
   }
 
@@ -1146,5 +1203,61 @@ ${hasFooter ? `<div class="page-footer-screen"><span>${footerLeftText}</span>${s
 </div>`;
     }
     return '<div>{contract_number}</div>';
+  }
+
+  // ─── PDF Generation (Puppeteer) ──────────────────────
+  private async htmlToPdf(html: string): Promise<Buffer> {
+    // Dynamic import — uses puppeteer-core with system Chromium
+    const puppeteer = await import('puppeteer-core');
+    const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser';
+    const browser = await puppeteer.launch({
+      headless: true,
+      executablePath,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+    });
+    try {
+      const page = await browser.newPage();
+      await page.setContent(html, { waitUntil: 'networkidle0', timeout: 15000 });
+      const pdf = await page.pdf({
+        format: 'A4',
+        printBackground: true,
+        margin: { top: '10mm', right: '10mm', bottom: '10mm', left: '10mm' },
+      });
+      return Buffer.from(pdf);
+    } finally {
+      await browser.close();
+    }
+  }
+
+  // ─── Document Download ───────────────────────────────
+  async getDocumentStream(id: string): Promise<{ stream: import('stream').Readable; filename: string; contentType: string }> {
+    const doc = await this.prisma.eDocument.findUnique({ where: { id } });
+    if (!doc) throw new NotFoundException('ไม่พบเอกสาร');
+
+    const isPdf = doc.fileUrl.endsWith('.pdf');
+    const filename = doc.fileUrl.split('/').pop() || `${doc.documentType}_${doc.id}.${isPdf ? 'pdf' : 'html'}`;
+
+    if (isPdf && this.storageService.configured) {
+      const stream = await this.storageService.getStream(doc.fileUrl);
+      return { stream, filename, contentType: 'application/pdf' };
+    }
+
+    // Fallback: return HTML content as stream
+    const { Readable } = await import('stream');
+    const htmlStream = Readable.from([doc.fileUrl]);
+    return { stream: htmlStream, filename, contentType: 'text/html' };
+  }
+
+  async getDocumentSignedUrl(id: string): Promise<{ url: string; expiresIn: number }> {
+    const doc = await this.prisma.eDocument.findUnique({ where: { id } });
+    if (!doc) throw new NotFoundException('ไม่พบเอกสาร');
+
+    if (!doc.fileUrl.endsWith('.pdf') || !this.storageService.configured) {
+      throw new BadRequestException('เอกสารนี้ไม่มีไฟล์ PDF ให้ดาวน์โหลด');
+    }
+
+    const expiresIn = 3600;
+    const url = await this.storageService.getSignedDownloadUrl(doc.fileUrl, expiresIn);
+    return { url, expiresIn };
   }
 }

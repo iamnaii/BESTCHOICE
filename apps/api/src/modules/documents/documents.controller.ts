@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Req, Res } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { DocumentsService } from './documents.service';
 import { CreateTemplateDto, UpdateTemplateDto, SignContractDto, GenerateDocumentDto } from './dto/document.dto';
@@ -129,5 +129,21 @@ export class DocumentsController {
   @Get('documents/:id')
   getDocument(@Param('id') id: string) {
     return this.documentsService.getDocument(id);
+  }
+
+  // ─── Document Download ───────────────────────────────
+  @Get('documents/:id/download')
+  async downloadDocument(@Param('id') id: string, @Res() res: any) {
+    const { stream, filename, contentType } = await this.documentsService.getDocumentStream(id);
+    res.set({
+      'Content-Type': contentType,
+      'Content-Disposition': `attachment; filename="${encodeURIComponent(filename)}"`,
+    });
+    stream.pipe(res);
+  }
+
+  @Get('documents/:id/signed-url')
+  getSignedUrl(@Param('id') id: string) {
+    return this.documentsService.getDocumentSignedUrl(id);
   }
 }

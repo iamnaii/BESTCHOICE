@@ -1,10 +1,13 @@
-import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api, { getErrorMessage } from '@/lib/api';
+import { useState, useEffect, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
-import Modal from '@/components/ui/Modal';
+import DataTable from '@/components/ui/DataTable';
+import { Card, CardContent } from '@/components/ui/card';
+import ReceiptModal from '@/components/payment/ReceiptModal';
+import { useDebounce } from '@/hooks/useDebounce';
+import ExcelJS from 'exceljs';
 import { toast } from 'sonner';
-import { useAuth } from '@/contexts/AuthContext';
 
 interface Receipt {
   id: string;
@@ -23,70 +26,206 @@ interface Receipt {
   paidDate: string;
   isVoided: boolean;
   voidReason: string | null;
-  fileHash: string | null;
   createdAt: string;
+  contract?: { contractNumber: string; customer: { name: string } };
+}
+
+interface ReceiptsResponse {
+  data: Receipt[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  summary: { totalAmount: number; totalCount: number };
 }
 
 const receiptTypeLabels: Record<string, string> = {
-  INSTALLMENT: 'งวดผ่อนชำระ',
+  PAYMENT: 'งวดผ่อนชำระ',
   DOWN_PAYMENT: 'เงินดาวน์',
   EARLY_PAYOFF: 'ปิดก่อนกำหนด',
   CREDIT_NOTE: 'ใบลดหนี้',
 };
 
+const methodLabels: Record<string, string> = {
+  CASH: 'เงินสด',
+  BANK_TRANSFER: 'โอนเงิน',
+  QR_EWALLET: 'QR/E-Wallet',
+};
+
 function ReceiptsPage() {
-  const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [searchContractId, setSearchContractId] = useState('');
-  const [searchReceiptNo, setSearchReceiptNo] = useState('');
-  const [receipts, setReceipts] = useState<Receipt[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [showVoidModal, setShowVoidModal] = useState(false);
-  const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null);
-  const [voidReason, setVoidReason] = useState('');
-  const [selectedDetail, setSelectedDetail] = useState<Receipt | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearch = useDebounce(searchTerm, 400);
+  const [receiptType, setReceiptType] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [page, setPage] = useState(1);
+  const [selectedReceiptId, setSelectedReceiptId] = useState<string | null>(null);
 
-  const searchByContract = async () => {
-    if (!searchContractId) return;
-    setLoading(true);
-    try {
-      const { data } = await api.get(`/receipts/contract/${searchContractId}`);
-      setReceipts(data);
-    } catch (err) {
-      toast.error(getErrorMessage(err));
-    } finally {
-      setLoading(false);
-    }
+  // Reset page on filter change
+  useEffect(() => { setPage(1); }, [debouncedSearch, receiptType, dateFrom, dateTo]);
+
+  const buildParams = (overrideLimit?: number) => {
+    const params = new URLSearchParams();
+    if (debouncedSearch) params.set('search', debouncedSearch);
+    if (receiptType) params.set('receiptType', receiptType);
+    if (dateFrom) params.set('dateFrom', dateFrom);
+    if (dateTo) params.set('dateTo', dateTo);
+    params.set('page', String(page));
+    if (overrideLimit) params.set('limit', String(overrideLimit));
+    return params;
   };
 
-  const searchByNumber = async () => {
-    if (!searchReceiptNo) return;
-    setLoading(true);
-    try {
-      const { data } = await api.get(`/receipts/number/${searchReceiptNo}`);
-      setReceipts([data]);
-    } catch (err) {
-      toast.error(getErrorMessage(err));
-      setReceipts([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const voidMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedReceipt) return;
-      await api.post(`/receipts/${selectedReceipt.id}/void`, { reason: voidReason });
+  const { data: result, isLoading } = useQuery<ReceiptsResponse>({
+    queryKey: ['receipts', debouncedSearch, receiptType, dateFrom, dateTo, page],
+    queryFn: async () => {
+      const { data } = await api.get(`/receipts?${buildParams()}`);
+      return data;
     },
-    onSuccess: () => {
-      toast.success('ยกเลิกใบเสร็จสำเร็จ (สร้างใบลดหนี้แล้ว)');
-      setShowVoidModal(false);
-      setSelectedReceipt(null);
-      setVoidReason('');
-      if (searchContractId) searchByContract();
-    },
-    onError: (err) => toast.error(getErrorMessage(err)),
   });
+
+  const receipts = result?.data || [];
+  const summary = result?.summary;
+
+  const columns = useMemo(() => [
+    {
+      key: 'receiptNumber',
+      label: 'เลขใบเสร็จ',
+      render: (r: Receipt) => <span className="font-mono text-xs">{r.receiptNumber}</span>,
+    },
+    {
+      key: 'contractNumber',
+      label: 'เลขสัญญา',
+      render: (r: Receipt) => (
+        <span className="font-mono text-xs text-primary">{r.contract?.contractNumber || '-'}</span>
+      ),
+    },
+    {
+      key: 'receiptType',
+      label: 'ประเภท',
+      render: (r: Receipt) => {
+        const isCredit = r.receiptType === 'CREDIT_NOTE';
+        return (
+          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${isCredit ? 'bg-yellow-100 text-yellow-700' : 'bg-blue-50 text-blue-700'}`}>
+            {receiptTypeLabels[r.receiptType] || r.receiptType}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'payerName',
+      label: 'ผู้ชำระ',
+      render: (r: Receipt) => <span className="text-sm">{r.payerName}</span>,
+    },
+    {
+      key: 'amount',
+      label: 'จำนวนเงิน',
+      render: (r: Receipt) => (
+        <span className="font-medium text-right block">{Number(r.amount).toLocaleString()} ฿</span>
+      ),
+    },
+    {
+      key: 'installmentNo',
+      label: 'งวดที่',
+      render: (r: Receipt) => <span className="text-center block">{r.installmentNo || '-'}</span>,
+    },
+    {
+      key: 'paymentMethod',
+      label: 'วิธีชำระ',
+      render: (r: Receipt) => (
+        <span className="text-xs">{r.paymentMethod ? methodLabels[r.paymentMethod] || r.paymentMethod : '-'}</span>
+      ),
+    },
+    {
+      key: 'paidDate',
+      label: 'วันที่',
+      render: (r: Receipt) => (
+        <span className="text-xs">{new Date(r.paidDate).toLocaleDateString('th-TH')}</span>
+      ),
+    },
+    {
+      key: 'status',
+      label: 'สถานะ',
+      render: (r: Receipt) => r.isVoided
+        ? <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">ยกเลิก</span>
+        : <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">ปกติ</span>,
+    },
+    {
+      key: 'actions',
+      label: '',
+      render: (r: Receipt) => (
+        <button
+          onClick={() => setSelectedReceiptId(r.id)}
+          className="px-2 py-1 text-xs text-primary hover:bg-primary/10 rounded"
+        >
+          ดูรายละเอียด
+        </button>
+      ),
+    },
+  ], []);
+
+  const exportExcel = async () => {
+    try {
+      toast.loading('กำลังสร้างไฟล์ Excel...', { id: 'excel-export' });
+      const params = new URLSearchParams();
+      if (debouncedSearch) params.set('search', debouncedSearch);
+      if (receiptType) params.set('receiptType', receiptType);
+      if (dateFrom) params.set('dateFrom', dateFrom);
+      if (dateTo) params.set('dateTo', dateTo);
+      params.set('limit', '10000');
+      const { data: allData } = await api.get<ReceiptsResponse>(`/receipts?${params}`);
+
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet('ใบเสร็จ');
+      ws.columns = [
+        { header: 'เลขใบเสร็จ', key: 'receiptNumber', width: 22 },
+        { header: 'เลขสัญญา', key: 'contractNumber', width: 18 },
+        { header: 'ประเภท', key: 'receiptType', width: 16 },
+        { header: 'ผู้ชำระ', key: 'payerName', width: 25 },
+        { header: 'จำนวนเงิน', key: 'amount', width: 14 },
+        { header: 'งวดที่', key: 'installmentNo', width: 8 },
+        { header: 'วิธีชำระ', key: 'paymentMethod', width: 14 },
+        { header: 'เลขอ้างอิง', key: 'transactionRef', width: 22 },
+        { header: 'วันที่ชำระ', key: 'paidDate', width: 16 },
+        { header: 'สถานะ', key: 'status', width: 10 },
+      ];
+
+      // Style header row
+      const headerRow = ws.getRow(1);
+      headerRow.font = { bold: true };
+      headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+
+      ws.addRows(
+        allData.data.map((r: Receipt) => ({
+          receiptNumber: r.receiptNumber,
+          contractNumber: r.contract?.contractNumber || '-',
+          receiptType: receiptTypeLabels[r.receiptType] || r.receiptType,
+          payerName: r.payerName,
+          amount: Number(r.amount),
+          installmentNo: r.installmentNo || '-',
+          paymentMethod: r.paymentMethod ? methodLabels[r.paymentMethod] || r.paymentMethod : '-',
+          transactionRef: r.transactionRef || '-',
+          paidDate: new Date(r.paidDate).toLocaleDateString('th-TH'),
+          status: r.isVoided ? 'ยกเลิก' : 'ปกติ',
+        })),
+      );
+
+      const buffer = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const now = new Date();
+      a.download = `ใบเสร็จ_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success(`ดาวน์โหลดสำเร็จ (${allData.data.length} รายการ)`, { id: 'excel-export' });
+    } catch {
+      toast.error('ไม่สามารถสร้างไฟล์ Excel ได้', { id: 'excel-export' });
+    }
+  };
 
   return (
     <div className="animate-fade-in">
@@ -95,177 +234,99 @@ function ReceiptsPage() {
         subtitle="ค้นหาและจัดการใบเสร็จรับเงินอิเล็กทรอนิกส์"
       />
 
-      {/* Search */}
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <Card>
+          <CardContent className="pt-4">
+            <div className="text-xs text-muted-foreground mb-1">จำนวนใบเสร็จ</div>
+            <div className="text-2xl font-bold">{summary?.totalCount?.toLocaleString() || 0}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4">
+            <div className="text-xs text-muted-foreground mb-1">ยอดรวม</div>
+            <div className="text-2xl font-bold text-green-600">
+              {Number(summary?.totalAmount || 0).toLocaleString()} ฿
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 flex items-center justify-between">
+            <div>
+              <div className="text-xs text-muted-foreground mb-1">Export</div>
+              <div className="text-sm text-muted-foreground">ดาวน์โหลดข้อมูลตามตัวกรอง</div>
+            </div>
+            <button
+              onClick={exportExcel}
+              disabled={!receipts.length}
+              className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+            >
+              Excel
+            </button>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Filter Bar */}
       <div className="bg-card rounded-lg border p-4 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="flex gap-2">
-            <input
-              type="text"
-              placeholder="Contract ID..."
-              value={searchContractId}
-              onChange={(e) => setSearchContractId(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && searchByContract()}
-              className="flex-1 px-3 py-2 border rounded-lg text-sm"
-            />
-            <button onClick={searchByContract} className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90">
-              ค้นหาตามสัญญา
-            </button>
-          </div>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              placeholder="เลขใบเสร็จ (RC-YYYY-MM-NNNNN)..."
-              value={searchReceiptNo}
-              onChange={(e) => setSearchReceiptNo(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && searchByNumber()}
-              className="flex-1 px-3 py-2 border rounded-lg text-sm"
-            />
-            <button onClick={searchByNumber} className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90">
-              ค้นหาเลขใบเสร็จ
-            </button>
-          </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="ค้นหาเลขสัญญา / ชื่อลูกค้า / เบอร์โทร / เลขใบเสร็จ..."
+            className="px-3 py-2 border border-input rounded-lg text-sm md:col-span-1"
+          />
+          <select
+            value={receiptType}
+            onChange={(e) => setReceiptType(e.target.value)}
+            className="px-3 py-2 border border-input rounded-lg text-sm"
+          >
+            <option value="">ทุกประเภท</option>
+            <option value="PAYMENT">งวดผ่อนชำระ</option>
+            <option value="DOWN_PAYMENT">เงินดาวน์</option>
+            <option value="EARLY_PAYOFF">ปิดก่อนกำหนด</option>
+            <option value="CREDIT_NOTE">ใบลดหนี้</option>
+          </select>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="px-3 py-2 border border-input rounded-lg text-sm"
+            placeholder="จากวันที่"
+          />
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="px-3 py-2 border border-input rounded-lg text-sm"
+            placeholder="ถึงวันที่"
+          />
         </div>
       </div>
 
-      {/* Results */}
-      {loading && (
-        <div className="flex justify-center py-10">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-        </div>
-      )}
+      {/* Table */}
+      <DataTable
+        columns={columns}
+        data={receipts}
+        isLoading={isLoading}
+        emptyMessage="ไม่พบใบเสร็จ"
+        pagination={result ? {
+          page: result.page,
+          totalPages: result.totalPages,
+          total: result.total,
+          onPageChange: setPage,
+        } : undefined}
+      />
 
-      {!loading && receipts.length > 0 && (
-        <div className="bg-card rounded-lg border overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-muted text-xs text-muted-foreground">
-              <tr>
-                <th className="px-4 py-3 text-left">เลขใบเสร็จ</th>
-                <th className="px-4 py-3 text-left">ประเภท</th>
-                <th className="px-4 py-3 text-left">ผู้ชำระ</th>
-                <th className="px-4 py-3 text-right">จำนวนเงิน</th>
-                <th className="px-4 py-3 text-left">งวดที่</th>
-                <th className="px-4 py-3 text-left">วิธีชำระ</th>
-                <th className="px-4 py-3 text-left">วันที่</th>
-                <th className="px-4 py-3 text-left">สถานะ</th>
-                <th className="px-4 py-3 text-left"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {receipts.map((r) => (
-                <tr key={r.id} className={r.isVoided ? 'bg-red-50 opacity-60' : ''}>
-                  <td className="px-4 py-3 font-mono text-xs">{r.receiptNumber}</td>
-                  <td className="px-4 py-3 text-xs">{receiptTypeLabels[r.receiptType] || r.receiptType}</td>
-                  <td className="px-4 py-3">{r.payerName}</td>
-                  <td className="px-4 py-3 text-right font-medium">{Number(r.amount).toLocaleString()} ฿</td>
-                  <td className="px-4 py-3 text-center">{r.installmentNo || '-'}</td>
-                  <td className="px-4 py-3 text-xs">{r.paymentMethod || '-'}</td>
-                  <td className="px-4 py-3 text-xs">{new Date(r.paidDate).toLocaleDateString('th-TH')}</td>
-                  <td className="px-4 py-3">
-                    {r.isVoided ? (
-                      <span className="px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">ยกเลิก</span>
-                    ) : (
-                      <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">ปกติ</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-1">
-                      <button
-                        onClick={() => setSelectedDetail(r)}
-                        className="px-2 py-1 text-xs text-primary hover:bg-primary/10 rounded"
-                      >
-                        ดูรายละเอียด
-                      </button>
-                      {!r.isVoided && r.receiptType !== 'CREDIT_NOTE' && (user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER') && (
-                        <button
-                          onClick={() => { setSelectedReceipt(r); setVoidReason(''); setShowVoidModal(true); }}
-                          className="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded"
-                        >
-                          ยกเลิก
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {!loading && receipts.length === 0 && (searchContractId || searchReceiptNo) && (
-        <div className="text-center py-10 text-muted-foreground text-sm">ไม่พบใบเสร็จ</div>
-      )}
-
-      {/* Receipt Detail Modal */}
-      {selectedDetail && (
-        <Modal title={`ใบเสร็จ ${selectedDetail.receiptNumber}`} onClose={() => setSelectedDetail(null)}>
-          <div className="space-y-3 text-sm">
-            <div className="grid grid-cols-2 gap-3">
-              <div><span className="text-muted-foreground">เลขใบเสร็จ:</span> <span className="font-mono">{selectedDetail.receiptNumber}</span></div>
-              <div><span className="text-muted-foreground">ประเภท:</span> {receiptTypeLabels[selectedDetail.receiptType] || selectedDetail.receiptType}</div>
-              <div><span className="text-muted-foreground">ผู้ชำระ:</span> {selectedDetail.payerName}</div>
-              <div><span className="text-muted-foreground">ผู้รับ:</span> {selectedDetail.receiverName}</div>
-              <div><span className="text-muted-foreground">จำนวนเงิน:</span> <span className="font-bold">{Number(selectedDetail.amount).toLocaleString()} ฿</span></div>
-              <div><span className="text-muted-foreground">งวดที่:</span> {selectedDetail.installmentNo || '-'}</div>
-              <div><span className="text-muted-foreground">ยอดคงเหลือ:</span> {selectedDetail.remainingBalance != null ? `${Number(selectedDetail.remainingBalance).toLocaleString()} ฿` : '-'}</div>
-              <div><span className="text-muted-foreground">งวดคงเหลือ:</span> {selectedDetail.remainingMonths ?? '-'}</div>
-              <div><span className="text-muted-foreground">วิธีชำระ:</span> {selectedDetail.paymentMethod || '-'}</div>
-              <div><span className="text-muted-foreground">เลขอ้างอิง:</span> {selectedDetail.transactionRef || '-'}</div>
-              <div><span className="text-muted-foreground">วันที่ชำระ:</span> {new Date(selectedDetail.paidDate).toLocaleString('th-TH')}</div>
-              <div><span className="text-muted-foreground">วันที่ออก:</span> {new Date(selectedDetail.createdAt).toLocaleString('th-TH')}</div>
-            </div>
-            {selectedDetail.fileHash && (
-              <div className="mt-3 p-2 bg-muted rounded text-xs">
-                <span className="text-muted-foreground">File Hash (SHA-256):</span>
-                <div className="font-mono break-all mt-1">{selectedDetail.fileHash}</div>
-              </div>
-            )}
-            {selectedDetail.isVoided && (
-              <div className="mt-3 p-3 bg-red-50 rounded border border-red-200">
-                <div className="text-red-700 font-medium text-xs">ใบเสร็จนี้ถูกยกเลิกแล้ว</div>
-                {selectedDetail.voidReason && <div className="text-red-600 text-xs mt-1">เหตุผล: {selectedDetail.voidReason}</div>}
-              </div>
-            )}
-          </div>
-        </Modal>
-      )}
-
-      {/* Void Modal */}
-      {showVoidModal && selectedReceipt && (
-        <Modal title="ยกเลิกใบเสร็จ" onClose={() => setShowVoidModal(false)}>
-          <div className="space-y-4">
-            <div className="bg-yellow-50 p-3 rounded border border-yellow-200 text-sm text-yellow-800">
-              การยกเลิกใบเสร็จจะสร้างใบลดหนี้ (Credit Note) อัตโนมัติ ใบเสร็จเดิมจะไม่ถูกลบ
-            </div>
-            <div className="text-sm">
-              <div>ใบเสร็จ: <span className="font-mono">{selectedReceipt.receiptNumber}</span></div>
-              <div>จำนวนเงิน: {Number(selectedReceipt.amount).toLocaleString()} ฿</div>
-            </div>
-            <div>
-              <label className="block text-xs text-muted-foreground mb-1">เหตุผลในการยกเลิก *</label>
-              <textarea
-                value={voidReason}
-                onChange={(e) => setVoidReason(e.target.value)}
-                rows={3}
-                className="w-full px-3 py-2 border rounded-lg text-sm"
-                placeholder="ระบุเหตุผล..."
-              />
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => voidMutation.mutate()}
-                disabled={!voidReason || voidMutation.isPending}
-                className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
-              >
-                {voidMutation.isPending ? 'กำลังยกเลิก...' : 'ยืนยันยกเลิก'}
-              </button>
-              <button onClick={() => setShowVoidModal(false)} className="px-4 py-2 text-sm border rounded-lg">
-                ไม่ยกเลิก
-              </button>
-            </div>
-          </div>
-        </Modal>
-      )}
+      {/* Receipt Detail Modal (with print + void) */}
+      <ReceiptModal
+        receiptId={selectedReceiptId}
+        onClose={() => {
+          setSelectedReceiptId(null);
+          queryClient.invalidateQueries({ queryKey: ['receipts'] });
+        }}
+      />
     </div>
   );
 }

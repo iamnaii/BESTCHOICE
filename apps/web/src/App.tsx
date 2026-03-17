@@ -34,6 +34,7 @@ const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
 const ExchangePage = lazy(() => import('@/pages/ExchangePage'));
 const AuditLogsPage = lazy(() => import('@/pages/AuditLogsPage'));
 const FinancialAuditPage = lazy(() => import('@/pages/FinancialAuditPage'));
+const PaymentCsvImportPage = lazy(() => import('@/pages/PaymentCsvImportPage'));
 const POSPage = lazy(() => import('@/pages/POSPage'));
 const SalesHistoryPage = lazy(() => import('@/pages/SalesHistoryPage'));
 const InterestConfigPage = lazy(() => import('@/pages/InterestConfigPage'));
@@ -227,6 +228,14 @@ function App() {
             }
           />
           <Route path="/payments" element={<PaymentsPage />} />
+          <Route
+            path="/payments/import-csv"
+            element={
+              <ProtectedRoute roles={['OWNER', 'ACCOUNTANT']}>
+                <PaymentCsvImportPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/document-dashboard"
             element={

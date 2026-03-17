@@ -28,7 +28,7 @@ export class AuthController {
   constructor(private authService: AuthService) {}
 
   @Post('login')
-  @Throttle({ short: { ttl: 900000, limit: 15 } }) // 15 login attempts per 15 minutes (was 5 — too strict for concurrent users)
+  @Throttle({ short: { ttl: 60000, limit: 30 } }) // 30 login attempts per minute (supports 20+ concurrent employees on same IP/network)
   async login(@Body() loginDto: LoginDto, @Res({ passthrough: true }) res: Response) {
     const result = await this.authService.login(loginDto);
     setRefreshCookie(res, result.refreshToken);

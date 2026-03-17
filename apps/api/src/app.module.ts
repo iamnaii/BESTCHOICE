@@ -25,6 +25,7 @@ import { ExchangeModule } from './modules/exchange/exchange.module';
 import { RepossessionsModule } from './modules/repossessions/repossessions.module';
 import { PurchaseOrdersModule } from './modules/purchase-orders/purchase-orders.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { SchedulerModule } from './modules/notifications/scheduler.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { MigrationModule } from './modules/migration/migration.module';
@@ -66,7 +67,7 @@ import { CsrfGuard } from './guards/csrf.guard';
       {
         name: 'short',
         ttl: 1000,
-        limit: 50, // Allow 50 req/sec per IP (was 30 — increased for concurrent user support)
+        limit: 200, // Allow 200 req/sec per IP (supports 20+ concurrent employees on same network)
       },
     ]),
     PrismaModule,
@@ -100,6 +101,7 @@ import { CsrfGuard } from './guards/csrf.guard';
     StockCountModule,
     // MASTER: Communication
     NotificationsModule,
+    SchedulerModule,
     // MASTER: Intelligence
     DashboardModule,
     ReportsModule,

@@ -1,4 +1,4 @@
-import { Module, forwardRef } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { LineOaController } from './line-oa.controller';
 import { LineOaService } from './line-oa.service';
 import { LineWebhookGuard } from './line-webhook.guard';
@@ -8,7 +8,7 @@ import { RichMenuService } from './rich-menu/rich-menu.service';
 import { ContractsModule } from '../contracts/contracts.module';
 
 @Module({
-  imports: [forwardRef(() => ContractsModule)],
+  imports: [ContractsModule],
   controllers: [LineOaController],
   providers: [
     LineOaService,

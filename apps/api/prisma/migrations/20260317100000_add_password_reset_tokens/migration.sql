@@ -24,3 +24,16 @@ ALTER TABLE "password_reset_tokens" ADD CONSTRAINT "password_reset_tokens_user_i
 
 -- AlterTable: Add credit_balance to contracts
 ALTER TABLE "contracts" ADD COLUMN "credit_balance" DECIMAL(12,2) NOT NULL DEFAULT 0;
+
+-- AlterTable: Add dunning workflow fields to contracts
+CREATE TYPE "DunningStage" AS ENUM ('NONE', 'REMINDER', 'NOTICE', 'FINAL_WARNING', 'LEGAL_ACTION');
+ALTER TABLE "contracts" ADD COLUMN "dunning_stage" "DunningStage" NOT NULL DEFAULT 'NONE';
+ALTER TABLE "contracts" ADD COLUMN "dunning_escalated_at" TIMESTAMP(3);
+ALTER TABLE "contracts" ADD COLUMN "dunning_last_action_at" TIMESTAMP(3);
+
+-- AlterTable: Add notification retry queue fields
+ALTER TABLE "notification_logs" ADD COLUMN "retry_count" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "notification_logs" ADD COLUMN "next_retry_at" TIMESTAMP(3);
+
+-- CreateIndex for retry queue
+CREATE INDEX "notification_logs_status_next_retry_at_idx" ON "notification_logs"("status", "next_retry_at");

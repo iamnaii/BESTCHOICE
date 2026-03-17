@@ -29,6 +29,15 @@ enum ContractStatus {
   CLOSED_BAD_DEBT
 }
 
+// Dunning escalation stages for overdue debt collection
+enum DunningStage {
+  NONE           // ปกติ ยังไม่ overdue
+  REMINDER       // แจ้งเตือน (1-7 วัน overdue)
+  NOTICE         // แจ้งค้างชำระ (8-30 วัน)
+  FINAL_WARNING  // เตือนครั้งสุดท้าย (31-60 วัน)
+  LEGAL_ACTION   // ดำเนินคดี/ยึดคืน (>60 วัน)
+}
+
 enum PlanType {
   STORE_DIRECT
   CREDIT_CARD
@@ -403,6 +412,11 @@ model Contract {
 
   // Credit balance: เงินเกินที่ลูกค้าชำระเกินยอดค้าง (สำหรับ apply ในงวดถัดไป)
   creditBalance Decimal @default(0) @map("credit_balance") @db.Decimal(12, 2)
+
+  // Dunning workflow: ระดับการติดตามหนี้
+  dunningStage        DunningStage @default(NONE) @map("dunning_stage")
+  dunningEscalatedAt  DateTime?    @map("dunning_escalated_at")
+  dunningLastActionAt DateTime?    @map("dunning_last_action_at")
 
   // Retention policy
   retentionStatus DocumentRetentionStatus @default(ACTIVE) @map("retention_status")
@@ -970,21 +984,24 @@ model Repossession {
 // ============================================================
 
 model NotificationLog {
-  id        String              @id @default(uuid())
-  channel   NotificationChannel
-  recipient String // phone or LINE user ID
-  subject   String?
-  message   String
-  status    String // SENT, FAILED, PENDING
-  relatedId String?             @map("related_id") // contract_id or payment_id
-  errorMsg  String?             @map("error_msg")
-  sentAt    DateTime?           @map("sent_at")
-  createdAt DateTime            @default(now()) @map("created_at")
+  id          String              @id @default(uuid())
+  channel     NotificationChannel
+  recipient   String // phone or LINE user ID
+  subject     String?
+  message     String
+  status      String // SENT, FAILED, PENDING, RETRY_PENDING
+  relatedId   String?             @map("related_id") // contract_id or payment_id
+  errorMsg    String?             @map("error_msg")
+  sentAt      DateTime?           @map("sent_at")
+  retryCount  Int                 @default(0) @map("retry_count")
+  nextRetryAt DateTime?           @map("next_retry_at")
+  createdAt   DateTime            @default(now()) @map("created_at")
 
   @@index([relatedId])
   @@index([channel])
   @@index([createdAt])
   @@index([status, channel])
+  @@index([status, nextRetryAt])
   @@map("notification_logs")
 }
 

@@ -166,6 +166,67 @@ export class SchedulerService {
   }
 
   /**
+   * Run daily at 01:00: escalate dunning stages and send stage-specific notifications
+   */
+  @Cron('0 1 * * *')
+  async handleDunningEscalation() {
+    this.logger.log('Starting daily dunning escalation...');
+    try {
+      const result = await this.overdueService.escalateDunningStages();
+
+      // Send stage-specific LINE notifications
+      let notified = 0;
+      for (const esc of result.escalated) {
+        try {
+          const contract = await this.prisma.contract.findUnique({
+            where: { id: esc.contractId },
+            include: {
+              customer: { select: { name: true, lineId: true, phone: true } },
+              payments: {
+                where: { status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] }, dueDate: { lt: new Date() } },
+                orderBy: { installmentNo: 'asc' },
+              },
+            },
+          });
+          if (!contract?.customer?.lineId) continue;
+
+          const totalOverdue = contract.payments.reduce(
+            (sum, p) => sum + (Number(p.amountDue) - Number(p.amountPaid) + Number(p.lateFee)),
+            0,
+          );
+
+          // Stage-specific messaging
+          const stageMessages: Record<string, string> = {
+            REMINDER: `แจ้งเตือน: คุณ${contract.customer.name} มียอดค้างชำระ ${totalOverdue.toLocaleString()} บาท สัญญา ${esc.contractNumber} กรุณาชำระโดยเร็ว`,
+            NOTICE: `แจ้งค้างชำระ: คุณ${contract.customer.name} มียอดค้างชำระ ${totalOverdue.toLocaleString()} บาท ค้างชำระ ${esc.daysOverdue} วัน กรุณาติดต่อชำระเงินทันที`,
+            FINAL_WARNING: `เตือนครั้งสุดท้าย: คุณ${contract.customer.name} ค้างชำระ ${esc.daysOverdue} วัน ยอด ${totalOverdue.toLocaleString()} บาท หากไม่ชำระภายใน 30 วัน จะดำเนินการตามกฎหมาย`,
+            LEGAL_ACTION: `แจ้งดำเนินการ: สัญญา ${esc.contractNumber} ค้างชำระเกิน 60 วัน ทางร้านจะดำเนินการยึดคืนสินค้า กรุณาติดต่อร้านทันที`,
+          };
+
+          const message = stageMessages[esc.to];
+          if (message) {
+            await this.notificationsService.send({
+              channel: 'LINE',
+              recipient: contract.customer.lineId,
+              subject: `Dunning: ${esc.to}`,
+              message,
+              relatedId: esc.contractId,
+              fallbackPhone: contract.customer.phone || undefined,
+            });
+            notified++;
+          }
+        } catch (err) {
+          this.logger.warn(`Failed to send dunning notification for ${esc.contractNumber}: ${err}`);
+        }
+      }
+
+      this.logger.log(`Dunning escalation complete: ${result.escalated.length} escalated, ${notified} notified`);
+    } catch (error) {
+      this.logger.error(`Dunning escalation failed: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+
+  /**
    * Run daily at 07:00: check stock levels and send alerts for low stock
    */
   @Cron('0 7 * * *')
@@ -304,6 +365,22 @@ export class SchedulerService {
       this.logger.log(`Auto payment links complete: ${sent} sent out of ${payments.length} payments`);
     } catch (error) {
       this.logger.error(`Auto payment links failed: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+
+  /**
+   * Run every 5 minutes: process notification retry queue
+   * Retries failed LINE/SMS notifications with exponential backoff
+   */
+  @Cron('*/5 * * * *')
+  async handleNotificationRetryQueue() {
+    try {
+      const result = await this.notificationsService.processRetryQueue();
+      if (result.retried > 0) {
+        this.logger.log(`Notification retry queue: ${result.succeeded} succeeded, ${result.failed} failed out of ${result.retried}`);
+      }
+    } catch (error) {
+      this.logger.error(`Notification retry queue failed: ${error instanceof Error ? error.message : error}`);
     }
   }
 

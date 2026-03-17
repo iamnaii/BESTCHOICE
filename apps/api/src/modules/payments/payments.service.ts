@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, Logger } from '@nes
 import { PaymentMethod } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ReceiptsService } from '../receipts/receipts.service';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class PaymentsService {
@@ -10,6 +11,7 @@ export class PaymentsService {
   constructor(
     private prisma: PrismaService,
     private receiptsService: ReceiptsService,
+    private auditService: AuditService,
   ) {}
 
   // ─── Record a single payment (บังคับ upload หลักฐาน) ──
@@ -98,6 +100,17 @@ export class PaymentsService {
       }
 
       return result;
+    });
+
+    // Financial audit trail
+    await this.auditService.logPaymentEvent({
+      userId: recordedById,
+      contractId,
+      paymentId: updated.id,
+      action: updated.status === 'PAID' ? 'PAYMENT_RECORDED' : 'PAYMENT_PARTIAL',
+      amount,
+      installmentNo,
+      details: { paymentMethod, transactionRef, totalPaid: Number(updated.amountPaid) },
     });
 
     // Auto-generate e-Receipt after successful payment
@@ -466,6 +479,17 @@ export class PaymentsService {
     if (isNowFullyPaid && payment.status !== 'PAID') {
       await this.checkContractCompletion(payment.contractId);
     }
+
+    // Financial audit trail for late fee waiver
+    await this.auditService.logPaymentEvent({
+      userId,
+      contractId: payment.contractId,
+      paymentId,
+      action: 'LATE_FEE_WAIVED',
+      amount: originalLateFee,
+      installmentNo: payment.installmentNo,
+      details: { reason, wasFeeAmount: originalLateFee, becameFullyPaid: isNowFullyPaid },
+    });
 
     return { ...updated, originalLateFee };
   }

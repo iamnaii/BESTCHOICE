@@ -70,4 +70,10 @@ export class OverdueController {
   updateStatuses() {
     return this.overdueService.updateContractStatuses();
   }
+
+  @Post('cron/escalate-dunning')
+  @Roles('OWNER')
+  escalateDunning() {
+    return this.overdueService.escalateDunningStages();
+  }
 }

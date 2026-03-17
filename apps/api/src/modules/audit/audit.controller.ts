@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import { AuditService } from './audit.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -9,6 +9,19 @@ import { Roles } from '../auth/decorators/roles.decorator';
 @Roles('OWNER')
 export class AuditController {
   constructor(private auditService: AuditService) {}
+
+  @Get('financial/:contractId')
+  @Roles('OWNER', 'ACCOUNTANT')
+  getFinancialTrail(
+    @Param('contractId') contractId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.auditService.getFinancialAuditTrail(contractId, {
+      page: page ? parseInt(page) : undefined,
+      limit: limit ? parseInt(limit) : undefined,
+    });
+  }
 
   @Get('logs')
   getLogs(

@@ -1,8 +1,10 @@
 import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards, ForbiddenException } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { PaymentsService } from './payments.service';
 import { RecordPaymentDto, BulkRecordPaymentDto, WaiveLateFeeDto } from './dto/payment.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { UserThrottlerGuard } from '../../guards/user-throttler.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -45,6 +47,8 @@ export class PaymentsController {
 
   @Post('record')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'ACCOUNTANT')
+  @UseGuards(UserThrottlerGuard)
+  @Throttle({ short: { ttl: 10000, limit: 5 } }) // Max 5 payment records per 10s per user
   async recordPayment(
     @Body() dto: RecordPaymentDto,
     @CurrentUser() user: { id: string; role: string; branchId: string | null },
@@ -66,6 +70,8 @@ export class PaymentsController {
 
   @Post('auto-allocate')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'ACCOUNTANT')
+  @UseGuards(UserThrottlerGuard)
+  @Throttle({ short: { ttl: 10000, limit: 5 } }) // Max 5 auto-allocations per 10s per user
   async autoAllocatePayment(
     @Body() dto: BulkRecordPaymentDto,
     @CurrentUser() user: { id: string; role: string; branchId: string | null },

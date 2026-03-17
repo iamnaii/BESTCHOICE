@@ -610,17 +610,74 @@ export class LineOaController {
 
   // ─── Slip Review API (Staff) ──────────────────────────
 
+  @Get('evidence/stats')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  async getEvidenceStats() {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const [pendingCount, approvedToday, rejectedToday, approvedAmountToday] = await Promise.all([
+      this.prisma.paymentEvidence.count({ where: { status: 'PENDING_REVIEW' } }),
+      this.prisma.paymentEvidence.count({ where: { status: 'APPROVED', reviewedAt: { gte: todayStart } } }),
+      this.prisma.paymentEvidence.count({ where: { status: 'REJECTED', reviewedAt: { gte: todayStart } } }),
+      this.prisma.paymentEvidence.aggregate({ where: { status: 'APPROVED', reviewedAt: { gte: todayStart } }, _sum: { amount: true } }),
+    ]);
+
+    return {
+      pendingCount,
+      approvedToday,
+      rejectedToday,
+      approvedAmountToday: approvedAmountToday._sum.amount || 0,
+    };
+  }
+
   @Get('evidence')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
-  async getEvidenceList(@Query('status') status?: string) {
-    const where: Record<string, unknown> = {};
+  async getEvidenceList(
+    @Query('status') status?: string,
+    @Query('search') search?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    @Query('amountMin') amountMin?: string,
+    @Query('amountMax') amountMax?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const where: any = {};
     if (status) where.status = status;
+
+    if (search) {
+      where.contract = {
+        OR: [
+          { contractNumber: { contains: search, mode: 'insensitive' } },
+          { customer: { name: { contains: search, mode: 'insensitive' } } },
+        ],
+      };
+    }
+
+    if (dateFrom || dateTo) {
+      where.createdAt = {};
+      if (dateFrom) where.createdAt.gte = new Date(dateFrom);
+      if (dateTo) {
+        const end = new Date(dateTo);
+        end.setHours(23, 59, 59, 999);
+        where.createdAt.lte = end;
+      }
+    }
+
+    if (amountMin || amountMax) {
+      where.amount = {};
+      if (amountMin) where.amount.gte = Number(amountMin);
+      if (amountMax) where.amount.lte = Number(amountMax);
+    }
+
+    const take = limit ? Math.min(Number(limit), 10000) : 50;
 
     return this.prisma.paymentEvidence.findMany({
       where,
       orderBy: { createdAt: 'desc' },
-      take: 50,
+      take,
       include: {
         contract: {
           select: {
@@ -631,6 +688,133 @@ export class LineOaController {
         reviewedBy: { select: { name: true } },
       },
     });
+  }
+
+  @Post('evidence/batch-approve')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  async batchApproveEvidence(
+    @Body() body: { ids: string[]; paymentMethod: string },
+    @Req() req: Request,
+  ) {
+    const userId = (req as any).user?.id;
+    const errors: string[] = [];
+    let count = 0;
+
+    for (const id of body.ids) {
+      try {
+        const evidence = await this.prisma.paymentEvidence.findUnique({
+          where: { id },
+          include: {
+            contract: {
+              include: {
+                customer: true,
+                payments: { orderBy: { installmentNo: 'asc' } },
+              },
+            },
+          },
+        });
+
+        if (!evidence || evidence.status !== 'PENDING_REVIEW') {
+          errors.push(`${id}: ข้ามรายการ (ไม่พบหรือตรวจสอบแล้ว)`);
+          continue;
+        }
+
+        await this.prisma.paymentEvidence.update({
+          where: { id },
+          data: {
+            status: 'APPROVED',
+            amount: evidence.amount,
+            reviewedById: userId,
+            reviewedAt: new Date(),
+          },
+        });
+        count++;
+
+        // Send LINE notification
+        if (evidence.lineUserId) {
+          const customer = evidence.contract.customer;
+          const contract = evidence.contract;
+          const totalInstallments = contract.payments.length;
+          const paidCount = contract.payments.filter((p) => p.status === 'PAID').length;
+
+          try {
+            const flex = this.lineOaService.buildPaymentSuccess({
+              customerName: customer.name,
+              contractNumber: contract.contractNumber,
+              installmentNo: 1,
+              totalInstallments,
+              amountPaid: Number(evidence.amount) || 0,
+              paymentMethod: body.paymentMethod,
+              paidDate: new Date().toLocaleDateString('th-TH'),
+              remainingInstallments: totalInstallments - paidCount - 1,
+            });
+            await this.lineOaService.sendFlexMessage(evidence.lineUserId, flex);
+          } catch (err) {
+            this.logger.error(`Failed to send batch approval notification for ${id}: ${err}`);
+          }
+        }
+      } catch (err) {
+        errors.push(`${id}: ${err}`);
+      }
+    }
+
+    return { success: true, count, errors };
+  }
+
+  @Post('evidence/batch-reject')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  async batchRejectEvidence(
+    @Body() body: { ids: string[]; reviewNote?: string },
+    @Req() req: Request,
+  ) {
+    const userId = (req as any).user?.id;
+    const errors: string[] = [];
+    let count = 0;
+
+    for (const id of body.ids) {
+      try {
+        const evidence = await this.prisma.paymentEvidence.findUnique({
+          where: { id },
+          include: { contract: { include: { customer: true } } },
+        });
+
+        if (!evidence || evidence.status !== 'PENDING_REVIEW') {
+          errors.push(`${id}: ข้ามรายการ (ไม่พบหรือตรวจสอบแล้ว)`);
+          continue;
+        }
+
+        await this.prisma.paymentEvidence.update({
+          where: { id },
+          data: {
+            status: 'REJECTED',
+            reviewedById: userId,
+            reviewedAt: new Date(),
+            reviewNote: body.reviewNote,
+          },
+        });
+        count++;
+
+        // Send LINE notification
+        if (evidence.lineUserId) {
+          try {
+            await this.lineOaService.pushMessage(evidence.lineUserId, [
+              {
+                type: 'text',
+                text: `ขออภัยค่ะ สลิปที่ส่งมาไม่ผ่านการตรวจสอบ${body.reviewNote ? `\nเหตุผล: ${body.reviewNote}` : ''}\n\nกรุณาส่งสลิปใหม่ หรือติดต่อสาขาค่ะ`,
+              },
+            ]);
+          } catch (err) {
+            this.logger.error(`Failed to send batch rejection notification for ${id}: ${err}`);
+          }
+        }
+      } catch (err) {
+        errors.push(`${id}: ${err}`);
+      }
+    }
+
+    return { success: true, count, errors };
   }
 
   @Post('evidence/:id/approve')

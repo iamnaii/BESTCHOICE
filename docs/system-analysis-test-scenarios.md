@@ -463,50 +463,281 @@ TC-P7: Stock transfer bulk 100 items → complete < 15s (ไม่ timeout)
 
 ---
 
+## 1.6 Deep-Dive Performance Analysis — วิเคราะห์จุดคอขวดเชิงลึก
+
+> วิเคราะห์จาก source code + architecture pattern เพื่อประเมินผลกระทบเมื่อระบบมี data เยอะขึ้น
+
+### A. Database Query Performance
+
+| # | จุดคอขวด | ผลกระทบเมื่อ scale | วิธีแก้ | Effort |
+|---|---------|-------------------|--------|--------|
+| PD1 | **Dashboard N+1 queries** — หลาย `count()` + `aggregate()` query พร้อมกัน ไม่มี indexing strategy | 10K+ contracts → dashboard load > 5s | สร้าง composite indexes, ใช้ materialized view สำหรับ daily summary | Medium |
+| PD2 | **Overdue Cron Full Table Scan** — scan ทุก ACTIVE contract ทุกวัน เพื่อคำนวณ late fee | 50K contracts → cron > 2 นาที, DB CPU spike 100% | Batch processing (1000 records/batch), partition table by status, cursor-based iteration | High |
+| PD3 | **Contract List with Eager Loading** — include customer + payments + product ทุก row | 1000 contracts × 12 payments each = 12,000 payment rows loaded | ใช้ pagination + `select` เฉพาะ field ที่ต้องการ, lazy load payments | Medium |
+| PD4 | **Audit Log Unbounded Growth** — log ทุก mutation ไม่มี archiving/partitioning | 1M+ records → query > 10s, table size > 5GB | เพิ่ม table partitioning by month, archive old logs to cold storage | Medium |
+
+**รายละเอียด PD2 — Overdue Cron (ปัญหาหนักสุด):**
+```
+ปัจจุบัน:
+1. Query: SELECT * FROM Contract WHERE status IN ('ACTIVE', 'OVERDUE')  ← full table scan
+2. Loop: For each contract → query all installments → calculate late fee → update
+3. ไม่มี batch/cursor → load ทั้งหมดใน memory
+4. ไม่มี index บน (status, nextDueDate)
+
+ผลกระทบเมื่อขยาย:
+- 10 สาขา × 500 สัญญา/สาขา = 5,000 สัญญา → ~30 วินาที
+- 10 สาขา × 5,000 สัญญา/สาขา = 50,000 สัญญา → ~5 นาที (timeout risk)
+- DB connection pool exhausted ระหว่าง cron → user requests queue up
+
+แนะนำ:
+- เพิ่ม index: CREATE INDEX idx_contract_status_due ON "Contract" (status, "nextDueDate")
+- Batch processing: process 500 records per batch with cursor
+- Separate connection pool สำหรับ cron jobs
+- Run outside business hours (e.g., 3 AM)
+```
+
+### B. Application-Level Bottlenecks
+
+| # | จุดคอขวด | ผลกระทบ | วิธีแก้ | Effort |
+|---|---------|---------|--------|--------|
+| PD5 | **Receipt PDF Synchronous Generation** — สร้าง PDF ใน request-response cycle | ลูกค้ารอนาน, concurrent receipts ทำให้ CPU spike | ย้ายไป background queue (Bull/BullMQ), return receipt ID + status polling | High |
+| PD6 | **Excel Export In-Memory** — fetch 10K records ใน memory → serialize เป็น Excel | Memory spike 200-500MB per export, crash ถ้า concurrent | Stream-based export (ExcelJS streaming), cursor-based data fetch | Medium |
+| PD7 | **AI Credit Check No Circuit Breaker** — external API call ไม่มี fallback | Anthropic API down → credit check timeout → contract creation blocked | เพิ่ม circuit breaker (opossum), fallback to manual review, cache recent results | Medium |
+| PD8 | **LINE Notification No Batching** — ส่งทีละ message ไม่ใช้ multicast API | 1000 notifications → 1000 HTTP calls → 30+ วินาที + rate limit risk | ใช้ LINE Messaging API multicast (max 500/request), retry with exponential backoff | Low |
+
+### C. Frontend Performance
+
+| # | จุดคอขวด | ผลกระทบ | วิธีแก้ |
+|---|---------|---------|--------|
+| PD9 | **Slip Review ไม่มี Virtual Scroll** — render 50+ images ในหน้าเดียว | Memory spike, scroll lag | ใช้ virtualized list (react-virtual), lazy load images |
+| PD10 | **Contract Form No Debounce** — search customer/product ส่ง API ทุก keystroke | API overload, poor UX | เพิ่ม debounce 300ms บน search inputs |
+| PD11 | **Bundle Size** — ไม่มี code splitting สำหรับ heavy pages (reports, POS) | Initial load > 3s | Dynamic import (`React.lazy()`) สำหรับ routes ที่ไม่ใช้บ่อย |
+
+### D. Infrastructure Scaling Concerns
+
+```
+สถานการณ์ปัจจุบัน vs. เมื่อขยาย:
+
+                     ปัจจุบัน (1-2 สาขา)    เป้าหมาย (10+ สาขา)
+─────────────────────────────────────────────────────────────────
+Users พร้อมกัน:      5-10 คน                 50-100 คน
+Contracts:           500-1,000               10,000-50,000
+Payments/เดือน:      500-1,000               5,000-50,000
+API requests/วัน:    5,000-10,000            50,000-500,000
+DB size:             < 1 GB                  5-20 GB
+─────────────────────────────────────────────────────────────────
+
+จุดที่จะเป็นปัญหาแรก (ตามลำดับ):
+1. Overdue cron timeout (PD2) — เมื่อ contracts > 10,000
+2. Dashboard load time (PD1) — เมื่อ contracts > 5,000
+3. Receipt PDF generation (PD5) — เมื่อ concurrent payments > 20
+4. Audit log query (PD4) — เมื่อ records > 500,000
+5. Global rate limit 200/s (P1 เดิม) — เมื่อ users > 50 concurrent
+```
+
+**Performance Test Plan — ครบชุด:**
+```
+Tier 1 — Smoke Tests (ทุก deploy):
+TC-PD1: Dashboard load < 3s กับ 1,000 contracts
+TC-PD2: Contract list page < 2s กับ pagination
+TC-PD3: Customer search < 1s กับ 10,000 records
+TC-PD4: Payment recording < 3s end-to-end
+
+Tier 2 — Load Tests (weekly):
+TC-PD5: 20 concurrent users browsing + 5 recording payments → p95 < 5s
+TC-PD6: Overdue cron กับ 10,000 contracts → complete < 60s
+TC-PD7: Excel export 5,000 records → download < 15s, memory < 300MB
+
+Tier 3 — Stress Tests (before major release):
+TC-PD8: 100 concurrent payment recordings → all succeed, p99 < 10s
+TC-PD9: 50,000 contracts → dashboard loads < 10s
+TC-PD10: LINE notification broadcast 1,000 users → complete < 60s, no rate limit errors
+TC-PD11: Overdue cron กับ 50,000 contracts → complete < 5 minutes
+```
+
+---
+
 # Part 2: Feature Recommendations
+
+> จาก production-ready website [bestchoicephone.app](https://bestchoicephone.app/) และ source code analysis
+> วิเคราะห์จากมุมมอง Product Manager สำหรับอุตสาหกรรมร้านมือถือผ่อนชำระในประเทศไทย
 
 ## 2.1 Must-Have — ฟีเจอร์ที่ขาดไม่ได้
 
-| # | ฟีเจอร์ | เหตุผล | Priority |
-|---|---------|--------|---------|
-| M1 | **Real Payment Gateway Integration** (PromptPay, Credit Card) | ปัจจุบันเป็น mock — ไม่สามารถรับเงินจริงผ่าน LIFF ได้ ต้อง integrate Omise/2C2P/SCB API จริง | P0 |
-| M2 | **SMS Notification** | LINE ครอบคลุมแค่ลูกค้าที่ add LINE OA — SMS เป็นช่องทาง fallback สำคัญสำหรับแจ้งค้างชำระ (ลูกค้ากลุ่ม installment มือถือมักไม่ใช้ LINE ทุกคน) | P0 |
-| M3 | **Automated Dunning/Collection Workflow** | ปัจจุบัน overdue tracking เป็น manual — ต้องมี auto-escalation: วันที่ 1 → SMS เตือน, วันที่ 7 → โทรติดตาม, วันที่ 30 → ส่งจดหมาย, วันที่ 60 → ยึดเครื่อง | P1 |
-| M4 | **Overpayment Credit System** | ลูกค้าโอนเกินต้อง reject ทั้งก้อน → ควรมี credit ledger ที่รับเงินเกินแล้ว apply ไปงวดถัดไป | P1 |
-| M5 | **Database Backup & Data Export** | ไม่มี backup feature — ข้อมูลการเงินหายไม่ได้ ต้องมี scheduled backup + manual export (CSV/Excel) | P1 |
-| M6 | **Password Reset Flow** | ไม่มี forgot password — admin ต้อง reset ให้เอง ควรมี email-based reset link | P1 |
-| M7 | **Two-Factor Authentication (2FA)** | ข้อมูลการเงิน + ข้อมูลส่วนบุคคลลูกค้า (PDPA) → OWNER/BRANCH_MANAGER ควรมี 2FA (OTP via SMS/LINE) | P1 |
-| M8 | **Receipt Number Concurrency Fix** | Race condition ทำให้เลขใบเสร็จซ้ำ → ใช้ DB sequence หรือ Serializable transaction | P0 |
-| M9 | **Warranty/Service Tracking** | ร้านขายมือถือต้องจัดการ warranty — ลูกค้าเคลมเครื่องเสีย, ส่งซ่อม, เปลี่ยนเครื่อง | P2 |
-| M10 | **Email Integration** | Receipts page มี mention email แต่ไม่มี implementation — ต้องส่งใบเสร็จทาง email ได้ | P2 |
+| # | ฟีเจอร์ | เหตุผล | Priority | Effort |
+|---|---------|--------|---------|--------|
+| M1 | **Real Payment Gateway Integration** (PromptPay, Credit Card) | ปัจจุบัน LIFF payment เป็น mock — ลูกค้าชำระจริงไม่ได้ ต้อง integrate Omise/2C2P/SCB API เพื่อรับเงินผ่าน QR PromptPay และบัตรเครดิต | P0 | High |
+| M2 | **SMS Notification** | LINE ครอบคลุมแค่ลูกค้าที่ add LINE OA — SMS เป็นช่องทาง fallback สำหรับแจ้งค้างชำระ (ลูกค้ากลุ่ม installment มือถือราคาถูกอาจไม่ใช้ LINE) | P0 | Medium |
+| M3 | **Receipt Number Concurrency Fix** | Race condition ทำให้เลขใบเสร็จซ้ำ (E1, D1) → ใช้ PostgreSQL SEQUENCE เพื่อ guarantee uniqueness | P0 | Low |
+| M4 | **Automated Dunning/Collection Workflow** | ปัจจุบัน overdue tracking เป็น manual → ต้องมี auto-escalation ตามจำนวนวันค้างชำระ | P1 | High |
+| M5 | **Overpayment Credit System** | ลูกค้าโอนเกินจำนวน → ระบบควรรับเงินแล้วเก็บเป็น credit balance apply งวดถัดไปอัตโนมัติ | P1 | Medium |
+| M6 | **Database Backup & Disaster Recovery** | ข้อมูลการเงิน + สัญญา + ข้อมูลส่วนบุคคล (PDPA) สูญหายไม่ได้ → ต้องมี automated daily backup + point-in-time recovery | P1 | Medium |
+| M7 | **Password Reset Flow (Email)** | ปัจจุบัน forgotPassword ไม่ส่ง email จริง (S17) → ต้อง implement email service | P1 | Medium |
+| M8 | **Two-Factor Authentication (2FA)** | OWNER/BRANCH_MANAGER เข้าถึงข้อมูลการเงินทุกสาขา → ต้องมี 2FA (OTP via SMS/LINE) ตาม PDPA best practices | P1 | High |
+| M9 | **Warranty/Service Tracking** | ร้านมือถือต้องจัดการ warranty → ลูกค้าเคลมเครื่องเสีย, ส่งซ่อม, เปลี่ยนเครื่อง, track สถานะ | P2 | High |
+| M10 | **Email Integration** | ส่งใบเสร็จ, สรุปยอด, แจ้งเตือน ทาง email → ช่องทางเสริมนอกจาก LINE | P2 | Medium |
+
+**รายละเอียด M4 — Automated Dunning Workflow:**
+```
+Auto-Escalation Timeline:
+─────────────────────────────────────────────────────────
+วันที่ 0    : ครบกำหนดชำระ → สถานะ PENDING
+วันที่ +1   : แจ้งเตือน LINE + SMS "กรุณาชำระค่างวด"
+วันที่ +3   : แจ้งเตือนซ้ำ "เลยกำหนดชำระ 3 วัน" + late fee เริ่มนับ
+วันที่ +7   : สถานะ → OVERDUE, assign ทีมติดตามโทร
+วันที่ +14  : ส่งจดหมายเตือน (auto-generate PDF)
+วันที่ +30  : Dunning Stage 2 → โทรผู้ค้ำประกัน/บุคคลอ้างอิง
+วันที่ +60  : สถานะ → DEFAULT, เริ่มกระบวนการยึดเครื่อง
+วันที่ +90  : Dunning Stage 3 → ปิดสัญญา CLOSED_BAD_DEBT
+─────────────────────────────────────────────────────────
+
+Implementation:
+- NestJS @Cron('0 8 * * *') รันทุกเช้า 8:00
+- สร้าง DunningAction table track ทุก action + result
+- Configurable timeline ต่อ branch (บางสาขาอาจ aggressive กว่า)
+- Dashboard: "สัญญาที่ต้องติดตามวันนี้" sorted by severity
+```
+
+**รายละเอียด M5 — Overpayment Credit System:**
+```
+Flow ปัจจุบัน (มีปัญหา):
+  ลูกค้าโอน 5,100 บาท (ค้าง 5,000) → ระบบ cap เหลือ 5,000 → เงินเกิน 100 หายไป
+
+Flow ที่ควรจะเป็น:
+  ลูกค้าโอน 5,100 บาท → ระบบรับ 5,100 → จ่ายงวด 5,000 → credit balance = 100
+  งวดถัดไป (ค้าง 5,000) → auto-apply credit 100 → ลูกค้าจ่ายแค่ 4,900
+
+Implementation:
+- เพิ่ม creditBalance field ใน Contract model (มีแล้ว!)
+- แก้ recordPayment() ให้ increment creditBalance แทน cap
+- เพิ่ม applyCreditBalance() คำนวณอัตโนมัติตอน generate payment link
+- แสดง credit balance ใน LIFF payment page + dashboard
+```
+
+---
 
 ## 2.2 Nice-to-Have — ฟีเจอร์เสริมที่สร้างความแตกต่าง
 
-| # | ฟีเจอร์ | ประโยชน์ |
-|---|---------|---------|
-| N1 | **AI-Powered Credit Scoring** | ใช้ประวัติชำระของลูกค้าเก่า + ข้อมูล demographic → predict ความเสี่ยงค้างชำระ → แนะนำ approve/reject + วงเงิน |
-| N2 | **Customer Loyalty Program** | ลูกค้าจ่ายตรงเวลา → สะสมแต้ม → ลดดอกเบี้ยสัญญาถัดไป หรือ ส่วนลดอุปกรณ์เสริม |
-| N3 | **Real-time Dashboard with WebSocket** | Dashboard update แบบ real-time ไม่ต้อง refresh — เห็นยอดขาย/ชำระเข้าทันที |
-| N4 | **WhatsApp/Facebook Messenger Integration** | เพิ่มช่องทางสื่อสารนอกเหนือจาก LINE → เข้าถึงลูกค้าได้หลากหลายขึ้น |
-| N5 | **Mobile App (PWA)** | พนักงานใช้มือถือที่หน้าร้าน → PWA ทำงาน offline ได้ + push notification |
-| N6 | **QR Code Inventory Management** | Scan QR บนสินค้า → ดูข้อมูล + status ทันที ไม่ต้อง search |
-| N7 | **Promotional Campaign Management** | สร้าง campaign: ดอกเบี้ย 0% 3 เดือนแรก, down payment 0%, bundle deals → track conversion |
-| N8 | **Returns & Refunds Workflow** | จัดการการคืนสินค้า/คืนเงิน → เชื่อมกับ stock + accounting |
-| N9 | **Customer Self-Service Portal (Web)** | นอกจาก LINE LIFF → web portal ที่ลูกค้า login ดูสัญญา/จ่ายเงิน/download ใบเสร็จ ได้โดยไม่ต้องใช้ LINE |
-| N10 | **Automated Financial Reports** | สร้าง report อัตโนมัติ (รายวัน/สัปดาห์/เดือน) → ส่งเข้า email/LINE ของ OWNER |
-| N11 | **Multi-Currency Support** | รองรับลูกค้าต่างชาติ/สาขาชายแดน → แสดงราคา THB + สกุลอื่น |
-| N12 | **Integration กับบัญชี (Accounting Software)** | Export ข้อมูลเข้า QuickBooks/PEAK/FlowAccount → ลด manual data entry |
+> เรียงตาม Impact × Feasibility สำหรับตลาดร้านมือถือผ่อนชำระไทย
+
+### Tier A — High Impact, Medium Effort
+
+| # | ฟีเจอร์ | ประโยชน์ | ทำไมสำคัญสำหรับตลาดไทย |
+|---|---------|---------|------------------------|
+| N1 | **LINE Chatbot สำหรับลูกค้า** | ลูกค้าเช็คยอดค้าง, ดูกำหนดชำระ, ส่งสลิป ผ่าน LINE chat | LINE มีผู้ใช้ 54M คนในไทย → ลูกค้าไม่ต้องโหลดแอปเพิ่ม, ลด call center 60%+ |
+| N2 | **PromptPay Auto-Reconciliation** | เชื่อมต่อ bank API ตรวจยอดโอนอัตโนมัติ จับคู่กับ payment link | ปัจจุบันพนักงานต้อง manual review สลิปทุกรายการ → ลดเวลาจาก 5 นาที/รายการ เหลือ 0 |
+| N3 | **AI-Powered Risk Scoring Dashboard** | แสดง risk score ของแต่ละสัญญา, predict โอกาสผิดนัดชำระ | ระบบมี Anthropic API อยู่แล้ว (credit check) → ต่อยอดเป็น risk prediction → จัดลำดับติดตามหนี้ |
+| N4 | **Automated Financial Reports** | สร้าง report อัตโนมัติ (กำไร-ขาดทุน, aging, cash flow) ส่ง email/LINE ของ OWNER | OWNER ต้อง export data manual → ควร auto-generate ทุกวัน/สัปดาห์/เดือน |
+
+### Tier B — Medium Impact, Low-Medium Effort
+
+| # | ฟีเจอร์ | ประโยชน์ | ทำไมสำคัญสำหรับตลาดไทย |
+|---|---------|---------|------------------------|
+| N5 | **Customer Loyalty Program** | จ่ายตรงเวลา → สะสมแต้ม → ลดดอกเบี้ย/ส่วนลดอุปกรณ์เสริม | สร้าง retention, ลูกค้ากลับมาซื้อเครื่องใหม่ → lifetime value เพิ่ม |
+| N6 | **ระบบ Trade-In Calculator** | คำนวณราคารับซื้อเครื่องเก่า, หักจาก down payment อัตโนมัติ | ร้านมือถือส่วนใหญ่รับเทิร์น → ถ้ามีระบบคำนวณ = ปิดการขายเร็วขึ้น |
+| N7 | **Mobile App (PWA)** | พนักงาน SALES ใช้มือถือที่หน้าร้าน/ออกบูธ | PWA = ไม่ต้อง publish App Store, ทำงาน offline ได้, push notification |
+| N8 | **QR Code Inventory Management** | Scan QR บนกล่องสินค้า → ดูข้อมูล + status ทันที | ลดเวลา search สินค้าใน stock จาก 30 วินาที เหลือ 3 วินาที |
+
+### Tier C — Nice to Have, Higher Effort
+
+| # | ฟีเจอร์ | ประโยชน์ | หมายเหตุ |
+|---|---------|---------|---------|
+| N9 | **Customer Self-Service Portal** | ลูกค้าดูสัญญา/จ่ายเงิน/download ใบเสร็จ ผ่านเว็บ (ไม่ต้องใช้ LINE) | เสริม LIFF, รองรับลูกค้าที่ไม่ใช้ LINE |
+| N10 | **Real-time Dashboard (WebSocket)** | Dashboard update แบบ real-time ไม่ต้อง refresh | ดีสำหรับ OWNER ที่ monitor หลายสาขา |
+| N11 | **Promotional Campaign Management** | สร้าง campaign: ดอกเบี้ย 0%, down 0%, bundle deals | เพิ่มยอดขายช่วง high season (ปีใหม่, สงกรานต์, iPhone launch) |
+| N12 | **Integration กับระบบบัญชี** | Export เข้า PEAK/FlowAccount/Express | ลด manual entry, แต่ต้อง customize ต่อ software |
+| N13 | **Returns & Refunds Workflow** | จัดการคืนสินค้า/คืนเงิน เชื่อมกับ stock + accounting | ซับซ้อน แต่จำเป็นเมื่อ scale |
+| N14 | **Multi-Currency Support** | รองรับลูกค้าต่างชาติ/สาขาชายแดน | เฉพาะสาขาชายแดน (ลาว, กัมพูชา, พม่า) |
+
+---
+
+## 2.3 Competitive Analysis — เปรียบเทียบกับคู่แข่งในตลาด
+
+```
+ฟีเจอร์                    BESTCHOICE    คู่แข่ง A (ShopApp)    คู่แข่ง B (Manual/Excel)
+─────────────────────────────────────────────────────────────────────────────────────
+Contract Management              ✅              ✅                     ❌
+IMEI Tracking                    ✅              ⚠️ (manual)            ❌
+Credit Check (AI)                ✅              ❌                     ❌
+LINE LIFF Payment                ✅              ❌                     ❌
+Multi-Branch                     ✅              ✅                     ❌
+PDPA Compliance                  ✅              ⚠️                     ❌
+Automated Dunning                ⚠️ (partial)    ✅                     ❌
+Real Payment Gateway             ❌ (mock)       ✅                     N/A
+SMS Notification                 ❌              ✅                     ❌
+2FA                              ❌              ✅                     N/A
+Auto Financial Reports           ❌              ✅                     ❌
+Trade-In System                  ❌              ❌                     ❌
+─────────────────────────────────────────────────────────────────────────────────────
+
+Key Differentiators ของ BESTCHOICE:
+1. AI Credit Check — ไม่มีคู่แข่งมี
+2. LINE LIFF Payment — customer-facing mobile experience
+3. PDPA Compliance — legal requirement ที่หลายคู่แข่งยังไม่มี
+4. IMEI + 6-angle Photo Tracking — ป้องกันการโกง
+
+Gap ที่ต้องปิด (P0):
+1. Real Payment Gateway — ไม่มี = ขายไม่ได้จริง
+2. SMS Notification — ลูกค้าที่ไม่ใช้ LINE จะพลาดการแจ้งเตือน
+3. Receipt Concurrency — ใบเสร็จซ้ำ = ปัญหาทางกฎหมาย
+```
 
 ---
 
 # Priority Roadmap
 
-1. **P0** (ทำทันที): M1 Payment Gateway, M2 SMS Notification, M8 Receipt Race Condition Fix
-2. **P1** (Sprint ถัดไป): M3 Dunning, M4 Overpayment Credit, M5 Backup, M6 Password Reset, M7 2FA
-3. **P2** (Roadmap): M9 Warranty, M10 Email, Nice-to-Haves
+```
+Phase 1 — "Go Live" (สัปดาห์ที่ 1-4)
+├── M1: Real Payment Gateway (PromptPay + Credit Card)
+├── M3: Receipt Number Concurrency Fix
+├── M2: SMS Notification (ThaiBulkSMS/Twilio)
+└── Critical bugs: D1 (TransactionRef race), D2 (Token rotation)
+
+Phase 2 — "Operational Efficiency" (สัปดาห์ที่ 5-8)
+├── M4: Automated Dunning Workflow
+├── M5: Overpayment Credit System
+├── M7: Password Reset (Email)
+├── M6: Database Backup
+└── Performance: PD2 (Overdue cron), PD1 (Dashboard indexes)
+
+Phase 3 — "Scale & Security" (สัปดาห์ที่ 9-12)
+├── M8: Two-Factor Authentication
+├── N1: LINE Chatbot
+├── N2: PromptPay Auto-Reconciliation
+├── N4: Automated Financial Reports
+└── Performance: PD5 (Receipt PDF queue), PD6 (Excel streaming)
+
+Phase 4 — "Growth" (Q2+)
+├── N3: AI Risk Scoring Dashboard
+├── N5: Customer Loyalty Program
+├── N6: Trade-In Calculator
+├── M9: Warranty Tracking
+└── Nice-to-haves: N7-N14 ตามความต้องการ
+```
+
+---
 
 # Testing Strategy
 
-- **Unit tests**: `cd apps/api && npx jest --coverage`
-- **E2E tests**: `cd apps/web && npx playwright test`
-- **Load testing**: k6 หรือ Artillery สำหรับ performance scenarios
+```
+Layer 1: Unit Tests
+  cd apps/api && npx jest --coverage
+  เป้าหมาย coverage: >80% สำหรับ services, >90% สำหรับ utils
+
+Layer 2: Integration Tests
+  cd apps/api && npx jest --config jest.integration.config.ts
+  ทดสอบ API endpoints + database interactions
+
+Layer 3: E2E Tests
+  cd apps/web && npx playwright test
+  ทดสอบ user flows: login → create contract → record payment → verify receipt
+
+Layer 4: Load Tests
+  k6 run load-tests/dashboard.js
+  k6 run load-tests/payments.js
+  ทดสอบ performance under concurrent load (20-100 users)
+
+Layer 5: Security Tests
+  npx playwright test e2e/security-edge-cases.spec.ts
+  OWASP ZAP scan ทุก release
+```

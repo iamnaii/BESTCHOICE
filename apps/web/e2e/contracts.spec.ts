@@ -4,8 +4,7 @@ import { loginAsAdmin } from './helpers/auth';
 test.describe('Contracts Page', () => {
   test.beforeEach(async ({ page }) => {
     await loginAsAdmin(page);
-    await page.goto('/contracts');
-    await page.waitForLoadState('networkidle');
+    await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
   });
 
   test('should display contracts list', async ({ page }) => {
@@ -26,8 +25,7 @@ test.describe('Contracts Page', () => {
 test.describe('Contract Creation', () => {
   test('should navigate to contract creation page', async ({ page }) => {
     await loginAsAdmin(page);
-    await page.goto('/contracts/create');
-    await page.waitForLoadState('networkidle');
+    await page.goto('/contracts/create', { waitUntil: 'domcontentloaded' });
     await expect(page).toHaveURL('/contracts/create');
   });
 });

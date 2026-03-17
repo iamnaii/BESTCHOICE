@@ -158,7 +158,10 @@ export default function PaymentsPage() {
       return data;
     },
     onSuccess: (data) => {
-      toast.success(`จ่ายล่วงหน้าสำเร็จ — จัดสรรให้ ${data.allocations?.length || 0} งวด`);
+      toast.success(`จ่ายล่วงหน้าสำเร็จ — จัดสรรให้ ${data.allocatedPayments?.length || 0} งวด`);
+      if (data.overpayment > 0) {
+        toast.warning(`เงินเกิน ${data.overpayment.toLocaleString()} บาท ไม่มีงวดเหลือให้จัดสรร`);
+      }
       queryClient.invalidateQueries({ queryKey: ['pending-payments'] });
       setShowAdvanceModal(false);
       setAdvanceContract(null);
@@ -193,11 +196,13 @@ export default function PaymentsPage() {
   [batchSelectedPayments]);
 
   const handleBatchPay = () => {
-    const items = batchSelectedPayments.map(p => ({
+    const batchRef = `BATCH-${Date.now()}`;
+    const items = batchSelectedPayments.map((p, i) => ({
       contractId: p.contract.id,
       installmentNo: p.installmentNo,
       amount: Math.round((parseFloat(p.amountDue) + parseFloat(p.lateFee) - parseFloat(p.amountPaid)) * 100) / 100,
       paymentMethod: batchPayMethod,
+      transactionRef: `${batchRef}-${i + 1}`,
     }));
     batchMutation.mutate(items);
   };
@@ -223,6 +228,7 @@ export default function PaymentsPage() {
       amount: payForm.amount,
       paymentMethod: payForm.paymentMethod,
       notes: payForm.notes || undefined,
+      transactionRef: slipResult?.transactionRef || `${payForm.paymentMethod}-${Date.now()}`,
     });
   };
 

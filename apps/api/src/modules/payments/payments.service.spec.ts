@@ -3,6 +3,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { PaymentsService } from './payments.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ReceiptsService } from '../receipts/receipts.service';
+import { AuditService } from '../audit/audit.service';
 
 describe('PaymentsService', () => {
   let service: PaymentsService;
@@ -48,11 +49,19 @@ describe('PaymentsService', () => {
       generateReceipt: jest.fn().mockResolvedValue({ id: 'receipt-1', receiptNumber: 'RC-2026-03-00001' }),
     };
 
+    const mockAuditService = {
+      log: jest.fn().mockResolvedValue(undefined),
+      logPaymentEvent: jest.fn().mockResolvedValue(undefined),
+      logReceiptEvent: jest.fn().mockResolvedValue(undefined),
+      logContractFinancialEvent: jest.fn().mockResolvedValue(undefined),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PaymentsService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: ReceiptsService, useValue: mockReceiptsService },
+        { provide: AuditService, useValue: mockAuditService },
       ],
     }).compile();
 

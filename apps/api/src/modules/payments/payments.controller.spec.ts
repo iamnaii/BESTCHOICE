@@ -3,6 +3,7 @@ import { ForbiddenException } from '@nestjs/common';
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { UserThrottlerGuard } from '../../guards/user-throttler.guard';
 
 describe('PaymentsController', () => {
   let controller: PaymentsController;
@@ -34,7 +35,10 @@ describe('PaymentsController', () => {
         { provide: PaymentsService, useValue: mockPaymentsService },
         { provide: PrismaService, useValue: mockPrisma },
       ],
-    }).compile();
+    })
+      .overrideGuard(UserThrottlerGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     controller = module.get<PaymentsController>(PaymentsController);
     _prisma = module.get<PrismaService>(PrismaService);

@@ -88,7 +88,14 @@ export class NotificationsService implements OnModuleInit {
         retryCount++;
         errorMsg = err instanceof Error ? err.message : 'Unknown error';
 
-        if (retryCount <= maxRetries) {
+        // Skip retries for non-retryable errors
+        const nonRetryable =
+          errorMsg.includes('not configured') ||
+          errorMsg.includes('credentials invalid') ||
+          errorMsg.includes('number invalid') ||
+          errorMsg.includes('Invalid phone number');
+
+        if (!nonRetryable && retryCount <= maxRetries) {
           this.logger.warn(`Notification retry ${retryCount}/${maxRetries}: ${errorMsg}`);
           await new Promise((resolve) => setTimeout(resolve, 1000 * retryCount));
         } else {

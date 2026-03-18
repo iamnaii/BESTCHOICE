@@ -6,6 +6,8 @@ interface SignaturePadFullProps {
   label?: string;
   signerName?: string;
   buttonText?: string;
+  initialImage?: string;
+  onDraftChange?: (dataUrl: string | null) => void;
 }
 
 /** Get position relative to canvas, accounting for DPI scaling */
@@ -28,7 +30,7 @@ function getCanvasPos(
   };
 }
 
-export default function SignaturePadFull({ onSign, isPending, label, signerName, buttonText }: SignaturePadFullProps) {
+export default function SignaturePadFull({ onSign, isPending, label, signerName, buttonText, initialImage, onDraftChange }: SignaturePadFullProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasDrawn, setHasDrawn] = useState(false);
@@ -44,6 +46,22 @@ export default function SignaturePadFull({ onSign, isPending, label, signerName,
   }, []);
 
   useEffect(() => { setupCtx(); }, [setupCtx]);
+
+  // Restore initial image (draft from previous tab visit)
+  useEffect(() => {
+    if (!initialImage) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const img = new Image();
+    img.onload = () => {
+      ctx.drawImage(img, 0, 0);
+      setHasDrawn(true);
+      setupCtx(); // Re-apply stroke settings after drawImage
+    };
+    img.src = initialImage;
+  }, []); // Only on mount
 
   const startDraw = (e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
@@ -70,7 +88,12 @@ export default function SignaturePadFull({ onSign, isPending, label, signerName,
     ctx.stroke();
   };
 
-  const endDraw = () => setIsDrawing(false);
+  const endDraw = () => {
+    setIsDrawing(false);
+    if (onDraftChange && canvasRef.current) {
+      onDraftChange(canvasRef.current.toDataURL('image/png'));
+    }
+  };
 
   const clear = () => {
     const canvas = canvasRef.current;
@@ -78,6 +101,7 @@ export default function SignaturePadFull({ onSign, isPending, label, signerName,
     const ctx = canvas.getContext('2d');
     if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
     setHasDrawn(false);
+    onDraftChange?.(null);
   };
 
   const handleSign = () => {

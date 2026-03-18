@@ -189,14 +189,9 @@ export class DocumentsService {
       htmlContent = template.contentHtml;
       templateSettings = template.settings;
     } else {
-      // Find active template (single plan type: STORE_DIRECT)
-      const template = await this.prisma.contractTemplate.findFirst({
-        where: { type: 'STORE_DIRECT', isActive: true },
-        orderBy: { createdAt: 'desc' },
-      });
-      // Always load built-in template from file to pick up latest fixes
-      htmlContent = this.getDefaultTemplate(documentType) || template?.contentHtml || '';
-      templateSettings = template?.settings;
+      const resolved = await this.resolveTemplate('STORE_DIRECT', documentType);
+      htmlContent = resolved.html;
+      templateSettings = resolved.settings;
     }
 
     // Replace placeholders and wrap with A4 styling
@@ -391,13 +386,9 @@ export class DocumentsService {
       htmlContent = template.contentHtml;
       templateSettings = template.settings;
     } else {
-      const template = await this.prisma.contractTemplate.findFirst({
-        where: { type: 'STORE_DIRECT', isActive: true },
-        orderBy: { createdAt: 'desc' },
-      });
-      // Always load built-in template from file to pick up latest fixes
-      htmlContent = this.getDefaultTemplate('CONTRACT') || template?.contentHtml || '';
-      templateSettings = template?.settings;
+      const resolved = await this.resolveTemplate('STORE_DIRECT', 'CONTRACT');
+      htmlContent = resolved.html;
+      templateSettings = resolved.settings;
     }
 
     const lessorSigPreview = await this.getSystemLessorSignature();
@@ -669,6 +660,33 @@ ${(() => {
 })()}
 </body>
 </html>`;
+  }
+
+  /**
+   * Resolve which template HTML to use:
+   * - If DB template was edited by admin (updatedAt significantly after createdAt), use DB version
+   * - Otherwise use the file template (picks up code fixes automatically)
+   */
+  private async resolveTemplate(planType: string, documentType: string): Promise<{ html: string; settings: any }> {
+    const template = await this.prisma.contractTemplate.findFirst({
+      where: { type: planType, isActive: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (template) {
+      // If admin edited the template (updatedAt > createdAt + 60s), prefer DB version
+      const wasEdited = template.updatedAt.getTime() - template.createdAt.getTime() > 60_000;
+      if (wasEdited) {
+        return { html: template.contentHtml, settings: template.settings };
+      }
+    }
+
+    // Use file template (latest code), fall back to DB, then inline fallback
+    const fileHtml = this.getDefaultTemplate(documentType);
+    return {
+      html: fileHtml || template?.contentHtml || '',
+      settings: template?.settings || null,
+    };
   }
 
   private async getSystemLessorSignature(): Promise<{ image: string; name: string } | null> {

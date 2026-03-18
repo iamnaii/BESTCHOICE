@@ -62,6 +62,7 @@ const LiffHistory = lazy(() => import('@/pages/liff/LiffHistory'));
 const LiffProfile = lazy(() => import('@/pages/liff/LiffProfile'));
 const LiffEarlyPayoff = lazy(() => import('@/pages/liff/LiffEarlyPayoff'));
 const LineOaSettingsPage = lazy(() => import('@/pages/LineOaSettingsPage'));
+const SmsSettingsPage = lazy(() => import('@/pages/SmsSettingsPage'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -372,6 +373,14 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER']}>
                 <LineOaSettingsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings/sms"
+            element={
+              <ProtectedRoute roles={['OWNER']}>
+                <SmsSettingsPage />
               </ProtectedRoute>
             }
           />

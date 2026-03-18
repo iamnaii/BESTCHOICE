@@ -74,10 +74,23 @@ export class KycService {
         throw new Error('Notification service returned FAILED status');
       }
     } catch (err) {
+      const errMessage = err instanceof Error ? err.message : String(err);
       this.logger.error(
-        `Failed to send OTP for contract ${contractId} via ${channel}: ${err instanceof Error ? err.message : err}`,
+        `Failed to send OTP for contract ${contractId} via ${channel}: ${errMessage}`,
       );
-      throw new BadRequestException('ไม่สามารถส่ง OTP ได้ กรุณาลองใหม่');
+
+      let userMessage = 'ไม่สามารถส่ง OTP ได้ กรุณาลองใหม่';
+      if (errMessage.includes('credentials invalid') || errMessage.includes('401')) {
+        userMessage = 'ระบบ SMS ขัดข้อง กรุณาติดต่อผู้ดูแลระบบ';
+      } else if (errMessage.includes('number invalid') || errMessage.includes('Invalid phone')) {
+        userMessage = 'เบอร์โทรศัพท์ไม่ถูกต้อง กรุณาตรวจสอบเบอร์โทร';
+      } else if (errMessage.includes('credit') || errMessage.includes('insufficient')) {
+        userMessage = 'ระบบ SMS ขัดข้อง กรุณาติดต่อผู้ดูแลระบบ';
+      } else if (errMessage.includes('not configured')) {
+        userMessage = 'ระบบ SMS ยังไม่ได้ตั้งค่า กรุณาติดต่อผู้ดูแลระบบ';
+      }
+
+      throw new BadRequestException(userMessage);
     }
 
     // OTP sent successfully — now persist to database

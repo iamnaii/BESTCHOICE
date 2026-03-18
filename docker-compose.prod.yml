@@ -53,6 +53,7 @@ services:
       SMS_API_KEY: ${SMS_API_KEY:-}
       SMS_API_SECRET: ${SMS_API_SECRET:-}
       SMS_SENDER: ${SMS_SENDER:-BESTCHOICE}
+      SMS_FORCE: ${SMS_FORCE:-standard}
     ports:
       - '127.0.0.1:3000:3000'
     healthcheck:

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SendNotificationDto, CreateNotificationTemplateDto, UpdateNotificationTemplateDto } from './dto/create-notification.dto';
@@ -8,12 +8,13 @@ import { buildOverdueNoticeFlex } from '../line-oa/flex-messages/overdue-notice.
 import { FlexMessagePayload } from '../line-oa/flex-messages/base-template';
 
 @Injectable()
-export class NotificationsService {
+export class NotificationsService implements OnModuleInit {
   private readonly logger = new Logger(NotificationsService.name);
   private readonly lineChannelAccessToken: string | undefined;
-  private readonly smsApiKey: string | undefined;
-  private readonly smsApiSecret: string | undefined;
-  private readonly smsSender: string | undefined;
+  private smsApiKey: string | undefined;
+  private smsApiSecret: string | undefined;
+  private smsSender: string | undefined;
+  private smsForce: string | undefined;
 
   constructor(
     private prisma: PrismaService,
@@ -23,6 +24,35 @@ export class NotificationsService {
     this.smsApiKey = this.configService.get<string>('SMS_API_KEY');
     this.smsApiSecret = this.configService.get<string>('SMS_API_SECRET');
     this.smsSender = this.configService.get<string>('SMS_SENDER') || 'BESTCHOICE';
+    this.smsForce = this.configService.get<string>('SMS_FORCE') || 'standard';
+  }
+
+  async onModuleInit() {
+    await this.reloadSmsConfig();
+  }
+
+  /**
+   * Reload SMS config from SystemConfig DB, falling back to env vars
+   */
+  async reloadSmsConfig() {
+    try {
+      const configs = await this.prisma.systemConfig.findMany({
+        where: { key: { in: ['sms_api_key', 'sms_api_secret', 'sms_sender', 'sms_force'] } },
+      });
+      const dbConfig: Record<string, string> = {};
+      for (const c of configs) {
+        dbConfig[c.key] = c.value;
+      }
+
+      if (dbConfig.sms_api_key) this.smsApiKey = dbConfig.sms_api_key;
+      if (dbConfig.sms_api_secret) this.smsApiSecret = dbConfig.sms_api_secret;
+      if (dbConfig.sms_sender) this.smsSender = dbConfig.sms_sender;
+      if (dbConfig.sms_force) this.smsForce = dbConfig.sms_force;
+
+      this.logger.log(`[SMS] Config loaded (source: ${dbConfig.sms_api_key ? 'database' : 'env'})`);
+    } catch (err) {
+      this.logger.warn(`[SMS] Failed to load DB config, using env vars: ${err instanceof Error ? err.message : err}`);
+    }
   }
 
   // ============================================================
@@ -58,7 +88,14 @@ export class NotificationsService {
         retryCount++;
         errorMsg = err instanceof Error ? err.message : 'Unknown error';
 
-        if (retryCount <= maxRetries) {
+        // Skip retries for non-retryable errors
+        const nonRetryable =
+          errorMsg.includes('not configured') ||
+          errorMsg.includes('credentials invalid') ||
+          errorMsg.includes('number invalid') ||
+          errorMsg.includes('Invalid phone number');
+
+        if (!nonRetryable && retryCount <= maxRetries) {
           this.logger.warn(`Notification retry ${retryCount}/${maxRetries}: ${errorMsg}`);
           await new Promise((resolve) => setTimeout(resolve, 1000 * retryCount));
         } else {
@@ -189,7 +226,7 @@ export class NotificationsService {
       msisdn: cleanPhone,
       message,
       sender: this.smsSender || 'BESTCHOICE',
-      force: 'standard',
+      force: this.smsForce || 'standard',
     });
 
     const response = await fetch(url, {
@@ -204,20 +241,51 @@ export class NotificationsService {
     const responseText = await response.text();
 
     if (!response.ok) {
-      throw new Error(`ThaiBulkSMS HTTP ${response.status}: ${responseText}`);
+      if (response.status === 401) {
+        throw new Error('SMS credentials invalid (401). Check SMS_API_KEY and SMS_API_SECRET.');
+      }
+      // Try to extract detailed error from JSON response
+      let errorDetail = `ThaiBulkSMS HTTP ${response.status}`;
+      try {
+        const errorJson = JSON.parse(responseText);
+        if (errorJson.error) {
+          errorDetail = `ThaiBulkSMS error: ${errorJson.error.message || errorJson.error.code || JSON.stringify(errorJson.error)}`;
+        }
+      } catch { /* use raw text */ }
+      throw new Error(`${errorDetail}: ${responseText.substring(0, 300)}`);
     }
 
     // Parse JSON response from ThaiBulkSMS API V2
+    let result: Record<string, unknown> | undefined;
     try {
-      const result = JSON.parse(responseText);
+      result = JSON.parse(responseText);
+    } catch {
+      // Non-JSON but HTTP 200 — log warning but treat as success
+      this.logger.warn(`[SMS] Non-JSON 200 response: ${responseText.substring(0, 200)}`);
+    }
+
+    if (result) {
+      // Check top-level error
       if (result.error) {
-        throw new Error(`ThaiBulkSMS error: ${result.error.message || result.error.code || JSON.stringify(result.error)}`);
+        const err = result.error as Record<string, string>;
+        throw new Error(`ThaiBulkSMS API error: ${err.message || err.code || JSON.stringify(result.error)}`);
       }
-    } catch (parseErr) {
-      if (!(parseErr instanceof SyntaxError)) {
-        throw parseErr;
+
+      // Check if our number ended up in the invalid list
+      const data = result.data as Record<string, unknown> | undefined;
+      if (data?.invalid_numbers && Array.isArray(data.invalid_numbers) && data.invalid_numbers.length > 0) {
+        const invalidEntry = data.invalid_numbers.find(
+          (n: Record<string, string>) => n.msisdn === cleanPhone,
+        ) || data.invalid_numbers[0];
+        throw new Error(
+          `SMS number invalid for ${cleanPhone}: ${(invalidEntry as Record<string, string>)?.error_message || 'rejected by provider'}`,
+        );
       }
-      // Non-JSON but HTTP 200 — treat as success
+
+      // Verify at least one successful number if the field exists
+      if (data?.successful_numbers !== undefined && Array.isArray(data.successful_numbers) && data.successful_numbers.length === 0) {
+        throw new Error(`ThaiBulkSMS: no numbers were successfully queued. Response: ${JSON.stringify(data).substring(0, 300)}`);
+      }
     }
 
     this.logger.log(`[SMS] Message sent to ${cleanPhone}`);
@@ -253,6 +321,19 @@ export class NotificationsService {
       return { configured: true, credit: data.data?.credit_remain ?? data.credit_remain };
     } catch (err) {
       return { configured: true, error: err instanceof Error ? err.message : 'Unknown error' };
+    }
+  }
+
+  /**
+   * Send a test SMS to verify configuration works
+   */
+  async sendTestSms(phone: string): Promise<{ success: boolean; message?: string; error?: string }> {
+    try {
+      const testMessage = `[BESTCHOICE] ทดสอบระบบ SMS สำเร็จ (${new Date().toLocaleString('th-TH')})`;
+      await this.sendSms(phone, testMessage);
+      return { success: true, message: `ส่ง SMS ทดสอบไปยัง ${phone} สำเร็จ` };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
     }
   }
 

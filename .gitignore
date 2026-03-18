@@ -14,4 +14,4 @@ uploads/
 playwright-report/
 test-results/
 blob-report/
-e2e/screenshots/
+**/e2e/screenshots/

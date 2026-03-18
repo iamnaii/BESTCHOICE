@@ -11,11 +11,11 @@ export default function StepContractReview({ previewHtml, onComplete, onBack }: 
   const [confirmed, setConfirmed] = useState(false);
 
   return (
-    <div className="flex flex-col h-full px-4 max-w-3xl mx-auto py-4">
+    <div className="flex flex-col px-4 max-w-3xl mx-auto py-4" style={{ minHeight: 'calc(100vh - 180px)' }}>
       <h2 className="text-xl font-semibold text-foreground mb-4 text-center">อ่านรายละเอียดสัญญา</h2>
 
       {/* Contract preview - full height */}
-      <div className="flex-1 rounded-xl border-2 border-border overflow-hidden bg-white mb-4" style={{ minHeight: '50vh' }}>
+      <div className="flex-1 rounded-xl border-2 border-border overflow-hidden bg-white mb-4" style={{ minHeight: '65vh' }}>
         {previewHtml ? (
           <ContractIframe html={previewHtml} />
         ) : (

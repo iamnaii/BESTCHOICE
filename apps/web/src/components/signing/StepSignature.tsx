@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { toast } from 'sonner';
@@ -50,6 +50,7 @@ export default function StepSignature({
   const [gpsLoading, setGpsLoading] = useState(false);
   const [autoSignedCompany, setAutoSignedCompany] = useState(false);
   const [selectedSigner, setSelectedSigner] = useState<SignerType | null>(null);
+  const draftSignatures = useRef<Partial<Record<SignerType, string>>>({});
 
   // Existing signatures
   const { data: signatures = [] } = useQuery<Signature[]>({
@@ -116,7 +117,9 @@ export default function StepSignature({
       return data;
     },
     onSuccess: async (_data, variables) => {
-      const label = SIGNER_LABELS[variables.signerType as SignerType] || variables.signerType;
+      const signerType = variables.signerType as SignerType;
+      delete draftSignatures.current[signerType];
+      const label = SIGNER_LABELS[signerType] || variables.signerType;
       toast.success(`ลงนาม ${label} สำเร็จ`);
 
       const freshSignatures = await queryClient.fetchQuery<Signature[]>({
@@ -317,6 +320,14 @@ export default function StepSignature({
               signerName={signerName || undefined}
               onSign={handleSign}
               isPending={isBusy}
+              initialImage={draftSignatures.current[currentSigner]}
+              onDraftChange={(dataUrl) => {
+                if (dataUrl) {
+                  draftSignatures.current[currentSigner] = dataUrl;
+                } else {
+                  delete draftSignatures.current[currentSigner];
+                }
+              }}
             />
           </div>
         </>

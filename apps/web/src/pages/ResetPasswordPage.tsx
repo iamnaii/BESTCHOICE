@@ -27,7 +27,7 @@ export default function ResetPasswordPage() {
     setIsSubmitting(true);
 
     try {
-      await api.post('/api/auth/reset-password', { token, newPassword });
+      await api.post('/auth/reset-password', { token, newPassword });
       toast.success('รีเซ็ตรหัสผ่านสำเร็จ');
       navigate('/login');
     } catch (error: unknown) {

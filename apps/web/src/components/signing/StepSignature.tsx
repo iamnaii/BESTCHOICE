@@ -111,6 +111,17 @@ export default function StepSignature({
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
+  const deleteSignatureMutation = useMutation({
+    mutationFn: async (signerType: string) => {
+      await api.delete(`/contracts/${contractId}/signatures/${signerType}`);
+    },
+    onSuccess: (_data, signerType) => {
+      toast.success(`ลบลายเซ็น ${SIGNER_LABELS[signerType as SignerType] || signerType} แล้ว`);
+      queryClient.invalidateQueries({ queryKey: ['contract-signatures', contractId] });
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
   // Auto-sign COMPANY
   const companyNotSigned = !signedTypes.has('COMPANY');
   if (companyAutoSigned && companyNotSigned && !autoSignedCompany && !signMutation.isPending) {
@@ -184,7 +195,7 @@ export default function StepSignature({
           return (
             <div
               key={type}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium border ${
+              className={`px-3 py-1.5 rounded-full text-xs font-medium border flex items-center gap-1.5 ${
                 signed
                   ? 'bg-green-50 border-green-300 text-green-700'
                   : isCurrent
@@ -193,6 +204,19 @@ export default function StepSignature({
               }`}
             >
               {signed ? '\u2713 ' : ''}{SIGNER_LABELS[type]}
+              {signed && type !== 'COMPANY' && (
+                <button
+                  onClick={() => {
+                    if (window.confirm(`ต้องการลบลายเซ็น${SIGNER_LABELS[type]}และเซ็นใหม่?`)) {
+                      deleteSignatureMutation.mutate(type);
+                    }
+                  }}
+                  disabled={deleteSignatureMutation.isPending}
+                  className="ml-1 text-2xs text-red-500 hover:text-red-700 underline"
+                >
+                  เซ็นใหม่
+                </button>
+              )}
             </div>
           );
         })}

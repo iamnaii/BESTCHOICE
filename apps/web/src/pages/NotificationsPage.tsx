@@ -300,7 +300,7 @@ const defaultFlexTemplates: Record<string, object> = {
 
 export default function NotificationsPage() {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'logs' | 'templates'>('logs');
+  const [activeTab, setActiveTab] = useState<'logs' | 'templates' | 'send'>('logs');
   const [channelFilter, setChannelFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
@@ -316,6 +316,7 @@ export default function NotificationsPage() {
     description: '',
   });
   const [jsonError, setJsonError] = useState<string | null>(null);
+  const [sendForm, setSendForm] = useState({ customerId: '', channel: 'LINE', subject: '', message: '' });
 
   // Logs
   const { data: logs = [], isLoading: logsLoading } = useQuery<NotificationLog[]>({
@@ -352,6 +353,27 @@ export default function NotificationsPage() {
       queryClient.invalidateQueries({ queryKey: ['notification-templates'] });
       toast.success(editingTemplate ? 'อัพเดท template สำเร็จ' : 'สร้าง template สำเร็จ');
       setIsTemplateModalOpen(false);
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const sendNotificationMutation = useMutation({
+    mutationFn: async (data: { customerId: string; channel: string; subject: string; message: string }) =>
+      api.post('/notifications/send', data),
+    onSuccess: () => {
+      toast.success('ส่งการแจ้งเตือนสำเร็จ');
+      queryClient.invalidateQueries({ queryKey: ['notification-logs'] });
+      queryClient.invalidateQueries({ queryKey: ['notification-stats'] });
+      setSendForm({ customerId: '', channel: 'LINE', subject: '', message: '' });
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const deleteTemplateMutation = useMutation({
+    mutationFn: async (id: string) => api.delete(`/notifications/templates/${id}`),
+    onSuccess: () => {
+      toast.success('ลบเทมเพลตสำเร็จ');
+      queryClient.invalidateQueries({ queryKey: ['notification-templates'] });
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
@@ -547,12 +569,21 @@ export default function NotificationsPage() {
       key: 'actions',
       label: '',
       render: (t: NotificationTemplate) => (
-        <button
-          onClick={() => openEditTemplate(t)}
-          className="text-primary hover:text-primary/80 text-sm font-medium"
-        >
-          แก้ไข
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => openEditTemplate(t)}
+            className="text-primary hover:text-primary/80 text-sm font-medium"
+          >
+            แก้ไข
+          </button>
+          <button
+            onClick={() => { if (confirm('ต้องการลบ template นี้?')) deleteTemplateMutation.mutate(t.id); }}
+            disabled={deleteTemplateMutation.isPending}
+            className="text-red-600 hover:text-red-500 text-sm font-medium"
+          >
+            ลบ
+          </button>
+        </div>
       ),
     },
   ];
@@ -615,6 +646,12 @@ export default function NotificationsPage() {
         >
           Template ข้อความ
         </button>
+        <button
+          onClick={() => setActiveTab('send')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${activeTab === 'send' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+        >
+          ส่งการแจ้งเตือน
+        </button>
       </div>
 
       {activeTab === 'logs' && (
@@ -657,6 +694,73 @@ export default function NotificationsPage() {
           </div>
           <DataTable columns={templateColumns} data={templates} isLoading={templatesLoading} emptyMessage="ยังไม่มี template" />
         </>
+      )}
+
+      {activeTab === 'send' && (
+        <div className="bg-card rounded-lg border border-border p-6 max-w-lg">
+          <h3 className="text-lg font-semibold mb-4">ส่งการแจ้งเตือนด้วยตนเอง</h3>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              sendNotificationMutation.mutate(sendForm);
+            }}
+            className="flex flex-col gap-4"
+          >
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">Customer ID *</label>
+              <input
+                type="text"
+                value={sendForm.customerId}
+                onChange={(e) => setSendForm({ ...sendForm, customerId: e.target.value })}
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                placeholder="รหัสลูกค้า"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">ช่องทาง *</label>
+              <select
+                value={sendForm.channel}
+                onChange={(e) => setSendForm({ ...sendForm, channel: e.target.value })}
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+              >
+                <option value="LINE">LINE</option>
+                <option value="SMS">SMS</option>
+                <option value="IN_APP">ในระบบ (IN_APP)</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">หัวข้อ</label>
+              <input
+                type="text"
+                value={sendForm.subject}
+                onChange={(e) => setSendForm({ ...sendForm, subject: e.target.value })}
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                placeholder="หัวข้อการแจ้งเตือน"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">ข้อความ *</label>
+              <textarea
+                value={sendForm.message}
+                onChange={(e) => setSendForm({ ...sendForm, message: e.target.value })}
+                rows={4}
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                placeholder="เนื้อหาข้อความแจ้งเตือน"
+                required
+              />
+            </div>
+            <div>
+              <button
+                type="submit"
+                disabled={sendNotificationMutation.isPending}
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
+              >
+                {sendNotificationMutation.isPending ? 'กำลังส่ง...' : 'ส่งการแจ้งเตือน'}
+              </button>
+            </div>
+          </form>
+        </div>
       )}
 
       {/* Template Modal */}

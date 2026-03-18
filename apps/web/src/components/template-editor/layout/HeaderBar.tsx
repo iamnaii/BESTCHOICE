@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Settings, Plus, Save, Undo2, Download, Loader2, BookOpen, Columns2, PenLine, Eye } from 'lucide-react';
+import { ArrowLeft, Settings, Plus, Save, Undo2, Download, Loader2, BookOpen, Columns2, PenLine, Eye, FileUp } from 'lucide-react';
 import { useTemplateStore } from '@/store/templateStore';
+import api from '@/lib/api';
+import { toast } from 'sonner';
 import type { BlockType } from '@/types/template';
 import type { ViewMode } from '@/pages/ContractTemplatesPage';
 
@@ -39,7 +41,39 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
   } = useTemplateStore();
 
   const [showAddMenu, setShowAddMenu] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
   const addMenuRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleGenerateFromFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsGenerating(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const base64 = (reader.result as string).split(',')[1];
+          const { data } = await api.post('/contract-templates/generate-from-file', {
+            fileBase64: base64,
+            fileName: file.name,
+          }, { timeout: 120000 });
+          toast.success(`สร้างเทมเพลตจากไฟล์สำเร็จ: ${data.name}`);
+          await useTemplateStore.getState().fetchTemplates();
+          if (data.id) await useTemplateStore.getState().loadTemplate(data.id);
+        } catch {
+          toast.error('ไม่สามารถสร้างเทมเพลตจากไฟล์ได้');
+        } finally {
+          setIsGenerating(false);
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch {
+      setIsGenerating(false);
+      toast.error('เกิดข้อผิดพลาด');
+    }
+    e.target.value = '';
+  };
 
   // Close menu on outside click
   useEffect(() => {
@@ -177,6 +211,17 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
             </div>
           )}
         </div>
+
+        <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.html,.txt" onChange={handleGenerateFromFile} className="hidden" />
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isGenerating}
+          className="flex items-center gap-1.5 px-3 py-2 text-base text-foreground border border-input rounded-lg hover:bg-muted transition-colors disabled:opacity-50"
+          title="สร้างเทมเพลตจากไฟล์ (OCR)"
+        >
+          {isGenerating ? <Loader2 size={17} className="animate-spin" /> : <FileUp size={17} />}
+          <span className="hidden lg:inline">จากไฟล์</span>
+        </button>
 
         <button
           onClick={() => saveTemplateToApi()}

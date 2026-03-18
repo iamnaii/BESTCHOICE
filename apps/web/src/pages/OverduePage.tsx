@@ -23,10 +23,26 @@ interface OverduePayment {
   };
 }
 
+interface CallLog {
+  id: string;
+  callDate: string;
+  result: string;
+  notes: string;
+  calledBy: { name: string };
+}
+
+interface TimelineEvent {
+  date: string;
+  type: string;
+  description: string;
+}
+
 export default function OverduePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<'OVERDUE' | 'all'>('OVERDUE');
+  const [timelineContractId, setTimelineContractId] = useState<string | null>(null);
+  const [callLogForm, setCallLogForm] = useState({ result: 'NO_ANSWER', notes: '' });
 
   const { data: overduePayments = [], isLoading } = useQuery<OverduePayment[]>({
     queryKey: ['overdue-payments', filter],
@@ -48,6 +64,34 @@ export default function OverduePage() {
     onSuccess: (data) => {
       toast.success(`คำนวณค่าปรับเสร็จ: ${data.lateFees.updated} รายการ, สถานะ: ${data.statuses.overdueCount} OVERDUE, ${data.statuses.defaultCount} DEFAULT`);
       queryClient.invalidateQueries({ queryKey: ['overdue-payments'] });
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const { data: timeline = [] } = useQuery<TimelineEvent[]>({
+    queryKey: ['overdue-timeline', timelineContractId],
+    queryFn: async () => { const { data } = await api.get(`/overdue/contracts/${timelineContractId}/timeline`); return data; },
+    enabled: !!timelineContractId,
+  });
+
+  const { data: callLogs = [] } = useQuery<CallLog[]>({
+    queryKey: ['overdue-call-logs', timelineContractId],
+    queryFn: async () => { const { data } = await api.get(`/overdue/contracts/${timelineContractId}/call-logs`); return data; },
+    enabled: !!timelineContractId,
+  });
+
+  const addCallLogMutation = useMutation({
+    mutationFn: async () => {
+      const { data } = await api.post('/overdue/call-logs', {
+        contractId: timelineContractId,
+        ...callLogForm,
+      });
+      return data;
+    },
+    onSuccess: () => {
+      toast.success('บันทึกการโทรสำเร็จ');
+      setCallLogForm({ result: 'NO_ANSWER', notes: '' });
+      queryClient.invalidateQueries({ queryKey: ['overdue-call-logs', timelineContractId] });
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
@@ -143,6 +187,18 @@ export default function OverduePage() {
       label: 'สาขา',
       render: (p: OverduePayment) => <span className="text-xs">{p.contract.branch.name}</span>,
     },
+    {
+      key: 'actions',
+      label: '',
+      render: (p: OverduePayment) => (
+        <button
+          onClick={() => setTimelineContractId(p.contract.id)}
+          className="text-primary hover:text-primary/80 text-xs font-medium"
+        >
+          ติดตาม
+        </button>
+      ),
+    },
   ], [navigateToContract]);
 
   return (
@@ -236,6 +292,93 @@ export default function OverduePage() {
         <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>
       ) : (
         <DataTable columns={columns} data={overduePayments} emptyMessage="ไม่มีรายการค้างชำระ" />
+      )}
+
+      {/* Timeline & Call Logs Drawer */}
+      {timelineContractId && (
+        <div className="fixed inset-0 z-50 flex justify-end" onClick={() => setTimelineContractId(null)}>
+          <div className="absolute inset-0 bg-black/30" />
+          <div className="relative w-full max-w-md bg-background shadow-xl overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="sticky top-0 bg-background border-b px-4 py-3 flex items-center justify-between">
+              <h3 className="text-sm font-semibold">ติดตามหนี้</h3>
+              <button onClick={() => setTimelineContractId(null)} className="text-muted-foreground hover:text-foreground text-lg">&times;</button>
+            </div>
+            <div className="p-4 space-y-6">
+              {/* Timeline */}
+              <div>
+                <h4 className="text-xs font-medium text-muted-foreground mb-2">Timeline</h4>
+                {timeline.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">ยังไม่มีข้อมูล</p>
+                ) : (
+                  <div className="space-y-2">
+                    {timeline.map((e, i) => (
+                      <div key={i} className="flex gap-3 text-sm">
+                        <div className="text-xs text-muted-foreground whitespace-nowrap">{new Date(e.date).toLocaleDateString('th-TH')}</div>
+                        <div>
+                          <div className="font-medium">{e.type}</div>
+                          <div className="text-xs text-muted-foreground">{e.description}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Call Logs */}
+              <div>
+                <h4 className="text-xs font-medium text-muted-foreground mb-2">ประวัติการโทร</h4>
+                {callLogs.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">ยังไม่มีประวัติการโทร</p>
+                ) : (
+                  <div className="space-y-2">
+                    {callLogs.map((log) => (
+                      <div key={log.id} className="border rounded-lg p-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="font-medium">{log.result}</span>
+                          <span className="text-xs text-muted-foreground">{new Date(log.callDate).toLocaleDateString('th-TH')}</span>
+                        </div>
+                        {log.notes && <div className="text-xs text-muted-foreground mt-1">{log.notes}</div>}
+                        <div className="text-xs text-muted-foreground">โดย {log.calledBy.name}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Add Call Log Form */}
+              <div className="border-t pt-4">
+                <h4 className="text-xs font-medium text-muted-foreground mb-2">บันทึกการโทร</h4>
+                <div className="space-y-2">
+                  <select
+                    value={callLogForm.result}
+                    onChange={(e) => setCallLogForm({ ...callLogForm, result: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg text-sm"
+                  >
+                    <option value="NO_ANSWER">ไม่รับสาย</option>
+                    <option value="PROMISED_TO_PAY">สัญญาจะชำระ</option>
+                    <option value="REFUSED">ปฏิเสธ</option>
+                    <option value="WRONG_NUMBER">เบอร์ผิด</option>
+                    <option value="OTHER">อื่นๆ</option>
+                  </select>
+                  <textarea
+                    value={callLogForm.notes}
+                    onChange={(e) => setCallLogForm({ ...callLogForm, notes: e.target.value })}
+                    placeholder="หมายเหตุ..."
+                    rows={2}
+                    className="w-full px-3 py-2 border rounded-lg text-sm"
+                  />
+                  <button
+                    onClick={() => addCallLogMutation.mutate()}
+                    disabled={addCallLogMutation.isPending}
+                    className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
+                  >
+                    {addCallLogMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกการโทร'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

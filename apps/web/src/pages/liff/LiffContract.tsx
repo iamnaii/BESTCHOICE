@@ -284,7 +284,11 @@ export default function LiffContract() {
                 const res = await fetch(`${API_BASE}/contracts/${contract.id}/documents`, {
                   headers: { 'Content-Type': 'application/json' },
                 });
-                if (!res.ok) return;
+                if (!res.ok) {
+                  // Document endpoint requires staff auth — inform user to use customer portal link
+                  alert('กรุณาขอลิงก์ดูเอกสารจากพนักงานร้าน');
+                  return;
+                }
                 const docs = await res.json();
                 const contractDoc = docs.find((d: { documentType: string }) => d.documentType === 'CONTRACT');
                 if (contractDoc) {
@@ -292,10 +296,12 @@ export default function LiffContract() {
                   if (urlRes.ok) {
                     const { url } = await urlRes.json();
                     window.open(url, '_blank');
+                  } else {
+                    alert('ไม่สามารถดาวน์โหลดเอกสารได้ กรุณาติดต่อพนักงาน');
                   }
                 }
               } catch {
-                // ignore
+                alert('เกิดข้อผิดพลาด กรุณาลองใหม่');
               }
             }}
           >

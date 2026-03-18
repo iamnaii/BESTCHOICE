@@ -986,24 +986,28 @@ model Repossession {
 // ============================================================
 
 model NotificationLog {
-  id          String              @id @default(uuid())
-  channel     NotificationChannel
-  recipient   String // phone or LINE user ID
-  subject     String?
-  message     String
-  status      String // SENT, FAILED, PENDING, RETRY_PENDING
-  relatedId   String?             @map("related_id") // contract_id or payment_id
-  errorMsg    String?             @map("error_msg")
-  sentAt      DateTime?           @map("sent_at")
-  retryCount  Int                 @default(0) @map("retry_count")
-  nextRetryAt DateTime?           @map("next_retry_at")
-  createdAt   DateTime            @default(now()) @map("created_at")
+  id             String              @id @default(uuid())
+  channel        NotificationChannel
+  recipient      String // phone or LINE user ID
+  subject        String?
+  message        String
+  status         String // SENT, FAILED, PENDING, RETRY_PENDING
+  relatedId      String?             @map("related_id") // contract_id or payment_id
+  errorMsg       String?             @map("error_msg")
+  sentAt         DateTime?           @map("sent_at")
+  retryCount     Int                 @default(0) @map("retry_count")
+  nextRetryAt    DateTime?           @map("next_retry_at")
+  externalId     String?             @map("external_id") // message_id from ThaiBulkSMS / LINE
+  deliveryStatus String?             @map("delivery_status") // DELIVERED, UNDELIVERED, REJECTED, etc.
+  deliveredAt    DateTime?           @map("delivered_at")
+  createdAt      DateTime            @default(now()) @map("created_at")
 
   @@index([relatedId])
   @@index([channel])
   @@index([createdAt])
   @@index([status, channel])
   @@index([status, nextRetryAt])
+  @@index([externalId])
   @@map("notification_logs")
 }
 

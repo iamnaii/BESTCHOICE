@@ -66,6 +66,7 @@ export class NotificationsService implements OnModuleInit {
     let status = 'PENDING';
     let errorMsg: string | null = null;
     let sentAt: Date | null = null;
+    let externalId: string | null = null;
     let retryCount = 0;
     const maxRetries = 2;
 
@@ -73,7 +74,8 @@ export class NotificationsService implements OnModuleInit {
       if (dto.channel === 'LINE') {
         await this.sendLine(dto.recipient, dto.message);
       } else if (dto.channel === 'SMS') {
-        await this.sendSms(dto.recipient, dto.message);
+        const messageId = await this.sendSms(dto.recipient, dto.message);
+        if (messageId) externalId = messageId;
       }
       // IN_APP requires no external call
     };
@@ -106,7 +108,8 @@ export class NotificationsService implements OnModuleInit {
           if (dto.channel === 'LINE' && dto.fallbackPhone) {
             this.logger.log(`Attempting SMS fallback for failed LINE notification`);
             try {
-              await this.sendSms(dto.fallbackPhone, dto.message);
+              const fallbackMsgId = await this.sendSms(dto.fallbackPhone, dto.message);
+              if (fallbackMsgId) externalId = fallbackMsgId;
               status = 'SENT';
               sentAt = new Date();
               errorMsg = `LINE failed, sent via SMS fallback`;
@@ -128,6 +131,7 @@ export class NotificationsService implements OnModuleInit {
         relatedId: dto.relatedId,
         errorMsg,
         sentAt,
+        externalId,
       },
     });
 
@@ -205,11 +209,11 @@ export class NotificationsService implements OnModuleInit {
    * Send SMS via ThaiBulkSMS API V2
    * Docs: https://assets.thaibulksms.com/documents/ThaibulksmsAPIDocument_V2.0_EN.pdf
    */
-  private async sendSms(recipient: string, message: string): Promise<void> {
+  private async sendSms(recipient: string, message: string): Promise<string | undefined> {
     // In non-production, skip actual SMS sending
     if (this.configService.get('NODE_ENV') !== 'production') {
       this.logger.warn(`[SMS-DEV] Skipping real SMS. Message to ${recipient}: ${message}`);
-      return;
+      return undefined;
     }
 
     if (!this.smsApiKey || !this.smsApiSecret) {
@@ -288,7 +292,15 @@ export class NotificationsService implements OnModuleInit {
       }
     }
 
-    this.logger.log(`[SMS] Message sent to ${cleanPhone}`);
+    // Extract message_id from response for delivery tracking
+    let messageId: string | undefined;
+    const phoneList = result?.phone_number_list as Array<{ message_id?: string }> | undefined;
+    if (Array.isArray(phoneList) && phoneList.length > 0 && phoneList[0].message_id) {
+      messageId = phoneList[0].message_id;
+    }
+
+    this.logger.log(`[SMS] Message sent to ${cleanPhone}${messageId ? ` (message_id: ${messageId})` : ''}`);
+    return messageId;
   }
 
   /**
@@ -335,6 +347,45 @@ export class NotificationsService implements OnModuleInit {
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
     }
+  }
+
+  /**
+   * Handle SMS delivery report webhook from ThaiBulkSMS
+   * Updates NotificationLog with delivery status
+   */
+  async handleSmsDeliveryReport(body: Record<string, unknown>): Promise<{ received: boolean }> {
+    const messageId = (body.message_id || body.messageId || body.id) as string | undefined;
+    const dlrStatus = (body.status || body.delivery_status) as string | undefined;
+
+    this.logger.log(`[SMS-DLR] Received: message_id=${messageId}, status=${dlrStatus}, body=${JSON.stringify(body).substring(0, 500)}`);
+
+    if (!messageId) {
+      this.logger.warn('[SMS-DLR] No message_id in delivery report');
+      return { received: true };
+    }
+
+    const log = await this.prisma.notificationLog.findFirst({
+      where: { externalId: messageId },
+    });
+
+    if (!log) {
+      this.logger.warn(`[SMS-DLR] No notification log found for message_id: ${messageId}`);
+      return { received: true };
+    }
+
+    const deliveryStatus = dlrStatus?.toUpperCase() || 'UNKNOWN';
+    const isDelivered = ['DELIVERED', 'SUCCESS', 'SENT'].includes(deliveryStatus);
+
+    await this.prisma.notificationLog.update({
+      where: { id: log.id },
+      data: {
+        deliveryStatus,
+        ...(isDelivered ? { deliveredAt: new Date() } : {}),
+      },
+    });
+
+    this.logger.log(`[SMS-DLR] Updated log ${log.id}: deliveryStatus=${deliveryStatus}`);
+    return { received: true };
   }
 
   /**

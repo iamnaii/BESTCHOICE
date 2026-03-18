@@ -16,6 +16,7 @@ interface ContractData {
   pdpaConsentId: string | null;
   customer?: {
     id: string;
+    name?: string;
     firstName?: string;
     lastName?: string;
     phone?: string;
@@ -62,7 +63,7 @@ export default function SigningWizard({ contract, previewHtml, lessorSignatureIm
     ? [...REQUIRED_SIGNERS, 'GUARDIAN' as SignerType]
     : REQUIRED_SIGNERS;
 
-  const customerName = [contract.customer?.firstName, contract.customer?.lastName].filter(Boolean).join(' ') || 'ลูกค้า';
+  const customerName = contract.customer?.name || [contract.customer?.firstName, contract.customer?.lastName].filter(Boolean).join(' ') || '';
   const customerPhone = contract.customer?.phone || '';
   const hasPdpaConsent = !!contract.pdpaConsentId;
 

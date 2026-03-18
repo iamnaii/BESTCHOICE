@@ -312,6 +312,7 @@ export default function StepSignature({
           {/* Signature pad */}
           <div className="w-full">
             <SignaturePadFull
+              key={currentSigner}
               label={`ลงลายมือชื่อ: ${SIGNER_LABELS[currentSigner]}`}
               signerName={signerName || undefined}
               onSign={handleSign}

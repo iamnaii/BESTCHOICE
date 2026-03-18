@@ -70,23 +70,24 @@ const IFRAME_STYLE = `
   body {
     padding: 16px !important;
     margin: 0 !important;
+    background: #fff !important;
   }
-  /* Force all fixed-width containers to fill available width */
   body > * {
     max-width: 100% !important;
-    width: 100% !important;
     box-sizing: border-box !important;
     margin-left: 0 !important;
     margin-right: 0 !important;
   }
-  .page, [class*="page"], [style*="width"] {
+  /* Override A4 page container only */
+  .page, [class*="page"] {
     max-width: 100% !important;
     width: 100% !important;
     box-sizing: border-box !important;
-    margin-left: 0 !important;
-    margin-right: 0 !important;
+    margin: 0 !important;
     padding-left: 16px !important;
     padding-right: 16px !important;
+    min-height: auto !important;
+    box-shadow: none !important;
   }
   img, table, pre, svg {
     max-width: 100% !important;

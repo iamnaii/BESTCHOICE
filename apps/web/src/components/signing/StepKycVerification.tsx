@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { toast } from 'sonner';
@@ -18,11 +18,27 @@ interface KycStatus {
   status: string;
 }
 
+interface SendOtpResponse {
+  id: string;
+  channel: string;
+  phone: string;
+  refCode?: string;
+  expiresAt: string;
+  expiryMinutes?: number;
+  message: string;
+}
+
+const OTP_EXPIRY_SECONDS = 10 * 60; // 10 minutes
+
 export default function StepKycVerification({ contractId, customerName, customerPhone, onComplete }: StepKycVerificationProps) {
   const [otp, setOtp] = useState('');
   const [otpSent, setOtpSent] = useState(false);
   const [otpVerified, setOtpVerified] = useState(false);
   const [idCardDone, setIdCardDone] = useState(false);
+  const [otpRef, setOtpRef] = useState('');
+  const [lastChannel, setLastChannel] = useState('');
+  const [countdown, setCountdown] = useState(0);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Check existing KYC status
   const { data: kycStatus } = useQuery<KycStatus>({
@@ -34,13 +50,39 @@ export default function StepKycVerification({ contractId, customerName, customer
   // If KYC already verified, skip
   const alreadyVerified = kycStatus?.status === 'VERIFIED';
 
+  // Countdown timer
+  useEffect(() => {
+    if (countdownRef.current) clearInterval(countdownRef.current);
+    if (!otpSent || otpVerified || countdown <= 0) return;
+
+    countdownRef.current = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          if (countdownRef.current) clearInterval(countdownRef.current);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => { if (countdownRef.current) clearInterval(countdownRef.current); };
+  }, [otpSent, otpVerified, countdown > 0]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleSendOtp = useCallback((channel: string) => {
+    setLastChannel(channel);
+    sendOtpMutation.mutate(channel);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const sendOtpMutation = useMutation({
     mutationFn: async (channel: string) => {
       const { data } = await api.post(`/contracts/${contractId}/kyc/send-otp`, { channel });
-      return data;
+      return data as SendOtpResponse;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       setOtpSent(true);
+      setOtp('');
+      setOtpRef(data.refCode || '');
+      setCountdown(OTP_EXPIRY_SECONDS);
       toast.success('ส่ง OTP แล้ว');
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
@@ -53,6 +95,7 @@ export default function StepKycVerification({ contractId, customerName, customer
     },
     onSuccess: () => {
       setOtpVerified(true);
+      setCountdown(0);
       toast.success('ยืนยัน OTP สำเร็จ');
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
@@ -76,6 +119,12 @@ export default function StepKycVerification({ contractId, customerName, customer
   const maskedPhone = customerPhone
     ? customerPhone.slice(0, 3) + '-xxx-x' + customerPhone.slice(-3)
     : 'ไม่มีเบอร์';
+
+  const formatCountdown = (secs: number) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
 
   // If already verified from server
   if (alreadyVerified) {
@@ -112,7 +161,7 @@ export default function StepKycVerification({ contractId, customerName, customer
           {!otpSent ? (
             <div className="flex gap-3">
               <button
-                onClick={() => sendOtpMutation.mutate('SMS')}
+                onClick={() => handleSendOtp('SMS')}
                 disabled={sendOtpMutation.isPending}
                 className="flex-1 px-4 py-4 text-sm border-2 border-primary/30 rounded-xl hover:bg-primary/5 flex flex-col items-center gap-2 disabled:opacity-50"
               >
@@ -120,7 +169,7 @@ export default function StepKycVerification({ contractId, customerName, customer
                 <span className="font-medium">ส่ง OTP ผ่าน SMS</span>
               </button>
               <button
-                onClick={() => sendOtpMutation.mutate('LINE')}
+                onClick={() => handleSendOtp('LINE')}
                 disabled={sendOtpMutation.isPending}
                 className="flex-1 px-4 py-4 text-sm border-2 border-green-300 rounded-xl hover:bg-green-50 flex flex-col items-center gap-2 disabled:opacity-50"
               >
@@ -131,6 +180,17 @@ export default function StepKycVerification({ contractId, customerName, customer
           ) : (
             <div className="space-y-4">
               <p className="text-sm text-muted-foreground text-center">กรอกรหัส OTP 6 หลักที่ส่งไปยัง {maskedPhone}</p>
+
+              {/* Ref Code */}
+              {otpRef && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2.5 text-center">
+                  <span className="text-xs text-blue-600">Ref:</span>
+                  <span className="ml-2 text-lg font-bold text-blue-800 tracking-widest">{otpRef}</span>
+                  <p className="text-xs text-blue-500 mt-0.5">ตรวจสอบ Ref ให้ตรงกับ SMS ที่ได้รับ</p>
+                </div>
+              )}
+
+              {/* OTP Input */}
               <OtpInput
                 value={otp}
                 onChange={(val) => {
@@ -139,15 +199,29 @@ export default function StepKycVerification({ contractId, customerName, customer
                 }}
                 disabled={verifyOtpMutation.isPending}
               />
+
               {verifyOtpMutation.isPending && (
                 <div className="text-center text-sm text-muted-foreground">กำลังตรวจสอบ...</div>
               )}
-              <button
-                onClick={() => { setOtpSent(false); setOtp(''); }}
-                className="text-sm text-primary hover:underline w-full text-center"
-              >
-                ส่ง OTP อีกครั้ง
-              </button>
+
+              {/* Countdown + Resend */}
+              <div className="text-center space-y-2">
+                {countdown > 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    OTP หมดอายุใน <span className="font-mono font-semibold text-foreground">{formatCountdown(countdown)}</span>
+                  </p>
+                ) : otpSent ? (
+                  <p className="text-sm text-orange-600 font-medium">OTP หมดอายุแล้ว กรุณากดส่งใหม่</p>
+                ) : null}
+
+                <button
+                  onClick={() => { setOtp(''); handleSendOtp(lastChannel); }}
+                  disabled={sendOtpMutation.isPending}
+                  className="text-sm text-primary hover:underline disabled:opacity-50"
+                >
+                  {sendOtpMutation.isPending ? 'กำลังส่ง...' : 'ส่ง OTP อีกครั้ง'}
+                </button>
+              </div>
             </div>
           )}
         </div>

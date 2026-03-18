@@ -165,8 +165,8 @@ export class NotificationsService {
   }
 
   /**
-   * Send SMS via ThaiBulkSMS API (or compatible provider)
-   * Supports both ThaiBulkSMS and Twilio-compatible APIs
+   * Send SMS via ThaiBulkSMS API V2
+   * Docs: https://assets.thaibulksms.com/documents/ThaibulksmsAPIDocument_V2.0_EN.pdf
    */
   private async sendSms(recipient: string, message: string): Promise<void> {
     // In non-production, skip actual SMS sending
@@ -175,18 +175,17 @@ export class NotificationsService {
       return;
     }
 
-    if (!this.smsApiKey) {
-      throw new Error('SMS API key not configured');
+    if (!this.smsApiKey || !this.smsApiSecret) {
+      throw new Error('SMS API key/secret not configured. Set SMS_API_KEY and SMS_API_SECRET in .env');
     }
 
-    // Clean phone number: ensure +66 format for Thai numbers
+    // Clean phone number: ensure 66XXXXXXXXX format for Thai numbers
     const cleanPhone = this.formatThaiPhone(recipient);
 
-    // ThaiBulkSMS API - use POST body to avoid credentials in URL/logs
-    const url = 'https://bulk.thaibulksms.com/sms.php';
+    // ThaiBulkSMS API V2 — Basic Auth + JSON response
+    const url = 'https://api-v2.thaibulksms.com/sms';
+    const basicAuth = Buffer.from(`${this.smsApiKey}:${this.smsApiSecret}`).toString('base64');
     const params = new URLSearchParams({
-      username: this.smsApiKey,
-      password: this.smsApiSecret || '',
       msisdn: cleanPhone,
       message,
       sender: this.smsSender || 'BESTCHOICE',
@@ -195,53 +194,87 @@ export class NotificationsService {
 
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json',
+        'Authorization': `Basic ${basicAuth}`,
+      },
       body: params.toString(),
     });
     const responseText = await response.text();
 
     if (!response.ok) {
-      throw new Error(`SMS API HTTP error ${response.status}: ${responseText}`);
+      throw new Error(`ThaiBulkSMS HTTP ${response.status}: ${responseText}`);
     }
 
-    // Parse ThaiBulkSMS response
+    // Parse JSON response from ThaiBulkSMS API V2
     try {
       const result = JSON.parse(responseText);
-      if (
-        result.status &&
-        result.status !== 'success' &&
-        result.status !== '0' &&
-        result.status !== 0
-      ) {
-        throw new Error(`SMS API error: ${result.message || JSON.stringify(result)}`);
+      if (result.error) {
+        throw new Error(`ThaiBulkSMS error: ${result.error.message || result.error.code || JSON.stringify(result.error)}`);
       }
     } catch (parseErr) {
-      if (parseErr instanceof SyntaxError) {
-        // Non-JSON response: check for error keywords (case-insensitive)
-        const lower = responseText.toLowerCase();
-        if (lower.includes('error') || lower.includes('fail')) {
-          throw new Error(`SMS API error: ${responseText}`);
-        }
-      } else {
+      if (!(parseErr instanceof SyntaxError)) {
         throw parseErr;
       }
+      // Non-JSON but HTTP 200 — treat as success
     }
 
     this.logger.log(`[SMS] Message sent to ${cleanPhone}`);
   }
 
   /**
-   * Format Thai phone number to international format
+   * Check ThaiBulkSMS credit balance
+   * Returns credit info or error if not configured
+   */
+  async checkSmsCredit(): Promise<{ configured: boolean; credit?: number; error?: string }> {
+    if (!this.smsApiKey || !this.smsApiSecret) {
+      return { configured: false, error: 'SMS_API_KEY and SMS_API_SECRET not set in .env' };
+    }
+
+    if (this.configService.get('NODE_ENV') !== 'production') {
+      return { configured: true, credit: -1, error: 'Dev mode: SMS sending is mocked' };
+    }
+
+    try {
+      const basicAuth = Buffer.from(`${this.smsApiKey}:${this.smsApiSecret}`).toString('base64');
+      const response = await fetch('https://api-v2.thaibulksms.com/credit', {
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': `Basic ${basicAuth}`,
+        },
+      });
+      const data = await response.json();
+
+      if (!response.ok || data.error) {
+        return { configured: true, error: data.error?.message || `HTTP ${response.status}` };
+      }
+
+      return { configured: true, credit: data.data?.credit_remain ?? data.credit_remain };
+    } catch (err) {
+      return { configured: true, error: err instanceof Error ? err.message : 'Unknown error' };
+    }
+  }
+
+  /**
+   * Format Thai phone number to international format (66XXXXXXXXX)
    */
   private formatThaiPhone(phone: string): string {
     const cleaned = phone.replace(/\D/g, '');
+    let formatted: string;
     if (cleaned.startsWith('0')) {
-      return '66' + cleaned.substring(1);
+      formatted = '66' + cleaned.substring(1);
+    } else if (cleaned.startsWith('66')) {
+      formatted = cleaned;
+    } else {
+      formatted = cleaned;
     }
-    if (cleaned.startsWith('66')) {
-      return cleaned;
+
+    // Thai mobile: 66XXXXXXXXX = 11 digits, landline: 66XXXXXXXX = 10 digits
+    if (formatted.length < 10 || formatted.length > 12) {
+      throw new Error(`Invalid phone number format: ${phone} (formatted: ${formatted})`);
     }
-    return cleaned;
+    return formatted;
   }
 
   /**

@@ -100,6 +100,12 @@ export class NotificationsController {
     return this.notificationsService.sendBulk(dto.templateId, dto.contractIds);
   }
 
+  @Get('sms-status')
+  @Roles('OWNER')
+  checkSmsStatus() {
+    return this.notificationsService.checkSmsCredit();
+  }
+
   // ============================================================
   // CRON / SCHEDULING ENDPOINTS
   // ============================================================

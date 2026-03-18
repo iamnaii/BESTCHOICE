@@ -38,7 +38,6 @@ export default function StepKycVerification({ contractId, customerName, customer
   const [otpRef, setOtpRef] = useState('');
   const [lastChannel, setLastChannel] = useState('');
   const [countdown, setCountdown] = useState(0);
-  const [autoResendFailed, setAutoResendFailed] = useState(false);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Check existing KYC status
@@ -74,17 +73,6 @@ export default function StepKycVerification({ contractId, customerName, customer
     sendOtpMutation.mutate(channel);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-resend when countdown reaches 0
-  useEffect(() => {
-    if (countdown === 0 && otpSent && !otpVerified && lastChannel && !autoResendFailed) {
-      // Small delay to show "หมดอายุ" state before resending
-      const timeout = setTimeout(() => {
-        handleSendOtp(lastChannel);
-      }, 1500);
-      return () => clearTimeout(timeout);
-    }
-  }, [countdown, otpSent, otpVerified, lastChannel, autoResendFailed, handleSendOtp]);
-
   const sendOtpMutation = useMutation({
     mutationFn: async (channel: string) => {
       const { data } = await api.post(`/contracts/${contractId}/kyc/send-otp`, { channel });
@@ -95,13 +83,9 @@ export default function StepKycVerification({ contractId, customerName, customer
       setOtp('');
       setOtpRef(data.refCode || '');
       setCountdown(OTP_EXPIRY_SECONDS);
-      setAutoResendFailed(false);
       toast.success('ส่ง OTP แล้ว');
     },
-    onError: (err: unknown) => {
-      setAutoResendFailed(true);
-      toast.error(getErrorMessage(err));
-    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const verifyOtpMutation = useMutation({
@@ -226,13 +210,9 @@ export default function StepKycVerification({ contractId, customerName, customer
                   <p className="text-sm text-muted-foreground">
                     OTP หมดอายุใน <span className="font-mono font-semibold text-foreground">{formatCountdown(countdown)}</span>
                   </p>
-                ) : otpSent && !sendOtpMutation.isPending ? (
-                  <p className="text-sm text-orange-600 font-medium">OTP หมดอายุแล้ว กำลังส่งใหม่...</p>
+                ) : otpSent ? (
+                  <p className="text-sm text-orange-600 font-medium">OTP หมดอายุแล้ว กรุณากดส่งใหม่</p>
                 ) : null}
-
-                {autoResendFailed && (
-                  <p className="text-sm text-red-600">ส่ง OTP อัตโนมัติไม่สำเร็จ กรุณากดส่งใหม่ด้านล่าง</p>
-                )}
 
                 <button
                   onClick={() => { setOtp(''); handleSendOtp(lastChannel); }}

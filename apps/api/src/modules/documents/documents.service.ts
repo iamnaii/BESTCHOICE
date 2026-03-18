@@ -610,7 +610,8 @@ export class DocumentsService {
   }
   @media print {
     body { margin: 0; padding: 0; }
-    .a4-page { width: 100%; min-height: auto; }
+    .a4-page { width: 100%; min-height: auto; page-break-after: always; break-after: page; }
+    .a4-page:last-child { page-break-after: avoid; break-after: avoid; }
     .page-footer-fixed {
       display: flex;
       position: fixed;
@@ -654,11 +655,18 @@ export class DocumentsService {
 </head>
 <body>
 ${hasFooter ? `<div class="page-footer-fixed"><span>${footerLeftText}</span>${showPageNumber ? '<span>สัญญาเช่าซื้อ</span>' : ''}</div>` : ''}
-<div class="a4-page">
-${letterheadHtml}
-${bodyHtml}
-${hasFooter ? `<div class="page-footer-screen"><span>${footerLeftText}</span>${showPageNumber ? `<span>${pageNumberFormat.replace('{page}', '1').replace('{total}', '1')}</span>` : ''}</div>` : ''}
-</div>
+${(() => {
+  const pages = bodyHtml.split(/<!--\s*PAGE_BREAK\s*-->/);
+  const totalPages = pages.length;
+  return pages.map((pageContent, i) => {
+    const pageNum = i + 1;
+    const header = i === 0 ? letterheadHtml : '';
+    const footer = hasFooter
+      ? `<div class="page-footer-screen"><span>${footerLeftText}</span>${showPageNumber ? `<span>${pageNumberFormat.replace('{page}', String(pageNum)).replace('{total}', String(totalPages))}</span>` : ''}</div>`
+      : '';
+    return `<div class="a4-page">${header}${pageContent}${footer}</div>`;
+  }).join('\n');
+})()}
 </body>
 </html>`;
   }

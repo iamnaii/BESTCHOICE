@@ -1211,17 +1211,26 @@ async function main() {
   // ============================================================
   console.log('STEP 32: Creating ContractTemplates...');
 
-  let contractHtml = '<h1>สัญญาเช่าซื้อ</h1><p>เนื้อหาสัญญาจำลอง...</p>';
-  try {
-    const htmlPath = path.join(__dirname, '../src/modules/documents/templates/hire-purchase-contract.html');
-    if (fs.existsSync(htmlPath)) {
-      contractHtml = fs.readFileSync(htmlPath, 'utf-8');
-      console.log('  → Loaded contract HTML template from file');
-    } else {
-      console.log('  → Contract HTML file not found, using placeholder');
+  let contractHtml = '';
+  const templatePaths = [
+    path.join(__dirname, '../src/modules/documents/templates/hire-purchase-contract.html'),
+    path.resolve(process.cwd(), 'src/modules/documents/templates/hire-purchase-contract.html'),
+    path.resolve(process.cwd(), 'dist/modules/documents/templates/hire-purchase-contract.html'),
+  ];
+  for (const htmlPath of templatePaths) {
+    try {
+      if (fs.existsSync(htmlPath)) {
+        contractHtml = fs.readFileSync(htmlPath, 'utf-8');
+        console.log(`  → Loaded contract HTML template from: ${htmlPath}`);
+        break;
+      }
+    } catch {
+      // Try next path
     }
-  } catch {
-    console.log('  → Error reading contract template, using placeholder');
+  }
+  if (!contractHtml) {
+    console.log(`  → Contract HTML file not found in any path, using placeholder. Tried: ${templatePaths.join(', ')}`);
+    contractHtml = '<h1>สัญญาเช่าซื้อ</h1><p>เนื้อหาสัญญาจำลอง - กรุณาอัปเดต template ในหน้าตั้งค่า</p>';
   }
 
   await prisma.contractTemplate.create({

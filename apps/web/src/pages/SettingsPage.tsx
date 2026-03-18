@@ -55,6 +55,27 @@ const configGroups = [
       { key: 'customer_access_token_hours', label: 'อายุ Link เอกสารลูกค้า (ชั่วโมง)', suffix: ' ชม.', type: 'number', step: '1' },
     ],
   },
+  {
+    title: 'ข้อมูลบริษัท (ใช้ในสัญญา)',
+    items: [
+      { key: 'COMPANY_NAME_TH', label: 'ชื่อบริษัท (ไทย)', suffix: '', type: 'text', step: '' },
+      { key: 'COMPANY_NAME_EN', label: 'ชื่อบริษัท (อังกฤษ)', suffix: '', type: 'text', step: '' },
+      { key: 'COMPANY_TAX_ID', label: 'เลขประจำตัวผู้เสียภาษี', suffix: '', type: 'text', step: '' },
+      { key: 'COMPANY_ADDRESS', label: 'ที่อยู่บริษัท', suffix: '', type: 'text', step: '' },
+      { key: 'COMPANY_DIRECTOR', label: 'ชื่อกรรมการผู้จัดการ', suffix: '', type: 'text', step: '' },
+      { key: 'COMPANY_DIRECTOR_ID', label: 'เลขบัตรกรรมการ', suffix: '', type: 'text', step: '' },
+      { key: 'COMPANY_DIRECTOR_ADDRESS', label: 'ที่อยู่กรรมการ', suffix: '', type: 'text', step: '' },
+    ],
+  },
+  {
+    title: 'ค่าคงที่สัญญา (ใช้ในเทมเพลต)',
+    items: [
+      { key: 'CONTRACT_PENALTY_RATE', label: 'ค่าปรับล่าช้า (บาท/วัน)', suffix: ' บาท', type: 'number', step: '1' },
+      { key: 'CONTRACT_WARRANTY_DAYS', label: 'ระยะเวลารับประกัน (วัน)', suffix: ' วัน', type: 'number', step: '1' },
+      { key: 'CONTRACT_EARLY_DISCOUNT', label: 'ส่วนลดปิดก่อนกำหนด (%)', suffix: '%', type: 'number', step: '1' },
+      { key: 'CONTRACT_MIN_MONTHS_EARLY', label: 'งวดขั้นต่ำก่อนปิดก่อนกำหนด', suffix: ' งวด', type: 'number', step: '1' },
+    ],
+  },
 ];
 
 const CARD_READER_DOWNLOAD_URL = 'https://github.com/iamnaii/BESTCHOICE/releases/latest/download/BestchoiceCardReader.zip';

@@ -53,6 +53,7 @@ const DocumentDashboardPage = lazy(() => import('@/pages/DocumentDashboardPage')
 const PDPAPage = lazy(() => import('@/pages/PDPAPage'));
 const ReceiptsPage = lazy(() => import('@/pages/ReceiptsPage'));
 const CustomerPortalPage = lazy(() => import('@/pages/CustomerPortalPage'));
+const ContractVerifyPage = lazy(() => import('@/pages/ContractVerifyPage'));
 const SlipReviewPage = lazy(() => import('@/pages/SlipReviewPage'));
 const LiffPayment = lazy(() => import('@/pages/liff/LiffPayment'));
 const LiffContract = lazy(() => import('@/pages/liff/LiffContract'));
@@ -99,6 +100,7 @@ function App() {
 
         {/* Public Customer Portal (token-based access, no auth) */}
         <Route path="/customer-access/:token" element={<CustomerPortalPage />} />
+        <Route path="/verify/:id" element={<ContractVerifyPage />} />
 
         {/* LIFF Pages (public, opened from LINE) */}
         <Route path="/pay/:token" element={<LiffPayment />} />

@@ -3,6 +3,7 @@ import { SignerType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { SettingsService } from '../settings/settings.service';
 import { CreateTemplateDto, UpdateTemplateDto } from './dto/document.dto';
 import * as crypto from 'crypto';
 
@@ -14,6 +15,7 @@ export class DocumentsService {
     private prisma: PrismaService,
     private storageService: StorageService,
     private notificationsService: NotificationsService,
+    private settingsService: SettingsService,
   ) {}
 
   // ─── Contract Templates ──────────────────────────────
@@ -196,7 +198,7 @@ export class DocumentsService {
 
     // Replace placeholders and wrap with A4 styling
     const lessorSig = await this.getSystemLessorSignature();
-    const renderedHtml = this.wrapWithA4Styles(this.replacePlaceholders(htmlContent, contract, lessorSig), templateSettings, contract.contractNumber);
+    const renderedHtml = this.wrapWithA4Styles(await this.replacePlaceholders(htmlContent, contract, lessorSig), templateSettings, contract.contractNumber);
 
     // Generate PDF from HTML via Puppeteer (if available), otherwise store HTML
     let fileUrl: string;
@@ -269,7 +271,7 @@ export class DocumentsService {
 
     // Replace standard placeholders
     const lessorSigPdpa = await this.getSystemLessorSignature();
-    htmlContent = this.replacePlaceholders(htmlContent, contract, lessorSigPdpa);
+    htmlContent = await this.replacePlaceholders(htmlContent, contract, lessorSigPdpa);
 
     // Replace PDPA-specific placeholders
     const pdpaSignature = contract.pdpaConsent.signatureImage && this.isSafeImageDataUrl(contract.pdpaConsent.signatureImage)
@@ -395,7 +397,7 @@ export class DocumentsService {
     }
 
     const lessorSigPreview = await this.getSystemLessorSignature();
-    const bodyHtml = this.replacePlaceholders(htmlContent, contract, lessorSigPreview);
+    const bodyHtml = await this.replacePlaceholders(htmlContent, contract, lessorSigPreview);
     return { html: this.wrapWithA4Styles(bodyHtml, templateSettings, contract.contractNumber) };
   }
 
@@ -667,7 +669,16 @@ ${hasFooter ? `<div class="page-footer-screen"><span>${footerLeftText}</span>${s
     return null;
   }
 
-  private replacePlaceholders(html: string, contract: any, lessorSig?: { image: string; name: string } | null): string {
+  private async replacePlaceholders(html: string, contract: any, lessorSig?: { image: string; name: string } | null): Promise<string> {
+    // Load configurable settings with hardcoded fallbacks
+    const configMap: Record<string, string> = {};
+    try {
+      const allSettings = await this.settingsService.findAll();
+      for (const s of allSettings) configMap[s.key] = s.value;
+    } catch {
+      // Settings not available — use defaults
+    }
+    const cfg = (key: string, fallback: string) => configMap[key] || fallback;
     const esc = this.escapeHtml.bind(this);
 
     const payments = contract.payments || [];
@@ -808,20 +819,20 @@ ${hasFooter ? `<div class="page-footer-screen"><span>${footerLeftText}</span>${s
       'CONTRACT.PAYMENT_DUE_DAY': firstPaymentDay,
       'CONTRACT.FIRST_PAYMENT_DATE': firstPaymentDue,
       'CONTRACT.LAST_PAYMENT_DATE': lastPaymentDue,
-      'CONTRACT.PENALTY_RATE': '100',
-      'CONTRACT.WARRANTY_DAYS': '30',
-      'CONTRACT.EARLY_DISCOUNT': '50',
-      'CONTRACT.MIN_MONTHS_EARLY': '6',
+      'CONTRACT.PENALTY_RATE': cfg('CONTRACT_PENALTY_RATE', '100'),
+      'CONTRACT.WARRANTY_DAYS': cfg('CONTRACT_WARRANTY_DAYS', '30'),
+      'CONTRACT.EARLY_DISCOUNT': cfg('CONTRACT_EARLY_DISCOUNT', '50'),
+      'CONTRACT.MIN_MONTHS_EARLY': cfg('CONTRACT_MIN_MONTHS_EARLY', '6'),
       'CONTRACT.NOTES': esc(contract.notes || ''),
 
-      // === Company ===
-      'COMPANY.NAME_TH': esc('บริษัท เบสท์ช้อยส์โฟน จำกัด'),
-      'COMPANY.NAME_EN': esc('BESTCHOICEPHONE Co., Ltd.'),
-      'COMPANY.TAX_ID': esc('0165568000050'),
-      'COMPANY.ADDRESS': esc('456/21 ชั้น 2 ถนนนารายณ์มหาราช ตำบลทะเลชุบศร อำเภอเมือง จังหวัดลพบุรี 15000'),
-      'COMPANY.DIRECTOR': esc('เอกนรินทร์ คงเดช'),
-      'COMPANY.DIRECTOR_ID': esc('1-1601-00452-40-7'),
-      'COMPANY.DIRECTOR_ADDRESS': esc('517 ถนนนารายณ์มหาราช ตำบลทะเลชุบศร อำเภอเมือง จังหวัดลพบุรี 15000'),
+      // === Company (configurable via Settings) ===
+      'COMPANY.NAME_TH': esc(cfg('COMPANY_NAME_TH', 'บริษัท เบสท์ช้อยส์โฟน จำกัด')),
+      'COMPANY.NAME_EN': esc(cfg('COMPANY_NAME_EN', 'BESTCHOICEPHONE Co., Ltd.')),
+      'COMPANY.TAX_ID': esc(cfg('COMPANY_TAX_ID', '0165568000050')),
+      'COMPANY.ADDRESS': esc(cfg('COMPANY_ADDRESS', '456/21 ชั้น 2 ถนนนารายณ์มหาราช ตำบลทะเลชุบศร อำเภอเมือง จังหวัดลพบุรี 15000')),
+      'COMPANY.DIRECTOR': esc(cfg('COMPANY_DIRECTOR', 'เอกนรินทร์ คงเดช')),
+      'COMPANY.DIRECTOR_ID': esc(cfg('COMPANY_DIRECTOR_ID', '1-1601-00452-40-7')),
+      'COMPANY.DIRECTOR_ADDRESS': esc(cfg('COMPANY_DIRECTOR_ADDRESS', '517 ถนนนารายณ์มหาราช ตำบลทะเลชุบศร อำเภอเมือง จังหวัดลพบุรี 15000')),
 
       // === Customer ===
       'CUSTOMER.NAME': replacements['{customer_name}'],

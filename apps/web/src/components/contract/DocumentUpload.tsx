@@ -32,6 +32,8 @@ const DOCUMENT_TYPES = [
   { value: 'LINE_PROFILE', label: 'Profile LINE' },
   { value: 'DEVICE_RECEIPT_PHOTO', label: 'รูปรับเครื่อง' },
   { value: 'BANK_STATEMENT', label: 'Statement ธนาคาร' },
+  { value: 'DRIVING_LICENSE', label: 'ใบขับขี่' },
+  { value: 'BOOK_BANK', label: 'หน้า Book Bank' },
   { value: 'OTHER', label: 'อื่นๆ' },
 ];
 
@@ -99,20 +101,27 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
     },
   });
 
-  const performOcr = async (file: File) => {
+  const OCR_ENDPOINTS: Record<string, { endpoint: string; label: string }> = {
+    ID_CARD_COPY: { endpoint: '/ocr/id-card', label: 'บัตรประชาชน' },
+    DRIVING_LICENSE: { endpoint: '/ocr/driving-license', label: 'ใบขับขี่' },
+    BOOK_BANK: { endpoint: '/ocr/book-bank', label: 'Book Bank' },
+  };
+
+  const performOcr = async (file: File, docType = 'ID_CARD_COPY') => {
+    const ocrConfig = OCR_ENDPOINTS[docType] || OCR_ENDPOINTS.ID_CARD_COPY;
     setOcrLoading(true);
     try {
       const imageBase64 = await compressImageForOcr(file);
-      const { data } = await api.post('/ocr/id-card', { imageBase64 }, { timeout: 90000 });
+      const { data } = await api.post(ocrConfig.endpoint, { imageBase64 }, { timeout: 90000 });
       setOcrResult(data);
       setShowOcrPanel(true);
       const pct = (data.confidence * 100).toFixed(0);
       if (data.confidence < 0.5) {
-        toast.error(`อ่านบัตรได้ แต่ความมั่นใจต่ำมาก (${pct}%) กรุณาตรวจสอบข้อมูล`);
+        toast.error(`อ่าน${ocrConfig.label}ได้ แต่ความมั่นใจต่ำมาก (${pct}%) กรุณาตรวจสอบข้อมูล`);
       } else if (data.confidence < 0.7) {
-        toast.warning(`อ่านบัตรสำเร็จ แต่ความมั่นใจค่อนข้างต่ำ (${pct}%)`);
+        toast.warning(`อ่าน${ocrConfig.label}สำเร็จ แต่ความมั่นใจค่อนข้างต่ำ (${pct}%)`);
       } else {
-        toast.success(`อ่านบัตรประชาชนสำเร็จ (ความมั่นใจ ${pct}%)`);
+        toast.success(`อ่าน${ocrConfig.label}สำเร็จ (ความมั่นใจ ${pct}%)`);
       }
     } catch (err: any) {
       if (err.code === 'ECONNABORTED' || !err.response) {
@@ -244,8 +253,8 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
     uploadMutation.mutate(fileToProcess, {
       onSuccess: () => {
         // Trigger OCR only after upload succeeds, using captured references
-        if (typeToProcess === 'ID_CARD_COPY' && fileToProcess.type.startsWith('image/') && !ocrLoading) {
-          performOcr(fileToProcess);
+        if (['ID_CARD_COPY', 'DRIVING_LICENSE', 'BOOK_BANK'].includes(typeToProcess) && fileToProcess.type.startsWith('image/') && !ocrLoading) {
+          performOcr(fileToProcess, typeToProcess);
         }
       },
     });

@@ -68,6 +68,18 @@ export default function OverduePage() {
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
+  const calcLateFeeMutation = useMutation({
+    mutationFn: async () => { const { data } = await api.post('/cron/calculate-late-fees'); return data; },
+    onSuccess: () => { toast.success('คำนวณค่าปรับสำเร็จ'); queryClient.invalidateQueries({ queryKey: ['overdue-payments'] }); },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const updateStatusMutation = useMutation({
+    mutationFn: async () => { const { data } = await api.post('/cron/update-contract-statuses'); return data; },
+    onSuccess: () => { toast.success('อัปเดตสถานะสัญญาสำเร็จ'); queryClient.invalidateQueries({ queryKey: ['overdue-payments'] }); },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
   const { data: timeline = [] } = useQuery<TimelineEvent[]>({
     queryKey: ['overdue-timeline', timelineContractId],
     queryFn: async () => { const { data } = await api.get(`/overdue/contracts/${timelineContractId}/timeline`); return data; },
@@ -207,13 +219,29 @@ export default function OverduePage() {
         title="ค่าปรับ & ค้างชำระ"
         subtitle="ระบบคำนวณค่าปรับล่าช้าและติดตามการค้างชำระ"
         action={
-          <button
-            onClick={() => runCronMutation.mutate()}
-            disabled={runCronMutation.isPending}
-            className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 disabled:opacity-50"
-          >
-            {runCronMutation.isPending ? 'กำลังคำนวณ...' : 'คำนวณค่าปรับ'}
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => calcLateFeeMutation.mutate()}
+              disabled={calcLateFeeMutation.isPending}
+              className="px-3 py-2 text-sm border border-input rounded-lg hover:bg-muted disabled:opacity-50"
+            >
+              {calcLateFeeMutation.isPending ? 'กำลัง...' : 'คำนวณค่าปรับ'}
+            </button>
+            <button
+              onClick={() => updateStatusMutation.mutate()}
+              disabled={updateStatusMutation.isPending}
+              className="px-3 py-2 text-sm border border-input rounded-lg hover:bg-muted disabled:opacity-50"
+            >
+              {updateStatusMutation.isPending ? 'กำลัง...' : 'อัปเดตสถานะ'}
+            </button>
+            <button
+              onClick={() => runCronMutation.mutate()}
+              disabled={runCronMutation.isPending}
+              className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 disabled:opacity-50"
+            >
+              {runCronMutation.isPending ? 'กำลังคำนวณ...' : 'คำนวณทั้งหมด'}
+            </button>
+          </div>
         }
       />
 

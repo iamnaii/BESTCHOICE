@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import * as crypto from 'crypto';
 import { KycService } from './kyc.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -160,7 +161,6 @@ describe('KycService', () => {
       // We need to match the OTP hash. The service hashes the input and compares.
       // mockKycRecord.otpHash is sha256('1234'), so we need the service to hash to the same.
       // But the OTP is random in sendOtp. For verifyOtp, we test with a known hash.
-      const crypto = require('crypto');
       const otp = '123456';
       const hash = crypto.createHash('sha256').update(otp).digest('hex');
 

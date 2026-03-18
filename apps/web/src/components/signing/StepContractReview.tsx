@@ -61,37 +61,15 @@ export default function StepContractReview({ previewHtml, onComplete, onBack }: 
 
 const IFRAME_STYLE = `
 <style>
+  /* Prevent horizontal overflow only */
   html, body {
     overflow-x: hidden !important;
     max-width: 100% !important;
     box-sizing: border-box !important;
-    width: 100% !important;
   }
-  body {
-    padding: 16px !important;
-    margin: 0 !important;
-    background: #fff !important;
-  }
-  body > * {
-    max-width: 100% !important;
-    box-sizing: border-box !important;
-    margin-left: 0 !important;
-    margin-right: 0 !important;
-  }
-  /* Override A4 page container only */
-  .page, [class*="page"] {
-    max-width: 100% !important;
-    width: 100% !important;
-    box-sizing: border-box !important;
-    margin: 0 !important;
-    padding-left: 16px !important;
-    padding-right: 16px !important;
-    min-height: auto !important;
-    box-shadow: none !important;
-  }
+  /* Responsive images/tables */
   img, table, pre, svg {
     max-width: 100% !important;
-    height: auto !important;
   }
   /* Thin modern scrollbar */
   ::-webkit-scrollbar { width: 6px; }

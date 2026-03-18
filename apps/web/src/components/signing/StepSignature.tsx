@@ -85,12 +85,15 @@ export default function StepSignature({
 
   // Pre-fill signer name when switching signers
   useEffect(() => {
-    if (currentSigner === 'CUSTOMER' && customerName) {
-      setSignerName(customerName);
-    } else if (currentSigner && currentSigner !== 'CUSTOMER') {
+    if (!currentSigner) return;
+    if (currentSigner === 'CUSTOMER') {
+      setSignerName(customerName || '');
+    } else if (currentSigner === 'COMPANY') {
+      setSignerName(lessorSignerName || '');
+    } else {
       setSignerName('');
     }
-  }, [currentSigner, customerName]);
+  }, [currentSigner, customerName, lessorSignerName]);
 
   const getGpsLocation = useCallback((): Promise<{ lat: number; lng: number } | null> => {
     return new Promise((resolve) => {
@@ -122,15 +125,14 @@ export default function StepSignature({
       const label = SIGNER_LABELS[signerType] || variables.signerType;
       toast.success(`ลงนาม ${label} สำเร็จ`);
 
-      const freshSignatures = await queryClient.fetchQuery<Signature[]>({
-        queryKey: ['contract-signatures', contractId],
-        queryFn: async () => { const { data } = await api.get(`/contracts/${contractId}/signatures`); return data; },
-      });
+      // Invalidate + refetch to reliably update the UI
+      await queryClient.invalidateQueries({ queryKey: ['contract-signatures', contractId] });
+      const freshSignatures = queryClient.getQueryData<Signature[]>(['contract-signatures', contractId]) || [];
 
       const freshSignedTypes = new Set(freshSignatures.map(s => normalizeSignerType(s.signerType)));
       const allDone = requiredSigners.every(t => freshSignedTypes.has(t));
       if (allDone) onAllSigned();
-      // Don't auto-switch - stay on current signer tab
+      // Stay on current signer tab to show ✓ confirmation
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
@@ -279,6 +281,7 @@ export default function StepSignature({
             <label className="block text-xs text-muted-foreground mb-1">ชื่อผู้ลงนาม</label>
             <input
               type="text"
+              autoComplete="off"
               value={signerName}
               onChange={(e) => setSignerName(e.target.value)}
               placeholder={`ระบุชื่อ${SIGNER_LABELS[currentSigner]}`}

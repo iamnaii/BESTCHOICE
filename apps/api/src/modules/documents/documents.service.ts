@@ -277,8 +277,8 @@ export class DocumentsService {
 
     // Replace PDPA-specific placeholders
     const pdpaSignature = contract.pdpaConsent.signatureImage && this.isSafeImageDataUrl(contract.pdpaConsent.signatureImage)
-      ? `<img src="${contract.pdpaConsent.signatureImage}" style="max-height:50px;display:block;margin:0 auto"/>`
-      : '<div style="border-bottom:1px solid #000;width:200px;height:50px"></div>';
+      ? `<img src="${contract.pdpaConsent.signatureImage}" style="max-height:80px;display:block;margin:0 auto"/>`
+      : '<div style="border-bottom:1px solid #000;width:200px;height:80px"></div>';
 
     const consentDate = contract.pdpaConsent.grantedAt
       ? new Date(contract.pdpaConsent.grantedAt).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })
@@ -683,7 +683,24 @@ ${hasFooter ? `<div class="page-footer-screen"><span>${footerLeftText}</span>${s
     const cfg = (key: string, fallback: string) => configMap[key] || fallback;
     const esc = this.escapeHtml.bind(this);
 
-    const payments = contract.payments || [];
+    const payments: any[] = contract.payments || [];
+
+    // Fallback: generate display-only rows from contract metadata when payments are missing
+    if (payments.length === 0 && contract.totalMonths > 0) {
+      const startDate = new Date(contract.createdAt);
+      const dueDay = contract.paymentDueDay || startDate.getDate();
+      for (let i = 1; i <= contract.totalMonths; i++) {
+        const due = new Date(startDate);
+        due.setMonth(due.getMonth() + i);
+        if (dueDay <= 28) due.setDate(dueDay);
+        payments.push({
+          installmentNo: i,
+          dueDate: due,
+          amountDue: Number(contract.monthlyPayment),
+        });
+      }
+    }
+
     const paymentScheduleRows = payments
       .map(
         (p: any) =>
@@ -782,10 +799,10 @@ ${hasFooter ? `<div class="page-footer-screen"><span>${footerLeftText}</span>${s
       '{staff_signer_name}': esc(contract.salesperson?.name || ''),
       '{date}': new Date().toLocaleDateString('th-TH'),
       '{payment_schedule_table}': `<table border="1" cellpadding="6" style="border-collapse:collapse;width:100%;margin:10px auto"><thead><tr style="background:#f5f5f5"><th style="text-align:center">งวดที่</th><th style="text-align:center">วันที่ครบกำหนดชำระ</th><th style="text-align:center">จำนวนเงิน</th></tr></thead><tbody>${paymentScheduleRows}</tbody></table>`,
-      '{customer_signature}': customerSigSafe ? `<img src="${customerSig.signatureImage}" style="max-height:50px;display:block;margin:0 auto"/>` : '<div style="border-bottom:1px solid #000;width:200px;height:50px"></div>',
-      '{staff_signature}': staffSigSafe ? `<img src="${staffSig.signatureImage}" style="max-height:50px;display:block;margin:0 auto"/>` : '<div style="border-bottom:1px solid #000;width:200px;height:50px"></div>',
-      '{witness1_signature}': witness1SigSafe ? `<img src="${witness1Sig.signatureImage}" style="max-height:50px;display:block;margin:0 auto"/>` : '<div style="border-bottom:1px solid #000;width:200px;height:50px"></div>',
-      '{witness2_signature}': witness2SigSafe ? `<img src="${witness2Sig.signatureImage}" style="max-height:50px;display:block;margin:0 auto"/>` : '<div style="border-bottom:1px solid #000;width:200px;height:50px"></div>',
+      '{customer_signature}': customerSigSafe ? `<img src="${customerSig.signatureImage}" style="max-height:80px;display:block;margin:0 auto"/>` : '<div style="border-bottom:1px solid #000;width:200px;height:80px"></div>',
+      '{staff_signature}': staffSigSafe ? `<img src="${staffSig.signatureImage}" style="max-height:80px;display:block;margin:0 auto"/>` : '<div style="border-bottom:1px solid #000;width:200px;height:80px"></div>',
+      '{witness1_signature}': witness1SigSafe ? `<img src="${witness1Sig.signatureImage}" style="max-height:80px;display:block;margin:0 auto"/>` : '<div style="border-bottom:1px solid #000;width:200px;height:80px"></div>',
+      '{witness2_signature}': witness2SigSafe ? `<img src="${witness2Sig.signatureImage}" style="max-height:80px;display:block;margin:0 auto"/>` : '<div style="border-bottom:1px solid #000;width:200px;height:80px"></div>',
     };
 
     let result = html;

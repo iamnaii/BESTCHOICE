@@ -47,6 +47,7 @@ describe('StorageService', () => {
 
       service = module.get<StorageService>(StorageService);
       // Get the mock send function
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { __mockSend } = require('@aws-sdk/client-s3');
       mockSend = __mockSend;
       mockSend.mockClear();

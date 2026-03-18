@@ -34,6 +34,7 @@ import {
   LogOut,
   ChevronsRight,
   ChevronsLeft,
+  MessageSquare,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import {
@@ -139,6 +140,7 @@ const navSections: NavSection[] = [
       { label: 'จัดการผู้ใช้', path: '/users', icon: UserCog, roles: ['OWNER'] },
       { label: 'ตั้งค่าระบบ', path: '/settings', icon: Settings, roles: ['OWNER'] },
       { label: 'เชื่อมต่อ LINE OA', path: '/settings/line-oa', icon: Settings, roles: ['OWNER'] },
+      { label: 'ตั้งค่า SMS', path: '/settings/sms', icon: MessageSquare, roles: ['OWNER'] },
       { label: 'ตั้งค่าดอกเบี้ย', path: '/settings/interest-config', icon: Percent, roles: ['OWNER'] },
       { label: 'ราคาตั้งต้น', path: '/settings/pricing-templates', icon: DollarSign, roles: ['OWNER'] },
       { label: 'เทมเพลตสัญญา', path: '/contract-templates', icon: FileSignature, roles: ['OWNER'] },

@@ -1409,6 +1409,7 @@ model KycVerification {
   otpChannel     String   @map("otp_channel") // SMS | LINE
   otpAttempts    Int      @default(0) @map("otp_attempts") // failed attempts
   otpSentCount   Int      @default(0) @map("otp_sent_count") // times OTP was sent
+  otpRefCode     String?  @map("otp_ref_code") // 4-char ref code shown to user
   otpVerifiedAt  DateTime? @map("otp_verified_at")
 
   // ID Card photo verification

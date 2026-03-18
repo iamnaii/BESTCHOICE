@@ -55,13 +55,14 @@ export class KycService {
       throw new BadRequestException('ส่ง OTP เกินจำนวนที่กำหนด กรุณารอ 1 ชั่วโมง');
     }
 
-    // Generate OTP
+    // Generate OTP + ref code
     const otp = crypto.randomInt(100000, 999999).toString();
     const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
+    const refCode = crypto.randomBytes(2).toString('hex').toUpperCase().slice(0, 4);
     const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
     // Send OTP via notification service FIRST (before creating DB record)
-    const message = `[BESTCHOICE] รหัส OTP ของคุณคือ ${otp} (หมดอายุใน ${OTP_EXPIRY_MINUTES} นาที) สำหรับสัญญาเลขที่ ${contract.contractNumber}`;
+    const message = `[BESTCHOICE] รหัส OTP: ${otp} (Ref: ${refCode}) หมดอายุใน ${OTP_EXPIRY_MINUTES} นาที`;
     try {
       const result = await this.notificationsService.send({
         channel: channel as 'SMS' | 'LINE',
@@ -109,6 +110,7 @@ export class KycService {
         otpPhone: customer.phone,
         otpChannel: channel,
         otpSentCount: 1,
+        otpRefCode: refCode,
         ipAddress: req.ip || null,
         deviceInfo: req.userAgent || null,
         expiresAt,
@@ -119,7 +121,9 @@ export class KycService {
       id: kyc.id,
       channel,
       phone: this.maskPhone(customer.phone),
+      refCode,
       expiresAt,
+      expiryMinutes: OTP_EXPIRY_MINUTES,
       message: `ส่ง OTP ไปยัง ${channel === 'LINE' ? 'LINE' : this.maskPhone(customer.phone)} แล้ว`,
     };
   }

@@ -55,7 +55,7 @@ export default function OtpInput({ value, onChange, length = 6, disabled }: OtpI
           onKeyDown={(e) => handleKeyDown(i, e)}
           onPaste={i === 0 ? handlePaste : undefined}
           disabled={disabled}
-          className="w-14 h-16 text-center text-2xl font-bold border-2 border-input rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none disabled:opacity-50 transition-colors"
+          className="w-14 h-16 text-center text-2xl font-bold border-2 border-gray-300 rounded-xl bg-white shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none disabled:opacity-50 transition-colors"
           autoComplete="one-time-code"
         />
       ))}

@@ -526,7 +526,7 @@ export class DocumentsService {
   /** Wrap rendered HTML with A4 page styles and page numbering */
   private wrapWithA4Styles(bodyHtml: string, templateSettings?: any, contractNumber?: string): string {
     // Use template settings if available, otherwise fallback to defaults
-    const margins = templateSettings?.margins || { top: 25, bottom: 20, left: 30, right: 25 };
+    const margins = templateSettings?.margins || { top: 25.4, bottom: 25.4, left: 19.1, right: 19.1 };
     const fontSize = templateSettings?.fontSize || { body: 16, heading: 20, footer: 12 };
     const letterhead = templateSettings?.letterhead || 'none';
     const showPageNumber = templateSettings?.showPageNumber ?? true;

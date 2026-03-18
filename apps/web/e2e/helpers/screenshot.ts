@@ -1,6 +1,10 @@
 import { Page } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 /**
  * StepScreenshot — Helper สำหรับถ่าย screenshot ทุก step อัตโนมัติ
@@ -27,7 +31,10 @@ export class StepScreenshot {
     this.step++;
     const filename = `${String(this.step).padStart(2, '0')}-${description}.png`;
     const filepath = path.join(this.dir, filename);
-    await this.page.screenshot({ path: filepath, fullPage: true });
+    await this.page.screenshot({ path: filepath, fullPage: true, timeout: 5000 }).catch(() => {
+      // Fallback: take viewport-only screenshot if fullPage times out (e.g. fonts not loaded)
+      return this.page.screenshot({ path: filepath, fullPage: false, timeout: 5000 });
+    });
     return filepath;
   }
 }

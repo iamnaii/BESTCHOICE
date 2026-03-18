@@ -38,7 +38,7 @@ test.describe('01 - Login Flow', () => {
 
     // Step 5: ตรวจสอบ links
     await expect(page.locator('a[href="/forgot-password"]')).toBeVisible();
-    await expect(page.locator('a[href="/landing"]')).toBeVisible();
+    await expect(page.locator('a[href="/landing"]').first()).toBeVisible();
     await ss.capture('links-verified');
 
     // Step 6: ตรวจสอบ placeholder text

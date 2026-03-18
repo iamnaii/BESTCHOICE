@@ -66,12 +66,12 @@ export default function StepKycVerification({ contractId, customerName, customer
     }, 1000);
 
     return () => { if (countdownRef.current) clearInterval(countdownRef.current); };
-  }, [otpSent, otpVerified, countdown > 0]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [otpSent, otpVerified]); // eslint-disable-line
 
   const handleSendOtp = useCallback((channel: string) => {
     setLastChannel(channel);
     sendOtpMutation.mutate(channel);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); // eslint-disable-line
 
   const sendOtpMutation = useMutation({
     mutationFn: async (channel: string) => {

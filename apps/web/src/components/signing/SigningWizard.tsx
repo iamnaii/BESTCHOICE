@@ -103,6 +103,7 @@ export default function SigningWizard({ contract, previewHtml, lessorSignatureIm
           <StepSignature
             contractId={contract.id}
             requiredSigners={requiredSigners}
+            customerName={customerName}
             lessorSignatureImage={lessorSignatureImage}
             lessorSignerName={lessorSignerName}
             onAllSigned={goNext}

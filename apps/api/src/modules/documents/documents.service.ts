@@ -6,6 +6,8 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { SettingsService } from '../settings/settings.service';
 import { CreateTemplateDto, UpdateTemplateDto } from './dto/document.dto';
 import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
 
 @Injectable()
 export class DocumentsService {
@@ -1044,6 +1046,16 @@ ${hasFooter ? `<div class="page-footer-screen"><span>${footerLeftText}</span>${s
 
   private getDefaultTemplate(documentType: string): string {
     if (documentType === 'CONTRACT') {
+      // Try to load the full hire-purchase contract template from file
+      try {
+        const templatePath = path.join(__dirname, 'templates', 'hire-purchase-contract.html');
+        if (fs.existsSync(templatePath)) {
+          return fs.readFileSync(templatePath, 'utf-8');
+        }
+      } catch {
+        this.logger.warn('Failed to read hire-purchase-contract.html, using inline fallback');
+      }
+      // Fallback: inline default template
       return `
 <div>
   <h1 style="text-align:center;margin:0 0 4px">สัญญาผ่อนชำระ</h1>

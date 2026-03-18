@@ -48,6 +48,13 @@ const configGroups = [
       { key: 'grade_c_threshold', label: 'เกณฑ์ Grade C (%)', suffix: '%', type: 'number', step: '1' },
     ],
   },
+  {
+    title: 'PDPA และความปลอดภัย',
+    items: [
+      { key: 'pdpa_privacy_notice_version', label: 'เวอร์ชัน Privacy Notice (PDPA)', suffix: '', type: 'text', step: '' },
+      { key: 'customer_access_token_hours', label: 'อายุ Link เอกสารลูกค้า (ชั่วโมง)', suffix: ' ชม.', type: 'number', step: '1' },
+    ],
+  },
 ];
 
 const CARD_READER_DOWNLOAD_URL = 'https://github.com/iamnaii/BESTCHOICE/releases/latest/download/BestchoiceCardReader.zip';

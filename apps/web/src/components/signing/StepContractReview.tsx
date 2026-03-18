@@ -65,10 +65,28 @@ const IFRAME_STYLE = `
     overflow-x: hidden !important;
     max-width: 100% !important;
     box-sizing: border-box !important;
+    width: 100% !important;
   }
   body {
     padding: 16px !important;
     margin: 0 !important;
+  }
+  /* Force all fixed-width containers to fill available width */
+  body > * {
+    max-width: 100% !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+  .page, [class*="page"], [style*="width"] {
+    max-width: 100% !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    padding-left: 16px !important;
+    padding-right: 16px !important;
   }
   img, table, pre, svg {
     max-width: 100% !important;

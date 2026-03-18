@@ -15,11 +15,11 @@ export default function StepContractReview({ previewHtml, onComplete, onBack }: 
       <h2 className="text-xl font-semibold text-foreground mb-4 text-center">อ่านรายละเอียดสัญญา</h2>
 
       {/* Contract preview - full height */}
-      <div className="flex-1 rounded-xl border-2 border-border overflow-hidden bg-white mb-4" style={{ minHeight: '65vh' }}>
+      <div className="flex-1 flex flex-col rounded-xl border-2 border-border overflow-hidden bg-white mb-4" style={{ minHeight: '65vh' }}>
         {previewHtml ? (
           <ContractIframe html={previewHtml} />
         ) : (
-          <div className="flex items-center justify-center h-full">
+          <div className="flex items-center justify-center flex-1">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
           </div>
         )}
@@ -110,7 +110,8 @@ function ContractIframe({ html }: { html: string }) {
   return (
     <iframe
       title="contract-preview"
-      className="w-full h-full border-0"
+      className="w-full flex-1 border-0"
+      style={{ minHeight: 0 }}
       srcDoc={styledHtml}
       sandbox="allow-same-origin"
     />

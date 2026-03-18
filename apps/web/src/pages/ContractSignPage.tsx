@@ -17,6 +17,7 @@ interface ContractDetail {
     lastName?: string;
     phone?: string;
     birthDate?: string;
+    references?: { prefix?: string; firstName?: string; lastName?: string; phone?: string; relationship?: string }[];
   };
   product?: {
     name?: string;

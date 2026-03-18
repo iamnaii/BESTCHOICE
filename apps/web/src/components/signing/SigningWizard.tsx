@@ -8,6 +8,14 @@ import StepComplete from './StepComplete';
 
 type SignerType = 'CUSTOMER' | 'COMPANY' | 'WITNESS_1' | 'WITNESS_2' | 'GUARDIAN';
 
+interface CustomerReference {
+  prefix?: string;
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  relationship?: string;
+}
+
 interface ContractData {
   id: string;
   contractNumber: string;
@@ -21,6 +29,7 @@ interface ContractData {
     lastName?: string;
     phone?: string;
     birthDate?: string;
+    references?: CustomerReference[];
   };
   product?: {
     name?: string;
@@ -67,6 +76,11 @@ export default function SigningWizard({ contract, previewHtml, lessorSignatureIm
   const customerPhone = contract.customer?.phone || '';
   const hasPdpaConsent = !!contract.pdpaConsentId;
 
+  // Extract witness default names from customer references
+  const refs = contract.customer?.references || [];
+  const witness1Name = refs[0] ? `${refs[0].prefix || ''}${refs[0].firstName || ''} ${refs[0].lastName || ''}`.trim() : '';
+  const witness2Name = refs[1] ? `${refs[1].prefix || ''}${refs[1].firstName || ''} ${refs[1].lastName || ''}`.trim() : '';
+
   const goNext = () => setCurrentStep(prev => Math.min(prev + 1, STEPS.length - 1));
   const goBack = () => setCurrentStep(prev => Math.max(prev - 1, 0));
 
@@ -107,6 +121,8 @@ export default function SigningWizard({ contract, previewHtml, lessorSignatureIm
             customerName={customerName}
             lessorSignatureImage={lessorSignatureImage}
             lessorSignerName={lessorSignerName}
+            witness1Name={witness1Name}
+            witness2Name={witness2Name}
             onAllSigned={goNext}
             onBack={goBack}
           />

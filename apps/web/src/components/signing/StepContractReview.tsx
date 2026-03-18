@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 
 interface StepContractReviewProps {
   contractId: string;
@@ -60,25 +60,11 @@ export default function StepContractReview({ previewHtml, onComplete, onBack }: 
 }
 
 function ContractIframe({ html }: { html: string }) {
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-
-  const writeContent = useCallback(() => {
-    const iframe = iframeRef.current;
-    if (!iframe) return;
-    const doc = iframe.contentDocument || iframe.contentWindow?.document;
-    if (!doc) return;
-    doc.open();
-    doc.write(html);
-    doc.close();
-  }, [html]);
-
-  useEffect(() => { writeContent(); }, [writeContent]);
-
   return (
     <iframe
-      ref={iframeRef}
       title="contract-preview"
       className="w-full h-full border-0"
+      srcDoc={html}
       sandbox="allow-same-origin"
     />
   );

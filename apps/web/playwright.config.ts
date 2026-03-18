@@ -22,10 +22,14 @@ export default defineConfig({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
-        // Use system Chrome if PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH is set
-        ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
-          ? { launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } }
-          : {}),
+        launchOptions: {
+          // Use system Chrome if PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH is set
+          ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+            ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH }
+            : {}),
+          // Block external font domains to prevent timeouts in offline/restricted environments
+          args: ['--host-resolver-rules=MAP fonts.googleapis.com 127.0.0.1,MAP fonts.gstatic.com 127.0.0.1'],
+        },
       },
     },
   ],

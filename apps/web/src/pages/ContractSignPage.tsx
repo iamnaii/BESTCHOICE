@@ -12,6 +12,7 @@ interface ContractDetail {
   pdpaConsentId: string | null;
   customer?: {
     id: string;
+    name?: string;
     firstName?: string;
     lastName?: string;
     phone?: string;

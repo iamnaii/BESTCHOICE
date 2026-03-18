@@ -683,7 +683,24 @@ ${hasFooter ? `<div class="page-footer-screen"><span>${footerLeftText}</span>${s
     const cfg = (key: string, fallback: string) => configMap[key] || fallback;
     const esc = this.escapeHtml.bind(this);
 
-    const payments = contract.payments || [];
+    const payments: any[] = contract.payments || [];
+
+    // Fallback: generate display-only rows from contract metadata when payments are missing
+    if (payments.length === 0 && contract.totalMonths > 0) {
+      const startDate = new Date(contract.createdAt);
+      const dueDay = contract.paymentDueDay || startDate.getDate();
+      for (let i = 1; i <= contract.totalMonths; i++) {
+        const due = new Date(startDate);
+        due.setMonth(due.getMonth() + i);
+        if (dueDay <= 28) due.setDate(dueDay);
+        payments.push({
+          installmentNo: i,
+          dueDate: due,
+          amountDue: Number(contract.monthlyPayment),
+        });
+      }
+    }
+
     const paymentScheduleRows = payments
       .map(
         (p: any) =>

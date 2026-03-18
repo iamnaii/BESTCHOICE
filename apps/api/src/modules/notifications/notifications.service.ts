@@ -169,12 +169,13 @@ export class NotificationsService {
    * Supports both ThaiBulkSMS and Twilio-compatible APIs
    */
   private async sendSms(recipient: string, message: string): Promise<void> {
+    // In non-production, skip actual SMS sending
+    if (this.configService.get('NODE_ENV') !== 'production') {
+      this.logger.warn(`[SMS-DEV] Skipping real SMS. Message to ${recipient}: ${message}`);
+      return;
+    }
+
     if (!this.smsApiKey) {
-      // In development, log the SMS instead of sending it
-      if (this.configService.get('NODE_ENV') !== 'production') {
-        this.logger.warn(`[SMS-DEV] SMS_API_KEY not configured. Message to ${recipient}: ${message}`);
-        return;
-      }
       throw new Error('SMS API key not configured');
     }
 
@@ -199,8 +200,31 @@ export class NotificationsService {
     });
     const responseText = await response.text();
 
-    if (!response.ok || responseText.includes('error')) {
-      throw new Error(`SMS API error: ${responseText}`);
+    if (!response.ok) {
+      throw new Error(`SMS API HTTP error ${response.status}: ${responseText}`);
+    }
+
+    // Parse ThaiBulkSMS response
+    try {
+      const result = JSON.parse(responseText);
+      if (
+        result.status &&
+        result.status !== 'success' &&
+        result.status !== '0' &&
+        result.status !== 0
+      ) {
+        throw new Error(`SMS API error: ${result.message || JSON.stringify(result)}`);
+      }
+    } catch (parseErr) {
+      if (parseErr instanceof SyntaxError) {
+        // Non-JSON response: check for error keywords (case-insensitive)
+        const lower = responseText.toLowerCase();
+        if (lower.includes('error') || lower.includes('fail')) {
+          throw new Error(`SMS API error: ${responseText}`);
+        }
+      } else {
+        throw parseErr;
+      }
     }
 
     this.logger.log(`[SMS] Message sent to ${cleanPhone}`);

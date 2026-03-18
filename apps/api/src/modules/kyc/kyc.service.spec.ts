@@ -152,6 +152,17 @@ describe('KycService', () => {
       notifications.send.mockRejectedValueOnce(new Error('Send failed'));
 
       await expect(service.sendOtp('contract-1', 'SMS', req)).rejects.toThrow(BadRequestException);
+      // No DB record should be created when send fails
+      expect(prisma.kycVerification.create).not.toHaveBeenCalled();
+      expect(prisma.kycVerification.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('should not create KYC record when notification returns FAILED status', async () => {
+      notifications.send.mockResolvedValueOnce({ id: 'notif-1', status: 'FAILED' });
+
+      await expect(service.sendOtp('contract-1', 'SMS', req)).rejects.toThrow(BadRequestException);
+      expect(prisma.kycVerification.create).not.toHaveBeenCalled();
+      expect(prisma.kycVerification.updateMany).not.toHaveBeenCalled();
     });
   });
 

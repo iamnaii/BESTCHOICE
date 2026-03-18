@@ -194,7 +194,8 @@ export class DocumentsService {
         where: { type: 'STORE_DIRECT', isActive: true },
         orderBy: { createdAt: 'desc' },
       });
-      htmlContent = template?.contentHtml || this.getDefaultTemplate(documentType);
+      // Always load built-in template from file to pick up latest fixes
+      htmlContent = this.getDefaultTemplate(documentType) || template?.contentHtml || '';
       templateSettings = template?.settings;
     }
 
@@ -394,7 +395,8 @@ export class DocumentsService {
         where: { type: 'STORE_DIRECT', isActive: true },
         orderBy: { createdAt: 'desc' },
       });
-      htmlContent = template?.contentHtml || this.getDefaultTemplate('CONTRACT');
+      // Always load built-in template from file to pick up latest fixes
+      htmlContent = this.getDefaultTemplate('CONTRACT') || template?.contentHtml || '';
       templateSettings = template?.settings;
     }
 

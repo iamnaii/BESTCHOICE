@@ -117,6 +117,15 @@ export default function RepossessionsPage() {
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
+  const readyForSaleMutation = useMutation({
+    mutationFn: async (id: string) => api.post(`/repossessions/${id}/ready-for-sale`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['repossessions'] });
+      toast.success('เปลี่ยนสถานะเป็น พร้อมขาย แล้ว');
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
   const openUpdate = (repo: Repossession) => {
     setSelectedRepo(repo);
     setUpdateForm({
@@ -220,12 +229,23 @@ export default function RepossessionsPage() {
       key: 'actions',
       label: '',
       render: (r: Repossession) => (
-        <button
-          onClick={() => openUpdate(r)}
-          className="text-primary hover:text-primary/80 text-sm font-medium"
-        >
-          จัดการ
-        </button>
+        <div className="flex items-center gap-2">
+          {(r.status === 'REPOSSESSED' || r.status === 'UNDER_REPAIR') && (
+            <button
+              onClick={() => { if (window.confirm('เปลี่ยนสถานะเป็น พร้อมขาย?')) readyForSaleMutation.mutate(r.id); }}
+              disabled={readyForSaleMutation.isPending}
+              className="text-green-600 hover:text-green-700 text-sm font-medium"
+            >
+              พร้อมขาย
+            </button>
+          )}
+          <button
+            onClick={() => openUpdate(r)}
+            className="text-primary hover:text-primary/80 text-sm font-medium"
+          >
+            จัดการ
+          </button>
+        </div>
       ),
     },
   ];

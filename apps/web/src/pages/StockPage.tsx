@@ -284,6 +284,12 @@ export default function StockPage() {
     },
   });
 
+  // Warranty expiring alerts
+  const { data: warrantyExpiring = [] } = useQuery<{ id: string; name: string; brand: string; model: string; warrantyExpireDate: string }[]>({
+    queryKey: ['warranty-expiring'],
+    queryFn: async () => { const { data } = await api.get('/products/warranty/expiring'); return data; },
+  });
+
   const listProducts = listResult?.data ?? [];
   const summary = summaryData?.summary || [];
   const totalInStock = summary.reduce((sum, s) => sum + s.inStock, 0);
@@ -520,6 +526,23 @@ export default function StockPage() {
           รายการสินค้า {listResult ? `(${listResult.total})` : ''}
         </button>
       </div>
+
+      {activeTab === 'dashboard' && warrantyExpiring.length > 0 && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+          <div className="text-sm font-medium text-yellow-800">
+            รับประกันใกล้หมด: {warrantyExpiring.length} รายการ
+          </div>
+          <div className="mt-2 space-y-1">
+            {warrantyExpiring.slice(0, 5).map(p => (
+              <div key={p.id} className="text-xs text-yellow-700 flex justify-between">
+                <span>{p.brand} {p.model}</span>
+                <span>{new Date(p.warrantyExpireDate).toLocaleDateString('th-TH')}</span>
+              </div>
+            ))}
+            {warrantyExpiring.length > 5 && <div className="text-xs text-yellow-600">...และอีก {warrantyExpiring.length - 5} รายการ</div>}
+          </div>
+        </div>
+      )}
 
       {activeTab === 'dashboard' && dashboard && (
         <div className="flex flex-col gap-5 lg:gap-7.5">

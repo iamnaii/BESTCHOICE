@@ -13,7 +13,7 @@ export default function ForgotPasswordPage() {
     setIsSubmitting(true);
 
     try {
-      await api.post('/api/auth/forgot-password', { email });
+      await api.post('/auth/forgot-password', { email });
       setSubmitted(true);
       toast.success('ส่งลิงก์รีเซ็ตรหัสผ่านเรียบร้อยแล้ว');
     } catch {

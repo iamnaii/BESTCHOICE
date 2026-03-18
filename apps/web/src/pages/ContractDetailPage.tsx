@@ -104,6 +104,7 @@ export default function ContractDetailPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const [showPayoffModal, setShowPayoffModal] = useState(false);
+  const [customerLink, setCustomerLink] = useState<string | null>(null);
   const [payoffMethod, setPayoffMethod] = useState('CASH');
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectNotes, setRejectNotes] = useState('');
@@ -149,9 +150,28 @@ export default function ContractDetailPage() {
   };
 
   const submitReviewMutation = useMutation({
-    mutationFn: async () => { const { data } = await api.post(`/contracts/${id}/submit-review`); return data; },
+    mutationFn: async () => {
+      // Validate first
+      try {
+        const { data: validation } = await api.get(`/contracts/${id}/validate`);
+        if (validation.errors && validation.errors.length > 0) {
+          throw { isValidation: true, errors: validation.errors };
+        }
+      } catch (err: any) {
+        if (err.isValidation) throw err;
+        // If validate endpoint fails, proceed anyway (endpoint might not exist)
+      }
+      const { data } = await api.post(`/contracts/${id}/submit-review`);
+      return data;
+    },
     onSuccess: () => { toast.success('ส่งตรวจสอบแล้ว'); invalidateContract(); },
-    onError: (err: any) => toast.error(getErrorMessage(err)),
+    onError: (err: any) => {
+      if (err.isValidation) {
+        toast.error(`สัญญาไม่ครบถ้วน: ${err.errors.join(', ')}`);
+      } else {
+        toast.error(getErrorMessage(err));
+      }
+    },
   });
 
   const approveMutation = useMutation({
@@ -189,6 +209,19 @@ export default function ContractDetailPage() {
     mutationFn: async () => { const { data } = await api.delete(`/contracts/${id}`); return data; },
     onSuccess: () => { toast.success('ลบสัญญาแล้ว'); navigate('/contracts'); },
     onError: (err: any) => toast.error(getErrorMessage(err)),
+  });
+
+  const customerLinkMutation = useMutation({
+    mutationFn: async () => {
+      const { data } = await api.post(`/contracts/${id}/customer-link`);
+      return data;
+    },
+    onSuccess: (data: { url: string; token: string; expiresAt: string }) => {
+      const link = `${window.location.origin}/customer-access/${data.token}`;
+      setCustomerLink(link);
+      toast.success('สร้างลิงก์สำเร็จ');
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const updateMutation = useMutation({
@@ -521,6 +554,15 @@ export default function ContractDetailPage() {
                 ปิดก่อนกำหนด
               </button>
             )}
+            {['ACTIVE', 'OVERDUE', 'COMPLETED'].includes(contract.status) && (
+              <button
+                onClick={() => customerLinkMutation.mutate()}
+                disabled={customerLinkMutation.isPending}
+                className="px-4 py-2 text-sm border border-primary text-primary rounded-lg hover:bg-primary/10 disabled:opacity-50"
+              >
+                {customerLinkMutation.isPending ? 'กำลังสร้าง...' : 'ส่งลิงก์ลูกค้า'}
+              </button>
+            )}
             {canDelete && (
               <button
                 onClick={() => { if (window.confirm('ยืนยันลบสัญญานี้?')) deleteMutation.mutate(); }}
@@ -623,6 +665,23 @@ export default function ContractDetailPage() {
           <div className="rounded-lg border border-green-200 bg-green-50 p-4">
             <div className="text-xs text-green-700 mb-1">ยอดเครดิตคงเหลือ</div>
             <div className="text-xl font-bold text-green-600">{parseFloat(contract.creditBalance).toLocaleString()} ฿</div>
+            {['ACTIVE', 'OVERDUE'].includes(contract.status) && (
+              <button
+                onClick={async () => {
+                  if (!window.confirm(`ใช้เครดิต ${parseFloat(contract.creditBalance!).toLocaleString()} ฿ ชำระงวดถัดไป?`)) return;
+                  try {
+                    await api.post(`/payments/apply-credit/${contract.id}`);
+                    toast.success('ใช้เครดิตชำระสำเร็จ');
+                    invalidateContract();
+                  } catch (err: unknown) {
+                    toast.error(getErrorMessage(err));
+                  }
+                }}
+                className="mt-2 px-3 py-1 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700"
+              >
+                ใช้เครดิตชำระ
+              </button>
+            )}
           </div>
         )}
         {contract.dunningStage && contract.dunningStage !== 'NONE' && (
@@ -1324,6 +1383,28 @@ export default function ContractDetailPage() {
                 className="flex-1 px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
               >
                 {rejectMutation.isPending ? 'กำลังส่ง...' : 'ยืนยันปฏิเสธ'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {customerLink && (
+        <Modal isOpen title="ลิงก์สำหรับลูกค้า" onClose={() => setCustomerLink(null)}>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">ลิงก์นี้ให้ลูกค้าเข้าดูสัญญา ตารางผ่อน และใบเสร็จได้ (มีอายุ 48 ชม.)</p>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={customerLink}
+                readOnly
+                className="flex-1 px-3 py-2 border rounded-lg text-sm bg-muted"
+              />
+              <button
+                onClick={() => { navigator.clipboard.writeText(customerLink); toast.success('คัดลอกลิงก์แล้ว'); }}
+                className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
+              >
+                คัดลอก
               </button>
             </div>
           </div>

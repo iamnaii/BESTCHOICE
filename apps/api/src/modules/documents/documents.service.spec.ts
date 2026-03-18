@@ -4,6 +4,7 @@ import { DocumentsService } from './documents.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { SettingsService } from '../settings/settings.service';
 
 // Mock puppeteer-core to prevent actual browser launch
 jest.mock('puppeteer-core', () => ({
@@ -157,6 +158,7 @@ describe('DocumentsService', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: StorageService, useValue: mockStorage },
         { provide: NotificationsService, useValue: mockNotifications },
+        { provide: SettingsService, useValue: { findAll: jest.fn().mockResolvedValue([]) } },
       ],
     }).compile();
 

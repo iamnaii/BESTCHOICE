@@ -28,6 +28,8 @@ interface StepSignatureProps {
   customerName?: string;
   lessorSignatureImage: string;
   lessorSignerName: string;
+  witness1Name?: string;
+  witness2Name?: string;
   onAllSigned: () => void;
   onBack: () => void;
 }
@@ -42,6 +44,8 @@ export default function StepSignature({
   customerName,
   lessorSignatureImage,
   lessorSignerName,
+  witness1Name,
+  witness2Name,
   onAllSigned,
   onBack,
 }: StepSignatureProps) {
@@ -86,14 +90,14 @@ export default function StepSignature({
   // Pre-fill signer name when switching signers
   useEffect(() => {
     if (!currentSigner) return;
-    if (currentSigner === 'CUSTOMER') {
-      setSignerName(customerName || '');
-    } else if (currentSigner === 'COMPANY') {
-      setSignerName(lessorSignerName || '');
-    } else {
-      setSignerName('');
+    switch (currentSigner) {
+      case 'CUSTOMER': setSignerName(customerName || ''); break;
+      case 'COMPANY': setSignerName(lessorSignerName || ''); break;
+      case 'WITNESS_1': setSignerName(witness1Name || ''); break;
+      case 'WITNESS_2': setSignerName(witness2Name || ''); break;
+      default: setSignerName('');
     }
-  }, [currentSigner, customerName, lessorSignerName]);
+  }, [currentSigner, customerName, lessorSignerName, witness1Name, witness2Name]);
 
   const getGpsLocation = useCallback((): Promise<{ lat: number; lng: number } | null> => {
     return new Promise((resolve) => {

@@ -189,13 +189,9 @@ export class DocumentsService {
       htmlContent = template.contentHtml;
       templateSettings = template.settings;
     } else {
-      // Find active template (single plan type: STORE_DIRECT)
-      const template = await this.prisma.contractTemplate.findFirst({
-        where: { type: 'STORE_DIRECT', isActive: true },
-        orderBy: { createdAt: 'desc' },
-      });
-      htmlContent = template?.contentHtml || this.getDefaultTemplate(documentType);
-      templateSettings = template?.settings;
+      const resolved = await this.resolveTemplate('STORE_DIRECT', documentType);
+      htmlContent = resolved.html;
+      templateSettings = resolved.settings;
     }
 
     // Replace placeholders and wrap with A4 styling
@@ -390,12 +386,9 @@ export class DocumentsService {
       htmlContent = template.contentHtml;
       templateSettings = template.settings;
     } else {
-      const template = await this.prisma.contractTemplate.findFirst({
-        where: { type: 'STORE_DIRECT', isActive: true },
-        orderBy: { createdAt: 'desc' },
-      });
-      htmlContent = template?.contentHtml || this.getDefaultTemplate('CONTRACT');
-      templateSettings = template?.settings;
+      const resolved = await this.resolveTemplate('STORE_DIRECT', 'CONTRACT');
+      htmlContent = resolved.html;
+      templateSettings = resolved.settings;
     }
 
     const lessorSigPreview = await this.getSystemLessorSignature();
@@ -608,7 +601,8 @@ export class DocumentsService {
   }
   @media print {
     body { margin: 0; padding: 0; }
-    .a4-page { width: 100%; min-height: auto; }
+    .a4-page { width: 100%; min-height: auto; page-break-after: always; break-after: page; }
+    .a4-page:last-child { page-break-after: avoid; break-after: avoid; }
     .page-footer-fixed {
       display: flex;
       position: fixed;
@@ -652,13 +646,47 @@ export class DocumentsService {
 </head>
 <body>
 ${hasFooter ? `<div class="page-footer-fixed"><span>${footerLeftText}</span>${showPageNumber ? '<span>สัญญาเช่าซื้อ</span>' : ''}</div>` : ''}
-<div class="a4-page">
-${letterheadHtml}
-${bodyHtml}
-${hasFooter ? `<div class="page-footer-screen"><span>${footerLeftText}</span>${showPageNumber ? `<span>${pageNumberFormat.replace('{page}', '1').replace('{total}', '1')}</span>` : ''}</div>` : ''}
-</div>
+${(() => {
+  const pages = bodyHtml.split(/<!--\s*PAGE_BREAK\s*-->/);
+  const totalPages = pages.length;
+  return pages.map((pageContent, i) => {
+    const pageNum = i + 1;
+    const header = i === 0 ? letterheadHtml : '';
+    const footer = hasFooter
+      ? `<div class="page-footer-screen"><span>${footerLeftText}</span>${showPageNumber ? `<span>${pageNumberFormat.replace('{page}', String(pageNum)).replace('{total}', String(totalPages))}</span>` : ''}</div>`
+      : '';
+    return `<div class="a4-page">${header}${pageContent}${footer}</div>`;
+  }).join('\n');
+})()}
 </body>
 </html>`;
+  }
+
+  /**
+   * Resolve which template HTML to use:
+   * - If DB template was edited by admin (updatedAt significantly after createdAt), use DB version
+   * - Otherwise use the file template (picks up code fixes automatically)
+   */
+  private async resolveTemplate(planType: string, documentType: string): Promise<{ html: string; settings: any }> {
+    const template = await this.prisma.contractTemplate.findFirst({
+      where: { type: planType, isActive: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (template) {
+      // If admin edited the template (updatedAt > createdAt + 60s), prefer DB version
+      const wasEdited = template.updatedAt.getTime() - template.createdAt.getTime() > 60_000;
+      if (wasEdited) {
+        return { html: template.contentHtml, settings: template.settings };
+      }
+    }
+
+    // Use file template (latest code), fall back to DB, then inline fallback
+    const fileHtml = this.getDefaultTemplate(documentType);
+    return {
+      html: fileHtml || template?.contentHtml || '',
+      settings: template?.settings || null,
+    };
   }
 
   private async getSystemLessorSignature(): Promise<{ image: string; name: string } | null> {
@@ -794,8 +822,8 @@ ${hasFooter ? `<div class="page-footer-screen"><span>${footerLeftText}</span>${s
       '{branch_address}': esc(contract.branch?.location || ''),
       '{branch_phone}': esc(contract.branch?.phone || ''),
       '{salesperson_name}': esc(contract.salesperson?.name || ''),
-      '{witness1_name}': witness1Sig?.signerName ? esc(witness1Sig.signerName) : '',
-      '{witness2_name}': witness2Sig?.signerName ? esc(witness2Sig.signerName) : '',
+      '{witness1_name}': witness1Sig?.signerName ? esc(witness1Sig.signerName) : (references[0] ? esc(`${references[0].prefix || ''}${references[0].firstName || ''} ${references[0].lastName || ''}`.trim()) : ''),
+      '{witness2_name}': witness2Sig?.signerName ? esc(witness2Sig.signerName) : (references[1] ? esc(`${references[1].prefix || ''}${references[1].firstName || ''} ${references[1].lastName || ''}`.trim()) : ''),
       '{staff_signer_name}': esc(contract.salesperson?.name || ''),
       '{date}': new Date().toLocaleDateString('th-TH'),
       '{payment_schedule_table}': `<table border="1" cellpadding="6" style="border-collapse:collapse;width:100%;margin:10px auto"><thead><tr style="background:#f5f5f5"><th style="text-align:center">งวดที่</th><th style="text-align:center">วันที่ครบกำหนดชำระ</th><th style="text-align:center">จำนวนเงิน</th></tr></thead><tbody>${paymentScheduleRows}</tbody></table>`,

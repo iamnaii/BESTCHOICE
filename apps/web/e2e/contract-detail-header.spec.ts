@@ -1,5 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
-import { loginViaAPI } from './helpers/auth';
+import { loginWithMock } from './helpers/mock-auth';
 
 // ============================================================================
 // BESTCHOICE Contract Detail - Header Actions & Edge Cases (Phase 15)
@@ -85,7 +85,7 @@ async function mockContractHeader(page: Page, contractId: string, overrides: Rec
 
 test.describe('Phase 15: Contract Detail - Header Actions & Edge Cases', () => {
   test.beforeEach(async ({ page }) => {
-    await loginViaAPI(page);
+    await loginWithMock(page);
   });
 
   // ── 15.1 Header shows ลงนาม/เอกสาร and พิมพ์สัญญา buttons ──────────

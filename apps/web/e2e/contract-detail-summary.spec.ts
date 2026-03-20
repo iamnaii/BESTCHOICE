@@ -1,5 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
-import { loginViaAPI } from './helpers/auth';
+import { loginWithMock } from './helpers/mock-auth';
 
 // ============================================================================
 // BESTCHOICE Contract Detail - Status Summary Cards (Phase 14)
@@ -84,7 +84,7 @@ async function mockContractSummary(page: Page, contractId: string, overrides: Re
 
 test.describe('Phase 14: Contract Detail - Status Summary Cards', () => {
   test.beforeEach(async ({ page }) => {
-    await loginViaAPI(page);
+    await loginWithMock(page);
   });
 
   // ── 14.1 All 5 summary cards display ──────────────────────────────────
@@ -104,15 +104,15 @@ test.describe('Phase 14: Contract Detail - Status Summary Cards', () => {
 
     // Card 3: Monthly payment
     await expect(page.getByText('ค่างวด/เดือน')).toBeVisible();
-    await expect(page.getByText('1,320 ฿')).toBeVisible();
+    await expect(page.getByText('1,320 ฿').first()).toBeVisible();
 
     // Card 4: Paid count
-    await expect(page.getByText('ชำระแล้ว')).toBeVisible();
+    await expect(page.getByText('ชำระแล้ว').first()).toBeVisible();
     await expect(page.getByText('2/10 งวด')).toBeVisible();
 
     // Card 5: Total financed
     await expect(page.getByText('ยอดผ่อนรวม')).toBeVisible();
-    await expect(page.getByText('13,200 ฿')).toBeVisible();
+    await expect(page.getByText('13,200 ฿').first()).toBeVisible();
   });
 
   // ── 14.2 Status labels for different statuses ─────────────────────────
@@ -143,7 +143,7 @@ test.describe('Phase 14: Contract Detail - Status Summary Cards', () => {
     await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1500);
 
-    await expect(page.getByText('ครบ')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('ครบ', { exact: true }).first()).toBeVisible({ timeout: 5000 });
   });
 
   test('14.2d Status card shows correct Thai label for EARLY_PAYOFF status', async ({ page }) => {

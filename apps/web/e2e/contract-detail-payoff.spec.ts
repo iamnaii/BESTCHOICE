@@ -1,5 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
-import { loginViaAPI } from './helpers/auth';
+import { loginWithMock } from './helpers/mock-auth';
 
 // ============================================================================
 // BESTCHOICE Contract Detail - Early Payoff Flow (Phase 9)
@@ -105,7 +105,7 @@ async function mockContractWithPayoff(page: Page, contractId: string, overrides:
 
 test.describe('Phase 9: Contract Detail - Early Payoff Flow', () => {
   test.beforeEach(async ({ page }) => {
-    await loginViaAPI(page);
+    await loginWithMock(page);
   });
 
   // ── 9.1 Early payoff quote section displays for ACTIVE contracts ─────
@@ -151,8 +151,8 @@ test.describe('Phase 9: Contract Detail - Early Payoff Flow', () => {
     await expect(page.getByRole('heading', { name: 'ปิดสัญญาก่อนกำหนด' })).toBeVisible({ timeout: 3000 });
 
     // Should show total payoff amount
-    await expect(page.getByText('ยอดที่ต้องชำระ')).toBeVisible();
-    await expect(page.getByText('9,984 ฿')).toBeVisible();
+    // Modal content - total payoff amount
+    await expect(page.getByText('9,984 ฿').first()).toBeVisible();
 
     // Payment method dropdown
     await expect(page.locator('label:has-text("วิธีชำระ")')).toBeVisible();

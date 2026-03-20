@@ -1,5 +1,5 @@
 import { useMemo, useCallback } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -102,8 +102,6 @@ export default function ContractsPage() {
 
   const contracts = result?.data ?? [];
 
-  const navigateToContract = useCallback((id: string) => navigate(`/contracts/${id}`), [navigate]);
-
   const isManager = user && ['OWNER', 'BRANCH_MANAGER'].includes(user.role);
 
   const columns = useMemo(() => [
@@ -111,9 +109,9 @@ export default function ContractsPage() {
       key: 'contractNumber',
       label: 'เลขสัญญา',
       render: (c: Contract) => (
-        <button onClick={() => navigateToContract(c.id)} className="font-mono text-sm text-primary hover:underline">
+        <Link to={`/contracts/${c.id}`} className="font-mono text-sm text-primary hover:underline">
           {c.contractNumber}
-        </button>
+        </Link>
       ),
     },
     {
@@ -193,7 +191,7 @@ export default function ContractsPage() {
       label: 'วันที่สร้าง',
       render: (c: Contract) => <span className="text-xs">{new Date(c.createdAt).toLocaleDateString('th-TH')}</span>,
     },
-  ], [navigateToContract]);
+  ], []);
 
   return (
     <div>

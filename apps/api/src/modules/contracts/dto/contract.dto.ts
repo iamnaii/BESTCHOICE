@@ -16,18 +16,23 @@ export class CreateContractDto {
 
   @IsNumber()
   @Min(1)
+  @Max(9999999)
   sellingPrice: number;
 
   @IsNumber()
   @Min(0)
+  @Max(9999999)
   downPayment: number;
 
   @IsNumber()
   @IsInt()
   @Min(1)
+  @Max(120)
   totalMonths: number;
 
   @IsNumber()
+  @Min(0)
+  @Max(100)
   @IsOptional()
   interestRate?: number;
 
@@ -46,21 +51,26 @@ export class CreateContractDto {
 export class UpdateContractDto {
   @IsNumber()
   @Min(1)
+  @Max(9999999)
   @IsOptional()
   sellingPrice?: number;
 
   @IsNumber()
   @Min(0)
+  @Max(9999999)
   @IsOptional()
   downPayment?: number;
 
   @IsNumber()
   @IsInt()
   @Min(1)
+  @Max(120)
   @IsOptional()
   totalMonths?: number;
 
   @IsNumber()
+  @Min(0)
+  @Max(100)
   @IsOptional()
   interestRate?: number;
 

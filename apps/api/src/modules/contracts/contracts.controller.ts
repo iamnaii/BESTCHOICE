@@ -4,6 +4,7 @@ import { CreateContractDto, UpdateContractDto, EarlyPayoffDto, ReviewContractDto
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @Controller('contracts')
@@ -21,11 +22,18 @@ export class ContractsController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('salespersonId') salespersonId?: string,
+    @CurrentUser() user?: { id: string; role: string; branchId: string | null },
   ) {
     const parsedPage = page ? parseInt(page, 10) : undefined;
     const parsedLimit = limit ? Math.min(parseInt(limit, 10), 200) : undefined;
+
+    // BRANCH_MANAGER and below can only see contracts from their own branch
+    const effectiveBranchId = user?.role === 'OWNER'
+      ? branchId
+      : (user?.branchId || branchId);
+
     return this.contractsService.findAll({
-      status, workflowStatus, branchId, customerId, search, salespersonId,
+      status, workflowStatus, branchId: effectiveBranchId, customerId, search, salespersonId,
       page: parsedPage && !isNaN(parsedPage) ? parsedPage : undefined,
       limit: parsedLimit && !isNaN(parsedLimit) ? parsedLimit : undefined,
     });
@@ -121,6 +129,7 @@ export class ContractsController {
   }
 
   // === QR VERIFY: ตรวจสอบสัญญาผ่าน QR Code (public endpoint) ===
+  @Public()
   @Get(':id/verify')
   verifyContract(@Param('id') id: string, @Query('hash') hash?: string) {
     return this.contractsService.verifyContract(id, hash);

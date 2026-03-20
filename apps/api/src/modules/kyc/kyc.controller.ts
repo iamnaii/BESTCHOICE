@@ -50,6 +50,7 @@ export class KycController {
   }
 
   @Get(':id/kyc/status')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   getStatus(@Param('id') id: string) {
     return this.kycService.getStatus(id);
   }

@@ -4,10 +4,11 @@ import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
-import AddressForm, { AddressData, emptyAddress, serializeAddress, deserializeAddress } from '@/components/ui/AddressForm';
 import WorkflowStatusBadge from '@/components/contract/WorkflowStatusBadge';
 import DocumentUpload from '@/components/contract/DocumentUpload';
 import CreditCheckPanel from '@/components/contract/CreditCheckPanel';
+import ProductEditModal from '@/components/contract/ProductEditModal';
+import CustomerEditModal from '@/components/contract/CustomerEditModal';
 import { toast } from 'sonner';
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -69,17 +70,6 @@ interface EarlyPayoffQuote {
   totalPayoff: number;
 }
 
-interface CustReferenceData {
-  prefix?: string;
-  firstName?: string;
-  lastName?: string;
-  phone?: string;
-  relationship?: string;
-}
-
-const custPrefixOptions = ['นาย', 'นาง', 'นางสาว'];
-const custRelationshipOptions = ['บิดา', 'มารดา', 'พี่น้อง', 'คู่สมรส', 'ญาติ', 'เพื่อน', 'อื่นๆ'];
-
 const statusLabels: Record<string, { label: string; className: string }> = {
   DRAFT: { label: 'ร่าง', className: 'bg-secondary text-foreground' },
   ACTIVE: { label: 'ผ่อนอยู่', className: 'bg-green-100 text-green-700' },
@@ -107,6 +97,7 @@ export default function ContractDetailPage() {
   const [customerLink, setCustomerLink] = useState<string | null>(null);
   const [payoffMethod, setPayoffMethod] = useState('CASH');
   const [showRejectModal, setShowRejectModal] = useState(false);
+  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [rejectNotes, setRejectNotes] = useState('');
   const [approveNotes, setApproveNotes] = useState('');
   const [activeTab, setActiveTab] = useState<'schedule' | 'documents' | 'credit' | 'preview'>('schedule');
@@ -237,207 +228,11 @@ export default function ContractDetailPage() {
     onError: (err: any) => toast.error(getErrorMessage(err)),
   });
 
-  // Product edit state
+  // Edit modal states
   const [isEditingProduct, setIsEditingProduct] = useState(false);
-  const [productEditForm, setProductEditForm] = useState({
-    name: '', brand: '', model: '', color: '', storage: '',
-    imeiSerial: '', serialNumber: '', costPrice: '',
-    batteryHealth: '', warrantyExpired: false, warrantyExpireDate: '', hasBox: false,
-    accessoryType: '', accessoryBrand: '',
-  });
-
-  // Customer edit state
   const [isEditingCustomer, setIsEditingCustomer] = useState(false);
-  const [customerEditForm, setCustomerEditForm] = useState({
-    prefix: '', name: '', nickname: '', birthDate: '',
-    phone: '', phoneSecondary: '', email: '', lineId: '',
-    facebookLink: '', facebookName: '', facebookFriends: '', googleMapLink: '',
-    occupation: '', occupationDetail: '', salary: '', workplace: '',
-  });
-  const [customerDataLoading, setCustomerDataLoading] = useState(false);
-  const [custAddrIdCard, setCustAddrIdCard] = useState<AddressData>(emptyAddress);
-  const [custAddrCurrent, setCustAddrCurrent] = useState<AddressData>(emptyAddress);
-  const [custAddrWork, setCustAddrWork] = useState<AddressData>(emptyAddress);
-  const [custSameAddress, setCustSameAddress] = useState(false);
-  const [custReferences, setCustReferences] = useState<CustReferenceData[]>([{}, {}, {}, {}]);
 
-  // Sync current address with ID card address when "same address" is checked
-  // Use JSON serialization to avoid infinite loop from object reference changes
-  const custAddrIdCardJson = JSON.stringify(custAddrIdCard);
-  useEffect(() => {
-    if (custSameAddress) setCustAddrCurrent(JSON.parse(custAddrIdCardJson));
-  }, [custSameAddress, custAddrIdCardJson]);
-
-  const updateCustRef = (index: number, field: keyof CustReferenceData, value: string) => {
-    setCustReferences(prev => prev.map((r, i) => i === index ? { ...r, [field]: value } : r));
-  };
-
-  const updateProductMutation = useMutation({
-    mutationFn: async (data: Record<string, unknown>) => {
-      return api.patch(`/products/${contract!.product.id}`, data);
-    },
-    onSuccess: () => {
-      toast.success('แก้ไขข้อมูลสินค้าสำเร็จ');
-      setIsEditingProduct(false);
-      invalidateContract();
-      queryClient.invalidateQueries({ queryKey: ['products'] });
-      queryClient.invalidateQueries({ queryKey: ['products-available'] });
-    },
-    onError: (err: any) => toast.error(getErrorMessage(err)),
-  });
-
-  const updateCustomerMutation = useMutation({
-    mutationFn: async (data: Record<string, unknown>) => {
-      return api.patch(`/customers/${contract!.customer.id}`, data);
-    },
-    onSuccess: () => {
-      toast.success('แก้ไขข้อมูลลูกค้าสำเร็จ');
-      setIsEditingCustomer(false);
-      invalidateContract();
-      queryClient.invalidateQueries({ queryKey: ['customers'] });
-    },
-    onError: (err: any) => toast.error(getErrorMessage(err)),
-  });
-
-  const startEditingCustomer = async () => {
-    if (!contract) return;
-    setCustomerDataLoading(true);
-    setIsEditingCustomer(true);
-    try {
-      const { data: fullCustomer } = await api.get(`/customers/${contract.customer.id}`);
-      setCustomerEditForm({
-        prefix: fullCustomer.prefix || '',
-        name: fullCustomer.name || '',
-        nickname: fullCustomer.nickname || '',
-        birthDate: fullCustomer.birthDate ? fullCustomer.birthDate.split('T')[0] : '',
-        phone: fullCustomer.phone || '',
-        phoneSecondary: fullCustomer.phoneSecondary || '',
-        email: fullCustomer.email || '',
-        lineId: fullCustomer.lineId || '',
-        facebookLink: fullCustomer.facebookLink || '',
-        facebookName: fullCustomer.facebookName || '',
-        facebookFriends: fullCustomer.facebookFriends || '',
-        googleMapLink: fullCustomer.googleMapLink || '',
-        occupation: fullCustomer.occupation || '',
-        occupationDetail: fullCustomer.occupationDetail || '',
-        salary: fullCustomer.salary || '',
-        workplace: fullCustomer.workplace || '',
-      });
-      // Load addresses
-      const idCardAddr = deserializeAddress(fullCustomer.addressIdCard);
-      const currentAddr = deserializeAddress(fullCustomer.addressCurrent);
-      setCustAddrIdCard(idCardAddr);
-      setCustAddrCurrent(currentAddr);
-      setCustAddrWork(deserializeAddress(fullCustomer.addressWork));
-      setCustSameAddress(
-        fullCustomer.addressIdCard != null && fullCustomer.addressIdCard === fullCustomer.addressCurrent
-      );
-      // Load references
-      const existingRefs = (fullCustomer.references || []) as CustReferenceData[];
-      const refs = [...existingRefs];
-      while (refs.length < 4) refs.push({});
-      setCustReferences(refs);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || 'ไม่สามารถโหลดข้อมูลลูกค้าเต็มได้ ใช้ข้อมูล snapshot แทน');
-      const snap = contract.customerSnapshot;
-      const cust = contract.customer;
-      setCustomerEditForm({
-        prefix: snap?.prefix || '', name: snap?.name || cust.name || '',
-        nickname: snap?.nickname || '', birthDate: '',
-        phone: snap?.phone || cust.phone || '', phoneSecondary: '',
-        email: '', lineId: '', facebookLink: '', facebookName: '',
-        facebookFriends: '', googleMapLink: '',
-        occupation: snap?.occupation || '', occupationDetail: '',
-        salary: snap?.salary || '', workplace: '',
-      });
-      setCustAddrIdCard(emptyAddress);
-      setCustAddrCurrent(emptyAddress);
-      setCustAddrWork(emptyAddress);
-      setCustSameAddress(false);
-      setCustReferences([{}, {}, {}, {}]);
-    } finally {
-      setCustomerDataLoading(false);
-    }
-  };
-
-  const handleCustomerEditSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const payload: Record<string, unknown> = {};
-    if (customerEditForm.prefix) payload.prefix = customerEditForm.prefix;
-    if (customerEditForm.name) payload.name = customerEditForm.name;
-    if (customerEditForm.nickname) payload.nickname = customerEditForm.nickname;
-    if (customerEditForm.phone) payload.phone = customerEditForm.phone;
-    if (customerEditForm.phoneSecondary) payload.phoneSecondary = customerEditForm.phoneSecondary;
-    if (customerEditForm.email) payload.email = customerEditForm.email;
-    if (customerEditForm.lineId) payload.lineId = customerEditForm.lineId;
-    if (customerEditForm.facebookLink) payload.facebookLink = customerEditForm.facebookLink;
-    if (customerEditForm.facebookName) payload.facebookName = customerEditForm.facebookName;
-    if (customerEditForm.facebookFriends) payload.facebookFriends = customerEditForm.facebookFriends;
-    if (customerEditForm.googleMapLink) payload.googleMapLink = customerEditForm.googleMapLink;
-    if (customerEditForm.occupation) payload.occupation = customerEditForm.occupation;
-    if (customerEditForm.occupationDetail) payload.occupationDetail = customerEditForm.occupationDetail;
-    if (customerEditForm.salary && !isNaN(parseFloat(customerEditForm.salary))) payload.salary = parseFloat(customerEditForm.salary);
-    if (customerEditForm.workplace) payload.workplace = customerEditForm.workplace;
-    // Send date string as-is (YYYY-MM-DD) to avoid timezone shift when converting to ISO
-    // e.g. "1990-01-01" → new Date("1990-01-01").toISOString() becomes "1989-12-31T17:00:00Z" in UTC+7
-    if (customerEditForm.birthDate) payload.birthDate = customerEditForm.birthDate + 'T00:00:00.000Z';
-
-    // Addresses
-    const addrIdCard = serializeAddress(custAddrIdCard);
-    const addrCurrent = serializeAddress(custAddrCurrent);
-    const addrWork = serializeAddress(custAddrWork);
-    if (addrIdCard) payload.addressIdCard = addrIdCard;
-    if (addrCurrent) payload.addressCurrent = addrCurrent;
-    if (addrWork) payload.addressWork = addrWork;
-
-    // References
-    const validRefs = custReferences.filter(r => r.firstName || r.lastName || r.phone);
-    payload.references = validRefs.length > 0 ? validRefs : [];
-
-    updateCustomerMutation.mutate(payload);
-  };
-
-  const startEditingProduct = () => {
-    if (!contract) return;
-    const p = contract.product;
-    setProductEditForm({
-      name: p.name, brand: p.brand, model: p.model,
-      color: p.color || '', storage: p.storage || '',
-      imeiSerial: p.imeiSerial || '', serialNumber: p.serialNumber || '',
-      costPrice: p.costPrice || '',
-      batteryHealth: p.batteryHealth != null ? String(p.batteryHealth) : '',
-      warrantyExpired: p.warrantyExpired ?? false,
-      warrantyExpireDate: p.warrantyExpireDate ? p.warrantyExpireDate.split('T')[0] : '',
-      hasBox: p.hasBox ?? false,
-      accessoryType: p.accessoryType || '', accessoryBrand: p.accessoryBrand || '',
-    });
-    setIsEditingProduct(true);
-  };
-
-  const handleProductEditSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const payload: Record<string, unknown> = {
-      name: productEditForm.name,
-      brand: productEditForm.brand,
-      model: productEditForm.model,
-      color: productEditForm.color || undefined,
-      storage: productEditForm.storage || undefined,
-      imeiSerial: productEditForm.imeiSerial || undefined,
-      serialNumber: productEditForm.serialNumber || undefined,
-      costPrice: parseFloat(productEditForm.costPrice) || undefined,
-    };
-    if (contract?.product.category === 'PHONE_USED') {
-      payload.batteryHealth = productEditForm.batteryHealth ? Number(productEditForm.batteryHealth) : undefined;
-      payload.warrantyExpired = productEditForm.warrantyExpired;
-      payload.warrantyExpireDate = !productEditForm.warrantyExpired && productEditForm.warrantyExpireDate ? productEditForm.warrantyExpireDate : undefined;
-      payload.hasBox = productEditForm.hasBox;
-    }
-    if (contract?.product.category === 'ACCESSORY') {
-      payload.accessoryType = productEditForm.accessoryType || undefined;
-      payload.accessoryBrand = productEditForm.accessoryBrand || undefined;
-    }
-    updateProductMutation.mutate(payload);
-  };
+  // No inline product/customer edit state needed — extracted to separate components
 
   const startEditing = () => {
     if (!contract) return;
@@ -595,7 +390,7 @@ export default function ContractDetailPage() {
           { text: 'ให้ลูกค้ายินยอม PDPA และลงนามสัญญา', action: () => navigate(`/contracts/${id}/sign`), actionLabel: 'ไปลงนาม' },
           {
             text: isCreator && allSigned ? 'ลงนามครบแล้ว พร้อมส่งตรวจสอบ' : !allSigned ? 'ลงนามให้ครบก่อนส่งตรวจสอบ' : 'รอผู้จัดการตรวจสอบสัญญา',
-            action: isCreator && allSigned ? () => submitReviewMutation.mutate() : undefined,
+            action: isCreator && allSigned ? () => setShowSubmitConfirm(true) : undefined,
             actionLabel: isCreator && allSigned ? 'ส่งตรวจสอบ' : undefined,
           },
           {
@@ -877,7 +672,7 @@ export default function ContractDetailPage() {
                 )}
               </div>
               {canEditMaster && (
-                <button onClick={startEditingCustomer} className="px-3 py-1 text-xs bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200">
+                <button onClick={() => setIsEditingCustomer(true)} className="px-3 py-1 text-xs bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200">
                   แก้ไข
                 </button>
               )}
@@ -896,7 +691,7 @@ export default function ContractDetailPage() {
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-foreground">ข้อมูลสินค้า</h2>
               {canEditMaster && (
-                <button onClick={startEditingProduct} className="px-3 py-1 text-xs bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200">
+                <button onClick={() => setIsEditingProduct(true)} className="px-3 py-1 text-xs bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200">
                   แก้ไข
                 </button>
               )}
@@ -1056,283 +851,24 @@ export default function ContractDetailPage() {
 
       {/* Product Edit Modal */}
       {isEditingProduct && (
-        <Modal isOpen title="แก้ไขข้อมูลสินค้า" onClose={() => setIsEditingProduct(false)} size="lg">
-          <form onSubmit={handleProductEditSubmit} className="space-y-5 max-h-[75vh] overflow-y-auto pr-1">
-
-            {/* ข้อมูลหลัก */}
-            <div className="border border-border rounded-lg p-4">
-              <h3 className="text-sm font-semibold text-foreground mb-3">ข้อมูลสินค้า</h3>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                <div className="col-span-2 md:col-span-3">
-                  <label className="block text-xs text-muted-foreground mb-1">ชื่อสินค้า *</label>
-                  <input type="text" value={productEditForm.name} onChange={(e) => setProductEditForm({ ...productEditForm, name: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" required />
-                </div>
-                {contract.product.category !== 'ACCESSORY' ? (
-                  <>
-                    <div>
-                      <label className="block text-xs text-muted-foreground mb-1">ยี่ห้อ *</label>
-                      <input type="text" value={productEditForm.brand} onChange={(e) => setProductEditForm({ ...productEditForm, brand: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" required />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-muted-foreground mb-1">รุ่น *</label>
-                      <input type="text" value={productEditForm.model} onChange={(e) => setProductEditForm({ ...productEditForm, model: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" required />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-muted-foreground mb-1">สี</label>
-                      <input type="text" value={productEditForm.color} onChange={(e) => setProductEditForm({ ...productEditForm, color: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-muted-foreground mb-1">ความจุ</label>
-                      <input type="text" value={productEditForm.storage} onChange={(e) => setProductEditForm({ ...productEditForm, storage: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div>
-                      <label className="block text-xs text-muted-foreground mb-1">ประเภทอุปกรณ์</label>
-                      <input type="text" value={productEditForm.accessoryType} onChange={(e) => setProductEditForm({ ...productEditForm, accessoryType: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-muted-foreground mb-1">ยี่ห้ออุปกรณ์</label>
-                      <input type="text" value={productEditForm.accessoryBrand} onChange={(e) => setProductEditForm({ ...productEditForm, accessoryBrand: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* หมายเลขเครื่อง & ราคา */}
-            <div className="border border-border rounded-lg p-4">
-              <h3 className="text-sm font-semibold text-foreground mb-3">หมายเลขเครื่อง & ราคา</h3>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-muted-foreground mb-1">IMEI / Serial</label>
-                  <input type="text" value={productEditForm.imeiSerial} onChange={(e) => setProductEditForm({ ...productEditForm, imeiSerial: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm font-mono" />
-                </div>
-                <div>
-                  <label className="block text-xs text-muted-foreground mb-1">Serial Number</label>
-                  <input type="text" value={productEditForm.serialNumber} onChange={(e) => setProductEditForm({ ...productEditForm, serialNumber: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm font-mono" />
-                </div>
-                <div>
-                  <label className="block text-xs text-muted-foreground mb-1">ราคาทุน (บาท)</label>
-                  <input type="number" step="0.01" value={productEditForm.costPrice} onChange={(e) => setProductEditForm({ ...productEditForm, costPrice: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
-                </div>
-              </div>
-            </div>
-
-            {/* ข้อมูลมือสอง */}
-            {contract.product.category === 'PHONE_USED' && (
-              <div className="border border-border rounded-lg p-4">
-                <h3 className="text-sm font-semibold text-foreground mb-3">ข้อมูลมือสอง</h3>
-                <div className="grid grid-cols-2 gap-3 mb-3">
-                  <div>
-                    <label className="block text-xs text-muted-foreground mb-1">แบตเตอรี่ (%)</label>
-                    <input type="number" min="0" max="100" value={productEditForm.batteryHealth} onChange={(e) => setProductEditForm({ ...productEditForm, batteryHealth: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-muted-foreground mb-1">วันหมดประกัน</label>
-                    <input type="date" value={productEditForm.warrantyExpireDate} onChange={(e) => setProductEditForm({ ...productEditForm, warrantyExpireDate: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" disabled={productEditForm.warrantyExpired} />
-                  </div>
-                </div>
-                <div className="flex gap-6">
-                  <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
-                    <input type="checkbox" checked={productEditForm.warrantyExpired} onChange={(e) => setProductEditForm({ ...productEditForm, warrantyExpired: e.target.checked })} className="rounded text-primary" />
-                    หมดประกันแล้ว
-                  </label>
-                  <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
-                    <input type="checkbox" checked={productEditForm.hasBox} onChange={(e) => setProductEditForm({ ...productEditForm, hasBox: e.target.checked })} className="rounded text-primary" />
-                    มีกล่อง
-                  </label>
-                </div>
-              </div>
-            )}
-
-            {/* Submit */}
-            <div className="flex justify-end gap-3 pt-2 sticky bottom-0 bg-background py-3 border-t">
-              <button type="button" onClick={() => setIsEditingProduct(false)} className="px-4 py-2 text-sm text-muted-foreground border border-input rounded-lg">ยกเลิก</button>
-              <button type="submit" disabled={updateProductMutation.isPending} className="px-6 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50">
-                {updateProductMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
-              </button>
-            </div>
-          </form>
-        </Modal>
+        <ProductEditModal
+          product={contract.product}
+          onClose={() => setIsEditingProduct(false)}
+          onSuccess={invalidateContract}
+        />
       )}
 
       {/* Customer Edit Modal */}
       {isEditingCustomer && (
-        <Modal isOpen title="แก้ไขข้อมูลลูกค้า" onClose={() => setIsEditingCustomer(false)} size="lg">
-          {customerDataLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-            </div>
-          ) : (
-          <form onSubmit={handleCustomerEditSubmit} className="space-y-5 max-h-[75vh] overflow-y-auto pr-1">
-
-            {/* ข้อมูลส่วนตัว */}
-            <div className="border border-border rounded-lg p-4">
-              <h3 className="text-sm font-semibold text-foreground mb-3">ข้อมูลส่วนตัว</h3>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs text-muted-foreground mb-1">คำนำหน้า</label>
-                  <select value={customerEditForm.prefix} onChange={(e) => setCustomerEditForm({ ...customerEditForm, prefix: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background">
-                    <option value="">-- เลือก --</option>
-                    {custPrefixOptions.map(p => <option key={p} value={p}>{p}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs text-muted-foreground mb-1">ชื่อ-นามสกุล *</label>
-                  <input type="text" value={customerEditForm.name} onChange={(e) => setCustomerEditForm({ ...customerEditForm, name: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" required />
-                </div>
-                <div>
-                  <label className="block text-xs text-muted-foreground mb-1">ชื่อเล่น</label>
-                  <input type="text" value={customerEditForm.nickname} onChange={(e) => setCustomerEditForm({ ...customerEditForm, nickname: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs text-muted-foreground mb-1">วันเกิด</label>
-                  <input type="date" value={customerEditForm.birthDate} onChange={(e) => setCustomerEditForm({ ...customerEditForm, birthDate: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
-                </div>
-              </div>
-            </div>
-
-            {/* ที่อยู่ตามบัตรประชาชน */}
-            <div className="border border-border rounded-lg p-4">
-              <h3 className="text-sm font-semibold text-foreground mb-3">ที่อยู่ตามบัตรประชาชน</h3>
-              <AddressForm value={custAddrIdCard} onChange={setCustAddrIdCard} />
-            </div>
-
-            {/* ที่อยู่ปัจจุบัน */}
-            <div className="border border-border rounded-lg p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-foreground">ที่อยู่ปัจจุบัน</h3>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={custSameAddress} onChange={(e) => setCustSameAddress(e.target.checked)} className="rounded border-input text-primary focus-visible:ring-2 focus-visible:ring-ring/30" />
-                  <span className="text-xs text-muted-foreground">เหมือนที่อยู่ตามบัตร</span>
-                </label>
-              </div>
-              {custSameAddress ? (
-                <p className="text-xs text-muted-foreground italic">ใช้ที่อยู่เดียวกับที่อยู่ตามบัตรประชาชน</p>
-              ) : (
-                <AddressForm value={custAddrCurrent} onChange={setCustAddrCurrent} />
-              )}
-              <div className="mt-3">
-                <label className="block text-xs text-muted-foreground mb-1">Link Google Map</label>
-                <input type="url" value={customerEditForm.googleMapLink} onChange={(e) => setCustomerEditForm({ ...customerEditForm, googleMapLink: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" placeholder="https://maps.google.com/..." />
-              </div>
-            </div>
-
-            {/* ข้อมูลติดต่อ */}
-            <div className="border border-border rounded-lg p-4">
-              <h3 className="text-sm font-semibold text-foreground mb-3">ข้อมูลติดต่อ</h3>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-muted-foreground mb-1">เบอร์หลัก *</label>
-                  <input type="tel" value={customerEditForm.phone} onChange={(e) => setCustomerEditForm({ ...customerEditForm, phone: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" required />
-                </div>
-                <div>
-                  <label className="block text-xs text-muted-foreground mb-1">เบอร์สำรอง</label>
-                  <input type="tel" value={customerEditForm.phoneSecondary} onChange={(e) => setCustomerEditForm({ ...customerEditForm, phoneSecondary: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs text-muted-foreground mb-1">อีเมล</label>
-                  <input type="email" value={customerEditForm.email} onChange={(e) => setCustomerEditForm({ ...customerEditForm, email: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs text-muted-foreground mb-1">LINE ID</label>
-                  <input type="text" value={customerEditForm.lineId} onChange={(e) => setCustomerEditForm({ ...customerEditForm, lineId: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs text-muted-foreground mb-1">ลิงก์ Facebook</label>
-                  <input type="url" value={customerEditForm.facebookLink} onChange={(e) => setCustomerEditForm({ ...customerEditForm, facebookLink: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs text-muted-foreground mb-1">ชื่อ Facebook</label>
-                  <input type="text" value={customerEditForm.facebookName} onChange={(e) => setCustomerEditForm({ ...customerEditForm, facebookName: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs text-muted-foreground mb-1">จำนวนเพื่อน Facebook</label>
-                  <input type="text" value={customerEditForm.facebookFriends} onChange={(e) => setCustomerEditForm({ ...customerEditForm, facebookFriends: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
-                </div>
-              </div>
-            </div>
-
-            {/* ข้อมูลที่ทำงาน */}
-            <div className="border border-border rounded-lg p-4">
-              <h3 className="text-sm font-semibold text-foreground mb-3">ข้อมูลที่ทำงาน</h3>
-              <div className="grid grid-cols-2 gap-3 mb-3">
-                <div>
-                  <label className="block text-xs text-muted-foreground mb-1">ชื่อที่ทำงาน</label>
-                  <input type="text" value={customerEditForm.workplace} onChange={(e) => setCustomerEditForm({ ...customerEditForm, workplace: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs text-muted-foreground mb-1">อาชีพ</label>
-                  <input type="text" value={customerEditForm.occupation} onChange={(e) => setCustomerEditForm({ ...customerEditForm, occupation: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs text-muted-foreground mb-1">รายละเอียดอาชีพ</label>
-                  <input type="text" value={customerEditForm.occupationDetail} onChange={(e) => setCustomerEditForm({ ...customerEditForm, occupationDetail: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs text-muted-foreground mb-1">เงินเดือน</label>
-                  <input type="number" value={customerEditForm.salary} onChange={(e) => setCustomerEditForm({ ...customerEditForm, salary: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" placeholder="0.00" />
-                </div>
-              </div>
-              <div className="mt-2">
-                <label className="block text-xs text-muted-foreground mb-1">ที่อยู่ที่ทำงาน</label>
-                <AddressForm value={custAddrWork} onChange={setCustAddrWork} />
-              </div>
-            </div>
-
-            {/* รายชื่อบุคคลอ้างอิง */}
-            <div className="border border-border rounded-lg p-4">
-              <h3 className="text-sm font-semibold text-foreground mb-3">รายชื่อบุคคลอ้างอิง</h3>
-              <div className="space-y-4">
-                {custReferences.map((ref, idx) => (
-                  <div key={idx}>
-                    <div className="text-xs font-medium text-muted-foreground mb-2">บุคคลอ้างอิง {idx + 1}</div>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                      <div>
-                        <label className="block text-xs text-muted-foreground mb-1">คำนำหน้า</label>
-                        <select value={ref.prefix || ''} onChange={(e) => updateCustRef(idx, 'prefix', e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background">
-                          <option value="">-- เลือก --</option>
-                          {custPrefixOptions.map(p => <option key={p} value={p}>{p}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs text-muted-foreground mb-1">ชื่อ</label>
-                        <input type="text" value={ref.firstName || ''} onChange={(e) => updateCustRef(idx, 'firstName', e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-muted-foreground mb-1">นามสกุล</label>
-                        <input type="text" value={ref.lastName || ''} onChange={(e) => updateCustRef(idx, 'lastName', e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-muted-foreground mb-1">เบอร์โทร</label>
-                        <input type="tel" value={ref.phone || ''} onChange={(e) => updateCustRef(idx, 'phone', e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-muted-foreground mb-1">ความสัมพันธ์</label>
-                        <select value={ref.relationship || ''} onChange={(e) => updateCustRef(idx, 'relationship', e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background">
-                          <option value="">-- เลือก --</option>
-                          {custRelationshipOptions.map(r => <option key={r} value={r}>{r}</option>)}
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Submit */}
-            <div className="flex justify-end gap-3 pt-2 sticky bottom-0 bg-background py-3 border-t">
-              <button type="button" onClick={() => setIsEditingCustomer(false)} className="px-4 py-2 text-sm text-muted-foreground border border-input rounded-lg">ยกเลิก</button>
-              <button type="submit" disabled={updateCustomerMutation.isPending || !customerEditForm.name.trim() || !customerEditForm.phone.trim()} className="px-6 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50">
-                {updateCustomerMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
-              </button>
-            </div>
-          </form>
-          )}
-        </Modal>
+        <CustomerEditModal
+          customerId={contract.customer.id}
+          customerSnapshot={contract.customerSnapshot}
+          customerBasic={contract.customer}
+          onClose={() => setIsEditingCustomer(false)}
+          onSuccess={invalidateContract}
+        />
       )}
+
 
       {/* Early Payoff Modal */}
       {showPayoffModal && payoffQuote && (
@@ -1355,6 +891,27 @@ export default function ContractDetailPage() {
               <button onClick={() => setShowPayoffModal(false)} className="flex-1 px-4 py-2 text-sm border border-input rounded-lg">ยกเลิก</button>
               <button onClick={() => earlyPayoffMutation.mutate()} disabled={earlyPayoffMutation.isPending} className="flex-1 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50">
                 {earlyPayoffMutation.isPending ? 'กำลังปิด...' : 'ยืนยันปิดสัญญา'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Submit Review Confirm Modal */}
+      {showSubmitConfirm && (
+        <Modal isOpen title="ยืนยันส่งตรวจสอบ" onClose={() => setShowSubmitConfirm(false)}>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              เมื่อส่งตรวจสอบแล้ว จะไม่สามารถแก้ไขสัญญาได้จนกว่าจะถูกปฏิเสธ ยืนยันหรือไม่?
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setShowSubmitConfirm(false)} className="flex-1 px-4 py-2 text-sm border border-input rounded-lg">ยกเลิก</button>
+              <button
+                onClick={() => { setShowSubmitConfirm(false); submitReviewMutation.mutate(); }}
+                disabled={submitReviewMutation.isPending}
+                className="flex-1 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
+              >
+                {submitReviewMutation.isPending ? 'กำลังส่ง...' : 'ยืนยันส่งตรวจสอบ'}
               </button>
             </div>
           </div>

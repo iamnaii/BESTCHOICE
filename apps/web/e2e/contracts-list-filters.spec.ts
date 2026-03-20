@@ -1,5 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
-import { loginViaAPI } from './helpers/auth';
+import { loginWithMock } from './helpers/mock-auth';
 
 // ============================================================================
 // BESTCHOICE Contracts List - Filters & Tabs (Phase 12)
@@ -97,7 +97,7 @@ async function mockContractsList(page: Page, responseOverride?: Record<string, u
 
 test.describe('Phase 12: Contracts List - Filters & Tabs', () => {
   test.beforeEach(async ({ page }) => {
-    await loginViaAPI(page);
+    await loginWithMock(page);
   });
 
   // ── 12.1 Tab ทั้งหมด shows all contracts ──────────────────────────────

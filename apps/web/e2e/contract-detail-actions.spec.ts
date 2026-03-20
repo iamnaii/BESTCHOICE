@@ -1,5 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
-import { loginViaAPI } from './helpers/auth';
+import { loginWithMock } from './helpers/mock-auth';
 
 // ============================================================================
 // BESTCHOICE Contract Detail - Customer Link, QR, Delete (Phase 11)
@@ -95,7 +95,7 @@ async function mockContract(page: Page, contractId: string, overrides: Record<st
 
 test.describe('Phase 11: Contract Detail - Customer Link, QR, Delete', () => {
   test.beforeEach(async ({ page }) => {
-    await loginViaAPI(page);
+    await loginWithMock(page);
   });
 
   // ── 11.1 Customer link button generates link and shows modal ──────────

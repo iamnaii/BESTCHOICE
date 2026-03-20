@@ -1,5 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
-import { loginViaAPI } from './helpers/auth';
+import { loginWithMock } from './helpers/mock-auth';
 
 // ============================================================================
 // BESTCHOICE Contract Detail - Tabs & Content (Phase 10)
@@ -108,7 +108,7 @@ async function mockContractForTabs(page: Page, contractId: string, overrides: Re
 
 test.describe('Phase 10: Contract Detail - Tabs & Content', () => {
   test.beforeEach(async ({ page }) => {
-    await loginViaAPI(page);
+    await loginWithMock(page);
   });
 
   // ── 10.1 Schedule tab shows payment table with columns ────────────────
@@ -126,7 +126,7 @@ test.describe('Phase 10: Contract Detail - Tabs & Content', () => {
     // Table column headers
     await expect(page.getByText('งวดที่')).toBeVisible();
     await expect(page.getByText('วันครบกำหนด')).toBeVisible();
-    await expect(page.getByText('สถานะ', { exact: false })).toBeVisible();
+    await expect(page.getByText('สถานะ', { exact: true })).toBeVisible();
 
     // Payment data rows
     await expect(page.locator('text=ชำระแล้ว').first()).toBeVisible();
@@ -215,7 +215,7 @@ test.describe('Phase 10: Contract Detail - Tabs & Content', () => {
     await expect(page.locator('iframe[title="contract-preview"]')).toBeVisible({ timeout: 5000 });
 
     // Switch to documents
-    await page.locator('button:has-text("เอกสาร")').click();
+    await page.locator('button:has-text("เอกสาร (")').click();
     await page.waitForTimeout(500);
     // iframe should no longer be visible (different tab content)
     await expect(page.locator('iframe[title="contract-preview"]')).not.toBeVisible();

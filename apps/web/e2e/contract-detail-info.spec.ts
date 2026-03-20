@@ -1,5 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
-import { loginViaAPI } from './helpers/auth';
+import { loginWithMock } from './helpers/mock-auth';
 
 // ============================================================================
 // BESTCHOICE Contract Detail - Info Cards & Editing (Phase 8)
@@ -109,7 +109,7 @@ async function mockContractDetail(page: Page, contractId: string, overrides: Rec
 // =============================================================================
 test.describe('Phase 8: Contract Detail - Info Cards & Editing', () => {
   test.beforeEach(async ({ page }) => {
-    await loginViaAPI(page);
+    await loginWithMock(page);
   });
 
   // ── 8.1 Contract info card displays all financial details ─────────────
@@ -146,7 +146,7 @@ test.describe('Phase 8: Contract Detail - Info Cards & Editing', () => {
 
     // Financed amount
     await expect(page.getByText('ยอดจัดไฟแนนซ์')).toBeVisible();
-    await expect(page.getByText('13,200 ฿')).toBeVisible();
+    await expect(page.getByText('13,200 ฿').first()).toBeVisible();
 
     // Payment due day
     await expect(page.getByText('วันชำระ')).toBeVisible();
@@ -154,12 +154,12 @@ test.describe('Phase 8: Contract Detail - Info Cards & Editing', () => {
 
     // Salesperson and branch
     await expect(page.getByText('พนักงานขาย')).toBeVisible();
-    await expect(page.getByText('Admin')).toBeVisible();
-    await expect(page.getByText('สาขา')).toBeVisible();
-    await expect(page.getByText('สาขาหลัก')).toBeVisible();
+    await expect(page.getByRole('main').getByText('Admin')).toBeVisible();
+    await expect(page.getByText('สาขา', { exact: true })).toBeVisible();
+    await expect(page.getByRole('main').getByText('สาขาหลัก')).toBeVisible();
 
     // Notes
-    await expect(page.getByText('หมายเหตุ')).toBeVisible();
+    await expect(page.getByText('หมายเหตุ', { exact: true })).toBeVisible();
     await expect(page.getByText('หมายเหตุทดสอบ')).toBeVisible();
   });
 
@@ -182,7 +182,7 @@ test.describe('Phase 8: Contract Detail - Info Cards & Editing', () => {
 
     // Nickname
     await expect(page.getByText('ชื่อเล่น')).toBeVisible();
-    await expect(page.getByText('ชาย')).toBeVisible();
+    await expect(page.getByText('ชาย', { exact: true })).toBeVisible();
 
     // Phone
     await expect(page.getByText('เบอร์โทร')).toBeVisible();
@@ -215,7 +215,7 @@ test.describe('Phase 8: Contract Detail - Info Cards & Editing', () => {
     await expect(page.getByText('Apple iPhone 15 Pro')).toBeVisible();
 
     // Product name
-    await expect(page.getByText('iPhone 15 Pro')).toBeVisible();
+    await expect(page.getByText('iPhone 15 Pro', { exact: true })).toBeVisible();
 
     // Color
     await expect(page.getByText('สี')).toBeVisible();

@@ -1,5 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
-import { loginViaAPI } from './helpers/auth';
+import { loginWithMock } from './helpers/mock-auth';
 
 // ============================================================================
 // BESTCHOICE Contracts List - Table & Navigation (Phase 13)
@@ -70,7 +70,7 @@ async function mockContractsListPaginated(page: Page, options: { totalItems?: nu
 
 test.describe('Phase 13: Contracts List - Table & Navigation', () => {
   test.beforeEach(async ({ page }) => {
-    await loginViaAPI(page);
+    await loginWithMock(page);
   });
 
   // ── 13.1 Table displays all expected columns ──────────────────────────
@@ -82,11 +82,11 @@ test.describe('Phase 13: Contracts List - Table & Navigation', () => {
 
     // Column headers
     await expect(page.getByText('เลขสัญญา')).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText('ลูกค้า')).toBeVisible();
+    await expect(page.getByText('ลูกค้า', { exact: true })).toBeVisible();
     await expect(page.getByText('สินค้า')).toBeVisible();
-    await expect(page.getByText('Workflow')).toBeVisible();
+    await expect(page.getByText('Workflow', { exact: true })).toBeVisible();
     await expect(page.getByText('ลงนาม')).toBeVisible();
-    await expect(page.getByText('สถานะ', { exact: false })).toBeVisible();
+    await expect(page.getByText('สถานะ', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('ค่างวด')).toBeVisible();
     await expect(page.getByText('พนักงาน')).toBeVisible();
   });
@@ -201,10 +201,9 @@ test.describe('Phase 13: Contracts List - Table & Navigation', () => {
 
   // ── 13.7 Retry button refetches data ──────────────────────────────────
   test('13.7 Retry button refetches contract data', async ({ page }) => {
-    let callCount = 0;
+    let shouldFail = true;
     await page.route('**/api/contracts?*', async (route) => {
-      callCount++;
-      if (callCount <= 1) {
+      if (shouldFail) {
         await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: 'Error' }) });
       } else {
         await route.fulfill({
@@ -215,17 +214,16 @@ test.describe('Phase 13: Contracts List - Table & Navigation', () => {
     });
 
     await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
 
-    // Should show error
-    await expect(page.getByText('เกิดข้อผิดพลาด')).toBeVisible({ timeout: 5000 });
+    // Wait for react-query to exhaust retries and show error (may take up to 15s)
+    await expect(page.getByText('เกิดข้อผิดพลาด')).toBeVisible({ timeout: 20000 });
 
-    // Click retry
+    // Now switch to success mode and retry
+    shouldFail = false;
     await page.locator('button:has-text("ลองใหม่")').click();
-    await page.waitForTimeout(2000);
 
     // Should now show data
-    await expect(page.getByText('BCP-0001')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('BCP-0001')).toBeVisible({ timeout: 10000 });
   });
 
   // ── 13.8 Signatures column shows ครบ when all 4 signed ────────────────

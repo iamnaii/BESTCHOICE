@@ -193,15 +193,15 @@ function blocksToHtml(blocks: Block[]): string {
         return `<div style="margin:12px 0">{{= INSTALLMENTS }}</div>`;
 
       case 'signature-block':
-        // Must match SignatureBlock.tsx exactly: 2 rows, dot-line style, 16px font, line-height 2
+        // Must match SignatureBlock.tsx exactly: 2 rows, inline signature style, 16px font, line-height 2
         return `<div style="margin:32px 0;font-size:16px;line-height:2">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 32px;margin-bottom:32px">
-            <div style="text-align:center"><div>ลงชื่อ..................................................ผู้ให้เช่าซื้อ</div><div>( {{= COMPANY.DIRECTOR }} )</div><div style="font-size:14px;color:#666">ผู้จัดการ {{= COMPANY.NAME_TH }}</div></div>
-            <div style="text-align:center"><div>ลงชื่อ..................................................ผู้เช่าซื้อ</div><div>( {{= CUSTOMER.NAME }} )</div></div>
+            <div style="text-align:center"><div>ลงชื่อ <span style="display:inline-block;width:150px;border-bottom:1px solid #000;vertical-align:middle;margin:0 4px">&nbsp;</span> ผู้ให้เช่าซื้อ</div><div>( {{= COMPANY.DIRECTOR }} )</div><div style="font-size:14px;color:#666">ผู้จัดการ {{= COMPANY.NAME_TH }}</div></div>
+            <div style="text-align:center"><div>ลงชื่อ <span style="display:inline-block;width:150px;border-bottom:1px solid #000;vertical-align:middle;margin:0 4px">&nbsp;</span> ผู้เช่าซื้อ</div><div>( {{= CUSTOMER.NAME }} )</div></div>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 32px">
-            <div style="text-align:center"><div>ลงชื่อ..................................................พยาน</div><div>(${' '.repeat(30)})</div></div>
-            <div style="text-align:center"><div>ลงชื่อ..................................................พยาน</div><div>(${' '.repeat(30)})</div></div>
+            <div style="text-align:center"><div>ลงชื่อ <span style="display:inline-block;width:150px;border-bottom:1px solid #000;vertical-align:middle;margin:0 4px">&nbsp;</span> พยาน</div><div>(${' '.repeat(30)})</div></div>
+            <div style="text-align:center"><div>ลงชื่อ <span style="display:inline-block;width:150px;border-bottom:1px solid #000;vertical-align:middle;margin:0 4px">&nbsp;</span> พยาน</div><div>(${' '.repeat(30)})</div></div>
           </div>
         </div>`;
 

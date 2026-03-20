@@ -827,10 +827,10 @@ ${(() => {
       '{staff_signer_name}': esc(contract.salesperson?.name || ''),
       '{date}': new Date().toLocaleDateString('th-TH'),
       '{payment_schedule_table}': `<table border="1" cellpadding="6" style="border-collapse:collapse;width:100%;margin:10px auto"><thead><tr style="background:#f5f5f5"><th style="text-align:center">งวดที่</th><th style="text-align:center">วันที่ครบกำหนดชำระ</th><th style="text-align:center">จำนวนเงิน</th></tr></thead><tbody>${paymentScheduleRows}</tbody></table>`,
-      '{customer_signature}': customerSigSafe ? `<img src="${customerSig.signatureImage}" style="max-height:80px;display:block;margin:0 auto"/>` : '<div style="border-bottom:1px solid #000;width:200px;height:80px"></div>',
-      '{staff_signature}': staffSigSafe ? `<img src="${staffSig.signatureImage}" style="max-height:80px;display:block;margin:0 auto"/>` : '<div style="border-bottom:1px solid #000;width:200px;height:80px"></div>',
-      '{witness1_signature}': witness1SigSafe ? `<img src="${witness1Sig.signatureImage}" style="max-height:80px;display:block;margin:0 auto"/>` : '<div style="border-bottom:1px solid #000;width:200px;height:80px"></div>',
-      '{witness2_signature}': witness2SigSafe ? `<img src="${witness2Sig.signatureImage}" style="max-height:80px;display:block;margin:0 auto"/>` : '<div style="border-bottom:1px solid #000;width:200px;height:80px"></div>',
+      '{customer_signature}': customerSigSafe ? `<img src="${customerSig.signatureImage}" style="max-height:60px;display:inline-block;vertical-align:middle;margin:0 4px"/>` : '<span style="display:inline-block;width:150px;border-bottom:1px solid #000;vertical-align:middle;margin:0 4px">&nbsp;</span>',
+      '{staff_signature}': staffSigSafe ? `<img src="${staffSig.signatureImage}" style="max-height:60px;display:inline-block;vertical-align:middle;margin:0 4px"/>` : '<span style="display:inline-block;width:150px;border-bottom:1px solid #000;vertical-align:middle;margin:0 4px">&nbsp;</span>',
+      '{witness1_signature}': witness1SigSafe ? `<img src="${witness1Sig.signatureImage}" style="max-height:60px;display:inline-block;vertical-align:middle;margin:0 4px"/>` : '<span style="display:inline-block;width:150px;border-bottom:1px solid #000;vertical-align:middle;margin:0 4px">&nbsp;</span>',
+      '{witness2_signature}': witness2SigSafe ? `<img src="${witness2Sig.signatureImage}" style="max-height:60px;display:inline-block;vertical-align:middle;margin:0 4px"/>` : '<span style="display:inline-block;width:150px;border-bottom:1px solid #000;vertical-align:middle;margin:0 4px">&nbsp;</span>',
     };
 
     let result = html;
@@ -1162,29 +1162,21 @@ ${(() => {
     <h3 style="margin:0 0 8px;border-bottom:1px solid #eee;padding-bottom:4px">ลงนาม</h3>
     <div style="display:flex;justify-content:space-around;margin-top:20px">
       <div style="text-align:center">
-        <div style="font-size:13px">ลงชื่อ</div>
-        <div style="min-height:50px;display:flex;align-items:center;justify-content:center">{customer_signature}</div>
-        <div style="font-size:13px">ผู้เช่าซื้อ</div>
+        <p style="margin:0;font-size:13px">ลงชื่อ {customer_signature} ผู้เช่าซื้อ</p>
         <p style="margin:4px 0 0;font-size:13px">({customer_name})</p>
       </div>
       <div style="text-align:center">
-        <div style="font-size:13px">ลงชื่อ</div>
-        <div style="min-height:50px;display:flex;align-items:center;justify-content:center">{staff_signature}</div>
-        <div style="font-size:13px">ผู้ให้เช่าซื้อ</div>
+        <p style="margin:0;font-size:13px">ลงชื่อ {staff_signature} ผู้ให้เช่าซื้อ</p>
         <p style="margin:4px 0 0;font-size:13px">({salesperson_name})</p>
       </div>
     </div>
     <div style="display:flex;justify-content:space-around;margin-top:30px">
       <div style="text-align:center">
-        <div style="font-size:13px">ลงชื่อ</div>
-        <div style="min-height:50px;display:flex;align-items:center;justify-content:center">{witness1_signature}</div>
-        <div style="font-size:13px">พยาน</div>
+        <p style="margin:0;font-size:13px">ลงชื่อ {witness1_signature} พยาน</p>
         <p style="margin:4px 0 0;font-size:13px">({witness1_name})</p>
       </div>
       <div style="text-align:center">
-        <div style="font-size:13px">ลงชื่อ</div>
-        <div style="min-height:50px;display:flex;align-items:center;justify-content:center">{witness2_signature}</div>
-        <div style="font-size:13px">พยาน</div>
+        <p style="margin:0;font-size:13px">ลงชื่อ {witness2_signature} พยาน</p>
         <p style="margin:4px 0 0;font-size:13px">({witness2_name})</p>
       </div>
     </div>
@@ -1254,16 +1246,12 @@ ${(() => {
   <div class="no-break" style="margin-top:30px">
     <div style="display:flex;justify-content:space-around;margin-top:20px">
       <div style="text-align:center">
-        <div style="font-size:13px">ลงชื่อ</div>
-        <div style="min-height:50px;display:flex;align-items:center;justify-content:center">{pdpa_signature}</div>
-        <div style="font-size:13px">ผู้ให้ความยินยอม</div>
+        <p style="margin:0;font-size:13px">ลงชื่อ {pdpa_signature} ผู้ให้ความยินยอม</p>
         <p style="margin:4px 0 0;font-size:13px">({customer_name})</p>
         <p style="margin:2px 0 0;font-size:11px;color:#666">วันที่ {pdpa_consent_date}</p>
       </div>
       <div style="text-align:center">
-        <div style="font-size:13px">ลงชื่อ</div>
-        <div style="min-height:50px;display:flex;align-items:center;justify-content:center">{staff_signature}</div>
-        <div style="font-size:13px">ผู้รับความยินยอม</div>
+        <p style="margin:0;font-size:13px">ลงชื่อ {staff_signature} ผู้รับความยินยอม</p>
         <p style="margin:4px 0 0;font-size:13px">({salesperson_name})</p>
       </div>
     </div>

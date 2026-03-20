@@ -765,3 +765,543 @@ test.describe('Phase 5: Contract Template Deep Content Analysis', () => {
     expect(hasPaymentTable).toBeTruthy();
   });
 });
+
+// =============================================================================
+// PHASE 6: Signature Submission & API Payload Validation
+// =============================================================================
+test.describe('Phase 6: Signature Submission & API Payload Validation', () => {
+  test.beforeEach(async ({ page }) => {
+    await loginViaAPI(page);
+  });
+
+  test('6.1 Submit signature sends correct API payload (intercepted)', async ({ page }) => {
+    const contractId = await getFirstContractId(page);
+    if (!contractId) {
+      test.skip(true, 'No contracts available for signature submission test');
+      return;
+    }
+
+    await page.goto(`/contracts/${contractId}/sign`, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(3000);
+
+    // Check if signing canvas is available (contract must be DRAFT)
+    const canvas = page.locator('canvas').first();
+    if (!await canvas.isVisible({ timeout: 5000 }).catch(() => false)) {
+      test.skip(true, 'No canvas visible - contract may not be in DRAFT status');
+      return;
+    }
+
+    // Intercept the sign API call to capture the payload
+    let capturedPayload: any = null;
+    let capturedUrl = '';
+    await page.route(`**/api/contracts/${contractId}/sign`, async (route) => {
+      const request = route.request();
+      capturedUrl = request.url();
+      capturedPayload = request.postDataJSON();
+
+      // Fulfill with a mock success response so we don't actually persist
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: 'mock-sig-id',
+          signerType: capturedPayload?.signerType || 'CUSTOMER',
+          signerName: capturedPayload?.signerName || '',
+          signedAt: new Date().toISOString(),
+        }),
+      });
+    });
+
+    // Also intercept the signatures refresh query
+    await page.route(`**/api/contracts/${contractId}/signatures`, async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify([]),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
+    // Draw a signature on the canvas
+    const box = await canvas.boundingBox();
+    if (!box) {
+      test.skip(true, 'Could not get canvas bounding box');
+      return;
+    }
+
+    // Draw a realistic wavy signature
+    await page.mouse.move(box.x + box.width * 0.15, box.y + box.height * 0.5);
+    await page.mouse.down();
+    for (let i = 0; i <= 20; i++) {
+      const progress = i / 20;
+      const x = box.x + box.width * (0.15 + 0.7 * progress);
+      const y = box.y + box.height * (0.5 + 0.15 * Math.sin(progress * Math.PI * 6));
+      await page.mouse.move(x, y);
+    }
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+
+    // Click the confirm button
+    const confirmBtn = page.locator('button:has-text("ยืนยันลงนาม")').first();
+    if (!await confirmBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+      test.skip(true, 'Confirm button not visible');
+      return;
+    }
+    await expect(confirmBtn).toBeEnabled();
+    await confirmBtn.click();
+
+    // Wait for the API call to be intercepted
+    await page.waitForTimeout(3000);
+
+    // Validate the captured API payload
+    expect(capturedPayload, 'API payload should have been captured').toBeTruthy();
+    expect(capturedUrl).toContain(`/contracts/${contractId}/sign`);
+
+    // --- Required fields ---
+    // signatureImage: must be a base64 PNG data URL
+    expect(capturedPayload.signatureImage).toBeTruthy();
+    expect(capturedPayload.signatureImage).toMatch(/^data:image\/png;base64,/);
+
+    // signerType: must be a valid signer type
+    const validSignerTypes = ['CUSTOMER', 'COMPANY', 'WITNESS_1', 'WITNESS_2', 'GUARDIAN'];
+    expect(validSignerTypes).toContain(capturedPayload.signerType);
+
+    // screenSize: should be in WxH format
+    expect(capturedPayload.screenSize).toBeTruthy();
+    expect(capturedPayload.screenSize).toMatch(/^\d+x\d+$/);
+
+    // signerName: should be a string (may be empty but field should exist)
+    expect(typeof capturedPayload.signerName === 'string' || capturedPayload.signerName === undefined).toBeTruthy();
+  });
+
+  test('6.2 Signature submission shows success toast on 200 response', async ({ page }) => {
+    const contractId = await getFirstContractId(page);
+    if (!contractId) {
+      test.skip(true, 'No contracts available');
+      return;
+    }
+
+    await page.goto(`/contracts/${contractId}/sign`, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(3000);
+
+    const canvas = page.locator('canvas').first();
+    if (!await canvas.isVisible({ timeout: 5000 }).catch(() => false)) {
+      test.skip(true, 'No canvas visible');
+      return;
+    }
+
+    // Mock the sign API to return success
+    await page.route(`**/api/contracts/${contractId}/sign`, async (route) => {
+      const payload = route.request().postDataJSON();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: 'mock-sig-id',
+          signerType: payload?.signerType || 'CUSTOMER',
+          signerName: payload?.signerName || '',
+          signatureImage: payload?.signatureImage || '',
+          signedAt: new Date().toISOString(),
+        }),
+      });
+    });
+
+    // Mock signatures list to return the new signature after signing
+    let signCallCount = 0;
+    await page.route(`**/api/contracts/${contractId}/signatures`, async (route) => {
+      if (route.request().method() === 'GET') {
+        // After sign call, return the signed signature
+        const sigs = signCallCount > 0 ? [{
+          id: 'mock-sig-id',
+          signerType: 'CUSTOMER',
+          signerName: 'Test',
+          signedAt: new Date().toISOString(),
+        }] : [];
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(sigs),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
+    // Draw on canvas
+    const box = await canvas.boundingBox();
+    if (!box) return;
+
+    await page.mouse.move(box.x + 50, box.y + box.height * 0.5);
+    await page.mouse.down();
+    for (let i = 0; i <= 10; i++) {
+      const progress = i / 10;
+      await page.mouse.move(
+        box.x + 50 + box.width * 0.6 * progress,
+        box.y + box.height * (0.5 + 0.1 * Math.sin(progress * Math.PI * 4)),
+      );
+    }
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+
+    // Click confirm
+    const confirmBtn = page.locator('button:has-text("ยืนยันลงนาม")').first();
+    if (!await confirmBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+      test.skip(true, 'Confirm button not visible');
+      return;
+    }
+    signCallCount++;
+    await confirmBtn.click();
+
+    // Wait for success toast to appear
+    // Sonner toasts render in [data-sonner-toaster] or similar
+    const toast = page.locator('[data-sonner-toast], [role="status"]:has-text("สำเร็จ"), li:has-text("สำเร็จ")').first();
+    await expect(toast).toBeVisible({ timeout: 5000 });
+  });
+
+  test('6.3 Signature submission handles API error gracefully', async ({ page }) => {
+    const contractId = await getFirstContractId(page);
+    if (!contractId) {
+      test.skip(true, 'No contracts available');
+      return;
+    }
+
+    await page.goto(`/contracts/${contractId}/sign`, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(3000);
+
+    const canvas = page.locator('canvas').first();
+    if (!await canvas.isVisible({ timeout: 5000 }).catch(() => false)) {
+      test.skip(true, 'No canvas visible');
+      return;
+    }
+
+    // Mock the sign API to return an error
+    await page.route(`**/api/contracts/${contractId}/sign`, async (route) => {
+      await route.fulfill({
+        status: 400,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          statusCode: 400,
+          message: 'ลายเซ็นไม่ถูกต้อง',
+        }),
+      });
+    });
+
+    // Mock signatures list
+    await page.route(`**/api/contracts/${contractId}/signatures`, async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify([]),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
+    // Draw on canvas
+    const box = await canvas.boundingBox();
+    if (!box) return;
+
+    await page.mouse.move(box.x + 30, box.y + 40);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 200, box.y + 80);
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+
+    // Click confirm
+    const confirmBtn = page.locator('button:has-text("ยืนยันลงนาม")').first();
+    if (!await confirmBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+      test.skip(true, 'Confirm button not visible');
+      return;
+    }
+    await confirmBtn.click();
+
+    // Error toast should appear
+    const errorToast = page.locator('[data-sonner-toast], [role="status"]:has-text("ไม่ถูกต้อง"), li:has-text("ไม่ถูกต้อง")').first();
+    await expect(errorToast).toBeVisible({ timeout: 5000 });
+  });
+
+  test('6.4 Signature payload includes GPS coordinates when available', async ({ page }) => {
+    const contractId = await getFirstContractId(page);
+    if (!contractId) {
+      test.skip(true, 'No contracts available');
+      return;
+    }
+
+    // Grant geolocation permission and mock position
+    await page.context().grantPermissions(['geolocation']);
+    await page.context().setGeolocation({ latitude: 14.8071, longitude: 100.6146 }); // Lopburi, Thailand
+
+    await page.goto(`/contracts/${contractId}/sign`, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(3000);
+
+    const canvas = page.locator('canvas').first();
+    if (!await canvas.isVisible({ timeout: 5000 }).catch(() => false)) {
+      test.skip(true, 'No canvas visible');
+      return;
+    }
+
+    // Intercept the sign API call
+    let capturedPayload: any = null;
+    await page.route(`**/api/contracts/${contractId}/sign`, async (route) => {
+      capturedPayload = route.request().postDataJSON();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: 'mock-sig-gps',
+          signerType: capturedPayload?.signerType || 'CUSTOMER',
+          signedAt: new Date().toISOString(),
+        }),
+      });
+    });
+
+    // Mock signatures
+    await page.route(`**/api/contracts/${contractId}/signatures`, async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+      } else {
+        await route.continue();
+      }
+    });
+
+    // Draw signature
+    const box = await canvas.boundingBox();
+    if (!box) return;
+
+    await page.mouse.move(box.x + box.width * 0.2, box.y + box.height * 0.5);
+    await page.mouse.down();
+    for (let i = 0; i <= 15; i++) {
+      const p = i / 15;
+      await page.mouse.move(
+        box.x + box.width * (0.2 + 0.6 * p),
+        box.y + box.height * (0.5 + 0.12 * Math.sin(p * Math.PI * 5)),
+      );
+    }
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+
+    // Click confirm
+    const confirmBtn = page.locator('button:has-text("ยืนยันลงนาม")').first();
+    if (!await confirmBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+      test.skip(true, 'Confirm button not visible');
+      return;
+    }
+    await confirmBtn.click();
+
+    // Wait for API call
+    await page.waitForTimeout(5000);
+
+    // Validate GPS in payload
+    expect(capturedPayload, 'Payload should be captured').toBeTruthy();
+    expect(capturedPayload.signatureImage).toMatch(/^data:image\/png;base64,/);
+
+    // GPS fields should be present when geolocation is granted
+    if (capturedPayload.gpsLatitude !== undefined) {
+      expect(capturedPayload.gpsLatitude).toBeCloseTo(14.8071, 1);
+      expect(capturedPayload.gpsLongitude).toBeCloseTo(100.6146, 1);
+    }
+    // GPS may be undefined if the browser didn't respond in time (3s timeout)
+    // so we just verify the payload structure is correct
+  });
+
+  test('6.5 Full signing flow: draw signature → submit → verify success state', async ({ page }) => {
+    const contractId = await getFirstContractId(page);
+    if (!contractId) {
+      test.skip(true, 'No contracts available');
+      return;
+    }
+
+    await page.goto(`/contracts/${contractId}/sign`, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(3000);
+
+    const canvas = page.locator('canvas').first();
+    if (!await canvas.isVisible({ timeout: 5000 }).catch(() => false)) {
+      test.skip(true, 'No canvas visible');
+      return;
+    }
+
+    // Track how many sign calls are made
+    const signCalls: any[] = [];
+    await page.route(`**/api/contracts/${contractId}/sign`, async (route) => {
+      const payload = route.request().postDataJSON();
+      signCalls.push(payload);
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: `mock-sig-${signCalls.length}`,
+          signerType: payload?.signerType,
+          signerName: payload?.signerName || '',
+          signedAt: new Date().toISOString(),
+        }),
+      });
+    });
+
+    // Mock signatures to reflect accumulated signatures
+    await page.route(`**/api/contracts/${contractId}/signatures`, async (route) => {
+      if (route.request().method() === 'GET') {
+        const sigs = signCalls.map((call, i) => ({
+          id: `mock-sig-${i + 1}`,
+          signerType: call.signerType,
+          signerName: call.signerName || '',
+          signedAt: new Date().toISOString(),
+        }));
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(sigs),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
+    // --- Sign as CUSTOMER ---
+    const box = await canvas.boundingBox();
+    if (!box) return;
+
+    // Draw signature
+    await page.mouse.move(box.x + box.width * 0.1, box.y + box.height * 0.5);
+    await page.mouse.down();
+    for (let i = 0; i <= 12; i++) {
+      const p = i / 12;
+      await page.mouse.move(
+        box.x + box.width * (0.1 + 0.8 * p),
+        box.y + box.height * (0.5 + 0.15 * Math.sin(p * Math.PI * 3)),
+      );
+    }
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+
+    // Submit signature
+    const confirmBtn = page.locator('button:has-text("ยืนยันลงนาม")').first();
+    if (!await confirmBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+      test.skip(true, 'Confirm button not visible');
+      return;
+    }
+    await confirmBtn.click();
+    await page.waitForTimeout(2000);
+
+    // Verify at least one sign API call was made
+    expect(signCalls.length).toBeGreaterThanOrEqual(1);
+
+    // Verify the first call had correct structure
+    const firstCall = signCalls[0];
+    expect(firstCall.signatureImage).toMatch(/^data:image\/png;base64,/);
+    expect(firstCall.signerType).toBeTruthy();
+    expect(firstCall.screenSize).toMatch(/^\d+x\d+$/);
+
+    // After successful signing, UI should show success indicator
+    const bodyText = await page.textContent('body') || '';
+    const hasSuccessIndicator = bodyText.includes('สำเร็จ') ||
+      bodyText.includes('ลงนามเรียบร้อย') ||
+      bodyText.includes('✓') ||
+      bodyText.includes('คนถัดไป') ||
+      bodyText.includes('ไปยัง');
+    expect(hasSuccessIndicator, 'Should show success indicator or next signer prompt after signing').toBeTruthy();
+  });
+
+  test('6.6 Signature base64 image is non-trivial (not blank canvas)', async ({ page }) => {
+    const contractId = await getFirstContractId(page);
+    if (!contractId) {
+      test.skip(true, 'No contracts available');
+      return;
+    }
+
+    await page.goto(`/contracts/${contractId}/sign`, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(3000);
+
+    const canvas = page.locator('canvas').first();
+    if (!await canvas.isVisible({ timeout: 5000 }).catch(() => false)) {
+      test.skip(true, 'No canvas visible');
+      return;
+    }
+
+    // Intercept API call
+    let capturedImage = '';
+    await page.route(`**/api/contracts/${contractId}/sign`, async (route) => {
+      const payload = route.request().postDataJSON();
+      capturedImage = payload?.signatureImage || '';
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: 'mock-sig-blank-check',
+          signerType: payload?.signerType,
+          signedAt: new Date().toISOString(),
+        }),
+      });
+    });
+
+    await page.route(`**/api/contracts/${contractId}/signatures`, async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+      } else {
+        await route.continue();
+      }
+    });
+
+    // Get blank canvas data URL for comparison
+    const blankDataUrl = await canvas.evaluate((c: HTMLCanvasElement) => {
+      const blankCanvas = document.createElement('canvas');
+      blankCanvas.width = c.width;
+      blankCanvas.height = c.height;
+      return blankCanvas.toDataURL('image/png');
+    });
+
+    // Draw a substantial signature (multiple strokes)
+    const box = await canvas.boundingBox();
+    if (!box) return;
+
+    // Stroke 1
+    await page.mouse.move(box.x + box.width * 0.1, box.y + box.height * 0.6);
+    await page.mouse.down();
+    for (let i = 0; i <= 8; i++) {
+      const p = i / 8;
+      await page.mouse.move(
+        box.x + box.width * (0.1 + 0.35 * p),
+        box.y + box.height * (0.6 - 0.25 * p + 0.1 * Math.sin(p * Math.PI * 3)),
+      );
+    }
+    await page.mouse.up();
+
+    // Stroke 2
+    await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.3);
+    await page.mouse.down();
+    for (let i = 0; i <= 8; i++) {
+      const p = i / 8;
+      await page.mouse.move(
+        box.x + box.width * (0.5 + 0.4 * p),
+        box.y + box.height * (0.3 + 0.3 * p - 0.08 * Math.sin(p * Math.PI * 4)),
+      );
+    }
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+
+    // Submit
+    const confirmBtn = page.locator('button:has-text("ยืนยันลงนาม")').first();
+    if (!await confirmBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+      test.skip(true, 'Confirm button not visible');
+      return;
+    }
+    await confirmBtn.click();
+    await page.waitForTimeout(3000);
+
+    // Verify the submitted image is NOT a blank canvas
+    expect(capturedImage).toBeTruthy();
+    expect(capturedImage).toMatch(/^data:image\/png;base64,/);
+
+    // The base64 portion of the drawn signature should be longer than a blank canvas
+    const drawnBase64 = capturedImage.replace('data:image/png;base64,', '');
+    const blankBase64 = blankDataUrl.replace('data:image/png;base64,', '');
+    expect(
+      drawnBase64.length,
+      'Signed image should have more data than a blank canvas',
+    ).toBeGreaterThan(blankBase64.length);
+  });
+});

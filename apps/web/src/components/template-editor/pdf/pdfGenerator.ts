@@ -559,7 +559,7 @@ export async function generatePDF(template: Template): Promise<Blob> {
 
         // ผู้ให้เช่าซื้อ
         const leftX = margin.left + colWidth / 2;
-        doc.text('ลงชื่อ..................................................ผู้ให้เช่าซื้อ', leftX, y, { align: 'center' });
+        doc.text('ลงชื่อ _________________ ผู้ให้เช่าซื้อ', leftX, y, { align: 'center' });
         doc.text(`( ${managerName} )`, leftX, y + 6, { align: 'center' });
         doc.setFontSize(sigFontSize - 2);
         doc.setTextColor(100);
@@ -569,7 +569,7 @@ export async function generatePDF(template: Template): Promise<Blob> {
         // ผู้เช่าซื้อ
         const rightX = margin.left + colWidth + colWidth / 2;
         doc.setFontSize(sigFontSize);
-        doc.text('ลงชื่อ..................................................ผู้เช่าซื้อ', rightX, y, { align: 'center' });
+        doc.text('ลงชื่อ _________________ ผู้เช่าซื้อ', rightX, y, { align: 'center' });
         doc.text(`( ${customerName} )`, rightX, y + 6, { align: 'center' });
 
         y += 22;
@@ -578,7 +578,7 @@ export async function generatePDF(template: Template): Promise<Blob> {
         doc.setFontSize(sigFontSize);
         for (let c = 0; c < 2; c++) {
           const x = margin.left + c * colWidth + colWidth / 2;
-          doc.text('ลงชื่อ..................................................พยาน', x, y, { align: 'center' });
+          doc.text('ลงชื่อ _________________ พยาน', x, y, { align: 'center' });
           doc.text(`(${' '.repeat(40)})`, x, y + 6, { align: 'center' });
         }
         y += 18;

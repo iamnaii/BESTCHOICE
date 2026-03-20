@@ -25,13 +25,13 @@ export default function SignatureBlock({ previewMode = false }: Props) {
       <div className="grid grid-cols-2 gap-x-8 mb-8">
         {/* ผู้ให้เช่าซื้อ */}
         <div className="text-center">
-          <div>ลงชื่อ..................................................ผู้ให้เช่าซื้อ</div>
+          <div>ลงชื่อ <span style={{ display: 'inline-block', width: 150, borderBottom: '1px solid #000', verticalAlign: 'middle', margin: '0 4px' }}>&nbsp;</span> ผู้ให้เช่าซื้อ</div>
           <div>( {managerName} )</div>
           <div style={{ fontSize: '14px', color: '#666' }}>ผู้จัดการ บริษัท เบสท์ช้อยส์โฟน จำกัด</div>
         </div>
         {/* ผู้เช่าซื้อ */}
         <div className="text-center">
-          <div>ลงชื่อ..................................................ผู้เช่าซื้อ</div>
+          <div>ลงชื่อ <span style={{ display: 'inline-block', width: 150, borderBottom: '1px solid #000', verticalAlign: 'middle', margin: '0 4px' }}>&nbsp;</span> ผู้เช่าซื้อ</div>
           <div>( {customerName} )</div>
         </div>
       </div>
@@ -39,11 +39,11 @@ export default function SignatureBlock({ previewMode = false }: Props) {
       {/* Row 2: Witnesses */}
       <div className="grid grid-cols-2 gap-x-8">
         <div className="text-center">
-          <div>ลงชื่อ..................................................พยาน</div>
+          <div>ลงชื่อ <span style={{ display: 'inline-block', width: 150, borderBottom: '1px solid #000', verticalAlign: 'middle', margin: '0 4px' }}>&nbsp;</span> พยาน</div>
           <div>({'  '.repeat(15)})</div>
         </div>
         <div className="text-center">
-          <div>ลงชื่อ..................................................พยาน</div>
+          <div>ลงชื่อ <span style={{ display: 'inline-block', width: 150, borderBottom: '1px solid #000', verticalAlign: 'middle', margin: '0 4px' }}>&nbsp;</span> พยาน</div>
           <div>({'  '.repeat(15)})</div>
         </div>
       </div>

@@ -49,7 +49,7 @@ test.describe('Phase 1: Thai Legal & Content Validation', () => {
 
   test('1.1 Contract template contains proper party identification (seller & buyer)', async ({ page }) => {
     // Navigate to contract templates page to inspect template content
-    await page.goto('/contracts/templates', { waitUntil: 'domcontentloaded' });
+    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2000);
 
     const bodyText = await page.textContent('body');
@@ -76,7 +76,7 @@ test.describe('Phase 1: Thai Legal & Content Validation', () => {
   });
 
   test('1.2 Contract template contains product details placeholders (IMEI, Brand, Model)', async ({ page }) => {
-    await page.goto('/contracts/templates', { waitUntil: 'domcontentloaded' });
+    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2000);
 
     const bodyText = await page.textContent('body');
@@ -94,7 +94,7 @@ test.describe('Phase 1: Thai Legal & Content Validation', () => {
   });
 
   test('1.3 Contract template contains installment terms (down payment, monthly, schedule)', async ({ page }) => {
-    await page.goto('/contracts/templates', { waitUntil: 'domcontentloaded' });
+    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2000);
 
     const bodyText = await page.textContent('body');
@@ -112,7 +112,7 @@ test.describe('Phase 1: Thai Legal & Content Validation', () => {
   });
 
   test('1.4 Contract template contains default/breach clauses per Thai law', async ({ page }) => {
-    await page.goto('/contracts/templates', { waitUntil: 'domcontentloaded' });
+    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2000);
 
     const bodyText = await page.textContent('body');
@@ -132,7 +132,7 @@ test.describe('Phase 1: Thai Legal & Content Validation', () => {
   });
 
   test('1.5 Contract template contains PDPA / data consent clause', async ({ page }) => {
-    await page.goto('/contracts/templates', { waitUntil: 'domcontentloaded' });
+    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2000);
 
     const bodyText = await page.textContent('body');
@@ -153,7 +153,7 @@ test.describe('Phase 1: Thai Legal & Content Validation', () => {
   });
 
   test('1.6 Contract template contains dispute resolution clause', async ({ page }) => {
-    await page.goto('/contracts/templates', { waitUntil: 'domcontentloaded' });
+    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2000);
 
     const bodyText = await page.textContent('body');
@@ -162,7 +162,7 @@ test.describe('Phase 1: Thai Legal & Content Validation', () => {
   });
 
   test('1.7 Contract template contains force majeure clause', async ({ page }) => {
-    await page.goto('/contracts/templates', { waitUntil: 'domcontentloaded' });
+    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2000);
 
     const bodyText = await page.textContent('body');
@@ -171,7 +171,7 @@ test.describe('Phase 1: Thai Legal & Content Validation', () => {
   });
 
   test('1.8 Contract template specifies Thai law as governing law', async ({ page }) => {
-    await page.goto('/contracts/templates', { waitUntil: 'domcontentloaded' });
+    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2000);
 
     const bodyText = await page.textContent('body');
@@ -189,7 +189,7 @@ test.describe('Phase 2: UI & Signature Position Validation', () => {
   });
 
   test('2.1 Contract template editor shows signature block at bottom of document', async ({ page }) => {
-    await page.goto('/contracts/templates', { waitUntil: 'domcontentloaded' });
+    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2000);
 
     // The template preview should contain signature-related text
@@ -199,7 +199,7 @@ test.describe('Phase 2: UI & Signature Position Validation', () => {
   });
 
   test('2.2 Signature block contains all required signatories (Seller, Buyer, 2 Witnesses)', async ({ page }) => {
-    await page.goto('/contracts/templates', { waitUntil: 'domcontentloaded' });
+    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2000);
 
     const bodyText = await page.textContent('body') || '';
@@ -270,7 +270,7 @@ test.describe('Phase 3: Print Layout & A4 Document Validation', () => {
   });
 
   test('3.1 Template preview uses A4 dimensions (210mm width)', async ({ page }) => {
-    await page.goto('/contracts/templates', { waitUntil: 'domcontentloaded' });
+    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2000);
 
     // The DocumentPreview component renders a div with width: 210mm
@@ -288,7 +288,7 @@ test.describe('Phase 3: Print Layout & A4 Document Validation', () => {
   test('3.2 Contract HTML template uses page break markers', async ({ page }) => {
     // Verify that the hire-purchase-contract.html template uses PAGE_BREAK comments
     // by checking the API response or the template content in the page
-    await page.goto('/contracts/templates', { waitUntil: 'domcontentloaded' });
+    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2000);
 
     // The template store uses page-break-before:always for photo attachments
@@ -317,7 +317,7 @@ test.describe('Phase 3: Print Layout & A4 Document Validation', () => {
   });
 
   test('3.4 PDF generation produces valid A4 document from template', async ({ page }) => {
-    await page.goto('/contracts/templates', { waitUntil: 'domcontentloaded' });
+    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2000);
 
     // Look for PDF export button
@@ -568,7 +568,7 @@ test.describe('Phase 4: Functional E2E Tests', () => {
   });
 
   test('4.10 Contract template editor page loads', async ({ page }) => {
-    await page.goto('/contracts/templates', { waitUntil: 'domcontentloaded' });
+    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2000);
 
     const bodyText = await page.textContent('body') || '';
@@ -614,17 +614,20 @@ test.describe('Phase 4: Functional E2E Tests', () => {
     await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2000);
 
-    // Look for pagination controls
-    const paginationBtns = page.locator('button:has-text("2"), button[aria-label*="next"], button:has-text("ถัดไป")');
-    const hasPagination = await paginationBtns.first().isVisible({ timeout: 2000 }).catch(() => false);
+    // Look for pagination controls - use specific pagination nav locators to avoid matching other buttons
+    const paginationNav = page.locator('nav[aria-label*="pagination"], nav[aria-label*="Pagination"], [role="navigation"], .pagination');
+    const hasPaginationNav = await paginationNav.first().isVisible({ timeout: 2000 }).catch(() => false);
 
-    if (hasPagination) {
-      // Click next page
-      await paginationBtns.first().click();
-      await page.waitForTimeout(1000);
-      const url = page.url();
-      expect(url).toContain('page=');
+    if (hasPaginationNav) {
+      const nextBtn = paginationNav.locator('button:has-text("ถัดไป"), button[aria-label*="next"], button:has-text("›")').first();
+      if (await nextBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await nextBtn.click();
+        await page.waitForTimeout(1000);
+        const url = page.url();
+        expect(url).toContain('page=');
+      }
     }
+    // If no pagination nav exists, it's fine - there may not be enough contracts
   });
 
   test('4.14 Contract workflow status badge renders correctly', async ({ page }) => {
@@ -673,7 +676,7 @@ test.describe('Phase 5: Contract Template Deep Content Analysis', () => {
   });
 
   test('5.1 Contract template has all 26 legal clauses', async ({ page }) => {
-    await page.goto('/contracts/templates', { waitUntil: 'domcontentloaded' });
+    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2000);
 
     const bodyText = await page.textContent('body') || '';
@@ -704,7 +707,7 @@ test.describe('Phase 5: Contract Template Deep Content Analysis', () => {
   });
 
   test('5.2 Contract template uses proper Thai legal document font (TH Sarabun PSK)', async ({ page }) => {
-    await page.goto('/contracts/templates', { waitUntil: 'domcontentloaded' });
+    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2000);
 
     // Check that TH Sarabun PSK font is declared in the page styles
@@ -731,7 +734,7 @@ test.describe('Phase 5: Contract Template Deep Content Analysis', () => {
   });
 
   test('5.3 Signature block is the last content block in template', async ({ page }) => {
-    await page.goto('/contracts/templates', { waitUntil: 'domcontentloaded' });
+    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2000);
 
     // Verify signature-related content appears after clause content
@@ -746,7 +749,7 @@ test.describe('Phase 5: Contract Template Deep Content Analysis', () => {
   });
 
   test('5.4 Emergency contacts section is present in template', async ({ page }) => {
-    await page.goto('/contracts/templates', { waitUntil: 'domcontentloaded' });
+    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2000);
 
     const bodyText = await page.textContent('body') || '';
@@ -754,7 +757,7 @@ test.describe('Phase 5: Contract Template Deep Content Analysis', () => {
   });
 
   test('5.5 Payment schedule table structure exists in template', async ({ page }) => {
-    await page.goto('/contracts/templates', { waitUntil: 'domcontentloaded' });
+    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2000);
 
     const bodyText = await page.textContent('body') || '';

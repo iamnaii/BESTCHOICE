@@ -99,11 +99,18 @@ export class ContractDocumentsService {
       throw new BadRequestException(`ประเภทเอกสารไม่ถูกต้อง: ${dto.documentType}`);
     }
 
-    // Compute file hash from actual content when available
-    const hashInput = dto.fileUrl.startsWith('data:')
-      ? dto.fileUrl.substring(dto.fileUrl.indexOf(',') + 1)
-      : dto.fileUrl + dto.fileName;
-    const fileHash = crypto.createHash('sha256').update(hashInput).digest('hex');
+    // Compute file hash from actual file content (base64 bytes) for integrity verification
+    let fileHash: string;
+    if (dto.fileUrl.startsWith('data:')) {
+      const base64Data = dto.fileUrl.substring(dto.fileUrl.indexOf(',') + 1);
+      const buffer = Buffer.from(base64Data, 'base64');
+      fileHash = crypto.createHash('sha256').update(buffer).digest('hex');
+    } else {
+      // For external URLs, hash the URL + filename + size as a fingerprint
+      fileHash = crypto.createHash('sha256')
+        .update(`${dto.fileUrl}|${dto.fileName}|${dto.fileSize || 0}`)
+        .digest('hex');
+    }
 
     // Use transaction to ensure version control + audit log are atomic
     return this.prisma.$transaction(async (tx) => {

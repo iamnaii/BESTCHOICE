@@ -224,6 +224,9 @@ export class ContractsService {
     const params = resolveInstallmentParams(interestConfig, systemConfig, dto.interestRate);
 
     // Validations
+    if (dto.downPayment < 0) {
+      throw new BadRequestException('เงินดาวน์ต้องมากกว่าหรือเท่ากับ 0');
+    }
     if (dto.downPayment >= dto.sellingPrice) {
       throw new BadRequestException('เงินดาวน์ต้องน้อยกว่าราคาขาย');
     }
@@ -409,6 +412,9 @@ export class ContractsService {
     const { minDownPaymentPct, minInstallmentMonths, maxInstallmentMonths } = params;
 
     // Validations
+    if (downPayment < 0) {
+      throw new BadRequestException('เงินดาวน์ต้องมากกว่าหรือเท่ากับ 0');
+    }
     if (downPayment >= sellingPrice) {
       throw new BadRequestException('เงินดาวน์ต้องน้อยกว่าราคาขาย');
     }
@@ -464,10 +470,20 @@ export class ContractsService {
         },
       });
 
-      // Only recreate schedule if no payments have been made
+      // Only recreate schedule if no payments have been made and none are overdue
       if (paidOrPartialCount === 0) {
+        // Check for overdue payments — don't delete them as it would lose delinquency history
+        const overdueCount = await tx.payment.count({
+          where: { contractId: id, status: 'OVERDUE' },
+        });
+        if (overdueCount > 0) {
+          throw new BadRequestException(
+            `มีงวดค้างชำระ ${overdueCount} งวด ไม่สามารถคำนวณตารางผ่อนชำระใหม่ได้ กรุณาจัดการงวดค้างชำระก่อน`,
+          );
+        }
+
         await tx.payment.deleteMany({
-          where: { contractId: id, status: { in: ['PENDING', 'OVERDUE'] } },
+          where: { contractId: id, status: 'PENDING' },
         });
 
         const payments = generatePaymentSchedule(id, totalMonths, financedAmount, monthlyPayment, paymentDueDay);
@@ -870,6 +886,15 @@ export class ContractsService {
     const quote = await this.getEarlyPayoffQuote(id);
 
     await this.prisma.$transaction(async (tx) => {
+      // Re-verify contract status inside transaction to prevent race condition
+      const freshContract = await tx.contract.findUnique({
+        where: { id },
+        select: { status: true },
+      });
+      if (!freshContract || !['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(freshContract.status)) {
+        throw new BadRequestException('สถานะสัญญาไม่อนุญาตให้ปิดก่อนกำหนด');
+      }
+
       const unpaidPayments = await tx.payment.findMany({
         where: { contractId: id, status: { not: 'PAID' } },
         orderBy: { installmentNo: 'asc' },
@@ -1106,6 +1131,15 @@ export class ContractsService {
     signatureImage: string,
     req: { ip?: string; userAgent?: string },
   ) {
+    // Validate signature image size (max 2MB base64 ≈ ~2.7MB string)
+    const MAX_SIGNATURE_SIZE = 3 * 1024 * 1024; // 3MB string length
+    if (!signatureImage) {
+      throw new BadRequestException('ต้องมีลายเซ็น');
+    }
+    if (signatureImage.length > MAX_SIGNATURE_SIZE) {
+      throw new BadRequestException('ลายเซ็นมีขนาดใหญ่เกินไป (สูงสุด 2MB)');
+    }
+
     const contract = await this.prisma.contract.findUnique({
       where: { id: contractId },
       include: { customer: true },

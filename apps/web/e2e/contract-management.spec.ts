@@ -25,8 +25,8 @@ async function getFirstContractId(page: Page): Promise<string | null> {
   // Wait for the table to load
   await page.waitForTimeout(2000);
 
-  // Contract numbers use BCP prefix and are rendered as <button> elements
-  const contractBtn = page.locator('button.font-mono').first();
+  // Contract numbers use BCP prefix and are rendered as <Link> elements
+  const contractBtn = page.locator('a.font-mono').first();
   if (await contractBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
     await contractBtn.click();
     await page.waitForURL(/\/contracts\//, { timeout: 5000 });

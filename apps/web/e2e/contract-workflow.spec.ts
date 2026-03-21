@@ -1,5 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
-import { loginViaAPI } from './helpers/auth';
+import { loginWithMock } from './helpers/mock-auth';
 
 // ============================================================================
 // BESTCHOICE Contract Workflow Transitions - E2E Test Suite
@@ -15,22 +15,7 @@ import { loginViaAPI } from './helpers/auth';
 
 // -- Helpers ------------------------------------------------------------------
 
-const baseURL = 'http://localhost:5173';
-
-/** Get the first contract ID from API */
-async function getFirstContractId(page: Page): Promise<string | null> {
-  const token = await page.evaluate(() => localStorage.getItem('access_token'));
-  if (!token) return null;
-  const response = await page.request.get(`${baseURL}/api/contracts?limit=1`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (response.ok()) {
-    const result = await response.json();
-    const contracts = result?.data ?? result;
-    if (Array.isArray(contracts) && contracts.length > 0) return contracts[0].id;
-  }
-  return null;
-}
+// Note: getFirstContractId removed — all tests use hardcoded IDs with mockContractDetail
 
 /** Build a mock contract response for the given workflow state */
 function buildMockContract(id: string, overrides: Record<string, unknown> = {}) {
@@ -134,7 +119,7 @@ async function mockContractDetail(page: Page, contractId: string, overrides: Rec
 // =============================================================================
 test.describe('Phase 7: Workflow Transitions', () => {
   test.beforeEach(async ({ page }) => {
-    await loginViaAPI(page);
+    await loginWithMock(page);
   });
 
   // ── 7.1 CREATING state: Stepper shows step 1 active ──────────────────────

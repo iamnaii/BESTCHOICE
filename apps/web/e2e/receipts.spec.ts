@@ -1,47 +1,10 @@
-import { test, expect, Page } from '@playwright/test';
-
-const BASE_URL = 'https://bestchoicephone.app';
-const TEST_USER = {
-  email: 'admin@bestchoice.com',
-  password: 'admin1234',
-};
-
-// Parse proxy from environment
-function getProxyConfig() {
-  const proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy;
-  if (!proxyUrl) return undefined;
-  try {
-    const parsed = new URL(proxyUrl);
-    return {
-      server: `${parsed.protocol}//${parsed.hostname}:${parsed.port}`,
-      username: parsed.username,
-      password: parsed.password,
-    };
-  } catch {
-    return undefined;
-  }
-}
-
-async function loginOnSite(page: Page) {
-  await page.goto(`${BASE_URL}/login`, { waitUntil: 'networkidle', timeout: 30000 });
-  await page.waitForSelector('#email', { timeout: 15000 });
-  await page.fill('#email', TEST_USER.email);
-  await page.fill('#password', TEST_USER.password);
-  await page.click('button[type="submit"]');
-  await page.waitForURL('**/', { timeout: 15000 });
-}
-
-// Configure proxy for all tests
-const proxy = getProxyConfig();
-test.use({
-  ignoreHTTPSErrors: true,
-  ...(proxy ? { proxy } : {}),
-});
+import { test, expect } from '@playwright/test';
+import { loginViaAPI } from './helpers/auth';
 
 test.describe('Receipts Page - E2E Flow', () => {
   test.beforeEach(async ({ page }) => {
-    await loginOnSite(page);
-    await page.goto(`${BASE_URL}/receipts`, { waitUntil: 'networkidle', timeout: 30000 });
+    await loginViaAPI(page);
+    await page.goto('/receipts', { waitUntil: 'networkidle', timeout: 30000 });
   });
 
   test('should display receipts page with header and summary cards', async ({ page }) => {

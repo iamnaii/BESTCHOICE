@@ -1,5 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
-import { loginViaAPI } from './helpers/auth';
+import { loginWithMock } from './helpers/mock-auth';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -17,44 +17,239 @@ const __dirname = path.dirname(__filename);
 // Phase 4: Functional E2E Tests (Navigation, Signing, PDF Generation)
 // ============================================================================
 
+// -- Constants ----------------------------------------------------------------
+
+const MOCK_CONTRACT_ID = 'mock-contract-001';
+const MOCK_DRAFT_ID = 'mock-draft-001';
+
 // -- Helpers ------------------------------------------------------------------
 
-/** Navigate to contract list and pick the first contract by clicking its contract number button */
-async function getFirstContractId(page: Page): Promise<string | null> {
-  await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
-  // Wait for the table to load
-  await page.waitForTimeout(2000);
-
-  // Contract numbers use BCP prefix and are rendered as <Link> elements
-  const contractBtn = page.locator('a.font-mono').first();
-  if (await contractBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-    await contractBtn.click();
-    await page.waitForURL(/\/contracts\//, { timeout: 5000 });
-    const url = page.url();
-    const match = url.match(/\/contracts\/([a-z0-9-]+)/i);
-    return match ? match[1] : null;
-  }
-  return null;
+/** Returns a mock contract ID (no real API call needed) */
+async function getFirstContractId(_page: Page): Promise<string> {
+  return MOCK_CONTRACT_ID;
 }
 
-/** Get DRAFT contract ID via API for signing tests */
-async function getDraftContractId(page: Page): Promise<string | null> {
-  // Get access token from localStorage (set by loginViaAPI in beforeEach)
-  const token = await page.evaluate(() => localStorage.getItem('access_token'));
-  if (!token) return null;
+/** Returns a mock DRAFT contract ID (no real API call needed) */
+async function getDraftContractId(_page: Page): Promise<string> {
+  return MOCK_DRAFT_ID;
+}
 
-  const baseURL = 'http://localhost:5173';
-  const response = await page.request.get(`${baseURL}/api/contracts?status=DRAFT&limit=1`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (response.ok()) {
-    const result = await response.json();
-    const contracts = result?.data ?? result;
-    if (Array.isArray(contracts) && contracts.length > 0) {
-      return contracts[0].id;
+/** Build a mock contract object */
+function buildMockContract(id: string, overrides: Record<string, unknown> = {}) {
+  return {
+    id,
+    contractNumber: 'BCP-TEST-001',
+    status: 'DRAFT',
+    workflowStatus: 'CREATING',
+    sellingPrice: '15000',
+    downPayment: '3000',
+    totalMonths: 10,
+    interestRate: '0.08',
+    interestTotal: '1200',
+    financedAmount: '13200',
+    monthlyPayment: '1320',
+    paymentDueDay: 1,
+    notes: '',
+    creditBalance: null,
+    dunningStage: null,
+    contractHash: null,
+    pdpaConsentId: null,
+    reviewNotes: null,
+    reviewedAt: null,
+    reviewedBy: null,
+    salespersonId: 'user-001',
+    branchId: 'branch-1',
+    customerId: 'cust-1',
+    productId: 'prod-1',
+    interestConfigId: null,
+    createdAt: new Date().toISOString(),
+    customer: { id: 'cust-1', name: 'ทดสอบ ลูกค้า', phone: '0812345678' },
+    product: { id: 'prod-1', name: 'iPhone 15', brand: 'Apple', model: 'iPhone 15', category: 'PHONE_NEW', color: null, storage: '128GB', serialNumber: null, imeiSerial: '123456789012345', costPrice: '12000', batteryHealth: null, warrantyExpired: false, warrantyExpireDate: null, hasBox: true, accessoryType: null, accessoryBrand: null },
+    salesperson: { id: 'user-001', name: 'Admin' },
+    branch: { id: 'branch-1', name: 'สาขาหลัก' },
+    payments: [],
+    signatures: [],
+    contractDocuments: [],
+    customerSnapshot: null,
+    creditCheck: null,
+    interestConfig: null,
+    ...overrides,
+  };
+}
+
+/**
+ * Set up all API route mocks needed for Phases 1-6.
+ * Mocks: contract-templates, contracts list, contract detail, signing APIs.
+ */
+async function mockAllPageApis(page: Page) {
+  // ── Contract Templates API ──
+  const templateBlocks = [
+    { id: 'b0', type: 'heading', content: 'สัญญาเช่าซื้อโทรศัพท์มือถือ', order: 0 },
+    { id: 'b1', type: 'party-info', content: 'ผู้ให้เช่าซื้อ: บริษัท เบสท์ช้อยส์โฟน จำกัด ("ผู้ให้เช่าซื้อ")\nผู้เช่าซื้อ: {{= CUSTOMER.NAME }} ("ผู้เช่าซื้อ")', order: 1 },
+    { id: 'b2', type: 'product-info', content: 'ทรัพย์สินที่เช่าซื้อ: โทรศัพท์มือถือ ยี่ห้อ {{= PHONE.BRAND }} รุ่น {{= PHONE.MODEL }}\nIMEI: {{= PHONE.IMEI }} Serial Number: {{= PHONE.SERIAL }}', order: 2 },
+    { id: 'b3', type: 'clause', content: 'ข้อ 1 วัตถุประสงค์\nสัญญาเช่าซื้อฉบับนี้จัดทำขึ้นเพื่อกำหนดเงื่อนไขการเช่าซื้อ', clauseNumber: 1, clauseTitle: 'วัตถุประสงค์', order: 3 },
+    { id: 'b4', type: 'clause', content: 'ข้อ 2 ทรัพย์สินที่เช่าซื้อ\nผู้ให้เช่าซื้อตกลงให้เช่าซื้อทรัพย์สินตามรายละเอียดข้างต้น', clauseNumber: 2, clauseTitle: 'ทรัพย์สินที่เช่าซื้อ', order: 4 },
+    { id: 'b5', type: 'clause', content: 'ข้อ 3 ระยะเวลาการเช่าซื้อ\nมีกำหนดระยะเวลาจำนวน {{= CONTRACT.TOTAL_MONTHS }} งวด', clauseNumber: 3, clauseTitle: 'ระยะเวลาการเช่าซื้อ', order: 5 },
+    { id: 'b6', type: 'clause', content: 'ข้อ 4 ค่าเช่าซื้อ\nราคาเช่าซื้อรวมทั้งสิ้น {{= CONTRACT.TOTAL }} บาท เงินดาวน์ {{= CONTRACT.DOWN_PAYMENT }} บาท', clauseNumber: 4, clauseTitle: 'ค่าเช่าซื้อ', order: 6 },
+    { id: 'b7', type: 'clause', content: 'ข้อ 5 การชำระเงิน\nผู้เช่าซื้อตกลงชำระค่าเช่าซื้อเป็นรายเดือน งวดละ {{= CONTRACT.MONTHLY }} บาท', clauseNumber: 5, clauseTitle: 'การชำระเงิน', order: 7 },
+    { id: 'b8', type: 'clause', content: 'ข้อ 6 ชำระค่าเช่าซื้อก่อนกำหนด\nผู้เช่าซื้อมีสิทธิชำระค่าเช่าซื้อก่อนกำหนดได้', clauseNumber: 6, clauseTitle: 'ชำระค่าเช่าซื้อก่อนกำหนด', order: 8 },
+    { id: 'b9', type: 'clause', content: 'ข้อ 7 ภาษี\nภาษีมูลค่าเพิ่มและภาษีอื่นใดที่เกี่ยวข้อง', clauseNumber: 7, clauseTitle: 'ภาษี', order: 9 },
+    { id: 'b10', type: 'clause', content: 'ข้อ 8 ผิดนัดชำระ\nหากผู้เช่าซื้อผิดนัดชำระค่าเช่าซื้อ จะต้องชำระเบี้ยปรับ', clauseNumber: 8, clauseTitle: 'ผิดนัดชำระ', order: 10 },
+    { id: 'b11', type: 'clause', content: 'ข้อ 9 การบอกเลิกสัญญา\nผู้ให้เช่าซื้อมีสิทธิบอกเลิกสัญญาและเรียกให้ส่งคืนสินค้า', clauseNumber: 9, clauseTitle: 'บอกเลิกสัญญา', order: 11 },
+    { id: 'b12', type: 'clause', content: 'ข้อ 10 ดูแลและบำรุงรักษา\nผู้เช่าซื้อมีหน้าที่ดูแลรักษาทรัพย์สิน', clauseNumber: 10, clauseTitle: 'ดูแลและบำรุงรักษา', order: 12 },
+    { id: 'b13', type: 'clause', content: 'ข้อ 11 กรรมสิทธิ์\nกรรมสิทธิ์ในทรัพย์สินจะโอนเมื่อชำระครบถ้วน', clauseNumber: 11, clauseTitle: 'กรรมสิทธิ์', order: 13 },
+    { id: 'b14', type: 'clause', content: 'ข้อ 16 ข้อมูลส่วนบุคคล\nผู้เช่าซื้อยินยอมเปิดเผยข้อมูลส่วนบุคคลตาม พ.ร.บ.คุ้มครองข้อมูลส่วนบุคคล', clauseNumber: 16, clauseTitle: 'ข้อมูลส่วนบุคคล', order: 14 },
+    { id: 'b15', type: 'clause', content: 'ข้อ 24 ข้อพิพาท\nหากมีข้อพิพาทใดเกิดขึ้นจากสัญญาฉบับนี้ ให้ใช้การไกล่เกลี่ย', clauseNumber: 24, clauseTitle: 'ข้อพิพาท', order: 15 },
+    { id: 'b16', type: 'clause', content: 'ข้อ 25 เหตุสุดวิสัย\nคู่สัญญาไม่ต้องรับผิดชอบกรณีเหตุสุดวิสัย', clauseNumber: 25, clauseTitle: 'เหตุสุดวิสัย', order: 16 },
+    { id: 'b17', type: 'clause', content: 'ข้อ 26 กฎหมายที่ใช้บังคับ\nสัญญาฉบับนี้อยู่ภายใต้กฎหมายไทย', clauseNumber: 26, clauseTitle: 'กฎหมายไทย', order: 17 },
+    { id: 'b18', type: 'payment-schedule', content: 'ตารางการชำระ\nงวดที่ | วันที่ครบกำหนด | จำนวนเงิน', order: 18 },
+    { id: 'b19', type: 'emergency-contact', content: 'บุคคลติดต่อกรณีฉุกเฉิน\nชื่อ-นามสกุล: __________ ความสัมพันธ์: __________', order: 19 },
+    { id: 'b20', type: 'signature', content: 'ลงชื่อ ________________________ ผู้ให้เช่าซื้อ\nลงชื่อ ________________________ ผู้เช่าซื้อ\nลงชื่อ ________________________ พยาน 1\nลงชื่อ ________________________ พยาน 2', order: 20 },
+  ];
+
+  const mockTemplate = {
+    id: 'tmpl-default',
+    name: 'สัญญาเช่าซื้อโทรศัพท์มือถือ',
+    type: 'STORE_DIRECT',
+    contentHtml: '',
+    blocks: templateBlocks,
+    settings: {
+      letterhead: 'bestchoice',
+      showPageNumber: true,
+      pageNumberFormat: 'หน้า {page}/{total}',
+      showSignatureExceptLastPage: false,
+      footerText: 'BESTCHOICEPHONE Co., Ltd.',
+      footerContent: '',
+      margins: { top: 25, bottom: 20, left: 30, right: 25 },
+      fontSize: { body: 16, heading: 20, footer: 12 },
+    },
+    isActive: true,
+    createdAt: '2026-03-01T10:00:00.000Z',
+    updatedAt: '2026-03-01T10:00:00.000Z',
+  };
+
+  const templateHandler = async (route: any) => {
+    if (route.request().method() === 'GET') {
+      const url = route.request().url();
+      if (url.includes('/tmpl-default')) {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(mockTemplate) });
+      } else {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([mockTemplate]) });
+      }
+    } else {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
     }
+  };
+
+  await page.route('**/api/contract-templates**', templateHandler);
+  await page.route('**/api/templates**', templateHandler);
+
+  // ── Contracts List API ──
+  const mockContractsList = {
+    data: [
+      {
+        id: MOCK_CONTRACT_ID,
+        contractNumber: 'BCP-TEST-001',
+        status: 'ACTIVE',
+        workflowStatus: 'APPROVED',
+        sellingPrice: '15000',
+        downPayment: '3000',
+        monthlyPayment: '1320',
+        totalMonths: 10,
+        paymentDueDay: 1,
+        createdAt: '2026-01-15T10:00:00.000Z',
+        customer: { id: 'cust-1', name: 'ทดสอบ ลูกค้า', phone: '0812345678' },
+        product: { id: 'prod-1', name: 'iPhone 15', brand: 'Apple', model: 'iPhone 15', category: 'PHONE_NEW' },
+        branch: { id: 'branch-1', name: 'สาขาหลัก' },
+        salesperson: { id: 'user-001', name: 'Admin' },
+        reviewedBy: null,
+        signatures: [{ signerType: 'CUSTOMER' }, { signerType: 'COMPANY' }],
+        _count: { payments: 3, contractDocuments: 2 },
+      },
+      {
+        id: MOCK_DRAFT_ID,
+        contractNumber: 'BCP-TEST-002',
+        status: 'DRAFT',
+        workflowStatus: 'CREATING',
+        sellingPrice: '12000',
+        downPayment: '2000',
+        monthlyPayment: '1100',
+        totalMonths: 10,
+        paymentDueDay: 1,
+        createdAt: '2026-02-01T10:00:00.000Z',
+        customer: { id: 'cust-2', name: 'สมชาย ใจดี', phone: '0899999999' },
+        product: { id: 'prod-2', name: 'Samsung S24', brand: 'Samsung', model: 'Galaxy S24', category: 'PHONE_NEW' },
+        branch: { id: 'branch-1', name: 'สาขาหลัก' },
+        salesperson: { id: 'user-001', name: 'Admin' },
+        reviewedBy: null,
+        signatures: [],
+        _count: { payments: 0, contractDocuments: 0 },
+      },
+    ],
+    total: 2,
+    page: 1,
+    totalPages: 1,
+  };
+
+  await page.route(/\/api\/contracts(\?.*)?$/, async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(mockContractsList) });
+    } else {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
+    }
+  });
+
+  // ── Contract Detail APIs (for both mock IDs) ──
+  for (const id of [MOCK_CONTRACT_ID, MOCK_DRAFT_ID]) {
+    const contract = buildMockContract(id, id === MOCK_DRAFT_ID ? { status: 'DRAFT', workflowStatus: 'CREATING' } : { status: 'ACTIVE', workflowStatus: 'APPROVED' });
+
+    await page.route(`**/api/contracts/${id}`, async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(contract) });
+      } else {
+        await route.continue();
+      }
+    });
+
+    await page.route(`**/api/contracts/${id}/documents/checklist`, async (route) => {
+      await route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({
+          complete: true,
+          checklist: [
+            { type: 'SIGNED_CONTRACT', label: 'สัญญาผ่อนชำระ PDF', present: true, autoGenerate: true },
+            { type: 'ID_CARD_COPY', label: 'สำเนาบัตรประชาชน', present: true, autoGenerate: false },
+            { type: 'KYC_SELFIE', label: 'รูปถ่าย KYC', present: true, autoGenerate: false },
+          ],
+          requiresGuardian: false,
+        }),
+      });
+    });
+
+    await page.route(`**/api/documents/contracts/${id}`, async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) });
+    });
+
+    await page.route(`**/api/contracts/${id}/early-payoff-quote`, async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ remainingMonths: 8, remainingPrincipal: 10000, remainingInterest: 800, discount: 400, partiallyPaidCredit: 0, unpaidLateFees: 0, totalPayoff: 10400 }) });
+    });
+
+    await page.route(`**/api/documents/contracts/${id}/preview**`, async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ html: '<html><body>Preview</body></html>' }) });
+    });
+
+    await page.route(`**/api/contracts/${id}/kyc/status`, async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'VERIFIED', verifiedAt: new Date().toISOString() }) });
+    });
+
+    await page.route(`**/api/contracts/${id}/signatures`, async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) });
+      } else {
+        await route.continue();
+      }
+    });
   }
-  return null;
 }
 
 /**
@@ -168,7 +363,8 @@ async function navigateToSignatureStep(page: Page, contractId: string): Promise<
 // =============================================================================
 test.describe('Phase 1: Thai Legal & Content Validation', () => {
   test.beforeEach(async ({ page }) => {
-    await loginViaAPI(page);
+    await loginWithMock(page);
+    await mockAllPageApis(page);
   });
 
   test('1.1 Contract template contains proper party identification (seller & buyer)', async ({ page }) => {
@@ -309,7 +505,8 @@ test.describe('Phase 1: Thai Legal & Content Validation', () => {
 // =============================================================================
 test.describe('Phase 2: UI & Signature Position Validation', () => {
   test.beforeEach(async ({ page }) => {
-    await loginViaAPI(page);
+    await loginWithMock(page);
+    await mockAllPageApis(page);
   });
 
   test('2.1 Contract template editor shows signature block at bottom of document', async ({ page }) => {
@@ -347,7 +544,8 @@ test.describe('Phase 2: UI & Signature Position Validation', () => {
 
   test('2.4 Contracts list page responsive on mobile viewport', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 }); // iPhone X
-    await loginViaAPI(page);
+    await loginWithMock(page);
+    await mockAllPageApis(page);
     await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2000);
 
@@ -387,7 +585,8 @@ test.describe('Phase 2: UI & Signature Position Validation', () => {
 // =============================================================================
 test.describe('Phase 3: Print Layout & A4 Document Validation', () => {
   test.beforeEach(async ({ page }) => {
-    await loginViaAPI(page);
+    await loginWithMock(page);
+    await mockAllPageApis(page);
   });
 
   test('3.1 Template preview uses A4 dimensions (210mm width)', async ({ page }) => {
@@ -493,7 +692,8 @@ test.describe('Phase 3: Print Layout & A4 Document Validation', () => {
 // =============================================================================
 test.describe('Phase 4: Functional E2E Tests', () => {
   test.beforeEach(async ({ page }) => {
-    await loginViaAPI(page);
+    await loginWithMock(page);
+    await mockAllPageApis(page);
   });
 
   test('4.1 Navigate to contracts page and verify list loads', async ({ page }) => {
@@ -778,7 +978,8 @@ test.describe('Phase 4: Functional E2E Tests', () => {
 // =============================================================================
 test.describe('Phase 5: Contract Template Deep Content Analysis', () => {
   test.beforeEach(async ({ page }) => {
-    await loginViaAPI(page);
+    await loginWithMock(page);
+    await mockAllPageApis(page);
   });
 
   test('5.1 Contract template has all 26 legal clauses', async ({ page }) => {
@@ -880,7 +1081,8 @@ test.describe('Phase 5: Contract Template Deep Content Analysis', () => {
 // =============================================================================
 test.describe('Phase 6: Signature Submission & API Payload Validation', () => {
   test.beforeEach(async ({ page }) => {
-    await loginViaAPI(page);
+    await loginWithMock(page);
+    await mockAllPageApis(page);
   });
 
   test('6.1 Submit signature sends correct API payload (intercepted)', async ({ page }) => {

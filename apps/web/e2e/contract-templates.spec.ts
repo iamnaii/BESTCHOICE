@@ -14,31 +14,45 @@ import { loginWithMock } from './helpers/mock-auth';
 // ============================================================================
 
 async function mockTemplatesApis(page: Page) {
-  await page.route('**/api/templates*', async (route) => {
+  const mockTemplate = {
+    id: 'tmpl-1',
+    name: 'สัญญาผ่อนชำระมาตรฐาน',
+    type: 'STORE_DIRECT',
+    contentHtml: '<h1>สัญญาผ่อนชำระสินค้า</h1>',
+    blocks: [
+      { id: 'b1', type: 'heading', content: 'สัญญาผ่อนชำระสินค้า', order: 0 },
+      { id: 'b2', type: 'paragraph', content: 'ระหว่าง {{seller_name}} กับ {{buyer_name}}', order: 1 },
+    ],
+    settings: {
+      letterhead: 'bestchoice',
+      showPageNumber: true,
+      pageNumberFormat: 'หน้า {page}/{total}',
+      showSignatureExceptLastPage: false,
+      footerText: 'BESTCHOICEPHONE Co., Ltd.',
+      footerContent: '',
+      margins: { top: 25, bottom: 20, left: 30, right: 25 },
+      fontSize: { body: 16, heading: 20, footer: 12 },
+    },
+    isActive: true,
+    createdAt: '2026-03-01T10:00:00.000Z',
+    updatedAt: '2026-03-01T10:00:00.000Z',
+  };
+
+  const handler = async (route: any) => {
     if (route.request().method() === 'GET') {
-      await route.fulfill({
-        status: 200, contentType: 'application/json',
-        body: JSON.stringify([
-          {
-            id: 'tmpl-1',
-            name: 'สัญญาผ่อนชำระมาตรฐาน',
-            blocks: [
-              { id: 'b1', type: 'heading', content: 'สัญญาผ่อนชำระสินค้า', order: 0 },
-              { id: 'b2', type: 'paragraph', content: 'ระหว่าง {{seller_name}} กับ {{buyer_name}}', order: 1 },
-            ],
-            settings: { fontSize: 16, pageMargin: 20, headerText: 'BESTCHOICE' },
-            updatedAt: '2026-03-01T10:00:00.000Z',
-          },
-        ]),
-      });
+      const url = route.request().url();
+      if (url.includes('/tmpl-')) {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(mockTemplate) });
+      } else {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([mockTemplate]) });
+      }
     } else {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
     }
-  });
+  };
 
-  await page.route('**/api/templates/*/save', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
-  });
+  await page.route('**/api/contract-templates**', handler);
+  await page.route('**/api/templates**', handler);
 }
 
 test.describe('Phase 18: Contract Templates Editor', () => {

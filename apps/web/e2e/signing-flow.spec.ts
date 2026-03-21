@@ -1,9 +1,9 @@
 import { test, expect } from '@playwright/test';
-import { loginAsAdmin } from './helpers/auth';
+import { loginViaAPI, getAuthHeaders } from './helpers/auth';
 
 test.describe('Signing Flow & Workflow', () => {
   test.beforeEach(async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
   });
 
   // ═══════════════════════════════════════════════════════════
@@ -42,7 +42,7 @@ test.describe('Signing Flow & Workflow', () => {
     test('E2E-SIG-1: หน้าลงนามแสดง wizard steps', async ({ page }) => {
       // Find a CREATING contract and navigate to signing
       const res = await page.request.get('/api/contracts?workflowStatus=CREATING&limit=1', {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
       });
       const data = await res.json();
       const contracts = data.data || data.contracts || data;
@@ -58,7 +58,7 @@ test.describe('Signing Flow & Workflow', () => {
 
     test('E2E-SIG-2: หน้าลงนามมี step indicators', async ({ page }) => {
       const res = await page.request.get('/api/contracts?workflowStatus=CREATING&limit=1', {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
       });
       const data = await res.json();
       const contracts = data.data || data.contracts || data;
@@ -81,7 +81,7 @@ test.describe('Signing Flow & Workflow', () => {
   test.describe('Workflow Buttons', () => {
     test('E2E-WF-1: สัญญา CREATING แสดงปุ่มเซ็นสัญญา', async ({ page }) => {
       const res = await page.request.get('/api/contracts?workflowStatus=CREATING&limit=1', {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
       });
       const data = await res.json();
       const contracts = data.data || data.contracts || data;
@@ -147,7 +147,7 @@ test.describe('Signing Flow & Workflow', () => {
   test.describe('API - Signing Endpoints', () => {
     test('E2E-API-1: GET /api/contracts/:id/signatures returns array', async ({ page }) => {
       const res = await page.request.get('/api/contracts?limit=1', {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
       });
       const data = await res.json();
       const contracts = data.data || data.contracts || data;
@@ -157,8 +157,8 @@ test.describe('Signing Flow & Workflow', () => {
       }
       const contractId = contracts[0].id;
 
-      const sigRes = await page.request.get(`/api/documents/${contractId}/signatures`, {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      const sigRes = await page.request.get(`/api/contracts/${contractId}/signatures`, {
+        headers: getAuthHeaders(),
       });
       expect(sigRes.ok()).toBeTruthy();
       const sigs = await sigRes.json();
@@ -167,7 +167,7 @@ test.describe('Signing Flow & Workflow', () => {
 
     test('E2E-API-2: POST sign with invalid data → 400', async ({ page }) => {
       const res = await page.request.get('/api/contracts?limit=1', {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
       });
       const data = await res.json();
       const contracts = data.data || data.contracts || data;
@@ -177,8 +177,8 @@ test.describe('Signing Flow & Workflow', () => {
       }
       const contractId = contracts[0].id;
 
-      const signRes = await page.request.post(`/api/documents/${contractId}/sign`, {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      const signRes = await page.request.post(`/api/contracts/${contractId}/sign`, {
+        headers: getAuthHeaders(),
         data: { signerType: 'INVALID', signatureImage: '' },
       });
       expect(signRes.ok()).toBeFalsy();
@@ -186,7 +186,7 @@ test.describe('Signing Flow & Workflow', () => {
 
     test('E2E-API-3: GET /api/contracts/:id/preview returns HTML', async ({ page }) => {
       const res = await page.request.get('/api/contracts?limit=1', {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
       });
       const data = await res.json();
       const contracts = data.data || data.contracts || data;
@@ -196,8 +196,8 @@ test.describe('Signing Flow & Workflow', () => {
       }
       const contractId = contracts[0].id;
 
-      const previewRes = await page.request.get(`/api/documents/${contractId}/preview`, {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      const previewRes = await page.request.get(`/api/contracts/${contractId}/preview`, {
+        headers: getAuthHeaders(),
       });
       expect(previewRes.ok()).toBeTruthy();
       const body = await previewRes.json();
@@ -208,7 +208,7 @@ test.describe('Signing Flow & Workflow', () => {
     test('E2E-API-4: ส่งตรวจสอบสัญญาที่ยังไม่พร้อม → 400', async ({ page }) => {
       // Find a CREATING contract
       const res = await page.request.get('/api/contracts?workflowStatus=CREATING&limit=1', {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
       });
       const data = await res.json();
       const contracts = data.data || data.contracts || data;
@@ -220,7 +220,7 @@ test.describe('Signing Flow & Workflow', () => {
 
       // Try to submit for review — should fail if signatures etc. are missing
       const submitRes = await page.request.post(`/api/contracts/${contractId}/submit-review`, {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
       });
       // Either 400 (missing requirements) or 403 (not salesperson) — not 500
       expect([400, 403]).toContain(submitRes.status());
@@ -233,7 +233,7 @@ test.describe('Signing Flow & Workflow', () => {
   test.describe('PDPA Consent', () => {
     test('E2E-PDPA-1: API ดึง PDPA consent status สำเร็จ', async ({ page }) => {
       const res = await page.request.get('/api/contracts?limit=1', {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
       });
       const data = await res.json();
       const contracts = data.data || data.contracts || data;
@@ -244,7 +244,7 @@ test.describe('Signing Flow & Workflow', () => {
       // Contract detail should include pdpaConsentId field
       const contractId = contracts[0].id;
       const detailRes = await page.request.get(`/api/contracts/${contractId}`, {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
       });
       expect(detailRes.ok()).toBeTruthy();
       const contract = await detailRes.json();
@@ -258,7 +258,7 @@ test.describe('Signing Flow & Workflow', () => {
   test.describe('Error Handling', () => {
     test('E2E-ERR-1: สัญญาไม่มีอยู่ → 404 or 401', async ({ page }) => {
       const res = await page.request.get('/api/contracts/nonexistent-id-12345', {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
       });
       // Unauthenticated direct API calls return 401; authenticated ones return 404
       expect([401, 404]).toContain(res.status());

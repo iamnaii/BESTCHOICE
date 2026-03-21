@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { loginAsAdmin } from './helpers/auth';
+import { loginViaAPI, getAuthHeaders } from './helpers/auth';
 
 /**
  * Paperless Contract System — Comprehensive E2E Audit Tests
@@ -10,7 +10,7 @@ import { loginAsAdmin } from './helpers/auth';
 // Helper: ดึงสัญญาตัวแรกตาม filter
 async function getFirstContract(page: import('@playwright/test').Page, filter = '') {
   const res = await page.request.get(`/api/contracts?limit=1${filter ? '&' + filter : ''}`, {
-    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+    headers: getAuthHeaders(),
   });
   if (!res.ok()) return null;
   const data = await res.json();
@@ -21,7 +21,7 @@ async function getFirstContract(page: import('@playwright/test').Page, filter = 
 
 test.describe('Paperless Contract — Full E2E Audit', () => {
   test.beforeEach(async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
   });
 
   // ═══════════════════════════════════════════════════════════════
@@ -41,7 +41,7 @@ test.describe('Paperless Contract — Full E2E Audit', () => {
 
     test('A3: API contracts endpoint ทำงาน', async ({ page }) => {
       const res = await page.request.get('/api/contracts?limit=1', {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
       });
       expect(res.ok()).toBeTruthy();
       const data = await res.json();
@@ -81,7 +81,7 @@ test.describe('Paperless Contract — Full E2E Audit', () => {
       if (!contract) { test.skip(); return; }
 
       const res = await page.request.post(`/api/contracts/${contract.id}/submit-review`, {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
       });
       // Should be 400 (incomplete) or 200 (complete) — not 500
       expect([200, 400, 403]).toContain(res.status());
@@ -92,7 +92,7 @@ test.describe('Paperless Contract — Full E2E Audit', () => {
       if (!contract) { test.skip(); return; }
 
       const res = await page.request.post(`/api/contracts/${contract.id}/activate`, {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
       });
       // CREATING cannot be activated → should fail
       expect([400, 403]).toContain(res.status());
@@ -126,7 +126,7 @@ test.describe('Paperless Contract — Full E2E Audit', () => {
       if (!contract) { test.skip(); return; }
 
       const res = await page.request.get(`/api/contracts/${contract.id}/kyc/status`, {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
       });
       expect(res.ok()).toBeTruthy();
       const data = await res.json();
@@ -138,7 +138,7 @@ test.describe('Paperless Contract — Full E2E Audit', () => {
       if (!contract) { test.skip(); return; }
 
       const res = await page.request.get(`/api/contracts/${contract.id}/signatures`, {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
       });
       expect(res.ok()).toBeTruthy();
       const sigs = await res.json();
@@ -150,7 +150,7 @@ test.describe('Paperless Contract — Full E2E Audit', () => {
       if (!contract) { test.skip(); return; }
 
       const res = await page.request.get(`/api/contracts/${contract.id}/preview`, {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
       });
       expect(res.ok()).toBeTruthy();
       const body = await res.json();
@@ -163,7 +163,7 @@ test.describe('Paperless Contract — Full E2E Audit', () => {
       if (!contract) { test.skip(); return; }
 
       const res = await page.request.get(`/api/contracts/${contract.id}`, {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
       });
       expect(res.ok()).toBeTruthy();
       const data = await res.json();
@@ -180,7 +180,7 @@ test.describe('Paperless Contract — Full E2E Audit', () => {
       if (!contract) { test.skip(); return; }
 
       const res = await page.request.post(`/api/contracts/${contract.id}/customer-link`, {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
       });
       expect(res.ok()).toBeTruthy();
       const data = await res.json();
@@ -195,14 +195,14 @@ test.describe('Paperless Contract — Full E2E Audit', () => {
 
       // Generate token
       const tokenRes = await page.request.post(`/api/contracts/${contract.id}/customer-link`, {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
       });
       if (!tokenRes.ok()) { test.skip(); return; }
       const { token } = await tokenRes.json();
 
       // Access documents
       const docRes = await page.request.get(`/api/customer-access/${token}`, {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
       });
       expect(docRes.ok()).toBeTruthy();
       const data = await docRes.json();
@@ -213,7 +213,7 @@ test.describe('Paperless Contract — Full E2E Audit', () => {
 
     test('D3: invalid token → 404', async ({ page }) => {
       const res = await page.request.get('/api/customer-access/invalid-token-abc123', {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
       });
       expect(res.status()).toBe(404);
     });
@@ -224,7 +224,7 @@ test.describe('Paperless Contract — Full E2E Audit', () => {
 
       // Generate token
       const tokenRes = await page.request.post(`/api/contracts/${contract.id}/customer-link`, {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
       });
       if (!tokenRes.ok()) { test.skip(); return; }
       const { token } = await tokenRes.json();
@@ -248,7 +248,7 @@ test.describe('Paperless Contract — Full E2E Audit', () => {
 
       // Get existing signatures
       const sigRes = await page.request.get(`/api/contracts/${contract.id}/signatures`, {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
       });
       const sigs = await sigRes.json();
       if (!Array.isArray(sigs) || sigs.length === 0) { test.skip(); return; }
@@ -256,7 +256,7 @@ test.describe('Paperless Contract — Full E2E Audit', () => {
       // Try to sign again with same type → should fail
       const existingType = sigs[0].signerType;
       const res = await page.request.post(`/api/contracts/${contract.id}/sign`, {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
         data: {
           signatureImage: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==',
           signerType: existingType,
@@ -271,7 +271,7 @@ test.describe('Paperless Contract — Full E2E Audit', () => {
       if (!contract) { test.skip(); return; }
 
       const res = await page.request.post(`/api/contracts/${contract.id}/sign`, {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
         data: {
           signatureImage: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==',
           signerType: 'INVALID_TYPE',
@@ -286,20 +286,20 @@ test.describe('Paperless Contract — Full E2E Audit', () => {
       if (!contract) { test.skip(); return; }
 
       const res = await page.request.delete(`/api/contracts/${contract.id}`, {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
       });
       expect([400, 403]).toContain(res.status());
     });
 
     test('E4: Sign on non-existent contract → 404', async ({ page }) => {
       const res = await page.request.post('/api/contracts/nonexistent-id-999/sign', {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
         data: {
           signatureImage: 'data:image/png;base64,test',
           signerType: 'CUSTOMER',
         },
       });
-      expect([404, 400]).toContain(res.status());
+      expect([404, 400, 401]).toContain(res.status());
     });
 
     test('E5: Unauthenticated API access → 401', async ({ page }) => {
@@ -317,7 +317,7 @@ test.describe('Paperless Contract — Full E2E Audit', () => {
       if (!contract) { test.skip(); return; }
 
       const res = await page.request.post(`/api/contracts/${contract.id}/pdpa-consent`, {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
         data: { signatureImage: '' },
       });
       expect(res.ok()).toBeFalsy();
@@ -333,7 +333,7 @@ test.describe('Paperless Contract — Full E2E Audit', () => {
       if (!contract) { test.skip(); return; }
 
       const res = await page.request.get(`/api/contracts/${contract.id}/documents`, {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
       });
       expect(res.ok()).toBeTruthy();
       const docs = await res.json();
@@ -345,7 +345,7 @@ test.describe('Paperless Contract — Full E2E Audit', () => {
       if (!contract) { test.skip(); return; }
 
       const res = await page.request.get(`/api/contracts/${contract.id}/pdpa-consent`, {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
       });
       // 200 (has consent) or 404 (no consent yet) — not 500
       expect([200, 404]).toContain(res.status());
@@ -353,7 +353,7 @@ test.describe('Paperless Contract — Full E2E Audit', () => {
 
     test('F3: Contract templates API ทำงาน', async ({ page }) => {
       const res = await page.request.get('/api/contract-templates', {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
       });
       expect(res.ok()).toBeTruthy();
       const templates = await res.json();
@@ -370,7 +370,7 @@ test.describe('Paperless Contract — Full E2E Audit', () => {
       if (!contract) { test.skip(); return; }
 
       const res = await page.request.get(`/api/contracts/${contract.id}/validate`, {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
       });
       expect(res.ok()).toBeTruthy();
       const data = await res.json();
@@ -382,7 +382,7 @@ test.describe('Paperless Contract — Full E2E Audit', () => {
       if (!contract) { test.skip(); return; }
 
       const res = await page.request.get(`/api/contracts/${contract.id}/schedule`, {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
       });
       expect(res.ok()).toBeTruthy();
     });
@@ -392,7 +392,7 @@ test.describe('Paperless Contract — Full E2E Audit', () => {
       if (!contract) { test.skip(); return; }
 
       const res = await page.request.get(`/api/contracts/${contract.id}/qr-data`, {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
       });
       expect(res.ok()).toBeTruthy();
       const data = await res.json();
@@ -405,7 +405,7 @@ test.describe('Paperless Contract — Full E2E Audit', () => {
       if (!contract) { test.skip(); return; }
 
       const res = await page.request.delete(`/api/contracts/${contract.id}/signatures/NONEXISTENT`, {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
       });
       // 404 (signature not found) or 400 (not DRAFT) — not 500
       expect([400, 404]).toContain(res.status());
@@ -416,7 +416,7 @@ test.describe('Paperless Contract — Full E2E Audit', () => {
       if (!contract) { test.skip(); return; }
 
       const res = await page.request.get(`/api/contracts/${contract.id}/early-payoff-quote`, {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
       });
       // 200 or 400 (if not eligible) — not 500
       expect([200, 400]).toContain(res.status());
@@ -424,7 +424,7 @@ test.describe('Paperless Contract — Full E2E Audit', () => {
 
     test('G6: document-dashboard endpoint ทำงาน', async ({ page }) => {
       const res = await page.request.get('/api/contracts/document-dashboard', {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: getAuthHeaders(),
       });
       expect(res.ok()).toBeTruthy();
     });

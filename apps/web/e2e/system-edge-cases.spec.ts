@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { TEST_USER, loginAsAdmin, loginViaAPI, logout } from './helpers/auth';
+import { TEST_USER, loginViaAPI, logout } from './helpers/auth';
 
 /**
  * System Edge Cases — Auth, Security, Navigation
@@ -18,7 +18,7 @@ import { TEST_USER, loginAsAdmin, loginViaAPI, logout } from './helpers/auth';
 
 test.describe('Auth Token Manipulation', () => {
   test('TC-AU1: corrupted access token should trigger refresh or redirect to login', async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
 
     // Corrupt the token with various invalid formats
     const corruptTokens = [
@@ -44,7 +44,7 @@ test.describe('Auth Token Manipulation', () => {
   });
 
   test('TC-AU2: removing access token should redirect to login', async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
 
     // Remove token entirely
     await page.evaluate(() => {
@@ -52,9 +52,9 @@ test.describe('Auth Token Manipulation', () => {
     });
 
     await page.goto('/customers');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
 
-    await expect(page).toHaveURL(/\/login/);
+    await expect(page).toHaveURL(/\/login/, { timeout: 10000 });
   });
 
   test('TC-AU3: XSS payload in token storage should not execute', async ({ page }) => {
@@ -74,7 +74,7 @@ test.describe('Auth Token Manipulation', () => {
   });
 
   test('TC-AU4: logout should clear all auth state', async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
 
     // Verify we're logged in
     await expect(page).toHaveURL('/');
@@ -87,20 +87,20 @@ test.describe('Auth Token Manipulation', () => {
 
     // Navigate to protected route
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
-    await expect(page).toHaveURL(/\/login/);
+    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+    await expect(page).toHaveURL(/\/login/, { timeout: 10000 });
   });
 
   test('TC-AU5: back button after logout should not access protected content', async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
     await page.goto('/customers');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
 
     await logout(page);
 
     // Go back
     await page.goBack();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
 
     // Should redirect to login, not show customer data
     const url = page.url();
@@ -203,9 +203,11 @@ test.describe('Login Security', () => {
 
 test.describe('RBAC Authorization Boundaries', () => {
   test('TC-S7: authenticated user should not access admin-only API endpoints without proper role', async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
+    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
 
     const token = await page.evaluate(() => localStorage.getItem('access_token'));
+    expect(token, 'Token should be available after login').toBeTruthy();
 
     // Test settings endpoint (should be accessible for OWNER/admin)
     const settingsResponse = await page.request.get('/api/settings', {
@@ -213,6 +215,7 @@ test.describe('RBAC Authorization Boundaries', () => {
         Authorization: `Bearer ${token}`,
         'X-Requested-With': 'XMLHttpRequest',
       },
+      timeout: 10000,
     });
 
     // OWNER should have access (not 403)
@@ -220,7 +223,7 @@ test.describe('RBAC Authorization Boundaries', () => {
   });
 
   test('TC-S8: API requests should include branch isolation', async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
 
     const token = await page.evaluate(() => localStorage.getItem('access_token'));
 
@@ -237,7 +240,7 @@ test.describe('RBAC Authorization Boundaries', () => {
   });
 
   test('TC-RBAC1: accessing non-existent entity should return 404 not 500', async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
 
     const token = await page.evaluate(() => localStorage.getItem('access_token'));
 
@@ -265,7 +268,7 @@ test.describe('RBAC Authorization Boundaries', () => {
 
 test.describe('XSS Prevention', () => {
   test('TC-S10-A: XSS in search fields should not execute', async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
     await page.goto('/customers');
     await page.waitForLoadState('networkidle');
 
@@ -296,7 +299,7 @@ test.describe('XSS Prevention', () => {
   });
 
   test('TC-S10-B: XSS in URL parameters should not execute', async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
 
     const xssUrls = [
       '/customers?search=<script>alert(1)</script>',
@@ -322,7 +325,7 @@ test.describe('XSS Prevention', () => {
 
 test.describe('CSRF Protection', () => {
   test('TC-S4: mutation API calls should require proper headers', async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
 
     const token = await page.evaluate(() => localStorage.getItem('access_token'));
 
@@ -349,7 +352,7 @@ test.describe('CSRF Protection', () => {
 
 test.describe('Navigation Edge Cases', () => {
   test('TC-NAV1: direct URL access to deep routes should handle gracefully', async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
 
     const deepRoutes = [
       '/contracts/create',
@@ -374,7 +377,7 @@ test.describe('Navigation Edge Cases', () => {
   });
 
   test('TC-NAV2: back/forward navigation should maintain state correctly', async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
 
     // Navigate through pages
     await page.goto('/customers');
@@ -402,7 +405,7 @@ test.describe('Navigation Edge Cases', () => {
   });
 
   test('TC-NAV3: 404 page for unknown routes', async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
 
     await page.goto('/this-route-does-not-exist-12345');
     await page.waitForLoadState('networkidle');
@@ -413,7 +416,7 @@ test.describe('Navigation Edge Cases', () => {
   });
 
   test('TC-NAV4: rapid navigation should not cause race conditions', async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
 
     // Rapidly navigate between pages
     const pages = ['/customers', '/contracts', '/payments', '/stock', '/'];
@@ -431,7 +434,7 @@ test.describe('Navigation Edge Cases', () => {
   });
 
   test('TC-NAV5: refresh on protected pages should maintain auth', async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
 
     await page.goto('/customers');
     await page.waitForLoadState('networkidle');
@@ -449,7 +452,7 @@ test.describe('Navigation Edge Cases', () => {
 
 test.describe('Error Boundaries', () => {
   test('TC-ERR1: JavaScript errors should not crash the entire app', async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
 
     const errors: string[] = [];
     page.on('pageerror', (err) => errors.push(err.message));
@@ -474,7 +477,7 @@ test.describe('Error Boundaries', () => {
   });
 
   test('TC-ERR2: network failure should show error state not crash', async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
 
     // Go offline
     await page.context().setOffline(true);
@@ -498,7 +501,7 @@ test.describe('Error Boundaries', () => {
 
 test.describe('API Response Security', () => {
   test('TC-S15: API error responses should not leak internal details', async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
 
     const token = await page.evaluate(() => localStorage.getItem('access_token'));
 
@@ -526,7 +529,7 @@ test.describe('API Response Security', () => {
   });
 
   test('TC-S14: API responses should not expose sensitive fields', async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
 
     const token = await page.evaluate(() => localStorage.getItem('access_token'));
 

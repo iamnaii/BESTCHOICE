@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { TEST_USER, loginAsAdmin, loginViaAPI, logout } from './helpers/auth';
+import { TEST_USER, loginViaAPI, logout } from './helpers/auth';
 
 /**
  * Security & Edge Case Test Suite
@@ -10,7 +10,7 @@ import { TEST_USER, loginAsAdmin, loginViaAPI, logout } from './helpers/auth';
 
 test.describe('Auth Security', () => {
   test('TC-S5: should reject expired JWT and auto-refresh via cookie', async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
 
     // Corrupt the access token to simulate expiration
     await page.evaluate(() => {
@@ -28,7 +28,7 @@ test.describe('Auth Security', () => {
   });
 
   test('TC-S6: should not allow reuse of refresh token after logout', async ({ page, request }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
 
     // Logout
     await logout(page);
@@ -63,7 +63,7 @@ test.describe('Auth Security', () => {
 
 test.describe('RBAC Authorization', () => {
   test('TC-S7: API should reject unauthorized role access to settings', async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
 
     // Admin (OWNER) should be able to access settings
     const response = await page.request.get('/api/settings', {
@@ -128,7 +128,7 @@ test.describe('Login Security', () => {
 
 test.describe('XSS Prevention', () => {
   test('TC-S10: should not execute XSS payload in search fields', async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
     await page.goto('/customers');
     await page.waitForLoadState('networkidle');
 
@@ -152,7 +152,7 @@ test.describe('XSS Prevention', () => {
   });
 
   test('should not execute XSS in URL parameters', async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
 
     // Try XSS via URL parameter
     await page.goto('/customers?search=<script>alert(1)</script>');
@@ -168,7 +168,7 @@ test.describe('XSS Prevention', () => {
 
 test.describe('SQL Injection Prevention', () => {
   test('TC-S9: should handle SQL injection payload in search safely', async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
     await page.goto('/customers');
     await page.waitForLoadState('networkidle');
 
@@ -190,7 +190,7 @@ test.describe('SQL Injection Prevention', () => {
 
 test.describe('Navigation Edge Cases', () => {
   test('should handle back/forward navigation after login', async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
     await page.goto('/customers');
     await page.waitForLoadState('networkidle');
 
@@ -209,7 +209,7 @@ test.describe('Navigation Edge Cases', () => {
   });
 
   test('should handle direct URL access to deep routes', async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
 
     // Access contract detail page directly (may not exist but shouldn't crash)
     await page.goto('/contracts/nonexistent-id');
@@ -225,7 +225,7 @@ test.describe('Navigation Edge Cases', () => {
 
 test.describe('Payment Edge Cases', () => {
   test.beforeEach(async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
   });
 
   test('TC-E2: payment page should display correctly', async ({ page }) => {
@@ -255,7 +255,7 @@ test.describe('Payment Edge Cases', () => {
 
 test.describe('Contract Edge Cases', () => {
   test.beforeEach(async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
   });
 
   test('TC-E14: contracts page should load', async ({ page }) => {
@@ -284,7 +284,7 @@ test.describe('Contract Edge Cases', () => {
 
 test.describe('Stock Edge Cases', () => {
   test.beforeEach(async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
   });
 
   test('TC-E12: stock page should load and display data', async ({ page }) => {
@@ -299,7 +299,7 @@ test.describe('Stock Edge Cases', () => {
 test.describe('Performance Smoke Tests', () => {
   test('TC-P1: dashboard should load within 5 seconds', async ({ page }) => {
     const start = Date.now();
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
     await page.waitForLoadState('networkidle');
     const loadTime = Date.now() - start;
 
@@ -308,7 +308,7 @@ test.describe('Performance Smoke Tests', () => {
   });
 
   test('TC-P4: contracts page with pagination should load quickly', async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
 
     const start = Date.now();
     await page.goto('/contracts');
@@ -320,7 +320,7 @@ test.describe('Performance Smoke Tests', () => {
   });
 
   test('all main pages should load without errors', async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
 
     const pages = [
       { url: '/', name: 'Dashboard' },
@@ -355,7 +355,7 @@ test.describe('Performance Smoke Tests', () => {
 
 test.describe('CSRF Protection', () => {
   test('TC-S4: API should require proper headers for mutations', async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
     const token = await page.evaluate(() => localStorage.getItem('access_token'));
 
     // Try POST without X-Requested-With header (CSRF guard should block)

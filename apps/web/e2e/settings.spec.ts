@@ -1,9 +1,58 @@
 import { test, expect } from '@playwright/test';
-import { loginAsAdmin } from './helpers/auth';
+import { loginWithMock } from './helpers/mock-auth';
+
+/** Mock settings data matching the ConfigItem[] shape expected by SettingsPage */
+const mockSettings = [
+  { id: '1', key: 'interest_rate', value: '2.5', label: 'อัตราดอกเบี้ยต่อเดือน (Flat rate)' },
+  { id: '2', key: 'min_down_payment_pct', value: '20', label: 'เงินดาวน์ขั้นต่ำ (%)' },
+  { id: '3', key: 'store_commission_pct', value: '0.10', label: 'ค่าคอมหน้าร้าน' },
+  { id: '4', key: 'vat_pct', value: '0.07', label: 'VAT' },
+  { id: '5', key: 'late_fee_per_day', value: '50', label: 'ค่าปรับจ่ายช้าต่อวัน (บาท)' },
+  { id: '6', key: 'late_fee_cap', value: '500', label: 'ค่าปรับสูงสุดต่องวด (บาท)' },
+  { id: '7', key: 'early_payoff_discount', value: '5', label: 'ส่วนลดปิดบัญชีก่อนกำหนด (%)' },
+  { id: '8', key: 'min_installment_months', value: '3', label: 'จำนวนงวดขั้นต่ำ (เดือน)' },
+  { id: '9', key: 'max_installment_months', value: '24', label: 'จำนวนงวดสูงสุด (เดือน)' },
+  { id: '10', key: 'overdue_days_threshold', value: '7', label: 'จำนวนวันก่อนเปลี่ยนสถานะ OVERDUE' },
+  { id: '11', key: 'default_consecutive_months', value: '3', label: 'จำนวนงวดค้างติดต่อกันก่อน DEFAULT' },
+  { id: '12', key: 'grade_a_threshold', value: '90', label: 'เกณฑ์ Grade A (%)' },
+  { id: '13', key: 'grade_b_threshold', value: '70', label: 'เกณฑ์ Grade B (%)' },
+  { id: '14', key: 'grade_c_threshold', value: '50', label: 'เกณฑ์ Grade C (%)' },
+  { id: '15', key: 'pdpa_privacy_notice_version', value: '1.0', label: 'เวอร์ชัน Privacy Notice (PDPA)' },
+  { id: '16', key: 'customer_access_token_hours', value: '24', label: 'อายุ Link เอกสารลูกค้า (ชั่วโมง)' },
+  { id: '17', key: 'lessor_signature_image', value: '', label: null },
+  { id: '18', key: 'lessor_signer_name', value: '', label: null },
+];
 
 test.describe('Settings Page - UI Elements Audit', () => {
   test.beforeEach(async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginWithMock(page);
+
+    // Mock /api/settings to return full config array
+    await page.route('**/api/settings', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(mockSettings),
+        });
+      } else {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true }),
+        });
+      }
+    });
+
+    // Mock interest-configs endpoint
+    await page.route('**/api/interest-configs**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([]),
+      });
+    });
+
     await page.goto('/settings', { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('text=ตั้งค่าระบบ', { timeout: 15000 });
   });

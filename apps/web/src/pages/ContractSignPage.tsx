@@ -43,10 +43,11 @@ export default function ContractSignPage() {
   });
 
   // Get lessor (company) signature from system settings
-  const { data: systemSettings = [] } = useQuery<{ key: string; value: string }[]>({
+  const { data: rawSettings } = useQuery<{ key: string; value: string }[]>({
     queryKey: ['settings'],
     queryFn: async () => { const { data } = await api.get('/settings'); return data; },
   });
+  const systemSettings = Array.isArray(rawSettings) ? rawSettings : [];
   const lessorSignatureImage = systemSettings.find(s => s.key === 'lessor_signature_image')?.value || '';
   const lessorSignerName = systemSettings.find(s => s.key === 'lessor_signer_name')?.value || '';
 

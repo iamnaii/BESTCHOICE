@@ -4,7 +4,12 @@ import { Page } from '@playwright/test';
  * Mock login — sets up route mocking for auth endpoints
  * so tests can run WITHOUT a real API server.
  *
- * Mocks: /api/auth/me, /api/auth/login, /api/auth/logout
+ * Mocks: /api/auth/me, /api/auth/login, /api/auth/logout, /api/auth/refresh
+ * Also mocks all other /api/* endpoints as fallback to prevent 401 cascades
+ * when the real API server is not running.
+ *
+ * Route registration order matters: Playwright uses LIFO (Last In, First Out),
+ * so the fallback must be registered FIRST, then specific routes AFTER.
  */
 export async function loginWithMock(page: Page) {
   const fakeToken = 'mock-test-token-12345';
@@ -17,12 +22,25 @@ export async function loginWithMock(page: Page) {
     branchName: 'สาขาหลัก',
   };
 
-  // Mock /api/auth/me
+  // ── 1. Fallback FIRST (lowest priority in LIFO) ──
+  // Mock ALL /api/* requests with empty 200 responses to prevent 401 cascades
+  // from unhandled API calls hitting the Vite proxy.
+  await page.route('**/api/**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({}),
+    });
+  });
+
+  // ── 2. Specific auth routes AFTER (higher priority in LIFO) ──
+
+  // Mock /api/auth/me — must include branch.name for AuthContext
   await page.route('**/api/auth/me', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify(mockUser),
+      body: JSON.stringify({ ...mockUser, branch: { name: mockUser.branchName } }),
     });
   });
 
@@ -40,6 +58,15 @@ export async function loginWithMock(page: Page) {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
   });
 
+  // Mock /api/auth/refresh — prevents 401 cascade from triggering redirect
+  await page.route('**/api/auth/refresh', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ accessToken: fakeToken }),
+    });
+  });
+
   // Navigate to login page first
   await page.goto('/login', { waitUntil: 'domcontentloaded' });
 
@@ -48,7 +75,7 @@ export async function loginWithMock(page: Page) {
     localStorage.setItem('access_token', token);
   }, fakeToken);
 
-  // Navigate to dashboard
+  // Navigate to dashboard — waitUntil domcontentloaded to avoid timeout on mocked APIs
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(500);
 }

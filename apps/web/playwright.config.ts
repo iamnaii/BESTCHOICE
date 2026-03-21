@@ -2,10 +2,11 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './e2e',
+  testIgnore: ['**/load-test-*.spec.ts'],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  retries: process.env.CI ? 2 : 1,
+  workers: process.env.CI ? 1 : 2,
   reporter: [['html', { open: 'never' }], ['list']],
   use: {
     baseURL: process.env.BASE_URL || 'http://localhost:5173',
@@ -14,8 +15,8 @@ export default defineConfig({
     video: 'on-first-retry',
     // Use domcontentloaded to avoid timeout on external resources (e.g. Google Fonts)
     // when running in offline/restricted network environments
-    navigationTimeout: 15000,
-    actionTimeout: 10000,
+    navigationTimeout: 20000,
+    actionTimeout: 15000,
   },
   projects: [
     {

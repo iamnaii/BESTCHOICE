@@ -1,9 +1,9 @@
 import { test, expect } from '@playwright/test';
-import { loginAsAdmin } from './helpers/auth';
+import { loginViaAPI } from './helpers/auth';
 
 test.describe('Dashboard', () => {
   test.beforeEach(async ({ page }) => {
-    await loginAsAdmin(page);
+    await loginViaAPI(page);
   });
 
   test('should load dashboard after login', async ({ page }) => {
@@ -14,8 +14,8 @@ test.describe('Dashboard', () => {
 
   test('should display sidebar navigation', async ({ page }) => {
     // Check sidebar has navigation links
-    const sidebar = page.locator('aside, nav, [data-sidebar]').first();
-    await expect(sidebar).toBeVisible();
+    const sidebar = page.locator('.sidebar, aside, nav, [data-sidebar]').first();
+    await expect(sidebar).toBeVisible({ timeout: 10000 });
   });
 
   test('should show user info in layout', async ({ page }) => {

@@ -7,6 +7,8 @@ export const TEST_USER = {
 
 // Cache token across tests to avoid hitting rate limits (30 login/min)
 let cachedToken: string | null = null;
+let tokenTimestamp = 0;
+const TOKEN_MAX_AGE_MS = 90 * 60 * 1000; // Refresh token after 90 minutes
 
 /**
  * Login via the UI and store auth state
@@ -26,7 +28,8 @@ export async function loginAsAdmin(page: Page) {
  * Caches the token to avoid rate limiting on repeated calls.
  */
 export async function loginViaAPI(page: Page) {
-  if (!cachedToken) {
+  const isExpired = Date.now() - tokenTimestamp > TOKEN_MAX_AGE_MS;
+  if (!cachedToken || isExpired) {
     const baseURL = 'http://localhost:5173';
 
     const response = await page.request.post(`${baseURL}/api/auth/login`, {
@@ -41,7 +44,14 @@ export async function loginViaAPI(page: Page) {
 
     const data = await response.json();
     cachedToken = data.accessToken;
+    tokenTimestamp = Date.now();
   }
+
+  // Set Authorization header for page.request API calls
+  await page.setExtraHTTPHeaders({
+    'Authorization': `Bearer ${cachedToken}`,
+    'X-Requested-With': 'XMLHttpRequest',
+  });
 
   // Navigate to login page first (guaranteed to exist without auth)
   await page.goto('/login', { waitUntil: 'domcontentloaded' });
@@ -54,6 +64,16 @@ export async function loginViaAPI(page: Page) {
   // Now navigate to dashboard — the token is already set
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.waitForURL('/', { timeout: 15000, waitUntil: 'domcontentloaded' });
+}
+
+/**
+ * Get auth headers for page.request API calls
+ */
+export function getAuthHeaders() {
+  return {
+    'X-Requested-With': 'XMLHttpRequest',
+    ...(cachedToken ? { 'Authorization': `Bearer ${cachedToken}` } : {}),
+  };
 }
 
 /**

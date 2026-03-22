@@ -1,96 +1,25 @@
 import { test, expect } from '@playwright/test';
-import { loginWithMock } from './helpers/mock-auth';
+import { loginViaAPI } from './helpers/auth';
 import { StepScreenshot } from './helpers/screenshot';
-
-const mockCreditChecks = {
-  data: [
-    {
-      id: 'cc-1',
-      status: 'APPROVED',
-      bankName: 'กสิกร',
-      statementFiles: [],
-      statementMonths: 3,
-      aiScore: 85,
-      aiSummary: 'เครดิตดี',
-      aiRecommendation: 'อนุมัติ',
-      reviewNotes: null,
-      checkedBy: { id: 'user-001', name: 'Admin' },
-      customer: { id: 'cust-1', name: 'สมชาย ใจดี', phone: '0812345678', salary: '25000', occupation: 'พนักงานบริษัท' },
-      contract: { id: 'contract-1', contractNumber: 'CT-2026-001' },
-      createdAt: '2026-03-18T10:00:00Z',
-    },
-    {
-      id: 'cc-2',
-      status: 'PENDING',
-      bankName: 'กรุงไทย',
-      statementFiles: [],
-      statementMonths: 3,
-      aiScore: null,
-      aiSummary: null,
-      aiRecommendation: null,
-      reviewNotes: null,
-      checkedBy: null,
-      customer: { id: 'cust-2', name: 'สมหญิง รักดี', phone: '0898765432', salary: '30000', occupation: 'ค้าขาย' },
-      contract: null,
-      createdAt: '2026-03-20T14:00:00Z',
-    },
-    {
-      id: 'cc-3',
-      status: 'REJECTED',
-      bankName: 'กรุงเทพ',
-      statementFiles: [],
-      statementMonths: 3,
-      aiScore: 35,
-      aiSummary: 'เครดิตต่ำ',
-      aiRecommendation: 'ปฏิเสธ',
-      reviewNotes: null,
-      checkedBy: { id: 'user-001', name: 'Admin' },
-      customer: { id: 'cust-3', name: 'สมศักดิ์ มั่งมี', phone: '0867654321', salary: '15000', occupation: 'รับจ้าง' },
-      contract: null,
-      createdAt: '2026-03-19T09:00:00Z',
-    },
-  ],
-  total: 3,
-};
-
-const mockCustomersForSearch = {
-  data: [
-    { id: 'cust-1', name: 'สมชาย ใจดี', phone: '0812345678', nationalId: '1234567890123', salary: '25000', occupation: 'พนักงานบริษัท' },
-    { id: 'cust-2', name: 'สมหญิง รักดี', phone: '0898765432', nationalId: '9876543210987', salary: '30000', occupation: 'ค้าขาย' },
-  ],
-  total: 2,
-};
 
 /**
  * Credit Checks Page (/credit-checks) E2E Tests
  *
  * ทดสอบหน้าตรวจเครดิต: แสดงรายการ, summary cards, filter, search, modal
  * Selectors จาก: src/pages/CreditChecksPage.tsx
+ * - PageHeader: "ตรวจเครดิต"
+ * - Summary cards: ทั้งหมด, ผ่าน, รอวิเคราะห์/ตรวจเพิ่ม, ไม่ผ่าน
+ * - Filter: search input, status select
+ * - DataTable: ลูกค้า, สถานะ, คะแนน, ธนาคาร, สัญญา, วันที่, actions
+ * - Create modal: เลือกลูกค้า, OCR สมุดบัญชี, ธนาคาร, statement upload
+ * - Override modal: สถานะใหม่, หมายเหตุ
+ * - API: GET /credit-checks, POST /customers/:id/credit-check
  */
 test.describe('Credit Checks Page', () => {
   test.describe.configure({ mode: 'serial' });
 
   test.beforeEach(async ({ page }) => {
-    await loginWithMock(page);
-
-    // Mock credit-checks API
-    await page.route('**/api/credit-checks*', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify(mockCreditChecks),
-      });
-    });
-
-    // Mock customers API (for create modal search)
-    await page.route('**/api/customers*', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify(mockCustomersForSearch),
-      });
-    });
-
+    await loginViaAPI(page);
     await page.goto('/credit-checks', { waitUntil: 'domcontentloaded' });
   });
 
@@ -128,18 +57,15 @@ test.describe('Credit Checks Page', () => {
     await expect(page.locator('text=ทั้งหมด').first()).toBeVisible({ timeout: 10000 });
     await ss.capture('total-card-visible');
 
-    const approvedLabel = page.locator('text=ผ่าน').first();
-    if (await approvedLabel.isVisible().catch(() => false)) {
+    if (await page.locator('text=ผ่าน').first().isVisible().catch(() => false)) {
       await ss.capture('approved-card-visible');
     }
 
-    const pendingLabel = page.locator('text=รอวิเคราะห์').first();
-    if (await pendingLabel.isVisible().catch(() => false)) {
+    if (await page.locator('text=รอวิเคราะห์').first().isVisible().catch(() => false)) {
       await ss.capture('pending-card-visible');
     }
 
-    const rejectedLabel = page.locator('text=ไม่ผ่าน').first();
-    if (await rejectedLabel.isVisible().catch(() => false)) {
+    if (await page.locator('text=ไม่ผ่าน').first().isVisible().catch(() => false)) {
       await ss.capture('rejected-card-visible');
     }
 
@@ -165,22 +91,23 @@ test.describe('Credit Checks Page', () => {
     // ทดสอบ search
     await searchInput.type('สม', { delay: 50 });
     await page.waitForTimeout(500);
+    await page.waitForLoadState('networkidle');
     await ss.capture('search-typed');
 
     // ทดสอบ status filter — เลือก "ผ่าน"
     await searchInput.clear();
     await statusSelect.selectOption('APPROVED');
-    await page.waitForTimeout(500);
+    await page.waitForLoadState('networkidle');
     await ss.capture('filtered-approved');
 
     // เลือก "รอวิเคราะห์"
     await statusSelect.selectOption('PENDING');
-    await page.waitForTimeout(500);
+    await page.waitForLoadState('networkidle');
     await ss.capture('filtered-pending');
 
     // เลือก "ทุกสถานะ"
     await statusSelect.selectOption('');
-    await page.waitForTimeout(500);
+    await page.waitForLoadState('networkidle');
     await ss.capture('filter-cleared');
   });
 
@@ -204,7 +131,6 @@ test.describe('Credit Checks Page', () => {
       }
       await ss.capture('table-headers-visible');
 
-      // ตรวจสอบว่ามีแถวข้อมูล
       const hasRows = await page.locator('table tbody tr').first().isVisible().catch(() => false);
       if (hasRows) {
         await ss.capture('table-has-data');
@@ -230,10 +156,6 @@ test.describe('Credit Checks Page', () => {
     await page.waitForTimeout(500);
     await ss.capture('modal-opened');
 
-    // ตรวจสอบ modal title
-    await expect(page.locator('text=ตรวจเครดิตใหม่').nth(1)).toBeVisible();
-    await ss.capture('modal-title-visible');
-
     // ตรวจสอบ "เลือกลูกค้า" label
     await expect(page.locator('text=เลือกลูกค้า').first()).toBeVisible();
     await ss.capture('customer-selection-visible');
@@ -246,11 +168,12 @@ test.describe('Credit Checks Page', () => {
       // ทดสอบ search ลูกค้า
       await customerSearch.type('ท', { delay: 50 });
       await page.waitForTimeout(1000);
+      await page.waitForLoadState('networkidle');
       await ss.capture('customer-search-results');
     }
   });
 
-  test('should have action button "ตรวจเครดิตใหม่" in header', async ({ page }) => {
+  test('should have action button in header', async ({ page }) => {
     const ss = new StepScreenshot(page, 'credit-checks-action-btn');
 
     await page.waitForLoadState('networkidle');

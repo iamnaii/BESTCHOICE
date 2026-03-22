@@ -1,69 +1,23 @@
 import { test, expect } from '@playwright/test';
-import { loginWithMock } from './helpers/mock-auth';
+import { loginViaAPI } from './helpers/auth';
 import { StepScreenshot } from './helpers/screenshot';
-
-const mockCustomers = {
-  data: [
-    {
-      id: 'cust-1',
-      nationalId: '1234567890123',
-      name: 'สมชาย ใจดี',
-      nickname: 'ชาย',
-      phone: '0812345678',
-      lineId: null,
-      occupation: 'พนักงานบริษัท',
-      salary: 25000,
-      createdAt: '2026-01-15T10:00:00Z',
-      _count: { contracts: 2 },
-      activeContracts: 1,
-      overdueContracts: 0,
-      latestCreditStatus: 'APPROVED',
-      latestCreditScore: 85,
-    },
-    {
-      id: 'cust-2',
-      nationalId: '9876543210987',
-      name: 'สมหญิง รักดี',
-      nickname: null,
-      phone: '0898765432',
-      lineId: 'somying_line',
-      occupation: 'ค้าขาย',
-      salary: 30000,
-      createdAt: '2026-02-20T14:00:00Z',
-      _count: { contracts: 1 },
-      activeContracts: 1,
-      overdueContracts: 1,
-      latestCreditStatus: 'PENDING',
-      latestCreditScore: null,
-    },
-  ],
-  total: 2,
-  page: 1,
-  limit: 20,
-  totalPages: 1,
-};
 
 /**
  * Customers Page (/customers) E2E Tests
  *
  * ทดสอบหน้าจัดการลูกค้า: แสดงรายชื่อ, ค้นหา, เปิด modal เพิ่มลูกค้า, navigate ไป detail
  * Selectors จาก: src/pages/CustomersPage.tsx
+ * - PageHeader: "ลูกค้า"
+ * - Search input: ค้นหาชื่อ, เบอร์โทร, เลขบัตร ปชช...
+ * - DataTable: #, ชื่อ, เบอร์โทร, เลขบัตร ปชช., อาชีพ, เงินเดือน, สัญญา, เครดิต, วันที่เพิ่ม
+ * - Modal: เพิ่มลูกค้า form
+ * - API: GET /customers, POST /customers
  */
 test.describe('Customers Page', () => {
   test.describe.configure({ mode: 'serial' });
 
   test.beforeEach(async ({ page }) => {
-    await loginWithMock(page);
-
-    // Mock customers API
-    await page.route('**/api/customers*', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify(mockCustomers),
-      });
-    });
-
+    await loginViaAPI(page);
     await page.goto('/customers', { waitUntil: 'domcontentloaded' });
   });
 
@@ -108,6 +62,7 @@ test.describe('Customers Page', () => {
 
     // รอ debounce + API response
     await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
     await ss.capture('search-results');
   });
 
@@ -117,7 +72,7 @@ test.describe('Customers Page', () => {
     await page.waitForLoadState('networkidle');
     await ss.capture('page-ready');
 
-    // ตรวจสอบ table columns
+    // ตรวจสอบ table
     const table = page.locator('table').first();
     if (await table.isVisible()) {
       // ตรวจ column headers
@@ -160,25 +115,21 @@ test.describe('Customers Page', () => {
     await ss.capture('modal-opened');
 
     // ตรวจสอบ form fields ใน modal
-    // ตรวจ input สำหรับ ชื่อ
     const firstNameInput = page.locator('input[placeholder*="ชื่อ"]').first();
     if (await firstNameInput.isVisible().catch(() => false)) {
       await ss.capture('form-first-name-visible');
     }
 
-    // ตรวจ input สำหรับ นามสกุล
     const lastNameInput = page.locator('input[placeholder*="นามสกุล"]').first();
     if (await lastNameInput.isVisible().catch(() => false)) {
       await ss.capture('form-last-name-visible');
     }
 
-    // ตรวจ input สำหรับ เลขบัตรประชาชน
     const nationalIdInput = page.locator('input[placeholder*="เลขบัตร"]').first();
     if (await nationalIdInput.isVisible().catch(() => false)) {
       await ss.capture('form-national-id-visible');
     }
 
-    // ตรวจ input สำหรับ เบอร์โทร
     const phoneInput = page.locator('input[placeholder*="เบอร์โทร"]').first();
     if (await phoneInput.isVisible().catch(() => false)) {
       await ss.capture('form-phone-visible');

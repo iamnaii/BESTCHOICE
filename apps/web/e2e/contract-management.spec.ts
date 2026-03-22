@@ -1083,6 +1083,12 @@ test.describe('Phase 6: Signature Submission & API Payload Validation', () => {
   test.beforeEach(async ({ page }) => {
     await loginWithMock(page);
     await mockAllPageApis(page);
+
+    // Grant geolocation permission so getCurrentPosition resolves quickly
+    // (without this, headless Chromium hangs indefinitely on geolocation prompt)
+    const context = page.context();
+    await context.grantPermissions(['geolocation'], { origin: 'http://localhost:5173' });
+    await context.setGeolocation({ latitude: 13.7563, longitude: 100.5018 });
   });
 
   test('6.1 Submit signature sends correct API payload (intercepted)', async ({ page }) => {
@@ -1092,13 +1098,7 @@ test.describe('Phase 6: Signature Submission & API Payload Validation', () => {
       return;
     }
 
-    // Navigate through wizard to reach signature step
-    const canvasReady = await navigateToSignatureStep(page, contractId);
-    expect(canvasReady, 'Canvas should be visible').toBeTruthy();
-
-    const canvas = page.locator('canvas').first();
-
-    // Intercept the sign API call to capture the payload
+    // Intercept the sign API call BEFORE navigating (to capture auto-sign COMPANY too)
     let capturedPayload: any = null;
     let capturedUrl = '';
     await page.route(`**/api/contracts/${contractId}/sign`, async (route) => {
@@ -1118,6 +1118,16 @@ test.describe('Phase 6: Signature Submission & API Payload Validation', () => {
         }),
       });
     });
+
+    // Navigate through wizard to reach signature step
+    const canvasReady = await navigateToSignatureStep(page, contractId);
+    expect(canvasReady, 'Canvas should be visible').toBeTruthy();
+
+    // Reset captured payload to only capture the CUSTOMER sign call
+    capturedPayload = null;
+    capturedUrl = '';
+
+    const canvas = page.locator('canvas').first();
 
     // Draw a signature on the canvas
     const box = await canvas.boundingBox();
@@ -1143,10 +1153,16 @@ test.describe('Phase 6: Signature Submission & API Payload Validation', () => {
       return;
     }
     await expect(confirmBtn).toBeEnabled();
-    await confirmBtn.click();
 
-    // Wait for the API call to be intercepted
-    await page.waitForTimeout(3000);
+    // Click and wait for the CUSTOMER sign API response (geo timeout can take ~3s)
+    await Promise.all([
+      page.waitForResponse(
+        resp => resp.url().includes(`/contracts/${contractId}/sign`),
+        { timeout: 10000 },
+      ),
+      confirmBtn.click(),
+    ]);
+    await page.waitForTimeout(500);
 
     // Validate the captured API payload
     expect(capturedPayload, 'API payload should have been captured').toBeTruthy();
@@ -1176,14 +1192,11 @@ test.describe('Phase 6: Signature Submission & API Payload Validation', () => {
       return;
     }
 
-    const canvasReady = await navigateToSignatureStep(page, contractId);
-    expect(canvasReady, 'Canvas should be visible').toBeTruthy();
-
-    const canvas = page.locator('canvas').first();
-
-    // Mock the sign API to return success
+    // Mock the sign API BEFORE navigating to capture auto-sign COMPANY
+    let signCallCount = 0;
     await page.route(`**/api/contracts/${contractId}/sign`, async (route) => {
       const payload = route.request().postDataJSON();
+      signCallCount++;
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -1198,7 +1211,6 @@ test.describe('Phase 6: Signature Submission & API Payload Validation', () => {
     });
 
     // Mock signatures list to return the new signature after signing
-    let signCallCount = 0;
     await page.route(`**/api/contracts/${contractId}/signatures`, async (route) => {
       if (route.request().method() === 'GET') {
         // After sign call, return the signed signature
@@ -1217,6 +1229,11 @@ test.describe('Phase 6: Signature Submission & API Payload Validation', () => {
         await route.continue();
       }
     });
+
+    const canvasReady = await navigateToSignatureStep(page, contractId);
+    expect(canvasReady, 'Canvas should be visible').toBeTruthy();
+
+    const canvas = page.locator('canvas').first();
 
     // Draw on canvas
     const box = await canvas.boundingBox();
@@ -1256,35 +1273,41 @@ test.describe('Phase 6: Signature Submission & API Payload Validation', () => {
       return;
     }
 
-    const canvasReady = await navigateToSignatureStep(page, contractId);
-    expect(canvasReady, 'Canvas should be visible').toBeTruthy();
-
-    const canvas = page.locator('canvas').first();
-
-    // Mock the sign API to return an error
+    // Mock the sign API BEFORE navigating — return error only for CUSTOMER sign
+    let returnError = false;
     await page.route(`**/api/contracts/${contractId}/sign`, async (route) => {
-      await route.fulfill({
-        status: 400,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          statusCode: 400,
-          message: 'ลายเซ็นไม่ถูกต้อง',
-        }),
-      });
+      const payload = route.request().postDataJSON();
+      if (returnError) {
+        await route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: JSON.stringify({ statusCode: 400, message: 'ลายเซ็นไม่ถูกต้อง' }),
+        });
+      } else {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ id: 'auto-sig', signerType: payload?.signerType, signedAt: new Date().toISOString() }),
+        });
+      }
     });
 
     // Mock signatures list
     await page.route(`**/api/contracts/${contractId}/signatures`, async (route) => {
       if (route.request().method() === 'GET') {
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify([]),
-        });
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) });
       } else {
         await route.continue();
       }
     });
+
+    const canvasReady = await navigateToSignatureStep(page, contractId);
+    expect(canvasReady, 'Canvas should be visible').toBeTruthy();
+
+    // Now set error mode for the manual CUSTOMER sign
+    returnError = true;
+
+    const canvas = page.locator('canvas').first();
 
     // Draw on canvas
     const box = await canvas.boundingBox();
@@ -1320,12 +1343,7 @@ test.describe('Phase 6: Signature Submission & API Payload Validation', () => {
     await page.context().grantPermissions(['geolocation']);
     await page.context().setGeolocation({ latitude: 14.8071, longitude: 100.6146 }); // Lopburi, Thailand
 
-    const canvasReady = await navigateToSignatureStep(page, contractId);
-    expect(canvasReady, 'Canvas should be visible').toBeTruthy();
-
-    const canvas = page.locator('canvas').first();
-
-    // Intercept the sign API call
+    // Intercept the sign API call BEFORE navigating
     let capturedPayload: any = null;
     await page.route(`**/api/contracts/${contractId}/sign`, async (route) => {
       capturedPayload = route.request().postDataJSON();
@@ -1340,7 +1358,7 @@ test.describe('Phase 6: Signature Submission & API Payload Validation', () => {
       });
     });
 
-    // Mock signatures
+    // Mock signatures BEFORE navigating
     await page.route(`**/api/contracts/${contractId}/signatures`, async (route) => {
       if (route.request().method() === 'GET') {
         await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
@@ -1348,6 +1366,14 @@ test.describe('Phase 6: Signature Submission & API Payload Validation', () => {
         await route.continue();
       }
     });
+
+    const canvasReady = await navigateToSignatureStep(page, contractId);
+    expect(canvasReady, 'Canvas should be visible').toBeTruthy();
+
+    // Reset to capture only the manual CUSTOMER sign
+    capturedPayload = null;
+
+    const canvas = page.locator('canvas').first();
 
     // Draw signature
     const box = await canvas.boundingBox();
@@ -1396,12 +1422,7 @@ test.describe('Phase 6: Signature Submission & API Payload Validation', () => {
       return;
     }
 
-    const canvasReady = await navigateToSignatureStep(page, contractId);
-    expect(canvasReady, 'Canvas should be visible').toBeTruthy();
-
-    const canvas = page.locator('canvas').first();
-
-    // Track how many sign calls are made
+    // Track how many sign calls are made — register BEFORE navigating
     const signCalls: any[] = [];
     await page.route(`**/api/contracts/${contractId}/sign`, async (route) => {
       const payload = route.request().postDataJSON();
@@ -1418,7 +1439,7 @@ test.describe('Phase 6: Signature Submission & API Payload Validation', () => {
       });
     });
 
-    // Mock signatures to reflect accumulated signatures
+    // Mock signatures to reflect accumulated signatures — register BEFORE navigating
     await page.route(`**/api/contracts/${contractId}/signatures`, async (route) => {
       if (route.request().method() === 'GET') {
         const sigs = signCalls.map((call, i) => ({
@@ -1436,6 +1457,11 @@ test.describe('Phase 6: Signature Submission & API Payload Validation', () => {
         await route.continue();
       }
     });
+
+    const canvasReady = await navigateToSignatureStep(page, contractId);
+    expect(canvasReady, 'Canvas should be visible').toBeTruthy();
+
+    const canvas = page.locator('canvas').first();
 
     // --- Sign as CUSTOMER ---
     const box = await canvas.boundingBox();
@@ -1460,8 +1486,16 @@ test.describe('Phase 6: Signature Submission & API Payload Validation', () => {
       test.skip(true, 'Confirm button not visible');
       return;
     }
-    await confirmBtn.click();
-    await page.waitForTimeout(2000);
+
+    // Click and wait for the CUSTOMER sign API response (geo timeout can take ~3s)
+    await Promise.all([
+      page.waitForResponse(
+        resp => resp.url().includes(`/contracts/${contractId}/sign`),
+        { timeout: 10000 },
+      ),
+      confirmBtn.click(),
+    ]);
+    await page.waitForTimeout(500);
 
     // Verify at least one sign API call was made
     expect(signCalls.length).toBeGreaterThanOrEqual(1);
@@ -1489,12 +1523,7 @@ test.describe('Phase 6: Signature Submission & API Payload Validation', () => {
       return;
     }
 
-    const canvasReady = await navigateToSignatureStep(page, contractId);
-    expect(canvasReady, 'Canvas should be visible').toBeTruthy();
-
-    const canvas = page.locator('canvas').first();
-
-    // Intercept API call
+    // Intercept API call BEFORE navigating
     let capturedImage = '';
     await page.route(`**/api/contracts/${contractId}/sign`, async (route) => {
       const payload = route.request().postDataJSON();
@@ -1517,6 +1546,14 @@ test.describe('Phase 6: Signature Submission & API Payload Validation', () => {
         await route.continue();
       }
     });
+
+    const canvasReady = await navigateToSignatureStep(page, contractId);
+    expect(canvasReady, 'Canvas should be visible').toBeTruthy();
+
+    // Reset to capture only the manual CUSTOMER sign
+    capturedImage = '';
+
+    const canvas = page.locator('canvas').first();
 
     // Get blank canvas data URL for comparison
     const blankDataUrl = await canvas.evaluate((c: HTMLCanvasElement) => {
@@ -1561,8 +1598,16 @@ test.describe('Phase 6: Signature Submission & API Payload Validation', () => {
       test.skip(true, 'Confirm button not visible');
       return;
     }
-    await confirmBtn.click();
-    await page.waitForTimeout(3000);
+
+    // Click and wait for the CUSTOMER sign API response (geo timeout can take ~3s)
+    await Promise.all([
+      page.waitForResponse(
+        resp => resp.url().includes(`/contracts/${contractId}/sign`),
+        { timeout: 10000 },
+      ),
+      confirmBtn.click(),
+    ]);
+    await page.waitForTimeout(500);
 
     // Verify the submitted image is NOT a blank canvas
     expect(capturedImage).toBeTruthy();

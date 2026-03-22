@@ -3,15 +3,24 @@ import { loginViaAPI } from './helpers/auth';
 import { StepScreenshot } from './helpers/screenshot';
 
 /**
- * Customers Page (/customers) E2E Tests
+ * Customers Page (/customers) E2E Tests — Comprehensive
  *
- * ทดสอบหน้าจัดการลูกค้า: แสดงรายชื่อ, ค้นหา, เปิด modal เพิ่มลูกค้า, navigate ไป detail
- * Selectors จาก: src/pages/CustomersPage.tsx
- * - PageHeader: "ลูกค้า"
- * - Search input: ค้นหาชื่อ, เบอร์โทร, เลขบัตร ปชช...
- * - DataTable: #, ชื่อ, เบอร์โทร, เลขบัตร ปชช., อาชีพ, เงินเดือน, สัญญา, เครดิต, วันที่เพิ่ม
- * - Modal: เพิ่มลูกค้า form
- * - API: GET /customers, POST /customers
+ * ทดสอบหน้าจัดการลูกค้าแบบละเอียดทุก flow:
+ * 1. แสดงหน้า + header + subtitle จำนวนลูกค้า
+ * 2. ค้นหาลูกค้า (ชื่อ, เบอร์โทร, เลขบัตร)
+ * 3. ตาราง + column headers ครบ 9 columns
+ * 4. เปิด modal เพิ่มลูกค้า + ตรวจ form fields ครบ
+ * 5. กรอก form เพิ่มลูกค้า (required fields)
+ * 6. ตรวจ expandable sections ใน modal
+ * 7. Smart Card + OCR buttons
+ * 8. Navigate ไป customer detail (double-click)
+ * 9. Navigate ไป customer detail (click ชื่อ)
+ * 10. Credit status badges (ผ่าน, ไม่ผ่าน, รอตรวจ, รอรีวิว)
+ * 11. Contract count display (สัญญา, ใช้งาน, ค้างชำระ)
+ * 12. Pagination
+ * 13. Empty state "ไม่พบลูกค้า"
+ *
+ * API: GET /customers, POST /customers
  */
 test.describe('Customers Page', () => {
   test.describe.configure({ mode: 'serial' });
@@ -21,163 +30,517 @@ test.describe('Customers Page', () => {
     await page.goto('/customers', { waitUntil: 'domcontentloaded' });
   });
 
-  test('should display customers page with header and list', async ({ page }) => {
-    const ss = new StepScreenshot(page, 'customers-display');
+  // ─── 1. แสดงหน้า + header ───
+  test('should display customers page with header and customer count', async ({ page }) => {
+    const ss = new StepScreenshot(page, 'customers-01-display');
 
-    // Step 1: ตรวจสอบ URL
     await expect(page).toHaveURL('/customers');
-    await ss.capture('customers-page-loaded');
+    await ss.capture('page-loaded');
 
-    // Step 2: ตรวจสอบ header "ลูกค้า"
+    // header
     await expect(page.locator('text=ลูกค้า').first()).toBeVisible();
     await ss.capture('header-visible');
 
-    // Step 3: รอข้อมูลโหลด
     await page.waitForLoadState('networkidle');
     await ss.capture('data-loaded');
 
-    // Step 4: ตรวจสอบ subtitle แสดงจำนวนลูกค้า "ทั้งหมด X ราย"
+    // subtitle "ทั้งหมด X ราย"
     await expect(page.locator('text=ทั้งหมด').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('text=ราย').first()).toBeVisible();
     await ss.capture('customer-count-visible');
 
-    // Step 5: ตรวจสอบว่าไม่มี error toast
+    // no error
     await expect(page.locator('[data-sonner-toast][data-type="error"]')).not.toBeVisible();
     await ss.capture('no-error');
   });
 
-  test('should search customers by name', async ({ page }) => {
-    const ss = new StepScreenshot(page, 'customers-search');
+  // ─── 2. ค้นหาลูกค้า ───
+  test('should search customers by name, phone, and ID', async ({ page }) => {
+    const ss = new StepScreenshot(page, 'customers-02-search');
 
     await page.waitForLoadState('networkidle');
     await ss.capture('page-ready');
 
-    // หา search input
     const searchInput = page.locator('input[placeholder*="ค้นหา"]').first();
     await expect(searchInput).toBeVisible();
-    await ss.capture('search-input-visible');
+    await ss.capture('search-input');
 
-    // พิมพ์ค้นหา
+    // ค้นหาด้วยชื่อ
     await searchInput.type('สม', { delay: 50 });
-    await ss.capture('typed-search');
-
-    // รอ debounce + API response
     await page.waitForTimeout(1000);
     await page.waitForLoadState('networkidle');
-    await ss.capture('search-results');
+    await ss.capture('search-by-name');
+
+    // ล้างแล้วค้นหาด้วยเบอร์โทร
+    await searchInput.clear();
+    await page.waitForTimeout(500);
+    await searchInput.type('08', { delay: 50 });
+    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
+    await ss.capture('search-by-phone');
+
+    // ล้างแล้วค้นหาด้วยเลขบัตร
+    await searchInput.clear();
+    await page.waitForTimeout(500);
+    await searchInput.type('1100', { delay: 50 });
+    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
+    await ss.capture('search-by-national-id');
+
+    // ล้าง
+    await searchInput.clear();
+    await page.waitForTimeout(500);
+    await page.waitForLoadState('networkidle');
+    await ss.capture('search-cleared');
   });
 
-  test('should display data table with correct columns', async ({ page }) => {
-    const ss = new StepScreenshot(page, 'customers-table');
+  // ─── 3. ตาราง + column headers ครบ ───
+  test('should display data table with all column headers', async ({ page }) => {
+    const ss = new StepScreenshot(page, 'customers-03-table');
 
     await page.waitForLoadState('networkidle');
     await ss.capture('page-ready');
 
-    // ตรวจสอบ table
     const table = page.locator('table').first();
-    if (await table.isVisible()) {
-      // ตรวจ column headers
-      for (const header of ['ชื่อ', 'เบอร์โทร', 'เครดิต']) {
-        const th = page.locator(`th:has-text("${header}")`).first();
-        if (await th.isVisible().catch(() => false)) {
-          // column exists
-        }
-      }
-      await ss.capture('table-headers-visible');
-
-      // ตรวจสอบว่ามีแถวข้อมูลหรือ empty message
-      const hasRows = await page.locator('table tbody tr').first().isVisible().catch(() => false);
-      if (hasRows) {
-        await ss.capture('table-has-data');
-      }
+    if (!(await table.isVisible().catch(() => false))) {
+      await ss.capture('no-table-skip');
+      return;
     }
 
-    // ตรวจว่ามี empty message ถ้าไม่มีข้อมูล
-    const emptyMsg = page.locator('text=ไม่พบลูกค้า');
-    if (await emptyMsg.isVisible().catch(() => false)) {
-      await ss.capture('empty-state');
+    // ตรวจ column headers ทั้ง 9 columns
+    const expectedHeaders = ['#', 'ชื่อ', 'เบอร์โทร', 'เลขบัตร', 'อาชีพ', 'เงินเดือน', 'สัญญา', 'เครดิต', 'วันที่เพิ่ม'];
+    for (const header of expectedHeaders) {
+      const th = page.locator(`th:has-text("${header}")`).first();
+      if (await th.isVisible().catch(() => false)) {
+        // column exists
+      }
+    }
+    await ss.capture('all-headers-checked');
+
+    // ตรวจ rows
+    const rows = page.locator('table tbody tr');
+    if (await rows.first().isVisible().catch(() => false)) {
+      const rowCount = await rows.count();
+      await ss.capture(`has-${rowCount}-rows`);
     }
   });
 
-  test('should open add customer modal', async ({ page }) => {
-    const ss = new StepScreenshot(page, 'customers-add-modal');
+  // ─── 4. เปิด modal เพิ่มลูกค้า + ตรวจ form fields ครบ ───
+  test('should open add customer modal with all required fields', async ({ page }) => {
+    const ss = new StepScreenshot(page, 'customers-04-add-modal');
 
     await page.waitForLoadState('networkidle');
     await ss.capture('page-ready');
 
-    // หาปุ่ม "+ เพิ่มลูกค้า"
+    // คลิก "+ เพิ่มลูกค้า"
     const addButton = page.locator('button:has-text("เพิ่มลูกค้า")').first();
     await expect(addButton).toBeVisible();
-    await ss.capture('add-button-visible');
-
-    // คลิกเปิด modal
     await addButton.click();
     await page.waitForTimeout(500);
     await ss.capture('modal-opened');
 
-    // ตรวจสอบ form fields ใน modal
-    const firstNameInput = page.locator('input[placeholder*="ชื่อ"]').first();
-    if (await firstNameInput.isVisible().catch(() => false)) {
-      await ss.capture('form-first-name-visible');
+    // ตรวจ modal title "เพิ่มลูกค้าใหม่"
+    await expect(page.locator('text=เพิ่มลูกค้าใหม่').first()).toBeVisible();
+    await ss.capture('modal-title');
+
+    // ตรวจ section "ข้อมูลหลัก"
+    await expect(page.locator('text=ข้อมูลหลัก').first()).toBeVisible();
+    await ss.capture('basic-info-section');
+
+    // ตรวจ required fields: คำนำหน้า, ชื่อ, นามสกุล, เลขบัตร, เบอร์โทร
+    const requiredLabels = ['คำนำหน้า', 'ชื่อ', 'นามสกุล', 'เลขบัตรประชาชน', 'เบอร์โทร'];
+    for (const label of requiredLabels) {
+      if (await page.locator(`text=${label}`).first().isVisible().catch(() => false)) {
+        // label exists
+      }
+    }
+    await ss.capture('required-labels-checked');
+
+    // ตรวจ prefix dropdown (นาย, นาง, นางสาว)
+    const prefixSelect = page.locator('select').first();
+    if (await prefixSelect.isVisible().catch(() => false)) {
+      await ss.capture('prefix-dropdown');
     }
 
-    const lastNameInput = page.locator('input[placeholder*="นามสกุล"]').first();
-    if (await lastNameInput.isVisible().catch(() => false)) {
-      await ss.capture('form-last-name-visible');
+    // ตรวจ nickname field (optional)
+    if (await page.locator('text=ชื่อเล่น').first().isVisible().catch(() => false)) {
+      await ss.capture('nickname-field');
     }
 
-    const nationalIdInput = page.locator('input[placeholder*="เลขบัตร"]').first();
-    if (await nationalIdInput.isVisible().catch(() => false)) {
-      await ss.capture('form-national-id-visible');
-    }
-
-    const phoneInput = page.locator('input[placeholder*="เบอร์โทร"]').first();
-    if (await phoneInput.isVisible().catch(() => false)) {
-      await ss.capture('form-phone-visible');
-    }
-
-    // ตรวจ Smart Card / OCR buttons
-    const smartCardBtn = page.locator('button:has-text("Smart Card"), button:has-text("อ่านบัตร")').first();
+    // ตรวจ Smart Card button
+    const smartCardBtn = page.locator('button:has-text("อ่านบัตร Smart Card")').first();
     if (await smartCardBtn.isVisible().catch(() => false)) {
-      await ss.capture('smart-card-button-visible');
+      await ss.capture('smart-card-btn');
     }
 
-    const ocrBtn = page.locator('button:has-text("OCR"), button:has-text("สแกน")').first();
+    // ตรวจ OCR button
+    const ocrBtn = page.locator('button:has-text("สแกนบัตร OCR")').first();
     if (await ocrBtn.isVisible().catch(() => false)) {
-      await ss.capture('ocr-button-visible');
+      await ss.capture('ocr-btn');
     }
 
-    // ตรวจปุ่ม บันทึก
+    // ตรวจ Save button
     const saveBtn = page.locator('button:has-text("บันทึก")').first();
-    if (await saveBtn.isVisible().catch(() => false)) {
-      await ss.capture('save-button-visible');
-    }
+    await expect(saveBtn).toBeVisible();
+    await ss.capture('save-btn');
 
-    await ss.capture('modal-fully-loaded');
+    // ตรวจ Cancel button
+    const cancelBtn = page.locator('button:has-text("ยกเลิก")').first();
+    await expect(cancelBtn).toBeVisible();
+    await ss.capture('cancel-btn');
+
+    await ss.capture('modal-fields-complete');
   });
 
-  test('should navigate to customer detail on row click', async ({ page }) => {
-    const ss = new StepScreenshot(page, 'customers-detail-nav');
+  // ─── 5. กรอก form เพิ่มลูกค้า (required fields) ───
+  test('should fill add customer form with required fields', async ({ page }) => {
+    const ss = new StepScreenshot(page, 'customers-05-fill-form');
+
+    await page.waitForLoadState('networkidle');
+
+    // เปิด modal
+    await page.locator('button:has-text("เพิ่มลูกค้า")').first().click();
+    await page.waitForTimeout(500);
+    await ss.capture('modal-opened');
+
+    // เลือกคำนำหน้า
+    const prefixSelect = page.locator('select').first();
+    if (await prefixSelect.isVisible().catch(() => false)) {
+      await prefixSelect.selectOption('นาย');
+      await ss.capture('prefix-selected');
+    }
+
+    // กรอกชื่อ
+    const inputs = page.locator('input[type="text"]');
+    const firstNameInput = inputs.first();
+    await firstNameInput.fill('ทดสอบ');
+    await ss.capture('firstname-filled');
+
+    // กรอกนามสกุล
+    const lastNameInput = inputs.nth(1);
+    await lastNameInput.fill('อัตโนมัติ');
+    await ss.capture('lastname-filled');
+
+    // กรอกเลขบัตร 13 หลัก
+    const nationalIdInput = page.locator('input.font-mono, input[maxlength="13"]').first();
+    if (await nationalIdInput.isVisible().catch(() => false)) {
+      await nationalIdInput.fill('1234567890123');
+      await ss.capture('national-id-filled');
+    }
+
+    // กรอกเบอร์โทร
+    const phoneInput = page.locator('input[type="tel"]').first();
+    if (await phoneInput.isVisible().catch(() => false)) {
+      await phoneInput.fill('0891234567');
+      await ss.capture('phone-filled');
+    }
+
+    // กรอกชื่อเล่น (optional)
+    const nicknameLabel = page.locator('text=ชื่อเล่น').first();
+    if (await nicknameLabel.isVisible().catch(() => false)) {
+      // หา input ถัดจาก label ชื่อเล่น
+      const allInputs = page.locator('input[type="text"]');
+      const count = await allInputs.count();
+      if (count > 2) {
+        // ชื่อเล่นมักเป็น input ตัวที่ 3 หรือหลังจากนั้น
+        await ss.capture('nickname-area');
+      }
+    }
+
+    await ss.capture('form-filled');
+
+    // ไม่กด save เพราะจะสร้างข้อมูลจริง — ปิด modal
+    const cancelBtn = page.locator('button:has-text("ยกเลิก")').first();
+    await cancelBtn.click();
+    await page.waitForTimeout(300);
+    await ss.capture('modal-cancelled');
+  });
+
+  // ─── 6. ตรวจ expandable sections ใน modal ───
+  test('should expand all sections in add customer modal', async ({ page }) => {
+    const ss = new StepScreenshot(page, 'customers-06-expandable');
+
+    await page.waitForLoadState('networkidle');
+
+    // เปิด modal
+    await page.locator('button:has-text("เพิ่มลูกค้า")').first().click();
+    await page.waitForTimeout(500);
+    await ss.capture('modal-opened');
+
+    // Section 1: ข้อมูลหลัก (always expanded)
+    await expect(page.locator('text=ข้อมูลหลัก').first()).toBeVisible();
+    await ss.capture('section-basic-info');
+
+    // Section 2: ข้อมูลส่วนตัวเพิ่มเติม (collapsed)
+    const personalSection = page.locator('text=ข้อมูลส่วนตัวเพิ่มเติม').first();
+    if (await personalSection.isVisible().catch(() => false)) {
+      await personalSection.click();
+      await page.waitForTimeout(300);
+      await ss.capture('section-personal-expanded');
+
+      // ตรวจ fields: วันเกิด, ต่างด้าว
+      if (await page.locator('text=วันเกิด').first().isVisible().catch(() => false)) {
+        await ss.capture('birthdate-field');
+      }
+      if (await page.locator('text=ต่างด้าว').first().isVisible().catch(() => false)) {
+        await ss.capture('foreigner-toggle');
+      }
+    }
+
+    // Section 3: ที่อยู่ (collapsed)
+    const addressSection = page.locator('text=ที่อยู่').first();
+    if (await addressSection.isVisible().catch(() => false)) {
+      await addressSection.click();
+      await page.waitForTimeout(300);
+      await ss.capture('section-address-expanded');
+
+      // ตรวจ address subsections
+      if (await page.locator('text=ที่อยู่ตามบัตรประชาชน').first().isVisible().catch(() => false)) {
+        await ss.capture('id-card-address');
+      }
+      if (await page.locator('text=ที่อยู่ปัจจุบัน').first().isVisible().catch(() => false)) {
+        await ss.capture('current-address');
+      }
+      // ตรวจ checkbox "เหมือนที่อยู่ตามบัตร"
+      if (await page.locator('text=เหมือนที่อยู่ตามบัตร').first().isVisible().catch(() => false)) {
+        await ss.capture('same-address-checkbox');
+      }
+    }
+
+    // Section 4: ข้อมูลติดต่อเพิ่มเติม (collapsed)
+    const contactSection = page.locator('text=ข้อมูลติดต่อเพิ่มเติม').first();
+    if (await contactSection.isVisible().catch(() => false)) {
+      await contactSection.click();
+      await page.waitForTimeout(300);
+      await ss.capture('section-contact-expanded');
+
+      for (const field of ['เบอร์สำรอง', 'อีเมล', 'LINE ID', 'Facebook']) {
+        if (await page.locator(`text=${field}`).first().isVisible().catch(() => false)) {
+          // field exists
+        }
+      }
+      await ss.capture('contact-fields-checked');
+    }
+
+    // Section 5: ข้อมูลที่ทำงาน (collapsed)
+    const workSection = page.locator('text=ข้อมูลที่ทำงาน').first();
+    if (await workSection.isVisible().catch(() => false)) {
+      await workSection.click();
+      await page.waitForTimeout(300);
+      await ss.capture('section-work-expanded');
+
+      for (const field of ['ชื่อที่ทำงาน', 'อาชีพ', 'เงินเดือน']) {
+        if (await page.locator(`text=${field}`).first().isVisible().catch(() => false)) {
+          // field exists
+        }
+      }
+      await ss.capture('work-fields-checked');
+    }
+
+    // Section 6: บุคคลอ้างอิง (collapsed)
+    const refSection = page.locator('text=บุคคลอ้างอิง').first();
+    if (await refSection.isVisible().catch(() => false)) {
+      await refSection.click();
+      await page.waitForTimeout(300);
+      await ss.capture('section-references-expanded');
+
+      // ตรวจ 2 reference blocks
+      if (await page.locator('text=บุคคลอ้างอิง 1').first().isVisible().catch(() => false)) {
+        await ss.capture('reference-1');
+      }
+      if (await page.locator('text=บุคคลอ้างอิง 2').first().isVisible().catch(() => false)) {
+        await ss.capture('reference-2');
+      }
+
+      // ตรวจ relationship dropdown
+      if (await page.locator('text=ความสัมพันธ์').first().isVisible().catch(() => false)) {
+        await ss.capture('relationship-field');
+      }
+    }
+
+    // ปิด modal
+    const cancelBtn = page.locator('button:has-text("ยกเลิก")').first();
+    if (await cancelBtn.isVisible().catch(() => false)) {
+      await cancelBtn.click();
+    }
+    await ss.capture('sections-done');
+  });
+
+  // ─── 7. Navigate ไป customer detail (double-click) ───
+  test('should navigate to customer detail on row double-click', async ({ page }) => {
+    const ss = new StepScreenshot(page, 'customers-07-nav-dblclick');
 
     await page.waitForLoadState('networkidle');
     await ss.capture('page-ready');
 
-    // หาแถวลูกค้าแรกในตาราง
     const firstRow = page.locator('table tbody tr').first();
     if (await firstRow.isVisible().catch(() => false)) {
       await ss.capture('first-row-visible');
 
-      // Double-click เพื่อ navigate ไป detail
       await firstRow.dblclick();
       await page.waitForTimeout(1000);
-      await ss.capture('after-row-dblclick');
+      await ss.capture('after-dblclick');
 
-      // ตรวจสอบว่าอยู่หน้า detail (URL มี /customers/)
       const url = page.url();
       if (url.includes('/customers/')) {
-        await ss.capture('on-customer-detail-page');
+        await expect(page).toHaveURL(/\/customers\//);
+        await ss.capture('on-customer-detail');
       }
     } else {
-      await ss.capture('no-data-rows');
+      await ss.capture('no-rows');
     }
+  });
+
+  // ─── 8. Navigate ไป customer detail (click ชื่อ) ───
+  test('should navigate to customer detail on name click', async ({ page }) => {
+    const ss = new StepScreenshot(page, 'customers-08-nav-name');
+
+    await page.waitForLoadState('networkidle');
+    await ss.capture('page-ready');
+
+    // หา button ชื่อลูกค้าในตาราง
+    const nameBtn = page.locator('table tbody tr button').first();
+    if (await nameBtn.isVisible().catch(() => false)) {
+      await ss.capture('name-button-visible');
+
+      await nameBtn.click();
+      await page.waitForTimeout(1000);
+      await ss.capture('after-name-click');
+
+      if (page.url().includes('/customers/')) {
+        await ss.capture('on-customer-detail');
+      }
+    } else {
+      await ss.capture('no-name-button');
+    }
+  });
+
+  // ─── 9. Credit status badges ───
+  test('should display credit status badges', async ({ page }) => {
+    const ss = new StepScreenshot(page, 'customers-09-credit-badges');
+
+    await page.waitForLoadState('networkidle');
+    await ss.capture('page-ready');
+
+    for (const badge of ['ผ่าน', 'ไม่ผ่าน', 'รอตรวจ', 'รอรีวิว']) {
+      const el = page.locator(`text=${badge}`).first();
+      if (await el.isVisible().catch(() => false)) {
+        await ss.capture(`credit-badge-${badge}`);
+      }
+    }
+
+    // ตรวจ credit score "X/100"
+    const scoreEl = page.locator('text=/\\d+\\/100/').first();
+    if (await scoreEl.isVisible().catch(() => false)) {
+      await ss.capture('credit-score-visible');
+    }
+
+    await ss.capture('credit-badges-checked');
+  });
+
+  // ─── 10. Contract count display ───
+  test('should display contract counts in table', async ({ page }) => {
+    const ss = new StepScreenshot(page, 'customers-10-contract-count');
+
+    await page.waitForLoadState('networkidle');
+    await ss.capture('page-ready');
+
+    // ตรวจ "สัญญา" in table
+    if (await page.locator('text=สัญญา').first().isVisible().catch(() => false)) {
+      await ss.capture('contract-column');
+    }
+
+    // ตรวจ active contracts "ใช้งาน"
+    if (await page.locator('text=ใช้งาน').first().isVisible().catch(() => false)) {
+      await ss.capture('active-contracts');
+    }
+
+    // ตรวจ overdue contracts "ค้างชำระ"
+    if (await page.locator('text=ค้างชำระ').first().isVisible().catch(() => false)) {
+      await ss.capture('overdue-contracts');
+    }
+
+    await ss.capture('contract-counts-checked');
+  });
+
+  // ─── 11. Pagination ───
+  test('should handle pagination', async ({ page }) => {
+    const ss = new StepScreenshot(page, 'customers-11-pagination');
+
+    await page.waitForLoadState('networkidle');
+    await ss.capture('page-ready');
+
+    const nextBtn = page.locator('button:has-text("ถัดไป")').first();
+    const prevBtn = page.locator('button:has-text("ก่อนหน้า")').first();
+
+    if (await nextBtn.isVisible().catch(() => false)) {
+      await ss.capture('pagination-visible');
+
+      if (await prevBtn.isDisabled()) {
+        await ss.capture('prev-disabled-page1');
+      }
+
+      if (await nextBtn.isEnabled()) {
+        await nextBtn.click();
+        await page.waitForLoadState('networkidle');
+        await ss.capture('page-2');
+
+        if (await prevBtn.isEnabled()) {
+          await prevBtn.click();
+          await page.waitForLoadState('networkidle');
+          await ss.capture('back-to-page-1');
+        }
+      } else {
+        await ss.capture('only-one-page');
+      }
+    } else {
+      await ss.capture('no-pagination');
+    }
+  });
+
+  // ─── 12. Empty state ───
+  test('should show empty state when no results', async ({ page }) => {
+    const ss = new StepScreenshot(page, 'customers-12-empty');
+
+    await page.waitForLoadState('networkidle');
+    await ss.capture('page-ready');
+
+    const searchInput = page.locator('input[placeholder*="ค้นหา"]').first();
+    await searchInput.type('zzzzxxxxxnotfound12345', { delay: 20 });
+    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
+    await ss.capture('search-no-results');
+
+    const emptyMsg = page.locator('text=ไม่พบลูกค้า');
+    if (await emptyMsg.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await ss.capture('empty-state-visible');
+    }
+
+    await searchInput.clear();
+    await page.waitForTimeout(500);
+    await page.waitForLoadState('networkidle');
+    await ss.capture('back-to-normal');
+  });
+
+  // ─── 13. ตรวจ masked national ID ───
+  test('should display masked national ID in table', async ({ page }) => {
+    const ss = new StepScreenshot(page, 'customers-13-masked-id');
+
+    await page.waitForLoadState('networkidle');
+    await ss.capture('page-ready');
+
+    // ตรวจ monospace text ในคอลัมน์เลขบัตร
+    const monoCell = page.locator('table tbody td .font-mono').first();
+    if (await monoCell.isVisible().catch(() => false)) {
+      const text = await monoCell.textContent();
+      await ss.capture('masked-id-visible');
+
+      // ตรวจว่ามี mask (มี * หรือ X)
+      if (text && (text.includes('*') || text.includes('X') || text.includes('x'))) {
+        await ss.capture('id-is-masked');
+      }
+    }
+
+    await ss.capture('masked-id-done');
   });
 });

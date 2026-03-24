@@ -102,7 +102,7 @@ export default function LiffContract() {
             <div className="text-destructive text-5xl mb-4">!</div>
             <h2 className="text-lg font-bold mb-2">ไม่สามารถดำเนินการได้</h2>
             <p className="text-muted-foreground text-sm">{error}</p>
-            {error.includes('ลงทะเบียน') && (
+            {error?.includes('ลงทะเบียน') && (
               <Button variant="primary" size="lg" className="mt-6" asChild>
                 <a href={`/liff/register${lineId ? `?lineId=${encodeURIComponent(lineId)}` : ''}`}>ลงทะเบียนเลย</a>
               </Button>

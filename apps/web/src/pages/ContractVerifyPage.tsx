@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 
 interface VerifyResponse {
@@ -24,19 +24,17 @@ export default function ContractVerifyPage() {
   const [searchParams] = useSearchParams();
   const hash = searchParams.get('hash') || '';
 
-  const [data, setData] = useState<VerifyResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, isLoading: loading, error: queryError } = useQuery({
+    queryKey: ['contract-verify', id, hash],
+    queryFn: async () => {
+      const res = await api.get(`/contracts/${id}/verify`, { params: { hash } });
+      return res.data as VerifyResponse;
+    },
+    enabled: !!id,
+    retry: false,
+  });
 
-  useEffect(() => {
-    if (!id) return;
-
-    api
-      .get(`/contracts/${id}/verify`, { params: { hash } })
-      .then((res) => setData(res.data))
-      .catch(() => setError('ไม่สามารถตรวจสอบสัญญาได้ กรุณาลองใหม่'))
-      .finally(() => setLoading(false));
-  }, [id, hash]);
+  const error = queryError ? 'ไม่สามารถตรวจสอบสัญญาได้ กรุณาลองใหม่' : null;
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
@@ -71,7 +69,7 @@ export default function ContractVerifyPage() {
             </div>
           )}
 
-          {data && !loading && !error && (
+          {data && !loading && !queryError && (
             <>
               {data.verified ? (
                 <div className="flex flex-col items-center text-center mb-5">

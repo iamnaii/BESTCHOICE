@@ -34,8 +34,8 @@ test.describe('Password Reset Flow', () => {
     await page.fill('#email', 'admin@bestchoice.com');
     await page.click('button[type="submit"]');
 
-    // Should show success message (or toast)
-    await page.waitForTimeout(2000);
+    // Wait for form submission response
+    await page.waitForLoadState('networkidle');
     const bodyText = await page.textContent('body');
     // Should show either success message or the email confirmation
     expect(bodyText).toBeTruthy();

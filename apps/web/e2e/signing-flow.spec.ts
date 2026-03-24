@@ -100,9 +100,8 @@ test.describe('Signing Flow & Workflow', () => {
     });
 
     test('E2E-WF-2: ปุ่ม workflow ที่เหมาะสมแสดงตาม status', async ({ page }) => {
-      await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
+      await page.goto('/contracts', { waitUntil: 'networkidle' });
       // This is a general check — page should load without errors
-      await page.waitForTimeout(2000);
       const errorDialog = page.locator('[role="alert"], .error-message, .toast-error');
       const hasError = await errorDialog.isVisible().catch(() => false);
       expect(hasError).toBeFalsy();
@@ -265,9 +264,8 @@ test.describe('Signing Flow & Workflow', () => {
     });
 
     test('E2E-ERR-2: เข้าหน้า sign สัญญาไม่มี → แสดง error', async ({ page }) => {
-      await page.goto('/contracts/nonexistent-id/sign', { waitUntil: 'domcontentloaded' });
+      await page.goto('/contracts/nonexistent-id/sign', { waitUntil: 'networkidle' });
       // Should show error or redirect, not crash
-      await page.waitForTimeout(3000);
       // Page should not be blank
       const body = await page.locator('body').textContent();
       expect(body?.length).toBeGreaterThan(0);

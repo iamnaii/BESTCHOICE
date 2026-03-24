@@ -6,6 +6,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
 interface Repossession {
   id: string;
@@ -55,6 +56,7 @@ export default function RepossessionsPage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
   const [selectedRepo, setSelectedRepo] = useState<Repossession | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
   const [createForm, setCreateForm] = useState({
     contractId: '',
     repossessedDate: new Date().toISOString().split('T')[0],
@@ -232,7 +234,7 @@ export default function RepossessionsPage() {
         <div className="flex items-center gap-2">
           {(r.status === 'REPOSSESSED' || r.status === 'UNDER_REPAIR') && (
             <button
-              onClick={() => { if (window.confirm('เปลี่ยนสถานะเป็น พร้อมขาย?')) readyForSaleMutation.mutate(r.id); }}
+              onClick={() => setConfirmDialog({ open: true, message: 'เปลี่ยนสถานะเป็น พร้อมขาย?', action: () => readyForSaleMutation.mutate(r.id) })}
               disabled={readyForSaleMutation.isPending}
               className="text-green-600 hover:text-green-700 text-sm font-medium"
             >
@@ -535,6 +537,13 @@ export default function RepossessionsPage() {
           </form>
         )}
       </Modal>
+
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onOpenChange={(open) => setConfirmDialog((prev) => ({ ...prev, open }))}
+        description={confirmDialog.message}
+        onConfirm={confirmDialog.action}
+      />
     </div>
   );
 }

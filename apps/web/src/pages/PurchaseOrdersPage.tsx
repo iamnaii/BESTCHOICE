@@ -6,6 +6,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { brands, getModels, getModelInfo } from '@/data/productCatalog';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
 interface POItem {
   id: string;
@@ -171,6 +172,7 @@ export default function PurchaseOrdersPage() {
   const [showQcPanel, setShowQcPanel] = useState(false);
   const [qcNotes, setQcNotes] = useState<Record<string, string>>({});
   const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
   const [poDetail, setPODetail] = useState<PODetail | null>(null);
@@ -688,7 +690,7 @@ export default function PurchaseOrdersPage() {
             <>
               <button
                 onClick={() => {
-                  if (confirm(`อนุมัติ PO ${po.poNumber}?`)) approveMutation.mutate(po.id);
+                  setConfirmDialog({ open: true, message: `อนุมัติ PO ${po.poNumber}?`, action: () => approveMutation.mutate(po.id) });
                 }}
                 disabled={approveMutation.isPending}
                 className="text-green-600 hover:text-green-700 text-sm font-medium disabled:opacity-50"
@@ -707,7 +709,7 @@ export default function PurchaseOrdersPage() {
               </button>
               <button
                 onClick={() => {
-                  if (confirm('ต้องการยกเลิก PO นี้?')) cancelMutation.mutate(po.id);
+                  setConfirmDialog({ open: true, message: 'ต้องการยกเลิก PO นี้?', action: () => cancelMutation.mutate(po.id) });
                 }}
                 className="text-red-600 hover:text-red-700 text-sm font-medium"
               >
@@ -2232,6 +2234,13 @@ export default function PurchaseOrdersPage() {
           </form>
         )}
       </Modal>
+
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onOpenChange={(open) => setConfirmDialog((prev) => ({ ...prev, open }))}
+        description={confirmDialog.message}
+        onConfirm={confirmDialog.action}
+      />
     </div>
   );
 }

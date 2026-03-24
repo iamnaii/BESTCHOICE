@@ -7,6 +7,7 @@ import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
 import AddressForm, { AddressData, emptyAddress, composeAddress, deserializeAddress } from '@/components/ui/AddressForm';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
 interface Branch {
   id: string;
@@ -25,6 +26,7 @@ export default function BranchesPage() {
   const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
   const [form, setForm] = useState({ name: '', phone: '' });
   const [address, setAddress] = useState<AddressData>(emptyAddress);
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
 
   const { data: branches = [], isLoading } = useQuery<Branch[]>({
     queryKey: ['branches'],
@@ -141,11 +143,7 @@ export default function BranchesPage() {
             </button>
             {!b.isMainWarehouse && (
               <button
-                onClick={() => {
-                  if (confirm(`ตั้ง "${b.name}" เป็นคลังกลาง?`)) {
-                    setMainWarehouseMutation.mutate(b.id);
-                  }
-                }}
+                onClick={() => setConfirmDialog({ open: true, message: `ตั้ง "${b.name}" เป็นคลังกลาง?`, action: () => setMainWarehouseMutation.mutate(b.id) })}
                 className="text-primary hover:text-primary/80 text-sm font-medium"
               >
                 ตั้งเป็นคลังกลาง
@@ -219,6 +217,13 @@ export default function BranchesPage() {
           </div>
         </form>
       </Modal>
+
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onOpenChange={(open) => setConfirmDialog((prev) => ({ ...prev, open }))}
+        description={confirmDialog.message}
+        onConfirm={confirmDialog.action}
+      />
     </div>
   );
 }

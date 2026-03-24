@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useLiffInit } from '@/hooks/useLiffInit';
 import { API_URL } from '@/lib/env';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { CreditCard, ChevronDown } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -53,34 +55,38 @@ const paymentStatusIcon: Record<string, string> = {
 
 export default function LiffContract() {
   const { lineId, loading, error } = useLiffInit();
-  const [data, setData] = useState<ContractData | null>(null);
-  const [dataLoading, setDataLoading] = useState(false);
-  const [dataError, setDataError] = useState<string | null>(null);
   const [selectedContract, setSelectedContract] = useState(0);
   const [showAllPayments, setShowAllPayments] = useState(false);
-  const [creatingPayLink, setCreatingPayLink] = useState(false);
 
-  useEffect(() => {
-    if (lineId) fetchContracts(lineId);
-  }, [lineId]);
+  const { data, isLoading: dataLoading, error: dataError } = useQuery<ContractData>({
+    queryKey: ['liff-contracts', lineId],
+    queryFn: async () => {
+      const res = await fetch(`${API_URL}/line-oa/liff/contracts?lineId=${encodeURIComponent(lineId!)}`);
+      if (res.status === 404) throw new Error('ยังไม่ได้ลงทะเบียน กรุณาลงทะเบียนก่อน');
+      if (!res.ok) throw new Error('ไม่สามารถโหลดข้อมูลได้ กรุณาลองใหม่');
+      return res.json();
+    },
+    enabled: !!lineId,
+  });
 
-  async function fetchContracts(lineId: string) {
-    setDataLoading(true);
-    try {
-      const res = await fetch(`${API_URL}/line-oa/liff/contracts?lineId=${encodeURIComponent(lineId)}`);
-      if (res.status === 404) {
-        setDataError('ยังไม่ได้ลงทะเบียน กรุณาลงทะเบียนก่อน');
-        return;
-      }
-      if (!res.ok) throw new Error('API error');
+  const payLinkMutation = useMutation({
+    mutationFn: async (contractId: string) => {
+      const res = await fetch(`${API_URL}/line-oa/liff/create-payment-link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lineId, contractId }),
+      });
       const result = await res.json();
-      setData(result);
-    } catch {
-      setDataError('ไม่สามารถโหลดข้อมูลได้ กรุณาลองใหม่');
-    } finally {
-      setDataLoading(false);
-    }
-  }
+      if (!result.url) throw new Error(result.error || 'ไม่สามารถสร้างลิงก์ชำระเงินได้');
+      return result;
+    },
+    onSuccess: (result) => {
+      window.location.href = result.url;
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
 
   // --- Loading ---
   if (loading || dataLoading) {
@@ -94,15 +100,16 @@ export default function LiffContract() {
   }
 
   // --- Error ---
-  if (error || dataError) {
+  const errorMsg = error || (dataError as Error)?.message;
+  if (errorMsg) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <Card className="max-w-md w-full">
           <CardContent className="text-center py-10">
             <div className="text-destructive text-5xl mb-4">!</div>
             <h2 className="text-lg font-bold mb-2">ไม่สามารถดำเนินการได้</h2>
-            <p className="text-muted-foreground text-sm">{error}</p>
-            {error?.includes('ลงทะเบียน') && (
+            <p className="text-muted-foreground text-sm">{errorMsg}</p>
+            {errorMsg?.includes('ลงทะเบียน') && (
               <Button variant="primary" size="lg" className="mt-6" asChild>
                 <a href={`/liff/register${lineId ? `?lineId=${encodeURIComponent(lineId)}` : ''}`}>ลงทะเบียนเลย</a>
               </Button>
@@ -137,26 +144,9 @@ export default function LiffContract() {
   // Find next unpaid installment for "ชำระงวดถัดไป" button
   const nextUnpaid = payments.find((p) => p.status !== 'PAID');
 
-  async function handlePayClick() {
-    if (creatingPayLink) return;
-    setCreatingPayLink(true);
-    try {
-      const res = await fetch(`${API_URL}/line-oa/liff/create-payment-link`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lineId, contractId: contract.id }),
-      });
-      const result = await res.json();
-      if (result.url) {
-        window.location.href = result.url;
-      } else {
-        alert(result.error || 'ไม่สามารถสร้างลิงก์ชำระเงินได้');
-      }
-    } catch {
-      alert('เกิดข้อผิดพลาด กรุณาลองใหม่');
-    } finally {
-      setCreatingPayLink(false);
-    }
+  function handlePayClick() {
+    if (payLinkMutation.isPending) return;
+    payLinkMutation.mutate(contract.id);
   }
 
   return (
@@ -239,7 +229,7 @@ export default function LiffContract() {
                 });
                 if (!res.ok) {
                   // Document endpoint requires staff auth — inform user to use customer portal link
-                  alert('กรุณาขอลิงก์ดูเอกสารจากพนักงานร้าน');
+                  toast.error('กรุณาขอลิงก์ดูเอกสารจากพนักงานร้าน');
                   return;
                 }
                 const docs = await res.json();
@@ -250,11 +240,11 @@ export default function LiffContract() {
                     const { url } = await urlRes.json();
                     window.open(url, '_blank');
                   } else {
-                    alert('ไม่สามารถดาวน์โหลดเอกสารได้ กรุณาติดต่อพนักงาน');
+                    toast.error('ไม่สามารถดาวน์โหลดเอกสารได้ กรุณาติดต่อพนักงาน');
                   }
                 }
               } catch {
-                alert('เกิดข้อผิดพลาด กรุณาลองใหม่');
+                toast.error('เกิดข้อผิดพลาด กรุณาลองใหม่');
               }
             }}
           >
@@ -283,10 +273,10 @@ export default function LiffContract() {
               size="md"
               className="gap-1.5"
               onClick={handlePayClick}
-              disabled={creatingPayLink}
+              disabled={payLinkMutation.isPending}
             >
               <CreditCard className="size-4" />
-              {creatingPayLink ? 'กำลังสร้าง...' : 'ชำระเงิน'}
+              {payLinkMutation.isPending ? 'กำลังสร้าง...' : 'ชำระเงิน'}
             </Button>
           </CardContent>
         </Card>

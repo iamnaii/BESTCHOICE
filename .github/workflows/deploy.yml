@@ -87,7 +87,7 @@ jobs:
           DATABASE_URL: postgresql://test:test@localhost:5432/test_db?schema=public
 
       - name: Start API server
-        run: node apps/api/dist/main.js &
+        run: node apps/api/dist/src/main.js &
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/test_db?schema=public
           JWT_SECRET: test-secret

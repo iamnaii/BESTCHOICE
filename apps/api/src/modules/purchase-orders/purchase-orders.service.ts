@@ -772,7 +772,7 @@ export class PurchaseOrdersService {
 
     return this.prisma.$transaction(async (tx) => {
       const products = await tx.product.findMany({
-        where: { id: { in: productIds } },
+        where: { id: { in: productIds }, deletedAt: null },
       });
 
       // Validate all products are QC_PENDING
@@ -820,7 +820,7 @@ export class PurchaseOrdersService {
    * Get products pending QC (QC_PENDING status)
    */
   async getQCPending(filters: { branchId?: string; page?: number; limit?: number }) {
-    const where: Record<string, unknown> = { status: 'QC_PENDING' };
+    const where: Record<string, unknown> = { status: 'QC_PENDING', deletedAt: null };
     if (filters.branchId) where.branchId = filters.branchId;
 
     const page = Math.max(1, filters.page || 1);

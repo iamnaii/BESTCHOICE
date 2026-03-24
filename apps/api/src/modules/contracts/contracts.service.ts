@@ -32,7 +32,7 @@ export class ContractsService {
     limit?: number;
     salespersonId?: string;
   }) {
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { deletedAt: null };
     if (filters.status) where.status = filters.status;
     if (filters.workflowStatus) where.workflowStatus = filters.workflowStatus;
     if (filters.branchId) where.branchId = filters.branchId;

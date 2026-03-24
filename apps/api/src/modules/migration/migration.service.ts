@@ -245,10 +245,10 @@ export class MigrationService {
    */
   async getMigrationStatus() {
     const [customers, contracts, payments, products, branches, users] = await Promise.all([
-      this.prisma.customer.count(),
-      this.prisma.contract.count(),
+      this.prisma.customer.count({ where: { deletedAt: null } }),
+      this.prisma.contract.count({ where: { deletedAt: null } }),
       this.prisma.payment.count(),
-      this.prisma.product.count(),
+      this.prisma.product.count({ where: { deletedAt: null } }),
       this.prisma.branch.count({ where: { isActive: true } }),
       this.prisma.user.count({ where: { isActive: true } }),
     ]);

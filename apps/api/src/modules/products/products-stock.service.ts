@@ -121,7 +121,7 @@ export class ProductsStockService {
       return await this.prisma.$transaction(async (tx) => {
         // Load all products
         const products = await tx.product.findMany({
-          where: { id: { in: dto.productIds } },
+          where: { id: { in: dto.productIds }, deletedAt: null },
           include: { branch: { select: { id: true, name: true, isMainWarehouse: true } } },
         });
 
@@ -425,7 +425,7 @@ export class ProductsStockService {
     page?: number;
     limit?: number;
   }) {
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { deletedAt: null };
     if (filters.branchId) where.branchId = filters.branchId;
     if (filters.status) where.status = filters.status;
     if (filters.category) where.category = filters.category;
@@ -464,7 +464,7 @@ export class ProductsStockService {
       orderBy: { name: 'asc' },
     });
 
-    const summaryWhere: Record<string, unknown> = {};
+    const summaryWhere: Record<string, unknown> = { deletedAt: null };
     if (filters.branchId) summaryWhere.branchId = filters.branchId;
     if (filters.category) summaryWhere.category = filters.category;
     if (filters.brand) summaryWhere.brand = filters.brand;
@@ -492,7 +492,7 @@ export class ProductsStockService {
 
   async getStockDashboard(branchId?: string) {
     const branchFilter: Record<string, unknown> = branchId ? { branchId } : {};
-    const baseWhere = { ...branchFilter };
+    const baseWhere = { deletedAt: null, ...branchFilter };
     const now = new Date();
 
     // --- Parallel batch queries ---
@@ -775,6 +775,7 @@ export class ProductsStockService {
     deadline.setDate(deadline.getDate() + daysAhead);
 
     const where: Record<string, unknown> = {
+      deletedAt: null,
       warrantyExpired: false,
       warrantyExpireDate: { gte: now, lte: deadline },
       status: { in: ['IN_STOCK', 'RESERVED'] },

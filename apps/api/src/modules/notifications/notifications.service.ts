@@ -786,7 +786,7 @@ export class NotificationsService implements OnModuleInit {
           { dueDate: { gte: day1, lt: day1End } },
           { dueDate: { gte: day3, lt: day3End } },
         ],
-        contract: { status: 'ACTIVE' },
+        contract: { status: 'ACTIVE', deletedAt: null },
       },
       include: {
         contract: {
@@ -877,7 +877,7 @@ export class NotificationsService implements OnModuleInit {
       where: {
         status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] },
         OR: dueDates.map((dueDate) => ({ dueDate })),
-        contract: { status: { in: ['ACTIVE', 'OVERDUE'] } },
+        contract: { status: { in: ['ACTIVE', 'OVERDUE'] }, deletedAt: null },
       },
       include: {
         contract: {
@@ -959,6 +959,7 @@ export class NotificationsService implements OnModuleInit {
     const overdueContracts = await this.prisma.contract.findMany({
       where: {
         status: 'OVERDUE',
+        deletedAt: null,
       },
       include: {
         customer: { select: { name: true } },
@@ -1008,7 +1009,7 @@ export class NotificationsService implements OnModuleInit {
    */
   async notifyOwnerDefault() {
     const defaultContracts = await this.prisma.contract.findMany({
-      where: { status: 'DEFAULT' },
+      where: { status: 'DEFAULT', deletedAt: null },
       include: {
         customer: { select: { name: true } },
         branch: { select: { name: true } },

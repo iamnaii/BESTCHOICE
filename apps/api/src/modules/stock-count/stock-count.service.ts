@@ -75,6 +75,7 @@ export class StockCountService {
       const expectedProducts = await tx.product.findMany({
         where: {
           branchId: dto.branchId,
+          deletedAt: null,
           status: { in: ['IN_STOCK', 'RESERVED', 'QC_PENDING'] },
         },
         select: { id: true, status: true },

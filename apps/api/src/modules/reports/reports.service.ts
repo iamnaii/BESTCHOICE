@@ -10,7 +10,7 @@ export class ReportsService {
    */
   async getAgingReport(branchId?: string) {
     const now = new Date();
-    const branchFilter = branchId ? { contract: { branchId } } : {};
+    const branchFilter = branchId ? { contract: { branchId, deletedAt: null } } : { contract: { deletedAt: null } };
 
     const overduePayments = await this.prisma.payment.findMany({
       where: {
@@ -70,7 +70,7 @@ export class ReportsService {
         where: {
           paidDate: { gte: start, lte: end },
           status: 'PAID',
-          contract: { ...branchFilter },
+          contract: { deletedAt: null, ...branchFilter },
         },
         select: {
           amountPaid: true,
@@ -80,7 +80,7 @@ export class ReportsService {
       this.prisma.payment.aggregate({
         where: {
           paidDate: { gte: start, lte: end },
-          contract: { ...branchFilter },
+          contract: { deletedAt: null, ...branchFilter },
         },
         _sum: { lateFee: true, amountPaid: true },
       }),
@@ -88,13 +88,13 @@ export class ReportsService {
         where: {
           paidDate: { gte: start, lte: end },
           status: 'PAID',
-          contract: { ...branchFilter },
+          contract: { deletedAt: null, ...branchFilter },
         },
         _sum: { amountPaid: true },
         _count: true,
       }),
       this.prisma.contract.count({
-        where: { createdAt: { gte: start, lte: end }, ...branchFilter },
+        where: { createdAt: { gte: start, lte: end }, deletedAt: null, ...branchFilter },
       }),
     ]);
 
@@ -123,7 +123,7 @@ export class ReportsService {
     const branchFilter = branchId ? { branchId } : {};
 
     const customers = await this.prisma.contract.findMany({
-      where: { status: { in: ['OVERDUE', 'DEFAULT'] }, ...branchFilter },
+      where: { status: { in: ['OVERDUE', 'DEFAULT'] }, deletedAt: null, ...branchFilter },
       include: {
         customer: { select: { id: true, name: true, phone: true, lineId: true } },
         branch: { select: { name: true } },
@@ -165,7 +165,7 @@ export class ReportsService {
     const branchFilter = branchId ? { branchId } : {};
 
     const contracts = await this.prisma.contract.findMany({
-      where: { createdAt: { gte: start, lte: end }, ...branchFilter },
+      where: { createdAt: { gte: start, lte: end }, deletedAt: null, ...branchFilter },
       include: {
         salesperson: { select: { id: true, name: true } },
         branch: { select: { name: true } },
@@ -212,14 +212,14 @@ export class ReportsService {
     return Promise.all(
       branches.map(async (branch) => {
         const [newContracts, activeContracts, overdueContracts, payments, products] = await Promise.all([
-          this.prisma.contract.count({ where: { branchId: branch.id, createdAt: { gte: start, lte: end } } }),
-          this.prisma.contract.count({ where: { branchId: branch.id, status: 'ACTIVE' } }),
-          this.prisma.contract.count({ where: { branchId: branch.id, status: { in: ['OVERDUE', 'DEFAULT'] } } }),
+          this.prisma.contract.count({ where: { branchId: branch.id, createdAt: { gte: start, lte: end }, deletedAt: null } }),
+          this.prisma.contract.count({ where: { branchId: branch.id, status: 'ACTIVE', deletedAt: null } }),
+          this.prisma.contract.count({ where: { branchId: branch.id, status: { in: ['OVERDUE', 'DEFAULT'] }, deletedAt: null } }),
           this.prisma.payment.aggregate({
             where: { paidDate: { gte: start, lte: end }, status: 'PAID', contract: { branchId: branch.id } },
             _sum: { amountPaid: true },
           }),
-          this.prisma.product.count({ where: { branchId: branch.id, status: 'IN_STOCK' } }),
+          this.prisma.product.count({ where: { branchId: branch.id, status: 'IN_STOCK', deletedAt: null } }),
         ]);
 
         return {
@@ -305,7 +305,7 @@ export class ReportsService {
 
     const products = await this.prisma.product.groupBy({
       by: ['status', 'branchId'],
-      where: { ...branchFilter },
+      where: { deletedAt: null, ...branchFilter },
       _count: true,
     });
 
@@ -317,7 +317,7 @@ export class ReportsService {
     const branchMap = new Map(branches.map((b) => [b.id, b.name]));
 
     const stockValue = await this.prisma.product.aggregate({
-      where: { status: 'IN_STOCK', ...branchFilter },
+      where: { status: 'IN_STOCK', deletedAt: null, ...branchFilter },
       _sum: { costPrice: true },
       _count: true,
     });
@@ -337,7 +337,7 @@ export class ReportsService {
    * Export data as CSV-ready format
    */
   async exportContracts(filters: { status?: string; branchId?: string; startDate?: string; endDate?: string }) {
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { deletedAt: null };
     if (filters.status) where.status = filters.status;
     if (filters.branchId) where.branchId = filters.branchId;
     if (filters.startDate || filters.endDate) {

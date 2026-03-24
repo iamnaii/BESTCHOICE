@@ -37,6 +37,7 @@ export class ReorderPointsService {
             category: rp.category,
             branchId: rp.branchId,
             status: 'IN_STOCK',
+            deletedAt: null,
           },
         });
         return { ...rp, currentStock, isLow: currentStock <= rp.minQuantity };
@@ -127,6 +128,7 @@ export class ReorderPointsService {
           category: rp.category,
           branchId: rp.branchId,
           status: 'IN_STOCK',
+          deletedAt: null,
         },
       });
 
@@ -301,6 +303,7 @@ export class ReorderPointsService {
           category: rp.category,
           branchId: rp.branchId,
           status: 'IN_STOCK',
+          deletedAt: null,
         },
       });
 

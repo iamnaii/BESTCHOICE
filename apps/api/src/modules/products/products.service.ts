@@ -32,7 +32,7 @@ export class ProductsService {
     page?: number;
     limit?: number;
   }) {
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { deletedAt: null };
 
     if (filters.branchId) where.branchId = filters.branchId;
     if (filters.status) where.status = filters.status;
@@ -296,7 +296,7 @@ export class ProductsService {
   // === Get available brands for filter ===
   async getBrands() {
     const brands = await this.prisma.product.findMany({
-      where: {},
+      where: { deletedAt: null },
       select: { brand: true },
       distinct: ['brand'],
       orderBy: { brand: 'asc' },

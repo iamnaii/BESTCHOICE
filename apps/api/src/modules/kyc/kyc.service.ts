@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, InternalServerErrorException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import * as crypto from 'crypto';
@@ -72,7 +72,7 @@ export class KycService {
         fallbackPhone: channel === 'LINE' ? customer.phone : undefined,
       });
       if (result.status === 'FAILED') {
-        throw new Error('Notification service returned FAILED status');
+        throw new InternalServerErrorException('Notification service returned FAILED status');
       }
     } catch (err) {
       const errMessage = err instanceof Error ? err.message : String(err);

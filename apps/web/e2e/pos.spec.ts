@@ -135,28 +135,27 @@ async function setupPosPage(page: Page) {
   await loginWithMock(page);
   await mockPosApis(page);
   await page.goto('/pos', { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(500);
+  await page.waitForLoadState('networkidle');
 }
 
 /** Select the first product (iPhone 15 Pro) */
 async function selectProduct(page: Page) {
   const productInput = page.getByPlaceholder('พิมพ์อย่างน้อย 2 ตัวอักษร เช่น IMEI, ชื่อ, รุ่น...');
   await productInput.fill('iphone');
-  await page.waitForTimeout(600);
-  // Click the result in the dropdown
+  // Wait for debounce search dropdown to appear
   const dropdown = page.locator('.absolute.z-50');
+  await dropdown.locator('button').filter({ hasText: 'Apple iPhone 15 Pro' }).first().waitFor({ state: 'visible' });
   await dropdown.locator('button').filter({ hasText: 'Apple iPhone 15 Pro' }).first().click();
-  await page.waitForTimeout(300);
 }
 
 /** Select the first customer (สมชาย ใจดี) */
 async function selectCustomer(page: Page) {
   const customerInput = page.getByPlaceholder('พิมพ์อย่างน้อย 2 ตัวอักษร เช่น ชื่อ, เบอร์โทร, เลขบัตร...');
   await customerInput.fill('สมชาย');
-  await page.waitForTimeout(600);
+  // Wait for debounce search dropdown to appear
   const dropdown = page.locator('.absolute.z-50');
+  await dropdown.locator('button').filter({ hasText: 'สมชาย ใจดี' }).first().waitFor({ state: 'visible' });
   await dropdown.locator('button').filter({ hasText: 'สมชาย ใจดี' }).first().click();
-  await page.waitForTimeout(300);
 }
 
 // ---------- Page Load & Header ----------
@@ -232,7 +231,7 @@ test.describe('POS Page - Product Search', () => {
     await setupPosPage(page);
     const productInput = page.getByPlaceholder('พิมพ์อย่างน้อย 2 ตัวอักษร เช่น IMEI, ชื่อ, รุ่น...');
     await productInput.fill('iphone');
-    await page.waitForTimeout(600);
+    // Wait for debounce search dropdown to appear
     const dropdown = page.locator('.absolute.z-50');
     await expect(dropdown.getByText('Apple iPhone 15 Pro').first()).toBeVisible();
   });
@@ -283,7 +282,7 @@ test.describe('POS Page - Customer Search', () => {
     await setupPosPage(page);
     const customerInput = page.getByPlaceholder('พิมพ์อย่างน้อย 2 ตัวอักษร เช่น ชื่อ, เบอร์โทร, เลขบัตร...');
     await customerInput.fill('สมชาย');
-    await page.waitForTimeout(600);
+    // Wait for debounce search dropdown to appear
     const dropdown = page.locator('.absolute.z-50');
     await expect(dropdown.getByText('สมชาย ใจดี').first()).toBeVisible();
   });

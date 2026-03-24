@@ -311,7 +311,7 @@ export class DocumentsService {
       results.contract = await this.generateDocument(contractId, createdById, 'CONTRACT');
     } catch (err: any) {
       const msg = err?.message || 'Unknown error';
-      console.error('Failed to auto-generate contract document:', msg);
+      this.logger.error('Failed to auto-generate contract document:', msg);
       errors.push(`สัญญา: ${msg}`);
     }
 
@@ -320,7 +320,7 @@ export class DocumentsService {
       results.pdpa = await this.generatePdpaDocument(contractId, createdById);
     } catch (err: any) {
       const msg = err?.message || 'Unknown error';
-      console.error('Failed to auto-generate PDPA document:', msg);
+      this.logger.error('Failed to auto-generate PDPA document:', msg);
       errors.push(`PDPA: ${msg}`);
     }
 

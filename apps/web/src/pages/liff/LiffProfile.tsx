@@ -57,7 +57,7 @@ export default function LiffProfile() {
         }
       }
     } catch (err) {
-      console.error('LIFF init error:', err);
+      if (import.meta.env.DEV) console.error('LIFF init error:', err);
       // Dev-only fallback: accept lineId from URL only in development
       if (import.meta.env.DEV) {
         const params = new URLSearchParams(window.location.search);

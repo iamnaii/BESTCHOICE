@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, InternalServerErrorException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import Anthropic from '@anthropic-ai/sdk';
@@ -321,7 +321,7 @@ export class CreditCheckService {
     customerOccupation: string | null;
   }) {
     if (!this.anthropic) {
-      throw new Error('Anthropic client not initialized');
+      throw new InternalServerErrorException('Anthropic client not initialized');
     }
 
     const contentBlocks: Anthropic.MessageCreateParams['messages'][0]['content'] = [];
@@ -385,7 +385,7 @@ export class CreditCheckService {
 
     const textContent = response.content.find((c) => c.type === 'text');
     if (!textContent || textContent.type !== 'text') {
-      throw new Error('No text response from Claude');
+      throw new InternalServerErrorException('No text response from Claude');
     }
 
     // Parse JSON from response (handle possible markdown wrapping)

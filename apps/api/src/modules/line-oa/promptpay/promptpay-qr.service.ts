@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 /**
@@ -35,7 +35,7 @@ export class PromptPayQrService {
    */
   generatePayload(amount?: number): string {
     if (!this.promptPayId) {
-      throw new Error('PROMPTPAY_ID not configured');
+      throw new BadRequestException('PROMPTPAY_ID not configured');
     }
 
     const id = this.promptPayId.replace(/[^0-9]/g, '');
@@ -112,7 +112,7 @@ export class PromptPayQrService {
         type: 'png',
       });
     } catch {
-      throw new Error('qrcode package not installed. Run: npm install qrcode @types/qrcode');
+      throw new InternalServerErrorException('qrcode package not installed. Run: npm install qrcode @types/qrcode');
     }
   }
 

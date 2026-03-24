@@ -274,7 +274,7 @@ export class OcrService {
 
     const textContent = response.content.find((c) => c.type === 'text');
     if (!textContent || textContent.type !== 'text') {
-      throw new Error('No text response from Claude');
+      throw new InternalServerErrorException('No text response from Claude');
     }
 
     return this.parseJsonResponse(textContent.text) as Record<string, unknown>;
@@ -363,7 +363,7 @@ export class OcrService {
 
       const textContent = response.content.find((c) => c.type === 'text');
       if (!textContent || textContent.type !== 'text') {
-        throw new Error('No text response from Claude');
+        throw new InternalServerErrorException('No text response from Claude');
       }
 
       // Extract HTML from response (strip markdown code blocks if present)

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   S3Client,
@@ -66,7 +66,7 @@ export class StorageService {
    */
   async getStream(key: string): Promise<Readable> {
     if (!this.s3) {
-      throw new Error('S3 storage not configured');
+      throw new BadRequestException('S3 storage not configured');
     }
 
     const response = await this.s3.send(
@@ -84,7 +84,7 @@ export class StorageService {
    */
   async getSignedDownloadUrl(key: string, expiresIn = 3600): Promise<string> {
     if (!this.s3) {
-      throw new Error('S3 storage not configured');
+      throw new BadRequestException('S3 storage not configured');
     }
 
     const command = new GetObjectCommand({

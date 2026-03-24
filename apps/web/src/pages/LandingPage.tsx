@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import LandingNav from '@/components/landing/LandingNav';
 import ProductCard from '@/components/landing/ProductCard';
+import { getAccessToken } from '@/lib/api';
 import api from '@/lib/api';
 
 interface Product {
@@ -32,7 +33,7 @@ export default function LandingPage() {
     refs[section]?.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
-  const hasToken = !!localStorage.getItem('access_token');
+  const hasToken = !!getAccessToken();
 
   const { data: productsResult } = useQuery<{ data: Product[] }>({
     queryKey: ['landing-products'],

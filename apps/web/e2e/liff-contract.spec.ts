@@ -114,7 +114,6 @@ test.describe('Phase 19: LIFF Contract Page', () => {
   test('19.1 Header shows BEST CHOICE branding and customer name', async ({ page }) => {
     await mockLiffApis(page, MOCK_CONTRACT_DATA);
     await page.goto('/liff/contract?lineId=test-line-001', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
 
     await expect(page.getByText('สัญญาของฉัน')).toBeVisible({ timeout: 5000 });
     await expect(page.getByText('คุณสมชาย ใจดี')).toBeVisible();
@@ -124,7 +123,6 @@ test.describe('Phase 19: LIFF Contract Page', () => {
   test('19.2 Contract summary shows number, product, prices, and paid count', async ({ page }) => {
     await mockLiffApis(page, MOCK_CONTRACT_DATA);
     await page.goto('/liff/contract?lineId=test-line-001', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
 
     await expect(page.getByText('BCP-LIFF-001')).toBeVisible({ timeout: 5000 });
     await expect(page.getByText('Apple iPhone 15 128GB')).toBeVisible();
@@ -137,7 +135,6 @@ test.describe('Phase 19: LIFF Contract Page', () => {
   test('19.3 ACTIVE status shows ปกติ badge', async ({ page }) => {
     await mockLiffApis(page, MOCK_CONTRACT_DATA);
     await page.goto('/liff/contract?lineId=test-line-001', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
 
     await expect(page.getByText('ปกติ')).toBeVisible({ timeout: 5000 });
   });
@@ -146,7 +143,6 @@ test.describe('Phase 19: LIFF Contract Page', () => {
   test('19.4 OVERDUE status shows ค้างชำระ badge and late fee', async ({ page }) => {
     await mockLiffApis(page, MOCK_OVERDUE_DATA);
     await page.goto('/liff/contract?lineId=test-line-002', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
 
     await expect(page.getByText('ค้างชำระ', { exact: true })).toBeVisible({ timeout: 5000 });
     await expect(page.getByText('ค่าปรับ 200')).toBeVisible();
@@ -156,7 +152,6 @@ test.describe('Phase 19: LIFF Contract Page', () => {
   test('19.5 Payment schedule shows installment rows with status icons', async ({ page }) => {
     await mockLiffApis(page, MOCK_CONTRACT_DATA);
     await page.goto('/liff/contract?lineId=test-line-001', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
 
     await expect(page.getByText('ตารางค่างวด')).toBeVisible({ timeout: 5000 });
     await expect(page.getByText('งวดที่ 1')).toBeVisible();
@@ -171,7 +166,6 @@ test.describe('Phase 19: LIFF Contract Page', () => {
   test('19.6 Shows ดูทั้งหมด button when more than 6 installments', async ({ page }) => {
     await mockLiffApis(page, MOCK_CONTRACT_DATA);
     await page.goto('/liff/contract?lineId=test-line-001', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
 
     // Should show max 6 first, then "show all" button
     const showAllBtn = page.getByText('ดูทั้งหมด (10 งวด)');
@@ -179,7 +173,6 @@ test.describe('Phase 19: LIFF Contract Page', () => {
 
     // Click show all
     await showAllBtn.click();
-    await page.waitForTimeout(500);
 
     // Now should show installment 10
     await expect(page.getByText('งวดที่ 10')).toBeVisible();
@@ -189,7 +182,6 @@ test.describe('Phase 19: LIFF Contract Page', () => {
   test('19.7 Pay next installment CTA shows for active contract with outstanding', async ({ page }) => {
     await mockLiffApis(page, MOCK_CONTRACT_DATA);
     await page.goto('/liff/contract?lineId=test-line-001', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
 
     await expect(page.getByText('งวดถัดไป: งวดที่ 4')).toBeVisible({ timeout: 5000 });
     await expect(page.locator('button:has-text("ชำระเงิน")')).toBeVisible();
@@ -199,7 +191,6 @@ test.describe('Phase 19: LIFF Contract Page', () => {
   test('19.8 Early payoff link shows for active contract', async ({ page }) => {
     await mockLiffApis(page, MOCK_CONTRACT_DATA);
     await page.goto('/liff/contract?lineId=test-line-001', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
 
     await expect(page.getByText('ปิดยอดก่อนกำหนด (ลดดอกเบี้ย 50%)')).toBeVisible({ timeout: 5000 });
   });
@@ -208,7 +199,6 @@ test.describe('Phase 19: LIFF Contract Page', () => {
   test('19.9 Download contract PDF button is visible', async ({ page }) => {
     await mockLiffApis(page, MOCK_CONTRACT_DATA);
     await page.goto('/liff/contract?lineId=test-line-001', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
 
     await expect(page.getByText('ดาวน์โหลดสัญญา PDF')).toBeVisible({ timeout: 5000 });
   });
@@ -217,7 +207,6 @@ test.describe('Phase 19: LIFF Contract Page', () => {
   test('19.10 Navigation links to history and profile are visible', async ({ page }) => {
     await mockLiffApis(page, MOCK_CONTRACT_DATA);
     await page.goto('/liff/contract?lineId=test-line-001', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
 
     await expect(page.getByText('ประวัติชำระเงิน')).toBeVisible({ timeout: 5000 });
     await expect(page.getByText('โปรไฟล์ของฉัน')).toBeVisible();
@@ -227,7 +216,6 @@ test.describe('Phase 19: LIFF Contract Page', () => {
   test('19.11 No contracts shows ไม่มีสัญญา message', async ({ page }) => {
     await mockLiffApis(page, { customer: { name: 'ทดสอบ' }, contracts: [] });
     await page.goto('/liff/contract?lineId=test-line-003', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
 
     await expect(page.getByRole('heading', { name: 'ไม่มีสัญญา' })).toBeVisible({ timeout: 5000 });
   });
@@ -236,7 +224,6 @@ test.describe('Phase 19: LIFF Contract Page', () => {
   test('19.12 Not registered (404) shows error with ลงทะเบียนเลย link', async ({ page }) => {
     await mockLiffApis(page, null, { status: 404 });
     await page.goto('/liff/contract?lineId=test-line-404', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
 
     await expect(page.getByText('ไม่สามารถดำเนินการได้')).toBeVisible({ timeout: 5000 });
     await expect(page.getByText('ลงทะเบียนเลย')).toBeVisible();
@@ -246,7 +233,6 @@ test.describe('Phase 19: LIFF Contract Page', () => {
   test('19.13 API error shows ไม่สามารถโหลดข้อมูลได้', async ({ page }) => {
     await mockLiffApis(page, null, { status: 500 });
     await page.goto('/liff/contract?lineId=test-line-500', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
 
     await expect(page.getByText('ไม่สามารถดำเนินการได้')).toBeVisible({ timeout: 5000 });
   });
@@ -255,7 +241,6 @@ test.describe('Phase 19: LIFF Contract Page', () => {
   test('19.14 Multiple contracts shows tab buttons for switching', async ({ page }) => {
     await mockLiffApis(page, MOCK_MULTI_CONTRACT);
     await page.goto('/liff/contract?lineId=test-line-multi', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
 
     // Both contract numbers should appear as tabs
     await expect(page.locator('button:has-text("BCP-M001")')).toBeVisible({ timeout: 5000 });
@@ -263,7 +248,6 @@ test.describe('Phase 19: LIFF Contract Page', () => {
 
     // Switch to second contract
     await page.locator('button:has-text("BCP-M002")').click();
-    await page.waitForTimeout(500);
 
     // Should show second contract's product
     await expect(page.getByText('Samsung Galaxy S24')).toBeVisible();
@@ -285,7 +269,6 @@ test.describe('Phase 19: LIFF Contract Page', () => {
     };
     await mockLiffApis(page, completedData);
     await page.goto('/liff/contract?lineId=test-line-done', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
 
     await expect(page.getByText('ครบแล้ว').first()).toBeVisible({ timeout: 5000 });
   });
@@ -294,7 +277,6 @@ test.describe('Phase 19: LIFF Contract Page', () => {
   test('19.16 Footer shows BEST CHOICE branding text', async ({ page }) => {
     await mockLiffApis(page, MOCK_CONTRACT_DATA);
     await page.goto('/liff/contract?lineId=test-line-001', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
 
     await expect(page.getByText('BEST CHOICE - ระบบผ่อนชำระมือถือ')).toBeVisible({ timeout: 5000 });
   });

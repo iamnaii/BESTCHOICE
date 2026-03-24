@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LineMessagePayload } from './dto/webhook-event.dto';
@@ -47,7 +47,7 @@ export class LineOaService {
 
   async testConnection(): Promise<{ displayName: string; userId: string; pictureUrl?: string }> {
     if (!this.lineChannelAccessToken) {
-      throw new Error('LINE Channel Access Token ยังไม่ได้ตั้งค่า');
+      throw new BadRequestException('LINE Channel Access Token ยังไม่ได้ตั้งค่า');
     }
 
     const response = await fetch(`${this.lineApiBaseUrl}/info`, {
@@ -56,7 +56,7 @@ export class LineOaService {
 
     if (!response.ok) {
       const errorBody = await response.text();
-      throw new Error(`LINE API error ${response.status}: ${errorBody}`);
+      throw new InternalServerErrorException(`LINE API error ${response.status}: ${errorBody}`);
     }
 
     return response.json();
@@ -98,7 +98,7 @@ export class LineOaService {
    */
   async downloadContent(messageId: string): Promise<Buffer> {
     if (!this.lineChannelAccessToken) {
-      throw new Error('LINE channel access token not configured');
+      throw new BadRequestException('LINE channel access token not configured');
     }
 
     const url = `${this.lineDataApiBaseUrl}/message/${messageId}/content`;
@@ -109,7 +109,7 @@ export class LineOaService {
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to download LINE content: ${response.status}`);
+      throw new InternalServerErrorException(`Failed to download LINE content: ${response.status}`);
     }
 
     const arrayBuffer = await response.arrayBuffer();
@@ -121,7 +121,7 @@ export class LineOaService {
    */
   async getUserProfile(userId: string): Promise<{ displayName: string; pictureUrl?: string; statusMessage?: string }> {
     if (!this.lineChannelAccessToken) {
-      throw new Error('LINE channel access token not configured');
+      throw new BadRequestException('LINE channel access token not configured');
     }
 
     const url = `${this.lineApiBaseUrl}/profile/${userId}`;
@@ -132,7 +132,7 @@ export class LineOaService {
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to get LINE profile: ${response.status}`);
+      throw new InternalServerErrorException(`Failed to get LINE profile: ${response.status}`);
     }
 
     return response.json();
@@ -549,7 +549,7 @@ export class LineOaService {
 
   private async callLineApi(url: string, body: unknown): Promise<void> {
     if (!this.lineChannelAccessToken) {
-      throw new Error('LINE channel access token not configured');
+      throw new BadRequestException('LINE channel access token not configured');
     }
 
     const response = await fetch(url, {
@@ -563,7 +563,7 @@ export class LineOaService {
 
     if (!response.ok) {
       const errorBody = await response.text();
-      throw new Error(`LINE API error ${response.status}: ${errorBody}`);
+      throw new InternalServerErrorException(`LINE API error ${response.status}: ${errorBody}`);
     }
   }
 }

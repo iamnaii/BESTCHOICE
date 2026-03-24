@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
-import api from '@/lib/api';
+import api, { setAccessToken, getAccessToken } from '@/lib/api';
 
 interface User {
   id: string;
@@ -30,13 +30,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       // ignore logout errors
     }
-    localStorage.removeItem('access_token');
+    setAccessToken(null);
     setUser(null);
   }, []);
 
   const fetchMe = useCallback(async () => {
     try {
-      const token = localStorage.getItem('access_token');
+      const token = getAccessToken();
       if (!token) {
         setIsLoading(false);
         return;
@@ -85,7 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
     const { data } = res;
-    localStorage.setItem('access_token', data.accessToken);
+    setAccessToken(data.accessToken);
     // refresh token is stored in httpOnly cookie by the server
     setUser({
       id: data.user.id,

@@ -14,10 +14,7 @@ export class DashboardController {
     @CurrentUser() user: { role: string; branchId: string | null },
     @Query('branchId') branchId?: string,
   ) {
-    const effectiveBranch =
-      user.role === 'SALES' || user.role === 'BRANCH_MANAGER'
-        ? user.branchId || undefined
-        : branchId || undefined;
+    const effectiveBranch = this.getEffectiveBranch(branchId, user);
     return this.dashboardService.getKPIs(effectiveBranch);
   }
 
@@ -26,10 +23,7 @@ export class DashboardController {
     @CurrentUser() user: { role: string; branchId: string | null },
     @Query('branchId') branchId?: string,
   ) {
-    const effectiveBranch =
-      user.role === 'SALES' || user.role === 'BRANCH_MANAGER'
-        ? user.branchId || undefined
-        : branchId || undefined;
+    const effectiveBranch = this.getEffectiveBranch(branchId, user);
     return this.dashboardService.getMonthlyTrend(effectiveBranch);
   }
 
@@ -38,10 +32,7 @@ export class DashboardController {
     @CurrentUser() user: { role: string; branchId: string | null },
     @Query('branchId') branchId?: string,
   ) {
-    const effectiveBranch =
-      user.role === 'SALES' || user.role === 'BRANCH_MANAGER'
-        ? user.branchId || undefined
-        : branchId || undefined;
+    const effectiveBranch = this.getEffectiveBranch(branchId, user);
     return this.dashboardService.getTopOverdue(effectiveBranch);
   }
 
@@ -50,10 +41,7 @@ export class DashboardController {
     @CurrentUser() user: { role: string; branchId: string | null },
     @Query('branchId') branchId?: string,
   ) {
-    const effectiveBranch =
-      user.role === 'SALES' || user.role === 'BRANCH_MANAGER'
-        ? user.branchId || undefined
-        : branchId || undefined;
+    const effectiveBranch = this.getEffectiveBranch(branchId, user);
     return this.dashboardService.getStatusDistribution(effectiveBranch);
   }
 
@@ -67,10 +55,7 @@ export class DashboardController {
     @CurrentUser() user: { role: string; branchId: string | null },
     @Query('branchId') branchId?: string,
   ) {
-    const effectiveBranch =
-      user.role === 'SALES' || user.role === 'BRANCH_MANAGER'
-        ? user.branchId || undefined
-        : branchId || undefined;
+    const effectiveBranch = this.getEffectiveBranch(branchId, user);
     return this.dashboardService.getMonthlyRevenue(effectiveBranch);
   }
 
@@ -79,10 +64,7 @@ export class DashboardController {
     @CurrentUser() user: { role: string; branchId: string | null },
     @Query('branchId') branchId?: string,
   ) {
-    const effectiveBranch =
-      user.role === 'SALES' || user.role === 'BRANCH_MANAGER'
-        ? user.branchId || undefined
-        : branchId || undefined;
+    const effectiveBranch = this.getEffectiveBranch(branchId, user);
     return this.dashboardService.getAgingSummary(effectiveBranch);
   }
 
@@ -91,10 +73,16 @@ export class DashboardController {
     @CurrentUser() user: { role: string; branchId: string | null },
     @Query('branchId') branchId?: string,
   ) {
-    const effectiveBranch =
-      user.role === 'SALES' || user.role === 'BRANCH_MANAGER'
-        ? user.branchId || undefined
-        : branchId || undefined;
+    const effectiveBranch = this.getEffectiveBranch(branchId, user);
     return this.dashboardService.getStaffPerformance(effectiveBranch);
+  }
+
+  private getEffectiveBranch(
+    branchId: string | undefined,
+    user: { role: string; branchId: string | null },
+  ): string | undefined {
+    return user.role === 'SALES' || user.role === 'BRANCH_MANAGER'
+      ? user.branchId || undefined
+      : branchId || undefined;
   }
 }

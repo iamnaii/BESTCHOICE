@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { PaymentMethod } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ReceiptsService } from '../receipts/receipts.service';
@@ -13,6 +13,22 @@ export class PaymentsService {
     private receiptsService: ReceiptsService,
     private auditService: AuditService,
   ) {}
+
+  /** Enforce branch-level access: SALES/BRANCH_MANAGER can only operate on their own branch */
+  async validateBranchAccess(
+    contractId: string,
+    user: { role: string; branchId: string | null },
+  ) {
+    if (user.role === 'OWNER' || user.role === 'ACCOUNTANT') return;
+
+    const contract = await this.prisma.contract.findUnique({
+      where: { id: contractId },
+      select: { branchId: true },
+    });
+    if (contract && user.branchId && contract.branchId !== user.branchId) {
+      throw new ForbiddenException('ไม่สามารถบันทึกชำระเงินข้ามสาขาได้');
+    }
+  }
 
   // ─── Record a single payment (บังคับ upload หลักฐาน) ──
   async recordPayment(

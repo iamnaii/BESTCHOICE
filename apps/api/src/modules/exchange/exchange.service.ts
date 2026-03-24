@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateExchangeDto } from './dto/create-exchange.dto';
 import { Decimal } from '@prisma/client/runtime/library';
 import { generateContractNumber } from '../../utils/sequence.util';
+import { calculateInstallment } from '../../utils/installment.util';
 
 @Injectable()
 export class ExchangeService {
@@ -163,12 +164,16 @@ export class ExchangeService {
       const vatPct = vatConfig ? Number(vatConfig.value) : 0.07;
 
       // Include outstanding balance from old contract in the new principal
-      const principal = sellingPrice - downPayment + outstandingBalance;
-      const storeCommission = principal * storeCommissionPct;
-      const interestTotal = principal * interestRate * totalMonths;
-      const vatAmount = (principal + storeCommission + interestTotal) * vatPct;
-      const financedAmount = principal + storeCommission + interestTotal + vatAmount;
-      const monthlyPayment = Math.ceil(financedAmount / totalMonths);
+      // Pass sellingPrice + outstandingBalance so the utility calculates principal correctly
+      const result = calculateInstallment(
+        sellingPrice + outstandingBalance,
+        downPayment,
+        interestRate,
+        totalMonths,
+        storeCommissionPct,
+        vatPct,
+      );
+      const { financedAmount, monthlyPayment, interestTotal } = result;
 
       // Generate new contract number
       const contractNumber = await generateContractNumber(tx);

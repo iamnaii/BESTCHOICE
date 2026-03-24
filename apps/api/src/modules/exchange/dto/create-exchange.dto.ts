@@ -1,26 +1,26 @@
 import { IsString, IsNumber, IsOptional } from 'class-validator';
 
 export class CreateExchangeDto {
-  @IsString()
+  @IsString({ message: 'กรุณาระบุสัญญาเดิม' })
   oldContractId: string;
 
-  @IsString()
+  @IsString({ message: 'กรุณาระบุสินค้าใหม่' })
   newProductId: string;
 
-  @IsString()
+  @IsString({ message: 'กรุณาระบุราคา' })
   newPriceId: string;
 
-  @IsNumber()
+  @IsNumber({}, { message: 'กรุณาระบุเงินดาวน์' })
   newDownPayment: number;
 
-  @IsNumber()
+  @IsNumber({}, { message: 'กรุณาระบุจำนวนงวด' })
   newTotalMonths: number;
 
-  @IsNumber()
+  @IsNumber({}, { message: 'กรุณาระบุอัตราดอกเบี้ย' })
   @IsOptional()
   newInterestRate?: number;
 
-  @IsString()
+  @IsString({ message: 'กรุณาระบุหมายเหตุเป็นข้อความ' })
   @IsOptional()
   notes?: string;
 }

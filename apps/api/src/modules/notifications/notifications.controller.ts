@@ -9,17 +9,13 @@ import {
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { PrismaService } from '../../prisma/prisma.service';
 
 @Controller('notifications')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class NotificationsController {
   private readonly logger = new Logger(NotificationsController.name);
 
-  constructor(
-    private notificationsService: NotificationsService,
-    private prisma: PrismaService,
-  ) {}
+  constructor(private notificationsService: NotificationsService) {}
 
   // ============================================================
   // SEND NOTIFICATIONS
@@ -116,71 +112,18 @@ export class NotificationsController {
   // SMS SETTINGS
   // ============================================================
 
-  private static readonly SMS_CONFIG_KEYS = [
-    'sms_api_key',
-    'sms_api_secret',
-    'sms_sender',
-    'sms_force',
-  ];
-
   @Get('sms-settings')
   @Roles('OWNER')
-  async getSmsSettings() {
-    const configs = await this.prisma.systemConfig.findMany({
-      where: { key: { in: NotificationsController.SMS_CONFIG_KEYS } },
-    });
-
-    const settings: Record<string, string> = {};
-    for (const c of configs) {
-      settings[c.key] = c.value;
-    }
-
-    // Mask sensitive values
-    const masked = { ...settings };
-    if (masked.sms_api_key) {
-      const v = masked.sms_api_key;
-      masked.sms_api_key = v.length > 10
-        ? v.substring(0, 6) + '****' + v.substring(v.length - 4)
-        : '****';
-    }
-    if (masked.sms_api_secret) {
-      const v = masked.sms_api_secret;
-      masked.sms_api_secret = v.length > 8
-        ? v.substring(0, 4) + '****' + v.substring(v.length - 4)
-        : '****';
-    }
-
-    return {
-      settings: masked,
-      isConfigured: !!settings.sms_api_key && !!settings.sms_api_secret,
-    };
+  getSmsSettings() {
+    return this.notificationsService.getSmsSettings();
   }
 
   @Post('sms-settings')
   @Roles('OWNER')
   async saveSmsSettings(@Body() body: Record<string, string>) {
-    const labels: Record<string, string> = {
-      sms_api_key: 'ThaiBulkSMS API Key',
-      sms_api_secret: 'ThaiBulkSMS API Secret',
-      sms_sender: 'SMS Sender ID',
-      sms_force: 'SMS Credit Type',
-    };
-
-    for (const key of NotificationsController.SMS_CONFIG_KEYS) {
-      if (body[key] !== undefined && body[key] !== '') {
-        await this.prisma.systemConfig.upsert({
-          where: { key },
-          create: { key, value: body[key], label: labels[key] || key },
-          update: { value: body[key] },
-        });
-      }
-    }
-
-    // Reload config in service
-    await this.notificationsService.reloadSmsConfig();
-
+    const result = await this.notificationsService.saveSmsSettings(body);
     this.logger.log('[SMS] Settings updated by admin');
-    return { success: true, message: 'บันทึกการตั้งค่า SMS เรียบร้อย' };
+    return result;
   }
 
   @Post('sms-settings/test-connection')

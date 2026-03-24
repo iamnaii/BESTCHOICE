@@ -1,14 +1,14 @@
 import { IsString, IsOptional } from 'class-validator';
 
 export class CreateBranchDto {
-  @IsString()
+  @IsString({ message: 'กรุณาระบุชื่อสาขา' })
   name: string;
 
-  @IsString()
+  @IsString({ message: 'กรุณาระบุที่ตั้ง' })
   @IsOptional()
   location?: string;
 
-  @IsString()
+  @IsString({ message: 'กรุณาระบุเบอร์โทร' })
   @IsOptional()
   phone?: string;
 }

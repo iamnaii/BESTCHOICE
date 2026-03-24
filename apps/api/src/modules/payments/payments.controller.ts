@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { PaymentsService } from './payments.service';
 import { RecordPaymentDto, BulkRecordPaymentDto, WaiveLateFeeDto } from './dto/payment.dto';
@@ -8,15 +8,11 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { UserThrottlerGuard } from '../../guards/user-throttler.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { PrismaService } from '../../prisma/prisma.service';
 
 @Controller('payments')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class PaymentsController {
-  constructor(
-    private paymentsService: PaymentsService,
-    private prisma: PrismaService,
-  ) {}
+  constructor(private paymentsService: PaymentsService) {}
 
   @Get('pending')
   getPendingPayments(
@@ -55,7 +51,7 @@ export class PaymentsController {
     @CurrentUser() user: { id: string; role: string; branchId: string | null },
   ) {
     // Validate branch access: SALES and BRANCH_MANAGER can only record for their branch
-    await this.validateBranchAccess(dto.contractId, user);
+    await this.paymentsService.validateBranchAccess(dto.contractId, user);
 
     return this.paymentsService.recordPayment(
       dto.contractId,
@@ -77,7 +73,7 @@ export class PaymentsController {
     @Body() dto: BulkRecordPaymentDto,
     @CurrentUser() user: { id: string; role: string; branchId: string | null },
   ) {
-    await this.validateBranchAccess(dto.contractId, user);
+    await this.paymentsService.validateBranchAccess(dto.contractId, user);
 
     return this.paymentsService.autoAllocatePayment(
       dto.contractId,
@@ -100,7 +96,7 @@ export class PaymentsController {
     @Param('contractId') contractId: string,
     @CurrentUser() user: { id: string; role: string; branchId: string | null },
   ) {
-    await this.validateBranchAccess(contractId, user);
+    await this.paymentsService.validateBranchAccess(contractId, user);
     return this.paymentsService.applyCreditBalance(contractId, user.id);
   }
 
@@ -127,22 +123,6 @@ export class PaymentsController {
     @CurrentUser() user: { id: string },
   ) {
     return this.paymentsService.waiveLateFee(paymentId, dto.reason, user.id);
-  }
-
-  /** Enforce branch-level access: SALES/BRANCH_MANAGER can only operate on their own branch */
-  private async validateBranchAccess(
-    contractId: string,
-    user: { role: string; branchId: string | null },
-  ) {
-    if (user.role === 'OWNER' || user.role === 'ACCOUNTANT') return;
-
-    const contract = await this.prisma.contract.findUnique({
-      where: { id: contractId },
-      select: { branchId: true },
-    });
-    if (contract && user.branchId && contract.branchId !== user.branchId) {
-      throw new ForbiddenException('ไม่สามารถบันทึกชำระเงินข้ามสาขาได้');
-    }
   }
 
   /** Force branch filtering for non-global roles */

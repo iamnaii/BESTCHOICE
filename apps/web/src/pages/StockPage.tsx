@@ -135,7 +135,7 @@ export default function StockPage() {
   const [transferBranchId, setTransferBranchId] = useState('');
   const [transferNotes, setTransferNotes] = useState('');
 
-  // Price management modal state (multi-price CRUD from ProductsPage)
+  // Price management modal state (multi-price CRUD)
   const [editingProduct, setEditingProduct] = useState<StockProduct | null>(null);
   const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
   const [priceForm, setPriceForm] = useState({ label: '', amount: '', isDefault: false });

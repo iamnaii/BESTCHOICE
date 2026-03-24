@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import PageHeader from '@/components/ui/PageHeader';
+import DataTable, { type Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 
 const getErrorMessage = (err: unknown) => {
@@ -131,6 +132,45 @@ export default function StockCountPage() {
 
   const counts: StockCount[] = stockCounts?.data || [];
 
+  const stockCountColumns: Column<StockCount>[] = [
+    { key: 'countNumber', label: 'เลขที่', render: (item) => <span className="font-mono text-xs">{item.countNumber}</span> },
+    { key: 'branch', label: 'สาขา', render: (item) => item.branch?.name || '-' },
+    { key: 'countedBy', label: 'ผู้ตรวจ', render: (item) => item.countedBy?.name || '-' },
+    { key: 'itemCount', label: 'จำนวน', render: (item) => item._count?.items || '-' },
+    {
+      key: 'status',
+      label: 'สถานะ',
+      render: (item) => (
+        <span className={`px-2 py-0.5 rounded-full text-xs ${statusColors[item.status] || 'bg-muted'}`}>
+          {item.status}
+        </span>
+      ),
+    },
+    { key: 'createdAt', label: 'วันที่', render: (item) => <span className="text-xs text-muted-foreground">{new Date(item.createdAt).toLocaleDateString('th-TH')}</span> },
+    {
+      key: 'actions',
+      label: '',
+      render: (item) => (
+        <div className="flex gap-1 justify-center">
+          <button
+            onClick={(e) => { e.stopPropagation(); openCountModal(item); }}
+            className="px-2 py-1 text-xs bg-primary-100 text-primary-700 rounded hover:bg-primary-200"
+          >
+            {item.status === 'COMPLETED' ? 'ดูผล' : 'ตรวจนับ'}
+          </button>
+          {item.status === 'IN_PROGRESS' && (
+            <button
+              onClick={(e) => { e.stopPropagation(); cancelMutation.mutate(item.id); }}
+              className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200"
+            >
+              ยกเลิก
+            </button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div>
       <PageHeader title="ตรวจนับสต๊อก" subtitle="ตรวจนับสินค้าจริงเทียบกับในระบบ" />
@@ -154,63 +194,12 @@ export default function StockCountPage() {
         </button>
       </div>
 
-      {isLoading ? (
-        <div className="text-center py-10 text-muted-foreground">กำลังโหลด...</div>
-      ) : counts.length === 0 ? (
-        <div className="text-center py-10 text-muted-foreground">ยังไม่มีรายการตรวจนับ</div>
-      ) : (
-        <div className="rounded-lg border border-border overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-muted">
-              <tr>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">เลขที่</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">สาขา</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">ผู้ตรวจ</th>
-                <th className="text-center px-4 py-3 font-medium text-muted-foreground">จำนวน</th>
-                <th className="text-center px-4 py-3 font-medium text-muted-foreground">สถานะ</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">วันที่</th>
-                <th className="text-center px-4 py-3 font-medium text-muted-foreground">จัดการ</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {counts.map((sc) => (
-                <tr key={sc.id} className="hover:bg-muted/50">
-                  <td className="px-4 py-3 font-mono text-xs">{sc.countNumber}</td>
-                  <td className="px-4 py-3">{sc.branch.name}</td>
-                  <td className="px-4 py-3">{sc.countedBy.name}</td>
-                  <td className="px-4 py-3 text-center">{sc._count?.items || '-'}</td>
-                  <td className="px-4 py-3 text-center">
-                    <span className={`px-2 py-0.5 rounded-full text-xs ${statusColors[sc.status] || 'bg-muted'}`}>
-                      {sc.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-muted-foreground">
-                    {new Date(sc.createdAt).toLocaleDateString('th-TH')}
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <div className="flex gap-1 justify-center">
-                      <button
-                        onClick={() => openCountModal(sc)}
-                        className="px-2 py-1 text-xs bg-primary-100 text-primary-700 rounded hover:bg-primary-200"
-                      >
-                        {sc.status === 'COMPLETED' ? 'ดูผล' : 'ตรวจนับ'}
-                      </button>
-                      {sc.status === 'IN_PROGRESS' && (
-                        <button
-                          onClick={() => cancelMutation.mutate(sc.id)}
-                          className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200"
-                        >
-                          ยกเลิก
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <DataTable
+        columns={stockCountColumns}
+        data={counts}
+        isLoading={isLoading}
+        emptyMessage="ยังไม่มีการนับสต็อก"
+      />
 
       {/* Create Modal */}
       <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="สร้างรายการตรวจนับ">

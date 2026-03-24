@@ -253,7 +253,6 @@ export class SchedulerService {
       // Find contracts stuck in review/approval for > 24h
       const pendingContracts = await this.prisma.contract.findMany({
         where: {
-          deletedAt: null,
           workflowStatus: { in: ['PENDING_REVIEW', 'CREATING'] },
           updatedAt: { lt: threshold24h },
         },
@@ -315,9 +314,8 @@ export class SchedulerService {
           status: 'PENDING',
           dueDate: { gte: startOfDay, lt: endOfDay },
           contract: {
-            deletedAt: null,
             status: { in: ['ACTIVE'] },
-            customer: { lineId: { not: null }, deletedAt: null },
+            customer: { lineId: { not: null } },
           },
         },
         include: {

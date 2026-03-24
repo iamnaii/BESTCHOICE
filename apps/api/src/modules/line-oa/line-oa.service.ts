@@ -146,7 +146,7 @@ export class LineOaService {
   async linkLineId(lineUserId: string): Promise<void> {
     // Try to find existing customer with this lineId
     const existing = await this.prisma.customer.findFirst({
-      where: { lineId: lineUserId, deletedAt: null },
+      where: { lineId: lineUserId },
     });
 
     if (existing) {
@@ -173,7 +173,7 @@ export class LineOaService {
   async selfLinkByPhone(lineUserId: string, phone: string): Promise<{ success: boolean; customerName?: string }> {
     // Check if already linked
     const alreadyLinked = await this.prisma.customer.findFirst({
-      where: { lineId: lineUserId, deletedAt: null },
+      where: { lineId: lineUserId },
     });
     if (alreadyLinked) {
       return { success: true, customerName: alreadyLinked.name };
@@ -181,7 +181,7 @@ export class LineOaService {
 
     // Find customer by phone
     const customer = await this.prisma.customer.findFirst({
-      where: { phone, deletedAt: null, lineId: null },
+      where: { phone, lineId: null },
     });
 
     if (!customer) {
@@ -214,12 +214,11 @@ export class LineOaService {
    */
   async findCustomerByLineId(lineUserId: string) {
     return this.prisma.customer.findFirst({
-      where: { lineId: lineUserId, deletedAt: null },
+      where: { lineId: lineUserId },
       include: {
         contracts: {
           where: {
             status: { in: ['ACTIVE', 'OVERDUE'] },
-            deletedAt: null,
           },
           orderBy: { createdAt: 'desc' },
           include: {
@@ -272,10 +271,10 @@ export class LineOaService {
 
   async findBranchForCustomer(lineUserId: string) {
     const customer = await this.prisma.customer.findFirst({
-      where: { lineId: lineUserId, deletedAt: null },
+      where: { lineId: lineUserId },
       include: {
         contracts: {
-          where: { deletedAt: null },
+          where: {},
           orderBy: { createdAt: 'desc' },
           take: 1,
           include: { branch: { select: { name: true, phone: true, location: true } } },
@@ -301,7 +300,7 @@ export class LineOaService {
     today.setHours(0, 0, 0, 0);
 
     const [linkedCustomers, pendingSlips, todayNotifications] = await Promise.all([
-      this.prisma.customer.count({ where: { lineId: { not: null }, deletedAt: null } }),
+      this.prisma.customer.count({ where: { lineId: { not: null } } }),
       this.prisma.paymentEvidence.count({ where: { status: 'PENDING_REVIEW' } }),
       this.prisma.notificationLog.count({ where: { channel: 'LINE', sentAt: { gte: today } } }),
     ]);
@@ -316,14 +315,13 @@ export class LineOaService {
    */
   async findCustomerContractsFull(lineId: string) {
     return this.prisma.customer.findFirst({
-      where: { lineId, deletedAt: null },
+      where: { lineId },
       select: {
         id: true,
         name: true,
         contracts: {
           where: {
             status: { in: ['ACTIVE', 'OVERDUE', 'COMPLETED', 'EARLY_PAYOFF'] },
-            deletedAt: null,
           },
           orderBy: { createdAt: 'desc' },
           select: {
@@ -363,7 +361,7 @@ export class LineOaService {
   async lookupCustomerByPhone(phone: string, lineId: string): Promise<{ customerId: string; maskedName: string } | null> {
     // Check if this lineId is already linked
     const alreadyLinked = await this.prisma.customer.findFirst({
-      where: { lineId, deletedAt: null },
+      where: { lineId },
     });
     if (alreadyLinked) {
       return null; // Already linked
@@ -382,7 +380,6 @@ export class LineOaService {
     }
     const customer = await this.prisma.customer.findFirst({
       where: {
-        deletedAt: null,
         phone: { in: phoneVariants },
       },
     });
@@ -401,7 +398,7 @@ export class LineOaService {
   async confirmLinkLine(customerId: string, lineId: string): Promise<{ success: boolean; error?: string }> {
     // Check if lineId already linked to another customer
     const existingLink = await this.prisma.customer.findFirst({
-      where: { lineId, deletedAt: null },
+      where: { lineId },
     });
     if (existingLink) {
       return { success: false, error: 'บัญชี LINE นี้เชื่อมต่อกับลูกค้ารายอื่นแล้ว' };
@@ -432,7 +429,7 @@ export class LineOaService {
    */
   async isLineIdLinked(lineId: string): Promise<boolean> {
     const customer = await this.prisma.customer.findFirst({
-      where: { lineId, deletedAt: null },
+      where: { lineId },
     });
     return !!customer;
   }
@@ -457,11 +454,11 @@ export class LineOaService {
    */
   async findCustomerPaymentHistory(lineId: string) {
     const customer = await this.prisma.customer.findFirst({
-      where: { lineId, deletedAt: null },
+      where: { lineId },
       select: {
         name: true,
         contracts: {
-          where: { deletedAt: null },
+          where: {},
           select: {
             contractNumber: true,
             payments: {
@@ -507,11 +504,11 @@ export class LineOaService {
    */
   async findCustomerProfile(lineId: string) {
     const customer = await this.prisma.customer.findFirst({
-      where: { lineId, deletedAt: null },
+      where: { lineId },
       select: {
         name: true,
         phone: true,
-        _count: { select: { contracts: { where: { deletedAt: null } } } },
+        _count: { select: { contracts: true } },
       },
     });
 
@@ -529,7 +526,7 @@ export class LineOaService {
    */
   async unlinkLineAccount(lineId: string): Promise<{ success: boolean; error?: string }> {
     const customer = await this.prisma.customer.findFirst({
-      where: { lineId, deletedAt: null },
+      where: { lineId },
     });
 
     if (!customer) {

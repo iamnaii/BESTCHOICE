@@ -1,11 +1,9 @@
 import { useState, useEffect } from 'react';
-import liff from '@line/liff';
+import { useLiffInit } from '@/hooks/useLiffInit';
+import { API_URL } from '@/lib/env';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-
-const API_BASE = import.meta.env.VITE_API_URL || '/api';
-const LIFF_ID = import.meta.env.VITE_LIFF_ID || '';
 
 interface ProfileData {
   name: string;
@@ -15,79 +13,32 @@ interface ProfileData {
 }
 
 export default function LiffProfile() {
+  const { lineId, profile, loading, error } = useLiffInit();
   const [data, setData] = useState<ProfileData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [lineId, setLineId] = useState('');
-  const [lineDisplayName, setLineDisplayName] = useState('');
+  const [dataLoading, setDataLoading] = useState(false);
+  const [dataError, setDataError] = useState<string | null>(null);
   const [unlinking, setUnlinking] = useState(false);
   const [unlinked, setUnlinked] = useState(false);
 
   useEffect(() => {
-    initLiff();
-  }, []);
-
-  async function initLiff() {
-    try {
-      if (LIFF_ID) {
-        await liff.init({ liffId: LIFF_ID });
-
-        if (!liff.isLoggedIn()) {
-          liff.login();
-          return;
-        }
-
-        const profile = await liff.getProfile();
-        setLineId(profile.userId);
-        setLineDisplayName(profile.displayName);
-        await fetchProfile(profile.userId);
-      } else {
-        // Dev-only fallback: accept lineId from URL only in development
-        if (import.meta.env.DEV) {
-          const params = new URLSearchParams(window.location.search);
-          const qLineId = params.get('lineId');
-          if (qLineId) {
-            setLineId(qLineId);
-            await fetchProfile(qLineId);
-          } else {
-            setError('ไม่สามารถระบุตัวตนได้ กรุณาเปิดผ่าน LINE');
-          }
-        } else {
-          setError('ไม่สามารถระบุตัวตนได้ กรุณาเปิดผ่าน LINE');
-        }
-      }
-    } catch (err) {
-      if (import.meta.env.DEV) console.error('LIFF init error:', err);
-      // Dev-only fallback: accept lineId from URL only in development
-      if (import.meta.env.DEV) {
-        const params = new URLSearchParams(window.location.search);
-        const qLineId = params.get('lineId');
-        if (qLineId) {
-          setLineId(qLineId);
-          await fetchProfile(qLineId);
-        } else {
-          setError('ไม่สามารถเชื่อมต่อ LINE ได้ กรุณาลองใหม่');
-        }
-      } else {
-        setError('ไม่สามารถเชื่อมต่อ LINE ได้ กรุณาลองใหม่');
-      }
-    } finally {
-      setLoading(false);
-    }
-  }
+    if (lineId) fetchProfile(lineId);
+  }, [lineId]);
 
   async function fetchProfile(id: string) {
+    setDataLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/line-oa/liff/profile?lineId=${encodeURIComponent(id)}`);
+      const res = await fetch(`${API_URL}/line-oa/liff/profile?lineId=${encodeURIComponent(id)}`);
       if (res.status === 404) {
-        setError('ยังไม่ได้ลงทะเบียน กรุณาลงทะเบียนก่อน');
+        setDataError('ยังไม่ได้ลงทะเบียน กรุณาลงทะเบียนก่อน');
         return;
       }
       if (!res.ok) throw new Error('API error');
       const result = await res.json();
       setData(result);
     } catch {
-      setError('ไม่สามารถโหลดข้อมูลได้ กรุณาลองใหม่');
+      setDataError('ไม่สามารถโหลดข้อมูลได้ กรุณาลองใหม่');
+    } finally {
+      setDataLoading(false);
     }
   }
 
@@ -98,7 +49,7 @@ export default function LiffProfile() {
 
     setUnlinking(true);
     try {
-      const res = await fetch(`${API_BASE}/line-oa/liff/unlink`, {
+      const res = await fetch(`${API_URL}/line-oa/liff/unlink`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ lineId }),
@@ -116,7 +67,7 @@ export default function LiffProfile() {
     }
   }
 
-  if (loading) {
+  if (loading || dataLoading) {
     return (
       <div className="min-h-screen bg-background p-4 space-y-4">
         <Skeleton className="h-24 w-full rounded-xl" />
@@ -125,14 +76,14 @@ export default function LiffProfile() {
     );
   }
 
-  if (error) {
+  if (error || dataError) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <Card className="max-w-md w-full">
           <CardContent className="text-center py-10">
             <div className="text-destructive text-5xl mb-4">!</div>
             <h2 className="text-lg font-bold mb-2">ไม่สามารถดำเนินการได้</h2>
-            <p className="text-muted-foreground text-sm">{error}</p>
+            <p className="text-muted-foreground text-sm">{error || dataError}</p>
           </CardContent>
         </Card>
       </div>
@@ -185,7 +136,7 @@ export default function LiffProfile() {
             </div>
             <div className="flex justify-between items-center py-2 border-b border-border/50">
               <span className="text-sm text-muted-foreground">LINE</span>
-              <span className="text-sm font-medium">{lineDisplayName || data.lineDisplayName || '-'}</span>
+              <span className="text-sm font-medium">{profile?.displayName || data.lineDisplayName || '-'}</span>
             </div>
             <div className="flex justify-between items-center py-2">
               <span className="text-sm text-muted-foreground">จำนวนสัญญา</span>

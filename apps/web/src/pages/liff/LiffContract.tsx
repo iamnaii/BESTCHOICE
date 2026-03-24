@@ -1,13 +1,11 @@
 import { useState, useEffect } from 'react';
-import liff from '@line/liff';
+import { useLiffInit } from '@/hooks/useLiffInit';
+import { API_URL } from '@/lib/env';
 import { CreditCard, ChevronDown } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-
-const API_BASE = import.meta.env.VITE_API_URL || '/api';
-const LIFF_ID = import.meta.env.VITE_LIFF_ID || '';
 
 interface Payment {
   installmentNo: number;
@@ -54,83 +52,38 @@ const paymentStatusIcon: Record<string, string> = {
 };
 
 export default function LiffContract() {
+  const { lineId, loading, error } = useLiffInit();
   const [data, setData] = useState<ContractData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [dataLoading, setDataLoading] = useState(false);
+  const [dataError, setDataError] = useState<string | null>(null);
   const [selectedContract, setSelectedContract] = useState(0);
   const [showAllPayments, setShowAllPayments] = useState(false);
-  const [lineId, setLineId] = useState('');
   const [creatingPayLink, setCreatingPayLink] = useState(false);
 
   useEffect(() => {
-    initLiff();
-  }, []);
-
-  async function initLiff() {
-    try {
-      if (LIFF_ID) {
-        await liff.init({ liffId: LIFF_ID });
-
-        if (!liff.isLoggedIn()) {
-          liff.login();
-          return;
-        }
-
-        const profile = await liff.getProfile();
-        setLineId(profile.userId);
-        await fetchContracts(profile.userId);
-      } else {
-        // Dev-only fallback: accept lineId from URL only in development
-        if (import.meta.env.DEV) {
-          const params = new URLSearchParams(window.location.search);
-          const qLineId = params.get('lineId');
-          if (qLineId) {
-            setLineId(qLineId);
-            await fetchContracts(qLineId);
-          } else {
-            setError('ไม่สามารถระบุตัวตนได้ กรุณาเปิดผ่าน LINE');
-          }
-        } else {
-          setError('ไม่สามารถระบุตัวตนได้ กรุณาเปิดผ่าน LINE');
-        }
-      }
-    } catch (err) {
-      if (import.meta.env.DEV) console.error('LIFF init error:', err);
-      // Dev-only fallback: accept lineId from URL only in development
-      if (import.meta.env.DEV) {
-        const params = new URLSearchParams(window.location.search);
-        const qLineId = params.get('lineId');
-        if (qLineId) {
-          setLineId(qLineId);
-          await fetchContracts(qLineId);
-        } else {
-          setError('ไม่สามารถเชื่อมต่อ LINE ได้ กรุณาลองใหม่');
-        }
-      } else {
-        setError('ไม่สามารถเชื่อมต่อ LINE ได้ กรุณาลองใหม่');
-      }
-    } finally {
-      setLoading(false);
-    }
-  }
+    if (lineId) fetchContracts(lineId);
+  }, [lineId]);
 
   async function fetchContracts(lineId: string) {
+    setDataLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/line-oa/liff/contracts?lineId=${encodeURIComponent(lineId)}`);
+      const res = await fetch(`${API_URL}/line-oa/liff/contracts?lineId=${encodeURIComponent(lineId)}`);
       if (res.status === 404) {
-        setError('ยังไม่ได้ลงทะเบียน กรุณาลงทะเบียนก่อน');
+        setDataError('ยังไม่ได้ลงทะเบียน กรุณาลงทะเบียนก่อน');
         return;
       }
       if (!res.ok) throw new Error('API error');
       const result = await res.json();
       setData(result);
     } catch {
-      setError('ไม่สามารถโหลดข้อมูลได้ กรุณาลองใหม่');
+      setDataError('ไม่สามารถโหลดข้อมูลได้ กรุณาลองใหม่');
+    } finally {
+      setDataLoading(false);
     }
   }
 
   // --- Loading ---
-  if (loading) {
+  if (loading || dataLoading) {
     return (
       <div className="min-h-screen bg-background p-4 space-y-4">
         <Skeleton className="h-24 w-full rounded-xl" />
@@ -141,7 +94,7 @@ export default function LiffContract() {
   }
 
   // --- Error ---
-  if (error) {
+  if (error || dataError) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <Card className="max-w-md w-full">
@@ -188,7 +141,7 @@ export default function LiffContract() {
     if (creatingPayLink) return;
     setCreatingPayLink(true);
     try {
-      const res = await fetch(`${API_BASE}/line-oa/liff/create-payment-link`, {
+      const res = await fetch(`${API_URL}/line-oa/liff/create-payment-link`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ lineId, contractId: contract.id }),
@@ -281,7 +234,7 @@ export default function LiffContract() {
             className="w-full"
             onClick={async () => {
               try {
-                const res = await fetch(`${API_BASE}/contracts/${contract.id}/documents`, {
+                const res = await fetch(`${API_URL}/contracts/${contract.id}/documents`, {
                   headers: { 'Content-Type': 'application/json' },
                 });
                 if (!res.ok) {
@@ -292,7 +245,7 @@ export default function LiffContract() {
                 const docs = await res.json();
                 const contractDoc = docs.find((d: { documentType: string }) => d.documentType === 'CONTRACT');
                 if (contractDoc) {
-                  const urlRes = await fetch(`${API_BASE}/documents/${contractDoc.id}/signed-url`);
+                  const urlRes = await fetch(`${API_URL}/documents/${contractDoc.id}/signed-url`);
                   if (urlRes.ok) {
                     const { url } = await urlRes.json();
                     window.open(url, '_blank');

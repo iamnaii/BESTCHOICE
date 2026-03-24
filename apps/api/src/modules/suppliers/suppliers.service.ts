@@ -155,7 +155,7 @@ export class SuppliersService {
     await this.findOne(id);
 
     const products = await this.prisma.product.findMany({
-      where: { supplierId: id, deletedAt: null },
+      where: { supplierId: id },
       select: {
         id: true,
         name: true,

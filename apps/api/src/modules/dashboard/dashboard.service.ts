@@ -22,13 +22,13 @@ export class DashboardService {
       totalProducts,
       inStockProducts,
     ] = await Promise.all([
-      this.prisma.contract.count({ where: { deletedAt: null, ...branchFilter } }),
-      this.prisma.contract.count({ where: { status: 'ACTIVE', deletedAt: null, ...branchFilter } }),
-      this.prisma.contract.count({ where: { status: 'OVERDUE', deletedAt: null, ...branchFilter } }),
-      this.prisma.contract.count({ where: { status: 'DEFAULT', deletedAt: null, ...branchFilter } }),
-      this.prisma.contract.count({ where: { status: 'COMPLETED', deletedAt: null, ...branchFilter } }),
-      this.prisma.product.count({ where: { deletedAt: null, ...productBranchFilter } }),
-      this.prisma.product.count({ where: { status: 'IN_STOCK', deletedAt: null, ...productBranchFilter } }),
+      this.prisma.contract.count({ where: { ...branchFilter } }),
+      this.prisma.contract.count({ where: { status: 'ACTIVE', ...branchFilter } }),
+      this.prisma.contract.count({ where: { status: 'OVERDUE', ...branchFilter } }),
+      this.prisma.contract.count({ where: { status: 'DEFAULT', ...branchFilter } }),
+      this.prisma.contract.count({ where: { status: 'COMPLETED', ...branchFilter } }),
+      this.prisma.product.count({ where: { ...productBranchFilter } }),
+      this.prisma.product.count({ where: { status: 'IN_STOCK', ...productBranchFilter } }),
     ]);
 
     // Financial aggregates
@@ -36,7 +36,7 @@ export class DashboardService {
       this.prisma.payment.aggregate({
         where: {
           status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] },
-          contract: { deletedAt: null, status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] }, ...branchFilter },
+          contract: { status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] }, ...branchFilter },
         },
         _sum: { amountDue: true, amountPaid: true, lateFee: true },
       }),
@@ -87,7 +87,7 @@ export class DashboardService {
     // 2 batch queries instead of 24 sequential ones
     const [contracts, payments] = await Promise.all([
       this.prisma.contract.findMany({
-        where: { createdAt: { gte: startDate }, deletedAt: null, ...branchFilter },
+        where: { createdAt: { gte: startDate }, ...branchFilter },
         select: { createdAt: true },
       }),
       this.prisma.payment.findMany({
@@ -128,7 +128,7 @@ export class DashboardService {
     const branchFilter = branchId ? { branchId } : {};
 
     const contracts = await this.prisma.contract.findMany({
-      where: { status: { in: ['OVERDUE', 'DEFAULT'] }, deletedAt: null, ...branchFilter },
+      where: { status: { in: ['OVERDUE', 'DEFAULT'] }, ...branchFilter },
       include: {
         customer: { select: { id: true, name: true, phone: true } },
         branch: { select: { name: true } },
@@ -177,7 +177,7 @@ export class DashboardService {
 
     const groups = await this.prisma.contract.groupBy({
       by: ['status'],
-      where: { deletedAt: null, ...branchFilter },
+      where: { ...branchFilter },
       _count: true,
     });
 
@@ -211,7 +211,6 @@ export class DashboardService {
         where: {
           branchId: { in: branchIds },
           status: { in: ['OVERDUE', 'DEFAULT'] },
-          deletedAt: null,
         },
         _count: true,
       }),
@@ -269,7 +268,7 @@ export class DashboardService {
         where: {
           paidDate: { gte: monthStart, lt: monthEnd },
           status: 'PAID',
-          contract: { deletedAt: null, ...branchFilter },
+          contract: { ...branchFilter },
         },
         select: {
           amountPaid: true,
@@ -279,7 +278,7 @@ export class DashboardService {
       this.prisma.payment.aggregate({
         where: {
           paidDate: { gte: monthStart, lt: monthEnd },
-          contract: { deletedAt: null, ...branchFilter },
+          contract: { ...branchFilter },
         },
         _sum: { lateFee: true },
       }),
@@ -305,8 +304,8 @@ export class DashboardService {
   async getAgingSummary(branchId?: string) {
     const now = new Date();
     const branchFilter = branchId
-      ? { contract: { branchId, deletedAt: null } }
-      : { contract: { deletedAt: null } };
+      ? { contract: { branchId } }
+      : {};
 
     const overduePayments = await this.prisma.payment.findMany({
       where: {
@@ -351,7 +350,7 @@ export class DashboardService {
 
     // Sales metrics: contracts this month grouped by salesperson
     const contracts = await this.prisma.contract.findMany({
-      where: { createdAt: { gte: monthStart, lt: monthEnd }, deletedAt: null, ...branchFilter },
+      where: { createdAt: { gte: monthStart, lt: monthEnd }, ...branchFilter },
       include: {
         salesperson: { select: { id: true, name: true } },
         branch: { select: { name: true } },
@@ -386,7 +385,7 @@ export class DashboardService {
     // Recent activity: contracts created + payments recorded in last 7 days
     const [recentContracts, recentPayments] = await Promise.all([
       this.prisma.contract.findMany({
-        where: { createdAt: { gte: weekAgo }, deletedAt: null, ...branchFilter },
+        where: { createdAt: { gte: weekAgo }, ...branchFilter },
         select: {
           id: true,
           contractNumber: true,
@@ -402,7 +401,7 @@ export class DashboardService {
         where: {
           paidDate: { gte: weekAgo },
           status: 'PAID',
-          contract: { deletedAt: null, ...branchFilter },
+          contract: { ...branchFilter },
         },
         select: {
           id: true,

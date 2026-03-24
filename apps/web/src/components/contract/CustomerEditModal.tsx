@@ -4,6 +4,7 @@ import api, { getErrorMessage } from '@/lib/api';
 import Modal from '@/components/ui/Modal';
 import AddressForm, { AddressData, emptyAddress, serializeAddress, deserializeAddress } from '@/components/ui/AddressForm';
 import { toast } from 'sonner';
+import { THAI_NAME_PREFIXES, RELATIONSHIP_OPTIONS } from '@/lib/constants';
 
 interface CustReferenceData {
   prefix?: string;
@@ -30,8 +31,6 @@ interface Props {
   onSuccess: () => void;
 }
 
-const custPrefixOptions = ['นาย', 'นาง', 'นางสาว'];
-const custRelationshipOptions = ['บิดา', 'มารดา', 'พี่น้อง', 'คู่สมรส', 'ญาติ', 'เพื่อน', 'อื่นๆ'];
 
 export default function CustomerEditModal({ customerId, customerSnapshot, customerBasic, onClose, onSuccess }: Props) {
   const queryClient = useQueryClient();
@@ -159,7 +158,7 @@ export default function CustomerEditModal({ customerId, customerSnapshot, custom
                 <label className="block text-xs text-muted-foreground mb-1">คำนำหน้า</label>
                 <select value={form.prefix} onChange={(e) => setForm({ ...form, prefix: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background">
                   <option value="">-- เลือก --</option>
-                  {custPrefixOptions.map(p => <option key={p} value={p}>{p}</option>)}
+                  {THAI_NAME_PREFIXES.map(p => <option key={p} value={p}>{p}</option>)}
                 </select>
               </div>
               <div>
@@ -272,7 +271,7 @@ export default function CustomerEditModal({ customerId, customerSnapshot, custom
                       <label className="block text-xs text-muted-foreground mb-1">คำนำหน้า</label>
                       <select value={ref.prefix || ''} onChange={(e) => updateRef(idx, 'prefix', e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background">
                         <option value="">-- เลือก --</option>
-                        {custPrefixOptions.map(p => <option key={p} value={p}>{p}</option>)}
+                        {THAI_NAME_PREFIXES.map(p => <option key={p} value={p}>{p}</option>)}
                       </select>
                     </div>
                     <div>
@@ -291,7 +290,7 @@ export default function CustomerEditModal({ customerId, customerSnapshot, custom
                       <label className="block text-xs text-muted-foreground mb-1">ความสัมพันธ์</label>
                       <select value={ref.relationship || ''} onChange={(e) => updateRef(idx, 'relationship', e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background">
                         <option value="">-- เลือก --</option>
-                        {custRelationshipOptions.map(r => <option key={r} value={r}>{r}</option>)}
+                        {RELATIONSHIP_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
                       </select>
                     </div>
                   </div>

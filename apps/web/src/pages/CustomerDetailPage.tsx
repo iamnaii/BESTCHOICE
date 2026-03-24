@@ -11,6 +11,7 @@ import { useAuth } from '@/contexts/AuthContext';
 
 import { toast } from 'sonner';
 import { maskNationalId } from '@/utils/mask.util';
+import { THAI_NAME_PREFIXES, RELATIONSHIP_OPTIONS } from '@/lib/constants';
 
 interface ReferenceData {
   prefix?: string;
@@ -98,8 +99,6 @@ const creditStatusLabels: Record<string, { label: string; className: string }> =
   MANUAL_REVIEW: { label: 'ต้องตรวจเพิ่ม', className: 'bg-amber-100 text-amber-700' },
 };
 
-const custPrefixOptions = ['นาย', 'นาง', 'นางสาว'];
-const custRelationshipOptions = ['บิดา', 'มารดา', 'พี่น้อง', 'คู่สมรส', 'ญาติ', 'เพื่อน', 'อื่นๆ'];
 
 export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -500,7 +499,7 @@ export default function CustomerDetailPage() {
                 <label className="block text-xs text-muted-foreground mb-1">คำนำหน้า</label>
                 <select value={editForm.prefix} onChange={(e) => setEditForm({ ...editForm, prefix: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background">
                   <option value="">-- เลือก --</option>
-                  {custPrefixOptions.map(p => <option key={p} value={p}>{p}</option>)}
+                  {THAI_NAME_PREFIXES.map(p => <option key={p} value={p}>{p}</option>)}
                 </select>
               </div>
               <div>
@@ -616,7 +615,7 @@ export default function CustomerDetailPage() {
                       <label className="block text-xs text-muted-foreground mb-1">คำนำหน้า</label>
                       <select value={ref.prefix || ''} onChange={(e) => updateEditRef(idx, 'prefix', e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background">
                         <option value="">-- เลือก --</option>
-                        {custPrefixOptions.map(p => <option key={p} value={p}>{p}</option>)}
+                        {THAI_NAME_PREFIXES.map(p => <option key={p} value={p}>{p}</option>)}
                       </select>
                     </div>
                     <div>
@@ -635,7 +634,7 @@ export default function CustomerDetailPage() {
                       <label className="block text-xs text-muted-foreground mb-1">ความสัมพันธ์</label>
                       <select value={ref.relationship || ''} onChange={(e) => updateEditRef(idx, 'relationship', e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background">
                         <option value="">-- เลือก --</option>
-                        {custRelationshipOptions.map(r => <option key={r} value={r}>{r}</option>)}
+                        {RELATIONSHIP_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
                       </select>
                     </div>
                   </div>

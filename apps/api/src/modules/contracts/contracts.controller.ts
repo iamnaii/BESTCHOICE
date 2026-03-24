@@ -1,5 +1,8 @@
 import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Req } from '@nestjs/common';
 import { ContractsService } from './contracts.service';
+import { ContractWorkflowService } from './contract-workflow.service';
+import { ContractPaymentService } from './contract-payment.service';
+import { ContractDocumentService } from './contract-document.service';
 import { CreateContractDto, UpdateContractDto, EarlyPayoffDto, ReviewContractDto, RejectContractDto } from './dto/contract.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -10,7 +13,12 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 @Controller('contracts')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ContractsController {
-  constructor(private contractsService: ContractsService) {}
+  constructor(
+    private contractsService: ContractsService,
+    private workflowService: ContractWorkflowService,
+    private paymentService: ContractPaymentService,
+    private documentService: ContractDocumentService,
+  ) {}
 
   @Get()
   findAll(
@@ -42,7 +50,7 @@ export class ContractsController {
   @Get('document-dashboard')
   @Roles('OWNER', 'BRANCH_MANAGER')
   getDocumentDashboard(@Query('branchId') branchId?: string) {
-    return this.contractsService.getDocumentDashboard(branchId);
+    return this.documentService.getDocumentDashboard(branchId);
   }
 
   @Get(':id')
@@ -52,12 +60,12 @@ export class ContractsController {
 
   @Get(':id/schedule')
   getSchedule(@Param('id') id: string) {
-    return this.contractsService.getSchedule(id);
+    return this.paymentService.getSchedule(id);
   }
 
   @Get(':id/early-payoff-quote')
   getEarlyPayoffQuote(@Param('id') id: string) {
-    return this.contractsService.getEarlyPayoffQuote(id);
+    return this.paymentService.getEarlyPayoffQuote(id);
   }
 
   @Post()
@@ -87,7 +95,7 @@ export class ContractsController {
   @Post(':id/submit-review')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   submitForReview(@Param('id') id: string, @CurrentUser() user: { id: string }) {
-    return this.contractsService.submitForReview(id, user.id);
+    return this.workflowService.submitForReview(id, user.id);
   }
 
   @Post(':id/approve')
@@ -97,7 +105,7 @@ export class ContractsController {
     @Body() dto: ReviewContractDto,
     @CurrentUser() user: { id: string; role: string },
   ) {
-    return this.contractsService.approveContract(id, user.id, user.role, dto.reviewNotes);
+    return this.workflowService.approveContract(id, user.id, user.role, dto.reviewNotes);
   }
 
   @Post(':id/reject')
@@ -107,19 +115,19 @@ export class ContractsController {
     @Body() dto: RejectContractDto,
     @CurrentUser() user: { id: string; role: string },
   ) {
-    return this.contractsService.rejectContract(id, user.id, user.role, dto.reviewNotes);
+    return this.workflowService.rejectContract(id, user.id, user.role, dto.reviewNotes);
   }
 
   @Post(':id/activate')
   @Roles('OWNER', 'BRANCH_MANAGER')
   activate(@Param('id') id: string) {
-    return this.contractsService.activate(id);
+    return this.workflowService.activate(id);
   }
 
   @Post(':id/early-payoff')
   @Roles('OWNER', 'BRANCH_MANAGER')
   earlyPayoff(@Param('id') id: string, @Body() dto: EarlyPayoffDto, @CurrentUser() user: { id: string }) {
-    return this.contractsService.earlyPayoff(id, user.id, dto.paymentMethod);
+    return this.paymentService.earlyPayoff(id, user.id, dto.paymentMethod);
   }
 
   // === VALIDATION: ตรวจสอบความครบถ้วนของสัญญา ===
@@ -132,13 +140,13 @@ export class ContractsController {
   @Public()
   @Get(':id/verify')
   verifyContract(@Param('id') id: string, @Query('hash') hash?: string) {
-    return this.contractsService.verifyContract(id, hash);
+    return this.documentService.verifyContract(id, hash);
   }
 
   // === QR CODE DATA: ข้อมูลสำหรับสร้าง QR Code ===
   @Get(':id/qr-data')
   getQrData(@Param('id') id: string) {
-    return this.contractsService.getQrData(id);
+    return this.documentService.getQrData(id);
   }
 
   // === PDPA Consent: บันทึกความยินยอม PDPA และผูกกับสัญญา ===
@@ -149,7 +157,7 @@ export class ContractsController {
     @Body('signatureImage') signatureImage: string,
     @Req() req: any,
   ) {
-    return this.contractsService.recordPdpaConsent(id, signatureImage, {
+    return this.documentService.recordPdpaConsent(id, signatureImage, {
       ip: req.ip,
       userAgent: req.headers?.['user-agent'],
     });
@@ -157,6 +165,6 @@ export class ContractsController {
 
   @Get(':id/pdpa-consent')
   getPdpaConsent(@Param('id') id: string) {
-    return this.contractsService.getPdpaConsent(id);
+    return this.documentService.getPdpaConsent(id);
   }
 }

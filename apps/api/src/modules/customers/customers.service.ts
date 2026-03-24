@@ -8,7 +8,7 @@ export class CustomersService {
   constructor(private prisma: PrismaService) {}
 
   async findAll(search?: string, page = 1, limit = 50) {
-    const where: Record<string, unknown> = { deletedAt: null };
+    const where: Record<string, unknown> = {};
 
     if (search) {
       where.OR = [
@@ -36,7 +36,6 @@ export class CustomersService {
           createdAt: true,
           _count: { select: { contracts: true } },
           contracts: {
-            where: { deletedAt: null },
             select: { status: true },
           },
           creditChecks: {
@@ -94,7 +93,6 @@ export class CustomersService {
   async search(q: string) {
     return this.prisma.customer.findMany({
       where: {
-        deletedAt: null,
         OR: [
           { name: { contains: q, mode: 'insensitive' } },
           { phone: { contains: q } },
@@ -164,7 +162,7 @@ export class CustomersService {
   async getContracts(id: string) {
     await this.findOne(id);
     return this.prisma.contract.findMany({
-      where: { customerId: id, deletedAt: null },
+      where: { customerId: id },
       include: {
         product: { select: { id: true, name: true, brand: true, model: true } },
         branch: { select: { id: true, name: true } },
@@ -179,7 +177,6 @@ export class CustomersService {
       where: {
         customerId: id,
         status: { in: ['OVERDUE', 'DEFAULT'] },
-        deletedAt: null,
       },
       select: {
         id: true,

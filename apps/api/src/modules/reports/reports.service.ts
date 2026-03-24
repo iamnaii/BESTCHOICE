@@ -10,7 +10,7 @@ export class ReportsService {
    */
   async getAgingReport(branchId?: string) {
     const now = new Date();
-    const branchFilter = branchId ? { contract: { branchId, deletedAt: null } } : { contract: { deletedAt: null } };
+    const branchFilter = branchId ? { contract: { branchId } } : {};
 
     const overduePayments = await this.prisma.payment.findMany({
       where: {
@@ -70,7 +70,7 @@ export class ReportsService {
         where: {
           paidDate: { gte: start, lte: end },
           status: 'PAID',
-          contract: { deletedAt: null, ...branchFilter },
+          contract: { ...branchFilter },
         },
         select: {
           amountPaid: true,
@@ -94,7 +94,7 @@ export class ReportsService {
         _count: true,
       }),
       this.prisma.contract.count({
-        where: { createdAt: { gte: start, lte: end }, deletedAt: null, ...branchFilter },
+        where: { createdAt: { gte: start, lte: end }, ...branchFilter },
       }),
     ]);
 
@@ -123,7 +123,7 @@ export class ReportsService {
     const branchFilter = branchId ? { branchId } : {};
 
     const customers = await this.prisma.contract.findMany({
-      where: { status: { in: ['OVERDUE', 'DEFAULT'] }, deletedAt: null, ...branchFilter },
+      where: { status: { in: ['OVERDUE', 'DEFAULT'] }, ...branchFilter },
       include: {
         customer: { select: { id: true, name: true, phone: true, lineId: true } },
         branch: { select: { name: true } },
@@ -165,7 +165,7 @@ export class ReportsService {
     const branchFilter = branchId ? { branchId } : {};
 
     const contracts = await this.prisma.contract.findMany({
-      where: { createdAt: { gte: start, lte: end }, deletedAt: null, ...branchFilter },
+      where: { createdAt: { gte: start, lte: end }, ...branchFilter },
       include: {
         salesperson: { select: { id: true, name: true } },
         branch: { select: { name: true } },
@@ -212,14 +212,14 @@ export class ReportsService {
     return Promise.all(
       branches.map(async (branch) => {
         const [newContracts, activeContracts, overdueContracts, payments, products] = await Promise.all([
-          this.prisma.contract.count({ where: { branchId: branch.id, createdAt: { gte: start, lte: end }, deletedAt: null } }),
-          this.prisma.contract.count({ where: { branchId: branch.id, status: 'ACTIVE', deletedAt: null } }),
-          this.prisma.contract.count({ where: { branchId: branch.id, status: { in: ['OVERDUE', 'DEFAULT'] }, deletedAt: null } }),
+          this.prisma.contract.count({ where: { branchId: branch.id, createdAt: { gte: start, lte: end } } }),
+          this.prisma.contract.count({ where: { branchId: branch.id, status: 'ACTIVE' } }),
+          this.prisma.contract.count({ where: { branchId: branch.id, status: { in: ['OVERDUE', 'DEFAULT'] } } }),
           this.prisma.payment.aggregate({
             where: { paidDate: { gte: start, lte: end }, status: 'PAID', contract: { branchId: branch.id } },
             _sum: { amountPaid: true },
           }),
-          this.prisma.product.count({ where: { branchId: branch.id, status: 'IN_STOCK', deletedAt: null } }),
+          this.prisma.product.count({ where: { branchId: branch.id, status: 'IN_STOCK' } }),
         ]);
 
         return {
@@ -305,7 +305,7 @@ export class ReportsService {
 
     const products = await this.prisma.product.groupBy({
       by: ['status', 'branchId'],
-      where: { deletedAt: null, ...branchFilter },
+      where: { ...branchFilter },
       _count: true,
     });
 
@@ -317,7 +317,7 @@ export class ReportsService {
     const branchMap = new Map(branches.map((b) => [b.id, b.name]));
 
     const stockValue = await this.prisma.product.aggregate({
-      where: { status: 'IN_STOCK', deletedAt: null, ...branchFilter },
+      where: { status: 'IN_STOCK', ...branchFilter },
       _sum: { costPrice: true },
       _count: true,
     });
@@ -337,7 +337,7 @@ export class ReportsService {
    * Export data as CSV-ready format
    */
   async exportContracts(filters: { status?: string; branchId?: string; startDate?: string; endDate?: string }) {
-    const where: Record<string, unknown> = { deletedAt: null };
+    const where: Record<string, unknown> = {};
     if (filters.status) where.status = filters.status;
     if (filters.branchId) where.branchId = filters.branchId;
     if (filters.startDate || filters.endDate) {

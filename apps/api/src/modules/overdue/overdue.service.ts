@@ -28,7 +28,6 @@ export class OverdueService {
 
     const where: Prisma.ContractWhereInput = {
       status: { in: ['OVERDUE', 'DEFAULT'] },
-      deletedAt: null,
     };
 
     // Branch-level access control
@@ -97,16 +96,16 @@ export class OverdueService {
 
     const [overdueCount, defaultCount, totalOverdueAmount] = await Promise.all([
       this.prisma.contract.count({
-        where: { status: 'OVERDUE', deletedAt: null, ...branchFilter },
+        where: { status: 'OVERDUE', ...branchFilter },
       }),
       this.prisma.contract.count({
-        where: { status: 'DEFAULT', deletedAt: null, ...branchFilter },
+        where: { status: 'DEFAULT', ...branchFilter },
       }),
       this.prisma.payment.aggregate({
         where: {
           status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] },
           dueDate: { lt: new Date() },
-          contract: { status: { in: ['OVERDUE', 'DEFAULT'] }, deletedAt: null, ...branchFilter },
+          contract: { status: { in: ['OVERDUE', 'DEFAULT'] }, ...branchFilter },
         },
         _sum: { amountDue: true, amountPaid: true, lateFee: true },
       }),
@@ -269,7 +268,6 @@ export class OverdueService {
     const activeContracts = await this.prisma.contract.findMany({
       where: {
         status: 'ACTIVE',
-        deletedAt: null,
         payments: {
           some: {
             status: { in: ['PENDING', 'PARTIALLY_PAID', 'OVERDUE'] },
@@ -401,7 +399,6 @@ export class OverdueService {
     const contracts = await this.prisma.contract.findMany({
       where: {
         status: { in: ['OVERDUE', 'DEFAULT'] },
-        deletedAt: null,
       },
       select: {
         id: true,

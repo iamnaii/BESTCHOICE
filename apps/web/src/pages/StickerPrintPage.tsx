@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 
@@ -39,15 +39,14 @@ export default function StickerPrintPage() {
     },
   });
 
-  const loadPreview = async () => {
-    if (!productId) return;
-    try {
+  const previewMutation = useMutation({
+    mutationFn: async () => {
       const { data } = await api.get(`/sticker-templates/product/${productId}/data`);
-      setPreviewData(data);
-    } catch {
-      setPreviewData(null);
-    }
-  };
+      return data as StickerData;
+    },
+    onSuccess: (data) => setPreviewData(data),
+    onError: () => setPreviewData(null),
+  });
 
   const template = templates.find((t) => t.id === selectedTemplate);
 
@@ -72,7 +71,7 @@ export default function StickerPrintPage() {
                   placeholder="ระบุ ID สินค้า"
                   className="flex-1 px-3 py-2 border border-input rounded-lg text-sm outline-none"
                 />
-                <button onClick={loadPreview} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm">
+                <button onClick={() => productId && previewMutation.mutate()} disabled={!productId || previewMutation.isPending} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm disabled:opacity-50">
                   โหลด
                 </button>
               </div>

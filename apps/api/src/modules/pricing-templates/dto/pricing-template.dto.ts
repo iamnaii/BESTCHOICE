@@ -18,7 +18,7 @@ export class CreatePricingTemplateDto {
   @IsOptional()
   storage?: string;
 
-  @IsEnum(ProductCategory)
+  @IsEnum(ProductCategory, { message: 'หมวดหมู่สินค้าต้องเป็น PHONE_NEW, PHONE_USED, TABLET หรือ ACCESSORY' })
   category: ProductCategory;
 
   @IsBoolean()

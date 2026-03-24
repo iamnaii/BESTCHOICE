@@ -2,10 +2,10 @@ import { IsString, IsOptional, IsArray, IsIn, IsNotEmpty } from 'class-validator
 
 export class CreateStockAdjustmentDto {
   @IsString()
-  @IsNotEmpty()
+  @IsNotEmpty({ message: 'กรุณาระบุรหัสสินค้า' })
   productId: string;
 
-  @IsIn(['DAMAGED', 'LOST', 'FOUND', 'CORRECTION', 'WRITE_OFF', 'OTHER'])
+  @IsIn(['DAMAGED', 'LOST', 'FOUND', 'CORRECTION', 'WRITE_OFF', 'OTHER'], { message: 'เหตุผลต้องเป็น DAMAGED, LOST, FOUND, CORRECTION, WRITE_OFF หรือ OTHER' })
   reason: string;
 
   @IsString()

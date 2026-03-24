@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import { toast } from 'sonner';
@@ -25,6 +25,20 @@ export default function ReportsPage() {
   const [activeTab, setActiveTab] = useState<ReportType>('aging');
   const [dateFilter, setDateFilter] = useState(new Date().toISOString().slice(0, 10));
 
+  const exportMutation = useMutation({
+    mutationFn: async () => {
+      const { data } = await api.get('/reports/export/contracts', { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `contracts-export-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    },
+    onSuccess: () => toast.success('ดาวน์โหลด CSV สำเร็จ'),
+    onError: () => toast.error('ไม่สามารถดาวน์โหลดได้'),
+  });
+
   return (
     <div>
       <PageHeader
@@ -32,23 +46,11 @@ export default function ReportsPage() {
         subtitle="รายงานสรุปข้อมูลต่างๆ"
         action={
           <button
-            onClick={async () => {
-              try {
-                const { data } = await api.get('/reports/export/contracts', { responseType: 'blob' });
-                const url = window.URL.createObjectURL(new Blob([data]));
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `contracts-export-${new Date().toISOString().slice(0, 10)}.csv`;
-                a.click();
-                window.URL.revokeObjectURL(url);
-                toast.success('ดาวน์โหลด CSV สำเร็จ');
-              } catch {
-                toast.error('ไม่สามารถดาวน์โหลดได้');
-              }
-            }}
-            className="px-4 py-2 text-sm border border-input rounded-lg hover:bg-muted"
+            onClick={() => exportMutation.mutate()}
+            disabled={exportMutation.isPending}
+            className="px-4 py-2 text-sm border border-input rounded-lg hover:bg-muted disabled:opacity-50"
           >
-            Export CSV
+            {exportMutation.isPending ? 'กำลังดาวน์โหลด...' : 'Export CSV'}
           </button>
         }
       />

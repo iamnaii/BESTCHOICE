@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 
 interface ContractAccess {
@@ -59,19 +59,20 @@ const paymentStatusColors: Record<string, string> = {
 
 function CustomerPortalPage() {
   const { token } = useParams<{ token: string }>();
-  const [data, setData] = useState<ContractAccess | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (!token) return;
-    api.get(`/customer-access/${token}`)
-      .then(({ data }) => setData(data))
-      .catch((err) => {
-        setError(err.response?.data?.message || 'ลิงก์ไม่ถูกต้องหรือหมดอายุ');
-      })
-      .finally(() => setLoading(false));
-  }, [token]);
+  const { data, error: queryError, isLoading: loading } = useQuery({
+    queryKey: ['customer-access', token],
+    queryFn: async () => {
+      const res = await api.get(`/customer-access/${token}`);
+      return res.data as ContractAccess;
+    },
+    enabled: !!token,
+    retry: false,
+  });
+
+  const error = queryError
+    ? ((queryError as any).response?.data?.message || 'ลิงก์ไม่ถูกต้องหรือหมดอายุ')
+    : null;
 
   if (loading) {
     return (

@@ -20,10 +20,11 @@ RUN npm ci --include=dev
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Ensure hoisted workspace binaries (nest, prisma) are in PATH
-ENV PATH="/app/node_modules/.bin:$PATH"
-
+# @nestjs/cli is recorded in package-lock.json under apps/api/node_modules
+# (not hoisted to root node_modules) so we must copy it separately.
+# node_modules/.bin/nest lives at apps/api/node_modules/.bin/nest.
 COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
 COPY package.json ./
 COPY apps/api ./apps/api
 COPY packages ./packages

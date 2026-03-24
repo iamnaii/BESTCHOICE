@@ -9,7 +9,9 @@ COPY apps/api/package.json apps/api/
 # and hoists all workspace deps (including @nestjs/cli from apps/api devDeps)
 COPY apps/web/package.json apps/web/
 COPY packages/ packages/
-RUN --mount=type=cache,target=/root/.npm npm ci
+# Force --include=dev so @nestjs/cli and other build-time devDeps are installed
+# even when the build environment has NODE_ENV=production set (e.g. DigitalOcean)
+RUN --mount=type=cache,target=/root/.npm npm ci --include=dev
 
 # ============================================
 # Stage 2: Build API

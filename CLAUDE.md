@@ -4,9 +4,10 @@
 BESTCHOICE is a full-stack installment payment management system for mobile/phone shops in Thailand.
 
 ## Tech Stack
-- **Frontend**: React 18 + TypeScript + Vite 6 + Tailwind CSS (apps/web)
-- **Backend**: NestJS + Prisma + PostgreSQL (apps/api)
+- **Frontend**: React 18 + TypeScript + Vite 6 + Tailwind CSS (`apps/web`)
+- **Backend**: NestJS + Prisma + PostgreSQL (`apps/api`)
 - **Monorepo**: Turborepo with npm workspaces
+- **Shared**: `packages/shared/` for shared types/utilities
 
 ## Development
 ```bash
@@ -26,96 +27,199 @@ cd apps/api && npm run dev
 ## Test Accounts (Dev Mode)
 - **Admin**: admin@bestchoice.com / admin1234
 
-## E2E Testing with Playwright
-```bash
-# Run all E2E tests
-cd apps/web && npx playwright test
+---
 
-# Run with browser visible
-cd apps/web && npx playwright test --headed
+## Agent Instructions (WAT Framework)
 
-# Run specific test file
-cd apps/web && npx playwright test e2e/login.spec.ts
+โปรเจคนี้ใช้ WAT Framework (Workflows, Agents, Tools) — แยก reasoning (Agent) ออกจาก execution (Tools) เพื่อให้ทำงานได้แม่นยำและเป็นระบบ
 
-# Open Playwright UI (interactive mode)
-cd apps/web && npx playwright test --ui
+### หลักการทำงาน
 
-# Generate test report
-cd apps/web && npx playwright show-report
+1. **อ่าน Workflow ก่อนทำงานเสมอ**
+   - ก่อนสร้าง API module → อ่าน `workflows/create-api-module.md`
+   - ก่อนสร้าง React page → อ่าน `workflows/create-page.md`
+   - ก่อนแก้ Prisma schema → อ่าน `workflows/prisma-changes.md`
+   - ก่อน fix bug → อ่าน `workflows/fix-bug.md`
+   - ก่อน deploy → อ่าน `workflows/deploy.md`
+   - ก่อนเพิ่ม endpoint → อ่าน `workflows/add-api-endpoint.md`
+
+2. **ค้นหาก่อนสร้าง**
+   - ค้นหา existing components, hooks, utilities ใน codebase ก่อนสร้างใหม่
+   - ตรวจว่ามี module/page ที่ทำงานคล้ายกันอยู่แล้วหรือไม่
+   - Reuse code ที่มีอยู่แทนการ duplicate
+
+3. **ใช้ Tools สำหรับ routine tasks**
+   - `./tools/generate-module.sh <name>` — scaffold NestJS module
+   - `./tools/check-types.sh [api|web|all]` — ตรวจ TypeScript errors
+   - `./tools/run-tests.sh [--skip-e2e]` — lint + type check + E2E
+   - `./tools/db-reset.sh` — reset dev database
+
+4. **ตาม Pattern เดิม**
+   - ดู module/page ที่คล้ายกันเป็น reference ก่อนสร้างใหม่
+   - Backend reference: `apps/api/src/modules/customers/`
+   - Frontend reference: `apps/web/src/pages/CustomersPage.tsx`
+
+5. **อัปเดต Workflow เมื่อเจอ pattern ใหม่**
+   - เมื่อค้นพบ constraint, rate limit, หรือ pattern ใหม่ → อัปเดต workflow
+   - อย่าสร้างหรือ overwrite workflow โดยไม่ถามก่อน
+   - Workflow คือ instructions ที่ต้องรักษาและปรับปรุง
+
+### Self-Improvement Loop
+เมื่อเกิด error หรือพบวิธีที่ดีกว่า:
+1. หา root cause
+2. Fix tool/code
+3. Verify ว่า fix ทำงาน
+4. อัปเดต workflow ที่เกี่ยวข้อง
+5. ไปต่อด้วยระบบที่แข็งแกร่งขึ้น
+
+---
+
+## Codebase Structure
+```
+apps/
+  api/
+    src/
+      modules/[feature]/     # NestJS modules (42 features)
+        [feature].module.ts
+        [feature].controller.ts
+        [feature].service.ts
+        dto/                 # class-validator DTOs
+      guards/                # JwtAuthGuard, RolesGuard
+      prisma/                # PrismaService (DB access)
+      utils/                 # Shared utilities
+    prisma/
+      schema.prisma          # Database schema (40+ models)
+      migrations/            # SQL migrations (48+)
+  web/
+    src/
+      pages/                 # Page components (55+)
+      pages/liff/            # LINE LIFF pages (customer mobile)
+      components/            # Shared UI components
+      hooks/                 # useDebounce, useIsMobile, useKeyboardShortcuts, useLiffInit
+      store/                 # Zustand stores
+      lib/api.ts             # Axios client (JWT in-memory, refresh token)
+      contexts/              # AuthContext
+      types/                 # Shared TypeScript types
+      constants/             # App constants
+    e2e/                     # Playwright E2E tests
+packages/
+  shared/                    # Shared types/utilities
+workflows/                   # WAT workflow SOPs (Markdown)
+tools/                       # WAT automation scripts (Shell)
+scripts/                     # Deploy & backup scripts
 ```
 
-## Key Routes
+## Architecture Notes
 
-### Staff (admin panel)
-- `/login` - Login page
-- `/forgot-password` - Forgot password
-- `/reset-password` - Reset password
-- `/` - Dashboard (protected)
-- `/pos` - Point of Sale
-- `/customers` - Customer management
-- `/customers/:id` - Customer detail
-- `/contracts` - Installment contracts
-- `/contracts/create` - Create contract
-- `/contracts/:id` - Contract detail
-- `/contracts/:id/sign` - Contract signing
-- `/contract-templates` - Contract template editor
-- `/verify/:id` - Contract verification (public)
-- `/payments` - Payment recording
-- `/payments/import-csv` - CSV payment import
-- `/stock` - Inventory management
-- `/stock/transfers` - Stock transfers
-- `/stock/alerts` - Reorder point alerts
-- `/stock/count` - Stock count
-- `/stock/adjustments` - Stock adjustments
-- `/reports` - Reports
-- `/suppliers` - Supplier management
-- `/suppliers/:id` - Supplier detail
-- `/purchase-orders` - Purchase orders
-- `/overdue` - Overdue tracking
-- `/exchange` - Device exchange
-- `/repossessions` - Repossession management
-- `/receipts` - Receipt management
-- `/slip-review` - Payment slip review
-- `/sales` - Sales history
-- `/stickers` - Sticker printing
-- `/branches` - Branch management
-- `/audit-logs` - Audit log viewer
-- `/financial-audit` - Financial audit (OWNER/ACCOUNTANT)
-- `/document-dashboard` - Document dashboard
-- `/credit-checks` - Credit check management
-- `/notifications` - Notifications
-- `/migration` - Data migration tool
-- `/pdpa` - PDPA management
-- `/settings` - System settings
-- `/settings/interest-config` - Interest rate configuration (OWNER)
-- `/settings/line-oa` - LINE OA settings (OWNER)
-- `/settings/sms` - SMS settings (OWNER)
-- `/settings/pricing-templates` - Pricing template settings (OWNER)
-- `/users` - User management (OWNER)
-- `/system-status` - System status (OWNER)
-- `/landing` - Landing page (public)
+### Authentication
+- JWT access token stored **in-memory** (JS variable, NOT localStorage) — XSS safe
+- Refresh token in httpOnly cookie — auto-sent by browser
+- Token rotation on refresh
+- API client: `apps/web/src/lib/api.ts` (axios interceptors handle 401 → refresh)
+- Auth context: `apps/web/src/contexts/AuthContext.tsx`
 
-### Customer / LINE LIFF (public access)
-- `/liff/contract` - LIFF contract view
-- `/liff/early-payoff` - LIFF early payoff
-- `/liff/history` - LIFF payment history
-- `/liff/profile` - LIFF customer profile
-- `/liff/register` - LIFF customer registration
-- `/pay/:token` - Public payment page (PromptPay QR)
-- `/customer-access/:token` - Customer self-service portal
+### Backend Patterns
+- **Module structure**: controller → service → PrismaService
+- **Guards**: `@UseGuards(JwtAuthGuard, RolesGuard)` on controllers
+- **Roles**: `@Roles('OWNER', 'BRANCH_MANAGER')` on methods
+- **Validation**: class-validator decorators on DTOs, Thai error messages
+- **Soft delete**: `deletedAt: DateTime?` — never hard delete
+- **Money**: use `Decimal` (`@db.Decimal(12, 2)`), never `Float`
+- **Global**: ThrottlerGuard (200 req/sec), CsrfGuard, AuditInterceptor
+
+### Frontend Patterns
+- **Data fetching**: `useQuery` / `useMutation` from @tanstack/react-query
+- **Cache**: `queryClient.invalidateQueries()` after mutations
+- **State**: Zustand stores for complex state, React Query for server state
+- **Notifications**: `toast.success()` / `toast.error()` from sonner
+- **Routing**: lazy-loaded pages, `ProtectedRoute` wrapper, `MainLayout`
+- **API calls**: `api.get()` / `api.post()` from `@/lib/api`
+- **UI**: Radix UI primitives + Tailwind CSS + lucide-react icons
+
+### Integrations
+- LINE LIFF — customer mobile access (`/liff/*` routes)
+- S3-compatible storage (MinIO in dev) — requires `S3_ENDPOINT`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_BUCKET`, `S3_REGION`
+- API proxy: Vite dev server proxies `/api` to `localhost:3000`
+
+## Coding Conventions
+- **Naming**: camelCase (variables/functions), PascalCase (components/classes/types)
+- **Components**: functional components + hooks only, no class components
+- **Backend**: NestJS decorators + dependency injection
+- **DTOs**: separate Create/Update DTOs with class-validator
+- **Formatting**: Prettier (semi: true, singleQuote: true, printWidth: 100, tabWidth: 2)
+- **IDs**: UUID (`@default(uuid())`)
+- **Timestamps**: always include `createdAt`, `updatedAt`, `deletedAt`
+
+## Key Routes (grouped)
+
+### Auth & Public
+`/login`, `/forgot-password`, `/reset-password`, `/landing`, `/verify/:id`, `/pay/:token`, `/customer-access/:token`
+
+### Core Business
+`/` (Dashboard), `/pos`, `/customers(/:id)`, `/contracts(/create/:id/:id/sign)`, `/contract-templates`, `/payments(/import-csv)`, `/receipts`, `/sales`
+
+### Inventory & Supply
+`/stock(/transfers/alerts/count/adjustments)`, `/suppliers(/:id)`, `/purchase-orders`, `/stickers`
+
+### Collections & Risk
+`/overdue`, `/exchange`, `/repossessions`, `/credit-checks`, `/slip-review`
+
+### Admin & Settings
+`/settings(/interest-config/line-oa/sms/pricing-templates)`, `/users`, `/branches`, `/audit-logs`, `/financial-audit`, `/system-status`, `/notifications`, `/migration`, `/pdpa`, `/document-dashboard`
+
+### LINE LIFF (Customer Mobile)
+`/liff/contract`, `/liff/early-payoff`, `/liff/history`, `/liff/profile`, `/liff/register`
 
 ## User Roles
-- OWNER - Full access
-- BRANCH_MANAGER - Branch-level access
-- ACCOUNTANT - Financial access
-- SALES - Sales operations
+- **OWNER** — Full access, system settings, user management
+- **BRANCH_MANAGER** — Branch-level operations
+- **ACCOUNTANT** — Financial access, reports
+- **SALES** — Sales operations, POS, customer management
 
-## Architecture Notes
-- JWT auth with refresh token rotation (httpOnly cookie)
-- LINE LIFF integration for customer mobile access
-- API proxy: Vite dev server proxies /api to localhost:3000
-- File storage: S3-compatible (MinIO in dev) via `@aws-sdk/client-s3`; requires `S3_ENDPOINT`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_BUCKET`, `S3_REGION`
-- State management: Zustand + React Query (TanStack)
-- UI primitives: Radix UI, Tiptap (rich text), dnd-kit (drag-and-drop)
-- **Unrouted page files** (exist but not wired into router): `InventoryWorkflowPage.tsx`, `InspectionPage.tsx`, `InspectionDetailPage.tsx` (sub-pages of unrouted parent). `BranchReceivingPage.tsx` is superseded — `/stock/branch-receiving` redirects to `/stock/transfers?view=incoming`.
-- Access token stored **in-memory** (JS variable, NOT localStorage), refresh token in httpOnly cookie
+## Testing & Verification
+```bash
+# TypeScript check
+./tools/check-types.sh all
+
+# Full test suite (lint + types + E2E)
+./tools/run-tests.sh
+
+# E2E only
+cd apps/web && npx playwright test
+
+# Specific E2E test
+cd apps/web && npx playwright test e2e/login.spec.ts
+
+# E2E with browser visible
+cd apps/web && npx playwright test --headed
+
+# Interactive mode
+cd apps/web && npx playwright test --ui
+```
+
+## WAT File Structure
+```
+workflows/                    # Markdown SOPs — read before doing
+  create-api-module.md        # สร้าง NestJS module ใหม่
+  create-page.md              # สร้าง React page ใหม่
+  prisma-changes.md           # แก้ไข Prisma schema
+  fix-bug.md                  # Debug & fix bugs
+  deploy.md                   # Deployment process
+  add-api-endpoint.md         # เพิ่ม endpoint ใน module ที่มีอยู่
+
+tools/                        # Shell scripts — deterministic execution
+  generate-module.sh          # Scaffold NestJS module
+  check-types.sh              # TypeScript error check
+  run-tests.sh                # Full test suite
+  db-reset.sh                 # Reset dev database
+
+scripts/                      # Existing project scripts
+  backup.sh                   # Database backup
+  test-e2e.sh                 # E2E test runner
+  deploy-digitalocean.sh      # Production deploy
+```
+
+## Important Notes
+- **Unrouted pages** (exist but not wired into router): `InventoryWorkflowPage.tsx`, `InspectionPage.tsx`, `InspectionDetailPage.tsx`. `BranchReceivingPage.tsx` is superseded — `/stock/branch-receiving` redirects to `/stock/transfers?view=incoming`.
+- **Environment variables**: see `.env.example` for full list
+- **CI/CD**: `.github/workflows/deploy.yml` — auto-deploy on push to `main`

@@ -17,41 +17,6 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     super({
       log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
     });
-
-    // Soft-delete middleware: auto-filter deleted records for Customer, Contract, Product
-    const softDeleteModels = ['Customer', 'Contract', 'Product'];
-
-    this.$use(async (params, next) => {
-      if (!params.model || !softDeleteModels.includes(params.model)) {
-        return next(params);
-      }
-
-      // Auto-inject deletedAt: null for read operations
-      const readActions = ['findMany', 'findFirst', 'findUnique', 'findFirstOrThrow', 'findUniqueOrThrow', 'count', 'aggregate', 'groupBy'];
-
-      if (readActions.includes(params.action)) {
-        if (!params.args) params.args = {};
-        if (!params.args.where) params.args.where = {};
-        // Only add if not explicitly set (allows querying deleted records by setting deletedAt explicitly)
-        if (params.args.where.deletedAt === undefined) {
-          params.args.where.deletedAt = null;
-        }
-      }
-
-      // Convert delete to soft-delete
-      if (params.action === 'delete') {
-        params.action = 'update';
-        params.args.data = { deletedAt: new Date() };
-      }
-      if (params.action === 'deleteMany') {
-        params.action = 'updateMany';
-        if (!params.args) params.args = {};
-        if (!params.args.data) params.args.data = {};
-        params.args.data.deletedAt = new Date();
-      }
-
-      return next(params);
-    });
   }
 
   async onModuleInit() {

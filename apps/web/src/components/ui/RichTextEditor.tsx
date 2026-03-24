@@ -1,4 +1,5 @@
 import { useRef, useCallback, useEffect, useState } from 'react';
+import DOMPurify from 'dompurify';
 
 interface RichTextEditorProps {
   value: string;
@@ -191,7 +192,7 @@ export default function RichTextEditor({ value, onChange, placeholder, minHeight
     }
     const editor = editorRef.current;
     if (editor && editor.innerHTML !== value) {
-      editor.innerHTML = value;
+      editor.innerHTML = DOMPurify.sanitize(value);
     }
   }, [value]);
 

@@ -9,29 +9,41 @@ import * as bcrypt from 'bcrypt';
 export class UsersService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll() {
-    return this.prisma.user.findMany({
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        branchId: true,
-        isActive: true,
-        employeeId: true,
-        nickname: true,
-        phone: true,
-        lineId: true,
-        address: true,
-        avatarUrl: true,
-        startDate: true,
-        nationalId: true,
-        birthDate: true,
-        createdAt: true,
-        branch: { select: { id: true, name: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+  async findAll(page = 1, limit = 50) {
+    page = Math.max(1, page);
+    limit = Math.min(200, Math.max(1, limit));
+
+    const select = {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+      branchId: true,
+      isActive: true,
+      employeeId: true,
+      nickname: true,
+      phone: true,
+      lineId: true,
+      address: true,
+      avatarUrl: true,
+      startDate: true,
+      nationalId: true,
+      birthDate: true,
+      createdAt: true,
+      branch: { select: { id: true, name: true } },
+    };
+
+    const [data, total] = await Promise.all([
+      this.prisma.user.findMany({
+        select,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.user.count(),
+    ]);
+
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   async create(dto: CreateUserDto) {

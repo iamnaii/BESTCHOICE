@@ -152,7 +152,6 @@ export class NotificationsController {
 
     return {
       settings: masked,
-      raw: settings,
       isConfigured: !!settings.sms_api_key && !!settings.sms_api_secret,
     };
   }

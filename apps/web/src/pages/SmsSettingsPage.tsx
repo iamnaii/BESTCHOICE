@@ -16,13 +16,13 @@ export default function SmsSettingsPage() {
     queryKey: ['sms-settings'],
     queryFn: async () => {
       const res = await api.get('/notifications/sms-settings');
-      return res.data as { settings: Record<string, string>; raw: Record<string, string>; isConfigured: boolean };
+      return res.data as { settings: Record<string, string>; isConfigured: boolean };
     },
   });
 
   useEffect(() => {
-    if (data?.raw) {
-      setForm(data.raw);
+    if (data?.settings) {
+      setForm(data.settings);
     }
   }, [data]);
 

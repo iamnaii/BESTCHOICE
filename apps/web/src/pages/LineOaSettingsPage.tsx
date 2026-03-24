@@ -35,7 +35,7 @@ export default function LineOaSettingsPage() {
     queryKey: ['line-oa-settings'],
     queryFn: async () => {
       const res = await api.get('/line-oa/settings');
-      return res.data as { settings: Record<string, string>; raw: Record<string, string>; isConfigured: boolean };
+      return res.data as { settings: Record<string, string>; isConfigured: boolean };
     },
   });
 
@@ -57,8 +57,8 @@ export default function LineOaSettingsPage() {
   });
 
   useEffect(() => {
-    if (data?.raw) {
-      setForm(data.raw);
+    if (data?.settings) {
+      setForm(data.settings);
     }
   }, [data]);
 

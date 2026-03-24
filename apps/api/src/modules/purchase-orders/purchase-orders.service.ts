@@ -8,22 +8,32 @@ import { generatePONumber } from '../../utils/sequence.util';
 export class PurchaseOrdersService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(filters: { status?: string; supplierId?: string }) {
+  async findAll(filters: { status?: string; supplierId?: string; page?: number; limit?: number }) {
     const where: Record<string, unknown> = {};
     if (filters.status) where.status = filters.status;
     if (filters.supplierId) where.supplierId = filters.supplierId;
 
-    return this.prisma.purchaseOrder.findMany({
-      where,
-      include: {
-        supplier: { select: { id: true, name: true, contactName: true, phone: true, hasVat: true } },
-        createdBy: { select: { id: true, name: true } },
-        approvedBy: { select: { id: true, name: true } },
-        items: true,
-        _count: { select: { products: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    const page = Math.max(1, filters.page || 1);
+    const limit = Math.min(200, Math.max(1, filters.limit || 20));
+
+    const [data, total] = await Promise.all([
+      this.prisma.purchaseOrder.findMany({
+        where,
+        include: {
+          supplier: { select: { id: true, name: true, contactName: true, phone: true, hasVat: true } },
+          createdBy: { select: { id: true, name: true } },
+          approvedBy: { select: { id: true, name: true } },
+          items: true,
+          _count: { select: { products: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.purchaseOrder.count({ where }),
+    ]);
+
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   async findOne(id: string) {

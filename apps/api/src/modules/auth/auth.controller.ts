@@ -29,13 +29,12 @@ export class AuthController {
   constructor(private authService: AuthService) {}
 
   @Post('login')
-  @Throttle({ short: { ttl: 60000, limit: 30 } }) // 30 login attempts per minute (supports 20+ concurrent employees on same IP/network)
+  @Throttle({ short: { ttl: 60000, limit: 10 } })
   async login(@Body() loginDto: LoginDto, @Res({ passthrough: true }) res: Response) {
     const result = await this.authService.login(loginDto);
     setRefreshCookie(res, result.refreshToken);
     return {
       accessToken: result.accessToken,
-      refreshToken: result.refreshToken, // still return in body for backward compat
       user: result.user,
     };
   }
@@ -52,7 +51,6 @@ export class AuthController {
     setRefreshCookie(res, result.refreshToken);
     return {
       accessToken: result.accessToken,
-      refreshToken: result.refreshToken,
     };
   }
 

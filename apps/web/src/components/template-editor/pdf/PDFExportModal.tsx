@@ -26,7 +26,7 @@ export default function PDFExportModal() {
         toast.success('ดาวน์โหลด PDF สำเร็จ');
       }
     } catch (err) {
-      console.error('PDF generation error:', err);
+      if (import.meta.env.DEV) console.error('PDF generation error:', err);
       toast.error('ไม่สามารถสร้าง PDF ได้');
     } finally {
       setIsGenerating(false);

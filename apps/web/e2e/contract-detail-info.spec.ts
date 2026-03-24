@@ -117,8 +117,7 @@ test.describe('Phase 8: Contract Detail - Info Cards & Editing', () => {
     const contractId = 'test-info-001';
     await mockContractDetail(page, contractId);
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Contract info section header
     await expect(page.getByText('ข้อมูลสัญญา', { exact: false })).toBeVisible({ timeout: 5000 });
@@ -168,8 +167,7 @@ test.describe('Phase 8: Contract Detail - Info Cards & Editing', () => {
     const contractId = 'test-info-002';
     await mockContractDetail(page, contractId);
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Customer section header
     await expect(page.getByText('ข้อมูลลูกค้า')).toBeVisible({ timeout: 5000 });
@@ -205,8 +203,7 @@ test.describe('Phase 8: Contract Detail - Info Cards & Editing', () => {
     const contractId = 'test-info-003';
     await mockContractDetail(page, contractId);
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Product section header
     await expect(page.getByText('ข้อมูลสินค้า')).toBeVisible({ timeout: 5000 });
@@ -247,8 +244,7 @@ test.describe('Phase 8: Contract Detail - Info Cards & Editing', () => {
       salespersonId: 'user-001',
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Find the edit button in the contract info section
     const contractInfoSection = page.locator('.rounded-lg.border.p-6').filter({ hasText: 'ข้อมูลสัญญา' });
@@ -285,8 +281,7 @@ test.describe('Phase 8: Contract Detail - Info Cards & Editing', () => {
       salespersonId: 'user-001',
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Enter edit mode
     const contractInfoSection = page.locator('.rounded-lg.border.p-6').filter({ hasText: 'ข้อมูลสัญญา' });
@@ -325,13 +320,11 @@ test.describe('Phase 8: Contract Detail - Info Cards & Editing', () => {
       }
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Enter edit mode
     const contractInfoSection = page.locator('.rounded-lg.border.p-6').filter({ hasText: 'ข้อมูลสัญญา' });
     await contractInfoSection.locator('button:has-text("แก้ไข")').click();
-    await page.waitForTimeout(500);
 
     // Modify selling price
     const sellingPriceInput = page.locator('input[type="number"]').first();
@@ -339,7 +332,7 @@ test.describe('Phase 8: Contract Detail - Info Cards & Editing', () => {
 
     // Click save
     await page.getByRole('button', { name: 'บันทึก' }).click();
-    await page.waitForTimeout(2000);
+    await page.waitForLoadState('networkidle');
 
     expect(patchCalled).toBe(true);
     expect(patchBody.sellingPrice).toBe(20000);
@@ -354,13 +347,11 @@ test.describe('Phase 8: Contract Detail - Info Cards & Editing', () => {
       salespersonId: 'user-001',
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Enter edit mode
     const contractInfoSection = page.locator('.rounded-lg.border.p-6').filter({ hasText: 'ข้อมูลสัญญา' });
     await contractInfoSection.locator('button:has-text("แก้ไข")').click();
-    await page.waitForTimeout(500);
 
     // Set totalMonths to 0
     const monthsInputs = page.locator('input[type="number"]');
@@ -385,8 +376,7 @@ test.describe('Phase 8: Contract Detail - Info Cards & Editing', () => {
       salespersonId: 'user-001',
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // The contract info section should not have an edit button
     const contractInfoSection = page.locator('.rounded-lg.border.p-6').filter({ hasText: 'ข้อมูลสัญญา' });
@@ -402,8 +392,7 @@ test.describe('Phase 8: Contract Detail - Info Cards & Editing', () => {
     const contractId = 'test-info-009';
     await mockContractDetail(page, contractId, { paymentDueDay: 31 });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await expect(page.getByText('สิ้นเดือน')).toBeVisible({ timeout: 5000 });
   });
@@ -416,8 +405,7 @@ test.describe('Phase 8: Contract Detail - Info Cards & Editing', () => {
       customer: { id: 'cust-1', name: 'ทดสอบ ไม่มี Snapshot', phone: '0999999999', nationalId: '9999999999999' },
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Should use direct customer name (no prefix since no snapshot)
     await expect(page.getByText('ทดสอบ ไม่มี Snapshot')).toBeVisible({ timeout: 5000 });
@@ -436,13 +424,11 @@ test.describe('Phase 8: Contract Detail - Info Cards & Editing', () => {
       salespersonId: 'user-001',
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Enter edit mode
     const contractInfoSection = page.locator('.rounded-lg.border.p-6').filter({ hasText: 'ข้อมูลสัญญา' });
     await contractInfoSection.locator('button:has-text("แก้ไข")').click();
-    await page.waitForTimeout(500);
 
     // Change selling price to 20000 (loan = 20000 - 3000 = 17000)
     const sellingPriceInput = page.locator('input[type="number"]').first();
@@ -460,8 +446,7 @@ test.describe('Phase 8: Contract Detail - Info Cards & Editing', () => {
       interestConfig: { id: 'ic-1', name: 'Premium Plan', storeCommissionPct: '0.10', vatPct: '0.07' },
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Should show interest rate with config name
     await expect(page.getByText('8.0% (Premium Plan)')).toBeVisible({ timeout: 5000 });

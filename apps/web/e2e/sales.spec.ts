@@ -147,29 +147,23 @@ test.describe('Sales History Page', () => {
 
     // ค้นหาด้วยเลขที่ขาย
     await searchInput.type('SALE', { delay: 50 });
-    await page.waitForTimeout(1000);
     await page.waitForLoadState('networkidle');
     await ss.capture('search-sale-number');
 
     // ล้างแล้วค้นหาด้วยชื่อลูกค้า
     await searchInput.clear();
-    await page.waitForTimeout(500);
     await searchInput.type('สม', { delay: 50 });
-    await page.waitForTimeout(1000);
     await page.waitForLoadState('networkidle');
     await ss.capture('search-customer-name');
 
     // ล้างแล้วค้นหาด้วยชื่อสินค้า
     await searchInput.clear();
-    await page.waitForTimeout(500);
     await searchInput.type('iPhone', { delay: 50 });
-    await page.waitForTimeout(1000);
     await page.waitForLoadState('networkidle');
     await ss.capture('search-product-name');
 
     // ล้าง
     await searchInput.clear();
-    await page.waitForTimeout(500);
     await page.waitForLoadState('networkidle');
     await ss.capture('search-cleared');
   });
@@ -227,7 +221,7 @@ test.describe('Sales History Page', () => {
       await ss.capture('customer-button-visible');
 
       await customerBtn.click();
-      await page.waitForTimeout(1000);
+      await page.waitForLoadState('networkidle');
       await ss.capture('after-customer-click');
 
       const url = page.url();
@@ -256,7 +250,7 @@ test.describe('Sales History Page', () => {
     const firstRow = page.locator('table tbody tr').first();
     if (await firstRow.isVisible().catch(() => false)) {
       await firstRow.click();
-      await page.waitForTimeout(1000);
+      await page.waitForLoadState('networkidle');
       await ss.capture('after-row-click');
 
       const url = page.url();
@@ -358,7 +352,6 @@ test.describe('Sales History Page', () => {
     // ค้นหา
     const searchInput = page.locator('input[placeholder*="ค้นหา"]').first();
     await searchInput.type('iPhone', { delay: 50 });
-    await page.waitForTimeout(1000);
     await page.waitForLoadState('networkidle');
     await ss.capture('search-within-cash');
 
@@ -379,7 +372,6 @@ test.describe('Sales History Page', () => {
     // ค้นหาด้วยคำที่ไม่น่ามีผลลัพธ์
     const searchInput = page.locator('input[placeholder*="ค้นหา"]').first();
     await searchInput.type('zzzzxxxxxnotfound12345', { delay: 20 });
-    await page.waitForTimeout(1000);
     await page.waitForLoadState('networkidle');
     await ss.capture('search-no-results');
 
@@ -391,7 +383,6 @@ test.describe('Sales History Page', () => {
 
     // ล้าง
     await searchInput.clear();
-    await page.waitForTimeout(500);
     await page.waitForLoadState('networkidle');
     await ss.capture('back-to-normal');
   });

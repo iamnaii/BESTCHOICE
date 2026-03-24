@@ -30,6 +30,14 @@ export const createProductStatusOptions = [
 // Statuses that allow stock transfer (must match backend)
 export const transferableStatuses = ['IN_STOCK', 'PO_RECEIVED'];
 
+// --- Thai Name Prefixes ---
+
+export const THAI_NAME_PREFIXES = ['นาย', 'นาง', 'นางสาว'];
+
+// --- Relationship Options (บุคคลอ้างอิง) ---
+
+export const RELATIONSHIP_OPTIONS = ['บิดา', 'มารดา', 'พี่น้อง', 'คู่สมรส', 'ญาติ', 'เพื่อน', 'อื่นๆ'];
+
 // --- Product Category ---
 
 export const categoryLabels: Record<string, string> = {

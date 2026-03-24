@@ -27,7 +27,7 @@ test.describe('12 - Navigation Flow', () => {
     await ss.capture('tried-dashboard-without-login');
 
     // Step 2: รอ redirect
-    await page.waitForTimeout(2000);
+    await page.waitForURL(/\/(login|landing)/, { timeout: 5000 }).catch(() => {});
     await ss.capture('after-redirect');
 
     // Step 3: ตรวจสอบว่า redirect ไป login หรือ landing

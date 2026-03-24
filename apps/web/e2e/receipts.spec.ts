@@ -59,9 +59,6 @@ test.describe('Receipts Page - E2E Flow', () => {
       searchInput.fill('สมชาย'),
     ]);
 
-    // Wait for re-render
-    await page.waitForTimeout(1000);
-
     // Should show only receipts for สมชาย
     const rows = page.locator('table tbody tr');
     await expect(rows.first()).toBeVisible({ timeout: 10000 });
@@ -85,8 +82,6 @@ test.describe('Receipts Page - E2E Flow', () => {
       searchInput.fill('BCP-2025-001'),
     ]);
 
-    await page.waitForTimeout(1000);
-
     const rows = page.locator('table tbody tr');
     await expect(rows.first()).toBeVisible({ timeout: 10000 });
     const rowCount = await rows.count();
@@ -108,8 +103,6 @@ test.describe('Receipts Page - E2E Flow', () => {
       page.waitForResponse((resp) => resp.url().includes('/receipts') && resp.status() === 200, { timeout: 15000 }),
       typeSelect.selectOption('DOWN_PAYMENT'),
     ]);
-
-    await page.waitForTimeout(1000);
 
     // Should show only DOWN_PAYMENT receipts
     const rows = page.locator('table tbody tr');
@@ -134,8 +127,6 @@ test.describe('Receipts Page - E2E Flow', () => {
       page.waitForResponse((resp) => resp.url().includes('/receipts') && resp.status() === 200, { timeout: 15000 }),
       dateInputs.nth(1).fill('2026-03-31'),
     ]);
-
-    await page.waitForTimeout(1000);
 
     // Should show receipts within the date range
     const rows = page.locator('table tbody tr');
@@ -213,7 +204,6 @@ test.describe('Receipts Page - E2E Flow', () => {
 
     const searchInput = page.locator('input[placeholder*="ค้นหา"]');
     await searchInput.fill('ไม่มีข้อมูลนี้แน่นอน12345');
-    await page.waitForTimeout(600);
     await page.waitForLoadState('networkidle');
 
     // Should show empty message

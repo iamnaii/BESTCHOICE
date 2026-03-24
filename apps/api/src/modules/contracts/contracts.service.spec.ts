@@ -2,7 +2,6 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ContractsService } from './contracts.service';
 import { PrismaService } from '../../prisma/prisma.service';
-import { NotificationsService } from '../notifications/notifications.service';
 
 // Mock the utility modules
 jest.mock('../../utils/installment.util', () => ({
@@ -121,15 +120,10 @@ describe('ContractsService', () => {
       $transaction: jest.fn((cb) => cb(txMock)),
     };
 
-    const mockNotifications = {
-      send: jest.fn().mockResolvedValue({ id: 'notif-1', status: 'SENT' }),
-    };
-
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ContractsService,
         { provide: PrismaService, useValue: mockPrisma },
-        { provide: NotificationsService, useValue: mockNotifications },
       ],
     }).compile();
 

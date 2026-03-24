@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 /**
@@ -75,7 +75,7 @@ export class RichMenuService {
    */
   async uploadRichMenuImage(richMenuId: string, imageBuffer: Buffer): Promise<void> {
     if (!this.lineChannelAccessToken) {
-      throw new Error('LINE channel access token not configured');
+      throw new BadRequestException('LINE channel access token not configured');
     }
 
     const url = `https://api-data.line.me/v2/bot/richmenu/${richMenuId}/content`;
@@ -90,7 +90,7 @@ export class RichMenuService {
 
     if (!response.ok) {
       const errorBody = await response.text();
-      throw new Error(`Failed to upload Rich Menu image: ${response.status} ${errorBody}`);
+      throw new InternalServerErrorException(`Failed to upload Rich Menu image: ${response.status} ${errorBody}`);
     }
 
     this.logger.log(`Rich Menu image uploaded for ${richMenuId}`);
@@ -110,7 +110,7 @@ export class RichMenuService {
 
     if (!response.ok) {
       const errorBody = await response.text();
-      throw new Error(`Failed to set default Rich Menu: ${response.status} ${errorBody}`);
+      throw new InternalServerErrorException(`Failed to set default Rich Menu: ${response.status} ${errorBody}`);
     }
 
     this.logger.log(`Default Rich Menu set to ${richMenuId}`);
@@ -130,7 +130,7 @@ export class RichMenuService {
 
     if (!response.ok) {
       const errorBody = await response.text();
-      throw new Error(`Failed to delete Rich Menu: ${response.status} ${errorBody}`);
+      throw new InternalServerErrorException(`Failed to delete Rich Menu: ${response.status} ${errorBody}`);
     }
 
     this.logger.log(`Rich Menu deleted: ${richMenuId}`);
@@ -148,7 +148,7 @@ export class RichMenuService {
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to list Rich Menus: ${response.status}`);
+      throw new InternalServerErrorException(`Failed to list Rich Menus: ${response.status}`);
     }
 
     const data = await response.json();
@@ -157,7 +157,7 @@ export class RichMenuService {
 
   private async callLineApi(url: string, body: unknown): Promise<Response> {
     if (!this.lineChannelAccessToken) {
-      throw new Error('LINE channel access token not configured');
+      throw new BadRequestException('LINE channel access token not configured');
     }
 
     const response = await fetch(url, {
@@ -171,7 +171,7 @@ export class RichMenuService {
 
     if (!response.ok) {
       const errorBody = await response.text();
-      throw new Error(`LINE API error ${response.status}: ${errorBody}`);
+      throw new InternalServerErrorException(`LINE API error ${response.status}: ${errorBody}`);
     }
 
     return response;

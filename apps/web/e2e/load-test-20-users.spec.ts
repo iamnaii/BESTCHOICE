@@ -91,7 +91,7 @@ async function timedSearch(page: Page, query: string, stepName: string): Promise
     const searchInput = page.locator('input[type="search"], input[placeholder*="ค้นหา"], input[placeholder*="search"], input[placeholder*="ชื่อ"]').first();
     if (await searchInput.isVisible({ timeout: 5000 })) {
       await searchInput.fill(query);
-      await page.waitForTimeout(1000); // Wait for filter
+      await page.waitForLoadState('networkidle');
     }
     return { name: stepName, duration: Date.now() - start, success: true };
   } catch (e: any) {
@@ -106,7 +106,7 @@ async function timedClickButton(page: Page, selector: string, stepName: string):
     const btn = page.locator(selector).first();
     if (await btn.isVisible({ timeout: 5000 })) {
       await btn.click();
-      await page.waitForTimeout(1500);
+      await page.waitForLoadState('networkidle');
     }
     return { name: stepName, duration: Date.now() - start, success: true };
   } catch (e: any) {

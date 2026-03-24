@@ -7,6 +7,7 @@ import { compressImageForOcr } from '@/lib/compressImage';
 import { checkCardReaderStatus, readSmartCard, type SmartCardData } from '@/lib/cardReader';
 import { useDebounce } from '@/hooks/useDebounce';
 import { maskNationalId } from '@/utils/mask.util';
+import { THAI_NAME_PREFIXES, RELATIONSHIP_OPTIONS } from '@/lib/constants';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
@@ -63,8 +64,6 @@ const emptyForm = {
   workplace: '',
 };
 
-const prefixOptions = ['นาย', 'นาง', 'นางสาว'];
-const relationshipOptions = ['บิดา', 'มารดา', 'พี่น้อง', 'คู่สมรส', 'ญาติ', 'เพื่อน', 'อื่นๆ'];
 
 export default function CustomersPage() {
   const navigate = useNavigate();
@@ -478,7 +477,7 @@ export default function CustomersPage() {
                 <label className="block text-xs text-muted-foreground mb-1">คำนำหน้า</label>
                 <select value={form.prefix} onChange={(e) => setForm({ ...form, prefix: e.target.value })} className={selectClass}>
                   <option value="">-- เลือก --</option>
-                  {prefixOptions.map(p => <option key={p} value={p}>{p}</option>)}
+                  {THAI_NAME_PREFIXES.map(p => <option key={p} value={p}>{p}</option>)}
                 </select>
               </div>
               <div>
@@ -645,7 +644,7 @@ export default function CustomersPage() {
                       <label className="block text-xs text-muted-foreground mb-1">คำนำหน้า</label>
                       <select value={ref.prefix} onChange={(e) => updateRef(idx, 'prefix', e.target.value)} className={selectClass}>
                         <option value="">-- เลือก --</option>
-                        {prefixOptions.map(p => <option key={p} value={p}>{p}</option>)}
+                        {THAI_NAME_PREFIXES.map(p => <option key={p} value={p}>{p}</option>)}
                       </select>
                     </div>
                     <div>
@@ -664,7 +663,7 @@ export default function CustomersPage() {
                       <label className="block text-xs text-muted-foreground mb-1">ความสัมพันธ์</label>
                       <select value={ref.relationship} onChange={(e) => updateRef(idx, 'relationship', e.target.value)} className={selectClass}>
                         <option value="">-- เลือก --</option>
-                        {relationshipOptions.map(r => <option key={r} value={r}>{r}</option>)}
+                        {RELATIONSHIP_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
                       </select>
                     </div>
                   </div>

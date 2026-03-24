@@ -80,7 +80,7 @@ export class ReportsService {
       this.prisma.payment.aggregate({
         where: {
           paidDate: { gte: start, lte: end },
-          contract: { ...branchFilter },
+          contract: { deletedAt: null, ...branchFilter },
         },
         _sum: { lateFee: true, amountPaid: true },
       }),
@@ -88,7 +88,7 @@ export class ReportsService {
         where: {
           paidDate: { gte: start, lte: end },
           status: 'PAID',
-          contract: { ...branchFilter },
+          contract: { deletedAt: null, ...branchFilter },
         },
         _sum: { amountPaid: true },
         _count: true,

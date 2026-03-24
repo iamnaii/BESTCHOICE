@@ -113,8 +113,7 @@ test.describe('Phase 9: Contract Detail - Early Payoff Flow', () => {
     const contractId = 'test-payoff-001';
     await mockContractWithPayoff(page, contractId);
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Quote section header
     await expect(page.getByText('ประเมินปิดก่อนกำหนด')).toBeVisible({ timeout: 5000 });
@@ -141,8 +140,7 @@ test.describe('Phase 9: Contract Detail - Early Payoff Flow', () => {
     const contractId = 'test-payoff-002';
     await mockContractWithPayoff(page, contractId);
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Click the early payoff button
     await page.locator('button:has-text("ปิดก่อนกำหนด")').click();
@@ -186,8 +184,7 @@ test.describe('Phase 9: Contract Detail - Early Payoff Flow', () => {
       });
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Open modal
     await page.locator('button:has-text("ปิดก่อนกำหนด")').click();
@@ -199,7 +196,7 @@ test.describe('Phase 9: Contract Detail - Early Payoff Flow', () => {
 
     // Confirm
     await page.locator('button:has-text("ยืนยันปิดสัญญา")').click();
-    await page.waitForTimeout(2000);
+    await page.waitForLoadState('networkidle');
 
     expect(apiCalled).toBe(true);
     expect(apiBody.paymentMethod).toBe('BANK_TRANSFER');
@@ -210,8 +207,7 @@ test.describe('Phase 9: Contract Detail - Early Payoff Flow', () => {
     const contractId = 'test-payoff-004';
     await mockContractWithPayoff(page, contractId);
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Open modal
     await page.locator('button:has-text("ปิดก่อนกำหนด")').click();
@@ -232,8 +228,7 @@ test.describe('Phase 9: Contract Detail - Early Payoff Flow', () => {
       workflowStatus: 'CREATING',
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Quote section should NOT appear
     await expect(page.getByText('ประเมินปิดก่อนกำหนด')).not.toBeVisible();
@@ -268,8 +263,7 @@ test.describe('Phase 9: Contract Detail - Early Payoff Flow', () => {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ complete: true, checklist: [] }) });
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await expect(page.getByText('ค่าปรับค้างชำระ')).toBeVisible({ timeout: 5000 });
     await expect(page.getByText('500 ฿')).toBeVisible();

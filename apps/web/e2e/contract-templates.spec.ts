@@ -63,8 +63,7 @@ test.describe('Phase 18: Contract Templates Editor', () => {
   // ── 18.1 Templates page loads with header bar ──────────────────────
   test('18.1 Templates page loads with header bar and controls', async ({ page }) => {
     await mockTemplatesApis(page);
-    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contract-templates', { waitUntil: 'networkidle' });
 
     // Page should render without errors - check for any template editor content
     // The HeaderBar component should be visible
@@ -75,8 +74,7 @@ test.describe('Phase 18: Contract Templates Editor', () => {
   // ── 18.2 Uses TH Sarabun PSK font ─────────────────────────────────
   test('18.2 Template editor uses TH Sarabun PSK font family', async ({ page }) => {
     await mockTemplatesApis(page);
-    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contract-templates', { waitUntil: 'networkidle' });
 
     // Check that the font-family style is applied via inline style
     const container = page.locator('div[style]').filter({ has: page.locator('div') });
@@ -93,8 +91,7 @@ test.describe('Phase 18: Contract Templates Editor', () => {
   // ── 18.3 Back navigation with unsaved changes shows confirm ────────
   test('18.3 Back navigation with dirty state triggers confirm dialog', async ({ page }) => {
     await mockTemplatesApis(page);
-    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contract-templates', { waitUntil: 'networkidle' });
 
     // Listen for dialog
     let dialogMessage = '';
@@ -112,8 +109,7 @@ test.describe('Phase 18: Contract Templates Editor', () => {
   // ── 18.4 Page uses negative margin layout ───────────────────────────
   test('18.4 Template editor uses full-height layout', async ({ page }) => {
     await mockTemplatesApis(page);
-    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contract-templates', { waitUntil: 'networkidle' });
 
     // The template editor uses -m-6 class for full-bleed layout
     const container = page.locator('.-m-6');
@@ -123,8 +119,7 @@ test.describe('Phase 18: Contract Templates Editor', () => {
   // ── 18.5 Editor and preview panels render in split mode ────────────
   test('18.5 Default split mode shows both editor and preview panels', async ({ page }) => {
     await mockTemplatesApis(page);
-    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contract-templates', { waitUntil: 'networkidle' });
 
     // In split mode, both panels should be visible with w-1/2 class
     const halfWidthPanels = page.locator('.w-1\\/2');

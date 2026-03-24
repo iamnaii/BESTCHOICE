@@ -59,7 +59,7 @@ test.describe('08 - Overdue Flow', () => {
     if (await allFilter.isVisible()) {
       await allFilter.click();
       await ss.capture('clicked-all-filter');
-      await page.waitForTimeout(500);
+      await page.waitForLoadState('networkidle');
       await ss.capture('all-results-loaded');
     }
   });
@@ -81,7 +81,7 @@ test.describe('08 - Overdue Flow', () => {
       if (await timelineBtn.isVisible()) {
         await timelineBtn.click();
         await ss.capture('clicked-timeline-button');
-        await page.waitForTimeout(500);
+        await page.waitForLoadState('networkidle');
         await ss.capture('timeline-displayed');
       }
     } else {
@@ -106,7 +106,7 @@ test.describe('08 - Overdue Flow', () => {
       await ss.capture('clicked-call-button');
 
       // Step 4: รอ form/modal เปิด
-      await page.waitForTimeout(500);
+      await page.waitForLoadState('networkidle');
       await ss.capture('call-form-opened');
 
       // Step 5: ตรวจสอบ call result options

@@ -4,8 +4,10 @@ import {
   ExecutionContext,
   CallHandler,
 } from '@nestjs/common';
-import { Observable, tap } from 'rxjs';
 import { AuditService } from './audit.service';
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { tap } = require('rxjs');
 
 @Injectable()
 export class AuditInterceptor implements NestInterceptor {
@@ -16,7 +18,7 @@ export class AuditInterceptor implements NestInterceptor {
 
   constructor(private auditService: AuditService) {}
 
-  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+  intercept(context: ExecutionContext, next: CallHandler) {
     const request = context.switchToHttp().getRequest();
     const { method, url, body, user } = request;
 

@@ -116,8 +116,7 @@ test.describe('Phase 10: Contract Detail - Tabs & Content', () => {
     const contractId = 'test-tabs-001';
     await mockContractForTabs(page, contractId);
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Schedule tab should be active by default
     const scheduleTab = page.locator('button:has-text("ตารางผ่อน")');
@@ -139,8 +138,7 @@ test.describe('Phase 10: Contract Detail - Tabs & Content', () => {
     const contractId = 'test-tabs-002';
     await mockContractForTabs(page, contractId);
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Tab label should show (1/3) - 1 paid out of 3
     await expect(page.getByText('ตารางผ่อน (1/3)')).toBeVisible({ timeout: 5000 });
@@ -151,12 +149,10 @@ test.describe('Phase 10: Contract Detail - Tabs & Content', () => {
     const contractId = 'test-tabs-003';
     await mockContractForTabs(page, contractId);
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Click preview tab
     await page.locator('button:has-text("ดูสัญญา")').click();
-    await page.waitForTimeout(1000);
 
     // Should show iframe
     const iframe = page.locator('iframe[title="contract-preview"]');
@@ -168,12 +164,10 @@ test.describe('Phase 10: Contract Detail - Tabs & Content', () => {
     const contractId = 'test-tabs-004';
     await mockContractForTabs(page, contractId);
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Click documents tab (shows count)
     await page.locator('button:has-text("เอกสาร (2)")').click();
-    await page.waitForTimeout(1000);
 
     // DocumentUpload component should render
     // It should show document-related content
@@ -185,12 +179,10 @@ test.describe('Phase 10: Contract Detail - Tabs & Content', () => {
     const contractId = 'test-tabs-005';
     await mockContractForTabs(page, contractId);
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Click credit check tab
     await page.locator('button:has-text("ตรวจเครดิต")').click();
-    await page.waitForTimeout(1000);
 
     // CreditCheckPanel component should render
     // The tab should be active (highlighted)
@@ -203,30 +195,25 @@ test.describe('Phase 10: Contract Detail - Tabs & Content', () => {
     const contractId = 'test-tabs-006';
     await mockContractForTabs(page, contractId);
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Start on schedule (default)
     await expect(page.getByText('งวดที่')).toBeVisible({ timeout: 5000 });
 
     // Switch to preview
     await page.locator('button:has-text("ดูสัญญา")').click();
-    await page.waitForTimeout(500);
     await expect(page.locator('iframe[title="contract-preview"]')).toBeVisible({ timeout: 5000 });
 
     // Switch to documents
     await page.locator('button:has-text("เอกสาร (")').click();
-    await page.waitForTimeout(500);
     // iframe should no longer be visible (different tab content)
     await expect(page.locator('iframe[title="contract-preview"]')).not.toBeVisible();
 
     // Switch to credit check
     await page.locator('button:has-text("ตรวจเครดิต")').click();
-    await page.waitForTimeout(500);
 
     // Switch back to schedule
     await page.locator('button:has-text("ตารางผ่อน")').click();
-    await page.waitForTimeout(500);
     await expect(page.getByText('งวดที่')).toBeVisible({ timeout: 3000 });
   });
 
@@ -235,8 +222,7 @@ test.describe('Phase 10: Contract Detail - Tabs & Content', () => {
     const contractId = 'test-tabs-007';
     await mockContractForTabs(page, contractId);
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Should show late fee of 200 for the overdue payment
     await expect(page.getByText('200 ฿').first()).toBeVisible({ timeout: 5000 });
@@ -247,8 +233,7 @@ test.describe('Phase 10: Contract Detail - Tabs & Content', () => {
     const contractId = 'test-tabs-008';
     await mockContractForTabs(page, contractId, { payments: [] });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await expect(page.getByText('ยังไม่มีตารางผ่อน')).toBeVisible({ timeout: 5000 });
   });

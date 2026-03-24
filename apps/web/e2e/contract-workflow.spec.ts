@@ -130,8 +130,7 @@ test.describe('Phase 7: Workflow Transitions', () => {
       status: 'DRAFT',
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Should show workflow stepper
     const stepper = page.locator('.rounded-lg.border.p-4.mb-6').first();
@@ -165,8 +164,7 @@ test.describe('Phase 7: Workflow Transitions', () => {
       ],
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Find and click "ส่งตรวจสอบ" button in the workflow stepper
     const submitBtn = page.locator('button:has-text("ส่งตรวจสอบ")').first();
@@ -202,8 +200,7 @@ test.describe('Phase 7: Workflow Transitions', () => {
       ],
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Open modal
     await page.locator('button:has-text("ส่งตรวจสอบ")').first().click();
@@ -249,14 +246,13 @@ test.describe('Phase 7: Workflow Transitions', () => {
       });
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Open modal and confirm
     await page.locator('button:has-text("ส่งตรวจสอบ")').first().click();
     await expect(page.getByRole('heading', { name: 'ยืนยันส่งตรวจสอบ' })).toBeVisible({ timeout: 3000 });
     await page.getByRole('button', { name: 'ยืนยันส่งตรวจสอบ' }).click();
-    await page.waitForTimeout(2000);
+    await page.waitForLoadState('networkidle');
 
     expect(submitCalled).toBe(true);
   });
@@ -289,12 +285,11 @@ test.describe('Phase 7: Workflow Transitions', () => {
       });
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await page.locator('button:has-text("ส่งตรวจสอบ")').first().click();
     await page.getByRole('button', { name: 'ยืนยันส่งตรวจสอบ' }).click();
-    await page.waitForTimeout(2000);
+    await page.waitForLoadState('networkidle');
 
     // Error toast should appear
     const toast = page.locator('[data-sonner-toast]').filter({ hasText: 'ตรวจเครดิต' });
@@ -310,8 +305,7 @@ test.describe('Phase 7: Workflow Transitions', () => {
       salespersonId: 'other-user', // Not the current user → makes them a reviewer
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Should show review panel
     await expect(page.locator('text=รอการตรวจสอบจากคุณ')).toBeVisible({ timeout: 5000 });
@@ -336,8 +330,7 @@ test.describe('Phase 7: Workflow Transitions', () => {
       salespersonId: 'other-user',
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Document checklist items should be visible
     await expect(page.locator('text=เอกสารที่ต้องมี')).toBeVisible({ timeout: 5000 });
@@ -363,8 +356,7 @@ test.describe('Phase 7: Workflow Transitions', () => {
       });
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Type review notes
     const notesInput = page.locator('input[placeholder*="หมายเหตุการอนุมัติ"]');
@@ -372,7 +364,7 @@ test.describe('Phase 7: Workflow Transitions', () => {
 
     // Click approve
     await page.locator('button:has-text("อนุมัติสัญญา")').click();
-    await page.waitForTimeout(2000);
+    await page.waitForLoadState('networkidle');
 
     expect(approvePayload).not.toBeNull();
     expect(approvePayload!.reviewNotes).toBe('เอกสารครบถ้วน');
@@ -387,8 +379,7 @@ test.describe('Phase 7: Workflow Transitions', () => {
       salespersonId: 'other-user',
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Click reject button
     await page.locator('button:has-text("ปฏิเสธ")').click();
@@ -427,13 +418,12 @@ test.describe('Phase 7: Workflow Transitions', () => {
       });
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await page.locator('button:has-text("ปฏิเสธ")').click();
     await page.locator('textarea[placeholder*="เหตุผลที่ปฏิเสธ"]').fill('เอกสารไม่ครบ');
     await page.locator('button:has-text("ยืนยันปฏิเสธ")').click();
-    await page.waitForTimeout(2000);
+    await page.waitForLoadState('networkidle');
 
     expect(rejectPayload).not.toBeNull();
     expect(rejectPayload!.reviewNotes).toBe('เอกสารไม่ครบ');
@@ -450,8 +440,7 @@ test.describe('Phase 7: Workflow Transitions', () => {
       reviewedAt: new Date().toISOString(),
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Should show rejection banner
     await expect(page.locator('text=สัญญาถูกปฏิเสธ')).toBeVisible({ timeout: 5000 });
@@ -469,8 +458,7 @@ test.describe('Phase 7: Workflow Transitions', () => {
       reviewNotes: 'แก้ไขราคาดาวน์',
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Edit button for contract info should be visible (canEdit = isCreator && REJECTED)
     const editBtn = page.locator('button:has-text("แก้ไข")').first();
@@ -491,8 +479,7 @@ test.describe('Phase 7: Workflow Transitions', () => {
       ],
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Should show "เปิดใช้งานสัญญา" button
     const activateBtn = page.locator('button:has-text("เปิดใช้งานสัญญา")');
@@ -523,13 +510,12 @@ test.describe('Phase 7: Workflow Transitions', () => {
       });
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Click the activate button in the header
     const activateBtn = page.locator('button:has-text("เปิดใช้งานสัญญา")').first();
     await activateBtn.click();
-    await page.waitForTimeout(2000);
+    await page.waitForLoadState('networkidle');
 
     expect(activateCalled).toBe(true);
   });
@@ -546,8 +532,7 @@ test.describe('Phase 7: Workflow Transitions', () => {
       ],
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     const activateBtn = page.locator('button:has-text("เปิดใช้งานสัญญา")');
     await expect(activateBtn).toBeVisible({ timeout: 5000 });
@@ -565,8 +550,7 @@ test.describe('Phase 7: Workflow Transitions', () => {
       // No signatures → stepper stays at step 2 (ลงนาม & PDPA)
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Stepper hint should say something about signing/PDPA (step 2 active)
     await expect(page.getByText('ลงนามสัญญา', { exact: false })).toBeVisible({ timeout: 5000 });
@@ -584,8 +568,7 @@ test.describe('Phase 7: Workflow Transitions', () => {
       status: 'DRAFT',
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Admin user is OWNER → delete button should be visible
     const deleteBtn = page.locator('button:has-text("ลบสัญญา")');
@@ -600,8 +583,7 @@ test.describe('Phase 7: Workflow Transitions', () => {
       status: 'ACTIVE',
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // No edit button for contract info
     // (canEdit = false because workflowStatus is not CREATING/REJECTED)
@@ -623,8 +605,7 @@ test.describe('Phase 7: Workflow Transitions', () => {
       status: 'ACTIVE',
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     const payoffBtn = page.locator('button:has-text("ปิดก่อนกำหนด")');
     await expect(payoffBtn).toBeVisible({ timeout: 5000 });
@@ -649,8 +630,7 @@ test.describe('Phase 7: Workflow Transitions', () => {
         salespersonId: ws === 'PENDING_REVIEW' ? 'other-user' : 'user-001',
       });
 
-      await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-      await page.waitForTimeout(1500);
+      await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
       // The workflow badge should contain the expected text
       const badge = page.getByText(expectedText).first();
@@ -668,8 +648,7 @@ test.describe('Phase 7: Workflow Transitions', () => {
       _docsComplete: false,
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Approve button should be disabled
     const approveBtn = page.locator('button:has-text("อนุมัติสัญญา")');
@@ -692,8 +671,7 @@ test.describe('Phase 7: Workflow Transitions', () => {
       ],
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Should show signing status section
     await expect(page.locator('text=สถานะเอกสารและลายเซ็น')).toBeVisible({ timeout: 5000 });

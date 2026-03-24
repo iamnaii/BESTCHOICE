@@ -1,11 +1,9 @@
 import { useState, useEffect } from 'react';
-import liff from '@line/liff';
+import { useLiffInit } from '@/hooks/useLiffInit';
+import { API_URL } from '@/lib/env';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-
-const API_BASE = import.meta.env.VITE_API_URL || '/api';
-const LIFF_ID = import.meta.env.VITE_LIFF_ID || '';
 
 interface EarlyPayoffQuote {
   remainingMonths: number;
@@ -23,63 +21,23 @@ interface EarlyPayoffQuote {
 type View = 'loading' | 'quote' | 'creating' | 'error';
 
 export default function LiffEarlyPayoff() {
+  const { lineId, loading, error } = useLiffInit();
   const [view, setView] = useState<View>('loading');
   const [quote, setQuote] = useState<EarlyPayoffQuote | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
-  const [lineId, setLineId] = useState('');
 
   const params = new URLSearchParams(window.location.search);
   const contractId = params.get('contractId') || '';
 
   useEffect(() => {
-    initLiff();
-  }, []);
-
-  async function initLiff() {
-    try {
-      if (LIFF_ID) {
-        await liff.init({ liffId: LIFF_ID });
-        if (!liff.isLoggedIn()) {
-          liff.login();
-          return;
-        }
-        const profile = await liff.getProfile();
-        setLineId(profile.userId);
-        await fetchQuote(profile.userId);
-      } else {
-        // Dev-only fallback: accept lineId from URL only in development
-        if (import.meta.env.DEV) {
-          const qLineId = params.get('lineId') || '';
-          if (qLineId && contractId) {
-            setLineId(qLineId);
-            await fetchQuote(qLineId);
-          } else {
-            setErrorMessage('ไม่สามารถระบุตัวตนได้ กรุณาเปิดผ่าน LINE');
-            setView('error');
-          }
-        } else {
-          setErrorMessage('ไม่สามารถระบุตัวตนได้ กรุณาเปิดผ่าน LINE');
-          setView('error');
-        }
-      }
-    } catch (err) {
-      console.error('LIFF init error:', err);
-      // Dev-only fallback: accept lineId from URL only in development
-      if (import.meta.env.DEV) {
-        const qLineId = params.get('lineId') || '';
-        if (qLineId && contractId) {
-          setLineId(qLineId);
-          await fetchQuote(qLineId);
-        } else {
-          setErrorMessage('ไม่สามารถเชื่อมต่อ LINE ได้');
-          setView('error');
-        }
-      } else {
-        setErrorMessage('ไม่สามารถเชื่อมต่อ LINE ได้ กรุณาลองใหม่');
-        setView('error');
-      }
+    if (loading) return;
+    if (error) {
+      setErrorMessage(error);
+      setView('error');
+      return;
     }
-  }
+    if (lineId) fetchQuote(lineId);
+  }, [lineId, loading, error]);
 
   async function fetchQuote(id: string) {
     if (!contractId) {
@@ -90,7 +48,7 @@ export default function LiffEarlyPayoff() {
 
     try {
       const res = await fetch(
-        `${API_BASE}/line-oa/liff/early-payoff-quote?lineId=${encodeURIComponent(id)}&contractId=${encodeURIComponent(contractId)}`,
+        `${API_URL}/line-oa/liff/early-payoff-quote?lineId=${encodeURIComponent(id)}&contractId=${encodeURIComponent(contractId)}`,
       );
       const result = await res.json();
       if (result.error) {
@@ -109,7 +67,7 @@ export default function LiffEarlyPayoff() {
   async function handlePayoff() {
     setView('creating');
     try {
-      const res = await fetch(`${API_BASE}/line-oa/liff/early-payoff`, {
+      const res = await fetch(`${API_URL}/line-oa/liff/early-payoff`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ lineId, contractId }),

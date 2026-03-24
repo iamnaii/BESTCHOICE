@@ -283,28 +283,28 @@ async function navigateToSignatureStep(page: Page, contractId: string): Promise<
     }
   });
 
-  await page.goto(`/contracts/${contractId}/sign`, { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(2000);
+  await page.goto(`/contracts/${contractId}/sign`, { waitUntil: 'networkidle' });
 
   // Step 0 (KYC): Already verified → click "ดำเนินการต่อ" (Proceed)
   const kycProceedBtn = page.locator('button:has-text("ดำเนินการต่อ")').first();
   if (await kycProceedBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
     await kycProceedBtn.click();
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
   }
 
   // Step 1 (PDPA): Check if already consented → click proceed, else sign PDPA
   const pdpaProceedBtn = page.locator('button:has-text("ดำเนินการต่อ")').first();
   if (await pdpaProceedBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
     await pdpaProceedBtn.click();
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
   } else {
     // PDPA consent required - must draw signature first to enable the button
     const pdpaCanvas = page.locator('canvas').first();
     if (await pdpaCanvas.isVisible({ timeout: 3000 }).catch(() => false)) {
       // Scroll canvas into view and draw using dispatchEvent to ensure React handlers fire
       await pdpaCanvas.scrollIntoViewIfNeeded();
-      await page.waitForTimeout(300);
+      // Brief wait for scroll animation to settle
+      await page.waitForTimeout(200);
       const box = await pdpaCanvas.boundingBox();
       if (box) {
         // Draw a multi-point wavy line to properly trigger hasSignature state
@@ -321,7 +321,8 @@ async function navigateToSignatureStep(page: Page, contractId: string): Promise<
           await page.waitForTimeout(10); // Small delay for event processing
         }
         await page.mouse.up();
-        await page.waitForTimeout(500);
+        // Brief wait for canvas state update after drawing
+        await page.waitForTimeout(300);
       }
     }
     // Mock PDPA consent API
@@ -337,7 +338,7 @@ async function navigateToSignatureStep(page: Page, contractId: string): Promise<
     if (await pdpaSignBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
       await expect(pdpaSignBtn).toBeEnabled({ timeout: 5000 });
       await pdpaSignBtn.click();
-      await page.waitForTimeout(1500);
+      await page.waitForLoadState('networkidle');
     }
   }
 
@@ -345,12 +346,11 @@ async function navigateToSignatureStep(page: Page, contractId: string): Promise<
   const checkbox = page.locator('input[type="checkbox"]').first();
   if (await checkbox.isVisible({ timeout: 3000 }).catch(() => false)) {
     await checkbox.check();
-    await page.waitForTimeout(300);
   }
   const signBtn = page.locator('button:has-text("เซ็นสัญญา")').first();
   if (await signBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
     await signBtn.click();
-    await page.waitForTimeout(1500);
+    await page.waitForLoadState('networkidle');
   }
 
   // Verify we are on Step 3 - canvas should now be visible
@@ -369,8 +369,7 @@ test.describe('Phase 1: Thai Legal & Content Validation', () => {
 
   test('1.1 Contract template contains proper party identification (seller & buyer)', async ({ page }) => {
     // Navigate to contract templates page to inspect template content
-    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contract-templates', { waitUntil: 'networkidle' });
 
     const bodyText = await page.textContent('body');
 
@@ -396,8 +395,7 @@ test.describe('Phase 1: Thai Legal & Content Validation', () => {
   });
 
   test('1.2 Contract template contains product details placeholders (IMEI, Brand, Model)', async ({ page }) => {
-    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contract-templates', { waitUntil: 'networkidle' });
 
     const bodyText = await page.textContent('body');
 
@@ -414,8 +412,7 @@ test.describe('Phase 1: Thai Legal & Content Validation', () => {
   });
 
   test('1.3 Contract template contains installment terms (down payment, monthly, schedule)', async ({ page }) => {
-    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contract-templates', { waitUntil: 'networkidle' });
 
     const bodyText = await page.textContent('body');
 
@@ -432,8 +429,7 @@ test.describe('Phase 1: Thai Legal & Content Validation', () => {
   });
 
   test('1.4 Contract template contains default/breach clauses per Thai law', async ({ page }) => {
-    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contract-templates', { waitUntil: 'networkidle' });
 
     const bodyText = await page.textContent('body');
 
@@ -452,8 +448,7 @@ test.describe('Phase 1: Thai Legal & Content Validation', () => {
   });
 
   test('1.5 Contract template contains PDPA / data consent clause', async ({ page }) => {
-    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contract-templates', { waitUntil: 'networkidle' });
 
     const bodyText = await page.textContent('body');
 
@@ -473,8 +468,7 @@ test.describe('Phase 1: Thai Legal & Content Validation', () => {
   });
 
   test('1.6 Contract template contains dispute resolution clause', async ({ page }) => {
-    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contract-templates', { waitUntil: 'networkidle' });
 
     const bodyText = await page.textContent('body');
 
@@ -482,8 +476,7 @@ test.describe('Phase 1: Thai Legal & Content Validation', () => {
   });
 
   test('1.7 Contract template contains force majeure clause', async ({ page }) => {
-    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contract-templates', { waitUntil: 'networkidle' });
 
     const bodyText = await page.textContent('body');
 
@@ -491,8 +484,7 @@ test.describe('Phase 1: Thai Legal & Content Validation', () => {
   });
 
   test('1.8 Contract template specifies Thai law as governing law', async ({ page }) => {
-    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contract-templates', { waitUntil: 'networkidle' });
 
     const bodyText = await page.textContent('body');
 
@@ -510,8 +502,7 @@ test.describe('Phase 2: UI & Signature Position Validation', () => {
   });
 
   test('2.1 Contract template editor shows signature block at bottom of document', async ({ page }) => {
-    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contract-templates', { waitUntil: 'networkidle' });
 
     // The template preview should contain signature-related text
     const bodyText = await page.textContent('body');
@@ -520,8 +511,7 @@ test.describe('Phase 2: UI & Signature Position Validation', () => {
   });
 
   test('2.2 Signature block contains all required signatories (Seller, Buyer, 2 Witnesses)', async ({ page }) => {
-    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contract-templates', { waitUntil: 'networkidle' });
 
     const bodyText = await page.textContent('body') || '';
 
@@ -532,8 +522,7 @@ test.describe('Phase 2: UI & Signature Position Validation', () => {
   });
 
   test('2.3 Contracts list page is responsive and displays key columns', async ({ page }) => {
-    await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contracts', { waitUntil: 'networkidle' });
 
     // Check that key columns exist
     const bodyText = await page.textContent('body') || '';
@@ -546,8 +535,7 @@ test.describe('Phase 2: UI & Signature Position Validation', () => {
     await page.setViewportSize({ width: 375, height: 812 }); // iPhone X
     await loginWithMock(page);
     await mockAllPageApis(page);
-    await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contracts', { waitUntil: 'networkidle' });
 
     // Page should not have horizontal overflow
     const hasOverflow = await page.evaluate(() => {
@@ -567,8 +555,7 @@ test.describe('Phase 2: UI & Signature Position Validation', () => {
       return;
     }
 
-    await page.goto(`/contracts/${contractId}/sign`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(3000);
+    await page.goto(`/contracts/${contractId}/sign`, { waitUntil: 'networkidle' });
 
     // The page should either show signing wizard or status message
     const bodyText = await page.textContent('body') || '';
@@ -590,8 +577,7 @@ test.describe('Phase 3: Print Layout & A4 Document Validation', () => {
   });
 
   test('3.1 Template preview uses A4 dimensions (210mm width)', async ({ page }) => {
-    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contract-templates', { waitUntil: 'networkidle' });
 
     // The DocumentPreview component renders a div with width: 210mm
     const a4Paper = page.locator('[style*="210mm"]').first();
@@ -608,8 +594,7 @@ test.describe('Phase 3: Print Layout & A4 Document Validation', () => {
   test('3.2 Contract HTML template uses page break markers', async ({ page }) => {
     // Verify that the hire-purchase-contract.html template uses PAGE_BREAK comments
     // by checking the API response or the template content in the page
-    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contract-templates', { waitUntil: 'networkidle' });
 
     // The template store uses page-break-before:always for photo attachments
     // This is a static code verification, checking that the system supports pagination
@@ -618,8 +603,7 @@ test.describe('Phase 3: Print Layout & A4 Document Validation', () => {
   });
 
   test('3.3 Print media emulation hides web-only UI elements', async ({ page }) => {
-    await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contracts', { waitUntil: 'networkidle' });
 
     // Emulate print media
     await page.emulateMedia({ media: 'print' });
@@ -637,14 +621,13 @@ test.describe('Phase 3: Print Layout & A4 Document Validation', () => {
   });
 
   test('3.4 PDF generation produces valid A4 document from template', async ({ page }) => {
-    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contract-templates', { waitUntil: 'networkidle' });
 
     // Look for PDF export button
     const pdfBtn = page.locator('button:has-text("PDF"), button:has-text("ส่งออก"), button:has-text("Export")').first();
     if (await pdfBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
       await pdfBtn.click();
-      await page.waitForTimeout(1000);
+      await page.waitForLoadState('networkidle');
       // PDF export modal should appear
       const bodyText = await page.textContent('body') || '';
       expect(bodyText.includes('PDF') || bodyText.includes('ส่งออก')).toBeTruthy();
@@ -659,8 +642,7 @@ test.describe('Phase 3: Print Layout & A4 Document Validation', () => {
     }
 
     // Navigate to contract detail page
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Generate PDF using page.pdf() for A4 format
     const pdfDir = path.join(__dirname, '..', 'test-results');
@@ -697,8 +679,7 @@ test.describe('Phase 4: Functional E2E Tests', () => {
   });
 
   test('4.1 Navigate to contracts page and verify list loads', async ({ page }) => {
-    await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contracts', { waitUntil: 'networkidle' });
 
     await expect(page).toHaveURL('/contracts');
 
@@ -708,8 +689,7 @@ test.describe('Phase 4: Functional E2E Tests', () => {
   });
 
   test('4.2 Contract list has filter controls (search, status, workflow)', async ({ page }) => {
-    await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contracts', { waitUntil: 'networkidle' });
 
     // Search input
     const searchInput = page.locator('input[placeholder*="ค้นหา"]').first();
@@ -721,8 +701,7 @@ test.describe('Phase 4: Functional E2E Tests', () => {
   });
 
   test('4.3 Contract list tabs work (All, My Contracts, Pending Review)', async ({ page }) => {
-    await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contracts', { waitUntil: 'networkidle' });
 
     // "All" tab
     const allTab = page.locator('button:has-text("ทั้งหมด")').first();
@@ -734,18 +713,18 @@ test.describe('Phase 4: Functional E2E Tests', () => {
 
     // Click my contracts tab
     await myTab.click();
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
     const url = page.url();
     expect(url).toContain('tab=my');
   });
 
   test('4.4 Search filter works on contract list', async ({ page }) => {
-    await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contracts', { waitUntil: 'networkidle' });
 
     const searchInput = page.locator('input[placeholder*="ค้นหา"]').first();
     await searchInput.fill('BCP');
-    await page.waitForTimeout(1500); // Wait for debounce
+    // Wait for debounce search to complete
+    await page.waitForTimeout(300);
 
     // URL should update with search param
     const url = page.url();
@@ -753,8 +732,7 @@ test.describe('Phase 4: Functional E2E Tests', () => {
   });
 
   test('4.5 Create contract button navigates to creation page', async ({ page }) => {
-    await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contracts', { waitUntil: 'networkidle' });
 
     const createBtn = page.locator('button:has-text("สร้างสัญญา")').first();
     if (await createBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
@@ -771,8 +749,7 @@ test.describe('Phase 4: Functional E2E Tests', () => {
       return;
     }
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     const bodyText = await page.textContent('body') || '';
 
@@ -787,8 +764,7 @@ test.describe('Phase 4: Functional E2E Tests', () => {
       return;
     }
 
-    await page.goto(`/contracts/${contractId}/sign`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(3000);
+    await page.goto(`/contracts/${contractId}/sign`, { waitUntil: 'networkidle' });
 
     const bodyText = await page.textContent('body') || '';
 
@@ -863,7 +839,6 @@ test.describe('Phase 4: Functional E2E Tests', () => {
     const clearBtn = page.locator('button:has-text("ล้างลายเซ็น")').first();
     if (await clearBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
       await clearBtn.click();
-      await page.waitForTimeout(500);
 
       // After clearing, confirm button should be disabled
       const confirmBtn = page.locator('button:has-text("ยืนยันลงนาม")').first();
@@ -874,8 +849,7 @@ test.describe('Phase 4: Functional E2E Tests', () => {
   });
 
   test('4.10 Contract template editor page loads', async ({ page }) => {
-    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contract-templates', { waitUntil: 'networkidle' });
 
     const bodyText = await page.textContent('body') || '';
     // Template editor should show contract-related content
@@ -886,8 +860,7 @@ test.describe('Phase 4: Functional E2E Tests', () => {
 
   test('4.11 Contract verification page handles QR verification', async ({ page }) => {
     // Navigate to contract verify page (public page)
-    await page.goto('/contracts/verify', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contracts/verify', { waitUntil: 'networkidle' });
 
     const bodyText = await page.textContent('body') || '';
     // Verify page should show verification UI or redirect
@@ -895,8 +868,7 @@ test.describe('Phase 4: Functional E2E Tests', () => {
   });
 
   test('4.12 Print emulation: web-only buttons hidden in print mode', async ({ page }) => {
-    await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contracts', { waitUntil: 'networkidle' });
 
     // Count visible action buttons before print mode
     const createBtn = page.locator('button:has-text("สร้างสัญญา")').first();
@@ -904,7 +876,6 @@ test.describe('Phase 4: Functional E2E Tests', () => {
 
     // Switch to print media
     await page.emulateMedia({ media: 'print' });
-    await page.waitForTimeout(500);
 
     // In print mode, action buttons should ideally be hidden via print:hidden
     // Note: This depends on whether the specific page uses print:hidden class
@@ -917,8 +888,7 @@ test.describe('Phase 4: Functional E2E Tests', () => {
   });
 
   test('4.13 Contract list pagination works', async ({ page }) => {
-    await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contracts', { waitUntil: 'networkidle' });
 
     // Look for pagination controls - use specific pagination nav locators to avoid matching other buttons
     const paginationNav = page.locator('nav[aria-label*="pagination"], nav[aria-label*="Pagination"], [role="navigation"], .pagination');
@@ -928,7 +898,7 @@ test.describe('Phase 4: Functional E2E Tests', () => {
       const nextBtn = paginationNav.locator('button:has-text("ถัดไป"), button[aria-label*="next"], button:has-text("›")').first();
       if (await nextBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
         await nextBtn.click();
-        await page.waitForTimeout(1000);
+        await page.waitForLoadState('networkidle');
         const url = page.url();
         expect(url).toContain('page=');
       }
@@ -937,8 +907,7 @@ test.describe('Phase 4: Functional E2E Tests', () => {
   });
 
   test('4.14 Contract workflow status badge renders correctly', async ({ page }) => {
-    await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contracts', { waitUntil: 'networkidle' });
 
     const bodyText = await page.textContent('body') || '';
 
@@ -956,8 +925,7 @@ test.describe('Phase 4: Functional E2E Tests', () => {
       return;
     }
 
-    await page.goto(`/contracts/${contractId}/sign`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(3000);
+    await page.goto(`/contracts/${contractId}/sign`, { waitUntil: 'networkidle' });
 
     const bodyText = await page.textContent('body') || '';
 
@@ -983,8 +951,7 @@ test.describe('Phase 5: Contract Template Deep Content Analysis', () => {
   });
 
   test('5.1 Contract template has all 26 legal clauses', async ({ page }) => {
-    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contract-templates', { waitUntil: 'networkidle' });
 
     const bodyText = await page.textContent('body') || '';
 
@@ -1014,8 +981,7 @@ test.describe('Phase 5: Contract Template Deep Content Analysis', () => {
   });
 
   test('5.2 Contract template uses proper Thai legal document font (TH Sarabun PSK)', async ({ page }) => {
-    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contract-templates', { waitUntil: 'networkidle' });
 
     // Check that TH Sarabun PSK font is declared in the page styles
     const fontDeclaration = await page.evaluate(() => {
@@ -1041,8 +1007,7 @@ test.describe('Phase 5: Contract Template Deep Content Analysis', () => {
   });
 
   test('5.3 Signature block is the last content block in template', async ({ page }) => {
-    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contract-templates', { waitUntil: 'networkidle' });
 
     // Verify signature-related content appears after clause content
     const bodyText = await page.textContent('body') || '';
@@ -1056,16 +1021,14 @@ test.describe('Phase 5: Contract Template Deep Content Analysis', () => {
   });
 
   test('5.4 Emergency contacts section is present in template', async ({ page }) => {
-    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contract-templates', { waitUntil: 'networkidle' });
 
     const bodyText = await page.textContent('body') || '';
     expect(bodyText).toContain('ติดต่อ');
   });
 
   test('5.5 Payment schedule table structure exists in template', async ({ page }) => {
-    await page.goto('/contract-templates', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contract-templates', { waitUntil: 'networkidle' });
 
     const bodyText = await page.textContent('body') || '';
     // Payment table should show installment-related headers
@@ -1162,7 +1125,6 @@ test.describe('Phase 6: Signature Submission & API Payload Validation', () => {
       ),
       confirmBtn.click(),
     ]);
-    await page.waitForTimeout(500);
 
     // Validate the captured API payload
     expect(capturedPayload, 'API payload should have been captured').toBeTruthy();
@@ -1399,8 +1361,8 @@ test.describe('Phase 6: Signature Submission & API Payload Validation', () => {
     }
     await confirmBtn.click();
 
-    // Wait for API call
-    await page.waitForTimeout(5000);
+    // Wait for API call to complete
+    await page.waitForLoadState('networkidle');
 
     // Validate GPS in payload
     expect(capturedPayload, 'Payload should be captured').toBeTruthy();
@@ -1495,7 +1457,6 @@ test.describe('Phase 6: Signature Submission & API Payload Validation', () => {
       ),
       confirmBtn.click(),
     ]);
-    await page.waitForTimeout(500);
 
     // Verify at least one sign API call was made
     expect(signCalls.length).toBeGreaterThanOrEqual(1);
@@ -1607,7 +1568,6 @@ test.describe('Phase 6: Signature Submission & API Payload Validation', () => {
       ),
       confirmBtn.click(),
     ]);
-    await page.waitForTimeout(500);
 
     // Verify the submitted image is NOT a blank canvas
     expect(capturedImage).toBeTruthy();

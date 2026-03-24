@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, InternalServerErrorException, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SendNotificationDto, CreateNotificationTemplateDto, UpdateNotificationTemplateDto } from './dto/create-notification.dto';
@@ -148,7 +148,7 @@ export class NotificationsService implements OnModuleInit {
    */
   private async sendLine(recipient: string, message: string): Promise<void> {
     if (!this.lineChannelAccessToken) {
-      throw new Error('LINE channel access token not configured');
+      throw new BadRequestException('LINE channel access token not configured');
     }
 
     const url = 'https://api.line.me/v2/bot/message/push';
@@ -168,7 +168,7 @@ export class NotificationsService implements OnModuleInit {
 
     if (!response.ok) {
       const errorBody = await response.text();
-      throw new Error(`LINE API error ${response.status}: ${errorBody}`);
+      throw new InternalServerErrorException(`LINE API error ${response.status}: ${errorBody}`);
     }
 
     this.logger.log(`[LINE] Message sent to ${recipient}`);
@@ -179,7 +179,7 @@ export class NotificationsService implements OnModuleInit {
    */
   private async sendLineFlexMessage(recipient: string, flexMessage: FlexMessagePayload): Promise<void> {
     if (!this.lineChannelAccessToken) {
-      throw new Error('LINE channel access token not configured');
+      throw new BadRequestException('LINE channel access token not configured');
     }
 
     const url = 'https://api.line.me/v2/bot/message/push';
@@ -199,7 +199,7 @@ export class NotificationsService implements OnModuleInit {
 
     if (!response.ok) {
       const errorBody = await response.text();
-      throw new Error(`LINE API error ${response.status}: ${errorBody}`);
+      throw new InternalServerErrorException(`LINE API error ${response.status}: ${errorBody}`);
     }
 
     this.logger.log(`[LINE] Flex message sent to ${recipient}`);
@@ -217,7 +217,7 @@ export class NotificationsService implements OnModuleInit {
     }
 
     if (!this.smsApiKey || !this.smsApiSecret) {
-      throw new Error('SMS API key/secret not configured. Set SMS_API_KEY and SMS_API_SECRET in .env');
+      throw new BadRequestException('SMS API key/secret not configured. Set SMS_API_KEY and SMS_API_SECRET in .env');
     }
 
     // Clean phone number: ensure 66XXXXXXXXX format for Thai numbers
@@ -246,7 +246,7 @@ export class NotificationsService implements OnModuleInit {
 
     if (!response.ok) {
       if (response.status === 401) {
-        throw new Error('SMS credentials invalid (401). Check SMS_API_KEY and SMS_API_SECRET.');
+        throw new BadRequestException('SMS credentials invalid (401). Check SMS_API_KEY and SMS_API_SECRET.');
       }
       // Try to extract detailed error from JSON response
       let errorDetail = `ThaiBulkSMS HTTP ${response.status}`;
@@ -256,7 +256,7 @@ export class NotificationsService implements OnModuleInit {
           errorDetail = `ThaiBulkSMS error: ${errorJson.error.message || errorJson.error.code || JSON.stringify(errorJson.error)}`;
         }
       } catch { /* use raw text */ }
-      throw new Error(`${errorDetail}: ${responseText.substring(0, 300)}`);
+      throw new InternalServerErrorException(`${errorDetail}: ${responseText.substring(0, 300)}`);
     }
 
     // Parse JSON response from ThaiBulkSMS API V2
@@ -272,7 +272,7 @@ export class NotificationsService implements OnModuleInit {
       // Check top-level error
       if (result.error) {
         const err = result.error as Record<string, string>;
-        throw new Error(`ThaiBulkSMS API error: ${err.message || err.code || JSON.stringify(result.error)}`);
+        throw new InternalServerErrorException(`ThaiBulkSMS API error: ${err.message || err.code || JSON.stringify(result.error)}`);
       }
 
       // Check if our number ended up in the invalid list
@@ -281,14 +281,14 @@ export class NotificationsService implements OnModuleInit {
         const invalidEntry = data.invalid_numbers.find(
           (n: Record<string, string>) => n.msisdn === cleanPhone,
         ) || data.invalid_numbers[0];
-        throw new Error(
+        throw new BadRequestException(
           `SMS number invalid for ${cleanPhone}: ${(invalidEntry as Record<string, string>)?.error_message || 'rejected by provider'}`,
         );
       }
 
       // Verify at least one successful number if the field exists
       if (data?.successful_numbers !== undefined && Array.isArray(data.successful_numbers) && data.successful_numbers.length === 0) {
-        throw new Error(`ThaiBulkSMS: no numbers were successfully queued. Response: ${JSON.stringify(data).substring(0, 300)}`);
+        throw new InternalServerErrorException(`ThaiBulkSMS: no numbers were successfully queued. Response: ${JSON.stringify(data).substring(0, 300)}`);
       }
     }
 
@@ -404,7 +404,7 @@ export class NotificationsService implements OnModuleInit {
 
     // Thai mobile: 66XXXXXXXXX = 11 digits, landline: 66XXXXXXXX = 10 digits
     if (formatted.length < 10 || formatted.length > 12) {
-      throw new Error(`Invalid phone number format: ${phone} (formatted: ${formatted})`);
+      throw new BadRequestException(`Invalid phone number format: ${phone} (formatted: ${formatted})`);
     }
     return formatted;
   }

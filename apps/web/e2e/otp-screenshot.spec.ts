@@ -15,15 +15,13 @@ test.describe('OTP Input Screenshot Tests', () => {
   });
 
   test('CAP-1: หน้าสัญญาแสดงรายการ', async ({ page }) => {
-    await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contracts', { waitUntil: 'networkidle' });
     await screenshot(page, 'e2e/screenshots/01-contracts-list.png');
     await expect(page.locator('body')).not.toBeEmpty();
   });
 
   test('CAP-2: หน้า Settings แสดงผล', async ({ page }) => {
-    await page.goto('/settings', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/settings', { waitUntil: 'networkidle' });
     await screenshot(page, 'e2e/screenshots/02-settings-page.png');
     await expect(page.locator('body')).toContainText(/ตั้งค่า|Settings/i, { timeout: 10000 });
   });
@@ -40,23 +38,20 @@ test.describe('OTP Input Screenshot Tests', () => {
       return;
     }
     const contractId = contracts[0].id;
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
     await screenshot(page, 'e2e/screenshots/03-contract-detail.png');
   });
 
   test('CAP-4: หน้า Dashboard (mobile viewport)', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/', { waitUntil: 'networkidle' });
     await screenshot(page, 'e2e/screenshots/04-dashboard-mobile.png');
     await expect(page.locator('body')).not.toBeEmpty();
   });
 
   test('CAP-5: หน้า Login', async ({ page }) => {
     await page.evaluate(() => localStorage.removeItem('access_token'));
-    await page.goto('/login', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/login', { waitUntil: 'networkidle' });
     await screenshot(page, 'e2e/screenshots/05-login-page.png');
   });
 });

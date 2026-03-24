@@ -68,8 +68,7 @@ test.describe('Phase 17: Contract Verify Page', () => {
   // ── 17.1 Logo and branding displays ─────────────────────────────────
   test('17.1 Verify page shows BESTCHOICE logo and branding', async ({ page }) => {
     await mockVerifyApi(page, 'vrf-001', VERIFY_SUCCESS);
-    await page.goto('/verify/vrf-001?hash=abc123', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/verify/vrf-001?hash=abc123', { waitUntil: 'networkidle' });
 
     await expect(page.getByText('BESTCHOICE')).toBeVisible({ timeout: 5000 });
   });
@@ -77,8 +76,7 @@ test.describe('Phase 17: Contract Verify Page', () => {
   // ── 17.2 Verified contract shows green success ──────────────────────
   test('17.2 Verified contract shows สัญญาถูกต้อง with green indicator', async ({ page }) => {
     await mockVerifyApi(page, 'vrf-002', VERIFY_SUCCESS);
-    await page.goto('/verify/vrf-002?hash=abc123', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/verify/vrf-002?hash=abc123', { waitUntil: 'networkidle' });
 
     await expect(page.getByText('สัญญาถูกต้อง')).toBeVisible({ timeout: 5000 });
     await expect(page.getByText('สัญญานี้ได้รับการยืนยันแล้ว ลายเซ็นครบถ้วน')).toBeVisible();
@@ -87,8 +85,7 @@ test.describe('Phase 17: Contract Verify Page', () => {
   // ── 17.3 Contract details show all fields ───────────────────────────
   test('17.3 Contract details show all fields correctly', async ({ page }) => {
     await mockVerifyApi(page, 'vrf-003', VERIFY_SUCCESS);
-    await page.goto('/verify/vrf-003?hash=abc123', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/verify/vrf-003?hash=abc123', { waitUntil: 'networkidle' });
 
     await expect(page.getByText('รายละเอียดสัญญา')).toBeVisible({ timeout: 5000 });
     await expect(page.getByText('BCP-VRF-001')).toBeVisible();
@@ -100,8 +97,7 @@ test.describe('Phase 17: Contract Verify Page', () => {
   // ── 17.4 Signatures section shows all signers ──────────────────────
   test('17.4 Signatures section shows all 4 signers', async ({ page }) => {
     await mockVerifyApi(page, 'vrf-004', VERIFY_SUCCESS);
-    await page.goto('/verify/vrf-004?hash=abc123', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/verify/vrf-004?hash=abc123', { waitUntil: 'networkidle' });
 
     await expect(page.getByRole('heading', { name: 'ลายเซ็น' })).toBeVisible({ timeout: 5000 });
     await expect(page.getByText('ผู้ซื้อ')).toBeVisible();
@@ -113,8 +109,7 @@ test.describe('Phase 17: Contract Verify Page', () => {
   // ── 17.5 Hash displays in monospace ────────────────────────────────
   test('17.5 Verification hash displays correctly', async ({ page }) => {
     await mockVerifyApi(page, 'vrf-005', VERIFY_SUCCESS);
-    await page.goto('/verify/vrf-005?hash=abc123', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/verify/vrf-005?hash=abc123', { waitUntil: 'networkidle' });
 
     await expect(page.getByText('Hash')).toBeVisible({ timeout: 5000 });
     await expect(page.locator('.font-mono').filter({ hasText: 'abc123def456789' })).toBeVisible();
@@ -123,8 +118,7 @@ test.describe('Phase 17: Contract Verify Page', () => {
   // ── 17.6 Failed verification shows red indicator ───────────────────
   test('17.6 Failed verification shows ไม่สามารถยืนยันสัญญา', async ({ page }) => {
     await mockVerifyApi(page, 'vrf-006', VERIFY_FAILED);
-    await page.goto('/verify/vrf-006?hash=badhash', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/verify/vrf-006?hash=badhash', { waitUntil: 'networkidle' });
 
     await expect(page.getByText('ไม่สามารถยืนยันสัญญา')).toBeVisible({ timeout: 5000 });
     await expect(page.getByText('ลายเซ็นไม่ตรงกับข้อมูลสัญญา')).toBeVisible();
@@ -133,8 +127,7 @@ test.describe('Phase 17: Contract Verify Page', () => {
   // ── 17.7 API error shows error state ───────────────────────────────
   test('17.7 API error shows เกิดข้อผิดพลาด message', async ({ page }) => {
     await mockVerifyApi(page, 'vrf-007', null, 500);
-    await page.goto('/verify/vrf-007?hash=abc', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/verify/vrf-007?hash=abc', { waitUntil: 'networkidle' });
 
     await expect(page.getByText('เกิดข้อผิดพลาด')).toBeVisible({ timeout: 5000 });
     await expect(page.getByText('ไม่สามารถตรวจสอบสัญญาได้ กรุณาลองใหม่')).toBeVisible();
@@ -156,8 +149,7 @@ test.describe('Phase 17: Contract Verify Page', () => {
   // ── 17.9 Failed verify still shows contract details ────────────────
   test('17.9 Failed verify still shows contract details section', async ({ page }) => {
     await mockVerifyApi(page, 'vrf-009', VERIFY_FAILED);
-    await page.goto('/verify/vrf-009?hash=bad', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/verify/vrf-009?hash=bad', { waitUntil: 'networkidle' });
 
     await expect(page.getByText('BCP-VRF-002')).toBeVisible({ timeout: 5000 });
     await expect(page.getByText('ทดสอบ ลูกค้า')).toBeVisible();

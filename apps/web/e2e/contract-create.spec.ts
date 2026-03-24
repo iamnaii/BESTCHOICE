@@ -146,8 +146,7 @@ test.describe('Phase 16: Contract Creation - 4-Step Wizard', () => {
   // ── 16.1 Page header and step indicators ──────────────────────────────
   test('16.1 Shows page header and 4-step indicators', async ({ page }) => {
     await mockCreatePageApis(page);
-    await page.goto('/contracts/create', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/contracts/create', { waitUntil: 'networkidle' });
 
     await expect(page.getByText('สร้างสัญญาผ่อนชำระ')).toBeVisible({ timeout: 5000 });
     await expect(page.getByText('เลือกสินค้า').first()).toBeVisible();
@@ -159,8 +158,7 @@ test.describe('Phase 16: Contract Creation - 4-Step Wizard', () => {
   // ── 16.2 Step 0: Product list displays ─────────────────────────────────
   test('16.2 Step 0 shows product list with search input', async ({ page }) => {
     await mockCreatePageApis(page);
-    await page.goto('/contracts/create', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/contracts/create', { waitUntil: 'networkidle' });
 
     // Search input
     await expect(page.locator('input[placeholder*="ค้นหาสินค้า"]')).toBeVisible({ timeout: 5000 });
@@ -176,8 +174,7 @@ test.describe('Phase 16: Contract Creation - 4-Step Wizard', () => {
   // ── 16.3 Step 0: Empty products shows message ─────────────────────────
   test('16.3 Step 0 shows empty message when no products', async ({ page }) => {
     await mockCreatePageApis(page, { emptyProducts: true });
-    await page.goto('/contracts/create', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/contracts/create', { waitUntil: 'networkidle' });
 
     await expect(page.getByText('ไม่พบสินค้าที่พร้อมขาย')).toBeVisible({ timeout: 5000 });
   });
@@ -185,8 +182,7 @@ test.describe('Phase 16: Contract Creation - 4-Step Wizard', () => {
   // ── 16.4 Next button disabled without product selection ────────────────
   test('16.4 Next button disabled when no product selected', async ({ page }) => {
     await mockCreatePageApis(page);
-    await page.goto('/contracts/create', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/contracts/create', { waitUntil: 'networkidle' });
 
     const nextBtn = page.locator('button:has-text("ถัดไป")');
     await expect(nextBtn).toBeVisible({ timeout: 5000 });
@@ -196,12 +192,10 @@ test.describe('Phase 16: Contract Creation - 4-Step Wizard', () => {
   // ── 16.5 Select product enables next ──────────────────────────────────
   test('16.5 Selecting product enables next button', async ({ page }) => {
     await mockCreatePageApis(page);
-    await page.goto('/contracts/create', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/contracts/create', { waitUntil: 'networkidle' });
 
     // Click a product
     await page.getByText('Apple iPhone 15').click();
-    await page.waitForTimeout(500);
 
     const nextBtn = page.locator('button:has-text("ถัดไป")');
     await expect(nextBtn).toBeEnabled();
@@ -210,13 +204,12 @@ test.describe('Phase 16: Contract Creation - 4-Step Wizard', () => {
   // ── 16.6 Navigate to Step 1: Customer selection ────────────────────────
   test('16.6 Step 1 shows customer list and add-new button', async ({ page }) => {
     await mockCreatePageApis(page);
-    await page.goto('/contracts/create', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/contracts/create', { waitUntil: 'networkidle' });
 
     // Select product and go next
     await page.getByText('Apple iPhone 15').click();
     await page.locator('button:has-text("ถัดไป")').click();
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
 
     // Step 1 elements
     await expect(page.getByText('เลือกลูกค้า').first()).toBeVisible({ timeout: 5000 });
@@ -231,17 +224,16 @@ test.describe('Phase 16: Contract Creation - 4-Step Wizard', () => {
   // ── 16.7 Credit check approved allows next ─────────────────────────────
   test('16.7 Customer with approved credit shows ผ่าน and allows next', async ({ page }) => {
     await mockCreatePageApis(page, { creditApproved: true });
-    await page.goto('/contracts/create', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/contracts/create', { waitUntil: 'networkidle' });
 
     // Go to step 1
     await page.getByText('Apple iPhone 15').click();
     await page.locator('button:has-text("ถัดไป")').click();
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
 
     // Select customer
     await page.getByText('สมชาย ใจดี').click();
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
 
     // Credit status shows approved
     await expect(page.getByText('สถานะเครดิต: ผ่าน')).toBeVisible({ timeout: 5000 });
@@ -253,17 +245,16 @@ test.describe('Phase 16: Contract Creation - 4-Step Wizard', () => {
   // ── 16.8 Credit check not approved blocks next ─────────────────────────
   test('16.8 Customer without credit approval blocks next and shows warning', async ({ page }) => {
     await mockCreatePageApis(page, { creditApproved: false });
-    await page.goto('/contracts/create', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/contracts/create', { waitUntil: 'networkidle' });
 
     // Go to step 1
     await page.getByText('Apple iPhone 15').click();
     await page.locator('button:has-text("ถัดไป")').click();
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
 
     // Select customer
     await page.getByText('สมชาย ใจดี').click();
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
 
     // Warning message
     await expect(page.getByText('ลูกค้าต้องผ่านการตรวจเครดิตก่อนถึงจะสร้างสัญญาได้')).toBeVisible({ timeout: 5000 });
@@ -278,17 +269,15 @@ test.describe('Phase 16: Contract Creation - 4-Step Wizard', () => {
   // ── 16.9 Step 2: Plan details with calculation ─────────────────────────
   test('16.9 Step 2 shows plan form and calculation summary', async ({ page }) => {
     await mockCreatePageApis(page);
-    await page.goto('/contracts/create', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/contracts/create', { waitUntil: 'networkidle' });
 
     // Navigate to step 2
     await page.getByText('Apple iPhone 15').click();
     await page.locator('button:has-text("ถัดไป")').click();
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
     await page.getByText('สมชาย ใจดี').click();
-    await page.waitForTimeout(500);
     await page.locator('button:has-text("ถัดไป")').click();
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
 
     // Step 2 label
     await expect(page.getByText('เลือกแผนผ่อน').first()).toBeVisible({ timeout: 5000 });
@@ -306,17 +295,15 @@ test.describe('Phase 16: Contract Creation - 4-Step Wizard', () => {
   // ── 16.10 Step 2: Interest config badge shows ──────────────────────────
   test('16.10 Step 2 shows interest config badge', async ({ page }) => {
     await mockCreatePageApis(page);
-    await page.goto('/contracts/create', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/contracts/create', { waitUntil: 'networkidle' });
 
     // Navigate to step 2
     await page.getByText('Apple iPhone 15').click();
     await page.locator('button:has-text("ถัดไป")').click();
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
     await page.getByText('สมชาย ใจดี').click();
-    await page.waitForTimeout(500);
     await page.locator('button:has-text("ถัดไป")').click();
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
 
     await expect(page.getByText('ใช้ดอกเบี้ยตาม:')).toBeVisible({ timeout: 5000 });
     await expect(page.getByText('มือถือใหม่')).toBeVisible();
@@ -325,19 +312,17 @@ test.describe('Phase 16: Contract Creation - 4-Step Wizard', () => {
   // ── 16.11 Step 3: Document upload section ──────────────────────────────
   test('16.11 Step 3 shows document upload zones and submit buttons', async ({ page }) => {
     await mockCreatePageApis(page);
-    await page.goto('/contracts/create', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/contracts/create', { waitUntil: 'networkidle' });
 
     // Navigate to step 3
     await page.getByText('Apple iPhone 15').click();
     await page.locator('button:has-text("ถัดไป")').click();
-    await page.waitForTimeout(800);
+    await page.waitForLoadState('networkidle');
     await page.getByText('สมชาย ใจดี').click();
-    await page.waitForTimeout(500);
     await page.locator('button:has-text("ถัดไป")').click();
-    await page.waitForTimeout(800);
+    await page.waitForLoadState('networkidle');
     await page.locator('button:has-text("ถัดไป")').click();
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
 
     // Step 3 heading
     await expect(page.getByRole('heading', { name: 'แนบเอกสาร' })).toBeVisible({ timeout: 5000 });
@@ -359,20 +344,18 @@ test.describe('Phase 16: Contract Creation - 4-Step Wizard', () => {
   // ── 16.12 Back button works ────────────────────────────────────────────
   test('16.12 Back button navigates to previous step', async ({ page }) => {
     await mockCreatePageApis(page);
-    await page.goto('/contracts/create', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/contracts/create', { waitUntil: 'networkidle' });
 
     // Go to step 1
     await page.getByText('Apple iPhone 15').click();
     await page.locator('button:has-text("ถัดไป")').click();
-    await page.waitForTimeout(800);
+    await page.waitForLoadState('networkidle');
 
     // Should be on step 1
     await expect(page.getByText('เลือกลูกค้า').first()).toBeVisible({ timeout: 5000 });
 
     // Click back
     await page.locator('button:has-text("ย้อนกลับ")').click();
-    await page.waitForTimeout(800);
 
     // Should be back on step 0
     await expect(page.locator('input[placeholder*="ค้นหาสินค้า"]')).toBeVisible({ timeout: 5000 });
@@ -381,8 +364,7 @@ test.describe('Phase 16: Contract Creation - 4-Step Wizard', () => {
   // ── 16.13 Back button hidden on step 0 ─────────────────────────────────
   test('16.13 Back button is hidden on step 0', async ({ page }) => {
     await mockCreatePageApis(page);
-    await page.goto('/contracts/create', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/contracts/create', { waitUntil: 'networkidle' });
 
     // Back button should be invisible on step 0
     const backBtn = page.locator('button:has-text("ย้อนกลับ")');
@@ -398,8 +380,7 @@ test.describe('Phase 16: Contract Creation - 4-Step Wizard', () => {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [], total: 0, page: 1, totalPages: 0 }) });
     });
 
-    await page.goto('/contracts/create', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/contracts/create', { waitUntil: 'networkidle' });
 
     await page.locator('button:has-text("ยกเลิก")').click();
     await page.waitForURL('**/contracts', { timeout: 5000 });
@@ -422,27 +403,25 @@ test.describe('Phase 16: Contract Creation - 4-Step Wizard', () => {
       } else { await route.continue(); }
     });
 
-    await page.goto('/contracts/create', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/contracts/create', { waitUntil: 'networkidle' });
 
     // Step 0: Select product
     await page.getByText('Apple iPhone 15').click();
     await page.locator('button:has-text("ถัดไป")').click();
-    await page.waitForTimeout(800);
+    await page.waitForLoadState('networkidle');
 
     // Step 1: Select customer
     await page.getByText('สมชาย ใจดี').click();
-    await page.waitForTimeout(500);
     await page.locator('button:has-text("ถัดไป")').click();
-    await page.waitForTimeout(800);
+    await page.waitForLoadState('networkidle');
 
     // Step 2: Skip (defaults are fine)
     await page.locator('button:has-text("ถัดไป")').click();
-    await page.waitForTimeout(800);
+    await page.waitForLoadState('networkidle');
 
     // Step 3: Save draft
     await page.locator('button:has-text("บันทึกร่าง")').click();
-    await page.waitForTimeout(2000);
+    await page.waitForLoadState('networkidle');
 
     expect(apiCalled).toBe(true);
     expect(apiBody.productId).toBe('prod-1');
@@ -460,23 +439,21 @@ test.describe('Phase 16: Contract Creation - 4-Step Wizard', () => {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
     });
 
-    await page.goto('/contracts/create', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/contracts/create', { waitUntil: 'networkidle' });
 
     // Navigate through all steps
     await page.getByText('Apple iPhone 15').click();
     await page.locator('button:has-text("ถัดไป")').click();
-    await page.waitForTimeout(800);
+    await page.waitForLoadState('networkidle');
     await page.getByText('สมชาย ใจดี').click();
-    await page.waitForTimeout(500);
     await page.locator('button:has-text("ถัดไป")').click();
-    await page.waitForTimeout(800);
+    await page.waitForLoadState('networkidle');
     await page.locator('button:has-text("ถัดไป")').click();
-    await page.waitForTimeout(800);
+    await page.waitForLoadState('networkidle');
 
     // Click create + submit
     await page.locator('button:has-text("สร้าง + ส่งตรวจสอบ")').click();
-    await page.waitForTimeout(3000);
+    await page.waitForLoadState('networkidle');
 
     expect(submitReviewCalled).toBe(true);
   });
@@ -484,17 +461,15 @@ test.describe('Phase 16: Contract Creation - 4-Step Wizard', () => {
   // ── 16.17 Add new customer button opens modal ──────────────────────────
   test('16.17 Add new customer button opens customer creation modal', async ({ page }) => {
     await mockCreatePageApis(page);
-    await page.goto('/contracts/create', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/contracts/create', { waitUntil: 'networkidle' });
 
     // Go to step 1
     await page.getByText('Apple iPhone 15').click();
     await page.locator('button:has-text("ถัดไป")').click();
-    await page.waitForTimeout(800);
+    await page.waitForLoadState('networkidle');
 
     // Click add new customer
     await page.getByText('เพิ่มลูกค้าใหม่').click();
-    await page.waitForTimeout(500);
 
     // Modal should open with form sections
     await expect(page.getByText('ข้อมูลส่วนตัว')).toBeVisible({ timeout: 5000 });
@@ -505,19 +480,17 @@ test.describe('Phase 16: Contract Creation - 4-Step Wizard', () => {
   // ── 16.18 Step 3 summary panel expandable ──────────────────────────────
   test('16.18 Step 3 has expandable contract summary panel', async ({ page }) => {
     await mockCreatePageApis(page);
-    await page.goto('/contracts/create', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/contracts/create', { waitUntil: 'networkidle' });
 
     // Navigate to step 3
     await page.getByText('Apple iPhone 15').click();
     await page.locator('button:has-text("ถัดไป")').click();
-    await page.waitForTimeout(800);
+    await page.waitForLoadState('networkidle');
     await page.getByText('สมชาย ใจดี').click();
-    await page.waitForTimeout(500);
     await page.locator('button:has-text("ถัดไป")').click();
-    await page.waitForTimeout(800);
+    await page.waitForLoadState('networkidle');
     await page.locator('button:has-text("ถัดไป")').click();
-    await page.waitForTimeout(800);
+    await page.waitForLoadState('networkidle');
 
     // Summary panel
     const summary = page.locator('summary:has-text("สรุปสัญญาก่อนยืนยัน")');
@@ -525,7 +498,6 @@ test.describe('Phase 16: Contract Creation - 4-Step Wizard', () => {
 
     // Click to expand
     await summary.click();
-    await page.waitForTimeout(500);
 
     // Should show product and customer info
     await expect(page.getByText('สมชาย ใจดี').first()).toBeVisible();
@@ -534,17 +506,15 @@ test.describe('Phase 16: Contract Creation - 4-Step Wizard', () => {
   // ── 16.19 Step 2 month selector shows correct range ────────────────────
   test('16.19 Step 2 month selector shows 6-12 month range', async ({ page }) => {
     await mockCreatePageApis(page);
-    await page.goto('/contracts/create', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/contracts/create', { waitUntil: 'networkidle' });
 
     // Navigate to step 2
     await page.getByText('Apple iPhone 15').click();
     await page.locator('button:has-text("ถัดไป")').click();
-    await page.waitForTimeout(800);
+    await page.waitForLoadState('networkidle');
     await page.getByText('สมชาย ใจดี').click();
-    await page.waitForTimeout(500);
     await page.locator('button:has-text("ถัดไป")').click();
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
 
     // Month selector should have options 6-12
     const monthSelect = page.locator('select').first();
@@ -555,17 +525,15 @@ test.describe('Phase 16: Contract Creation - 4-Step Wizard', () => {
   // ── 16.20 Step 2 payment due day selector ──────────────────────────────
   test('16.20 Step 2 due day selector includes 1-28 and สิ้นเดือน', async ({ page }) => {
     await mockCreatePageApis(page);
-    await page.goto('/contracts/create', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/contracts/create', { waitUntil: 'networkidle' });
 
     // Navigate to step 2
     await page.getByText('Apple iPhone 15').click();
     await page.locator('button:has-text("ถัดไป")').click();
-    await page.waitForTimeout(800);
+    await page.waitForLoadState('networkidle');
     await page.getByText('สมชาย ใจดี').click();
-    await page.waitForTimeout(500);
     await page.locator('button:has-text("ถัดไป")').click();
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
 
     // Due day selector should have end-of-month option
     const dueDaySelect = page.locator('select').nth(1);

@@ -349,6 +349,8 @@ model Customer {
 
   @@index([phone])
   @@index([name])
+  @@index([createdAt])
+  @@index([deletedAt])
   @@map("customers")
 }
 
@@ -565,6 +567,7 @@ model PurchaseOrder {
 
   @@index([supplierId])
   @@index([status])
+  @@index([createdAt])
   @@map("purchase_orders")
 }
 
@@ -733,6 +736,7 @@ model StockTransfer {
   @@index([fromBranchId])
   @@index([toBranchId])
   @@index([batchNumber])
+  @@index([createdAt])
   @@map("stock_transfers")
 }
 
@@ -978,6 +982,8 @@ model Repossession {
   product     Product  @relation(fields: [productId], references: [id])
   appraisedBy User     @relation("AppraisedBy", fields: [appraisedById], references: [id])
 
+  @@index([status])
+  @@index([createdAt])
   @@map("repossessions")
 }
 
@@ -1588,5 +1594,6 @@ model PaymentEvidence {
   @@index([contractId])
   @@index([status])
   @@index([lineUserId])
+  @@index([createdAt])
   @@map("payment_evidences")
 }

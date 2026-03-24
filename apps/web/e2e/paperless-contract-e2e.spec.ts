@@ -230,9 +230,8 @@ test.describe('Paperless Contract — Full E2E Audit', () => {
       const { token } = await tokenRes.json();
 
       // Navigate to customer portal
-      await page.goto(`/customer-access/${token}`, { waitUntil: 'domcontentloaded' });
+      await page.goto(`/customer-access/${token}`, { waitUntil: 'networkidle' });
       // Should display contract info (not blank or error)
-      await page.waitForTimeout(3000);
       const body = await page.locator('body').textContent();
       expect(body?.length).toBeGreaterThan(10);
     });

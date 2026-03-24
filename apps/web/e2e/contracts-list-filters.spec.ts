@@ -104,8 +104,7 @@ test.describe('Phase 12: Contracts List - Filters & Tabs', () => {
   test('12.1 Tab ทั้งหมด shows all contracts by default', async ({ page }) => {
     await mockContractsList(page);
 
-    await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/contracts', { waitUntil: 'networkidle' });
 
     // Tab "ทั้งหมด" should be active
     const allTab = page.locator('button:has-text("ทั้งหมด")');
@@ -122,12 +121,11 @@ test.describe('Phase 12: Contracts List - Filters & Tabs', () => {
   test('12.2 Tab สัญญาของฉัน switches to my contracts view', async ({ page }) => {
     await mockContractsList(page);
 
-    await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/contracts', { waitUntil: 'networkidle' });
 
     // Click "สัญญาของฉัน"
     await page.locator('button:has-text("สัญญาของฉัน")').click();
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
 
     // URL should contain tab=my
     expect(page.url()).toContain('tab=my');
@@ -141,14 +139,13 @@ test.describe('Phase 12: Contracts List - Filters & Tabs', () => {
   test('12.3 Tab รอตรวจสอบ filters to pending review contracts', async ({ page }) => {
     await mockContractsList(page);
 
-    await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/contracts', { waitUntil: 'networkidle' });
 
     // "รอตรวจสอบ" tab (manager only - Admin is OWNER)
     const pendingTab = page.locator('button:has-text("รอตรวจสอบ")');
     await expect(pendingTab).toBeVisible({ timeout: 5000 });
     await pendingTab.click();
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
 
     // URL should contain tab=pending_review
     expect(page.url()).toContain('tab=pending_review');
@@ -158,14 +155,13 @@ test.describe('Phase 12: Contracts List - Filters & Tabs', () => {
   test('12.4 Search filter updates URL params', async ({ page }) => {
     await mockContractsList(page);
 
-    await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/contracts', { waitUntil: 'networkidle' });
 
     // Type in search
     const searchInput = page.locator('input[placeholder*="ค้นหา"]');
     await expect(searchInput).toBeVisible({ timeout: 5000 });
     await searchInput.fill('BCP-0001');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
 
     // URL should contain q=BCP-0001
     expect(page.url()).toContain('q=BCP-0001');
@@ -175,8 +171,7 @@ test.describe('Phase 12: Contracts List - Filters & Tabs', () => {
   test('12.5 Status filter dropdown filters contracts', async ({ page }) => {
     await mockContractsList(page);
 
-    await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/contracts', { waitUntil: 'networkidle' });
 
     // Find status filter select
     const statusSelect = page.locator('select').first();
@@ -190,7 +185,7 @@ test.describe('Phase 12: Contracts List - Filters & Tabs', () => {
 
     // Select "ผ่อนอยู่"
     await statusSelect.selectOption('ACTIVE');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
 
     // URL should contain status=ACTIVE
     expect(page.url()).toContain('status=ACTIVE');
@@ -200,8 +195,7 @@ test.describe('Phase 12: Contracts List - Filters & Tabs', () => {
   test('12.6 Workflow filter dropdown is only visible on ทั้งหมด tab', async ({ page }) => {
     await mockContractsList(page);
 
-    await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/contracts', { waitUntil: 'networkidle' });
 
     // On ทั้งหมด tab, workflow filter should be visible
     const workflowSelect = page.locator('select').nth(1);
@@ -213,7 +207,6 @@ test.describe('Phase 12: Contracts List - Filters & Tabs', () => {
 
     // Switch to "สัญญาของฉัน" tab
     await page.locator('button:has-text("สัญญาของฉัน")').click();
-    await page.waitForTimeout(1000);
 
     // Workflow filter should be hidden on non-all tabs
     await expect(page.locator('select').nth(1)).not.toBeVisible();
@@ -223,13 +216,12 @@ test.describe('Phase 12: Contracts List - Filters & Tabs', () => {
   test('12.7 Workflow filter filters contracts by workflow status', async ({ page }) => {
     await mockContractsList(page);
 
-    await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/contracts', { waitUntil: 'networkidle' });
 
     // Select "รอตรวจสอบ" in workflow filter
     const workflowSelect = page.locator('select').nth(1);
     await workflowSelect.selectOption('PENDING_REVIEW');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
 
     // URL should contain workflow=PENDING_REVIEW
     expect(page.url()).toContain('workflow=PENDING_REVIEW');
@@ -239,8 +231,7 @@ test.describe('Phase 12: Contracts List - Filters & Tabs', () => {
   test('12.8 Create contract button navigates to create page', async ({ page }) => {
     await mockContractsList(page);
 
-    await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/contracts', { waitUntil: 'networkidle' });
 
     const createBtn = page.locator('button:has-text("สร้างสัญญา")');
     await expect(createBtn).toBeVisible({ timeout: 5000 });

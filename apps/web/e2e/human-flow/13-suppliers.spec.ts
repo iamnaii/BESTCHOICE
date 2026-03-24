@@ -51,7 +51,7 @@ test.describe('13 - Suppliers Flow', () => {
       await ss.capture('typed-search');
 
       // Step 3: รอผลลัพธ์
-      await page.waitForTimeout(500);
+      await page.waitForLoadState('networkidle');
       await ss.capture('search-results');
     }
   });
@@ -67,7 +67,7 @@ test.describe('13 - Suppliers Flow', () => {
     const addBtn = page.locator('button:has-text("เพิ่ม"), button:has-text("สร้าง"), a:has-text("เพิ่ม")').first();
     if (await addBtn.isVisible()) {
       await addBtn.click();
-      await page.waitForTimeout(300);
+      await page.waitForLoadState('networkidle');
       await ss.capture('add-form-opened');
 
       // Step 3: ตรวจสอบ form fields
@@ -89,7 +89,7 @@ test.describe('13 - Suppliers Flow', () => {
     const firstRow = page.locator('table tbody tr, [data-row]').first();
     if (await firstRow.isVisible()) {
       await firstRow.click();
-      await page.waitForTimeout(500);
+      await page.waitForLoadState('networkidle');
       await ss.capture('clicked-supplier-row');
     }
   });

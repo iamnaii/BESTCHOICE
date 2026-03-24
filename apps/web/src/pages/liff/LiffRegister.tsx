@@ -1,20 +1,12 @@
 import { useState, useEffect } from 'react';
-import liff from '@line/liff';
-
-const API_BASE = import.meta.env.VITE_API_URL || '/api';
-const LIFF_ID = import.meta.env.VITE_LIFF_ID || '';
+import { useLiffInit } from '@/hooks/useLiffInit';
+import { API_URL } from '@/lib/env';
 
 type Step = 'loading' | 'phone' | 'confirm' | 'success' | 'already_linked' | 'error';
 
-interface LineProfile {
-  userId: string;
-  displayName: string;
-  pictureUrl?: string;
-}
-
 export default function LiffRegister() {
+  const { lineId, profile, loading, error } = useLiffInit();
   const [step, setStep] = useState<Step>('loading');
-  const [profile, setProfile] = useState<LineProfile | null>(null);
   const [phone, setPhone] = useState('');
   const [phoneError, setPhoneError] = useState('');
   const [lookupResult, setLookupResult] = useState<{ customerId: string; maskedName: string } | null>(null);
@@ -22,60 +14,26 @@ export default function LiffRegister() {
   const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
-    initLiff();
-  }, []);
-
-  async function initLiff() {
-    try {
-      if (LIFF_ID) {
-        await liff.init({ liffId: LIFF_ID });
-
-        if (!liff.isLoggedIn()) {
-          liff.login();
-          return;
-        }
-
-        const p = await liff.getProfile();
-        setProfile({ userId: p.userId, displayName: p.displayName, pictureUrl: p.pictureUrl });
-
-        // Check if already linked
-        const res = await fetch(`${API_BASE}/line-oa/liff/contracts?lineId=${encodeURIComponent(p.userId)}`);
-        if (res.ok) {
-          setStep('already_linked');
-          return;
-        }
-
-        setStep('phone');
-      } else {
-        // Dev-only fallback: accept lineId from URL only in development
-        if (import.meta.env.DEV) {
-          const params = new URLSearchParams(window.location.search);
-          const lineId = params.get('lineId') || 'dev-test-user';
-          setProfile({ userId: lineId, displayName: 'Dev User' });
-          setStep('phone');
-        } else {
-          setErrorMessage('ไม่สามารถระบุตัวตนได้ กรุณาเปิดผ่าน LINE');
-          setStep('error');
-        }
-      }
-    } catch (err) {
-      console.error('LIFF init error:', err);
-      // Dev-only fallback: accept lineId from URL only in development
-      if (import.meta.env.DEV) {
-        const params = new URLSearchParams(window.location.search);
-        const lineId = params.get('lineId');
-        if (lineId) {
-          setProfile({ userId: lineId, displayName: 'Dev User' });
-          setStep('phone');
-        } else {
-          setErrorMessage('ไม่สามารถเชื่อมต่อ LINE ได้ กรุณาลองใหม่');
-          setStep('error');
-        }
-      } else {
-        setErrorMessage('ไม่สามารถเชื่อมต่อ LINE ได้ กรุณาลองใหม่');
-        setStep('error');
-      }
+    if (loading) return;
+    if (error) {
+      setErrorMessage(error);
+      setStep('error');
+      return;
     }
+    if (lineId) checkAlreadyLinked(lineId);
+  }, [lineId, loading, error]);
+
+  async function checkAlreadyLinked(id: string) {
+    try {
+      const res = await fetch(`${API_URL}/line-oa/liff/contracts?lineId=${encodeURIComponent(id)}`);
+      if (res.ok) {
+        setStep('already_linked');
+        return;
+      }
+    } catch {
+      // Not linked, continue to phone step
+    }
+    setStep('phone');
   }
 
   async function handlePhoneLookup() {
@@ -89,7 +47,7 @@ export default function LiffRegister() {
 
     setSubmitting(true);
     try {
-      const res = await fetch(`${API_BASE}/line-oa/liff/register/lookup`, {
+      const res = await fetch(`${API_URL}/line-oa/liff/register/lookup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: cleaned, lineId: profile!.userId }),
@@ -120,7 +78,7 @@ export default function LiffRegister() {
 
     setSubmitting(true);
     try {
-      const res = await fetch(`${API_BASE}/line-oa/liff/register/confirm`, {
+      const res = await fetch(`${API_URL}/line-oa/liff/register/confirm`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -107,7 +107,8 @@ test.describe('4. Customers - bestchoicephone.app', () => {
     const searchInput = page.locator('input[type="search"], input[placeholder*="ค้นหา"], input[placeholder*="search"]').first();
     if (await searchInput.isVisible()) {
       await searchInput.fill('test');
-      await page.waitForTimeout(500);
+      // Brief wait for debounce search to trigger
+      await page.waitForTimeout(300);
       await page.screenshot({ path: 'e2e/screenshots/07-customers-search.png', fullPage: true });
     }
   });

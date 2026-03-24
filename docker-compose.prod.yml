@@ -11,6 +11,8 @@ services:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - '127.0.0.1:5432:5432'
+    networks:
+      - bestchoice-net
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${DB_USER:-installment} -d ${DB_NAME:-installment_db}']
       interval: 10s
@@ -54,6 +56,8 @@ services:
       SMS_API_SECRET: ${SMS_API_SECRET:-}
       SMS_SENDER: ${SMS_SENDER:-BESTCHOICE}
       SMS_FORCE: ${SMS_FORCE:-standard}
+    networks:
+      - bestchoice-net
     ports:
       - '127.0.0.1:3000:3000'
     healthcheck:
@@ -78,6 +82,8 @@ services:
     ports:
       - '${HTTP_PORT:-80}:80'
       - '${HTTPS_PORT:-443}:443'
+    networks:
+      - bestchoice-net
     volumes:
       - ./nginx/ssl:/etc/nginx/ssl:ro
     healthcheck:
@@ -85,6 +91,10 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+networks:
+  bestchoice-net:
+    driver: bridge
 
 volumes:
   postgres_data:

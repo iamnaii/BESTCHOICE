@@ -43,7 +43,7 @@ test.describe('15 - Purchase Orders Flow', () => {
     if (await searchInput.isVisible()) {
       await searchInput.fill('PO');
       await ss.capture('typed-search');
-      await page.waitForTimeout(500);
+      await page.waitForLoadState('networkidle');
       await ss.capture('search-results');
     }
   });
@@ -58,7 +58,7 @@ test.describe('15 - Purchase Orders Flow', () => {
     const filterTab = page.locator('button[role="tab"], [data-state]').nth(1);
     if (await filterTab.isVisible()) {
       await filterTab.click();
-      await page.waitForTimeout(500);
+      await page.waitForLoadState('networkidle');
       await ss.capture('filter-applied');
     }
   });
@@ -72,7 +72,7 @@ test.describe('15 - Purchase Orders Flow', () => {
     const addBtn = page.locator('button:has-text("สร้าง"), button:has-text("เพิ่ม"), a:has-text("สร้าง")').first();
     if (await addBtn.isVisible()) {
       await addBtn.click();
-      await page.waitForTimeout(500);
+      await page.waitForLoadState('networkidle');
       await ss.capture('create-form-opened');
     }
   });

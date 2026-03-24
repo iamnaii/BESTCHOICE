@@ -9,6 +9,7 @@ import Modal from '@/components/ui/Modal';
 import AddressForm, { AddressData, emptyAddress, serializeAddress } from '@/components/ui/AddressForm';
 import { toast } from 'sonner';
 import { maskNationalId } from '@/utils/mask.util';
+import { THAI_NAME_PREFIXES, RELATIONSHIP_OPTIONS } from '@/lib/constants';
 
 interface Product {
   id: string;
@@ -93,8 +94,6 @@ const emptyCustForm = {
   workplace: '',
 };
 
-const custPrefixOptions = ['นาย', 'นาง', 'นางสาว'];
-const custRelationshipOptions = ['บิดา', 'มารดา', 'พี่น้อง', 'คู่สมรส', 'ญาติ', 'เพื่อน', 'อื่นๆ'];
 
 interface PendingDoc {
   id: string;
@@ -1519,7 +1518,7 @@ export default function ContractCreatePage() {
                 <label className="block text-xs text-muted-foreground mb-1">คำนำหน้า</label>
                 <select value={custForm.prefix} onChange={(e) => setCustForm({ ...custForm, prefix: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background">
                   <option value="">-- เลือก --</option>
-                  {custPrefixOptions.map(p => <option key={p} value={p}>{p}</option>)}
+                  {THAI_NAME_PREFIXES.map(p => <option key={p} value={p}>{p}</option>)}
                 </select>
               </div>
               <div>
@@ -1654,7 +1653,7 @@ export default function ContractCreatePage() {
                       <label className="block text-xs text-muted-foreground mb-1">คำนำหน้า</label>
                       <select value={ref.prefix} onChange={(e) => updateCustRef(idx, 'prefix', e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background">
                         <option value="">-- เลือก --</option>
-                        {custPrefixOptions.map(p => <option key={p} value={p}>{p}</option>)}
+                        {THAI_NAME_PREFIXES.map(p => <option key={p} value={p}>{p}</option>)}
                       </select>
                     </div>
                     <div>
@@ -1673,7 +1672,7 @@ export default function ContractCreatePage() {
                       <label className="block text-xs text-muted-foreground mb-1">ความสัมพันธ์</label>
                       <select value={ref.relationship} onChange={(e) => updateCustRef(idx, 'relationship', e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background">
                         <option value="">-- เลือก --</option>
-                        {custRelationshipOptions.map(r => <option key={r} value={r}>{r}</option>)}
+                        {RELATIONSHIP_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
                       </select>
                     </div>
                   </div>

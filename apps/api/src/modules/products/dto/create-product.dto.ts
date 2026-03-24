@@ -39,7 +39,7 @@ export class CreateProductDto {
   @IsOptional()
   serialNumber?: string;
 
-  @IsIn(['PHONE_NEW', 'PHONE_USED', 'TABLET', 'ACCESSORY'])
+  @IsIn(['PHONE_NEW', 'PHONE_USED', 'TABLET', 'ACCESSORY'], { message: 'หมวดหมู่สินค้าต้องเป็น PHONE_NEW, PHONE_USED, TABLET หรือ ACCESSORY' })
   category: string;
 
   @IsNumber()
@@ -56,7 +56,7 @@ export class CreateProductDto {
   @IsString()
   branchId: string;
 
-  @IsIn(['PO_RECEIVED', 'QC_PENDING', 'PHOTO_PENDING', 'INSPECTION', 'IN_STOCK', 'RESERVED', 'SOLD_INSTALLMENT', 'SOLD_CASH', 'REPOSSESSED', 'REFURBISHED', 'SOLD_RESELL', 'DAMAGED', 'LOST', 'WRITTEN_OFF'])
+  @IsIn(['PO_RECEIVED', 'QC_PENDING', 'PHOTO_PENDING', 'INSPECTION', 'IN_STOCK', 'RESERVED', 'SOLD_INSTALLMENT', 'SOLD_CASH', 'REPOSSESSED', 'REFURBISHED', 'SOLD_RESELL', 'DAMAGED', 'LOST', 'WRITTEN_OFF'], { message: 'สถานะสินค้าไม่ถูกต้อง' })
   @IsOptional()
   status?: string;
 

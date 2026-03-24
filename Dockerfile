@@ -9,15 +9,20 @@ COPY apps/api/package.json apps/api/
 # and hoists all workspace deps (including @nestjs/cli from apps/api devDeps)
 COPY apps/web/package.json apps/web/
 COPY packages/ packages/
-# Force --include=dev so @nestjs/cli and other build-time devDeps are installed
-# even when the build environment has NODE_ENV=production set (e.g. DigitalOcean)
-RUN --mount=type=cache,target=/root/.npm npm ci --include=dev
+# --include=dev: force devDeps even when NODE_ENV=production (DigitalOcean sets this)
+# No --mount=type=cache: kaniko (used by DigitalOcean) doesn't support BuildKit mounts
+# and its layer cache ignores command-text changes, causing stale layers
+RUN npm ci --include=dev
 
 # ============================================
 # Stage 2: Build API
 # ============================================
 FROM node:20-alpine AS builder
 WORKDIR /app
+
+# Ensure hoisted workspace binaries (nest, prisma) are in PATH
+ENV PATH="/app/node_modules/.bin:$PATH"
+
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
 COPY apps/api ./apps/api

@@ -25,7 +25,7 @@ BESTCHOICE/                          # Monorepo root (Turborepo)
 │   ├── api/                         # NestJS backend API (TypeScript)
 │   │   ├── prisma/                  # Database schema & migrations (39 migrations)
 │   │   └── src/
-│   │       ├── modules/             # 30+ feature modules
+│   │       ├── modules/             # 41 feature modules
 │   │       │   ├── auth/            # JWT authentication & authorization
 │   │       │   ├── contracts/       # Installment contracts (core)
 │   │       │   ├── payments/        # Payment recording & allocation
@@ -40,7 +40,7 @@ BESTCHOICE/                          # Monorepo root (Turborepo)
 │   │       └── utils/               # Shared utilities
 │   ├── web/                         # React SPA frontend (Vite + Tailwind)
 │   │   └── src/
-│   │       ├── pages/               # 40+ page components
+│   │       ├── pages/               # 60+ page components
 │   │       ├── components/          # Shared UI components
 │   │       ├── contexts/            # Auth context
 │   │       ├── hooks/               # Custom hooks
@@ -63,7 +63,7 @@ BESTCHOICE/                          # Monorepo root (Turborepo)
 | **Build Tool** | Vite | 6.0.x |
 | **Database** | PostgreSQL | 16 (via Docker) |
 | **ORM** | Prisma | 6.19.x |
-| **Auth** | Passport JWT + bcrypt | JWT 10.2, bcrypt 5.1.1 |
+| **Auth** | Passport JWT + bcrypt | JWT 10.2, bcrypt ^6.0.0 |
 | **State Mgmt** | Zustand + React Query | 4.5.x / 5.60.x |
 | **CSS** | Tailwind CSS | 3.4.x |
 | **AI/OCR** | Anthropic Claude API | SDK 0.78.x |
@@ -109,11 +109,11 @@ BESTCHOICE/                          # Monorepo root (Turborepo)
 | Package | Version | Purpose |
 |---------|---------|---------|
 | `@anthropic-ai/sdk` | ^0.78.0 | AI OCR and credit check |
-| `bcrypt` | ^5.1.1 | Password hashing |
+| `bcrypt` | ^6.0.0 | Password hashing |
 | `passport-jwt` | ^4.0.1 | JWT authentication |
 | `@nestjs/throttler` | ^6.0.0 | Rate limiting |
-| `dompurify` | ^3.3.1 | XSS sanitization |
-| `xlsx` | ^0.18.5 | Excel import/export |
+| `dompurify` | ^3.3.2 | XSS sanitization |
+| `exceljs` | ^4.4.0 | Excel import/export (replaced vulnerable xlsx@0.18.5) |
 | `jspdf` | ^4.2.0 | PDF generation |
 | `axios` | ^1.7.0 | HTTP client |
 | `@tiptap/*` | ^3.20.1 | Rich text editing |
@@ -138,6 +138,15 @@ BESTCHOICE/                          # Monorepo root (Turborepo)
 | `SMS_API_KEY` | No | ThaiBulkSMS API |
 | `SMS_API_SECRET` | No | ThaiBulkSMS password |
 | `SMS_SENDER` | No (BESTCHOICE) | SMS sender name |
+| `S3_ENDPOINT` | Yes (if file storage enabled) | S3-compatible storage endpoint |
+| `S3_ACCESS_KEY` | Yes (if file storage enabled) | S3 access key ID |
+| `S3_SECRET_KEY` | Yes (if file storage enabled) | S3 secret access key |
+| `S3_BUCKET` | Yes (if file storage enabled) | S3 bucket name |
+| `S3_REGION` | Yes (if file storage enabled) | S3 region |
+
+> **Note on Redis:** `REDIS_HOST` and `REDIS_PORT` appear in `.env.example` but are **never read by any API module**. Redis runs in dev `docker-compose.yml` but is not integrated into the application. It is dead infrastructure. SEC-07 recommends using Redis for a refresh token blacklist — implementing that would activate it.
+
+> **Note on password reset:** `POST /auth/forgot-password` and `POST /auth/reset-password` endpoints exist and the `PasswordResetToken` model is in the schema, but **email delivery is not implemented** — the email send is a commented-out stub in `auth.service.ts`. In production, users cannot receive password reset emails.
 
 ---
 
@@ -488,11 +497,11 @@ BESTCHOICE/                          # Monorepo root (Turborepo)
 
 | Package | Severity | CVE/Advisory | Fix Available |
 |---------|----------|-------------|---------------|
-| **dompurify** 3.3.1 | Moderate (XSS) | GHSA-v2wj-7wpq-c8vv | Yes: `npm audit fix` |
-| **xlsx** 0.18.5 | High (Prototype Pollution + ReDoS) | GHSA-4r6h-8v6p-xvw6, GHSA-5pgg-2g8v-p4x9 | **No fix available** |
+| ~~**dompurify** 3.3.1~~ | ~~Moderate (XSS)~~ | GHSA-v2wj-7wpq-c8vv | ✅ **FIXED** — upgraded to ^3.3.2 |
+| ~~**xlsx** 0.18.5~~ | ~~High (Prototype Pollution + ReDoS)~~ | GHSA-4r6h-8v6p-xvw6, GHSA-5pgg-2g8v-p4x9 | ✅ **FIXED** — replaced with exceljs@^4.4.0 |
 | **multer** <=2.1.0 | High (3 DoS CVEs) | GHSA-xf7r-hgr6-v32p, GHSA-v52c-386h-88mc, GHSA-5528-5vmv-3xc2 | Breaking: upgrade NestJS |
 | **serialize-javascript** <=7.0.2 | High (RCE) | GHSA-5c6j-r48x-rmvq | Yes: `npm audit fix` |
-| **tar** <=7.5.9 | High (5 path traversal CVEs) | Multiple | Breaking: upgrade bcrypt |
+| ~~**tar** <=7.5.9~~ | ~~High (5 path traversal CVEs)~~ | Multiple | ✅ **FIXED** — bcrypt upgraded to ^6.0.0 |
 | **glob** 10.2-10.4 | High (Command injection) | GHSA-5j98-mcp5-4vw2 | Breaking: upgrade @nestjs/cli |
 | **ajv** 7.0-8.17.1 | Moderate (ReDoS) | GHSA-2g4f-4pwh-qvx6 | Breaking: upgrade @nestjs/cli |
 | **lodash** 4.0-4.17.21 | Moderate (Prototype Pollution) | GHSA-xxjr-mmjv-4gpg | Breaking: upgrade @nestjs/config |
@@ -506,9 +515,9 @@ npm audit fix  # Fixes: dompurify, serialize-javascript
 ```
 
 ### Recommended Breaking Upgrades (Planned)
-1. `bcrypt@5.1.1` → `bcrypt@6.0.0` (fixes tar vulnerabilities)
-2. `@nestjs/platform-express@10.4.0` → `@nestjs/platform-express@11.1.15+` (fixes multer DoS)
-3. Replace `xlsx@0.18.5` with `exceljs` (no fix available for xlsx)
+1. ~~`bcrypt@5.1.1` → `bcrypt@6.0.0`~~ ✅ **DONE** (bcrypt@^6.0.0 in place)
+2. `@nestjs/platform-express@10.4.0` → `@nestjs/platform-express@11.1.15+` (fixes multer DoS — SEC-03)
+3. ~~Replace `xlsx@0.18.5` with `exceljs`~~ ✅ **DONE** (exceljs@^4.4.0 in place)
 4. `@nestjs/cli@10.4.0` → `@nestjs/cli@11.0.16+` (fixes glob, ajv, webpack, tmp)
 
 ---
@@ -525,13 +534,13 @@ npm audit fix  # Fixes: dompurify, serialize-javascript
 - [x] Graceful shutdown handling - `app.enableShutdownHooks()` in main.ts
 - [x] Input sanitization - `SecurityMiddleware` scans for XSS/injection patterns
 - [x] CORS configuration - Configured with allowed origins from env
-- [x] Rate limiting - Global throttle (30 req/s) + per-endpoint overrides + Nginx rate limiting
+- [x] Rate limiting - Global throttle (200 req/s) + per-endpoint overrides (30/min login, 10/min refresh) + Nginx rate limiting
 - [ ] **Missing:** Global exception filter (centralized error response formatting)
 - [ ] **Missing:** Top-level README.md with setup instructions
 - [ ] **Missing:** Structured JSON logging for production
 - [ ] **Missing:** API versioning
 - [ ] **Missing:** Refresh token invalidation/blacklist
-- [ ] **Missing:** CSRF protection
+- [x] CSRF protection - `X-Requested-With` header check via `CsrfGuard` + `SameSite` cookie (SEC-12 remains: SameSite=Strict would be stronger)
 - [ ] **Missing:** Comprehensive test suite (only 2 test files found: `auth.service.spec.ts`, `ocr.service.spec.ts`)
 
 ---
@@ -555,9 +564,9 @@ npm audit fix  # Fixes: dompurify, serialize-javascript
 |--------|-------|
 | Total source files (TS/TSX) | ~180 |
 | Total lines of code | ~63,637 |
-| API modules | 30+ |
-| Frontend pages | 40+ |
-| Database models | 25+ |
+| API modules | 41 |
+| Frontend pages | 60+ |
+| Database models | 50 |
 | Database migrations | 39 |
 | npm vulnerabilities | 25 (12 high) |
 | Test files | 2 |
@@ -568,7 +577,7 @@ npm audit fix  # Fixes: dompurify, serialize-javascript
 ## 11. Recommended Fix Order
 
 ### Immediate (S - Small effort, do today)
-1. **SEC-01** - Upgrade DOMPurify: `npm audit fix` [S]
+1. ~~**SEC-01**~~ - Upgrade DOMPurify ✅ **DONE** (dompurify@^3.3.2 in package.json)
 2. **SEC-10** - Fix serialize-javascript: `npm audit fix` [S]
 3. **SEC-16** - Bind dev Docker ports to localhost [S]
 4. **SEC-14** - Remove internal error details from client responses [S]
@@ -578,15 +587,15 @@ npm audit fix  # Fixes: dompurify, serialize-javascript
 6. **SEC-04** - Add `@Roles()` to customers controller [S]
 7. **SEC-05** - Add `@Roles()` to inspections controller [S]
 8. **SEC-09** - Add signature validation DTO [S]
-9. **SEC-02** - Replace `xlsx` with `exceljs` [M]
+9. ~~**SEC-02**~~ - Replace `xlsx` with `exceljs` ✅ **DONE** (exceljs@^4.4.0 in package.json)
 10. **SEC-07** - Implement refresh token blacklist [M]
 11. **BUG-02** - Fix race condition in contract activation [M]
 12. **BUG-01** - Fix payment schedule recalculation [M]
 
 ### This Sprint (L - Large effort)
 13. **SEC-03** - Upgrade NestJS to fix multer DoS [L]
-14. **SEC-08** - Migrate tokens to httpOnly cookies [L]
-15. **SEC-11** - Upgrade bcrypt to v6 [M]
+14. ~~**SEC-08**~~ - Migrate access token out of localStorage ✅ **DONE** (token now stored in-memory JS variable; one-time localStorage migration on first load)
+15. ~~**SEC-11**~~ - Upgrade bcrypt to v6 ✅ **DONE** (bcrypt@^6.0.0 in package.json)
 16. **PERF-01** - Fix N+1 in notification bulk send [S]
 17. **PERF-02** - Add pagination to all list endpoints [M]
 18. **CQ-01** - Refactor large page components [L]

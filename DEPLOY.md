@@ -4,7 +4,7 @@
 
 ไม่ต้องจัดการ server เอง, ไม่ต้อง SSH, มี SSL อัตโนมัติ, deploy อัตโนมัติเมื่อ push code
 
-**ค่าใช้จ่าย: ~$12/เดือน (~430 THB)**
+**ค่าใช้จ่าย: ~$14/เดือน (~500 THB)**
 
 ### ขั้นตอนที่ 1: สร้างบัญชี DigitalOcean
 
@@ -30,6 +30,11 @@
 | `JWT_SECRET` | `openssl rand -hex 32` | กุญแจสำหรับ login token |
 | `JWT_REFRESH_SECRET` | `openssl rand -hex 32` | กุญแจสำหรับ refresh token |
 | `ENCRYPTION_KEY` | `openssl rand -hex 16` | กุญแจเข้ารหัสเลขบัตร (32 ตัวอักษร) |
+| `S3_ENDPOINT` | จาก S3-compatible provider | Endpoint URL สำหรับ object storage (MinIO / AWS S3 / etc.) |
+| `S3_ACCESS_KEY` | จาก S3-compatible provider | Access key ID |
+| `S3_SECRET_KEY` | จาก S3-compatible provider | Secret access key |
+| `S3_BUCKET` | จาก S3-compatible provider | ชื่อ bucket สำหรับเก็บไฟล์ (เอกสาร KYC, สัญญา, สลิป) |
+| `S3_REGION` | จาก S3-compatible provider | Region ของ bucket |
 
 > ถ้าไม่มี terminal ให้เปิด https://generate-random.org/api-key-generator เลือก 64 characters แล้ว copy มาใส่ได้เลย
 
@@ -333,3 +338,14 @@ git push origin card-reader-v1.0.0
 ```
 
 หรือกด **Actions → Build Card Reader → Run workflow** บน GitHub ก็ได้
+
+---
+
+## ⚠️ Known Limitations
+
+| Feature | Status | Notes |
+|---|---|---|
+| **Password Reset Email** | ❌ Stub | Endpoints (`/auth/forgot-password`, `/auth/reset-password`) exist and tokens are generated, but **email delivery is not implemented** — no SMTP/email service is configured. In dev mode the token is returned in the API response. In production users cannot receive reset emails. To fix: add `nodemailer` + `SMTP_*` env vars, or send the link via LINE OA notification. |
+| **LIFF Payment** | ⚠️ Mock | The `/pay/:token` LIFF payment page is currently a UI mock — customers cannot make actual payments through it. PromptPay QR is generated correctly; actual payment confirmation requires manual slip upload. |
+| **S3 File Storage** | ⚠️ Required | All document uploads (KYC, signed contracts, payment slips) require S3/MinIO. Without the `S3_*` env vars, uploads silently return a key but store nothing. A subsequent download attempt will fail. Configure S3 before going live. |
+| **National ID Encryption** | ⚠️ Not implemented | `ENCRYPTION_KEY` is in `.env.example` but the customers module stores national IDs as plaintext. Encryption code has not been added. |

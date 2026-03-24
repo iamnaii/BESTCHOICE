@@ -2,7 +2,7 @@
 
 **Version:** 1.0
 **Date:** 2026-02-25
-**Status:** Draft — Pending stakeholder review
+**Status:** Implemented (with known gaps — see REVIEW_REPORT.md and docs/workspace-audit-report.md)
 
 ---
 

@@ -5,6 +5,9 @@ FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
 COPY apps/api/package.json apps/api/
+# apps/web/package.json must be present so npm workspaces correctly resolves
+# and hoists all workspace deps (including @nestjs/cli from apps/api devDeps)
+COPY apps/web/package.json apps/web/
 COPY packages/ packages/
 RUN --mount=type=cache,target=/root/.npm npm ci
 

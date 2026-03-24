@@ -1,27 +1,27 @@
 import { IsString, IsNumber, IsOptional, IsDateString } from 'class-validator';
 
 export class CreateRepossessionDto {
-  @IsString()
+  @IsString({ message: 'กรุณาระบุสัญญา' })
   contractId: string;
 
-  @IsDateString()
+  @IsDateString({}, { message: 'กรุณาระบุวันที่ยึดคืน' })
   repossessedDate: string;
 
-  @IsString()
+  @IsString({ message: 'กรุณาระบุเกรดสภาพ' })
   conditionGrade: string; // A, B, C, D
 
-  @IsNumber()
+  @IsNumber({}, { message: 'กรุณาระบุราคาประเมิน' })
   appraisalPrice: number;
 
-  @IsNumber()
+  @IsNumber({}, { message: 'กรุณาระบุค่าซ่อม' })
   @IsOptional()
   repairCost?: number;
 
-  @IsNumber()
+  @IsNumber({}, { message: 'กรุณาระบุราคาขายต่อ' })
   @IsOptional()
   resellPrice?: number;
 
-  @IsString()
+  @IsString({ message: 'กรุณาระบุหมายเหตุเป็นข้อความ' })
   @IsOptional()
   notes?: string;
 }

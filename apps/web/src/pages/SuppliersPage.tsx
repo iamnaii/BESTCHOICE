@@ -9,6 +9,7 @@ import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
 import AddressForm, { AddressData, emptyAddress, serializeAddress, deserializeAddress } from '@/components/ui/AddressForm';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
 interface PaymentMethod {
   id?: string;
@@ -94,6 +95,7 @@ export default function SuppliersPage() {
   const [filterActive, setFilterActive] = useState<string>('true');
   const [supplierAddress, setSupplierAddress] = useState<AddressData>(emptyAddress);
   const [page, setPage] = useState(1);
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
   const debouncedSearch = useDebounce(search);
 
   const isManager = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
@@ -356,9 +358,7 @@ export default function SuppliersPage() {
             onClick={(e) => {
               e.stopPropagation();
               const action = s.isActive ? 'ปิด' : 'เปิด';
-              if (confirm(`ต้องการ${action}ใช้งานผู้ขาย "${s.name}" ?`)) {
-                toggleActiveMutation.mutate({ id: s.id, isActive: !s.isActive });
-              }
+              setConfirmDialog({ open: true, message: `ต้องการ${action}ใช้งานผู้ขาย "${s.name}" ?`, action: () => toggleActiveMutation.mutate({ id: s.id, isActive: !s.isActive }) });
             }}
             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
               s.isActive ? 'bg-green-500' : 'bg-border'
@@ -666,6 +666,13 @@ export default function SuppliersPage() {
           </div>
         </form>
       </Modal>
+
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onOpenChange={(open) => setConfirmDialog((prev) => ({ ...prev, open }))}
+        description={confirmDialog.message}
+        onConfirm={confirmDialog.action}
+      />
     </div>
   );
 }

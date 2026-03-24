@@ -6,6 +6,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { compressImageForOcr } from '@/lib/compressImage';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Camera, X, CreditCard } from 'lucide-react';
 import { checkCardReaderStatus, readSmartCard } from '@/lib/cardReader';
 
@@ -58,6 +59,7 @@ export default function UsersPage() {
   const [form, setForm] = useState(emptyForm);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [isReadingCard, setIsReadingCard] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
 
   const { data: users = [], isLoading } = useQuery<User[]>({
     queryKey: ['users'],
@@ -236,7 +238,7 @@ export default function UsersPage() {
       key: 'isActive', label: 'สถานะ',
       render: (u: User) => (
         <button
-          onClick={() => { if (confirm(`ต้องการ${u.isActive ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}ผู้ใช้ "${u.name}" หรือไม่?`)) toggleActiveMutation.mutate({ id: u.id, isActive: !u.isActive }); }}
+          onClick={() => setConfirmDialog({ open: true, message: `ต้องการ${u.isActive ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}ผู้ใช้ "${u.name}" หรือไม่?`, action: () => toggleActiveMutation.mutate({ id: u.id, isActive: !u.isActive }) })}
           className={`px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer ${u.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}
         >
           {u.isActive ? 'ใช้งาน' : 'ปิดใช้งาน'}
@@ -400,6 +402,13 @@ export default function UsersPage() {
           </div>
         </form>
       </Modal>
+
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onOpenChange={(open) => setConfirmDialog((prev) => ({ ...prev, open }))}
+        description={confirmDialog.message}
+        onConfirm={confirmDialog.action}
+      />
     </div>
   );
 }

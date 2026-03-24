@@ -15,8 +15,15 @@ export class RepossessionsController {
   findAll(
     @Query('status') status?: string,
     @Query('branchId') branchId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
-    return this.repossessionsService.findAll({ status, branchId });
+    return this.repossessionsService.findAll({
+      status,
+      branchId,
+      page: page ? parseInt(page) : undefined,
+      limit: limit ? parseInt(limit) : undefined,
+    });
   }
 
   @Get('profit-loss')

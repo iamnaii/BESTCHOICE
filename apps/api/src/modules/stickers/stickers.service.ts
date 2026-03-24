@@ -6,8 +6,20 @@ import { CreateStickerTemplateDto, UpdateStickerTemplateDto } from './dto/sticke
 export class StickersService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll() {
-    return this.prisma.stickerTemplate.findMany({ orderBy: { createdAt: 'desc' } });
+  async findAll(page = 1, limit = 50) {
+    page = Math.max(1, page);
+    limit = Math.min(200, Math.max(1, limit));
+
+    const [data, total] = await Promise.all([
+      this.prisma.stickerTemplate.findMany({
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.stickerTemplate.count(),
+    ]);
+
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   async findOne(id: string) {

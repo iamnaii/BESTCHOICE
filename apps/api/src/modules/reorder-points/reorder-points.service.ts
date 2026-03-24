@@ -13,7 +13,7 @@ export class ReorderPointsService {
   ) {}
 
   async findAll(filters: { branchId?: string; isActive?: boolean; category?: string }) {
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { deletedAt: null };
     if (filters.branchId) where.branchId = filters.branchId;
     if (filters.isActive !== undefined) where.isActive = filters.isActive;
     if (filters.category) where.category = filters.category;
@@ -100,7 +100,7 @@ export class ReorderPointsService {
 
   async remove(id: string) {
     await this.findOne(id);
-    await this.prisma.reorderPoint.delete({ where: { id } });
+    await this.prisma.reorderPoint.update({ where: { id }, data: { deletedAt: new Date() } });
     return { message: 'ลบ Reorder Point สำเร็จ' };
   }
 
@@ -112,7 +112,7 @@ export class ReorderPointsService {
    */
   async checkStockLevels(): Promise<{ alertsCreated: number; notificationsSent: number }> {
     const activeReorderPoints = await this.prisma.reorderPoint.findMany({
-      where: { isActive: true },
+      where: { isActive: true, deletedAt: null },
       include: { branch: { select: { id: true, name: true } } },
     });
 
@@ -273,7 +273,7 @@ export class ReorderPointsService {
    * Get low stock items for dashboard (สินค้าที่ต้องสั่ง)
    */
   async getLowStockDashboard(branchId?: string) {
-    const where: Record<string, unknown> = { isActive: true };
+    const where: Record<string, unknown> = { isActive: true, deletedAt: null };
     if (branchId) where.branchId = branchId;
 
     const reorderPoints = await this.prisma.reorderPoint.findMany({

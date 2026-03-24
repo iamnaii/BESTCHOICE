@@ -23,6 +23,12 @@ describe('PaymentsController', () => {
     };
 
     const mockPaymentsService = {
+      validateBranchAccess: jest.fn().mockImplementation(async (contractId: string, user: { role: string; branchId: string | null }) => {
+        if (user.role === 'OWNER' || user.role === 'ACCOUNTANT') return;
+        if (mockContract.branchId !== user.branchId) {
+          throw new ForbiddenException('ไม่สามารถบันทึกชำระเงินข้ามสาขาได้');
+        }
+      }),
       recordPayment: jest.fn().mockResolvedValue({ id: 'payment-1', status: 'PAID' }),
       autoAllocatePayment: jest.fn().mockResolvedValue({ allocatedPayments: [], totalAllocated: 0, overpayment: 0 }),
       getPendingPayments: jest.fn().mockResolvedValue([]),

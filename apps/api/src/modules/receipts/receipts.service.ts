@@ -121,7 +121,7 @@ export class ReceiptsService {
     limit?: number;
   }) {
     const page = filters.page || 1;
-    const limit = Math.min(filters.limit || 20, 10000);
+    const limit = Math.min(filters.limit || 20, 200);
     const where: Prisma.ReceiptWhereInput = {};
 
     if (filters.search) {

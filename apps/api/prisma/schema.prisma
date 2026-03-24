@@ -1146,6 +1146,7 @@ model ContractDocument {
   notes        String?
   uploadedById String               @map("uploaded_by_id")
   createdAt    DateTime             @default(now()) @map("created_at")
+  deletedAt    DateTime?            @map("deleted_at")
 
   contract   Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
   uploadedBy User     @relation("DocumentUploadedBy", fields: [uploadedById], references: [id])
@@ -1200,6 +1201,7 @@ model ReorderPoint {
   isActive        Boolean         @default(true) @map("is_active")
   createdAt       DateTime        @default(now()) @map("created_at")
   updatedAt       DateTime        @updatedAt @map("updated_at")
+  deletedAt       DateTime?       @map("deleted_at")
 
   branch      Branch       @relation(fields: [branchId], references: [id])
   stockAlerts StockAlert[]

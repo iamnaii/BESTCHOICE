@@ -9,6 +9,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { statusLabels, categoryLabels } from '@/lib/constants';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
 interface StockProduct {
   id: string;
@@ -127,13 +128,14 @@ export default function StockPage() {
   const [filterCategory, setFilterCategory] = useState('');
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
 
   // Bulk transfer modal state
   const [showBulkTransfer, setShowBulkTransfer] = useState(false);
   const [transferBranchId, setTransferBranchId] = useState('');
   const [transferNotes, setTransferNotes] = useState('');
 
-  // Price management modal state (multi-price CRUD from ProductsPage)
+  // Price management modal state (multi-price CRUD)
   const [editingProduct, setEditingProduct] = useState<StockProduct | null>(null);
   const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
   const [priceForm, setPriceForm] = useState({ label: '', amount: '', isDefault: false });
@@ -1082,9 +1084,7 @@ export default function StockPage() {
                           </button>
                           <button
                             onClick={() => {
-                              if (confirm('ต้องการลบราคานี้?')) {
-                                deletePriceMutation.mutate({ productId: editingProduct.id, priceId: price.id });
-                              }
+                              setConfirmDialog({ open: true, message: 'ต้องการลบราคานี้?', action: () => deletePriceMutation.mutate({ productId: editingProduct.id, priceId: price.id }) });
                             }}
                             className="p-1 text-muted-foreground hover:text-red-500 transition-colors"
                             title="ลบ"
@@ -1175,6 +1175,13 @@ export default function StockPage() {
           </div>
         )}
       </Modal>
+
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onOpenChange={(open) => setConfirmDialog((prev) => ({ ...prev, open }))}
+        description={confirmDialog.message}
+        onConfirm={confirmDialog.action}
+      />
     </div>
   );
 }

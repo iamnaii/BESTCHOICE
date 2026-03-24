@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useLiffInit } from '@/hooks/useLiffInit';
 import { API_URL } from '@/lib/env';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { toast } from 'sonner';
 
 type Step = 'loading' | 'phone' | 'confirm' | 'success' | 'already_linked' | 'error';
 
@@ -10,74 +12,63 @@ export default function LiffRegister() {
   const [phone, setPhone] = useState('');
   const [phoneError, setPhoneError] = useState('');
   const [lookupResult, setLookupResult] = useState<{ customerId: string; maskedName: string } | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
 
-  useEffect(() => {
-    if (loading) return;
-    if (error) {
-      setErrorMessage(error);
-      setStep('error');
-      return;
-    }
-    if (lineId) checkAlreadyLinked(lineId);
-  }, [lineId, loading, error]);
-
-  async function checkAlreadyLinked(id: string) {
-    try {
-      const res = await fetch(`${API_URL}/line-oa/liff/contracts?lineId=${encodeURIComponent(id)}`);
+  // Check if already linked
+  const { error: checkError } = useQuery({
+    queryKey: ['liff-register-check', lineId],
+    queryFn: async () => {
+      const res = await fetch(`${API_URL}/line-oa/liff/contracts?lineId=${encodeURIComponent(lineId!)}`);
       if (res.ok) {
         setStep('already_linked');
-        return;
+        return { linked: true };
       }
-    } catch {
-      // Not linked, continue to phone step
+      // Not linked — go to phone step
+      setStep('phone');
+      return { linked: false };
+    },
+    enabled: !!lineId && !loading && !error,
+  });
+
+  // Handle LIFF init error
+  if (error && step === 'loading') {
+    // Defer to error view
+    if (step === 'loading') {
+      setStep('error');
     }
-    setStep('phone');
   }
 
-  async function handlePhoneLookup() {
-    setPhoneError('');
-    const cleaned = phone.trim();
-
-    if (!/^0\d{8,9}$/.test(cleaned)) {
-      setPhoneError('กรุณากรอกเบอร์โทรให้ถูกต้อง (เช่น 0812345678)');
-      return;
-    }
-
-    setSubmitting(true);
-    try {
+  const lookupMutation = useMutation({
+    mutationFn: async (cleaned: string) => {
       const res = await fetch(`${API_URL}/line-oa/liff/register/lookup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: cleaned, lineId: profile!.userId }),
       });
       const result = await res.json();
-
       if (result.alreadyLinked) {
-        setStep('already_linked');
-        return;
+        return { alreadyLinked: true as const };
       }
-
       if (result.error) {
-        setPhoneError(result.error);
-        return;
+        throw new Error(result.error);
       }
+      return result as { customerId: string; maskedName: string };
+    },
+    onSuccess: (result) => {
+      if ('alreadyLinked' in result && result.alreadyLinked) {
+        setStep('already_linked');
+      } else {
+        setLookupResult(result as { customerId: string; maskedName: string });
+        setStep('confirm');
+      }
+    },
+    onError: (err: Error) => {
+      setPhoneError(err.message);
+    },
+  });
 
-      setLookupResult(result);
-      setStep('confirm');
-    } catch {
-      setPhoneError('เกิดข้อผิดพลาด กรุณาลองใหม่');
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function handleConfirm() {
-    if (!lookupResult || !profile) return;
-
-    setSubmitting(true);
-    try {
+  const confirmMutation = useMutation({
+    mutationFn: async () => {
+      if (!lookupResult || !profile) throw new Error('ข้อมูลไม่ครบ');
       const res = await fetch(`${API_URL}/line-oa/liff/register/confirm`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -88,21 +79,32 @@ export default function LiffRegister() {
         }),
       });
       const result = await res.json();
-
-      if (result.error) {
-        setErrorMessage(result.error);
-        setStep('error');
-        return;
-      }
-
+      if (result.error) throw new Error(result.error);
+      return result;
+    },
+    onSuccess: () => {
       setStep('success');
-    } catch {
-      setErrorMessage('เกิดข้อผิดพลาด กรุณาลองใหม่');
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
       setStep('error');
-    } finally {
-      setSubmitting(false);
+    },
+  });
+
+  function handlePhoneLookup() {
+    setPhoneError('');
+    const cleaned = phone.trim();
+
+    if (!/^0\d{8,9}$/.test(cleaned)) {
+      setPhoneError('กรุณากรอกเบอร์โทรให้ถูกต้อง (เช่น 0812345678)');
+      return;
     }
+
+    lookupMutation.mutate(cleaned);
   }
+
+  const submitting = lookupMutation.isPending || confirmMutation.isPending;
+  const errorMessage = error || (checkError as Error)?.message || '';
 
   // Loading
   if (step === 'loading') {
@@ -134,7 +136,7 @@ export default function LiffRegister() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full text-center">
-          <div className="text-green-500 text-5xl mb-4">✓</div>
+          <div className="text-green-500 text-5xl mb-4">&#10003;</div>
           <h2 className="text-xl font-bold text-gray-800 mb-2">ลงทะเบียนแล้ว</h2>
           <p className="text-gray-600 mb-6">บัญชี LINE ของคุณเชื่อมต่อกับระบบแล้ว</p>
           <a
@@ -153,7 +155,7 @@ export default function LiffRegister() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full text-center">
-          <div className="text-green-500 text-5xl mb-4">✓</div>
+          <div className="text-green-500 text-5xl mb-4">&#10003;</div>
           <h2 className="text-xl font-bold text-gray-800 mb-2">ลงทะเบียนสำเร็จ</h2>
           <p className="text-gray-600 mb-2">เชื่อมบัญชี LINE กับระบบเรียบร้อยแล้ว</p>
           <p className="text-gray-500 text-sm mb-6">ตอนนี้คุณสามารถใช้คำสั่งต่างๆ ผ่าน LINE ได้แล้ว</p>
@@ -257,7 +259,7 @@ export default function LiffRegister() {
           </div>
 
           <button
-            onClick={handleConfirm}
+            onClick={() => confirmMutation.mutate()}
             disabled={submitting}
             className={`w-full py-3 rounded-xl font-medium text-white transition-colors ${
               !submitting ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-300 cursor-not-allowed'

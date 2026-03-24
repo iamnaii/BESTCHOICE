@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useLiffInit } from '@/hooks/useLiffInit';
 import { API_URL } from '@/lib/env';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -14,57 +16,43 @@ interface ProfileData {
 
 export default function LiffProfile() {
   const { lineId, profile, loading, error } = useLiffInit();
-  const [data, setData] = useState<ProfileData | null>(null);
-  const [dataLoading, setDataLoading] = useState(false);
-  const [dataError, setDataError] = useState<string | null>(null);
-  const [unlinking, setUnlinking] = useState(false);
   const [unlinked, setUnlinked] = useState(false);
 
-  useEffect(() => {
-    if (lineId) fetchProfile(lineId);
-  }, [lineId]);
+  const { data, isLoading: dataLoading, error: dataError } = useQuery<ProfileData>({
+    queryKey: ['liff-profile', lineId],
+    queryFn: async () => {
+      const res = await fetch(`${API_URL}/line-oa/liff/profile?lineId=${encodeURIComponent(lineId!)}`);
+      if (res.status === 404) throw new Error('ยังไม่ได้ลงทะเบียน กรุณาลงทะเบียนก่อน');
+      if (!res.ok) throw new Error('ไม่สามารถโหลดข้อมูลได้ กรุณาลองใหม่');
+      return res.json();
+    },
+    enabled: !!lineId,
+  });
 
-  async function fetchProfile(id: string) {
-    setDataLoading(true);
-    try {
-      const res = await fetch(`${API_URL}/line-oa/liff/profile?lineId=${encodeURIComponent(id)}`);
-      if (res.status === 404) {
-        setDataError('ยังไม่ได้ลงทะเบียน กรุณาลงทะเบียนก่อน');
-        return;
-      }
-      if (!res.ok) throw new Error('API error');
-      const result = await res.json();
-      setData(result);
-    } catch {
-      setDataError('ไม่สามารถโหลดข้อมูลได้ กรุณาลองใหม่');
-    } finally {
-      setDataLoading(false);
-    }
-  }
-
-  async function handleUnlink() {
-    if (!confirm('ต้องการยกเลิกผูก LINE จริงหรือไม่?\n\nหลังจากยกเลิก จะไม่สามารถใช้งานผ่าน LINE ได้อีก ต้องลงทะเบียนใหม่')) {
-      return;
-    }
-
-    setUnlinking(true);
-    try {
+  const unlinkMutation = useMutation({
+    mutationFn: async () => {
       const res = await fetch(`${API_URL}/line-oa/liff/unlink`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ lineId }),
       });
       const result = await res.json();
-      if (result.error) {
-        alert(result.error);
-        return;
-      }
+      if (result.error) throw new Error(result.error);
+      return result;
+    },
+    onSuccess: () => {
       setUnlinked(true);
-    } catch {
-      alert('เกิดข้อผิดพลาด กรุณาลองใหม่');
-    } finally {
-      setUnlinking(false);
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'เกิดข้อผิดพลาด กรุณาลองใหม่');
+    },
+  });
+
+  function handleUnlink() {
+    if (!window.confirm('ต้องการยกเลิกผูก LINE จริงหรือไม่?\n\nหลังจากยกเลิก จะไม่สามารถใช้งานผ่าน LINE ได้อีก ต้องลงทะเบียนใหม่')) {
+      return;
     }
+    unlinkMutation.mutate();
   }
 
   if (loading || dataLoading) {
@@ -83,7 +71,7 @@ export default function LiffProfile() {
           <CardContent className="text-center py-10">
             <div className="text-destructive text-5xl mb-4">!</div>
             <h2 className="text-lg font-bold mb-2">ไม่สามารถดำเนินการได้</h2>
-            <p className="text-muted-foreground text-sm">{error || dataError}</p>
+            <p className="text-muted-foreground text-sm">{error || (dataError as Error)?.message}</p>
           </CardContent>
         </Card>
       </div>
@@ -169,9 +157,9 @@ export default function LiffProfile() {
           mode="link"
           className="text-destructive text-xs"
           onClick={handleUnlink}
-          disabled={unlinking}
+          disabled={unlinkMutation.isPending}
         >
-          {unlinking ? 'กำลังดำเนินการ...' : 'ยกเลิกผูก LINE'}
+          {unlinkMutation.isPending ? 'กำลังดำเนินการ...' : 'ยกเลิกผูก LINE'}
         </Button>
       </div>
 

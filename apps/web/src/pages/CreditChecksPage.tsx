@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { compressImageForOcr } from '@/lib/compressImage';
+import { useDebounce } from '@/hooks/useDebounce';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
@@ -60,6 +61,8 @@ export default function CreditChecksPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [customerSearch, setCustomerSearch] = useState('');
+  const debouncedSearch = useDebounce(search);
+  const debouncedCustomerSearch = useDebounce(customerSearch);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [bankName, setBankName] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
@@ -74,10 +77,10 @@ export default function CreditChecksPage() {
   const [overrideNotes, setOverrideNotes] = useState('');
 
   const { data: creditChecksData, isLoading } = useQuery<{ data: CreditCheckItem[]; total: number }>({
-    queryKey: ['credit-checks', search, statusFilter],
+    queryKey: ['credit-checks', debouncedSearch, statusFilter],
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (search) params.set('search', search);
+      if (debouncedSearch) params.set('search', debouncedSearch);
       if (statusFilter) params.set('status', statusFilter);
       params.set('limit', '999');
       const { data } = await api.get(`/credit-checks?${params}`);
@@ -88,10 +91,10 @@ export default function CreditChecksPage() {
   const creditChecks = creditChecksData?.data || [];
 
   const { data: customers = [] } = useQuery<Customer[]>({
-    queryKey: ['customers-search-cc', customerSearch],
+    queryKey: ['customers-search-cc', debouncedCustomerSearch],
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (customerSearch) params.set('search', customerSearch);
+      if (debouncedCustomerSearch) params.set('search', debouncedCustomerSearch);
       const { data } = await api.get(`/customers?${params}`);
       return data.data || [];
     },

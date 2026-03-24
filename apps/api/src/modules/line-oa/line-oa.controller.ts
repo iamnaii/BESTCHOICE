@@ -1465,7 +1465,6 @@ export class LineOaController {
 
     return {
       settings: masked,
-      raw: settings, // full values for form (sent over HTTPS, OWNER only)
       isConfigured: !!settings.line_channel_access_token && !!settings.line_channel_secret,
     };
   }

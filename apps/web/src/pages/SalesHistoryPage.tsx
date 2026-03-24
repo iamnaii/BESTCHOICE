@@ -1,7 +1,8 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
+import { useDebounce } from '@/hooks/useDebounce';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import { Card, CardContent } from '@/components/ui/card';
@@ -53,15 +54,12 @@ export default function SalesHistoryPage() {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debouncedSearch = useDebounce(searchInput, 400);
 
   useEffect(() => {
-    debounceRef.current = setTimeout(() => {
-      setSearch(searchInput);
-      setPage(1);
-    }, 400);
-    return () => clearTimeout(debounceRef.current);
-  }, [searchInput]);
+    setSearch(debouncedSearch);
+    setPage(1);
+  }, [debouncedSearch]);
   const limit = 20;
 
   const { data: salesData, isLoading } = useQuery<SalesResponse>({

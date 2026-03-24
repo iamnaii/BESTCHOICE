@@ -624,6 +624,57 @@ export class NotificationsService implements OnModuleInit {
   }
 
   // ============================================================
+  // SMS SETTINGS
+  // ============================================================
+
+  private static readonly SMS_CONFIG_KEYS = ['sms_api_key', 'sms_api_secret', 'sms_sender', 'sms_force'] as const;
+
+  /**
+   * Get SMS settings from SystemConfig, masking sensitive values
+   */
+  async getSmsSettings(): Promise<Record<string, string>> {
+    const configs = await this.prisma.systemConfig.findMany({
+      where: { key: { in: [...NotificationsService.SMS_CONFIG_KEYS] } },
+    });
+
+    const result: Record<string, string> = {};
+    for (const key of NotificationsService.SMS_CONFIG_KEYS) {
+      const config = configs.find((c) => c.key === key);
+      if (!config) {
+        result[key] = '';
+        continue;
+      }
+      // Mask sensitive keys
+      if (key === 'sms_api_key' || key === 'sms_api_secret') {
+        const val = config.value;
+        result[key] = val.length > 4 ? '****' + val.slice(-4) : '****';
+      } else {
+        result[key] = config.value;
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Save SMS settings to SystemConfig and reload in-memory config
+   */
+  async saveSmsSettings(body: Record<string, string>): Promise<{ success: boolean }> {
+    for (const key of NotificationsService.SMS_CONFIG_KEYS) {
+      if (body[key] !== undefined && body[key] !== '' && !body[key].startsWith('****')) {
+        await this.prisma.systemConfig.upsert({
+          where: { key },
+          create: { key, value: body[key], label: `SMS Config: ${key}` },
+          update: { value: body[key] },
+        });
+      }
+    }
+
+    // Reload in-memory SMS config
+    await this.reloadSmsConfig();
+    return { success: true };
+  }
+
+  // ============================================================
   // NOTIFICATION LOGS
   // ============================================================
 

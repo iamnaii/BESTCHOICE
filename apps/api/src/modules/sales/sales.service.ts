@@ -12,7 +12,7 @@ export class SalesService {
 
   async findAll(filters: { saleType?: string; branchId?: string; search?: string; page?: number; limit?: number }) {
     const { saleType, branchId, search, page = 1, limit = 50 } = filters;
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { deletedAt: null };
 
     if (saleType) where.saleType = saleType;
     if (branchId) where.branchId = branchId;

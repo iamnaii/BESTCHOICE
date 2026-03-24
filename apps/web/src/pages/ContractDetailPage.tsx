@@ -12,6 +12,7 @@ import CustomerEditModal from '@/components/contract/CustomerEditModal';
 import { toast } from 'sonner';
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
 interface Payment {
   id: string;
@@ -231,6 +232,7 @@ export default function ContractDetailPage() {
   // Edit modal states
   const [isEditingProduct, setIsEditingProduct] = useState(false);
   const [isEditingCustomer, setIsEditingCustomer] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; title?: string; message: string; variant?: 'default' | 'destructive'; action: () => void }>({ open: false, message: '', action: () => {} });
 
   // No inline product/customer edit state needed — extracted to separate components
 
@@ -360,7 +362,7 @@ export default function ContractDetailPage() {
             )}
             {canDelete && (
               <button
-                onClick={() => { if (window.confirm('ยืนยันลบสัญญานี้?')) deleteMutation.mutate(); }}
+                onClick={() => setConfirmDialog({ open: true, title: 'ลบสัญญา', message: 'ยืนยันลบสัญญานี้?', variant: 'destructive', action: () => deleteMutation.mutate() })}
                 disabled={deleteMutation.isPending}
                 className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
               >
@@ -462,16 +464,20 @@ export default function ContractDetailPage() {
             <div className="text-xl font-bold text-green-600">{parseFloat(contract.creditBalance).toLocaleString()} ฿</div>
             {['ACTIVE', 'OVERDUE'].includes(contract.status) && (
               <button
-                onClick={async () => {
-                  if (!window.confirm(`ใช้เครดิต ${parseFloat(contract.creditBalance!).toLocaleString()} ฿ ชำระงวดถัดไป?`)) return;
-                  try {
-                    await api.post(`/payments/apply-credit/${contract.id}`);
-                    toast.success('ใช้เครดิตชำระสำเร็จ');
-                    invalidateContract();
-                  } catch (err: unknown) {
-                    toast.error(getErrorMessage(err));
-                  }
-                }}
+                onClick={() => setConfirmDialog({
+                  open: true,
+                  title: 'ใช้เครดิตชำระ',
+                  message: `ใช้เครดิต ${parseFloat(contract.creditBalance!).toLocaleString()} ฿ ชำระงวดถัดไป?`,
+                  action: async () => {
+                    try {
+                      await api.post(`/payments/apply-credit/${contract.id}`);
+                      toast.success('ใช้เครดิตชำระสำเร็จ');
+                      invalidateContract();
+                    } catch (err: unknown) {
+                      toast.error(getErrorMessage(err));
+                    }
+                  },
+                })}
                 className="mt-2 px-3 py-1 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700"
               >
                 ใช้เครดิตชำระ
@@ -967,6 +973,15 @@ export default function ContractDetailPage() {
           </div>
         </Modal>
       )}
+
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onOpenChange={(open) => setConfirmDialog((prev) => ({ ...prev, open }))}
+        title={confirmDialog.title}
+        description={confirmDialog.message}
+        variant={confirmDialog.variant}
+        onConfirm={confirmDialog.action}
+      />
     </div>
   );
 }

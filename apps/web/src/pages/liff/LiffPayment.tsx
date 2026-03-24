@@ -6,9 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { API_URL } from '@/lib/env';
 import { useMockPayment } from './useMockPayment';
-
-const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 interface PaymentLinkData {
   valid: boolean;
@@ -37,11 +38,9 @@ type View = 'loading' | 'select-method' | 'promptpay-pending' | 'success' | 'sli
 
 export default function LiffPayment() {
   const { token } = useParams<{ token: string }>();
-  const [data, setData] = useState<PaymentLinkData | null>(null);
   const [view, setView] = useState<View>('loading');
   const [errorMessage, setErrorMessage] = useState('');
   const [slipFile, setSlipFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
   const [qrUrl, setQrUrl] = useState<string | null>(null);
   const [cardForm, setCardForm] = useState({ number: '', expiry: '', cvv: '', name: '' });
 
@@ -49,45 +48,75 @@ export default function LiffPayment() {
   const queryLineId = new URLSearchParams(window.location.search).get('lineId') || '';
 
   // Fetch payment link data
+  const { data } = useQuery<PaymentLinkData | null>({
+    queryKey: ['liff-payment', token],
+    queryFn: async () => {
+      const res = await fetch(`${API_URL}/line-oa/pay/${token}`);
+      const result = await res.json();
+      if (!result || result.status === 'EXPIRED') {
+        setErrorMessage('ลิงก์ชำระเงินหมดอายุแล้ว กรุณาขอลิงก์ใหม่');
+        setView('error');
+        return null;
+      } else if (result.status === 'USED') {
+        setErrorMessage('ลิงก์นี้ถูกใช้งานแล้ว');
+        setView('error');
+        return null;
+      } else if (result.valid) {
+        if (result.promptPay?.qrDataUrl) {
+          setQrUrl(result.promptPay.qrDataUrl);
+        }
+        setView('select-method');
+        return result;
+      } else {
+        setErrorMessage(result.error || 'ลิงก์ไม่ถูกต้อง');
+        setView('error');
+        return null;
+      }
+    },
+    enabled: !!token,
+  });
+
+  // If no token, show error
   useEffect(() => {
     if (!token) {
       setErrorMessage('ลิงก์ไม่ถูกต้อง');
       setView('error');
-      return;
     }
-
-    fetch(`${API_BASE}/line-oa/pay/${token}`)
-      .then((res) => res.json())
-      .then((result) => {
-        if (!result || result.status === 'EXPIRED') {
-          setErrorMessage('ลิงก์ชำระเงินหมดอายุแล้ว กรุณาขอลิงก์ใหม่');
-          setView('error');
-        } else if (result.status === 'USED') {
-          setErrorMessage('ลิงก์นี้ถูกใช้งานแล้ว');
-          setView('error');
-        } else if (result.valid) {
-          setData(result);
-          if (result.promptPay?.qrDataUrl) {
-            setQrUrl(result.promptPay.qrDataUrl);
-          }
-          setView('select-method');
-        } else {
-          setErrorMessage(result.error || 'ลิงก์ไม่ถูกต้อง');
-          setView('error');
-        }
-      })
-      .catch(() => {
-        setErrorMessage('ไม่สามารถโหลดข้อมูลได้');
-        setView('error');
-      });
   }, [token]);
 
-  // Watch mock payment status → navigate to success
+  // Watch mock payment status -> navigate to success
   useEffect(() => {
     if (mock.status === 'successful') {
       setView('success');
     }
   }, [mock.status]);
+
+  const slipMutation = useMutation({
+    mutationFn: async (file: File) => {
+      if (!data) throw new Error('ไม่พบข้อมูลการชำระเงิน');
+      const formData = new FormData();
+      formData.append('slip', file);
+      formData.append('contractId', data.contract.contractNumber);
+      formData.append('token', data.token);
+
+      const res = await fetch(`${API_URL}/line-oa/slip-upload`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || err.message || 'อัปโหลดสลิปไม่สำเร็จ');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      setView('slip-uploaded');
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
 
   const amount = data ? Number(data.amount) : 0;
   const payment = data?.payment;
@@ -108,36 +137,14 @@ export default function LiffPayment() {
   };
 
   // --- Slip upload handlers ---
-  const handleSlipUpload = async () => {
-    if (!slipFile || !data) return;
-    setUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append('slip', slipFile);
-      formData.append('contractId', data.contract.contractNumber);
-      formData.append('token', data.token);
-
-      const res = await fetch(`${API_BASE}/line-oa/slip-upload`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (res.ok) {
-        setView('slip-uploaded');
-      } else {
-        const err = await res.json();
-        alert(err.error || err.message || 'อัปโหลดสลิปไม่สำเร็จ');
-      }
-    } catch {
-      alert('เกิดข้อผิดพลาด กรุณาลองใหม่');
-    } finally {
-      setUploading(false);
-    }
+  const handleSlipUpload = () => {
+    if (!slipFile) return;
+    slipMutation.mutate(slipFile);
   };
 
-  // ═══════════════════════════════════════════
+  // =============================================
   // VIEWS
-  // ═══════════════════════════════════════════
+  // =============================================
 
   // --- Loading ---
   if (view === 'loading') {
@@ -277,7 +284,7 @@ export default function LiffPayment() {
               </p>
             )}
 
-            {/* Mock simulate button — TODO: remove when real payment gateway is integrated */}
+            {/* Mock simulate button -- TODO: remove when real payment gateway is integrated */}
             <div className="mt-6 pt-4 border-t border-dashed">
               <p className="text-xs text-muted-foreground mb-2">[ ทดสอบ ]</p>
               <Button
@@ -301,9 +308,9 @@ export default function LiffPayment() {
     );
   }
 
-  // ═══════════════════════════════════════════
+  // =============================================
   // MAIN VIEW: Select Payment Method
-  // ═══════════════════════════════════════════
+  // =============================================
   if (!data) return null;
 
   return (
@@ -374,7 +381,7 @@ export default function LiffPayment() {
               </TabsTrigger>
             </TabsList>
 
-            {/* ── Tab: PromptPay (Omise) ── */}
+            {/* -- Tab: PromptPay (Omise) -- */}
             <TabsContent value="promptpay">
               <div className="text-center py-2">
                 <div className="bg-muted/50 rounded-lg p-6 mb-4">
@@ -397,7 +404,7 @@ export default function LiffPayment() {
               </div>
             </TabsContent>
 
-            {/* ── Tab: Credit/Debit Card ── */}
+            {/* -- Tab: Credit/Debit Card -- */}
             <TabsContent value="card">
               <div className="space-y-3 py-2">
                 <div>
@@ -460,7 +467,7 @@ export default function LiffPayment() {
               </div>
             </TabsContent>
 
-            {/* ── Tab: Manual Transfer + Slip ── */}
+            {/* -- Tab: Manual Transfer + Slip -- */}
             <TabsContent value="transfer">
               <div className="py-2">
                 {/* PromptPay QR + Account Info */}
@@ -533,9 +540,9 @@ export default function LiffPayment() {
                     size="lg"
                     className="w-full mt-3"
                     onClick={handleSlipUpload}
-                    disabled={!slipFile || uploading}
+                    disabled={!slipFile || slipMutation.isPending}
                   >
-                    {uploading ? (
+                    {slipMutation.isPending ? (
                       <>
                         <Loader2 className="size-4 animate-spin" />
                         กำลังส่ง...

@@ -16,8 +16,8 @@ export class RepossessionsService {
 
   constructor(private prisma: PrismaService) {}
 
-  async findAll(filters: { status?: string; branchId?: string }) {
-    const where: Record<string, unknown> = {};
+  async findAll(filters: { status?: string; branchId?: string; page?: number; limit?: number }) {
+    const where: Record<string, unknown> = { deletedAt: null };
 
     if (filters.status) {
       where.status = filters.status;
@@ -27,26 +27,36 @@ export class RepossessionsService {
       where.contract = { branchId: filters.branchId };
     }
 
-    return this.prisma.repossession.findMany({
-      where,
-      include: {
-        contract: {
-          select: {
-            id: true,
-            contractNumber: true,
-            customer: { select: { id: true, name: true, phone: true } },
-            branch: { select: { id: true, name: true } },
-            sellingPrice: true,
-            financedAmount: true,
+    const page = Math.max(1, filters.page || 1);
+    const limit = Math.min(200, Math.max(1, filters.limit || 20));
+
+    const [data, total] = await Promise.all([
+      this.prisma.repossession.findMany({
+        where,
+        include: {
+          contract: {
+            select: {
+              id: true,
+              contractNumber: true,
+              customer: { select: { id: true, name: true, phone: true } },
+              branch: { select: { id: true, name: true } },
+              sellingPrice: true,
+              financedAmount: true,
+            },
           },
+          product: {
+            select: { id: true, name: true, brand: true, model: true, imeiSerial: true },
+          },
+          appraisedBy: { select: { id: true, name: true } },
         },
-        product: {
-          select: { id: true, name: true, brand: true, model: true, imeiSerial: true },
-        },
-        appraisedBy: { select: { id: true, name: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.repossession.count({ where }),
+    ]);
+
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   async findOne(id: string) {

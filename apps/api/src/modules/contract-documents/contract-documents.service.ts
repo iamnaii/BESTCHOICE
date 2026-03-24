@@ -38,7 +38,7 @@ export class ContractDocumentsService {
     if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
 
     return this.prisma.contractDocument.findMany({
-      where: { contractId },
+      where: { contractId, deletedAt: null },
       orderBy: { createdAt: 'desc' },
       include: {
         uploadedBy: { select: { id: true, name: true } },
@@ -52,7 +52,7 @@ export class ContractDocumentsService {
       where: { id: contractId },
       include: {
         customer: { select: { birthDate: true } },
-        contractDocuments: { where: { isLatest: true }, select: { documentType: true } },
+        contractDocuments: { where: { isLatest: true, deletedAt: null }, select: { documentType: true } },
       },
     });
     if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
@@ -116,7 +116,7 @@ export class ContractDocumentsService {
     return this.prisma.$transaction(async (tx) => {
       // Version control: mark previous versions as not latest
       const existingLatest = await tx.contractDocument.findFirst({
-        where: { contractId, documentType: dto.documentType as any, isLatest: true },
+        where: { contractId, documentType: dto.documentType as any, isLatest: true, deletedAt: null },
       });
 
       let version = 1;
@@ -205,7 +205,7 @@ export class ContractDocumentsService {
 
   async remove(contractId: string, docId: string, userId: string, userRole: string) {
     const doc = await this.prisma.contractDocument.findFirst({
-      where: { id: docId, contractId },
+      where: { id: docId, contractId, deletedAt: null },
     });
     if (!doc) throw new NotFoundException('ไม่พบเอกสาร');
 
@@ -235,7 +235,7 @@ export class ContractDocumentsService {
       },
     });
 
-    return this.prisma.contractDocument.delete({ where: { id: docId } });
+    return this.prisma.contractDocument.update({ where: { id: docId }, data: { deletedAt: new Date() } });
   }
 
   /** Get document audit trail */

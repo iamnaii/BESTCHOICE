@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
 import { useLiffInit } from '@/hooks/useLiffInit';
 import { API_URL } from '@/lib/env';
+import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -29,31 +29,17 @@ const methodLabels: Record<string, string> = {
 
 export default function LiffHistory() {
   const { lineId, loading, error } = useLiffInit();
-  const [data, setData] = useState<HistoryData | null>(null);
-  const [dataLoading, setDataLoading] = useState(false);
-  const [dataError, setDataError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (lineId) fetchHistory(lineId);
-  }, [lineId]);
-
-  async function fetchHistory(id: string) {
-    setDataLoading(true);
-    try {
-      const res = await fetch(`${API_URL}/line-oa/liff/history?lineId=${encodeURIComponent(id)}`);
-      if (res.status === 404) {
-        setDataError('ยังไม่ได้ลงทะเบียน กรุณาลงทะเบียนก่อน');
-        return;
-      }
-      if (!res.ok) throw new Error('API error');
-      const result = await res.json();
-      setData(result);
-    } catch {
-      setDataError('ไม่สามารถโหลดข้อมูลได้ กรุณาลองใหม่');
-    } finally {
-      setDataLoading(false);
-    }
-  }
+  const { data, isLoading: dataLoading, error: dataError } = useQuery<HistoryData>({
+    queryKey: ['liff-history', lineId],
+    queryFn: async () => {
+      const res = await fetch(`${API_URL}/line-oa/liff/history?lineId=${encodeURIComponent(lineId!)}`);
+      if (res.status === 404) throw new Error('ยังไม่ได้ลงทะเบียน กรุณาลงทะเบียนก่อน');
+      if (!res.ok) throw new Error('ไม่สามารถโหลดข้อมูลได้ กรุณาลองใหม่');
+      return res.json();
+    },
+    enabled: !!lineId,
+  });
 
   if (loading || dataLoading) {
     return (
@@ -72,7 +58,7 @@ export default function LiffHistory() {
           <CardContent className="text-center py-10">
             <div className="text-destructive text-5xl mb-4">!</div>
             <h2 className="text-lg font-bold mb-2">ไม่สามารถดำเนินการได้</h2>
-            <p className="text-muted-foreground text-sm">{error || dataError}</p>
+            <p className="text-muted-foreground text-sm">{error || (dataError as Error)?.message}</p>
           </CardContent>
         </Card>
       </div>

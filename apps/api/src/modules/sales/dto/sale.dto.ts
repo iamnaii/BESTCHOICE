@@ -2,92 +2,92 @@ import { IsString, IsOptional, IsNumber, IsEnum, IsIn, IsArray, IsInt, Min, Max 
 import { Type } from 'class-transformer';
 
 export class CreateSaleDto {
-  @IsEnum(['CASH', 'INSTALLMENT', 'EXTERNAL_FINANCE'])
+  @IsEnum(['CASH', 'INSTALLMENT', 'EXTERNAL_FINANCE'], { message: 'กรุณาระบุประเภทการขาย' })
   saleType: string;
 
-  @IsString()
+  @IsString({ message: 'กรุณาระบุลูกค้า' })
   customerId: string;
 
-  @IsString()
+  @IsString({ message: 'กรุณาระบุสินค้า' })
   productId: string;
 
-  @IsString()
+  @IsString({ message: 'กรุณาระบุสาขา' })
   branchId: string;
 
-  @IsNumber()
+  @IsNumber({}, { message: 'กรุณาระบุราคาขาย' })
   @Type(() => Number)
   sellingPrice: number;
 
-  @IsNumber()
+  @IsNumber({}, { message: 'กรุณาระบุส่วนลด' })
   @IsOptional()
   @Type(() => Number)
   discount?: number;
 
   // Payment method (all sale types)
-  @IsIn(['CASH', 'BANK_TRANSFER', 'QR_EWALLET'])
+  @IsIn(['CASH', 'BANK_TRANSFER', 'QR_EWALLET'], { message: 'กรุณาระบุวิธีชำระเงิน' })
   @IsOptional()
   paymentMethod?: string;
 
-  @IsNumber()
+  @IsNumber({}, { message: 'กรุณาระบุจำนวนเงินที่รับ' })
   @IsOptional()
   @Type(() => Number)
   amountReceived?: number;
 
   // Down payment (for INSTALLMENT and EXTERNAL_FINANCE)
-  @IsNumber()
+  @IsNumber({}, { message: 'กรุณาระบุเงินดาวน์' })
   @IsOptional()
   @Type(() => Number)
   downPayment?: number;
 
   // Contract number (for INSTALLMENT and EXTERNAL_FINANCE)
-  @IsString()
+  @IsString({ message: 'กรุณาระบุเลขสัญญา' })
   @IsOptional()
   contractNumber?: string;
 
   // Installment fields
-  @IsString()
+  @IsString({ message: 'กรุณาระบุประเภทแผน' })
   @IsOptional()
   planType?: string = 'STORE_DIRECT';
 
-  @IsNumber()
+  @IsNumber({}, { message: 'กรุณาระบุจำนวนงวด' })
   @IsOptional()
   @Type(() => Number)
   totalMonths?: number;
 
-  @IsNumber()
+  @IsNumber({}, { message: 'กรุณาระบุอัตราดอกเบี้ย' })
   @IsOptional()
   @Type(() => Number)
   interestRate?: number;
 
   // Payment due day (1-28) for custom salary-based due dates
-  @IsInt()
-  @Min(1)
-  @Max(28)
+  @IsInt({ message: 'กรุณาระบุวันครบกำหนดชำระ' })
+  @Min(1, { message: 'วันครบกำหนดต้องไม่น้อยกว่า 1' })
+  @Max(28, { message: 'วันครบกำหนดต้องไม่เกิน 28' })
   @IsOptional()
   @Type(() => Number)
   paymentDueDay?: number;
 
   // External finance fields
-  @IsString()
+  @IsString({ message: 'กรุณาระบุบริษัทไฟแนนซ์' })
   @IsOptional()
   financeCompany?: string;
 
-  @IsString()
+  @IsString({ message: 'กรุณาระบุเลขอ้างอิงไฟแนนซ์' })
   @IsOptional()
   financeRefNumber?: string;
 
-  @IsNumber()
+  @IsNumber({}, { message: 'กรุณาระบุจำนวนเงินไฟแนนซ์' })
   @IsOptional()
   @Type(() => Number)
   financeAmount?: number;
 
   // Bundle / freebie product IDs
-  @IsArray()
-  @IsString({ each: true })
+  @IsArray({ message: 'กรุณาระบุรายการสินค้าแถม' })
+  @IsString({ each: true, message: 'รหัสสินค้าแถมต้องเป็นข้อความ' })
   @IsOptional()
   bundleProductIds?: string[];
 
-  @IsString()
+  @IsString({ message: 'กรุณาระบุหมายเหตุเป็นข้อความ' })
   @IsOptional()
   notes?: string;
 }

@@ -15,8 +15,15 @@ export class PurchaseOrdersController {
   findAll(
     @Query('status') status?: string,
     @Query('supplierId') supplierId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
-    return this.purchaseOrdersService.findAll({ status, supplierId });
+    return this.purchaseOrdersService.findAll({
+      status,
+      supplierId,
+      page: page ? parseInt(page) : undefined,
+      limit: limit ? parseInt(limit) : undefined,
+    });
   }
 
   @Get('accounts-payable')

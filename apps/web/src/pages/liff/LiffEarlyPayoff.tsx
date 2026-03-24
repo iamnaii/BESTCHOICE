@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
 import { useLiffInit } from '@/hooks/useLiffInit';
 import { API_URL } from '@/lib/env';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -18,75 +19,51 @@ interface EarlyPayoffQuote {
   error?: string;
 }
 
-type View = 'loading' | 'quote' | 'creating' | 'error';
-
 export default function LiffEarlyPayoff() {
   const { lineId, loading, error } = useLiffInit();
-  const [view, setView] = useState<View>('loading');
-  const [quote, setQuote] = useState<EarlyPayoffQuote | null>(null);
-  const [errorMessage, setErrorMessage] = useState('');
 
   const params = new URLSearchParams(window.location.search);
   const contractId = params.get('contractId') || '';
 
-  useEffect(() => {
-    if (loading) return;
-    if (error) {
-      setErrorMessage(error);
-      setView('error');
-      return;
-    }
-    if (lineId) fetchQuote(lineId);
-  }, [lineId, loading, error]);
-
-  async function fetchQuote(id: string) {
-    if (!contractId) {
-      setErrorMessage('ไม่พบรหัสสัญญา');
-      setView('error');
-      return;
-    }
-
-    try {
+  const {
+    data: quote,
+    isLoading: quoteLoading,
+    error: quoteError,
+  } = useQuery<EarlyPayoffQuote>({
+    queryKey: ['liff-early-payoff-quote', lineId, contractId],
+    queryFn: async () => {
+      if (!contractId) throw new Error('ไม่พบรหัสสัญญา');
       const res = await fetch(
-        `${API_URL}/line-oa/liff/early-payoff-quote?lineId=${encodeURIComponent(id)}&contractId=${encodeURIComponent(contractId)}`,
+        `${API_URL}/line-oa/liff/early-payoff-quote?lineId=${encodeURIComponent(lineId!)}&contractId=${encodeURIComponent(contractId)}`,
       );
       const result = await res.json();
-      if (result.error) {
-        setErrorMessage(result.error);
-        setView('error');
-        return;
-      }
-      setQuote(result);
-      setView('quote');
-    } catch {
-      setErrorMessage('ไม่สามารถโหลดข้อมูลได้ กรุณาลองใหม่');
-      setView('error');
-    }
-  }
+      if (result.error) throw new Error(result.error);
+      return result;
+    },
+    enabled: !!lineId,
+  });
 
-  async function handlePayoff() {
-    setView('creating');
-    try {
+  const payoffMutation = useMutation({
+    mutationFn: async () => {
       const res = await fetch(`${API_URL}/line-oa/liff/early-payoff`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ lineId, contractId }),
       });
       const result = await res.json();
-      if (result.url) {
-        window.location.href = result.url;
-      } else {
-        setErrorMessage(result.error || 'ไม่สามารถสร้างลิงก์ชำระเงินได้');
-        setView('error');
-      }
-    } catch {
-      setErrorMessage('เกิดข้อผิดพลาด กรุณาลองใหม่');
-      setView('error');
-    }
-  }
+      if (result.url) return result;
+      throw new Error(result.error || 'ไม่สามารถสร้างลิงก์ชำระเงินได้');
+    },
+    onSuccess: (result) => {
+      window.location.href = result.url;
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
 
   // Loading
-  if (view === 'loading') {
+  if (loading || quoteLoading) {
     return (
       <div className="min-h-screen bg-background p-4 space-y-4">
         <Skeleton className="h-28 w-full rounded-xl" />
@@ -97,14 +74,15 @@ export default function LiffEarlyPayoff() {
   }
 
   // Error
-  if (view === 'error') {
+  const errorMsg = error || (quoteError as Error)?.message;
+  if (errorMsg) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <Card className="max-w-md w-full">
           <CardContent className="text-center py-10">
             <div className="text-destructive text-5xl mb-4">!</div>
             <h2 className="text-lg font-bold mb-2">ไม่สามารถดำเนินการได้</h2>
-            <p className="text-muted-foreground text-sm mb-6">{errorMessage}</p>
+            <p className="text-muted-foreground text-sm mb-6">{errorMsg}</p>
             <Button variant="outline" asChild>
               <a href={`/liff/contract${lineId ? `?lineId=${encodeURIComponent(lineId)}` : ''}`}>
                 กลับไปดูสัญญา
@@ -117,7 +95,7 @@ export default function LiffEarlyPayoff() {
   }
 
   // Creating payment link
-  if (view === 'creating') {
+  if (payoffMutation.isPending) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <div className="text-center">
@@ -207,7 +185,8 @@ export default function LiffEarlyPayoff() {
         variant="primary"
         size="lg"
         className="w-full"
-        onClick={handlePayoff}
+        onClick={() => payoffMutation.mutate()}
+        disabled={payoffMutation.isPending}
       >
         ชำระเพื่อปิดยอด {quote.totalPayoff.toLocaleString()} บาท
       </Button>

@@ -250,6 +250,6 @@ scripts/                      # Existing project scripts
 ```
 
 ## Important Notes
-- **Unrouted pages** (exist but not wired into router): `InventoryWorkflowPage.tsx`, `InspectionPage.tsx`, `InspectionDetailPage.tsx`. `BranchReceivingPage.tsx` is superseded — `/stock/branch-receiving` redirects to `/stock/transfers?view=incoming`.
+- `BranchReceivingPage.tsx` is superseded — `/stock/branch-receiving` redirects to `/stock/transfers?view=incoming`.
 - **Environment variables**: see `.env.example` for full list
 - **CI/CD**: `.github/workflows/deploy.yml` — auto-deploy on push to `main`

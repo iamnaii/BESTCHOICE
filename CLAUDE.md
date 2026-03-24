@@ -72,6 +72,27 @@ cd apps/api && npm run dev
 4. อัปเดต workflow ที่เกี่ยวข้อง
 5. ไปต่อด้วยระบบที่แข็งแกร่งขึ้น
 
+### Agent Skills (Slash Commands)
+
+Skills คือ shortcut commands ที่เรียกใช้ได้ใน Claude Code — แต่ละ skill จะอ่าน workflow + ใช้ tools + ทำงานตาม pattern อัตโนมัติ
+
+| Skill | คำสั่ง | ใช้เมื่อ |
+|-------|--------|---------|
+| สร้าง Full-Stack Feature | `/create-feature` | ต้องการสร้าง feature ใหม่ครบ (Prisma + API + Page) |
+| สร้าง API Module | `/create-module` | ต้องการสร้าง backend module (controller, service, DTO) |
+| สร้าง React Page | `/create-page` | ต้องการสร้าง frontend page + routing |
+| เพิ่ม API Endpoint | `/add-endpoint` | ต้องการเพิ่ม route ใน module ที่มีอยู่ |
+| Fix Bug | `/fix-bug` | ต้องการ debug และ fix bug อย่างเป็นระบบ |
+| แก้ไข Database | `/db-change` | ต้องการเพิ่ม/แก้ Prisma model, field, enum |
+| Pre-Deploy Check | `/pre-deploy` | ต้องการตรวจสอบก่อน merge/deploy |
+
+Skills อยู่ใน `.claude/skills/` — แต่ละ skill จะ:
+1. อ่าน workflow ที่เกี่ยวข้องก่อนเริ่มงาน
+2. ถาม input ที่จำเป็นจาก user
+3. ค้นหา existing code ก่อนสร้างใหม่
+4. ใช้ tools (generate-module.sh, check-types.sh) อัตโนมัติ
+5. Verify ด้วย TypeScript check
+
 ---
 
 ## Codebase Structure
@@ -212,6 +233,15 @@ tools/                        # Shell scripts — deterministic execution
   check-types.sh              # TypeScript error check
   run-tests.sh                # Full test suite
   db-reset.sh                 # Reset dev database
+
+.claude/skills/               # Agent Skills — slash commands
+  create-feature.md           # /create-feature — Full-stack feature
+  create-module.md            # /create-module — NestJS API module
+  create-page.md              # /create-page — React page + routing
+  add-endpoint.md             # /add-endpoint — เพิ่ม API endpoint
+  fix-bug.md                  # /fix-bug — Debug & fix bugs
+  db-change.md                # /db-change — Prisma schema changes
+  pre-deploy.md               # /pre-deploy — Pre-deploy checklist
 
 scripts/                      # Existing project scripts
   backup.sh                   # Database backup

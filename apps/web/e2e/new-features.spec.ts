@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { loginViaAPI, getAuthHeaders } from './helpers/auth';
+import { loginViaAPI, getAuthHeaders, getAuthToken } from './helpers/auth';
 
 /**
  * E2E Tests for new features:
@@ -249,7 +249,7 @@ test.describe('CSV Payment Import', () => {
 
   test('API should handle CSV with invalid data gracefully', async ({ page }) => {
     await loginViaAPI(page);
-    const token = await page.evaluate(() => localStorage.getItem('access_token'));
+    const token = getAuthToken();
 
     const csv = [
       'contractNumber,installmentNo,amount,paymentMethod,transactionRef,notes',

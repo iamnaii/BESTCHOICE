@@ -67,6 +67,14 @@ export async function loginViaAPI(page: Page) {
 }
 
 /**
+ * Get the cached access token (for tests that need the raw token).
+ * After the localStorage→memory migration, tokens are no longer in localStorage.
+ */
+export function getAuthToken(): string | null {
+  return cachedToken;
+}
+
+/**
  * Get auth headers for page.request API calls
  */
 export function getAuthHeaders() {

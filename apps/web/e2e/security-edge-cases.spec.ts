@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { TEST_USER, loginViaAPI, logout } from './helpers/auth';
+import { TEST_USER, loginViaAPI, logout, getAuthToken } from './helpers/auth';
 
 /**
  * Security & Edge Case Test Suite
@@ -68,7 +68,7 @@ test.describe('RBAC Authorization', () => {
     // Admin (OWNER) should be able to access settings
     const response = await page.request.get('/api/settings', {
       headers: {
-        Authorization: `Bearer ${await page.evaluate(() => localStorage.getItem('access_token'))}`,
+        Authorization: `Bearer ${getAuthToken()}`,
       },
     });
 
@@ -356,7 +356,7 @@ test.describe('Performance Smoke Tests', () => {
 test.describe('CSRF Protection', () => {
   test('TC-S4: API should require proper headers for mutations', async ({ page }) => {
     await loginViaAPI(page);
-    const token = await page.evaluate(() => localStorage.getItem('access_token'));
+    const token = getAuthToken();
 
     // Try POST without X-Requested-With header (CSRF guard should block)
     const response = await page.request.post('/api/customers', {

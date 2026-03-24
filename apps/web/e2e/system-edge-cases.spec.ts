@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { TEST_USER, loginViaAPI, logout } from './helpers/auth';
+import { TEST_USER, loginViaAPI, logout, getAuthToken } from './helpers/auth';
 
 /**
  * System Edge Cases — Auth, Security, Navigation
@@ -82,7 +82,7 @@ test.describe('Auth Token Manipulation', () => {
     await logout(page);
 
     // Verify token is cleared
-    const token = await page.evaluate(() => localStorage.getItem('access_token'));
+    const token = getAuthToken();
     expect(token).toBeNull();
 
     // Navigate to protected route
@@ -206,7 +206,7 @@ test.describe('RBAC Authorization Boundaries', () => {
     await loginViaAPI(page);
     await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
 
-    const token = await page.evaluate(() => localStorage.getItem('access_token'));
+    const token = getAuthToken();
     expect(token, 'Token should be available after login').toBeTruthy();
 
     // Test settings endpoint (should be accessible for OWNER/admin)
@@ -225,7 +225,7 @@ test.describe('RBAC Authorization Boundaries', () => {
   test('TC-S8: API requests should include branch isolation', async ({ page }) => {
     await loginViaAPI(page);
 
-    const token = await page.evaluate(() => localStorage.getItem('access_token'));
+    const token = getAuthToken();
 
     // Fetch contracts — should only return contracts for user's branch
     const response = await page.request.get('/api/contracts?page=1&limit=10', {
@@ -242,7 +242,7 @@ test.describe('RBAC Authorization Boundaries', () => {
   test('TC-RBAC1: accessing non-existent entity should return 404 not 500', async ({ page }) => {
     await loginViaAPI(page);
 
-    const token = await page.evaluate(() => localStorage.getItem('access_token'));
+    const token = getAuthToken();
 
     const endpoints = [
       '/api/contracts/non-existent-id-12345',
@@ -327,7 +327,7 @@ test.describe('CSRF Protection', () => {
   test('TC-S4: mutation API calls should require proper headers', async ({ page }) => {
     await loginViaAPI(page);
 
-    const token = await page.evaluate(() => localStorage.getItem('access_token'));
+    const token = getAuthToken();
 
     // Try POST without X-Requested-With header (simulating CSRF attack)
     const response = await page.request.post('/api/customers', {
@@ -503,7 +503,7 @@ test.describe('API Response Security', () => {
   test('TC-S15: API error responses should not leak internal details', async ({ page }) => {
     await loginViaAPI(page);
 
-    const token = await page.evaluate(() => localStorage.getItem('access_token'));
+    const token = getAuthToken();
 
     // Send request that would trigger validation error
     const response = await page.request.post('/api/contracts', {
@@ -531,7 +531,7 @@ test.describe('API Response Security', () => {
   test('TC-S14: API responses should not expose sensitive fields', async ({ page }) => {
     await loginViaAPI(page);
 
-    const token = await page.evaluate(() => localStorage.getItem('access_token'));
+    const token = getAuthToken();
 
     // Fetch customers list
     const response = await page.request.get('/api/customers?page=1&limit=5', {

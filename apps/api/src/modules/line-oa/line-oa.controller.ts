@@ -24,7 +24,7 @@ import { LineWebhookBody, LineMessageEvent, LinePostbackEvent } from './dto/webh
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { ContractsService } from '../contracts/contracts.service';
+import { ContractPaymentService } from '../contracts/contract-payment.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptPayQrService } from './promptpay/promptpay-qr.service';
 import { PaymentLinkService } from './payment-links/payment-link.service';
@@ -41,7 +41,7 @@ export class LineOaController {
     private prisma: PrismaService,
     private promptPayQrService: PromptPayQrService,
     private paymentLinkService: PaymentLinkService,
-    private contractsService: ContractsService,
+    private contractPaymentService: ContractPaymentService,
   ) {}
 
   // ─── LINE Webhook ─────────────────────────────────────
@@ -1308,7 +1308,7 @@ export class LineOaController {
     }
 
     try {
-      const quote = await this.contractsService.getEarlyPayoffQuote(contractId);
+      const quote = await this.contractPaymentService.getEarlyPayoffQuote(contractId);
       return {
         ...quote,
         contractNumber: contract.contractNumber,
@@ -1342,7 +1342,7 @@ export class LineOaController {
     }
 
     try {
-      const quote = await this.contractsService.getEarlyPayoffQuote(body.contractId);
+      const quote = await this.contractPaymentService.getEarlyPayoffQuote(body.contractId);
       const result = await this.paymentLinkService.createPaymentLink(
         body.contractId,
         undefined,

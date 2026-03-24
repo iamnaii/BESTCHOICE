@@ -11,7 +11,11 @@
 ✅ Phase 5: Intelligence (Step 20-21)  — Dashboard, Reports
 ✅ Phase 6: Polish (Step 22-24)        — Data Migration, Security (Audit), Deployment (Docker + DO)
 
-🎉 ระบบสมบูรณ์ — ทุก Phase ถูก implement แล้ว (merged from all branches)
+⚠️ ระบบส่วนใหญ่สมบูรณ์แล้ว — แต่มี Known Gaps:
+   - Password reset email: endpoints exist แต่ไม่มี email delivery (stub)
+   - LIFF payment: เป็น mock, ลูกค้าชำระจริงไม่ได้
+   - InventoryWorkflowPage, InspectionPage, InspectionDetailPage: ยังไม่มี route ใน App.tsx
+   - S3 storage: ต้องตั้งค่า S3_* env vars ก่อน deploy (ดู DEPLOY.md)
 ```
 
 ---
@@ -27,8 +31,10 @@ node --version
 # 2. PostgreSQL (v16+)
 psql --version
 
-# 3. Redis
-redis-cli ping
+# 3. Redis — defined in docker-compose.yml but NOT used by the API application.
+# Skip this step. Redis is dead infrastructure as of current codebase.
+# (Activate only if implementing refresh token blacklist per SEC-07)
+# redis-cli ping
 
 # 4. Git
 git --version

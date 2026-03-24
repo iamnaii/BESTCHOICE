@@ -25,6 +25,12 @@ enum CreditCheckStatus {
   MANUAL_REVIEW   // ต้องตรวจสอบเพิ่มเติม
 }
 
+// ⚠️ IMPLEMENTATION NOTE: This enum was named DocumentType in the plan but was
+// implemented as ContractDocumentType in schema.prisma with 19 values (not 9).
+// The 10 values added during implementation:
+//   ID_CARD_BACK, KYC_SELFIE, DEVICE_PHOTO, DEVICE_IMEI_PHOTO, DOWN_PAYMENT_RECEIPT,
+//   PDPA_CONSENT, GUARDIAN_DOC, PAYMENT_SCHEDULE, PAYMENT_RECEIPT, ADDENDUM
+// See apps/api/prisma/schema.prisma for the authoritative list.
 enum DocumentType {
   SIGNED_CONTRACT       // PDF สัญญาที่เซ็นแล้ว
   ID_CARD_COPY          // สำเนาบัตรประชาชน

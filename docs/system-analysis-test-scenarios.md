@@ -67,6 +67,7 @@ TC-E18: เปลี่ยนอัตราดอกเบี้ยใน Setti
 
 ### สิ่งที่ทำได้ดีแล้ว
 - JWT + refresh token rotation + httpOnly cookie
+- Access token stored **in-memory** (SEC-08 ✅ FIXED — no longer in localStorage)
 - RBAC + Branch-level access control
 - Input validation (class-validator + global whitelist pipe)
 - Security headers (CSP, HSTS, X-Frame-Options, X-XSS-Protection)
@@ -84,10 +85,10 @@ TC-E18: เปลี่ยนอัตราดอกเบี้ยใน Setti
 | S1 | **File upload ไม่ validate** — slip upload ไม่ตรวจ file type/size/extension → อาจ upload script | HIGH | Upload .exe, .svg+XSS, 100MB file → ตรวจว่าถูก reject |
 | S2 | **Public contract verify endpoint** — `GET /contracts/:id/verify?hash=...` ไม่มี rate limit → brute-force hash | MEDIUM | ส่ง 1000 requests กับ random hash → ตรวจว่ามี rate limit |
 | S3 | **ไม่มี 2FA** — admin account ถูก compromise → full system access | MEDIUM | Test ว่า sensitive operations (delete, void, settings) ต้องการ re-authentication |
-| S4 | **Access token ใน localStorage** — XSS attack อ่าน token ได้ | MEDIUM | ตรวจว่า CSP policy ป้องกัน inline script injection |
+| S4 | **Access token ใน localStorage** — XSS attack อ่าน token ได้ | ~~MEDIUM~~ **✅ FIXED** | Token moved to in-memory JS variable (SEC-08 applied). One-time migration clears localStorage on first load. |
 | S5 | **ไม่มี per-user login lockout** — brute-force ได้ถ้าเปลี่ยน IP | MEDIUM | Login fail 100 ครั้งจาก IP ต่างๆ กับ user เดียวกัน → ตรวจว่า account ไม่ถูก lock |
 | S6 | **Refresh token cleanup แบบ probabilistic** — 1% chance ต่อ request → token เก่าสะสม | LOW | ตรวจจำนวน expired tokens หลัง 1000 refresh cycles |
-| S7 | **ไม่มี password reset flow** — ถ้าลืม password ทำอย่างไร? | MEDIUM | ตรวจว่ามี forgot password endpoint |
+| S7 | **ไม่มี password reset flow** — ถ้าลืม password ทำอย่างไร? | ~~MEDIUM~~ **⚠️ PARTIAL** | Endpoints (`POST /auth/forgot-password`, `POST /auth/reset-password`) and pages (`/forgot-password`, `/reset-password`) exist. BUT email delivery is a commented-out stub — tokens are generated but not delivered in production. No email service configured. |
 | S8 | **ไม่มี session invalidation สำหรับ concurrent login** — login จาก 2 devices ไม่ revoke เก่า | LOW | Login 2 devices → ตรวจว่า device เก่ายังใช้ได้ (อาจ ok ตาม business need) |
 
 **Security Test Scenarios:**

@@ -26,13 +26,18 @@ export async function loginAsAdmin(page: Page) {
 /**
  * Login via API (faster, for tests that don't test login UI)
  * Caches the token to avoid rate limiting on repeated calls.
+ *
+ * Uses the API port directly (not the web proxy) because in CI the web is
+ * served by `npx serve` which does NOT proxy /api requests the way Vite dev
+ * server does — calls to :5173/api would receive index.html, not JSON.
  */
 export async function loginViaAPI(page: Page) {
   const isExpired = Date.now() - tokenTimestamp > TOKEN_MAX_AGE_MS;
   if (!cachedToken || isExpired) {
-    const baseURL = 'http://localhost:5173';
+    // Use the API directly on its port to avoid dev-server proxy differences
+    const apiURL = process.env.API_DIRECT_URL || 'http://localhost:3000';
 
-    const response = await page.request.post(`${baseURL}/api/auth/login`, {
+    const response = await page.request.post(`${apiURL}/api/auth/login`, {
       data: {
         email: TEST_USER.email,
         password: TEST_USER.password,

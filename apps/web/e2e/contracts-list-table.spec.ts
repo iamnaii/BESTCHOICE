@@ -77,8 +77,7 @@ test.describe('Phase 13: Contracts List - Table & Navigation', () => {
   test('13.1 Contracts table shows all expected column headers', async ({ page }) => {
     await mockContractsListPaginated(page, { totalItems: 3 });
 
-    await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/contracts', { waitUntil: 'networkidle' });
 
     // Column headers
     await expect(page.getByText('เลขสัญญา')).toBeVisible({ timeout: 5000 });
@@ -95,8 +94,7 @@ test.describe('Phase 13: Contracts List - Table & Navigation', () => {
   test('13.2 Table rows show correct contract data', async ({ page }) => {
     await mockContractsListPaginated(page, { totalItems: 3 });
 
-    await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/contracts', { waitUntil: 'networkidle' });
 
     // Contract numbers
     await expect(page.getByText('BCP-0001')).toBeVisible({ timeout: 5000 });
@@ -145,8 +143,7 @@ test.describe('Phase 13: Contracts List - Table & Navigation', () => {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ complete: true, checklist: [] }) });
     });
 
-    await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/contracts', { waitUntil: 'networkidle' });
 
     // Click the first contract number link
     await page.locator('a:has-text("BCP-0001")').click();
@@ -157,8 +154,7 @@ test.describe('Phase 13: Contracts List - Table & Navigation', () => {
   test('13.4 Pagination navigates between pages', async ({ page }) => {
     await mockContractsListPaginated(page, { totalItems: 25 });
 
-    await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/contracts', { waitUntil: 'networkidle' });
 
     // Should show page 1 data
     await expect(page.getByText('BCP-0001')).toBeVisible({ timeout: 5000 });
@@ -167,7 +163,7 @@ test.describe('Phase 13: Contracts List - Table & Navigation', () => {
     const nextBtn = page.locator('button:has-text("ถัดไป"), button:has-text("Next"), button:has-text(">"), button:has-text("2")').first();
     if (await nextBtn.isVisible()) {
       await nextBtn.click();
-      await page.waitForTimeout(1500);
+      await page.waitForLoadState('networkidle');
 
       // Should now show different contracts (page 2)
       // URL should reflect page change
@@ -179,8 +175,7 @@ test.describe('Phase 13: Contracts List - Table & Navigation', () => {
   test('13.5 Empty state shows ยังไม่มีสัญญา message', async ({ page }) => {
     await mockContractsListPaginated(page, { totalItems: 0 });
 
-    await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/contracts', { waitUntil: 'networkidle' });
 
     await expect(page.getByText('ยังไม่มีสัญญา')).toBeVisible({ timeout: 5000 });
   });
@@ -189,8 +184,7 @@ test.describe('Phase 13: Contracts List - Table & Navigation', () => {
   test('13.6 Error state shows error message with retry button', async ({ page }) => {
     await mockContractsListPaginated(page, { errorMode: true });
 
-    await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page.goto('/contracts', { waitUntil: 'networkidle' });
 
     // Error message
     await expect(page.getByText('เกิดข้อผิดพลาด')).toBeVisible({ timeout: 5000 });
@@ -243,8 +237,7 @@ test.describe('Phase 13: Contracts List - Table & Navigation', () => {
       });
     });
 
-    await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/contracts', { waitUntil: 'networkidle' });
 
     await expect(page.getByText('ครบ (4/4)')).toBeVisible({ timeout: 5000 });
   });
@@ -253,8 +246,7 @@ test.describe('Phase 13: Contracts List - Table & Navigation', () => {
   test('13.9 Product category badge shows มือ1 for PHONE_NEW', async ({ page }) => {
     await mockContractsListPaginated(page, { totalItems: 3 });
 
-    await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto('/contracts', { waitUntil: 'networkidle' });
 
     await expect(page.locator('text=มือ1').first()).toBeVisible({ timeout: 5000 });
   });

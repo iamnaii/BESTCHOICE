@@ -89,7 +89,7 @@ test.describe('11 - Users & Branches Flow', () => {
       await ss.capture('clicked-add-user');
 
       // Step 4: รอ Modal เปิด
-      await page.waitForTimeout(500);
+      await page.waitForLoadState('networkidle');
       await ss.capture('add-user-modal-opened');
 
       // Step 5: ตรวจสอบ form fields ใน Modal

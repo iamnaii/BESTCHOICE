@@ -67,29 +67,23 @@ test.describe('Customers Page', () => {
 
     // ค้นหาด้วยชื่อ
     await searchInput.type('สม', { delay: 50 });
-    await page.waitForTimeout(1000);
     await page.waitForLoadState('networkidle');
     await ss.capture('search-by-name');
 
     // ล้างแล้วค้นหาด้วยเบอร์โทร
     await searchInput.clear();
-    await page.waitForTimeout(500);
     await searchInput.type('08', { delay: 50 });
-    await page.waitForTimeout(1000);
     await page.waitForLoadState('networkidle');
     await ss.capture('search-by-phone');
 
     // ล้างแล้วค้นหาด้วยเลขบัตร
     await searchInput.clear();
-    await page.waitForTimeout(500);
     await searchInput.type('1100', { delay: 50 });
-    await page.waitForTimeout(1000);
     await page.waitForLoadState('networkidle');
     await ss.capture('search-by-national-id');
 
     // ล้าง
     await searchInput.clear();
-    await page.waitForTimeout(500);
     await page.waitForLoadState('networkidle');
     await ss.capture('search-cleared');
   });
@@ -136,10 +130,8 @@ test.describe('Customers Page', () => {
     const addButton = page.locator('button:has-text("เพิ่มลูกค้า")').first();
     await expect(addButton).toBeVisible();
     await addButton.click();
-    await page.waitForTimeout(500);
+    await expect(page.locator('text=เพิ่มลูกค้าใหม่').first()).toBeVisible();
     await ss.capture('modal-opened');
-
-    // ตรวจ modal title "เพิ่มลูกค้าใหม่"
     await expect(page.locator('text=เพิ่มลูกค้าใหม่').first()).toBeVisible();
     await ss.capture('modal-title');
 
@@ -200,7 +192,7 @@ test.describe('Customers Page', () => {
 
     // เปิด modal
     await page.locator('button:has-text("เพิ่มลูกค้า")').first().click();
-    await page.waitForTimeout(500);
+    await page.waitForLoadState('networkidle');
     await ss.capture('modal-opened');
 
     // เลือกคำนำหน้า
@@ -252,7 +244,6 @@ test.describe('Customers Page', () => {
     // ไม่กด save เพราะจะสร้างข้อมูลจริง — ปิด modal
     const cancelBtn = page.locator('button:has-text("ยกเลิก")').first();
     await cancelBtn.click();
-    await page.waitForTimeout(300);
     await ss.capture('modal-cancelled');
   });
 
@@ -264,7 +255,7 @@ test.describe('Customers Page', () => {
 
     // เปิด modal
     await page.locator('button:has-text("เพิ่มลูกค้า")').first().click();
-    await page.waitForTimeout(500);
+    await page.waitForLoadState('networkidle');
     await ss.capture('modal-opened');
 
     // Section 1: ข้อมูลหลัก (always expanded)
@@ -275,6 +266,7 @@ test.describe('Customers Page', () => {
     const personalSection = page.locator('text=ข้อมูลส่วนตัวเพิ่มเติม').first();
     if (await personalSection.isVisible().catch(() => false)) {
       await personalSection.click();
+      // Wait for accordion animation
       await page.waitForTimeout(300);
       await ss.capture('section-personal-expanded');
 
@@ -291,6 +283,7 @@ test.describe('Customers Page', () => {
     const addressSection = page.locator('text=ที่อยู่').first();
     if (await addressSection.isVisible().catch(() => false)) {
       await addressSection.click();
+      // Wait for accordion animation
       await page.waitForTimeout(300);
       await ss.capture('section-address-expanded');
 
@@ -311,6 +304,7 @@ test.describe('Customers Page', () => {
     const contactSection = page.locator('text=ข้อมูลติดต่อเพิ่มเติม').first();
     if (await contactSection.isVisible().catch(() => false)) {
       await contactSection.click();
+      // Wait for accordion animation
       await page.waitForTimeout(300);
       await ss.capture('section-contact-expanded');
 
@@ -326,6 +320,7 @@ test.describe('Customers Page', () => {
     const workSection = page.locator('text=ข้อมูลที่ทำงาน').first();
     if (await workSection.isVisible().catch(() => false)) {
       await workSection.click();
+      // Wait for accordion animation
       await page.waitForTimeout(300);
       await ss.capture('section-work-expanded');
 
@@ -341,6 +336,7 @@ test.describe('Customers Page', () => {
     const refSection = page.locator('text=บุคคลอ้างอิง').first();
     if (await refSection.isVisible().catch(() => false)) {
       await refSection.click();
+      // Wait for accordion animation
       await page.waitForTimeout(300);
       await ss.capture('section-references-expanded');
 
@@ -378,7 +374,7 @@ test.describe('Customers Page', () => {
       await ss.capture('first-row-visible');
 
       await firstRow.dblclick();
-      await page.waitForTimeout(1000);
+      await page.waitForLoadState('networkidle');
       await ss.capture('after-dblclick');
 
       const url = page.url();
@@ -404,7 +400,7 @@ test.describe('Customers Page', () => {
       await ss.capture('name-button-visible');
 
       await nameBtn.click();
-      await page.waitForTimeout(1000);
+      await page.waitForLoadState('networkidle');
       await ss.capture('after-name-click');
 
       if (page.url().includes('/customers/')) {
@@ -507,7 +503,6 @@ test.describe('Customers Page', () => {
 
     const searchInput = page.locator('input[placeholder*="ค้นหา"]').first();
     await searchInput.type('zzzzxxxxxnotfound12345', { delay: 20 });
-    await page.waitForTimeout(1000);
     await page.waitForLoadState('networkidle');
     await ss.capture('search-no-results');
 
@@ -517,7 +512,6 @@ test.describe('Customers Page', () => {
     }
 
     await searchInput.clear();
-    await page.waitForTimeout(500);
     await page.waitForLoadState('networkidle');
     await ss.capture('back-to-normal');
   });

@@ -93,8 +93,7 @@ test.describe('Phase 15: Contract Detail - Header Actions & Edge Cases', () => {
     const contractId = 'test-hdr-001';
     await mockContractHeader(page, contractId);
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await expect(page.locator('button:has-text("ลงนาม/เอกสาร")')).toBeVisible({ timeout: 5000 });
     await expect(page.locator('button:has-text("พิมพ์สัญญา")')).toBeVisible();
@@ -106,8 +105,7 @@ test.describe('Phase 15: Contract Detail - Header Actions & Edge Cases', () => {
     const contractId = 'test-hdr-002';
     await mockContractHeader(page, contractId);
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await page.locator('button:has-text("ลงนาม/เอกสาร")').click();
     await page.waitForURL(`**/contracts/${contractId}/sign`, { timeout: 5000 });
@@ -123,8 +121,7 @@ test.describe('Phase 15: Contract Detail - Header Actions & Edge Cases', () => {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [], total: 0, page: 1, totalPages: 0 }) });
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await page.locator('button:has-text("กลับ")').click();
     await page.waitForURL('**/contracts', { timeout: 5000 });
@@ -144,8 +141,7 @@ test.describe('Phase 15: Contract Detail - Header Actions & Edge Cases', () => {
       ],
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     const activateBtn = page.locator('button:has-text("เปิดใช้งานสัญญา")');
     await expect(activateBtn).toBeVisible({ timeout: 5000 });
@@ -163,8 +159,7 @@ test.describe('Phase 15: Contract Detail - Header Actions & Edge Cases', () => {
       ],
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     const activateBtn = page.locator('button:has-text("เปิดใช้งานสัญญา")');
     await expect(activateBtn).toBeVisible({ timeout: 5000 });
@@ -176,8 +171,7 @@ test.describe('Phase 15: Contract Detail - Header Actions & Edge Cases', () => {
     const contractId = 'test-hdr-006';
     await mockContractHeader(page, contractId, { status: 'ACTIVE', workflowStatus: 'APPROVED' });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await expect(page.locator('button:has-text("ปิดก่อนกำหนด")')).toBeVisible({ timeout: 5000 });
   });
@@ -187,8 +181,7 @@ test.describe('Phase 15: Contract Detail - Header Actions & Edge Cases', () => {
     const contractId = 'test-hdr-007';
     await mockContractHeader(page, contractId, { status: 'DRAFT', workflowStatus: 'CREATING' });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await expect(page.locator('button:has-text("ปิดก่อนกำหนด")')).not.toBeVisible();
   });
@@ -198,8 +191,7 @@ test.describe('Phase 15: Contract Detail - Header Actions & Edge Cases', () => {
     const contractId = 'test-hdr-008';
     await mockContractHeader(page, contractId, { status: 'ACTIVE', workflowStatus: 'APPROVED' });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await expect(page.locator('button:has-text("ส่งลิงก์ลูกค้า")')).toBeVisible({ timeout: 5000 });
   });
@@ -209,8 +201,7 @@ test.describe('Phase 15: Contract Detail - Header Actions & Edge Cases', () => {
     const contractId = 'test-hdr-009';
     await mockContractHeader(page, contractId, { status: 'DRAFT', workflowStatus: 'CREATING' });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await expect(page.locator('button:has-text("ส่งลิงก์ลูกค้า")')).not.toBeVisible();
   });
@@ -224,8 +215,7 @@ test.describe('Phase 15: Contract Detail - Header Actions & Edge Cases', () => {
       salespersonId: 'user-001',
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await expect(page.locator('button:has-text("ลบสัญญา")')).toBeVisible({ timeout: 5000 });
   });
@@ -240,8 +230,7 @@ test.describe('Phase 15: Contract Detail - Header Actions & Edge Cases', () => {
       reviewNotes: 'ข้อมูลไม่ครบ',
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await expect(page.locator('button:has-text("ลบสัญญา")')).toBeVisible({ timeout: 5000 });
   });
@@ -254,8 +243,7 @@ test.describe('Phase 15: Contract Detail - Header Actions & Edge Cases', () => {
     // Set mobile viewport
     await page.setViewportSize({ width: 375, height: 812 });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // All key buttons should still be visible (they flex-wrap)
     await expect(page.locator('button:has-text("ลงนาม/เอกสาร")')).toBeVisible({ timeout: 5000 });
@@ -290,8 +278,7 @@ test.describe('Phase 15: Contract Detail - Header Actions & Edge Cases', () => {
     const contractId = 'test-hdr-014';
     await mockContractHeader(page, contractId, { contractNumber: 'BCP-9999' });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await expect(page.getByText('BCP-9999')).toBeVisible({ timeout: 5000 });
     await expect(page.getByText('รายละเอียดสัญญาผ่อนชำระ')).toBeVisible();
@@ -320,11 +307,10 @@ test.describe('Phase 15: Contract Detail - Header Actions & Edge Cases', () => {
       });
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await page.locator('button:has-text("เปิดใช้งานสัญญา")').click();
-    await page.waitForTimeout(2000);
+    await page.waitForLoadState('networkidle');
 
     expect(activateCalled).toBe(true);
   });
@@ -340,8 +326,7 @@ test.describe('Phase 15: Contract Detail - Header Actions & Edge Cases', () => {
       reviewedAt: '2026-03-15T14:30:00.000Z',
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Rejection banner
     await expect(page.getByText('สัญญาถูกปฏิเสธ')).toBeVisible({ timeout: 5000 });

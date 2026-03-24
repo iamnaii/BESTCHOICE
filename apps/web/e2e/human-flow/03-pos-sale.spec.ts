@@ -57,7 +57,7 @@ test.describe('03 - POS Sale Flow', () => {
       await ss.capture('typed-product-search');
 
       // Step 4: รอ debounce + API response
-      await page.waitForTimeout(1000);
+      await page.waitForLoadState('networkidle');
       await ss.capture('product-search-results');
     } else {
       await ss.capture('product-search-input-not-found');
@@ -80,7 +80,7 @@ test.describe('03 - POS Sale Flow', () => {
       await ss.capture('typed-customer-search');
 
       // Step 4: รอ debounce + API response
-      await page.waitForTimeout(1000);
+      await page.waitForLoadState('networkidle');
       await ss.capture('customer-search-results');
     } else {
       await ss.capture('customer-search-input-not-found');

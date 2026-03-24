@@ -46,7 +46,7 @@ test.describe('14 - Products Flow', () => {
     if (await searchInput.isVisible()) {
       await searchInput.fill('iPhone');
       await ss.capture('typed-search');
-      await page.waitForTimeout(500);
+      await page.waitForLoadState('networkidle');
       await ss.capture('search-results');
     }
   });
@@ -78,7 +78,7 @@ test.describe('14 - Products Flow', () => {
     const firstRow = page.locator('table tbody tr, [data-row]').first();
     if (await firstRow.isVisible()) {
       await firstRow.click();
-      await page.waitForTimeout(500);
+      await page.waitForLoadState('networkidle');
       await ss.capture('clicked-product');
     }
   });

@@ -108,24 +108,20 @@ test.describe('Credit Checks Page', () => {
 
     // ค้นหาด้วยชื่อ
     await searchInput.type('สม', { delay: 50 });
-    await page.waitForTimeout(500);
     await page.waitForLoadState('networkidle');
     await ss.capture('search-by-name');
 
     // ล้าง
     await searchInput.clear();
-    await page.waitForTimeout(500);
     await page.waitForLoadState('networkidle');
     await ss.capture('search-cleared');
 
     // ค้นหาด้วยคำที่ไม่มีผลลัพธ์
     await searchInput.type('zzzznotfound', { delay: 20 });
-    await page.waitForTimeout(500);
     await page.waitForLoadState('networkidle');
     await ss.capture('search-no-results');
 
     await searchInput.clear();
-    await page.waitForTimeout(500);
     await page.waitForLoadState('networkidle');
     await ss.capture('search-restored');
   });
@@ -212,7 +208,7 @@ test.describe('Credit Checks Page', () => {
     // คลิก "+ ตรวจเครดิตใหม่"
     const createBtn = page.locator('button:has-text("ตรวจเครดิตใหม่")').first();
     await createBtn.click();
-    await page.waitForTimeout(500);
+    await page.waitForLoadState('networkidle');
     await ss.capture('modal-opened');
 
     // ตรวจ modal title
@@ -229,7 +225,6 @@ test.describe('Credit Checks Page', () => {
       await ss.capture('customer-search-input');
 
       await customerSearch.type('ท', { delay: 50 });
-      await page.waitForTimeout(1000);
       await page.waitForLoadState('networkidle');
       await ss.capture('customer-search-results');
 
@@ -242,7 +237,7 @@ test.describe('Credit Checks Page', () => {
       // ค้นหาไม่เจอ
       await customerSearch.clear();
       await customerSearch.type('zzzznotfound', { delay: 20 });
-      await page.waitForTimeout(1000);
+      await page.waitForLoadState('networkidle');
       await ss.capture('customer-not-found');
 
       if (await page.locator('text=ไม่พบลูกค้า').first().isVisible().catch(() => false)) {
@@ -261,7 +256,7 @@ test.describe('Credit Checks Page', () => {
 
     // เปิด modal
     await page.locator('button:has-text("ตรวจเครดิตใหม่")').first().click();
-    await page.waitForTimeout(500);
+    await page.waitForLoadState('networkidle');
     await ss.capture('modal-opened');
 
     // ค้นหาแล้วเลือกลูกค้าคนแรก
@@ -272,7 +267,6 @@ test.describe('Credit Checks Page', () => {
     }
 
     await customerSearch.type('ท', { delay: 50 });
-    await page.waitForTimeout(1000);
     await page.waitForLoadState('networkidle');
     await ss.capture('search-results');
 
@@ -281,7 +275,7 @@ test.describe('Credit Checks Page', () => {
     const customerItem = dialog.locator('button, div').filter({ hasText: /08\d{8}/ }).first();
     if (await customerItem.isVisible({ timeout: 3000 }).catch(() => false)) {
       await customerItem.click({ force: true });
-      await page.waitForTimeout(500);
+      await page.waitForLoadState('networkidle');
       await ss.capture('customer-selected');
 
       // ตรวจ selected customer display (blue bg)
@@ -381,7 +375,7 @@ test.describe('Credit Checks Page', () => {
     }
 
     await overrideBtn.click();
-    await page.waitForTimeout(500);
+    await page.waitForLoadState('networkidle');
     await ss.capture('override-modal-opened');
 
     // ตรวจ title "Override สถานะเครดิตเช็ค"
@@ -487,7 +481,7 @@ test.describe('Credit Checks Page', () => {
       await ss.capture('customer-link');
 
       await customerLink.click();
-      await page.waitForTimeout(1000);
+      await page.waitForLoadState('networkidle');
       await ss.capture('after-click');
 
       if (page.url().includes('/customers/')) {
@@ -511,7 +505,7 @@ test.describe('Credit Checks Page', () => {
       await ss.capture('contract-link');
 
       await contractLink.click();
-      await page.waitForTimeout(1000);
+      await page.waitForLoadState('networkidle');
       await ss.capture('after-click');
 
       if (page.url().includes('/contracts/')) {
@@ -543,7 +537,6 @@ test.describe('Credit Checks Page', () => {
     // ค้นหา
     const searchInput = page.locator('input[placeholder*="ค้นหา"]').first();
     await searchInput.type('สม', { delay: 50 });
-    await page.waitForTimeout(500);
     await page.waitForLoadState('networkidle');
     await ss.capture('search-within-approved');
 

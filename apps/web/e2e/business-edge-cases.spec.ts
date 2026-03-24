@@ -308,9 +308,6 @@ test.describe('Dashboard Edge Cases', () => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
 
-    // Wait a bit for async data loading
-    await page.waitForTimeout(2000);
-
     const criticalErrors = errors.filter(
       (e) =>
         !e.includes('ResizeObserver') &&
@@ -469,21 +466,24 @@ test.describe('Browser Edge Cases', () => {
 
     // Resize to mobile width
     await page.setViewportSize({ width: 375, height: 667 });
-    await page.waitForTimeout(500);
+    // Brief wait for responsive layout recalculation
+    await page.waitForTimeout(300);
 
     let bodyText = await page.textContent('body');
     expect(bodyText).toBeTruthy();
 
     // Resize to tablet
     await page.setViewportSize({ width: 768, height: 1024 });
-    await page.waitForTimeout(500);
+    // Brief wait for responsive layout recalculation
+    await page.waitForTimeout(300);
 
     bodyText = await page.textContent('body');
     expect(bodyText).toBeTruthy();
 
     // Resize back to desktop
     await page.setViewportSize({ width: 1280, height: 720 });
-    await page.waitForTimeout(500);
+    // Brief wait for responsive layout recalculation
+    await page.waitForTimeout(300);
 
     bodyText = await page.textContent('body');
     expect(bodyText).toBeTruthy();

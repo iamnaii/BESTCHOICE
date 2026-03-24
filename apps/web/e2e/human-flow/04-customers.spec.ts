@@ -59,7 +59,7 @@ test.describe('04 - Customers Flow', () => {
     await ss.capture('typed-search-term');
 
     // Step 4: รอ debounce + API response
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
     await ss.capture('search-results-loaded');
   });
 
@@ -80,7 +80,7 @@ test.describe('04 - Customers Flow', () => {
       await ss.capture('clicked-add-button');
 
       // Step 4: รอ Modal เปิด
-      await page.waitForTimeout(500);
+      await page.waitForLoadState('networkidle');
       await ss.capture('modal-opened');
 
       // Step 5: ตรวจสอบ form fields ใน Modal
@@ -117,7 +117,7 @@ test.describe('04 - Customers Flow', () => {
       await ss.capture('clicked-customer-row');
 
       // Step 4: รอ navigate ไปหน้า detail
-      await page.waitForTimeout(1000);
+      await page.waitForLoadState('networkidle');
       await ss.capture('customer-detail-loaded');
 
       // Step 5: ตรวจสอบว่าอยู่หน้า detail (URL มี /customers/)

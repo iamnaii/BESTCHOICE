@@ -111,12 +111,10 @@ test.describe('Phase 11: Contract Detail - Customer Link, QR, Delete', () => {
       });
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Click send customer link button
     await page.locator('button:has-text("ส่งลิงก์ลูกค้า")').click();
-    await page.waitForTimeout(2000);
 
     // Modal should appear
     await expect(page.getByRole('heading', { name: 'ลิงก์สำหรับลูกค้า' })).toBeVisible({ timeout: 5000 });
@@ -141,8 +139,7 @@ test.describe('Phase 11: Contract Detail - Customer Link, QR, Delete', () => {
       contractHash: 'abc123def456ghi789jkl012mno345',
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // QR section should appear
     await expect(page.getByText('ตรวจสอบสัญญา (QR Verify)')).toBeVisible({ timeout: 5000 });
@@ -159,8 +156,7 @@ test.describe('Phase 11: Contract Detail - Customer Link, QR, Delete', () => {
     const contractId = 'test-action-003';
     await mockContract(page, contractId, { contractHash: null });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await expect(page.getByText('ตรวจสอบสัญญา (QR Verify)')).not.toBeVisible();
   });
@@ -192,14 +188,13 @@ test.describe('Phase 11: Contract Detail - Customer Link, QR, Delete', () => {
       await dialog.accept();
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Click delete button (only visible for OWNER + CREATING/REJECTED)
     const deleteBtn = page.locator('button:has-text("ลบสัญญา")');
     await expect(deleteBtn).toBeVisible({ timeout: 5000 });
     await deleteBtn.click();
-    await page.waitForTimeout(2000);
+    await page.waitForLoadState('networkidle');
 
     expect(deleteCalled).toBe(true);
   });
@@ -212,8 +207,7 @@ test.describe('Phase 11: Contract Detail - Customer Link, QR, Delete', () => {
       status: 'ACTIVE',
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Credit balance card
     await expect(page.getByText('ยอดเครดิตคงเหลือ')).toBeVisible({ timeout: 5000 });
@@ -228,8 +222,7 @@ test.describe('Phase 11: Contract Detail - Customer Link, QR, Delete', () => {
     const contractId = 'test-action-006';
     await mockContract(page, contractId, { creditBalance: null });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await expect(page.getByText('ยอดเครดิตคงเหลือ')).not.toBeVisible();
   });
@@ -239,8 +232,7 @@ test.describe('Phase 11: Contract Detail - Customer Link, QR, Delete', () => {
     const contractId = 'test-action-007';
     await mockContract(page, contractId, { dunningStage: 'REMINDER', status: 'OVERDUE' });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await expect(page.getByText('ระดับติดตามหนี้')).toBeVisible({ timeout: 5000 });
     await expect(page.getByText('แจ้งเตือน')).toBeVisible();
@@ -251,8 +243,7 @@ test.describe('Phase 11: Contract Detail - Customer Link, QR, Delete', () => {
     const contractId = 'test-action-008';
     await mockContract(page, contractId, { dunningStage: 'LEGAL_ACTION', status: 'DEFAULT' });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await expect(page.getByText('ระดับติดตามหนี้')).toBeVisible({ timeout: 5000 });
     await expect(page.getByText('ดำเนินคดี')).toBeVisible();
@@ -263,8 +254,7 @@ test.describe('Phase 11: Contract Detail - Customer Link, QR, Delete', () => {
     const contractId = 'test-action-009';
     await mockContract(page, contractId, { dunningStage: 'NOTICE', status: 'OVERDUE' });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await expect(page.getByText('แจ้งค้างชำระ')).toBeVisible({ timeout: 5000 });
   });
@@ -274,8 +264,7 @@ test.describe('Phase 11: Contract Detail - Customer Link, QR, Delete', () => {
     const contractId = 'test-action-010';
     await mockContract(page, contractId, { dunningStage: 'FINAL_WARNING', status: 'DEFAULT' });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await expect(page.getByText('เตือนครั้งสุดท้าย')).toBeVisible({ timeout: 5000 });
   });
@@ -285,8 +274,7 @@ test.describe('Phase 11: Contract Detail - Customer Link, QR, Delete', () => {
     const contractId = 'test-action-011';
     await mockContract(page, contractId, { status: 'ACTIVE', workflowStatus: 'APPROVED' });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await expect(page.locator('button:has-text("ลบสัญญา")')).not.toBeVisible();
   });
@@ -310,11 +298,10 @@ test.describe('Phase 11: Contract Detail - Customer Link, QR, Delete', () => {
       await dialog.accept();
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await page.locator('button:has-text("ใช้เครดิตชำระ")').click();
-    await page.waitForTimeout(2000);
+    await page.waitForLoadState('networkidle');
 
     expect(applyCreditCalled).toBe(true);
   });

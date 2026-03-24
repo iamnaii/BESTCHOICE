@@ -62,7 +62,7 @@ test.describe('05 - Contracts Flow', () => {
       await ss.capture('typed-search');
 
       // Step 4: รอ debounce + API response
-      await page.waitForTimeout(1000);
+      await page.waitForLoadState('networkidle');
       await ss.capture('search-results');
     } else {
       await ss.capture('search-input-not-visible');
@@ -92,7 +92,7 @@ test.describe('05 - Contracts Flow', () => {
     if (await filterSelect.isVisible()) {
       await filterSelect.selectOption({ index: 1 });
       await ss.capture('selected-filter');
-      await page.waitForTimeout(1000);
+      await page.waitForLoadState('networkidle');
       await ss.capture('filtered-results');
     }
   });
@@ -112,7 +112,7 @@ test.describe('05 - Contracts Flow', () => {
       if (await tabEl.isVisible()) {
         await tabEl.click();
         await ss.capture(`clicked-tab-${tab}`);
-        await page.waitForTimeout(500);
+        await page.waitForLoadState('networkidle');
         await ss.capture(`tab-${tab}-results`);
       }
     }
@@ -168,7 +168,7 @@ test.describe('05 - Contracts Flow', () => {
       await ss.capture('clicked-first-contract');
 
       // Step 3: รอไปหน้า detail
-      await page.waitForTimeout(1000);
+      await page.waitForLoadState('networkidle');
       await ss.capture('contract-detail-loaded');
 
       // Step 4: ตรวจสอบ URL

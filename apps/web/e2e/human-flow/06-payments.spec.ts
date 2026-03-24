@@ -55,8 +55,8 @@ test.describe('06 - Payments Flow', () => {
       await searchInput.type('BC', { delay: 50 });
       await ss.capture('typed-search');
 
-      // Step 4: รอ debounce
-      await page.waitForTimeout(1000);
+      // Step 4: รอ debounce + API response
+      await page.waitForLoadState('networkidle');
       await ss.capture('search-results');
     }
   });
@@ -82,7 +82,7 @@ test.describe('06 - Payments Flow', () => {
     if (await filterSelect.isVisible()) {
       await filterSelect.selectOption({ index: 1 });
       await ss.capture('selected-filter');
-      await page.waitForTimeout(500);
+      await page.waitForLoadState('networkidle');
       await ss.capture('filtered-results');
     }
   });
@@ -130,7 +130,7 @@ test.describe('06 - Payments Flow', () => {
       await ss.capture('clicked-pay-button');
 
       // Step 4: รอ Modal เปิด
-      await page.waitForTimeout(500);
+      await page.waitForLoadState('networkidle');
       await ss.capture('payment-modal-opened');
 
       // Step 5: ตรวจสอบ payment method options ใน Modal

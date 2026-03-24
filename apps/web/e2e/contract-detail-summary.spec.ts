@@ -92,8 +92,7 @@ test.describe('Phase 14: Contract Detail - Status Summary Cards', () => {
     const contractId = 'test-sum-001';
     await mockContractSummary(page, contractId);
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     // Card 1: Status
     await expect(page.getByText('สถานะสัญญา')).toBeVisible({ timeout: 5000 });
@@ -120,8 +119,7 @@ test.describe('Phase 14: Contract Detail - Status Summary Cards', () => {
     const contractId = 'test-sum-002';
     await mockContractSummary(page, contractId, { status: 'OVERDUE' });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await expect(page.getByText('ค้างชำระ')).toBeVisible({ timeout: 5000 });
   });
@@ -130,8 +128,7 @@ test.describe('Phase 14: Contract Detail - Status Summary Cards', () => {
     const contractId = 'test-sum-002b';
     await mockContractSummary(page, contractId, { status: 'DEFAULT' });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await expect(page.getByText('ผิดนัด')).toBeVisible({ timeout: 5000 });
   });
@@ -140,8 +137,7 @@ test.describe('Phase 14: Contract Detail - Status Summary Cards', () => {
     const contractId = 'test-sum-002c';
     await mockContractSummary(page, contractId, { status: 'COMPLETED' });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await expect(page.getByText('ครบ', { exact: true }).first()).toBeVisible({ timeout: 5000 });
   });
@@ -150,8 +146,7 @@ test.describe('Phase 14: Contract Detail - Status Summary Cards', () => {
     const contractId = 'test-sum-002d';
     await mockContractSummary(page, contractId, { status: 'EARLY_PAYOFF' });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await expect(page.getByText('ปิดก่อน')).toBeVisible({ timeout: 5000 });
   });
@@ -161,8 +156,7 @@ test.describe('Phase 14: Contract Detail - Status Summary Cards', () => {
     const contractId = 'test-sum-003';
     await mockContractSummary(page, contractId, { creditBalance: '2500' });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await expect(page.getByText('ยอดเครดิตคงเหลือ')).toBeVisible({ timeout: 5000 });
     await expect(page.getByText('2,500 ฿')).toBeVisible();
@@ -173,8 +167,7 @@ test.describe('Phase 14: Contract Detail - Status Summary Cards', () => {
     const contractId = 'test-sum-004';
     await mockContractSummary(page, contractId, { creditBalance: '0' });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await expect(page.getByText('ยอดเครดิตคงเหลือ')).not.toBeVisible();
   });
@@ -186,8 +179,7 @@ test.describe('Phase 14: Contract Detail - Status Summary Cards', () => {
       dunningStage: 'REMINDER', status: 'OVERDUE',
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await expect(page.getByText('ระดับติดตามหนี้')).toBeVisible({ timeout: 5000 });
     await expect(page.getByText('แจ้งเตือน')).toBeVisible();
@@ -200,8 +192,7 @@ test.describe('Phase 14: Contract Detail - Status Summary Cards', () => {
       dunningStage: 'NOTICE', status: 'OVERDUE',
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await expect(page.getByText('แจ้งค้างชำระ')).toBeVisible({ timeout: 5000 });
   });
@@ -213,8 +204,7 @@ test.describe('Phase 14: Contract Detail - Status Summary Cards', () => {
       dunningStage: 'FINAL_WARNING', status: 'DEFAULT',
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await expect(page.getByText('เตือนครั้งสุดท้าย')).toBeVisible({ timeout: 5000 });
   });
@@ -226,8 +216,7 @@ test.describe('Phase 14: Contract Detail - Status Summary Cards', () => {
       dunningStage: 'LEGAL_ACTION', status: 'DEFAULT',
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await expect(page.getByText('ดำเนินคดี')).toBeVisible({ timeout: 5000 });
   });
@@ -237,8 +226,7 @@ test.describe('Phase 14: Contract Detail - Status Summary Cards', () => {
     const contractId = 'test-sum-009';
     await mockContractSummary(page, contractId, { dunningStage: 'NONE' });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await expect(page.getByText('ระดับติดตามหนี้')).not.toBeVisible();
   });
@@ -256,8 +244,7 @@ test.describe('Phase 14: Contract Detail - Status Summary Cards', () => {
       ],
     });
 
-    await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.goto(`/contracts/${contractId}`, { waitUntil: 'networkidle' });
 
     await expect(page.getByText('3/6 งวด')).toBeVisible({ timeout: 5000 });
   });

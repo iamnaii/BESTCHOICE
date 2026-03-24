@@ -55,7 +55,7 @@ test.describe('07 - Stock Flow', () => {
       await ss.capture('typed-search');
 
       // Step 4: รอ debounce + API response
-      await page.waitForTimeout(1000);
+      await page.waitForLoadState('networkidle');
       await ss.capture('search-results');
     }
   });
@@ -77,7 +77,7 @@ test.describe('07 - Stock Flow', () => {
       await ss.capture('selected-filter');
 
       // Step 4: รอ filtered results
-      await page.waitForTimeout(500);
+      await page.waitForLoadState('networkidle');
       await ss.capture('filtered-results');
     }
   });
@@ -117,7 +117,7 @@ test.describe('07 - Stock Flow', () => {
       await ss.capture('clicked-add-product');
 
       // Step 4: รอหน้าใหม่
-      await page.waitForTimeout(1000);
+      await page.waitForLoadState('networkidle');
       await ss.capture('add-product-page-loaded');
     } else {
       await ss.capture('add-button-not-found');

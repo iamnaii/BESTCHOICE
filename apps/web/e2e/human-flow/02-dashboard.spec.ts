@@ -128,6 +128,7 @@ test.describe('02 - Dashboard Flow', () => {
     const expandBtn = page.locator('button:has-text("ขยายเมนู")');
     if (await expandBtn.isVisible()) {
       await expandBtn.click();
+      // Brief wait for sidebar expand animation
       await page.waitForTimeout(300);
       await ss.capture('sidebar-expanded');
     }

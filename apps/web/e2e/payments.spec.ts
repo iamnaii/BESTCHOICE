@@ -106,21 +106,17 @@ test.describe('Payments Page', () => {
 
     // ค้นหาด้วยชื่อ
     await searchInput.type('สม', { delay: 50 });
-    await page.waitForTimeout(1000);
     await page.waitForLoadState('networkidle');
     await ss.capture('search-by-name');
 
     // ล้างแล้วค้นหาด้วยเลขสัญญา
     await searchInput.clear();
-    await page.waitForTimeout(500);
     await searchInput.type('cont', { delay: 50 });
-    await page.waitForTimeout(1000);
     await page.waitForLoadState('networkidle');
     await ss.capture('search-by-contract');
 
     // ล้างค้นหา
     await searchInput.clear();
-    await page.waitForTimeout(500);
     await page.waitForLoadState('networkidle');
     await ss.capture('search-cleared');
   });
@@ -176,11 +172,8 @@ test.describe('Payments Page', () => {
     const payButton = page.locator('button:has-text("รับชำระ")').first();
     await expect(payButton).toBeVisible();
     await payButton.click();
-    await page.waitForTimeout(500);
-    await ss.capture('modal-opened');
-
-    // ตรวจ modal title
     await expect(page.locator('text=บันทึกการรับชำระ').first()).toBeVisible();
+    await ss.capture('modal-opened');
     await ss.capture('modal-title');
 
     // ตรวจ context info: สัญญา, ลูกค้า, งวดที่, ยอดคงค้าง
@@ -240,7 +233,6 @@ test.describe('Payments Page', () => {
 
     // ปิด modal
     await cancelBtn.click();
-    await page.waitForTimeout(300);
     await ss.capture('modal-closed');
   });
 
@@ -258,7 +250,7 @@ test.describe('Payments Page', () => {
     // คลิก "รับชำระ" แถวแรก
     const payButton = page.locator('button:has-text("รับชำระ")').first();
     await payButton.click();
-    await page.waitForTimeout(500);
+    await page.waitForLoadState('networkidle');
     await ss.capture('modal-opened');
 
     // อ่านยอดคงค้าง
@@ -288,7 +280,7 @@ test.describe('Payments Page', () => {
     await ss.capture('confirm-enabled');
 
     await confirmBtn.click();
-    await page.waitForTimeout(2000);
+    await page.waitForLoadState('networkidle');
     await ss.capture('after-confirm');
 
     // ตรวจ toast success "บันทึกการชำระสำเร็จ"
@@ -313,7 +305,7 @@ test.describe('Payments Page', () => {
     const advanceButton = page.locator('button:has-text("ล่วงหน้า")').first();
     await expect(advanceButton).toBeVisible();
     await advanceButton.click();
-    await page.waitForTimeout(500);
+    await page.waitForLoadState('networkidle');
     await ss.capture('advance-modal-opened');
 
     // ตรวจ title
@@ -353,7 +345,6 @@ test.describe('Payments Page', () => {
     // ปิด modal
     const cancelBtn = page.locator('button:has-text("ยกเลิก")').first();
     await cancelBtn.click();
-    await page.waitForTimeout(300);
     await ss.capture('advance-modal-closed');
   });
 
@@ -368,7 +359,6 @@ test.describe('Payments Page', () => {
     const historyButton = page.locator('button:has-text("ประวัติ")').first();
     await expect(historyButton).toBeVisible();
     await historyButton.click();
-    await page.waitForTimeout(1000);
     await page.waitForLoadState('networkidle');
     await ss.capture('history-sheet-opened');
 
@@ -427,7 +417,6 @@ test.describe('Payments Page', () => {
     }
 
     await firstCheckbox.check();
-    await page.waitForTimeout(300);
     await ss.capture('first-row-checked');
 
     // ตรวจ batch bar "เลือก X รายการ"
@@ -443,13 +432,12 @@ test.describe('Payments Page', () => {
     const secondCheckbox = page.locator('table tbody tr input[type="checkbox"]').nth(1);
     if (await secondCheckbox.isVisible().catch(() => false)) {
       await secondCheckbox.check();
-      await page.waitForTimeout(300);
       await ss.capture('two-rows-checked');
     }
 
     // คลิก "รับชำระรวม" เปิด batch modal
     await batchBtn.click();
-    await page.waitForTimeout(500);
+    await page.waitForLoadState('networkidle');
     await ss.capture('batch-modal-opened');
 
     // ตรวจ batch modal title "รับชำระรวม"
@@ -476,13 +464,11 @@ test.describe('Payments Page', () => {
 
     // ปิด batch modal ด้วย Escape (เพราะ dialog overlay ขวางปุ่ม cancel)
     await page.keyboard.press('Escape');
-    await page.waitForTimeout(500);
     await ss.capture('batch-modal-closed');
 
     // ยกเลิกการเลือก — uncheck ที่ checkbox แทน
     if (await firstCheckbox.isVisible().catch(() => false)) {
       await firstCheckbox.uncheck({ force: true });
-      await page.waitForTimeout(300);
     }
     await ss.capture('batch-deselected');
   });
@@ -497,7 +483,6 @@ test.describe('Payments Page', () => {
     // คลิก tab "สรุปรายวัน"
     const dailyTab = page.locator('text=สรุปรายวัน').first();
     await dailyTab.click();
-    await page.waitForTimeout(500);
     await page.waitForLoadState('networkidle');
     await ss.capture('daily-tab-active');
 
@@ -543,7 +528,6 @@ test.describe('Payments Page', () => {
 
     // คลิก tab สรุปรายวัน
     await page.locator('text=สรุปรายวัน').first().click();
-    await page.waitForTimeout(500);
     await page.waitForLoadState('networkidle');
     await ss.capture('daily-tab-active');
 
@@ -555,20 +539,17 @@ test.describe('Payments Page', () => {
     yesterday.setDate(yesterday.getDate() - 1);
     const dateStr = yesterday.toISOString().split('T')[0];
     await datePicker.fill(dateStr);
-    await page.waitForTimeout(500);
     await page.waitForLoadState('networkidle');
     await ss.capture('date-changed-yesterday');
 
     // เปลี่ยนเป็นวันที่ไม่มีข้อมูล (อดีตไกลๆ)
     await datePicker.fill('2020-01-01');
-    await page.waitForTimeout(500);
     await page.waitForLoadState('networkidle');
     await ss.capture('date-no-data');
 
     // กลับไปวันนี้
     const today = new Date().toISOString().split('T')[0];
     await datePicker.fill(today);
-    await page.waitForTimeout(500);
     await page.waitForLoadState('networkidle');
     await ss.capture('date-back-to-today');
   });
@@ -607,7 +588,6 @@ test.describe('Payments Page', () => {
     // แล้วค้นหา
     const searchInput = page.locator('input[placeholder*="ค้นหา"]').first();
     await searchInput.type('cont', { delay: 50 });
-    await page.waitForTimeout(1000);
     await page.waitForLoadState('networkidle');
     await ss.capture('search-within-filter');
 

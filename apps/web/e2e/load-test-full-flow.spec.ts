@@ -223,7 +223,7 @@ async function loginForPage(page: Page, context: BrowserContext, email: string, 
     await page.goto(`${BASE_URL}/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
     // Verify we're on the dashboard (not redirected to login)
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
     if (page.url().includes('/login')) {
       return { token: '', step: { name: 'Login (API+Page)', duration: Date.now() - start, success: false, error: 'Redirected to login after setting token' } };
     }

@@ -70,6 +70,11 @@ jobs:
 
       - name: Build Web
         run: npm run build --workspace=apps/web
+        env:
+          # API runs on port 3000 in CI; bake the URL into the static build
+          # so browser API calls go directly to the API instead of the static
+          # file server (serve -s doesn't proxy /api the way Vite dev does)
+          VITE_API_URL: http://localhost:3000/api
 
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps chromium

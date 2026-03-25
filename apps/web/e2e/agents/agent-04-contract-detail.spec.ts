@@ -52,14 +52,15 @@ test.describe('Agent 4: Contract Detail', () => {
     await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
     await waitForPageReady(page, 15000);
 
-    // Check for financial terms (Thai)
+    // Check for financial terms (Thai) — actual labels from ContractDetailPage
     const bodyText = await page.textContent('body') || '';
     const hasFinancialInfo =
-      bodyText.includes('ราคา') ||
+      bodyText.includes('ราคาขาย') ||
       bodyText.includes('เงินดาวน์') ||
-      bodyText.includes('ค่างวด') ||
-      bodyText.includes('ดอกเบี้ย') ||
-      bodyText.includes('฿');
+      bodyText.includes('ค่างวด/เดือน') ||
+      bodyText.includes('อัตราดอกเบี้ย') ||
+      bodyText.includes('ยอดจัดไฟแนนซ์') ||
+      bodyText.includes('ยอดปล่อย');
     expect(hasFinancialInfo).toBe(true);
   });
 
@@ -81,8 +82,8 @@ test.describe('Agent 4: Contract Detail', () => {
     await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
     await waitForPageReady(page, 15000);
 
-    // Find and click documents tab
-    const docsTab = page.locator('button:has-text("เอกสาร")').first();
+    // Find and click documents tab (text includes count like "เอกสาร (3)")
+    const docsTab = page.locator('button').filter({ hasText: 'เอกสาร' }).first();
     if (await docsTab.isVisible().catch(() => false)) {
       await docsTab.click();
       await waitForPageReady(page, 10000);
@@ -94,8 +95,8 @@ test.describe('Agent 4: Contract Detail', () => {
     await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
     await waitForPageReady(page, 15000);
 
-    // Find preview tab
-    const previewTab = page.locator('button:has-text("Preview"), button:has-text("พรีวิว"), button:has-text("ตัวอย่าง")').first();
+    // Find view contract tab (actual tab name: "ดูสัญญา")
+    const previewTab = page.locator('button:has-text("ดูสัญญา")').first();
     if (await previewTab.isVisible().catch(() => false)) {
       await previewTab.click();
 

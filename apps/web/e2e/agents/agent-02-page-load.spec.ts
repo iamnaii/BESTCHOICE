@@ -30,9 +30,11 @@ test.describe('Agent 2: Contract Pages Anti-Spin', () => {
     await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
     await waitForPageReady(page, 15000);
 
-    // Must see either table content or empty state
-    const content = page.locator('table, text=ยังไม่มีสัญญา, text=เกิดข้อผิดพลาด').first();
-    await expect(content).toBeVisible({ timeout: 5000 });
+    // Must see either table content or empty state (use separate locators — text= cannot mix with CSS)
+    const hasTable = await page.locator('table').first().isVisible().catch(() => false);
+    const hasEmpty = await page.getByText('ยังไม่มีสัญญา').isVisible().catch(() => false);
+    const hasError = await page.getByText('เกิดข้อผิดพลาด').isVisible().catch(() => false);
+    expect(hasTable || hasEmpty || hasError).toBe(true);
 
     // Check for failed API calls
     const failures = apiCalls.filter(c => c.status >= 500);
@@ -90,8 +92,8 @@ test.describe('Agent 2: Contract Pages Anti-Spin', () => {
     await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
     await waitForPageReady(page, 15000);
 
-    // Click preview tab
-    const previewTab = page.locator('button:has-text("Preview"), button:has-text("พรีวิว"), button:has-text("ตัวอย่าง")').first();
+    // Click view contract tab (actual tab name: "ดูสัญญา")
+    const previewTab = page.locator('button:has-text("ดูสัญญา")').first();
     if (await previewTab.isVisible().catch(() => false)) {
       await previewTab.click();
       // Preview loads lazily — wait for spinner to resolve

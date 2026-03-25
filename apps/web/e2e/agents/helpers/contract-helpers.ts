@@ -109,6 +109,18 @@ export async function getFirstContractId(page: Page): Promise<string | null> {
 
 
 /**
+ * Get the first contract ID with a specific status from the API.
+ * Returns null if no contracts with that status exist.
+ */
+export async function getContractByStatus(page: Page, status: string): Promise<string | null> {
+  const headers = getAuthHeaders();
+  const res = await page.request.get(`${API_URL}/api/contracts?page=1&status=${status}`, { headers });
+  if (res.status() !== 200) return null;
+  const body = await res.json();
+  return body?.data?.[0]?.id ?? null;
+}
+
+/**
  * Make authenticated API request directly (no browser needed).
  */
 export async function apiGet(page: Page, path: string) {

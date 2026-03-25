@@ -32,7 +32,8 @@ deletedAt DateTime?
 
 ## Enums
 - ประกาศที่ส่วนบนของ `schema.prisma`
-- ใช้ SCREAMING_SNAKE_CASE เช่น `PAYMENT_STATUS`
+- ชื่อ enum type ใช้ PascalCase เช่น `enum PaymentStatus { ... }`
+- ค่า enum values ใช้ SCREAMING_SNAKE_CASE เช่น `PENDING`, `COMPLETED`
 
 ## Migrations
 - ชื่อ descriptive: `add_warranty_model`, `add_phone_field_to_customer`

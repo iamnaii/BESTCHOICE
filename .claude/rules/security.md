@@ -11,7 +11,8 @@
 - ทุก controller ต้องมี `@UseGuards(JwtAuthGuard, RolesGuard)` ที่ class level
 - ทุก method ต้องมี `@Roles(...)` decorator ระบุ roles ที่เข้าถึงได้
 - Roles ที่ใช้: `OWNER`, `BRANCH_MANAGER`, `ACCOUNTANT`, `SALES`
-- Reference: `apps/api/src/guards/`
+- Reference: `apps/api/src/modules/auth/guards/` (JwtAuthGuard, RolesGuard)
+- Global guards อยู่ที่: `apps/api/src/guards/` (CsrfGuard, UserThrottlerGuard)
 
 ## Global Security (ห้ามปิดหรือ bypass)
 - **ThrottlerGuard** — จำกัด 200 req/sec

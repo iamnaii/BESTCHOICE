@@ -3,7 +3,8 @@
 ## Naming Conventions
 - **camelCase** — variables, functions, methods
 - **PascalCase** — components, classes, types, enums, interfaces
-- **kebab-case** — file names, module directories
+- **PascalCase** — React component files (เช่น `CustomersPage.tsx`, `AuthContext.tsx`)
+- **kebab-case** — module directories, non-component files
 - **SCREAMING_SNAKE_CASE** — Prisma enums, constants
 
 ## Formatting (Prettier)

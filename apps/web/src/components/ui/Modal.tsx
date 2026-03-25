@@ -11,7 +11,7 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   children: ReactNode;
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'full';
 }
 
 const sizeClasses = {
@@ -19,6 +19,8 @@ const sizeClasses = {
   md: 'max-w-lg',
   lg: 'max-w-2xl',
   xl: 'max-w-4xl',
+  '2xl': 'max-w-6xl',
+  'full': 'max-w-[95vw]',
 };
 
 export default function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalProps) {
@@ -28,7 +30,7 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' }:
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
-        <div className="py-2 overflow-y-auto max-h-[calc(100vh-10rem)]">{children}</div>
+        <div className={`py-2 overflow-y-auto ${size === 'full' ? 'max-h-[90vh]' : 'max-h-[calc(100vh-10rem)]'}`}>{children}</div>
       </DialogContent>
     </Dialog>
   );

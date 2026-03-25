@@ -260,3 +260,105 @@ strong, b {
   pointer-events: none;
   height: 0;
 }
+
+/* ── Print Styles for Receipts ───────────────────────── */
+@media print {
+  @page {
+    size: A4;
+    margin: 0;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+    background: white;
+  }
+
+  /* Hide everything except receipt */
+  body > *:not(#receipt-print-area) {
+    display: none !important;
+  }
+
+  /* Hide all buttons, modals, navigation when printing */
+  button,
+  nav,
+  .modal-backdrop,
+  .print\:hidden,
+  [data-print-hide="true"] {
+    display: none !important;
+  }
+
+  /* Force print colors and backgrounds */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  /* Ensure proper A4 layout */
+  .a4-receipt-container {
+    width: 210mm;
+    height: 297mm;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Remove shadows and borders for print */
+  .a4-receipt {
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  /* Prevent page breaks inside important sections */
+  .receipt-header,
+  .receipt-details,
+  .receipt-footer,
+  table {
+    page-break-inside: avoid;
+  }
+
+  /* Mobile receipt should convert to printable format */
+  .mobile-receipt {
+    max-width: 100%;
+    box-shadow: none !important;
+  }
+}
+
+/* ── Mobile Responsive for Small Screens ─────────────── */
+@media (max-width: 375px) {
+  .mobile-receipt {
+    font-size: 0.875rem; /* 14px */
+  }
+
+  .mobile-receipt h1 {
+    font-size: 1.5rem; /* 24px */
+  }
+
+  .mobile-receipt h2 {
+    font-size: 1.25rem; /* 20px */
+  }
+
+  .mobile-receipt .text-4xl {
+    font-size: 2rem; /* 32px */
+  }
+
+  .mobile-receipt .text-3xl {
+    font-size: 1.75rem; /* 28px */
+  }
+
+  .mobile-receipt .text-2xl {
+    font-size: 1.5rem; /* 24px */
+  }
+
+  .mobile-receipt .p-6 {
+    padding: 1rem; /* 16px */
+  }
+
+  .mobile-receipt .p-5 {
+    padding: 1rem; /* 16px */
+  }
+
+  .mobile-receipt .p-4 {
+    padding: 0.875rem; /* 14px */
+  }
+}

@@ -37,6 +37,7 @@
     "cookie-parser": "^1.4.7",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
+    "puppeteer": "^24.40.0",
     "puppeteer-core": "^24.39.1",
     "qrcode": "^1.5.4",
     "reflect-metadata": "^0.2.2",

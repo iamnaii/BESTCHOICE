@@ -1,11 +1,17 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
+import * as puppeteer from 'puppeteer';
+import { LineOaService } from '../line-oa/line-oa.service';
 
 @Injectable()
 export class ReceiptsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Inject(forwardRef(() => LineOaService))
+    private lineOaService?: LineOaService,
+  ) {}
 
   /**
    * Generate receipt number: RC-YYYY-MM-NNNNN
@@ -106,6 +112,30 @@ export class ReceiptsService {
         },
       });
 
+      // Send receipt via LINE if customer is linked
+      if (this.lineOaService) {
+        try {
+          const customer = await tx.customer.findFirst({
+            where: {
+              contracts: { some: { id: contractId } },
+              lineId: { not: null },
+              deletedAt: null
+            },
+            select: { id: true }
+          });
+
+          if (customer) {
+            // Send receipt in background (don't wait)
+            this.lineOaService.sendPaymentReceipt(customer.id, receipt).catch(err => {
+              console.error('[Receipt] Failed to send LINE receipt:', err);
+            });
+          }
+        } catch (error) {
+          // Log but don't fail the receipt generation
+          console.error('[Receipt] Error checking LINE status:', error);
+        }
+      }
+
       return receipt;
     });
   }
@@ -202,16 +232,96 @@ export class ReceiptsService {
 
   /** Get a single receipt */
   async getReceipt(id: string) {
-    const receipt = await this.prisma.receipt.findUnique({ where: { id } });
+    const receipt = await this.prisma.receipt.findUnique({
+      where: { id },
+      include: {
+        contract: {
+          select: {
+            contractNumber: true,
+            customer: { select: { name: true } },
+            branch: {
+              select: {
+                id: true,
+                name: true,
+                location: true,
+                phone: true,
+              },
+            },
+            product: {
+              select: {
+                id: true,
+                name: true,
+                imeiSerial: true,
+                serialNumber: true,
+              },
+            },
+          },
+        },
+      },
+    });
     if (!receipt) throw new NotFoundException('ไม่พบใบเสร็จ');
-    return receipt;
+
+    // Get company info
+    const company = await this.prisma.companyInfo.findFirst({
+      where: { isActive: true },
+      select: {
+        nameTh: true,
+        nameEn: true,
+        taxId: true,
+        address: true,
+        phone: true,
+        logoUrl: true,
+      },
+    });
+
+    return { ...receipt, company };
   }
 
   /** Get receipt by number */
   async getReceiptByNumber(receiptNumber: string) {
-    const receipt = await this.prisma.receipt.findUnique({ where: { receiptNumber } });
+    const receipt = await this.prisma.receipt.findUnique({
+      where: { receiptNumber },
+      include: {
+        contract: {
+          select: {
+            contractNumber: true,
+            customer: { select: { name: true } },
+            branch: {
+              select: {
+                id: true,
+                name: true,
+                location: true,
+                phone: true,
+              },
+            },
+            product: {
+              select: {
+                id: true,
+                name: true,
+                imeiSerial: true,
+                serialNumber: true,
+              },
+            },
+          },
+        },
+      },
+    });
     if (!receipt) throw new NotFoundException('ไม่พบใบเสร็จ');
-    return receipt;
+
+    // Get company info
+    const company = await this.prisma.companyInfo.findFirst({
+      where: { isActive: true },
+      select: {
+        nameTh: true,
+        nameEn: true,
+        taxId: true,
+        address: true,
+        phone: true,
+        logoUrl: true,
+      },
+    });
+
+    return { ...receipt, company };
   }
 
   /**
@@ -251,5 +361,108 @@ export class ReceiptsService {
 
       return { voidedReceipt: receipt, creditNote };
     });
+  }
+
+  /**
+   * Generate PDF from receipt HTML
+   */
+  async generatePDF(id: string): Promise<Buffer> {
+    const receipt = await this.getReceipt(id);
+
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
+
+    const page = await browser.newPage();
+
+    // HTML template (simplified version)
+    const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: 'Noto Sans Thai', sans-serif; margin: 0; padding: 20px; }
+    .receipt { max-width: 600px; margin: 0 auto; }
+    .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 20px; margin-bottom: 20px; }
+    .company { font-size: 24px; font-weight: bold; }
+    .type { font-size: 18px; color: #2563eb; margin-top: 10px; }
+    .number { font-size: 14px; color: #666; }
+    .section { margin: 20px 0; }
+    .row { display: flex; justify-content: space-between; margin: 10px 0; }
+    .label { color: #666; }
+    .value { font-weight: 500; }
+    .amount { font-size: 24px; font-weight: bold; color: #16a34a; }
+    .footer { text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid #ccc; color: #999; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="receipt">
+    <div class="header">
+      <div class="company">${receipt.company?.nameTh || 'BESTCHOICE'}</div>
+      ${receipt.company?.taxId ? `<div>เลขประจำตัวผู้เสียภาษี: ${receipt.company.taxId}</div>` : ''}
+      <div class="type">ใบเสร็จรับเงิน</div>
+      <div class="number">${receipt.receiptNumber}</div>
+    </div>
+
+    <div class="section">
+      <div class="row">
+        <span class="label">ผู้ชำระเงิน:</span>
+        <span class="value">${receipt.payerName}</span>
+      </div>
+      <div class="row">
+        <span class="label">เลขสัญญา:</span>
+        <span class="value">${receipt.contract?.contractNumber || '-'}</span>
+      </div>
+      ${receipt.contract?.product ? `
+      <div class="row">
+        <span class="label">สินค้า:</span>
+        <span class="value">${receipt.contract.product.name}</span>
+      </div>` : ''}
+      <div class="row">
+        <span class="label">วันที่ชำระ:</span>
+        <span class="value">${new Date(receipt.paidDate).toLocaleDateString('th-TH')}</span>
+      </div>
+    </div>
+
+    <div class="section" style="text-align: center; padding: 20px; background: #f3f4f6; border-radius: 8px;">
+      <div>จำนวนเงินที่ชำระ</div>
+      <div class="amount">${Number(receipt.amount).toLocaleString()} บาท</div>
+      ${receipt.installmentNo ? `<div>งวดที่ ${receipt.installmentNo}</div>` : ''}
+    </div>
+
+    ${receipt.remainingBalance ? `
+    <div class="section">
+      <div class="row">
+        <span class="label">ยอดคงเหลือ:</span>
+        <span class="value" style="color: #ea580c;">${Number(receipt.remainingBalance).toLocaleString()} บาท</span>
+      </div>
+      ${receipt.remainingMonths ? `
+      <div class="row">
+        <span class="label">งวดที่เหลือ:</span>
+        <span class="value">${receipt.remainingMonths} งวด</span>
+      </div>` : ''}
+    </div>` : ''}
+
+    <div class="footer">
+      <p>เอกสารนี้สร้างโดยระบบอัตโนมัติ</p>
+      <p>www.bestchoice.com</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+    await page.setContent(html);
+
+    const pdf = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: { top: '20mm', right: '20mm', bottom: '20mm', left: '20mm' },
+    });
+
+    await browser.close();
+
+    return Buffer.from(pdf);
   }
 }

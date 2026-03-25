@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, Query, UseGuards, Res } from '@nestjs/common';
+import { Response } from 'express';
 import { ReceiptsService } from './receipts.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -55,5 +56,15 @@ export class ReceiptsController {
     @CurrentUser() user: { id: string },
   ) {
     return this.receiptsService.voidReceipt(id, dto.reason, user.id);
+  }
+
+  @Get(':id/pdf')
+  async getReceiptPDF(@Param('id') id: string, @Res() res: Response) {
+    const pdf = await this.receiptsService.generatePDF(id);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="receipt-${id}.pdf"`,
+    });
+    res.send(pdf);
   }
 }

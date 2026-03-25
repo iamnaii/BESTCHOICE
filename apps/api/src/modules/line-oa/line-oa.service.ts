@@ -10,6 +10,7 @@ import { buildOverdueNoticeFlex, OverdueNoticeData } from './flex-messages/overd
 import { buildPromptPayQrFlex, PromptPayQrData } from './flex-messages/promptpay-qr.flex';
 import { buildReceiptHistory, ReceiptHistoryData } from './flex-messages/receipt-history.flex';
 import { buildContractSelector, ContractOption } from './flex-messages/contract-selector.flex';
+import { buildReceiptMessage, ReceiptData } from './flex-messages/receipt.flex';
 
 @Injectable()
 export class LineOaService {
@@ -266,6 +267,87 @@ export class LineOaService {
 
   buildContractSelector(customerName: string, contracts: ContractOption[], action: string): FlexMessagePayload {
     return buildContractSelector(customerName, contracts, action);
+  }
+
+  /**
+   * Build and send receipt Flex Message
+   */
+  async sendReceipt(lineUserId: string, receiptData: ReceiptData): Promise<void> {
+    const flexMessage = buildReceiptMessage(receiptData);
+    await this.sendFlexMessage(lineUserId, flexMessage);
+    this.logger.log(`[LINE] Receipt ${receiptData.receiptNumber} sent to ${lineUserId}`);
+  }
+
+  /**
+   * Send receipt to customer after payment is recorded
+   */
+  async sendPaymentReceipt(customerId: string, receipt: any): Promise<boolean> {
+    try {
+      // Find customer with LINE ID
+      const customer = await this.prisma.customer.findFirst({
+        where: {
+          id: customerId,
+          lineId: { not: null },
+          deletedAt: null
+        },
+        select: {
+          lineId: true,
+          name: true
+        }
+      });
+
+      if (!customer?.lineId) {
+        this.logger.log('[LINE] Customer not linked to LINE, skipping receipt send');
+        return false;
+      }
+
+      // Get contract and product details
+      const contract = await this.prisma.contract.findUnique({
+        where: { id: receipt.contractId },
+        select: {
+          contractNumber: true,
+          product: {
+            select: { name: true }
+          }
+        }
+      });
+
+      // Prepare receipt data for LINE Flex Message
+      const receiptData: ReceiptData = {
+        receiptNumber: receipt.receiptNumber,
+        receiptType: receipt.receiptType,
+        payerName: receipt.payerName,
+        amount: Number(receipt.amount),
+        installmentNo: receipt.installmentNo,
+        remainingBalance: receipt.remainingBalance ? Number(receipt.remainingBalance) : undefined,
+        remainingMonths: receipt.remainingMonths,
+        paymentMethod: receipt.paymentMethod,
+        paidDate: receipt.paidDate.toISOString(),
+        productName: contract?.product?.name,
+        contractNumber: contract?.contractNumber,
+        verifyUrl: `${this.configService.get<string>('FRONTEND_URL') || 'https://bestchoice.com'}/verify/${receipt.receiptNumber}`
+      };
+
+      // Send receipt via LINE
+      await this.sendReceipt(customer.lineId, receiptData);
+
+      // Log notification
+      await this.prisma.notificationLog.create({
+        data: {
+          channel: 'LINE',
+          recipient: customer.lineId,
+          message: `ใบเสร็จ #${receipt.receiptNumber}`,
+          status: 'SENT',
+          sentAt: new Date(),
+          relatedId: receipt.id
+        }
+      });
+
+      return true;
+    } catch (error) {
+      this.logger.error(`[LINE] Failed to send receipt: ${error}`);
+      return false;
+    }
   }
 
   // ─── Branch Contact ─────────────────────────────────

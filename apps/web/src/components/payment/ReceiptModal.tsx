@@ -3,27 +3,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import Modal from '@/components/ui/Modal';
 import { toast } from 'sonner';
-
-interface Receipt {
-  id: string;
-  receiptNumber: string;
-  contractId: string;
-  paymentId: string | null;
-  receiptType: string;
-  payerName: string;
-  receiverName: string;
-  amount: string;
-  installmentNo: number | null;
-  remainingBalance: string | null;
-  remainingMonths: number | null;
-  paymentMethod: string | null;
-  transactionRef: string | null;
-  paidDate: string;
-  isVoided: boolean;
-  voidReason: string | null;
-  voidedReceiptId: string | null;
-  createdAt: string;
-}
+import A4PrintableReceipt from './A4PrintableReceipt';
+import MobileReceipt from './MobileReceipt';
+import type { Receipt } from '@/types/receipt';
 
 const methodLabels: Record<string, string> = {
   CASH: 'เงินสด',
@@ -47,6 +29,7 @@ export default function ReceiptModal({ receiptId, onClose }: ReceiptModalProps) 
   const queryClient = useQueryClient();
   const [showVoidConfirm, setShowVoidConfirm] = useState(false);
   const [voidReason, setVoidReason] = useState('');
+  const [viewMode, setViewMode] = useState<'mobile' | 'a4'>('mobile');
 
   const { data: receipt, isLoading } = useQuery<Receipt>({
     queryKey: ['receipt', receiptId],
@@ -76,85 +59,44 @@ export default function ReceiptModal({ receiptId, onClose }: ReceiptModalProps) 
   if (!receiptId) return null;
 
   return (
-    <Modal isOpen title="ใบเสร็จรับเงิน" onClose={onClose} size="md">
+    <Modal isOpen title="ใบเสร็จรับเงิน" onClose={onClose} size={viewMode === 'a4' ? 'xl' : 'md'}>
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
         </div>
       ) : receipt ? (
         <div className="flex flex-col gap-4">
-          {/* Printable receipt content */}
-          <div id="receipt-print-area">
-            {/* Header */}
-            <div className="text-center border-b pb-3 mb-3">
-              <div className="text-lg font-bold">{typeLabels[receipt.receiptType] || receipt.receiptType}</div>
-              <div className="text-sm font-mono text-primary">{receipt.receiptNumber}</div>
-              {receipt.isVoided && (
-                <div className="mt-1 inline-block px-3 py-0.5 bg-red-100 text-red-700 rounded-full text-xs font-medium">
-                  ยกเลิกแล้ว
-                </div>
-              )}
-              {receipt.receiptType === 'CREDIT_NOTE' && (
-                <div className="mt-1 inline-block px-3 py-0.5 bg-yellow-100 text-yellow-700 rounded-full text-xs font-medium">
-                  ใบลดหนี้
-                </div>
-              )}
-            </div>
+          {/* View Mode Toggle - hidden when printing */}
+          <div className="flex gap-2 justify-center print:hidden">
+            <button
+              onClick={() => setViewMode('mobile')}
+              className={`px-4 py-2 text-sm rounded-lg transition-colors ${
+                viewMode === 'mobile'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              แบบมือถือ
+            </button>
+            <button
+              onClick={() => setViewMode('a4')}
+              className={`px-4 py-2 text-sm rounded-lg transition-colors ${
+                viewMode === 'a4'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              แบบพิมพ์ A4
+            </button>
+          </div>
 
-            {/* Details */}
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">ผู้จ่ายเงิน</span>
-                <span className="font-medium">{receipt.payerName}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">ผู้รับเงิน</span>
-                <span>{receipt.receiverName}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">จำนวนเงิน</span>
-                <span className="font-bold text-lg text-green-600">{Number(receipt.amount).toLocaleString()} ฿</span>
-              </div>
-              {receipt.installmentNo && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">งวดที่</span>
-                  <span>{receipt.installmentNo}</span>
-                </div>
-              )}
-              {receipt.paymentMethod && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">วิธีชำระ</span>
-                  <span>{methodLabels[receipt.paymentMethod] || receipt.paymentMethod}</span>
-                </div>
-              )}
-              {receipt.transactionRef && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">เลขอ้างอิง</span>
-                  <span className="font-mono text-xs">{receipt.transactionRef}</span>
-                </div>
-              )}
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">วันที่ชำระ</span>
-                <span>{new Date(receipt.paidDate).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
-              </div>
-              {receipt.remainingBalance != null && (
-                <div className="flex justify-between border-t pt-2 mt-2">
-                  <span className="text-muted-foreground">ยอดคงเหลือ</span>
-                  <span className="font-medium">{Number(receipt.remainingBalance).toLocaleString()} ฿</span>
-                </div>
-              )}
-              {receipt.remainingMonths != null && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">งวดที่เหลือ</span>
-                  <span>{receipt.remainingMonths} งวด</span>
-                </div>
-              )}
-              {receipt.isVoided && receipt.voidReason && (
-                <div className="border-t pt-2 mt-2">
-                  <div className="text-xs text-red-600">เหตุผลที่ยกเลิก: {receipt.voidReason}</div>
-                </div>
-              )}
-            </div>
+          {/* Receipt Content */}
+          <div id="receipt-print-area">
+            {viewMode === 'mobile' ? (
+              <MobileReceipt receipt={receipt} />
+            ) : (
+              <A4PrintableReceipt receipt={receipt} />
+            )}
           </div>
 
           {/* Action buttons - hidden when printing */}

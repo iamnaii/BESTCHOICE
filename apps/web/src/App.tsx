@@ -52,6 +52,7 @@ const SystemStatusPage = lazy(() => import('@/pages/SystemStatusPage'));
 const DocumentDashboardPage = lazy(() => import('@/pages/DocumentDashboardPage'));
 const PDPAPage = lazy(() => import('@/pages/PDPAPage'));
 const ReceiptsPage = lazy(() => import('@/pages/ReceiptsPage'));
+const ReceiptVerifyPage = lazy(() => import('@/pages/ReceiptVerifyPage'));
 const CustomerPortalPage = lazy(() => import('@/pages/CustomerPortalPage'));
 const ContractVerifyPage = lazy(() => import('@/pages/ContractVerifyPage'));
 const SlipReviewPage = lazy(() => import('@/pages/SlipReviewPage'));
@@ -263,6 +264,7 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route path="/verify/:receiptNumber" element={<ReceiptVerifyPage />} />
           <Route path="/overdue" element={<OverduePage />} />
           <Route
             path="/exchange"

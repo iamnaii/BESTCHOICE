@@ -56,10 +56,7 @@ export class PaymentsService {
       const existing = await this.prisma.payment.findFirst({
         where: {
           contractId,
-          OR: [
-            { transactionRef },
-            { notes: { contains: `ref:${transactionRef}` } },
-          ],
+          notes: { contains: `ref:${transactionRef}` },
           status: { in: ['PAID', 'PARTIALLY_PAID'] },
         },
       });
@@ -111,7 +108,6 @@ export class PaymentsService {
           recordedById,
           evidenceUrl: evidenceUrl || payment.evidenceUrl,
           notes: updatedNotes,
-          ...(transactionRef ? { transactionRef } : {}),
         },
       });
 

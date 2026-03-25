@@ -129,7 +129,8 @@ apps/
         [feature].controller.ts
         [feature].service.ts
         dto/                 # class-validator DTOs
-      guards/                # JwtAuthGuard, RolesGuard
+      guards/                # CsrfGuard, UserThrottlerGuard
+      modules/auth/guards/   # JwtAuthGuard, RolesGuard
       prisma/                # PrismaService (DB access)
       utils/                 # Shared utilities
     prisma/
@@ -149,6 +150,11 @@ apps/
     e2e/                     # Playwright E2E tests
 packages/
   shared/                    # Shared types/utilities
+docs/
+  guides/                    # DEPLOY.md, IMPLEMENTATION-GUIDE.md
+  specs/                     # SPEC-installment.md, PLAN-contract-system.md
+  reports/                   # REVIEW_REPORT.md, audit reports
+  references/                # agent-teams-reference.md
 workflows/                   # WAT workflow SOPs (Markdown)
 tools/                       # WAT automation scripts (Shell)
 scripts/                     # Deploy & backup scripts

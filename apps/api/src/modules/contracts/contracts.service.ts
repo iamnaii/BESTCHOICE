@@ -1,6 +1,13 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, InternalServerErrorException } from '@nestjs/common';
 import { PlanType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+
+/** User context for branch-level access control */
+export interface BranchAccessUser {
+  id: string;
+  role: string;
+  branchId: string | null;
+}
 import { CreateContractDto, UpdateContractDto } from './dto/contract.dto';
 import { calculateInstallment, generatePaymentSchedule } from '../../utils/installment.util';
 import { loadInstallmentConfig, resolveInstallmentParams } from '../../utils/config.util';
@@ -70,7 +77,12 @@ export class ContractsService {
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
-  async findOne(id: string) {
+  /**
+   * Find a single contract by ID.
+   * @param user — optional: when provided, enforces branch-level access.
+   *   OWNER/ACCOUNTANT can access any branch; others are restricted to their own.
+   */
+  async findOne(id: string, user?: BranchAccessUser) {
     const contract = await this.prisma.contract.findUnique({
       where: { id },
       include: {
@@ -95,6 +107,14 @@ export class ContractsService {
       },
     });
     if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
+
+    // Enforce branch-level access when user context is provided
+    if (user && user.role !== 'OWNER' && user.role !== 'ACCOUNTANT') {
+      if (user.branchId && contract.branchId !== user.branchId) {
+        throw new ForbiddenException('ไม่สามารถเข้าถึงสัญญาข้ามสาขาได้');
+      }
+    }
+
     return contract;
   }
 
@@ -361,7 +381,9 @@ export class ContractsService {
               if (field.includes('customer')) throw new BadRequestException('ไม่พบข้อมูลลูกค้า');
               if (field.includes('product')) throw new BadRequestException('ไม่พบสินค้าที่เลือก');
               if (field.includes('salesperson') || field.includes('user')) throw new BadRequestException('ไม่พบข้อมูลพนักงานขาย');
-              throw new BadRequestException(`ข้อมูลอ้างอิงไม่ถูกต้อง (${field})`);
+              // Don't expose internal field names to the client
+              this.logger.error(`FK violation on field: ${field}`);
+              throw new BadRequestException('ข้อมูลอ้างอิงไม่ถูกต้อง');
             }
             case 'P2025':
               throw new BadRequestException('ไม่พบข้อมูลที่ต้องการอัปเดต (อาจถูกลบแล้ว)');

@@ -54,8 +54,11 @@ export class ContractsController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.contractsService.findOne(id);
+  findOne(
+    @Param('id') id: string,
+    @CurrentUser() user?: { id: string; role: string; branchId: string | null },
+  ) {
+    return this.contractsService.findOne(id, user);
   }
 
   @Get(':id/schedule')
@@ -120,13 +123,24 @@ export class ContractsController {
 
   @Post(':id/activate')
   @Roles('OWNER', 'BRANCH_MANAGER')
-  activate(@Param('id') id: string) {
+  async activate(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string; role: string; branchId: string | null },
+  ) {
+    // Enforce branch-level access before activation
+    await this.contractsService.findOne(id, user);
     return this.workflowService.activate(id);
   }
 
   @Post(':id/early-payoff')
   @Roles('OWNER', 'BRANCH_MANAGER')
-  earlyPayoff(@Param('id') id: string, @Body() dto: EarlyPayoffDto, @CurrentUser() user: { id: string }) {
+  async earlyPayoff(
+    @Param('id') id: string,
+    @Body() dto: EarlyPayoffDto,
+    @CurrentUser() user: { id: string; role: string; branchId: string | null },
+  ) {
+    // Enforce branch-level access before early payoff
+    await this.contractsService.findOne(id, user);
     return this.paymentService.earlyPayoff(id, user.id, dto.paymentMethod);
   }
 

@@ -85,8 +85,9 @@ export class CreateCustomerDto {
   @IsOptional()
   addressWork?: string;
 
+  @IsArray()
   @IsOptional()
-  references?: unknown;
+  references?: Record<string, unknown>[];
 
   @IsArray()
   @IsOptional()
@@ -175,8 +176,9 @@ export class UpdateCustomerDto {
   @IsOptional()
   addressWork?: string;
 
+  @IsArray()
   @IsOptional()
-  references?: unknown;
+  references?: Record<string, unknown>[];
 
   @IsArray()
   @IsOptional()

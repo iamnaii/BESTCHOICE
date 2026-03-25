@@ -9,6 +9,7 @@ const API_URL = process.env.API_DIRECT_URL || 'http://localhost:3000';
 /**
  * Wait for page to finish loading — spinner must disappear within timeout.
  * Fails explicitly if spinner is still visible (catches infinite loading).
+ * Also verifies the page rendered meaningful content (not just an error boundary).
  */
 export async function waitForPageReady(page: Page, timeout = 15000) {
   // Wait for any visible spinner to disappear
@@ -19,6 +20,13 @@ export async function waitForPageReady(page: Page, timeout = 15000) {
     // If spinner is still visible, take screenshot and fail with useful message
     const url = page.url();
     throw new Error(`Page still loading after ${timeout}ms (spinner visible) at ${url}`);
+  }
+
+  // Verify page has meaningful content (catches error boundaries / blank pages)
+  const body = await page.textContent('body');
+  if (!body || body.trim().length < 50) {
+    const url = page.url();
+    throw new Error(`Page at ${url} loaded but has no meaningful content (${(body || '').trim().length} chars)`);
   }
 }
 
@@ -41,32 +49,50 @@ export async function assertNoInfiniteSpinner(page: Page, label: string) {
 
 /**
  * Intercept and log all API calls for diagnostics.
- * Returns array of { url, status, duration } for each /api/ call.
+ * Returns { calls, cleanup } — call cleanup() to remove listeners.
+ * Uses auto-incrementing request ID to avoid collision when same URL fires concurrently.
  */
 export function interceptApiCalls(page: Page) {
   const calls: { url: string; status: number; duration: number }[] = [];
-  const pending = new Map<string, number>();
+  const pending = new Map<number, { url: string; start: number }>();
+  let nextId = 0;
+  // Map request objects to IDs for matching in response handler
+  const reqIdMap = new WeakMap<object, number>();
 
-  page.on('request', req => {
+  const onRequest = (req: any) => {
     if (req.url().includes('/api/')) {
-      pending.set(req.url() + req.method(), Date.now());
+      const id = nextId++;
+      reqIdMap.set(req, id);
+      pending.set(id, { url: req.url(), start: Date.now() });
     }
-  });
+  };
 
-  page.on('response', res => {
-    const key = res.url() + res.request().method();
-    const start = pending.get(key);
-    if (start) {
-      calls.push({
-        url: res.url(),
-        status: res.status(),
-        duration: Date.now() - start,
-      });
-      pending.delete(key);
+  const onResponse = (res: any) => {
+    const req = res.request();
+    const id = reqIdMap.get(req);
+    if (id !== undefined) {
+      const entry = pending.get(id);
+      if (entry) {
+        calls.push({
+          url: entry.url,
+          status: res.status(),
+          duration: Date.now() - entry.start,
+        });
+        pending.delete(id);
+      }
     }
-  });
+  };
 
-  return calls;
+  page.on('request', onRequest);
+  page.on('response', onResponse);
+
+  // Return calls array with a cleanup function to remove listeners
+  return Object.assign(calls, {
+    cleanup: () => {
+      page.off('request', onRequest);
+      page.off('response', onResponse);
+    },
+  });
 }
 
 /**
@@ -81,16 +107,6 @@ export async function getFirstContractId(page: Page): Promise<string | null> {
   return body?.data?.[0]?.id ?? null;
 }
 
-/**
- * Get a contract ID with specific status (for targeted testing).
- */
-export async function getContractByStatus(page: Page, status: string): Promise<string | null> {
-  const headers = getAuthHeaders();
-  const res = await page.request.get(`${API_URL}/api/contracts?status=${status}&page=1`, { headers });
-  if (res.status() !== 200) return null;
-  const body = await res.json();
-  return body?.data?.[0]?.id ?? null;
-}
 
 /**
  * Make authenticated API request directly (no browser needed).

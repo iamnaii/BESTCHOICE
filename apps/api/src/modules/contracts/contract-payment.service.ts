@@ -24,6 +24,11 @@ export class ContractPaymentService {
       throw new BadRequestException('สัญญาต้องอยู่ในสถานะ ACTIVE, OVERDUE หรือ DEFAULT');
     }
 
+    // Guard: totalMonths must be positive to prevent division by zero
+    if (!contract.totalMonths || contract.totalMonths <= 0) {
+      throw new BadRequestException('ข้อมูลสัญญาผิดพลาด: จำนวนงวดต้องมากกว่า 0');
+    }
+
     // Count fully paid AND partially paid installments
     const paidPayments = contract.payments.filter((p) => p.status === 'PAID');
     const partialPayments = contract.payments.filter((p) => p.status === 'PARTIALLY_PAID');
@@ -34,14 +39,16 @@ export class ContractPaymentService {
       throw new BadRequestException('ไม่มีงวดค้างชำระ ไม่จำเป็นต้องปิดก่อนกำหนด');
     }
 
-    const monthlyInterest = Number(contract.interestTotal) / contract.totalMonths;
-    // Use financedAmount (includes commission + VAT) minus interest for true principal
-    const truePrincipal = Number(contract.financedAmount) - Number(contract.interestTotal);
-    const monthlyPrincipal = truePrincipal / contract.totalMonths;
+    // Use satang-precision arithmetic (round at each step to avoid floating-point errors)
+    const interestTotal = Number(contract.interestTotal);
+    const financedAmount = Number(contract.financedAmount);
+    const monthlyInterest = Math.round(interestTotal * 100 / contract.totalMonths) / 100;
+    const truePrincipal = Math.round((financedAmount - interestTotal) * 100) / 100;
+    const monthlyPrincipal = Math.round(truePrincipal * 100 / contract.totalMonths) / 100;
 
-    const remainingPrincipal = monthlyPrincipal * remainingMonths;
-    const remainingInterest = monthlyInterest * remainingMonths;
-    const discount = remainingInterest * BUSINESS_RULES.EARLY_PAYOFF_DISCOUNT;
+    const remainingPrincipal = Math.round(monthlyPrincipal * remainingMonths * 100) / 100;
+    const remainingInterest = Math.round(monthlyInterest * remainingMonths * 100) / 100;
+    const discount = Math.round(remainingInterest * BUSINESS_RULES.EARLY_PAYOFF_DISCOUNT * 100) / 100;
 
     // Deduct amounts already partially paid
     const partiallyPaidAmount = partialPayments.reduce(

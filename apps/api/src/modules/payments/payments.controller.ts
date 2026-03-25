@@ -38,7 +38,12 @@ export class PaymentsController {
   }
 
   @Get('contract/:contractId')
-  getContractPayments(@Param('contractId') contractId: string) {
+  async getContractPayments(
+    @Param('contractId') contractId: string,
+    @CurrentUser() user?: { id: string; role: string; branchId: string | null },
+  ) {
+    // Enforce branch-level access
+    if (user) await this.paymentsService.validateBranchAccess(contractId, user);
     return this.paymentsService.getContractPayments(contractId);
   }
 

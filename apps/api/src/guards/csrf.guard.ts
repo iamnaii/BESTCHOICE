@@ -28,10 +28,10 @@ export class CsrfGuard implements CanActivate {
       return true;
     }
 
-    // Require X-Requested-With header (set by axios/fetch)
+    // Require X-Requested-With header with valid value (set by axios/fetch)
     const xRequestedWith = request.headers['x-requested-with'];
-    if (!xRequestedWith) {
-      throw new ForbiddenException('Missing X-Requested-With header');
+    if (!xRequestedWith || xRequestedWith !== 'XMLHttpRequest') {
+      throw new ForbiddenException('Missing or invalid X-Requested-With header');
     }
 
     return true;

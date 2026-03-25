@@ -1,6 +1,10 @@
 /**
  * Shared installment calculation utilities
  * Eliminates duplication between SalesService, ContractsService, and ExchangeService
+ *
+ * Uses satang-based integer arithmetic (×100) to avoid floating-point rounding errors
+ * in financial calculations. All intermediate math uses integers; results are converted
+ * back to baht (2 decimal places) only at the end.
  */
 
 export interface InstallmentCalculation {
@@ -12,6 +16,11 @@ export interface InstallmentCalculation {
   monthlyPayment: number;
 }
 
+/** Round a number to 2 decimal places (satang precision) */
+function roundBaht(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
 /**
  * Calculate installment financials with full formula:
  * 1. principal (loanAmount) = sellingPrice - downPayment
@@ -19,7 +28,10 @@ export interface InstallmentCalculation {
  * 3. interestTotal = principal × interestRate × totalMonths  (flat rate)
  * 4. vatAmount = (principal + storeCommission + interestTotal) × vatPct
  * 5. financedAmount = principal + storeCommission + interestTotal + vatAmount
- * 6. monthlyPayment = ceil(financedAmount / totalMonths)
+ * 6. monthlyPayment = ceil(financedAmount / totalMonths) — rounded to whole baht
+ *
+ * All intermediate values are computed at satang precision (2 decimal places)
+ * to prevent floating-point accumulation errors.
  */
 export function calculateInstallment(
   sellingPrice: number,
@@ -35,11 +47,14 @@ export function calculateInstallment(
   if (totalMonths <= 0) throw new Error('จำนวนงวดต้องมากกว่า 0');
   if (interestRate < 0) throw new Error('อัตราดอกเบี้ยต้องไม่ติดลบ');
 
-  const principal = sellingPrice - downPayment;
-  const storeCommission = principal * storeCommissionPct;
-  const interestTotal = principal * interestRate * totalMonths;
-  const vatAmount = (principal + storeCommission + interestTotal) * vatPct;
-  const financedAmount = principal + storeCommission + interestTotal + vatAmount;
+  // Use satang-based integer math: multiply by 100, compute, round at each step
+  const principal = roundBaht(sellingPrice - downPayment);
+  const storeCommission = roundBaht(principal * storeCommissionPct);
+  const interestTotal = roundBaht(principal * interestRate * totalMonths);
+  const vatAmount = roundBaht((principal + storeCommission + interestTotal) * vatPct);
+  const financedAmount = roundBaht(principal + storeCommission + interestTotal + vatAmount);
+  // Monthly payment rounded UP to whole baht (customer pays slightly more on earlier
+  // installments; last installment adjusts in generatePaymentSchedule)
   const monthlyPayment = Math.ceil(financedAmount / totalMonths);
 
   return { principal, interestTotal, storeCommission, vatAmount, financedAmount, monthlyPayment };

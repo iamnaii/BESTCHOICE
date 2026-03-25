@@ -38,6 +38,9 @@ export class CustomerAccessService {
    * Validate token and return accessible documents
    * ลูกค้ากดลิงก์ → ดู/ดาวน์โหลดสัญญา + ตารางผ่อน + ใบเสร็จ
    */
+  /** Maximum number of accesses per token to prevent abuse */
+  private static readonly MAX_ACCESS_COUNT = 50;
+
   async accessDocuments(token: string) {
     const accessToken = await this.prisma.customerAccessToken.findUnique({
       where: { token },
@@ -45,6 +48,11 @@ export class CustomerAccessService {
     if (!accessToken) throw new NotFoundException('ลิงก์ไม่ถูกต้อง');
     if (new Date() > accessToken.expiresAt) {
       throw new BadRequestException('ลิงก์หมดอายุแล้ว กรุณาขอลิงก์ใหม่จากพนักงาน');
+    }
+
+    // Rate limit: prevent excessive use of a single token
+    if (accessToken.accessCount >= CustomerAccessService.MAX_ACCESS_COUNT) {
+      throw new BadRequestException('ลิงก์นี้ถูกเข้าถึงเกินจำนวนครั้งที่กำหนด กรุณาขอลิงก์ใหม่');
     }
 
     // Update access count

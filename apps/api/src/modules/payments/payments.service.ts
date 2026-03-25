@@ -51,12 +51,16 @@ export class PaymentsService {
     }
 
     // Idempotency: reject duplicate transactionRef for the same contract
+    // Check all payment statuses (not just PAID) to prevent concurrent duplicates
     if (transactionRef) {
       const existing = await this.prisma.payment.findFirst({
         where: {
           contractId,
-          notes: { contains: `ref:${transactionRef}` },
-          status: 'PAID',
+          OR: [
+            { transactionRef },
+            { notes: { contains: `ref:${transactionRef}` } },
+          ],
+          status: { in: ['PAID', 'PARTIALLY_PAID'] },
         },
       });
       if (existing) {
@@ -107,6 +111,7 @@ export class PaymentsService {
           recordedById,
           evidenceUrl: evidenceUrl || payment.evidenceUrl,
           notes: updatedNotes,
+          ...(transactionRef ? { transactionRef } : {}),
         },
       });
 
@@ -374,6 +379,32 @@ export class PaymentsService {
     };
   }
 
+  /** Parse a single CSV line handling quoted fields (e.g., "value with, comma") */
+  private parseCsvLine(line: string): string[] {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          current += '"'; // escaped quote
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        result.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    result.push(current.trim());
+    return result;
+  }
+
   // ─── Check if contract is fully paid ──────────────────
   private async checkContractCompletion(contractId: string, tx?: { payment: { count: (...args: any[]) => Promise<number> }; contract: { update: (...args: any[]) => Promise<any> } }) {
     const db = tx || this.prisma;
@@ -492,14 +523,15 @@ export class PaymentsService {
       const line = dataRows[i].trim();
       if (!line) continue;
 
-      const cols = line.split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
+      // Parse CSV with proper quoted-field handling (handles commas inside quotes)
+      const cols = this.parseCsvLine(line);
       if (cols.length < 3) {
         errors.push({ row, message: 'ข้อมูลไม่ครบ ต้องมีอย่างน้อย contractNumber, installmentNo, amount' });
         continue;
       }
 
       const [contractNumber, installmentNoStr, amountStr, paymentMethod, transactionRef, notes] = cols;
-      const installmentNo = parseInt(installmentNoStr);
+      const installmentNo = parseInt(installmentNoStr, 10);
       const amount = parseFloat(amountStr);
 
       if (!contractNumber || isNaN(installmentNo) || isNaN(amount) || amount <= 0) {
@@ -526,7 +558,7 @@ export class PaymentsService {
           recordedById,
           undefined, // evidenceUrl
           notes || `CSV import row ${row}`,
-          transactionRef || `CSV-${Date.now()}-${row}`,
+          transactionRef || `CSV-${Date.now()}-${row}-${Math.random().toString(36).slice(2, 8)}`,
         );
         success++;
       } catch (err) {
@@ -539,47 +571,51 @@ export class PaymentsService {
     return { total: dataRows.length, success, errors };
   }
 
-  // ─── Waive late fee ─────────────────────────────────
+  // ─── Waive late fee (wrapped in transaction to prevent race condition) ─
   async waiveLateFee(paymentId: string, reason: string, userId: string) {
-    const payment = await this.prisma.payment.findUnique({ where: { id: paymentId } });
-    if (!payment) throw new NotFoundException('ไม่พบรายการชำระ');
-    if (payment.lateFeeWaived) throw new BadRequestException('รายการนี้ยกเว้นค่าปรับแล้ว');
-    if (Number(payment.lateFee) <= 0) throw new BadRequestException('รายการนี้ไม่มีค่าปรับ');
+    const result = await this.prisma.$transaction(async (tx) => {
+      const payment = await tx.payment.findUnique({ where: { id: paymentId } });
+      if (!payment) throw new NotFoundException('ไม่พบรายการชำระ');
+      if (payment.lateFeeWaived) throw new BadRequestException('รายการนี้ยกเว้นค่าปรับแล้ว');
+      if (Number(payment.lateFee) <= 0) throw new BadRequestException('รายการนี้ไม่มีค่าปรับ');
 
-    const originalLateFee = Number(payment.lateFee);
-    const notes = [payment.notes, `ยกเว้นค่าปรับ ${originalLateFee.toLocaleString()} บาท — ${reason}`].filter(Boolean).join(' | ');
+      const originalLateFee = Number(payment.lateFee);
+      const notes = [payment.notes, `ยกเว้นค่าปรับ ${originalLateFee.toLocaleString()} บาท — ${reason}`].filter(Boolean).join(' | ');
 
-    // Check if payment becomes fully paid after waiving late fee
-    const totalOwed = Number(payment.amountDue); // without late fee
-    const amountPaid = Number(payment.amountPaid);
-    const isNowFullyPaid = amountPaid >= totalOwed;
+      // Check if payment becomes fully paid after waiving late fee
+      const totalOwed = Number(payment.amountDue); // without late fee
+      const amountPaid = Number(payment.amountPaid);
+      const isNowFullyPaid = amountPaid >= totalOwed;
 
-    const updated = await this.prisma.payment.update({
-      where: { id: paymentId },
-      data: {
-        lateFee: 0,
-        lateFeeWaived: true,
-        notes,
-        ...(isNowFullyPaid && payment.status !== 'PAID' ? { status: 'PAID', paidDate: new Date() } : {}),
-      },
+      const updated = await tx.payment.update({
+        where: { id: paymentId },
+        data: {
+          lateFee: 0,
+          lateFeeWaived: true,
+          notes,
+          ...(isNowFullyPaid && payment.status !== 'PAID' ? { status: 'PAID', paidDate: new Date() } : {}),
+        },
+      });
+
+      // Check contract completion inside transaction
+      if (isNowFullyPaid && payment.status !== 'PAID') {
+        await this.checkContractCompletion(payment.contractId, tx);
+      }
+
+      return { updated, originalLateFee, isNowFullyPaid, contractId: payment.contractId, installmentNo: payment.installmentNo };
     });
 
-    // Check contract completion if status changed to PAID
-    if (isNowFullyPaid && payment.status !== 'PAID') {
-      await this.checkContractCompletion(payment.contractId);
-    }
-
-    // Financial audit trail for late fee waiver
+    // Financial audit trail (outside transaction — audit failure shouldn't roll back waiver)
     await this.auditService.logPaymentEvent({
       userId,
-      contractId: payment.contractId,
+      contractId: result.contractId,
       paymentId,
       action: 'LATE_FEE_WAIVED',
-      amount: originalLateFee,
-      installmentNo: payment.installmentNo,
-      details: { reason, wasFeeAmount: originalLateFee, becameFullyPaid: isNowFullyPaid },
+      amount: result.originalLateFee,
+      installmentNo: result.installmentNo,
+      details: { reason, wasFeeAmount: result.originalLateFee, becameFullyPaid: result.isNowFullyPaid },
     });
 
-    return { ...updated, originalLateFee };
+    return { ...result.updated, originalLateFee: result.originalLateFee };
   }
 }

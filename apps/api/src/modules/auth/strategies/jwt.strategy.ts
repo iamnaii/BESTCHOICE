@@ -21,7 +21,7 @@ interface CachedUser {
   cachedAt: number;
 }
 
-const USER_CACHE_TTL_MS = 30_000; // 30 seconds cache
+const USER_CACHE_TTL_MS = 10_000; // 10 seconds cache — short TTL for faster role/active revocation
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -74,9 +74,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('ผู้ใช้งานไม่ถูกต้องหรือถูกปิดการใช้งาน');
     }
 
-    // Store in cache
+    // Store in cache — always use DB values (role/branchId may have changed since JWT was issued)
     this.userCache.set(payload.sub, { ...user, cachedAt: Date.now() });
 
+    // Return DB values, not JWT claims, so role changes take effect within cache TTL
     return user;
   }
 

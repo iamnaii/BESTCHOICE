@@ -114,7 +114,9 @@ export class AuthService {
       await this.prisma.refreshToken.updateMany({
         where: { token: refreshToken, revokedAt: null },
         data: { revokedAt: new Date() },
-      }).catch(() => { /* ignore if table doesn't exist */ });
+      }).catch((err) => {
+        this.logger.warn(`Failed to revoke refresh token: ${err?.message || err}`);
+      });
     }
   }
 

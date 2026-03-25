@@ -111,6 +111,25 @@ export class ContractWorkflowService {
       throw new BadRequestException('สัญญาต้องอยู่ในสถานะ รอตรวจสอบ');
     }
 
+    // Verify contract hash integrity — detect if critical data was modified after submission
+    if (contract.contractHash) {
+      const currentData = JSON.stringify({
+        contractNumber: contract.contractNumber,
+        customerId: contract.customerId,
+        productId: contract.productId,
+        sellingPrice: contract.sellingPrice,
+        downPayment: contract.downPayment,
+        totalMonths: contract.totalMonths,
+        monthlyPayment: contract.monthlyPayment,
+      });
+      const currentHash = crypto.createHash('sha256').update(currentData).digest('hex');
+      if (currentHash !== contract.contractHash) {
+        throw new BadRequestException(
+          'ข้อมูลสัญญาถูกแก้ไขหลังส่งตรวจสอบ — contractHash ไม่ตรงกัน กรุณาส่งตรวจใหม่',
+        );
+      }
+    }
+
     // Prevent self-approval: salesperson cannot approve their own contract
     // Exception: OWNER can always approve (for small business where owner is also salesperson)
     if (contract.salespersonId === userId && userRole !== 'OWNER') {

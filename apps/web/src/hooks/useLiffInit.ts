@@ -40,33 +40,11 @@ export function useLiffInit(): UseLiffInitResult {
             setProfile({ userId: p.userId, displayName: p.displayName, pictureUrl: p.pictureUrl });
           }
         } else {
-          // Dev-only fallback: accept lineId from URL
-          if (import.meta.env.DEV) {
-            const params = new URLSearchParams(window.location.search);
-            const qLineId = params.get('lineId');
-            if (qLineId) {
-              if (!cancelled) setLineId(qLineId);
-            } else {
-              if (!cancelled) setError('ไม่สามารถระบุตัวตนได้ กรุณาเปิดผ่าน LINE');
-            }
-          } else {
-            if (!cancelled) setError('ไม่สามารถระบุตัวตนได้ กรุณาเปิดผ่าน LINE');
-          }
+          if (!cancelled) setError('ไม่สามารถระบุตัวตนได้ กรุณาเปิดผ่าน LINE (LIFF_ID not configured)');
         }
       } catch (err) {
         if (import.meta.env.DEV) console.error('LIFF init error:', err);
-        // Dev-only fallback on error
-        if (import.meta.env.DEV) {
-          const params = new URLSearchParams(window.location.search);
-          const qLineId = params.get('lineId');
-          if (qLineId) {
-            if (!cancelled) setLineId(qLineId);
-          } else {
-            if (!cancelled) setError('ไม่สามารถเชื่อมต่อ LINE ได้ กรุณาลองใหม่');
-          }
-        } else {
-          if (!cancelled) setError('ไม่สามารถเชื่อมต่อ LINE ได้ กรุณาลองใหม่');
-        }
+        if (!cancelled) setError('ไม่สามารถเชื่อมต่อ LINE ได้ กรุณาลองใหม่');
       } finally {
         if (!cancelled) setLoading(false);
       }

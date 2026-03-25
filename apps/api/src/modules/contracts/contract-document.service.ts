@@ -1,5 +1,6 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class ContractDocumentService {
@@ -9,7 +10,13 @@ export class ContractDocumentService {
   ) {}
 
   // ─── QR Code Verification ────────────────────────────
+  // Public endpoint — hash is REQUIRED to prevent contract ID enumeration
   async verifyContract(id: string, hash?: string) {
+    // Require hash to prevent unauthenticated ID enumeration
+    if (!hash) {
+      return { verified: false, reason: 'ต้องระบุ hash สำหรับการยืนยันสัญญา' };
+    }
+
     const contract = await this.prisma.contract.findUnique({
       where: { id },
       select: {
@@ -17,44 +24,37 @@ export class ContractDocumentService {
         contractNumber: true,
         contractHash: true,
         status: true,
-        workflowStatus: true,
         createdAt: true,
-        totalMonths: true,
-        monthlyPayment: true,
-        customer: { select: { name: true } },
-        branch: { select: { name: true } },
+        // Only include minimal data for public verification — no customer PII
         signatures: {
-          select: { signerType: true, signerName: true, signedAt: true },
+          select: { signerType: true, signedAt: true },
         },
       },
     });
 
     if (!contract || !contract.contractHash) {
-      return { verified: false, reason: 'ไม่พบสัญญาหรือสัญญายังไม่ได้ยืนยัน' };
+      // Return generic message to prevent ID enumeration
+      return { verified: false, reason: 'ไม่พบสัญญาหรือ hash ไม่ถูกต้อง' };
     }
 
-    const isHashValid = hash ? contract.contractHash === hash : true;
-    const signerSummary = contract.signatures.map((s) => ({
-      type: s.signerType,
-      name: s.signerName,
-      signedAt: s.signedAt,
-    }));
+    // Use timing-safe comparison to prevent timing attacks
+    const isHashValid = contract.contractHash.length === hash.length &&
+      crypto.timingSafeEqual(Buffer.from(contract.contractHash), Buffer.from(hash));
 
+    if (!isHashValid) {
+      return { verified: false, reason: 'ไม่พบสัญญาหรือ hash ไม่ถูกต้อง' };
+    }
+
+    // Only return minimal info when hash is valid — no PII
     return {
-      verified: isHashValid,
-      reason: isHashValid ? 'สัญญาได้รับการยืนยันแล้ว' : 'Hash ไม่ตรงกัน สัญญาอาจถูกแก้ไข',
+      verified: true,
+      reason: 'สัญญาได้รับการยืนยันแล้ว',
       contract: {
         contractNumber: contract.contractNumber,
         status: contract.status,
-        workflowStatus: contract.workflowStatus,
-        customerName: contract.customer?.name || '',
-        branchName: contract.branch?.name || '',
         createdAt: contract.createdAt,
-        totalMonths: contract.totalMonths,
-        monthlyPayment: contract.monthlyPayment,
       },
-      signatures: signerSummary,
-      hash: contract.contractHash,
+      signatureCount: contract.signatures.length,
     };
   }
 

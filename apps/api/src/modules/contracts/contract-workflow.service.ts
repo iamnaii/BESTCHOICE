@@ -352,7 +352,7 @@ export class ContractWorkflowService {
         reviewedBy: { select: { id: true, name: true } },
         interestConfig: true,
         payments: { orderBy: { installmentNo: 'asc' } },
-        signatures: true,
+        signatures: { where: { deletedAt: null } },
         eDocuments: true,
         contractDocuments: {
           orderBy: { createdAt: 'desc' },

@@ -1,5 +1,5 @@
 import { useLiffInit } from '@/hooks/useLiffInit';
-import { API_URL } from '@/lib/env';
+import { liffApi } from '@/lib/api';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
@@ -33,10 +33,9 @@ export default function LiffEarlyPayoff() {
     queryKey: ['liff-early-payoff-quote', lineId, contractId],
     queryFn: async () => {
       if (!contractId) throw new Error('ไม่พบรหัสสัญญา');
-      const res = await fetch(
-        `${API_URL}/line-oa/liff/early-payoff-quote?lineId=${encodeURIComponent(lineId!)}&contractId=${encodeURIComponent(contractId)}`,
+      const { data: result } = await liffApi.get(
+        `/line-oa/liff/early-payoff-quote?lineId=${encodeURIComponent(lineId!)}&contractId=${encodeURIComponent(contractId)}`,
       );
-      const result = await res.json();
       if (result.error) throw new Error(result.error);
       return result;
     },
@@ -45,12 +44,7 @@ export default function LiffEarlyPayoff() {
 
   const payoffMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch(`${API_URL}/line-oa/liff/early-payoff`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lineId, contractId }),
-      });
-      const result = await res.json();
+      const { data: result } = await liffApi.post('/line-oa/liff/early-payoff', { lineId, contractId });
       if (result.url) return result;
       throw new Error(result.error || 'ไม่สามารถสร้างลิงก์ชำระเงินได้');
     },

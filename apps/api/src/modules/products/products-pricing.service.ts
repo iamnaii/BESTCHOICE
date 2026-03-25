@@ -17,7 +17,7 @@ export class ProductsPricingService {
       // If new price is default, unset other defaults
       if (dto.isDefault) {
         await tx.productPrice.updateMany({
-          where: { productId, isDefault: true },
+          where: { productId, isDefault: true, deletedAt: null },
           data: { isDefault: false },
         });
       }
@@ -36,14 +36,14 @@ export class ProductsPricingService {
   async updatePrice(productId: string, priceId: string, dto: UpdateProductPriceDto) {
     return this.prisma.$transaction(async (tx) => {
       const price = await tx.productPrice.findFirst({
-        where: { id: priceId, productId },
+        where: { id: priceId, productId, deletedAt: null },
       });
       if (!price) throw new NotFoundException('ไม่พบราคาขาย');
 
       // If updating to default, unset other defaults
       if (dto.isDefault) {
         await tx.productPrice.updateMany({
-          where: { productId, isDefault: true, id: { not: priceId } },
+          where: { productId, isDefault: true, id: { not: priceId }, deletedAt: null },
           data: { isDefault: false },
         });
       }
@@ -58,22 +58,25 @@ export class ProductsPricingService {
   async removePrice(productId: string, priceId: string) {
     return this.prisma.$transaction(async (tx) => {
       const price = await tx.productPrice.findFirst({
-        where: { id: priceId, productId },
+        where: { id: priceId, productId, deletedAt: null },
       });
       if (!price) throw new NotFoundException('ไม่พบราคาขาย');
 
       // Check at least 1 price remains
-      const count = await tx.productPrice.count({ where: { productId } });
+      const count = await tx.productPrice.count({ where: { productId, deletedAt: null } });
       if (count <= 1) {
         throw new BadRequestException('ต้องมีอย่างน้อย 1 ราคาขาย');
       }
 
-      await tx.productPrice.delete({ where: { id: priceId } });
+      await tx.productPrice.update({
+        where: { id: priceId },
+        data: { deletedAt: new Date() },
+      });
 
       // If deleted price was default, set first remaining as default
       if (price.isDefault) {
         const first = await tx.productPrice.findFirst({
-          where: { productId },
+          where: { productId, deletedAt: null },
           orderBy: { createdAt: 'asc' },
         });
         if (first) {

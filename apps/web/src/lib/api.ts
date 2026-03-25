@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { API_URL } from '@/lib/env';
 
 // In-memory token storage — not accessible via XSS unlike localStorage
 let accessToken: string | null = null;
@@ -23,13 +24,17 @@ export function getAccessToken(): string | null {
   return accessToken;
 }
 
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api',
-  timeout: 15000, // 15 second timeout to prevent hanging forever
+const sharedConfig = {
+  baseURL: API_URL,
+  timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
     'X-Requested-With': 'XMLHttpRequest',
   },
+};
+
+const api = axios.create({
+  ...sharedConfig,
   withCredentials: true, // send httpOnly cookies for refresh token
 });
 
@@ -43,7 +48,7 @@ api.interceptors.request.use((config) => {
 
 // Dedicated axios instance for token refresh (avoids interceptor loop)
 const refreshApi = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api',
+  baseURL: API_URL,
   timeout: 10000,
   withCredentials: true,
   headers: { 'X-Requested-With': 'XMLHttpRequest' },
@@ -110,6 +115,10 @@ api.interceptors.response.use(
     return Promise.reject(error);
   },
 );
+
+// Public axios instance for LIFF pages — no auth headers, no login redirect on 401.
+// Intentionally omits withCredentials: LIFF endpoints use LINE tokens, not session cookies.
+export const liffApi = axios.create(sharedConfig);
 
 export function getErrorMessage(error: unknown): string {
   const err = error as { response?: { status?: number; data?: { message?: string | string[] } }; code?: string };

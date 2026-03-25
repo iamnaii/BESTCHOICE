@@ -37,7 +37,7 @@ export class NotificationsService implements OnModuleInit {
   async reloadSmsConfig() {
     try {
       const configs = await this.prisma.systemConfig.findMany({
-        where: { key: { in: ['sms_api_key', 'sms_api_secret', 'sms_sender', 'sms_force'] } },
+        where: { key: { in: ['sms_api_key', 'sms_api_secret', 'sms_sender', 'sms_force'] }, deletedAt: null },
       });
       const dbConfig: Record<string, string> = {};
       for (const c of configs) {
@@ -450,8 +450,8 @@ export class NotificationsService implements OnModuleInit {
     recipient: string,
     relatedId?: string,
   ) {
-    const template = await this.prisma.systemConfig.findUnique({
-      where: { key: `notification_template_${templateId}` },
+    const template = await this.prisma.systemConfig.findFirst({
+      where: { key: `notification_template_${templateId}`, deletedAt: null },
     });
 
     if (!template) throw new NotFoundException('ไม่พบ template');
@@ -634,7 +634,7 @@ export class NotificationsService implements OnModuleInit {
    */
   async getSmsSettings(): Promise<Record<string, string>> {
     const configs = await this.prisma.systemConfig.findMany({
-      where: { key: { in: [...NotificationsService.SMS_CONFIG_KEYS] } },
+      where: { key: { in: [...NotificationsService.SMS_CONFIG_KEYS] }, deletedAt: null },
     });
 
     const result: Record<string, string> = {};
@@ -708,7 +708,7 @@ export class NotificationsService implements OnModuleInit {
 
   async findTemplates() {
     const configs = await this.prisma.systemConfig.findMany({
-      where: { key: { startsWith: 'notification_template_' } },
+      where: { key: { startsWith: 'notification_template_' }, deletedAt: null },
       orderBy: { key: 'asc' },
     });
 
@@ -720,8 +720,8 @@ export class NotificationsService implements OnModuleInit {
   }
 
   async findTemplate(id: string) {
-    const config = await this.prisma.systemConfig.findUnique({
-      where: { key: `notification_template_${id}` },
+    const config = await this.prisma.systemConfig.findFirst({
+      where: { key: `notification_template_${id}`, deletedAt: null },
     });
     if (!config) throw new NotFoundException('ไม่พบ template');
 
@@ -735,8 +735,8 @@ export class NotificationsService implements OnModuleInit {
   async createTemplate(dto: CreateNotificationTemplateDto) {
     const id = dto.eventType.toLowerCase() + '_' + dto.channel.toLowerCase();
 
-    const exists = await this.prisma.systemConfig.findUnique({
-      where: { key: `notification_template_${id}` },
+    const exists = await this.prisma.systemConfig.findFirst({
+      where: { key: `notification_template_${id}`, deletedAt: null },
     });
     if (exists) {
       // Update existing
@@ -776,8 +776,8 @@ export class NotificationsService implements OnModuleInit {
   }
 
   async updateTemplate(id: string, dto: UpdateNotificationTemplateDto) {
-    const config = await this.prisma.systemConfig.findUnique({
-      where: { key: `notification_template_${id}` },
+    const config = await this.prisma.systemConfig.findFirst({
+      where: { key: `notification_template_${id}`, deletedAt: null },
     });
     if (!config) throw new NotFoundException('ไม่พบ template');
 
@@ -800,13 +800,14 @@ export class NotificationsService implements OnModuleInit {
   }
 
   async deleteTemplate(id: string) {
-    const config = await this.prisma.systemConfig.findUnique({
-      where: { key: `notification_template_${id}` },
+    const config = await this.prisma.systemConfig.findFirst({
+      where: { key: `notification_template_${id}`, deletedAt: null },
     });
     if (!config) throw new NotFoundException('ไม่พบ template');
 
-    await this.prisma.systemConfig.delete({
+    await this.prisma.systemConfig.update({
       where: { key: `notification_template_${id}` },
+      data: { deletedAt: new Date() },
     });
 
     return { deleted: true };

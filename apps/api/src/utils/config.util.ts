@@ -45,7 +45,7 @@ export async function loadInstallmentConfig(
   prisma: PrismaService | { systemConfig: { findMany: (...args: any[]) => Promise<any[]> } },
 ): Promise<InstallmentConfig> {
   const configs = await prisma.systemConfig.findMany({
-    where: { key: { in: [...INSTALLMENT_CONFIG_KEYS] } },
+    where: { key: { in: [...INSTALLMENT_CONFIG_KEYS] }, deletedAt: null },
   });
 
   const getValue = (key: string, def: number): number =>

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useLiffInit } from '@/hooks/useLiffInit';
-import { API_URL } from '@/lib/env';
+import { liffApi } from '@/lib/api';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
@@ -21,22 +21,20 @@ export default function LiffProfile() {
   const { data, isLoading: dataLoading, error: dataError } = useQuery<ProfileData>({
     queryKey: ['liff-profile', lineId],
     queryFn: async () => {
-      const res = await fetch(`${API_URL}/line-oa/liff/profile?lineId=${encodeURIComponent(lineId!)}`);
-      if (res.status === 404) throw new Error('ยังไม่ได้ลงทะเบียน กรุณาลงทะเบียนก่อน');
-      if (!res.ok) throw new Error('ไม่สามารถโหลดข้อมูลได้ กรุณาลองใหม่');
-      return res.json();
+      const { data } = await liffApi
+        .get(`/line-oa/liff/profile?lineId=${encodeURIComponent(lineId!)}`)
+        .catch((err) => {
+          if (err.response?.status === 404) throw new Error('ยังไม่ได้ลงทะเบียน กรุณาลงทะเบียนก่อน');
+          throw new Error('ไม่สามารถโหลดข้อมูลได้ กรุณาลองใหม่');
+        });
+      return data;
     },
     enabled: !!lineId,
   });
 
   const unlinkMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch(`${API_URL}/line-oa/liff/unlink`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lineId }),
-      });
-      const result = await res.json();
+      const { data: result } = await liffApi.post('/line-oa/liff/unlink', { lineId });
       if (result.error) throw new Error(result.error);
       return result;
     },

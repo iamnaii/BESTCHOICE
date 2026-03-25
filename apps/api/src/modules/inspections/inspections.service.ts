@@ -16,14 +16,14 @@ export class InspectionsService {
   async findAllTemplates() {
     return this.prisma.inspectionTemplate.findMany({
       orderBy: { createdAt: 'desc' },
-      include: { _count: { select: { items: true, inspections: true } } },
+      include: { _count: { select: { items: { where: { deletedAt: null } }, inspections: true } } },
     });
   }
 
   async findOneTemplate(id: string) {
     const template = await this.prisma.inspectionTemplate.findUnique({
       where: { id },
-      include: { items: { orderBy: { sortOrder: 'asc' } } },
+      include: { items: { where: { deletedAt: null }, orderBy: { sortOrder: 'asc' } } },
     });
     if (!template) throw new NotFoundException('ไม่พบ Template');
     return template;
@@ -57,7 +57,7 @@ export class InspectionsService {
 
   async updateTemplateItem(templateId: string, itemId: string, dto: UpdateTemplateItemDto) {
     const item = await this.prisma.inspectionTemplateItem.findFirst({
-      where: { id: itemId, templateId },
+      where: { id: itemId, templateId, deletedAt: null },
     });
     if (!item) throw new NotFoundException('ไม่พบหัวข้อตรวจ');
     return this.prisma.inspectionTemplateItem.update({ where: { id: itemId }, data: dto as Prisma.InspectionTemplateItemUncheckedUpdateInput });
@@ -65,10 +65,13 @@ export class InspectionsService {
 
   async deleteTemplateItem(templateId: string, itemId: string) {
     const item = await this.prisma.inspectionTemplateItem.findFirst({
-      where: { id: itemId, templateId },
+      where: { id: itemId, templateId, deletedAt: null },
     });
     if (!item) throw new NotFoundException('ไม่พบหัวข้อตรวจ');
-    return this.prisma.inspectionTemplateItem.delete({ where: { id: itemId } });
+    return this.prisma.inspectionTemplateItem.update({
+      where: { id: itemId },
+      data: { deletedAt: new Date() },
+    });
   }
 
   // === Inspections ===
@@ -94,7 +97,7 @@ export class InspectionsService {
     const inspection = await this.prisma.inspection.findUnique({
       where: { id },
       include: {
-        template: { include: { items: { orderBy: { sortOrder: 'asc' } } } },
+        template: { include: { items: { where: { deletedAt: null }, orderBy: { sortOrder: 'asc' } } } },
         inspector: { select: { id: true, name: true } },
         products: { select: { id: true, name: true, brand: true, model: true, imeiSerial: true } },
         results: { include: { templateItem: true } },

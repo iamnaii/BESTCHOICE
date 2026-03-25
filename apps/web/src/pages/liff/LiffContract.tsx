@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useLiffInit } from '@/hooks/useLiffInit';
-import { API_URL } from '@/lib/env';
+import { liffApi } from '@/lib/api';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { CreditCard, ChevronDown } from 'lucide-react';
@@ -61,22 +61,21 @@ export default function LiffContract() {
   const { data, isLoading: dataLoading, error: dataError } = useQuery<ContractData>({
     queryKey: ['liff-contracts', lineId],
     queryFn: async () => {
-      const res = await fetch(`${API_URL}/line-oa/liff/contracts?lineId=${encodeURIComponent(lineId!)}`);
-      if (res.status === 404) throw new Error('ยังไม่ได้ลงทะเบียน กรุณาลงทะเบียนก่อน');
-      if (!res.ok) throw new Error('ไม่สามารถโหลดข้อมูลได้ กรุณาลองใหม่');
-      return res.json();
+      try {
+        const { data } = await liffApi.get(`/line-oa/liff/contracts?lineId=${encodeURIComponent(lineId!)}`);
+        return data;
+      } catch (err: unknown) {
+        const axiosErr = err as { response?: { status?: number } };
+        if (axiosErr.response?.status === 404) throw new Error('ยังไม่ได้ลงทะเบียน กรุณาลงทะเบียนก่อน');
+        throw new Error('ไม่สามารถโหลดข้อมูลได้ กรุณาลองใหม่');
+      }
     },
     enabled: !!lineId,
   });
 
   const payLinkMutation = useMutation({
     mutationFn: async (contractId: string) => {
-      const res = await fetch(`${API_URL}/line-oa/liff/create-payment-link`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lineId, contractId }),
-      });
-      const result = await res.json();
+      const { data: result } = await liffApi.post('/line-oa/liff/create-payment-link', { lineId, contractId });
       if (!result.url) throw new Error(result.error || 'ไม่สามารถสร้างลิงก์ชำระเงินได้');
       return result;
     },
@@ -224,21 +223,22 @@ export default function LiffContract() {
             className="w-full"
             onClick={async () => {
               try {
-                const res = await fetch(`${API_URL}/contracts/${contract.id}/documents`, {
-                  headers: { 'Content-Type': 'application/json' },
-                });
-                if (!res.ok) {
+                const docsRes = await liffApi
+                  .get(`/contracts/${contract.id}/documents`)
+                  .catch(() => null);
+                if (!docsRes) {
                   // Document endpoint requires staff auth — inform user to use customer portal link
                   toast.error('กรุณาขอลิงก์ดูเอกสารจากพนักงานร้าน');
                   return;
                 }
-                const docs = await res.json();
+                const docs = docsRes.data;
                 const contractDoc = docs.find((d: { documentType: string }) => d.documentType === 'CONTRACT');
                 if (contractDoc) {
-                  const urlRes = await fetch(`${API_URL}/documents/${contractDoc.id}/signed-url`);
-                  if (urlRes.ok) {
-                    const { url } = await urlRes.json();
-                    window.open(url, '_blank');
+                  const urlRes = await liffApi
+                    .get(`/documents/${contractDoc.id}/signed-url`)
+                    .catch(() => null);
+                  if (urlRes) {
+                    window.open(urlRes.data.url, '_blank');
                   } else {
                     toast.error('ไม่สามารถดาวน์โหลดเอกสารได้ กรุณาติดต่อพนักงาน');
                   }

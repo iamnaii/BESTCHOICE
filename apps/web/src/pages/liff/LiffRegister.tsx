@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useLiffInit } from '@/hooks/useLiffInit';
-import { API_URL } from '@/lib/env';
+import { liffApi } from '@/lib/api';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
@@ -17,14 +17,18 @@ export default function LiffRegister() {
   const { error: checkError } = useQuery({
     queryKey: ['liff-register-check', lineId],
     queryFn: async () => {
-      const res = await fetch(`${API_URL}/line-oa/liff/contracts?lineId=${encodeURIComponent(lineId!)}`);
-      if (res.ok) {
+      try {
+        await liffApi.get(`/line-oa/liff/contracts?lineId=${encodeURIComponent(lineId!)}`);
         setStep('already_linked');
         return { linked: true };
+      } catch (err: unknown) {
+        const axiosErr = err as { response?: { status?: number } };
+        if (axiosErr.response?.status === 404) {
+          setStep('phone');
+          return { linked: false };
+        }
+        throw err; // network errors propagate to checkError
       }
-      // Not linked — go to phone step
-      setStep('phone');
-      return { linked: false };
     },
     enabled: !!lineId && !loading && !error,
   });
@@ -39,12 +43,10 @@ export default function LiffRegister() {
 
   const lookupMutation = useMutation({
     mutationFn: async (cleaned: string) => {
-      const res = await fetch(`${API_URL}/line-oa/liff/register/lookup`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: cleaned, lineId: profile!.userId }),
+      const { data: result } = await liffApi.post('/line-oa/liff/register/lookup', {
+        phone: cleaned,
+        lineId: profile!.userId,
       });
-      const result = await res.json();
       if (result.alreadyLinked) {
         return { alreadyLinked: true as const };
       }
@@ -69,16 +71,11 @@ export default function LiffRegister() {
   const confirmMutation = useMutation({
     mutationFn: async () => {
       if (!lookupResult || !profile) throw new Error('ข้อมูลไม่ครบ');
-      const res = await fetch(`${API_URL}/line-oa/liff/register/confirm`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          customerId: lookupResult.customerId,
-          lineId: profile.userId,
-          displayName: profile.displayName,
-        }),
+      const { data: result } = await liffApi.post('/line-oa/liff/register/confirm', {
+        customerId: lookupResult.customerId,
+        lineId: profile.userId,
+        displayName: profile.displayName,
       });
-      const result = await res.json();
       if (result.error) throw new Error(result.error);
       return result;
     },

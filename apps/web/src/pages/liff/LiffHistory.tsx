@@ -1,5 +1,5 @@
 import { useLiffInit } from '@/hooks/useLiffInit';
-import { API_URL } from '@/lib/env';
+import { liffApi } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -33,10 +33,14 @@ export default function LiffHistory() {
   const { data, isLoading: dataLoading, error: dataError } = useQuery<HistoryData>({
     queryKey: ['liff-history', lineId],
     queryFn: async () => {
-      const res = await fetch(`${API_URL}/line-oa/liff/history?lineId=${encodeURIComponent(lineId!)}`);
-      if (res.status === 404) throw new Error('ยังไม่ได้ลงทะเบียน กรุณาลงทะเบียนก่อน');
-      if (!res.ok) throw new Error('ไม่สามารถโหลดข้อมูลได้ กรุณาลองใหม่');
-      return res.json();
+      try {
+        const { data } = await liffApi.get(`/line-oa/liff/history?lineId=${encodeURIComponent(lineId!)}`);
+        return data;
+      } catch (err: unknown) {
+        const axiosErr = err as { response?: { status?: number } };
+        if (axiosErr.response?.status === 404) throw new Error('ยังไม่ได้ลงทะเบียน กรุณาลงทะเบียนก่อน');
+        throw new Error('ไม่สามารถโหลดข้อมูลได้ กรุณาลองใหม่');
+      }
     },
     enabled: !!lineId,
   });

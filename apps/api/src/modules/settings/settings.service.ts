@@ -7,6 +7,7 @@ export class SettingsService {
 
   async findAll() {
     return this.prisma.systemConfig.findMany({
+      where: { deletedAt: null },
       orderBy: { key: 'asc' },
     });
   }

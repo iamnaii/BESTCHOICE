@@ -87,7 +87,7 @@ export class DocumentsService {
   ) {
     const contract = await this.prisma.contract.findUnique({
       where: { id: contractId },
-      include: { signatures: true, product: true },
+      include: { signatures: { where: { deletedAt: null } }, product: true },
     });
     if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
 
@@ -144,7 +144,7 @@ export class DocumentsService {
   async deleteSignature(contractId: string, signerType: string) {
     const contract = await this.prisma.contract.findUnique({
       where: { id: contractId },
-      include: { signatures: true },
+      include: { signatures: { where: { deletedAt: null } } },
     });
     if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
 
@@ -155,13 +155,16 @@ export class DocumentsService {
     const sig = contract.signatures.find((s) => s.signerType === signerType);
     if (!sig) throw new NotFoundException('ไม่พบลายเซ็นที่ต้องการลบ');
 
-    await this.prisma.signature.delete({ where: { id: sig.id } });
+    await this.prisma.signature.update({
+      where: { id: sig.id },
+      data: { deletedAt: new Date() },
+    });
     return { message: `ลบลายเซ็น ${signerType} สำเร็จ` };
   }
 
   async getSignatures(contractId: string) {
     return this.prisma.signature.findMany({
-      where: { contractId },
+      where: { contractId, deletedAt: null },
       orderBy: { signedAt: 'asc' },
     });
   }
@@ -176,7 +179,7 @@ export class DocumentsService {
         branch: true,
         salesperson: true,
         payments: { orderBy: { installmentNo: 'asc' } },
-        signatures: true,
+        signatures: { where: { deletedAt: null } },
       },
     });
     if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
@@ -252,7 +255,7 @@ export class DocumentsService {
         product: true,
         branch: true,
         salesperson: true,
-        signatures: true,
+        signatures: { where: { deletedAt: null } },
         pdpaConsent: true,
       },
     });
@@ -330,7 +333,7 @@ export class DocumentsService {
     try {
       const contract = await this.prisma.contract.findUnique({
         where: { id: contractId },
-        include: { customer: true, product: true, signatures: true },
+        include: { customer: true, product: true, signatures: { where: { deletedAt: null } } },
       });
       if (contract?.customer?.lineId) {
         const signatureCount = contract.signatures?.length || 0;
@@ -374,7 +377,7 @@ export class DocumentsService {
         branch: true,
         salesperson: true,
         payments: { orderBy: { installmentNo: 'asc' } },
-        signatures: true,
+        signatures: { where: { deletedAt: null } },
       },
     });
     if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');

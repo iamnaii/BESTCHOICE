@@ -8,7 +8,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { API_URL } from '@/lib/env';
+import { liffApi } from '@/lib/api';
 import { useMockPayment } from './useMockPayment';
 
 interface PaymentLinkData {
@@ -51,8 +51,7 @@ export default function LiffPayment() {
   const { data } = useQuery<PaymentLinkData | null>({
     queryKey: ['liff-payment', token],
     queryFn: async () => {
-      const res = await fetch(`${API_URL}/line-oa/pay/${token}`);
-      const result = await res.json();
+      const { data: result } = await liffApi.get(`/line-oa/pay/${token}`);
       if (!result || result.status === 'EXPIRED') {
         setErrorMessage('ลิงก์ชำระเงินหมดอายุแล้ว กรุณาขอลิงก์ใหม่');
         setView('error');
@@ -99,16 +98,13 @@ export default function LiffPayment() {
       formData.append('contractId', data.contract.contractNumber);
       formData.append('token', data.token);
 
-      const res = await fetch(`${API_URL}/line-oa/slip-upload`, {
-        method: 'POST',
-        body: formData,
+      const { data: result } = await liffApi.post('/line-oa/slip-upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }).catch((err) => {
+        const errData = err.response?.data || {};
+        throw new Error(errData.error || errData.message || 'อัปโหลดสลิปไม่สำเร็จ');
       });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || err.message || 'อัปโหลดสลิปไม่สำเร็จ');
-      }
-      return res.json();
+      return result;
     },
     onSuccess: () => {
       setView('slip-uploaded');

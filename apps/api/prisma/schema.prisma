@@ -678,6 +678,7 @@ model ProductPrice {
   isDefault Boolean  @default(false) @map("is_default")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
 
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
@@ -722,6 +723,7 @@ model StockTransfer {
   trackingNote         String?        @map("tracking_note")
   expectedDeliveryDate DateTime?      @map("expected_delivery_date")
   createdAt            DateTime       @default(now()) @map("created_at")
+  updatedAt            DateTime       @updatedAt @map("updated_at")
 
   product      Product @relation(fields: [productId], references: [id])
   fromBranch   Branch  @relation("TransferFrom", fields: [fromBranchId], references: [id])
@@ -746,6 +748,7 @@ model GoodsReceiving {
   receivedById String   @map("received_by_id")
   notes        String?
   createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   po         PurchaseOrder        @relation(fields: [poId], references: [id], onDelete: Cascade)
   receivedBy User                 @relation("GoodsReceivedBy", fields: [receivedById], references: [id])
@@ -771,6 +774,7 @@ model GoodsReceivingItem {
   checklistResults   Json?               @map("checklist_results")
   productId          String?             @unique @map("product_id")
   createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
 
   receiving GoodsReceiving @relation(fields: [receivingId], references: [id], onDelete: Cascade)
   poItem    POItem         @relation(fields: [poItemId], references: [id])
@@ -791,6 +795,7 @@ model StockAdjustment {
   photos         String[]              @default([])
   adjustedById   String                @map("adjusted_by_id")
   createdAt      DateTime              @default(now()) @map("created_at")
+  updatedAt      DateTime              @updatedAt @map("updated_at")
 
   product    Product @relation(fields: [productId], references: [id])
   branch     Branch  @relation(fields: [branchId], references: [id])
@@ -832,6 +837,7 @@ model InspectionTemplateItem {
   sortOrder  Int                 @default(0) @map("sort_order")
   createdAt  DateTime            @default(now()) @map("created_at")
   updatedAt  DateTime            @updatedAt @map("updated_at")
+  deletedAt  DateTime?           @map("deleted_at")
 
   template InspectionTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
   results  InspectionResult[]
@@ -913,6 +919,7 @@ model EDocument {
   fileHash     String   @map("file_hash") // SHA-256
   createdById  String   @map("created_by_id")
   createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
 
@@ -936,6 +943,9 @@ model Signature {
   staffUserId    String?    @map("staff_user_id") // รหัสพนักงานที่ดำเนินการ
   contractHash   String?    @map("contract_hash") // SHA-256 hash ของสัญญา ณ เวลาเซ็น
   signedAt       DateTime   @default(now()) @map("signed_at")
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
+  deletedAt      DateTime?  @map("deleted_at")
 
   contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
 
@@ -1007,6 +1017,7 @@ model NotificationLog {
   deliveryStatus String?             @map("delivery_status") // DELIVERED, UNDELIVERED, REJECTED, etc.
   deliveredAt    DateTime?           @map("delivered_at")
   createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
 
   @@index([relatedId])
   @@index([channel])
@@ -1025,6 +1036,7 @@ model CallLog {
   result     String // e.g. ANSWERED, NO_ANSWER, PROMISED, REFUSED
   notes      String?
   createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
 
   contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
   caller   User     @relation(fields: [callerId], references: [id])
@@ -1046,6 +1058,7 @@ model AuditLog {
   userAgent String?  @map("user_agent")
   duration  Int? // request duration in ms
   createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id])
 
@@ -1062,6 +1075,7 @@ model SystemConfig {
   label     String? // Thai description
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
 
   @@map("system_config")
 }
@@ -1091,6 +1105,7 @@ model Sale {
   bundleProductIds  String[]       @default([]) @map("bundle_product_ids")
   notes             String?
   createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
 
   customer    Customer  @relation(fields: [customerId], references: [id])
   product     Product   @relation(fields: [productId], references: [id])
@@ -1146,6 +1161,7 @@ model ContractDocument {
   notes        String?
   uploadedById String               @map("uploaded_by_id")
   createdAt    DateTime             @default(now()) @map("created_at")
+  updatedAt    DateTime             @updatedAt @map("updated_at")
   deletedAt    DateTime?            @map("deleted_at")
 
   contract   Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
@@ -1227,6 +1243,7 @@ model StockAlert {
   poId            String?   @map("po_id") // PO ที่สร้างจาก alert นี้
   resolvedAt      DateTime? @map("resolved_at")
   createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
 
   reorderPoint ReorderPoint   @relation(fields: [reorderPointId], references: [id])
   branch       Branch         @relation(fields: [branchId], references: [id])
@@ -1330,6 +1347,7 @@ model RefreshToken {
   expiresAt DateTime  @map("expires_at")
   revokedAt DateTime? @map("revoked_at")
   createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -1345,6 +1363,7 @@ model PasswordResetToken {
   expiresAt DateTime  @map("expires_at")
   usedAt    DateTime? @map("used_at")
   createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -1393,6 +1412,8 @@ model DSARRequest {
   processedAt   DateTime?       @map("processed_at")
   completedAt   DateTime?       @map("completed_at")
   dueDate       DateTime        @map("due_date") // ต้องดำเนินการภายใน 30 วัน
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
 
   customer Customer @relation(fields: [customerId], references: [id])
 

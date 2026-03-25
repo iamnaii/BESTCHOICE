@@ -93,6 +93,29 @@ Skills อยู่ใน `.claude/skills/` — แต่ละ skill จะ:
 4. ใช้ tools (generate-module.sh, check-types.sh) อัตโนมัติ
 5. Verify ด้วย TypeScript check
 
+### Subagents
+
+Subagents คือ agent เฉพาะทางที่ทำงานแยก — ใช้ Sonnet model เพื่อประหยัด cost และไม่ปนเปื้อน context ของ parent
+
+| Agent | ใช้เมื่อ |
+|-------|---------|
+| `code-reviewer` | ต้องการ review code changes ก่อน commit/merge — รายงานปัญหาตาม severity (Critical/Warning/Info) |
+| `type-checker` | ต้องการตรวจ TypeScript errors และรับคำแนะนำการแก้ไข |
+
+Agents อยู่ใน `.claude/agents/` — **เป็น read-only reporters** ไม่แก้โค้ดเอง รายงานกลับมาให้ parent agent แก้ไข
+
+### Build Workflow
+
+ขั้นตอนมาตรฐานเมื่อสร้างหรือแก้ไข feature:
+
+1. **Write** — เขียน code ตาม workflow + rules ที่กำหนด
+2. **Review** — ใช้ `code-reviewer` agent ตรวจ code changes
+3. **Test** — รัน `./tools/check-types.sh all` + E2E tests ที่เกี่ยวข้อง
+4. **Fix** — แก้ไขตาม review + test results (parent agent เป็นคนแก้)
+5. **Ship** — `/pre-deploy` checklist → commit → merge
+
+ทุกขั้นตอนต้องผ่านก่อนไปขั้นต่อไป — ถ้า review พบ Critical issue ต้องแก้ก่อน test
+
 ---
 
 ## Codebase Structure
@@ -242,6 +265,18 @@ tools/                        # Shell scripts — deterministic execution
   fix-bug.md                  # /fix-bug — Debug & fix bugs
   db-change.md                # /db-change — Prisma schema changes
   pre-deploy.md               # /pre-deploy — Pre-deploy checklist
+  run-e2e.md                  # /run-e2e — Playwright E2E tests
+
+.claude/rules/                # Convention rules — auto-loaded
+  database.md                 # Prisma/PostgreSQL conventions
+  security.md                 # Auth & security patterns
+  frontend.md                 # React/Vite/Tailwind patterns
+  backend.md                  # NestJS module patterns
+  coding-standards.md         # Naming, formatting, general
+
+.claude/agents/               # Subagents — specialized tasks
+  code-reviewer.md            # Review code changes by severity
+  type-checker.md             # TypeScript error analysis
 
 scripts/                      # Existing project scripts
   backup.sh                   # Database backup

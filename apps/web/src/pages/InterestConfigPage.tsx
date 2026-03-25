@@ -1,9 +1,16 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import Modal from '@/components/ui/Modal';
 import { toast } from 'sonner';
+
+interface ConfigItem {
+  id: string;
+  key: string;
+  value: string;
+  label: string | null;
+}
 
 interface InterestConfig {
   id: string;
@@ -56,6 +63,13 @@ function validateForm(form: typeof defaultForm): FormErrors {
   return errors;
 }
 
+const defaultKeys = [
+  { key: 'interest_rate', label: 'อัตราดอกเบี้ยต่อเดือน (Flat rate)', step: '0.01' },
+  { key: 'min_down_payment_pct', label: 'เงินดาวน์ขั้นต่ำ (%)', step: '0.01' },
+  { key: 'store_commission_pct', label: 'ค่าคอมหน้าร้าน (เช่น 0.10 = 10%)', step: '0.01' },
+  { key: 'vat_pct', label: 'VAT (เช่น 0.07 = 7%)', step: '0.01' },
+];
+
 export default function InterestConfigPage() {
   const queryClient = useQueryClient();
   const [showModal, setShowModal] = useState(false);
@@ -63,6 +77,48 @@ export default function InterestConfigPage() {
   const [form, setForm] = useState(defaultForm);
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState(false);
+
+  // Default interest config (system-wide fallback)
+  const [defaults, setDefaults] = useState<Record<string, string>>({});
+  const [defaultsChanged, setDefaultsChanged] = useState(false);
+  const defaultsChangedRef = useRef(false);
+  const [editingDefaults, setEditingDefaults] = useState(false);
+
+  const { data: systemConfigs = [] } = useQuery<ConfigItem[]>({
+    queryKey: ['settings'],
+    queryFn: async () => (await api.get('/settings')).data,
+  });
+
+  useEffect(() => {
+    if (systemConfigs.length > 0 && !defaultsChangedRef.current) {
+      const map: Record<string, string> = {};
+      systemConfigs.forEach((c) => { map[c.key] = c.value; });
+      setDefaults(map);
+    }
+  }, [systemConfigs]);
+
+  const saveDefaultsMutation = useMutation({
+    mutationFn: async (items: { key: string; value: string }[]) =>
+      api.patch('/settings', { items }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+      toast.success('บันทึกค่า default สำเร็จ');
+      setDefaultsChanged(false);
+      defaultsChangedRef.current = false;
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const handleDefaultChange = (key: string, value: string) => {
+    setDefaults((prev) => ({ ...prev, [key]: value }));
+    setDefaultsChanged(true);
+    defaultsChangedRef.current = true;
+  };
+
+  const handleSaveDefaults = () => {
+    const items = defaultKeys.map(({ key }) => ({ key, value: defaults[key] || '' }));
+    saveDefaultsMutation.mutate(items);
+  };
 
   const { data: configs = [], isLoading } = useQuery<InterestConfig[]>({
     queryKey: ['interest-configs'],
@@ -190,6 +246,77 @@ export default function InterestConfigPage() {
           </button>
         }
       />
+
+      {/* Default fallback config — card style */}
+      <div className="bg-card rounded-lg border border-amber-200 p-5 mb-5 lg:mb-7.5">
+        <div className="flex items-start justify-between">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-2">
+              <h3 className="text-lg font-semibold text-foreground">ค่า Default</h3>
+              <span className="text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full">ใช้เมื่อไม่มี config ตามประเภท</span>
+            </div>
+            {!editingDefaults ? (
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <div className="text-xs text-muted-foreground">ดอกเบี้ย/เดือน</div>
+                    <div className="text-lg font-bold text-primary-700">{defaults['interest_rate'] || '-'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">ดาวน์ขั้นต่ำ</div>
+                    <div className="text-lg font-bold">{defaults['min_down_payment_pct'] || '-'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">ค่าคอมหน้าร้าน</div>
+                    <div className="text-lg font-bold">{defaults['store_commission_pct'] || '-'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">VAT</div>
+                    <div className="text-lg font-bold">{defaults['vat_pct'] || '-'}</div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-col gap-3 mt-2">
+                {defaultKeys.map((item) => (
+                  <div key={item.key} className="flex items-center gap-4">
+                    <label className="flex-1 text-sm text-foreground">{item.label}</label>
+                    <div className="w-48">
+                      <input
+                        type="number"
+                        step={item.step}
+                        value={defaults[item.key] ?? ''}
+                        onChange={(e) => handleDefaultChange(item.key, e.target.value)}
+                        className="w-full px-3 py-2 border border-input rounded-lg text-sm text-right focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                      />
+                    </div>
+                  </div>
+                ))}
+                <div className="flex gap-2 pt-1">
+                  <button
+                    onClick={() => { handleSaveDefaults(); setEditingDefaults(false); }}
+                    disabled={saveDefaultsMutation.isPending}
+                    className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
+                  >
+                    {saveDefaultsMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
+                  </button>
+                  <button
+                    onClick={() => { setEditingDefaults(false); setDefaultsChanged(false); defaultsChangedRef.current = false; }}
+                    className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
+                  >
+                    ยกเลิก
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+          {!editingDefaults && (
+            <button onClick={() => setEditingDefaults(true)} className="text-xs text-primary hover:underline px-2 py-1 ml-4">แก้ไข</button>
+          )}
+        </div>
+      </div>
+
+      <h3 className="text-lg font-semibold text-foreground mb-4">ตามประเภทสินค้า</h3>
 
       {isLoading ? (
         <div className="flex items-center justify-center py-12">

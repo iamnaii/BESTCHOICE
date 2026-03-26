@@ -8,7 +8,7 @@ export default {
     extend: {
       fontFamily: {
         sans: ["'Inter'", "'Noto Sans Thai'", 'system-ui', '-apple-system', 'sans-serif'],
-        sarabun: ["'TH Sarabun PSK'", "'Noto Sans Thai'", 'sans-serif'],
+        sarabun: ["'Noto Sans Thai'", 'sans-serif'],
       },
       /* ── Metronic v9.4.6 font scale (default Tailwind + custom 2xs/2sm) ─ */
       fontSize: {

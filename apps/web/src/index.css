@@ -104,7 +104,8 @@
   }
 }
 
-/* ── TH Sarabun PSK (documents / contracts ONLY) ───── */
+/* ── TH Sarabun PSK (legacy fallback — kept for old templates) ──── */
+/* Primary Thai font is now Noto Sans Thai (loaded via Google Fonts above) */
 @font-face {
   font-family: 'TH Sarabun PSK';
   src: url('/fonts/THSarabunPSK-Regular.ttf') format('truetype');
@@ -117,15 +118,6 @@
   font-family: 'TH Sarabun PSK';
   src: url('/fonts/THSarabunPSK-Bold.ttf') format('truetype');
   font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
-
-/* Direct Bold font — bypasses font-weight matching for <strong>/<b> */
-@font-face {
-  font-family: 'TH Sarabun PSK Bold';
-  src: url('/fonts/THSarabunPSK-Bold.ttf') format('truetype');
-  font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
@@ -156,9 +148,9 @@ body {
   .glass-card {
     @apply bg-white/80 backdrop-blur-sm border border-white/20;
   }
-  /* Font shortcut for document/contract areas */
+  /* Font shortcut for document/receipt/contract areas */
   .font-sarabun {
-    font-family: 'TH Sarabun PSK', 'Noto Sans Thai', sans-serif;
+    font-family: 'Noto Sans Thai', sans-serif;
   }
   /* Metronic-style stat card */
   .stat-card {
@@ -170,28 +162,15 @@ body {
   }
 }
 
-/* ── Ensure bold renders correctly with TH Sarabun PSK ── */
-/* Use dedicated Bold font-family to bypass font-weight matching issues */
-strong, b {
-  font-family: 'TH Sarabun PSK Bold', 'TH Sarabun PSK', 'Noto Sans Thai', sans-serif !important;
-  font-weight: 700 !important;
-}
-
-/* ── Tiptap Rich Text Editor (uses Sarabun for contracts) */
+/* ── Tiptap Rich Text Editor ─────────────────────────── */
 .tiptap.ProseMirror {
   min-height: 240px;
   padding: 16px 20px;
   outline: none;
-  font-family: 'TH Sarabun PSK', 'Noto Sans Thai', sans-serif;
+  font-family: 'Noto Sans Thai', sans-serif;
   font-size: 18px;
   line-height: 1.8;
   color: #1a1a1a;
-}
-
-.tiptap.ProseMirror strong,
-.tiptap.ProseMirror b {
-  font-family: 'TH Sarabun PSK Bold', 'TH Sarabun PSK', 'Noto Sans Thai', sans-serif !important;
-  font-weight: 700 !important;
 }
 
 .tiptap.ProseMirror p {
@@ -262,12 +241,9 @@ strong, b {
 }
 
 /* ── Print Styles for Receipts ───────────────────────── */
+/* NOTE: @page size is NOT set here — PDF export uses html2pdf.js (unifiedReceiptPdf.ts)
+   which renders via html2canvas, so @page rules are not needed. */
 @media print {
-  @page {
-    size: A4;
-    margin: 0;
-  }
-
   body {
     margin: 0;
     padding: 0;
@@ -295,16 +271,26 @@ strong, b {
     color-adjust: exact !important;
   }
 
-  /* Ensure proper A4 layout */
-  .a4-receipt-container {
-    width: 210mm;
-    height: 297mm;
+  /* Receipt print area — font + layout */
+  #receipt-print-area {
+    font-family: 'Noto Sans Thai', sans-serif;
+    font-size: 14pt;
+    line-height: 1.5;
+  }
+
+  /* Receipt containers fill the page — @page margins handle spacing */
+  .a4-receipt-container,
+  .a5-receipt-container {
+    width: 100% !important;
+    height: auto !important;
     margin: 0;
     padding: 0;
   }
 
   /* Remove shadows and borders for print */
-  .a4-receipt {
+  .a4-receipt-container,
+  .a5-receipt-container,
+  .mobile-receipt {
     box-shadow: none !important;
     border: none !important;
   }
@@ -320,7 +306,6 @@ strong, b {
   /* Mobile receipt should convert to printable format */
   .mobile-receipt {
     max-width: 100%;
-    box-shadow: none !important;
   }
 }
 

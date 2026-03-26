@@ -5,8 +5,9 @@ import type { Receipt } from '@/types/receipt';
  * Wait for images and QR codes to load
  */
 async function waitForAllResources(): Promise<void> {
-  // Wait for any pending renders
-  await new Promise(resolve => setTimeout(resolve, 500));
+  // Wait for fonts to load, then one animation frame for pending renders
+  await document.fonts.ready;
+  await new Promise(resolve => requestAnimationFrame(resolve));
 }
 
 /**
@@ -35,11 +36,11 @@ export async function generateUnifiedReceiptPDF(
     switch (size) {
       case 'a4':
         pageSize = 'a4';
-        margin = [10, 10, 10, 10];
+        margin = 0; // PrintableReceipt handles its own padding (p-[15mm])
         break;
       case 'a5':
         pageSize = 'a5';
-        margin = [5, 5, 5, 5];
+        margin = 0; // PrintableReceipt handles its own padding (p-[8mm])
         break;
       case 'mobile':
         pageSize = [80, 297]; // 80mm width for thermal printer
@@ -51,117 +52,61 @@ export async function generateUnifiedReceiptPDF(
       margin: margin,
       filename: `receipt_${receipt.receiptNumber}.pdf`,
       image: {
-        type: 'jpeg',
-        quality: 0.98
+        type: 'png',
       },
       html2canvas: {
-        scale: 2,
+        scale: 3,
         useCORS: true,
         logging: false,
         backgroundColor: '#ffffff',
         letterRendering: true,
         allowTaint: true,
-        foreignObjectRendering: true,
+        foreignObjectRendering: false,
         onclone: function(clonedDoc: Document) {
           const clonedElement = clonedDoc.getElementById('receipt-print-area');
           if (!clonedElement) return;
 
-          // Make sure element is visible
-          clonedElement.style.display = 'block';
-          clonedElement.style.visibility = 'visible';
+          // WYSIWYG: NO layout modifications — capture exactly as shown on screen
+          // Only force visual properties that html2canvas can't read from Tailwind
 
-          // Add critical styles directly to ensure they're captured
+          // Force background colors inline (html2canvas misses Tailwind bg classes)
+          const bgMap: Record<string, string> = {
+            'bg-blue-50': '#eff6ff', 'bg-green-50': '#f0fdf4',
+            'bg-orange-50': '#fff7ed', 'bg-gray-50': '#f9fafb',
+            'bg-gray-100': '#f3f4f6', 'bg-gray-700': '#374151',
+          };
+          clonedElement.querySelectorAll('[class*="bg-"]').forEach((el) => {
+            const element = el as HTMLElement;
+            for (const [cls, color] of Object.entries(bgMap)) {
+              if (element.classList.contains(cls)) {
+                element.style.backgroundColor = color;
+                if (cls === 'bg-gray-700') element.style.color = 'white';
+                break;
+              }
+            }
+          });
+
+          // Force borders inline
+          clonedElement.querySelectorAll('th, td').forEach((el) => {
+            (el as HTMLElement).style.border = '1px solid #d1d5db';
+          });
+
+          // Force table border-collapse
+          clonedElement.querySelectorAll('table').forEach((el) => {
+            (el as HTMLElement).style.borderCollapse = 'collapse';
+          });
+
+          // Ensure QR SVGs are visible
+          clonedElement.querySelectorAll('svg').forEach((svg) => {
+            const el = svg as SVGElement;
+            el.style.display = 'block';
+            el.style.visibility = 'visible';
+          });
+
+          // Force print color accuracy
           const style = clonedDoc.createElement('style');
-          style.innerHTML = `
-            * {
-              -webkit-print-color-adjust: exact !important;
-              print-color-adjust: exact !important;
-              color-adjust: exact !important;
-            }
-
-            /* Force backgrounds */
-            .bg-blue-50 { background-color: #eff6ff !important; }
-            .bg-green-50 { background-color: #f0fdf4 !important; }
-            .bg-orange-50 { background-color: #fff7ed !important; }
-            .bg-gray-50 { background-color: #f9fafb !important; }
-            .bg-gray-100 { background-color: #f3f4f6 !important; }
-            .bg-gray-700 { background-color: #374151 !important; }
-
-            /* Force borders */
-            .border { border: 1px solid #d1d5db !important; }
-            .border-gray-300 { border-color: #d1d5db !important; }
-            .border-gray-400 { border-color: #9ca3af !important; }
-            .border-green-400 { border-color: #4ade80 !important; }
-            .border-orange-400 { border-color: #fb923c !important; }
-
-            /* Force text colors */
-            .text-white { color: white !important; }
-            .text-gray-600 { color: #4b5566 !important; }
-            .text-gray-700 { color: #374151 !important; }
-            .text-gray-800 { color: #1f2937 !important; }
-            .text-green-600 { color: #16a34a !important; }
-            .text-orange-600 { color: #ea580c !important; }
-
-            /* Table styles */
-            table { border-collapse: collapse !important; }
-            th, td {
-              border: 1px solid #d1d5db !important;
-              padding: 0.5rem !important;
-            }
-
-            /* QR Code visibility */
-            svg {
-              display: block !important;
-              visibility: visible !important;
-            }
-          `;
+          style.innerHTML = `* { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }`;
           clonedDoc.head.appendChild(style);
-
-          // Apply inline styles to ensure they're captured
-          const elementsWithBg = clonedElement.querySelectorAll('[class*="bg-"]');
-          elementsWithBg.forEach((el) => {
-            const element = el as HTMLElement;
-            const classes = element.className;
-
-            if (classes.includes('bg-blue-50')) {
-              element.style.backgroundColor = '#eff6ff';
-            } else if (classes.includes('bg-green-50')) {
-              element.style.backgroundColor = '#f0fdf4';
-            } else if (classes.includes('bg-orange-50')) {
-              element.style.backgroundColor = '#fff7ed';
-            } else if (classes.includes('bg-gray-50')) {
-              element.style.backgroundColor = '#f9fafb';
-            } else if (classes.includes('bg-gray-100')) {
-              element.style.backgroundColor = '#f3f4f6';
-            } else if (classes.includes('bg-gray-700')) {
-              element.style.backgroundColor = '#374151';
-              element.style.color = 'white';
-            }
-          });
-
-          // Ensure borders are visible
-          const elementsWithBorder = clonedElement.querySelectorAll('[class*="border"]');
-          elementsWithBorder.forEach((el) => {
-            const element = el as HTMLElement;
-            if (!element.style.border && !element.style.borderWidth) {
-              element.style.border = '1px solid #d1d5db';
-            }
-          });
-
-          // Ensure QR codes are rendered
-          const qrCodes = clonedElement.querySelectorAll('svg');
-          qrCodes.forEach((qr) => {
-            const svgElement = qr as SVGElement;
-            svgElement.style.display = 'block';
-            svgElement.style.visibility = 'visible';
-            // Preserve original dimensions
-            if (!svgElement.style.width) {
-              svgElement.style.width = svgElement.getAttribute('width') || '80px';
-            }
-            if (!svgElement.style.height) {
-              svgElement.style.height = svgElement.getAttribute('height') || '80px';
-            }
-          });
         }
       },
       jsPDF: {

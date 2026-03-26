@@ -69,23 +69,37 @@ export default function PrintableReceipt({ receipt, size }: PrintableReceiptProp
     switch (size) {
       case 'a4':
         return {
-          container: 'a4-receipt-container w-[210mm] h-[297mm] print:w-[190mm] print:max-w-[190mm]',
+          container: 'a4-receipt-container w-[210mm] min-h-[297mm] print:w-[210mm] print:max-w-[210mm]',
           content: 'a4-receipt p-[15mm] print:p-[10mm]',
           header: 'text-2xl print:text-xl',
           title: 'text-xl print:text-lg',
           body: 'text-sm print:text-xs',
           small: 'text-xs print:text-[10px]',
           qrSize: 80,
+          sectionGap: 'mb-3',
+          headerBorderPad: 'pb-3',
+          titleMargin: 'mt-3',
+          signatureGap: 'mb-8',
+          signatureSection: 'mb-3 mt-4',
+          summaryPadding: 'p-3',
+          footerPad: 'pt-2',
         };
       default: // a5
         return {
-          container: 'a5-receipt-container w-[148mm] h-[210mm] print:w-[138mm] print:max-w-[138mm]',
-          content: 'a5-receipt p-[8mm] print:p-[5mm]',
+          container: 'a5-receipt-container w-[148mm] min-h-[210mm] print:w-[148mm] print:max-w-[148mm]',
+          content: 'a5-receipt p-[6mm] print:p-[5mm]',
           header: 'text-xl print:text-lg',
           title: 'text-lg print:text-base',
           body: 'text-xs print:text-[11px]',
           small: 'text-[11px] print:text-[10px]',
-          qrSize: 65,
+          qrSize: 55,
+          sectionGap: 'mb-1.5',
+          headerBorderPad: 'pb-1',
+          titleMargin: 'mt-1',
+          signatureGap: 'mb-3',
+          signatureSection: 'mb-1 mt-1',
+          summaryPadding: 'px-1.5 py-2',
+          footerPad: 'pt-1',
         };
     }
   };
@@ -94,7 +108,7 @@ export default function PrintableReceipt({ receipt, size }: PrintableReceiptProp
 
   // A4/A5 layout
   return (
-    <div className={`${styles.container} print:m-0 print:p-0 relative mx-auto`} style={{ fontFamily: "'Sarabun', 'TH Sarabun PSK', sans-serif" }}>
+    <div className={`${styles.container} font-sarabun print:w-full print:h-auto print:m-0 print:p-0 relative mx-auto`}>
       {/* Watermark for reprints */}
       {isReprint && (
         <div className="watermark absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-[100px] font-bold text-gray-200 opacity-30 rotate-45 z-10 pointer-events-none select-none print:opacity-40">
@@ -106,9 +120,9 @@ export default function PrintableReceipt({ receipt, size }: PrintableReceiptProp
       <div className={`${styles.content} bg-white w-full min-h-full flex flex-col relative`}>
 
         {/* ========== HEADER SECTION ========== */}
-        <div className="mb-3">
+        <div className={styles.sectionGap}>
           {/* Company Header with QR Code */}
-          <div className="flex justify-between items-start border-b-2 border-gray-300 pb-3">
+          <div className={`flex justify-between items-start border-b-2 border-gray-300 ${styles.headerBorderPad}`}>
             {/* Left: Company Info */}
             <div className="flex-1">
               <h1 className={`${styles.header} font-bold text-gray-900`}>
@@ -139,7 +153,7 @@ export default function PrintableReceipt({ receipt, size }: PrintableReceiptProp
           </div>
 
           {/* Receipt Header */}
-          <div className="mt-3 text-center">
+          <div className={`${styles.titleMargin} text-center`}>
             <h2 className={`${styles.title} font-bold text-gray-800`}>
               {typeLabels[receipt.receiptType] || receipt.receiptType}
             </h2>
@@ -164,7 +178,7 @@ export default function PrintableReceipt({ receipt, size }: PrintableReceiptProp
         </div>
 
         {/* ========== CUSTOMER & PAYMENT INFO ========== */}
-        <div className={`border border-gray-300 rounded-lg p-3 mb-3 ${styles.body}`}>
+        <div className={`border border-gray-300 rounded-lg p-3 ${styles.sectionGap} ${styles.body}`}>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <div className="font-bold text-gray-700 mb-1">ข้อมูลผู้ชำระเงิน:</div>
@@ -216,7 +230,7 @@ export default function PrintableReceipt({ receipt, size }: PrintableReceiptProp
 
         {/* ========== PRODUCT DETAILS ========== */}
         {receipt.contract?.product && (
-          <div className={`bg-blue-50 border border-blue-200 rounded p-2 mb-3 ${styles.body}`}>
+          <div className={`bg-blue-50 border border-blue-200 rounded p-2 ${styles.sectionGap} ${styles.body}`}>
             <div className="font-bold text-blue-800 mb-0.5">รายละเอียดสินค้า:</div>
             <div className="text-blue-900 font-medium">{receipt.contract.product.name}</div>
             {(receipt.contract.product.imeiSerial || receipt.contract.product.serialNumber) && (
@@ -233,15 +247,15 @@ export default function PrintableReceipt({ receipt, size }: PrintableReceiptProp
         )}
 
         {/* ========== PAYMENT DETAILS TABLE ========== */}
-        <div className="mb-3">
-          <div className={`${styles.body} font-bold text-gray-700 mb-1`}>รายการ</div>
+        <div className={styles.sectionGap}>
+          <div className={`${styles.body} font-bold text-gray-700 mb-1.5`}>รายการ</div>
           <table className={`w-full border border-gray-400 ${styles.body}`}>
             <thead>
               <tr className="bg-gray-100">
-                <th className="border border-gray-300 px-2 py-1.5 text-left font-bold text-gray-700">
+                <th className="border border-gray-300 px-3 py-2.5 align-middle text-left font-bold text-gray-700">
                   รายละเอียด
                 </th>
-                <th className="border border-gray-300 px-2 py-1.5 text-right font-bold text-gray-700 w-28">
+                <th className="border border-gray-300 px-3 py-2.5 align-middle text-right font-bold text-gray-700 w-28">
                   จำนวนเงิน (฿)
                 </th>
               </tr>
@@ -249,7 +263,7 @@ export default function PrintableReceipt({ receipt, size }: PrintableReceiptProp
             <tbody>
               {/* Main payment row - subtotal */}
               <tr>
-                <td className="border border-gray-300 px-2 py-1.5">
+                <td className="border border-gray-300 px-3 py-2.5 align-middle">
                   {(() => {
                     const productName = receipt.contract?.product?.name || '';
                     const receiptLabel = typeLabels[receipt.receiptType] || 'การชำระเงิน';
@@ -283,27 +297,27 @@ export default function PrintableReceipt({ receipt, size }: PrintableReceiptProp
                     );
                   })()}
                 </td>
-                <td className="border border-gray-300 px-2 py-1.5 text-right font-medium">
+                <td className="border border-gray-300 px-3 py-2.5 align-middle text-right font-medium">
                   {formatCurrency(subtotal)}
                 </td>
               </tr>
 
               {/* VAT row - always show */}
               <tr className="bg-gray-50">
-                <td className="border border-gray-300 px-2 py-1.5 text-gray-600">
+                <td className="border border-gray-300 px-3 py-2.5 align-middle text-gray-600">
                   ภาษีมูลค่าเพิ่ม {vatRate.toFixed(0)}%
                 </td>
-                <td className="border border-gray-300 px-2 py-1.5 text-right text-gray-600">
+                <td className="border border-gray-300 px-3 py-2.5 align-middle text-right text-gray-600">
                   {formatCurrency(vatAmount)}
                 </td>
               </tr>
 
               {/* Total row */}
               <tr className="bg-gray-700 text-white font-bold">
-                <td className="border border-gray-700 px-2 py-1.5">
+                <td className="border border-gray-700 px-3 py-2.5 align-middle">
                   รวมทั้งสิ้น
                 </td>
-                <td className={`border border-gray-700 px-2 py-1.5 text-right ${styles.body}`}>
+                <td className={`border border-gray-700 px-3 py-2.5 align-middle text-right ${styles.body}`}>
                   {formatCurrency(receipt.amount)}
                 </td>
               </tr>
@@ -312,10 +326,10 @@ export default function PrintableReceipt({ receipt, size }: PrintableReceiptProp
         </div>
 
         {/* ========== PAYMENT SUMMARY ========== */}
-        <div className="grid grid-cols-2 gap-2 mb-3">
-          <div className="bg-green-50 border border-green-400 rounded p-3 text-center">
+        <div className={`grid grid-cols-2 gap-2 ${styles.sectionGap}`}>
+          <div className={`bg-green-50 border border-green-400 rounded ${styles.summaryPadding} text-center flex flex-col items-center justify-center`}>
             <div className={`${styles.small} text-gray-600 font-medium`}>ยอดชำระครั้งนี้</div>
-            <div className="mt-1">
+            <div>
               <div className={`${styles.title} font-bold text-green-600`}>
                 {formatCurrency(receipt.amount)}
               </div>
@@ -324,9 +338,9 @@ export default function PrintableReceipt({ receipt, size }: PrintableReceiptProp
           </div>
 
           {receipt.remainingBalance != null && Number(receipt.remainingBalance) > 0 ? (
-            <div className="bg-orange-50 border border-orange-400 rounded p-3 text-center">
+            <div className={`bg-orange-50 border border-orange-400 rounded ${styles.summaryPadding} text-center flex flex-col items-center justify-center`}>
               <div className={`${styles.small} text-gray-600 font-medium`}>ยอดคงเหลือ</div>
-              <div className="mt-1">
+              <div>
                 <div className={`${styles.title} font-bold text-orange-600`}>
                   {formatCurrency(receipt.remainingBalance)}
                 </div>
@@ -338,7 +352,7 @@ export default function PrintableReceipt({ receipt, size }: PrintableReceiptProp
               </div>
             </div>
           ) : (
-            <div className="bg-gray-50 border border-gray-300 rounded p-3 flex items-center justify-center">
+            <div className={`bg-gray-50 border border-gray-300 rounded ${styles.summaryPadding} flex items-center justify-center`}>
               <div className="text-center">
                 <div className={`${styles.body} text-gray-500`}>ชำระครบถ้วน</div>
                 <div className={`${styles.small} text-gray-400 mt-0.5`}>✓ เสร็จสิ้น</div>
@@ -353,10 +367,10 @@ export default function PrintableReceipt({ receipt, size }: PrintableReceiptProp
         {/* ========== FOOTER ========== */}
         <div className="mt-auto">
           {/* Signature Section */}
-          <div className="grid grid-cols-2 gap-6 mb-3 mt-4">
+          <div className={`grid grid-cols-2 gap-4 ${styles.signatureSection}`}>
             <div className="text-center">
-              <div className="mb-8"></div>
-              <div className="border-t border-gray-400 pt-1 mx-6">
+              <div className={styles.signatureGap}></div>
+              <div className="border-t border-gray-400 pt-1.5 mx-6">
                 <div className={`${styles.body} text-gray-600`}>ผู้รับเงิน</div>
                 <div className={`${styles.small} font-medium text-gray-800 mt-0.5`}>
                   {receipt.receiverName || 'BESTCHOICE Mobile'}
@@ -364,8 +378,8 @@ export default function PrintableReceipt({ receipt, size }: PrintableReceiptProp
               </div>
             </div>
             <div className="text-center">
-              <div className="mb-8"></div>
-              <div className="border-t border-gray-400 pt-1 mx-6">
+              <div className={styles.signatureGap}></div>
+              <div className="border-t border-gray-400 pt-1.5 mx-6">
                 <div className={`${styles.body} text-gray-600`}>ผู้ชำระเงิน</div>
                 <div className={`${styles.small} font-medium text-gray-800 mt-0.5`}>
                   {receipt.payerName || 'ลูกค้า'}
@@ -375,7 +389,7 @@ export default function PrintableReceipt({ receipt, size }: PrintableReceiptProp
           </div>
 
           {/* Company Footer */}
-          <div className="border-t border-gray-300 pt-2 text-center">
+          <div className={`border-t border-gray-300 ${styles.footerPad} text-center`}>
             <div className={`${styles.small} text-gray-600 font-medium`}>
               {receipt.company?.nameTh || 'BESTCHOICE Mobile'}
               {receipt.contract?.branch?.name && ` สาขา${receipt.contract.branch.name}`}
@@ -383,7 +397,7 @@ export default function PrintableReceipt({ receipt, size }: PrintableReceiptProp
             <div className={`${styles.small} text-gray-500`}>
               เอกสารนี้ออกโดยระบบอัตโนมัติ
             </div>
-            <div className="text-[9px] text-gray-400 mt-0.5">
+            <div className="text-[9px] text-gray-400">
               พิมพ์เมื่อ: {new Date().toLocaleString('th-TH')}
             </div>
           </div>

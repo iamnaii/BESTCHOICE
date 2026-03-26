@@ -110,8 +110,39 @@ export default function LoginPage() {
 
             {import.meta.env.DEV && (
               <div className="mt-5 p-3.5 bg-primary/5 rounded-lg border border-primary/10">
-                <p className="font-medium text-primary text-xs mb-0.5">บัญชีทดสอบ:</p>
-                <p className="text-primary/80 text-xs">admin@bestchoice.com / admin1234</p>
+                <p className="font-medium text-primary text-xs mb-2">เข้าสู่ระบบด่วน:</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: 'Admin', email: 'admin@bestchoice.com', pw: 'admin1234', role: 'OWNER' },
+                    { label: 'ผจก.สาขา', email: 'manager1@bestchoice.com', pw: 'password123', role: 'MANAGER' },
+                    { label: 'พนง.ขาย', email: 'sales1@bestchoice.com', pw: 'password123', role: 'SALES' },
+                    { label: 'บัญชี', email: 'accountant@bestchoice.com', pw: 'password123', role: 'ACCOUNTANT' },
+                  ].map((acc) => (
+                    <button
+                      key={acc.email}
+                      type="button"
+                      disabled={isSubmitting}
+                      onClick={async () => {
+                        setIsSubmitting(true);
+                        try {
+                          setEmail(acc.email);
+                          setPassword(acc.pw);
+                          await login(acc.email, acc.pw);
+                          toast.success(`เข้าสู่ระบบเป็น ${acc.label}`);
+                          navigate('/');
+                        } catch {
+                          toast.error('เข้าสู่ระบบไม่สำเร็จ');
+                        } finally {
+                          setIsSubmitting(false);
+                        }
+                      }}
+                      className="flex flex-col items-center gap-0.5 p-2 rounded-md border border-primary/20 hover:bg-primary/10 hover:border-primary/40 transition-all text-xs disabled:opacity-50"
+                    >
+                      <span className="font-semibold text-primary">{acc.label}</span>
+                      <span className="text-primary/60 text-[10px]">{acc.role}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
           </div>

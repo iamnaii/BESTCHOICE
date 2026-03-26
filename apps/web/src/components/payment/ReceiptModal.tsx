@@ -3,11 +3,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import Modal from '@/components/ui/Modal';
 import { toast } from 'sonner';
-import { Download, Send, FileDown } from 'lucide-react';
+import { Download, Send } from 'lucide-react';
 import PrintableReceipt from './PrintableReceipt';
 import MobileReceipt from './MobileReceipt';
-import { exportReceiptAsPDF } from '@/utils/simplePdfExport';
-import { downloadReceiptPDF } from '@/utils/receiptPdfGenerator';
+import { downloadUnifiedReceiptPDF } from '@/utils/unifiedReceiptPdf';
 import type { Receipt } from '@/types/receipt';
 
 const methodLabels: Record<string, string> = {
@@ -37,7 +36,6 @@ export default function ReceiptModal({ receiptId, onClose }: ReceiptModalProps) 
   const [printSize, setPrintSize] = useState<PrintSize>('mobile');
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [isSendingLine, setIsSendingLine] = useState(false);
-  const [useLegacyExport, setUseLegacyExport] = useState(false);
 
   const { data: receipt, isLoading } = useQuery<Receipt>({
     queryKey: ['receipt', receiptId],
@@ -80,22 +78,14 @@ export default function ReceiptModal({ receiptId, onClose }: ReceiptModalProps) 
     },
   });
 
-  // Handle PDF export - try new method first, fallback to legacy
+  // Handle PDF export via print dialog
   const handleExportPDF = async () => {
     if (!receipt) return;
 
     setIsGeneratingPDF(true);
     try {
-      if (useLegacyExport) {
-        // Use original jsPDF method
-        const pdfSize = printSize === 'mobile' ? 'a5' : printSize as 'a4' | 'a5';
-        await downloadReceiptPDF(receipt, pdfSize);
-        toast.success('ดาวน์โหลด PDF สำเร็จ (Legacy)');
-      } else {
-        // Use new print-based method
-        await exportReceiptAsPDF(receipt, printSize);
-        toast.info('กรุณาเลือก Save as PDF ในหน้าต่างพิมพ์');
-      }
+      await downloadUnifiedReceiptPDF(receipt, printSize);
+      toast.success('บันทึก PDF สำเร็จ');
     } catch (error) {
       toast.error('ไม่สามารถสร้าง PDF ได้');
     } finally {
@@ -146,23 +136,10 @@ export default function ReceiptModal({ receiptId, onClose }: ReceiptModalProps) 
               </select>
             </div>
 
-            {/* Export Method Toggle */}
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="legacy-export"
-                checked={useLegacyExport}
-                onChange={(e) => setUseLegacyExport(e.target.checked)}
-                className="rounded border-gray-300"
-              />
-              <label htmlFor="legacy-export" className="text-xs text-gray-600">
-                ใช้วิธีส่งออก PDF แบบเดิม (ดาวน์โหลดอัตโนมัติ)
-              </label>
-            </div>
           </div>
 
           {/* Receipt Content */}
-          <div id="receipt-print-area" className="overflow-hidden">
+          <div id="receipt-print-area" className="font-sarabun overflow-hidden">
             {printSize === 'mobile' ? (
               <MobileReceipt receipt={receipt} />
             ) : (

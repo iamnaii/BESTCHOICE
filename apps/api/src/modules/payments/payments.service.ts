@@ -277,7 +277,7 @@ export class PaymentsService {
   }
 
   // ─── Get all pending payments (for payment queue view) ─
-  async getPendingPayments(filters: { branchId?: string; date?: string; status?: string; search?: string }) {
+  async getPendingPayments(filters: { branchId?: string; date?: string; status?: string; search?: string; dunningStage?: string }) {
     const where: Record<string, unknown> = {};
 
     if (filters.status) {
@@ -286,20 +286,28 @@ export class PaymentsService {
       where.status = { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] };
     }
 
+    // Build contract filter object to combine multiple conditions
+    const contractWhere: Record<string, unknown> = {};
+
     if (filters.branchId) {
-      where.contract = { branchId: filters.branchId };
+      contractWhere.branchId = filters.branchId;
+    }
+
+    if (filters.dunningStage) {
+      contractWhere.dunningStage = filters.dunningStage;
     }
 
     if (filters.search) {
       const search = filters.search.trim();
-      where.contract = {
-        ...(where.contract as Record<string, unknown> || {}),
-        OR: [
-          { contractNumber: { contains: search, mode: 'insensitive' } },
-          { customer: { name: { contains: search, mode: 'insensitive' } } },
-          { customer: { phone: { contains: search } } },
-        ],
-      };
+      contractWhere.OR = [
+        { contractNumber: { contains: search, mode: 'insensitive' } },
+        { customer: { name: { contains: search, mode: 'insensitive' } } },
+        { customer: { phone: { contains: search } } },
+      ];
+    }
+
+    if (Object.keys(contractWhere).length > 0) {
+      where.contract = contractWhere;
     }
 
     if (filters.date) {
@@ -453,7 +461,7 @@ export class PaymentsService {
           data: {
             amountPaid: totalPaid,
             paidDate: isPaidInFull ? new Date() : null,
-            paymentMethod: 'CREDIT_BALANCE' as any,
+            paymentMethod: 'CREDIT_BALANCE',
             status: isPaidInFull ? 'PAID' : 'PARTIALLY_PAID',
             recordedById,
             notes: [payment.notes, `ใช้เครดิต ${payAmount.toLocaleString()} บาท`].filter(Boolean).join(' | '),

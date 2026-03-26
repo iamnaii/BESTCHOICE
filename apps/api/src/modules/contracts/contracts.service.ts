@@ -38,6 +38,8 @@ export class ContractsService {
     page?: number;
     limit?: number;
     salespersonId?: string;
+    startDate?: string;
+    endDate?: string;
   }) {
     const where: Record<string, unknown> = { deletedAt: null };
     if (filters.status) where.status = filters.status;
@@ -45,6 +47,11 @@ export class ContractsService {
     if (filters.branchId) where.branchId = filters.branchId;
     if (filters.customerId) where.customerId = filters.customerId;
     if (filters.salespersonId) where.salespersonId = filters.salespersonId;
+    if (filters.startDate || filters.endDate) {
+      where.createdAt = {};
+      if (filters.startDate) (where.createdAt as any).gte = new Date(filters.startDate);
+      if (filters.endDate) (where.createdAt as any).lte = new Date(new Date(filters.endDate).getTime() + 86400000 - 1);
+    }
     if (filters.search) {
       where.OR = [
         { contractNumber: { contains: filters.search, mode: 'insensitive' } },
@@ -55,7 +62,7 @@ export class ContractsService {
     const page = filters.page || 1;
     const limit = Math.min(filters.limit || 50, 100);
 
-    const [data, total] = await Promise.all([
+    const [data, total, totalActive, totalOverdue, portfolioValue] = await Promise.all([
       this.prisma.contract.findMany({
         where,
         orderBy: { createdAt: 'desc' },
@@ -72,9 +79,31 @@ export class ContractsService {
         },
       }),
       this.prisma.contract.count({ where }),
+      this.prisma.contract.count({
+        where: { ...where, status: 'ACTIVE', deletedAt: null },
+      }),
+      this.prisma.contract.count({
+        where: { ...where, status: { in: ['OVERDUE', 'DEFAULT'] }, deletedAt: null },
+      }),
+      this.prisma.contract.aggregate({
+        where: { ...where, deletedAt: null },
+        _sum: { sellingPrice: true },
+      }),
     ]);
 
-    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      summary: {
+        totalContracts: total,
+        activeContracts: totalActive,
+        overdueContracts: totalOverdue,
+        portfolioValue: Number(portfolioValue._sum.sellingPrice || 0),
+      },
+    };
   }
 
   /**

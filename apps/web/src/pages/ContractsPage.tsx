@@ -1,4 +1,4 @@
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useState } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -7,6 +7,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import WorkflowStatusBadge from '@/components/contract/WorkflowStatusBadge';
+import { Card, CardContent } from '@/components/ui/card';
+import { toast } from 'sonner';
+
+// Dynamic import ExcelJS to avoid bundle bloat
+const initExcelJs = async () => import('exceljs');
 
 interface Contract {
   id: string;
@@ -44,6 +49,12 @@ interface PaginatedResponse<T> {
   total: number;
   page: number;
   totalPages: number;
+  summary?: {
+    totalContracts: number;
+    activeContracts: number;
+    overdueContracts: number;
+    portfolioValue: number;
+  };
 }
 
 type ViewTab = 'all' | 'my' | 'pending_review';
@@ -52,10 +63,14 @@ export default function ContractsPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   const search = searchParams.get('q') || '';
   const statusFilter = searchParams.get('status') || '';
   const workflowFilter = searchParams.get('workflow') || '';
+  const branchFilter = searchParams.get('branchId') || '';
+  const startDateFilter = searchParams.get('startDate') || '';
+  const endDateFilter = searchParams.get('endDate') || '';
   const viewTab = (searchParams.get('tab') || 'all') as ViewTab;
   const page = parseInt(searchParams.get('page') || '1', 10);
 
@@ -73,17 +88,23 @@ export default function ContractsPage() {
   const setSearch = useCallback((v: string) => updateParams({ q: v, page: '' }), [updateParams]);
   const setStatusFilter = useCallback((v: string) => updateParams({ status: v, page: '' }), [updateParams]);
   const setWorkflowFilter = useCallback((v: string) => updateParams({ workflow: v, page: '' }), [updateParams]);
+  const setBranchFilter = useCallback((v: string) => updateParams({ branchId: v, page: '' }), [updateParams]);
+  const setStartDate = useCallback((v: string) => updateParams({ startDate: v, page: '' }), [updateParams]);
+  const setEndDate = useCallback((v: string) => updateParams({ endDate: v, page: '' }), [updateParams]);
   const setViewTab = useCallback((v: ViewTab) => updateParams({ tab: v === 'all' ? '' : v, page: '' }), [updateParams]);
   const setPage = useCallback((p: number) => updateParams({ page: p > 1 ? String(p) : '' }), [updateParams]);
 
   const debouncedSearch = useDebounce(search);
 
   const { data: result, isLoading, isError, refetch } = useQuery<PaginatedResponse<Contract>>({
-    queryKey: ['contracts', debouncedSearch, statusFilter, workflowFilter, viewTab, page],
+    queryKey: ['contracts', debouncedSearch, statusFilter, workflowFilter, viewTab, page, branchFilter, startDateFilter, endDateFilter],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (debouncedSearch) params.set('search', debouncedSearch);
       if (statusFilter) params.set('status', statusFilter);
+      if (branchFilter) params.set('branchId', branchFilter);
+      if (startDateFilter) params.set('startDate', startDateFilter);
+      if (endDateFilter) params.set('endDate', endDateFilter);
 
       // View tab logic
       if (viewTab === 'my' && user) {
@@ -101,8 +122,57 @@ export default function ContractsPage() {
   });
 
   const contracts = result?.data ?? [];
+  const summary = result?.summary;
 
   const isManager = user && ['OWNER', 'BRANCH_MANAGER'].includes(user.role);
+  const isOwner = user?.role === 'OWNER';
+
+  // Branches list for filter (OWNER only)
+  const { data: branches = [] } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ['branches'],
+    queryFn: async () => {
+      const { data } = await api.get('/branches');
+      return data;
+    },
+    enabled: isOwner,
+  });
+
+  // Excel export handler
+  const handleExport = async () => {
+    const ExcelJS = await initExcelJs();
+    const Workbook = ExcelJS.Workbook;
+    const wb = new Workbook();
+    const ws = wb.addWorksheet('สัญญา');
+
+    const headers = ['เลขสัญญา', 'ลูกค้า', 'เบอร์โทร', 'สินค้า', 'ราคาขาย', 'ค่างวด', 'สถานะ', 'สาขา', 'พนักงาน', 'วันที่สร้าง'];
+    ws.addRow(headers);
+
+    contracts.forEach((c) => {
+      ws.addRow([
+        c.contractNumber,
+        c.customer.name,
+        c.customer.phone,
+        `${c.product.brand} ${c.product.model}`,
+        Number(c.sellingPrice).toLocaleString(),
+        Number(c.monthlyPayment).toLocaleString(),
+        statusLabels[c.status]?.label || c.status,
+        c.branch.name,
+        c.salesperson.name,
+        new Date(c.createdAt).toLocaleDateString('th-TH'),
+      ]);
+    });
+
+    ws.columns.forEach((col) => { col.width = 15; });
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `contracts-${new Date().toISOString().split('T')[0]}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success('ส่งออก Excel สำเร็จ');
+  };
 
   const columns = useMemo(() => [
     {
@@ -199,11 +269,48 @@ export default function ContractsPage() {
         title="สัญญาผ่อนชำระ"
         subtitle="จัดการสัญญาผ่อนชำระทั้งหมด"
         action={
-          <button onClick={() => navigate('/contracts/create')} className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90">
-            + สร้างสัญญา
-          </button>
+          <div className="flex gap-2">
+            {contracts.length > 0 && (
+              <button onClick={handleExport} className="px-4 py-2 border border-input rounded-lg text-sm font-medium hover:bg-muted">
+                Export Excel
+              </button>
+            )}
+            <button onClick={() => navigate('/contracts/create')} className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90">
+              + สร้างสัญญา
+            </button>
+          </div>
         }
       />
+
+      {/* Summary Cards */}
+      {summary && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <Card>
+            <CardContent className="p-4">
+              <div className="text-xs text-muted-foreground mb-1">สัญญาทั้งหมด</div>
+              <div className="text-2xl font-bold">{summary.totalContracts}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="text-xs text-muted-foreground mb-1">สัญญาอยู่</div>
+              <div className="text-2xl font-bold text-green-600">{summary.activeContracts}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="text-xs text-muted-foreground mb-1">ค้างชำระ</div>
+              <div className="text-2xl font-bold text-red-600">{summary.overdueContracts}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="text-xs text-muted-foreground mb-1">มูลค่าพอร์ตโฟลิโอ</div>
+              <div className="text-2xl font-bold text-blue-600">{summary.portfolioValue.toLocaleString()} ฿</div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* View Tabs */}
       <div className="flex gap-1 mb-4 border-b">
@@ -246,7 +353,23 @@ export default function ContractsPage() {
           <option value="DEFAULT">ผิดนัด</option>
           <option value="EARLY_PAYOFF">ปิดก่อน</option>
           <option value="COMPLETED">ครบ</option>
+          <option value="EXCHANGED">เปลี่ยนเครื่อง</option>
+          <option value="CLOSED_BAD_DEBT">หนี้สูญ</option>
         </select>
+        {isOwner && (
+          <select value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm">
+            <option value="">ทุกสาขา</option>
+            {branches.map((b) => (
+              <option key={b.id} value={b.id}>{b.name}</option>
+            ))}
+          </select>
+        )}
+        <button
+          onClick={() => setShowDatePicker(!showDatePicker)}
+          className="px-3 py-2 border border-input rounded-lg text-sm hover:bg-muted"
+        >
+          {startDateFilter || endDateFilter ? '📅 กำหนดเวลา' : '📅 ช่วงเวลา'}
+        </button>
         {viewTab === 'all' && (
           <select value={workflowFilter} onChange={(e) => setWorkflowFilter(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm">
             <option value="">ทุก Workflow</option>
@@ -257,6 +380,40 @@ export default function ContractsPage() {
           </select>
         )}
       </div>
+
+      {/* Date Range Picker */}
+      {showDatePicker && (
+        <div className="flex gap-3 mb-4 p-4 bg-muted rounded-lg">
+          <div className="flex-1">
+            <label className="text-xs text-muted-foreground block mb-1">วันเริ่มต้น</label>
+            <input
+              type="date"
+              value={startDateFilter}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+            />
+          </div>
+          <div className="flex-1">
+            <label className="text-xs text-muted-foreground block mb-1">วันสิ้นสุด</label>
+            <input
+              type="date"
+              value={endDateFilter}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+            />
+          </div>
+          {(startDateFilter || endDateFilter) && (
+            <div className="flex items-end">
+              <button
+                onClick={() => { setStartDate(''); setEndDate(''); }}
+                className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
+              >
+                ล้าง
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {isError && (
         <div className="text-center py-10 rounded-xl border border-red-200">

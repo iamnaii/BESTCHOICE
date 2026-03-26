@@ -1,17 +1,21 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import ExcelJS from 'exceljs';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { compressImageForOcr } from '@/lib/compressImage';
 import { checkCardReaderStatus, readSmartCard, type SmartCardData } from '@/lib/cardReader';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useAuth } from '@/contexts/AuthContext';
 import { maskNationalId } from '@/utils/mask.util';
 import { THAI_NAME_PREFIXES, RELATIONSHIP_OPTIONS } from '@/lib/constants';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
+import { Card, CardContent } from '@/components/ui/card';
 import AddressForm, { AddressData, emptyAddress, serializeAddress } from '@/components/ui/AddressForm';
+import { Download } from 'lucide-react';
 import type { OcrResult } from '@/types/ocr';
 
 
@@ -30,6 +34,22 @@ interface Customer {
   overdueContracts: number;
   latestCreditStatus: string | null;
   latestCreditScore: number | null;
+}
+
+interface CustomerSummary {
+  totalCustomers: number;
+  withActiveContract: number;
+  withOverdue: number;
+  newThisMonth: number;
+}
+
+interface CustomersResponse {
+  data: Customer[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  summary: CustomerSummary;
 }
 
 interface ReferenceData {
@@ -68,9 +88,18 @@ const emptyForm = {
 export default function CustomersPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const isOwner = user?.role === 'OWNER';
+  const isOwnerOrManager = ['OWNER', 'BRANCH_MANAGER'].includes(user?.role ?? '');
+  const canViewSalary = ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'].includes(user?.role ?? '');
+
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const debouncedSearch = useDebounce(search);
+  const [contractStatusFilter, setContractStatusFilter] = useState('');
+  const [hasOverdueFilter, setHasOverdueFilter] = useState(false);
+  const [creditStatusFilter, setCreditStatusFilter] = useState('');
+  const [branchFilter, setBranchFilter] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [addressIdCard, setAddressIdCard] = useState<AddressData>(emptyAddress);
@@ -86,7 +115,7 @@ export default function CustomersPage() {
   // Smart Card reader state
   const [cardReaderLoading, setCardReaderLoading] = useState(false);
 
-  useEffect(() => { setPage(1); }, [debouncedSearch]);
+  useEffect(() => { setPage(1); }, [debouncedSearch, contractStatusFilter, hasOverdueFilter, creditStatusFilter, branchFilter]);
 
   // Sync current address when "same as ID card" is checked
   useEffect(() => {
@@ -95,15 +124,26 @@ export default function CustomersPage() {
     }
   }, [sameAddress, addressIdCard]);
 
-  const { data: result, isLoading } = useQuery<{ data: Customer[]; total: number; page: number; limit: number; totalPages: number }>({
-    queryKey: ['customers', debouncedSearch, page],
+  const { data: result, isLoading } = useQuery<CustomersResponse>({
+    queryKey: ['customers', debouncedSearch, page, contractStatusFilter, hasOverdueFilter, creditStatusFilter, branchFilter],
     queryFn: async () => {
       const params: Record<string, string> = {};
       if (debouncedSearch) params.search = debouncedSearch;
+      if (contractStatusFilter) params.contractStatus = contractStatusFilter;
+      if (hasOverdueFilter) params.hasOverdue = 'true';
+      if (creditStatusFilter) params.creditStatus = creditStatusFilter;
+      if (branchFilter) params.branchId = branchFilter;
       params.page = String(page);
       const { data } = await api.get('/customers', { params });
       return data;
     },
+  });
+
+  // Fetch branches (OWNER only)
+  const { data: branches = [] } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ['branches'],
+    queryFn: async () => (await api.get('/branches')).data,
+    enabled: !!isOwner,
   });
 
   const customers = result?.data ?? [];
@@ -328,6 +368,88 @@ export default function CustomersPage() {
 
   const navigateToCustomer = useCallback((id: string) => navigate(`/customers/${id}`), [navigate]);
 
+  const exportExcel = async () => {
+    try {
+      toast.loading('กำลังสร้างไฟล์ Excel...', { id: 'excel-export' });
+      const params: Record<string, string> = {};
+      if (debouncedSearch) params.search = debouncedSearch;
+      if (contractStatusFilter) params.contractStatus = contractStatusFilter;
+      if (hasOverdueFilter) params.hasOverdue = 'true';
+      if (creditStatusFilter) params.creditStatus = creditStatusFilter;
+      if (branchFilter) params.branchId = branchFilter;
+      params.limit = '10000';
+      const { data: allData } = await api.get<CustomersResponse>('/customers', { params });
+
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet('รายชื่อลูกค้า');
+
+      const baseCols: Partial<ExcelJS.Column>[] = [
+        { header: 'ชื่อ', key: 'name', width: 22 },
+        { header: 'ชื่อเล่น', key: 'nickname', width: 14 },
+        { header: 'เบอร์โทร', key: 'phone', width: 14 },
+        { header: 'อาชีพ', key: 'occupation', width: 18 },
+        { header: 'สัญญาทั้งหมด', key: 'totalContracts', width: 12 },
+        { header: 'สัญญา Active', key: 'activeContracts', width: 12 },
+        { header: 'สัญญาค้างชำระ', key: 'overdueContracts', width: 12 },
+        { header: 'สถานะเครดิต', key: 'creditStatus', width: 14 },
+        { header: 'คะแนนเครดิต', key: 'creditScore', width: 12 },
+        { header: 'วันที่เพิ่ม', key: 'createdAt', width: 14 },
+      ];
+
+      if (isOwnerOrManager) {
+        baseCols.push({ header: 'เลขบัตร ปชช.', key: 'nationalId', width: 18 });
+      }
+      if (canViewSalary) {
+        baseCols.push({ header: 'เงินเดือน', key: 'salary', width: 14 });
+      }
+
+      ws.columns = baseCols;
+
+      const headerRow = ws.getRow(1);
+      headerRow.font = { bold: true };
+      headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+
+      ws.addRows(
+        allData.data.map((c: Customer) => {
+          const row: Record<string, unknown> = {
+            name: c.name,
+            nickname: c.nickname || '-',
+            phone: c.phone,
+            occupation: c.occupation || '-',
+            totalContracts: c._count.contracts,
+            activeContracts: c.activeContracts,
+            overdueContracts: c.overdueContracts,
+            creditStatus: c.latestCreditStatus || '-',
+            creditScore: c.latestCreditScore != null ? `${c.latestCreditScore}/100` : '-',
+            createdAt: new Date(c.createdAt).toLocaleDateString('th-TH'),
+          };
+          if (isOwnerOrManager) {
+            row.nationalId = c.nationalId;
+          }
+          if (canViewSalary) {
+            row.salary = c.salary ? Number(c.salary) : '-';
+          }
+          return row;
+        }),
+      );
+
+      const buffer = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const now = new Date();
+      a.download = `รายชื่อลูกค้า_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success(`ดาวน์โหลดสำเร็จ (${allData.data.length} รายการ)`, { id: 'excel-export' });
+    } catch {
+      toast.error('ไม่สามารถสร้างไฟล์ Excel ได้', { id: 'excel-export' });
+    }
+  };
+
   const columns = useMemo(() => [
     {
       key: 'index',
@@ -357,13 +479,13 @@ export default function CustomersPage() {
       label: 'อาชีพ',
       render: (c: Customer) => <span className="text-sm">{c.occupation || '-'}</span>,
     },
-    {
+    ...(canViewSalary ? [{
       key: 'salary',
       label: 'เงินเดือน',
       render: (c: Customer) => (
         <span className="text-sm">{c.salary ? Number(c.salary).toLocaleString('th-TH') : '-'}</span>
       ),
-    },
+    }] : []),
     {
       key: 'contracts',
       label: 'สัญญา',
@@ -413,14 +535,102 @@ export default function CustomersPage() {
         title="ลูกค้า"
         subtitle={`ทั้งหมด ${result?.total ?? 0} ราย`}
         action={
-          <button onClick={() => { resetForm(); setIsModalOpen(true); }} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90">
-            + เพิ่มลูกค้า
-          </button>
+          <div className="flex gap-2">
+            <button onClick={exportExcel} className="inline-flex items-center gap-1.5 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700">
+              <Download className="w-4 h-4" />
+              ส่งออก Excel
+            </button>
+            <button onClick={() => { resetForm(); setIsModalOpen(true); }} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90">
+              + เพิ่มลูกค้า
+            </button>
+          </div>
         }
       />
 
-      <div className="mb-4">
-        <input type="text" placeholder="ค้นหาชื่อ, เบอร์โทร, เลขบัตร ปชช..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full max-w-md px-3 py-2 border border-input rounded-lg text-sm outline-none" />
+      {/* Summary Cards */}
+      {result?.summary && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6">
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-xs text-muted-foreground mb-1">ลูกค้าทั้งหมด</div>
+              <div className="text-xl font-bold">{result.summary.totalCustomers.toLocaleString()}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-xs text-muted-foreground mb-1">มีสัญญา Active</div>
+              <div className="text-xl font-bold text-green-600">{result.summary.withActiveContract.toLocaleString()}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-xs text-muted-foreground mb-1">ค้างชำระ</div>
+              <div className={`text-xl font-bold ${result.summary.withOverdue > 0 ? 'text-red-600' : 'text-muted-foreground'}`}>{result.summary.withOverdue.toLocaleString()}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-xs text-muted-foreground mb-1">เพิ่มเดือนนี้</div>
+              <div className="text-xl font-bold text-green-600">{result.summary.newThisMonth.toLocaleString()}</div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Filters */}
+      <div className="bg-card rounded-lg border p-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
+          <input
+            type="text"
+            placeholder="ค้นหาชื่อ, เบอร์โทร, เลขบัตร ปชช..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="px-3 py-2 border border-input rounded-lg text-sm outline-none"
+          />
+          <select
+            value={contractStatusFilter}
+            onChange={(e) => setContractStatusFilter(e.target.value)}
+            className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-none"
+          >
+            <option value="">ทุกสถานะสัญญา</option>
+            <option value="ACTIVE">มีสัญญา Active</option>
+            <option value="COMPLETED">ปิดสัญญาแล้ว</option>
+            <option value="DRAFT">ร่าง</option>
+          </select>
+          <select
+            value={creditStatusFilter}
+            onChange={(e) => setCreditStatusFilter(e.target.value)}
+            className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-none"
+          >
+            <option value="">ทุกสถานะเครดิต</option>
+            <option value="APPROVED">ผ่าน</option>
+            <option value="REJECTED">ไม่ผ่าน</option>
+            <option value="PENDING">รอตรวจ</option>
+            <option value="MANUAL_REVIEW">รอตรวจสอบด้วยตนเอง</option>
+          </select>
+          <button
+            onClick={() => setHasOverdueFilter(!hasOverdueFilter)}
+            className={`px-3 py-2 text-sm font-medium rounded-lg border transition-colors ${
+              hasOverdueFilter
+                ? 'bg-red-100 text-red-700 border-red-300'
+                : 'border-input hover:bg-accent'
+            }`}
+          >
+            ค้างชำระ
+          </button>
+        </div>
+        {isOwner && (
+          <select
+            value={branchFilter}
+            onChange={(e) => setBranchFilter(e.target.value)}
+            className="w-full md:w-64 px-3 py-2 border border-input rounded-lg text-sm bg-background outline-none"
+          >
+            <option value="">ทุกสาขา</option>
+            {branches.map((b) => (
+              <option key={b.id} value={b.id}>{b.name}</option>
+            ))}
+          </select>
+        )}
       </div>
 
       <DataTable

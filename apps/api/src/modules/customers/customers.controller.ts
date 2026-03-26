@@ -15,8 +15,20 @@ export class CustomersController {
     @Query('search') search?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('contractStatus') contractStatus?: string,
+    @Query('hasOverdue') hasOverdue?: string,
+    @Query('creditStatus') creditStatus?: string,
+    @Query('branchId') branchId?: string,
   ) {
-    return this.customersService.findAll(search, page ? parseInt(page) : 1, limit ? parseInt(limit) : 50);
+    return this.customersService.findAll(
+      search,
+      page ? parseInt(page) : 1,
+      limit ? parseInt(limit) : 50,
+      contractStatus,
+      hasOverdue === 'true',
+      creditStatus,
+      branchId,
+    );
   }
 
   @Get('search')

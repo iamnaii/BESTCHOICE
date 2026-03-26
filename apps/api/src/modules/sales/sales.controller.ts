@@ -16,16 +16,34 @@ export class SalesController {
     @Query('saleType') saleType?: string,
     @Query('branchId') branchId?: string,
     @Query('search') search?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('paymentMethod') paymentMethod?: string,
+    @Query('salespersonId') salespersonId?: string,
+    @Query('contractStatus') contractStatus?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @CurrentUser() user?: { id: string; role: string },
   ) {
     return this.salesService.findAll({
       saleType,
       branchId,
       search,
+      startDate,
+      endDate,
+      paymentMethod,
+      salespersonId,
+      contractStatus,
       page: page ? parseInt(page) : undefined,
       limit: limit ? parseInt(limit) : undefined,
+      userRole: user?.role,
     });
+  }
+
+  @Get('salespersons')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  getSalespersons(@CurrentUser() user: { id: string; role: string; branchId?: string }) {
+    return this.salesService.getSalespersons(user);
   }
 
   @Get('config')

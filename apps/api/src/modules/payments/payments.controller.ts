@@ -20,11 +20,12 @@ export class PaymentsController {
     @Query('date') date?: string,
     @Query('status') status?: string,
     @Query('search') search?: string,
+    @Query('dunningStage') dunningStage?: string,
     @CurrentUser() user?: { role: string; branchId: string | null },
   ) {
     // Enforce branch filtering for non-OWNER/ACCOUNTANT roles
     const effectiveBranchId = this.getEffectiveBranchId(branchId, user);
-    return this.paymentsService.getPendingPayments({ branchId: effectiveBranchId, date, status, search });
+    return this.paymentsService.getPendingPayments({ branchId: effectiveBranchId, date, status, search, dunningStage });
   }
 
   @Get('daily-summary')

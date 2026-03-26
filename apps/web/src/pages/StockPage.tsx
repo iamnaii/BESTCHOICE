@@ -329,10 +329,14 @@ export default function StockPage() {
   const handleExport = () => {
     const items = selectedIds.size > 0 ? listProducts.filter((p) => selectedIds.has(p.id)) : listProducts;
     if (items.length === 0) { toast.error('ไม่มีข้อมูลให้ส่งออก'); return; }
-    const headers = ['สินค้า', 'แบรนด์', 'รุ่น', 'IMEI/Serial', 'ประเภท', 'สี', 'ความจุ', 'ราคาทุน', 'ราคาขาย', 'สถานะ', 'สาขา'];
+    const headers = isManager
+      ? ['สินค้า', 'แบรนด์', 'รุ่น', 'IMEI/Serial', 'ประเภท', 'สี', 'ความจุ', 'ราคาทุน', 'ราคาขาย', 'สถานะ', 'สาขา']
+      : ['สินค้า', 'แบรนด์', 'รุ่น', 'IMEI/Serial', 'ประเภท', 'สี', 'ความจุ', 'ราคาขาย', 'สถานะ', 'สาขา'];
     const rows = items.map((p) => {
       const dp = p.prices?.find((pr) => pr.isDefault) || p.prices?.[0];
-      return [p.name, p.brand, p.model, p.imeiSerial || '', categoryLabels[p.category] || p.category, p.color || '', p.storage || '', Number(p.costPrice || 0).toLocaleString(), dp ? Number(dp.amount).toLocaleString() : '', statusLabels[p.status]?.label || p.status, p.branch.name];
+      return isManager
+        ? [p.name, p.brand, p.model, p.imeiSerial || '', categoryLabels[p.category] || p.category, p.color || '', p.storage || '', Number(p.costPrice || 0).toLocaleString(), dp ? Number(dp.amount).toLocaleString() : '', statusLabels[p.status]?.label || p.status, p.branch.name]
+        : [p.name, p.brand, p.model, p.imeiSerial || '', categoryLabels[p.category] || p.category, p.color || '', p.storage || '', dp ? Number(dp.amount).toLocaleString() : '', statusLabels[p.status]?.label || p.status, p.branch.name];
     });
     const esc = (c: unknown) => `"${String(c ?? '').replace(/"/g, '""')}"`;
     const csv = [headers, ...rows].map((r) => r.map(esc).join(',')).join('\n');
@@ -410,7 +414,7 @@ export default function StockPage() {
               ) : (
                 <span className="text-muted-foreground">-</span>
               )}
-              <div className="text-xs text-muted-foreground">ทุน: {parseFloat(p.costPrice).toLocaleString()} ฿</div>
+              {isManager && <div className="text-xs text-muted-foreground">ทุน: {parseFloat(p.costPrice).toLocaleString()} ฿</div>}
             </div>
             {isManager && (
               <button
@@ -762,34 +766,36 @@ export default function StockPage() {
             </div>
           </div>
 
-          {/* Row 5: Margin Overview */}
-          <div className="rounded-lg border p-5">
-            <SectionTitle>กำไรเฉลี่ย (Margin Overview) - สินค้าพร้อมขาย</SectionTitle>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <StatCard
-                label="มูลค่าทุนรวม"
-                value={`${dashboard.marginOverview.totalCost.toLocaleString()} ฿`}
-                accent="border-l-gray-400"
-              />
-              <StatCard
-                label="มูลค่าขายรวม"
-                value={`${dashboard.marginOverview.totalSell.toLocaleString()} ฿`}
-                accent="border-l-primary-500"
-              />
-              <StatCard
-                label="กำไรรวม (ถ้าขายหมด)"
-                value={`${dashboard.marginOverview.totalMargin.toLocaleString()} ฿`}
-                sub={`Margin ${dashboard.marginOverview.avgMarginPct}%`}
-                accent="border-l-green-500"
-              />
-              <StatCard
-                label="กำไรเฉลี่ย/ชิ้น"
-                value={`${dashboard.marginOverview.avgMarginPerUnit.toLocaleString()} ฿`}
-                sub={`จาก ${dashboard.marginOverview.itemsWithPrice} ชิ้นที่มีราคาขาย`}
-                accent="border-l-indigo-500"
-              />
+          {/* Row 5: Margin Overview — Owner/Manager only */}
+          {isManager && (
+            <div className="rounded-lg border p-5">
+              <SectionTitle>กำไรเฉลี่ย (Margin Overview) - สินค้าพร้อมขาย</SectionTitle>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <StatCard
+                  label="มูลค่าทุนรวม"
+                  value={`${dashboard.marginOverview.totalCost.toLocaleString()} ฿`}
+                  accent="border-l-gray-400"
+                />
+                <StatCard
+                  label="มูลค่าขายรวม"
+                  value={`${dashboard.marginOverview.totalSell.toLocaleString()} ฿`}
+                  accent="border-l-primary-500"
+                />
+                <StatCard
+                  label="กำไรรวม (ถ้าขายหมด)"
+                  value={`${dashboard.marginOverview.totalMargin.toLocaleString()} ฿`}
+                  sub={`Margin ${dashboard.marginOverview.avgMarginPct}%`}
+                  accent="border-l-green-500"
+                />
+                <StatCard
+                  label="กำไรเฉลี่ย/ชิ้น"
+                  value={`${dashboard.marginOverview.avgMarginPerUnit.toLocaleString()} ฿`}
+                  sub={`จาก ${dashboard.marginOverview.itemsWithPrice} ชิ้นที่มีราคาขาย`}
+                  accent="border-l-indigo-500"
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Row 7: Top Sellers + Slow Movers */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:gap-7.5">
@@ -832,7 +838,7 @@ export default function StockPage() {
                       }`}>{i + 1}</span>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-medium text-foreground truncate">{item.name}</div>
-                        <div className="text-xs text-muted-foreground">{(Number(item.costPrice) || 0).toLocaleString()} ฿</div>
+                        {isManager && <div className="text-xs text-muted-foreground">{(Number(item.costPrice) || 0).toLocaleString()} ฿</div>}
                       </div>
                       <span className={`text-sm font-bold ${item.days > 90 ? 'text-red-600' : item.days > 60 ? 'text-orange-600' : 'text-yellow-600'}`}>
                         {item.days} วัน

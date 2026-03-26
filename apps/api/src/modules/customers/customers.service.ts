@@ -7,7 +7,15 @@ import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer.dto';
 export class CustomersService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(search?: string, page = 1, limit = 50) {
+  async findAll(
+    search?: string,
+    page = 1,
+    limit = 50,
+    contractStatus?: string,
+    hasOverdue?: boolean,
+    creditStatus?: string,
+    branchId?: string,
+  ) {
     const where: Record<string, unknown> = { deletedAt: null };
 
     if (search) {
@@ -18,7 +26,21 @@ export class CustomersService {
       ];
     }
 
-    const [data, total] = await Promise.all([
+    // Contract status filters
+    if (hasOverdue) {
+      where.contracts = { some: { status: { in: ['OVERDUE', 'DEFAULT'] }, deletedAt: null } };
+    } else if (contractStatus) {
+      where.contracts = { some: { status: contractStatus, deletedAt: null } };
+    } else if (branchId) {
+      where.contracts = { some: { branchId, deletedAt: null } };
+    }
+
+    // Credit status filter
+    if (creditStatus) {
+      where.creditChecks = { some: { status: creditStatus } };
+    }
+
+    const [data, total, withActiveContract, withOverdue, newThisMonth] = await Promise.all([
       this.prisma.customer.findMany({
         where,
         orderBy: { createdAt: 'desc' },
@@ -47,6 +69,19 @@ export class CustomersService {
         },
       }),
       this.prisma.customer.count({ where }),
+      this.prisma.customer.count({
+        where: { deletedAt: null, contracts: { some: { status: 'ACTIVE', deletedAt: null } } },
+      }),
+      this.prisma.customer.count({
+        where: { deletedAt: null, contracts: { some: { status: { in: ['OVERDUE', 'DEFAULT'] }, deletedAt: null } } },
+      }),
+      (() => {
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        return this.prisma.customer.count({
+          where: { deletedAt: null, createdAt: { gte: startOfMonth } },
+        });
+      })(),
     ]);
 
     const enriched = data.map((c) => {
@@ -63,7 +98,16 @@ export class CustomersService {
       };
     });
 
-    return { data: enriched, total, page, limit, totalPages: Math.ceil(total / limit) };
+    const totalCustomers = await this.prisma.customer.count({ where: { deletedAt: null } });
+
+    const summary = {
+      totalCustomers,
+      withActiveContract,
+      withOverdue,
+      newThisMonth,
+    };
+
+    return { data: enriched, total, page, limit, totalPages: Math.ceil(total / limit), summary };
   }
 
   async findOne(id: string) {

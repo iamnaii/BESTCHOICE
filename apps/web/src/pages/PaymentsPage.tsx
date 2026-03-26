@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 import { compressImageForOcr } from '@/lib/compressImage';
 import { useDebounce } from '@/hooks/useDebounce';
 import PageHeader from '@/components/ui/PageHeader';
@@ -10,6 +11,9 @@ import Modal from '@/components/ui/Modal';
 import PaymentHistorySheet from '@/components/payment/PaymentHistorySheet';
 import ReceiptModal from '@/components/payment/ReceiptModal';
 import { toast } from 'sonner';
+
+// Dynamic import ExcelJS to avoid bundle bloat
+const initExcelJs = async () => import('exceljs');
 
 interface OcrPaymentSlipResult {
   amount: number | null;
@@ -73,8 +77,11 @@ const slipTypeLabels: Record<string, string> = {
 
 export default function PaymentsPage() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const isOwner = user?.role === 'OWNER';
   const [tab, setTab] = useState<'pending' | 'summary'>('pending');
   const [statusFilter, setStatusFilter] = useState('');
+  const [branchFilter, setBranchFilter] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearch = useDebounce(searchTerm, 400);
   const [summaryDate, setSummaryDate] = useState(new Date().toISOString().split('T')[0]);
@@ -112,13 +119,24 @@ export default function PaymentsPage() {
   const [advanceOcrLoading, setAdvanceOcrLoading] = useState(false);
   const [advanceSlipResult, setAdvanceSlipResult] = useState<OcrPaymentSlipResult | null>(null);
 
+  // Branches list for filter (OWNER only)
+  const { data: branches = [] } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ['branches'],
+    queryFn: async () => {
+      const { data } = await api.get('/branches');
+      return data;
+    },
+    enabled: isOwner,
+  });
+
   // Pending payments
   const { data: pendingPayments = [], isLoading: loadingPending } = useQuery<PendingPayment[]>({
-    queryKey: ['pending-payments', statusFilter, debouncedSearch],
+    queryKey: ['pending-payments', statusFilter, debouncedSearch, branchFilter],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (statusFilter) params.set('status', statusFilter);
       if (debouncedSearch) params.set('search', debouncedSearch);
+      if (branchFilter) params.set('branchId', branchFilter);
       const { data } = await api.get(`/payments/pending?${params}`);
       return data;
     },
@@ -191,6 +209,49 @@ export default function PaymentsPage() {
     },
     onError: (err: any) => toast.error(getErrorMessage(err)),
   });
+
+  // Pending summary totals
+  const pendingSummary = useMemo(() => ({
+    count: pendingPayments.length,
+    totalDue: pendingPayments.reduce((sum, p) => sum + parseFloat(p.amountDue) + parseFloat(p.lateFee) - parseFloat(p.amountPaid), 0),
+  }), [pendingPayments]);
+
+  // Excel export handler
+  const handleExport = async () => {
+    const ExcelJS = await initExcelJs();
+    const Workbook = ExcelJS.Workbook;
+    const wb = new Workbook();
+    const ws = wb.addWorksheet('รายการรอชำระ');
+
+    const headers = ['สัญญา', 'ลูกค้า', 'เบอร์โทร', 'งวดที่', 'ยอดค้าง', 'ค่าปรับ', 'รวมทั้งสิ้น', 'สถานะ', 'สาขา'];
+    ws.addRow(headers);
+
+    pendingPayments.forEach((p) => {
+      const outstanding = parseFloat(p.amountDue) + parseFloat(p.lateFee) - parseFloat(p.amountPaid);
+      ws.addRow([
+        p.contract.contractNumber,
+        p.contract.customer.name,
+        p.contract.customer.phone,
+        p.installmentNo,
+        parseFloat(p.amountDue).toLocaleString(),
+        parseFloat(p.lateFee).toLocaleString(),
+        outstanding.toLocaleString(),
+        paymentStatusLabels[p.status]?.label || p.status,
+        p.contract.branch.name,
+      ]);
+    });
+
+    ws.columns.forEach((col) => { col.width = 15; });
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pending-payments-${new Date().toISOString().split('T')[0]}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success('ส่งออก Excel สำเร็จ');
+  };
 
   // Batch helpers
   const toggleSelect = useCallback((id: string) => {
@@ -433,7 +494,32 @@ export default function PaymentsPage() {
       {/* Pending Tab */}
       {tab === 'pending' && (
         <div>
-          <div className="flex gap-3 mb-4">
+          {/* Summary Cards */}
+          {pendingPayments.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <Card>
+                <CardContent className="p-4">
+                  <div className="text-xs text-muted-foreground mb-1">รายการรอชำระ</div>
+                  <div className="text-2xl font-bold">{pendingSummary.count}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-4">
+                  <div className="text-xs text-muted-foreground mb-1">ยอดรอชำระรวม</div>
+                  <div className="text-2xl font-bold text-red-600">{pendingSummary.totalDue.toLocaleString()} ฿</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-4">
+                  <button onClick={handleExport} className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
+                    📊 Export Excel
+                  </button>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          <div className="flex gap-3 mb-4 flex-wrap">
             <input
               type="text"
               value={searchTerm}
@@ -447,6 +533,14 @@ export default function PaymentsPage() {
               <option value="OVERDUE">เกินกำหนด</option>
               <option value="PARTIALLY_PAID">ชำระบางส่วน</option>
             </select>
+            {isOwner && (
+              <select value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm">
+                <option value="">ทุกสาขา</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+            )}
           </div>
 
           {loadingPending ? (

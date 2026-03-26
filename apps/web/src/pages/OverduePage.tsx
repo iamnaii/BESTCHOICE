@@ -2,6 +2,8 @@ import { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
+import { useDebounce } from '@/hooks/useDebounce';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import { Card, CardContent } from '@/components/ui/card';
@@ -40,15 +42,35 @@ interface TimelineEvent {
 export default function OverduePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const isOwnerOrManager = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
+  const isOwner = user?.role === 'OWNER';
   const [filter, setFilter] = useState<'OVERDUE' | 'all'>('OVERDUE');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [branchFilter, setBranchFilter] = useState('');
+  const [dunningFilter, setDunningFilter] = useState('');
+  const debouncedSearch = useDebounce(searchTerm);
   const [timelineContractId, setTimelineContractId] = useState<string | null>(null);
   const [callLogForm, setCallLogForm] = useState({ result: 'NO_ANSWER', notes: '' });
 
+  // Branches list for filter (OWNER only)
+  const { data: branches = [] } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ['branches'],
+    queryFn: async () => {
+      const { data } = await api.get('/branches');
+      return data;
+    },
+    enabled: isOwner,
+  });
+
   const { data: overduePayments = [], isLoading } = useQuery<OverduePayment[]>({
-    queryKey: ['overdue-payments', filter],
+    queryKey: ['overdue-payments', filter, debouncedSearch, branchFilter, dunningFilter],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (filter !== 'all') params.set('status', filter);
+      if (debouncedSearch) params.set('search', debouncedSearch);
+      if (branchFilter) params.set('branchId', branchFilter);
+      if (dunningFilter) params.set('dunningStage', dunningFilter);
       const { data } = await api.get(`/payments/pending?${params}`);
       return data;
     },
@@ -204,29 +226,31 @@ export default function OverduePage() {
         title="ค่าปรับ & ค้างชำระ"
         subtitle="ระบบคำนวณค่าปรับล่าช้าและติดตามการค้างชำระ"
         action={
-          <div className="flex gap-2">
-            <button
-              onClick={() => calcLateFeeMutation.mutate()}
-              disabled={calcLateFeeMutation.isPending}
-              className="px-3 py-2 text-sm border border-input rounded-lg hover:bg-muted disabled:opacity-50"
-            >
-              {calcLateFeeMutation.isPending ? 'กำลัง...' : 'คำนวณค่าปรับ'}
-            </button>
-            <button
-              onClick={() => updateStatusMutation.mutate()}
-              disabled={updateStatusMutation.isPending}
-              className="px-3 py-2 text-sm border border-input rounded-lg hover:bg-muted disabled:opacity-50"
-            >
-              {updateStatusMutation.isPending ? 'กำลัง...' : 'อัปเดตสถานะ'}
-            </button>
-            <button
-              onClick={() => runCronMutation.mutate()}
-              disabled={runCronMutation.isPending}
-              className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 disabled:opacity-50"
-            >
-              {runCronMutation.isPending ? 'กำลังคำนวณ...' : 'คำนวณค่าปรับ'}
-            </button>
-          </div>
+          isOwnerOrManager && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => calcLateFeeMutation.mutate()}
+                disabled={calcLateFeeMutation.isPending}
+                className="px-3 py-2 text-sm border border-input rounded-lg hover:bg-muted disabled:opacity-50"
+              >
+                {calcLateFeeMutation.isPending ? 'กำลัง...' : 'คำนวณค่าปรับ'}
+              </button>
+              <button
+                onClick={() => updateStatusMutation.mutate()}
+                disabled={updateStatusMutation.isPending}
+                className="px-3 py-2 text-sm border border-input rounded-lg hover:bg-muted disabled:opacity-50"
+              >
+                {updateStatusMutation.isPending ? 'กำลัง...' : 'อัปเดตสถานะ'}
+              </button>
+              <button
+                onClick={() => runCronMutation.mutate()}
+                disabled={runCronMutation.isPending}
+                className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                {runCronMutation.isPending ? 'กำลังคำนวณ...' : 'คำนวณค่าปรับ'}
+              </button>
+            </div>
+          )
         }
       />
 
@@ -290,7 +314,14 @@ export default function OverduePage() {
         </div>
       </div>
 
-      <div className="flex gap-3 mb-4">
+      <div className="flex gap-3 mb-4 flex-wrap">
+        <input
+          type="text"
+          placeholder="ค้นหาเลขสัญญา, ชื่อลูกค้า..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="px-3 py-2 border border-input rounded-lg text-sm min-w-[250px] focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background focus:border-transparent"
+        />
         <select
           value={filter}
           onChange={(e) => setFilter(e.target.value as 'OVERDUE' | 'all')}
@@ -298,6 +329,30 @@ export default function OverduePage() {
         >
           <option value="OVERDUE">เฉพาะเกินกำหนด</option>
           <option value="all">ทั้งหมด</option>
+        </select>
+        {isOwner && (
+          <select
+            value={branchFilter}
+            onChange={(e) => setBranchFilter(e.target.value)}
+            className="px-3 py-2 border border-input rounded-lg text-sm"
+          >
+            <option value="">ทุกสาขา</option>
+            {branches.map((b) => (
+              <option key={b.id} value={b.id}>{b.name}</option>
+            ))}
+          </select>
+        )}
+        <select
+          value={dunningFilter}
+          onChange={(e) => setDunningFilter(e.target.value)}
+          className="px-3 py-2 border border-input rounded-lg text-sm"
+        >
+          <option value="">ทุกระดับติดตาม</option>
+          <option value="NONE">ปกติ</option>
+          <option value="REMINDER">แจ้งเตือน (1-7 วัน)</option>
+          <option value="NOTICE">แจ้งค้างชำระ (8-30 วัน)</option>
+          <option value="FINAL_WARNING">เตือนสุดท้าย (31-60 วัน)</option>
+          <option value="LEGAL_ACTION">ดำเนินคดี (&gt;60 วัน)</option>
         </select>
       </div>
 

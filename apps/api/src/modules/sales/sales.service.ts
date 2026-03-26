@@ -10,21 +10,55 @@ import { generateContractNumber, generateSaleNumber } from '../../utils/sequence
 export class SalesService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(filters: { saleType?: string; branchId?: string; search?: string; page?: number; limit?: number }) {
-    const { saleType, branchId, search, page = 1, limit = 50 } = filters;
-    const where: Record<string, unknown> = { deletedAt: null };
+  async findAll(filters: {
+    saleType?: string;
+    branchId?: string;
+    search?: string;
+    startDate?: string;
+    endDate?: string;
+    paymentMethod?: string;
+    salespersonId?: string;
+    contractStatus?: string;
+    page?: number;
+    limit?: number;
+    userRole?: string;
+  }) {
+    const { saleType, branchId, search, startDate, endDate, paymentMethod, salespersonId, contractStatus, page = 1, limit = 50, userRole } = filters;
+    const where: Record<string, unknown> = {};
 
     if (saleType) where.saleType = saleType;
     if (branchId) where.branchId = branchId;
+    if (paymentMethod) where.paymentMethod = paymentMethod;
+    if (salespersonId) where.salespersonId = salespersonId;
+    if (contractStatus) where.contract = { status: contractStatus };
+
+    // Date range filter
+    if (startDate || endDate) {
+      const dateFilter: Record<string, Date> = {};
+      if (startDate) {
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        dateFilter.gte = start;
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        dateFilter.lte = end;
+      }
+      where.createdAt = dateFilter;
+    }
+
     if (search) {
       where.OR = [
         { saleNumber: { contains: search, mode: 'insensitive' } },
         { customer: { name: { contains: search, mode: 'insensitive' } } },
         { product: { name: { contains: search, mode: 'insensitive' } } },
+        { financeCompany: { contains: search, mode: 'insensitive' } },
+        { financeRefNumber: { contains: search, mode: 'insensitive' } },
       ];
     }
 
-    const [data, total] = await Promise.all([
+    const [data, total, agg, groupBySaleType] = await Promise.all([
       this.prisma.sale.findMany({
         where,
         orderBy: { createdAt: 'desc' },
@@ -32,16 +66,72 @@ export class SalesService {
         take: limit,
         include: {
           customer: { select: { id: true, name: true, phone: true } },
-          product: { select: { id: true, name: true, brand: true, model: true, imeiSerial: true, serialNumber: true } },
+          product: { select: { id: true, name: true, brand: true, model: true, imeiSerial: true, serialNumber: true, costPrice: true } },
           branch: { select: { id: true, name: true } },
           salesperson: { select: { id: true, name: true } },
           contract: { select: { id: true, contractNumber: true, status: true, monthlyPayment: true, totalMonths: true } },
         },
       }),
       this.prisma.sale.count({ where }),
+      this.prisma.sale.aggregate({
+        where,
+        _sum: { netAmount: true, discount: true },
+      }),
+      this.prisma.sale.groupBy({
+        by: ['saleType'],
+        where,
+        _count: true,
+        _sum: { netAmount: true },
+      }),
     ]);
 
-    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+    // Build summary from aggregate + groupBy
+    const getGroup = (type: string) => groupBySaleType.find(g => g.saleType === type);
+    let totalProfit = 0;
+
+    if (userRole === 'OWNER') {
+      const salesWithCost = await this.prisma.sale.findMany({
+        where,
+        select: { netAmount: true, product: { select: { costPrice: true } } },
+      });
+      totalProfit = salesWithCost.reduce(
+        (sum, s) => sum + Number(s.netAmount) - Number(s.product.costPrice || 0), 0,
+      );
+    }
+
+    const summary = {
+      totalAmount: Number(agg._sum.netAmount || 0),
+      totalDiscount: Number(agg._sum.discount || 0),
+      totalProfit,
+      cashCount: getGroup('CASH')?._count || 0,
+      cashAmount: Number(getGroup('CASH')?._sum.netAmount || 0),
+      installmentCount: getGroup('INSTALLMENT')?._count || 0,
+      installmentAmount: Number(getGroup('INSTALLMENT')?._sum.netAmount || 0),
+      financeCount: getGroup('EXTERNAL_FINANCE')?._count || 0,
+      financeAmount: Number(getGroup('EXTERNAL_FINANCE')?._sum.netAmount || 0),
+    };
+
+    // Strip costPrice from response for non-OWNER roles
+    const responseData = userRole === 'OWNER'
+      ? data
+      : data.map(s => {
+          const { costPrice: _, ...productWithoutCost } = s.product;
+          return { ...s, product: productWithoutCost };
+        });
+
+    return { data: responseData, total, page, limit, totalPages: Math.ceil(total / limit), summary };
+  }
+
+  async getSalespersons(user: { role: string; branchId?: string }) {
+    const where: Record<string, unknown> = { isActive: true, deletedAt: null };
+    if (user.role === 'BRANCH_MANAGER' && user.branchId) {
+      where.branchId = user.branchId;
+    }
+    return this.prisma.user.findMany({
+      where,
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
   }
 
   async findOne(id: string) {

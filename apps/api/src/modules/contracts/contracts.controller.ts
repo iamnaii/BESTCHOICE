@@ -30,6 +30,8 @@ export class ContractsController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('salespersonId') salespersonId?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
     @CurrentUser() user?: { id: string; role: string; branchId: string | null },
   ) {
     const parsedPage = page ? parseInt(page, 10) : undefined;
@@ -41,7 +43,7 @@ export class ContractsController {
       : (user?.branchId || branchId);
 
     return this.contractsService.findAll({
-      status, workflowStatus, branchId: effectiveBranchId, customerId, search, salespersonId,
+      status, workflowStatus, branchId: effectiveBranchId, customerId, search, salespersonId, startDate, endDate,
       page: parsedPage && !isNaN(parsedPage) ? parsedPage : undefined,
       limit: parsedLimit && !isNaN(parsedLimit) ? parsedLimit : undefined,
     });

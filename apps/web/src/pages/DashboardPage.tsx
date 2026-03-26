@@ -215,6 +215,7 @@ export default function DashboardPage() {
   const { data: revenue, isError: revenueError, refetch: refetchRevenue } = useQuery<MonthlyRevenue>({
     queryKey: ['dashboard-revenue'],
     queryFn: async () => (await api.get('/dashboard/monthly-revenue')).data,
+    enabled: user?.role !== 'SALES',
     staleTime: dashboardStaleTime,
   });
 
@@ -227,6 +228,7 @@ export default function DashboardPage() {
   const { data: staffPerf, isError: staffError, refetch: refetchStaff } = useQuery<StaffPerformance>({
     queryKey: ['dashboard-staff'],
     queryFn: async () => (await api.get('/dashboard/staff-performance')).data,
+    enabled: user?.role === 'OWNER',
     staleTime: dashboardStaleTime,
   });
 
@@ -318,56 +320,59 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Monthly Revenue */}
+        {/* Monthly Revenue + Financial Summary — lg:col-span-7 */}
         <div className="lg:col-span-7 flex flex-col gap-5 lg:gap-7">
-          <Card>
-            <CardHeader>
-              <CardTitle>รายได้เดือนนี้</CardTitle>
-              <CardToolbar>
-                {revenue && (
-                  <span className="text-2xs text-muted-foreground bg-muted px-2.5 py-1 rounded-md font-medium">
-                    {revenue.paymentCount} รายการ
-                  </span>
+          {/* Monthly Revenue — OWNER/BRANCH_MANAGER/ACCOUNTANT only */}
+          {user?.role !== 'SALES' && (
+            <Card>
+              <CardHeader>
+                <CardTitle>รายได้เดือนนี้</CardTitle>
+                <CardToolbar>
+                  {revenue && (
+                    <span className="text-2xs text-muted-foreground bg-muted px-2.5 py-1 rounded-md font-medium">
+                      {revenue.paymentCount} รายการ
+                    </span>
+                  )}
+                </CardToolbar>
+              </CardHeader>
+              <CardContent className="p-0">
+                {revenueError ? (
+                  <ErrorBlock message="โหลดข้อมูลรายได้ไม่สำเร็จ" onRetry={() => refetchRevenue()} />
+                ) : revenue ? (
+                  <div className="divide-y divide-border/50">
+                    <div className="flex items-center gap-4 px-5 py-3.5">
+                      <div className="w-1 h-8 rounded-full bg-blue-500" />
+                      <div className="flex-1">
+                        <div className="text-sm font-medium text-foreground">ยอดชำระรวม</div>
+                        <div className="text-2xs text-muted-foreground">รับชำระทั้งเดือน</div>
+                      </div>
+                      <div className="text-sm font-semibold text-foreground">{revenue.totalPayments.toLocaleString()} ฿</div>
+                    </div>
+                    <div className="flex items-center gap-4 px-5 py-3.5">
+                      <div className="w-1 h-8 rounded-full bg-green-500" />
+                      <div className="flex-1">
+                        <div className="text-sm font-medium text-foreground">ดอกเบี้ยรับ</div>
+                        <div className="text-2xs text-muted-foreground">ส่วนดอกเบี้ยจากค่างวด</div>
+                      </div>
+                      <div className="text-sm font-semibold text-success">{revenue.interestIncome.toLocaleString()} ฿</div>
+                    </div>
+                    <div className="flex items-center gap-4 px-5 py-3.5">
+                      <div className="w-1 h-8 rounded-full bg-yellow-500" />
+                      <div className="flex-1">
+                        <div className="text-sm font-medium text-foreground">ค่าปรับ</div>
+                        <div className="text-2xs text-muted-foreground">ค่าปรับล่าช้าสะสม</div>
+                      </div>
+                      <div className="text-sm font-semibold text-warning">{revenue.lateFeeIncome.toLocaleString()} ฿</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center text-muted-foreground py-8 text-sm">กำลังโหลด...</div>
                 )}
-              </CardToolbar>
-            </CardHeader>
-            <CardContent className="p-0">
-              {revenueError ? (
-                <ErrorBlock message="โหลดข้อมูลรายได้ไม่สำเร็จ" onRetry={() => refetchRevenue()} />
-              ) : revenue ? (
-                <div className="divide-y divide-border/50">
-                  <div className="flex items-center gap-4 px-5 py-3.5">
-                    <div className="w-1 h-8 rounded-full bg-blue-500" />
-                    <div className="flex-1">
-                      <div className="text-sm font-medium text-foreground">ยอดชำระรวม</div>
-                      <div className="text-2xs text-muted-foreground">รับชำระทั้งเดือน</div>
-                    </div>
-                    <div className="text-sm font-semibold text-foreground">{revenue.totalPayments.toLocaleString()} ฿</div>
-                  </div>
-                  <div className="flex items-center gap-4 px-5 py-3.5">
-                    <div className="w-1 h-8 rounded-full bg-green-500" />
-                    <div className="flex-1">
-                      <div className="text-sm font-medium text-foreground">ดอกเบี้ยรับ</div>
-                      <div className="text-2xs text-muted-foreground">ส่วนดอกเบี้ยจากค่างวด</div>
-                    </div>
-                    <div className="text-sm font-semibold text-success">{revenue.interestIncome.toLocaleString()} ฿</div>
-                  </div>
-                  <div className="flex items-center gap-4 px-5 py-3.5">
-                    <div className="w-1 h-8 rounded-full bg-yellow-500" />
-                    <div className="flex-1">
-                      <div className="text-sm font-medium text-foreground">ค่าปรับ</div>
-                      <div className="text-2xs text-muted-foreground">ค่าปรับล่าช้าสะสม</div>
-                    </div>
-                    <div className="text-sm font-semibold text-warning">{revenue.lateFeeIncome.toLocaleString()} ฿</div>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center text-muted-foreground py-8 text-sm">กำลังโหลด...</div>
-              )}
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
 
-          {/* Financial Summary (existing) */}
+          {/* Financial Summary */}
           {kpis && (
             <Card>
               <CardHeader>
@@ -472,8 +477,8 @@ export default function DashboardPage() {
         </CardContent>
       </Card>}
 
-      {/* ═══ Staff Performance (Tabs) — hide for SALES ═══ */}
-      {user?.role !== 'SALES' && <Card>
+      {/* ═══ Staff Performance (Tabs) — OWNER only ═══ */}
+      {user?.role === 'OWNER' && <Card>
         <CardHeader>
           <CardTitle>กำกับพนักงาน</CardTitle>
           <CardToolbar>

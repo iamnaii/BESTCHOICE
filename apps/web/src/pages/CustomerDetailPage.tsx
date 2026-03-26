@@ -45,6 +45,7 @@ interface CustomerDetail {
   workplace: string | null;
   addressWork: string | null;
   references: ReferenceData[] | null;
+  documents: string[] | null;
   createdAt: string;
   contracts: {
     id: string;
@@ -99,6 +100,26 @@ const creditStatusLabels: Record<string, { label: string; className: string }> =
   MANUAL_REVIEW: { label: 'ต้องตรวจเพิ่ม', className: 'bg-amber-100 text-amber-700' },
 };
 
+interface AuditLog {
+  id: string;
+  action: string;
+  entity: string;
+  entityId: string;
+  oldValue: any;
+  newValue: any;
+  user: { id: string; name: string; email: string };
+  createdAt: string;
+}
+
+const actionLabels: Record<string, string> = {
+  CREATE: 'เพิ่มข้อมูล',
+  UPDATE: 'แก้ไขข้อมูล',
+  DELETE: 'ลบข้อมูล',
+  EXCHANGE: 'เปลี่ยนเครื่อง',
+  REPOSSESSION: 'ยึดคืน',
+  'CREDIT_CHECK': 'ตรวจสอบเครดิต',
+};
+
 
 export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -107,6 +128,7 @@ export default function CustomerDetailPage() {
   const { user } = useAuth();
 
   const creditFileRef = useRef<HTMLInputElement>(null);
+  const docFileRef = useRef<HTMLInputElement>(null);
   const [creditBankName, setCreditBankName] = useState('');
 
   // Edit customer state
@@ -265,6 +287,54 @@ export default function CustomerDetailPage() {
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
+  const uploadDocumentMutation = useMutation({
+    mutationFn: async (files: FileList) => {
+      for (const file of Array.from(files)) {
+        if (file.size > 10 * 1024 * 1024) {
+          throw new Error('ไฟล์ขนาดใหญ่เกิน 10 MB');
+        }
+        const reader = new FileReader();
+        const fileUrl = await new Promise<string>((resolve, reject) => {
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = () => reject(new Error('ไม่สามารถอ่านไฟล์ได้'));
+          reader.readAsDataURL(file);
+        });
+        await api.post(`/customers/${id}/documents`, {
+          fileName: file.name,
+          fileUrl,
+          mimeType: file.type,
+          fileSize: file.size,
+        });
+      }
+    },
+    onSuccess: () => {
+      toast.success('อัปโหลดเอกสารสำเร็จ');
+      queryClient.invalidateQueries({ queryKey: ['customer', id] });
+      if (docFileRef.current) docFileRef.current.value = '';
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const deleteDocumentMutation = useMutation({
+    mutationFn: async (fileUrl: string) => {
+      await api.delete(`/customers/${id}/documents`, { data: { fileUrl } });
+    },
+    onSuccess: () => {
+      toast.success('ลบเอกสารสำเร็จ');
+      queryClient.invalidateQueries({ queryKey: ['customer', id] });
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const { data: activityLogs = { data: [] } } = useQuery({
+    queryKey: ['customer-activity', id],
+    queryFn: async () => {
+      const { data } = await api.get(`/audit/logs?entity=customers&entityId=${id}&limit=20`);
+      return data;
+    },
+    enabled: user?.role === 'OWNER',
+  });
+
   if (isLoading || !customer) {
     return <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>;
   }
@@ -415,6 +485,60 @@ export default function CustomerDetailPage() {
         </CardContent>
       </Card>
 
+      {/* Documents */}
+      {canEdit && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>เอกสาร</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {/* Upload section */}
+            <div className="mb-4">
+              <label className="block text-xs text-muted-foreground mb-2">อัปโหลดเอกสาร (รูป/PDF ไม่เกิน 10MB)</label>
+              <input
+                ref={docFileRef}
+                type="file"
+                accept="image/*,.pdf"
+                multiple
+                onChange={(e) => e.target.files && uploadDocumentMutation.mutate(e.target.files)}
+                disabled={uploadDocumentMutation.isPending}
+                className="w-full text-sm text-muted-foreground file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary-50 file:text-primary-700"
+              />
+              {uploadDocumentMutation.isPending && <div className="text-sm text-primary mt-2">กำลังอัปโหลด...</div>}
+            </div>
+
+            {/* Document list */}
+            {customer.documents && customer.documents.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {customer.documents.map((docUrl, idx) => {
+                  const isImage = docUrl.startsWith('data:image');
+                  const isPdf = docUrl.startsWith('data:application/pdf');
+                  return (
+                    <div key={idx} className="border rounded-lg p-3 flex items-start gap-3">
+                      <div className="flex-1 min-w-0">
+                        {isImage && <img src={docUrl} alt={`doc-${idx}`} className="w-full h-24 object-cover rounded" />}
+                        {isPdf && <div className="bg-red-50 text-red-700 text-xs font-medium px-2 py-1 rounded">PDF</div>}
+                      </div>
+                      {canEdit && (
+                        <button
+                          onClick={() => deleteDocumentMutation.mutate(docUrl)}
+                          disabled={deleteDocumentMutation.isPending}
+                          className="text-xs text-red-600 hover:text-red-700 disabled:opacity-50"
+                        >
+                          ลบ
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-6 text-sm text-muted-foreground">ยังไม่มีเอกสาร</div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Credit Check */}
       <Card className="mb-6">
         <CardHeader>
@@ -482,10 +606,44 @@ export default function CustomerDetailPage() {
       </Card>
 
       {/* Contracts */}
-      <div>
+      <div className="mb-6">
         <h2 className="text-lg font-semibold text-foreground mb-3">สัญญาทั้งหมด ({customer.contracts.length})</h2>
         <DataTable columns={contractColumns} data={customer.contracts} emptyMessage="ยังไม่มีสัญญา" />
       </div>
+
+      {/* Activity Timeline (OWNER only) */}
+      {user?.role === 'OWNER' && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>ประวัติการดำเนินการ</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {activityLogs.data && activityLogs.data.length > 0 ? (
+              <div className="space-y-3">
+                {activityLogs.data.map((log: AuditLog) => (
+                  <div key={log.id} className="border-l-2 border-primary pl-4 py-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-medium px-2 py-0.5 rounded bg-primary-50 text-primary-700">
+                            {actionLabels[log.action] || log.action}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(log.createdAt).toLocaleDateString('th-TH')} {new Date(log.createdAt).toLocaleTimeString('th-TH')}
+                          </span>
+                        </div>
+                        <div className="text-sm text-foreground">โดย: {log.user.name}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-6 text-sm text-muted-foreground">ยังไม่มีประวัติการดำเนินการ</div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Edit Customer Modal */}
       <Modal isOpen={showEditModal} onClose={() => setShowEditModal(false)} title="แก้ไขข้อมูลลูกค้า" size="lg">

@@ -51,6 +51,7 @@ export class AuditService {
     page?: number;
     limit?: number;
     search?: string;
+    entityId?: string;
   }) {
     const page = filters.page || 1;
     const limit = Math.min(filters.limit || 50, 100);
@@ -59,6 +60,7 @@ export class AuditService {
     if (filters.userId) where.userId = filters.userId;
     if (filters.entity) where.entity = { contains: filters.entity, mode: 'insensitive' };
     if (filters.action) where.action = { contains: filters.action, mode: 'insensitive' };
+    if (filters.entityId) where.entityId = filters.entityId;
     if (filters.from || filters.to) {
       where.createdAt = {
         ...(filters.from ? { gte: new Date(filters.from) } : {}),

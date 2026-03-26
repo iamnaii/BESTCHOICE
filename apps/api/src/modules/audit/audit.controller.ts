@@ -33,6 +33,7 @@ export class AuditController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('search') search?: string,
+    @Query('entityId') entityId?: string,
   ) {
     return this.auditService.getAuditLogs({
       userId,
@@ -43,6 +44,7 @@ export class AuditController {
       page: page ? parseInt(page) : undefined,
       limit: limit ? parseInt(limit) : undefined,
       search,
+      entityId,
     });
   }
 

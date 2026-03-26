@@ -15,7 +15,7 @@ import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { Card, CardContent } from '@/components/ui/card';
 import AddressForm, { AddressData, emptyAddress, serializeAddress } from '@/components/ui/AddressForm';
-import { Download } from 'lucide-react';
+import { Download, ChevronUp, ChevronDown } from 'lucide-react';
 import type { OcrResult } from '@/types/ocr';
 
 
@@ -100,6 +100,8 @@ export default function CustomersPage() {
   const [hasOverdueFilter, setHasOverdueFilter] = useState(false);
   const [creditStatusFilter, setCreditStatusFilter] = useState('');
   const [branchFilter, setBranchFilter] = useState('');
+  const [sortBy, setSortBy] = useState('');
+  const [sortOrder, setSortOrder] = useState('asc');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [addressIdCard, setAddressIdCard] = useState<AddressData>(emptyAddress);
@@ -115,7 +117,7 @@ export default function CustomersPage() {
   // Smart Card reader state
   const [cardReaderLoading, setCardReaderLoading] = useState(false);
 
-  useEffect(() => { setPage(1); }, [debouncedSearch, contractStatusFilter, hasOverdueFilter, creditStatusFilter, branchFilter]);
+  useEffect(() => { setPage(1); }, [debouncedSearch, contractStatusFilter, hasOverdueFilter, creditStatusFilter, branchFilter, sortBy, sortOrder]);
 
   // Sync current address when "same as ID card" is checked
   useEffect(() => {
@@ -125,7 +127,7 @@ export default function CustomersPage() {
   }, [sameAddress, addressIdCard]);
 
   const { data: result, isLoading } = useQuery<CustomersResponse>({
-    queryKey: ['customers', debouncedSearch, page, contractStatusFilter, hasOverdueFilter, creditStatusFilter, branchFilter],
+    queryKey: ['customers', debouncedSearch, page, contractStatusFilter, hasOverdueFilter, creditStatusFilter, branchFilter, sortBy, sortOrder],
     queryFn: async () => {
       const params: Record<string, string> = {};
       if (debouncedSearch) params.search = debouncedSearch;
@@ -133,6 +135,8 @@ export default function CustomersPage() {
       if (hasOverdueFilter) params.hasOverdue = 'true';
       if (creditStatusFilter) params.creditStatus = creditStatusFilter;
       if (branchFilter) params.branchId = branchFilter;
+      if (sortBy) params.sortBy = sortBy;
+      if (sortBy) params.sortOrder = sortOrder;
       params.page = String(page);
       const { data } = await api.get('/customers', { params });
       return data;
@@ -630,6 +634,40 @@ export default function CustomersPage() {
               <option key={b.id} value={b.id}>{b.name}</option>
             ))}
           </select>
+        )}
+      </div>
+
+      {/* Sorting Controls */}
+      <div className="bg-card rounded-lg border p-3 mb-4 flex items-center gap-2 text-sm">
+        <span className="text-muted-foreground">เรียงลำดับ:</span>
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value)}
+          className="px-2 py-1 border border-input rounded text-sm bg-background"
+        >
+          <option value="">เริ่มต้น (วันที่เพิ่มล่าสุด)</option>
+          <option value="name">ชื่อ</option>
+          <option value="createdAt">วันที่เพิ่ม</option>
+          <option value="contractCount">จำนวนสัญญา</option>
+          <option value="creditScore">เครดิตสกอร์</option>
+        </select>
+        {sortBy && (
+          <button
+            onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+            className="px-2 py-1 border border-input rounded text-xs font-medium hover:bg-accent flex items-center gap-1"
+          >
+            {sortOrder === 'asc' ? (
+              <>
+                <ChevronUp className="w-3.5 h-3.5" />
+                น้อยไปมาก
+              </>
+            ) : (
+              <>
+                <ChevronDown className="w-3.5 h-3.5" />
+                มากไปน้อย
+              </>
+            )}
+          </button>
         )}
       </div>
 

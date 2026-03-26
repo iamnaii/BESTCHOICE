@@ -19,6 +19,8 @@ export class CustomersController {
     @Query('hasOverdue') hasOverdue?: string,
     @Query('creditStatus') creditStatus?: string,
     @Query('branchId') branchId?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortOrder') sortOrder?: string,
   ) {
     return this.customersService.findAll(
       search,
@@ -28,6 +30,8 @@ export class CustomersController {
       hasOverdue === 'true',
       creditStatus,
       branchId,
+      sortBy,
+      sortOrder,
     );
   }
 
@@ -67,5 +71,20 @@ export class CustomersController {
   @Roles('OWNER', 'BRANCH_MANAGER')
   remove(@Param('id') id: string) {
     return this.customersService.remove(id);
+  }
+
+  @Post(':id/documents')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
+  uploadDocument(
+    @Param('id') id: string,
+    @Body() dto: { fileName: string; fileUrl: string; mimeType: string; fileSize: number },
+  ) {
+    return this.customersService.uploadDocument(id, dto);
+  }
+
+  @Delete(':id/documents')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  deleteDocument(@Param('id') id: string, @Body() dto: { fileUrl: string }) {
+    return this.customersService.deleteDocument(id, dto.fileUrl);
   }
 }

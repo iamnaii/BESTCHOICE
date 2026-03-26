@@ -15,6 +15,8 @@ export class CustomersService {
     hasOverdue?: boolean,
     creditStatus?: string,
     branchId?: string,
+    sortBy?: string,
+    sortOrder?: string,
   ) {
     const where: Record<string, unknown> = { deletedAt: null };
 
@@ -40,10 +42,23 @@ export class CustomersService {
       where.creditChecks = { some: { status: creditStatus } };
     }
 
+    // Determine sort order
+    const order = sortOrder === 'asc' ? 'asc' : 'desc';
+    let orderBy: any = { createdAt: 'desc' };
+
+    if (sortBy === 'name') {
+      orderBy = { name: order };
+    } else if (sortBy === 'createdAt') {
+      orderBy = { createdAt: order };
+    } else if (sortBy === 'contractCount') {
+      orderBy = { contracts: { _count: order } };
+    }
+    // For creditScore, we'll sort in-memory after fetching
+
     const [data, total, withActiveContract, withOverdue, newThisMonth] = await Promise.all([
       this.prisma.customer.findMany({
         where,
-        orderBy: { createdAt: 'desc' },
+        orderBy,
         skip: (page - 1) * limit,
         take: limit,
         select: {
@@ -84,7 +99,7 @@ export class CustomersService {
       })(),
     ]);
 
-    const enriched = data.map((c) => {
+    let enriched = data.map((c) => {
       const activeContracts = c.contracts.filter((ct) => ct.status === 'ACTIVE').length;
       const overdueContracts = c.contracts.filter((ct) => ['OVERDUE', 'DEFAULT'].includes(ct.status)).length;
       const latestCredit = c.creditChecks[0] || null;
@@ -97,6 +112,15 @@ export class CustomersService {
         latestCreditScore: latestCredit?.aiScore || null,
       };
     });
+
+    // In-memory sort for creditScore
+    if (sortBy === 'creditScore') {
+      enriched.sort((a, b) => {
+        const scoreA = a.latestCreditScore || -1;
+        const scoreB = b.latestCreditScore || -1;
+        return order === 'asc' ? scoreA - scoreB : scoreB - scoreA;
+      });
+    }
 
     const totalCustomers = await this.prisma.customer.count({ where: { deletedAt: null } });
 
@@ -237,6 +261,26 @@ export class CustomersService {
       riskLevel: overdueContracts.some((c) => c.status === 'DEFAULT') ? 'HIGH' : overdueContracts.length > 0 ? 'MEDIUM' : 'NONE',
       overdueContracts,
     };
+  }
+
+  async uploadDocument(id: string, dto: { fileName: string; fileUrl: string; mimeType: string; fileSize: number }) {
+    const customer = await this.findOne(id);
+    const currentDocs = customer.documents || [];
+    const updatedDocs = [...currentDocs, dto.fileUrl];
+    return this.prisma.customer.update({
+      where: { id },
+      data: { documents: updatedDocs },
+    });
+  }
+
+  async deleteDocument(id: string, fileUrl: string) {
+    const customer = await this.findOne(id);
+    const currentDocs = customer.documents || [];
+    const updatedDocs = currentDocs.filter((doc) => doc !== fileUrl);
+    return this.prisma.customer.update({
+      where: { id },
+      data: { documents: updatedDocs },
+    });
   }
 
   private validateNationalId(id: string): boolean {

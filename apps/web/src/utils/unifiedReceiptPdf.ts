@@ -2,34 +2,80 @@ import html2pdf from 'html2pdf.js';
 import type { Receipt } from '@/types/receipt';
 
 /**
- * Wait for images and QR codes to load
+ * Wait for images, QR codes, and fonts to load
  */
 async function waitForAllResources(): Promise<void> {
-  // Wait for fonts to load, then one animation frame for pending renders
   await document.fonts.ready;
   await new Promise(resolve => requestAnimationFrame(resolve));
+  // Extra delay for QR SVG rendering to complete
+  await new Promise(resolve => setTimeout(resolve, 100));
+}
+
+/** Pixel widths matching PrintableReceipt's mm-based containers */
+const SIZE_WIDTH_PX: Record<string, number> = {
+  a4: 794,  // 210mm
+  a5: 559,  // 148mm
+};
+
+/**
+ * Copy key visual computed styles from the original DOM tree onto the
+ * html2canvas-cloned tree so the rasterised output matches the screen.
+ *
+ * html2canvas often fails to resolve Tailwind utility classes and Google Fonts
+ * because it reads the cloned document where stylesheets may not fully apply.
+ * By reading getComputedStyle() from the *original* (correctly-rendered)
+ * elements and writing them inline on the *cloned* elements, we guarantee
+ * visual fidelity.
+ */
+function forceInlineStyles(
+  original: HTMLElement,
+  cloned: HTMLElement,
+): void {
+  const dominated = [
+    'fontFamily', 'fontSize', 'fontWeight', 'lineHeight',
+    'color', 'backgroundColor',
+    'borderTopColor', 'borderRightColor', 'borderBottomColor', 'borderLeftColor',
+    'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
+    'borderTopStyle', 'borderRightStyle', 'borderBottomStyle', 'borderLeftStyle',
+  ] as const;
+
+  const origChildren = original.children;
+  const cloneChildren = cloned.children;
+
+  // Apply computed styles to the root element itself
+  const cs = window.getComputedStyle(original);
+  for (const prop of dominated) {
+    (cloned.style as any)[prop] = cs.getPropertyValue(
+      prop.replace(/[A-Z]/g, m => `-${m.toLowerCase()}`)
+    );
+  }
+
+  // Recurse into children (same DOM structure guaranteed by html2canvas clone)
+  for (let i = 0; i < origChildren.length && i < cloneChildren.length; i++) {
+    const origChild = origChildren[i] as HTMLElement;
+    const cloneChild = cloneChildren[i] as HTMLElement;
+    if (origChild.nodeType === 1 && cloneChild.nodeType === 1) {
+      forceInlineStyles(origChild, cloneChild);
+    }
+  }
 }
 
 /**
- * Generate PDF from the actual receipt preview element
- * This ensures the PDF exactly matches what's shown on screen
+ * Generate PDF from the actual receipt preview element.
+ * Uses html2canvas to rasterise the DOM, then jsPDF to wrap as PDF.
  */
 export async function generateUnifiedReceiptPDF(
   receipt: Receipt,
   size: 'mobile' | 'a4' | 'a5' = 'a5'
 ): Promise<void> {
-  // Find the receipt element in the modal
   const receiptElement = document.getElementById('receipt-print-area');
-
   if (!receiptElement) {
     throw new Error('ไม่พบ element ของใบเสร็จ');
   }
 
-  // Wait for resources to load
   await waitForAllResources();
 
   try {
-    // Configure html2pdf options based on size
     let pageSize: string | number[] = 'a5';
     let margin: number | number[] = 5;
 
@@ -40,20 +86,21 @@ export async function generateUnifiedReceiptPDF(
         break;
       case 'a5':
         pageSize = 'a5';
-        margin = 0; // PrintableReceipt handles its own padding (p-[8mm])
+        margin = 0; // PrintableReceipt handles its own padding (p-[6mm])
         break;
       case 'mobile':
-        pageSize = [80, 297]; // 80mm width for thermal printer
+        pageSize = [80, 297];
         margin = [2, 2, 2, 2];
         break;
     }
 
+    // Keep a reference to the live element so onclone can read computed styles
+    const liveElement = receiptElement;
+
     const opt = {
       margin: margin,
       filename: `receipt_${receipt.receiptNumber}.pdf`,
-      image: {
-        type: 'png',
-      },
+      image: { type: 'png' },
       html2canvas: {
         scale: 3,
         useCORS: true,
@@ -62,67 +109,71 @@ export async function generateUnifiedReceiptPDF(
         letterRendering: true,
         allowTaint: true,
         foreignObjectRendering: false,
-        onclone: function(clonedDoc: Document) {
+        onclone: function (clonedDoc: Document) {
           const clonedElement = clonedDoc.getElementById('receipt-print-area');
           if (!clonedElement) return;
 
-          // WYSIWYG: NO layout modifications — capture exactly as shown on screen
-          // Only force visual properties that html2canvas can't read from Tailwind
+          // ── 1. Inject Google Font into cloned document ──
+          const fontLink = clonedDoc.createElement('link');
+          fontLink.rel = 'stylesheet';
+          fontLink.href =
+            'https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap';
+          clonedDoc.head.appendChild(fontLink);
 
-          // Force background colors inline (html2canvas misses Tailwind bg classes)
-          const bgMap: Record<string, string> = {
-            'bg-blue-50': '#eff6ff', 'bg-green-50': '#f0fdf4',
-            'bg-orange-50': '#fff7ed', 'bg-gray-50': '#f9fafb',
-            'bg-gray-100': '#f3f4f6', 'bg-gray-700': '#374151',
-          };
-          clonedElement.querySelectorAll('[class*="bg-"]').forEach((el) => {
-            const element = el as HTMLElement;
-            for (const [cls, color] of Object.entries(bgMap)) {
-              if (element.classList.contains(cls)) {
-                element.style.backgroundColor = color;
-                if (cls === 'bg-gray-700') element.style.color = 'white';
-                break;
-              }
-            }
-          });
+          // ── 2. Force container dimensions to match the paper size ──
+          const widthPx = SIZE_WIDTH_PX[size];
+          if (widthPx) {
+            clonedElement.style.width = `${widthPx}px`;
+            clonedElement.style.maxWidth = `${widthPx}px`;
+          }
+          clonedElement.style.overflow = 'visible';
 
-          // Force borders inline
-          clonedElement.querySelectorAll('th, td').forEach((el) => {
-            (el as HTMLElement).style.border = '1px solid #d1d5db';
-          });
+          // ── 3. Copy computed styles from live DOM → cloned DOM ──
+          // This is the most robust way to ensure every color, font, and
+          // border in the PDF matches the screen exactly.
+          forceInlineStyles(liveElement, clonedElement);
 
-          // Force table border-collapse
+          // ── 4. Force table-specific styles ──
           clonedElement.querySelectorAll('table').forEach((el) => {
             (el as HTMLElement).style.borderCollapse = 'collapse';
           });
+          clonedElement.querySelectorAll('th, td').forEach((el) => {
+            const td = el as HTMLElement;
+            if (!td.style.borderWidth || td.style.borderWidth === '0px') {
+              td.style.border = '1px solid #d1d5db';
+            }
+          });
 
-          // Ensure QR SVGs are visible
+          // ── 5. Ensure QR SVGs are visible ──
           clonedElement.querySelectorAll('svg').forEach((svg) => {
             const el = svg as SVGElement;
             el.style.display = 'block';
             el.style.visibility = 'visible';
           });
 
-          // Force print color accuracy
+          // ── 6. Global print-color-adjust ──
           const style = clonedDoc.createElement('style');
-          style.innerHTML = `* { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }`;
+          style.innerHTML = `
+            * {
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+          `;
           clonedDoc.head.appendChild(style);
-        }
+        },
       },
       jsPDF: {
         unit: 'mm',
         format: pageSize,
         orientation: 'portrait' as const,
-        compress: true
+        compress: true,
       },
       pagebreak: {
-        mode: ['avoid-all', 'css', 'legacy']
-      }
+        mode: ['avoid-all', 'css', 'legacy'],
+      },
     };
 
-    // Generate and download PDF directly from the element in DOM
     await html2pdf().set(opt).from(receiptElement).save();
-
   } catch (error) {
     console.error('Failed to generate PDF:', error);
     throw error;

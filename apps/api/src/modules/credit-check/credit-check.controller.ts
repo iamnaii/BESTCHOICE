@@ -18,12 +18,20 @@ export class GlobalCreditCheckController {
     @Query('search') search?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('branchId') branchId?: string,
+    @Query('checkedById') checkedById?: string,
   ) {
     return this.service.findAll({
       status,
       search,
       page: page ? parseInt(page) : undefined,
       limit: limit ? parseInt(limit) : undefined,
+      startDate,
+      endDate,
+      branchId,
+      checkedById,
     });
   }
 }

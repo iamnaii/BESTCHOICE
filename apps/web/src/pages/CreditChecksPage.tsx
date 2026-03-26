@@ -1,6 +1,7 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import ExcelJS from 'exceljs';
 import api, { getErrorMessage } from '@/lib/api';
 import { compressImageForOcr } from '@/lib/compressImage';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -30,6 +31,16 @@ interface Customer {
   occupation: string | null;
 }
 
+interface AiAnalysisData {
+  monthlyIncome?: number;
+  averageBalance?: number;
+  affordabilityRatio?: number;
+  incomeConsistency?: string;
+  riskFactors?: string[];
+  positiveFactors?: string[];
+  [key: string]: unknown;
+}
+
 interface CreditCheckItem {
   id: string;
   status: string;
@@ -39,11 +50,34 @@ interface CreditCheckItem {
   aiScore: number | null;
   aiSummary: string | null;
   aiRecommendation: string | null;
+  aiAnalysis: AiAnalysisData | null;
   reviewNotes: string | null;
   checkedBy: { id: string; name: string } | null;
   customer: { id: string; name: string; phone: string; salary: string | null; occupation: string | null };
   contract: { id: string; contractNumber: string } | null;
   createdAt: string;
+}
+
+interface CreditCheckSummary {
+  totalCount: number;
+  pendingCount: number;
+  approvedCount: number;
+  rejectedCount: number;
+  avgScore: number;
+}
+
+interface CreditChecksResponse {
+  data: CreditCheckItem[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  summary: CreditCheckSummary;
+}
+
+interface Branch {
+  id: string;
+  name: string;
 }
 
 const statusLabels: Record<string, { label: string; className: string }> = {
@@ -53,15 +87,44 @@ const statusLabels: Record<string, { label: string; className: string }> = {
   MANUAL_REVIEW: { label: 'ต้องตรวจเพิ่ม', className: 'bg-amber-100 text-amber-700' },
 };
 
+function getRiskBadge(aiScore: number | null) {
+  if (aiScore === null) {
+    return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">รอวิเคราะห์</span>;
+  }
+  if (aiScore >= 70) {
+    return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">ความเสี่ยงต่ำ</span>;
+  }
+  if (aiScore >= 50) {
+    return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">ความเสี่ยงปานกลาง</span>;
+  }
+  if (aiScore >= 40) {
+    return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700">ต้องตรวจเพิ่ม</span>;
+  }
+  return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">ความเสี่ยงสูง</span>;
+}
+
 export default function CreditChecksPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const isOwner = user?.role === 'OWNER';
+  const isOwnerOrManager = ['OWNER', 'BRANCH_MANAGER'].includes(user?.role ?? '');
+
+  // Filters
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [branchFilter, setBranchFilter] = useState('');
+  const [page, setPage] = useState(1);
+  const debouncedSearch = useDebounce(search);
+
+  // Expand row
+  const [expandedRow, setExpandedRow] = useState<string | null>(null);
+
+  // Create modal
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [customerSearch, setCustomerSearch] = useState('');
-  const debouncedSearch = useDebounce(search);
   const debouncedCustomerSearch = useDebounce(customerSearch);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [bankName, setBankName] = useState('');
@@ -70,25 +133,71 @@ export default function CreditChecksPage() {
   const [bookBankLoading, setBookBankLoading] = useState(false);
   const [bookBankResult, setBookBankResult] = useState<OcrBookBankResult | null>(null);
 
+  // Override
   const canOverride = user && ['OWNER', 'BRANCH_MANAGER'].includes(user.role);
   const [overrideId, setOverrideId] = useState<string | null>(null);
   const [overrideCustomerId, setOverrideCustomerId] = useState<string | null>(null);
   const [overrideStatus, setOverrideStatus] = useState('');
   const [overrideNotes, setOverrideNotes] = useState('');
 
-  const { data: creditChecksData, isLoading } = useQuery<{ data: CreditCheckItem[]; total: number }>({
-    queryKey: ['credit-checks', debouncedSearch, statusFilter],
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, statusFilter, startDate, endDate, branchFilter]);
+
+  // Date range shortcuts
+  const setDateRange = (type: 'today' | 'week' | 'month') => {
+    const now = new Date();
+    const fmt = (d: Date) => d.toISOString().slice(0, 10);
+    setEndDate(fmt(now));
+    if (type === 'today') {
+      setStartDate(fmt(now));
+    } else if (type === 'week') {
+      const day = now.getDay();
+      const diff = day === 0 ? 6 : day - 1;
+      const monday = new Date(now);
+      monday.setDate(now.getDate() - diff);
+      setStartDate(fmt(monday));
+    } else {
+      const first = new Date(now.getFullYear(), now.getMonth(), 1);
+      setStartDate(fmt(first));
+    }
+  };
+
+  // Build query params helper
+  const buildParams = (overrideLimit?: number) => {
+    const params = new URLSearchParams();
+    if (debouncedSearch) params.set('search', debouncedSearch);
+    if (statusFilter) params.set('status', statusFilter);
+    if (startDate) params.set('startDate', startDate);
+    if (endDate) params.set('endDate', endDate);
+    if (branchFilter) params.set('branchId', branchFilter);
+    params.set('page', String(page));
+    params.set('limit', String(overrideLimit ?? 20));
+    return params;
+  };
+
+  // Main data query
+  const { data: creditChecksData, isLoading } = useQuery<CreditChecksResponse>({
+    queryKey: ['credit-checks', debouncedSearch, statusFilter, startDate, endDate, branchFilter, page],
     queryFn: async () => {
-      const params = new URLSearchParams();
-      if (debouncedSearch) params.set('search', debouncedSearch);
-      if (statusFilter) params.set('status', statusFilter);
-      params.set('limit', '999');
-      const { data } = await api.get(`/credit-checks?${params}`);
+      const { data } = await api.get(`/credit-checks?${buildParams()}`);
       return data;
     },
   });
 
   const creditChecks = creditChecksData?.data || [];
+  const summary = creditChecksData?.summary;
+
+  // Branches query (OWNER only)
+  const { data: branches = [] } = useQuery<Branch[]>({
+    queryKey: ['branches-list'],
+    queryFn: async () => {
+      const { data } = await api.get('/branches');
+      return Array.isArray(data) ? data : data.data || [];
+    },
+    enabled: !!isOwner,
+  });
 
   const { data: customers = [] } = useQuery<Customer[]>({
     queryKey: ['customers-search-cc', debouncedCustomerSearch],
@@ -207,6 +316,106 @@ export default function CreditChecksPage() {
     }
   };
 
+  // Excel export
+  const exportExcel = async () => {
+    try {
+      toast.loading('กำลังสร้างไฟล์ Excel...', { id: 'excel-export' });
+      const exportParams = new URLSearchParams();
+      if (debouncedSearch) exportParams.set('search', debouncedSearch);
+      if (statusFilter) exportParams.set('status', statusFilter);
+      if (startDate) exportParams.set('startDate', startDate);
+      if (endDate) exportParams.set('endDate', endDate);
+      if (branchFilter) exportParams.set('branchId', branchFilter);
+      exportParams.set('page', '1');
+      exportParams.set('limit', '10000');
+      const { data: allData } = await api.get<CreditChecksResponse>(`/credit-checks?${exportParams}`);
+
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet('ตรวจสอบเครดิต');
+
+      const cols: { header: string; key: string; width: number }[] = [
+        { header: 'ชื่อลูกค้า', key: 'customerName', width: 25 },
+        { header: 'เบอร์โทร', key: 'phone', width: 14 },
+        { header: 'ธนาคาร', key: 'bankName', width: 16 },
+        { header: 'จำนวนเดือน Statement', key: 'statementMonths', width: 12 },
+        { header: 'คะแนน AI', key: 'aiScore', width: 10 },
+        { header: 'ความเสี่ยง', key: 'risk', width: 16 },
+        { header: 'สถานะ', key: 'status', width: 14 },
+      ];
+
+      if (isOwnerOrManager) {
+        cols.push(
+          { header: 'รายได้เฉลี่ย', key: 'monthlyIncome', width: 16 },
+          { header: 'ยอดเงินเฉลี่ย', key: 'averageBalance', width: 16 },
+        );
+      }
+
+      cols.push(
+        { header: 'อัตราภาระหนี้ (%)', key: 'affordabilityRatio', width: 14 },
+        { header: 'ความสม่ำเสมอรายได้', key: 'incomeConsistency', width: 16 },
+        { header: 'ผู้ตรวจ', key: 'checkedByName', width: 18 },
+        { header: 'หมายเหตุ', key: 'reviewNotes', width: 25 },
+        { header: 'เลขสัญญา', key: 'contractNumber', width: 18 },
+        { header: 'วันที่สร้าง', key: 'createdAt', width: 16 },
+      );
+
+      ws.columns = cols;
+
+      const headerRow = ws.getRow(1);
+      headerRow.font = { bold: true };
+      headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+
+      const getRiskLabel = (score: number | null) => {
+        if (score === null) return 'รอวิเคราะห์';
+        if (score >= 70) return 'ความเสี่ยงต่ำ';
+        if (score >= 50) return 'ความเสี่ยงปานกลาง';
+        if (score >= 40) return 'ต้องตรวจเพิ่ม';
+        return 'ความเสี่ยงสูง';
+      };
+
+      ws.addRows(
+        allData.data.map((cc: CreditCheckItem) => {
+          const ai = cc.aiAnalysis as AiAnalysisData | null;
+          const row: Record<string, unknown> = {
+            customerName: cc.customer.name,
+            phone: cc.customer.phone,
+            bankName: cc.bankName || '-',
+            statementMonths: cc.statementMonths,
+            aiScore: cc.aiScore ?? '-',
+            risk: getRiskLabel(cc.aiScore),
+            status: statusLabels[cc.status]?.label || cc.status,
+            affordabilityRatio: ai?.affordabilityRatio != null ? Number((ai.affordabilityRatio * 100).toFixed(1)) : '-',
+            incomeConsistency: ai?.incomeConsistency || '-',
+            checkedByName: cc.checkedBy?.name || '-',
+            reviewNotes: cc.reviewNotes || '-',
+            contractNumber: cc.contract?.contractNumber || '-',
+            createdAt: new Date(cc.createdAt).toLocaleDateString('th-TH'),
+          };
+          if (isOwnerOrManager) {
+            row.monthlyIncome = ai?.monthlyIncome != null ? Number(ai.monthlyIncome) : '-';
+            row.averageBalance = ai?.averageBalance != null ? Number(ai.averageBalance) : '-';
+          }
+          return row;
+        }),
+      );
+
+      const buffer = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const now = new Date();
+      a.download = `ตรวจสอบเครดิต_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success(`ดาวน์โหลดสำเร็จ (${allData.data.length} รายการ)`, { id: 'excel-export' });
+    } catch {
+      toast.error('ไม่สามารถสร้างไฟล์ Excel ได้', { id: 'excel-export' });
+    }
+  };
+
   const columns = [
     {
       key: 'customer',
@@ -237,6 +446,11 @@ export default function CreditChecksPage() {
           </div>
         </div>
       ) : <span className="text-xs text-muted-foreground">-</span>,
+    },
+    {
+      key: 'risk',
+      label: 'ความเสี่ยง',
+      render: (cc: CreditCheckItem) => getRiskBadge(cc.aiScore),
     },
     {
       key: 'bankName',
@@ -282,23 +496,47 @@ export default function CreditChecksPage() {
     },
   ];
 
+  const avgScoreColor = (score: number) => {
+    if (score >= 60) return 'text-green-700';
+    if (score >= 40) return 'text-amber-700';
+    return 'text-red-700';
+  };
+  const avgScoreBg = (score: number) => {
+    if (score >= 60) return 'bg-green-50 border-green-200';
+    if (score >= 40) return 'bg-amber-50 border-amber-200';
+    return 'bg-red-50 border-red-200';
+  };
+  const avgScoreLabel = (score: number) => {
+    if (score >= 60) return 'text-green-600';
+    if (score >= 40) return 'text-amber-600';
+    return 'text-red-600';
+  };
+
   return (
     <div>
       <PageHeader
         title="ตรวจเครดิต"
         subtitle="ตรวจสอบเครดิตลูกค้าก่อนทำสัญญา"
         action={
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
-          >
-            + ตรวจเครดิตใหม่
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={exportExcel}
+              className="px-4 py-2 text-sm border border-input rounded-lg hover:bg-muted"
+            >
+              ส่งออก Excel
+            </button>
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
+            >
+              + ตรวจเครดิตใหม่
+            </button>
+          </div>
         }
       />
 
       {/* Filters */}
-      <div className="flex gap-3 mb-4 flex-wrap">
+      <div className="flex gap-3 mb-4 flex-wrap items-end">
         <input
           type="text"
           placeholder="ค้นหาชื่อลูกค้า..."
@@ -317,25 +555,70 @@ export default function CreditChecksPage() {
           <option value="REJECTED">ไม่ผ่าน</option>
           <option value="MANUAL_REVIEW">ต้องตรวจเพิ่ม</option>
         </select>
+
+        {/* Date range */}
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="px-3 py-2 border border-input rounded-lg text-sm"
+          />
+          <span className="text-sm text-muted-foreground">ถึง</span>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="px-3 py-2 border border-input rounded-lg text-sm"
+          />
+        </div>
+        <div className="flex gap-1">
+          <button onClick={() => setDateRange('today')} className="px-2 py-1.5 text-xs border border-input rounded-lg hover:bg-muted">วันนี้</button>
+          <button onClick={() => setDateRange('week')} className="px-2 py-1.5 text-xs border border-input rounded-lg hover:bg-muted">สัปดาห์นี้</button>
+          <button onClick={() => setDateRange('month')} className="px-2 py-1.5 text-xs border border-input rounded-lg hover:bg-muted">เดือนนี้</button>
+          {(startDate || endDate) && (
+            <button onClick={() => { setStartDate(''); setEndDate(''); }} className="px-2 py-1.5 text-xs text-red-600 border border-red-200 rounded-lg hover:bg-red-50">ล้าง</button>
+          )}
+        </div>
+
+        {/* Branch filter (OWNER only) */}
+        {isOwner && branches.length > 0 && (
+          <select
+            value={branchFilter}
+            onChange={(e) => setBranchFilter(e.target.value)}
+            className="px-3 py-2 border border-input rounded-lg text-sm"
+          >
+            <option value="">ทุกสาขา</option>
+            {branches.map((b) => (
+              <option key={b.id} value={b.id}>{b.name}</option>
+            ))}
+          </select>
+        )}
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-5 lg:gap-7.5 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-5 lg:gap-7.5 mb-6">
         <div className="bg-card rounded-lg border p-4">
           <div className="text-xs text-muted-foreground">ทั้งหมด</div>
-          <div className="text-xl font-bold">{creditChecks.length}</div>
+          <div className="text-xl font-bold">{summary?.totalCount ?? 0}</div>
         </div>
         <div className="bg-green-50 rounded-lg border border-green-200 p-4">
           <div className="text-xs text-green-600">ผ่าน</div>
-          <div className="text-xl font-bold text-green-700">{creditChecks.filter((c) => c.status === 'APPROVED').length}</div>
+          <div className="text-xl font-bold text-green-700">{summary?.approvedCount ?? 0}</div>
         </div>
         <div className="bg-amber-50 rounded-lg border border-amber-200 p-4">
           <div className="text-xs text-amber-600">รอวิเคราะห์ / ตรวจเพิ่ม</div>
-          <div className="text-xl font-bold text-amber-700">{creditChecks.filter((c) => c.status === 'PENDING' || c.status === 'MANUAL_REVIEW').length}</div>
+          <div className="text-xl font-bold text-amber-700">{summary?.pendingCount ?? 0}</div>
         </div>
         <div className="bg-red-50 rounded-lg border border-red-200 p-4">
           <div className="text-xs text-red-600">ไม่ผ่าน</div>
-          <div className="text-xl font-bold text-red-700">{creditChecks.filter((c) => c.status === 'REJECTED').length}</div>
+          <div className="text-xl font-bold text-red-700">{summary?.rejectedCount ?? 0}</div>
+        </div>
+        <div className={`rounded-lg border p-4 ${summary?.avgScore ? avgScoreBg(summary.avgScore) : 'bg-card'}`}>
+          <div className={`text-xs ${summary?.avgScore ? avgScoreLabel(summary.avgScore) : 'text-muted-foreground'}`}>คะแนน AI เฉลี่ย</div>
+          <div className={`text-xl font-bold ${summary?.avgScore ? avgScoreColor(summary.avgScore) : ''}`}>
+            {summary?.avgScore ?? '-'}
+          </div>
         </div>
       </div>
 
@@ -344,7 +627,113 @@ export default function CreditChecksPage() {
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600" />
         </div>
       ) : (
-        <DataTable columns={columns} data={creditChecks} emptyMessage="ยังไม่มีรายการตรวจเครดิต" />
+        <>
+          <DataTable
+            columns={columns}
+            data={creditChecks}
+            emptyMessage="ยังไม่มีรายการตรวจเครดิต"
+            onRowClick={(cc: CreditCheckItem) => setExpandedRow(expandedRow === cc.id ? null : cc.id)}
+            pagination={creditChecksData ? {
+              page: creditChecksData.page,
+              totalPages: creditChecksData.totalPages,
+              total: creditChecksData.total,
+              onPageChange: setPage,
+            } : undefined}
+          />
+
+          {/* Expanded AI detail */}
+          {expandedRow && creditChecks.find((cc) => cc.id === expandedRow) && (() => {
+            const cc = creditChecks.find((c) => c.id === expandedRow)!;
+            const ai = cc.aiAnalysis as AiAnalysisData | null;
+            return (
+              <div className="mt-2 mb-4 bg-muted/50 border rounded-lg p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-semibold">รายละเอียดการวิเคราะห์ AI — {cc.customer.name}</h4>
+                  <button onClick={() => setExpandedRow(null)} className="text-xs text-muted-foreground hover:text-foreground">ปิด</button>
+                </div>
+
+                {ai ? (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    {ai.monthlyIncome != null && (
+                      <div className="bg-card rounded border p-3">
+                        <div className="text-xs text-muted-foreground">รายได้เฉลี่ย/เดือน</div>
+                        <div className="text-sm font-bold">{Number(ai.monthlyIncome).toLocaleString()} ฿</div>
+                      </div>
+                    )}
+                    {ai.averageBalance != null && (
+                      <div className="bg-card rounded border p-3">
+                        <div className="text-xs text-muted-foreground">ยอดเงินเฉลี่ย</div>
+                        <div className="text-sm font-bold">{Number(ai.averageBalance).toLocaleString()} ฿</div>
+                      </div>
+                    )}
+                    {ai.affordabilityRatio != null && (
+                      <div className="bg-card rounded border p-3">
+                        <div className="text-xs text-muted-foreground">อัตราภาระหนี้</div>
+                        <div className="text-sm font-bold">{(ai.affordabilityRatio * 100).toFixed(1)}%</div>
+                      </div>
+                    )}
+                    {ai.incomeConsistency && (
+                      <div className="bg-card rounded border p-3">
+                        <div className="text-xs text-muted-foreground">ความสม่ำเสมอรายได้</div>
+                        <div className={`text-sm font-bold ${ai.incomeConsistency === 'stable' ? 'text-green-600' : 'text-amber-600'}`}>
+                          {ai.incomeConsistency === 'stable' ? 'สม่ำเสมอ' : 'ไม่สม่ำเสมอ'}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-sm text-muted-foreground">ยังไม่มีข้อมูลจากการวิเคราะห์ AI</div>
+                )}
+
+                {/* Risk & Positive factors */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {ai?.riskFactors && ai.riskFactors.length > 0 && (
+                    <div className="bg-red-50 border border-red-200 rounded p-3">
+                      <div className="text-xs font-medium text-red-700 mb-1">ปัจจัยเสี่ยง</div>
+                      <ul className="space-y-1">
+                        {ai.riskFactors.map((f, i) => (
+                          <li key={i} className="text-xs text-red-600 flex items-start gap-1">
+                            <span className="mt-0.5">•</span> {f}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {ai?.positiveFactors && ai.positiveFactors.length > 0 && (
+                    <div className="bg-green-50 border border-green-200 rounded p-3">
+                      <div className="text-xs font-medium text-green-700 mb-1">ปัจจัยบวก</div>
+                      <ul className="space-y-1">
+                        {ai.positiveFactors.map((f, i) => (
+                          <li key={i} className="text-xs text-green-600 flex items-start gap-1">
+                            <span className="mt-0.5">•</span> {f}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+
+                {/* AI Summary & Recommendation */}
+                {(cc.aiSummary || cc.aiRecommendation) && (
+                  <div className="space-y-2">
+                    {cc.aiSummary && (
+                      <div className="bg-card rounded border p-3">
+                        <div className="text-xs text-muted-foreground mb-1">สรุปผลวิเคราะห์</div>
+                        <div className="text-sm">{cc.aiSummary}</div>
+                      </div>
+                    )}
+                    {cc.aiRecommendation && (
+                      <div className="bg-card rounded border p-3">
+                        <div className="text-xs text-muted-foreground mb-1">คำแนะนำ</div>
+                        <div className="text-sm">{cc.aiRecommendation}</div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+        </>
       )}
 
       {/* Create Modal */}

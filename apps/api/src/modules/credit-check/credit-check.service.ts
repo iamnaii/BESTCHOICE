@@ -24,17 +24,42 @@ export class CreditCheckService {
     }
   }
 
-  async findAll(filters: { status?: string; search?: string; page?: number; limit?: number }) {
+  async findAll(filters: {
+    status?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+    startDate?: string;
+    endDate?: string;
+    branchId?: string;
+    checkedById?: string;
+  }) {
     const where: Record<string, unknown> = {};
     if (filters.status) where.status = filters.status;
     if (filters.search) {
       where.customer = { name: { contains: filters.search, mode: 'insensitive' } };
     }
+    if (filters.startDate || filters.endDate) {
+      where.createdAt = {};
+      if (filters.startDate) (where.createdAt as Record<string, Date>).gte = new Date(filters.startDate);
+      if (filters.endDate) {
+        const endDate = new Date(filters.endDate);
+        endDate.setHours(23, 59, 59, 999);
+        (where.createdAt as Record<string, Date>).lte = endDate;
+      }
+    }
+    if (filters.branchId) {
+      where.customer = {
+        ...((where.customer as Record<string, any>) || {}),
+        contracts: { some: { branchId: filters.branchId } },
+      };
+    }
+    if (filters.checkedById) where.checkedById = filters.checkedById;
 
     const page = filters.page || 1;
     const limit = Math.min(filters.limit || 50, 100);
 
-    const [data, total] = await Promise.all([
+    const [data, total, summaryData] = await Promise.all([
       this.prisma.creditCheck.findMany({
         where,
         orderBy: { createdAt: 'desc' },
@@ -47,9 +72,33 @@ export class CreditCheckService {
         },
       }),
       this.prisma.creditCheck.count({ where }),
+      this.prisma.creditCheck.findMany({
+        where,
+        select: { status: true, aiScore: true },
+      }),
     ]);
 
-    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+    // Calculate summary stats
+    const pendingAndReview = summaryData.filter((c) => c.status === 'PENDING' || c.status === 'MANUAL_REVIEW').length;
+    const approved = summaryData.filter((c) => c.status === 'APPROVED').length;
+    const rejected = summaryData.filter((c) => c.status === 'REJECTED').length;
+    const scoredItems = summaryData.filter((c) => c.aiScore !== null);
+    const avgScore = scoredItems.length > 0 ? Math.round(scoredItems.reduce((sum, c) => sum + (c.aiScore || 0), 0) / scoredItems.length) : 0;
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      summary: {
+        totalCount: total,
+        pendingCount: pendingAndReview,
+        approvedCount: approved,
+        rejectedCount: rejected,
+        avgScore,
+      },
+    };
   }
 
   async findByContract(contractId: string) {

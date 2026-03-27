@@ -35,9 +35,17 @@ export class ReportsController {
   getHighRisk(
     @CurrentUser() user: { role: string; branchId: string | null },
     @Query('branchId') branchId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
     const effectiveBranch = user.role === 'BRANCH_MANAGER' ? user.branchId || undefined : branchId;
-    return this.reportsService.getHighRiskCustomers(effectiveBranch);
+    const parsedPage = page ? parseInt(page, 10) : undefined;
+    const parsedLimit = limit ? Math.min(parseInt(limit, 10), 200) : undefined;
+    return this.reportsService.getHighRiskCustomers(
+      effectiveBranch,
+      parsedPage && !isNaN(parsedPage) ? parsedPage : undefined,
+      parsedLimit && !isNaN(parsedLimit) ? parsedLimit : undefined,
+    );
   }
 
   @Get('sales-comparison')
@@ -46,9 +54,19 @@ export class ReportsController {
     @Query('endDate') endDate: string,
     @CurrentUser() user: { role: string; branchId: string | null },
     @Query('branchId') branchId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
     const effectiveBranch = user.role === 'BRANCH_MANAGER' ? user.branchId || undefined : branchId;
-    return this.reportsService.getSalesComparisonReport(startDate, endDate, effectiveBranch);
+    const parsedPage = page ? parseInt(page, 10) : undefined;
+    const parsedLimit = limit ? Math.min(parseInt(limit, 10), 200) : undefined;
+    return this.reportsService.getSalesComparisonReport(
+      startDate,
+      endDate,
+      effectiveBranch,
+      parsedPage && !isNaN(parsedPage) ? parsedPage : undefined,
+      parsedLimit && !isNaN(parsedLimit) ? parsedLimit : undefined,
+    );
   }
 
   @Get('branch-comparison')
@@ -65,9 +83,18 @@ export class ReportsController {
     @Query('date') date: string,
     @CurrentUser() user: { role: string; branchId: string | null },
     @Query('branchId') branchId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
     const effectiveBranch = user.role === 'BRANCH_MANAGER' ? user.branchId || undefined : branchId;
-    return this.reportsService.getDailyPaymentSummary(date, effectiveBranch);
+    const parsedPage = page ? parseInt(page, 10) : undefined;
+    const parsedLimit = limit ? Math.min(parseInt(limit, 10), 200) : undefined;
+    return this.reportsService.getDailyPaymentSummary(
+      date,
+      effectiveBranch,
+      parsedPage && !isNaN(parsedPage) ? parsedPage : undefined,
+      parsedLimit && !isNaN(parsedLimit) ? parsedLimit : undefined,
+    );
   }
 
   @Get('stock')

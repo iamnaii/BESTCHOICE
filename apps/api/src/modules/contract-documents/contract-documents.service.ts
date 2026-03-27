@@ -33,17 +33,25 @@ const IMMUTABLE_DOC_TYPES = ['SIGNED_CONTRACT', 'PDPA_CONSENT', 'PAYMENT_RECEIPT
 export class ContractDocumentsService {
   constructor(private prisma: PrismaService) {}
 
-  async findByContract(contractId: string) {
+  async findByContract(contractId: string, page = 1, limit = 50) {
+    const safeLimit = Math.min(limit, 100);
     const contract = await this.prisma.contract.findUnique({ where: { id: contractId } });
     if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
 
-    return this.prisma.contractDocument.findMany({
-      where: { contractId, deletedAt: null },
-      orderBy: { createdAt: 'desc' },
-      include: {
-        uploadedBy: { select: { id: true, name: true } },
-      },
-    });
+    const where = { contractId, deletedAt: null };
+    const [data, total] = await Promise.all([
+      this.prisma.contractDocument.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * safeLimit,
+        take: safeLimit,
+        include: {
+          uploadedBy: { select: { id: true, name: true } },
+        },
+      }),
+      this.prisma.contractDocument.count({ where }),
+    ]);
+    return { data, total, page, limit: safeLimit };
   }
 
   /** Get document checklist status */

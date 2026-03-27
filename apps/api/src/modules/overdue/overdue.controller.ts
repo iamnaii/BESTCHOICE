@@ -46,8 +46,18 @@ export class OverdueController {
 
   @Get('contracts/:id/call-logs')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
-  getCallLogs(@Param('id') contractId: string) {
-    return this.overdueService.getCallLogs(contractId);
+  getCallLogs(
+    @Param('id') contractId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const parsedPage = page ? parseInt(page, 10) : undefined;
+    const parsedLimit = limit ? Math.min(parseInt(limit, 10), 200) : undefined;
+    return this.overdueService.getCallLogs(
+      contractId,
+      parsedPage && !isNaN(parsedPage) ? parsedPage : undefined,
+      parsedLimit && !isNaN(parsedLimit) ? parsedLimit : undefined,
+    );
   }
 
   @Post('call-logs')

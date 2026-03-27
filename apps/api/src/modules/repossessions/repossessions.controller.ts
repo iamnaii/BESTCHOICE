@@ -29,8 +29,16 @@ export class RepossessionsController {
 
   @Get('profit-loss')
   @Roles('OWNER', 'ACCOUNTANT')
-  getProfitLoss() {
-    return this.repossessionsService.getProfitLossSummary();
+  getProfitLoss(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const parsedPage = page ? parseInt(page, 10) : undefined;
+    const parsedLimit = limit ? Math.min(parseInt(limit, 10), 200) : undefined;
+    return this.repossessionsService.getProfitLossSummary(
+      parsedPage && !isNaN(parsedPage) ? parsedPage : undefined,
+      parsedLimit && !isNaN(parsedLimit) ? parsedLimit : undefined,
+    );
   }
 
   @Get(':id')

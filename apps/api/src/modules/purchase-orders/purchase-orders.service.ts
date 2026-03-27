@@ -237,7 +237,9 @@ export class PurchaseOrdersService {
     });
   }
 
-  async getAccountsPayable() {
+  async getAccountsPayable(page = 1, limit = 50) {
+    const safeLimit = Math.min(limit, 100);
+
     // Get all non-cancelled POs that are not fully paid
     const pos = await this.prisma.purchaseOrder.findMany({
       where: {
@@ -318,8 +320,10 @@ export class PurchaseOrdersService {
 
     const suppliers = Array.from(supplierMap.values()).sort((a, b) => b.totalRemaining - a.totalRemaining);
     const grandTotal = suppliers.reduce((sum, s) => sum + s.totalRemaining, 0);
+    const total = suppliers.length;
+    const data = suppliers.slice((page - 1) * safeLimit, page * safeLimit);
 
-    return { grandTotal, suppliers };
+    return { grandTotal, data, total, page, limit: safeLimit };
   }
 
   // === Goods Receiving History ===

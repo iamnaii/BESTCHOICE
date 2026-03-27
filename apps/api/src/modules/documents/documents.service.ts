@@ -21,10 +21,20 @@ export class DocumentsService {
   ) {}
 
   // ─── Contract Templates ──────────────────────────────
-  async findAllTemplates(type?: string) {
+  async findAllTemplates(type?: string, page = 1, limit = 50) {
+    const safeLimit = Math.min(limit, 100);
     const where: Record<string, unknown> = { isActive: true };
     if (type) where.type = type;
-    return this.prisma.contractTemplate.findMany({ where, orderBy: { createdAt: 'desc' } });
+    const [data, total] = await Promise.all([
+      this.prisma.contractTemplate.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * safeLimit,
+        take: safeLimit,
+      }),
+      this.prisma.contractTemplate.count({ where }),
+    ]);
+    return { data, total, page, limit: safeLimit };
   }
 
   async findOneTemplate(id: string) {
@@ -162,11 +172,19 @@ export class DocumentsService {
     return { message: `ลบลายเซ็น ${signerType} สำเร็จ` };
   }
 
-  async getSignatures(contractId: string) {
-    return this.prisma.signature.findMany({
-      where: { contractId, deletedAt: null },
-      orderBy: { signedAt: 'asc' },
-    });
+  async getSignatures(contractId: string, page = 1, limit = 50) {
+    const safeLimit = Math.min(limit, 100);
+    const where = { contractId, deletedAt: null };
+    const [data, total] = await Promise.all([
+      this.prisma.signature.findMany({
+        where,
+        orderBy: { signedAt: 'asc' },
+        skip: (page - 1) * safeLimit,
+        take: safeLimit,
+      }),
+      this.prisma.signature.count({ where }),
+    ]);
+    return { data, total, page, limit: safeLimit };
   }
 
   // ─── E-Document Generation ────────────────────────────
@@ -233,11 +251,19 @@ export class DocumentsService {
     return { ...doc, renderedHtml, pdfGenerated };
   }
 
-  async getDocuments(contractId: string) {
-    return this.prisma.eDocument.findMany({
-      where: { contractId },
-      orderBy: { createdAt: 'desc' },
-    });
+  async getDocuments(contractId: string, page = 1, limit = 50) {
+    const safeLimit = Math.min(limit, 100);
+    const where = { contractId };
+    const [data, total] = await Promise.all([
+      this.prisma.eDocument.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * safeLimit,
+        take: safeLimit,
+      }),
+      this.prisma.eDocument.count({ where }),
+    ]);
+    return { data, total, page, limit: safeLimit };
   }
 
   async getDocument(id: string) {

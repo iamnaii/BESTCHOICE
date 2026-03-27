@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Param, Body, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Param, Body, Query, UseGuards, Req } from '@nestjs/common';
 import { ContractDocumentsService } from './contract-documents.service';
 import { UploadContractDocumentDto } from './dto/contract-document.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -13,8 +13,18 @@ export class ContractDocumentsController {
 
   @Get()
   @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
-  findByContract(@Param('contractId') contractId: string) {
-    return this.service.findByContract(contractId);
+  findByContract(
+    @Param('contractId') contractId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const parsedPage = page ? parseInt(page, 10) : undefined;
+    const parsedLimit = limit ? Math.min(parseInt(limit, 10), 200) : undefined;
+    return this.service.findByContract(
+      contractId,
+      parsedPage && !isNaN(parsedPage) ? parsedPage : undefined,
+      parsedLimit && !isNaN(parsedLimit) ? parsedLimit : undefined,
+    );
   }
 
   @Get('checklist')

@@ -97,6 +97,7 @@ describe('DocumentsService', () => {
       findFirst: jest.fn().mockResolvedValue(mockTemplate),
       findUnique: jest.fn().mockResolvedValue(mockTemplate),
       findMany: jest.fn().mockResolvedValue([mockTemplate]),
+      count: jest.fn().mockResolvedValue(1),
       create: jest.fn().mockResolvedValue(mockTemplate),
       update: jest.fn().mockResolvedValue(mockTemplate),
     },
@@ -104,10 +105,12 @@ describe('DocumentsService', () => {
       create: jest.fn().mockResolvedValue(mockEDocument),
       findUnique: jest.fn().mockResolvedValue(mockEDocument),
       findMany: jest.fn().mockResolvedValue([mockEDocument]),
+      count: jest.fn().mockResolvedValue(1),
     },
     signature: {
       create: jest.fn(),
       findMany: jest.fn().mockResolvedValue([]),
+      count: jest.fn().mockResolvedValue(0),
       deleteMany: jest.fn(),
     },
     setting: {
@@ -355,12 +358,14 @@ describe('DocumentsService', () => {
 
   // ─── getDocuments ────────────────────────────────────
   describe('getDocuments', () => {
-    it('should return all documents for a contract', async () => {
+    it('should return paginated documents for a contract', async () => {
       const result = await service.getDocuments('contract-1');
-      expect(result).toEqual([mockEDocument]);
+      expect(result).toEqual({ data: [mockEDocument], total: 1, page: 1, limit: 50 });
       expect(prisma.eDocument.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { contractId: 'contract-1' },
+          skip: 0,
+          take: 50,
         }),
       );
     });

@@ -41,6 +41,7 @@ describe('PaymentsService', () => {
         findMany: jest.fn().mockResolvedValue([]),
         update: jest.fn(),
         count: jest.fn().mockResolvedValue(0),
+        aggregate: jest.fn().mockResolvedValue({ _sum: { amountPaid: 0, lateFee: 0 } }),
       },
       $transaction: jest.fn((cb) => cb(mockPrisma)),
     };
@@ -277,6 +278,8 @@ describe('PaymentsService', () => {
         { amountPaid: 5000, lateFee: 0, paymentMethod: 'TRANSFER', paidDate: new Date(), contract: { contractNumber: 'BC-002', customer: { name: 'B' }, branch: { name: 'B1' } }, recordedBy: { name: 'Staff' } },
       ];
       prisma.payment.findMany.mockResolvedValue(payments);
+      prisma.payment.count.mockResolvedValue(2);
+      prisma.payment.aggregate.mockResolvedValue({ _sum: { amountPaid: 8000, lateFee: 100 } });
 
       const result = await service.getDailySummary('2026-03-11');
       expect(result.totalPayments).toBe(2);

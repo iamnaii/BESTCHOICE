@@ -12,22 +12,30 @@ export class ReorderPointsService {
     private notificationsService: NotificationsService,
   ) {}
 
-  async findAll(filters: { branchId?: string; isActive?: boolean; category?: string }) {
+  async findAll(filters: { branchId?: string; isActive?: boolean; category?: string; page?: number; limit?: number }) {
     const where: Record<string, unknown> = { deletedAt: null };
     if (filters.branchId) where.branchId = filters.branchId;
     if (filters.isActive !== undefined) where.isActive = filters.isActive;
     if (filters.category) where.category = filters.category;
 
-    const reorderPoints = await this.prisma.reorderPoint.findMany({
-      where,
-      include: {
-        branch: { select: { id: true, name: true } },
-      },
-      orderBy: [{ brand: 'asc' }, { model: 'asc' }],
-    });
+    const page = filters.page || 1;
+    const limit = Math.min(filters.limit || 50, 100);
 
-    // Enrich with current stock count
-    const enriched = await Promise.all(
+    const [reorderPoints, total] = await Promise.all([
+      this.prisma.reorderPoint.findMany({
+        where,
+        include: {
+          branch: { select: { id: true, name: true } },
+        },
+        orderBy: [{ brand: 'asc' }, { model: 'asc' }],
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.reorderPoint.count({ where }),
+    ]);
+
+    // Enrich with current stock count (bounded by page size)
+    const data = await Promise.all(
       reorderPoints.map(async (rp) => {
         const currentStock = await this.prisma.product.count({
           where: {
@@ -44,7 +52,7 @@ export class ReorderPointsService {
       }),
     );
 
-    return enriched;
+    return { data, total, page, limit };
   }
 
   async findOne(id: string) {
@@ -219,14 +227,21 @@ export class ReorderPointsService {
 
   // === Stock Alerts Management ===
 
-  async getActiveAlerts(branchId?: string) {
+  async getActiveAlerts(branchId?: string, page = 1, limit = 50) {
+    const safeLimit = Math.min(limit, 100);
     const where: Record<string, unknown> = { status: 'ACTIVE' };
     if (branchId) where.branchId = branchId;
 
-    return this.prisma.stockAlert.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-    });
+    const [data, total] = await Promise.all([
+      this.prisma.stockAlert.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * safeLimit,
+        take: safeLimit,
+      }),
+      this.prisma.stockAlert.count({ where }),
+    ]);
+    return { data, total, page, limit: safeLimit };
   }
 
   async getAllAlerts(filters: {
@@ -272,7 +287,8 @@ export class ReorderPointsService {
   /**
    * Get low stock items for dashboard (สินค้าที่ต้องสั่ง)
    */
-  async getLowStockDashboard(branchId?: string) {
+  async getLowStockDashboard(branchId?: string, page = 1, limit = 50) {
+    const safeLimit = Math.min(limit, 100);
     const where: Record<string, unknown> = { isActive: true, deletedAt: null };
     if (branchId) where.branchId = branchId;
 
@@ -334,9 +350,15 @@ export class ReorderPointsService {
       return ratioA - ratioB;
     });
 
+    const total = lowStockItems.length;
+    const data = lowStockItems.slice((page - 1) * safeLimit, page * safeLimit);
+
     return {
-      totalLowStock: lowStockItems.length,
-      items: lowStockItems,
+      totalLowStock: total,
+      data,
+      total,
+      page,
+      limit: safeLimit,
     };
   }
 }

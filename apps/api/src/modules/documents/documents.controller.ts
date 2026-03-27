@@ -20,8 +20,18 @@ export class DocumentsController {
   // ─── Contract Templates ──────────────────────────────
   @Get('contract-templates')
   @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
-  findAllTemplates(@Query('type') type?: string) {
-    return this.documentsService.findAllTemplates(type);
+  findAllTemplates(
+    @Query('type') type?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const parsedPage = page ? parseInt(page, 10) : undefined;
+    const parsedLimit = limit ? Math.min(parseInt(limit, 10), 200) : undefined;
+    return this.documentsService.findAllTemplates(
+      type,
+      parsedPage && !isNaN(parsedPage) ? parsedPage : undefined,
+      parsedLimit && !isNaN(parsedLimit) ? parsedLimit : undefined,
+    );
   }
 
   @Post('contract-templates/generate-from-file')
@@ -86,8 +96,18 @@ export class DocumentsController {
 
   @Get('contracts/:id/signatures')
   @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
-  getSignatures(@Param('id') id: string) {
-    return this.documentsService.getSignatures(id);
+  getSignatures(
+    @Param('id') id: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const parsedPage = page ? parseInt(page, 10) : undefined;
+    const parsedLimit = limit ? Math.min(parseInt(limit, 10), 200) : undefined;
+    return this.documentsService.getSignatures(
+      id,
+      parsedPage && !isNaN(parsedPage) ? parsedPage : undefined,
+      parsedLimit && !isNaN(parsedLimit) ? parsedLimit : undefined,
+    );
   }
 
   // ─── E-Document ───────────────────────────────────────
@@ -121,8 +141,18 @@ export class DocumentsController {
 
   @Get('contracts/:id/documents')
   @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
-  getDocuments(@Param('id') id: string) {
-    return this.documentsService.getDocuments(id);
+  getDocuments(
+    @Param('id') id: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const parsedPage = page ? parseInt(page, 10) : undefined;
+    const parsedLimit = limit ? Math.min(parseInt(limit, 10), 200) : undefined;
+    return this.documentsService.getDocuments(
+      id,
+      parsedPage && !isNaN(parsedPage) ? parsedPage : undefined,
+      parsedLimit && !isNaN(parsedLimit) ? parsedLimit : undefined,
+    );
   }
 
   @Get('contracts/:id/preview')

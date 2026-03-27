@@ -30,8 +30,18 @@ export class SuppliersController {
 
   @Get(':id/purchase-history')
   @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
-  getPurchaseHistory(@Param('id') id: string) {
-    return this.suppliersService.getPurchaseHistory(id);
+  getPurchaseHistory(
+    @Param('id') id: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const parsedPage = page ? parseInt(page, 10) : undefined;
+    const parsedLimit = limit ? Math.min(parseInt(limit, 10), 200) : undefined;
+    return this.suppliersService.getPurchaseHistory(
+      id,
+      parsedPage && !isNaN(parsedPage) ? parsedPage : undefined,
+      parsedLimit && !isNaN(parsedLimit) ? parsedLimit : undefined,
+    );
   }
 
   @Post()

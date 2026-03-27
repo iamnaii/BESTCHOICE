@@ -195,14 +195,22 @@ export class OverdueService {
   /**
    * Get call logs for a contract
    */
-  async getCallLogs(contractId: string) {
-    return this.prisma.callLog.findMany({
-      where: { contractId },
-      orderBy: { calledAt: 'desc' },
-      include: {
-        caller: { select: { id: true, name: true } },
-      },
-    });
+  async getCallLogs(contractId: string, page = 1, limit = 50) {
+    const safeLimit = Math.min(limit, 100);
+    const where = { contractId };
+    const [data, total] = await Promise.all([
+      this.prisma.callLog.findMany({
+        where,
+        orderBy: { calledAt: 'desc' },
+        skip: (page - 1) * safeLimit,
+        take: safeLimit,
+        include: {
+          caller: { select: { id: true, name: true } },
+        },
+      }),
+      this.prisma.callLog.count({ where }),
+    ]);
+    return { data, total, page, limit: safeLimit };
   }
 
   /**

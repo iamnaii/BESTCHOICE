@@ -119,23 +119,30 @@ export class ReportsService {
   /**
    * High-risk customers report
    */
-  async getHighRiskCustomers(branchId?: string) {
+  async getHighRiskCustomers(branchId?: string, page = 1, limit = 50) {
+    const safeLimit = Math.min(limit, 100);
     const branchFilter = branchId ? { branchId } : {};
+    const where = { status: { in: ['OVERDUE' as const, 'DEFAULT' as const] }, deletedAt: null, ...branchFilter };
 
-    const customers = await this.prisma.contract.findMany({
-      where: { status: { in: ['OVERDUE', 'DEFAULT'] }, deletedAt: null, ...branchFilter },
-      include: {
-        customer: { select: { id: true, name: true, phone: true, lineId: true } },
-        branch: { select: { name: true } },
-        payments: {
-          where: { status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] } },
-          select: { amountDue: true, amountPaid: true, lateFee: true, dueDate: true },
+    const [customers, total] = await Promise.all([
+      this.prisma.contract.findMany({
+        where,
+        include: {
+          customer: { select: { id: true, name: true, phone: true, lineId: true } },
+          branch: { select: { name: true } },
+          payments: {
+            where: { status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] } },
+            select: { amountDue: true, amountPaid: true, lateFee: true, dueDate: true },
+          },
         },
-      },
-      orderBy: { updatedAt: 'desc' },
-    });
+        orderBy: { updatedAt: 'desc' },
+        skip: (page - 1) * safeLimit,
+        take: safeLimit,
+      }),
+      this.prisma.contract.count({ where }),
+    ]);
 
-    return customers.map((c) => {
+    const data = customers.map((c) => {
       const totalOutstanding = c.payments.reduce(
         (sum, p) => sum + Number(p.amountDue) - Number(p.amountPaid) + Number(p.lateFee), 0,
       );
@@ -153,12 +160,15 @@ export class ReportsService {
         daysOverdue: Math.max(0, Math.floor((Date.now() - oldestDue.getTime()) / (1000 * 60 * 60 * 24))),
       };
     });
+
+    return { data, total, page, limit: safeLimit };
   }
 
   /**
    * Sales comparison by staff
    */
-  async getSalesComparisonReport(startDate: string, endDate: string, branchId?: string) {
+  async getSalesComparisonReport(startDate: string, endDate: string, branchId?: string, page = 1, limit = 50) {
+    const safeLimit = Math.min(limit, 100);
     const start = new Date(startDate);
     const end = new Date(endDate);
     end.setHours(23, 59, 59, 999);
@@ -189,11 +199,16 @@ export class ReportsService {
       staffMap.set(key, existing);
     }
 
-    return Array.from(staffMap.entries()).map(([id, data]) => ({
+    const sorted = Array.from(staffMap.entries()).map(([id, data]) => ({
       salespersonId: id,
       ...data,
       overdueRate: data.totalContracts > 0 ? ((data.overdueCount / data.totalContracts) * 100).toFixed(1) : '0.0',
     })).sort((a, b) => b.totalSales - a.totalSales);
+
+    const total = sorted.length;
+    const data = sorted.slice((page - 1) * safeLimit, page * safeLimit);
+
+    return { data, total, page, limit: safeLimit };
   }
 
   /**
@@ -238,30 +253,43 @@ export class ReportsService {
   /**
    * Daily payment summary
    */
-  async getDailyPaymentSummary(date: string, branchId?: string) {
+  async getDailyPaymentSummary(date: string, branchId?: string, page = 1, limit = 50) {
+    const safeLimit = Math.min(limit, 100);
     const start = new Date(date);
     const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
     const branchFilter = branchId ? { contract: { branchId } } : {};
 
-    const payments = await this.prisma.payment.findMany({
-      where: {
-        paidDate: { gte: start, lt: end },
-        status: 'PAID',
-        ...branchFilter,
-      },
-      include: {
-        contract: {
-          select: {
-            contractNumber: true,
-            customer: { select: { name: true } },
-            branch: { select: { name: true } },
-          },
-        },
-        recordedBy: { select: { name: true } },
-      },
-      orderBy: { paidDate: 'asc' },
-    });
+    const where = {
+      paidDate: { gte: start, lt: end },
+      status: 'PAID' as const,
+      ...branchFilter,
+    };
 
+    const [payments, total, aggregation] = await Promise.all([
+      this.prisma.payment.findMany({
+        where,
+        include: {
+          contract: {
+            select: {
+              contractNumber: true,
+              customer: { select: { name: true } },
+              branch: { select: { name: true } },
+            },
+          },
+          recordedBy: { select: { name: true } },
+        },
+        orderBy: { paidDate: 'asc' },
+        skip: (page - 1) * safeLimit,
+        take: safeLimit,
+      }),
+      this.prisma.payment.count({ where }),
+      this.prisma.payment.aggregate({
+        where,
+        _sum: { amountPaid: true },
+      }),
+    ]);
+
+    // byMethod and byBranch are computed from the current page
     const byMethod: Record<string, { count: number; total: number }> = {};
     const byBranch: Record<string, { count: number; total: number }> = {};
 
@@ -279,11 +307,11 @@ export class ReportsService {
 
     return {
       date,
-      totalPayments: payments.length,
-      totalAmount: payments.reduce((s, p) => s + Number(p.amountPaid), 0),
+      totalPayments: total,
+      totalAmount: Math.round(Number(aggregation._sum.amountPaid || 0)),
       byMethod,
       byBranch,
-      payments: payments.map((p) => ({
+      data: payments.map((p) => ({
         id: p.id,
         contractNumber: p.contract.contractNumber,
         customer: p.contract.customer.name,
@@ -294,6 +322,9 @@ export class ReportsService {
         recordedBy: p.recordedBy?.name || '-',
         paidAt: p.paidDate,
       })),
+      total,
+      page,
+      limit: safeLimit,
     };
   }
 
@@ -360,6 +391,7 @@ export class ReportsService {
         payments: { select: { installmentNo: true, amountDue: true, amountPaid: true, status: true, dueDate: true, paidDate: true, lateFee: true } },
       },
       orderBy: { createdAt: 'desc' },
+      take: 5000,
     });
 
     return contracts.map((c) => ({

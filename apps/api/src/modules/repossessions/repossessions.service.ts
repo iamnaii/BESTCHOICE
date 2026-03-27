@@ -314,33 +314,37 @@ export class RepossessionsService {
   /**
    * Get profit/loss summary (aggregate + itemized)
    */
-  async getProfitLossSummary() {
-    const repos = await this.prisma.repossession.findMany({
-      where: { status: 'SOLD' },
-      include: {
-        contract: {
-          select: { contractNumber: true, customer: { select: { name: true } } },
-        },
-        product: {
-          select: { name: true, brand: true, model: true },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+  async getProfitLossSummary(page = 1, limit = 50) {
+    const safeLimit = Math.min(limit, 100);
+    const where = { status: 'SOLD' as const };
 
-    let totalAppraisal = 0;
-    let totalRepairCost = 0;
-    let totalResellPrice = 0;
+    const [repos, total, aggregation] = await Promise.all([
+      this.prisma.repossession.findMany({
+        where,
+        include: {
+          contract: {
+            select: { contractNumber: true, customer: { select: { name: true } } },
+          },
+          product: {
+            select: { name: true, brand: true, model: true },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * safeLimit,
+        take: safeLimit,
+      }),
+      this.prisma.repossession.count({ where }),
+      this.prisma.repossession.aggregate({
+        where,
+        _sum: { appraisalPrice: true, repairCost: true, resellPrice: true },
+      }),
+    ]);
 
-    const items = repos.map((r) => {
+    const data = repos.map((r) => {
       const appraisal = Number(r.appraisalPrice);
       const repair = Number(r.repairCost);
       const resell = Number(r.resellPrice || 0);
       const profit = resell - appraisal - repair;
-
-      totalAppraisal += appraisal;
-      totalRepairCost += repair;
-      totalResellPrice += resell;
 
       return {
         id: r.id,
@@ -356,15 +360,22 @@ export class RepossessionsService {
       };
     });
 
+    const totalAppraisal = Number(aggregation._sum.appraisalPrice || 0);
+    const totalRepairCost = Number(aggregation._sum.repairCost || 0);
+    const totalResellPrice = Number(aggregation._sum.resellPrice || 0);
+
     return {
       summary: {
-        count: repos.length,
+        count: total,
         totalAppraisal,
         totalRepairCost,
         totalResellPrice,
         totalProfit: totalResellPrice - totalAppraisal - totalRepairCost,
       },
-      items,
+      data,
+      total,
+      page,
+      limit: safeLimit,
     };
   }
 }

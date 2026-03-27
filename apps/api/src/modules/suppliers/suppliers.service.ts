@@ -151,48 +151,62 @@ export class SuppliersService {
     });
   }
 
-  async getPurchaseHistory(id: string) {
+  async getPurchaseHistory(id: string, page = 1, limit = 50) {
+    const safeLimit = Math.min(limit, 100);
     await this.findOne(id);
 
-    const products = await this.prisma.product.findMany({
-      where: { supplierId: id, deletedAt: null },
-      select: {
-        id: true,
-        name: true,
-        brand: true,
-        model: true,
-        imeiSerial: true,
-        category: true,
-        costPrice: true,
-        status: true,
-        createdAt: true,
-        branch: { select: { id: true, name: true } },
-        po: { select: { id: true, poNumber: true, orderDate: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    const productWhere = { supplierId: id, deletedAt: null };
+    const poWhere = { supplierId: id };
 
-    const purchaseOrders = await this.prisma.purchaseOrder.findMany({
-      where: { supplierId: id },
-      select: {
-        id: true,
-        poNumber: true,
-        orderDate: true,
-        expectedDate: true,
-        status: true,
-        totalAmount: true,
-        paymentStatus: true,
-        paymentMethod: true,
-        paidAmount: true,
-        notes: true,
-        createdAt: true,
-        createdBy: { select: { id: true, name: true } },
-        items: true,
-        _count: { select: { products: true } },
-      },
-      orderBy: { orderDate: 'desc' },
-    });
+    const [products, productTotal, purchaseOrders, poTotal] = await Promise.all([
+      this.prisma.product.findMany({
+        where: productWhere,
+        select: {
+          id: true,
+          name: true,
+          brand: true,
+          model: true,
+          imeiSerial: true,
+          category: true,
+          costPrice: true,
+          status: true,
+          createdAt: true,
+          branch: { select: { id: true, name: true } },
+          po: { select: { id: true, poNumber: true, orderDate: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * safeLimit,
+        take: safeLimit,
+      }),
+      this.prisma.product.count({ where: productWhere }),
+      this.prisma.purchaseOrder.findMany({
+        where: poWhere,
+        select: {
+          id: true,
+          poNumber: true,
+          orderDate: true,
+          expectedDate: true,
+          status: true,
+          totalAmount: true,
+          paymentStatus: true,
+          paymentMethod: true,
+          paidAmount: true,
+          notes: true,
+          createdAt: true,
+          createdBy: { select: { id: true, name: true } },
+          items: true,
+          _count: { select: { products: true } },
+        },
+        orderBy: { orderDate: 'desc' },
+        skip: (page - 1) * safeLimit,
+        take: safeLimit,
+      }),
+      this.prisma.purchaseOrder.count({ where: poWhere }),
+    ]);
 
-    return { products, purchaseOrders };
+    return {
+      products: { data: products, total: productTotal, page, limit: safeLimit },
+      purchaseOrders: { data: purchaseOrders, total: poTotal, page, limit: safeLimit },
+    };
   }
 }

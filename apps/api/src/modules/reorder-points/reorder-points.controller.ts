@@ -16,18 +16,32 @@ export class ReorderPointsController {
     @Query('branchId') branchId?: string,
     @Query('isActive') isActive?: string,
     @Query('category') category?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
     return this.service.findAll({
       branchId,
       isActive: isActive !== undefined ? isActive === 'true' : undefined,
       category,
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
     });
   }
 
   @Get('low-stock')
   @Roles('OWNER', 'BRANCH_MANAGER')
-  getLowStockDashboard(@Query('branchId') branchId?: string) {
-    return this.service.getLowStockDashboard(branchId);
+  getLowStockDashboard(
+    @Query('branchId') branchId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const parsedPage = page ? parseInt(page, 10) : undefined;
+    const parsedLimit = limit ? Math.min(parseInt(limit, 10), 200) : undefined;
+    return this.service.getLowStockDashboard(
+      branchId,
+      parsedPage && !isNaN(parsedPage) ? parsedPage : undefined,
+      parsedLimit && !isNaN(parsedLimit) ? parsedLimit : undefined,
+    );
   }
 
   @Get('alerts')
@@ -47,8 +61,18 @@ export class ReorderPointsController {
 
   @Get('alerts/active')
   @Roles('OWNER', 'BRANCH_MANAGER')
-  getActiveAlerts(@Query('branchId') branchId?: string) {
-    return this.service.getActiveAlerts(branchId);
+  getActiveAlerts(
+    @Query('branchId') branchId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const parsedPage = page ? parseInt(page, 10) : undefined;
+    const parsedLimit = limit ? Math.min(parseInt(limit, 10), 200) : undefined;
+    return this.service.getActiveAlerts(
+      branchId,
+      parsedPage && !isNaN(parsedPage) ? parsedPage : undefined,
+      parsedLimit && !isNaN(parsedLimit) ? parsedLimit : undefined,
+    );
   }
 
   @Post('check-stock')

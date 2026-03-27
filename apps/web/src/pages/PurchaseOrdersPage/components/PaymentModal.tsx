@@ -1,0 +1,285 @@
+import { UseMutationResult } from '@tanstack/react-query';
+import Modal from '@/components/ui/Modal';
+import { PurchaseOrder } from '../types';
+
+export interface PaymentModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  selectedPO: PurchaseOrder | null;
+  suppliers: { id: string; name: string; contactName: string; hasVat: boolean; paymentMethods: { paymentMethod: string; bankName?: string; bankAccountName?: string; bankAccountNumber?: string; creditTermDays?: number; isDefault: boolean }[] }[];
+  paymentForm: { paymentStatus: string; paymentMethod: string; paidAmount: string; paymentNotes: string };
+  setPaymentForm: React.Dispatch<React.SetStateAction<PaymentModalProps['paymentForm']>>;
+  paymentAttachments: string[];
+  setPaymentAttachments: React.Dispatch<React.SetStateAction<string[]>>;
+  paymentAttachmentUrl: string;
+  setPaymentAttachmentUrl: (value: string) => void;
+  paymentMutation: UseMutationResult<unknown, unknown, { poId: string; data: Record<string, unknown> }, unknown>;
+  handlePaymentUpdate: (e: React.FormEvent) => void;
+}
+
+export function PaymentModal({
+  isOpen,
+  onClose,
+  selectedPO,
+  suppliers,
+  paymentForm,
+  setPaymentForm,
+  paymentAttachments,
+  setPaymentAttachments,
+  paymentAttachmentUrl,
+  setPaymentAttachmentUrl,
+  paymentMutation,
+  handlePaymentUpdate,
+}: PaymentModalProps) {
+  const selectClass = 'w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none';
+  const inputClass = selectClass;
+
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={`อัปเดตการจ่ายเงิน - ${selectedPO?.poNumber || ''}`}
+      size="md"
+    >
+      {selectedPO && (
+        <form onSubmit={handlePaymentUpdate} className="space-y-4">
+          <div className="bg-muted rounded-lg p-3 text-sm space-y-1">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">ยอดรวมสินค้า:</span>
+              <span>{Number(selectedPO.totalAmount).toLocaleString()} บาท</span>
+            </div>
+            {Number(selectedPO.discount) > 0 && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">ส่วนลด:</span>
+                <span className="text-red-600">-{Number(selectedPO.discount).toLocaleString()} บาท</span>
+              </div>
+            )}
+            {Number(selectedPO.vatAmount) > 0 && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">VAT 7%:</span>
+                <span>{Number(selectedPO.vatAmount).toLocaleString()} บาท</span>
+              </div>
+            )}
+            <div className="flex justify-between font-medium border-t pt-1">
+              <span>ยอดสุทธิ:</span>
+              <span>{Number(selectedPO.netAmount ?? selectedPO.totalAmount).toLocaleString()} บาท</span>
+            </div>
+            {Number(selectedPO.paidAmount) > 0 && (
+              <>
+                <div className="flex justify-between text-green-700">
+                  <span>จ่ายแล้วก่อนหน้า:</span>
+                  <span>{Number(selectedPO.paidAmount).toLocaleString()} บาท</span>
+                </div>
+                <div className="flex justify-between font-semibold text-amber-700">
+                  <span>คงเหลือ:</span>
+                  <span>{(Number(selectedPO.netAmount ?? selectedPO.totalAmount) - Number(selectedPO.paidAmount)).toLocaleString()} บาท</span>
+                </div>
+              </>
+            )}
+            {selectedPO.dueDate && (
+              <div className={`flex justify-between border-t pt-1 ${new Date(selectedPO.dueDate) < new Date() && paymentForm.paymentStatus !== 'FULLY_PAID' ? 'text-red-600 font-semibold' : 'text-muted-foreground'}`}>
+                <span>ครบกำหนดชำระ:</span>
+                <span>
+                  {new Date(selectedPO.dueDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  {new Date(selectedPO.dueDate) < new Date() && paymentForm.paymentStatus !== 'FULLY_PAID' && ' (เลยกำหนด)'}
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">สถานะ *</label>
+              <select
+                value={paymentForm.paymentStatus}
+                onChange={(e) => {
+                  const newStatus = e.target.value;
+                  const netAmt = Number(selectedPO.netAmount ?? selectedPO.totalAmount);
+                  setPaymentForm({
+                    ...paymentForm,
+                    paymentStatus: newStatus,
+                    paidAmount: newStatus === 'FULLY_PAID' ? String(netAmt) : newStatus === 'UNPAID' ? '0' : paymentForm.paidAmount,
+                  });
+                }}
+                className={selectClass}
+                required
+              >
+                <option value="UNPAID">ยังไม่จ่าย</option>
+                <option value="DEPOSIT_PAID">จ่ายมัดจำ</option>
+                <option value="PARTIALLY_PAID">จ่ายบางส่วน</option>
+                <option value="FULLY_PAID">จ่ายครบแล้ว</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">วิธีจ่ายเงิน</label>
+              {(() => {
+                const poSupplier = suppliers.find((s) => s.id === selectedPO?.supplier.id);
+                const pmList = poSupplier?.paymentMethods;
+                return (
+                  <select
+                    value={paymentForm.paymentMethod}
+                    onChange={(e) => setPaymentForm({ ...paymentForm, paymentMethod: e.target.value })}
+                    className={selectClass}
+                  >
+                    <option value="">-- เลือก --</option>
+                    {pmList?.length ? (
+                      pmList.map((pm, idx) => {
+                        const labels: Record<string, string> = { CASH: 'เงินสด', BANK_TRANSFER: 'โอนธนาคาร', CHECK: 'เช็ค', CREDIT: 'เครดิต' };
+                        const label = labels[pm.paymentMethod] || pm.paymentMethod;
+                        const detail = pm.bankName ? ` - ${pm.bankName}${pm.bankAccountNumber ? ` (${pm.bankAccountNumber})` : ''}` : '';
+                        const credit = pm.creditTermDays ? ` ${pm.creditTermDays} วัน` : '';
+                        return <option key={idx} value={pm.paymentMethod}>{label}{detail}{credit}{pm.isDefault ? ' (ค่าเริ่มต้น)' : ''}</option>;
+                      })
+                    ) : (
+                      <>
+                        <option value="CASH">เงินสด</option>
+                        <option value="BANK_TRANSFER">โอนธนาคาร</option>
+                        <option value="CHECK">เช็ค</option>
+                        <option value="CREDIT">เครดิต</option>
+                      </>
+                    )}
+                  </select>
+                );
+              })()}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">จำนวนเงินที่จ่ายแล้ว (บาท) *</label>
+            <input
+              type="number"
+              value={paymentForm.paidAmount}
+              onChange={(e) => setPaymentForm({ ...paymentForm, paidAmount: e.target.value })}
+              className={inputClass}
+              min="0"
+              step="0.01"
+              required
+            />
+            {Number(selectedPO.netAmount ?? selectedPO.totalAmount) > 0 && paymentForm.paymentStatus !== 'UNPAID' && paymentForm.paymentStatus !== 'FULLY_PAID' && (
+              <div className="flex gap-2 mt-1">
+                <button type="button" onClick={() => setPaymentForm({ ...paymentForm, paidAmount: String(Math.round(Number(selectedPO.netAmount ?? selectedPO.totalAmount) * 0.3)) })} className="text-xs text-primary hover:underline">30%</button>
+                <button type="button" onClick={() => setPaymentForm({ ...paymentForm, paidAmount: String(Math.round(Number(selectedPO.netAmount ?? selectedPO.totalAmount) * 0.5)) })} className="text-xs text-primary hover:underline">50%</button>
+              </div>
+            )}
+            {(() => {
+              const netAmt = Number(selectedPO.netAmount ?? selectedPO.totalAmount);
+              const paid = Number(paymentForm.paidAmount) || 0;
+              const remaining = netAmt - paid;
+              if (paid > 0 && remaining > 0) {
+                return (
+                  <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-lg text-sm">
+                    <div className="flex justify-between text-amber-800">
+                      <span>ยอดคงเหลือที่ต้องจ่าย:</span>
+                      <span className="font-semibold">{remaining.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท</span>
+                    </div>
+                  </div>
+                );
+              }
+              if (paid > netAmt && netAmt > 0) {
+                return (
+                  <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg text-sm">
+                    <span className="text-red-600">จำนวนที่จ่ายเกินยอดสุทธิ {(paid - netAmt).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท</span>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">หมายเหตุ</label>
+            <textarea
+              value={paymentForm.paymentNotes}
+              onChange={(e) => setPaymentForm({ ...paymentForm, paymentNotes: e.target.value })}
+              rows={2}
+              className={inputClass}
+              placeholder="เช่น เลขอ้างอิง, ชื่อบัญชี"
+            />
+          </div>
+
+          {/* Attachments - File upload + URL */}
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">แนบสลิป/เอกสาร</label>
+            <div className="flex gap-2">
+              <label className="flex items-center gap-1.5 px-3 py-2 bg-primary-50 text-primary-700 border border-primary-200 rounded-lg text-sm cursor-pointer hover:bg-primary-100 whitespace-nowrap">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                เลือกรูป
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files || []);
+                    files.forEach((file) => {
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        setPaymentAttachments((prev) => [...prev, reader.result as string]);
+                      };
+                      reader.readAsDataURL(file);
+                    });
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+              <input
+                type="text"
+                value={paymentAttachmentUrl}
+                onChange={(e) => setPaymentAttachmentUrl(e.target.value)}
+                className={inputClass}
+                placeholder="หรือวาง URL"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (paymentAttachmentUrl.trim()) {
+                    setPaymentAttachments([...paymentAttachments, paymentAttachmentUrl.trim()]);
+                    setPaymentAttachmentUrl('');
+                  }
+                }}
+                className="px-3 py-2 bg-secondary rounded-lg text-sm hover:bg-muted/50 whitespace-nowrap"
+              >
+                + เพิ่ม
+              </button>
+            </div>
+            {paymentAttachments.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {paymentAttachments.map((att, idx) => (
+                  <div key={idx} className="relative group">
+                    {att.startsWith('data:image') ? (
+                      <img src={att} alt={`สลิป ${idx + 1}`} className="h-20 w-20 object-cover rounded-lg border" />
+                    ) : (
+                      <div className="h-20 w-20 flex items-center justify-center bg-primary-50 rounded-lg border text-xs text-primary p-1 break-all overflow-hidden">
+                        <a href={att} target="_blank" rel="noopener noreferrer" className="hover:underline">{att.length > 30 ? att.slice(0, 30) + '...' : att}</a>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setPaymentAttachments(paymentAttachments.filter((_, i) => i !== idx))}
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      &times;
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2 border-t">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-muted-foreground">
+              ยกเลิก
+            </button>
+            <button
+              type="submit"
+              disabled={paymentMutation.isPending}
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            >
+              {paymentMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
+            </button>
+          </div>
+        </form>
+      )}
+    </Modal>
+  );
+}

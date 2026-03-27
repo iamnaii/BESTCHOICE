@@ -22,11 +22,23 @@ export class PaymentsController {
     @Query('status') status?: string,
     @Query('search') search?: string,
     @Query('dunningStage') dunningStage?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
     @CurrentUser() user?: { role: string; branchId: string | null },
   ) {
     // Enforce branch filtering for non-OWNER/ACCOUNTANT roles
     const effectiveBranchId = this.getEffectiveBranchId(branchId, user);
-    return this.paymentsService.getPendingPayments({ branchId: effectiveBranchId, date, status, search, dunningStage });
+    const parsedPage = page ? parseInt(page, 10) : undefined;
+    const parsedLimit = limit ? Math.min(parseInt(limit, 10), 200) : undefined;
+    return this.paymentsService.getPendingPayments({
+      branchId: effectiveBranchId,
+      date,
+      status,
+      search,
+      dunningStage,
+      page: parsedPage && !isNaN(parsedPage) ? parsedPage : undefined,
+      limit: parsedLimit && !isNaN(parsedLimit) ? parsedLimit : undefined,
+    });
   }
 
   @Get('daily-summary')
@@ -34,21 +46,38 @@ export class PaymentsController {
   getDailySummary(
     @Query('date') date: string,
     @Query('branchId') branchId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
     @CurrentUser() user?: { role: string; branchId: string | null },
   ) {
     const effectiveBranchId = this.getEffectiveBranchId(branchId, user);
-    return this.paymentsService.getDailySummary(date || new Date().toISOString().split('T')[0], effectiveBranchId);
+    const parsedPage = page ? parseInt(page, 10) : undefined;
+    const parsedLimit = limit ? Math.min(parseInt(limit, 10), 200) : undefined;
+    return this.paymentsService.getDailySummary(
+      date || new Date().toISOString().split('T')[0],
+      effectiveBranchId,
+      parsedPage && !isNaN(parsedPage) ? parsedPage : undefined,
+      parsedLimit && !isNaN(parsedLimit) ? parsedLimit : undefined,
+    );
   }
 
   @Get('contract/:contractId')
   @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   async getContractPayments(
     @Param('contractId') contractId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
     @CurrentUser() user?: { id: string; role: string; branchId: string | null },
   ) {
     // Enforce branch-level access
     if (user) await this.paymentsService.validateBranchAccess(contractId, user);
-    return this.paymentsService.getContractPayments(contractId);
+    const parsedPage = page ? parseInt(page, 10) : undefined;
+    const parsedLimit = limit ? Math.min(parseInt(limit, 10), 200) : undefined;
+    return this.paymentsService.getContractPayments(
+      contractId,
+      parsedPage && !isNaN(parsedPage) ? parsedPage : undefined,
+      parsedLimit && !isNaN(parsedLimit) ? parsedLimit : undefined,
+    );
   }
 
   @Post('record')

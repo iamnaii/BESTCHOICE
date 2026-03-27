@@ -263,21 +263,37 @@ export class PaymentsService {
   }
 
   // ─── Get payments for a contract ──────────────────────
-  async getContractPayments(contractId: string) {
+  async getContractPayments(contractId: string, page = 1, limit = 50) {
     const contract = await this.prisma.contract.findUnique({ where: { id: contractId } });
     if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
 
-    return this.prisma.payment.findMany({
-      where: { contractId },
-      orderBy: { installmentNo: 'asc' },
-      include: {
-        recordedBy: { select: { id: true, name: true } },
-      },
-    });
+    const where = { contractId };
+    const [data, total] = await Promise.all([
+      this.prisma.payment.findMany({
+        where,
+        orderBy: { installmentNo: 'asc' },
+        skip: (page - 1) * limit,
+        take: limit,
+        include: {
+          recordedBy: { select: { id: true, name: true } },
+        },
+      }),
+      this.prisma.payment.count({ where }),
+    ]);
+
+    return { data, total, page, limit };
   }
 
   // ─── Get all pending payments (for payment queue view) ─
-  async getPendingPayments(filters: { branchId?: string; date?: string; status?: string; search?: string; dunningStage?: string }) {
+  async getPendingPayments(filters: {
+    branchId?: string;
+    date?: string;
+    status?: string;
+    search?: string;
+    dunningStage?: string;
+    page?: number;
+    limit?: number;
+  }) {
     const where: Record<string, unknown> = {};
 
     if (filters.status) {
@@ -318,24 +334,34 @@ export class PaymentsService {
       };
     }
 
-    return this.prisma.payment.findMany({
-      where,
-      orderBy: [{ dueDate: 'asc' }, { installmentNo: 'asc' }],
-      include: {
-        contract: {
-          select: {
-            id: true,
-            contractNumber: true,
-            customer: { select: { id: true, name: true, phone: true } },
-            branch: { select: { id: true, name: true } },
+    const page = filters.page || 1;
+    const limit = Math.min(filters.limit || 50, 100);
+
+    const [data, total] = await Promise.all([
+      this.prisma.payment.findMany({
+        where,
+        orderBy: [{ dueDate: 'asc' }, { installmentNo: 'asc' }],
+        skip: (page - 1) * limit,
+        take: limit,
+        include: {
+          contract: {
+            select: {
+              id: true,
+              contractNumber: true,
+              customer: { select: { id: true, name: true, phone: true } },
+              branch: { select: { id: true, name: true } },
+            },
           },
         },
-      },
-    });
+      }),
+      this.prisma.payment.count({ where }),
+    ]);
+
+    return { data, total, page, limit };
   }
 
   // ─── Daily summary ────────────────────────────────────
-  async getDailySummary(date: string, branchId?: string) {
+  async getDailySummary(date: string, branchId?: string, page = 1, limit = 50) {
     const d = new Date(date);
     const startOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
     const endOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
@@ -349,24 +375,31 @@ export class PaymentsService {
       where.contract = { branchId };
     }
 
-    const payments = await this.prisma.payment.findMany({
-      where,
-      include: {
-        contract: {
-          select: {
-            contractNumber: true,
-            customer: { select: { name: true } },
-            branch: { select: { name: true } },
+    const [payments, total, aggregation] = await Promise.all([
+      this.prisma.payment.findMany({
+        where,
+        include: {
+          contract: {
+            select: {
+              contractNumber: true,
+              customer: { select: { name: true } },
+              branch: { select: { name: true } },
+            },
           },
+          recordedBy: { select: { name: true } },
         },
-        recordedBy: { select: { name: true } },
-      },
-      orderBy: { paidDate: 'asc' },
-    });
+        orderBy: { paidDate: 'asc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.payment.count({ where }),
+      this.prisma.payment.aggregate({
+        where,
+        _sum: { amountPaid: true, lateFee: true },
+      }),
+    ]);
 
-    const totalAmount = payments.reduce((sum, p) => sum + Number(p.amountPaid), 0);
-    const totalLateFees = payments.reduce((sum, p) => sum + Number(p.lateFee), 0);
-
+    // Compute byMethod from the current page (for display) — summary totals use aggregate
     const byMethod: Record<string, number> = {};
     payments.forEach((p) => {
       const method = p.paymentMethod || 'UNKNOWN';
@@ -375,11 +408,14 @@ export class PaymentsService {
 
     return {
       date,
-      totalPayments: payments.length,
-      totalAmount: Math.round(totalAmount),
-      totalLateFees: Math.round(totalLateFees),
+      totalPayments: total,
+      totalAmount: Math.round(Number(aggregation._sum.amountPaid || 0)),
+      totalLateFees: Math.round(Number(aggregation._sum.lateFee || 0)),
       byMethod,
-      payments,
+      data: payments,
+      total,
+      page,
+      limit,
     };
   }
 

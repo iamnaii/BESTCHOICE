@@ -119,7 +119,7 @@ describe('PaymentsController', () => {
   describe('pending payments branch filtering', () => {
     it('should force branchId for SALES user', () => {
       const user = { role: 'SALES', branchId: 'branch-1' };
-      controller.getPendingPayments(undefined, undefined, undefined, undefined, undefined, user);
+      controller.getPendingPayments(undefined, undefined, undefined, undefined, undefined, undefined, undefined, user);
       expect(paymentsService.getPendingPayments).toHaveBeenCalledWith(
         expect.objectContaining({ branchId: 'branch-1' }),
       );
@@ -127,7 +127,7 @@ describe('PaymentsController', () => {
 
     it('should not force branchId for OWNER', () => {
       const user = { role: 'OWNER', branchId: 'branch-1' };
-      controller.getPendingPayments(undefined, undefined, undefined, undefined, undefined, user);
+      controller.getPendingPayments(undefined, undefined, undefined, undefined, undefined, undefined, undefined, user);
       expect(paymentsService.getPendingPayments).toHaveBeenCalledWith(
         expect.objectContaining({ branchId: undefined }),
       );
@@ -135,7 +135,7 @@ describe('PaymentsController', () => {
 
     it('should allow OWNER to query specific branch', () => {
       const user = { role: 'OWNER', branchId: 'branch-1' };
-      controller.getPendingPayments('branch-2', undefined, undefined, undefined, undefined, user);
+      controller.getPendingPayments('branch-2', undefined, undefined, undefined, undefined, undefined, undefined, user);
       expect(paymentsService.getPendingPayments).toHaveBeenCalledWith(
         expect.objectContaining({ branchId: 'branch-2' }),
       );

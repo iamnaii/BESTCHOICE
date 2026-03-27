@@ -10,8 +10,7 @@ import WorkflowStatusBadge from '@/components/contract/WorkflowStatusBadge';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
 
-// Dynamic import ExcelJS to avoid bundle bloat
-const initExcelJs = async () => import('exceljs');
+import { exportToExcel } from '@/utils/excel.util';
 
 interface Contract {
   id: string;
@@ -139,38 +138,34 @@ export default function ContractsPage() {
 
   // Excel export handler
   const handleExport = async () => {
-    const ExcelJS = await initExcelJs();
-    const Workbook = ExcelJS.Workbook;
-    const wb = new Workbook();
-    const ws = wb.addWorksheet('สัญญา');
-
-    const headers = ['เลขสัญญา', 'ลูกค้า', 'เบอร์โทร', 'สินค้า', 'ราคาขาย', 'ค่างวด', 'สถานะ', 'สาขา', 'พนักงาน', 'วันที่สร้าง'];
-    ws.addRow(headers);
-
-    contracts.forEach((c) => {
-      ws.addRow([
-        c.contractNumber,
-        c.customer.name,
-        c.customer.phone,
-        `${c.product.brand} ${c.product.model}`,
-        Number(c.sellingPrice).toLocaleString(),
-        Number(c.monthlyPayment).toLocaleString(),
-        statusLabels[c.status]?.label || c.status,
-        c.branch.name,
-        c.salesperson.name,
-        new Date(c.createdAt).toLocaleDateString('th-TH'),
-      ]);
+    await exportToExcel({
+      columns: [
+        { header: 'เลขสัญญา', key: 'contractNumber', width: 15 },
+        { header: 'ลูกค้า', key: 'customer', width: 15 },
+        { header: 'เบอร์โทร', key: 'phone', width: 15 },
+        { header: 'สินค้า', key: 'product', width: 15 },
+        { header: 'ราคาขาย', key: 'sellingPrice', width: 15 },
+        { header: 'ค่างวด', key: 'monthlyPayment', width: 15 },
+        { header: 'สถานะ', key: 'status', width: 15 },
+        { header: 'สาขา', key: 'branch', width: 15 },
+        { header: 'พนักงาน', key: 'salesperson', width: 15 },
+        { header: 'วันที่สร้าง', key: 'createdAt', width: 15 },
+      ],
+      data: contracts.map((c) => ({
+        contractNumber: c.contractNumber,
+        customer: c.customer.name,
+        phone: c.customer.phone,
+        product: `${c.product.brand} ${c.product.model}`,
+        sellingPrice: Number(c.sellingPrice).toLocaleString(),
+        monthlyPayment: Number(c.monthlyPayment).toLocaleString(),
+        status: statusLabels[c.status]?.label || c.status,
+        branch: c.branch.name,
+        salesperson: c.salesperson.name,
+        createdAt: new Date(c.createdAt).toLocaleDateString('th-TH'),
+      })),
+      sheetName: 'สัญญา',
+      filename: `contracts-${new Date().toISOString().split('T')[0]}.xlsx`,
     });
-
-    ws.columns.forEach((col) => { col.width = 15; });
-    const buf = await wb.xlsx.writeBuffer();
-    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `contracts-${new Date().toISOString().split('T')[0]}.xlsx`;
-    a.click();
-    URL.revokeObjectURL(url);
     toast.success('ส่งออก Excel สำเร็จ');
   };
 

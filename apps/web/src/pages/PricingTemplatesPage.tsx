@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import ExcelJS from 'exceljs';
+import { downloadExcelBuffer, importFromExcel } from '@/utils/excel.util';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import Modal from '@/components/ui/Modal';
@@ -151,13 +152,7 @@ export default function PricingTemplatesPage() {
     ]);
 
     const buffer = await wb.xlsx.writeBuffer();
-    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'แบบฟอร์มราคาตั้งต้น.xlsx';
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadExcelBuffer(buffer, 'แบบฟอร์มราคาตั้งต้น.xlsx');
   };
 
   const handleFileImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -166,31 +161,11 @@ export default function PricingTemplatesPage() {
     if (fileInputRef.current) fileInputRef.current.value = '';
 
     try {
-      const buffer = await file.arrayBuffer();
-      const wb = new ExcelJS.Workbook();
-      await wb.xlsx.load(buffer);
-      const ws = wb.worksheets[0];
-      if (!ws || ws.rowCount <= 1) {
+      const rows = await importFromExcel(file);
+      if (rows.length === 0) {
         toast.error('ไฟล์ไม่มีข้อมูล');
         return;
       }
-
-      // Read header row to build column index
-      const headerRow = ws.getRow(1);
-      const colIndex: Record<string, number> = {};
-      headerRow.eachCell((cell, colNumber) => {
-        colIndex[String(cell.value || '').trim()] = colNumber;
-      });
-
-      const rows: Record<string, any>[] = [];
-      ws.eachRow((row, rowNumber) => {
-        if (rowNumber === 1) return; // skip header
-        const obj: Record<string, any> = {};
-        for (const [header, col] of Object.entries(colIndex)) {
-          obj[header] = row.getCell(col).value;
-        }
-        rows.push(obj);
-      });
 
       const items = rows.map((row) => {
         const categoryRaw = String(row['ประเภท'] || '').trim();

@@ -5,7 +5,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import Modal from '@/components/ui/Modal';
 import { Card, CardContent } from '@/components/ui/card';
 import { useDebounce } from '@/hooks/useDebounce';
-import ExcelJS from 'exceljs';
+import { exportToExcel } from '@/utils/excel.util';
 import { toast } from 'sonner';
 
 interface PaymentEvidence {
@@ -190,25 +190,19 @@ export default function SlipReviewPage() {
       params.set('limit', '10000');
       const { data } = await api.get(`/line-oa/evidence?${params}`);
 
-      const wb = new ExcelJS.Workbook();
-      const ws = wb.addWorksheet('สลิปชำระเงิน');
-      ws.columns = [
-        { header: 'เลขสัญญา', key: 'contractNumber', width: 18 },
-        { header: 'ชื่อลูกค้า', key: 'customerName', width: 25 },
-        { header: 'จำนวนเงิน', key: 'amount', width: 14 },
-        { header: 'สถานะ', key: 'status', width: 12 },
-        { header: 'ผู้ตรวจ', key: 'reviewer', width: 20 },
-        { header: 'วันที่ส่ง', key: 'createdAt', width: 18 },
-        { header: 'วันที่ตรวจ', key: 'reviewedAt', width: 18 },
-        { header: 'หมายเหตุ', key: 'note', width: 30 },
-      ];
-
-      const headerRow = ws.getRow(1);
-      headerRow.font = { bold: true };
-      headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
-
-      ws.addRows(
-        data.map((ev: PaymentEvidence) => ({
+      const now = new Date();
+      await exportToExcel({
+        columns: [
+          { header: 'เลขสัญญา', key: 'contractNumber', width: 18 },
+          { header: 'ชื่อลูกค้า', key: 'customerName', width: 25 },
+          { header: 'จำนวนเงิน', key: 'amount', width: 14 },
+          { header: 'สถานะ', key: 'status', width: 12 },
+          { header: 'ผู้ตรวจ', key: 'reviewer', width: 20 },
+          { header: 'วันที่ส่ง', key: 'createdAt', width: 18 },
+          { header: 'วันที่ตรวจ', key: 'reviewedAt', width: 18 },
+          { header: 'หมายเหตุ', key: 'note', width: 30 },
+        ],
+        data: data.map((ev: PaymentEvidence) => ({
           contractNumber: ev.contract.contractNumber,
           customerName: ev.contract.customer.name,
           amount: ev.amount ? Number(ev.amount) : '-',
@@ -218,19 +212,9 @@ export default function SlipReviewPage() {
           reviewedAt: ev.reviewedAt ? new Date(ev.reviewedAt).toLocaleString('th-TH') : '-',
           note: ev.reviewNote || '-',
         })),
-      );
-
-      const buffer = await wb.xlsx.writeBuffer();
-      const blob = new Blob([buffer], {
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        sheetName: 'สลิปชำระเงิน',
+        filename: `สลิปชำระเงิน_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}.xlsx`,
       });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      const now = new Date();
-      a.download = `สลิปชำระเงิน_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}.xlsx`;
-      a.click();
-      URL.revokeObjectURL(url);
       toast.success(`ดาวน์โหลดสำเร็จ (${data.length} รายการ)`, { id: 'excel-export' });
     } catch {
       toast.error('ไม่สามารถสร้างไฟล์ Excel ได้', { id: 'excel-export' });

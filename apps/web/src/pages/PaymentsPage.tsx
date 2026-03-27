@@ -12,8 +12,7 @@ import PaymentHistorySheet from '@/components/payment/PaymentHistorySheet';
 import ReceiptModal from '@/components/payment/ReceiptModal';
 import { toast } from 'sonner';
 
-// Dynamic import ExcelJS to avoid bundle bloat
-const initExcelJs = async () => import('exceljs');
+import { exportToExcel } from '@/utils/excel.util';
 
 interface OcrPaymentSlipResult {
   amount: number | null;
@@ -218,38 +217,35 @@ export default function PaymentsPage() {
 
   // Excel export handler
   const handleExport = async () => {
-    const ExcelJS = await initExcelJs();
-    const Workbook = ExcelJS.Workbook;
-    const wb = new Workbook();
-    const ws = wb.addWorksheet('รายการรอชำระ');
-
-    const headers = ['สัญญา', 'ลูกค้า', 'เบอร์โทร', 'งวดที่', 'ยอดค้าง', 'ค่าปรับ', 'รวมทั้งสิ้น', 'สถานะ', 'สาขา'];
-    ws.addRow(headers);
-
-    pendingPayments.forEach((p) => {
-      const outstanding = parseFloat(p.amountDue) + parseFloat(p.lateFee) - parseFloat(p.amountPaid);
-      ws.addRow([
-        p.contract.contractNumber,
-        p.contract.customer.name,
-        p.contract.customer.phone,
-        p.installmentNo,
-        parseFloat(p.amountDue).toLocaleString(),
-        parseFloat(p.lateFee).toLocaleString(),
-        outstanding.toLocaleString(),
-        paymentStatusLabels[p.status]?.label || p.status,
-        p.contract.branch.name,
-      ]);
+    await exportToExcel({
+      columns: [
+        { header: 'สัญญา', key: 'contractNumber', width: 15 },
+        { header: 'ลูกค้า', key: 'customer', width: 15 },
+        { header: 'เบอร์โทร', key: 'phone', width: 15 },
+        { header: 'งวดที่', key: 'installmentNo', width: 15 },
+        { header: 'ยอดค้าง', key: 'amountDue', width: 15 },
+        { header: 'ค่าปรับ', key: 'lateFee', width: 15 },
+        { header: 'รวมทั้งสิ้น', key: 'outstanding', width: 15 },
+        { header: 'สถานะ', key: 'status', width: 15 },
+        { header: 'สาขา', key: 'branch', width: 15 },
+      ],
+      data: pendingPayments.map((p) => {
+        const outstanding = parseFloat(p.amountDue) + parseFloat(p.lateFee) - parseFloat(p.amountPaid);
+        return {
+          contractNumber: p.contract.contractNumber,
+          customer: p.contract.customer.name,
+          phone: p.contract.customer.phone,
+          installmentNo: p.installmentNo,
+          amountDue: parseFloat(p.amountDue).toLocaleString(),
+          lateFee: parseFloat(p.lateFee).toLocaleString(),
+          outstanding: outstanding.toLocaleString(),
+          status: paymentStatusLabels[p.status]?.label || p.status,
+          branch: p.contract.branch.name,
+        };
+      }),
+      sheetName: 'รายการรอชำระ',
+      filename: `pending-payments-${new Date().toISOString().split('T')[0]}.xlsx`,
     });
-
-    ws.columns.forEach((col) => { col.width = 15; });
-    const buf = await wb.xlsx.writeBuffer();
-    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `pending-payments-${new Date().toISOString().split('T')[0]}.xlsx`;
-    a.click();
-    URL.revokeObjectURL(url);
     toast.success('ส่งออก Excel สำเร็จ');
   };
 

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import ExcelJS from 'exceljs';
+import { exportToExcel, type ExcelColumn } from '@/utils/excel.util';
 import api, { getErrorMessage } from '@/lib/api';
 import { compressImageForOcr } from '@/lib/compressImage';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -330,10 +330,7 @@ export default function CreditChecksPage() {
       exportParams.set('limit', '10000');
       const { data: allData } = await api.get<CreditChecksResponse>(`/credit-checks?${exportParams}`);
 
-      const wb = new ExcelJS.Workbook();
-      const ws = wb.addWorksheet('ตรวจสอบเครดิต');
-
-      const cols: { header: string; key: string; width: number }[] = [
+      const cols: ExcelColumn[] = [
         { header: 'ชื่อลูกค้า', key: 'customerName', width: 25 },
         { header: 'เบอร์โทร', key: 'phone', width: 14 },
         { header: 'ธนาคาร', key: 'bankName', width: 16 },
@@ -359,12 +356,6 @@ export default function CreditChecksPage() {
         { header: 'วันที่สร้าง', key: 'createdAt', width: 16 },
       );
 
-      ws.columns = cols;
-
-      const headerRow = ws.getRow(1);
-      headerRow.font = { bold: true };
-      headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
-
       const getRiskLabel = (score: number | null) => {
         if (score === null) return 'รอวิเคราะห์';
         if (score >= 70) return 'ความเสี่ยงต่ำ';
@@ -373,8 +364,10 @@ export default function CreditChecksPage() {
         return 'ความเสี่ยงสูง';
       };
 
-      ws.addRows(
-        allData.data.map((cc: CreditCheckItem) => {
+      const now = new Date();
+      await exportToExcel({
+        columns: cols,
+        data: allData.data.map((cc: CreditCheckItem) => {
           const ai = cc.aiAnalysis as AiAnalysisData | null;
           const row: Record<string, unknown> = {
             customerName: cc.customer.name,
@@ -397,19 +390,9 @@ export default function CreditChecksPage() {
           }
           return row;
         }),
-      );
-
-      const buffer = await wb.xlsx.writeBuffer();
-      const blob = new Blob([buffer], {
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        sheetName: 'ตรวจสอบเครดิต',
+        filename: `ตรวจสอบเครดิต_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}.xlsx`,
       });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      const now = new Date();
-      a.download = `ตรวจสอบเครดิต_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}.xlsx`;
-      a.click();
-      URL.revokeObjectURL(url);
       toast.success(`ดาวน์โหลดสำเร็จ (${allData.data.length} รายการ)`, { id: 'excel-export' });
     } catch {
       toast.error('ไม่สามารถสร้างไฟล์ Excel ได้', { id: 'excel-export' });

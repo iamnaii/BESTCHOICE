@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import ExcelJS from 'exceljs';
+import { exportToExcel, type ExcelColumn } from '@/utils/excel.util';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { compressImageForOcr } from '@/lib/compressImage';
@@ -384,10 +384,7 @@ export default function CustomersPage() {
       params.limit = '10000';
       const { data: allData } = await api.get<CustomersResponse>('/customers', { params });
 
-      const wb = new ExcelJS.Workbook();
-      const ws = wb.addWorksheet('รายชื่อลูกค้า');
-
-      const baseCols: Partial<ExcelJS.Column>[] = [
+      const baseCols: ExcelColumn[] = [
         { header: 'ชื่อ', key: 'name', width: 22 },
         { header: 'ชื่อเล่น', key: 'nickname', width: 14 },
         { header: 'เบอร์โทร', key: 'phone', width: 14 },
@@ -407,14 +404,10 @@ export default function CustomersPage() {
         baseCols.push({ header: 'เงินเดือน', key: 'salary', width: 14 });
       }
 
-      ws.columns = baseCols;
-
-      const headerRow = ws.getRow(1);
-      headerRow.font = { bold: true };
-      headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
-
-      ws.addRows(
-        allData.data.map((c: Customer) => {
+      const now = new Date();
+      await exportToExcel({
+        columns: baseCols,
+        data: allData.data.map((c: Customer) => {
           const row: Record<string, unknown> = {
             name: c.name,
             nickname: c.nickname || '-',
@@ -435,19 +428,9 @@ export default function CustomersPage() {
           }
           return row;
         }),
-      );
-
-      const buffer = await wb.xlsx.writeBuffer();
-      const blob = new Blob([buffer], {
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        sheetName: 'รายชื่อลูกค้า',
+        filename: `รายชื่อลูกค้า_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}.xlsx`,
       });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      const now = new Date();
-      a.download = `รายชื่อลูกค้า_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}.xlsx`;
-      a.click();
-      URL.revokeObjectURL(url);
       toast.success(`ดาวน์โหลดสำเร็จ (${allData.data.length} รายการ)`, { id: 'excel-export' });
     } catch {
       toast.error('ไม่สามารถสร้างไฟล์ Excel ได้', { id: 'excel-export' });

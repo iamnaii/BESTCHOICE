@@ -6,7 +6,7 @@ import DataTable from '@/components/ui/DataTable';
 import { Card, CardContent } from '@/components/ui/card';
 import ReceiptModal from '@/components/payment/ReceiptModal';
 import { useDebounce } from '@/hooks/useDebounce';
-import ExcelJS from 'exceljs';
+import { exportToExcel } from '@/utils/excel.util';
 import { toast } from 'sonner';
 
 interface Receipt {
@@ -175,28 +175,21 @@ function ReceiptsPage() {
       params.set('limit', '10000');
       const { data: allData } = await api.get<ReceiptsResponse>(`/receipts?${params}`);
 
-      const wb = new ExcelJS.Workbook();
-      const ws = wb.addWorksheet('ใบเสร็จ');
-      ws.columns = [
-        { header: 'เลขใบเสร็จ', key: 'receiptNumber', width: 22 },
-        { header: 'เลขสัญญา', key: 'contractNumber', width: 18 },
-        { header: 'ประเภท', key: 'receiptType', width: 16 },
-        { header: 'ผู้ชำระ', key: 'payerName', width: 25 },
-        { header: 'จำนวนเงิน', key: 'amount', width: 14 },
-        { header: 'งวดที่', key: 'installmentNo', width: 8 },
-        { header: 'วิธีชำระ', key: 'paymentMethod', width: 14 },
-        { header: 'เลขอ้างอิง', key: 'transactionRef', width: 22 },
-        { header: 'วันที่ชำระ', key: 'paidDate', width: 16 },
-        { header: 'สถานะ', key: 'status', width: 10 },
-      ];
-
-      // Style header row
-      const headerRow = ws.getRow(1);
-      headerRow.font = { bold: true };
-      headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
-
-      ws.addRows(
-        allData.data.map((r: Receipt) => ({
+      const now = new Date();
+      await exportToExcel({
+        columns: [
+          { header: 'เลขใบเสร็จ', key: 'receiptNumber', width: 22 },
+          { header: 'เลขสัญญา', key: 'contractNumber', width: 18 },
+          { header: 'ประเภท', key: 'receiptType', width: 16 },
+          { header: 'ผู้ชำระ', key: 'payerName', width: 25 },
+          { header: 'จำนวนเงิน', key: 'amount', width: 14 },
+          { header: 'งวดที่', key: 'installmentNo', width: 8 },
+          { header: 'วิธีชำระ', key: 'paymentMethod', width: 14 },
+          { header: 'เลขอ้างอิง', key: 'transactionRef', width: 22 },
+          { header: 'วันที่ชำระ', key: 'paidDate', width: 16 },
+          { header: 'สถานะ', key: 'status', width: 10 },
+        ],
+        data: allData.data.map((r: Receipt) => ({
           receiptNumber: r.receiptNumber,
           contractNumber: r.contract?.contractNumber || '-',
           receiptType: receiptTypeLabels[r.receiptType] || r.receiptType,
@@ -208,19 +201,9 @@ function ReceiptsPage() {
           paidDate: new Date(r.paidDate).toLocaleDateString('th-TH'),
           status: r.isVoided ? 'ยกเลิก' : 'ปกติ',
         })),
-      );
-
-      const buffer = await wb.xlsx.writeBuffer();
-      const blob = new Blob([buffer], {
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        sheetName: 'ใบเสร็จ',
+        filename: `ใบเสร็จ_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}.xlsx`,
       });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      const now = new Date();
-      a.download = `ใบเสร็จ_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}.xlsx`;
-      a.click();
-      URL.revokeObjectURL(url);
       toast.success(`ดาวน์โหลดสำเร็จ (${allData.data.length} รายการ)`, { id: 'excel-export' });
     } catch {
       toast.error('ไม่สามารถสร้างไฟล์ Excel ได้', { id: 'excel-export' });

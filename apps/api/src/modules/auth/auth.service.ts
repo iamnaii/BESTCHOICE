@@ -11,6 +11,7 @@ import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto, ResetPasswordDto } from './dto/password-reset.dto';
+import { EmailService } from '../email/email.service';
 
 @Injectable()
 export class AuthService {
@@ -20,6 +21,7 @@ export class AuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private configService: ConfigService,
+    private emailService: EmailService,
   ) {}
 
   /**
@@ -171,7 +173,7 @@ export class AuthService {
   async forgotPassword(dto: ForgotPasswordDto): Promise<{ message: string }> {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
-      select: { id: true, isActive: true },
+      select: { id: true, name: true, email: true, isActive: true },
     });
 
     // Always return success to prevent email enumeration attacks
@@ -187,34 +189,33 @@ export class AuthService {
       data: { usedAt: new Date() },
     });
 
-    // Create a new reset token (valid for 1 hour)
-    const token = crypto.randomBytes(32).toString('hex');
+    // Create a new reset token (valid for 15 minutes)
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = this.hashToken(rawToken);
     const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + 1);
+    expiresAt.setMinutes(expiresAt.getMinutes() + 15);
 
+    // Store ONLY the hashed token in DB — raw token is sent via email
     await this.prisma.passwordResetToken.create({
-      data: { token, userId: user.id, expiresAt },
+      data: { token: tokenHash, userId: user.id, expiresAt },
     });
 
-    // In production, send email with reset link:
-    // const resetUrl = `${frontendUrl}/reset-password?token=${token}`;
-    // await emailService.send(user.email, 'Password Reset', resetUrl);
-    this.logger.log(
-      `Password reset token generated for user ${user.id} (token: ${token.substring(0, 8)}...)`,
-    );
+    // Send password reset email (falls back to console.log if SMTP not configured)
+    await this.emailService.sendPasswordResetEmail(user.email, rawToken, user.name);
 
-    return {
-      message: successMessage,
-      ...(process.env.NODE_ENV !== 'production' ? { token } : {}),
-    };
+    this.logger.log(`Password reset token generated for user ${user.id}`);
+
+    return { message: successMessage };
   }
 
   /**
    * Reset password using a valid token.
+   * The incoming raw token is hashed before DB lookup (DB stores only hashes).
    */
   async resetPassword(dto: ResetPasswordDto): Promise<{ message: string }> {
+    const tokenHash = this.hashToken(dto.token);
     const resetToken = await this.prisma.passwordResetToken.findUnique({
-      where: { token: dto.token },
+      where: { token: tokenHash },
       include: { user: { select: { id: true, isActive: true } } },
     });
 

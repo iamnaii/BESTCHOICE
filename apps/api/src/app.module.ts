@@ -48,6 +48,7 @@ import { CustomerAccessModule } from './modules/customer-access/customer-access.
 import { LineOaModule } from './modules/line-oa/line-oa.module';
 import { KycModule } from './modules/kyc/kyc.module';
 import { StorageModule } from './modules/storage/storage.module';
+import { EmailModule } from './modules/email/email.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
 import { CsrfGuard } from './guards/csrf.guard';
@@ -118,6 +119,8 @@ import { CsrfGuard } from './guards/csrf.guard';
     CustomerAccessModule,
     // LINE OA Integration
     LineOaModule,
+    // Email
+    EmailModule,
     // MASTER: Management
     UsersModule,
     SettingsModule,

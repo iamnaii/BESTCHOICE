@@ -30,6 +30,7 @@ import {
   ArrowRightLeft,
   ClipboardCheck,
   Upload,
+  GitBranchPlus,
   LogOut,
   ChevronsRight,
   ChevronsLeft,
@@ -117,6 +118,8 @@ const navSections: NavSection[] = [
       { label: 'ปรับสต็อก', path: '/stock/adjustments', icon: Sliders, roles: ['OWNER', 'BRANCH_MANAGER'] },
       { label: 'ตรวจนับสต็อก', path: '/stock/count', icon: ClipboardCheck, roles: ['OWNER', 'BRANCH_MANAGER'] },
       { label: 'แจ้งเตือนสต็อก', path: '/stock/alerts', icon: Bell, roles: ['OWNER', 'BRANCH_MANAGER'] },
+      { label: 'ขั้นตอนสต็อก', path: '/stock/workflow', icon: GitBranchPlus, roles: ['OWNER', 'BRANCH_MANAGER', 'SALES'] },
+      { label: 'ตรวจสอบสินค้า', path: '/inspections', icon: ClipboardCheck, roles: ['OWNER', 'BRANCH_MANAGER', 'SALES'] },
     ],
   },
   {

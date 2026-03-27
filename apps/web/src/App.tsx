@@ -48,6 +48,9 @@ const StockTransfersPage = lazy(() => import('@/pages/StockTransfersPage'));
 const StockAlertsPage = lazy(() => import('@/pages/StockAlertsPage'));
 const StockAdjustmentsPage = lazy(() => import('@/pages/StockAdjustmentsPage'));
 const StockCountPage = lazy(() => import('@/pages/StockCountPage'));
+const InventoryWorkflowPage = lazy(() => import('@/pages/InventoryWorkflowPage'));
+const InspectionPage = lazy(() => import('@/pages/InspectionPage'));
+const InspectionDetailPage = lazy(() => import('@/pages/InspectionDetailPage'));
 const SystemStatusPage = lazy(() => import('@/pages/SystemStatusPage'));
 const DocumentDashboardPage = lazy(() => import('@/pages/DocumentDashboardPage'));
 const PDPAPage = lazy(() => import('@/pages/PDPAPage'));
@@ -183,7 +186,33 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/stock/workflow"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'SALES']}>
+                <InventoryWorkflowPage />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/stock/branch-receiving" element={<Navigate to="/stock/transfers?view=incoming" replace />} />
+
+          {/* ตรวจสอบสินค้า (Inspections) */}
+          <Route
+            path="/inspections"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'SALES']}>
+                <InspectionPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/inspections/:id"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'SALES']}>
+                <InspectionDetailPage />
+              </ProtectedRoute>
+            }
+          />
 
           <Route
             path="/suppliers"

@@ -13,6 +13,7 @@ export class ReceiptsController {
   constructor(private receiptsService: ReceiptsService) {}
 
   @Get()
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   findAll(
     @Query('page') page?: string,
     @Query('limit') limit?: string,
@@ -34,16 +35,19 @@ export class ReceiptsController {
   }
 
   @Get('contract/:contractId')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   getContractReceipts(@Param('contractId') contractId: string) {
     return this.receiptsService.getContractReceipts(contractId);
   }
 
   @Get(':id')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   getReceipt(@Param('id') id: string) {
     return this.receiptsService.getReceipt(id);
   }
 
   @Get('number/:receiptNumber')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   getReceiptByNumber(@Param('receiptNumber') receiptNumber: string) {
     return this.receiptsService.getReceiptByNumber(receiptNumber);
   }
@@ -59,6 +63,7 @@ export class ReceiptsController {
   }
 
   @Get(':id/pdf')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   async getReceiptPDF(@Param('id') id: string, @Res() res: Response) {
     const pdf = await this.receiptsService.generatePDF(id);
     res.set({

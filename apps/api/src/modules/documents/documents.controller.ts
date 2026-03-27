@@ -19,6 +19,7 @@ export class DocumentsController {
 
   // ─── Contract Templates ──────────────────────────────
   @Get('contract-templates')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   findAllTemplates(@Query('type') type?: string) {
     return this.documentsService.findAllTemplates(type);
   }
@@ -31,6 +32,7 @@ export class DocumentsController {
   }
 
   @Get('contract-templates/:id')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   findOneTemplate(@Param('id') id: string) {
     return this.documentsService.findOneTemplate(id);
   }
@@ -83,6 +85,7 @@ export class DocumentsController {
   }
 
   @Get('contracts/:id/signatures')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   getSignatures(@Param('id') id: string) {
     return this.documentsService.getSignatures(id);
   }
@@ -117,22 +120,26 @@ export class DocumentsController {
   }
 
   @Get('contracts/:id/documents')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   getDocuments(@Param('id') id: string) {
     return this.documentsService.getDocuments(id);
   }
 
   @Get('contracts/:id/preview')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   previewContract(@Param('id') id: string, @Query('templateId') templateId?: string) {
     return this.documentsService.previewContract(id, templateId);
   }
 
   @Get('documents/:id')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   getDocument(@Param('id') id: string) {
     return this.documentsService.getDocument(id);
   }
 
   // ─── Document Download ───────────────────────────────
   @Get('documents/:id/download')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   async downloadDocument(@Param('id') id: string, @Res() res: any) {
     const { stream, filename, contentType } = await this.documentsService.getDocumentStream(id);
     res.set({
@@ -143,6 +150,7 @@ export class DocumentsController {
   }
 
   @Get('documents/:id/signed-url')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   getSignedUrl(@Param('id') id: string) {
     return this.documentsService.getDocumentSignedUrl(id);
   }

@@ -12,6 +12,7 @@ export class RepossessionsController {
   constructor(private repossessionsService: RepossessionsService) {}
 
   @Get()
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
   findAll(
     @Query('status') status?: string,
     @Query('branchId') branchId?: string,
@@ -33,6 +34,7 @@ export class RepossessionsController {
   }
 
   @Get(':id')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
   findOne(@Param('id') id: string) {
     return this.repossessionsService.findOne(id);
   }

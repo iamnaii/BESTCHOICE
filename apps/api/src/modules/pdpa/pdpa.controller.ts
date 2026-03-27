@@ -40,6 +40,7 @@ export class PDPAController {
   constructor(private pdpaService: PDPAService) {}
 
   @Get('privacy-notice')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   getPrivacyNotice() {
     return this.pdpaService.getPrivacyNotice();
   }
@@ -60,6 +61,7 @@ export class PDPAController {
   }
 
   @Get('consent/customer/:customerId')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   getCustomerConsents(@Param('customerId') customerId: string) {
     return this.pdpaService.getCustomerConsents(customerId);
   }

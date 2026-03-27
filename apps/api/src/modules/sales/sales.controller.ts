@@ -12,6 +12,7 @@ export class SalesController {
   constructor(private salesService: SalesService) {}
 
   @Get()
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   findAll(
     @Query('saleType') saleType?: string,
     @Query('branchId') branchId?: string,
@@ -47,16 +48,19 @@ export class SalesController {
   }
 
   @Get('config')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   getPosConfig() {
     return this.salesService.getPosConfig();
   }
 
   @Get('top-products')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
   getTopProducts() {
     return this.salesService.getTopSellingProducts();
   }
 
   @Get('daily-summary')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
   getDailySummary(
     @Query('date') date?: string,
     @Query('branchId') branchId?: string,
@@ -68,6 +72,7 @@ export class SalesController {
   }
 
   @Get(':id')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   findOne(@Param('id') id: string) {
     return this.salesService.findOne(id);
   }

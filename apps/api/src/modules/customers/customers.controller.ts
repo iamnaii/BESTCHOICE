@@ -11,6 +11,7 @@ export class CustomersController {
   constructor(private customersService: CustomersService) {}
 
   @Get()
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   findAll(
     @Query('search') search?: string,
     @Query('page') page?: string,
@@ -36,21 +37,25 @@ export class CustomersController {
   }
 
   @Get('search')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   search(@Query('q') q: string) {
     return this.customersService.search(q || '');
   }
 
   @Get(':id')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   findOne(@Param('id') id: string) {
     return this.customersService.findOne(id);
   }
 
   @Get(':id/contracts')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   getContracts(@Param('id') id: string) {
     return this.customersService.getContracts(id);
   }
 
   @Get(':id/risk-flag')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   getRiskFlag(@Param('id') id: string) {
     return this.customersService.getRiskFlag(id);
   }

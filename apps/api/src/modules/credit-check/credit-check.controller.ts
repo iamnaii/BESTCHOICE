@@ -13,6 +13,7 @@ export class GlobalCreditCheckController {
   constructor(private service: CreditCheckService) {}
 
   @Get()
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   findAll(
     @Query('status') status?: string,
     @Query('search') search?: string,
@@ -43,6 +44,7 @@ export class CreditCheckController {
   constructor(private service: CreditCheckService) {}
 
   @Get()
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   findByContract(@Param('contractId') contractId: string) {
     return this.service.findByContract(contractId);
   }
@@ -81,11 +83,13 @@ export class CustomerCreditCheckController {
   constructor(private service: CreditCheckService) {}
 
   @Get()
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   findByCustomer(@Param('customerId') customerId: string) {
     return this.service.findByCustomer(customerId);
   }
 
   @Get('latest')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   findLatest(@Param('customerId') customerId: string) {
     return this.service.findLatestByCustomer(customerId);
   }

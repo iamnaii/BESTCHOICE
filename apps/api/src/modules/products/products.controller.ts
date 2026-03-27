@@ -21,6 +21,7 @@ export class ProductsController {
   ) {}
 
   @Get()
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   findAll(
     @Query('search') search?: string,
     @Query('branchId') branchId?: string,
@@ -39,6 +40,7 @@ export class ProductsController {
   }
 
   @Get('stock')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   getStock(
     @Query('search') search?: string,
     @Query('branchId') branchId?: string,
@@ -56,16 +58,19 @@ export class ProductsController {
   }
 
   @Get('stock/dashboard')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   getStockDashboard(@Query('branchId') branchId?: string) {
     return this.productsStockService.getStockDashboard(branchId);
   }
 
   @Get('brands')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   getBrands() {
     return this.productsService.getBrands();
   }
 
   @Get('warranty/expiring')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   getWarrantyExpiring(
     @Query('days') days?: string,
     @Query('branchId') branchId?: string,
@@ -114,16 +119,19 @@ export class ProductsController {
   }
 
   @Get('transfers/:transferId')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   getTransferById(@Param('transferId') transferId: string) {
     return this.productsStockService.getTransferById(transferId);
   }
 
   @Get(':id/workflow')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   getWorkflowStatus(@Param('id') id: string) {
     return this.productsService.getWorkflowStatus(id);
   }
 
   @Get(':id')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   findOne(@Param('id') id: string) {
     return this.productsService.findOne(id);
   }

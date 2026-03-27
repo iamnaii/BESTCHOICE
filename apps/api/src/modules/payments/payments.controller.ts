@@ -15,6 +15,7 @@ export class PaymentsController {
   constructor(private paymentsService: PaymentsService) {}
 
   @Get('pending')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   getPendingPayments(
     @Query('branchId') branchId?: string,
     @Query('date') date?: string,
@@ -29,6 +30,7 @@ export class PaymentsController {
   }
 
   @Get('daily-summary')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
   getDailySummary(
     @Query('date') date: string,
     @Query('branchId') branchId?: string,
@@ -39,6 +41,7 @@ export class PaymentsController {
   }
 
   @Get('contract/:contractId')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   async getContractPayments(
     @Param('contractId') contractId: string,
     @CurrentUser() user?: { id: string; role: string; branchId: string | null },

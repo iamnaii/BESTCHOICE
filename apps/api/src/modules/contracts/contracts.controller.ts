@@ -21,6 +21,7 @@ export class ContractsController {
   ) {}
 
   @Get()
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   findAll(
     @Query('status') status?: string,
     @Query('workflowStatus') workflowStatus?: string,
@@ -56,6 +57,7 @@ export class ContractsController {
   }
 
   @Get(':id')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   findOne(
     @Param('id') id: string,
     @CurrentUser() user?: { id: string; role: string; branchId: string | null },
@@ -64,11 +66,13 @@ export class ContractsController {
   }
 
   @Get(':id/schedule')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   getSchedule(@Param('id') id: string) {
     return this.paymentService.getSchedule(id);
   }
 
   @Get(':id/early-payoff-quote')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   getEarlyPayoffQuote(@Param('id') id: string) {
     return this.paymentService.getEarlyPayoffQuote(id);
   }
@@ -148,6 +152,7 @@ export class ContractsController {
 
   // === VALIDATION: ตรวจสอบความครบถ้วนของสัญญา ===
   @Get(':id/validate')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   validateForSubmit(@Param('id') id: string) {
     return this.contractsService.validateForSubmit(id);
   }
@@ -161,6 +166,7 @@ export class ContractsController {
 
   // === QR CODE DATA: ข้อมูลสำหรับสร้าง QR Code ===
   @Get(':id/qr-data')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   getQrData(@Param('id') id: string) {
     return this.documentService.getQrData(id);
   }
@@ -180,6 +186,7 @@ export class ContractsController {
   }
 
   @Get(':id/pdpa-consent')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   getPdpaConsent(@Param('id') id: string) {
     return this.documentService.getPdpaConsent(id);
   }

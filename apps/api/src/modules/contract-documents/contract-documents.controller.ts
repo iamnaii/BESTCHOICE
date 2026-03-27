@@ -12,11 +12,13 @@ export class ContractDocumentsController {
   constructor(private service: ContractDocumentsService) {}
 
   @Get()
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   findByContract(@Param('contractId') contractId: string) {
     return this.service.findByContract(contractId);
   }
 
   @Get('checklist')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   getDocumentChecklist(@Param('contractId') contractId: string) {
     return this.service.getDocumentChecklist(contractId);
   }
@@ -38,6 +40,7 @@ export class ContractDocumentsController {
   }
 
   @Post(':docId/view')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   recordView(
     @Param('contractId') contractId: string,
     @Param('docId') docId: string,
@@ -51,6 +54,7 @@ export class ContractDocumentsController {
   }
 
   @Post(':docId/download')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   recordDownload(
     @Param('contractId') contractId: string,
     @Param('docId') docId: string,

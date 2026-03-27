@@ -12,6 +12,7 @@ export class StockCountController {
   constructor(private stockCountService: StockCountService) {}
 
   @Get()
+  @Roles('OWNER', 'BRANCH_MANAGER')
   findAll(
     @Query('branchId') branchId?: string,
     @Query('status') status?: string,
@@ -27,11 +28,13 @@ export class StockCountController {
   }
 
   @Get(':id')
+  @Roles('OWNER', 'BRANCH_MANAGER')
   findOne(@Param('id') id: string) {
     return this.stockCountService.findOne(id);
   }
 
   @Get(':id/variance')
+  @Roles('OWNER', 'BRANCH_MANAGER')
   getVariance(@Param('id') id: string) {
     return this.stockCountService.getVariance(id);
   }

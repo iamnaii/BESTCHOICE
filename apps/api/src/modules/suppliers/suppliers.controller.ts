@@ -12,6 +12,7 @@ export class SuppliersController {
   constructor(private suppliersService: SuppliersService) {}
 
   @Get()
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
   findAll(
     @Query('search') search?: string,
     @Query('isActive') isActive?: string,
@@ -22,11 +23,13 @@ export class SuppliersController {
   }
 
   @Get(':id')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
   findOne(@Param('id') id: string) {
     return this.suppliersService.findOne(id);
   }
 
   @Get(':id/purchase-history')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
   getPurchaseHistory(@Param('id') id: string) {
     return this.suppliersService.getPurchaseHistory(id);
   }

@@ -45,6 +45,7 @@ export class NotificationsController {
   // ============================================================
 
   @Get('logs')
+  @Roles('OWNER', 'BRANCH_MANAGER')
   findLogs(
     @Query('channel') channel?: string,
     @Query('status') status?: string,
@@ -60,6 +61,7 @@ export class NotificationsController {
   }
 
   @Get('logs/stats')
+  @Roles('OWNER', 'BRANCH_MANAGER')
   getLogStats() {
     return this.notificationsService.getLogStats();
   }
@@ -69,11 +71,13 @@ export class NotificationsController {
   // ============================================================
 
   @Get('templates')
+  @Roles('OWNER', 'BRANCH_MANAGER')
   findTemplates() {
     return this.notificationsService.findTemplates();
   }
 
   @Get('templates/:id')
+  @Roles('OWNER', 'BRANCH_MANAGER')
   findTemplate(@Param('id') id: string) {
     return this.notificationsService.findTemplate(id);
   }

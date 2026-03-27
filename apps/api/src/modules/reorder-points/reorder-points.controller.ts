@@ -11,6 +11,7 @@ export class ReorderPointsController {
   constructor(private service: ReorderPointsService) {}
 
   @Get()
+  @Roles('OWNER', 'BRANCH_MANAGER')
   findAll(
     @Query('branchId') branchId?: string,
     @Query('isActive') isActive?: string,
@@ -24,11 +25,13 @@ export class ReorderPointsController {
   }
 
   @Get('low-stock')
+  @Roles('OWNER', 'BRANCH_MANAGER')
   getLowStockDashboard(@Query('branchId') branchId?: string) {
     return this.service.getLowStockDashboard(branchId);
   }
 
   @Get('alerts')
+  @Roles('OWNER', 'BRANCH_MANAGER')
   getAlerts(
     @Query('status') status?: string,
     @Query('branchId') branchId?: string,
@@ -43,6 +46,7 @@ export class ReorderPointsController {
   }
 
   @Get('alerts/active')
+  @Roles('OWNER', 'BRANCH_MANAGER')
   getActiveAlerts(@Query('branchId') branchId?: string) {
     return this.service.getActiveAlerts(branchId);
   }
@@ -63,6 +67,7 @@ export class ReorderPointsController {
   }
 
   @Get(':id')
+  @Roles('OWNER', 'BRANCH_MANAGER')
   findOne(@Param('id') id: string) {
     return this.service.findOne(id);
   }

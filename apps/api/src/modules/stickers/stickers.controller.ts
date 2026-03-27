@@ -11,6 +11,7 @@ export class StickersController {
   constructor(private stickersService: StickersService) {}
 
   @Get()
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   findAll(
     @Query('page') page?: string,
     @Query('limit') limit?: string,
@@ -22,11 +23,13 @@ export class StickersController {
   }
 
   @Get('product/:productId/data')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   getStickerData(@Param('productId') productId: string) {
     return this.stickersService.getStickerData(productId);
   }
 
   @Get(':id')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   findOne(@Param('id') id: string) {
     return this.stickersService.findOne(id);
   }

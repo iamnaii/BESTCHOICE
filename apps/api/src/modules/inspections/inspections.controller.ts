@@ -17,11 +17,13 @@ export class InspectionsController {
 
   // === Templates ===
   @Get('inspection-templates')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   findAllTemplates() {
     return this.inspectionsService.findAllTemplates();
   }
 
   @Get('inspection-templates/:id')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   findOneTemplate(@Param('id') id: string) {
     return this.inspectionsService.findOneTemplate(id);
   }
@@ -69,6 +71,7 @@ export class InspectionsController {
 
   // === Inspections ===
   @Get('inspections')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   findAllInspections(
     @Query('isCompleted') isCompleted?: string,
     @Query('productId') productId?: string,
@@ -77,6 +80,7 @@ export class InspectionsController {
   }
 
   @Get('inspections/:id')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   findOneInspection(@Param('id') id: string) {
     return this.inspectionsService.findOneInspection(id);
   }

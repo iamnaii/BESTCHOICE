@@ -1,6 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { CreditCard, QrCode, Building2, CheckCircle2, AlertCircle, Upload, Loader2 } from 'lucide-react';
+import {
+  CreditCard,
+  QrCode,
+  Building2,
+  CheckCircle2,
+  AlertCircle,
+  Upload,
+  Loader2,
+  RefreshCw,
+} from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,7 +18,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { liffApi } from '@/lib/api';
-import { useMockPayment } from './useMockPayment';
 
 interface PaymentLinkData {
   valid: boolean;
@@ -34,7 +42,31 @@ interface PaymentLinkData {
   };
 }
 
-type View = 'loading' | 'select-method' | 'promptpay-pending' | 'success' | 'slip-uploaded' | 'error';
+interface PaymentIntentResult {
+  success: boolean;
+  paymentId: string;
+  paymentUrl: string;
+  gatewayRef: string;
+  qrCodeUrl?: string;
+}
+
+interface PaymentStatusResult {
+  paymentId: string;
+  status: 'PENDING' | 'PAID' | 'FAILED';
+  gatewayRef?: string;
+  gatewayStatus?: string;
+  amount: number;
+  paidAt?: string;
+}
+
+type View =
+  | 'loading'
+  | 'select-method'
+  | 'gateway-pending'
+  | 'success'
+  | 'failed'
+  | 'slip-uploaded'
+  | 'error';
 
 export default function LiffPayment() {
   const { token } = useParams<{ token: string }>();
@@ -42,12 +74,12 @@ export default function LiffPayment() {
   const [errorMessage, setErrorMessage] = useState('');
   const [slipFile, setSlipFile] = useState<File | null>(null);
   const [qrUrl, setQrUrl] = useState<string | null>(null);
-  const [cardForm, setCardForm] = useState({ number: '', expiry: '', cvv: '', name: '' });
+  const [activePaymentId, setActivePaymentId] = useState<string | null>(null);
+  const [gatewayRef, setGatewayRef] = useState<string | null>(null);
 
-  const mock = useMockPayment();
   const queryLineId = new URLSearchParams(window.location.search).get('lineId') || '';
 
-  // Fetch payment link data
+  // ─── Fetch payment link data ───
   const { data } = useQuery<PaymentLinkData | null>({
     queryKey: ['liff-payment', token],
     queryFn: async () => {
@@ -75,21 +107,66 @@ export default function LiffPayment() {
     enabled: !!token,
   });
 
-  // If no token, show error
-  useEffect(() => {
-    if (!token) {
-      setErrorMessage('ลิงก์ไม่ถูกต้อง');
-      setView('error');
-    }
-  }, [token]);
+  // ─── Poll payment status (every 3s while PENDING) ───
+  const { data: paymentStatus } = useQuery<PaymentStatusResult>({
+    queryKey: ['payment-status', activePaymentId],
+    queryFn: async () => {
+      const { data: result } = await liffApi.get(
+        `/paysolutions/status/${activePaymentId}`,
+      );
+      return result;
+    },
+    enabled: !!activePaymentId && view === 'gateway-pending',
+    refetchInterval: 3000,
+    refetchIntervalInBackground: false,
+  });
 
-  // Watch mock payment status -> navigate to success
+  // Watch payment status changes
   useEffect(() => {
-    if (mock.status === 'successful') {
+    if (!paymentStatus) return;
+    if (paymentStatus.status === 'PAID') {
       setView('success');
+      toast.success('ชำระเงินสำเร็จ!');
+    } else if (paymentStatus.status === 'FAILED') {
+      setView('failed');
     }
-  }, [mock.status]);
+  }, [paymentStatus]);
 
+  // ─── Create payment intent mutation ───
+  const createIntentMutation = useMutation({
+    mutationFn: async () => {
+      if (!data) throw new Error('ไม่พบข้อมูลการชำระเงิน');
+      const payload = {
+        contractId: data.contract.contractNumber,
+        amount: Number(data.amount),
+        description: `ชำระค่างวด สัญญา ${data.contract.contractNumber}`,
+        lineId: queryLineId || undefined,
+        installmentNo: data.payment?.installmentNo,
+      };
+      const { data: result } = await liffApi.post<PaymentIntentResult>(
+        '/paysolutions/create-intent',
+        payload,
+      );
+      return result;
+    },
+    onSuccess: (result) => {
+      setActivePaymentId(result.paymentId);
+      setGatewayRef(result.gatewayRef);
+
+      if (result.paymentUrl) {
+        // Redirect to Pay Solutions payment page
+        setView('gateway-pending');
+        window.location.href = result.paymentUrl;
+      } else {
+        toast.error('ไม่ได้รับลิงก์ชำระเงิน กรุณาลองใหม่');
+      }
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'ไม่สามารถสร้างรายการชำระเงินได้');
+    },
+  });
+
+  // ─── Slip upload mutation (manual transfer) ───
   const slipMutation = useMutation({
     mutationFn: async (file: File) => {
       if (!data) throw new Error('ไม่พบข้อมูลการชำระเงิน');
@@ -98,12 +175,14 @@ export default function LiffPayment() {
       formData.append('contractId', data.contract.contractNumber);
       formData.append('token', data.token);
 
-      const { data: result } = await liffApi.post('/line-oa/slip-upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      }).catch((err) => {
-        const errData = err.response?.data || {};
-        throw new Error(errData.error || errData.message || 'อัปโหลดสลิปไม่สำเร็จ');
-      });
+      const { data: result } = await liffApi
+        .post('/line-oa/slip-upload', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+        .catch((err) => {
+          const errData = err.response?.data || {};
+          throw new Error(errData.error || errData.message || 'อัปโหลดสลิปไม่สำเร็จ');
+        });
       return result;
     },
     onSuccess: () => {
@@ -114,28 +193,33 @@ export default function LiffPayment() {
     },
   });
 
+  // No token
+  useEffect(() => {
+    if (!token) {
+      setErrorMessage('ลิงก์ไม่ถูกต้อง');
+      setView('error');
+    }
+  }, [token]);
+
   const amount = data ? Number(data.amount) : 0;
   const payment = data?.payment;
   const lateFee = payment ? Number(payment.lateFee) : 0;
   const dueDate = payment ? new Date(payment.dueDate).toLocaleDateString('th-TH') : '-';
 
-  // --- PromptPay handlers ---
-  const handlePromptPayStart = () => {
-    mock.createPromptPayCharge(amount);
-    setView('promptpay-pending');
+  // ─── Handlers ───
+  const handleGatewayPay = () => {
+    createIntentMutation.mutate();
   };
 
-  // --- Card handlers ---
-  const handleCardPay = () => {
-    if (!cardForm.number || !cardForm.expiry || !cardForm.cvv) return;
-    mock.createCardCharge(amount, cardForm);
-    // status watcher will navigate to success
-  };
-
-  // --- Slip upload handlers ---
   const handleSlipUpload = () => {
     if (!slipFile) return;
     slipMutation.mutate(slipFile);
+  };
+
+  const handleRetry = () => {
+    setActivePaymentId(null);
+    setGatewayRef(null);
+    setView('select-method');
   };
 
   // =============================================
@@ -186,6 +270,41 @@ export default function LiffPayment() {
     );
   }
 
+  // --- Payment Failed ---
+  if (view === 'failed') {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <Card className="max-w-md w-full">
+          <CardContent className="text-center py-10">
+            <AlertCircle className="size-16 text-destructive mx-auto mb-4" />
+            <h2 className="text-lg font-bold mb-2">การชำระเงินไม่สำเร็จ</h2>
+            <p className="text-muted-foreground text-sm mb-6">
+              ระบบไม่สามารถดำเนินการชำระเงินได้ กรุณาลองอีกครั้ง
+            </p>
+            {gatewayRef && (
+              <p className="text-xs text-muted-foreground mb-4">
+                เลขอ้างอิง: <span className="font-mono">{gatewayRef}</span>
+              </p>
+            )}
+            <div className="space-y-2">
+              <Button variant="primary" size="lg" className="w-full" onClick={handleRetry}>
+                <RefreshCw className="size-4 mr-2" />
+                ลองอีกครั้ง
+              </Button>
+              <Button variant="ghost" size="lg" className="w-full text-muted-foreground" asChild>
+                <a
+                  href={`/liff/contract${queryLineId ? `?lineId=${encodeURIComponent(queryLineId)}` : ''}`}
+                >
+                  กลับหน้าสัญญา
+                </a>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   // --- Success ---
   if (view === 'success') {
     return (
@@ -196,7 +315,9 @@ export default function LiffPayment() {
               <CheckCircle2 className="size-12 text-success" />
             </div>
             <h2 className="text-xl font-bold mb-1">ชำระเงินสำเร็จ!</h2>
-            <p className="text-muted-foreground text-sm mb-6">ระบบบันทึกการชำระเรียบร้อยแล้ว</p>
+            <p className="text-muted-foreground text-sm mb-6">
+              ระบบบันทึกการชำระเรียบร้อยแล้ว
+            </p>
 
             <div className="bg-muted/50 rounded-lg p-4 text-left space-y-2 mb-6">
               <div className="flex justify-between text-sm">
@@ -211,25 +332,37 @@ export default function LiffPayment() {
               )}
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">ยอดชำระ</span>
-                <span className="font-semibold text-success">{amount.toLocaleString()} บาท</span>
+                <span className="font-semibold text-success">
+                  {amount.toLocaleString()} บาท
+                </span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">วิธีชำระ</span>
-                <span className="font-medium">
-                  {mock.charge?.method === 'card' ? 'บัตรเครดิต' : 'PromptPay'}
-                </span>
+                <span className="font-medium">ชำระออนไลน์ (Pay Solutions)</span>
               </div>
-              {mock.charge?.transactionRef && (
+              {gatewayRef && (
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">เลขอ้างอิง</span>
-                  <span className="font-mono text-xs">{mock.charge.transactionRef}</span>
+                  <span className="font-mono text-xs">{gatewayRef}</span>
+                </div>
+              )}
+              {paymentStatus?.paidAt && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">เวลา</span>
+                  <span className="font-medium">
+                    {new Date(paymentStatus.paidAt).toLocaleString('th-TH')}
+                  </span>
                 </div>
               )}
             </div>
 
             <div className="space-y-2">
               <Button variant="outline" size="lg" className="w-full" asChild>
-                <a href={`/liff/contract${queryLineId ? `?lineId=${encodeURIComponent(queryLineId)}` : ''}`}>ดูสัญญาของฉัน</a>
+                <a
+                  href={`/liff/contract${queryLineId ? `?lineId=${encodeURIComponent(queryLineId)}` : ''}`}
+                >
+                  ดูสัญญาของฉัน
+                </a>
               </Button>
               <Button variant="ghost" size="lg" className="w-full text-muted-foreground">
                 ปิดหน้านี้
@@ -241,8 +374,8 @@ export default function LiffPayment() {
     );
   }
 
-  // --- PromptPay Pending (QR + Polling) ---
-  if (view === 'promptpay-pending') {
+  // --- Gateway Pending (waiting for Pay Solutions callback) ---
+  if (view === 'gateway-pending') {
     return (
       <div className="min-h-screen bg-background p-4">
         {/* Header */}
@@ -252,54 +385,40 @@ export default function LiffPayment() {
         </div>
 
         <Card className="mb-4">
-          <CardContent className="text-center py-6">
-            {/* QR Code */}
-            {mock.charge?.qrCodeUrl && (
-              <img
-                src={mock.charge.qrCodeUrl}
-                alt="PromptPay QR"
-                className="mx-auto w-56 h-56 rounded-lg border mb-4"
-              />
-            )}
+          <CardContent className="text-center py-8">
+            <Loader2 className="size-12 text-primary animate-spin mx-auto mb-4" />
 
-            <p className="text-sm font-medium mb-1">
-              สแกนเพื่อชำระ{' '}
+            <h2 className="text-lg font-bold mb-2">กำลังรอการชำระเงิน...</h2>
+            <p className="text-sm text-muted-foreground mb-1">
+              ยอดชำระ{' '}
               <span className="text-primary font-bold">{amount.toLocaleString()} บาท</span>
             </p>
 
-            {/* Polling indicator */}
-            <div className="flex items-center justify-center gap-2 text-muted-foreground text-sm mt-3">
-              <Loader2 className="size-4 animate-spin" />
-              <span>รอการยืนยันจากธนาคาร...</span>
-            </div>
+            <p className="text-xs text-muted-foreground mt-4">
+              หากชำระเงินแล้ว กรุณารอสักครู่ ระบบกำลังตรวจสอบ
+            </p>
 
-            {/* Countdown */}
-            {mock.secondsLeft > 0 && (
+            {gatewayRef && (
               <p className="text-xs text-muted-foreground mt-2">
-                หมดอายุใน {mock.formatCountdown(mock.secondsLeft)} นาที
+                เลขอ้างอิง: <span className="font-mono">{gatewayRef}</span>
               </p>
             )}
 
-            {/* Mock simulate button — DEV ONLY */}
-            {import.meta.env.DEV && (
-              <div className="mt-6 pt-4 border-t border-dashed">
-                <p className="text-xs text-muted-foreground mb-2">[ ทดสอบ — DEV only ]</p>
-                <Button
-                  variant="primary"
-                  size="lg"
-                  className="w-full"
-                  onClick={mock.simulateSuccess}
-                >
-                  จำลองจ่ายสำเร็จ
-                </Button>
-              </div>
-            )}
+            {/* Polling indicator */}
+            <div className="flex items-center justify-center gap-2 text-muted-foreground text-sm mt-4">
+              <div className="size-2 rounded-full bg-primary animate-pulse" />
+              <span>กำลังตรวจสอบสถานะอัตโนมัติ...</span>
+            </div>
           </CardContent>
         </Card>
 
         <div className="text-center">
-          <Button variant="ghost" className="text-muted-foreground" onClick={() => { mock.cancel(); setView('select-method'); }}>
-            ยกเลิก
+          <Button
+            variant="ghost"
+            className="text-muted-foreground"
+            onClick={handleRetry}
+          >
+            ยกเลิกและเลือกวิธีอื่น
           </Button>
         </div>
       </div>
@@ -343,7 +462,9 @@ export default function LiffPayment() {
             <div className="border-t border-border pt-3 flex justify-between items-center">
               <span className="text-muted-foreground text-sm">ยอดชำระ</span>
               <div className="text-right">
-                <span className="text-2xl font-bold text-primary">{amount.toLocaleString()}</span>
+                <span className="text-2xl font-bold text-primary">
+                  {amount.toLocaleString()}
+                </span>
                 <span className="text-sm text-muted-foreground ml-1">บาท</span>
               </div>
             </div>
@@ -361,17 +482,15 @@ export default function LiffPayment() {
       {/* Payment Method Tabs */}
       <Card>
         <CardContent>
-          <h2 className="text-xs text-muted-foreground font-medium mb-3">เลือกวิธีชำระเงิน</h2>
+          <h2 className="text-xs text-muted-foreground font-medium mb-3">
+            เลือกวิธีชำระเงิน
+          </h2>
 
-          <Tabs defaultValue="promptpay">
+          <Tabs defaultValue="gateway">
             <TabsList variant="default" className="w-full mb-4" size="sm">
-              <TabsTrigger value="promptpay" className="flex-1 gap-1.5">
-                <QrCode className="size-3.5" />
-                PromptPay
-              </TabsTrigger>
-              <TabsTrigger value="card" className="flex-1 gap-1.5">
+              <TabsTrigger value="gateway" className="flex-1 gap-1.5">
                 <CreditCard className="size-3.5" />
-                บัตรเครดิต
+                ชำระออนไลน์
               </TabsTrigger>
               <TabsTrigger value="transfer" className="flex-1 gap-1.5">
                 <Building2 className="size-3.5" />
@@ -379,15 +498,18 @@ export default function LiffPayment() {
               </TabsTrigger>
             </TabsList>
 
-            {/* -- Tab: PromptPay (Omise) -- */}
-            <TabsContent value="promptpay">
+            {/* -- Tab: Pay Solutions Gateway -- */}
+            <TabsContent value="gateway">
               <div className="text-center py-2">
                 <div className="bg-muted/50 rounded-lg p-6 mb-4">
                   <QrCode className="size-16 text-muted-foreground/30 mx-auto mb-3" />
                   <p className="text-sm text-muted-foreground mb-1">
-                    กดปุ่มด้านล่างเพื่อสร้าง QR Code
+                    ชำระผ่าน Pay Solutions
                   </p>
                   <p className="text-xs text-muted-foreground">
+                    รองรับ PromptPay, บัตรเครดิต/เดบิต, Mobile Banking
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
                     ระบบจะยืนยันการชำระอัตโนมัติ ไม่ต้องส่งสลิป
                   </p>
                 </div>
@@ -395,73 +517,18 @@ export default function LiffPayment() {
                   variant="primary"
                   size="lg"
                   className="w-full"
-                  onClick={handlePromptPayStart}
+                  onClick={handleGatewayPay}
+                  disabled={createIntentMutation.isPending}
                 >
-                  ชำระผ่าน PromptPay {amount.toLocaleString()} บาท
+                  {createIntentMutation.isPending ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" />
+                      กำลังสร้างรายการ...
+                    </>
+                  ) : (
+                    `ชำระเงิน ${amount.toLocaleString()} บาท`
+                  )}
                 </Button>
-              </div>
-            </TabsContent>
-
-            {/* -- Tab: Credit/Debit Card -- */}
-            <TabsContent value="card">
-              <div className="space-y-3 py-2">
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">เลขบัตร</label>
-                  <input
-                    type="text"
-                    placeholder="0000 0000 0000 0000"
-                    maxLength={19}
-                    className="w-full h-10 px-3 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring/30 focus:border-ring"
-                    value={cardForm.number}
-                    onChange={(e) => setCardForm({ ...cardForm, number: e.target.value })}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">หมดอายุ</label>
-                    <input
-                      type="text"
-                      placeholder="MM/YY"
-                      maxLength={5}
-                      className="w-full h-10 px-3 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring/30 focus:border-ring"
-                      value={cardForm.expiry}
-                      onChange={(e) => setCardForm({ ...cardForm, expiry: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">CVV</label>
-                    <input
-                      type="text"
-                      placeholder="000"
-                      maxLength={3}
-                      className="w-full h-10 px-3 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring/30 focus:border-ring"
-                      value={cardForm.cvv}
-                      onChange={(e) => setCardForm({ ...cardForm, cvv: e.target.value })}
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">ชื่อบนบัตร</label>
-                  <input
-                    type="text"
-                    placeholder="SOMCHAI JAIDEE"
-                    className="w-full h-10 px-3 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring/30 focus:border-ring"
-                    value={cardForm.name}
-                    onChange={(e) => setCardForm({ ...cardForm, name: e.target.value })}
-                  />
-                </div>
-                <Button
-                  variant="primary"
-                  size="lg"
-                  className="w-full mt-2"
-                  onClick={handleCardPay}
-                  disabled={!cardForm.number || !cardForm.expiry || !cardForm.cvv}
-                >
-                  ชำระเงิน {amount.toLocaleString()} บาท
-                </Button>
-                <p className="text-xs text-muted-foreground text-center mt-1">
-                  ข้อมูลบัตรจะถูกเข้ารหัสอย่างปลอดภัย
-                </p>
               </div>
             </TabsContent>
 
@@ -478,7 +545,10 @@ export default function LiffPayment() {
                       onError={() => setQrUrl(null)}
                     />
                     <p className="text-sm font-medium mt-3">
-                      สแกน QR แล้วโอนเงิน <span className="text-primary font-bold">{amount.toLocaleString()} บาท</span>
+                      สแกน QR แล้วโอนเงิน{' '}
+                      <span className="text-primary font-bold">
+                        {amount.toLocaleString()} บาท
+                      </span>
                     </p>
                   </div>
                 )}
@@ -498,7 +568,9 @@ export default function LiffPayment() {
                     )}
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">ยอดโอน</span>
-                      <span className="font-bold text-primary">{amount.toLocaleString()} บาท</span>
+                      <span className="font-bold text-primary">
+                        {amount.toLocaleString()} บาท
+                      </span>
                     </div>
                   </div>
                 )}
@@ -521,7 +593,9 @@ export default function LiffPayment() {
                         <CheckCircle2 className="size-5 text-success" />
                         <div>
                           <p className="text-sm font-medium text-success">เลือกไฟล์แล้ว</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">{slipFile.name}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {slipFile.name}
+                          </p>
                         </div>
                       </div>
                     ) : (

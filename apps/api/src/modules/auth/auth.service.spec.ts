@@ -178,11 +178,11 @@ describe('AuthService', () => {
   });
 
   describe('logout', () => {
-    it('should revoke the refresh token', async () => {
-      await service.logout('some-token');
+    it('should revoke all refresh tokens for the user', async () => {
+      await service.logout('some-token', 'user-123');
       expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
-        where: { token: 'some-token', revokedAt: null },
-        data: { revokedAt: expect.any(Date) },
+        where: { userId: 'user-123', isRevoked: false },
+        data: { isRevoked: true, revokedAt: expect.any(Date) },
       });
     });
   });

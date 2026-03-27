@@ -1,4 +1,9 @@
-import { Injectable, UnauthorizedException, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
@@ -10,13 +15,21 @@ import { ForgotPasswordDto, ResetPasswordDto } from './dto/password-reset.dto';
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
-  private dbTokensAvailable: boolean | null = null;
 
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
     private configService: ConfigService,
   ) {}
+
+  /**
+   * Hash a raw refresh token using SHA-256 for secure DB storage.
+   * SHA-256 is appropriate here because refresh tokens are high-entropy
+   * random strings (64 bytes), so brute-force is infeasible.
+   */
+  private hashToken(rawToken: string): string {
+    return crypto.createHash('sha256').update(rawToken).digest('hex');
+  }
 
   async login(loginDto: LoginDto) {
     const user = await this.prisma.user.findUnique({
@@ -45,7 +58,7 @@ export class AuthService {
       expiresIn: this.configService.get<string>('JWT_EXPIRATION', '15m'),
     });
 
-    const refreshToken = await this.createRefreshToken(user.id, payload);
+    const refreshToken = await this.createRefreshToken(user.id);
 
     return {
       accessToken,
@@ -62,62 +75,73 @@ export class AuthService {
   }
 
   async refreshToken(token: string) {
-    // Try DB-based token lookup first
-    if (await this.isDbTokensAvailable()) {
-      const storedToken = await this.prisma.refreshToken.findUnique({
-        where: { token },
-      });
+    const tokenHash = this.hashToken(token);
 
-      if (storedToken) {
-        if (storedToken.revokedAt || storedToken.expiresAt < new Date()) {
-          throw new UnauthorizedException('Refresh token ไม่ถูกต้องหรือหมดอายุ');
-        }
+    const storedToken = await this.prisma.refreshToken.findUnique({
+      where: { token: tokenHash },
+    });
 
-        const user = await this.prisma.user.findUnique({
-          where: { id: storedToken.userId },
-        });
-
-        if (!user || !user.isActive) {
-          throw new UnauthorizedException('ผู้ใช้งานไม่ถูกต้อง');
-        }
-
-        // Revoke old token (rotation)
-        await this.prisma.refreshToken.update({
-          where: { id: storedToken.id },
-          data: { revokedAt: new Date() },
-        });
-
-        const payload = {
-          sub: user.id,
-          email: user.email,
-          role: user.role,
-          branchId: user.branchId,
-        };
-
-        const accessToken = this.jwtService.sign(payload, {
-          secret: this.configService.get<string>('JWT_SECRET'),
-          expiresIn: this.configService.get<string>('JWT_EXPIRATION', '15m'),
-        });
-
-        const newRefreshToken = await this.createRefreshToken(user.id, payload);
-
-        return { accessToken, refreshToken: newRefreshToken };
-      }
+    // Token not found in DB — could be a legacy JWT token, try fallback
+    if (!storedToken) {
+      return this.refreshTokenJwt(token);
     }
 
-    // Fallback: JWT-based refresh token (backward compatibility)
-    return this.refreshTokenJwt(token);
+    // Replay attack detection: token was already revoked
+    if (storedToken.isRevoked) {
+      this.logger.warn(
+        `Replay attack detected for user ${storedToken.userId} — revoking all tokens`,
+      );
+      // Revoke ALL tokens for this user (token family invalidation)
+      await this.revokeAllUserTokens(storedToken.userId);
+      throw new UnauthorizedException('ตรวจพบการใช้งาน token ซ้ำ กรุณาเข้าสู่ระบบใหม่');
+    }
+
+    // Token expired
+    if (storedToken.expiresAt < new Date()) {
+      // Mark as revoked for audit trail
+      await this.prisma.refreshToken.update({
+        where: { id: storedToken.id },
+        data: { isRevoked: true, revokedAt: new Date() },
+      });
+      throw new UnauthorizedException('Refresh token หมดอายุ กรุณาเข้าสู่ระบบใหม่');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: storedToken.userId },
+    });
+
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException('ผู้ใช้งานไม่ถูกต้อง');
+    }
+
+    // Rotation: revoke old token, issue new one
+    await this.prisma.refreshToken.update({
+      where: { id: storedToken.id },
+      data: { isRevoked: true, revokedAt: new Date() },
+    });
+
+    const payload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      branchId: user.branchId,
+    };
+
+    const accessToken = this.jwtService.sign(payload, {
+      secret: this.configService.get<string>('JWT_SECRET'),
+      expiresIn: this.configService.get<string>('JWT_EXPIRATION', '15m'),
+    });
+
+    const newRefreshToken = await this.createRefreshToken(user.id);
+
+    return { accessToken, refreshToken: newRefreshToken };
   }
 
-  async logout(refreshToken: string) {
-    if (await this.isDbTokensAvailable()) {
-      await this.prisma.refreshToken.updateMany({
-        where: { token: refreshToken, revokedAt: null },
-        data: { revokedAt: new Date() },
-      }).catch((err) => {
-        this.logger.warn(`Failed to revoke refresh token: ${err?.message || err}`);
-      });
-    }
+  async logout(refreshToken: string, userId: string) {
+    // Revoke ALL refresh tokens for this user to ensure complete session termination
+    await this.revokeAllUserTokens(userId);
+
+    this.logger.log(`All refresh tokens revoked for user ${userId} on logout`);
   }
 
   async getMe(userId: string) {
@@ -175,9 +199,14 @@ export class AuthService {
     // In production, send email with reset link:
     // const resetUrl = `${frontendUrl}/reset-password?token=${token}`;
     // await emailService.send(user.email, 'Password Reset', resetUrl);
-    this.logger.log(`Password reset token generated for user ${user.id} (token: ${token.substring(0, 8)}...)`);
+    this.logger.log(
+      `Password reset token generated for user ${user.id} (token: ${token.substring(0, 8)}...)`,
+    );
 
-    return { message: successMessage, ...(process.env.NODE_ENV !== 'production' ? { token } : {}) };
+    return {
+      message: successMessage,
+      ...(process.env.NODE_ENV !== 'production' ? { token } : {}),
+    };
   }
 
   /**
@@ -212,8 +241,8 @@ export class AuthService {
       }),
       // Revoke all refresh tokens for security
       this.prisma.refreshToken.updateMany({
-        where: { userId: resetToken.userId, revokedAt: null },
-        data: { revokedAt: new Date() },
+        where: { userId: resetToken.userId, isRevoked: false },
+        data: { isRevoked: true, revokedAt: new Date() },
       }),
     ]);
 
@@ -221,41 +250,67 @@ export class AuthService {
     return { message: 'รีเซ็ตรหัสผ่านสำเร็จ กรุณาเข้าสู่ระบบด้วยรหัสผ่านใหม่' };
   }
 
-  private async createRefreshToken(userId: string, payload: Record<string, unknown>): Promise<string> {
-    // Try DB-based token first
-    if (await this.isDbTokensAvailable()) {
-      try {
-        const token = crypto.randomBytes(64).toString('hex');
-        const expiresIn = this.configService.get<string>('JWT_REFRESH_EXPIRATION', '7d');
-        const expiresAt = new Date();
-        const days = parseInt(expiresIn) || 7;
-        expiresAt.setDate(expiresAt.getDate() + days);
-
-        await this.prisma.refreshToken.create({
-          data: { token, userId, expiresAt },
-        });
-
-        // Clean up expired tokens periodically
-        if (Math.random() < 0.01) {
-          this.prisma.refreshToken.deleteMany({
-            where: { expiresAt: { lt: new Date() } },
-          }).catch(() => { /* ignore cleanup errors */ });
-        }
-
-        return token;
-      } catch (err) {
-        this.logger.warn('DB refresh token creation failed, falling back to JWT');
-        this.dbTokensAvailable = false;
-      }
-    }
-
-    // Fallback: JWT-based refresh token
-    return this.jwtService.sign(payload, {
-      secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
-      expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRATION', '7d'),
+  /**
+   * Revoke all active refresh tokens for a user.
+   * Used for: logout, replay attack detection, password reset.
+   */
+  async revokeAllUserTokens(userId: string): Promise<void> {
+    await this.prisma.refreshToken.updateMany({
+      where: { userId, isRevoked: false },
+      data: { isRevoked: true, revokedAt: new Date() },
     });
   }
 
+  /**
+   * Clean up expired and revoked tokens.
+   * Called by the scheduled cron job.
+   */
+  async cleanupExpiredTokens(): Promise<number> {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    const result = await this.prisma.refreshToken.deleteMany({
+      where: {
+        OR: [
+          // Expired tokens
+          { expiresAt: { lt: new Date() } },
+          // Revoked tokens older than 7 days (keep recent for audit trail)
+          {
+            isRevoked: true,
+            updatedAt: { lt: sevenDaysAgo },
+          },
+        ],
+      },
+    });
+
+    return result.count;
+  }
+
+  private async createRefreshToken(userId: string): Promise<string> {
+    const rawToken = crypto.randomBytes(64).toString('hex');
+    const tokenHash = this.hashToken(rawToken);
+
+    const expiresIn = this.configService.get<string>('JWT_REFRESH_EXPIRATION', '7d');
+    const expiresAt = new Date();
+    const days = parseInt(expiresIn) || 7;
+    expiresAt.setDate(expiresAt.getDate() + days);
+
+    await this.prisma.refreshToken.create({
+      data: {
+        token: tokenHash,
+        userId,
+        expiresAt,
+      },
+    });
+
+    // Return the RAW token to the client (only time it's available in plaintext)
+    return rawToken;
+  }
+
+  /**
+   * Fallback: JWT-based refresh token for backward compatibility.
+   * This handles tokens issued before the DB-based system was deployed.
+   */
   private async refreshTokenJwt(token: string) {
     try {
       const payload = this.jwtService.verify(token, {
@@ -282,26 +337,13 @@ export class AuthService {
         expiresIn: this.configService.get<string>('JWT_EXPIRATION', '15m'),
       });
 
-      const newRefreshToken = await this.createRefreshToken(user.id, newPayload);
+      // Migrate to DB-based token on next refresh
+      const newRefreshToken = await this.createRefreshToken(user.id);
 
       return { accessToken, refreshToken: newRefreshToken };
     } catch (err) {
       if (err instanceof UnauthorizedException) throw err;
       throw new UnauthorizedException('Refresh token ไม่ถูกต้องหรือหมดอายุ');
     }
-  }
-
-  private async isDbTokensAvailable(): Promise<boolean> {
-    if (this.dbTokensAvailable !== null) return this.dbTokensAvailable;
-
-    try {
-      await this.prisma.refreshToken.findFirst({ take: 1 });
-      this.dbTokensAvailable = true;
-    } catch {
-      this.logger.warn('RefreshToken table not available - using JWT fallback. Run prisma migrate deploy to enable DB tokens.');
-      this.dbTokensAvailable = false;
-    }
-
-    return this.dbTokensAvailable;
   }
 }

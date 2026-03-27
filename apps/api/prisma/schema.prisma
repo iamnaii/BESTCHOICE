@@ -1343,15 +1343,18 @@ model BranchReceivingItem {
 
 model RefreshToken {
   id        String    @id @default(uuid())
-  token     String    @unique
+  token     String    @unique // stores SHA-256 hash of the actual token
   userId    String    @map("user_id")
   expiresAt DateTime  @map("expires_at")
+  isRevoked Boolean   @default(false) @map("is_revoked")
   revokedAt DateTime? @map("revoked_at")
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([token])
   @@index([userId])
   @@index([expiresAt])
   @@map("refresh_tokens")

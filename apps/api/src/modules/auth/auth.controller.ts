@@ -7,6 +7,13 @@ import { ForgotPasswordDto, ResetPasswordDto } from './dto/password-reset.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 
+interface AuthenticatedUser {
+  id: string;
+  email: string;
+  role: string;
+  branchId: string | null;
+}
+
 const REFRESH_COOKIE = 'refresh_token';
 const COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
 
@@ -56,11 +63,14 @@ export class AuthController {
 
   @Post('logout')
   @UseGuards(JwtAuthGuard)
-  async logout(@Req() req: Request, @Body() body: { refreshToken?: string }, @Res({ passthrough: true }) res: Response) {
+  async logout(
+    @Req() req: Request,
+    @Body() body: { refreshToken?: string },
+    @Res({ passthrough: true }) res: Response,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
     const token = req.cookies?.[REFRESH_COOKIE] || body.refreshToken;
-    if (token) {
-      await this.authService.logout(token);
-    }
+    await this.authService.logout(token || '', user.id);
     clearRefreshCookie(res);
     return { message: 'ออกจากระบบสำเร็จ' };
   }

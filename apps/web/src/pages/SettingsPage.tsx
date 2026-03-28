@@ -142,7 +142,7 @@ function SettingsCard({
       group.items.forEach((item) => { d[item.key] = values[item.key] ?? ''; });
       setDraft(d);
     }
-  }, [isEditing]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isEditing]);
 
   const handleSave = () => {
     const items = group.items.map((item) => ({ key: item.key, value: draft[item.key] ?? '' }));
@@ -456,7 +456,7 @@ export default function SettingsPage() {
       configs.forEach((c) => { map[c.key] = c.value; });
       setValues(map);
     }
-  }, [configs]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [configs]);
 
   const saveMutation = useMutation({
     mutationFn: async (items: { key: string; value: string }[]) =>

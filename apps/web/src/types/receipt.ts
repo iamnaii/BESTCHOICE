@@ -31,6 +31,9 @@ export interface Receipt {
   payerName: string;
   receiverName: string;
   amount: string;
+  subtotal?: string | null;
+  vatRate?: string | null;
+  vatAmount?: string | null;
   installmentNo: number | null;
   remainingBalance: string | null;
   remainingMonths: number | null;

@@ -11,6 +11,7 @@
 
 set -e
 
+# Playwright config lives in apps/web/ — always run from there
 cd "$(dirname "$0")/../apps/web"
 
 # Check if Playwright browsers are installed

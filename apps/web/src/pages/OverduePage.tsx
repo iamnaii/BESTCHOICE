@@ -72,7 +72,7 @@ export default function OverduePage() {
       if (branchFilter) params.set('branchId', branchFilter);
       if (dunningFilter) params.set('dunningStage', dunningFilter);
       const { data } = await api.get(`/payments/pending?${params}`);
-      return data;
+      return data.data;
     },
   });
 
@@ -108,7 +108,7 @@ export default function OverduePage() {
 
   const { data: callLogs = [] } = useQuery<CallLog[]>({
     queryKey: ['overdue-call-logs', timelineContractId],
-    queryFn: async () => { const { data } = await api.get(`/overdue/contracts/${timelineContractId}/call-logs`); return data; },
+    queryFn: async () => { const { data } = await api.get(`/overdue/contracts/${timelineContractId}/call-logs`); return data.data; },
     enabled: !!timelineContractId,
   });
 

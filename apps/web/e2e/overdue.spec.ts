@@ -9,19 +9,18 @@ test.describe('Overdue Page', () => {
   test('should navigate to /overdue and display page', async ({ page }) => {
     await page.goto('/overdue', { waitUntil: 'domcontentloaded' });
 
-    // Verify page loaded — search and summary cards
+    // Verify page loaded — page header or search should be visible
     await expect(
-      page.getByPlaceholder('ค้นหาเลขสัญญา, ชื่อลูกค้า...').or(
-        page.getByPlaceholder(/ค้นหา/),
-      ),
-    ).toBeVisible({ timeout: 10000 });
+      page.getByText('ค่าปรับ & ค้างชำระ').first(),
+    ).toBeVisible({ timeout: 15000 });
 
     // Summary cards should display overdue metrics
-    await expect(page.getByText('สัญญาค้างชำระ').or(page.getByText('ค้างชำระ'))).toBeVisible();
+    await expect(page.getByText('สัญญาค้างชำระ').first()).toBeVisible();
   });
 
   test('should display overdue list or empty state', async ({ page }) => {
     await page.goto('/overdue', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByText('ค่าปรับ & ค้างชำระ').first()).toBeVisible({ timeout: 15000 });
     await page.waitForTimeout(2000);
 
     // Should show table or empty state
@@ -30,23 +29,23 @@ test.describe('Overdue Page', () => {
 
     if (hasTable) {
       // Verify table has expected columns
-      await expect(page.getByText('สัญญา').or(page.getByText('เลขสัญญา'))).toBeVisible();
+      await expect(page.getByText('สัญญา').or(page.getByText('เลขสัญญา')).first()).toBeVisible();
     }
 
-    // No server error
-    await expect(page.locator('body')).not.toContainText('500');
+    // No server error (check for error boundary, not '500' which appears in phone numbers)
+    await expect(page.locator('body')).not.toContainText('เกิดข้อผิดพลาด');
   });
 
   test('should display dunning workflow pipeline', async ({ page }) => {
     await page.goto('/overdue', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await expect(page.getByText('ค่าปรับ & ค้างชำระ').first()).toBeVisible({ timeout: 15000 });
 
     // Dunning stages should be visible (these are the actual stage labels)
     const stages = ['แจ้งเตือน', 'แจ้งค้างชำระ', 'เตือนครั้งสุดท้าย', 'ดำเนินคดี'];
     let stagesFound = 0;
 
     for (const stage of stages) {
-      if (await page.getByText(stage).isVisible({ timeout: 2000 }).catch(() => false)) {
+      if (await page.getByText(stage).first().isVisible({ timeout: 2000 }).catch(() => false)) {
         stagesFound++;
       }
     }
@@ -58,19 +57,19 @@ test.describe('Overdue Page', () => {
   test('should filter overdue by search', async ({ page }) => {
     await page.goto('/overdue', { waitUntil: 'domcontentloaded' });
 
-    const searchInput = page.getByPlaceholder(/ค้นหา/);
-    await expect(searchInput).toBeVisible({ timeout: 10000 });
+    const searchInput = page.getByPlaceholder('ค้นหาเลขสัญญา, ชื่อลูกค้า...');
+    await expect(searchInput).toBeVisible({ timeout: 15000 });
 
     await searchInput.fill('test');
     await page.waitForTimeout(500); // debounce
 
     // Page should update without errors
-    await expect(page.locator('body')).not.toContainText('500');
+    await expect(page.locator('body')).not.toContainText('เกิดข้อผิดพลาด');
   });
 
   test('should filter by dunning stage', async ({ page }) => {
     await page.goto('/overdue', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await expect(page.getByText('ค่าปรับ & ค้างชำระ').first()).toBeVisible({ timeout: 15000 });
 
     // Look for dunning stage filter
     const stageFilter = page.getByText('ทุกระดับติดตาม').first();
@@ -86,6 +85,7 @@ test.describe('Overdue Page', () => {
 
   test('should open follow-up drawer for overdue item', async ({ page }) => {
     await page.goto('/overdue', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByText('ค่าปรับ & ค้างชำระ').first()).toBeVisible({ timeout: 15000 });
     await page.waitForTimeout(2000);
 
     // Find "ติดตาม" (follow-up) button
@@ -97,11 +97,11 @@ test.describe('Overdue Page', () => {
 
       // Drawer should appear with timeline and call log sections
       await expect(
-        page.getByText('Timeline').or(page.getByText('ประวัติการโทร')),
+        page.getByText('Timeline').or(page.getByText('ประวัติการโทร')).first(),
       ).toBeVisible({ timeout: 5000 });
 
       // Call log form should be present
-      await expect(page.getByText('บันทึกการโทร')).toBeVisible();
+      await expect(page.getByText('บันทึกการโทร').first()).toBeVisible();
     }
     // If no overdue items, test passes
   });

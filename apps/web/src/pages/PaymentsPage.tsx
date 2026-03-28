@@ -51,7 +51,7 @@ interface DailySummary {
   totalAmount: number;
   totalLateFees: number;
   byMethod: Record<string, number>;
-  payments: any[];
+  data: any[];
 }
 
 const paymentStatusLabels: Record<string, { label: string; className: string }> = {
@@ -137,7 +137,7 @@ export default function PaymentsPage() {
       if (debouncedSearch) params.set('search', debouncedSearch);
       if (branchFilter) params.set('branchId', branchFilter);
       const { data } = await api.get(`/payments/pending?${params}`);
-      return data;
+      return data.data;
     },
     enabled: tab === 'pending',
   });
@@ -608,7 +608,7 @@ export default function PaymentsPage() {
               </div>
 
               {/* Payment List */}
-              {summary.payments.length > 0 && (
+              {summary.data.length > 0 && (
                 <Card className="overflow-hidden">
                   <table className="w-full text-sm">
                     <thead className="bg-muted">
@@ -623,7 +623,7 @@ export default function PaymentsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {summary.payments.map((p: any) => (
+                      {summary.data.map((p: any) => (
                         <tr key={p.id} className="border-t">
                           <td className="p-3 font-mono text-xs">{p.contract?.contractNumber}</td>
                           <td className="p-3 text-xs">{p.contract?.customer?.name}</td>

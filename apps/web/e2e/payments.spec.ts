@@ -9,23 +9,21 @@ test.describe('Payments Page', () => {
   test('should navigate to /payments and display payment list', async ({ page }) => {
     await page.goto('/payments', { waitUntil: 'domcontentloaded' });
 
-    // Verify page loaded — search input and tabs should be visible
-    await expect(
-      page.getByPlaceholder('ค้นหาเลขสัญญา, ชื่อ, เบอร์โทร...').or(
-        page.getByPlaceholder(/ค้นหา/),
-      ),
-    ).toBeVisible({ timeout: 10000 });
+    // Tab buttons should be visible first
+    await expect(page.getByText('รายการรอชำระ').first()).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('สรุปรายวัน').first()).toBeVisible();
 
-    // Tab buttons should be visible
-    await expect(page.getByText('รายการรอชำระ')).toBeVisible();
-    await expect(page.getByText('สรุปรายวัน')).toBeVisible();
+    // Search input should be visible (inside pending tab content)
+    await expect(
+      page.getByPlaceholder('ค้นหาเลขสัญญา, ชื่อ, เบอร์โทร...'),
+    ).toBeVisible({ timeout: 5000 });
   });
 
   test('should display pending payments tab by default', async ({ page }) => {
     await page.goto('/payments', { waitUntil: 'domcontentloaded' });
 
     // Pending tab should be active
-    await expect(page.getByText('รายการรอชำระ')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('รายการรอชำระ').first()).toBeVisible({ timeout: 15000 });
 
     // Wait for data to load
     await page.waitForTimeout(2000);
@@ -37,14 +35,15 @@ test.describe('Payments Page', () => {
     if (hasTable) {
       // Table should have contract/amount columns
       await expect(
-        page.getByText('สัญญา').or(page.getByText('จำนวนเงิน')),
+        page.getByText('สัญญา').or(page.getByText('จำนวนเงิน')).first(),
       ).toBeVisible();
     }
-    // Empty state is also valid
+    // Empty state ("ไม่มีรายการรอชำระ") is also valid
   });
 
   test('should open payment recording modal for a pending item', async ({ page }) => {
     await page.goto('/payments', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByText('รายการรอชำระ').first()).toBeVisible({ timeout: 15000 });
     await page.waitForTimeout(2000);
 
     // Find a "รับชำระ" (receive payment) button
@@ -56,55 +55,54 @@ test.describe('Payments Page', () => {
 
       // Payment modal should appear with form fields
       await expect(
-        page.getByText('บันทึกการรับชำระ').or(page.getByText('จำนวนเงินที่รับ')),
+        page.getByText('บันทึกการรับชำระ').or(page.getByText('จำนวนเงินที่รับ')).first(),
       ).toBeVisible({ timeout: 5000 });
 
       // Payment method dropdown should be available
-      await expect(page.getByText('วิธีชำระ')).toBeVisible();
+      await expect(page.getByText('วิธีชำระ').first()).toBeVisible();
     }
     // If no pending payments, test passes
   });
 
   test('should switch to daily summary tab', async ({ page }) => {
     await page.goto('/payments', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByText('สรุปรายวัน')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('สรุปรายวัน').first()).toBeVisible({ timeout: 15000 });
 
     // Click daily summary tab
-    await page.getByText('สรุปรายวัน').click();
+    await page.getByText('สรุปรายวัน').first().click();
     await page.waitForTimeout(1000);
 
     // Date picker or summary content should be visible
-    await expect(page.locator('body')).not.toContainText('500');
+    await expect(page.locator('body')).not.toContainText('เกิดข้อผิดพลาด');
   });
 
   test('should filter payments by search query', async ({ page }) => {
     await page.goto('/payments', { waitUntil: 'domcontentloaded' });
 
-    const searchInput = page.getByPlaceholder(/ค้นหา/);
-    await expect(searchInput).toBeVisible({ timeout: 10000 });
+    const searchInput = page.getByPlaceholder('ค้นหาเลขสัญญา, ชื่อ, เบอร์โทร...');
+    await expect(searchInput).toBeVisible({ timeout: 15000 });
 
     // Type a search query
     await searchInput.fill('TEST');
     await page.waitForTimeout(500); // debounce
 
     // Page should update without errors
-    await expect(page.locator('body')).not.toContainText('500');
+    await expect(page.locator('body')).not.toContainText('เกิดข้อผิดพลาด');
   });
 
   test('should filter payments by status', async ({ page }) => {
     await page.goto('/payments', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await expect(page.getByText('รายการรอชำระ').first()).toBeVisible({ timeout: 15000 });
 
-    // Look for status filter dropdown
-    const statusFilter = page.locator('select, [role="combobox"]').filter({
-      has: page.locator('option:has-text("ทุกสถานะ"), [role="option"]:has-text("ทุกสถานะ")'),
-    }).first().or(page.getByText('ทุกสถานะ').first());
+    // Look for status filter dropdown — it's a <select> with "ทุกสถานะ" option
+    const statusFilter = page.locator('select').filter({
+      has: page.locator('option:has-text("ทุกสถานะ")'),
+    }).first();
 
     const hasFilter = await statusFilter.isVisible({ timeout: 5000 }).catch(() => false);
 
     if (hasFilter) {
-      await statusFilter.click();
-      // Dropdown options should appear
+      await statusFilter.selectOption('PENDING');
       await page.waitForTimeout(500);
     }
     // Filter UI verified

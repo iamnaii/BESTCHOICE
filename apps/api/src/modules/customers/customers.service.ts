@@ -99,7 +99,7 @@ export class CustomersService {
       })(),
     ]);
 
-    let enriched = data.map((c) => {
+    const enriched = data.map((c) => {
       const activeContracts = c.contracts.filter((ct) => ct.status === 'ACTIVE').length;
       const overdueContracts = c.contracts.filter((ct) => ['OVERDUE', 'DEFAULT'].includes(ct.status)).length;
       const latestCredit = c.creditChecks[0] || null;

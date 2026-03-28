@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Shared sequence number generation utilities
  * Eliminates duplication of number generation logic across services

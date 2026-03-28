@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React from 'react';
 import Modal from '@/components/ui/Modal';
 import type { UseMutationResult } from '@tanstack/react-query';

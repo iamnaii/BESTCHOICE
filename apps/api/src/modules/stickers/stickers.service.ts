@@ -29,11 +29,13 @@ export class StickersService {
   }
 
   async create(dto: CreateStickerTemplateDto) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return this.prisma.stickerTemplate.create({ data: dto as any });
   }
 
   async update(id: string, dto: UpdateStickerTemplateDto) {
     await this.findOne(id);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return this.prisma.stickerTemplate.update({ where: { id }, data: dto as any });
   }
 

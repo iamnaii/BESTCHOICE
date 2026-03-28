@@ -40,6 +40,7 @@ export class StockAdjustmentsService {
         data: {
           productId: dto.productId,
           branchId: product.branchId,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           reason: dto.reason as any,
           previousStatus: product.status,
           notes: dto.notes,
@@ -167,6 +168,7 @@ export class StockAdjustmentsService {
     // Use groupBy for efficient DB-level aggregation
     const grouped = await this.prisma.stockAdjustment.groupBy({
       by: ['reason'],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       where: where as any,
       _count: true,
     });

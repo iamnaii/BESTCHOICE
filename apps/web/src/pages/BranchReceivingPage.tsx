@@ -183,6 +183,7 @@ export default function BranchReceivingPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
+                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                     {historyList.map((r: any) => (
                       <tr key={r.id} className="hover:bg-muted/50">
                         <td className="px-4 py-3">

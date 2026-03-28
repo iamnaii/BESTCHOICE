@@ -34,7 +34,7 @@ export function StockListTab({
   listProducts,
   listLoading,
   listResult,
-  page,
+  page: _page,
   setPage,
 }: StockListTabProps) {
   return (

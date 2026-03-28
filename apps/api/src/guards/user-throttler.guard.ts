@@ -11,6 +11,7 @@ import { ThrottlerGuard, ThrottlerException } from '@nestjs/throttler';
  */
 @Injectable()
 export class UserThrottlerGuard extends ThrottlerGuard {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   protected async getTracker(req: Record<string, any>): Promise<string> {
     // If user is authenticated, use user ID as the tracker
     const userId = req.user?.id || req.user?.sub;
@@ -21,7 +22,7 @@ export class UserThrottlerGuard extends ThrottlerGuard {
     return req.ips?.length ? req.ips[0] : req.ip;
   }
 
-  protected async throwThrottlingException(context: ExecutionContext): Promise<void> {
+  protected async throwThrottlingException(_context: ExecutionContext): Promise<void> {
     throw new ThrottlerException('คำขอมากเกินไป กรุณารอสักครู่แล้วลองใหม่');
   }
 }

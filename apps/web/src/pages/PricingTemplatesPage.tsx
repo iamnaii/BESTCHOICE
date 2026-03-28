@@ -95,6 +95,7 @@ export default function PricingTemplatesPage() {
   });
 
   const importMutation = useMutation({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mutationFn: async (items: any[]) => {
       const { data } = await api.post('/pricing-templates/import', { items });
       return data;

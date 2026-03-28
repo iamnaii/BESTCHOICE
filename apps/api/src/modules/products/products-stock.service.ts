@@ -29,6 +29,7 @@ export class ProductsStockService {
 
   // === Stock Transfer ===
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private async generateBatchNumber(tx: any): Promise<string> {
     const now = new Date();
     const year = now.getFullYear();
@@ -160,6 +161,7 @@ export class ProductsStockService {
         const batchNumber = await this.generateBatchNumber(tx);
 
         // Create transfer records sequentially to avoid transaction serialization errors
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const transfers: any[] = [];
         for (const product of products) {
           const transfer = await tx.stockTransfer.create({
@@ -471,6 +473,7 @@ export class ProductsStockService {
 
     const summaryData = await this.prisma.product.groupBy({
       by: ['branchId', 'status'],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       where: summaryWhere as any,
       _count: true,
       _sum: { costPrice: true },
@@ -504,6 +507,7 @@ export class ProductsStockService {
     ] = await Promise.all([
       // All active products (for aging, breakdowns, condition grade, margin)
       this.prisma.product.findMany({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         where: baseWhere as any,
         select: {
           id: true, status: true, category: true, brand: true, model: true,
@@ -783,6 +787,7 @@ export class ProductsStockService {
     if (branchId) where.branchId = branchId;
 
     const products = await this.prisma.product.findMany({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       where: where as any,
       include: {
         branch: { select: { id: true, name: true } },

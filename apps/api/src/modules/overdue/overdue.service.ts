@@ -293,6 +293,7 @@ export class OverdueService {
 
     if (activeIds.length > 0) {
       // Batch update + audit logs in a single transaction
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const txOps: any[] = [
         this.prisma.contract.updateMany({
           where: { id: { in: activeIds } },
@@ -356,6 +357,7 @@ export class OverdueService {
     const defaultIds = defaultCandidates.map((c) => c.id);
 
     if (defaultIds.length > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const txOps: any[] = [
         this.prisma.contract.updateMany({
           where: { id: { in: defaultIds } },

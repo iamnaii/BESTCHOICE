@@ -305,6 +305,7 @@ export default function CreditChecksPage() {
       } else {
         toast.success(`อ่านสมุดบัญชีสำเร็จ (ความมั่นใจ ${pct}%)`);
       }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       if (err.code === 'ECONNABORTED' || !err.response) {
         toast.error('ไม่สามารถเชื่อมต่อ OCR ได้ กรุณาลองใหม่');

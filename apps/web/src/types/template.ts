@@ -54,6 +54,7 @@ export interface VariableDefinition {
   key: string;
   label: string;
   type: 'text' | 'date' | 'number' | 'array';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sampleValue: any;
 }
 

@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Req } from '@nestjs/common';
+import { Request } from 'express';
 import { ContractsService } from './contracts.service';
 import { ContractWorkflowService } from './contract-workflow.service';
 import { ContractPaymentService } from './contract-payment.service';
@@ -177,7 +178,7 @@ export class ContractsController {
   recordPdpaConsent(
     @Param('id') id: string,
     @Body('signatureImage') signatureImage: string,
-    @Req() req: any,
+    @Req() req: Request,
   ) {
     return this.documentService.recordPdpaConsent(id, signatureImage, {
       ip: req.ip,

@@ -21,6 +21,7 @@ export interface CustomerCreateModalProps {
   setCustAddrWork: React.Dispatch<React.SetStateAction<AddressData>>;
   custReferences: CustReferenceData[];
   updateCustRef: (index: number, field: keyof CustReferenceData, value: string) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   createCustomerMutation: UseMutationResult<any, unknown, void, unknown>;
   handleSmartCardForModal: () => void;
   cardReaderLoading: boolean;

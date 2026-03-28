@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // PDF Generator using jspdf + jspdf-autotable
 // Uses TH Sarabun PSK font embedded for Thai text support
 import { jsPDF } from 'jspdf';

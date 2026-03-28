@@ -49,7 +49,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       if (!cached.isActive) {
         throw new UnauthorizedException('ผู้ใช้งานไม่ถูกต้องหรือถูกปิดการใช้งาน');
       }
-      const { cachedAt, ...user } = cached;
+      const { cachedAt: _cachedAt, ...user } = cached;
       return user;
     }
 

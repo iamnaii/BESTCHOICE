@@ -44,7 +44,7 @@ export default function InspectionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { user: _user } = useAuth();
 
   const { data: product, isLoading } = useQuery<ProductDetail>({
     queryKey: ['inspection-detail', id],

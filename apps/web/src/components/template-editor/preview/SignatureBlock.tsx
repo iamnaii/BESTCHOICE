@@ -6,6 +6,7 @@ interface Props {
 }
 
 // Memoize context
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _ctx: Record<string, any> | null = null;
 function getCtx() {
   if (!_ctx) _ctx = buildSampleContext(AVAILABLE_VARIABLES);

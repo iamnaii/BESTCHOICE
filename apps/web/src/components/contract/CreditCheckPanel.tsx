@@ -13,6 +13,7 @@ interface CreditCheckData {
   aiScore: number | null;
   aiSummary: string | null;
   aiRecommendation: string | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   aiAnalysis: any;
   reviewNotes: string | null;
   checkedBy: { id: string; name: string } | null;

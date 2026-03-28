@@ -80,7 +80,7 @@ export default function PaymentHistorySheet({ contractId, onClose, onViewReceipt
       setWaiveTarget(null);
       setWaiveReason('');
     },
-    onError: (err: any) => toast.error(getErrorMessage(err)),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   // Find receipt for a given installment
@@ -108,7 +108,7 @@ export default function PaymentHistorySheet({ contractId, onClose, onViewReceipt
             ) : (
               <div className="space-y-2">
                 {payments.map((p) => {
-                  const remaining = Number(p.amountDue) + Number(p.lateFee) - Number(p.amountPaid);
+                  const _remaining = Number(p.amountDue) + Number(p.lateFee) - Number(p.amountPaid);
                   const isOverdue = new Date(p.dueDate) < new Date() && p.status !== 'PAID';
                   const receipt = findReceipt(p.installmentNo);
                   const s = statusLabels[p.status] || { label: p.status, className: 'bg-muted' };

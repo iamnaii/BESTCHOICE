@@ -80,7 +80,7 @@ export default function InterestConfigPage() {
 
   // Default interest config (system-wide fallback)
   const [defaults, setDefaults] = useState<Record<string, string>>({});
-  const [defaultsChanged, setDefaultsChanged] = useState(false);
+  const [_defaultsChanged, setDefaultsChanged] = useState(false);
   const defaultsChangedRef = useRef(false);
   const [editingDefaults, setEditingDefaults] = useState(false);
 

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { TEST_USER, loginAsAdmin, loginViaAPI } from './helpers/auth';
+import { loginAsAdmin, loginViaAPI } from './helpers/auth';
 
 test.describe('Login Page', () => {
   test.beforeEach(async ({ page }) => {

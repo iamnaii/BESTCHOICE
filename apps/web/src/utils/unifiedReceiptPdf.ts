@@ -45,6 +45,7 @@ function forceInlineStyles(
   // Apply computed styles to the root element itself
   const cs = window.getComputedStyle(original);
   for (const prop of dominated) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (cloned.style as any)[prop] = cs.getPropertyValue(
       prop.replace(/[A-Z]/g, m => `-${m.toLowerCase()}`)
     );

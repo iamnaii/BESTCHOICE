@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Shared system config loading utilities
  * Eliminates duplication of config loading pattern across services

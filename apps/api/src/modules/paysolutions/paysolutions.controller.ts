@@ -7,7 +7,6 @@ import {
   Req,
   HttpCode,
   Logger,
-  UseGuards,
   BadRequestException,
   RawBodyRequest,
 } from '@nestjs/common';

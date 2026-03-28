@@ -44,6 +44,7 @@ export class CustomersService {
 
     // Determine sort order
     const order = sortOrder === 'asc' ? 'asc' : 'desc';
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let orderBy: any = { createdAt: 'desc' };
 
     if (sortBy === 'name') {
@@ -103,7 +104,7 @@ export class CustomersService {
       const activeContracts = c.contracts.filter((ct) => ct.status === 'ACTIVE').length;
       const overdueContracts = c.contracts.filter((ct) => ['OVERDUE', 'DEFAULT'].includes(ct.status)).length;
       const latestCredit = c.creditChecks[0] || null;
-      const { contracts, creditChecks, ...rest } = c;
+      const { contracts: _contracts, creditChecks: _creditChecks, ...rest } = c;
       return {
         ...rest,
         activeContracts,

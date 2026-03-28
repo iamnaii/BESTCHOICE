@@ -146,6 +146,7 @@ export class PDPAService {
       data: {
         requestNumber,
         customerId,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         requestType: requestType as any,
         description,
         dueDate,

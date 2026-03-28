@@ -16,9 +16,11 @@ export class CreateTemplateDto {
   placeholders?: string[];
 
   @IsOptional()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   blocks?: any; // Block-based editor content (JSON)
 
   @IsOptional()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   settings?: any; // Template settings (JSON)
 
   @IsBoolean()
@@ -40,9 +42,11 @@ export class UpdateTemplateDto {
   placeholders?: string[];
 
   @IsOptional()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   blocks?: any; // Block-based editor content (JSON)
 
   @IsOptional()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   settings?: any; // Template settings (JSON)
 
   @IsBoolean()

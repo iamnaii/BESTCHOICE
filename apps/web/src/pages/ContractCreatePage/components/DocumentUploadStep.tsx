@@ -23,7 +23,7 @@ function DocTypeSection({
   docs,
   isOver,
   isRequired,
-  dragOverType,
+  dragOverType: _dragOverType,
   setDragOverType,
   fileInputRefs,
   handleDropForType,

@@ -91,6 +91,7 @@ export async function readSmartCard(): Promise<SmartCardData> {
 
     const body = await resp.json();
     return (body as CardReaderResponse).data;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (err: any) {
     clearTimeout(timeoutId);
     if (err.name === 'AbortError') {

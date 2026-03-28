@@ -179,6 +179,7 @@ export class PaymentsService {
       }
 
       let remaining = amount;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const results: any[] = [];
 
       // Get unpaid payments in order
@@ -446,6 +447,7 @@ export class PaymentsService {
   }
 
   // ─── Check if contract is fully paid ──────────────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private async checkContractCompletion(contractId: string, tx?: { payment: { count: (...args: any[]) => Promise<number> }; contract: { update: (...args: any[]) => Promise<any> } }) {
     const db = tx || this.prisma;
     const unpaid = await db.payment.count({
@@ -482,6 +484,7 @@ export class PaymentsService {
       }
 
       let remaining = credit;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const results: any[] = [];
 
       for (const payment of unpaid) {

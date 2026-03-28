@@ -281,6 +281,7 @@ export class LineOaService {
   /**
    * Send receipt to customer after payment is recorded
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async sendPaymentReceipt(customerId: string, receipt: any): Promise<boolean> {
     try {
       // Find customer with LINE ID

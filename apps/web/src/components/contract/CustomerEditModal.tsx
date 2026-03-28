@@ -102,7 +102,7 @@ export default function CustomerEditModal({ customerId, customerSnapshot, custom
       onSuccess();
       queryClient.invalidateQueries({ queryKey: ['customers'] });
     },
-    onError: (err: any) => toast.error(getErrorMessage(err)),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const updateRef = (index: number, field: keyof CustReferenceData, value: string) => {

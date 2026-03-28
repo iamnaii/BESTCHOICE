@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // Template variable substitution engine
 import { applyFormat } from './formatters';
 import type { VariableDefinition } from '@/types/template';

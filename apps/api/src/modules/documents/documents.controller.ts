@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Req, Res } from '@nestjs/common';
+import { Request, Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { DocumentsService } from './documents.service';
 import { CreateTemplateDto, UpdateTemplateDto, SignContractDto, GenerateDocumentDto } from './dto/document.dto';
@@ -72,7 +73,7 @@ export class DocumentsController {
   signContract(
     @Param('id') id: string,
     @Body() dto: SignContractDto,
-    @Req() req: any,
+    @Req() req: Request,
     @CurrentUser() user: { id: string },
   ) {
     return this.documentsService.signContract(id, dto.signatureImage, dto.signerType, {
@@ -170,7 +171,7 @@ export class DocumentsController {
   // ─── Document Download ───────────────────────────────
   @Get('documents/:id/download')
   @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
-  async downloadDocument(@Param('id') id: string, @Res() res: any) {
+  async downloadDocument(@Param('id') id: string, @Res() res: Response) {
     const { stream, filename, contentType } = await this.documentsService.getDocumentStream(id);
     res.set({
       'Content-Type': contentType,

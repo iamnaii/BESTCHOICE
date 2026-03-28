@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { SignerType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';

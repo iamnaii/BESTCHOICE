@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { DocumentsService } from './documents.service';
@@ -235,7 +236,7 @@ describe('DocumentsService', () => {
     });
 
     it('should send LINE notification after generating documents', async () => {
-      const result = await service.generateSignedDocuments('contract-1', 'user-1');
+      await service.generateSignedDocuments('contract-1', 'user-1');
 
       expect(notifications.send).toHaveBeenCalledWith(
         expect.objectContaining({

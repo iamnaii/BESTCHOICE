@@ -50,6 +50,7 @@ export class CreditCheckService {
     }
     if (filters.branchId) {
       where.customer = {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ...((where.customer as Record<string, any>) || {}),
         contracts: { some: { branchId: filters.branchId } },
       };
@@ -209,6 +210,7 @@ export class CreditCheckService {
     return this.prisma.creditCheck.update({
       where: { id: creditCheckId },
       data: {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         status: dto.status as any,
         reviewNotes: dto.reviewNotes,
         checkedById: userId,
@@ -327,6 +329,7 @@ export class CreditCheckService {
     return this.prisma.creditCheck.update({
       where: { contractId },
       data: {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         status: dto.status as any,
         reviewNotes: dto.reviewNotes,
         checkedById: userId,

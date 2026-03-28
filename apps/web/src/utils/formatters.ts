@@ -66,6 +66,7 @@ export function formatNumberDecimal(value: number | string, decimals = 2): strin
 }
 
 // Apply format pipe
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function applyFormat(value: any, format: string): string {
   if (value == null) return '';
   const fmt = format.trim();

@@ -71,6 +71,7 @@ export class ReorderPointsService {
         brand: dto.brand,
         model: dto.model,
         storage: dto.storage || null,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         category: dto.category as any,
         branchId: dto.branchId,
       },
@@ -88,6 +89,7 @@ export class ReorderPointsService {
         brand: dto.brand,
         model: dto.model,
         storage: dto.storage || null,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         category: dto.category as any,
         branchId: dto.branchId,
         minQuantity: dto.minQuantity,

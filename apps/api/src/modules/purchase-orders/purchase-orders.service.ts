@@ -468,6 +468,7 @@ export class PurchaseOrdersService {
         throw new BadRequestException('PO นี้ไม่อยู่ในสถานะที่สามารถรับสินค้าได้');
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const receivedProducts: any[] = [];
 
       for (const receiveItem of dto.items) {
@@ -589,7 +590,9 @@ export class PurchaseOrdersService {
         },
       });
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const passedProducts: any[] = [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rejectedItems: any[] = [];
 
       // Group items by poItemId to count per PO item

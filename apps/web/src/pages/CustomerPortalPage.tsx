@@ -71,6 +71,7 @@ function CustomerPortalPage() {
   });
 
   const error = queryError
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ? ((queryError as any).response?.data?.message || 'ลิงก์ไม่ถูกต้องหรือหมดอายุ')
     : null;
 

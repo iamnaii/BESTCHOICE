@@ -90,7 +90,7 @@ export default function ContractsPage() {
   const setBranchFilter = useCallback((v: string) => updateParams({ branchId: v, page: '' }), [updateParams]);
   const setStartDate = useCallback((v: string) => updateParams({ startDate: v, page: '' }), [updateParams]);
   const setEndDate = useCallback((v: string) => updateParams({ endDate: v, page: '' }), [updateParams]);
-  const setViewTab = useCallback((v: ViewTab) => updateParams({ tab: v === 'all' ? '' : v, page: '' }), [updateParams]);
+  const _setViewTab = useCallback((v: ViewTab) => updateParams({ tab: v === 'all' ? '' : v, page: '' }), [updateParams]);
   const setPage = useCallback((p: number) => updateParams({ page: p > 1 ? String(p) : '' }), [updateParams]);
 
   const debouncedSearch = useDebounce(search);

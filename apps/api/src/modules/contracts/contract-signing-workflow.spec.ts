@@ -1,10 +1,10 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ContractsService } from './contracts.service';
 import { ContractWorkflowService } from './contract-workflow.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { DocumentsService } from '../documents/documents.service';
 
 // Mock utility modules
 jest.mock('../../utils/installment.util', () => ({
@@ -53,7 +53,7 @@ describe('Contract Signing & Workflow', () => {
   let service: ContractsService;
   let workflowService: ContractWorkflowService;
   let prisma: any;
-  let docsService: any;
+  let _docsService: any;
 
   const makeContract = (overrides: any = {}) => ({
     id: 'contract-1',
@@ -208,7 +208,7 @@ describe('Contract Signing & Workflow', () => {
       prisma.contract.findUnique.mockResolvedValue(readyContract());
       prisma.contract.update.mockResolvedValue({ ...readyContract(), workflowStatus: 'PENDING_REVIEW' });
 
-      const result = await workflowService.submitForReview('contract-1', 'user-1');
+      await workflowService.submitForReview('contract-1', 'user-1');
       expect(prisma.contract.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ workflowStatus: 'PENDING_REVIEW' }),

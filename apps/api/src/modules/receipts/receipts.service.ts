@@ -17,6 +17,7 @@ export class ReceiptsService {
    * Generate receipt number: RC-YYYY-MM-NNNNN
    * Uses SELECT FOR UPDATE to prevent race conditions with concurrent payments.
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private async generateReceiptNumber(tx?: any): Promise<string> {
     const db = tx || this.prisma;
     const now = new Date();

@@ -46,6 +46,7 @@ export class ContractWorkflowService {
       customerPhone: customer?.phone,
       customerAddressIdCard: customer?.addressIdCard,
       customerAddressCurrent: customer?.addressCurrent,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       references: customer?.references as any[],
       productName: product?.name,
       productImei: product?.imeiSerial,
@@ -295,6 +296,7 @@ export class ContractWorkflowService {
     return this.findOne(id);
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private async sendContractActivatedNotification(contract: any) {
     if (!this.notificationsService) {
       this.logger.warn(

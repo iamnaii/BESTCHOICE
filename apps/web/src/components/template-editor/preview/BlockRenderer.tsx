@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import DOMPurify from 'dompurify';
 import type { Block } from '@/types/template';
 import { renderVariables, buildSampleContext } from '@/utils/templateRenderer';
@@ -63,10 +64,6 @@ function InlineHtmlContent({ html, previewMode, ctx }: { html: string; previewMo
   return <span dangerouslySetInnerHTML={{ __html: clean }} />;
 }
 
-/** Strip HTML tags to get plain text */
-function stripHtml(html: string): string {
-  return html.replace(/<[^>]*>/g, '').trim();
-}
 
 /** Convert HTML content to an array of text lines (splitting on block-level tags) */
 function htmlToLines(html: string): string[] {

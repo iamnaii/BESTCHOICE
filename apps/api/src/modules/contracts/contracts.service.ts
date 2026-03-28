@@ -49,7 +49,9 @@ export class ContractsService {
     if (filters.salespersonId) where.salespersonId = filters.salespersonId;
     if (filters.startDate || filters.endDate) {
       where.createdAt = {};
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if (filters.startDate) (where.createdAt as any).gte = new Date(filters.startDate);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if (filters.endDate) (where.createdAt as any).lte = new Date(new Date(filters.endDate).getTime() + 86400000 - 1);
     }
     if (filters.search) {
@@ -165,6 +167,7 @@ export class ContractsService {
       customerPhone: customer?.phone,
       customerAddressIdCard: customer?.addressIdCard,
       customerAddressCurrent: customer?.addressCurrent,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       references: customer?.references as any[],
       productName: product?.name,
       productImei: product?.imeiSerial,
@@ -209,6 +212,7 @@ export class ContractsService {
     }
 
     // 6. Check references (ผู้ค้ำประกัน/ผู้ติดต่อฉุกเฉิน)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const refs = (customer?.references as any[]) || [];
     if (refs.length === 0) {
       errors.push('ต้องมีบุคคลค้ำประกัน/ผู้ติดต่อฉุกเฉิน อย่างน้อย 1 คน');
@@ -386,6 +390,7 @@ export class ContractsService {
           return newContract;
         }, { timeout: 15000 });
         break; // success — exit retry loop
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (err: any) {
         // Retry on unique constraint (P2002) or serialization failure (P2034)
         const isRetryable = err?.code === 'P2002' || err?.code === 'P2034';
@@ -405,6 +410,7 @@ export class ContractsService {
             case 'P2002':
               throw new BadRequestException('เลขสัญญาซ้ำ กรุณาลองใหม่อีกครั้ง');
             case 'P2003': {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               const field = (err.meta as any)?.field_name || '';
               if (field.includes('branch')) throw new BadRequestException('ไม่พบสาขาที่เลือก');
               if (field.includes('customer')) throw new BadRequestException('ไม่พบข้อมูลลูกค้า');
@@ -543,7 +549,7 @@ export class ContractsService {
   }
 
   // === SOFT DELETE: ลบสัญญา (เฉพาะ CREATING/REJECTED, ห้ามลบสัญญาที่ลงนามแล้ว) ===
-  async softDelete(id: string, userId: string) {
+  async softDelete(id: string, _userId: string) {
     const contract = await this.findOne(id);
 
     // ห้ามลบสัญญาที่สถานะ ACTIVE ขึ้นไป (Immutable Contract)

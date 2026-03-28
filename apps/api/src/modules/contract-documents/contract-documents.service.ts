@@ -88,6 +88,7 @@ export class ContractDocumentsService {
     const docTypes = new Set(contract.contractDocuments.map((d) => d.documentType));
     const checklist = required.map((r) => ({
       ...r,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       present: docTypes.has(r.type as any),
     }));
 
@@ -124,6 +125,7 @@ export class ContractDocumentsService {
     return this.prisma.$transaction(async (tx) => {
       // Version control: mark previous versions as not latest
       const existingLatest = await tx.contractDocument.findFirst({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         where: { contractId, documentType: dto.documentType as any, isLatest: true, deletedAt: null },
       });
 
@@ -175,6 +177,7 @@ export class ContractDocumentsService {
           contractId,
           action: 'UPLOAD',
           userId,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           details: { fileName: dto.fileName, version, fileHash } as any,
         },
       });

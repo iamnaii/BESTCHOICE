@@ -645,6 +645,7 @@ export class LineOaController {
     @Query('amountMax') amountMax?: string,
     @Query('limit') limit?: string,
   ) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {};
     if (status) where.status = status;
 
@@ -698,6 +699,7 @@ export class LineOaController {
     @Body() body: { ids: string[]; paymentMethod: string },
     @Req() req: Request,
   ) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const userId = (req as any).user?.id;
     const errors: string[] = [];
     let count = 0;
@@ -770,6 +772,7 @@ export class LineOaController {
     @Body() body: { ids: string[]; reviewNote?: string },
     @Req() req: Request,
   ) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const userId = (req as any).user?.id;
     const errors: string[] = [];
     let count = 0;
@@ -826,6 +829,7 @@ export class LineOaController {
     @Body() body: { installmentNo: number; amount: number; paymentMethod: string; reviewNote?: string },
     @Req() req: Request,
   ) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const userId = (req as any).user?.id;
     const evidence = await this.prisma.paymentEvidence.findUnique({
       where: { id },
@@ -907,6 +911,7 @@ export class LineOaController {
     @Body() body: { reviewNote?: string },
     @Req() req: Request,
   ) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const userId = (req as any).user?.id;
     const evidence = await this.prisma.paymentEvidence.findUnique({
       where: { id },

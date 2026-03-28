@@ -9,18 +9,6 @@ import MobileReceipt from './MobileReceipt';
 import { downloadUnifiedReceiptPDF } from '@/utils/unifiedReceiptPdf';
 import type { Receipt } from '@/types/receipt';
 
-const methodLabels: Record<string, string> = {
-  CASH: 'เงินสด',
-  BANK_TRANSFER: 'โอนเงิน',
-  QR_EWALLET: 'QR/E-Wallet',
-};
-
-const typeLabels: Record<string, string> = {
-  PAYMENT: 'ใบเสร็จรับเงิน',
-  DOWN_PAYMENT: 'ใบเสร็จเงินดาวน์',
-  EARLY_PAYOFF: 'ใบเสร็จปิดยอด',
-  CREDIT_NOTE: 'ใบลดหนี้',
-};
 
 interface ReceiptModalProps {
   receiptId: string | null;
@@ -59,7 +47,7 @@ export default function ReceiptModal({ receiptId, onClose }: ReceiptModalProps) 
       setShowVoidConfirm(false);
       setVoidReason('');
     },
-    onError: (err: any) => toast.error(getErrorMessage(err)),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   // Send receipt via LINE
@@ -72,7 +60,7 @@ export default function ReceiptModal({ receiptId, onClose }: ReceiptModalProps) 
       toast.success('ส่งใบเสร็จทาง LINE เรียบร้อยแล้ว');
       setIsSendingLine(false);
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       toast.error(getErrorMessage(err));
       setIsSendingLine(false);
     },

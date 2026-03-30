@@ -50,6 +50,8 @@ import { KycModule } from './modules/kyc/kyc.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { EmailModule } from './modules/email/email.module';
 import { PaySolutionsModule } from './modules/paysolutions/paysolutions.module';
+import { FinanceReceivablesModule } from './modules/finance-receivables/finance-receivables.module';
+import { ExpensesModule } from './modules/expenses/expenses.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
 import { CsrfGuard } from './guards/csrf.guard';
@@ -125,6 +127,9 @@ import { GlobalHttpExceptionFilter } from './filters/http-exception.filter';
     EmailModule,
     // Payment Gateway
     PaySolutionsModule,
+    // Accounting & Finance
+    FinanceReceivablesModule,
+    ExpensesModule,
     // MASTER: Management
     UsersModule,
     SettingsModule,

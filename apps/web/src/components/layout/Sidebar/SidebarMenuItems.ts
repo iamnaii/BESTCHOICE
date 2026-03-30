@@ -26,6 +26,8 @@ import {
   ClipboardCheck,
   Upload,
   GitBranchPlus,
+  Calculator,
+  Landmark,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { AccordionMenuClassNames } from '@/components/ui/accordion-menu';
@@ -92,6 +94,17 @@ export const navSections: NavSection[] = [
       { label: 'แจ้งเตือนสต็อก', path: '/stock/alerts', icon: Bell, roles: ['OWNER', 'BRANCH_MANAGER'] },
       { label: 'ขั้นตอนสต็อก', path: '/stock/workflow', icon: GitBranchPlus, roles: ['OWNER', 'BRANCH_MANAGER', 'SALES'] },
       { label: 'ตรวจสอบสินค้า', path: '/inspections', icon: ClipboardCheck, roles: ['OWNER', 'BRANCH_MANAGER', 'SALES'] },
+    ],
+  },
+  {
+    key: 'accounting',
+    label: 'บัญชี & การเงิน',
+    icon: Calculator,
+    items: [
+      { label: 'ตัดจ่ายไฟแนนซ์', path: '/finance-receivables', icon: Landmark, roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
+      { label: 'ค่าใช้จ่าย', path: '/expenses', icon: Receipt, roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
+      { label: 'บริษัทไฟแนนซ์', path: '/finance-companies', icon: Building2, roles: ['OWNER'] },
+      { label: 'ตรวจสอบการเงิน', path: '/financial-audit', icon: FileText, roles: ['OWNER', 'ACCOUNTANT'] },
     ],
   },
   {

@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import { displayAddress } from '@/components/ui/AddressForm';
+import { PRODUCT_STATUS_LABELS as statusLabels } from '@/constants/statusLabels';
 
 interface SupplierPaymentMethod {
   id: string;
@@ -73,17 +74,6 @@ interface PORecord {
   _count: { products: number };
 }
 
-const statusLabels: Record<string, { label: string; className: string }> = {
-  PO_RECEIVED: { label: 'รับจาก PO', className: 'bg-primary-100 text-primary-700' },
-  INSPECTION: { label: 'กำลังตรวจ', className: 'bg-yellow-100 text-yellow-700' },
-  IN_STOCK: { label: 'พร้อมขาย', className: 'bg-green-100 text-green-700' },
-  RESERVED: { label: 'จอง', className: 'bg-primary-100 text-primary-700' },
-  SOLD_INSTALLMENT: { label: 'ขายผ่อน', className: 'bg-indigo-100 text-indigo-700' },
-  SOLD_CASH: { label: 'ขายสด', className: 'bg-teal-100 text-teal-700' },
-  REPOSSESSED: { label: 'ยึดคืน', className: 'bg-red-100 text-red-700' },
-  REFURBISHED: { label: 'ซ่อมแล้ว', className: 'bg-orange-100 text-orange-700' },
-  SOLD_RESELL: { label: 'ขายต่อ', className: 'bg-cyan-100 text-cyan-700' },
-};
 
 const poStatusLabels: Record<string, { label: string; className: string }> = {
   DRAFT: { label: 'ร่าง', className: 'bg-muted text-foreground' },

@@ -358,6 +358,8 @@ model Customer {
   @@index([name])
   @@index([createdAt])
   @@index([deletedAt])
+  @@index([deletedAt, phone])
+  @@index([deletedAt, name])
   @@map("customers")
 }
 
@@ -455,6 +457,8 @@ model Contract {
   @@index([createdAt])
   @@index([deletedAt])
   @@index([status, deletedAt, branchId])
+  @@index([deletedAt, status])
+  @@index([branchId, status, deletedAt])
   @@index([workflowStatus])
   @@index([parentContractId])
   @@index([retentionStatus])
@@ -494,6 +498,7 @@ model Payment {
   @@index([status])
   @@index([paidDate])
   @@index([status, dueDate])
+  @@index([contractId, status, dueDate])
   @@index([recordedById])
   @@map("payments")
 }

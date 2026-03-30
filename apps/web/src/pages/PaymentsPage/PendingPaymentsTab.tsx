@@ -12,6 +12,7 @@ import { exportToExcel } from '@/utils/excel.util';
 import SlipScanner from './SlipScanner';
 import RecordPaymentModal from './RecordPaymentModal';
 import { usePaymentOcr } from './hooks/usePaymentOcr';
+import { PAYMENT_STATUS_LABELS as paymentStatusLabels } from '@/constants/statusLabels';
 
 interface PendingPayment {
   id: string;
@@ -29,12 +30,6 @@ interface PendingPayment {
   };
 }
 
-const paymentStatusLabels: Record<string, { label: string; className: string }> = {
-  PENDING: { label: 'รอชำระ', className: 'bg-muted text-foreground' },
-  PAID: { label: 'ชำระแล้ว', className: 'bg-green-100 text-green-700' },
-  OVERDUE: { label: 'เกินกำหนด', className: 'bg-red-100 text-red-700' },
-  PARTIALLY_PAID: { label: 'ชำระบางส่วน', className: 'bg-yellow-100 text-yellow-700' },
-};
 
 interface PendingPaymentsTabProps {
   onViewHistory: (contractId: string) => void;

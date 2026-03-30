@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { GlobalHttpExceptionFilter } from './filters/http-exception.filter';
 import { json, urlencoded } from 'express';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
@@ -31,6 +32,10 @@ async function bootstrap() {
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
     maxAge: 86400,
   });
+
+  // Global exception filter — catches unhandled errors, normalises response shape,
+  // and prevents raw stack traces from leaking to clients in production
+  app.useGlobalFilters(new GlobalHttpExceptionFilter());
 
   // Global validation pipe with security options
   app.useGlobalPipes(

@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
-import api, { setAccessToken, getAccessToken } from '@/lib/api';
+import { toast } from 'sonner';
+import api, { setAccessToken, getAccessToken, getTokenExpiresAt } from '@/lib/api';
 
 interface User {
   id: string;
@@ -96,6 +97,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       branchName: data.user.branchName ?? data.user.branch?.name ?? null,
     });
   }, []);
+
+  // Warn user 2 minutes before the access token expires
+  // (the axios interceptor will auto-refresh on the next API call, but this gives
+  // users a chance to save in-progress form work before the session changes)
+  useEffect(() => {
+    if (!user) return;
+    const expiry = getTokenExpiresAt();
+    if (!expiry) return;
+
+    const now = Date.now();
+    const msUntilExpiry = expiry - now;
+    const msUntilWarn = msUntilExpiry - 2 * 60 * 1000;
+
+    if (msUntilWarn <= 0) return; // already near expiry — refresh interceptor will handle it
+
+    const warnTimer = setTimeout(() => {
+      toast.warning('Session ใกล้หมดอายุ กรุณาบันทึกงานของคุณ', {
+        duration: 120_000,
+        action: { label: 'ต่ออายุ', onClick: () => api.get('/auth/me').catch(() => logout()) },
+      });
+    }, msUntilWarn);
+
+    return () => clearTimeout(warnTimer);
+  }, [user, logout]);
 
   const value = useMemo(() => ({
     user,

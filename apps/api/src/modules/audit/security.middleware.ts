@@ -9,9 +9,12 @@ export class SecurityMiddleware implements NestMiddleware {
     /<script\b[^>]*>/i,
     /javascript\s*:/i,
     /\bon(click|load|error|mouseover|focus|blur|submit|change|input)\s*=/i,
+    // SQL injection patterns below are kept as defense-in-depth only.
+    // Prisma uses parameterized queries so these cannot reach the DB,
+    // but flagging them helps detect malicious intent in audit logs.
+    // NOTE: "--\s*$" was removed — it false-positives on Thai notes like "ชำระแล้ว -- แก้ไข"
     /union\s+select/i,
     /;\s*drop\s+table/i,
-    /--\s*$/,
   ];
 
   // Paths that carry HTML/base64 content and would false-positive on XSS patterns

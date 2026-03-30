@@ -13,6 +13,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { maskNationalId } from '@/utils/mask.util';
 import { THAI_NAME_PREFIXES, RELATIONSHIP_OPTIONS } from '@/lib/constants';
+import { CONTRACT_STATUS_LABELS as statusLabels } from '@/constants/statusLabels';
 
 interface ReferenceData {
   prefix?: string;
@@ -66,17 +67,6 @@ interface RiskFlag {
   riskLevel: string;
   overdueContracts: { id: string; contractNumber: string; status: string }[];
 }
-
-const statusLabels: Record<string, { label: string; className: string }> = {
-  DRAFT: { label: 'ร่าง', className: 'bg-muted text-foreground' },
-  ACTIVE: { label: 'ผ่อนอยู่', className: 'bg-green-100 text-green-700' },
-  OVERDUE: { label: 'ค้างชำระ', className: 'bg-yellow-100 text-yellow-700' },
-  DEFAULT: { label: 'ผิดนัด', className: 'bg-red-100 text-red-700' },
-  EARLY_PAYOFF: { label: 'ปิดก่อน', className: 'bg-primary-100 text-primary-700' },
-  COMPLETED: { label: 'ครบ', className: 'bg-teal-100 text-teal-700' },
-  EXCHANGED: { label: 'เปลี่ยนเครื่อง', className: 'bg-primary-100 text-primary-700' },
-  CLOSED_BAD_DEBT: { label: 'หนี้สูญ', className: 'bg-red-200 text-red-800' },
-};
 
 interface CreditCheckItem {
   id: string;

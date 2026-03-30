@@ -57,20 +57,4 @@ export interface EarlyPayoffQuote {
   totalPayoff: number;
 }
 
-export const statusLabels: Record<string, { label: string; className: string }> = {
-  DRAFT: { label: 'ร่าง', className: 'bg-secondary text-foreground' },
-  ACTIVE: { label: 'ผ่อนอยู่', className: 'bg-green-100 text-green-700' },
-  OVERDUE: { label: 'ค้างชำระ', className: 'bg-yellow-100 text-yellow-700' },
-  DEFAULT: { label: 'ผิดนัด', className: 'bg-red-100 text-red-700' },
-  EARLY_PAYOFF: { label: 'ปิดก่อน', className: 'bg-primary/10 text-primary' },
-  COMPLETED: { label: 'ครบ', className: 'bg-teal-100 text-teal-700' },
-  EXCHANGED: { label: 'เปลี่ยนเครื่อง', className: 'bg-primary/10 text-primary' },
-  CLOSED_BAD_DEBT: { label: 'หนี้สูญ', className: 'bg-red-200 text-red-800' },
-};
-
-export const paymentStatusLabels: Record<string, { label: string; className: string }> = {
-  PENDING: { label: 'รอชำระ', className: 'bg-secondary text-foreground' },
-  PAID: { label: 'ชำระแล้ว', className: 'bg-green-100 text-green-700' },
-  OVERDUE: { label: 'เกินกำหนด', className: 'bg-red-100 text-red-700' },
-  PARTIALLY_PAID: { label: 'ชำระบางส่วน', className: 'bg-yellow-100 text-yellow-700' },
-};
+export { CONTRACT_STATUS_LABELS as statusLabels, PAYMENT_STATUS_LABELS as paymentStatusLabels } from '@/constants/statusLabels';

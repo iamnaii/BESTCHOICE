@@ -3,6 +3,20 @@ import { API_URL } from '@/lib/env';
 
 // In-memory token storage — not accessible via XSS unlike localStorage
 let accessToken: string | null = null;
+let tokenExpiresAt: number | null = null; // ms since epoch
+
+function parseTokenExpiry(token: string): number | null {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return typeof payload.exp === 'number' ? payload.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
+export function getTokenExpiresAt(): number | null {
+  return tokenExpiresAt;
+}
 
 // One-time migration: read token from localStorage (for backward compat & E2E tests),
 // then remove it so future tokens are memory-only.
@@ -18,6 +32,7 @@ try {
 
 export function setAccessToken(token: string | null) {
   accessToken = token;
+  tokenExpiresAt = token ? parseTokenExpiry(token) : null;
 }
 
 export function getAccessToken(): string | null {

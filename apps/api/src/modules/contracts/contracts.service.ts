@@ -308,6 +308,21 @@ export class ContractsService {
             throw new BadRequestException('สินค้าไม่พร้อมขาย (อาจถูกจองแล้ว)');
           }
 
+          // Check IMEI uniqueness: prevent the same device from appearing in multiple active contracts
+          const existingActiveContract = await tx.contract.findFirst({
+            where: {
+              productId: dto.productId,
+              status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] },
+              deletedAt: null,
+            },
+            select: { contractNumber: true },
+          });
+          if (existingActiveContract) {
+            throw new BadRequestException(
+              `อุปกรณ์นี้ถูกใช้ในสัญญา ${existingActiveContract.contractNumber} ที่ยัง active อยู่ ไม่สามารถสร้างสัญญาซ้ำได้`,
+            );
+          }
+
           // Fetch customer data for snapshot (isolation from future edits)
           const customerData = await tx.customer.findUnique({ where: { id: dto.customerId } });
           const customerSnapshot: Prisma.InputJsonValue | undefined = customerData ? {

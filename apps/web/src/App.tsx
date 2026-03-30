@@ -70,6 +70,7 @@ const SmsSettingsPage = lazy(() => import('@/pages/SmsSettingsPage'));
 const FinanceReceivablesPage = lazy(() => import('@/pages/FinanceReceivablesPage'));
 const FinanceCompaniesPage = lazy(() => import('@/pages/FinanceCompaniesPage'));
 const ExpensesPage = lazy(() => import('@/pages/ExpensesPage'));
+const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -443,7 +444,7 @@ function App() {
             }
           />
         </Route>
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Suspense>
   );

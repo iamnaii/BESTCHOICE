@@ -174,6 +174,8 @@ export class PaymentsService {
     }
 
     // Wrap entire allocation in a serializable transaction to prevent double-payment
+    // isolationLevel: Serializable ensures concurrent transactions on the same contract
+    // are detected and rejected rather than silently producing incorrect amounts
     return this.prisma.$transaction(async (tx) => {
       const contract = await tx.contract.findUnique({
         where: { id: contractId },
@@ -271,7 +273,7 @@ export class PaymentsService {
           ? `มีเงินเกินจำนวน ${overpayment.toLocaleString()} บาท บันทึกเป็นยอดเครดิตในสัญญา`
           : null,
       };
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
   // ─── Get payments for a contract ──────────────────────
@@ -480,6 +482,8 @@ export class PaymentsService {
 
   // ─── Apply credit balance to next pending installment ─
   async applyCreditBalance(contractId: string, recordedById: string) {
+    // Serializable isolation prevents concurrent credit-balance applications from
+    // reading stale amountPaid values and double-crediting the same installment
     return this.prisma.$transaction(async (tx) => {
       const contract = await tx.contract.findUnique({
         where: { id: contractId },
@@ -545,7 +549,7 @@ export class PaymentsService {
         creditUsed: decUsedCredit.toNumber(),
         creditRemaining: decRemaining.toNumber(),
       };
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
   // ─── Get credit balance for a contract ─────────────

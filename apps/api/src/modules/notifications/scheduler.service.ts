@@ -1,113 +1,29 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import { NotificationsService } from './notifications.service';
-import { OverdueService } from '../overdue/overdue.service';
 import { ReorderPointsService } from '../reorder-points/reorder-points.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LineOaService } from '../line-oa/line-oa.service';
 import { PaymentLinkService } from '../line-oa/payment-links/payment-link.service';
-import { buildOverdueNoticeFlex } from '../line-oa/flex-messages/overdue-notice.flex';
 import { buildPaymentReminderFlex } from '../line-oa/flex-messages/payment-reminder.flex';
 
+/**
+ * SchedulerService: notification & stock cron jobs
+ *
+ * Late fees, contract statuses, dunning escalation ย้ายไปที่ CronService
+ * (apps/api/src/modules/cron/cron.service.ts) แล้ว — ไม่ duplicate ที่นี่
+ */
 @Injectable()
 export class SchedulerService {
   private readonly logger = new Logger(SchedulerService.name);
 
   constructor(
     private notificationsService: NotificationsService,
-    private overdueService: OverdueService,
     private reorderPointsService: ReorderPointsService,
     private prisma: PrismaService,
     private lineOaService: LineOaService,
     private paymentLinkService: PaymentLinkService,
   ) {}
-
-  /**
-   * Run daily at midnight: calculate late fees for all overdue payments
-   */
-  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
-  async handleLateFeeCalculation() {
-    this.logger.log('Starting daily late fee calculation...');
-    try {
-      const result = await this.overdueService.calculateLateFees();
-      this.logger.log(`Late fee calculation complete: ${result.updated} payments updated`);
-    } catch (error) {
-      this.logger.error(`Late fee calculation failed: ${error instanceof Error ? error.message : error}`);
-    }
-  }
-
-  /**
-   * Run daily at 00:30: update contract statuses (ACTIVE->OVERDUE->DEFAULT)
-   */
-  @Cron('30 0 * * *')
-  async handleContractStatusUpdate() {
-    this.logger.log('Starting daily contract status update...');
-    try {
-      const result = await this.overdueService.updateContractStatuses();
-      this.logger.log(`Status update complete: ${result.overdueUpdated} overdue, ${result.defaultUpdated} default`);
-
-      // Send LINE notifications to customers whose contracts changed status
-      const changedIds = [...result.overdueIds, ...result.defaultIds];
-      if (changedIds.length > 0) {
-        await this.notifyStatusChangedCustomers(changedIds);
-      }
-    } catch (error) {
-      this.logger.error(`Contract status update failed: ${error instanceof Error ? error.message : error}`);
-    }
-  }
-
-  /**
-   * Send LINE overdue/default notice to customers whose contracts just changed status
-   */
-  private async notifyStatusChangedCustomers(contractIds: string[]) {
-    const contracts = await this.prisma.contract.findMany({
-      where: { id: { in: contractIds } },
-      include: {
-        customer: { select: { name: true, lineId: true, phone: true } },
-        payments: {
-          where: { status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] }, dueDate: { lt: new Date() } },
-          orderBy: { installmentNo: 'asc' },
-        },
-      },
-    });
-
-    let sent = 0;
-    for (const contract of contracts) {
-      const lineId = contract.customer?.lineId;
-      if (!lineId) continue;
-
-      try {
-        const totalOverdue = contract.payments.reduce(
-          (sum, p) => sum + (Number(p.amountDue) - Number(p.amountPaid) + Number(p.lateFee)),
-          0,
-        );
-        const oldestDue = contract.payments[0]?.dueDate;
-        const daysOverdue = oldestDue
-          ? Math.floor((Date.now() - oldestDue.getTime()) / (1000 * 60 * 60 * 24))
-          : 0;
-
-        const lateFee = contract.payments.reduce((sum, p) => sum + Number(p.lateFee), 0);
-        const flex = buildOverdueNoticeFlex({
-          customerName: contract.customer?.name || '-',
-          contractNumber: contract.contractNumber,
-          installmentNo: contract.payments[0]?.installmentNo || 0,
-          totalInstallments: contract.totalMonths,
-          amountDue: totalOverdue,
-          lateFee,
-          totalOutstanding: totalOverdue,
-          dueDate: oldestDue?.toLocaleDateString('th-TH') || '-',
-          daysOverdue,
-        });
-
-        await this.lineOaService.sendFlexMessage(lineId, flex);
-        sent++;
-      } catch (err) {
-        this.logger.warn(`Failed to notify customer for contract ${contract.contractNumber}: ${err}`);
-      }
-    }
-
-    this.logger.log(`Status change LINE notifications: ${sent} sent out of ${contracts.length} contracts`);
-  }
 
   /**
    * Run daily at 08:00: send payment reminders (3 days and 1 day before due)
@@ -162,67 +78,6 @@ export class SchedulerService {
       this.logger.log(`Owner notifications complete: ${result.sent} sent for ${result.contracts} contracts`);
     } catch (error) {
       this.logger.error(`Owner notifications failed: ${error instanceof Error ? error.message : error}`);
-    }
-  }
-
-  /**
-   * Run daily at 01:00: escalate dunning stages and send stage-specific notifications
-   */
-  @Cron('0 1 * * *')
-  async handleDunningEscalation() {
-    this.logger.log('Starting daily dunning escalation...');
-    try {
-      const result = await this.overdueService.escalateDunningStages();
-
-      // Send stage-specific LINE notifications
-      let notified = 0;
-      for (const esc of result.escalated) {
-        try {
-          const contract = await this.prisma.contract.findUnique({
-            where: { id: esc.contractId },
-            include: {
-              customer: { select: { name: true, lineId: true, phone: true } },
-              payments: {
-                where: { status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] }, dueDate: { lt: new Date() } },
-                orderBy: { installmentNo: 'asc' },
-              },
-            },
-          });
-          if (!contract?.customer?.lineId) continue;
-
-          const totalOverdue = contract.payments.reduce(
-            (sum, p) => sum + (Number(p.amountDue) - Number(p.amountPaid) + Number(p.lateFee)),
-            0,
-          );
-
-          // Stage-specific messaging
-          const stageMessages: Record<string, string> = {
-            REMINDER: `แจ้งเตือน: คุณ${contract.customer.name} มียอดค้างชำระ ${totalOverdue.toLocaleString()} บาท สัญญา ${esc.contractNumber} กรุณาชำระโดยเร็ว`,
-            NOTICE: `แจ้งค้างชำระ: คุณ${contract.customer.name} มียอดค้างชำระ ${totalOverdue.toLocaleString()} บาท ค้างชำระ ${esc.daysOverdue} วัน กรุณาติดต่อชำระเงินทันที`,
-            FINAL_WARNING: `เตือนครั้งสุดท้าย: คุณ${contract.customer.name} ค้างชำระ ${esc.daysOverdue} วัน ยอด ${totalOverdue.toLocaleString()} บาท หากไม่ชำระภายใน 30 วัน จะดำเนินการตามกฎหมาย`,
-            LEGAL_ACTION: `แจ้งดำเนินการ: สัญญา ${esc.contractNumber} ค้างชำระเกิน 60 วัน ทางร้านจะดำเนินการยึดคืนสินค้า กรุณาติดต่อร้านทันที`,
-          };
-
-          const message = stageMessages[esc.to];
-          if (message) {
-            await this.notificationsService.send({
-              channel: 'LINE',
-              recipient: contract.customer.lineId,
-              subject: `Dunning: ${esc.to}`,
-              message,
-              relatedId: esc.contractId,
-              fallbackPhone: contract.customer.phone || undefined,
-            });
-            notified++;
-          }
-        } catch (err) {
-          this.logger.warn(`Failed to send dunning notification for ${esc.contractNumber}: ${err}`);
-        }
-      }
-
-      this.logger.log(`Dunning escalation complete: ${result.escalated.length} escalated, ${notified} notified`);
-    } catch (error) {
-      this.logger.error(`Dunning escalation failed: ${error instanceof Error ? error.message : error}`);
     }
   }
 

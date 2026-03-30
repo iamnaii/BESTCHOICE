@@ -75,9 +75,11 @@ export class DashboardController {
   getStaffPerformance(
     @CurrentUser() user: { role: string; branchId: string | null },
     @Query('branchId') branchId?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
   ) {
     const effectiveBranch = this.getEffectiveBranch(branchId, user);
-    return this.dashboardService.getStaffPerformance(effectiveBranch);
+    return this.dashboardService.getStaffPerformance(effectiveBranch, startDate, endDate);
   }
 
   private getEffectiveBranch(

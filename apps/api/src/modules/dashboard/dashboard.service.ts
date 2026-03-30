@@ -190,7 +190,7 @@ export class DashboardService {
   }
 
   /**
-   * Branch comparison summary
+   * Branch comparison summary with revenue, overdue rate, stock turnover, collection rate
    * OPTIMIZED: batch queries instead of N+1 per branch
    */
   async getBranchComparison() {
@@ -204,10 +204,15 @@ export class DashboardService {
     });
 
     const branchIds = branches.map((b) => b.id);
-    const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    // 2 batch queries for all branches instead of 2 per branch
-    const [overdueByBranch] = await Promise.all([
+    // Batch queries for all branches
+    const [
+      overdueByBranch,
+      activeByBranch,
+      soldProductsByBranch,
+    ] = await Promise.all([
       this.prisma.contract.groupBy({
         by: ['branchId'],
         where: {
@@ -217,44 +222,93 @@ export class DashboardService {
         },
         _count: true,
       }),
-      this.prisma.payment.groupBy({
-        by: ['contractId'],
+      this.prisma.contract.groupBy({
+        by: ['branchId'],
         where: {
-          paidDate: { gte: monthStart },
-          status: 'PAID',
-          contract: { branchId: { in: branchIds } },
+          branchId: { in: branchIds },
+          status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] },
+          deletedAt: null,
         },
-        _sum: { amountPaid: true },
+        _count: true,
+      }),
+      this.prisma.product.groupBy({
+        by: ['branchId'],
+        where: {
+          branchId: { in: branchIds },
+          status: { in: ['SOLD_INSTALLMENT', 'SOLD_CASH'] },
+          deletedAt: null,
+          updatedAt: { gte: monthStart },
+        },
+        _count: true,
       }),
     ]);
 
-    // Build payment totals per branch via a second lightweight query
-    const paidPayments = await this.prisma.payment.findMany({
-      where: {
-        paidDate: { gte: monthStart },
-        status: 'PAID',
-        contract: { branchId: { in: branchIds } },
-      },
-      select: { amountPaid: true, contract: { select: { branchId: true } } },
-    });
+    // Revenue + collection data per branch
+    const [paidPayments, totalDuePayments] = await Promise.all([
+      this.prisma.payment.findMany({
+        where: {
+          paidDate: { gte: monthStart },
+          status: 'PAID',
+          contract: { branchId: { in: branchIds }, deletedAt: null },
+        },
+        select: { amountPaid: true, contract: { select: { branchId: true } } },
+      }),
+      this.prisma.payment.findMany({
+        where: {
+          dueDate: { gte: monthStart, lt: new Date(now.getFullYear(), now.getMonth() + 1, 1) },
+          contract: { branchId: { in: branchIds }, deletedAt: null },
+        },
+        select: { amountDue: true, amountPaid: true, status: true, contract: { select: { branchId: true } } },
+      }),
+    ]);
 
-    const paymentTotalByBranch = new Map<string, number>();
+    // Aggregate per branch
+    const revenueByBranch = new Map<string, number>();
     for (const p of paidPayments) {
       const bid = p.contract.branchId;
-      paymentTotalByBranch.set(bid, (paymentTotalByBranch.get(bid) || 0) + new Prisma.Decimal(p.amountPaid).toNumber());
+      revenueByBranch.set(bid, (revenueByBranch.get(bid) || 0) + new Prisma.Decimal(p.amountPaid).toNumber());
+    }
+
+    const collectionByBranch = new Map<string, { due: number; collected: number }>();
+    for (const p of totalDuePayments) {
+      const bid = p.contract.branchId;
+      const existing = collectionByBranch.get(bid) || { due: 0, collected: 0 };
+      existing.due += new Prisma.Decimal(p.amountDue).toNumber();
+      if (p.status === 'PAID') {
+        existing.collected += new Prisma.Decimal(p.amountPaid).toNumber();
+      }
+      collectionByBranch.set(bid, existing);
     }
 
     const overdueMap = new Map(overdueByBranch.map((o) => [o.branchId, o._count]));
+    const activeMap = new Map(activeByBranch.map((a) => [a.branchId, a._count]));
+    const soldMap = new Map(soldProductsByBranch.map((s) => [s.branchId, s._count]));
 
-    return branches.map((branch) => ({
-      id: branch.id,
-      name: branch.name,
-      contracts: branch._count.contracts,
-      products: branch._count.products,
-      users: branch._count.users,
-      overdueContracts: overdueMap.get(branch.id) || 0,
-      monthlyPayments: paymentTotalByBranch.get(branch.id) || 0,
-    }));
+    return branches.map((branch) => {
+      const activeCount = activeMap.get(branch.id) || 0;
+      const overdueCount = overdueMap.get(branch.id) || 0;
+      const collection = collectionByBranch.get(branch.id) || { due: 0, collected: 0 };
+      const collectionRate = collection.due > 0
+        ? Number(((collection.collected / collection.due) * 100).toFixed(1))
+        : 0;
+      const overdueRate = activeCount > 0
+        ? Number(((overdueCount / activeCount) * 100).toFixed(1))
+        : 0;
+
+      return {
+        id: branch.id,
+        name: branch.name,
+        contracts: branch._count.contracts,
+        activeContracts: activeCount,
+        products: branch._count.products,
+        users: branch._count.users,
+        overdueContracts: overdueCount,
+        overdueRate,
+        monthlyRevenue: revenueByBranch.get(branch.id) || 0,
+        collectionRate,
+        stockTurnover: soldMap.get(branch.id) || 0,
+      };
+    });
   }
 
   /**
@@ -304,7 +358,8 @@ export class DashboardService {
   }
 
   /**
-   * Aging summary: overdue payments grouped by age buckets
+   * Aging summary: overdue payments grouped by age buckets (0-30, 31-60, 61-90, 90+)
+   * Includes outstanding amount and late fee totals per bucket
    */
   async getAgingSummary(branchId?: string) {
     const now = new Date();
@@ -318,14 +373,20 @@ export class DashboardService {
         dueDate: { lt: now },
         ...branchFilter,
       },
-      select: { amountDue: true, amountPaid: true, lateFee: true, dueDate: true },
+      select: {
+        amountDue: true,
+        amountPaid: true,
+        lateFee: true,
+        dueDate: true,
+        contract: { select: { id: true, contractNumber: true, customer: { select: { name: true } } } },
+      },
     });
 
     const bucketDefs = [
-      { range: '1-30', min: 1, max: 30, color: 'green' },
-      { range: '31-60', min: 31, max: 60, color: 'yellow' },
-      { range: '61-90', min: 61, max: 90, color: 'orange' },
-      { range: '90+', min: 91, max: Infinity, color: 'red' },
+      { range: '0-30', label: '0-30 วัน', min: 0, max: 30, color: 'green', severity: 'low' },
+      { range: '31-60', label: '31-60 วัน', min: 31, max: 60, color: 'yellow', severity: 'medium' },
+      { range: '61-90', label: '61-90 วัน', min: 61, max: 90, color: 'orange', severity: 'high' },
+      { range: '90+', label: 'มากกว่า 90 วัน', min: 91, max: Infinity, color: 'red', severity: 'critical' },
     ];
 
     const buckets = bucketDefs.map((def) => {
@@ -337,33 +398,109 @@ export class DashboardService {
         (s, p) => s.add(new Prisma.Decimal(p.amountDue)).sub(new Prisma.Decimal(p.amountPaid)),
         new Prisma.Decimal(0),
       ).toNumber();
-      return { range: def.range, count: items.length, amount, color: def.color };
+      const lateFeeTotal = items.reduce(
+        (s, p) => s.add(new Prisma.Decimal(p.lateFee)),
+        new Prisma.Decimal(0),
+      ).toNumber();
+
+      // Unique contracts in this bucket
+      const contractIds = new Set(items.map((i) => i.contract.id));
+
+      return {
+        range: def.range,
+        label: def.label,
+        count: items.length,
+        contractCount: contractIds.size,
+        amount,
+        lateFeeTotal,
+        color: def.color,
+        severity: def.severity,
+      };
     });
 
     const totalCount = buckets.reduce((s, b) => s + b.count, 0);
     const totalAmount = buckets.reduce((s, b) => s + b.amount, 0);
+    const totalLateFees = buckets.reduce((s, b) => s + b.lateFeeTotal, 0);
+    const totalContracts = new Set(overduePayments.map((p) => p.contract.id)).size;
 
-    return { buckets, total: { count: totalCount, amount: totalAmount } };
+    return {
+      buckets,
+      total: {
+        count: totalCount,
+        contractCount: totalContracts,
+        amount: totalAmount,
+        lateFeeTotal: totalLateFees,
+      },
+    };
   }
 
   /**
-   * Staff performance: sales metrics (current month) + recent activity (last 7 days)
+   * Staff performance: contracts closed, total sales, collection rate per salesperson
+   * Supports date range filter (defaults to current month)
    */
-  async getStaffPerformance(branchId?: string) {
+  async getStaffPerformance(branchId?: string, startDate?: string, endDate?: string) {
     const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const rangeStart = startDate ? new Date(startDate) : new Date(now.getFullYear(), now.getMonth(), 1);
+    const rangeEnd = endDate ? (() => { const d = new Date(endDate); d.setHours(23, 59, 59, 999); return d; })() : new Date(now.getFullYear(), now.getMonth() + 1, 1);
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const branchFilter = branchId ? { branchId } : {};
 
-    // Sales metrics: contracts this month grouped by salesperson
+    // Sales metrics: contracts in date range grouped by salesperson
     const contracts = await this.prisma.contract.findMany({
-      where: { createdAt: { gte: monthStart, lt: monthEnd }, deletedAt: null, ...branchFilter },
+      where: { createdAt: { gte: rangeStart, lt: rangeEnd }, deletedAt: null, ...branchFilter },
       include: {
         salesperson: { select: { id: true, name: true } },
         branch: { select: { name: true } },
       },
     });
+
+    // Collection metrics: payments recorded by staff in date range
+    const payments = await this.prisma.payment.findMany({
+      where: {
+        paidDate: { gte: rangeStart, lt: rangeEnd },
+        status: 'PAID',
+        contract: { deletedAt: null, ...branchFilter },
+      },
+      select: {
+        amountPaid: true,
+        recordedById: true,
+        recordedBy: { select: { id: true, name: true } },
+        contract: { select: { branchId: true, salespersonId: true, branch: { select: { name: true } } } },
+      },
+    });
+
+    // Due payments in the same range for collection rate
+    const duePayments = await this.prisma.payment.findMany({
+      where: {
+        dueDate: { gte: rangeStart, lt: rangeEnd },
+        contract: { deletedAt: null, ...branchFilter },
+      },
+      select: {
+        amountDue: true,
+        status: true,
+        amountPaid: true,
+        contract: { select: { salespersonId: true } },
+      },
+    });
+
+    // Build collection stats by salesperson (based on contracts they sold)
+    const collectionBySalesperson = new Map<string, { due: number; collected: number }>();
+    for (const p of duePayments) {
+      const spId = p.contract.salespersonId;
+      const existing = collectionBySalesperson.get(spId) || { due: 0, collected: 0 };
+      existing.due += new Prisma.Decimal(p.amountDue).toNumber();
+      if (p.status === 'PAID') {
+        existing.collected += new Prisma.Decimal(p.amountPaid).toNumber();
+      }
+      collectionBySalesperson.set(spId, existing);
+    }
+
+    // Build collection amount by recordedById (who actually collected)
+    const collectedByStaff = new Map<string, number>();
+    for (const p of payments) {
+      const staffId = p.recordedById || p.contract.salespersonId;
+      collectedByStaff.set(staffId, (collectedByStaff.get(staffId) || 0) + new Prisma.Decimal(p.amountPaid).toNumber());
+    }
 
     const staffMap = new Map<string, {
       name: string; branch: string; totalContracts: number;
@@ -382,13 +519,22 @@ export class DashboardService {
       staffMap.set(key, existing);
     }
 
-    const salesMetrics = Array.from(staffMap.entries()).map(([id, data]) => ({
-      salespersonId: id,
-      ...data,
-      overdueRate: data.totalContracts > 0
-        ? Number(((data.overdueCount / data.totalContracts) * 100).toFixed(1))
-        : 0,
-    })).sort((a, b) => b.totalSales - a.totalSales);
+    const salesMetrics = Array.from(staffMap.entries()).map(([id, data]) => {
+      const collection = collectionBySalesperson.get(id) || { due: 0, collected: 0 };
+      const collectionRate = collection.due > 0
+        ? Number(((collection.collected / collection.due) * 100).toFixed(1))
+        : 0;
+
+      return {
+        salespersonId: id,
+        ...data,
+        collectionAmount: collectedByStaff.get(id) || 0,
+        collectionRate,
+        overdueRate: data.totalContracts > 0
+          ? Number(((data.overdueCount / data.totalContracts) * 100).toFixed(1))
+          : 0,
+      };
+    }).sort((a, b) => b.totalSales - a.totalSales);
 
     // Recent activity: contracts created + payments recorded in last 7 days
     const [recentContracts, recentPayments] = await Promise.all([
@@ -443,6 +589,10 @@ export class DashboardService {
     ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, 20);
 
-    return { salesMetrics, recentActivity };
+    return {
+      salesMetrics,
+      recentActivity,
+      dateRange: { start: rangeStart.toISOString(), end: rangeEnd.toISOString() },
+    };
   }
 }

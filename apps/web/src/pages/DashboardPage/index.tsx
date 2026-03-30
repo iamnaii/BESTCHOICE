@@ -1,9 +1,10 @@
-import { useMemo } from 'react';
+import { useMemo, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardToolbar } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   ShoppingCart,
@@ -15,9 +16,11 @@ import {
   ArrowRight,
   Clock,
   UserCheck,
+  Download,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 import QueryErrorBlock from '@/components/ui/QueryErrorBlock';
 import KPICards from './KPICards';
 import MonthlyTrendChart from './MonthlyTrendChart';
@@ -55,10 +58,14 @@ interface BranchComparison {
   id: string;
   name: string;
   contracts: number;
+  activeContracts: number;
   products: number;
   users: number;
   overdueContracts: number;
-  monthlyPayments: number;
+  overdueRate: number;
+  monthlyRevenue: number;
+  collectionRate: number;
+  stockTurnover: number;
 }
 
 interface MonthlyRevenue {
@@ -69,8 +76,8 @@ interface MonthlyRevenue {
 }
 
 interface AgingSummary {
-  buckets: { range: string; count: number; amount: number; color: string }[];
-  total: { count: number; amount: number };
+  buckets: { range: string; label: string; count: number; contractCount: number; amount: number; lateFeeTotal: number; color: string; severity: string }[];
+  total: { count: number; contractCount: number; amount: number; lateFeeTotal: number };
 }
 
 interface StaffSalesMetric {
@@ -79,6 +86,8 @@ interface StaffSalesMetric {
   branch: string;
   totalContracts: number;
   totalSales: number;
+  collectionAmount: number;
+  collectionRate: number;
   overdueCount: number;
   overdueRate: number;
 }
@@ -95,6 +104,7 @@ interface StaffActivity {
 interface StaffPerformance {
   salesMetrics: StaffSalesMetric[];
   recentActivity: StaffActivity[];
+  dateRange: { start: string; end: string };
 }
 
 /* ─── Constants ─── */
@@ -228,6 +238,50 @@ export default function DashboardPage() {
   /* ─── Computed ─── */
   const totalStatusCount = useMemo(() => statusDist.reduce((sum, s) => sum + s.count, 0), [statusDist]);
   const agingMax = useMemo(() => (aging ? Math.max(...aging.buckets.map((b) => b.amount), 1) : 1), [aging]);
+
+  /* ─── CSV Export Helpers ─── */
+  const downloadCsv = useCallback((filename: string, headers: string[], rows: string[][]) => {
+    const bom = '\uFEFF'; // UTF-8 BOM for Excel
+    const csv = bom + [headers.join(','), ...rows.map((r) => r.map((v) => `"${v}"`).join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`ดาวน์โหลด ${filename} แล้ว`);
+  }, []);
+
+  const exportAgingCsv = useCallback((data: AgingSummary) => {
+    downloadCsv('aging-summary.csv',
+      ['ช่วงวัน', 'จำนวนงวด', 'จำนวนสัญญา', 'ยอดค้างชำระ', 'ค่าปรับ'],
+      [
+        ...data.buckets.map((b) => [b.label || b.range, String(b.count), String(b.contractCount), String(b.amount), String(b.lateFeeTotal)]),
+        ['รวม', String(data.total.count), String(data.total.contractCount), String(data.total.amount), String(data.total.lateFeeTotal)],
+      ],
+    );
+  }, [downloadCsv]);
+
+  const exportStaffCsv = useCallback((data: StaffPerformance) => {
+    downloadCsv('staff-performance.csv',
+      ['พนักงาน', 'สาขา', 'สัญญา', 'ยอดขาย', 'เก็บเงินได้', 'อัตราเก็บ%', 'ค้างชำระ', 'อัตราค้าง%'],
+      data.salesMetrics.map((s) => [
+        s.name, s.branch, String(s.totalContracts), String(s.totalSales),
+        String(s.collectionAmount), String(s.collectionRate), String(s.overdueCount), String(s.overdueRate),
+      ]),
+    );
+  }, [downloadCsv]);
+
+  const exportBranchCsv = useCallback((data: BranchComparison[]) => {
+    downloadCsv('branch-comparison.csv',
+      ['สาขา', 'สัญญา', 'รายได้/เดือน', 'อัตราเก็บเงิน%', 'ค้างชำระ', 'อัตราค้าง%', 'ขายได้/เดือน'],
+      data.map((b) => [
+        b.name, String(b.contracts), String(b.monthlyRevenue),
+        String(b.collectionRate), String(b.overdueContracts), String(b.overdueRate), String(b.stockTurnover),
+      ]),
+    );
+  }, [downloadCsv]);
 
   return (
     <div className="flex flex-col gap-5 lg:gap-7">
@@ -393,9 +447,14 @@ export default function DashboardPage() {
           <CardTitle>อายุหนี้ค้างชำระ (Aging)</CardTitle>
           <CardToolbar>
             {aging && (
-              <span className="text-2xs text-destructive bg-destructive/10 px-2.5 py-1 rounded-md font-medium">
-                {aging.total.count} รายการ — {aging.total.amount.toLocaleString()} ฿
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-2xs text-destructive bg-destructive/10 px-2.5 py-1 rounded-md font-medium">
+                  {aging.total.contractCount} สัญญา · {aging.total.count} งวด — {aging.total.amount.toLocaleString()} ฿
+                </span>
+                <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => exportAgingCsv(aging)}>
+                  <Download className="size-3.5" />
+                </Button>
+              </div>
             )}
           </CardToolbar>
         </CardHeader>
@@ -406,7 +465,7 @@ export default function DashboardPage() {
             <div className="space-y-4">
               {aging.buckets.map((bucket) => (
                 <div key={bucket.range} className="flex items-center gap-4">
-                  <div className="w-16 text-xs font-medium text-foreground shrink-0">{bucket.range} วัน</div>
+                  <div className="w-20 text-xs font-medium text-foreground shrink-0">{bucket.label || `${bucket.range} วัน`}</div>
                   <div className="flex-1 bg-muted rounded-full h-4 overflow-hidden">
                     <div
                       className={cn('h-full rounded-full opacity-80', agingBarColors[bucket.color] || 'bg-zinc-400')}
@@ -416,12 +475,20 @@ export default function DashboardPage() {
                       }}
                     />
                   </div>
-                  <div className="w-14 text-right text-xs font-medium text-muted-foreground">{bucket.count} รายการ</div>
+                  <div className="w-20 text-right text-xs text-muted-foreground">
+                    {bucket.contractCount} สัญญา · {bucket.count} งวด
+                  </div>
                   <div className={cn('w-28 text-right text-sm font-semibold', agingTextColors[bucket.color] || 'text-foreground')}>
                     {bucket.amount.toLocaleString()} ฿
                   </div>
                 </div>
               ))}
+              {aging.total.lateFeeTotal > 0 && (
+                <div className="pt-2 border-t border-border/50 flex justify-between text-xs text-muted-foreground">
+                  <span>ค่าปรับสะสมรวม</span>
+                  <span className="font-medium text-warning">{aging.total.lateFeeTotal.toLocaleString()} ฿</span>
+                </div>
+              )}
             </div>
           ) : (
             <div className="text-center text-muted-foreground py-8 text-sm">กำลังโหลด...</div>
@@ -434,11 +501,18 @@ export default function DashboardPage() {
         <CardHeader>
           <CardTitle>กำกับพนักงาน</CardTitle>
           <CardToolbar>
-            {staffPerf && (
-              <span className="text-2xs text-muted-foreground bg-muted px-2.5 py-1 rounded-md font-medium">
-                เดือนนี้
-              </span>
-            )}
+            <div className="flex items-center gap-2">
+              {staffPerf && (
+                <span className="text-2xs text-muted-foreground bg-muted px-2.5 py-1 rounded-md font-medium">
+                  เดือนนี้
+                </span>
+              )}
+              {staffPerf && (
+                <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => exportStaffCsv(staffPerf)}>
+                  <Download className="size-3.5" />
+                </Button>
+              )}
+            </div>
           </CardToolbar>
         </CardHeader>
         <CardContent>
@@ -468,6 +542,8 @@ export default function DashboardPage() {
                           <th className="px-3 pb-3 pt-2 font-medium text-xs">สาขา</th>
                           <th className="px-3 pb-3 pt-2 font-medium text-xs text-right">สัญญา</th>
                           <th className="px-3 pb-3 pt-2 font-medium text-xs text-right">ยอดขาย</th>
+                          <th className="px-3 pb-3 pt-2 font-medium text-xs text-right">เก็บเงินได้</th>
+                          <th className="px-3 pb-3 pt-2 font-medium text-xs text-right">อัตราเก็บ</th>
                           <th className="px-3 pb-3 pt-2 font-medium text-xs text-right">ค้างชำระ</th>
                           <th className="px-3 pb-3 pt-2 font-medium text-xs text-right">อัตราค้าง</th>
                         </tr>
@@ -479,6 +555,21 @@ export default function DashboardPage() {
                             <td className="px-3 py-2.5 text-muted-foreground">{s.branch}</td>
                             <td className="px-3 py-2.5 text-right text-foreground">{s.totalContracts}</td>
                             <td className="px-3 py-2.5 text-right text-foreground font-medium">{s.totalSales.toLocaleString()} ฿</td>
+                            <td className="px-3 py-2.5 text-right text-success font-medium">{s.collectionAmount.toLocaleString()} ฿</td>
+                            <td className="px-3 py-2.5 text-right">
+                              <span
+                                className={cn(
+                                  'px-2 py-0.5 rounded-md text-2xs font-medium',
+                                  s.collectionRate >= 80
+                                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                    : s.collectionRate >= 60
+                                      ? 'bg-warning/10 text-warning'
+                                      : 'bg-destructive/10 text-destructive',
+                                )}
+                              >
+                                {s.collectionRate}%
+                              </span>
+                            </td>
                             <td className="px-3 py-2.5 text-right">
                               <span className={s.overdueCount > 0 ? 'text-destructive font-semibold' : 'text-foreground'}>
                                 {s.overdueCount}
@@ -604,7 +695,17 @@ export default function DashboardPage() {
 
       {/* Branch Comparison (OWNER only) */}
       {user?.role === 'OWNER' && (
-        <BranchComparisonTable branchData={branchData} branchError={branchError} refetchBranch={() => refetchBranch()} />
+        <>
+          {branchData.length > 0 && (
+            <div className="flex justify-end -mb-3">
+              <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs" onClick={() => exportBranchCsv(branchData)}>
+                <Download className="size-3.5" />
+                Export สาขา
+              </Button>
+            </div>
+          )}
+          <BranchComparisonTable branchData={branchData} branchError={branchError} refetchBranch={() => refetchBranch()} />
+        </>
       )}
     </div>
   );

@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Param, Body, UseGuards, Query } from '@nestjs/common';
 import { CreditCheckService } from './credit-check.service';
+import { RiskScoringService } from './risk-scoring.service';
 import { CreateCreditCheckDto, OverrideCreditCheckDto } from './dto/credit-check.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -118,5 +119,24 @@ export class CustomerCreditCheckController {
     @CurrentUser() user: { id: string },
   ) {
     return this.service.overrideById(creditCheckId, dto, user.id);
+  }
+}
+
+// === Risk Score ===
+@Controller('credit-check')
+@UseGuards(JwtAuthGuard, RolesGuard)
+export class RiskScoreController {
+  constructor(private riskScoringService: RiskScoringService) {}
+
+  @Get('risk-score/:customerId')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  getRiskScore(@Param('customerId') customerId: string) {
+    return this.riskScoringService.calculateRiskScore(customerId);
+  }
+
+  @Get('risk-distribution')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  getRiskDistribution(@Query('branchId') branchId?: string) {
+    return this.riskScoringService.getPortfolioRiskDistribution(branchId || undefined);
   }
 }

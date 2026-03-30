@@ -6,12 +6,86 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { PrismaService } from '../../prisma/prisma.service';
+import { PredictiveRiskService } from './predictive-risk.service';
 
 // === Global credit check list ===
 @Controller('credit-checks')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class GlobalCreditCheckController {
-  constructor(private service: CreditCheckService) {}
+  constructor(
+    private service: CreditCheckService,
+    private prisma: PrismaService,
+  ) {}
+
+  @Get('analytics/score-distribution')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  async getScoreDistribution() {
+    const checks = await this.prisma.creditCheck.findMany({
+      where: { deletedAt: null, aiScore: { not: null } },
+      select: { aiScore: true },
+    });
+
+    const ranges = [
+      { range: '0-20', min: 0, max: 20 },
+      { range: '21-40', min: 21, max: 40 },
+      { range: '41-60', min: 41, max: 60 },
+      { range: '61-80', min: 61, max: 80 },
+      { range: '81-100', min: 81, max: 100 },
+    ];
+
+    const distribution = ranges.map((r) => ({
+      range: r.range,
+      count: checks.filter((c) => (c.aiScore ?? 0) >= r.min && (c.aiScore ?? 0) <= r.max).length,
+    }));
+
+    const totalScore = checks.reduce((s, c) => s + (c.aiScore ?? 0), 0);
+    return {
+      distribution,
+      avgScore: checks.length > 0 ? Math.round(totalScore / checks.length) : 0,
+      totalChecked: checks.length,
+    };
+  }
+
+  @Get('analytics/risk-overview')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  async getRiskOverview() {
+    const checks = await this.prisma.creditCheck.findMany({
+      where: { deletedAt: null, aiScore: { not: null } },
+      select: {
+        id: true,
+        aiScore: true,
+        aiRecommendation: true,
+        createdAt: true,
+        customer: { select: { name: true } },
+        contract: { select: { contractNumber: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const total = checks.length;
+    const lowRisk = checks.filter((c) => (c.aiScore ?? 0) >= 80).length;
+    const medRisk = checks.filter((c) => (c.aiScore ?? 0) >= 50 && (c.aiScore ?? 0) < 80).length;
+    const highRisk = checks.filter((c) => (c.aiScore ?? 0) < 50).length;
+
+    const riskLevels = [
+      { level: 'LOW_RISK', label: 'ความเสี่ยงต่ำ', count: lowRisk, percentage: total > 0 ? Math.round((lowRisk / total) * 100) : 0 },
+      { level: 'MEDIUM_RISK', label: 'ความเสี่ยงปานกลาง', count: medRisk, percentage: total > 0 ? Math.round((medRisk / total) * 100) : 0 },
+      { level: 'HIGH_RISK', label: 'ความเสี่ยงสูง', count: highRisk, percentage: total > 0 ? Math.round((highRisk / total) * 100) : 0 },
+    ];
+
+    const recentChecks = checks.slice(0, 20).map((c) => ({
+      id: c.id,
+      customerName: c.customer?.name || '-',
+      contractNumber: c.contract?.contractNumber || '-',
+      score: c.aiScore ?? 0,
+      riskLevel: (c.aiScore ?? 0) >= 80 ? 'LOW_RISK' : (c.aiScore ?? 0) >= 50 ? 'MEDIUM_RISK' : 'HIGH_RISK',
+      recommendation: c.aiRecommendation || '-',
+      createdAt: c.createdAt.toISOString(),
+    }));
+
+    return { riskLevels, recentChecks, total };
+  }
 
   @Get()
   @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
@@ -126,7 +200,10 @@ export class CustomerCreditCheckController {
 @Controller('credit-check')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class RiskScoreController {
-  constructor(private riskScoringService: RiskScoringService) {}
+  constructor(
+    private riskScoringService: RiskScoringService,
+    private predictiveRiskService: PredictiveRiskService,
+  ) {}
 
   @Get('risk-score/:customerId')
   @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
@@ -138,5 +215,17 @@ export class RiskScoreController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
   getRiskDistribution(@Query('branchId') branchId?: string) {
     return this.riskScoringService.getPortfolioRiskDistribution(branchId || undefined);
+  }
+
+  @Get('predict/:customerId')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  predictCustomerRisk(@Param('customerId') customerId: string) {
+    return this.predictiveRiskService.predictDefaultRisk(customerId);
+  }
+
+  @Get('portfolio-risk')
+  @Roles('OWNER')
+  getPortfolioRisk() {
+    return this.predictiveRiskService.batchScorePortfolio();
   }
 }

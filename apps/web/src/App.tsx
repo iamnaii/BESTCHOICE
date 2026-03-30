@@ -70,6 +70,8 @@ const SmsSettingsPage = lazy(() => import('@/pages/SmsSettingsPage'));
 const FinanceReceivablesPage = lazy(() => import('@/pages/FinanceReceivablesPage'));
 const FinanceCompaniesPage = lazy(() => import('@/pages/FinanceCompaniesPage'));
 const ExpensesPage = lazy(() => import('@/pages/ExpensesPage'));
+const BranchAnalyticsPage = lazy(() => import('@/pages/BranchAnalyticsPage'));
+const CreditScoringDashboardPage = lazy(() => import('@/pages/CreditScoringDashboardPage'));
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'));
 
 const PageLoader = () => (
@@ -360,6 +362,22 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT']}>
                 <ReportsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/analytics"
+            element={
+              <ProtectedRoute roles={['OWNER']}>
+                <BranchAnalyticsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/credit-scoring"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}>
+                <CreditScoringDashboardPage />
               </ProtectedRoute>
             }
           />

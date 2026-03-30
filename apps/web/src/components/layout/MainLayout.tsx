@@ -1,10 +1,11 @@
-import { useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { LayoutProvider, useLayout } from './LayoutContext';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import { Sheet, SheetContent, SheetBody } from '@/components/ui/sheet';
+import SearchModal from '@/components/SearchModal';
 
 function MobileSidebar() {
   const { mobileSidebarOpen, setMobileSidebarOpen } = useLayout();
@@ -29,6 +30,20 @@ function MobileSidebar() {
 function MainContent() {
   const isMobile = useIsMobile();
   const { sidebarCollapse } = useLayout();
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  // Global Cmd+K / Ctrl+K shortcut
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      setSearchOpen((prev) => !prev);
+    }
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -45,11 +60,13 @@ function MainContent() {
           paddingLeft: isMobile ? 0 : sidebarCollapse ? 70 : 264,
         }}
       >
-        <TopBar />
+        <TopBar onSearchClick={() => setSearchOpen(true)} />
         <main className="flex-1 grow pt-5 px-5 lg:px-7 pb-7 bg-background">
           <Outlet />
         </main>
       </div>
+
+      <SearchModal open={searchOpen} onOpenChange={setSearchOpen} />
     </div>
   );
 }

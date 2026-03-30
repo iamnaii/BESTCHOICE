@@ -53,6 +53,12 @@ export class DashboardController {
     return this.dashboardService.getBranchComparison();
   }
 
+  @Get('analytics/branches')
+  @Roles('OWNER')
+  getBranchAnalytics(@Query('period') period?: string) {
+    return this.dashboardService.getBranchAnalytics(period || '1m');
+  }
+
   @Get('monthly-revenue')
   getMonthlyRevenue(
     @CurrentUser() user: { role: string; branchId: string | null },

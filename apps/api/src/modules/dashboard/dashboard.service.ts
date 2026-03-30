@@ -595,4 +595,123 @@ export class DashboardService {
       dateRange: { start: rangeStart.toISOString(), end: rangeEnd.toISOString() },
     };
   }
+
+  /**
+   * Comprehensive branch analytics for OWNER analytics page
+   */
+  async getBranchAnalytics(period: string) {
+    const now = new Date();
+    const months = period === '3m' ? 3 : period === '6m' ? 6 : period === '1y' ? 12 : 1;
+    const periodStart = new Date(now.getFullYear(), now.getMonth() - months + 1, 1);
+
+    const branches = await this.prisma.branch.findMany({
+      where: { isActive: true },
+      select: { id: true, name: true },
+    });
+
+    const branchIds = branches.map((b) => b.id);
+
+    const [
+      contractsByBranch,
+      paidPayments,
+      duePayments,
+      newContractsByBranch,
+    ] = await Promise.all([
+      this.prisma.contract.groupBy({
+        by: ['branchId', 'status'],
+        where: { branchId: { in: branchIds }, deletedAt: null },
+        _count: true,
+      }),
+      this.prisma.payment.findMany({
+        where: {
+          paidDate: { gte: periodStart },
+          status: 'PAID',
+          contract: { branchId: { in: branchIds }, deletedAt: null },
+        },
+        select: { amountPaid: true, contract: { select: { branchId: true } } },
+      }),
+      this.prisma.payment.findMany({
+        where: {
+          dueDate: { gte: periodStart, lt: now },
+          contract: { branchId: { in: branchIds }, deletedAt: null },
+        },
+        select: {
+          amountDue: true,
+          amountPaid: true,
+          status: true,
+          contract: { select: { branchId: true } },
+        },
+      }),
+      this.prisma.contract.groupBy({
+        by: ['branchId'],
+        where: {
+          branchId: { in: branchIds },
+          deletedAt: null,
+          createdAt: { gte: periodStart },
+        },
+        _count: true,
+      }),
+    ]);
+
+    // Aggregate per branch
+    const revenueMap = new Map<string, number>();
+    for (const p of paidPayments) {
+      const bid = p.contract.branchId;
+      revenueMap.set(bid, (revenueMap.get(bid) || 0) + new Prisma.Decimal(p.amountPaid).toNumber());
+    }
+
+    const collectionMap = new Map<string, { due: number; collected: number }>();
+    for (const p of duePayments) {
+      const bid = p.contract.branchId;
+      const c = collectionMap.get(bid) || { due: 0, collected: 0 };
+      c.due += new Prisma.Decimal(p.amountDue).toNumber();
+      if (p.status === 'PAID') c.collected += new Prisma.Decimal(p.amountPaid).toNumber();
+      collectionMap.set(bid, c);
+    }
+
+    const statusMap = new Map<string, Record<string, number>>();
+    for (const c of contractsByBranch) {
+      const existing = statusMap.get(c.branchId) || {};
+      existing[c.status] = c._count;
+      statusMap.set(c.branchId, existing);
+    }
+
+    const newContractsMap = new Map(newContractsByBranch.map((n) => [n.branchId, n._count]));
+
+    const result = branches.map((branch) => {
+      const statuses = statusMap.get(branch.id) || {};
+      const active = (statuses['ACTIVE'] || 0) + (statuses['OVERDUE'] || 0) + (statuses['DEFAULT'] || 0);
+      const overdue = (statuses['OVERDUE'] || 0) + (statuses['DEFAULT'] || 0);
+      const total = Object.values(statuses).reduce((s, v) => s + v, 0);
+      const revenue = revenueMap.get(branch.id) || 0;
+      const collection = collectionMap.get(branch.id) || { due: 0, collected: 0 };
+      const collectionRate = collection.due > 0
+        ? Number(((collection.collected / collection.due) * 100).toFixed(1))
+        : 0;
+      const overdueRate = active > 0
+        ? Number(((overdue / active) * 100).toFixed(1))
+        : 0;
+
+      return {
+        id: branch.id,
+        name: branch.name,
+        totalContracts: total,
+        activeContracts: statuses['ACTIVE'] || 0,
+        overdueContracts: statuses['OVERDUE'] || 0,
+        defaultContracts: statuses['DEFAULT'] || 0,
+        completedContracts: statuses['COMPLETED'] || 0,
+        totalRevenue: revenue,
+        totalOutstanding: collection.due - collection.collected,
+        collectionRate,
+        overdueRate,
+        newContracts: newContractsMap.get(branch.id) || 0,
+      };
+    });
+
+    return {
+      branches: result,
+      period,
+      generatedAt: now.toISOString(),
+    };
+  }
 }

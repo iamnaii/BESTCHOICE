@@ -1,4 +1,4 @@
-import { useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -17,6 +17,8 @@ import {
   Clock,
   UserCheck,
   Download,
+  FileSpreadsheet,
+  FileText,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -26,6 +28,7 @@ import KPICards from './KPICards';
 import MonthlyTrendChart from './MonthlyTrendChart';
 import TopOverdueTable from './TopOverdueTable';
 import BranchComparisonTable from './BranchComparisonTable';
+import { exportDashboardExcel, exportDashboardPdf } from '@/utils/dashboardExport';
 
 /* ─── Types ─── */
 
@@ -286,11 +289,51 @@ export default function DashboardPage() {
   return (
     <div className="flex flex-col gap-5 lg:gap-7">
       {/* Page Title */}
-      <div>
-        <h1 className="text-xl font-semibold text-foreground">Dashboard</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          สวัสดี {user?.name} — ภาพรวมธุรกิจและการกำกับพนักงาน
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold text-foreground">Dashboard</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            สวัสดี {user?.name} — ภาพรวมธุรกิจและการกำกับพนักงาน
+          </p>
+        </div>
+        {user?.role !== 'SALES' && (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                try {
+                  await exportDashboardExcel({
+                    kpis, revenue, aging, staffPerf, branches: branchData,
+                    exportDate: new Date().toLocaleDateString('th-TH'),
+                    userName: user?.name || '',
+                  });
+                  toast.success('ดาวน์โหลด Excel แล้ว');
+                } catch { toast.error('ไม่สามารถ Export ได้'); }
+              }}
+            >
+              <FileSpreadsheet className="size-3.5 mr-1.5" />
+              Excel
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                try {
+                  await exportDashboardPdf({
+                    kpis, revenue, aging, staffPerf, branches: branchData,
+                    exportDate: new Date().toLocaleDateString('th-TH'),
+                    userName: user?.name || '',
+                  });
+                  toast.success('ดาวน์โหลด PDF แล้ว');
+                } catch { toast.error('ไม่สามารถ Export ได้'); }
+              }}
+            >
+              <FileText className="size-3.5 mr-1.5" />
+              PDF
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Error State */}

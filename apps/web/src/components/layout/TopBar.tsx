@@ -20,7 +20,7 @@ const roleBadgeColors: Record<string, string> = {
   ACCOUNTANT: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
 };
 
-export default function TopBar() {
+export default function TopBar({ onSearchClick }: { onSearchClick?: () => void }) {
   const { user } = useAuth();
   const isMobile = useIsMobile();
   const { setMobileSidebarOpen } = useLayout();
@@ -68,6 +68,7 @@ export default function TopBar() {
       <div className="flex items-center gap-2">
         {/* Search bar */}
         <button
+          onClick={onSearchClick}
           className="flex items-center gap-2 h-9 px-3.5 rounded-lg bg-muted/70 text-sm text-muted-foreground hover:bg-muted transition-colors"
           aria-label="ค้นหา"
         >

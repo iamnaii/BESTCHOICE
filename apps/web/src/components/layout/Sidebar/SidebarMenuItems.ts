@@ -109,10 +109,12 @@ export const navSections: NavSection[] = [
   },
   {
     key: 'reports',
-    label: 'รายงาน & แจ้งเตือน',
+    label: 'รายงาน & วิเคราะห์',
     icon: BarChart3,
     items: [
       { label: 'รายงาน', path: '/reports', icon: BarChart3, roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
+      { label: 'วิเคราะห์สาขา', path: '/analytics', icon: Building2, roles: ['OWNER'] },
+      { label: 'Credit Scoring', path: '/credit-scoring', icon: CreditCard, roles: ['OWNER', 'BRANCH_MANAGER'] },
       { label: 'แจ้งเตือน', path: '/notifications', icon: Bell, roles: ['OWNER', 'BRANCH_MANAGER'] },
     ],
   },

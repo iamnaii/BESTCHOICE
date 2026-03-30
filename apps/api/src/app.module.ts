@@ -52,6 +52,7 @@ import { EmailModule } from './modules/email/email.module';
 import { PaySolutionsModule } from './modules/paysolutions/paysolutions.module';
 import { FinanceReceivablesModule } from './modules/finance-receivables/finance-receivables.module';
 import { ExpensesModule } from './modules/expenses/expenses.module';
+import { SearchModule } from './modules/search/search.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
 import { CsrfGuard } from './guards/csrf.guard';
@@ -130,6 +131,8 @@ import { GlobalHttpExceptionFilter } from './filters/http-exception.filter';
     // Accounting & Finance
     FinanceReceivablesModule,
     ExpensesModule,
+    // Global Search
+    SearchModule,
     // MASTER: Management
     UsersModule,
     SettingsModule,

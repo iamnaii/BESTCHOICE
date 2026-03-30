@@ -9,6 +9,10 @@ test.describe('Settings Page', () => {
   test('should display settings page with configuration groups', async ({ page }) => {
     await page.goto('/settings', { waitUntil: 'domcontentloaded' });
 
+    // Wait for settings API to respond — groups render only after API data loads
+    // 'ค่าปรับ' is the title of the first config group (always rendered)
+    await expect(page.getByText('ค่าปรับ').first()).toBeVisible({ timeout: 20000 });
+
     // Settings page should show config groups
     const groups = ['ค่าปรับ', 'PDPA', 'ข้อมูลบริษัท'];
     let found = 0;

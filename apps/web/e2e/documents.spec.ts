@@ -32,7 +32,8 @@ test.describe('Document Dashboard Page', () => {
     await page.goto('/document-dashboard', { waitUntil: 'domcontentloaded' });
     await expect(page.getByText('สถานะเอกสารสัญญา').first()).toBeVisible({ timeout: 15000 });
 
-    await expect(page.getByText('ทุกสาขา').first()).toBeVisible({ timeout: 5000 });
+    // Branch filter is a <select> with a 'ทุกสาขา' placeholder option — the select is visible, the option is not
+    await expect(page.locator('select').filter({ hasText: 'ทุกสาขา' }).first()).toBeVisible({ timeout: 5000 });
   });
 
   test('should display activity and SLA sections', async ({ page }) => {

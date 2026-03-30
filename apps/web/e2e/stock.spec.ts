@@ -19,6 +19,11 @@ test.describe('Stock Management Page', () => {
     // Wait for page to fully load
     await expect(page.getByText('คลังสินค้า').first()).toBeVisible({ timeout: 15000 });
 
+    // Search input is in the List tab — switch to it first (tab label is 'รายการสินค้า')
+    const listTab = page.getByText(/รายการสินค้า/).first();
+    await expect(listTab).toBeVisible({ timeout: 10000 });
+    await listTab.click();
+
     // Search input should be visible
     const searchInput = page.getByPlaceholder('ค้นหาชื่อ, ยี่ห้อ, รุ่น, IMEI...');
     await expect(searchInput).toBeVisible({ timeout: 10000 });
@@ -26,6 +31,12 @@ test.describe('Stock Management Page', () => {
 
   test('should search stock items', async ({ page }) => {
     await page.goto('/stock', { waitUntil: 'domcontentloaded' });
+
+    // Search input is in the List tab — switch to it first
+    await expect(page.getByText('คลังสินค้า').first()).toBeVisible({ timeout: 15000 });
+    const listTab = page.getByText(/รายการสินค้า/).first();
+    await expect(listTab).toBeVisible({ timeout: 10000 });
+    await listTab.click();
 
     const searchInput = page.getByPlaceholder('ค้นหาชื่อ, ยี่ห้อ, รุ่น, IMEI...');
     await expect(searchInput).toBeVisible({ timeout: 15000 });

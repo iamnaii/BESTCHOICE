@@ -11,8 +11,8 @@ test.describe('Contract Detail Page', () => {
     await expect(page.getByText('สัญญาทั้งหมด').first()).toBeVisible({ timeout: 15000 });
     await page.waitForTimeout(2000);
 
-    // Click on first contract row
-    const contractLink = page.locator('table tbody tr td a, table tbody tr').first();
+    // Click on first contract anchor link
+    const contractLink = page.locator('table tbody tr td a').first();
     if (await contractLink.isVisible({ timeout: 5000 }).catch(() => false)) {
       await contractLink.click();
 
@@ -31,16 +31,19 @@ test.describe('Contract Detail Page', () => {
     await expect(page.getByText('สัญญาทั้งหมด').first()).toBeVisible({ timeout: 15000 });
     await page.waitForTimeout(2000);
 
-    const contractLink = page.locator('table tbody tr td a, table tbody tr').first();
+    const contractLink = page.locator('table tbody tr td a').first();
     if (await contractLink.isVisible({ timeout: 5000 }).catch(() => false)) {
       await contractLink.click();
       await expect(page).toHaveURL(/\/contracts\/.+/, { timeout: 10000 });
+
+      // Wait for detail page to fully render (lazy load + API)
+      await page.waitForTimeout(3000);
 
       // Detail should show key sections
       const sections = ['ลูกค้า', 'สินค้า', 'สถานะ', 'เลขสัญญา', 'ค่างวด'];
       let found = 0;
       for (const section of sections) {
-        if (await page.getByText(section).first().isVisible({ timeout: 3000 }).catch(() => false)) {
+        if (await page.getByText(section).first().isVisible({ timeout: 5000 }).catch(() => false)) {
           found++;
         }
       }
@@ -53,16 +56,19 @@ test.describe('Contract Detail Page', () => {
     await expect(page.getByText('สัญญาทั้งหมด').first()).toBeVisible({ timeout: 15000 });
     await page.waitForTimeout(2000);
 
-    const contractLink = page.locator('table tbody tr td a, table tbody tr').first();
+    const contractLink = page.locator('table tbody tr td a').first();
     if (await contractLink.isVisible({ timeout: 5000 }).catch(() => false)) {
       await contractLink.click();
       await expect(page).toHaveURL(/\/contracts\/.+/, { timeout: 10000 });
+
+      // Wait for detail page to fully render (lazy load + API)
+      await page.waitForTimeout(3000);
 
       // Payment schedule or installments section
       const paymentLabels = ['ตารางผ่อนชำระ', 'งวดที่', 'รับชำระ', 'ชำระเงิน'];
       let found = 0;
       for (const label of paymentLabels) {
-        if (await page.getByText(label).first().isVisible({ timeout: 3000 }).catch(() => false)) {
+        if (await page.getByText(label).first().isVisible({ timeout: 5000 }).catch(() => false)) {
           found++;
         }
       }

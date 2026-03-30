@@ -1,5 +1,7 @@
 import {
   Injectable,
+  Inject,
+  forwardRef,
   Logger,
   BadRequestException,
   NotFoundException,
@@ -9,6 +11,9 @@ import { ConfigService } from '@nestjs/config';
 import { PaymentMethod, Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PromptPayQrService } from '../line-oa/promptpay/promptpay-qr.service';
+import { LineOaService } from '../line-oa/line-oa.service';
+import { ReceiptsService } from '../receipts/receipts.service';
 
 export interface PaymentIntentResult {
   paymentId: string;
@@ -26,6 +31,17 @@ export interface PaymentStatusResult {
   paidAt?: Date;
 }
 
+export interface GenerateQrResult {
+  qrDataUrl: string;
+  payloadText: string;
+  amount: number;
+  contractNumber: string;
+  installmentNo: number | null;
+  accountName: string;
+  maskedPromptPayId: string;
+  paymentRef: string;
+}
+
 @Injectable()
 export class PaySolutionsService {
   private readonly logger = new Logger(PaySolutionsService.name);
@@ -38,6 +54,12 @@ export class PaySolutionsService {
   constructor(
     private prisma: PrismaService,
     private config: ConfigService,
+    @Inject(forwardRef(() => PromptPayQrService))
+    private promptPayQrService: PromptPayQrService,
+    @Inject(forwardRef(() => LineOaService))
+    private lineOaService: LineOaService,
+    @Inject(forwardRef(() => ReceiptsService))
+    private receiptsService: ReceiptsService,
   ) {
     this.merchantId = this.config.get<string>('PAYSOLUTIONS_MERCHANT_ID', '');
     this.secretKey = this.config.get<string>('PAYSOLUTIONS_SECRET_KEY', '');
@@ -47,6 +69,78 @@ export class PaySolutionsService {
     );
     this.returnUrl = this.config.get<string>('PAYSOLUTIONS_RETURN_URL', '');
     this.webhookSecret = this.config.get<string>('PAYSOLUTIONS_WEBHOOK_SECRET', '');
+  }
+
+  /**
+   * Generate PromptPay QR code for a specific contract
+   * ใช้จาก LIFF — ลูกค้าสแกน QR เพื่อชำระเงิน
+   */
+  async generateQrForContract(
+    contractId: string,
+    amount?: number,
+    installmentNo?: number,
+  ): Promise<GenerateQrResult> {
+    const contract = await this.prisma.contract.findUnique({
+      where: { id: contractId },
+      include: {
+        customer: { select: { name: true } },
+        payments: { orderBy: { installmentNo: 'asc' } },
+      },
+    });
+
+    if (!contract || contract.deletedAt) {
+      throw new NotFoundException('ไม่พบสัญญาที่ระบุ');
+    }
+
+    // หางวดที่ต้องชำระ
+    let targetPayment: (typeof contract.payments)[0] | undefined;
+    if (installmentNo) {
+      targetPayment = contract.payments.find((p) => p.installmentNo === installmentNo);
+      if (!targetPayment) {
+        throw new NotFoundException(`ไม่พบงวดที่ ${installmentNo}`);
+      }
+      if (targetPayment.status === 'PAID') {
+        throw new BadRequestException(`งวดที่ ${installmentNo} ชำระเรียบร้อยแล้ว`);
+      }
+    } else {
+      // หางวดแรกที่ยังไม่ชำระ
+      targetPayment = contract.payments.find((p) => p.status !== 'PAID');
+    }
+
+    // คำนวณยอดชำระ
+    let qrAmount: number;
+    if (amount) {
+      qrAmount = amount;
+    } else if (targetPayment) {
+      const decOwed = new Prisma.Decimal(targetPayment.amountDue)
+        .add(new Prisma.Decimal(targetPayment.lateFee))
+        .sub(new Prisma.Decimal(targetPayment.amountPaid));
+      qrAmount = decOwed.toNumber();
+    } else {
+      throw new BadRequestException('ไม่มีงวดค้างชำระ');
+    }
+
+    if (qrAmount <= 0) {
+      throw new BadRequestException('ยอดชำระต้องมากกว่า 0');
+    }
+
+    // Generate QR
+    const qrDataUrl = await this.promptPayQrService.generateQrDataUrl(qrAmount);
+    const payloadText = this.promptPayQrService.generatePayload(qrAmount);
+
+    // สร้าง payment reference สำหรับ tracking
+    const paymentRef = `QR-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+
+    return {
+      qrDataUrl,
+      payloadText,
+      amount: qrAmount,
+      contractNumber: contract.contractNumber,
+      installmentNo: targetPayment?.installmentNo || null,
+      accountName: this.promptPayQrService.getAccountName(),
+      maskedPromptPayId: this.promptPayQrService.getMaskedPromptPayId(),
+      paymentRef,
+    };
   }
 
   /**
@@ -232,6 +326,8 @@ export class PaySolutionsService {
 
     if (isSuccess) {
       // ชำระสำเร็จ
+      const paidAmount = total ? parseFloat(total) : new Prisma.Decimal(paymentLink.amount).toNumber();
+
       await this.prisma.$transaction(async (tx) => {
         // อัปเดต PaymentLink
         await tx.paymentLink.update({
@@ -245,7 +341,7 @@ export class PaySolutionsService {
             where: { id: paymentLink.paymentId },
             data: {
               status: 'PAID',
-              amountPaid: total ? parseFloat(total) : paymentLink.amount,
+              amountPaid: paidAmount,
               paidDate: new Date(),
               paidAt: new Date(),
               paymentMethod: PaymentMethod.ONLINE_GATEWAY,
@@ -255,10 +351,26 @@ export class PaySolutionsService {
               notes: `ชำระผ่าน Pay Solutions (${transaction_id || refno})`,
             },
           });
+
+          // ตรวจสอบว่าสัญญาชำระครบทุกงวดหรือยัง
+          const unpaidCount = await tx.payment.count({
+            where: { contractId: paymentLink.contractId, status: { not: 'PAID' } },
+          });
+          if (unpaidCount === 0) {
+            await tx.contract.update({
+              where: { id: paymentLink.contractId },
+              data: { status: 'COMPLETED' },
+            });
+          }
         }
       });
 
       this.logger.log(`Payment SUCCESS: refno=${refno}, contractId=${paymentLink.contractId}`);
+
+      // Post-transaction: LINE notification + e-Receipt (ไม่ block webhook response)
+      this.sendPostPaymentNotifications(paymentLink.contractId, paymentLink.paymentId, paidAmount, refno).catch(
+        (err) => this.logger.error(`Post-payment notification failed: ${err}`),
+      );
     } else {
       // ชำระไม่สำเร็จ
       if (paymentLink.paymentId) {
@@ -335,5 +447,79 @@ export class PaySolutionsService {
       status: 'PENDING',
       amount: new Prisma.Decimal(link.amount).toNumber(),
     };
+  }
+
+  /**
+   * Send LINE notification + generate e-Receipt after successful webhook payment
+   * Runs async — must not block webhook response
+   */
+  private async sendPostPaymentNotifications(
+    contractId: string,
+    paymentId: string | null,
+    amount: number,
+    gatewayRef: string,
+  ): Promise<void> {
+    const contract = await this.prisma.contract.findUnique({
+      where: { id: contractId },
+      include: {
+        customer: { select: { name: true, lineId: true } },
+        payments: { orderBy: { installmentNo: 'asc' } },
+      },
+    });
+
+    if (!contract) return;
+
+    const payment = paymentId
+      ? contract.payments.find((p) => p.id === paymentId)
+      : null;
+
+    const totalInstallments = contract.payments.length;
+    const remainingInstallments = contract.payments.filter((p) => p.status !== 'PAID').length;
+
+    // 1. Generate e-Receipt
+    if (payment) {
+      try {
+        await this.receiptsService.generateReceipt(
+          contractId,
+          payment.id,
+          'INSTALLMENT',
+          amount,
+          payment.installmentNo,
+          'ONLINE_GATEWAY',
+          gatewayRef,
+          'SYSTEM', // system-generated from webhook
+        );
+        this.logger.log(`e-Receipt generated for payment ${payment.id}`);
+      } catch (err) {
+        this.logger.error(`Failed to generate e-Receipt for payment ${paymentId}: ${err}`);
+      }
+    }
+
+    // 2. Send LINE notification
+    if (contract.customer.lineId) {
+      try {
+        const flexMessage = this.lineOaService.buildPaymentSuccess({
+          customerName: contract.customer.name,
+          contractNumber: contract.contractNumber,
+          installmentNo: payment?.installmentNo || 0,
+          totalInstallments,
+          amountPaid: amount,
+          paymentMethod: 'ONLINE_GATEWAY',
+          paidDate: new Date().toLocaleDateString('th-TH', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+          remainingInstallments,
+        });
+
+        await this.lineOaService.sendFlexMessage(contract.customer.lineId, flexMessage);
+        this.logger.log(`LINE notification sent to customer ${contract.customer.lineId}`);
+      } catch (err) {
+        this.logger.error(`Failed to send LINE notification: ${err}`);
+      }
+    }
   }
 }

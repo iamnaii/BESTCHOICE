@@ -14,7 +14,7 @@ import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
 import { PaySolutionsService } from './paysolutions.service';
-import { CreatePaymentIntentDto } from './dto';
+import { CreatePaymentIntentDto, GenerateQrDto } from './dto';
 
 /**
  * PaySolutions Payment Gateway Controller
@@ -27,6 +27,36 @@ export class PaySolutionsController {
   private readonly logger = new Logger(PaySolutionsController.name);
 
   constructor(private readonly paySolutionsService: PaySolutionsService) {}
+
+  /**
+   * POST /api/paysolutions/:contractId/generate-qr
+   * Generate PromptPay QR code สำหรับสัญญาที่ระบุ
+   * ใช้จาก LIFF (ไม่ต้อง JWT)
+   */
+  @Post(':contractId/generate-qr')
+  @SkipCsrf()
+  @Throttle({ short: { ttl: 10000, limit: 10 } })
+  async generateQr(
+    @Param('contractId') contractId: string,
+    @Body() dto: GenerateQrDto,
+  ) {
+    const result = await this.paySolutionsService.generateQrForContract(
+      contractId,
+      dto.amount,
+      dto.installmentNo,
+    );
+
+    return {
+      success: true,
+      qrDataUrl: result.qrDataUrl,
+      amount: result.amount,
+      contractNumber: result.contractNumber,
+      installmentNo: result.installmentNo,
+      accountName: result.accountName,
+      maskedPromptPayId: result.maskedPromptPayId,
+      paymentRef: result.paymentRef,
+    };
+  }
 
   /**
    * POST /api/paysolutions/create-intent

@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, InternalServerError
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SendNotificationDto, CreateNotificationTemplateDto, UpdateNotificationTemplateDto } from './dto/create-notification.dto';
-import { NotificationChannel } from '@prisma/client';
+import { NotificationChannel, Prisma } from '@prisma/client';
 import { buildPaymentReminderFlex } from '../line-oa/flex-messages/payment-reminder.flex';
 import { buildOverdueNoticeFlex } from '../line-oa/flex-messages/overdue-notice.flex';
 import { FlexMessagePayload } from '../line-oa/flex-messages/base-template';
@@ -948,7 +948,10 @@ export class NotificationsService implements OnModuleInit {
         (now.getTime() - new Date(payment.dueDate).getTime()) / (1000 * 60 * 60 * 24),
       );
 
-      const outstanding = Number(payment.amountDue) - Number(payment.amountPaid) + Number(payment.lateFee);
+      const outstanding = new Prisma.Decimal(payment.amountDue)
+        .sub(new Prisma.Decimal(payment.amountPaid))
+        .add(new Prisma.Decimal(payment.lateFee))
+        .toNumber();
       const message = `แจ้งเตือน: คุณ${customer.name}\nค่างวดที่ ${payment.installmentNo} สัญญา ${payment.contract.contractNumber}\nเลยกำหนดชำระ ${daysOverdue} วัน\nยอดค้างชำระ ${outstanding.toLocaleString()} บาท (รวมค่าปรับ)\nกรุณาชำระโดยเร็ว`;
 
       // Try LINE Flex Message first, fallback to text, then SMS

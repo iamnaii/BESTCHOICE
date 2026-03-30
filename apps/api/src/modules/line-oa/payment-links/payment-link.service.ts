@@ -1,5 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { randomBytes } from 'crypto';
 
@@ -47,7 +48,10 @@ export class PaymentLinkService {
       throw new NotFoundException('ไม่พบงวดค้างชำระ');
     }
 
-    const amount = overrideAmount ?? (Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid));
+    const amount = overrideAmount ?? new Prisma.Decimal(payment.amountDue)
+      .add(new Prisma.Decimal(payment.lateFee))
+      .sub(new Prisma.Decimal(payment.amountPaid))
+      .toNumber();
 
     // Generate unique token
     const token = randomBytes(32).toString('hex');

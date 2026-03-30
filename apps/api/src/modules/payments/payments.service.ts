@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
-import { PaymentMethod } from '@prisma/client';
+import { PaymentMethod, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ReceiptsService } from '../receipts/receipts.service';
 import { AuditService } from '../audit/audit.service';
@@ -79,19 +79,20 @@ export class PaymentsService {
       if (!payment) throw new NotFoundException('ไม่พบงวดที่ต้องการ');
       if (payment.status === 'PAID') throw new BadRequestException('งวดนี้ชำระแล้ว');
 
-      const amountDue = Number(payment.amountDue) + Number(payment.lateFee);
-      const prevPaid = Number(payment.amountPaid);
-      const remaining = amountDue - prevPaid;
+      const decAmountDue = new Prisma.Decimal(payment.amountDue).add(new Prisma.Decimal(payment.lateFee));
+      const decPrevPaid = new Prisma.Decimal(payment.amountPaid);
+      const decRemaining = decAmountDue.sub(decPrevPaid);
+      const decAmount = new Prisma.Decimal(amount);
 
       // Prevent overpayment: cap amount at what is owed for this installment
-      if (amount > remaining) {
+      if (decAmount.greaterThan(decRemaining)) {
         throw new BadRequestException(
-          `จำนวนเงินเกินยอดค้างชำระ (ยอดค้าง ${remaining.toLocaleString()} บาท, ชำระ ${amount.toLocaleString()} บาท) กรุณาใช้ระบบจัดสรรอัตโนมัติสำหรับการชำระหลายงวด`,
+          `จำนวนเงินเกินยอดค้างชำระ (ยอดค้าง ${decRemaining.toNumber().toLocaleString()} บาท, ชำระ ${amount.toLocaleString()} บาท) กรุณาใช้ระบบจัดสรรอัตโนมัติสำหรับการชำระหลายงวด`,
         );
       }
-      const totalPaid = prevPaid + amount;
+      const decTotalPaid = decPrevPaid.add(decAmount);
 
-      const isPaidInFull = totalPaid >= amountDue;
+      const isPaidInFull = decTotalPaid.greaterThanOrEqualTo(decAmountDue);
 
       // Append transactionRef to notes for idempotency tracking
       const updatedNotes = transactionRef
@@ -101,7 +102,7 @@ export class PaymentsService {
       const result = await tx.payment.update({
         where: { id: payment.id },
         data: {
-          amountPaid: totalPaid,
+          amountPaid: decTotalPaid,
           paidDate: isPaidInFull ? new Date() : null,
           paymentMethod: paymentMethod as PaymentMethod,
           status: isPaidInFull ? 'PAID' : 'PARTIALLY_PAID',
@@ -178,7 +179,7 @@ export class PaymentsService {
         throw new BadRequestException('ไม่สามารถชำระเงินได้ สัญญาต้องอยู่ในสถานะ ACTIVE, OVERDUE หรือ DEFAULT');
       }
 
-      let remaining = amount;
+      let decRemaining = new Prisma.Decimal(amount);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const results: any[] = [];
 
@@ -187,17 +188,20 @@ export class PaymentsService {
       if (unpaid.length === 0) throw new BadRequestException('ไม่มีงวดค้างชำระ');
 
       for (const payment of unpaid) {
-        if (remaining <= 0) break;
+        if (decRemaining.lessThanOrEqualTo(0)) break;
 
-        const amountDue = Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid);
-        const payAmount = Math.min(remaining, amountDue);
-        const totalPaid = Number(payment.amountPaid) + payAmount;
-        const isPaidInFull = totalPaid >= (Number(payment.amountDue) + Number(payment.lateFee));
+        const decOwed = new Prisma.Decimal(payment.amountDue)
+          .add(new Prisma.Decimal(payment.lateFee))
+          .sub(new Prisma.Decimal(payment.amountPaid));
+        const decPayAmount = Prisma.Decimal.min(decRemaining, decOwed);
+        const decTotalPaid = new Prisma.Decimal(payment.amountPaid).add(decPayAmount);
+        const decFullAmount = new Prisma.Decimal(payment.amountDue).add(new Prisma.Decimal(payment.lateFee));
+        const isPaidInFull = decTotalPaid.greaterThanOrEqualTo(decFullAmount);
 
         const updated = await tx.payment.update({
           where: { id: payment.id },
           data: {
-            amountPaid: totalPaid,
+            amountPaid: decTotalPaid,
             paidDate: isPaidInFull ? new Date() : null,
             paymentMethod: paymentMethod as PaymentMethod,
             status: isPaidInFull ? 'PAID' : 'PARTIALLY_PAID',
@@ -207,7 +211,7 @@ export class PaymentsService {
         });
 
         results.push(updated);
-        remaining -= payAmount;
+        decRemaining = decRemaining.sub(decPayAmount);
 
         // Check contract completion after each full payment
         if (isPaidInFull) {
@@ -222,7 +226,7 @@ export class PaymentsService {
             contractId,
             paid.id,
             'INSTALLMENT',
-            Number(paid.amountPaid),
+            new Prisma.Decimal(paid.amountPaid).toNumber(),
             paid.installmentNo,
             paymentMethod,
             null,
@@ -236,25 +240,28 @@ export class PaymentsService {
         }
       }
 
-      const overpayment = remaining > 0 ? remaining : 0;
-      if (overpayment > 0) {
+      const decOverpayment = decRemaining.greaterThan(0) ? decRemaining : new Prisma.Decimal(0);
+      if (decOverpayment.greaterThan(0)) {
         // Store overpayment as credit balance on the contract
         await tx.contract.update({
           where: { id: contractId },
           data: {
-            creditBalance: { increment: overpayment },
+            creditBalance: { increment: decOverpayment },
           },
         });
 
+        const allocated = new Prisma.Decimal(amount).sub(decRemaining);
         this.logger.warn(
-          `Overpayment of ${overpayment} THB credited to contract ${contractId}. ` +
-          `Customer paid ${amount} THB, ${amount - remaining} THB allocated, ${overpayment} THB stored as credit.`,
+          `Overpayment of ${decOverpayment} THB credited to contract ${contractId}. ` +
+          `Customer paid ${amount} THB, ${allocated} THB allocated, ${decOverpayment} THB stored as credit.`,
         );
       }
 
+      const totalAllocated = new Prisma.Decimal(amount).sub(decRemaining).toNumber();
+      const overpayment = decOverpayment.toNumber();
       return {
         allocatedPayments: results,
-        totalAllocated: amount - remaining,
+        totalAllocated,
         overpayment,
         overpaymentMessage: overpayment > 0
           ? `มีเงินเกินจำนวน ${overpayment.toLocaleString()} บาท บันทึกเป็นยอดเครดิตในสัญญา`
@@ -401,17 +408,21 @@ export class PaymentsService {
     ]);
 
     // Compute byMethod from the current page (for display) — summary totals use aggregate
-    const byMethod: Record<string, number> = {};
+    const byMethodDec: Record<string, Prisma.Decimal> = {};
     payments.forEach((p) => {
       const method = p.paymentMethod || 'UNKNOWN';
-      byMethod[method] = (byMethod[method] || 0) + Number(p.amountPaid);
+      byMethodDec[method] = (byMethodDec[method] || new Prisma.Decimal(0)).add(new Prisma.Decimal(p.amountPaid));
     });
+    const byMethod: Record<string, number> = {};
+    for (const [k, v] of Object.entries(byMethodDec)) {
+      byMethod[k] = v.toNumber();
+    }
 
     return {
       date,
       totalPayments: total,
-      totalAmount: Math.round(Number(aggregation._sum.amountPaid || 0)),
-      totalLateFees: Math.round(Number(aggregation._sum.lateFee || 0)),
+      totalAmount: new Prisma.Decimal(aggregation._sum.amountPaid || 0).round().toNumber(),
+      totalLateFees: new Prisma.Decimal(aggregation._sum.lateFee || 0).round().toNumber(),
       byMethod,
       data: payments,
       total,
@@ -472,8 +483,8 @@ export class PaymentsService {
       });
       if (!contract) throw new NotFoundException('ไม่พบสัญญา');
 
-      const credit = Number(contract.creditBalance);
-      if (credit <= 0) {
+      const decCredit = new Prisma.Decimal(contract.creditBalance);
+      if (decCredit.lessThanOrEqualTo(0)) {
         throw new BadRequestException('ไม่มียอดเครดิตในสัญญานี้');
       }
 
@@ -483,32 +494,35 @@ export class PaymentsService {
         throw new BadRequestException('ไม่มีงวดค้างชำระ');
       }
 
-      let remaining = credit;
+      let decRemaining = decCredit;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const results: any[] = [];
 
       for (const payment of unpaid) {
-        if (remaining <= 0) break;
+        if (decRemaining.lessThanOrEqualTo(0)) break;
 
-        const amountDue = Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid);
-        const payAmount = Math.min(remaining, amountDue);
-        const totalPaid = Number(payment.amountPaid) + payAmount;
-        const isPaidInFull = totalPaid >= (Number(payment.amountDue) + Number(payment.lateFee));
+        const decOwed = new Prisma.Decimal(payment.amountDue)
+          .add(new Prisma.Decimal(payment.lateFee))
+          .sub(new Prisma.Decimal(payment.amountPaid));
+        const decPayAmount = Prisma.Decimal.min(decRemaining, decOwed);
+        const decTotalPaid = new Prisma.Decimal(payment.amountPaid).add(decPayAmount);
+        const decFullAmount = new Prisma.Decimal(payment.amountDue).add(new Prisma.Decimal(payment.lateFee));
+        const isPaidInFull = decTotalPaid.greaterThanOrEqualTo(decFullAmount);
 
         const updated = await tx.payment.update({
           where: { id: payment.id },
           data: {
-            amountPaid: totalPaid,
+            amountPaid: decTotalPaid,
             paidDate: isPaidInFull ? new Date() : null,
             paymentMethod: 'CREDIT_BALANCE',
             status: isPaidInFull ? 'PAID' : 'PARTIALLY_PAID',
             recordedById,
-            notes: [payment.notes, `ใช้เครดิต ${payAmount.toLocaleString()} บาท`].filter(Boolean).join(' | '),
+            notes: [payment.notes, `ใช้เครดิต ${decPayAmount.toNumber().toLocaleString()} บาท`].filter(Boolean).join(' | '),
           },
         });
 
         results.push(updated);
-        remaining -= payAmount;
+        decRemaining = decRemaining.sub(decPayAmount);
 
         if (isPaidInFull) {
           await this.checkContractCompletion(contractId, tx);
@@ -516,16 +530,16 @@ export class PaymentsService {
       }
 
       // Update credit balance
-      const usedCredit = credit - remaining;
+      const decUsedCredit = decCredit.sub(decRemaining);
       await tx.contract.update({
         where: { id: contractId },
-        data: { creditBalance: remaining },
+        data: { creditBalance: decRemaining },
       });
 
       return {
         allocatedPayments: results,
-        creditUsed: usedCredit,
-        creditRemaining: remaining,
+        creditUsed: decUsedCredit.toNumber(),
+        creditRemaining: decRemaining.toNumber(),
       };
     });
   }
@@ -620,15 +634,16 @@ export class PaymentsService {
       const payment = await tx.payment.findUnique({ where: { id: paymentId } });
       if (!payment) throw new NotFoundException('ไม่พบรายการชำระ');
       if (payment.lateFeeWaived) throw new BadRequestException('รายการนี้ยกเว้นค่าปรับแล้ว');
-      if (Number(payment.lateFee) <= 0) throw new BadRequestException('รายการนี้ไม่มีค่าปรับ');
+      const decLateFee = new Prisma.Decimal(payment.lateFee);
+      if (decLateFee.lessThanOrEqualTo(0)) throw new BadRequestException('รายการนี้ไม่มีค่าปรับ');
 
-      const originalLateFee = Number(payment.lateFee);
+      const originalLateFee = decLateFee.toNumber();
       const notes = [payment.notes, `ยกเว้นค่าปรับ ${originalLateFee.toLocaleString()} บาท — ${reason}`].filter(Boolean).join(' | ');
 
       // Check if payment becomes fully paid after waiving late fee
-      const totalOwed = Number(payment.amountDue); // without late fee
-      const amountPaid = Number(payment.amountPaid);
-      const isNowFullyPaid = amountPaid >= totalOwed;
+      const decTotalOwed = new Prisma.Decimal(payment.amountDue); // without late fee
+      const decAmountPaid = new Prisma.Decimal(payment.amountPaid);
+      const isNowFullyPaid = decAmountPaid.greaterThanOrEqualTo(decTotalOwed);
 
       const updated = await tx.payment.update({
         where: { id: paymentId },

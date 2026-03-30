@@ -1,5 +1,5 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
-import { PaymentMethod, PlanType } from '@prisma/client';
+import { PaymentMethod, PlanType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateSaleDto } from './dto/sale.dto';
 import { calculateInstallment, generatePaymentSchedule } from '../../utils/installment.util';
@@ -90,25 +90,36 @@ export class SalesService {
     let totalProfit = 0;
 
     if (userRole === 'OWNER') {
-      const salesWithCost = await this.prisma.sale.findMany({
+      // Use database-level aggregate to avoid loading all rows into memory
+      const matchingIds = await this.prisma.sale.findMany({
         where,
-        select: { netAmount: true, product: { select: { costPrice: true } } },
+        select: { id: true },
       });
-      totalProfit = salesWithCost.reduce(
-        (sum, s) => sum + Number(s.netAmount) - Number(s.product.costPrice || 0), 0,
-      );
+      if (matchingIds.length > 0) {
+        const ids = matchingIds.map(s => s.id);
+        const profitResult = await this.prisma.$queryRaw<[{ total_profit: string }]>(
+          Prisma.sql`
+            SELECT COALESCE(SUM(s.net_amount - COALESCE(p.cost_price, 0)), 0)::text as total_profit
+            FROM sales s
+            LEFT JOIN products p ON s.product_id = p.id
+            WHERE s.id IN (${Prisma.join(ids)})
+          `,
+        );
+        totalProfit = new Prisma.Decimal(profitResult[0].total_profit).toNumber();
+      }
     }
 
+    const decSum = (val: Prisma.Decimal | null) => new Prisma.Decimal(val || 0).toNumber();
     const summary = {
-      totalAmount: Number(agg._sum.netAmount || 0),
-      totalDiscount: Number(agg._sum.discount || 0),
+      totalAmount: decSum(agg._sum.netAmount),
+      totalDiscount: decSum(agg._sum.discount),
       totalProfit,
       cashCount: getGroup('CASH')?._count || 0,
-      cashAmount: Number(getGroup('CASH')?._sum.netAmount || 0),
+      cashAmount: decSum(getGroup('CASH')?._sum.netAmount ?? null),
       installmentCount: getGroup('INSTALLMENT')?._count || 0,
-      installmentAmount: Number(getGroup('INSTALLMENT')?._sum.netAmount || 0),
+      installmentAmount: decSum(getGroup('INSTALLMENT')?._sum.netAmount ?? null),
       financeCount: getGroup('EXTERNAL_FINANCE')?._count || 0,
-      financeAmount: Number(getGroup('EXTERNAL_FINANCE')?._sum.netAmount || 0),
+      financeAmount: decSum(getGroup('EXTERNAL_FINANCE')?._sum.netAmount ?? null),
     };
 
     // Strip costPrice from response for non-OWNER roles
@@ -431,7 +442,7 @@ export class SalesService {
       cashSales: sales.filter(s => s.saleType === 'CASH').length,
       installmentSales: sales.filter(s => s.saleType === 'INSTALLMENT').length,
       externalFinanceSales: sales.filter(s => s.saleType === 'EXTERNAL_FINANCE').length,
-      totalRevenue: sales.reduce((sum, s) => sum + Number(s.netAmount), 0),
+      totalRevenue: sales.reduce((sum, s) => sum.add(new Prisma.Decimal(s.netAmount)), new Prisma.Decimal(0)).toNumber(),
       sales,
     };
 

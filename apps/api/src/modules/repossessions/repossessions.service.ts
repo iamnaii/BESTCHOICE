@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateRepossessionDto, UpdateRepossessionDto } from './dto/create-repossession.dto';
-import { ConditionGrade, RepossessionStatus, ProductStatus } from '@prisma/client';
+import { ConditionGrade, RepossessionStatus, ProductStatus, Prisma } from '@prisma/client';
 
 // Valid status transitions for repossession workflow
 const VALID_TRANSITIONS: Record<string, string[]> = {
@@ -104,15 +104,20 @@ export class RepossessionsService {
         throw new BadRequestException('สินค้านี้ถูกยึดคืนแล้ว');
       }
 
-      // Calculate outstanding balance for profit/loss
-      let outstandingBalance = 0;
-      let totalPaid = 0;
+      // Calculate outstanding balance for profit/loss using Decimal arithmetic
+      let decOutstandingBalance = new Prisma.Decimal(0);
+      let decTotalPaid = new Prisma.Decimal(0);
       for (const p of contract.payments) {
         if (['PENDING', 'OVERDUE', 'PARTIALLY_PAID'].includes(p.status)) {
-          outstandingBalance += Number(p.amountDue) - Number(p.amountPaid) + Number(p.lateFee);
+          decOutstandingBalance = decOutstandingBalance
+            .add(new Prisma.Decimal(p.amountDue))
+            .sub(new Prisma.Decimal(p.amountPaid))
+            .add(new Prisma.Decimal(p.lateFee));
         }
-        totalPaid += Number(p.amountPaid);
+        decTotalPaid = decTotalPaid.add(new Prisma.Decimal(p.amountPaid));
       }
+      const outstandingBalance = decOutstandingBalance.toNumber();
+      const totalPaid = decTotalPaid.toNumber();
 
       // Create repossession
       const repossession = await tx.repossession.create({

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
@@ -41,8 +42,14 @@ export class ReportsService {
 
     const summarize = (items: typeof overduePayments) => ({
       count: items.length,
-      totalOutstanding: items.reduce((s, p) => s + Number(p.amountDue) - Number(p.amountPaid), 0),
-      totalLateFees: items.reduce((s, p) => s + Number(p.lateFee), 0),
+      totalOutstanding: items.reduce(
+        (s, p) => s.add(new Prisma.Decimal(p.amountDue)).sub(new Prisma.Decimal(p.amountPaid)),
+        new Prisma.Decimal(0),
+      ).toNumber(),
+      totalLateFees: items.reduce(
+        (s, p) => s.add(new Prisma.Decimal(p.lateFee)),
+        new Prisma.Decimal(0),
+      ).toNumber(),
     });
 
     return {
@@ -99,17 +106,17 @@ export class ReportsService {
     ]);
 
     // Sum the interest portion of each payment received in this period
-    const interestIncome = interestIncomePayments.reduce((sum, p) => {
-      const monthlyInterest = Number(p.contract.interestTotal) / p.contract.totalMonths;
-      return sum + monthlyInterest;
-    }, 0);
+    const decInterestIncome = interestIncomePayments.reduce((sum, p) => {
+      const monthlyInterest = new Prisma.Decimal(p.contract.interestTotal).div(p.contract.totalMonths);
+      return sum.add(monthlyInterest);
+    }, new Prisma.Decimal(0));
 
     return {
       period: { start: startDate, end: endDate },
       revenue: {
-        interestIncome: Math.round(interestIncome),
-        lateFeeIncome: Number(lateFeeIncome._sum.lateFee || 0),
-        totalPaymentsReceived: Number(totalPayments._sum.amountPaid || 0),
+        interestIncome: decInterestIncome.round().toNumber(),
+        lateFeeIncome: new Prisma.Decimal(lateFeeIncome._sum.lateFee || 0).toNumber(),
+        totalPaymentsReceived: new Prisma.Decimal(totalPayments._sum.amountPaid || 0).toNumber(),
         paymentCount: totalPayments._count || 0,
       },
       contracts: { newContracts },
@@ -144,8 +151,9 @@ export class ReportsService {
 
     const data = customers.map((c) => {
       const totalOutstanding = c.payments.reduce(
-        (sum, p) => sum + Number(p.amountDue) - Number(p.amountPaid) + Number(p.lateFee), 0,
-      );
+        (sum, p) => sum.add(new Prisma.Decimal(p.amountDue)).sub(new Prisma.Decimal(p.amountPaid)).add(new Prisma.Decimal(p.lateFee)),
+        new Prisma.Decimal(0),
+      ).toNumber();
       const oldestDue = c.payments.reduce(
         (oldest, p) => (new Date(p.dueDate) < oldest ? new Date(p.dueDate) : oldest),
         new Date(),
@@ -194,7 +202,7 @@ export class ReportsService {
         totalContracts: 0, totalSales: 0, overdueCount: 0,
       };
       existing.totalContracts++;
-      existing.totalSales += Number(c.sellingPrice);
+      existing.totalSales += new Prisma.Decimal(c.sellingPrice).toNumber();
       if (['OVERDUE', 'DEFAULT'].includes(c.status)) existing.overdueCount++;
       staffMap.set(key, existing);
     }
@@ -243,7 +251,7 @@ export class ReportsService {
           newContracts,
           activeContracts,
           overdueContracts,
-          paymentsReceived: Number(payments._sum.amountPaid || 0),
+          paymentsReceived: new Prisma.Decimal(payments._sum.amountPaid || 0).toNumber(),
           inStockProducts: products,
         };
       }),
@@ -297,18 +305,18 @@ export class ReportsService {
       const method = p.paymentMethod || 'CASH';
       if (!byMethod[method]) byMethod[method] = { count: 0, total: 0 };
       byMethod[method].count++;
-      byMethod[method].total += Number(p.amountPaid);
+      byMethod[method].total += new Prisma.Decimal(p.amountPaid).toNumber();
 
       const branch = p.contract.branch.name;
       if (!byBranch[branch]) byBranch[branch] = { count: 0, total: 0 };
       byBranch[branch].count++;
-      byBranch[branch].total += Number(p.amountPaid);
+      byBranch[branch].total += new Prisma.Decimal(p.amountPaid).toNumber();
     }
 
     return {
       date,
       totalPayments: total,
-      totalAmount: Math.round(Number(aggregation._sum.amountPaid || 0)),
+      totalAmount: new Prisma.Decimal(aggregation._sum.amountPaid || 0).round().toNumber(),
       byMethod,
       byBranch,
       data: payments.map((p) => ({
@@ -317,7 +325,7 @@ export class ReportsService {
         customer: p.contract.customer.name,
         branch: p.contract.branch.name,
         installmentNo: p.installmentNo,
-        amountPaid: Number(p.amountPaid),
+        amountPaid: new Prisma.Decimal(p.amountPaid).toNumber(),
         method: p.paymentMethod,
         recordedBy: p.recordedBy?.name || '-',
         paidAt: p.paidDate,
@@ -360,7 +368,7 @@ export class ReportsService {
         count: p._count,
       })),
       totalInStock: stockValue._count || 0,
-      totalStockValue: Number(stockValue._sum.costPrice || 0),
+      totalStockValue: new Prisma.Decimal(stockValue._sum.costPrice || 0).toNumber(),
     };
   }
 
@@ -403,16 +411,16 @@ export class ReportsService {
       imei: c.product.imeiSerial,
       branch: c.branch.name,
       salesperson: c.salesperson.name,
-      sellingPrice: Number(c.sellingPrice),
-      downPayment: Number(c.downPayment),
-      interestRate: Number(c.interestRate),
+      sellingPrice: new Prisma.Decimal(c.sellingPrice).toNumber(),
+      downPayment: new Prisma.Decimal(c.downPayment).toNumber(),
+      interestRate: new Prisma.Decimal(c.interestRate).toNumber(),
       totalMonths: c.totalMonths,
-      monthlyPayment: Number(c.monthlyPayment),
-      financedAmount: Number(c.financedAmount),
-      interestTotal: Number(c.interestTotal),
+      monthlyPayment: new Prisma.Decimal(c.monthlyPayment).toNumber(),
+      financedAmount: new Prisma.Decimal(c.financedAmount).toNumber(),
+      interestTotal: new Prisma.Decimal(c.interestTotal).toNumber(),
       paidInstallments: c.payments.filter((p) => p.status === 'PAID').length,
-      totalPaid: c.payments.reduce((s, p) => s + Number(p.amountPaid), 0),
-      totalLateFees: c.payments.reduce((s, p) => s + Number(p.lateFee), 0),
+      totalPaid: c.payments.reduce((s, p) => s.add(new Prisma.Decimal(p.amountPaid)), new Prisma.Decimal(0)).toNumber(),
+      totalLateFees: c.payments.reduce((s, p) => s.add(new Prisma.Decimal(p.lateFee)), new Prisma.Decimal(0)).toNumber(),
       createdAt: c.createdAt,
     }));
   }

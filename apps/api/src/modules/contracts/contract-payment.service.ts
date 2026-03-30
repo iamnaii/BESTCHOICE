@@ -1,5 +1,5 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
-import { PaymentMethod } from '@prisma/client';
+import { PaymentMethod, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BUSINESS_RULES } from '../../utils/config.util';
 
@@ -39,36 +39,40 @@ export class ContractPaymentService {
       throw new BadRequestException('ไม่มีงวดค้างชำระ ไม่จำเป็นต้องปิดก่อนกำหนด');
     }
 
-    // Use satang-precision arithmetic (round at each step to avoid floating-point errors)
-    const interestTotal = Number(contract.interestTotal);
-    const financedAmount = Number(contract.financedAmount);
-    const monthlyInterest = Math.round(interestTotal * 100 / contract.totalMonths) / 100;
-    const truePrincipal = Math.round((financedAmount - interestTotal) * 100) / 100;
-    const monthlyPrincipal = Math.round(truePrincipal * 100 / contract.totalMonths) / 100;
+    // Use Decimal arithmetic to avoid floating-point precision loss
+    const decInterestTotal = new Prisma.Decimal(contract.interestTotal);
+    const decFinancedAmount = new Prisma.Decimal(contract.financedAmount);
+    const decMonthlyInterest = decInterestTotal.div(contract.totalMonths).toDecimalPlaces(2);
+    const decTruePrincipal = decFinancedAmount.sub(decInterestTotal).toDecimalPlaces(2);
+    const decMonthlyPrincipal = decTruePrincipal.div(contract.totalMonths).toDecimalPlaces(2);
 
-    const remainingPrincipal = Math.round(monthlyPrincipal * remainingMonths * 100) / 100;
-    const remainingInterest = Math.round(monthlyInterest * remainingMonths * 100) / 100;
-    const discount = Math.round(remainingInterest * BUSINESS_RULES.EARLY_PAYOFF_DISCOUNT * 100) / 100;
+    const decRemainingPrincipal = decMonthlyPrincipal.mul(remainingMonths).toDecimalPlaces(2);
+    const decRemainingInterest = decMonthlyInterest.mul(remainingMonths).toDecimalPlaces(2);
+    const decDiscount = decRemainingInterest.mul(BUSINESS_RULES.EARLY_PAYOFF_DISCOUNT).toDecimalPlaces(2);
 
     // Deduct amounts already partially paid
-    const partiallyPaidAmount = partialPayments.reduce(
-      (sum, p) => sum + Number(p.amountPaid || 0), 0,
+    const decPartiallyPaid = partialPayments.reduce(
+      (sum, p) => sum.add(new Prisma.Decimal(p.amountPaid || 0)),
+      new Prisma.Decimal(0),
     );
-    const totalPayoff = Math.max(0, remainingPrincipal + (remainingInterest - discount) - partiallyPaidAmount);
+    const decTotalPayoff = Prisma.Decimal.max(
+      new Prisma.Decimal(0),
+      decRemainingPrincipal.add(decRemainingInterest).sub(decDiscount).sub(decPartiallyPaid),
+    );
 
     // Add any unpaid late fees
-    const unpaidLateFees = contract.payments
+    const decUnpaidLateFees = contract.payments
       .filter((p) => p.status !== 'PAID')
-      .reduce((sum, p) => sum + Number(p.lateFee), 0);
+      .reduce((sum, p) => sum.add(new Prisma.Decimal(p.lateFee)), new Prisma.Decimal(0));
 
     return {
       remainingMonths,
-      remainingPrincipal: Math.round(remainingPrincipal),
-      remainingInterest: Math.round(remainingInterest),
-      discount: Math.round(discount),
-      partiallyPaidCredit: Math.round(partiallyPaidAmount),
-      unpaidLateFees,
-      totalPayoff: Math.round(totalPayoff + unpaidLateFees),
+      remainingPrincipal: decRemainingPrincipal.round().toNumber(),
+      remainingInterest: decRemainingInterest.round().toNumber(),
+      discount: decDiscount.round().toNumber(),
+      partiallyPaidCredit: decPartiallyPaid.round().toNumber(),
+      unpaidLateFees: decUnpaidLateFees.toNumber(),
+      totalPayoff: decTotalPayoff.add(decUnpaidLateFees).round().toNumber(),
     };
   }
 
@@ -90,18 +94,20 @@ export class ContractPaymentService {
         orderBy: { installmentNo: 'asc' },
       });
 
-      let remainingPayoff = quote.totalPayoff;
+      let decRemainingPayoff = new Prisma.Decimal(quote.totalPayoff);
       for (const payment of unpaidPayments) {
-        const owed = Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid);
-        const payAmount = Math.min(remainingPayoff, owed);
-        remainingPayoff -= payAmount;
+        const decOwed = new Prisma.Decimal(payment.amountDue)
+          .add(new Prisma.Decimal(payment.lateFee))
+          .sub(new Prisma.Decimal(payment.amountPaid));
+        const decPayAmount = Prisma.Decimal.min(decRemainingPayoff, decOwed);
+        decRemainingPayoff = decRemainingPayoff.sub(decPayAmount);
 
         await tx.payment.update({
           where: { id: payment.id },
           data: {
             status: 'PAID',
             paidDate: new Date(),
-            amountPaid: Number(payment.amountPaid) + payAmount,
+            amountPaid: new Prisma.Decimal(payment.amountPaid).add(decPayAmount),
             paymentMethod: paymentMethod as PaymentMethod,
             recordedById: userId,
           },

@@ -366,7 +366,7 @@ model Contract {
   planType         PlanType       @map("plan_type")
   sellingPrice     Decimal        @map("selling_price") @db.Decimal(12, 2)
   downPayment      Decimal        @map("down_payment") @db.Decimal(12, 2)
-  interestRate     Decimal        @map("interest_rate") @db.Decimal(5, 4) // e.g. 0.0800
+  interestRate     Decimal        @map("interest_rate") @db.Decimal(6, 4) // e.g. 0.0800, supports up to 99.9999
   totalMonths      Int            @map("total_months")
   interestTotal    Decimal        @map("interest_total") @db.Decimal(12, 2)
   financedAmount   Decimal        @map("financed_amount") @db.Decimal(12, 2)
@@ -1136,7 +1136,7 @@ model InterestConfig {
   id                   String   @id @default(uuid())
   name                 String // เช่น "มือ 1", "มือ 2"
   productCategories    String[] @default([]) @map("product_categories")
-  interestRate         Decimal  @map("interest_rate") @db.Decimal(5, 4)
+  interestRate         Decimal  @map("interest_rate") @db.Decimal(6, 4)
   minDownPaymentPct    Decimal  @map("min_down_payment_pct") @db.Decimal(5, 4)
   storeCommissionPct   Decimal  @default(0.10) @map("store_commission_pct") @db.Decimal(5, 4)
   vatPct               Decimal  @default(0.07) @map("vat_pct") @db.Decimal(5, 4)

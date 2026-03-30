@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { Prisma } from '@prisma/client';
 import { NotificationsService } from './notifications.service';
 import { ReorderPointsService } from '../reorder-points/reorder-points.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -196,7 +197,10 @@ export class SchedulerService {
             payment.installmentNo,
           );
 
-          const amountDue = Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid);
+          const amountDue = new Prisma.Decimal(payment.amountDue)
+            .add(new Prisma.Decimal(payment.lateFee))
+            .sub(new Prisma.Decimal(payment.amountPaid))
+            .toNumber();
 
           // Send LINE reminder with payment link
           const flex = buildPaymentReminderFlex({

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { Prisma } from '@prisma/client';
 import { OverdueService } from '../overdue/overdue.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -99,9 +100,9 @@ export class CronService {
           if (!contract?.customer?.lineId) continue;
 
           const totalOverdue = contract.payments.reduce(
-            (sum, p) => sum + (Number(p.amountDue) - Number(p.amountPaid) + Number(p.lateFee)),
-            0,
-          );
+            (sum, p) => sum.add(new Prisma.Decimal(p.amountDue)).sub(new Prisma.Decimal(p.amountPaid)).add(new Prisma.Decimal(p.lateFee)),
+            new Prisma.Decimal(0),
+          ).toNumber();
 
           const stageMessages: Record<string, string> = {
             REMINDER: `แจ้งเตือน: คุณ${contract.customer.name} มียอดค้างชำระ ${totalOverdue.toLocaleString()} บาท สัญญา ${esc.contractNumber} กรุณาชำระโดยเร็ว`,
@@ -164,15 +165,15 @@ export class CronService {
 
       try {
         const totalOverdue = contract.payments.reduce(
-          (sum, p) => sum + (Number(p.amountDue) - Number(p.amountPaid) + Number(p.lateFee)),
-          0,
-        );
+          (sum, p) => sum.add(new Prisma.Decimal(p.amountDue)).sub(new Prisma.Decimal(p.amountPaid)).add(new Prisma.Decimal(p.lateFee)),
+          new Prisma.Decimal(0),
+        ).toNumber();
         const oldestDue = contract.payments[0]?.dueDate;
         const daysOverdue = oldestDue
           ? Math.floor((Date.now() - oldestDue.getTime()) / (1000 * 60 * 60 * 24))
           : 0;
 
-        const lateFee = contract.payments.reduce((sum, p) => sum + Number(p.lateFee), 0);
+        const lateFee = contract.payments.reduce((sum, p) => sum.add(new Prisma.Decimal(p.lateFee)), new Prisma.Decimal(0)).toNumber();
         const flex = buildOverdueNoticeFlex({
           customerName: contract.customer?.name || '-',
           contractNumber: contract.contractNumber,

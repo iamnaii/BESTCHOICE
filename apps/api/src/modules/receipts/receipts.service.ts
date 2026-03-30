@@ -73,9 +73,13 @@ export class ReceiptsService {
       const company = await tx.companyInfo.findFirst({ where: { isActive: true } });
       const receiverName = company?.nameTh || 'บริษัท เบสท์ช้อยส์โฟน จำกัด';
 
-      // Calculate remaining balance
-      const totalPaid = contract.payments.reduce((sum, p) => sum + Number(p.amountPaid), 0);
-      const remainingBalance = Number(contract.financedAmount) - totalPaid;
+      // Calculate remaining balance using Decimal arithmetic
+      const decTotalPaid = contract.payments.reduce(
+        (sum, p) => sum.add(new Prisma.Decimal(p.amountPaid)),
+        new Prisma.Decimal(0),
+      );
+      const totalPaid = decTotalPaid.toNumber();
+      const remainingBalance = new Prisma.Decimal(contract.financedAmount).sub(decTotalPaid).toNumber();
       const totalMonths = contract.totalMonths;
       const paidMonths = contract.payments.length;
       const remainingMonths = totalMonths - paidMonths;

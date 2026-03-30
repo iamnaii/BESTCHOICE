@@ -112,15 +112,15 @@ export class OverdueService {
       }),
     ]);
 
-    const amountDue = Number(totalOverdueAmount._sum.amountDue || 0);
-    const amountPaid = Number(totalOverdueAmount._sum.amountPaid || 0);
-    const lateFees = Number(totalOverdueAmount._sum.lateFee || 0);
+    const decAmountDue = new Prisma.Decimal(totalOverdueAmount._sum.amountDue || 0);
+    const decAmountPaid = new Prisma.Decimal(totalOverdueAmount._sum.amountPaid || 0);
+    const decLateFees = new Prisma.Decimal(totalOverdueAmount._sum.lateFee || 0);
 
     return {
       overdueCount,
       defaultCount,
-      totalOverdueAmount: amountDue - amountPaid,
-      totalLateFees: lateFees,
+      totalOverdueAmount: decAmountDue.sub(decAmountPaid).toNumber(),
+      totalLateFees: decLateFees.toNumber(),
     };
   }
 

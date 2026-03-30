@@ -24,3 +24,15 @@ export const TEST_PAYMENT = {
   method: 'CASH',
   notes: 'ชำระจาก E2E test',
 };
+
+export const TEST_SUPPLIER = {
+  name: 'ทดสอบซัพพลายเออร์',
+  contactName: 'ผู้ติดต่อทดสอบ',
+  phone: '0898765432',
+};
+
+export const TEST_PRODUCT = {
+  name: 'iPhone 15 Pro Max',
+  brand: 'Apple',
+  model: 'iPhone 15 Pro Max',
+};

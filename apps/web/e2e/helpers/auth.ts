@@ -10,6 +10,15 @@ export const TEST_USER = {
   password: 'admin1234',
 };
 
+export type UserRole = 'OWNER' | 'BRANCH_MANAGER' | 'SALES' | 'ACCOUNTANT';
+
+export const TEST_USERS: Record<UserRole, { email: string; password: string }> = {
+  OWNER: { email: 'admin@bestchoice.com', password: 'admin1234' },
+  BRANCH_MANAGER: { email: 'manager.ladprao@bestchoice.com', password: 'password123' },
+  SALES: { email: 'sales1@bestchoice.com', password: 'password123' },
+  ACCOUNTANT: { email: 'accountant@bestchoice.com', password: 'password123' },
+};
+
 const AUTH_FILE = path.join(__dirname, '../../.playwright-auth.json');
 
 // JWT expiry is 15m — treat token as stale after 12 min to be safe
@@ -151,6 +160,42 @@ export function getAuthHeaders(): Record<string, string> {
     }
   }
   return { 'X-Requested-With': 'XMLHttpRequest' };
+}
+
+/**
+ * Login via API as a specific role (OWNER, BRANCH_MANAGER, SALES, ACCOUNTANT).
+ * Works like loginViaAPI but uses the credentials for the given role.
+ */
+export async function loginAsRole(page: Page, role: UserRole) {
+  const user = TEST_USERS[role];
+  const apiURL = process.env.API_DIRECT_URL || 'http://localhost:3000';
+  const response = await page.request.post(`${apiURL}/api/auth/login`, {
+    data: { email: user.email, password: user.password },
+    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+  });
+
+  if (!response.ok()) {
+    throw new Error(`loginAsRole(${role}) failed: HTTP ${response.status()}`);
+  }
+
+  const data = await response.json();
+  if (!data.accessToken) {
+    throw new Error(`loginAsRole(${role}): no accessToken in response`);
+  }
+
+  const token = data.accessToken as string;
+
+  await page.setExtraHTTPHeaders({
+    Authorization: `Bearer ${token}`,
+    'X-Requested-With': 'XMLHttpRequest',
+  });
+
+  await page.addInitScript((t: string) => {
+    localStorage.setItem('access_token', t);
+  }, token);
+
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page).toHaveURL('/', { timeout: 30000 });
 }
 
 /**

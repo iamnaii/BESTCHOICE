@@ -27,9 +27,24 @@ export class SchedulerService {
   ) {}
 
   /**
-   * Run daily at 08:00: send payment reminders (3 days and 1 day before due)
+   * Run daily at 08:00: send daily summary to OWNER
+   * Includes: overdue count, total outstanding, payments due today, yesterday's collections
    */
   @Cron('0 8 * * *')
+  async handleDailySummary() {
+    this.logger.log('Starting daily summary for owners...');
+    try {
+      const result = await this.notificationsService.sendDailySummaryToOwner();
+      this.logger.log(`Daily summary complete: ${result.sent} sent to ${result.owners} owners`);
+    } catch (error) {
+      this.logger.error(`Daily summary failed: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+
+  /**
+   * Run daily at 09:00: send LINE reminders for payments due within 3 days
+   */
+  @Cron('0 9 * * *')
   async handlePaymentReminders() {
     this.logger.log('Starting daily payment reminders...');
     try {
@@ -41,23 +56,39 @@ export class SchedulerService {
   }
 
   /**
-   * Run daily at 09:00: send overdue notices (day 1, 3, 7)
+   * Run daily at 10:00: send LINE reminders for payments due today
    */
-  @Cron('0 9 * * *')
-  async handleOverdueNotices() {
-    this.logger.log('Starting daily overdue notices...');
+  @Cron('0 10 * * *')
+  async handleDueTodayReminders() {
+    this.logger.log('Starting due-today reminders...');
     try {
-      const result = await this.notificationsService.sendOverdueNotices();
-      this.logger.log(`Overdue notices complete: ${result.sent} sent`);
+      const result = await this.notificationsService.sendDueTodayReminders();
+      this.logger.log(`Due-today reminders complete: ${result.sent} sent, ${result.skippedDuplicate} skipped`);
     } catch (error) {
-      this.logger.error(`Overdue notices failed: ${error instanceof Error ? error.message : error}`);
+      this.logger.error(`Due-today reminders failed: ${error instanceof Error ? error.message : error}`);
     }
   }
 
   /**
-   * Run daily at 09:30: notify branch managers about overdue contracts
+   * Run daily at 11:00: send LINE overdue notices with dunning stage escalation
+   * Stages: 1d (friendly) → 3d (firm) → 7d (urgent) → 14d (final) → 30d (action)
+   * Checks notification log to prevent duplicate sends on the same day
    */
-  @Cron('30 9 * * *')
+  @Cron('0 11 * * *')
+  async handleOverdueNoticesDunning() {
+    this.logger.log('Starting dunning overdue notices...');
+    try {
+      const result = await this.notificationsService.sendOverdueNoticesDunning();
+      this.logger.log(`Dunning notices complete: ${result.sent} sent, ${result.skippedDuplicate} skipped`);
+    } catch (error) {
+      this.logger.error(`Dunning notices failed: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+
+  /**
+   * Run daily at 11:30: notify branch managers about overdue contracts
+   */
+  @Cron('30 11 * * *')
   async handleManagerNotifications() {
     this.logger.log('Starting manager notifications...');
     try {
@@ -69,9 +100,9 @@ export class SchedulerService {
   }
 
   /**
-   * Run daily at 10:00: notify owner about defaulted contracts
+   * Run daily at 12:00: notify owner about defaulted contracts
    */
-  @Cron('0 10 * * *')
+  @Cron('0 12 * * *')
   async handleOwnerDefaultNotifications() {
     this.logger.log('Starting owner default notifications...');
     try {

@@ -5,6 +5,7 @@ import { SendNotificationDto, CreateNotificationTemplateDto, UpdateNotificationT
 import { NotificationChannel, Prisma } from '@prisma/client';
 import { buildPaymentReminderFlex } from '../line-oa/flex-messages/payment-reminder.flex';
 import { buildOverdueNoticeFlex } from '../line-oa/flex-messages/overdue-notice.flex';
+import { buildDailySummaryFlex } from '../line-oa/flex-messages/daily-summary.flex';
 import { FlexMessagePayload } from '../line-oa/flex-messages/base-template';
 
 @Injectable()
@@ -1094,5 +1095,424 @@ export class NotificationsService implements OnModuleInit {
     }
 
     return { sent, contracts: defaultContracts.length };
+  }
+
+  // ============================================================
+  // DUPLICATE PREVENTION
+  // ============================================================
+
+  /**
+   * Check if a notification with the given subject was already sent today
+   * for a specific contract/payment (relatedId) on a specific channel.
+   */
+  private async hasSentToday(
+    channel: string,
+    recipient: string,
+    subject: string,
+    relatedId?: string,
+  ): Promise<boolean> {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const existing = await this.prisma.notificationLog.findFirst({
+      where: {
+        channel: channel as NotificationChannel,
+        recipient,
+        subject,
+        status: 'SENT',
+        sentAt: { gte: todayStart },
+        ...(relatedId ? { relatedId } : {}),
+      },
+    });
+
+    return !!existing;
+  }
+
+  // ============================================================
+  // LINE AUTO-NOTIFICATION: DUE TODAY REMINDERS
+  // ============================================================
+
+  /**
+   * Send LINE reminders to customers whose payment is due today.
+   * Uses Flex Messages and checks for duplicates before sending.
+   */
+  async sendDueTodayReminders() {
+    const now = new Date();
+    const todayStart = new Date(now.toISOString().split('T')[0]);
+    const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+
+    const dueTodayPayments = await this.prisma.payment.findMany({
+      where: {
+        status: 'PENDING',
+        dueDate: { gte: todayStart, lt: todayEnd },
+        contract: { status: 'ACTIVE', deletedAt: null },
+      },
+      include: {
+        contract: {
+          include: {
+            customer: { select: { name: true, phone: true, lineId: true } },
+            _count: { select: { payments: true } },
+          },
+        },
+      },
+    });
+
+    let sent = 0;
+    let skippedDuplicate = 0;
+
+    for (const payment of dueTodayPayments) {
+      const customer = payment.contract.customer;
+      const recipient = customer.lineId || customer.phone;
+      if (!recipient) continue;
+
+      // Dedup check
+      const alreadySent = await this.hasSentToday(
+        customer.lineId ? 'LINE' : 'SMS',
+        recipient,
+        'แจ้งเตือนวันครบกำหนด',
+        payment.contractId,
+      );
+      if (alreadySent) {
+        skippedDuplicate++;
+        continue;
+      }
+
+      const amountDue = new Prisma.Decimal(payment.amountDue).toNumber();
+      const message = `สวัสดีค่ะ คุณ${customer.name}\n⏰ วันนี้ครบกำหนดชำระค่างวดที่ ${payment.installmentNo}\nสัญญา ${payment.contract.contractNumber}\nจำนวน ${amountDue.toLocaleString()} บาท\nกรุณาชำระภายในวันนี้ค่ะ`;
+
+      if (customer.lineId) {
+        try {
+          const flex = buildPaymentReminderFlex({
+            customerName: customer.name,
+            contractNumber: payment.contract.contractNumber,
+            installmentNo: payment.installmentNo,
+            totalInstallments: payment.contract._count.payments,
+            amountDue,
+            dueDate: todayStart.toLocaleDateString('th-TH'),
+            daysUntilDue: 0,
+          });
+          await this.sendLineFlexMessage(customer.lineId, flex);
+          await this.prisma.notificationLog.create({
+            data: {
+              channel: 'LINE',
+              recipient: customer.lineId,
+              subject: 'แจ้งเตือนวันครบกำหนด',
+              message: `Flex: งวด ${payment.installmentNo} จำนวน ${amountDue.toLocaleString()} บาท ครบกำหนดวันนี้`,
+              status: 'SENT',
+              relatedId: payment.contractId,
+              sentAt: new Date(),
+            },
+          });
+          sent++;
+        } catch (err) {
+          this.logger.warn(`Due-today flex failed, falling back to text: ${err instanceof Error ? err.message : err}`);
+          await this.send({
+            channel: 'LINE',
+            recipient: customer.lineId,
+            subject: 'แจ้งเตือนวันครบกำหนด',
+            message,
+            relatedId: payment.contractId,
+            fallbackPhone: customer.phone || undefined,
+          });
+          sent++;
+        }
+      } else if (customer.phone) {
+        await this.send({
+          channel: 'SMS',
+          recipient: customer.phone,
+          subject: 'แจ้งเตือนวันครบกำหนด',
+          message,
+          relatedId: payment.contractId,
+        });
+        sent++;
+      }
+    }
+
+    this.logger.log(`Due-today reminders: ${sent} sent, ${skippedDuplicate} skipped (duplicate)`);
+    return { sent, skippedDuplicate, total: dueTodayPayments.length, timestamp: now };
+  }
+
+  // ============================================================
+  // LINE AUTO-NOTIFICATION: OVERDUE WITH DUNNING STAGES
+  // ============================================================
+
+  /**
+   * Send overdue notices with dunning stage escalation.
+   * Stages: 1 day (friendly), 3 days (firm), 7 days (urgent), 14 days (final warning), 30+ days (legal notice).
+   * Checks notification log to prevent sending duplicates on the same day.
+   */
+  async sendOverdueNoticesDunning() {
+    const now = new Date();
+    const today = new Date(now.toISOString().split('T')[0]);
+
+    // Dunning stages: days overdue → severity
+    const dunningStages = [
+      { days: 1, label: 'แจ้งเตือนค้างชำระ' },
+      { days: 3, label: 'แจ้งเตือนค้างชำระครั้งที่ 2' },
+      { days: 7, label: 'แจ้งเตือนค้างชำระ (ด่วน)' },
+      { days: 14, label: 'แจ้งเตือนค้างชำระ (เตือนสุดท้าย)' },
+      { days: 30, label: 'แจ้งเตือนค้างชำระ (ดำเนินการ)' },
+    ];
+
+    // Build date ranges for all dunning stages
+    const dueDateRanges = dunningStages.map(({ days }) => {
+      const start = new Date(today.getTime() - days * 24 * 60 * 60 * 1000);
+      const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+      return { gte: start, lt: end };
+    });
+
+    const overduePayments = await this.prisma.payment.findMany({
+      where: {
+        status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] },
+        OR: dueDateRanges.map((dueDate) => ({ dueDate })),
+        contract: { status: { in: ['ACTIVE', 'OVERDUE'] }, deletedAt: null },
+      },
+      include: {
+        contract: {
+          include: {
+            customer: { select: { name: true, phone: true, lineId: true } },
+            _count: { select: { payments: true } },
+          },
+        },
+      },
+    });
+
+    let sent = 0;
+    let skippedDuplicate = 0;
+
+    for (const payment of overduePayments) {
+      const customer = payment.contract.customer;
+      const recipient = customer.lineId || customer.phone;
+      if (!recipient) continue;
+
+      const daysOverdue = Math.floor(
+        (now.getTime() - new Date(payment.dueDate).getTime()) / (1000 * 60 * 60 * 24),
+      );
+
+      // Find the matching dunning stage
+      const stage = dunningStages.find((s) => s.days === daysOverdue) || dunningStages[0];
+
+      // Dedup: check if already sent today for this contract
+      const alreadySent = await this.hasSentToday(
+        customer.lineId ? 'LINE' : 'SMS',
+        recipient,
+        stage.label,
+        payment.contractId,
+      );
+      if (alreadySent) {
+        skippedDuplicate++;
+        continue;
+      }
+
+      const outstanding = new Prisma.Decimal(payment.amountDue)
+        .sub(new Prisma.Decimal(payment.amountPaid))
+        .add(new Prisma.Decimal(payment.lateFee))
+        .toNumber();
+
+      if (customer.lineId) {
+        try {
+          const flex = buildOverdueNoticeFlex({
+            customerName: customer.name,
+            contractNumber: payment.contract.contractNumber,
+            installmentNo: payment.installmentNo,
+            totalInstallments: payment.contract._count.payments,
+            amountDue: new Prisma.Decimal(payment.amountDue).toNumber(),
+            lateFee: new Prisma.Decimal(payment.lateFee).toNumber(),
+            totalOutstanding: outstanding,
+            dueDate: new Date(payment.dueDate).toLocaleDateString('th-TH'),
+            daysOverdue,
+          });
+          await this.sendLineFlexMessage(customer.lineId, flex);
+          await this.prisma.notificationLog.create({
+            data: {
+              channel: 'LINE',
+              recipient: customer.lineId,
+              subject: stage.label,
+              message: `Flex: งวด ${payment.installmentNo} ค้าง ${outstanding.toLocaleString()} บาท เลยกำหนด ${daysOverdue} วัน (${stage.label})`,
+              status: 'SENT',
+              relatedId: payment.contractId,
+              sentAt: new Date(),
+            },
+          });
+          sent++;
+        } catch (err) {
+          this.logger.warn(`Dunning flex failed, falling back to text: ${err instanceof Error ? err.message : err}`);
+          const message = `[${stage.label}]\nคุณ${customer.name}\nค่างวดที่ ${payment.installmentNo} สัญญา ${payment.contract.contractNumber}\nเลยกำหนดชำระ ${daysOverdue} วัน\nยอดค้างชำระ ${outstanding.toLocaleString()} บาท\nกรุณาชำระโดยเร็ว`;
+          await this.send({
+            channel: 'LINE',
+            recipient: customer.lineId,
+            subject: stage.label,
+            message,
+            relatedId: payment.contractId,
+            fallbackPhone: customer.phone || undefined,
+          });
+          sent++;
+        }
+      } else if (customer.phone) {
+        const message = `[${stage.label}] คุณ${customer.name} ค่างวดที่ ${payment.installmentNo} สัญญา ${payment.contract.contractNumber} เลยกำหนด ${daysOverdue} วัน ยอดค้าง ${outstanding.toLocaleString()} บาท กรุณาชำระโดยเร็ว`;
+        await this.send({
+          channel: 'SMS',
+          recipient: customer.phone,
+          subject: stage.label,
+          message,
+          relatedId: payment.contractId,
+        });
+        sent++;
+      }
+    }
+
+    this.logger.log(`Dunning overdue notices: ${sent} sent, ${skippedDuplicate} skipped (duplicate)`);
+    return { sent, skippedDuplicate, total: overduePayments.length, timestamp: now };
+  }
+
+  // ============================================================
+  // DAILY SUMMARY FOR OWNER
+  // ============================================================
+
+  /**
+   * Generate and send a daily summary to all OWNER users.
+   * Sends via LINE OA if owner has lineId, otherwise IN_APP notification.
+   * Summary includes: overdue count, total overdue amount, payments due today, yesterday's collections.
+   */
+  async sendDailySummaryToOwner() {
+    const now = new Date();
+    const todayStart = new Date(now.toISOString().split('T')[0]);
+    const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+    const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
+
+    // Gather summary data in parallel
+    const [
+      overdueContracts,
+      paymentsDueToday,
+      paymentsReceivedYesterday,
+      newContractsYesterday,
+    ] = await Promise.all([
+      // Overdue contracts with outstanding amounts
+      this.prisma.contract.findMany({
+        where: { status: 'OVERDUE', deletedAt: null },
+        include: {
+          payments: {
+            where: { status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] } },
+            select: { amountDue: true, amountPaid: true, lateFee: true },
+          },
+        },
+      }),
+      // Payments due today
+      this.prisma.payment.findMany({
+        where: {
+          status: 'PENDING',
+          dueDate: { gte: todayStart, lt: todayEnd },
+          contract: { deletedAt: null },
+        },
+        select: { amountDue: true, amountPaid: true },
+      }),
+      // Payments received yesterday
+      this.prisma.payment.findMany({
+        where: {
+          status: 'PAID',
+          paidDate: { gte: yesterdayStart, lt: todayStart },
+        },
+        select: { amountPaid: true },
+      }),
+      // New contracts created yesterday
+      this.prisma.contract.count({
+        where: {
+          createdAt: { gte: yesterdayStart, lt: todayStart },
+          deletedAt: null,
+        },
+      }),
+    ]);
+
+    // Calculate totals
+    const totalOverdueAmount = overdueContracts.reduce((sum, c) => {
+      const contractOverdue = c.payments.reduce((pSum, p) => {
+        return pSum + new Prisma.Decimal(p.amountDue)
+          .sub(new Prisma.Decimal(p.amountPaid))
+          .add(new Prisma.Decimal(p.lateFee))
+          .toNumber();
+      }, 0);
+      return sum + contractOverdue;
+    }, 0);
+
+    const paymentsDueTodayAmount = paymentsDueToday.reduce((sum, p) => {
+      return sum + new Prisma.Decimal(p.amountDue)
+        .sub(new Prisma.Decimal(p.amountPaid))
+        .toNumber();
+    }, 0);
+
+    const amountReceivedYesterday = paymentsReceivedYesterday.reduce(
+      (sum, p) => sum + new Prisma.Decimal(p.amountPaid).toNumber(),
+      0,
+    );
+
+    const summaryData = {
+      date: todayStart.toLocaleDateString('th-TH', { dateStyle: 'long' }),
+      overdueContracts: overdueContracts.length,
+      totalOverdueAmount,
+      paymentsDueToday: paymentsDueToday.length,
+      paymentsDueTodayAmount,
+      paymentsReceivedYesterday: paymentsReceivedYesterday.length,
+      amountReceivedYesterday,
+      newContracts: newContractsYesterday,
+    };
+
+    // Find all OWNERs
+    const owners = await this.prisma.user.findMany({
+      where: { role: 'OWNER', isActive: true },
+      select: { id: true, email: true, name: true, lineId: true },
+    });
+
+    let sent = 0;
+    const dateStr = todayStart.toLocaleDateString('th-TH');
+
+    for (const owner of owners) {
+      // Dedup check
+      const alreadySent = await this.hasSentToday(
+        owner.lineId ? 'LINE' : 'IN_APP',
+        owner.lineId || owner.email,
+        'สรุปประจำวัน',
+      );
+      if (alreadySent) continue;
+
+      if (owner.lineId) {
+        // Send via LINE Flex Message
+        try {
+          const flex = buildDailySummaryFlex(summaryData);
+          await this.sendLineFlexMessage(owner.lineId, flex);
+          await this.prisma.notificationLog.create({
+            data: {
+              channel: 'LINE',
+              recipient: owner.lineId,
+              subject: 'สรุปประจำวัน',
+              message: `สรุป ${dateStr}: ค้างชำระ ${overdueContracts.length} สัญญา (${totalOverdueAmount.toLocaleString()} บาท), ครบกำหนดวันนี้ ${paymentsDueToday.length} รายการ`,
+              status: 'SENT',
+              sentAt: new Date(),
+            },
+          });
+          sent++;
+        } catch (err) {
+          this.logger.warn(`Daily summary LINE failed for ${owner.name}, falling back to IN_APP: ${err instanceof Error ? err.message : err}`);
+          await this.send({
+            channel: 'IN_APP',
+            recipient: owner.email,
+            subject: `สรุปประจำวัน ${dateStr}`,
+            message: `ค้างชำระ: ${overdueContracts.length} สัญญา (${totalOverdueAmount.toLocaleString()} บาท)\nครบกำหนดวันนี้: ${paymentsDueToday.length} รายการ (${paymentsDueTodayAmount.toLocaleString()} บาท)\nรับชำระเมื่อวาน: ${paymentsReceivedYesterday.length} รายการ (${amountReceivedYesterday.toLocaleString()} บาท)`,
+          });
+          sent++;
+        }
+      } else {
+        // Fallback to IN_APP
+        await this.send({
+          channel: 'IN_APP',
+          recipient: owner.email,
+          subject: `สรุปประจำวัน ${dateStr}`,
+          message: `ค้างชำระ: ${overdueContracts.length} สัญญา (${totalOverdueAmount.toLocaleString()} บาท)\nครบกำหนดวันนี้: ${paymentsDueToday.length} รายการ (${paymentsDueTodayAmount.toLocaleString()} บาท)\nรับชำระเมื่อวาน: ${paymentsReceivedYesterday.length} รายการ (${amountReceivedYesterday.toLocaleString()} บาท)`,
+        });
+        sent++;
+      }
+    }
+
+    this.logger.log(`Daily summary sent to ${sent} owners`);
+    return { sent, owners: owners.length, summary: summaryData, timestamp: now };
   }
 }

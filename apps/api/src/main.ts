@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { json, urlencoded } from 'express';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
@@ -44,6 +45,19 @@ async function bootstrap() {
   );
 
   app.setGlobalPrefix('api');
+
+  // Swagger API docs (non-production only)
+  if (process.env.NODE_ENV !== 'production') {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('BESTCHOICE API')
+      .setDescription('ระบบผ่อนชำระ — Installment Management System API')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .build();
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('api/docs', app, document);
+    logger.log('Swagger docs available at /api/docs');
+  }
 
   // Graceful shutdown
   app.enableShutdownHooks();

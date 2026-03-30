@@ -2,7 +2,7 @@ import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
-import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { resolve } from 'path';
 import { AppController } from './app.controller';
 import { PrismaModule } from './prisma/prisma.module';
@@ -53,6 +53,7 @@ import { PaySolutionsModule } from './modules/paysolutions/paysolutions.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
 import { CsrfGuard } from './guards/csrf.guard';
+import { GlobalHttpExceptionFilter } from './filters/http-exception.filter';
 
 @Module({
   imports: [
@@ -130,6 +131,10 @@ import { CsrfGuard } from './guards/csrf.guard';
   ],
   controllers: [AppController],
   providers: [
+    {
+      provide: APP_FILTER,
+      useClass: GlobalHttpExceptionFilter,
+    },
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,

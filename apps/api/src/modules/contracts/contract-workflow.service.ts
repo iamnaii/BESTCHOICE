@@ -47,8 +47,7 @@ export class ContractWorkflowService {
       customerPhone: customer?.phone,
       customerAddressIdCard: customer?.addressIdCard,
       customerAddressCurrent: customer?.addressCurrent,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      references: customer?.references as any[],
+      references: (customer?.references ?? []) as Record<string, unknown>[],
       productName: product?.name,
       productImei: product?.imeiSerial,
       sellingPrice: new Prisma.Decimal(contract.sellingPrice).toNumber(),

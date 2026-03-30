@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { PaymentsService } from './payments.service';
 import { RecordPaymentDto, BulkRecordPaymentDto, WaiveLateFeeDto } from './dto/payment.dto';
@@ -10,12 +11,15 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { getEffectiveBranchId } from '../../utils/branch-access.util';
 
+@ApiTags('Payments')
+@ApiBearerAuth()
 @Controller('payments')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class PaymentsController {
   constructor(private paymentsService: PaymentsService) {}
 
   @Get('pending')
+  @ApiOperation({ summary: 'ดึงรายการชำระที่ค้างอยู่' })
   @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   getPendingPayments(
     @Query('branchId') branchId?: string,
@@ -82,6 +86,7 @@ export class PaymentsController {
   }
 
   @Post('record')
+  @ApiOperation({ summary: 'บันทึกการชำระเงิน' })
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'ACCOUNTANT')
   @UseGuards(UserThrottlerGuard)
   @Throttle({ short: { ttl: 10000, limit: 5 } }) // Max 5 payment records per 10s per user
@@ -105,6 +110,7 @@ export class PaymentsController {
   }
 
   @Post('auto-allocate')
+  @ApiOperation({ summary: 'จัดสรรยอดชำระอัตโนมัติ (auto-allocate)' })
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'ACCOUNTANT')
   @UseGuards(UserThrottlerGuard)
   @Throttle({ short: { ttl: 10000, limit: 5 } }) // Max 5 auto-allocations per 10s per user
@@ -140,6 +146,7 @@ export class PaymentsController {
   }
 
   @Post('import-csv')
+  @ApiOperation({ summary: 'นำเข้าการชำระจาก CSV' })
   @Roles('OWNER', 'ACCOUNTANT')
   @UseGuards(UserThrottlerGuard)
   @Throttle({ short: { ttl: 60000, limit: 5 } }) // Max 5 CSV imports per minute

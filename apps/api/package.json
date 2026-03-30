@@ -28,6 +28,7 @@
     "@nestjs/passport": "^10.0.3",
     "@nestjs/platform-express": "^10.4.0",
     "@nestjs/schedule": "^6.1.1",
+    "@nestjs/swagger": "^11.2.6",
     "@nestjs/throttler": "^6.0.0",
     "@prisma/client": "^6.19.2",
     "@types/qrcode": "^1.5.6",

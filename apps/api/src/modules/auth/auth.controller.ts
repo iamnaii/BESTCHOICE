@@ -1,4 +1,5 @@
 import { Controller, Post, Get, Body, Req, Res, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
@@ -31,11 +32,13 @@ function clearRefreshCookie(res: Response) {
   res.clearCookie(REFRESH_COOKIE, { path: '/api/auth' });
 }
 
+@ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
   constructor(private authService: AuthService) {}
 
   @Post('login')
+  @ApiOperation({ summary: 'เข้าสู่ระบบ (Login)' })
   @Throttle({ short: { ttl: 60000, limit: 10 } })
   async login(@Body() loginDto: LoginDto, @Res({ passthrough: true }) res: Response) {
     const result = await this.authService.login(loginDto);
@@ -47,6 +50,7 @@ export class AuthController {
   }
 
   @Post('refresh')
+  @ApiOperation({ summary: 'รีเฟรช access token' })
   @Throttle({ short: { ttl: 60000, limit: 10 } }) // 10 refresh attempts per minute
   async refresh(@Req() req: Request, @Body() body: { refreshToken?: string }, @Res({ passthrough: true }) res: Response) {
     // Read from cookie first, fall back to body for backward compatibility
@@ -62,6 +66,7 @@ export class AuthController {
   }
 
   @Post('logout')
+  @ApiOperation({ summary: 'ออกจากระบบ (Logout)' })
   @UseGuards(JwtAuthGuard)
   async logout(
     @Req() req: Request,
@@ -76,18 +81,21 @@ export class AuthController {
   }
 
   @Post('forgot-password')
+  @ApiOperation({ summary: 'ขอรีเซ็ตรหัสผ่าน' })
   @Throttle({ short: { ttl: 60000, limit: 5 } }) // 5 requests per minute to prevent abuse
   async forgotPassword(@Body() dto: ForgotPasswordDto) {
     return this.authService.forgotPassword(dto);
   }
 
   @Post('reset-password')
+  @ApiOperation({ summary: 'รีเซ็ตรหัสผ่าน' })
   @Throttle({ short: { ttl: 60000, limit: 5 } })
   async resetPassword(@Body() dto: ResetPasswordDto) {
     return this.authService.resetPassword(dto);
   }
 
   @Get('me')
+  @ApiOperation({ summary: 'ดึงข้อมูลผู้ใช้ปัจจุบัน' })
   @UseGuards(JwtAuthGuard)
   async getMe(@CurrentUser('id') userId: string) {
     return this.authService.getMe(userId);

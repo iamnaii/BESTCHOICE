@@ -36,18 +36,17 @@ export class ContractsService {
     startDate?: string;
     endDate?: string;
   }) {
-    const where: Record<string, unknown> = { deletedAt: null };
-    if (filters.status) where.status = filters.status;
-    if (filters.workflowStatus) where.workflowStatus = filters.workflowStatus;
+    const where: Prisma.ContractWhereInput = { deletedAt: null };
+    if (filters.status) where.status = filters.status as Prisma.EnumContractStatusFilter;
+    if (filters.workflowStatus) where.workflowStatus = filters.workflowStatus as Prisma.EnumContractWorkflowStatusFilter;
     if (filters.branchId) where.branchId = filters.branchId;
     if (filters.customerId) where.customerId = filters.customerId;
     if (filters.salespersonId) where.salespersonId = filters.salespersonId;
     if (filters.startDate || filters.endDate) {
-      where.createdAt = {};
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if (filters.startDate) (where.createdAt as any).gte = new Date(filters.startDate);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if (filters.endDate) (where.createdAt as any).lte = new Date(new Date(filters.endDate).getTime() + 86400000 - 1);
+      const createdAtFilter: Prisma.DateTimeFilter = {};
+      if (filters.startDate) createdAtFilter.gte = new Date(filters.startDate);
+      if (filters.endDate) createdAtFilter.lte = new Date(new Date(filters.endDate).getTime() + 86400000 - 1);
+      where.createdAt = createdAtFilter;
     }
     if (filters.search) {
       where.OR = [
@@ -160,8 +159,7 @@ export class ContractsService {
       customerPhone: customer?.phone,
       customerAddressIdCard: customer?.addressIdCard,
       customerAddressCurrent: customer?.addressCurrent,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      references: customer?.references as any[],
+      references: (customer?.references ?? []) as Record<string, unknown>[],
       productName: product?.name,
       productImei: product?.imeiSerial,
       sellingPrice: new Prisma.Decimal(contract.sellingPrice).toNumber(),
@@ -205,8 +203,7 @@ export class ContractsService {
     }
 
     // 6. Check references (ผู้ค้ำประกัน/ผู้ติดต่อฉุกเฉิน)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const refs = (customer?.references as any[]) || [];
+    const refs = (customer?.references ?? []) as Record<string, unknown>[];
     if (refs.length === 0) {
       errors.push('ต้องมีบุคคลค้ำประกัน/ผู้ติดต่อฉุกเฉิน อย่างน้อย 1 คน');
     }
@@ -403,8 +400,7 @@ export class ContractsService {
             case 'P2002':
               throw new BadRequestException('เลขสัญญาซ้ำ กรุณาลองใหม่อีกครั้ง');
             case 'P2003': {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const field = (err.meta as any)?.field_name || '';
+              const field = (err.meta as Record<string, unknown>)?.field_name as string ?? '';
               if (field.includes('branch')) throw new BadRequestException('ไม่พบสาขาที่เลือก');
               if (field.includes('customer')) throw new BadRequestException('ไม่พบข้อมูลลูกค้า');
               if (field.includes('product')) throw new BadRequestException('ไม่พบสินค้าที่เลือก');

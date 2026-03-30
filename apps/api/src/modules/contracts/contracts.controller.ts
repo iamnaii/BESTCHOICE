@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Req } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { Request } from 'express';
 import { ContractsService } from './contracts.service';
 import { ContractWorkflowService } from './contract-workflow.service';
@@ -11,6 +12,8 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
+@ApiTags('Contracts')
+@ApiBearerAuth()
 @Controller('contracts')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ContractsController {
@@ -22,6 +25,7 @@ export class ContractsController {
   ) {}
 
   @Get()
+  @ApiOperation({ summary: 'ดึงรายการสัญญาทั้งหมด (filterable)' })
   @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   findAll(
     @Query('status') status?: string,
@@ -58,6 +62,7 @@ export class ContractsController {
   }
 
   @Get(':id')
+  @ApiOperation({ summary: 'ดึงรายละเอียดสัญญา' })
   @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   findOne(
     @Param('id') id: string,
@@ -79,6 +84,7 @@ export class ContractsController {
   }
 
   @Post()
+  @ApiOperation({ summary: 'สร้างสัญญาใหม่' })
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   create(@Body() dto: CreateContractDto, @CurrentUser() user: { id: string }) {
     return this.contractsService.create(dto, user.id);
@@ -103,12 +109,14 @@ export class ContractsController {
   // === WORKFLOW ENDPOINTS ===
 
   @Post(':id/submit-review')
+  @ApiOperation({ summary: 'ส่งสัญญาเพื่อตรวจสอบ' })
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   submitForReview(@Param('id') id: string, @CurrentUser() user: { id: string }) {
     return this.workflowService.submitForReview(id, user.id);
   }
 
   @Post(':id/approve')
+  @ApiOperation({ summary: 'อนุมัติสัญญา' })
   @Roles('OWNER', 'BRANCH_MANAGER')
   approve(
     @Param('id') id: string,
@@ -129,6 +137,7 @@ export class ContractsController {
   }
 
   @Post(':id/activate')
+  @ApiOperation({ summary: 'เปิดใช้งานสัญญา (activate)' })
   @Roles('OWNER', 'BRANCH_MANAGER')
   async activate(
     @Param('id') id: string,
@@ -140,6 +149,7 @@ export class ContractsController {
   }
 
   @Post(':id/early-payoff')
+  @ApiOperation({ summary: 'ปิดสัญญาก่อนกำหนด (early payoff)' })
   @Roles('OWNER', 'BRANCH_MANAGER')
   async earlyPayoff(
     @Param('id') id: string,

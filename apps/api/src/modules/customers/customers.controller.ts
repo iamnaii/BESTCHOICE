@@ -1,16 +1,20 @@
 import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { CustomersService } from './customers.service';
 import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 
+@ApiTags('Customers')
+@ApiBearerAuth()
 @Controller('customers')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class CustomersController {
   constructor(private customersService: CustomersService) {}
 
   @Get()
+  @ApiOperation({ summary: 'ดึงรายการลูกค้า (filterable)' })
   @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   findAll(
     @Query('search') search?: string,
@@ -43,6 +47,7 @@ export class CustomersController {
   }
 
   @Get(':id')
+  @ApiOperation({ summary: 'ดึงรายละเอียดลูกค้า' })
   @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   findOne(@Param('id') id: string) {
     return this.customersService.findOne(id);
@@ -61,6 +66,7 @@ export class CustomersController {
   }
 
   @Post()
+  @ApiOperation({ summary: 'สร้างลูกค้าใหม่' })
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   create(@Body() dto: CreateCustomerDto) {
     return this.customersService.create(dto);

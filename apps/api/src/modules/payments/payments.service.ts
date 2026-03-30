@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
-import { PaymentMethod, Prisma } from '@prisma/client';
+import { Payment, PaymentMethod, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { assertBranchAccess } from '../../utils/branch-access.util';
 import { ReceiptsService } from '../receipts/receipts.service';
@@ -185,8 +185,7 @@ export class PaymentsService {
       }
 
       let decRemaining = new Prisma.Decimal(amount);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const results: any[] = [];
+      const results: Payment[] = [];
 
       // Get unpaid payments in order
       const unpaid = contract.payments.filter((p) => p.status !== 'PAID');

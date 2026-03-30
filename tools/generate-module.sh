@@ -18,6 +18,8 @@ MODULE_DIR="apps/api/src/modules/$MODULE_NAME"
 PASCAL_NAME=$(echo "$MODULE_NAME" | sed -r 's/(^|[-_])(\w)/\U\2/g')
 # Convert to singular if ends with 's' (simple heuristic)
 SINGULAR=$(echo "$PASCAL_NAME" | sed 's/s$//')
+# Prisma model name: singular with lowercase first letter (e.g., Warranty -> warranty)
+MODEL_NAME=$(echo "$SINGULAR" | sed 's/^\(.\)/\L\1/')
 
 if [ -d "$MODULE_DIR" ]; then
   echo "Error: Module '$MODULE_NAME' already exists at $MODULE_DIR"
@@ -111,20 +113,20 @@ export class ${PASCAL_NAME}Service {
     };
 
     const [data, total] = await Promise.all([
-      this.prisma./* MODEL */.findMany({
+      this.prisma.${MODEL_NAME}.findMany({
         where,
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
       }),
-      this.prisma./* MODEL */.count({ where }),
+      this.prisma.${MODEL_NAME}.count({ where }),
     ]);
 
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   async findOne(id: string) {
-    const record = await this.prisma./* MODEL */.findUnique({ where: { id } });
+    const record = await this.prisma.${MODEL_NAME}.findUnique({ where: { id } });
     if (!record || record.deletedAt) {
       throw new NotFoundException('ไม่พบข้อมูล');
     }
@@ -132,14 +134,14 @@ export class ${PASCAL_NAME}Service {
   }
 
   async create(dto: Create${SINGULAR}Dto, userId: string) {
-    return this.prisma./* MODEL */.create({
+    return this.prisma.${MODEL_NAME}.create({
       data: { ...dto },
     });
   }
 
   async update(id: string, dto: Update${SINGULAR}Dto) {
     await this.findOne(id);
-    return this.prisma./* MODEL */.update({
+    return this.prisma.${MODEL_NAME}.update({
       where: { id },
       data: { ...dto },
     });
@@ -147,7 +149,7 @@ export class ${PASCAL_NAME}Service {
 
   async remove(id: string) {
     await this.findOne(id);
-    return this.prisma./* MODEL */.update({
+    return this.prisma.${MODEL_NAME}.update({
       where: { id },
       data: { deletedAt: new Date() },
     });
@@ -179,8 +181,10 @@ echo "  - $MODULE_NAME.controller.ts"
 echo "  - $MODULE_NAME.service.ts"
 echo "  - dto/$MODULE_NAME.dto.ts"
 echo ""
+echo "Prisma model used: ${MODEL_NAME}"
+echo ""
 echo "Next steps:"
-echo "  1. Replace /* MODEL */ placeholders in service with actual Prisma model name"
+echo "  1. Verify Prisma model name '${MODEL_NAME}' matches your schema (adjust if needed)"
 echo "  2. Update DTOs with actual fields"
 echo "  3. Add module import to apps/api/src/app.module.ts"
 echo "  4. Run: cd apps/api && npx tsc --noEmit"

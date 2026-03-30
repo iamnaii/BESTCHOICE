@@ -1,6 +1,7 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PaymentMethod, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { assertBranchAccess } from '../../utils/branch-access.util';
 import { ReceiptsService } from '../receipts/receipts.service';
 import { AuditService } from '../audit/audit.service';
 
@@ -25,8 +26,12 @@ export class PaymentsService {
       where: { id: contractId },
       select: { branchId: true },
     });
-    if (contract && user.branchId && contract.branchId !== user.branchId) {
-      throw new ForbiddenException('ไม่สามารถบันทึกชำระเงินข้ามสาขาได้');
+    if (contract) {
+      assertBranchAccess(
+        { id: '', ...user },
+        contract.branchId,
+        'ไม่สามารถบันทึกชำระเงินข้ามสาขาได้',
+      );
     }
   }
 

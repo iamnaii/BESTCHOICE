@@ -2,12 +2,7 @@ import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenEx
 import { PlanType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
-/** User context for branch-level access control */
-export interface BranchAccessUser {
-  id: string;
-  role: string;
-  branchId: string | null;
-}
+import { BranchAccessUser, assertBranchAccess } from '../../utils/branch-access.util';
 import { CreateContractDto, UpdateContractDto } from './dto/contract.dto';
 import { calculateInstallment, generatePaymentSchedule } from '../../utils/installment.util';
 import { loadInstallmentConfig, resolveInstallmentParams } from '../../utils/config.util';
@@ -140,10 +135,8 @@ export class ContractsService {
     if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
 
     // Enforce branch-level access when user context is provided
-    if (user && user.role !== 'OWNER' && user.role !== 'ACCOUNTANT') {
-      if (user.branchId && contract.branchId !== user.branchId) {
-        throw new ForbiddenException('ไม่สามารถเข้าถึงสัญญาข้ามสาขาได้');
-      }
+    if (user) {
+      assertBranchAccess(user, contract.branchId, 'ไม่สามารถเข้าถึงสัญญาข้ามสาขาได้');
     }
 
     return contract;

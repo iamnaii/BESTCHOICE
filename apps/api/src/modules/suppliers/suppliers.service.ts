@@ -42,8 +42,9 @@ export class SuppliersService {
       andConditions.push({ OR: orConditions });
     }
 
-    const where =
-      andConditions.length > 0 ? { AND: andConditions } : {};
+    andConditions.push({ deletedAt: null });
+
+    const where = { AND: andConditions };
 
     const [data, total] = await Promise.all([
       this.prisma.supplier.findMany({
@@ -70,7 +71,7 @@ export class SuppliersService {
         paymentMethods: { orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }] },
       },
     });
-    if (!supplier) throw new NotFoundException('ไม่พบ Supplier');
+    if (!supplier || supplier.deletedAt) throw new NotFoundException('ไม่พบ Supplier');
     return supplier;
   }
 
@@ -147,7 +148,7 @@ export class SuppliersService {
     await this.findOne(id);
     return this.prisma.supplier.update({
       where: { id },
-      data: { isActive: false },
+      data: { deletedAt: new Date() },
     });
   }
 

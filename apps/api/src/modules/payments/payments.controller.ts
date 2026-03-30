@@ -8,6 +8,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { UserThrottlerGuard } from '../../guards/user-throttler.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { getEffectiveBranchId } from '../../utils/branch-access.util';
 
 @Controller('payments')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -27,7 +28,7 @@ export class PaymentsController {
     @CurrentUser() user?: { role: string; branchId: string | null },
   ) {
     // Enforce branch filtering for non-OWNER/ACCOUNTANT roles
-    const effectiveBranchId = this.getEffectiveBranchId(branchId, user);
+    const effectiveBranchId = getEffectiveBranchId(branchId, user);
     const parsedPage = page ? parseInt(page, 10) : undefined;
     const parsedLimit = limit ? Math.min(parseInt(limit, 10), 200) : undefined;
     return this.paymentsService.getPendingPayments({
@@ -50,7 +51,7 @@ export class PaymentsController {
     @Query('limit') limit?: string,
     @CurrentUser() user?: { role: string; branchId: string | null },
   ) {
-    const effectiveBranchId = this.getEffectiveBranchId(branchId, user);
+    const effectiveBranchId = getEffectiveBranchId(branchId, user);
     const parsedPage = page ? parseInt(page, 10) : undefined;
     const parsedLimit = limit ? Math.min(parseInt(limit, 10), 200) : undefined;
     return this.paymentsService.getDailySummary(
@@ -163,14 +164,5 @@ export class PaymentsController {
     return this.paymentsService.waiveLateFee(paymentId, dto.reason, user.id);
   }
 
-  /** Force branch filtering for non-global roles */
-  private getEffectiveBranchId(
-    requestedBranchId: string | undefined,
-    user?: { role: string; branchId: string | null },
-  ): string | undefined {
-    if (!user) return requestedBranchId;
-    if (user.role === 'OWNER' || user.role === 'ACCOUNTANT') return requestedBranchId;
-    // SALES and BRANCH_MANAGER must see only their branch
-    return user.branchId || requestedBranchId;
-  }
+  // Branch filtering now handled by shared getEffectiveBranchId() from branch-access.util
 }

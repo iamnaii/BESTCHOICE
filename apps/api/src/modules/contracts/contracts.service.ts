@@ -103,7 +103,7 @@ export class ContractsService {
         totalContracts: total,
         activeContracts: totalActive,
         overdueContracts: totalOverdue,
-        portfolioValue: Number(portfolioValue._sum.sellingPrice || 0),
+        portfolioValue: new Prisma.Decimal(portfolioValue._sum.sellingPrice || 0).toNumber(),
       },
     };
   }
@@ -171,10 +171,10 @@ export class ContractsService {
       references: customer?.references as any[],
       productName: product?.name,
       productImei: product?.imeiSerial,
-      sellingPrice: Number(contract.sellingPrice),
-      downPayment: Number(contract.downPayment),
+      sellingPrice: new Prisma.Decimal(contract.sellingPrice).toNumber(),
+      downPayment: new Prisma.Decimal(contract.downPayment).toNumber(),
       totalMonths: contract.totalMonths,
-      monthlyPayment: Number(contract.monthlyPayment),
+      monthlyPayment: new Prisma.Decimal(contract.monthlyPayment).toNumber(),
     });
     if (missingFields.length > 0) {
       errors.push(`ข้อมูลไม่ครบ: ${missingFields.join(', ')}`);
@@ -450,9 +450,9 @@ export class ContractsService {
       throw new ForbiddenException('เฉพาะพนักงานที่สร้างสัญญาเท่านั้นที่สามารถแก้ไขได้');
     }
 
-    // Determine final values
-    const sellingPrice = dto.sellingPrice ?? Number(contract.sellingPrice);
-    const downPayment = dto.downPayment ?? Number(contract.downPayment);
+    // Determine final values (use Decimal for Prisma fields, convert only for utility functions)
+    const sellingPrice = dto.sellingPrice ?? new Prisma.Decimal(contract.sellingPrice).toNumber();
+    const downPayment = dto.downPayment ?? new Prisma.Decimal(contract.downPayment).toNumber();
     const totalMonths = dto.totalMonths ?? contract.totalMonths;
     const paymentDueDay = dto.paymentDueDay ?? contract.paymentDueDay;
 
@@ -462,7 +462,7 @@ export class ContractsService {
       : null;
 
     const systemConfig = await loadInstallmentConfig(this.prisma);
-    const params = resolveInstallmentParams(interestConfig, systemConfig, dto.interestRate ?? Number(contract.interestRate));
+    const params = resolveInstallmentParams(interestConfig, systemConfig, dto.interestRate ?? new Prisma.Decimal(contract.interestRate).toNumber());
     const { minDownPaymentPct, minInstallmentMonths, maxInstallmentMonths } = params;
 
     // Validations
@@ -497,8 +497,8 @@ export class ContractsService {
       if (paidOrPartialCount > 0) {
         // If payments exist, only allow updating notes/non-financial fields
         const financialsChanged =
-          sellingPrice !== Number(contract.sellingPrice) ||
-          downPayment !== Number(contract.downPayment) ||
+          sellingPrice !== new Prisma.Decimal(contract.sellingPrice).toNumber() ||
+          downPayment !== new Prisma.Decimal(contract.downPayment).toNumber() ||
           totalMonths !== contract.totalMonths;
 
         if (financialsChanged) {

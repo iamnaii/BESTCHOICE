@@ -6,7 +6,7 @@ import {
   InternalServerErrorException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { PaymentMethod } from '@prisma/client';
+import { PaymentMethod, Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -296,7 +296,7 @@ export class PaySolutionsService {
         status: payment.status === 'PAID' ? 'PAID' : payment.gatewayStatus === 'FAILED' ? 'FAILED' : 'PENDING',
         gatewayRef: payment.gatewayRef || undefined,
         gatewayStatus: payment.gatewayStatus || undefined,
-        amount: Number(payment.amountDue),
+        amount: new Prisma.Decimal(payment.amountDue).toNumber(),
         paidAt: payment.paidAt || undefined,
       };
     }
@@ -317,7 +317,7 @@ export class PaySolutionsService {
         status: 'PAID',
         gatewayRef: link.payment.gatewayRef || undefined,
         gatewayStatus: link.payment.gatewayStatus || undefined,
-        amount: Number(link.amount),
+        amount: new Prisma.Decimal(link.amount).toNumber(),
         paidAt: link.payment.paidAt || undefined,
       };
     }
@@ -326,14 +326,14 @@ export class PaySolutionsService {
       return {
         paymentId: link.id,
         status: 'FAILED',
-        amount: Number(link.amount),
+        amount: new Prisma.Decimal(link.amount).toNumber(),
       };
     }
 
     return {
       paymentId: link.id,
       status: 'PENDING',
-      amount: Number(link.amount),
+      amount: new Prisma.Decimal(link.amount).toNumber(),
     };
   }
 }

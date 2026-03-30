@@ -1,5 +1,6 @@
 import { Injectable, Logger, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LineMessagePayload } from './dto/webhook-event.dto';
 import { FlexMessagePayload } from './flex-messages/base-template';
@@ -318,9 +319,9 @@ export class LineOaService {
         receiptNumber: receipt.receiptNumber,
         receiptType: receipt.receiptType,
         payerName: receipt.payerName,
-        amount: Number(receipt.amount),
+        amount: new Prisma.Decimal(receipt.amount).toNumber(),
         installmentNo: receipt.installmentNo,
-        remainingBalance: receipt.remainingBalance ? Number(receipt.remainingBalance) : undefined,
+        remainingBalance: receipt.remainingBalance ? new Prisma.Decimal(receipt.remainingBalance).toNumber() : undefined,
         remainingMonths: receipt.remainingMonths,
         paymentMethod: receipt.paymentMethod,
         paidDate: receipt.paidDate.toISOString(),
@@ -569,10 +570,10 @@ export class LineOaService {
       c.payments.map((p) => ({
         contractNumber: c.contractNumber,
         installmentNo: p.installmentNo,
-        amountPaid: Number(p.amountPaid),
+        amountPaid: new Prisma.Decimal(p.amountPaid).toNumber(),
         paidDate: p.paidDate,
         paymentMethod: p.paymentMethod,
-        lateFee: Number(p.lateFee),
+        lateFee: new Prisma.Decimal(p.lateFee).toNumber(),
       })),
     );
 

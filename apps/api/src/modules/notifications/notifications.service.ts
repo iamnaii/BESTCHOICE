@@ -857,7 +857,7 @@ export class NotificationsService implements OnModuleInit {
         (new Date(payment.dueDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
       );
 
-      const message = `สวัสดีค่ะ คุณ${customer.name}\nแจ้งเตือน: ค่างวดที่ ${payment.installmentNo} สัญญา ${payment.contract.contractNumber}\nจำนวน ${Number(payment.amountDue).toLocaleString()} บาท\nครบกำหนดชำระอีก ${daysUntil} วัน (${new Date(payment.dueDate).toLocaleDateString('th-TH')})\nกรุณาชำระตามกำหนด ขอบคุณค่ะ`;
+      const message = `สวัสดีค่ะ คุณ${customer.name}\nแจ้งเตือน: ค่างวดที่ ${payment.installmentNo} สัญญา ${payment.contract.contractNumber}\nจำนวน ${new Prisma.Decimal(payment.amountDue).toNumber().toLocaleString()} บาท\nครบกำหนดชำระอีก ${daysUntil} วัน (${new Date(payment.dueDate).toLocaleDateString('th-TH')})\nกรุณาชำระตามกำหนด ขอบคุณค่ะ`;
 
       // Try LINE Flex Message first, fallback to text, then SMS
       if (customer.lineId) {
@@ -867,7 +867,7 @@ export class NotificationsService implements OnModuleInit {
             contractNumber: payment.contract.contractNumber,
             installmentNo: payment.installmentNo,
             totalInstallments: payment.contract._count.payments,
-            amountDue: Number(payment.amountDue),
+            amountDue: new Prisma.Decimal(payment.amountDue).toNumber(),
             dueDate: new Date(payment.dueDate).toLocaleDateString('th-TH'),
             daysUntilDue: daysUntil,
           });
@@ -877,7 +877,7 @@ export class NotificationsService implements OnModuleInit {
               channel: 'LINE',
               recipient: customer.lineId,
               subject: 'แจ้งเตือนค่างวด',
-              message: `Flex: งวด ${payment.installmentNo} จำนวน ${Number(payment.amountDue).toLocaleString()} บาท`,
+              message: `Flex: งวด ${payment.installmentNo} จำนวน ${new Prisma.Decimal(payment.amountDue).toNumber().toLocaleString()} บาท`,
               status: 'SENT',
               relatedId: payment.contractId,
               sentAt: new Date(),
@@ -962,8 +962,8 @@ export class NotificationsService implements OnModuleInit {
             contractNumber: payment.contract.contractNumber,
             installmentNo: payment.installmentNo,
             totalInstallments: payment.contract._count.payments,
-            amountDue: Number(payment.amountDue),
-            lateFee: Number(payment.lateFee),
+            amountDue: new Prisma.Decimal(payment.amountDue).toNumber(),
+            lateFee: new Prisma.Decimal(payment.lateFee).toNumber(),
             totalOutstanding: outstanding,
             dueDate: new Date(payment.dueDate).toLocaleDateString('th-TH'),
             daysOverdue,

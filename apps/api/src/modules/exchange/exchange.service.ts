@@ -56,15 +56,18 @@ export class ExchangeService {
 
     const outstandingBalance = remainingPrincipal.plus(totalLateFees);
 
+    const decNewPrice = new Decimal(newPrice.amount);
+    const decDifference = decNewPrice.minus(outstandingBalance);
+
     return {
       oldContract: {
         id: oldContract.id,
         contractNumber: oldContract.contractNumber,
         customer: oldContract.customer,
         product: oldContract.product,
-        remainingPrincipal: Number(remainingPrincipal),
-        totalLateFees: Number(totalLateFees),
-        outstandingBalance: Number(outstandingBalance),
+        remainingPrincipal: remainingPrincipal.toNumber(),
+        totalLateFees: totalLateFees.toNumber(),
+        outstandingBalance: outstandingBalance.toNumber(),
       },
       newProduct: {
         id: newProduct.id,
@@ -73,13 +76,13 @@ export class ExchangeService {
         model: newProduct.model,
         selectedPrice: {
           label: newPrice.label,
-          amount: Number(newPrice.amount),
+          amount: decNewPrice.toNumber(),
         },
       },
       summary: {
-        outstandingBalance: Number(outstandingBalance),
-        newProductPrice: Number(newPrice.amount),
-        difference: Number(newPrice.amount) - Number(outstandingBalance),
+        outstandingBalance: outstandingBalance.toNumber(),
+        newProductPrice: decNewPrice.toNumber(),
+        difference: decDifference.toNumber(),
       },
     };
   }
@@ -118,30 +121,32 @@ export class ExchangeService {
       let interestRate = dto.newInterestRate;
       if (!interestRate) {
         const config = await tx.systemConfig.findUnique({ where: { key: 'interest_rate' } });
-        interestRate = config ? Number(config.value) : 0.08;
+        interestRate = config ? parseFloat(config.value) : 0.08;
       }
       const minDownConfig = await tx.systemConfig.findUnique({ where: { key: 'min_down_payment_pct' } });
-      const minDownPct = minDownConfig ? Number(minDownConfig.value) : 0.15;
+      const minDownPct = minDownConfig ? parseFloat(minDownConfig.value) : 0.15;
 
       // Calculate outstanding balance from old contract (using Decimal for precision)
-      let outstandingDecimal = new Decimal(0);
+      let decOutstanding = new Decimal(0);
       for (const payment of oldContract.payments) {
         if (payment.status !== 'PAID') {
           const unpaid = payment.amountDue.minus(payment.amountPaid).plus(payment.lateFee);
-          outstandingDecimal = outstandingDecimal.plus(unpaid);
+          decOutstanding = decOutstanding.plus(unpaid);
         }
       }
-      const outstandingBalance = Number(outstandingDecimal);
 
-      // Calculate new contract
-      const sellingPrice = Number(newPrice.amount);
+      // Calculate new contract using Decimal arithmetic
+      const decSellingPrice = new Decimal(newPrice.amount);
+      const decDownPayment = new Decimal(dto.newDownPayment);
       const downPayment = dto.newDownPayment;
       const totalMonths = dto.newTotalMonths;
+      const sellingPrice = decSellingPrice.toNumber();
 
-      // Validate down payment >= minimum percentage
-      if (downPayment < sellingPrice * minDownPct) {
+      // Validate down payment >= minimum percentage (Decimal comparison)
+      const decMinDown = decSellingPrice.mul(minDownPct);
+      if (decDownPayment.lessThan(decMinDown)) {
         throw new BadRequestException(
-          `เงินดาวน์ต้องไม่น้อยกว่า ${(minDownPct * 100).toFixed(0)}% ของราคาสินค้า (ขั้นต่ำ ${(sellingPrice * minDownPct).toLocaleString()} บาท)`,
+          `เงินดาวน์ต้องไม่น้อยกว่า ${(minDownPct * 100).toFixed(0)}% ของราคาสินค้า (ขั้นต่ำ ${decMinDown.toNumber().toLocaleString()} บาท)`,
         );
       }
 
@@ -150,8 +155,8 @@ export class ExchangeService {
         tx.systemConfig.findUnique({ where: { key: 'min_installment_months' } }),
         tx.systemConfig.findUnique({ where: { key: 'max_installment_months' } }),
       ]);
-      const minMonths = minMonthsConfig ? Number(minMonthsConfig.value) : 6;
-      const maxMonths = maxMonthsConfig ? Number(maxMonthsConfig.value) : 12;
+      const minMonths = minMonthsConfig ? parseInt(minMonthsConfig.value) : 6;
+      const maxMonths = maxMonthsConfig ? parseInt(maxMonthsConfig.value) : 12;
 
       if (totalMonths < minMonths || totalMonths > maxMonths) {
         throw new BadRequestException(`จำนวนงวดต้องอยู่ระหว่าง ${minMonths}-${maxMonths} เดือน`);
@@ -160,13 +165,14 @@ export class ExchangeService {
       // Load store commission and VAT config
       const storeCommConfig = await tx.systemConfig.findUnique({ where: { key: 'store_commission_pct' } });
       const vatConfig = await tx.systemConfig.findUnique({ where: { key: 'vat_pct' } });
-      const storeCommissionPct = storeCommConfig ? Number(storeCommConfig.value) : 0.10;
-      const vatPct = vatConfig ? Number(vatConfig.value) : 0.07;
+      const storeCommissionPct = storeCommConfig ? parseFloat(storeCommConfig.value) : 0.10;
+      const vatPct = vatConfig ? parseFloat(vatConfig.value) : 0.07;
 
       // Include outstanding balance from old contract in the new principal
-      // Pass sellingPrice + outstandingBalance so the utility calculates principal correctly
+      // Use Decimal addition then convert for the utility function
+      const totalPrincipal = decSellingPrice.plus(decOutstanding).toNumber();
       const result = calculateInstallment(
-        sellingPrice + outstandingBalance,
+        totalPrincipal,
         downPayment,
         interestRate,
         totalMonths,
@@ -270,7 +276,7 @@ export class ExchangeService {
             newContractId: newContract.id,
             newContractNumber: contractNumber,
             newProductId: dto.newProductId,
-            outstandingBalance,
+            outstandingBalance: decOutstanding.toNumber(),
             downPayment,
             totalMonths,
             monthlyPayment,

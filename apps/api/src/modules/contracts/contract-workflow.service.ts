@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import {
@@ -50,10 +51,10 @@ export class ContractWorkflowService {
       references: customer?.references as any[],
       productName: product?.name,
       productImei: product?.imeiSerial,
-      sellingPrice: Number(contract.sellingPrice),
-      downPayment: Number(contract.downPayment),
+      sellingPrice: new Prisma.Decimal(contract.sellingPrice).toNumber(),
+      downPayment: new Prisma.Decimal(contract.downPayment).toNumber(),
       totalMonths: contract.totalMonths,
-      monthlyPayment: Number(contract.monthlyPayment),
+      monthlyPayment: new Prisma.Decimal(contract.monthlyPayment).toNumber(),
     });
     if (missingFields.length > 0) {
       throw new BadRequestException(`ข้อมูลสัญญาไม่ครบ: ${missingFields.join(', ')} (ขั้นตอนที่ 2)`);
@@ -318,7 +319,7 @@ export class ContractWorkflowService {
     const message = [
       `สัญญาผ่อนชำระ ${contract.contractNumber} อนุมัติแล้ว`,
       `สินค้า: ${contract.product?.brand || ''} ${contract.product?.model || ''}`,
-      `ค่างวด: ${Number(contract.monthlyPayment).toLocaleString()} ฿/เดือน`,
+      `ค่างวด: ${new Prisma.Decimal(contract.monthlyPayment).toNumber().toLocaleString()} ฿/เดือน`,
       `งวดแรก: ${firstDueDate}`,
       `ขอบคุณที่ไว้วางใจ BESTCHOICE`,
     ].join('\n');

@@ -89,8 +89,8 @@ export class SalesService {
     const getGroup = (type: string) => groupBySaleType.find(g => g.saleType === type);
     let totalProfit = 0;
 
-    if (userRole === 'OWNER') {
-      // Use database-level aggregate to avoid loading all rows into memory
+    if (userRole === 'OWNER' && total > 0) {
+      // Use Prisma to resolve complex filters into IDs, then single raw SQL for cross-table profit
       const matchingIds = await this.prisma.sale.findMany({
         where,
         select: { id: true },

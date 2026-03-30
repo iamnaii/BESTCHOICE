@@ -128,7 +128,7 @@ export class PaymentsService {
       action: updated.status === 'PAID' ? 'PAYMENT_RECORDED' : 'PAYMENT_PARTIAL',
       amount,
       installmentNo,
-      details: { paymentMethod, transactionRef, totalPaid: Number(updated.amountPaid) },
+      details: { paymentMethod, transactionRef, totalPaid: new Prisma.Decimal(updated.amountPaid).toNumber() },
     });
 
     // Auto-generate e-Receipt after successful payment
@@ -551,7 +551,7 @@ export class PaymentsService {
       select: { id: true, contractNumber: true, creditBalance: true },
     });
     if (!contract) throw new NotFoundException('ไม่พบสัญญา');
-    return { creditBalance: Number(contract.creditBalance) };
+    return { creditBalance: new Prisma.Decimal(contract.creditBalance).toNumber() };
   }
 
   // ─── Batch CSV Payment Import ────────────────────────

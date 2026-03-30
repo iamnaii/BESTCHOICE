@@ -204,7 +204,7 @@ export class RepossessionsService {
 
       // Validate resell price is set when marking as READY_FOR_SALE or SOLD
       if (['READY_FOR_SALE', 'SOLD'].includes(dto.status)) {
-        const resellPrice = dto.resellPrice ?? Number(repo.resellPrice || 0);
+        const resellPrice = dto.resellPrice ?? new Prisma.Decimal(repo.resellPrice || 0).toNumber();
         if (!resellPrice || resellPrice <= 0) {
           throw new BadRequestException('กรุณาระบุราคาขายต่อก่อนเปลี่ยนสถานะ');
         }
@@ -346,10 +346,11 @@ export class RepossessionsService {
     ]);
 
     const data = repos.map((r) => {
-      const appraisal = Number(r.appraisalPrice);
-      const repair = Number(r.repairCost);
-      const resell = Number(r.resellPrice || 0);
-      const profit = resell - appraisal - repair;
+      const decAppraisal = new Prisma.Decimal(r.appraisalPrice);
+      const decRepair = new Prisma.Decimal(r.repairCost);
+      const decResell = new Prisma.Decimal(r.resellPrice || 0);
+      const decProfit = decResell.sub(decAppraisal).sub(decRepair);
+      const resell = decResell.toNumber();
 
       return {
         id: r.id,
@@ -357,17 +358,20 @@ export class RepossessionsService {
         customer: r.contract.customer.name,
         product: `${r.product.brand} ${r.product.model}`,
         conditionGrade: r.conditionGrade,
-        appraisalPrice: appraisal,
-        repairCost: repair,
+        appraisalPrice: decAppraisal.toNumber(),
+        repairCost: decRepair.toNumber(),
         resellPrice: resell,
-        profit,
-        marginPct: resell > 0 ? ((profit / resell) * 100).toFixed(1) : '0',
+        profit: decProfit.toNumber(),
+        marginPct: resell > 0 ? (decProfit.div(decResell).mul(100).toNumber()).toFixed(1) : '0',
       };
     });
 
-    const totalAppraisal = Number(aggregation._sum.appraisalPrice || 0);
-    const totalRepairCost = Number(aggregation._sum.repairCost || 0);
-    const totalResellPrice = Number(aggregation._sum.resellPrice || 0);
+    const decTotalAppraisal = new Prisma.Decimal(aggregation._sum.appraisalPrice || 0);
+    const decTotalRepairCost = new Prisma.Decimal(aggregation._sum.repairCost || 0);
+    const decTotalResellPrice = new Prisma.Decimal(aggregation._sum.resellPrice || 0);
+    const totalAppraisal = decTotalAppraisal.toNumber();
+    const totalRepairCost = decTotalRepairCost.toNumber();
+    const totalResellPrice = decTotalResellPrice.toNumber();
 
     return {
       summary: {
@@ -375,7 +379,7 @@ export class RepossessionsService {
         totalAppraisal,
         totalRepairCost,
         totalResellPrice,
-        totalProfit: totalResellPrice - totalAppraisal - totalRepairCost,
+        totalProfit: decTotalResellPrice.sub(decTotalAppraisal).sub(decTotalRepairCost).toNumber(),
       },
       data,
       total,

@@ -217,8 +217,8 @@ export class PurchaseOrdersService {
     if (po.status === 'CANCELLED') {
       throw new BadRequestException('ไม่สามารถอัปเดตการจ่ายเงินของ PO ที่ยกเลิกแล้วได้');
     }
-    if (dto.paidAmount !== undefined && dto.paidAmount > Number(po.netAmount)) {
-      throw new BadRequestException(`ยอดจ่ายเกินกว่ายอดสุทธิ (${Number(po.netAmount).toLocaleString()} บาท)`);
+    if (dto.paidAmount !== undefined && new Prisma.Decimal(dto.paidAmount).greaterThan(new Prisma.Decimal(po.netAmount))) {
+      throw new BadRequestException(`ยอดจ่ายเกินกว่ายอดสุทธิ (${new Prisma.Decimal(po.netAmount).toNumber().toLocaleString()} บาท)`);
     }
 
     return this.prisma.purchaseOrder.update({
@@ -275,9 +275,12 @@ export class PurchaseOrdersService {
     }>();
 
     for (const po of pos) {
-      const net = Number(po.netAmount);
-      const paid = Number(po.paidAmount);
-      const remaining = net - paid;
+      const decNet = new Prisma.Decimal(po.netAmount);
+      const decPaid = new Prisma.Decimal(po.paidAmount);
+      const decRemaining = decNet.sub(decPaid);
+      const net = decNet.toNumber();
+      const paid = decPaid.toNumber();
+      const remaining = decRemaining.toNumber();
 
       if (remaining <= 0) continue;
 
@@ -516,7 +519,7 @@ export class PurchaseOrdersService {
               color: poItem.color || null,
               storage: poItem.storage || null,
               category: productCategory,
-              costPrice: Number(poItem.unitPrice),
+              costPrice: new Prisma.Decimal(poItem.unitPrice).toNumber(),
               supplierId: po.supplierId,
               poId: po.id,
               branchId,
@@ -676,7 +679,7 @@ export class PurchaseOrdersService {
               color: poItem.color || null,
               storage: poItem.storage || null,
               category: productCategory,
-              costPrice: Number(poItem.unitPrice),
+              costPrice: new Prisma.Decimal(poItem.unitPrice).toNumber(),
               supplierId: po.supplierId,
               poId: po.id,
               branchId: mainWarehouse!.id,

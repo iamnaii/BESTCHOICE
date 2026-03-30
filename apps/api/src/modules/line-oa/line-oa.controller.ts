@@ -25,6 +25,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { ContractPaymentService } from '../contracts/contract-payment.service';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptPayQrService } from './promptpay/promptpay-qr.service';
 import { PaymentLinkService } from './payment-links/payment-link.service';
@@ -272,7 +273,7 @@ export class LineOaController {
       const nextPending = c.payments.find((p) => p.status !== 'PAID');
       const totalOutstanding = c.payments
         .filter((p) => p.status !== 'PAID')
-        .reduce((sum, p) => sum + Number(p.amountDue) + Number(p.lateFee) - Number(p.amountPaid), 0);
+        .reduce((sum, p) => sum.add(new Prisma.Decimal(p.amountDue)).add(new Prisma.Decimal(p.lateFee)).sub(new Prisma.Decimal(p.amountPaid)), new Prisma.Decimal(0)).toNumber();
 
       return {
         contractNumber: c.contractNumber,
@@ -282,7 +283,7 @@ export class LineOaController {
           ? new Date(nextPending.dueDate).toLocaleDateString('th-TH')
           : null,
         nextAmountDue: nextPending
-          ? Number(nextPending.amountDue) + Number(nextPending.lateFee) - Number(nextPending.amountPaid)
+          ? new Prisma.Decimal(nextPending.amountDue).add(new Prisma.Decimal(nextPending.lateFee)).sub(new Prisma.Decimal(nextPending.amountPaid)).toNumber()
           : 0,
         totalOutstanding: Math.round(totalOutstanding),
         status: c.status,
@@ -321,7 +322,7 @@ export class LineOaController {
         status: c.status,
         totalOutstanding: c.payments
           .filter((p) => p.status !== 'PAID')
-          .reduce((sum, p) => sum + Number(p.amountDue) + Number(p.lateFee) - Number(p.amountPaid), 0),
+          .reduce((sum, p) => sum.add(new Prisma.Decimal(p.amountDue)).add(new Prisma.Decimal(p.lateFee)).sub(new Prisma.Decimal(p.amountPaid)), new Prisma.Decimal(0)).toNumber(),
       }));
       const flex = this.lineOaService.buildContractSelector(customer.name, options, 'check_installments');
       await this.lineOaService.replyMessage(replyToken, [flex]);
@@ -339,7 +340,7 @@ export class LineOaController {
         : p.status === 'PARTIALLY_PAID' ? '⏳'
         : '⬜';
       const date = new Date(p.dueDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
-      return `${status} งวด ${p.installmentNo} | ${date} | ${Number(p.amountDue).toLocaleString()} บาท`;
+      return `${status} งวด ${p.installmentNo} | ${date} | ${new Prisma.Decimal(p.amountDue).toNumber().toLocaleString()} บาท`;
     });
 
     await this.lineOaService.replyMessage(replyToken, [
@@ -374,7 +375,7 @@ export class LineOaController {
         status: c.status,
         totalOutstanding: c.payments
           .filter((p) => p.status !== 'PAID')
-          .reduce((sum, p) => sum + Number(p.amountDue) + Number(p.lateFee) - Number(p.amountPaid), 0),
+          .reduce((sum, p) => sum.add(new Prisma.Decimal(p.amountDue)).add(new Prisma.Decimal(p.lateFee)).sub(new Prisma.Decimal(p.amountPaid)), new Prisma.Decimal(0)).toNumber(),
       }));
       const flex = this.lineOaService.buildContractSelector(customer.name, options, 'pay');
       await this.lineOaService.replyMessage(replyToken, [flex]);
@@ -394,7 +395,7 @@ export class LineOaController {
       return;
     }
 
-    const amount = Number(nextPayment.amountDue) + Number(nextPayment.lateFee) - Number(nextPayment.amountPaid);
+    const amount = new Prisma.Decimal(nextPayment.amountDue).add(new Prisma.Decimal(nextPayment.lateFee)).sub(new Prisma.Decimal(nextPayment.amountPaid)).toNumber();
 
     // Generate PromptPay QR and payment link
     try {
@@ -468,7 +469,7 @@ export class LineOaController {
         contractNumber: c.contractNumber,
         payments: paidPayments.map((p) => ({
           installmentNo: p.installmentNo,
-          amountPaid: Number(p.amountPaid),
+          amountPaid: new Prisma.Decimal(p.amountPaid).toNumber(),
           paidDate: p.paidDate
             ? new Date(p.paidDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })
             : '-',
@@ -855,7 +856,7 @@ export class LineOaController {
       (p) => p.installmentNo === body.installmentNo,
     );
     if (targetPayment) {
-      const expectedAmount = Number(targetPayment.amountDue) + Number(targetPayment.lateFee) - Number(targetPayment.amountPaid);
+      const expectedAmount = new Prisma.Decimal(targetPayment.amountDue).add(new Prisma.Decimal(targetPayment.lateFee)).sub(new Prisma.Decimal(targetPayment.amountPaid)).toNumber();
       if (Math.abs(body.amount - expectedAmount) > 100) {
         this.logger.warn(
           `[SlipReview] Amount mismatch: approved=${body.amount}, expected=${expectedAmount} for evidence ${id}`,
@@ -990,7 +991,7 @@ export class LineOaController {
 
     const payment = link.payment!;
     const contract = link.contract;
-    const amount = Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid);
+    const amount = new Prisma.Decimal(payment.amountDue).add(new Prisma.Decimal(payment.lateFee)).sub(new Prisma.Decimal(payment.amountPaid)).toNumber();
 
     // Generate PromptPay QR as data URL for the LIFF page
     let qrDataUrl: string | null = null;
@@ -1012,8 +1013,8 @@ export class LineOaController {
       },
       payment: {
         installmentNo: payment.installmentNo,
-        amountDue: Number(payment.amountDue),
-        lateFee: Number(payment.lateFee),
+        amountDue: new Prisma.Decimal(payment.amountDue).toNumber(),
+        lateFee: new Prisma.Decimal(payment.lateFee).toNumber(),
         dueDate: payment.dueDate,
       },
       promptPay: {
@@ -1121,7 +1122,7 @@ export class LineOaController {
           where: { contractId: link.contract.id, status: 'PAID' },
         });
         const totalInstallments = link.contract.totalMonths;
-        const amount = body.amount ? Number(body.amount) : (Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid));
+        const amount = body.amount ? Number(body.amount) : new Prisma.Decimal(payment.amountDue).add(new Prisma.Decimal(payment.lateFee)).sub(new Prisma.Decimal(payment.amountPaid)).toNumber();
 
         const flex = this.lineOaService.buildPaymentSuccess({
           customerName: link.contract.customer.name,
@@ -1183,15 +1184,15 @@ export class LineOaController {
         const totalPaid = c.payments.filter((p) => p.status === 'PAID').length;
         const totalOutstanding = c.payments
           .filter((p) => p.status !== 'PAID')
-          .reduce((sum, p) => sum + Number(p.amountDue) + Number(p.lateFee) - Number(p.amountPaid), 0);
+          .reduce((sum, p) => sum.add(new Prisma.Decimal(p.amountDue)).add(new Prisma.Decimal(p.lateFee)).sub(new Prisma.Decimal(p.amountPaid)), new Prisma.Decimal(0)).toNumber();
 
         return {
           id: c.id,
           contractNumber: c.contractNumber,
           status: c.status,
           product: c.product ? `${c.product.brand || ''} ${c.product.model || c.product.name}`.trim() : '-',
-          sellingPrice: Number(c.sellingPrice),
-          downPayment: Number(c.downPayment),
+          sellingPrice: new Prisma.Decimal(c.sellingPrice).toNumber(),
+          downPayment: new Prisma.Decimal(c.downPayment).toNumber(),
           totalMonths: c.totalMonths,
           paidInstallments: totalPaid,
           totalOutstanding: Math.round(totalOutstanding),
@@ -1199,9 +1200,9 @@ export class LineOaController {
           payments: c.payments.map((p) => ({
             installmentNo: p.installmentNo,
             dueDate: p.dueDate,
-            amountDue: Number(p.amountDue),
-            amountPaid: Number(p.amountPaid),
-            lateFee: Number(p.lateFee),
+            amountDue: new Prisma.Decimal(p.amountDue).toNumber(),
+            amountPaid: new Prisma.Decimal(p.amountPaid).toNumber(),
+            lateFee: new Prisma.Decimal(p.lateFee).toNumber(),
             status: p.status,
             paidDate: p.paidDate,
             paymentMethod: p.paymentMethod,

@@ -22,8 +22,13 @@ export class SecurityMiddleware implements NestMiddleware {
     '/ocr/',
     '/product-photos',
     '/documents',
-    '/contracts/',
     '/contract-templates',
+  ];
+
+  // Regex patterns for paths that need precise matching (not broad prefix)
+  // e.g. /contracts/:id/sign carries signature data but other /contracts/ routes should be scanned
+  private static readonly skipScanPatterns = [
+    /\/contracts\/[^/]+\/sign$/,
   ];
 
   use(req: Request, res: Response, next: NextFunction) {
@@ -48,7 +53,9 @@ export class SecurityMiddleware implements NestMiddleware {
     // Block suspicious payloads (basic XSS/injection prevention)
     // Skip scanning for routes that carry base64 or HTML content (false positives)
     const reqUrl = req.originalUrl || req.path || '';
-    const shouldSkipScan = SecurityMiddleware.skipScanPaths.some(p => reqUrl.includes(p));
+    const shouldSkipScan =
+      SecurityMiddleware.skipScanPaths.some(p => reqUrl.includes(p)) ||
+      SecurityMiddleware.skipScanPatterns.some(p => p.test(reqUrl));
 
     if (!shouldSkipScan && req.body && typeof req.body === 'object') {
       const contentLength = parseInt(req.headers['content-length'] || '0', 10);

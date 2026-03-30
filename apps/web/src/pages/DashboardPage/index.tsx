@@ -12,7 +12,6 @@ import {
   Users,
   Warehouse,
   BarChart3,
-  AlertTriangle,
   ArrowRight,
   Clock,
   UserCheck,

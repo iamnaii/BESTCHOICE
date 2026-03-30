@@ -9,8 +9,6 @@ interface SignaturesSectionProps {
 export default function SignaturesSection({ contract, eDocuments }: SignaturesSectionProps) {
   if (contract.signatures.length === 0 && eDocuments.length === 0) return null;
 
-  const signedTypes = new Set(contract.signatures?.map((s) => s.signerType === 'STAFF' ? 'COMPANY' : s.signerType) || []);
-
   return (
     <div className="rounded-lg border p-4 mb-6">
       <h3 className="text-sm font-semibold text-foreground mb-3">สถานะเอกสารและลายเซ็น</h3>

@@ -78,7 +78,6 @@ export class ReceiptsService {
         (sum, p) => sum.add(new Prisma.Decimal(p.amountPaid)),
         new Prisma.Decimal(0),
       );
-      const totalPaid = decTotalPaid.toNumber();
       const remainingBalance = new Prisma.Decimal(contract.financedAmount).sub(decTotalPaid).toNumber();
       const totalMonths = contract.totalMonths;
       const paidMonths = contract.payments.length;

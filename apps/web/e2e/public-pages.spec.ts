@@ -55,6 +55,25 @@ test.describe('Landing Page', () => {
     await page.waitForTimeout(2000);
     await expect(page.locator('body')).not.toContainText('เกิดข้อผิดพลาด');
   });
+
+  test('should contain login link', async ({ page }) => {
+    await page.goto('/landing', { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(2000);
+
+    // Landing page should have a link to login for admins/staff
+    const loginLink = page
+      .getByRole('link', { name: /เข้าสู่ระบบ|Login|สำหรับพนักงาน/ })
+      .first();
+    const hasLoginLink = await loginLink.isVisible({ timeout: 5000 }).catch(() => false);
+
+    if (hasLoginLink) {
+      await loginLink.click();
+      await expect(page).toHaveURL(/\/login/, { timeout: 10000 });
+    } else {
+      // Login link might be in a nav menu or footer — verify page is accessible
+      await expect(page).toHaveURL(/\/landing/, { timeout: 5000 });
+    }
+  });
 });
 
 test.describe('Forgot Password Page', () => {

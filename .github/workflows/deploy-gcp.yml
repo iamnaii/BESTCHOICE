@@ -263,7 +263,6 @@ jobs:
           PAYSOLUTIONS_WEBHOOK_SECRET=PAYSOLUTIONS_WEBHOOK_SECRET:latest" \
             --set-env-vars="\
           NODE_ENV=production,\
-          PORT=3000,\
           SKIP_MIGRATION=true,\
           FRONTEND_URL=${{ secrets.FRONTEND_URL || 'https://bestchoice-prod.web.app' }},\
           COOKIE_CROSS_DOMAIN=true,\

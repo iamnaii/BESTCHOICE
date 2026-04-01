@@ -82,9 +82,9 @@ jobs:
 
       - name: Seed test database
         run: npx prisma db seed --schema=apps/api/prisma/schema.prisma
-        continue-on-error: true
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/test_db?schema=public
+          ENCRYPTION_KEY: test-encryption-key-for-ci
 
       - name: Start API server
         run: node apps/api/dist/src/main.js &
@@ -94,6 +94,7 @@ jobs:
           JWT_REFRESH_SECRET: test-refresh-secret
           JWT_EXPIRATION: 15m
           JWT_REFRESH_EXPIRATION: 7d
+          ENCRYPTION_KEY: test-encryption-key-for-ci
           PORT: 3000
           NODE_ENV: test
 

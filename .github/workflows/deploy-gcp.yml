@@ -193,7 +193,7 @@ jobs:
             --region=${{ secrets.GCP_REGION || 'asia-southeast1' }} \
             --image=${{ env.API_IMAGE }}:${{ github.sha }} \
             --set-secrets=DATABASE_URL=DATABASE_URL:latest \
-            --add-cloudsql-instances=${{ secrets.CLOUD_SQL_CONNECTION_NAME }} \
+            --set-cloudsql-instances=${{ secrets.CLOUD_SQL_CONNECTION_NAME }} \
             --command="npx" \
             --args="prisma,migrate,deploy,--schema=./apps/api/prisma/schema.prisma" \
             --max-retries=3 \
@@ -204,7 +204,7 @@ jobs:
             --region=${{ secrets.GCP_REGION || 'asia-southeast1' }} \
             --image=${{ env.API_IMAGE }}:${{ github.sha }} \
             --set-secrets=DATABASE_URL=DATABASE_URL:latest \
-            --add-cloudsql-instances=${{ secrets.CLOUD_SQL_CONNECTION_NAME }} \
+            --set-cloudsql-instances=${{ secrets.CLOUD_SQL_CONNECTION_NAME }} \
             --command="npx" \
             --args="prisma,migrate,deploy,--schema=./apps/api/prisma/schema.prisma" \
             --max-retries=3 \
@@ -271,7 +271,7 @@ jobs:
           JWT_REFRESH_EXPIRATION=7d,\
           DATABASE_CONNECTION_LIMIT=10,\
           DATABASE_POOL_TIMEOUT=15" \
-            --add-cloudsql-instances=${{ secrets.CLOUD_SQL_CONNECTION_NAME }} \
+            --set-cloudsql-instances=${{ secrets.CLOUD_SQL_CONNECTION_NAME }} \
             --allow-unauthenticated
 
       - name: Verify deployment

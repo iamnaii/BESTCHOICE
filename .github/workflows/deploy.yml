@@ -81,7 +81,7 @@ jobs:
         working-directory: apps/web
 
       - name: Seed test database
-        run: npx prisma db seed --schema=apps/api/prisma/schema.prisma
+        run: node apps/api/dist/prisma/seed.js
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/test_db?schema=public
           ENCRYPTION_KEY: test-encryption-key-for-ci

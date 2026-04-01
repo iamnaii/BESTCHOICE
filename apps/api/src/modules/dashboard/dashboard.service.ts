@@ -49,7 +49,7 @@ export class DashboardService {
             return { gte: startOfDay, lt: endOfDay };
           })(),
           status: 'PAID',
-          contract: { ...branchFilter },
+          contract: { deletedAt: null, ...branchFilter },
         },
         _sum: { amountPaid: true },
         _count: true,
@@ -94,7 +94,7 @@ export class DashboardService {
         where: {
           paidDate: { gte: startDate },
           status: 'PAID',
-          contract: { ...branchFilter },
+          contract: { deletedAt: null, ...branchFilter },
         },
         select: { paidDate: true, amountPaid: true },
       }),
@@ -220,7 +220,7 @@ export class DashboardService {
         where: {
           paidDate: { gte: monthStart },
           status: 'PAID',
-          contract: { branchId: { in: branchIds } },
+          contract: { branchId: { in: branchIds }, deletedAt: null },
         },
         _sum: { amountPaid: true },
       }),
@@ -231,7 +231,7 @@ export class DashboardService {
       where: {
         paidDate: { gte: monthStart },
         status: 'PAID',
-        contract: { branchId: { in: branchIds } },
+        contract: { branchId: { in: branchIds }, deletedAt: null },
       },
       select: { amountPaid: true, contract: { select: { branchId: true } } },
     });

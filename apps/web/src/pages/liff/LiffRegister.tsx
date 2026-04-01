@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLiffInit } from '@/hooks/useLiffInit';
 import { liffApi } from '@/lib/api';
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -33,13 +33,12 @@ export default function LiffRegister() {
     enabled: !!lineId && !loading && !error,
   });
 
-  // Handle LIFF init error
-  if (error && step === 'loading') {
-    // Defer to error view
-    if (step === 'loading') {
+  // Handle LIFF init error → transition step via effect, not during render
+  useEffect(() => {
+    if (error && step === 'loading') {
       setStep('error');
     }
-  }
+  }, [error, step]);
 
   const lookupMutation = useMutation({
     mutationFn: async (cleaned: string) => {

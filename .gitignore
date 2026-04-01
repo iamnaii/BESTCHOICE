@@ -17,6 +17,9 @@ blob-report/
 **/e2e/screenshots/
 *.temp.config.ts
 
+# DigitalOcean App Platform (may contain secrets)
+.do/
+
 # Temp files
 .tmp/
 *.tmp

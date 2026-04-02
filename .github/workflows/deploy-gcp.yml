@@ -258,6 +258,7 @@ jobs:
           LINE_CHANNEL_SECRET=LINE_CHANNEL_SECRET:latest,\
           SMS_API_KEY=SMS_API_KEY:latest,\
           SMS_API_SECRET=SMS_API_SECRET:latest,\
+          SMTP_PASS=SMTP_PASS:latest,\
           PAYSOLUTIONS_SECRET_KEY=PAYSOLUTIONS_SECRET_KEY:latest,\
           PAYSOLUTIONS_WEBHOOK_SECRET=PAYSOLUTIONS_WEBHOOK_SECRET:latest" \
             --set-env-vars="\
@@ -266,7 +267,6 @@ jobs:
           SMTP_PORT=465,\
           SMTP_USER=resend,\
           SMTP_FROM=BESTCHOICE <noreply@bestchoicephone.app>,\
-          SMTP_PASS=${{ secrets.SMTP_PASS }},\
           SKIP_MIGRATION=true,\
           FRONTEND_URL=${{ secrets.FRONTEND_URL || 'https://bestchoice-prod.web.app' }},\
           COOKIE_CROSS_DOMAIN=true,\

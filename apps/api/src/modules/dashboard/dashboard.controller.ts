@@ -71,6 +71,16 @@ export class DashboardController {
     return this.dashboardService.getAgingSummary(effectiveBranch);
   }
 
+  @Get('sla')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  getSlaMetrics(
+    @CurrentUser() user: { role: string; branchId: string | null },
+    @Query('branchId') branchId?: string,
+  ) {
+    const effectiveBranch = this.getEffectiveBranch(branchId, user);
+    return this.dashboardService.getSlaMetrics(effectiveBranch);
+  }
+
   @Get('staff-performance')
   getStaffPerformance(
     @CurrentUser() user: { role: string; branchId: string | null },

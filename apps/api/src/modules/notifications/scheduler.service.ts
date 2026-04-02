@@ -241,21 +241,21 @@ export class SchedulerService {
   }
 
   /**
-   * Run every 6 hours: SLA alerts for contracts pending approval > 24h/48h
+   * Run every 5 minutes: SLA alerts for contracts pending approval > 20min/60min
    */
-  @Cron('0 */6 * * *')
+  @Cron('*/5 * * * *')
   async handleSlaNotifications() {
     this.logger.log('Starting SLA notification check...');
     try {
-      const threshold24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      const threshold48h = new Date(Date.now() - 48 * 60 * 60 * 1000);
+      const threshold20min = new Date(Date.now() - 20 * 60 * 1000);
+      const threshold60min = new Date(Date.now() - 60 * 60 * 1000);
 
-      // Find contracts stuck in review/approval for > 24h
+      // Find contracts stuck in review/approval for > 20min
       const pendingContracts = await this.prisma.contract.findMany({
         where: {
           deletedAt: null,
           workflowStatus: { in: ['PENDING_REVIEW', 'CREATING'] },
-          updatedAt: { lt: threshold24h },
+          updatedAt: { lt: threshold20min },
         },
         include: {
           customer: { select: { name: true } },
@@ -265,15 +265,15 @@ export class SchedulerService {
 
       let sent = 0;
       for (const contract of pendingContracts) {
-        const hoursWaiting = Math.round((Date.now() - contract.updatedAt.getTime()) / (1000 * 60 * 60));
-        const isUrgent = contract.updatedAt < threshold48h;
+        const isUrgent = contract.updatedAt < threshold60min;
         const severity = isUrgent ? 'URGENT' : 'WARNING';
 
         // Create notification log for branch manager
         try {
+          const minutesWaiting = Math.round((Date.now() - contract.updatedAt.getTime()) / (1000 * 60));
           const title = isUrgent
-            ? `[ด่วน] สัญญา ${contract.contractNumber} รออนุมัติ ${hoursWaiting} ชม.`
-            : `สัญญา ${contract.contractNumber} รออนุมัติ ${hoursWaiting} ชม.`;
+            ? `[ด่วน] สัญญา ${contract.contractNumber} รออนุมัติ ${minutesWaiting} นาที`
+            : `สัญญา ${contract.contractNumber} รออนุมัติ ${minutesWaiting} นาที`;
           await this.prisma.notificationLog.create({
             data: {
               channel: 'LINE',

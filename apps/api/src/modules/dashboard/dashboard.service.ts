@@ -340,6 +340,79 @@ export class DashboardService {
   }
 
   /**
+   * SLA metrics: contract approval time + pending approvals > 20 min
+   */
+  async getSlaMetrics(branchId?: string) {
+    const branchFilter = branchId ? { branchId } : {};
+    const threshold20min = new Date(Date.now() - 20 * 60 * 1000);
+
+    // Fetch contracts reviewed in last 30 days for approval time stats
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const [reviewedContracts, pendingContracts] = await Promise.all([
+      this.prisma.contract.findMany({
+        where: {
+          deletedAt: null,
+          reviewedAt: { not: null, gte: thirtyDaysAgo },
+          ...branchFilter,
+        },
+        select: { createdAt: true, reviewedAt: true },
+      }),
+      this.prisma.contract.findMany({
+        where: {
+          deletedAt: null,
+          workflowStatus: { in: ['PENDING_REVIEW', 'CREATING'] },
+          reviewedAt: null,
+          ...branchFilter,
+        },
+        select: {
+          contractNumber: true,
+          createdAt: true,
+          customer: { select: { name: true } },
+        },
+      }),
+    ]);
+
+    // Calculate approval times in minutes
+    const approvalMinutes = reviewedContracts
+      .map((c) => (c.reviewedAt!.getTime() - c.createdAt.getTime()) / (1000 * 60))
+      .sort((a, b) => a - b);
+
+    const sampleCount = approvalMinutes.length;
+    const avgMinutes = sampleCount > 0
+      ? approvalMinutes.reduce((s, m) => s + m, 0) / sampleCount
+      : 0;
+    const p50Minutes = sampleCount > 0
+      ? approvalMinutes[Math.floor(sampleCount * 0.5)]
+      : 0;
+    const p90Minutes = sampleCount > 0
+      ? approvalMinutes[Math.floor(sampleCount * 0.9)]
+      : 0;
+
+    // Pending contracts with their wait times
+    const pendingList = pendingContracts.map((c) => ({
+      contractNumber: c.contractNumber,
+      customerName: c.customer?.name || '-',
+      pendingMinutes: Math.round((Date.now() - c.createdAt.getTime()) / (1000 * 60)),
+    }));
+
+    const over20MinList = pendingList.filter((c) => c.pendingMinutes > 20);
+
+    return {
+      approvalTime: {
+        avgMinutes: Math.round(avgMinutes * 10) / 10,
+        p50Minutes: Math.round(p50Minutes * 10) / 10,
+        p90Minutes: Math.round(p90Minutes * 10) / 10,
+        sampleCount,
+      },
+      pendingApprovals: {
+        totalCount: pendingContracts.length,
+        over20MinCount: over20MinList.length,
+        contracts: over20MinList,
+      },
+    };
+  }
+
+  /**
    * Staff performance: sales metrics (current month) + recent activity (last 7 days)
    */
   async getStaffPerformance(branchId?: string) {

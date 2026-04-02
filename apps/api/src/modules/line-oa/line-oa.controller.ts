@@ -94,13 +94,20 @@ export class LineOaController {
 
   // ─── Text Message Handler ─────────────────────────────
 
+  private isBusinessHours(): boolean {
+    const now = new Date();
+    const bangkokOffset = 7 * 60; // UTC+7
+    const localMinutes = (now.getUTCHours() * 60 + now.getUTCMinutes() + bangkokOffset) % (24 * 60);
+    return localMinutes >= 9 * 60 && localMinutes < 18 * 60;
+  }
+
   private async handleTextMessage(event: LineMessageEvent): Promise<void> {
     if (event.message.type !== 'text') return;
     const text = event.message.text.trim();
     const textLower = text.toLowerCase();
     const userId = event.source.userId;
 
-    // Owner self-register: save LINE User ID as owner_line_id
+    // Owner self-register: save LINE User ID as owner_line_id (ทำงานตลอด 24h)
     if (textLower === '#owner') {
       try {
         await this.prisma.systemConfig.upsert({
@@ -140,6 +147,17 @@ export class LineOaController {
       }
     }
 
+    // Outside-hours auto-reply (หลังผ่าน #owner และ phone self-link แล้ว)
+    if (!this.isBusinessHours()) {
+      await this.lineOaService.replyMessage(event.replyToken, [
+        {
+          type: 'text',
+          text: 'สวัสดีค่ะ ขณะนี้อยู่นอกเวลาทำการ (09:00–18:00 น.) น้องเบสจะตอบกลับในวันทำการถัดไปนะคะ หากต้องการสอบถามด่วน สามารถโทร [เบอร์สาขา] ได้เลยค่ะ 🙏',
+        },
+      ]);
+      return;
+    }
+
     if (['ยอด', 'เช็คยอด', 'ยอดค้าง', 'balance'].includes(textLower)) {
       await this.handleCheckBalance(userId, event.replyToken);
     } else if (['งวด', 'ตารางงวด', 'installment'].includes(textLower)) {
@@ -157,11 +175,9 @@ export class LineOaController {
     } else if (['ช่วยเหลือ', 'help', 'เมนู', 'menu'].includes(textLower)) {
       await this.handleHelp(event.replyToken);
     } else {
+      // Business hours: ส่ง auto-acknowledge (replyToken ใช้ได้ครั้งเดียว ดังนั้น acknowledge คือ response หลัก)
       await this.lineOaService.replyMessage(event.replyToken, [
-        {
-          type: 'text',
-          text: 'สวัสดีค่ะ พิมพ์คำสั่งได้เลยนะคะ:\n• "เช็คยอด" - ดูยอดค้างชำระ\n• "งวด" - ดูตารางค่างวด\n• "ชำระ" - ชำระเงิน\n• "สัญญา" - ดูข้อมูลสัญญา\n• "ใบเสร็จ" - ดูประวัติการชำระ\n• "ติดต่อ" - ข้อมูลสาขา\n• "ลงทะเบียน" - ผูกบัญชี LINE\n• "ช่วยเหลือ" - ดูเมนูทั้งหมด',
-        },
+        { type: 'text', text: 'ได้รับข้อความแล้วค่ะ น้องเบสจะตอบกลับภายใน 5 นาทีนะคะ 🙏' },
       ]);
     }
   }

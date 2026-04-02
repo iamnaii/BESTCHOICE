@@ -117,6 +117,194 @@ export class ReportsService {
   }
 
   /**
+   * Profit & Loss Report (งบกำไรขาดทุน ผังบัญชีไทย)
+   */
+  async getProfitLossReport(startDate: string, endDate: string, branchId?: string) {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+    const branchFilter = branchId ? { branchId } : {};
+    const dateRange = { gte: start, lte: end };
+
+    // ═══ Revenue queries ═══
+    const [
+      cashSalesAgg,
+      installmentSales,
+      externalFinanceSales,
+      paidPayments,
+      financeReceived,
+      expensesByCategory,
+      productCosts,
+    ] = await Promise.all([
+      // Cash sales
+      this.prisma.sale.aggregate({
+        where: { saleType: 'CASH', createdAt: dateRange, ...branchFilter },
+        _sum: { netAmount: true },
+      }),
+      // Installment sales (down payments + paid installments)
+      this.prisma.sale.aggregate({
+        where: { saleType: 'INSTALLMENT', createdAt: dateRange, ...branchFilter },
+        _sum: { downPaymentAmount: true },
+      }),
+      // External finance sales (down payments)
+      this.prisma.sale.aggregate({
+        where: { saleType: 'EXTERNAL_FINANCE', createdAt: dateRange, ...branchFilter },
+        _sum: { downPaymentAmount: true },
+      }),
+      // Payments received in period (installment payments + interest + late fees)
+      this.prisma.payment.findMany({
+        where: {
+          paidDate: dateRange,
+          status: 'PAID',
+          contract: { deletedAt: null, ...branchFilter },
+        },
+        select: {
+          amountPaid: true,
+          lateFee: true,
+          lateFeeWaived: true,
+          contract: { select: { interestTotal: true, totalMonths: true } },
+        },
+      }),
+      // Finance received
+      this.prisma.financeReceivable.aggregate({
+        where: {
+          status: 'RECEIVED',
+          receivedDate: dateRange,
+          ...branchFilter,
+        },
+        _sum: { receivedAmount: true },
+      }),
+      // Expenses by category (only PAID or APPROVED, not VOIDED/REJECTED)
+      this.prisma.expense.findMany({
+        where: {
+          expenseDate: dateRange,
+          status: { in: ['PAID', 'APPROVED'] },
+          deletedAt: null,
+          ...branchFilter,
+        },
+        select: { category: true, totalAmount: true },
+      }),
+      // Product cost (COGS from sold products in period)
+      this.prisma.sale.findMany({
+        where: { createdAt: dateRange, ...branchFilter },
+        select: {
+          product: { select: { costPrice: true } },
+        },
+      }),
+    ]);
+
+    // ═══ Calculate revenue ═══
+    const cashSales = Number(cashSalesAgg._sum.netAmount || 0);
+    const installmentDownPayments = Number(installmentSales._sum.downPaymentAmount || 0);
+    const financeDownPayments = Number(externalFinanceSales._sum.downPaymentAmount || 0);
+    const financeReceivedAmount = Number(financeReceived._sum.receivedAmount || 0);
+
+    let installmentPayments = 0;
+    let interestIncome = 0;
+    let lateFeeIncome = 0;
+    for (const p of paidPayments) {
+      installmentPayments += Number(p.amountPaid);
+      interestIncome += Number(p.contract.interestTotal) / p.contract.totalMonths;
+      if (!p.lateFeeWaived) lateFeeIncome += Number(p.lateFee);
+    }
+
+    const totalRevenue = cashSales + installmentDownPayments + installmentPayments
+      + lateFeeIncome + financeDownPayments + financeReceivedAmount;
+
+    // ═══ Calculate expenses by category ═══
+    const expMap: Record<string, number> = {};
+    for (const e of expensesByCategory) {
+      expMap[e.category] = (expMap[e.category] || 0) + Number(e.totalAmount);
+    }
+
+    // COGS from product cost prices
+    const purchaseOrderCost = productCosts.reduce((sum, s) => sum + Number(s.product.costPrice || 0), 0);
+
+    // Cost of Sales (5100)
+    const costOfSales = {
+      cogsProduct: expMap['COGS_PRODUCT'] || 0,
+      cogsRepairParts: expMap['COGS_REPAIR_PARTS'] || 0,
+      purchaseOrderCost,
+      totalCOGS: (expMap['COGS_PRODUCT'] || 0) + (expMap['COGS_REPAIR_PARTS'] || 0) + purchaseOrderCost,
+    };
+
+    const grossProfit = totalRevenue - costOfSales.totalCOGS;
+
+    // Selling Expenses (5200)
+    const sellingExpenses = {
+      commission: expMap['SELL_COMMISSION'] || 0,
+      advertising: expMap['SELL_ADVERTISING'] || 0,
+      transport: expMap['SELL_TRANSPORT'] || 0,
+      packaging: expMap['SELL_PACKAGING'] || 0,
+      totalSelling: (expMap['SELL_COMMISSION'] || 0) + (expMap['SELL_ADVERTISING'] || 0)
+        + (expMap['SELL_TRANSPORT'] || 0) + (expMap['SELL_PACKAGING'] || 0),
+    };
+
+    // Admin Expenses (5300)
+    const adminExpenses = {
+      salary: expMap['ADMIN_SALARY'] || 0,
+      socialSecurity: expMap['ADMIN_SOCIAL_SECURITY'] || 0,
+      rent: expMap['ADMIN_RENT'] || 0,
+      utilities: expMap['ADMIN_UTILITIES'] || 0,
+      officeSupplies: expMap['ADMIN_OFFICE_SUPPLIES'] || 0,
+      depreciation: expMap['ADMIN_DEPRECIATION'] || 0,
+      insurance: expMap['ADMIN_INSURANCE'] || 0,
+      taxFee: expMap['ADMIN_TAX_FEE'] || 0,
+      maintenance: expMap['ADMIN_MAINTENANCE'] || 0,
+      travel: expMap['ADMIN_TRAVEL'] || 0,
+      telephone: expMap['ADMIN_TELEPHONE'] || 0,
+      totalAdmin: 0,
+    };
+    adminExpenses.totalAdmin = adminExpenses.salary + adminExpenses.socialSecurity
+      + adminExpenses.rent + adminExpenses.utilities + adminExpenses.officeSupplies
+      + adminExpenses.depreciation + adminExpenses.insurance + adminExpenses.taxFee
+      + adminExpenses.maintenance + adminExpenses.travel + adminExpenses.telephone;
+
+    const operatingProfit = grossProfit - sellingExpenses.totalSelling - adminExpenses.totalAdmin;
+
+    // Other Expenses (5900)
+    const otherExpenses = {
+      interest: expMap['OTHER_INTEREST'] || 0,
+      loss: expMap['OTHER_LOSS'] || 0,
+      fine: expMap['OTHER_FINE'] || 0,
+      misc: expMap['OTHER_MISC'] || 0,
+      totalOther: (expMap['OTHER_INTEREST'] || 0) + (expMap['OTHER_LOSS'] || 0)
+        + (expMap['OTHER_FINE'] || 0) + (expMap['OTHER_MISC'] || 0),
+    };
+
+    const netProfit = operatingProfit - otherExpenses.totalOther;
+    const totalExpenses = costOfSales.totalCOGS + sellingExpenses.totalSelling
+      + adminExpenses.totalAdmin + otherExpenses.totalOther;
+
+    return {
+      period: { start: startDate, end: endDate },
+      revenue: {
+        cashSales,
+        installmentDownPayments,
+        installmentPayments,
+        interestIncome: Math.round(interestIncome),
+        lateFeeIncome,
+        financeDownPayments,
+        financeReceived: financeReceivedAmount,
+        totalRevenue,
+      },
+      costOfSales,
+      grossProfit,
+      sellingExpenses,
+      adminExpenses,
+      operatingProfit,
+      otherExpenses,
+      netProfit,
+      summary: {
+        totalRevenue,
+        totalExpenses,
+        netProfit,
+        profitMargin: totalRevenue > 0 ? Math.round((netProfit / totalRevenue) * 10000) / 100 : 0,
+      },
+    };
+  }
+
+  /**
    * High-risk customers report
    */
   async getHighRiskCustomers(branchId?: string, page = 1, limit = 50) {

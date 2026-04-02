@@ -131,6 +131,7 @@ const navSections: NavSection[] = [
     icon: BarChart3,
     items: [
       { label: 'รายงาน', path: '/reports', icon: BarChart3, roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
+      { label: 'งบกำไรขาดทุน', path: '/profit-loss', icon: DollarSign, roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
       { label: 'แจ้งเตือน', path: '/notifications', icon: Bell, roles: ['OWNER', 'BRANCH_MANAGER'] },
     ],
   },

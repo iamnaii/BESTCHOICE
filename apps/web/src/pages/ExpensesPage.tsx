@@ -207,8 +207,8 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
   const netPay = total - wht;
 
   return (
-    <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm">
-      <div className="fixed inset-y-0 right-0 w-full max-w-3xl bg-background shadow-xl border-l overflow-y-auto">
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center pt-8 pb-8">
+      <div className="w-full max-w-4xl bg-background rounded-xl shadow-2xl overflow-y-auto max-h-[calc(100vh-4rem)]">
         {/* Header */}
         <div className="sticky top-0 z-10 bg-background border-b px-6 py-4 flex items-center justify-between">
           <button onClick={onClose} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">

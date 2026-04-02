@@ -1,0 +1,399 @@
+- generic [active] [ref=e1]:
+  - navigation [ref=e2]:
+    - generic [ref=e4]:
+      - generic [ref=e6]: Menu
+      - list [ref=e7]:
+        - listitem [ref=e8]:
+          - link [ref=e9] [cursor=pointer]:
+            - /url: https://ufriend.shop/%e0%b8%9c%e0%b9%88%e0%b8%ad%e0%b8%99%e0%b8%aa%e0%b8%b4%e0%b8%99%e0%b8%84%e0%b9%89%e0%b8%b2/
+            - text: ผ่อนสินค้า
+        - listitem [ref=e10]:
+          - link [ref=e11] [cursor=pointer]:
+            - /url: https://ufriend.shop/%e0%b8%ad%e0%b8%ad%e0%b8%a1%e0%b8%94%e0%b8%b2%e0%b8%a7%e0%b8%99%e0%b9%8c/
+            - text: ออมดาวน์
+        - listitem [ref=e12]:
+          - link [ref=e13] [cursor=pointer]:
+            - /url: https://ufriend.shop/%e0%b9%84%e0%b8%ad%e0%b9%82%e0%b8%9f%e0%b8%99%e0%b9%81%e0%b8%a5%e0%b8%81%e0%b9%80%e0%b8%87%e0%b8%b4%e0%b8%99/
+            - text: ไอโฟนแลกเงิน
+        - listitem [ref=e14]:
+          - link [ref=e15] [cursor=pointer]:
+            - /url: https://ufriend.shop/shop/
+            - text: สินค้าของเรา
+        - listitem [ref=e16]:
+          - link [ref=e17] [cursor=pointer]:
+            - /url: https://ufriend.shop/%e0%b9%80%e0%b8%81%e0%b8%b5%e0%b9%88%e0%b8%a2%e0%b8%a7%e0%b8%81%e0%b8%b1%e0%b8%9a%e0%b8%a2%e0%b8%b9%e0%b9%80%e0%b8%9f%e0%b8%a3%e0%b8%99%e0%b8%94%e0%b9%8c/
+            - text: เกี่ยวกับยูเฟรนด์
+        - listitem [ref=e18]:
+          - link [ref=e19] [cursor=pointer]:
+            - /url: https://ufriend.shop/%E0%B8%9A%E0%B8%97%E0%B8%84%E0%B8%A7%E0%B8%B2%E0%B8%A1/
+            - text: บทความ
+        - listitem [ref=e20]:
+          - link [ref=e21] [cursor=pointer]:
+            - /url: https://ufriend.shop/near-branch
+            - text: สาขาใกล้คุณ
+        - listitem [ref=e22]:
+          - link [ref=e23] [cursor=pointer]:
+            - /url: https://ufriend.shop/%e0%b8%a3%e0%b9%88%e0%b8%a7%e0%b8%a1%e0%b8%87%e0%b8%b2%e0%b8%99%e0%b8%81%e0%b8%b1%e0%b8%9a%e0%b9%80%e0%b8%a3%e0%b8%b2/
+            - text: ร่วมงานกับเรา
+    - generic [ref=e25]:
+      - link [ref=e26] [cursor=pointer]:
+        - /url: https://www.facebook.com/thembayteam/
+        - generic [ref=e27]: 
+      - link [ref=e28] [cursor=pointer]:
+        - /url: https://www.instagram.com/thembayteam/
+        - generic [ref=e29]: 
+      - link [ref=e30] [cursor=pointer]:
+        - /url: https://twitter.com/bay_them
+        - generic [ref=e31]: 
+      - link [ref=e32] [cursor=pointer]:
+        - /url: https://www.youtube.com/channel/UCIkuoXjv4tS6SUHhEBAg9Ew
+        - generic [ref=e33]: 
+  - generic [ref=e34]:
+    - text:          
+    - banner [ref=e35]:
+      - text: 
+      - generic [ref=e39]:
+        - link "Ufriend" [ref=e42] [cursor=pointer]:
+          - /url: https://ufriend.shop/
+          - img "Ufriend" [ref=e43]
+        - navigation [ref=e45]:
+          - list [ref=e47]:
+            - listitem [ref=e48]:
+              - link "ผ่อนสินค้า" [ref=e49] [cursor=pointer]:
+                - /url: https://ufriend.shop/%e0%b8%9c%e0%b9%88%e0%b8%ad%e0%b8%99%e0%b8%aa%e0%b8%b4%e0%b8%99%e0%b8%84%e0%b9%89%e0%b8%b2/
+            - listitem [ref=e50]:
+              - link "ออมดาวน์" [ref=e51] [cursor=pointer]:
+                - /url: https://ufriend.shop/%e0%b8%ad%e0%b8%ad%e0%b8%a1%e0%b8%94%e0%b8%b2%e0%b8%a7%e0%b8%99%e0%b9%8c/
+            - listitem [ref=e52]:
+              - link "ไอโฟนแลกเงิน" [ref=e53] [cursor=pointer]:
+                - /url: https://ufriend.shop/%e0%b9%84%e0%b8%ad%e0%b9%82%e0%b8%9f%e0%b8%99%e0%b9%81%e0%b8%a5%e0%b8%81%e0%b9%80%e0%b8%87%e0%b8%b4%e0%b8%99/
+            - listitem [ref=e54]:
+              - link "สินค้าของเรา" [ref=e55] [cursor=pointer]:
+                - /url: https://ufriend.shop/shop/
+            - listitem [ref=e56]:
+              - link "เกี่ยวกับยูเฟรนด์" [ref=e57] [cursor=pointer]:
+                - /url: https://ufriend.shop/%e0%b9%80%e0%b8%81%e0%b8%b5%e0%b9%88%e0%b8%a2%e0%b8%a7%e0%b8%81%e0%b8%b1%e0%b8%9a%e0%b8%a2%e0%b8%b9%e0%b9%80%e0%b8%9f%e0%b8%a3%e0%b8%99%e0%b8%94%e0%b9%8c/
+            - listitem [ref=e58]:
+              - link "บทความ" [ref=e59] [cursor=pointer]:
+                - /url: https://ufriend.shop/%E0%B8%9A%E0%B8%97%E0%B8%84%E0%B8%A7%E0%B8%B2%E0%B8%A1/
+            - listitem [ref=e60]:
+              - link "สาขาใกล้คุณ" [ref=e61] [cursor=pointer]:
+                - /url: https://ufriend.shop/near-branch
+            - listitem [ref=e62]:
+              - link "ร่วมงานกับเรา" [ref=e63] [cursor=pointer]:
+                - /url: https://ufriend.shop/%e0%b8%a3%e0%b9%88%e0%b8%a7%e0%b8%a1%e0%b8%87%e0%b8%b2%e0%b8%99%e0%b8%81%e0%b8%b1%e0%b8%9a%e0%b9%80%e0%b8%a3%e0%b8%b2/
+        - generic [ref=e65]:
+          - link "TH" [ref=e66] [cursor=pointer]:
+            - /url: ""
+            - img "TH" [ref=e67]
+          - link "EN" [ref=e68] [cursor=pointer]:
+            - /url: https://ufriend.shop/about
+            - img "EN" [ref=e69]
+    - generic [ref=e72]:
+      - list [ref=e76]:
+        - listitem [ref=e77]:
+          - link "Home" [ref=e78] [cursor=pointer]:
+            - /url: https://ufriend.shop
+        - listitem [ref=e79]:
+          - text: /
+          - link "smartphone" [ref=e80] [cursor=pointer]:
+            - /url: https://ufriend.shop/product-category/smartphone/
+      - main [ref=e85]:
+        - generic [ref=e86]:
+          - generic [ref=e87]:
+            - generic [ref=e89]:
+              - link " 🔍" [ref=e90] [cursor=pointer]:
+                - /url: "#"
+              - generic [ref=e91]:
+                - figure:
+                  - link [ref=e93] [cursor=pointer]:
+                    - /url: https://ufriend.shop/wp-content/uploads/2025/09/iPhone-171.png
+                    - generic "iPhone 171" [ref=e94]
+                  - link [ref=e96] [cursor=pointer]:
+                    - /url: https://ufriend.shop/wp-content/uploads/2025/09/iPhone-17-Black1.png
+                    - generic "iPhone 17 (Black)1" [ref=e97]
+                  - link [ref=e99] [cursor=pointer]:
+                    - /url: https://ufriend.shop/wp-content/uploads/2025/09/iPhone-17-Lavender1.png
+                    - generic "iPhone 17 (Lavender)1" [ref=e100]
+                  - link [ref=e102] [cursor=pointer]:
+                    - /url: https://ufriend.shop/wp-content/uploads/2025/09/iPhone-17-Mist-Blue1.png
+                    - generic "iPhone 17 (Mist Blue)1" [ref=e103]
+                  - link [ref=e105] [cursor=pointer]:
+                    - /url: https://ufriend.shop/wp-content/uploads/2025/09/iPhone-17-Sage1.png
+                    - generic "iPhone 17 (Sage)1" [ref=e106]
+                  - link [ref=e108] [cursor=pointer]:
+                    - /url: https://ufriend.shop/wp-content/uploads/2025/09/iPhone-17-White1.png
+                    - generic "iPhone 17 (White)1" [ref=e109]
+                  - link [ref=e111] [cursor=pointer]:
+                    - /url: https://ufriend.shop/wp-content/uploads/2025/09/iPhone-171.png
+                    - generic "iPhone 171" [ref=e112]
+              - list [ref=e113]:
+                - generic [ref=e114] [cursor=pointer]: 
+                - generic [ref=e116]:
+                  - listitem [ref=e117]:
+                    - img [ref=e118] [cursor=pointer]
+                  - listitem [ref=e119]:
+                    - img [ref=e120] [cursor=pointer]
+                  - listitem [ref=e121]:
+                    - img [ref=e122] [cursor=pointer]
+                  - listitem [ref=e123]:
+                    - img [ref=e124] [cursor=pointer]
+                  - listitem [ref=e125]:
+                    - img [ref=e126] [cursor=pointer]
+                  - listitem [ref=e127]:
+                    - img [ref=e128] [cursor=pointer]
+                  - listitem [ref=e129]:
+                    - img [ref=e130] [cursor=pointer]
+                - generic [ref=e131] [cursor=pointer]: 
+            - generic [ref=e133]:
+              - link "Apple" [ref=e136] [cursor=pointer]:
+                - /url: https://ufriend.shop/product-brands/apple/
+              - heading "[1] Apple iPhone 17" [level=1] [ref=e137]
+              - paragraph [ref=e138]:
+                - text: ราคาเริ่มต้นเพียง
+                - insertion [ref=e139]:
+                  - generic [ref=e141]: ฿39,900.00
+              - generic [ref=e143]:
+                - table [ref=e144]:
+                  - rowgroup [ref=e145]:
+                    - row "สี สี" [ref=e146]:
+                      - cell "สี" [ref=e147]:
+                        - generic [ref=e148]: สี
+                      - cell "สี" [ref=e149]:
+                        - radiogroup "สี" [ref=e150]:
+                          - radio "Black" [ref=e151] [cursor=pointer]
+                          - radio "Lavender" [ref=e154] [cursor=pointer]
+                          - radio "Mist Blue" [ref=e157] [cursor=pointer]
+                          - radio "Sage" [ref=e160] [cursor=pointer]
+                          - radio "White" [ref=e163] [cursor=pointer]
+                    - row "ความจุ ความจุ" [ref=e166]:
+                      - cell "ความจุ" [ref=e167]:
+                        - generic [ref=e168]: ความจุ
+                      - cell "ความจุ" [ref=e169]:
+                        - radiogroup "ความจุ" [ref=e170]:
+                          - radio "256GB" [ref=e171] [cursor=pointer]:
+                            - generic [ref=e173]: 256GB
+                          - radio "512GB" [ref=e174] [cursor=pointer]:
+                            - generic [ref=e176]: 512GB
+                    - row "เงินดาวน์ Choose an option" [ref=e177]:
+                      - cell "เงินดาวน์" [ref=e178]:
+                        - generic [ref=e179]: เงินดาวน์
+                      - cell "Choose an option" [ref=e180]:
+                        - combobox "เงินดาวน์" [ref=e181]:
+                          - option "Choose an option" [selected]
+                          - option "ดาวน์ 10,900 ผ่อน 2,500 * 12เดือน"
+                          - option "ดาวน์ 10,900 ผ่อน 2,900 * 10เดือน"
+                          - option "ดาวน์ 14,900 ผ่อน 2,850 * 12เดือน"
+                          - option "ดาวน์ 14,900 ผ่อน 3,300 * 10เดือน"
+                - generic [ref=e183]:
+                  - generic [ref=e185]:
+                    - button "" [ref=e186] [cursor=pointer]:
+                      - generic [ref=e187]: 
+                    - spinbutton "Qty" [ref=e188]: "1"
+                    - button "" [ref=e189] [cursor=pointer]:
+                      - generic [ref=e190]: 
+                  - link "ลงทะเบียน" [ref=e192] [cursor=pointer]:
+                    - /url: https://ufriend.shop/register/?prdName=[1] Apple iPhone 17
+                    - paragraph [ref=e193]: ลงทะเบียน
+                  - text: 
+              - generic [ref=e194]:
+                - generic [ref=e195]:
+                  - text: "SKU:"
+                  - generic [ref=e196]: N/A
+                - generic [ref=e197]:
+                  - text: "Categories:"
+                  - link "iphone" [ref=e198] [cursor=pointer]:
+                    - /url: https://ufriend.shop/product-category/iphone/
+                  - text: ","
+                  - link "smartphone" [ref=e199] [cursor=pointer]:
+                    - /url: https://ufriend.shop/product-category/smartphone/
+                - generic [ref=e200]:
+                  - text: "Tags:"
+                  - link "iphone" [ref=e201] [cursor=pointer]:
+                    - /url: https://ufriend.shop/product-tag/iphone/
+                  - text: ","
+                  - link "iphone17" [ref=e202] [cursor=pointer]:
+                    - /url: https://ufriend.shop/product-tag/iphone17/
+                  - text: ","
+                  - link "ผ่อนiphone" [ref=e203] [cursor=pointer]:
+                    - /url: https://ufriend.shop/product-tag/%e0%b8%9c%e0%b9%88%e0%b8%ad%e0%b8%99iphone/
+                  - text: ","
+                  - link "ผ่อนiphone17" [ref=e204] [cursor=pointer]:
+                    - /url: https://ufriend.shop/product-tag/%e0%b8%9c%e0%b9%88%e0%b8%ad%e0%b8%99iphone17/
+                  - text: ","
+                  - link "ไอโฟน17" [ref=e205] [cursor=pointer]:
+                    - /url: https://ufriend.shop/product-tag/%e0%b9%84%e0%b8%ad%e0%b9%82%e0%b8%9f%e0%b8%9917/
+          - tabpanel [ref=e207]:
+            - heading "รายละเอียดสินค้า" [level=3] [ref=e208]
+            - heading "ผ่อน iPhone 17" [level=2] [ref=e209]
+            - paragraph [ref=e210]:
+              - strong [ref=e211]: iPhone 17 256gb
+              - text: ราคาสินค้า 41,400 บาท
+              - text: "* ส่วนลดเป็นไปตามเงื่อนไขบริษัท"
+            - paragraph [ref=e212]:
+              - strong [ref=e213]: iPhone 17 512gb
+              - text: ราคาสินค้า 49,400 บาท
+              - text: "* ส่วนลดเป็นไปตามเงื่อนไขบริษัท"
+            - paragraph [ref=e214]
+            - paragraph [ref=e215]
+            - paragraph [ref=e216]:
+              - link "ผ่อนได้ทุกอาชีพ" [ref=e217] [cursor=pointer]:
+                - /url: https://ufriend.shop/help/#1630571097161-8e4ab85f-36ca
+              - text: จะเป็นนักศึกษา พ่อค้าแม่ค้า พนักงานบริษัท ทำงาน Part time Freelance พี่Grab พี่Taxi แม่บ้าน พยาบาล ขอเพียงมีอายุ18ปีขึ้นไป ใช้เพียงบัตรประชาชนใบเดียว สามารถผ่อนได้ทั้งไอโฟน ไอแพด จ่ายดาวน์รับเครื่องไปใช้ได้เลย
+            - paragraph [ref=e218]:
+              - text: ทุกเครื่องของร้าน Ufriend เป็นเครื่องใหม่
+              - link "ประกันศูนย์ไทย" [ref=e219] [cursor=pointer]:
+                - /url: https://ufriend.shop/help/#1633620428167-9f2cc300-ad46
+              - text: 100%
+            - paragraph [ref=e220]
+            - heading "สเปค iPhone 17" [level=2] [ref=e221]
+            - list [ref=e222]:
+              - listitem [ref=e223]:
+                - paragraph [ref=e224]:
+                  - strong [ref=e225]: หน้าจอ
+                  - text: ": Super Retina XDR OLED 6.3″ ความละเอียด 2622×1206 พิกเซล, ProMotion 120 Hz, Always-On Display, Dynamic Island, ความสว่างสูงสุด 3,000 นิต"
+                  - link "Apple+2kapook.com+2" [ref=e228] [cursor=pointer]:
+                    - /url: https://www.apple.com/th/iphone-17/specs/?utm_source=chatgpt.com
+                    - generic [ref=e229]:
+                      - generic [ref=e230]: Apple+2
+                      - generic [ref=e231]: kapook.com+2
+              - listitem [ref=e232]:
+                - paragraph [ref=e233]:
+                  - strong [ref=e234]: ชิป
+                  - text: ": A19 (6-core CPU, 5-core GPU พร้อม Neural Accelerators)"
+                  - link "Apple+1" [ref=e237] [cursor=pointer]:
+                    - /url: https://www.apple.com/iphone-17/?utm_source=chatgpt.com
+                    - generic [ref=e239]: Apple+1
+              - listitem [ref=e240]:
+                - paragraph [ref=e241]:
+                  - strong [ref=e242]: กล้องหลัง
+                  - text: ": 48 MP Fusion แบบคู่ (Wide + Ultra Wide), 2x Optical Zoom, Digital Zoom สูงสุด 10x"
+                  - link "kapook.com+2Apple+2" [ref=e245] [cursor=pointer]:
+                    - /url: https://tech.kapook.com/view294860.html?utm_source=chatgpt.com
+                    - generic [ref=e246]:
+                      - generic [ref=e247]: kapook.com+2
+                      - generic [ref=e248]: Apple+2
+              - listitem [ref=e249]:
+                - paragraph [ref=e250]:
+                  - strong [ref=e251]: กล้องหน้า
+                  - text: ": 18 MP Center Stage (AI ปรับเฟรมอัตโนมัติ, ยิงวิดีโอ พร้อมหน้า-หลัง Dual Capture)"
+                  - link "Apple+1" [ref=e254] [cursor=pointer]:
+                    - /url: https://www.apple.com/iphone-17/?utm_source=chatgpt.com
+                    - generic [ref=e256]: Apple+1
+              - listitem [ref=e257]:
+                - paragraph [ref=e258]:
+                  - strong [ref=e259]: แบตเตอรี่
+                  - text: ": เล่นวิดีโอได้สูงสุด 30 ชม., ชาร์จ 50% ใน 20 นาที"
+                  - link "Apple+1" [ref=e262] [cursor=pointer]:
+                    - /url: https://www.apple.com/iphone-17/?utm_source=chatgpt.com
+                    - generic [ref=e264]: Apple+1
+              - listitem [ref=e265]:
+                - paragraph [ref=e266]:
+                  - strong [ref=e267]: การเชื่อมต่อ/อื่น ๆ
+                  - text: ": 5G, Wi-Fi 7, Bluetooth 6, NFC, USB-C (USB 2), กันน้ำ IP68"
+                  - link "kapook.com" [ref=e270] [cursor=pointer]:
+                    - /url: https://tech.kapook.com/view294860.html?utm_source=chatgpt.com
+                    - generic [ref=e272]: kapook.com
+              - listitem [ref=e273]:
+                - paragraph [ref=e274]:
+                  - strong [ref=e275]: ความจุ
+                  - text: ": เริ่มต้นที่ 256 GB (สูงสุด 512 GB)"
+            - paragraph [ref=e276]
+            - paragraph [ref=e277]
+            - paragraph [ref=e278]:
+              - img [ref=e279]
+    - contentinfo [ref=e280]:
+      - generic [ref=e284]:
+        - generic [ref=e286]:
+          - generic [ref=e289]:
+            - paragraph [ref=e292]:
+              - text: ง่าย สะดวก ปลอดภัย
+              - text: มั่นใจ
+            - paragraph [ref=e295]: เลือก... ยูเฟรนด์
+          - generic [ref=e299]:
+            - generic [ref=e302]:
+              - figure [ref=e304]
+              - paragraph [ref=e309]: บัตรประชาชนใบเดียว
+            - generic [ref=e312]:
+              - figure [ref=e314]
+              - paragraph [ref=e319]: ทุกอาชีพผ่อนได้
+            - generic [ref=e322]:
+              - figure [ref=e324]
+              - paragraph [ref=e329]: มีสาขาทั่วประเทศ
+            - generic [ref=e332]:
+              - figure [ref=e334]
+              - paragraph [ref=e338]: รองรับด้วยแอปฯ
+        - generic [ref=e345]:
+          - generic [ref=e348]:
+            - figure [ref=e350]
+            - paragraph [ref=e355]: ยูเฟรนด์
+            - paragraph [ref=e358]: ชีวิตง่ายดี เพราะมีเพื่อนที่รู้ใจ
+          - generic [ref=e361]:
+            - paragraph [ref=e364]: เมนู
+            - list [ref=e368]:
+              - listitem [ref=e369]:
+                - link "ผ่อนสินค้า" [ref=e370] [cursor=pointer]:
+                  - /url: https://ufriend.shop/%e0%b8%9c%e0%b9%88%e0%b8%ad%e0%b8%99%e0%b8%aa%e0%b8%b4%e0%b8%99%e0%b8%84%e0%b9%89%e0%b8%b2/
+              - listitem [ref=e371]:
+                - link "ออมดาวน์" [ref=e372] [cursor=pointer]:
+                  - /url: https://ufriend.shop/%e0%b8%ad%e0%b8%ad%e0%b8%a1%e0%b8%94%e0%b8%b2%e0%b8%a7%e0%b8%99%e0%b9%8c/
+              - listitem [ref=e373]:
+                - link "ไอโฟนแลกเงิน" [ref=e374] [cursor=pointer]:
+                  - /url: https://ufriend.shop/%e0%b9%84%e0%b8%ad%e0%b9%82%e0%b8%9f%e0%b8%99%e0%b9%81%e0%b8%a5%e0%b8%81%e0%b9%80%e0%b8%87%e0%b8%b4%e0%b8%99/
+              - listitem [ref=e375]:
+                - link "สินค้าของเรา" [ref=e376] [cursor=pointer]:
+                  - /url: https://ufriend.shop/shop/
+              - listitem [ref=e377]:
+                - link "เกี่ยวกับยูเฟรนด์" [ref=e378] [cursor=pointer]:
+                  - /url: https://ufriend.shop/%e0%b9%80%e0%b8%81%e0%b8%b5%e0%b9%88%e0%b8%a2%e0%b8%a7%e0%b8%81%e0%b8%b1%e0%b8%9a%e0%b8%a2%e0%b8%b9%e0%b9%80%e0%b8%9f%e0%b8%a3%e0%b8%99%e0%b8%94%e0%b9%8c/
+              - listitem [ref=e379]:
+                - link "บทความ" [ref=e380] [cursor=pointer]:
+                  - /url: https://ufriend.shop/%E0%B8%9A%E0%B8%97%E0%B8%84%E0%B8%A7%E0%B8%B2%E0%B8%A1/
+              - listitem [ref=e381]:
+                - link "สาขาใกล้คุณ" [ref=e382] [cursor=pointer]:
+                  - /url: https://ufriend.shop/near-branch
+              - listitem [ref=e383]:
+                - link "ร่วมงานกับเรา" [ref=e384] [cursor=pointer]:
+                  - /url: https://ufriend.shop/%e0%b8%a3%e0%b9%88%e0%b8%a7%e0%b8%a1%e0%b8%87%e0%b8%b2%e0%b8%99%e0%b8%81%e0%b8%b1%e0%b8%9a%e0%b9%80%e0%b8%a3%e0%b8%b2/
+          - generic [ref=e387]:
+            - paragraph [ref=e390]: ติดต่อเรา
+            - paragraph [ref=e393]:
+              - link "ufriendth" [ref=e394] [cursor=pointer]:
+                - /url: https://www.facebook.com/ufriendth
+                - generic [ref=e395]: ufriendth
+            - paragraph [ref=e399]:
+              - link "@ufriend" [ref=e400] [cursor=pointer]:
+                - /url: https://page.line.me/945uzjoj?openQrModal=true
+                - generic [ref=e401]: "@ufriend"
+            - paragraph [ref=e405]:
+              - link "@ufriendshop" [ref=e406] [cursor=pointer]:
+                - /url: https://www.tiktok.com/@ufriendshop
+                - generic [ref=e407]: "@ufriendshop"
+            - paragraph [ref=e411]:
+              - link "@ufriendshop" [ref=e412] [cursor=pointer]:
+                - /url: https://www.youtube.com/@ufriendshop
+                - generic [ref=e413]: "@ufriendshop"
+            - paragraph [ref=e417]:
+              - link "064-616-9699" [ref=e418] [cursor=pointer]:
+                - /url: tel:0646169699
+                - generic [ref=e419]: 064-616-9699
+          - generic [ref=e423]:
+            - paragraph [ref=e426]: แอปยูเฟรนด์ โหลดเลย!
+            - generic [ref=e427]:
+              - generic:
+                - paragraph:
+                  - link:
+                    - /url: https://apps.apple.com/th/app/ufriend/id1585122357?l=th
+                  - link:
+                    - /url: https://apps.apple.com/th/app/ufriend/id1585122357?l=th
+            - paragraph [ref=e433]: มาตรฐานการรับรอง
+            - figure [ref=e435]
+        - paragraph [ref=e444]:
+          - text: Copyright 2023 D App Maker Co., LTD All rights reserved.
+          - link "คำถามที่พบบ่อย" [ref=e445] [cursor=pointer]:
+            - /url: /terms/
+          - text: "|"
+          - link "นโยบายความคุ้มครองข้อมูลส่วนบุคคล" [ref=e446] [cursor=pointer]:
+            - /url: https://ufriend.shop/%e0%b8%99%e0%b9%82%e0%b8%a2%e0%b8%9a%e0%b8%b2%e0%b8%a2%e0%b8%84%e0%b8%b8%e0%b9%89%e0%b8%a1%e0%b8%84%e0%b8%a3%e0%b8%ad%e0%b8%87/
+    - text: 
+  - text: 

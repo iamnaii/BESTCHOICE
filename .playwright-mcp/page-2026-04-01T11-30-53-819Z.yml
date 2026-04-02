@@ -1,0 +1,348 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e6]:
+      - img "Ufriend" [ref=e7] [cursor=pointer]
+      - generic [ref=e8]:
+        - menuitem "ผ่อนสินค้า" [ref=e9] [cursor=pointer]:
+          - link "ผ่อนสินค้า" [ref=e10]:
+            - /url: https://www.ufriend.shop/%e0%b8%9c%e0%b9%88%e0%b8%ad%e0%b8%99%e0%b8%aa%e0%b8%b4%e0%b8%99%e0%b8%84%e0%b9%89%e0%b8%b2/
+        - menuitem "ออมดาวน์" [ref=e11] [cursor=pointer]:
+          - link "ออมดาวน์" [ref=e12]:
+            - /url: https://www.ufriend.shop/%e0%b8%ad%e0%b8%ad%e0%b8%a1%e0%b8%94%e0%b8%b2%e0%b8%a7%e0%b8%99%e0%b9%8c/
+        - menuitem "ไอโฟนแลกเงิน" [ref=e13] [cursor=pointer]:
+          - link "ไอโฟนแลกเงิน" [ref=e14]:
+            - /url: https://www.ufriend.shop/%e0%b9%84%e0%b8%ad%e0%b9%82%e0%b8%9f%e0%b8%99%e0%b9%81%e0%b8%a5%e0%b8%81%e0%b9%80%e0%b8%87%e0%b8%b4%e0%b8%99/
+        - menuitem "สินค้าของเรา" [ref=e15] [cursor=pointer]:
+          - link "สินค้าของเรา" [ref=e16]:
+            - /url: https://www.ufriend.shop/shop/
+        - menuitem "เกี่ยวกับยูเฟรนด์" [ref=e17] [cursor=pointer]:
+          - link "เกี่ยวกับยูเฟรนด์" [ref=e18]:
+            - /url: https://www.ufriend.shop/%e0%b9%80%e0%b8%81%e0%b8%b5%e0%b9%88%e0%b8%a2%e0%b8%a7%e0%b8%81%e0%b8%b1%e0%b8%9a%e0%b8%a2%e0%b8%b9%e0%b9%80%e0%b8%9f%e0%b8%a3%e0%b8%99%e0%b8%94%e0%b9%8c/
+        - menuitem "บทความ" [ref=e19] [cursor=pointer]:
+          - link "บทความ" [ref=e20]:
+            - /url: https://www.ufriend.shop/%e0%b8%9a%e0%b8%97%e0%b8%84%e0%b8%a7%e0%b8%b2%e0%b8%a1/
+        - menuitem "สาขาใกล้คุณ" [ref=e21] [cursor=pointer]:
+          - link "สาขาใกล้คุณ" [ref=e22]:
+            - /url: /near-branch
+        - menuitem "ร่วมงานกับเรา" [ref=e23] [cursor=pointer]:
+          - link "ร่วมงานกับเรา" [ref=e24]:
+            - /url: https://www.ufriend.shop/%e0%b8%a3%e0%b9%88%e0%b8%a7%e0%b8%a1%e0%b8%87%e0%b8%b2%e0%b8%99%e0%b8%81%e0%b8%b1%e0%b8%9a%e0%b9%80%e0%b8%a3%e0%b8%b2-new/
+  - generic [ref=e27]:
+    - generic [ref=e29]: ค้นหาสาขาใกล้คุณ
+    - generic [ref=e30]:
+      - generic [ref=e33]:
+        - region "Map" [ref=e34]
+        - generic [ref=e35]:
+          - generic [ref=e98]:
+            - generic:
+              - generic:
+                - button [ref=e100] [cursor=pointer]
+                - button [ref=e101] [cursor=pointer]
+                - button [ref=e102] [cursor=pointer]
+                - button [ref=e103] [cursor=pointer]
+                - button [ref=e104] [cursor=pointer]
+                - button [ref=e105] [cursor=pointer]
+                - button [ref=e106] [cursor=pointer]
+                - button [ref=e107] [cursor=pointer]
+                - button [ref=e108] [cursor=pointer]
+                - button [ref=e109] [cursor=pointer]
+                - button [ref=e110] [cursor=pointer]
+                - button [ref=e111] [cursor=pointer]
+                - button [ref=e112] [cursor=pointer]
+                - button [ref=e113] [cursor=pointer]
+                - button [ref=e114] [cursor=pointer]
+                - button [ref=e115] [cursor=pointer]
+                - button [ref=e116] [cursor=pointer]
+                - button [ref=e117] [cursor=pointer]
+                - button [ref=e118] [cursor=pointer]
+                - button [ref=e119] [cursor=pointer]
+                - button [ref=e120] [cursor=pointer]
+                - button [ref=e121] [cursor=pointer]
+                - button [ref=e122] [cursor=pointer]
+                - button [ref=e123] [cursor=pointer]
+                - button [ref=e124] [cursor=pointer]
+                - button [ref=e125] [cursor=pointer]
+                - button [ref=e126] [cursor=pointer]
+                - button [ref=e127] [cursor=pointer]
+                - button [ref=e128] [cursor=pointer]
+                - button [ref=e129] [cursor=pointer]
+                - button [ref=e130] [cursor=pointer]
+                - button [ref=e131] [cursor=pointer]
+                - button [ref=e132] [cursor=pointer]
+                - button [ref=e133] [cursor=pointer]
+                - button [ref=e134] [cursor=pointer]
+                - button [ref=e135] [cursor=pointer]
+          - iframe [ref=e136]:
+            
+      - generic [ref=e137]:
+        - generic [ref=e140]:
+          - textbox "ค้นหา" [ref=e141]
+          - group
+        - list [ref=e142]:
+          - button "Ufriend สาขา วงเวียนใหญ่" [ref=e143] [cursor=pointer]:
+            - generic [ref=e145]: Ufriend สาขา วงเวียนใหญ่
+          - button "Ufriend สาขา บางกะปิ" [ref=e146] [cursor=pointer]:
+            - generic [ref=e148]: Ufriend สาขา บางกะปิ
+          - button "Ufriend สาขา รังสิต" [ref=e149] [cursor=pointer]:
+            - generic [ref=e151]: Ufriend สาขา รังสิต
+          - button "Ufriend สาขา อุดมสุข" [ref=e152] [cursor=pointer]:
+            - generic [ref=e154]: Ufriend สาขา อุดมสุข
+          - button "Ufriend สาขา สมุทรปราการ" [ref=e155] [cursor=pointer]:
+            - generic [ref=e157]: Ufriend สาขา สมุทรปราการ
+          - button "Ufriend สาขา บางเขน" [ref=e158] [cursor=pointer]:
+            - generic [ref=e160]: Ufriend สาขา บางเขน
+          - button "Ufriend สาขา เวสต์เกต" [ref=e161] [cursor=pointer]:
+            - generic [ref=e163]: Ufriend สาขา เวสต์เกต
+          - button "Ufriend สาขา เซ็นทรัล ปิ่นเกล้า (ปิดปรับปรุงชั่วคราว)" [ref=e164] [cursor=pointer]:
+            - generic [ref=e166]: Ufriend สาขา เซ็นทรัล ปิ่นเกล้า (ปิดปรับปรุงชั่วคราว)
+          - button "Ufriend สาขา เซ็นทรัลเวิลด์" [ref=e167] [cursor=pointer]:
+            - generic [ref=e169]: Ufriend สาขา เซ็นทรัลเวิลด์
+          - button "Ufriend สาขา ลาดพร้าว" [ref=e170] [cursor=pointer]:
+            - generic [ref=e172]: Ufriend สาขา ลาดพร้าว
+          - button "Ufriend สาขา ซีคอน สแควร์ ศรีนครินทร์" [ref=e173] [cursor=pointer]:
+            - generic [ref=e175]: Ufriend สาขา ซีคอน สแควร์ ศรีนครินทร์
+          - button "Ufriend สาขา แฟชั่นไอส์แลนด์" [ref=e176] [cursor=pointer]:
+            - generic [ref=e178]: Ufriend สาขา แฟชั่นไอส์แลนด์
+          - button "Ufriend สาขา อิมพีเรียล สำโรง" [ref=e179] [cursor=pointer]:
+            - generic [ref=e181]: Ufriend สาขา อิมพีเรียล สำโรง
+          - button "Ufriend สาขา พระนครศรีอยุธยา" [ref=e182] [cursor=pointer]:
+            - generic [ref=e184]: Ufriend สาขา พระนครศรีอยุธยา
+          - button "Ufriend สาขา สุพรรณบุรี" [ref=e185] [cursor=pointer]:
+            - generic [ref=e187]: Ufriend สาขา สุพรรณบุรี
+          - button "Ufriend สาขา นครปฐม" [ref=e188] [cursor=pointer]:
+            - generic [ref=e190]: Ufriend สาขา นครปฐม
+          - button "Ufriend สาขา ราชบุรี" [ref=e191] [cursor=pointer]:
+            - generic [ref=e193]: Ufriend สาขา ราชบุรี
+          - button "Ufriend สาขา พิษณุโลก" [ref=e194] [cursor=pointer]:
+            - generic [ref=e196]: Ufriend สาขา พิษณุโลก
+          - button "Ufriend สาขา บางใหญ่" [ref=e197] [cursor=pointer]:
+            - generic [ref=e199]: Ufriend สาขา บางใหญ่
+          - button "Ufriend สาขา เชียงใหม่" [ref=e200] [cursor=pointer]:
+            - generic [ref=e202]: Ufriend สาขา เชียงใหม่
+          - button "Ufriend สาขา หาดใหญ่" [ref=e203] [cursor=pointer]:
+            - generic [ref=e205]: Ufriend สาขา หาดใหญ่
+          - button "Ufriend สาขา ตรัง" [ref=e206] [cursor=pointer]:
+            - generic [ref=e208]: Ufriend สาขา ตรัง
+          - button "Ufriend สาขา เซ็นทรัล สุราษฎร์ธานี" [ref=e209] [cursor=pointer]:
+            - generic [ref=e211]: Ufriend สาขา เซ็นทรัล สุราษฎร์ธานี
+          - button "Ufriend สาขา นครศรีธรรมราช" [ref=e212] [cursor=pointer]:
+            - generic [ref=e214]: Ufriend สาขา นครศรีธรรมราช
+          - button "Ufriend สาขา สุราษฎร์ธานี" [ref=e215] [cursor=pointer]:
+            - generic [ref=e217]: Ufriend สาขา สุราษฎร์ธานี
+          - button "Ufriend สาขา บางแสน ชลบุรี" [ref=e218] [cursor=pointer]:
+            - generic [ref=e220]: Ufriend สาขา บางแสน ชลบุรี
+          - button "Ufriend สาขา พัทยา" [ref=e221] [cursor=pointer]:
+            - generic [ref=e223]: Ufriend สาขา พัทยา
+          - button "Ufriend สาขา ระยอง" [ref=e224] [cursor=pointer]:
+            - generic [ref=e226]: Ufriend สาขา ระยอง
+          - button "Ufriend สาขา เซ็นทรัล ชลบุรี" [ref=e227] [cursor=pointer]:
+            - generic [ref=e229]: Ufriend สาขา เซ็นทรัล ชลบุรี
+          - button "Ufriend สาขา โคราช" [ref=e230] [cursor=pointer]:
+            - generic [ref=e232]: Ufriend สาขา โคราช
+          - button "Ufriend สาขา ขอนแก่น" [ref=e233] [cursor=pointer]:
+            - generic [ref=e235]: Ufriend สาขา ขอนแก่น
+          - button "Ufriend สาขา อุดรธานี" [ref=e236] [cursor=pointer]:
+            - generic [ref=e238]: Ufriend สาขา อุดรธานี
+          - button "Ufriend สาขา บุรีรัมย์" [ref=e239] [cursor=pointer]:
+            - generic [ref=e241]: Ufriend สาขา บุรีรัมย์
+          - button "Ufriend สาขา สุรินทร์" [ref=e242] [cursor=pointer]:
+            - generic [ref=e244]: Ufriend สาขา สุรินทร์
+          - button "Ufriend สาขา อุบลราชธานี" [ref=e245] [cursor=pointer]:
+            - generic [ref=e247]: Ufriend สาขา อุบลราชธานี
+          - button "Ufriend สาขา เซ็นทรัลขอนแก่น" [ref=e248] [cursor=pointer]:
+            - generic [ref=e250]: Ufriend สาขา เซ็นทรัลขอนแก่น
+    - generic [ref=e252]: เปิดบริการทั่วประเทศ
+    - tablist "basic tabs example" [ref=e256]:
+      - tab "กรุงเทพและปริมณฑล" [selected] [ref=e257] [cursor=pointer]: กรุงเทพและปริมณฑล
+      - tab "ต่างจังหวัด" [ref=e258] [cursor=pointer]: ต่างจังหวัด
+    - generic [ref=e260]:
+      - generic [ref=e262]:
+        - paragraph [ref=e264]: วงเวียนใหญ่
+        - generic [ref=e265]:
+          - paragraph [ref=e266]: 34 ถ. กรุงธนบุรี แขวงบางลำภูล่าง เขตคลองสาน กรุงเทพมหานคร 10600
+          - paragraph
+        - paragraph [ref=e267]:
+          - paragraph [ref=e268]: เวลาทำการ 09.00 - 18.00 น.
+          - link "ดูแผนที่และเส้นทาง" [ref=e269] [cursor=pointer]:
+            - /url: https://goo.gl/maps/ENytKK7WTD4887d4A
+      - generic [ref=e271]:
+        - paragraph [ref=e273]: บางกะปิ
+        - generic [ref=e274]:
+          - paragraph [ref=e275]: โครงการตะวันนา ห้อง เลขที่ 1-2 ถ. ลาดพร้าว คลองจั่น เขตบางกะปิ กรุงเทพมหานคร 10240
+          - paragraph [ref=e276]: หน้าทางเข้าโครงการตะวันนา ติดถนนใหญ่ ติดโดมิโน พิซซ่า
+        - paragraph [ref=e277]:
+          - paragraph [ref=e278]: เวลาทำการ 09.00 - 18.00 น.
+          - link "ดูแผนที่และเส้นทาง" [ref=e279] [cursor=pointer]:
+            - /url: https://maps.app.goo.gl/rQhsRJQXuTAzmeP39
+      - generic [ref=e281]:
+        - paragraph [ref=e283]: รังสิต
+        - generic [ref=e284]:
+          - paragraph [ref=e285]: 197, 199 ถนน รังสิต-ปทุมธานี ตำบล ประชาธิปัตย์ อำเภอ ธัญบุรี ปทุมธานี
+          - paragraph [ref=e286]: เลยเทศบาลรังสิต อยู่หน้าปากซอย รังสิต-ปทุมธานี 19 ก่อนถึงสะพานลอย
+        - paragraph [ref=e287]:
+          - paragraph [ref=e288]: เวลาทำการ 09.00 - 18.00 น.
+          - link "ดูแผนที่และเส้นทาง" [ref=e289] [cursor=pointer]:
+            - /url: https://maps.app.goo.gl/KZnKgsu5nzzps2pB6?g_st=ic
+      - generic [ref=e291]:
+        - paragraph [ref=e293]: อุดมสุข
+        - generic [ref=e294]:
+          - paragraph [ref=e295]: บ้านเลขที่ 337,339 บางนาเหนือ เขตบางนา 10260
+          - paragraph [ref=e296]: อยู่ระหว่างซอยอุดมสุข 9 กับอุดมสุข 11
+        - paragraph [ref=e297]:
+          - paragraph [ref=e298]: เวลาทำการ 09.00 - 18.00 น.
+          - link "ดูแผนที่และเส้นทาง" [ref=e299] [cursor=pointer]:
+            - /url: https://maps.app.goo.gl/Uc33uPKyKMoUpLT68
+      - generic [ref=e301]:
+        - paragraph [ref=e303]: สมุทรปราการ
+        - generic [ref=e304]:
+          - paragraph [ref=e305]: บ้านเลขที่ 6,8,10 ถนน ประโคนชัย ตำบล ปากน้ำ อำเภอ เมืองสมุทรปราการ จังหวัด สมุทรปราการ
+          - paragraph [ref=e306]: อยู่ปากน้ำ ใกล้สถานีตำรวจภูธรเมืองสมุทรปราการ
+        - paragraph [ref=e307]:
+          - paragraph [ref=e308]: เวลาทำการ 09.00 - 18.00 น.
+          - link "ดูแผนที่และเส้นทาง" [ref=e309] [cursor=pointer]:
+            - /url: https://maps.app.goo.gl/FscEvc1j92hF2xDv6
+      - generic [ref=e311]:
+        - paragraph [ref=e313]: บางเขน
+        - generic [ref=e314]:
+          - paragraph [ref=e315]: บ้านเลขที่ 110/5-6 หมู่ที่ 7 แขวงอนุสาวรีย์ เขตบางเขน กรุงเทพมหานคร
+          - paragraph
+        - paragraph [ref=e316]:
+          - paragraph [ref=e317]: เวลาทำการ 09.00 - 18.00 น.
+          - link "ดูแผนที่และเส้นทาง" [ref=e318] [cursor=pointer]:
+            - /url: https://maps.app.goo.gl/gZTKHHAfB1iF5sw86
+      - generic [ref=e320]:
+        - paragraph [ref=e322]: Apple House เวสต์เกต
+        - generic [ref=e323]:
+          - paragraph [ref=e324]: 199 ถนน กาญจนาภิเษก ตำบล เสาธงหิน อำเภอ บางใหญ่ นนทบุรี 11140
+          - paragraph [ref=e325]: ร้านเดียวกับ Apple House สาขาเซ็นทรัล เวสต์เกต (อยู่ชั้น2 ใกล้ทางเข้า IKEA)
+        - paragraph [ref=e326]:
+          - paragraph [ref=e327]: เวลาทำการ 10.00 - 18.00 น.
+          - link "ดูแผนที่และเส้นทาง" [ref=e328] [cursor=pointer]:
+            - /url: https://maps.app.goo.gl/YZ6Kbnbw3sAr7XVf7
+      - generic [ref=e330]:
+        - paragraph [ref=e332]: Apple House เซ็นทรัล ปิ่นเกล้า (ปิดปรับปรุงชั่วคราว)
+        - generic [ref=e333]:
+          - paragraph [ref=e334]: 7/1 ถ. บรมราชชนนี แขวงอรุณอมรินทร์ เขตบางกอกน้อย กรุงเทพมหานคร 10700
+          - paragraph [ref=e335]: ร้านเดียวกับ Apple House สาขาปิ่นเกล้า (อยู่ชั้น 3) ติดบันไดเลื่อน ตรงข้าม AIS True
+        - paragraph [ref=e336]:
+          - paragraph [ref=e337]: เวลาทำการ 10.00 - 18.00 น.
+          - link "ดูแผนที่และเส้นทาง" [ref=e338] [cursor=pointer]:
+            - /url: https://maps.app.goo.gl/CjEwAFErcrdumGWw6
+      - generic [ref=e340]:
+        - paragraph [ref=e342]: Apple House เซ็นทรัลเวิลด์
+        - generic [ref=e343]:
+          - paragraph [ref=e344]: 999/9 ถ. พระรามที่ 1 แขวงปทุมวัน เขตปทุมวัน กรุงเทพมหานคร 10330
+          - paragraph [ref=e345]: ร้านเดียวกับ Apple House สาขาเซ็นทรัลเวิลด์ (อยู่ชั้น 4) ตรงข้ามร้าน BigCamara
+        - paragraph [ref=e346]:
+          - paragraph [ref=e347]: เวลาทำการ 10.00 - 18.00 น.
+          - link "ดูแผนที่และเส้นทาง" [ref=e348] [cursor=pointer]:
+            - /url: https://maps.app.goo.gl/z5cq5wFzvX5C6HtN9
+      - generic [ref=e350]:
+        - paragraph [ref=e352]: Apple House ลาดพร้าว
+        - generic [ref=e353]:
+          - paragraph [ref=e354]: ห้อง RMU315 ชั้น3 ศูนย์การค้าเซนทรัลลาดพร้าว 1693 ถนนพหลโยธิน แขวงจตุจักร เขตจตุจักร กรุงเทพมหานคร 10900
+          - paragraph [ref=e355]: ร้านเดียวกับ Apple House สาขาลาดพร้าว (อยู่ชั้น3 หน้าร้าน Jaymart)
+        - paragraph [ref=e356]:
+          - paragraph [ref=e357]: เวลาทำการ 10.00 - 18.00 น.
+          - link "ดูแผนที่และเส้นทาง" [ref=e358] [cursor=pointer]:
+            - /url: https://maps.app.goo.gl/by5QqazdWrnoZY3y8
+      - generic [ref=e360]:
+        - paragraph [ref=e362]: Apple House ซีคอน สแควร์ ศรีนครินทร์
+        - generic [ref=e363]:
+          - paragraph [ref=e364]: เลขที่ 55 ถ.ศรีนครินทร์ แขวงหนองบอน เขตประเวศ กรุงเทพมหานคร 10250
+          - paragraph [ref=e365]: Apple House ชั้น B1 ซีคอนสแควร์ศรีนครินทร์, ITB034
+        - paragraph [ref=e366]:
+          - paragraph [ref=e367]: เวลาทำการ 10.30-21.30 น.
+          - link "ดูแผนที่และเส้นทาง" [ref=e368] [cursor=pointer]:
+            - /url: https://maps.app.goo.gl/Dn7ZLUcwGKoqRvsR9
+      - generic [ref=e370]:
+        - paragraph [ref=e372]: Apple House แฟชั่นไอส์แลนด์
+        - generic [ref=e373]:
+          - paragraph [ref=e374]: 587,589, 589/7-9 ถนนรามอินทรา แขวงคันนายาว เขตคันนายาว กรุงเทพมหานคร 10230
+          - paragraph
+        - paragraph [ref=e375]:
+          - paragraph [ref=e376]: เวลาทำการ 10.00 - 18.00 น.
+          - link "ดูแผนที่และเส้นทาง" [ref=e377] [cursor=pointer]:
+            - /url: https://maps.app.goo.gl/aATyJzPiHRFtVfvt5
+      - generic [ref=e379]:
+        - paragraph [ref=e381]: Apple House อิมพีเรียล สำโรง
+        - generic [ref=e382]:
+          - paragraph [ref=e383]: อิมพีเรียล เวิลด์ สำโรง 999 ถนนสุขุมวิท สำโรงเหนือ สมุทรปราการ 10270
+          - paragraph
+        - paragraph [ref=e384]:
+          - paragraph [ref=e385]: เวลาทำการ 10.00 - 18.00 น.
+          - link "ดูแผนที่และเส้นทาง" [ref=e386] [cursor=pointer]:
+            - /url: https://maps.app.goo.gl/5FrRTLBRuwMQ2ncT7
+  - generic [ref=e387]:
+    - generic [ref=e388]:
+      - generic [ref=e389]:
+        - img "logo ufriend" [ref=e390]
+        - heading "ยูเฟรนด์" [level=6] [ref=e391]
+        - heading "ชีวิตง่ายดี เพราะมีเพื่อนที่รู้ใจ" [level=6] [ref=e392]
+      - generic [ref=e393]:
+        - generic [ref=e394]:
+          - heading "เมนู" [level=6] [ref=e395]
+          - generic [ref=e396]:
+            - link "ผ่อนสินค้า" [ref=e397] [cursor=pointer]:
+              - /url: https://www.ufriend.shop/%e0%b8%9c%e0%b9%88%e0%b8%ad%e0%b8%99%e0%b8%aa%e0%b8%b4%e0%b8%99%e0%b8%84%e0%b9%89%e0%b8%b2/
+            - link "ออมดาวน์" [ref=e398] [cursor=pointer]:
+              - /url: https://www.ufriend.shop/%e0%b8%ad%e0%b8%ad%e0%b8%a1%e0%b8%94%e0%b8%b2%e0%b8%a7%e0%b8%99%e0%b9%8c/
+            - link "ไอโฟนแลกเงิน" [ref=e399] [cursor=pointer]:
+              - /url: https://www.ufriend.shop/%e0%b9%84%e0%b8%ad%e0%b9%82%e0%b8%9f%e0%b8%99%e0%b9%81%e0%b8%a5%e0%b8%81%e0%b9%80%e0%b8%87%e0%b8%b4%e0%b8%99/
+            - link "สินค้าของเรา" [ref=e400] [cursor=pointer]:
+              - /url: https://www.ufriend.shop/shop/
+            - link "เกี่ยวกับยูเฟรนด์" [ref=e401] [cursor=pointer]:
+              - /url: https://www.ufriend.shop/%e0%b9%80%e0%b8%81%e0%b8%b5%e0%b9%88%e0%b8%a2%e0%b8%a7%e0%b8%81%e0%b8%b1%e0%b8%9a%e0%b8%a2%e0%b8%b9%e0%b9%80%e0%b8%9f%e0%b8%a3%e0%b8%99%e0%b8%94%e0%b9%8c/
+            - link "บทความ" [ref=e402] [cursor=pointer]:
+              - /url: https://www.ufriend.shop/%e0%b8%9a%e0%b8%97%e0%b8%84%e0%b8%a7%e0%b8%b2%e0%b8%a1/
+            - link "สาขาใกล้คุณ" [ref=e403] [cursor=pointer]:
+              - /url: /near-branch
+            - link "ร่วมงานกับเรา" [ref=e404] [cursor=pointer]:
+              - /url: https://www.ufriend.shop/%e0%b8%a3%e0%b9%88%e0%b8%a7%e0%b8%a1%e0%b8%87%e0%b8%b2%e0%b8%99%e0%b8%81%e0%b8%b1%e0%b8%9a%e0%b9%80%e0%b8%a3%e0%b8%b2-new/
+        - generic [ref=e405]:
+          - heading "ติดต่อเรา" [level=6] [ref=e406]
+          - generic [ref=e407]:
+            - link "Contact ufriendshop ufriendshop" [ref=e408] [cursor=pointer]:
+              - /url: https://www.facebook.com/Ufriendshop
+              - img "Contact ufriendshop" [ref=e409]
+              - text: ufriendshop
+            - link "Contact @ufriend @ufriend" [ref=e410] [cursor=pointer]:
+              - /url: https://page.line.me/945uzjoj?openQrModal=true
+              - img "Contact @ufriend" [ref=e411]
+              - text: "@ufriend"
+            - link "Contact @ufriendshop @ufriendshop" [ref=e412] [cursor=pointer]:
+              - /url: https://www.tiktok.com/@ufriendshop
+              - img "Contact @ufriendshop" [ref=e413]
+              - text: "@ufriendshop"
+            - link "Contact @ufriendshop @ufriendshop" [ref=e414] [cursor=pointer]:
+              - /url: https://www.youtube.com/@ufriendshop
+              - img "Contact @ufriendshop" [ref=e415]
+              - text: "@ufriendshop"
+            - link "Contact 064-616-9699 064-616-9699" [ref=e416] [cursor=pointer]:
+              - /url: tel:0646169699
+              - img "Contact 064-616-9699" [ref=e417]
+              - text: 064-616-9699
+      - generic [ref=e418]:
+        - generic [ref=e419]:
+          - heading "แอปยูเฟรนด์ โหลดเลย!" [level=6] [ref=e420]
+          - generic [ref=e421]:
+            - img "logo ufriend" [ref=e422]
+            - link "App Link 0" [ref=e423] [cursor=pointer]:
+              - /url: https://apps.apple.com/th/app/ufriend/id1585122357?l=th
+              - img "App Link 0" [ref=e424]
+            - link "App Link 1" [ref=e425] [cursor=pointer]:
+              - /url: https://apps.apple.com/th/app/ufriend/id1585122357?l=th
+              - img "App Link 1" [ref=e426]
+        - generic [ref=e427]:
+          - heading "มาตรฐานการรับรอง" [level=6] [ref=e428]
+          - img "DBD Registered" [ref=e429]
+    - generic [ref=e430]:
+      - generic [ref=e431]:
+        - paragraph [ref=e432]: Copyright © 2026 D App Maker Co., LTD All rights reserved
+        - generic [ref=e433]:
+          - link "คำถามที่พบบ่อย" [ref=e434] [cursor=pointer]:
+            - /url: https://www.ufriend.shop/help/
+          - paragraph [ref=e435]: "|"
+          - link "นโยบายความคุ้มครองข้อมูลส่วนบุคคล" [ref=e436] [cursor=pointer]:
+            - /url: https://ufriend.shop/%e0%b8%99%e0%b9%82%e0%b8%a2%e0%b8%9a%e0%b8%b2%e0%b8%a2%e0%b8%84%e0%b8%a7%e0%b8%b2%e0%b8%a1%e0%b9%80%e0%b8%9b%e0%b9%87%e0%b8%99%e0%b8%aa%e0%b9%88%e0%b8%a7%e0%b8%99%e0%b8%95%e0%b8%b1%e0%b8%a7-new/
+      - paragraph [ref=e438]: v4.3.8

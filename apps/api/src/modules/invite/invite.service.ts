@@ -137,6 +137,32 @@ export class InviteService {
     return { data, total, page, limit };
   }
 
+  async resend(id: string, invitedBy: string) {
+    const invite = await this.prisma.inviteToken.findUnique({ where: { id } });
+    if (!invite) {
+      throw new NotFoundException('ไม่พบคำเชิญ');
+    }
+    if (invite.usedAt) {
+      throw new BadRequestException('คำเชิญนี้ถูกใช้แล้ว ไม่สามารถส่งซ้ำได้');
+    }
+
+    // Expire the old invite
+    await this.prisma.inviteToken.update({
+      where: { id },
+      data: { expiresAt: new Date() },
+    });
+
+    // Create a new invite with the same details
+    return this.create(
+      {
+        email: invite.email,
+        role: invite.role,
+        branchId: invite.branchId || undefined,
+      },
+      invitedBy,
+    );
+  }
+
   async revoke(id: string) {
     const invite = await this.prisma.inviteToken.findUnique({ where: { id } });
     if (!invite) {

@@ -38,6 +38,12 @@ export class InviteController {
     );
   }
 
+  @Post(':id/resend')
+  @Roles('OWNER')
+  resend(@Param('id') id: string, @Request() req: { user: { id: string } }) {
+    return this.inviteService.resend(id, req.user.id);
+  }
+
   @Delete(':id')
   @Roles('OWNER')
   revoke(@Param('id') id: string) {

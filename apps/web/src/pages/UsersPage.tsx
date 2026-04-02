@@ -152,6 +152,15 @@ export default function UsersPage() {
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
+  const resendInviteMutation = useMutation({
+    mutationFn: async (id: string) => api.post(`/invite/${id}/resend`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invites'] });
+      toast.success('ส่งคำเชิญซ้ำสำเร็จ อีเมลถูกส่งแล้ว');
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
   const handleInviteSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setLastInviteUrl(null);
@@ -355,14 +364,25 @@ export default function UsersPage() {
       key: 'actions', label: '',
       render: (i: InviteToken) => {
         const status = getInviteStatus(i);
-        if (status.label !== 'รอลงทะเบียน') return null;
+        if (status.label === 'ใช้แล้ว') return null;
         return (
-          <button
-            onClick={() => setConfirmDialog({ open: true, message: `ต้องการยกเลิกคำเชิญ "${i.email}" หรือไม่?`, action: () => revokeInviteMutation.mutate(i.id) })}
-            className="text-red-500 hover:text-red-600 text-sm font-medium"
-          >
-            ยกเลิก
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setConfirmDialog({ open: true, message: `ต้องการส่งคำเชิญซ้ำไปยัง "${i.email}" หรือไม่?`, action: () => resendInviteMutation.mutate(i.id) })}
+              disabled={resendInviteMutation.isPending}
+              className="text-primary hover:text-primary/80 text-sm font-medium"
+            >
+              ส่งซ้ำ
+            </button>
+            {status.label === 'รอลงทะเบียน' && (
+              <button
+                onClick={() => setConfirmDialog({ open: true, message: `ต้องการยกเลิกคำเชิญ "${i.email}" หรือไม่?`, action: () => revokeInviteMutation.mutate(i.id) })}
+                className="text-red-500 hover:text-red-600 text-sm font-medium"
+              >
+                ยกเลิก
+              </button>
+            )}
+          </div>
         );
       },
     },

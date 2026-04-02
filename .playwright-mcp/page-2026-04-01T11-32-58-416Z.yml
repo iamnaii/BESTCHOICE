@@ -1,0 +1,465 @@
+- generic [active] [ref=e1]:
+  - navigation [ref=e2]:
+    - generic [ref=e4]:
+      - generic [ref=e6]: Menu
+      - list [ref=e7]:
+        - listitem [ref=e8]:
+          - link [ref=e9] [cursor=pointer]:
+            - /url: https://ufriend.shop/%e0%b8%9c%e0%b9%88%e0%b8%ad%e0%b8%99%e0%b8%aa%e0%b8%b4%e0%b8%99%e0%b8%84%e0%b9%89%e0%b8%b2/
+            - text: ผ่อนสินค้า
+        - listitem [ref=e10]:
+          - link [ref=e11] [cursor=pointer]:
+            - /url: https://ufriend.shop/%e0%b8%ad%e0%b8%ad%e0%b8%a1%e0%b8%94%e0%b8%b2%e0%b8%a7%e0%b8%99%e0%b9%8c/
+            - text: ออมดาวน์
+        - listitem [ref=e12]:
+          - link [ref=e13] [cursor=pointer]:
+            - /url: https://ufriend.shop/%e0%b9%84%e0%b8%ad%e0%b9%82%e0%b8%9f%e0%b8%99%e0%b9%81%e0%b8%a5%e0%b8%81%e0%b9%80%e0%b8%87%e0%b8%b4%e0%b8%99/
+            - text: ไอโฟนแลกเงิน
+        - listitem [ref=e14]:
+          - link [ref=e15] [cursor=pointer]:
+            - /url: https://ufriend.shop/shop/
+            - text: สินค้าของเรา
+        - listitem [ref=e16]:
+          - link [ref=e17] [cursor=pointer]:
+            - /url: https://ufriend.shop/%e0%b9%80%e0%b8%81%e0%b8%b5%e0%b9%88%e0%b8%a2%e0%b8%a7%e0%b8%81%e0%b8%b1%e0%b8%9a%e0%b8%a2%e0%b8%b9%e0%b9%80%e0%b8%9f%e0%b8%a3%e0%b8%99%e0%b8%94%e0%b9%8c/
+            - text: เกี่ยวกับยูเฟรนด์
+        - listitem [ref=e18]:
+          - link [ref=e19] [cursor=pointer]:
+            - /url: https://ufriend.shop/%E0%B8%9A%E0%B8%97%E0%B8%84%E0%B8%A7%E0%B8%B2%E0%B8%A1/
+            - text: บทความ
+        - listitem [ref=e20]:
+          - link [ref=e21] [cursor=pointer]:
+            - /url: https://ufriend.shop/near-branch
+            - text: สาขาใกล้คุณ
+        - listitem [ref=e22]:
+          - link [ref=e23] [cursor=pointer]:
+            - /url: https://ufriend.shop/%e0%b8%a3%e0%b9%88%e0%b8%a7%e0%b8%a1%e0%b8%87%e0%b8%b2%e0%b8%99%e0%b8%81%e0%b8%b1%e0%b8%9a%e0%b9%80%e0%b8%a3%e0%b8%b2/
+            - text: ร่วมงานกับเรา
+    - generic [ref=e25]:
+      - link [ref=e26] [cursor=pointer]:
+        - /url: https://www.facebook.com/thembayteam/
+        - generic [ref=e27]: 
+      - link [ref=e28] [cursor=pointer]:
+        - /url: https://www.instagram.com/thembayteam/
+        - generic [ref=e29]: 
+      - link [ref=e30] [cursor=pointer]:
+        - /url: https://twitter.com/bay_them
+        - generic [ref=e31]: 
+      - link [ref=e32] [cursor=pointer]:
+        - /url: https://www.youtube.com/channel/UCIkuoXjv4tS6SUHhEBAg9Ew
+        - generic [ref=e33]: 
+  - generic [ref=e34]:
+    - text:          
+    - banner [ref=e35]:
+      - text: 
+      - generic [ref=e39]:
+        - link "Ufriend" [ref=e42] [cursor=pointer]:
+          - /url: https://ufriend.shop/
+          - img "Ufriend" [ref=e43]
+        - navigation [ref=e45]:
+          - list [ref=e47]:
+            - listitem [ref=e48]:
+              - link "ผ่อนสินค้า" [ref=e49] [cursor=pointer]:
+                - /url: https://ufriend.shop/%e0%b8%9c%e0%b9%88%e0%b8%ad%e0%b8%99%e0%b8%aa%e0%b8%b4%e0%b8%99%e0%b8%84%e0%b9%89%e0%b8%b2/
+            - listitem [ref=e50]:
+              - link "ออมดาวน์" [ref=e51] [cursor=pointer]:
+                - /url: https://ufriend.shop/%e0%b8%ad%e0%b8%ad%e0%b8%a1%e0%b8%94%e0%b8%b2%e0%b8%a7%e0%b8%99%e0%b9%8c/
+            - listitem [ref=e52]:
+              - link "ไอโฟนแลกเงิน" [ref=e53] [cursor=pointer]:
+                - /url: https://ufriend.shop/%e0%b9%84%e0%b8%ad%e0%b9%82%e0%b8%9f%e0%b8%99%e0%b9%81%e0%b8%a5%e0%b8%81%e0%b9%80%e0%b8%87%e0%b8%b4%e0%b8%99/
+            - listitem [ref=e54]:
+              - link "สินค้าของเรา" [ref=e55] [cursor=pointer]:
+                - /url: https://ufriend.shop/shop/
+            - listitem [ref=e56]:
+              - link "เกี่ยวกับยูเฟรนด์" [ref=e57] [cursor=pointer]:
+                - /url: https://ufriend.shop/%e0%b9%80%e0%b8%81%e0%b8%b5%e0%b9%88%e0%b8%a2%e0%b8%a7%e0%b8%81%e0%b8%b1%e0%b8%9a%e0%b8%a2%e0%b8%b9%e0%b9%80%e0%b8%9f%e0%b8%a3%e0%b8%99%e0%b8%94%e0%b9%8c/
+            - listitem [ref=e58]:
+              - link "บทความ" [ref=e59] [cursor=pointer]:
+                - /url: https://ufriend.shop/%E0%B8%9A%E0%B8%97%E0%B8%84%E0%B8%A7%E0%B8%B2%E0%B8%A1/
+            - listitem [ref=e60]:
+              - link "สาขาใกล้คุณ" [ref=e61] [cursor=pointer]:
+                - /url: https://ufriend.shop/near-branch
+            - listitem [ref=e62]:
+              - link "ร่วมงานกับเรา" [ref=e63] [cursor=pointer]:
+                - /url: https://ufriend.shop/%e0%b8%a3%e0%b9%88%e0%b8%a7%e0%b8%a1%e0%b8%87%e0%b8%b2%e0%b8%99%e0%b8%81%e0%b8%b1%e0%b8%9a%e0%b9%80%e0%b8%a3%e0%b8%b2/
+        - generic [ref=e65]:
+          - link "TH" [ref=e66] [cursor=pointer]:
+            - /url: ""
+            - img "TH" [ref=e67]
+          - link "EN" [ref=e68] [cursor=pointer]:
+            - /url: https://ufriend.shop/about
+            - img "EN" [ref=e69]
+    - generic [ref=e72]:
+      - list [ref=e76]:
+        - listitem [ref=e77]:
+          - link "Home" [ref=e78] [cursor=pointer]:
+            - /url: https://ufriend.shop
+        - listitem [ref=e79]: /สินค้า
+      - text:  
+      - main [ref=e84]:
+        - generic [ref=e85]:
+          - generic [ref=e86]:
+            - button "" [ref=e87] [cursor=pointer]:
+              - generic [ref=e88]: 
+            - button "" [ref=e89] [cursor=pointer]:
+              - generic [ref=e90]: 
+          - button "Default sorting Default sorting " [ref=e92]:
+            - combobox "Shop order" [ref=e93]:
+              - option "Default sorting" [selected]
+              - option "Sort by popularity"
+              - option "Sort by latest"
+              - 'option "Sort by price: low to high"'
+              - 'option "Sort by price: high to low"'
+            - paragraph [ref=e94]:
+              - generic [ref=e95] [cursor=pointer]: Default sorting
+              - generic [ref=e96]: 
+            - text:     
+        - generic [ref=e98]:
+          - generic [ref=e101]:
+            - generic [ref=e102]:
+              - figure [ref=e103]:
+                - link "[1] Apple iPhone 17":
+                  - /url: https://ufriend.shop/product/1-iphone-17/
+                  - figure [ref=e105] [cursor=pointer]:
+                    - img "iPhone 171" [ref=e108]
+                - list [ref=e110]:
+                  - listitem [ref=e111]:
+                    - link "Apple" [ref=e112] [cursor=pointer]:
+                      - /url: https://ufriend.shop/product-brands/apple/
+              - text: 
+            - generic [ref=e113]:
+              - heading "[1] Apple iPhone 17" [level=3] [ref=e114]:
+                - link "[1] Apple iPhone 17" [ref=e115] [cursor=pointer]:
+                  - /url: https://ufriend.shop/product/1-iphone-17/
+              - generic [ref=e116]:
+                - text: ราคาเริ่มต้นเพียง
+                - insertion [ref=e117]:
+                  - generic [ref=e119]: ฿39,900.00
+          - generic [ref=e122]:
+            - generic [ref=e123]:
+              - figure [ref=e124]:
+                - link "[2] Apple iPhone 17 Air":
+                  - /url: https://ufriend.shop/product/2-apple-iphone-17-air/
+                  - figure [ref=e126] [cursor=pointer]:
+                    - img "iPhone Air1" [ref=e129]
+                - list [ref=e131]:
+                  - listitem [ref=e132]:
+                    - link "Apple" [ref=e133] [cursor=pointer]:
+                      - /url: https://ufriend.shop/product-brands/apple/
+              - text: 
+            - generic [ref=e134]:
+              - heading "[2] Apple iPhone 17 Air" [level=3] [ref=e135]:
+                - link "[2] Apple iPhone 17 Air" [ref=e136] [cursor=pointer]:
+                  - /url: https://ufriend.shop/product/2-apple-iphone-17-air/
+              - generic [ref=e137]:
+                - text: ราคาเริ่มต้นเพียง
+                - insertion [ref=e138]:
+                  - generic [ref=e140]: ฿46,900.00
+          - generic [ref=e143]:
+            - generic [ref=e144]:
+              - figure [ref=e145]:
+                - link "[3] Apple iPhone 17 Pro":
+                  - /url: https://ufriend.shop/product/3-apple-iphone-17-pro/
+                  - figure [ref=e147] [cursor=pointer]:
+                    - img "iPhone 17 Pro1" [ref=e150]
+                - list [ref=e152]:
+                  - listitem [ref=e153]:
+                    - link "Apple" [ref=e154] [cursor=pointer]:
+                      - /url: https://ufriend.shop/product-brands/apple/
+              - text: 
+            - generic [ref=e155]:
+              - heading "[3] Apple iPhone 17 Pro" [level=3] [ref=e156]:
+                - link "[3] Apple iPhone 17 Pro" [ref=e157] [cursor=pointer]:
+                  - /url: https://ufriend.shop/product/3-apple-iphone-17-pro/
+              - generic [ref=e158]:
+                - text: ราคาเริ่มต้นเพียง
+                - insertion [ref=e159]:
+                  - generic [ref=e161]: ฿51,900.00
+          - generic [ref=e164]:
+            - generic [ref=e165]:
+              - figure [ref=e166]:
+                - link "[4] Apple iPhone 17 Pro Max":
+                  - /url: https://ufriend.shop/product/4-apple-iphone-17-pro-max/
+                  - figure [ref=e168] [cursor=pointer]:
+                    - img "iPhone 17 Pro Max1" [ref=e171]
+                - list [ref=e173]:
+                  - listitem [ref=e174]:
+                    - link "Apple" [ref=e175] [cursor=pointer]:
+                      - /url: https://ufriend.shop/product-brands/apple/
+              - text: 
+            - generic [ref=e176]:
+              - heading "[4] Apple iPhone 17 Pro Max" [level=3] [ref=e177]:
+                - link "[4] Apple iPhone 17 Pro Max" [ref=e178] [cursor=pointer]:
+                  - /url: https://ufriend.shop/product/4-apple-iphone-17-pro-max/
+              - generic [ref=e179]:
+                - text: ราคาเริ่มต้นเพียง
+                - insertion [ref=e180]:
+                  - generic [ref=e182]: ฿56,900.00
+          - generic [ref=e185]:
+            - generic [ref=e186]:
+              - figure [ref=e187]:
+                - link "[5] Apple iPhone 17e":
+                  - /url: https://ufriend.shop/product/5-apple-iphone-17e/
+                  - figure [ref=e189] [cursor=pointer]:
+                    - img "screenshot-20260314-185203" [ref=e192]
+                - list [ref=e194]:
+                  - listitem [ref=e195]:
+                    - link "Apple" [ref=e196] [cursor=pointer]:
+                      - /url: https://ufriend.shop/product-brands/apple/
+              - text: 
+            - generic [ref=e197]:
+              - heading "[5] Apple iPhone 17e" [level=3] [ref=e198]:
+                - link "[5] Apple iPhone 17e" [ref=e199] [cursor=pointer]:
+                  - /url: https://ufriend.shop/product/5-apple-iphone-17e/
+              - generic [ref=e200]:
+                - text: ราคาเริ่มต้นเพียง
+                - insertion [ref=e201]:
+                  - generic [ref=e203]: ฿32,900.00
+          - generic [ref=e206]:
+            - generic [ref=e207]:
+              - figure [ref=e208]:
+                - link "[6] Apple iPad Air 11-in. (M4) Wifi":
+                  - /url: https://ufriend.shop/product/6-apple-ipad-air-11-in-m4-wifi/
+                  - figure [ref=e210] [cursor=pointer]:
+                    - img "airM4all" [ref=e213]
+                - list [ref=e215]:
+                  - listitem [ref=e216]:
+                    - link "Apple" [ref=e217] [cursor=pointer]:
+                      - /url: https://ufriend.shop/product-brands/apple/
+              - text: 
+            - generic [ref=e218]:
+              - heading "[6] Apple iPad Air 11-in. (M4) Wifi" [level=3] [ref=e219]:
+                - link "[6] Apple iPad Air 11-in. (M4) Wifi" [ref=e220] [cursor=pointer]:
+                  - /url: https://ufriend.shop/product/6-apple-ipad-air-11-in-m4-wifi/
+              - generic [ref=e221]:
+                - text: ราคาเริ่มต้นเพียง
+                - insertion [ref=e222]:
+                  - generic [ref=e224]: ฿30,900.00
+          - generic [ref=e227]:
+            - generic [ref=e228]:
+              - figure [ref=e229]:
+                - link "[7] Apple iPad Air 13-in. (M4) Wifi":
+                  - /url: https://ufriend.shop/product/7-apple-ipad-air-13-in-m4-wifi/
+                  - figure [ref=e231] [cursor=pointer]:
+                    - img "airM4all" [ref=e234]
+                - list [ref=e236]:
+                  - listitem [ref=e237]:
+                    - link "Apple" [ref=e238] [cursor=pointer]:
+                      - /url: https://ufriend.shop/product-brands/apple/
+              - text: 
+            - generic [ref=e239]:
+              - heading "[7] Apple iPad Air 13-in. (M4) Wifi" [level=3] [ref=e240]:
+                - link "[7] Apple iPad Air 13-in. (M4) Wifi" [ref=e241] [cursor=pointer]:
+                  - /url: https://ufriend.shop/product/7-apple-ipad-air-13-in-m4-wifi/
+              - generic [ref=e242]:
+                - text: ราคาเริ่มต้นเพียง
+                - insertion [ref=e243]:
+                  - generic [ref=e245]: ฿38,900.00
+          - generic [ref=e248]:
+            - generic [ref=e249]:
+              - figure [ref=e250]:
+                - link "[8] Apple iPad Air 11-in. (M4) Wifi+Cellular":
+                  - /url: https://ufriend.shop/product/8-apple-ipad-air-11-in-m4-wificellular/
+                  - figure [ref=e252] [cursor=pointer]:
+                    - img "airM4all" [ref=e255]
+                - list [ref=e257]:
+                  - listitem [ref=e258]:
+                    - link "Apple" [ref=e259] [cursor=pointer]:
+                      - /url: https://ufriend.shop/product-brands/apple/
+              - text: 
+            - generic [ref=e260]:
+              - heading "[8] Apple iPad Air 11-in. (M4) Wifi+Cellular" [level=3] [ref=e261]:
+                - link "[8] Apple iPad Air 11-in. (M4) Wifi+Cellular" [ref=e262] [cursor=pointer]:
+                  - /url: https://ufriend.shop/product/8-apple-ipad-air-11-in-m4-wificellular/
+              - generic [ref=e263]:
+                - text: ราคาเริ่มต้นเพียง
+                - insertion [ref=e264]:
+                  - generic [ref=e266]: ฿37,900.00
+          - generic [ref=e269]:
+            - generic [ref=e270]:
+              - figure [ref=e271]:
+                - link "[9] Apple iPad Air 13-in. (M4) Wifi+Cellular":
+                  - /url: https://ufriend.shop/product/9-apple-ipad-air-13-in-m4-wificellular/
+                  - figure [ref=e273] [cursor=pointer]:
+                    - img "airM4all" [ref=e276]
+                - list [ref=e278]:
+                  - listitem [ref=e279]:
+                    - link "Apple" [ref=e280] [cursor=pointer]:
+                      - /url: https://ufriend.shop/product-brands/apple/
+              - text: 
+            - generic [ref=e281]:
+              - heading "[9] Apple iPad Air 13-in. (M4) Wifi+Cellular" [level=3] [ref=e282]:
+                - link "[9] Apple iPad Air 13-in. (M4) Wifi+Cellular" [ref=e283] [cursor=pointer]:
+                  - /url: https://ufriend.shop/product/9-apple-ipad-air-13-in-m4-wificellular/
+              - generic [ref=e284]:
+                - text: ราคาเริ่มต้นเพียง
+                - insertion [ref=e285]:
+                  - generic [ref=e287]: ฿38,700.00
+          - generic [ref=e290]:
+            - generic [ref=e291]:
+              - figure [ref=e292]:
+                - link "[A] Apple iPhone 13":
+                  - /url: https://ufriend.shop/product/%e0%b8%9c%e0%b9%88%e0%b8%ad%e0%b8%99%e0%b9%84%e0%b8%ad%e0%b9%82%e0%b8%9f%e0%b8%9913/
+                  - figure [ref=e294] [cursor=pointer]:
+                    - img "iPhone13_(01)_all" [ref=e297]
+                - list [ref=e299]:
+                  - listitem [ref=e300]:
+                    - link "Apple" [ref=e301] [cursor=pointer]:
+                      - /url: https://ufriend.shop/product-brands/apple/
+              - text: 
+            - generic [ref=e302]:
+              - heading "[A] Apple iPhone 13" [level=3] [ref=e303]:
+                - link "[A] Apple iPhone 13" [ref=e304] [cursor=pointer]:
+                  - /url: https://ufriend.shop/product/%e0%b8%9c%e0%b9%88%e0%b8%ad%e0%b8%99%e0%b9%84%e0%b8%ad%e0%b9%82%e0%b8%9f%e0%b8%9913/
+              - generic [ref=e305]:
+                - text: ราคาเริ่มต้นเพียง
+                - insertion [ref=e306]:
+                  - generic [ref=e308]: ฿25,870.00
+          - generic [ref=e311]:
+            - generic [ref=e312]:
+              - figure [ref=e313]:
+                - link "Hot":
+                  - /url: https://ufriend.shop/product/apple-iphone-14/
+                  - figure [ref=e315] [cursor=pointer]:
+                    - img "iPhone14_(01)_all" [ref=e318]
+                  - generic [ref=e319] [cursor=pointer]: Hot
+                - list [ref=e321]:
+                  - listitem [ref=e322]:
+                    - link "Apple" [ref=e323] [cursor=pointer]:
+                      - /url: https://ufriend.shop/product-brands/apple/
+              - text: 
+            - generic [ref=e324]:
+              - heading "[B] Apple iPhone 14" [level=3] [ref=e325]:
+                - link "[B] Apple iPhone 14" [ref=e326] [cursor=pointer]:
+                  - /url: https://ufriend.shop/product/apple-iphone-14/
+              - generic [ref=e327]:
+                - text: ราคาเริ่มต้นเพียง
+                - insertion [ref=e328]:
+                  - generic [ref=e330]: ฿27,070.00
+          - generic [ref=e333]:
+            - generic [ref=e334]:
+              - figure [ref=e335]:
+                - link "[C] Apple iPhone 14 Plus":
+                  - /url: https://ufriend.shop/product/apple-iphone-14-plus/
+                  - figure [ref=e337] [cursor=pointer]:
+                    - img "iPhone14Plus_(01)_All" [ref=e340]
+                - list [ref=e342]:
+                  - listitem [ref=e343]:
+                    - link "Apple" [ref=e344] [cursor=pointer]:
+                      - /url: https://ufriend.shop/product-brands/apple/
+              - text: 
+            - generic [ref=e345]:
+              - heading "[C] Apple iPhone 14 Plus" [level=3] [ref=e346]:
+                - link "[C] Apple iPhone 14 Plus" [ref=e347] [cursor=pointer]:
+                  - /url: https://ufriend.shop/product/apple-iphone-14-plus/
+              - generic [ref=e348]:
+                - text: ราคาเริ่มต้นเพียง
+                - insertion [ref=e349]:
+                  - generic [ref=e351]: ฿32,900.00
+        - list [ref=e353]:
+          - listitem [ref=e354]:
+            - generic [ref=e355]: "1"
+          - listitem [ref=e356]:
+            - link "2" [ref=e357] [cursor=pointer]:
+              - /url: https://ufriend.shop/shop/page/2/
+          - listitem [ref=e358]:
+            - link "3" [ref=e359] [cursor=pointer]:
+              - /url: https://ufriend.shop/shop/page/3/
+          - listitem [ref=e360]:
+            - link "→" [ref=e361] [cursor=pointer]:
+              - /url: https://ufriend.shop/shop/page/2/
+    - contentinfo [ref=e362]:
+      - generic [ref=e366]:
+        - generic [ref=e368]:
+          - generic [ref=e371]:
+            - paragraph [ref=e374]:
+              - text: ง่าย สะดวก ปลอดภัย
+              - text: มั่นใจ
+            - paragraph [ref=e377]: เลือก... ยูเฟรนด์
+          - generic [ref=e381]:
+            - generic [ref=e384]:
+              - figure [ref=e386]
+              - paragraph [ref=e391]: บัตรประชาชนใบเดียว
+            - generic [ref=e394]:
+              - figure [ref=e396]
+              - paragraph [ref=e401]: ทุกอาชีพผ่อนได้
+            - generic [ref=e404]:
+              - figure [ref=e406]
+              - paragraph [ref=e411]: มีสาขาทั่วประเทศ
+            - generic [ref=e414]:
+              - figure [ref=e416]
+              - paragraph [ref=e420]: รองรับด้วยแอปฯ
+        - generic [ref=e427]:
+          - generic [ref=e430]:
+            - figure [ref=e432]
+            - paragraph [ref=e437]: ยูเฟรนด์
+            - paragraph [ref=e440]: ชีวิตง่ายดี เพราะมีเพื่อนที่รู้ใจ
+          - generic [ref=e443]:
+            - paragraph [ref=e446]: เมนู
+            - list [ref=e450]:
+              - listitem [ref=e451]:
+                - link "ผ่อนสินค้า" [ref=e452] [cursor=pointer]:
+                  - /url: https://ufriend.shop/%e0%b8%9c%e0%b9%88%e0%b8%ad%e0%b8%99%e0%b8%aa%e0%b8%b4%e0%b8%99%e0%b8%84%e0%b9%89%e0%b8%b2/
+              - listitem [ref=e453]:
+                - link "ออมดาวน์" [ref=e454] [cursor=pointer]:
+                  - /url: https://ufriend.shop/%e0%b8%ad%e0%b8%ad%e0%b8%a1%e0%b8%94%e0%b8%b2%e0%b8%a7%e0%b8%99%e0%b9%8c/
+              - listitem [ref=e455]:
+                - link "ไอโฟนแลกเงิน" [ref=e456] [cursor=pointer]:
+                  - /url: https://ufriend.shop/%e0%b9%84%e0%b8%ad%e0%b9%82%e0%b8%9f%e0%b8%99%e0%b9%81%e0%b8%a5%e0%b8%81%e0%b9%80%e0%b8%87%e0%b8%b4%e0%b8%99/
+              - listitem [ref=e457]:
+                - link "สินค้าของเรา" [ref=e458] [cursor=pointer]:
+                  - /url: https://ufriend.shop/shop/
+              - listitem [ref=e459]:
+                - link "เกี่ยวกับยูเฟรนด์" [ref=e460] [cursor=pointer]:
+                  - /url: https://ufriend.shop/%e0%b9%80%e0%b8%81%e0%b8%b5%e0%b9%88%e0%b8%a2%e0%b8%a7%e0%b8%81%e0%b8%b1%e0%b8%9a%e0%b8%a2%e0%b8%b9%e0%b9%80%e0%b8%9f%e0%b8%a3%e0%b8%99%e0%b8%94%e0%b9%8c/
+              - listitem [ref=e461]:
+                - link "บทความ" [ref=e462] [cursor=pointer]:
+                  - /url: https://ufriend.shop/%E0%B8%9A%E0%B8%97%E0%B8%84%E0%B8%A7%E0%B8%B2%E0%B8%A1/
+              - listitem [ref=e463]:
+                - link "สาขาใกล้คุณ" [ref=e464] [cursor=pointer]:
+                  - /url: https://ufriend.shop/near-branch
+              - listitem [ref=e465]:
+                - link "ร่วมงานกับเรา" [ref=e466] [cursor=pointer]:
+                  - /url: https://ufriend.shop/%e0%b8%a3%e0%b9%88%e0%b8%a7%e0%b8%a1%e0%b8%87%e0%b8%b2%e0%b8%99%e0%b8%81%e0%b8%b1%e0%b8%9a%e0%b9%80%e0%b8%a3%e0%b8%b2/
+          - generic [ref=e469]:
+            - paragraph [ref=e472]: ติดต่อเรา
+            - paragraph [ref=e475]:
+              - link "ufriendth" [ref=e476] [cursor=pointer]:
+                - /url: https://www.facebook.com/ufriendth
+                - generic [ref=e477]: ufriendth
+            - paragraph [ref=e481]:
+              - link "@ufriend" [ref=e482] [cursor=pointer]:
+                - /url: https://page.line.me/945uzjoj?openQrModal=true
+                - generic [ref=e483]: "@ufriend"
+            - paragraph [ref=e487]:
+              - link "@ufriendshop" [ref=e488] [cursor=pointer]:
+                - /url: https://www.tiktok.com/@ufriendshop
+                - generic [ref=e489]: "@ufriendshop"
+            - paragraph [ref=e493]:
+              - link "@ufriendshop" [ref=e494] [cursor=pointer]:
+                - /url: https://www.youtube.com/@ufriendshop
+                - generic [ref=e495]: "@ufriendshop"
+            - paragraph [ref=e499]:
+              - link "064-616-9699" [ref=e500] [cursor=pointer]:
+                - /url: tel:0646169699
+                - generic [ref=e501]: 064-616-9699
+          - generic [ref=e505]:
+            - paragraph [ref=e508]: แอปยูเฟรนด์ โหลดเลย!
+            - generic [ref=e509]:
+              - generic:
+                - paragraph:
+                  - link:
+                    - /url: https://apps.apple.com/th/app/ufriend/id1585122357?l=th
+                  - link:
+                    - /url: https://apps.apple.com/th/app/ufriend/id1585122357?l=th
+            - paragraph [ref=e515]: มาตรฐานการรับรอง
+            - figure [ref=e517]
+        - paragraph [ref=e526]:
+          - text: Copyright 2023 D App Maker Co., LTD All rights reserved.
+          - link "คำถามที่พบบ่อย" [ref=e527] [cursor=pointer]:
+            - /url: /terms/
+          - text: "|"
+          - link "นโยบายความคุ้มครองข้อมูลส่วนบุคคล" [ref=e528] [cursor=pointer]:
+            - /url: https://ufriend.shop/%e0%b8%99%e0%b9%82%e0%b8%a2%e0%b8%9a%e0%b8%b2%e0%b8%a2%e0%b8%84%e0%b8%b8%e0%b9%89%e0%b8%a1%e0%b8%84%e0%b8%a3%e0%b8%ad%e0%b8%87/
+    - text: 
+  - text: 

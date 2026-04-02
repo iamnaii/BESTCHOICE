@@ -34,6 +34,7 @@ import {
   LogOut,
   ChevronsRight,
   ChevronsLeft,
+  Banknote,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import {
@@ -94,6 +95,8 @@ const navSections: NavSection[] = [
       { label: 'ใบเสร็จรับเงิน', path: '/receipts', icon: Receipt, roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
       { label: 'ตรวจสอบสลิป', path: '/slip-review', icon: FileCheck, roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
       { label: 'นำเข้าชำระเงิน (CSV)', path: '/payments/import-csv', icon: Upload, roles: ['OWNER', 'ACCOUNTANT'] },
+      { label: 'เงินรับจากไฟแนนซ์', path: '/finance-receivable', icon: Banknote, roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
+      { label: 'บันทึกรายจ่าย', path: '/expenses', icon: Receipt, roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
       { label: 'สถานะเอกสาร', path: '/document-dashboard', icon: FileText, roles: ['OWNER', 'BRANCH_MANAGER'] },
     ],
   },

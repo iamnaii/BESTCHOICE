@@ -68,6 +68,8 @@ const LiffProfile = lazy(() => import('@/pages/liff/LiffProfile'));
 const LiffEarlyPayoff = lazy(() => import('@/pages/liff/LiffEarlyPayoff'));
 const LineOaSettingsPage = lazy(() => import('@/pages/LineOaSettingsPage'));
 const SmsSettingsPage = lazy(() => import('@/pages/SmsSettingsPage'));
+const FinanceReceivablePage = lazy(() => import('@/pages/FinanceReceivablePage'));
+const ExpensesPage = lazy(() => import('@/pages/ExpensesPage'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -263,6 +265,22 @@ function App() {
             }
           />
           <Route path="/payments" element={<PaymentsPage />} />
+          <Route
+            path="/finance-receivable"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT']}>
+                <FinanceReceivablePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/expenses"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT']}>
+                <ExpensesPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/payments/import-csv"
             element={

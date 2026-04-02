@@ -373,6 +373,21 @@ export class SalesService {
         data: { status: 'SOLD_INSTALLMENT' },
       });
 
+      // Auto-create FinanceReceivable to track money from finance company
+      const expectedDate = new Date();
+      expectedDate.setDate(expectedDate.getDate() + 7); // Default: expect within 7 days
+      await tx.financeReceivable.create({
+        data: {
+          saleId: sale.id,
+          branchId: dto.branchId,
+          financeCompany: dto.financeCompany!,
+          financeRefNumber: dto.contractNumber || dto.financeRefNumber || null,
+          expectedAmount: financeAmount,
+          netExpectedAmount: financeAmount, // Commission can be updated later
+          expectedDate,
+        },
+      });
+
       return sale;
     }, { isolationLevel: 'Serializable' });
   }

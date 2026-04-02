@@ -1693,6 +1693,7 @@ model FinanceReceivable {
   recordedById      String?                 @map("recorded_by_id")
   createdAt         DateTime                @default(now()) @map("created_at")
   updatedAt         DateTime                @updatedAt @map("updated_at")
+  deletedAt         DateTime?               @map("deleted_at")
 
   sale       Sale    @relation(fields: [saleId], references: [id])
   branch     Branch  @relation(fields: [branchId], references: [id])
@@ -1702,6 +1703,7 @@ model FinanceReceivable {
   @@index([financeCompany])
   @@index([branchId])
   @@index([expectedDate])
+  @@index([deletedAt])
   @@map("finance_receivables")
 }
 

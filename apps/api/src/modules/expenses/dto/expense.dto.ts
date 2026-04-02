@@ -38,6 +38,10 @@ export class CreateExpenseDto {
   amount: number;
 
   @IsOptional()
+  @IsBoolean()
+  includeVat?: boolean;
+
+  @IsOptional()
   @IsNumber()
   @Min(0)
   vatAmount?: number;

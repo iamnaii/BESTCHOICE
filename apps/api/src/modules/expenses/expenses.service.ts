@@ -68,7 +68,12 @@ export class ExpensesService {
       );
     }
 
-    const vatAmount = dto.vatAmount || 0;
+    let vatAmount = dto.vatAmount || 0;
+    if (dto.includeVat && !dto.vatAmount) {
+      const vatConfig = await this.prisma.systemConfig.findUnique({ where: { key: 'vat_pct' } });
+      const vatRate = vatConfig ? Number(vatConfig.value) : 0.07;
+      vatAmount = Math.round(dto.amount * vatRate * 100) / 100;
+    }
     const withholdingTax = dto.withholdingTax || 0;
     const totalAmount = dto.amount + vatAmount;
     const accountCode = dto.accountCode || CATEGORY_CODE_MAP[dto.category] || null;

@@ -7,8 +7,9 @@ import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { compressImageForOcr } from '@/lib/compressImage';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { Camera, X, CreditCard } from 'lucide-react';
+import { Camera, X, CreditCard, Mail, Copy, Link2, Clock } from 'lucide-react';
 import { checkCardReaderStatus, readSmartCard } from '@/lib/cardReader';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface User {
   id: string;
@@ -46,6 +47,24 @@ const roleColors: Record<string, string> = {
 
 const inputClass = 'w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none';
 
+interface InviteToken {
+  id: string;
+  email: string;
+  role: string;
+  branchId: string | null;
+  expiresAt: string;
+  usedAt: string | null;
+  createdAt: string;
+  branch: { id: string; name: string } | null;
+  inviter: { id: string; name: string } | null;
+}
+
+function getInviteStatus(invite: InviteToken): { label: string; className: string } {
+  if (invite.usedAt) return { label: 'ใช้แล้ว', className: 'bg-green-100 text-green-700' };
+  if (new Date(invite.expiresAt) < new Date()) return { label: 'หมดอายุ', className: 'bg-muted text-muted-foreground' };
+  return { label: 'รอลงทะเบียน', className: 'bg-yellow-100 text-yellow-700' };
+}
+
 const emptyForm = {
   email: '', password: '', name: '', role: 'SALES', branchId: '',
   employeeId: '', nickname: '', phone: '', lineId: '', address: '', avatarUrl: '', startDate: '',
@@ -54,12 +73,20 @@ const emptyForm = {
 
 export default function UsersPage() {
   const queryClient = useQueryClient();
+  const { user: currentUser } = useAuth();
+  const isOwner = currentUser?.role === 'OWNER';
+  const [activeTab, setActiveTab] = useState<'users' | 'invites'>('users');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [form, setForm] = useState(emptyForm);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [isReadingCard, setIsReadingCard] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
+
+  // Invite state
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  const [inviteForm, setInviteForm] = useState({ email: '', role: 'SALES', branchId: '' });
+  const [lastInviteUrl, setLastInviteUrl] = useState<string | null>(null);
 
   const { data: users = [], isLoading } = useQuery<User[]>({
     queryKey: ['users'],
@@ -93,6 +120,52 @@ export default function UsersPage() {
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
+
+  // Invite queries & mutations
+  const { data: invitesData, isLoading: invitesLoading } = useQuery<{ data: InviteToken[]; total: number }>({
+    queryKey: ['invites'],
+    queryFn: async () => (await api.get('/invite?limit=100')).data,
+    enabled: isOwner,
+  });
+
+  const createInviteMutation = useMutation({
+    mutationFn: async (data: { email: string; role: string; branchId?: string }) => {
+      const payload: Record<string, string> = { email: data.email, role: data.role };
+      if (data.branchId) payload.branchId = data.branchId;
+      return api.post('/invite', payload);
+    },
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['invites'] });
+      const inviteUrl = res.data.inviteUrl;
+      setLastInviteUrl(inviteUrl);
+      toast.success('สร้างคำเชิญสำเร็จ อีเมลถูกส่งแล้ว');
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const revokeInviteMutation = useMutation({
+    mutationFn: async (id: string) => api.delete(`/invite/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invites'] });
+      toast.success('ยกเลิกคำเชิญสำเร็จ');
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const handleInviteSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setLastInviteUrl(null);
+    createInviteMutation.mutate({
+      email: inviteForm.email,
+      role: inviteForm.role,
+      branchId: inviteForm.branchId || undefined,
+    });
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success('คัดลอกลิงก์แล้ว');
+  };
 
   const openCreate = () => {
     setEditingUser(null);
@@ -255,20 +328,184 @@ export default function UsersPage() {
     },
   ];
 
+  const inviteColumns = [
+    { key: 'email', label: 'อีเมล', render: (i: InviteToken) => <span className="font-medium">{i.email}</span> },
+    {
+      key: 'role', label: 'ตำแหน่ง',
+      render: (i: InviteToken) => (
+        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${roleColors[i.role] || 'bg-muted text-foreground'}`}>
+          {roleLabels[i.role] || i.role}
+        </span>
+      ),
+    },
+    { key: 'branch', label: 'สาขา', render: (i: InviteToken) => i.branch?.name || '-' },
+    { key: 'inviter', label: 'เชิญโดย', render: (i: InviteToken) => i.inviter?.name || '-' },
+    {
+      key: 'status', label: 'สถานะ',
+      render: (i: InviteToken) => {
+        const s = getInviteStatus(i);
+        return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.className}`}>{s.label}</span>;
+      },
+    },
+    {
+      key: 'createdAt', label: 'วันที่สร้าง',
+      render: (i: InviteToken) => new Date(i.createdAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }),
+    },
+    {
+      key: 'actions', label: '',
+      render: (i: InviteToken) => {
+        const status = getInviteStatus(i);
+        if (status.label !== 'รอลงทะเบียน') return null;
+        return (
+          <button
+            onClick={() => setConfirmDialog({ open: true, message: `ต้องการยกเลิกคำเชิญ "${i.email}" หรือไม่?`, action: () => revokeInviteMutation.mutate(i.id) })}
+            className="text-red-500 hover:text-red-600 text-sm font-medium"
+          >
+            ยกเลิก
+          </button>
+        );
+      },
+    },
+  ];
+
   return (
     <div>
       <PageHeader
         title="จัดการผู้ใช้"
         subtitle={`ทั้งหมด ${users.length} คน`}
         action={
-          <button onClick={openCreate} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">
-            + เพิ่มผู้ใช้
-          </button>
+          <div className="flex gap-2">
+            {isOwner && (
+              <button
+                onClick={() => { setInviteForm({ email: '', role: 'SALES', branchId: '' }); setLastInviteUrl(null); setIsInviteModalOpen(true); }}
+                className="px-4 py-2 border border-primary text-primary rounded-lg text-sm font-medium hover:bg-primary/5 transition-colors flex items-center gap-1.5"
+              >
+                <Mail className="size-4" />
+                เชิญผู้ใช้ใหม่
+              </button>
+            )}
+            <button onClick={openCreate} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">
+              + เพิ่มผู้ใช้
+            </button>
+          </div>
         }
       />
 
-      <DataTable columns={columns} data={users} isLoading={isLoading} />
+      {/* Tabs (only for OWNER) */}
+      {isOwner && (
+        <div className="flex gap-1 mb-4 border-b border-border">
+          <button
+            onClick={() => setActiveTab('users')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'users'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            ผู้ใช้ ({users.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('invites')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${
+              activeTab === 'invites'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Link2 className="size-3.5" />
+            คำเชิญ ({invitesData?.total || 0})
+          </button>
+        </div>
+      )}
 
+      {activeTab === 'users' ? (
+        <DataTable columns={columns} data={users} isLoading={isLoading} />
+      ) : (
+        <DataTable columns={inviteColumns} data={invitesData?.data || []} isLoading={invitesLoading} />
+      )}
+
+      {/* Invite Modal */}
+      <Modal isOpen={isInviteModalOpen} onClose={() => setIsInviteModalOpen(false)} title="เชิญผู้ใช้ใหม่">
+        {lastInviteUrl ? (
+          <div className="space-y-4">
+            <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+              <p className="text-sm font-medium text-green-800 mb-1">สร้างคำเชิญสำเร็จ!</p>
+              <p className="text-xs text-green-600">อีเมลเชิญถูกส่งแล้ว คุณสามารถคัดลอกลิงก์ด้านล่างเพื่อส่งเองได้</p>
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                readOnly
+                value={lastInviteUrl}
+                className={`${inputClass} text-xs flex-1`}
+              />
+              <button
+                onClick={() => copyToClipboard(lastInviteUrl)}
+                className="shrink-0 px-3 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 flex items-center gap-1"
+              >
+                <Copy className="size-3.5" />
+                คัดลอก
+              </button>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Clock className="size-3.5" />
+              ลิงก์หมดอายุใน 72 ชั่วโมง
+            </div>
+            <div className="flex justify-end pt-2">
+              <button onClick={() => setIsInviteModalOpen(false)} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90">
+                ปิด
+              </button>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={handleInviteSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">อีเมล *</label>
+              <input
+                type="email"
+                value={inviteForm.email}
+                onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+                required
+                className={inputClass}
+                placeholder="employee@example.com"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">ตำแหน่ง *</label>
+                <select
+                  value={inviteForm.role}
+                  onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value })}
+                  className={inputClass}
+                >
+                  {Object.entries(roleLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">สาขา</label>
+                <select
+                  value={inviteForm.branchId}
+                  onChange={(e) => setInviteForm({ ...inviteForm, branchId: e.target.value })}
+                  className={inputClass}
+                >
+                  <option value="">ไม่ระบุ (ทุกสาขา)</option>
+                  {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button type="button" onClick={() => setIsInviteModalOpen(false)} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground">ยกเลิก</button>
+              <button type="submit" disabled={createInviteMutation.isPending}
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50 flex items-center gap-1.5">
+                <Mail className="size-4" />
+                {createInviteMutation.isPending ? 'กำลังส่ง...' : 'ส่งคำเชิญ'}
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      {/* User Create/Edit Modal */}
       <Modal isOpen={isModalOpen} onClose={closeModal} title={editingUser ? 'แก้ไขผู้ใช้' : 'เพิ่มผู้ใช้ใหม่'}>
         <form onSubmit={handleSubmit} className="flex flex-col gap-5 lg:gap-7.5">
           {/* Avatar upload + Card reader */}

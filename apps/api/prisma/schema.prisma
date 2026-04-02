@@ -255,6 +255,7 @@ model Branch {
   reorderPoints    ReorderPoint[]
   stockAlerts      StockAlert[]
   stockCounts      StockCount[]
+  inviteTokens     InviteToken[]
 
   @@map("branches")
 }
@@ -304,6 +305,7 @@ model User {
   refreshTokens          RefreshToken[]
   passwordResetTokens    PasswordResetToken[]
   reviewedEvidences      PaymentEvidence[]  @relation("EvidenceReviewedBy")
+  inviteTokens           InviteToken[]
 
   @@index([branchId])
   @@map("users")
@@ -1383,6 +1385,26 @@ model PasswordResetToken {
   @@index([userId])
   @@index([expiresAt])
   @@map("password_reset_tokens")
+}
+
+model InviteToken {
+  id        String    @id @default(uuid())
+  token     String    @unique                    // SHA-256 hash of raw token
+  email     String
+  role      UserRole
+  branchId  String?   @map("branch_id")
+  invitedBy String    @map("invited_by")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  branch  Branch? @relation(fields: [branchId], references: [id])
+  inviter User    @relation(fields: [invitedBy], references: [id])
+
+  @@index([email])
+  @@index([expiresAt])
+  @@map("invite_tokens")
 }
 
 // ============================================================

@@ -49,6 +49,7 @@ import { LineOaModule } from './modules/line-oa/line-oa.module';
 import { KycModule } from './modules/kyc/kyc.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { EmailModule } from './modules/email/email.module';
+import { InviteModule } from './modules/invite/invite.module';
 import { PaySolutionsModule } from './modules/paysolutions/paysolutions.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
@@ -122,6 +123,8 @@ import { CsrfGuard } from './guards/csrf.guard';
     LineOaModule,
     // Email
     EmailModule,
+    // Invite
+    InviteModule,
     // Payment Gateway
     PaySolutionsModule,
     // MASTER: Management

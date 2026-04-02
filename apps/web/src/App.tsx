@@ -9,6 +9,7 @@ const LandingPage = lazy(() => import('@/pages/LandingPage'));
 const LoginPage = lazy(() => import('@/pages/LoginPage'));
 const ForgotPasswordPage = lazy(() => import('@/pages/ForgotPasswordPage'));
 const ResetPasswordPage = lazy(() => import('@/pages/ResetPasswordPage'));
+const RegisterInvitePage = lazy(() => import('@/pages/RegisterInvitePage'));
 const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
 const BranchesPage = lazy(() => import('@/pages/BranchesPage'));
 const SupplierDetailPage = lazy(() => import('@/pages/SupplierDetailPage'));
@@ -102,6 +103,7 @@ function App() {
         />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/register" element={<RegisterInvitePage />} />
 
         {/* Public Customer Portal (token-based access, no auth) */}
         <Route path="/customer-access/:token" element={<CustomerPortalPage />} />

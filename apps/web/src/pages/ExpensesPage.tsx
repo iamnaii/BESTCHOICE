@@ -126,6 +126,7 @@ const emptyForm = {
   description: '', amount: '', vatAmount: '0', withholdingTax: '0',
   expenseDate: new Date().toISOString().split('T')[0], paymentMethod: '',
   vendorName: '', vendorTaxId: '', reference: '', taxInvoiceNo: '', note: '',
+  isRecurring: false, recurringDay: '',
 };
 
 export default function ExpensesPage() {
@@ -225,6 +226,7 @@ export default function ExpensesPage() {
       paymentMethod: e.paymentMethod || '', vendorName: e.vendorName || '',
       vendorTaxId: e.vendorTaxId || '', reference: e.reference || '',
       taxInvoiceNo: e.taxInvoiceNo || '', note: e.note || '',
+      isRecurring: e.isRecurring, recurringDay: '',
     });
     setIncludeVat(Number(e.vatAmount) > 0);
     setIsFormModalOpen(true);
@@ -246,6 +248,8 @@ export default function ExpensesPage() {
       reference: form.reference || undefined,
       taxInvoiceNo: form.taxInvoiceNo || undefined,
       note: form.note || undefined,
+      isRecurring: form.isRecurring || undefined,
+      recurringDay: form.recurringDay ? parseInt(form.recurringDay) : undefined,
     });
   };
 
@@ -496,6 +500,21 @@ export default function ExpensesPage() {
               <label className="block text-sm font-medium text-foreground mb-1">เลขอ้างอิง</label>
               <input type="text" value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} placeholder="เลขที่บิล, เลขเช็ค" className={inputClass} />
             </div>
+          </div>
+
+          {/* Recurring */}
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+              <input type="checkbox" checked={form.isRecurring} onChange={(e) => setForm({ ...form, isRecurring: e.target.checked, recurringDay: e.target.checked ? form.recurringDay : '' })} className="rounded border-input" />
+              รายจ่ายประจำ (ทุกเดือน)
+            </label>
+            {form.isRecurring && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm text-muted-foreground">จ่ายทุกวันที่</span>
+                <input type="number" min="1" max="31" value={form.recurringDay} onChange={(e) => setForm({ ...form, recurringDay: e.target.value })}
+                  className={`${inputClass} w-16 text-center`} placeholder="1-31" />
+              </div>
+            )}
           </div>
 
           <div>

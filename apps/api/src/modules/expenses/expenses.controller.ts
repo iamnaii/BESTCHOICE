@@ -78,6 +78,22 @@ export class ExpensesController {
     return this.service.getSummary({ branchId: effectiveBranchId, startDate, endDate });
   }
 
+  @Get('category-breakdown')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  getCategoryBreakdown(
+    @Query('branchId') branchId?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Request() req?: { user: { role: string; branchId?: string } },
+  ) {
+    const effectiveBranchId =
+      req?.user?.role === 'OWNER' || req?.user?.role === 'ACCOUNTANT'
+        ? branchId
+        : req?.user?.branchId || branchId;
+
+    return this.service.getCategoryBreakdown({ branchId: effectiveBranchId, startDate, endDate });
+  }
+
   @Get(':id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
   findOne(@Param('id') id: string) {

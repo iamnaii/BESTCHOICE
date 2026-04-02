@@ -339,4 +339,36 @@ export class ExpensesService {
 
     return { totalAmount, totalCount: expenses.length, pendingCount, byAccountType, byCategory };
   }
+
+  async getCategoryBreakdown(filters: { branchId?: string; startDate?: string; endDate?: string }) {
+    const where: Prisma.ExpenseWhereInput = { deletedAt: null, status: { notIn: ['VOIDED', 'REJECTED'] } };
+    if (filters.branchId) where.branchId = filters.branchId;
+    if (filters.startDate || filters.endDate) {
+      where.expenseDate = {};
+      if (filters.startDate) where.expenseDate.gte = new Date(filters.startDate);
+      if (filters.endDate) {
+        const end = new Date(filters.endDate);
+        end.setHours(23, 59, 59, 999);
+        where.expenseDate.lte = end;
+      }
+    }
+
+    const expenses = await this.prisma.expense.findMany({
+      where,
+      select: { accountType: true, category: true, totalAmount: true, accountCode: true },
+    });
+
+    const breakdown: Record<string, { accountType: string; accountCode: string | null; total: number; count: number }> = {};
+    for (const e of expenses) {
+      if (!breakdown[e.category]) {
+        breakdown[e.category] = { accountType: e.accountType, accountCode: e.accountCode, total: 0, count: 0 };
+      }
+      breakdown[e.category].total += Number(e.totalAmount);
+      breakdown[e.category].count++;
+    }
+
+    return Object.entries(breakdown)
+      .map(([category, data]) => ({ category, ...data }))
+      .sort((a, b) => (a.accountCode || '').localeCompare(b.accountCode || ''));
+  }
 }

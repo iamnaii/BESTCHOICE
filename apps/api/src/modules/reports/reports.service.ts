@@ -306,27 +306,87 @@ export class ReportsService {
 
   /**
    * Monthly P&L Summary (12 months for a given year)
+   * Optimized: 7 queries for full year, then group by month in JS
    */
   async getMonthlyPLSummary(year: number, branchId?: string) {
     const thaiMonths = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+    const yearStart = new Date(year, 0, 1);
+    const yearEnd = new Date(year, 11, 31, 23, 59, 59, 999);
+    const branchFilter = branchId ? { branchId } : {};
+    const dateRange = { gte: yearStart, lte: yearEnd };
 
-    const months = await Promise.all(
-      Array.from({ length: 12 }, async (_, i) => {
-        const startDate = `${year}-${String(i + 1).padStart(2, '0')}-01`;
-        const endMonth = new Date(year, i + 1, 0); // last day of month
-        const endDate = `${year}-${String(i + 1).padStart(2, '0')}-${String(endMonth.getDate()).padStart(2, '0')}`;
+    const getMonth = (d: Date | string | null) => d ? new Date(d).getMonth() : -1;
 
-        const pl = await this.getProfitLossReport(startDate, endDate, branchId);
-
-        return {
-          month: i + 1,
-          label: thaiMonths[i],
-          revenue: pl.summary.totalRevenue,
-          expenses: pl.summary.totalExpenses,
-          netProfit: pl.summary.netProfit,
-        };
+    // 7 queries for full year (instead of 84)
+    const [sales, payments, financeRecs, expenses, productSales] = await Promise.all([
+      this.prisma.sale.findMany({
+        where: { createdAt: dateRange, ...branchFilter },
+        select: { saleType: true, netAmount: true, downPaymentAmount: true, createdAt: true },
       }),
-    );
+      this.prisma.payment.findMany({
+        where: { paidDate: dateRange, status: 'PAID', contract: { deletedAt: null, ...branchFilter } },
+        select: { amountPaid: true, lateFee: true, lateFeeWaived: true, paidDate: true,
+          contract: { select: { interestTotal: true, totalMonths: true } } },
+      }),
+      this.prisma.financeReceivable.findMany({
+        where: { status: 'RECEIVED', receivedDate: dateRange, deletedAt: null, ...branchFilter },
+        select: { receivedAmount: true, receivedDate: true },
+      }),
+      this.prisma.expense.findMany({
+        where: { expenseDate: dateRange, status: { in: ['PAID', 'APPROVED'] }, deletedAt: null, ...branchFilter },
+        select: { totalAmount: true, expenseDate: true },
+      }),
+      this.prisma.sale.findMany({
+        where: { createdAt: dateRange, ...branchFilter },
+        select: { createdAt: true, product: { select: { costPrice: true } } },
+      }),
+    ]);
+
+    // Build monthly buckets
+    const months = Array.from({ length: 12 }, (_, i) => {
+      let revenue = 0;
+      let cogs = 0;
+      let expenseTotal = 0;
+
+      // Revenue from sales
+      for (const s of sales) {
+        if (getMonth(s.createdAt) !== i) continue;
+        if (s.saleType === 'CASH') revenue += Number(s.netAmount);
+        if (s.saleType === 'INSTALLMENT' || s.saleType === 'EXTERNAL_FINANCE') {
+          revenue += Number(s.downPaymentAmount || 0);
+        }
+      }
+
+      // Revenue from payments (installments + interest + late fees)
+      for (const p of payments) {
+        if (getMonth(p.paidDate) !== i) continue;
+        revenue += Number(p.amountPaid);
+        if (!p.lateFeeWaived) revenue += Number(p.lateFee);
+      }
+
+      // Revenue from finance received
+      for (const f of financeRecs) {
+        if (getMonth(f.receivedDate) !== i) continue;
+        revenue += Number(f.receivedAmount || 0);
+      }
+
+      // COGS from product cost prices
+      for (const s of productSales) {
+        if (getMonth(s.createdAt) !== i) continue;
+        cogs += Number(s.product.costPrice || 0);
+      }
+
+      // Expenses
+      for (const e of expenses) {
+        if (getMonth(e.expenseDate) !== i) continue;
+        expenseTotal += Number(e.totalAmount);
+      }
+
+      const totalExpenses = cogs + expenseTotal;
+      const netProfit = revenue - totalExpenses;
+
+      return { month: i + 1, label: thaiMonths[i], revenue, expenses: totalExpenses, netProfit };
+    });
 
     return { year, months };
   }

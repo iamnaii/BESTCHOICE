@@ -32,7 +32,7 @@ interface FinanceReceivable {
     downPaymentAmount: string | null;
     createdAt: string;
     customer: { id: string; name: string; phone: string | null };
-    product: { id: string; name: string; sku: string | null };
+    product: { id: string; name: string; brand: string | null };
     salesperson: { id: string; name: string };
   };
   branch: { id: string; name: string };

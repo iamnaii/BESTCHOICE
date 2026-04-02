@@ -52,7 +52,7 @@ export class FinanceReceivableService {
               downPaymentAmount: true,
               createdAt: true,
               customer: { select: { id: true, name: true, phone: true } },
-              product: { select: { id: true, name: true, sku: true } },
+              product: { select: { id: true, name: true, brand: true } },
               salesperson: { select: { id: true, name: true } },
             },
           },
@@ -76,7 +76,7 @@ export class FinanceReceivableService {
         sale: {
           include: {
             customer: { select: { id: true, name: true, phone: true } },
-            product: { select: { id: true, name: true, sku: true } },
+            product: { select: { id: true, name: true, brand: true } },
             salesperson: { select: { id: true, name: true } },
           },
         },

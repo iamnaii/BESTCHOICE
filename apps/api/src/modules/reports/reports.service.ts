@@ -305,6 +305,33 @@ export class ReportsService {
   }
 
   /**
+   * Monthly P&L Summary (12 months for a given year)
+   */
+  async getMonthlyPLSummary(year: number, branchId?: string) {
+    const thaiMonths = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+
+    const months = await Promise.all(
+      Array.from({ length: 12 }, async (_, i) => {
+        const startDate = `${year}-${String(i + 1).padStart(2, '0')}-01`;
+        const endMonth = new Date(year, i + 1, 0); // last day of month
+        const endDate = `${year}-${String(i + 1).padStart(2, '0')}-${String(endMonth.getDate()).padStart(2, '0')}`;
+
+        const pl = await this.getProfitLossReport(startDate, endDate, branchId);
+
+        return {
+          month: i + 1,
+          label: thaiMonths[i],
+          revenue: pl.summary.totalRevenue,
+          expenses: pl.summary.totalExpenses,
+          netProfit: pl.summary.netProfit,
+        };
+      }),
+    );
+
+    return { year, months };
+  }
+
+  /**
    * High-risk customers report
    */
   async getHighRiskCustomers(branchId?: string, page = 1, limit = 50) {

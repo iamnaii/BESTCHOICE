@@ -31,6 +31,16 @@ export class ReportsController {
     return this.reportsService.getRevenuePLReport(startDate, endDate, effectiveBranch);
   }
 
+  @Get('monthly-pl')
+  getMonthlyPL(
+    @Query('year') year: string,
+    @CurrentUser() user: { role: string; branchId: string | null },
+    @Query('branchId') branchId?: string,
+  ) {
+    const effectiveBranch = user.role === 'BRANCH_MANAGER' ? user.branchId || undefined : branchId;
+    return this.reportsService.getMonthlyPLSummary(parseInt(year) || new Date().getFullYear(), effectiveBranch);
+  }
+
   @Get('profit-loss')
   getProfitLoss(
     @Query('startDate') startDate: string,

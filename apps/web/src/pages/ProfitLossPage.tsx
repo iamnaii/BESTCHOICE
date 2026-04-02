@@ -4,6 +4,7 @@ import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { TrendingUp, TrendingDown, DollarSign, ArrowDown, ArrowUp, Minus } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 interface PLData {
   period: { start: string; end: string };
@@ -112,6 +113,16 @@ export default function ProfitLossPage() {
     enabled: !!startDate && !!endDate,
   });
 
+  const { data: monthlyData } = useQuery<{ year: number; months: { month: number; label: string; revenue: number; expenses: number; netProfit: number }[] }>({
+    queryKey: ['monthly-pl', startDate ? new Date(startDate).getFullYear() : new Date().getFullYear(), branchId],
+    queryFn: async () => {
+      const year = startDate ? new Date(startDate).getFullYear() : new Date().getFullYear();
+      const params = new URLSearchParams({ year: year.toString() });
+      if (branchId) params.set('branchId', branchId);
+      return (await api.get(`/reports/monthly-pl?${params}`)).data;
+    },
+  });
+
   const margin = pl?.summary.profitMargin || 0;
   const isProfit = (pl?.netProfit || 0) >= 0;
 
@@ -211,6 +222,29 @@ export default function ProfitLossPage() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Monthly Chart */}
+          {monthlyData?.months && (
+            <Card className="mb-6">
+              <CardHeader>
+                <h2 className="text-lg font-semibold">เปรียบเทียบรายเดือน {monthlyData.year}</h2>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={monthlyData.months}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="label" />
+                    <YAxis tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                    <Tooltip formatter={(v) => fmt(v as number)} />
+                    <Legend />
+                    <Bar dataKey="revenue" name="รายได้" fill="#22c55e" />
+                    <Bar dataKey="expenses" name="ค่าใช้จ่าย" fill="#ef4444" />
+                    <Bar dataKey="netProfit" name="กำไรสุทธิ" fill="#3b82f6" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
 
           {/* P&L Statement */}
           <Card>

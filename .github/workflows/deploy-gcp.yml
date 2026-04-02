@@ -186,38 +186,6 @@ jobs:
       - name: Setup gcloud CLI
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Create or update resolve-migration job
-        run: |
-          gcloud run jobs update bestchoice-migrate-resolve \
-            --project=${{ secrets.GCP_PROJECT_ID }} \
-            --region=${{ secrets.GCP_REGION || 'asia-southeast1' }} \
-            --image=${{ env.API_IMAGE }}:${{ github.sha }} \
-            --set-secrets=DATABASE_URL=DATABASE_URL:latest \
-            --set-cloudsql-instances=${{ secrets.CLOUD_SQL_CONNECTION_NAME }} \
-            --command="npx" \
-            --args="prisma,migrate,resolve,--applied,20260402020000_clear_seed_data,--schema=./apps/api/prisma/schema.prisma" \
-            --max-retries=1 \
-            --task-timeout=120s \
-            2>/dev/null || \
-          gcloud run jobs create bestchoice-migrate-resolve \
-            --project=${{ secrets.GCP_PROJECT_ID }} \
-            --region=${{ secrets.GCP_REGION || 'asia-southeast1' }} \
-            --image=${{ env.API_IMAGE }}:${{ github.sha }} \
-            --set-secrets=DATABASE_URL=DATABASE_URL:latest \
-            --set-cloudsql-instances=${{ secrets.CLOUD_SQL_CONNECTION_NAME }} \
-            --command="npx" \
-            --args="prisma,migrate,resolve,--applied,20260402020000_clear_seed_data,--schema=./apps/api/prisma/schema.prisma" \
-            --max-retries=1 \
-            --task-timeout=120s
-
-      - name: Resolve failed migration
-        run: |
-          gcloud run jobs execute bestchoice-migrate-resolve \
-            --project=${{ secrets.GCP_PROJECT_ID }} \
-            --region=${{ secrets.GCP_REGION || 'asia-southeast1' }} \
-            --wait
-        continue-on-error: true
-
       - name: Create or update migration job
         run: |
           gcloud run jobs update bestchoice-migrate \

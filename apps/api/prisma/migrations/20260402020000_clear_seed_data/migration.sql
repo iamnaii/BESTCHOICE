@@ -1,79 +1,64 @@
 -- Clear all seed/demo data, keep only admin user
--- Order: delete from leaf tables first to respect FK constraints
+-- Use TRUNCATE CASCADE for clean FK handling
 
--- Payment & Evidence
-DELETE FROM "payment_evidences";
-DELETE FROM "payment_links";
-DELETE FROM "receipts";
-DELETE FROM "payments";
+-- Reset admin branchId FIRST (before deleting branches)
+UPDATE "users" SET "branch_id" = NULL WHERE "email" = 'admin@bestchoice.com';
 
--- Customer related
-DELETE FROM "customer_access_tokens";
-DELETE FROM "kyc_verifications";
-DELETE FROM "dsar_requests";
-DELETE FROM "pdpa_consents";
-DELETE FROM "credit_checks";
+-- Truncate all data tables (CASCADE handles FK automatically)
+TRUNCATE TABLE
+  "payment_evidences",
+  "payment_links",
+  "receipts",
+  "payments",
+  "customer_access_tokens",
+  "kyc_verifications",
+  "dsar_requests",
+  "pdpa_consents",
+  "credit_checks",
+  "contract_documents",
+  "signatures",
+  "e_documents",
+  "contracts",
+  "sales",
+  "branch_receiving_items",
+  "branch_receivings",
+  "stock_count_items",
+  "stock_counts",
+  "stock_alerts",
+  "reorder_points",
+  "stock_adjustments",
+  "goods_receiving_items",
+  "goods_receivings",
+  "stock_transfers",
+  "repossessions",
+  "product_photos",
+  "product_prices",
+  "inspection_results",
+  "inspections",
+  "products",
+  "po_items",
+  "purchase_orders",
+  "supplier_payment_methods",
+  "suppliers",
+  "pricing_templates",
+  "interest_configs",
+  "inspection_template_items",
+  "inspection_templates",
+  "contract_templates",
+  "sticker_templates",
+  "notification_logs",
+  "call_logs",
+  "audit_logs",
+  "document_audit_logs",
+  "customers",
+  "refresh_tokens",
+  "password_reset_tokens",
+  "invite_tokens",
+  "company_info"
+CASCADE;
 
--- Contract related
-DELETE FROM "contract_documents";
-DELETE FROM "signatures";
-DELETE FROM "e_documents";
-DELETE FROM "contracts";
-
--- Sales
-DELETE FROM "sales";
-
--- Stock & Inventory
-DELETE FROM "branch_receiving_items";
-DELETE FROM "branch_receivings";
-DELETE FROM "stock_count_items";
-DELETE FROM "stock_counts";
-DELETE FROM "stock_alerts";
-DELETE FROM "reorder_points";
-DELETE FROM "stock_adjustments";
-DELETE FROM "goods_receiving_items";
-DELETE FROM "goods_receivings";
-DELETE FROM "stock_transfers";
-DELETE FROM "repossessions";
-
--- Products & Suppliers
-DELETE FROM "product_photos";
-DELETE FROM "product_prices";
-DELETE FROM "inspection_results";
-DELETE FROM "inspections";
-DELETE FROM "products";
-DELETE FROM "po_items";
-DELETE FROM "purchase_orders";
-DELETE FROM "supplier_payment_methods";
-DELETE FROM "suppliers";
-
--- Templates & Config
-DELETE FROM "pricing_templates";
-DELETE FROM "interest_configs";
-DELETE FROM "inspection_template_items";
-DELETE FROM "inspection_templates";
-DELETE FROM "contract_templates";
-DELETE FROM "sticker_templates";
-
--- Notifications & Logs
-DELETE FROM "notification_logs";
-DELETE FROM "call_logs";
-DELETE FROM "audit_logs";
-DELETE FROM "document_audit_logs";
-
--- Customers
-DELETE FROM "customers";
-
--- Auth tokens
-DELETE FROM "refresh_tokens";
-DELETE FROM "password_reset_tokens";
-DELETE FROM "invite_tokens";
-
--- Users (except admin)
+-- Delete all users except admin
 DELETE FROM "users" WHERE "email" != 'admin@bestchoice.com';
 
--- Branches (all - admin will create real ones)
+-- Delete all branches
 DELETE FROM "branches";
-
--- Reset admin branchId since branch is deleted
-UPDATE "users" SET "branch_id" = NULL WHERE "email" = 'admin@bestchoice.com';

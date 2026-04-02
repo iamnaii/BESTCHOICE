@@ -16,9 +16,7 @@ test-results/
 blob-report/
 **/e2e/screenshots/
 *.temp.config.ts
-
-# DigitalOcean App Platform (may contain secrets)
-.do/
+.playwright-mcp/
 
 # Temp files
 .tmp/

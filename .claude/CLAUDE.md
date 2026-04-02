@@ -288,7 +288,7 @@ tools/                        # Shell scripts — deterministic execution
 scripts/                      # Existing project scripts
   backup.sh                   # Database backup
   test-e2e.sh                 # E2E test runner
-  deploy-digitalocean.sh      # Production deploy
+  # Production: deploy via GitHub Actions → GCP Cloud Run
 ```
 
 ## Important Notes

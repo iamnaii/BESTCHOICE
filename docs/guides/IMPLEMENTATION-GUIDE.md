@@ -807,13 +807,11 @@ Prompt keywords: SPEC Section 10
 
 ### Step 24: Deployment
 ```
-- Dockerfile (multi-stage build)
-- Docker Compose (production)
-- DigitalOcean / AWS Lightsail setup
-- Nginx reverse proxy + SSL (Let's Encrypt)
-- GitHub Actions CI/CD
+- Dockerfile (multi-stage build for Cloud Run)
+- GCP Cloud Run + Firebase Hosting
+- GitHub Actions CI/CD (deploy-gcp.yml)
 - Health check endpoint
-- Monitoring (Uptime Kuma / Sentry)
+- Cloud SQL (PostgreSQL) + Secret Manager
 ```
 
 ---

@@ -1,198 +1,41 @@
-# Deploy BESTCHOICE
+# Deploy BESTCHOICE (GCP)
 
-## วิธีที่ 1: DigitalOcean App Platform (แนะนำ - ง่ายที่สุด)
+ระบบ deploy บน **Google Cloud Platform** — Cloud Run (API) + Firebase Hosting (Frontend) + Cloud SQL (PostgreSQL)
 
-ไม่ต้องจัดการ server เอง, ไม่ต้อง SSH, มี SSL อัตโนมัติ, deploy อัตโนมัติเมื่อ push code
+## Architecture
 
-**ค่าใช้จ่าย: ~$14/เดือน (~500 THB)**
-
-### ขั้นตอนที่ 1: สร้างบัญชี DigitalOcean
-
-1. เปิด https://cloud.digitalocean.com/registrations/new
-2. สมัครบัญชี (ใช้ Email หรือ Google/GitHub ก็ได้)
-3. ใส่บัตรเครดิต/เดบิต หรือ PayPal
-
-### ขั้นตอนที่ 2: สร้าง App
-
-1. เปิด https://cloud.digitalocean.com/apps
-2. กด **Create App**
-3. เลือก **GitHub** → เชื่อมต่อบัญชี GitHub
-4. เลือก repository **iamnaii/BESTCHOICE** สาขา **main**
-5. DigitalOcean จะตรวจจับ `.do/app.yaml` อัตโนมัติ
-6. กด **Next**
-
-### ขั้นตอนที่ 3: ตั้งค่า Secrets
-
-ก่อนกด Deploy ให้แก้ค่า secret เหล่านี้:
-
-| ตัวแปร | วิธีสร้าง | คำอธิบาย |
-|--------|----------|---------|
-| `JWT_SECRET` | `openssl rand -hex 32` | กุญแจสำหรับ login token |
-| `JWT_REFRESH_SECRET` | `openssl rand -hex 32` | กุญแจสำหรับ refresh token |
-| `ENCRYPTION_KEY` | `openssl rand -hex 16` | กุญแจเข้ารหัสเลขบัตร (32 ตัวอักษร) |
-| `S3_ENDPOINT` | จาก S3-compatible provider | Endpoint URL สำหรับ object storage (MinIO / AWS S3 / etc.) |
-| `S3_ACCESS_KEY` | จาก S3-compatible provider | Access key ID |
-| `S3_SECRET_KEY` | จาก S3-compatible provider | Secret access key |
-| `S3_BUCKET` | จาก S3-compatible provider | ชื่อ bucket สำหรับเก็บไฟล์ (เอกสาร KYC, สัญญา, สลิป) |
-| `S3_REGION` | จาก S3-compatible provider | Region ของ bucket |
-
-> ถ้าไม่มี terminal ให้เปิด https://generate-random.org/api-key-generator เลือก 64 characters แล้ว copy มาใส่ได้เลย
-
-### ขั้นตอนที่ 4: เลือก Region
-
-- เลือก **Singapore (sgp)** เพื่อให้ใกล้ประเทศไทยที่สุด
-
-### ขั้นตอนที่ 5: กด Create Resources
-
-- กด **Create Resources** แล้วรอ 5-10 นาที
-- DigitalOcean จะสร้าง API + Database + Frontend ให้อัตโนมัติ
-- เมื่อเสร็จจะได้ URL เช่น `https://bestchoice-installment-xxxxx.ondigitalocean.app`
-
-### ขั้นตอนที่ 6: ทดสอบ
-
-1. เปิด URL ที่ได้จากขั้นตอนที่ 5
-2. Login ด้วย:
-   - Email: `admin@bestchoice.com`
-   - Password: `admin1234`
-3. **เปลี่ยนรหัสผ่าน admin ทันที!**
-
-### การ Deploy ครั้งถัดไป
-
-ไม่ต้องทำอะไร! แค่ `git push` ไปที่ main branch → DigitalOcean จะ deploy ให้อัตโนมัติ
-
-### ค่าใช้จ่ายโดยประมาณ
-
-| รายการ | ขนาด | ราคา/เดือน |
-|--------|------|-----------|
-| API | basic-xs (1 GB RAM) | ~$7 |
-| Frontend | Static Site | ฟรี |
-| Database | PostgreSQL dev | ~$7 |
-| **รวม** | | **~$14/เดือน (~500 THB)** |
-
----
-
-## วิธีที่ 2: DigitalOcean Droplet + Docker (ถูกกว่า แต่ต้อง SSH)
-
-จัดการ server เอง, ใช้ Docker Compose, เหมาะกับคนที่มีพื้นฐาน Linux
-
-**ค่าใช้จ่าย: ~$6-12/เดือน (~215-430 THB)**
-
-### ขั้นตอนที่ 1: สร้าง Droplet
-
-1. เปิด https://cloud.digitalocean.com/droplets
-2. กด **Create Droplet**
-3. ตั้งค่า:
-   - **Region**: Singapore (SGP1)
-   - **Image**: Ubuntu 24.04 LTS
-   - **Size**: Regular → $12/เดือน (2 vCPU, 2 GB RAM, 60 GB SSD)
-   - **Authentication**: เลือก Password (ง่ายกว่า) หรือ SSH Key (ปลอดภัยกว่า)
-4. กด **Create Droplet**
-5. จดจำ IP Address ที่ได้ (เช่น `167.71.xxx.xxx`)
-
-### ขั้นตอนที่ 2: Deploy อัตโนมัติ (1 คำสั่ง)
-
-เปิด terminal (Mac/Linux) หรือ PowerShell (Windows) แล้วรัน:
-
-```bash
-# SSH เข้า server
-ssh root@YOUR_DROPLET_IP
-
-# รัน deploy script อัตโนมัติ
-curl -sL https://raw.githubusercontent.com/iamnaii/BESTCHOICE/main/scripts/deploy-digitalocean.sh | bash
+```
+GitHub (push to main)
+  → GitHub Actions (.github/workflows/deploy-gcp.yml)
+    → Lint & Test
+    → Build Docker image → Artifact Registry
+    → Run Prisma migrations via Cloud Run Job
+    → Deploy API → Cloud Run
+    → Deploy Frontend → Firebase Hosting
 ```
 
-สคริปต์จะทำทุกอย่างให้อัตโนมัติ:
-- ติดตั้ง Docker + Git
-- Clone โปรเจค
-- สร้าง .env พร้อม random secrets
-- Build + Start ทุก service
-- ตั้งค่า Firewall
-- ตั้ง Auto-backup ทุกวันตี 2
+## Auto Deploy
 
-### ขั้นตอนที่ 3: ทดสอบ
-
-1. เปิด `http://YOUR_DROPLET_IP` ในเบราว์เซอร์
-2. Login ด้วย:
-   - Email: `admin@bestchoice.com`
-   - Password: `admin1234`
-3. **เปลี่ยนรหัสผ่าน admin ทันที!**
-
-### ขั้นตอนที่ 4: ตั้งค่า Domain (ถ้ามี)
-
-```bash
-# ถ้ามี domain name ให้ชี้ DNS A record มาที่ IP ของ Droplet
-# แล้วตั้ง SSL ด้วย:
-ssh root@YOUR_DROPLET_IP
-apt install -y certbot
-certbot certonly --standalone -d yourdomain.com
-
-# Copy certificates
-cp /etc/letsencrypt/live/yourdomain.com/fullchain.pem /opt/bestchoice/nginx/ssl/
-cp /etc/letsencrypt/live/yourdomain.com/privkey.pem /opt/bestchoice/nginx/ssl/
-
-# Restart
-cd /opt/bestchoice
-docker compose -f docker-compose.prod.yml restart nginx
-```
-
----
+ไม่ต้องทำอะไร! แค่ `git push` ไปที่ `main` branch → GitHub Actions จะ deploy ให้อัตโนมัติ
 
 ## การจัดการหลัง Deploy
 
 ### ดู Logs
 
 ```bash
-# App Platform: ดูผ่าน DigitalOcean Console > Apps > api > Runtime Logs
+# Cloud Run Logs (ผ่าน gcloud CLI)
+gcloud run services logs read bestchoice-api --region=asia-southeast1 --limit=100
 
-# Droplet:
-ssh root@YOUR_IP
-cd /opt/bestchoice
-docker compose -f docker-compose.prod.yml logs -f
-docker compose -f docker-compose.prod.yml logs -f api    # เฉพาะ API
-docker compose -f docker-compose.prod.yml logs -f db     # เฉพาะ Database
+# หรือดูผ่าน GCP Console → Cloud Run → bestchoice-api → Logs
 ```
 
-### อัปเดตระบบ (Droplet)
+### Force Redeploy
 
 ```bash
-ssh root@YOUR_IP
-cd /opt/bestchoice
-git pull origin main
-docker compose -f docker-compose.prod.yml up -d --build
+# Trigger GitHub Actions ใหม่
+git commit --allow-empty -m "chore: trigger redeploy"
+git push origin main
 ```
-
-### Backup Database (Droplet)
-
-```bash
-# Manual backup
-/opt/bestchoice/scripts/backup.sh
-
-# Backup ไฟล์อยู่ที่: /opt/backups/installment/
-ls -la /opt/backups/installment/
-```
-
-### Restore Database (Droplet)
-
-```bash
-# Restore จาก backup
-gunzip -c /opt/backups/installment/installment_YYYYMMDD_HHMMSS.sql.gz \
-  | docker compose -f docker-compose.prod.yml exec -T db \
-    psql -U installment installment_db
-```
-
----
-
-## เปรียบเทียบสองวิธี
-
-| | App Platform | Droplet + Docker |
-|---|---|---|
-| **ความง่าย** | ง่ายมาก (กดๆ ในเว็บ) | ต้องใช้ terminal |
-| **ราคา** | ~$14/เดือน (~500 THB) | ~$12/เดือน (~430 THB) |
-| **SSL** | อัตโนมัติ | ต้องตั้งเอง (Certbot) |
-| **Auto Deploy** | git push แล้วจบ | ต้อง SSH เข้าไป pull |
-| **Scaling** | กดเพิ่มใน UI | ต้อง upgrade Droplet |
-| **Backup** | อัตโนมัติ (Managed DB) | ตั้ง cron เอง |
-| **แนะนำสำหรับ** | มือใหม่ / ไม่อยากจัดการ server | คนมีพื้นฐาน / อยากประหยัด |
 
 ---
 
@@ -222,20 +65,18 @@ gunzip -c /opt/backups/installment/installment_YYYYMMDD_HHMMSS.sql.gz \
 
 ### ขั้นตอนที่ 3: ตั้งค่าในระบบ BESTCHOICE
 
-**วิธี A: ผ่านหน้า Admin (แนะนำ — ง่ายที่สุด)**
-
 1. เปิดระบบ BESTCHOICE → ล็อกอิน
 2. ไปที่เมนู **"เชื่อมต่อ LINE OA"** ในหน้า Settings
 3. วาง **Channel Access Token** และ **Channel Secret**
 4. กด **"บันทึกการตั้งค่า"**
 5. กด **"ทดสอบการเชื่อมต่อ"** → จะแสดงชื่อ Bot ถ้าสำเร็จ
 
-**วิธี B: ผ่าน Environment Variables**
+หรือตั้งค่าผ่าน GCP Secret Manager:
 
 ```bash
-# ใน .env (Droplet) หรือ DigitalOcean App Settings
-LINE_CHANNEL_ACCESS_TOKEN=your-token-here
-LINE_CHANNEL_SECRET=your-secret-here
+# ตั้งค่าใน GCP Secrets
+gcloud secrets versions add LINE_CHANNEL_ACCESS_TOKEN --data-file=- <<< "your-token"
+gcloud secrets versions add LINE_CHANNEL_SECRET --data-file=- <<< "your-secret"
 ```
 
 ### ขั้นตอนที่ 4: ตั้งค่า Webhook
@@ -245,11 +86,8 @@ LINE_CHANNEL_SECRET=your-secret-here
 3. หา **"Webhook URL"** → กด Edit → ใส่:
 
 ```
-https://YOUR_DOMAIN/api/line-oa/webhook
+https://YOUR_CLOUD_RUN_URL/api/line-oa/webhook
 ```
-
-> สำหรับ App Platform: `https://bestchoice-xxxxx.ondigitalocean.app/api/line-oa/webhook`
-> สำหรับ Droplet: `https://yourdomain.com/api/line-oa/webhook`
 
 4. เปิด **"Use webhook"** ให้เป็นสีเขียว
 5. กด **Verify** → ต้องแสดง "Success"
@@ -338,14 +176,3 @@ git push origin card-reader-v1.0.0
 ```
 
 หรือกด **Actions → Build Card Reader → Run workflow** บน GitHub ก็ได้
-
----
-
-## ⚠️ Known Limitations
-
-| Feature | Status | Notes |
-|---|---|---|
-| **Password Reset Email** | ❌ Stub | Endpoints (`/auth/forgot-password`, `/auth/reset-password`) exist and tokens are generated, but **email delivery is not implemented** — no SMTP/email service is configured. In dev mode the token is returned in the API response. In production users cannot receive reset emails. To fix: add `nodemailer` + `SMTP_*` env vars, or send the link via LINE OA notification. |
-| **LIFF Payment** | ⚠️ Mock | The `/pay/:token` LIFF payment page is currently a UI mock — customers cannot make actual payments through it. PromptPay QR is generated correctly; actual payment confirmation requires manual slip upload. |
-| **S3 File Storage** | ⚠️ Required | All document uploads (KYC, signed contracts, payment slips) require S3/MinIO. Without the `S3_*` env vars, uploads silently return a key but store nothing. A subsequent download attempt will fail. Configure S3 before going live. |
-| **National ID Encryption** | ⚠️ Not implemented | `ENCRYPTION_KEY` is in `.env.example` but the customers module stores national IDs as plaintext. Encryption code has not been added. |

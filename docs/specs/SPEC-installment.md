@@ -407,15 +407,17 @@
 
 ### 13.2 Deployment (แนะนำ)
 
-**แนะนำ: Cloud (AWS หรือ DigitalOcean)**
+**ใช้ GCP (Google Cloud Platform)**
 
-| ทางเลือก | ข้อดี | ข้อเสีย | ค่าใช้จ่ายโดยประมาณ |
-|---|---|---|---|
-| **DigitalOcean** | ง่าย, ราคาถูก, เหมาะกับ SME | จำกัด region ในเอเชีย | ~$40-80/เดือน |
-| **AWS (Lightsail → EC2)** | ครบครัน, scale ได้, region สิงคโปร์ | ซับซ้อนกว่า, ค่าใช้จ่ายผันแปร | ~$50-150/เดือน |
-| **On-premise** | ข้อมูลอยู่ในมือ, ไม่มี monthly cost | ต้องดูแลเอง, risk hardware fail, ไม่มี remote access | ค่า server ครั้งเดียว + ไฟ/เน็ต |
+| Component | Service | Region |
+|---|---|---|
+| **API** | Cloud Run | asia-southeast1 (Singapore) |
+| **Frontend** | Firebase Hosting | Global CDN |
+| **Database** | Cloud SQL (PostgreSQL) | asia-southeast1 |
+| **Secrets** | Secret Manager | - |
+| **Docker Images** | Artifact Registry | asia-southeast1 |
 
-> **คำแนะนำ:** เริ่มจาก **DigitalOcean** หรือ **AWS Lightsail** เพราะง่ายต่อการเริ่มต้น, มี backup อัตโนมัติ, และรองรับการ scale เมื่อธุรกิจโต หากมีข้อกังวลเรื่องข้อมูลอยู่ในไทย สามารถใช้ AWS Singapore region ได้
+> **Auto Deploy:** push ไปที่ `main` branch → GitHub Actions build + deploy อัตโนมัติ
 
 ### 13.3 Security
 

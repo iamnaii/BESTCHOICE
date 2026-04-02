@@ -9,9 +9,7 @@ COPY apps/api/package.json apps/api/
 # and hoists all workspace deps (including @nestjs/cli from apps/api devDeps)
 COPY apps/web/package.json apps/web/
 COPY packages/ packages/
-# --include=dev: force devDeps even when NODE_ENV=production (DigitalOcean sets this)
-# No --mount=type=cache: kaniko (used by DigitalOcean) doesn't support BuildKit mounts
-# and its layer cache ignores command-text changes, causing stale layers
+# --include=dev: force devDeps even when NODE_ENV=production
 RUN npm ci --include=dev
 
 # ============================================

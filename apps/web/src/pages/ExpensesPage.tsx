@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
+import { useDebounce } from '@/hooks/useDebounce';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
@@ -9,7 +11,7 @@ import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { compressImageForOcr } from '@/lib/compressImage';
-import { Receipt, Plus, Pencil, Upload, X, ArrowLeft } from 'lucide-react';
+import { Receipt, Plus, Pencil, Upload, X, ArrowLeft, ShoppingBag, Megaphone, Building2, MoreHorizontal, MoreVertical } from 'lucide-react';
 
 // ─── Types ───
 interface Expense {
@@ -406,86 +408,97 @@ export default function ExpensesPage() {
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
   const isOwner = currentUser?.role === 'OWNER';
-  const [statusFilter, setStatusFilter] = useState('');
-  const [accountTypeFilter, setAccountTypeFilter] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('');
-  const [branchFilter, setBranchFilter] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [search, setSearch] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const statusFilter = searchParams.get('status') || '';
+  const accountTypeFilter = searchParams.get('accountType') || '';
+  const categoryFilter = searchParams.get('category') || '';
+  const branchFilter = searchParams.get('branch') || '';
+  const startDate = searchParams.get('startDate') || '';
+  const endDate = searchParams.get('endDate') || '';
+  const page = parseInt(searchParams.get('page') || '1');
+  const [search, setSearch] = useState(searchParams.get('search') || '');
+  const debouncedSearch = useDebounce(search, 300);
   const [showForm, setShowForm] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
   const [rejectDialog, setRejectDialog] = useState<{ open: boolean; expenseId: string; reason: string }>({ open: false, expenseId: '', reason: '' });
 
-  const { data: branches = [] } = useQuery<{ id: string; name: string }[]>({
-    queryKey: ['branches'],
-    queryFn: async () => (await api.get('/branches')).data,
-  });
+  const setFilter = (key: string, value: string) => {
+    const params = new URLSearchParams(searchParams);
+    if (value) params.set(key, value); else params.delete(key);
+    if (key !== 'page') params.delete('page');
+    setSearchParams(params, { replace: true });
+  };
+
+  const now = new Date();
+  const quickPresets = [
+    { label: 'เดือนนี้', fn: () => { setFilter('startDate', new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]); setFilter('endDate', now.toISOString().split('T')[0]); } },
+    { label: '3 เดือน', fn: () => { const d = new Date(); d.setMonth(d.getMonth() - 3); setFilter('startDate', d.toISOString().split('T')[0]); setFilter('endDate', now.toISOString().split('T')[0]); } },
+    { label: 'ปีนี้', fn: () => { setFilter('startDate', `${now.getFullYear()}-01-01`); setFilter('endDate', now.toISOString().split('T')[0]); } },
+  ];
+
+  const invalidateAll = () => { queryClient.invalidateQueries({ queryKey: ['expenses'] }); queryClient.invalidateQueries({ queryKey: ['expenses-summary'] }); };
+
+  const { data: branches = [] } = useQuery<{ id: string; name: string }[]>({ queryKey: ['branches'], queryFn: async () => (await api.get('/branches')).data });
 
   const { data: summary } = useQuery<Summary>({
     queryKey: ['expenses-summary', branchFilter, startDate, endDate],
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      if (branchFilter) params.set('branchId', branchFilter);
-      if (startDate) params.set('startDate', startDate);
-      if (endDate) params.set('endDate', endDate);
-      return (await api.get(`/expenses/summary?${params}`)).data;
-    },
+    queryFn: async () => { const p = new URLSearchParams(); if (branchFilter) p.set('branchId', branchFilter); if (startDate) p.set('startDate', startDate); if (endDate) p.set('endDate', endDate); return (await api.get(`/expenses/summary?${p}`)).data; },
   });
 
   const { data: expensesData, isLoading } = useQuery<{ data: Expense[]; total: number }>({
-    queryKey: ['expenses', statusFilter, accountTypeFilter, categoryFilter, branchFilter, startDate, endDate, search],
+    queryKey: ['expenses', statusFilter, accountTypeFilter, categoryFilter, branchFilter, startDate, endDate, debouncedSearch, page],
     queryFn: async () => {
-      const params = new URLSearchParams({ limit: '100' });
-      if (statusFilter) params.set('status', statusFilter);
-      if (accountTypeFilter) params.set('accountType', accountTypeFilter);
-      if (categoryFilter) params.set('category', categoryFilter);
-      if (branchFilter) params.set('branchId', branchFilter);
-      if (startDate) params.set('startDate', startDate);
-      if (endDate) params.set('endDate', endDate);
-      if (search) params.set('search', search);
-      return (await api.get(`/expenses?${params}`)).data;
+      const p = new URLSearchParams({ limit: '20', page: String(page) });
+      if (statusFilter) p.set('status', statusFilter);
+      if (accountTypeFilter) p.set('accountType', accountTypeFilter);
+      if (categoryFilter) p.set('category', categoryFilter);
+      if (branchFilter) p.set('branchId', branchFilter);
+      if (startDate) p.set('startDate', startDate);
+      if (endDate) p.set('endDate', endDate);
+      if (debouncedSearch) p.set('search', debouncedSearch);
+      return (await api.get(`/expenses?${p}`)).data;
     },
   });
 
   const actionMutation = useMutation({
     mutationFn: async ({ id, action, body }: { id: string; action: string; body?: Record<string, unknown> }) =>
       api.post(`/expenses/${id}/${action}`, body || {}),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['expenses'] });
-      queryClient.invalidateQueries({ queryKey: ['expenses-summary'] });
-      toast.success('อัปเดตสถานะสำเร็จ');
-    },
+    onSuccess: () => { invalidateAll(); toast.success('อัปเดตสถานะสำเร็จ'); },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const openCreate = () => { setEditingExpense(null); setShowForm(true); };
-  const openEdit = (e: Expense) => { setEditingExpense(e); setShowForm(true); };
-  const handleFormSaved = () => {
-    setShowForm(false); setEditingExpense(null);
-    queryClient.invalidateQueries({ queryKey: ['expenses'] });
-    queryClient.invalidateQueries({ queryKey: ['expenses-summary'] });
+  const openEdit = (e: Expense) => { setEditingExpense(e); setShowForm(true); setOpenMenuId(null); };
+  const handleFormSaved = () => { setShowForm(false); setEditingExpense(null); invalidateAll(); };
+
+  const summaryCards = [
+    { label: 'รายจ่ายทั้งหมด', amount: summary?.totalAmount, sub: `${summary?.totalCount || 0} รายการ | รออนุมัติ ${summary?.pendingCount || 0}`, icon: Receipt, color: 'text-blue-600', bg: 'bg-blue-50' },
+    { label: 'ต้นทุนขาย', amount: summary?.byAccountType?.COST_OF_SALES, icon: ShoppingBag, color: 'text-orange-600', bg: 'bg-orange-50' },
+    { label: 'ค่าใช้จ่ายขาย', amount: summary?.byAccountType?.SELLING_EXPENSE, icon: Megaphone, color: 'text-purple-600', bg: 'bg-purple-50' },
+    { label: 'ค่าใช้จ่ายบริหาร', amount: summary?.byAccountType?.ADMINISTRATIVE_EXPENSE, icon: Building2, color: 'text-cyan-600', bg: 'bg-cyan-50' },
+    { label: 'ค่าใช้จ่ายอื่น', amount: summary?.byAccountType?.OTHER_EXPENSE, icon: MoreHorizontal, color: 'text-gray-600', bg: 'bg-gray-100' },
+  ];
+
+  const totalPages = Math.ceil((expensesData?.total || 0) / 20);
+
+  // Primary action per status
+  const getPrimaryAction = (e: Expense) => {
+    if (e.status === 'DRAFT' || e.status === 'REJECTED') return { label: 'ส่งอนุมัติ', action: 'submit', cls: 'bg-primary text-primary-foreground hover:bg-primary/90' };
+    if (e.status === 'PENDING_APPROVAL' && isOwner) return { label: 'อนุมัติ', action: 'approve', cls: 'bg-green-600 text-white hover:bg-green-700' };
+    if (e.status === 'APPROVED') return { label: 'จ่ายแล้ว', action: 'pay', cls: 'bg-green-600 text-white hover:bg-green-700' };
+    return null;
   };
 
   const columns = [
     {
       key: 'expenseNumber', label: 'เลขที่',
-      render: (e: Expense) => (
-        <div className="min-w-0">
-          <div className="font-medium text-foreground">{e.expenseNumber}</div>
-          <div className="text-xs text-muted-foreground">{e.accountCode}</div>
-        </div>
-      ),
+      render: (e: Expense) => (<div className="min-w-0"><div className="font-medium">{e.expenseNumber}</div><div className="text-xs text-muted-foreground">{e.accountCode}</div></div>),
     },
     {
       key: 'description', label: 'รายละเอียด',
-      render: (e: Expense) => (
-        <div className="min-w-0">
-          <div className="font-medium truncate">{e.description}</div>
-          <div className="text-xs text-muted-foreground">{categoryLabels[e.category] || e.category}</div>
-        </div>
-      ),
+      render: (e: Expense) => (<div className="min-w-0"><div className="font-medium truncate">{e.description}</div><div className="text-xs text-muted-foreground">{categoryLabels[e.category] || e.category}</div></div>),
     },
     { key: 'branch', label: 'สาขา', render: (e: Expense) => e.branch.name },
     { key: 'vendorName', label: 'ผู้รับเงิน', render: (e: Expense) => e.vendorName || '-' },
@@ -494,46 +507,34 @@ export default function ExpensesPage() {
     { key: 'totalAmount', label: 'รวม', render: (e: Expense) => <div className="text-right font-medium">{fmt(e.totalAmount)}</div> },
     {
       key: 'expenseDate', label: 'วันที่',
-      render: (e: Expense) => new Date(e.expenseDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }),
+      render: (e: Expense) => new Date(e.expenseDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }),
     },
     {
       key: 'status', label: 'สถานะ',
-      render: (e: Expense) => (
-        <div>
-          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[e.status] || 'bg-muted'}`}>{statusLabels[e.status] || e.status}</span>
-          {e.rejectReason && <div className="text-xs text-red-500 mt-0.5 truncate max-w-[120px]">{e.rejectReason}</div>}
-        </div>
-      ),
+      render: (e: Expense) => (<div><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[e.status] || 'bg-muted'}`}>{statusLabels[e.status] || e.status}</span>
+        {e.rejectReason && <div className="text-xs text-red-500 mt-0.5 truncate max-w-[100px]">{e.rejectReason}</div>}</div>),
     },
     {
       key: 'actions', label: '',
       render: (e: Expense) => {
         if (e.status === 'VOIDED' || e.status === 'PAID') return null;
+        const primary = getPrimaryAction(e);
         return (
-          <div className="flex items-center gap-2">
-            {(e.status === 'DRAFT' || e.status === 'REJECTED') && (
-              <>
-                <button onClick={() => openEdit(e)} className="text-muted-foreground hover:text-foreground"><Pencil className="size-3.5" /></button>
-                <button onClick={() => setConfirmDialog({ open: true, message: `ส่งอนุมัติ "${e.expenseNumber}"?`, action: () => actionMutation.mutate({ id: e.id, action: 'submit' }) })}
-                  className="text-primary hover:text-primary/80 text-sm font-medium">ส่งอนุมัติ</button>
-              </>
+          <div className="flex items-center gap-1.5">
+            {primary && (
+              <button onClick={() => setConfirmDialog({ open: true, message: `${primary.label} "${e.expenseNumber}"?`, action: () => actionMutation.mutate({ id: e.id, action: primary.action }) })}
+                className={`px-2.5 py-1 rounded text-xs font-medium ${primary.cls}`}>{primary.label}</button>
             )}
-            {e.status === 'PENDING_APPROVAL' && isOwner && (
-              <>
-                <button onClick={() => setConfirmDialog({ open: true, message: `อนุมัติ "${e.expenseNumber}"?`, action: () => actionMutation.mutate({ id: e.id, action: 'approve' }) })}
-                  className="text-green-600 hover:text-green-700 text-sm font-medium">อนุมัติ</button>
-                <button onClick={() => setRejectDialog({ open: true, expenseId: e.id, reason: '' })}
-                  className="text-red-500 hover:text-red-600 text-sm font-medium">ไม่อนุมัติ</button>
-              </>
-            )}
-            {e.status === 'APPROVED' && (
-              <button onClick={() => setConfirmDialog({ open: true, message: `บันทึกจ่ายเงิน "${e.expenseNumber}"?`, action: () => actionMutation.mutate({ id: e.id, action: 'pay' }) })}
-                className="text-green-600 hover:text-green-700 text-sm font-medium">จ่ายแล้ว</button>
-            )}
-            {isOwner && (
-              <button onClick={() => setConfirmDialog({ open: true, message: `ยกเลิก "${e.expenseNumber}"?`, action: () => actionMutation.mutate({ id: e.id, action: 'void' }) })}
-                className="text-red-400 hover:text-red-500 text-xs">ยกเลิก</button>
-            )}
+            <div className="relative">
+              <button onClick={(ev) => { ev.stopPropagation(); setOpenMenuId(openMenuId === e.id ? null : e.id); }} className="p-1 hover:bg-muted rounded"><MoreVertical className="size-4 text-muted-foreground" /></button>
+              {openMenuId === e.id && (
+                <div className="absolute right-0 top-full mt-1 z-10 bg-background border rounded-lg shadow-lg py-1 min-w-[130px]">
+                  {(e.status === 'DRAFT' || e.status === 'REJECTED') && <button onClick={() => openEdit(e)} className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted flex items-center gap-2"><Pencil className="size-3.5" /> แก้ไข</button>}
+                  {e.status === 'PENDING_APPROVAL' && isOwner && <button onClick={() => { setRejectDialog({ open: true, expenseId: e.id, reason: '' }); setOpenMenuId(null); }} className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted text-red-600">ไม่อนุมัติ</button>}
+                  {isOwner && <button onClick={() => { setConfirmDialog({ open: true, message: `ยกเลิก "${e.expenseNumber}"?`, action: () => actionMutation.mutate({ id: e.id, action: 'void' }) }); setOpenMenuId(null); }} className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted text-red-600">ยกเลิก</button>}
+                </div>
+              )}
+            </div>
           </div>
         );
       },
@@ -541,7 +542,7 @@ export default function ExpensesPage() {
   ];
 
   return (
-    <div>
+    <div onClick={() => setOpenMenuId(null)}>
       <PageHeader title="บันทึกรายจ่าย" subtitle={`ทั้งหมด ${expensesData?.total || 0} รายการ`} icon={<Receipt className="size-6" />}
         action={
           <button onClick={openCreate} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors flex items-center gap-1.5">
@@ -550,54 +551,85 @@ export default function ExpensesPage() {
         }
       />
 
-      {/* Summary */}
+      {/* Summary Cards with icons */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-        <Card>
-          <CardHeader className="pb-2"><span className="text-sm text-muted-foreground">รายจ่ายทั้งหมด</span></CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{fmt(summary?.totalAmount)}</div>
-            <div className="text-sm text-muted-foreground">{summary?.totalCount || 0} รายการ | รออนุมัติ {summary?.pendingCount || 0}</div>
-          </CardContent>
-        </Card>
-        {Object.entries(accountTypeLabels).map(([key, label]) => (
-          <Card key={key}>
-            <CardHeader className="pb-2"><span className="text-sm text-muted-foreground">{label.split(' ').slice(1).join(' ')}</span></CardHeader>
-            <CardContent><div className="text-xl font-bold">{fmt(summary?.byAccountType?.[key] || 0)}</div></CardContent>
+        {summaryCards.map((card) => (
+          <Card key={card.label}>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">{card.label}</span>
+                <div className={`p-2 rounded-lg ${card.bg}`}><card.icon className={`size-4 ${card.color}`} /></div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{fmt(card.amount)}</div>
+              {card.sub && <div className="text-sm text-muted-foreground">{card.sub}</div>}
+            </CardContent>
           </Card>
         ))}
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3 mb-4">
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={`${inputClass} w-auto min-w-[130px]`}>
-          <option value="">ทุกสถานะ</option>
-          {Object.entries(statusLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </select>
-        <select value={accountTypeFilter} onChange={(e) => { setAccountTypeFilter(e.target.value); setCategoryFilter(''); }} className={`${inputClass} w-auto min-w-[170px]`}>
-          <option value="">ทุกหมวดบัญชี</option>
-          {Object.entries(accountTypeLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </select>
-        <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className={`${inputClass} w-auto min-w-[200px]`}>
-          <option value="">ทุกหมวดย่อย</option>
-          {Object.entries(categoryGroups)
-            .filter(([key]) => !accountTypeFilter || key === accountTypeFilter)
-            .map(([groupKey, cats]) => (
-              <optgroup key={groupKey} label={accountTypeLabels[groupKey]}>
-                {cats.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-              </optgroup>
-            ))
-          }
-        </select>
-        <select value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)} className={`${inputClass} w-auto min-w-[130px]`}>
-          <option value="">ทุกสาขา</option>
-          {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-        </select>
-        <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={`${inputClass} w-auto`} />
-        <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className={`${inputClass} w-auto`} />
-        <input type="text" placeholder="ค้นหา..." value={search} onChange={(e) => setSearch(e.target.value)} className={`${inputClass} w-auto min-w-[180px]`} />
+      {/* Filters with labels */}
+      <div className="flex flex-wrap gap-4 mb-4">
+        <div>
+          <label className="block text-xs text-muted-foreground mb-1">สถานะ</label>
+          <select value={statusFilter} onChange={(e) => setFilter('status', e.target.value)} className={`${inputClass} w-auto min-w-[120px]`}>
+            <option value="">ทั้งหมด</option>
+            {Object.entries(statusLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs text-muted-foreground mb-1">หมวดบัญชี</label>
+          <select value={accountTypeFilter} onChange={(e) => { setFilter('accountType', e.target.value); setFilter('category', ''); }} className={`${inputClass} w-auto min-w-[160px]`}>
+            <option value="">ทั้งหมด</option>
+            {Object.entries(accountTypeLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs text-muted-foreground mb-1">หมวดย่อย</label>
+          <select value={categoryFilter} onChange={(e) => setFilter('category', e.target.value)} className={`${inputClass} w-auto min-w-[180px]`}>
+            <option value="">ทั้งหมด</option>
+            {Object.entries(categoryGroups).filter(([key]) => !accountTypeFilter || key === accountTypeFilter).map(([groupKey, cats]) => (
+              <optgroup key={groupKey} label={accountTypeLabels[groupKey]}>{cats.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}</optgroup>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs text-muted-foreground mb-1">สาขา</label>
+          <select value={branchFilter} onChange={(e) => setFilter('branch', e.target.value)} className={`${inputClass} w-auto min-w-[120px]`}>
+            <option value="">ทุกสาขา</option>
+            {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs text-muted-foreground mb-1">ตั้งแต่</label>
+          <input type="date" value={startDate} onChange={(e) => setFilter('startDate', e.target.value)} className={`${inputClass} w-auto`} />
+        </div>
+        <div>
+          <label className="block text-xs text-muted-foreground mb-1">ถึง</label>
+          <input type="date" value={endDate} onChange={(e) => setFilter('endDate', e.target.value)} className={`${inputClass} w-auto`} />
+        </div>
+        <div className="flex items-end gap-1">
+          {quickPresets.map((p) => <button key={p.label} onClick={p.fn} className="px-3 py-2 text-xs border border-input rounded-lg hover:bg-muted">{p.label}</button>)}
+        </div>
+        <div className="flex-1 min-w-[160px]">
+          <label className="block text-xs text-muted-foreground mb-1">ค้นหา</label>
+          <input type="text" placeholder="เลขที่, รายละเอียด, ผู้รับเงิน..." value={search} onChange={(e) => setSearch(e.target.value)} className={inputClass} />
+        </div>
       </div>
 
-      <DataTable columns={columns} data={expensesData?.data || []} isLoading={isLoading} />
+      <DataTable columns={columns} data={expensesData?.data || []} isLoading={isLoading} emptyMessage="ไม่พบรายจ่าย" />
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-4">
+          <span className="text-sm text-muted-foreground">หน้า {page} / {totalPages} (ทั้งหมด {expensesData?.total} รายการ)</span>
+          <div className="flex gap-1">
+            <button disabled={page <= 1} onClick={() => setFilter('page', String(page - 1))} className="px-3 py-1.5 text-sm border border-input rounded-lg hover:bg-muted disabled:opacity-50">ก่อนหน้า</button>
+            <button disabled={page >= totalPages} onClick={() => setFilter('page', String(page + 1))} className="px-3 py-1.5 text-sm border border-input rounded-lg hover:bg-muted disabled:opacity-50">ถัดไป</button>
+          </div>
+        </div>
+      )}
 
       {/* PEAK-style Form Panel */}
       {showForm && <ExpenseFormPanel editingExpense={editingExpense} branches={branches} onClose={() => { setShowForm(false); setEditingExpense(null); }} onSaved={handleFormSaved} />}
@@ -605,17 +637,11 @@ export default function ExpensesPage() {
       {/* Reject Dialog */}
       <Modal isOpen={rejectDialog.open} onClose={() => setRejectDialog({ open: false, expenseId: '', reason: '' })} title="ไม่อนุมัติรายจ่าย">
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">เหตุผล *</label>
-            <textarea value={rejectDialog.reason} onChange={(e) => setRejectDialog(prev => ({ ...prev, reason: e.target.value }))} rows={3} placeholder="กรุณาระบุเหตุผล..." className={inputClass} />
-          </div>
+          <div><label className="block text-xs text-muted-foreground mb-1">เหตุผล *</label><textarea value={rejectDialog.reason} onChange={(e) => setRejectDialog(prev => ({ ...prev, reason: e.target.value }))} rows={3} placeholder="กรุณาระบุเหตุผล..." className={inputClass} /></div>
           <div className="flex justify-end gap-3">
             <button onClick={() => setRejectDialog({ open: false, expenseId: '', reason: '' })} className="px-4 py-2 text-sm text-muted-foreground">ยกเลิก</button>
-            <button onClick={() => {
-              if (!rejectDialog.reason.trim()) { toast.error('กรุณาระบุเหตุผล'); return; }
-              actionMutation.mutate({ id: rejectDialog.expenseId, action: 'reject', body: { reason: rejectDialog.reason } });
-              setRejectDialog({ open: false, expenseId: '', reason: '' });
-            }} className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700">ยืนยันไม่อนุมัติ</button>
+            <button onClick={() => { if (!rejectDialog.reason.trim()) { toast.error('กรุณาระบุเหตุผล'); return; } actionMutation.mutate({ id: rejectDialog.expenseId, action: 'reject', body: { reason: rejectDialog.reason } }); setRejectDialog({ open: false, expenseId: '', reason: '' }); }}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700">ยืนยันไม่อนุมัติ</button>
           </div>
         </div>
       </Modal>

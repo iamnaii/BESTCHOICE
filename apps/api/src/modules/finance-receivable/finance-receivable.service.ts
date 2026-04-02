@@ -16,10 +16,12 @@ export class FinanceReceivableService {
     financeCompany?: string;
     branchId?: string;
     search?: string;
+    startDate?: string;
+    endDate?: string;
     page?: number;
     limit?: number;
   }) {
-    const { status, financeCompany, branchId, search, page = 1, limit = 20 } = filters;
+    const { status, financeCompany, branchId, search, startDate, endDate, page = 1, limit = 20 } = filters;
     const safePage = Math.max(1, page);
     const safeLimit = Math.min(100, Math.max(1, limit));
 
@@ -27,6 +29,15 @@ export class FinanceReceivableService {
     if (status) where.status = status;
     if (financeCompany) where.financeCompany = financeCompany;
     if (branchId) where.branchId = branchId;
+    if (startDate || endDate) {
+      where.expectedDate = {};
+      if (startDate) where.expectedDate.gte = new Date(startDate);
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        where.expectedDate.lte = end;
+      }
+    }
     if (search) {
       where.OR = [
         { financeRefNumber: { contains: search, mode: 'insensitive' } },

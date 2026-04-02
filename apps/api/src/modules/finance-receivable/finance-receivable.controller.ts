@@ -28,6 +28,8 @@ export class FinanceReceivableController {
     @Query('financeCompany') financeCompany?: string,
     @Query('branchId') branchId?: string,
     @Query('search') search?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Request() req?: { user: { role: string; branchId?: string } },
@@ -42,6 +44,8 @@ export class FinanceReceivableController {
       financeCompany,
       branchId: effectiveBranchId,
       search,
+      startDate,
+      endDate,
       page: page ? parseInt(page) : 1,
       limit: limit ? parseInt(limit) : 20,
     });

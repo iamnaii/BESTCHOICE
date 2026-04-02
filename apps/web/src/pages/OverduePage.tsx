@@ -285,7 +285,7 @@ export default function OverduePage() {
       {/* Dunning Workflow Pipeline */}
       <Card className="shadow-xs shadow-black/5 mb-6">
         <CardContent className="p-4">
-          <div className="text-xs font-medium text-muted-foreground mb-3">Dunning Pipeline (ระดับการติดตามหนี้)</div>
+          <div className="text-xs font-medium text-muted-foreground mb-3">ขั้นตอนติดตามหนี้</div>
           <div className="flex items-center gap-2 overflow-x-auto">
             {[
               { stage: 'REMINDER', label: 'แจ้งเตือน', color: 'bg-yellow-100 text-yellow-800 border-yellow-300', desc: '1-7 วัน' },

@@ -50,7 +50,7 @@ export default function ReportsPage() {
             disabled={exportMutation.isPending}
             className="px-4 py-2 text-sm border border-input rounded-lg hover:bg-muted disabled:opacity-50"
           >
-            {exportMutation.isPending ? 'กำลังดาวน์โหลด...' : 'Export CSV'}
+            {exportMutation.isPending ? 'กำลังดาวน์โหลด...' : 'ส่งออก CSV'}
           </button>
         }
       />

@@ -291,9 +291,9 @@ export default function SlipReviewPage() {
         </div>
         <button
           onClick={exportExcel}
-          className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700"
+          className="px-4 py-2 border border-input rounded-lg text-sm font-medium hover:bg-muted"
         >
-          Export Excel
+          ส่งออก Excel
         </button>
       </div>
 

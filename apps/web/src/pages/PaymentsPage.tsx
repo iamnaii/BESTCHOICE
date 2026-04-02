@@ -507,8 +507,8 @@ export default function PaymentsPage() {
               </Card>
               <Card>
                 <CardContent className="p-4">
-                  <button onClick={handleExport} className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
-                    📊 Export Excel
+                  <button onClick={handleExport} className="w-full px-4 py-2 border border-input rounded-lg text-sm font-medium hover:bg-muted">
+                    📊 ส่งออก Excel
                   </button>
                 </CardContent>
               </Card>

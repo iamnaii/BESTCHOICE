@@ -267,7 +267,7 @@ export default function ContractsPage() {
           <div className="flex gap-2">
             {contracts.length > 0 && (
               <button onClick={handleExport} className="px-4 py-2 border border-input rounded-lg text-sm font-medium hover:bg-muted">
-                Export Excel
+                ส่งออก Excel
               </button>
             )}
             <button onClick={() => navigate('/contracts/create')} className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90">

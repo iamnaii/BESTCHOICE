@@ -222,7 +222,7 @@ export default function StockPage() {
                 onClick={() => handleExport(listProducts)}
                 className="px-4 py-2 border border-input rounded-lg text-sm font-medium hover:bg-muted/50 transition-colors"
               >
-                {selectedIds.size > 0 ? `Export (${selectedIds.size})` : 'Export CSV'}
+                {selectedIds.size > 0 ? `ส่งออก (${selectedIds.size})` : 'ส่งออก CSV'}
               </button>
               <button
                 onClick={() => navigate('/products/create')}

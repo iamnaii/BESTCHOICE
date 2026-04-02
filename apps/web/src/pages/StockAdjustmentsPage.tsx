@@ -254,7 +254,7 @@ export default function StockAdjustmentsPage() {
                 onClick={handleExport}
                 className="px-4 py-2 border border-input rounded-lg text-sm font-medium hover:bg-muted/50"
               >
-                Export CSV
+                ส่งออก CSV
               </button>
               <button
                 onClick={() => setShowCreateModal(true)}

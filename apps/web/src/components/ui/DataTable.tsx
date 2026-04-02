@@ -93,7 +93,7 @@ function DataTable<T extends { id: string }>({
 
   if (isLoading) {
     return (
-      <div className="bg-card rounded-lg border border-border overflow-hidden">
+      <div className="bg-card rounded-lg border border-border overflow-hidden" role="status" aria-label="กำลังโหลดข้อมูล">
         <div className="p-1">
           <div className="space-y-0">
             <div className="flex gap-4 px-5 py-3.5 bg-muted/50">
@@ -133,8 +133,8 @@ function DataTable<T extends { id: string }>({
         </div>
       )}
 
-      <div className="overflow-x-auto">
-        <table className="w-full">
+      <div className="overflow-x-auto -webkit-overflow-scrolling-touch">
+        <table className="w-full min-w-[640px]">
           <thead>
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id} className="bg-muted/50 border-b border-border">

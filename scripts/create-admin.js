@@ -10,7 +10,7 @@ async function main() {
     data: { name: 'สำนักงานใหญ่', code: 'HQ', address: '', phone: '', isActive: true },
   });
 
-  const hash = await bcrypt.hash('1234', 10);
+  const hash = await bcrypt.hash('123456', 10);
 
   await p.user.create({
     data: {

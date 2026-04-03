@@ -207,6 +207,8 @@ jobs:
             --max-instances=10 \
             --memory=1Gi \
             --cpu=1 \
+            --startup-cpu-boost \
+            --timeout=300 \
             --set-secrets="\
           JWT_SECRET=JWT_SECRET:latest,\
           JWT_REFRESH_SECRET=JWT_REFRESH_SECRET:latest,\

@@ -637,27 +637,30 @@ export class NotificationsService implements OnModuleInit {
   /**
    * Get SMS settings from SystemConfig, masking sensitive values
    */
-  async getSmsSettings(): Promise<Record<string, string>> {
+  async getSmsSettings(): Promise<{ settings: Record<string, string>; isConfigured: boolean }> {
     const configs = await this.prisma.systemConfig.findMany({
       where: { key: { in: [...NotificationsService.SMS_CONFIG_KEYS] }, deletedAt: null },
     });
 
-    const result: Record<string, string> = {};
+    const settings: Record<string, string> = {};
     for (const key of NotificationsService.SMS_CONFIG_KEYS) {
       const config = configs.find((c) => c.key === key);
       if (!config) {
-        result[key] = '';
+        settings[key] = '';
         continue;
       }
       // Mask sensitive keys
       if (key === 'sms_api_key' || key === 'sms_api_secret') {
         const val = config.value;
-        result[key] = val.length > 4 ? '****' + val.slice(-4) : '****';
+        settings[key] = val.length > 4 ? '****' + val.slice(-4) : '****';
       } else {
-        result[key] = config.value;
+        settings[key] = config.value;
       }
     }
-    return result;
+
+    const isConfigured = !!(settings.sms_api_key && settings.sms_api_key !== ''
+      && settings.sms_api_secret && settings.sms_api_secret !== '');
+    return { settings, isConfigured };
   }
 
   /**

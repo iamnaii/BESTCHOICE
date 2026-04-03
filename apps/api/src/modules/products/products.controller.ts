@@ -120,8 +120,11 @@ export class ProductsController {
 
   @Get('transfers/:transferId')
   @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
-  getTransferById(@Param('transferId') transferId: string) {
-    return this.productsStockService.getTransferById(transferId);
+  getTransferById(
+    @Param('transferId') transferId: string,
+    @CurrentUser() user: { role: string; branchId: string | null },
+  ) {
+    return this.productsStockService.getTransferById(transferId, user);
   }
 
   @Get(':id/workflow')

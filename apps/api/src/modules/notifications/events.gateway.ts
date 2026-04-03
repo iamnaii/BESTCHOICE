@@ -27,11 +27,14 @@ interface AuthenticatedSocket extends Socket {
  * - overdue:alert — overdue payment alert
  */
 @WebSocketGateway({
+  // Share the same HTTP port (required for Cloud Run which only allows 1 port)
+  // Socket.IO will upgrade HTTP connections to WebSocket on the same port
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+    origin: (process.env.FRONTEND_URL || 'http://localhost:5173').split(',').map(s => s.trim()),
     credentials: true,
   },
   namespace: '/events',
+  transports: ['websocket', 'polling'],
 })
 export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()

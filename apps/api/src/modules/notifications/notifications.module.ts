@@ -7,18 +7,21 @@ import { NotificationsService } from './notifications.service';
 import { EventsGateway } from './events.gateway';
 import { PrismaModule } from '../../prisma/prisma.module';
 
+// WebSocket gateway requires ENABLE_WEBSOCKET=true (disabled by default in Cloud Run)
+const enableWebSocket = process.env.ENABLE_WEBSOCKET === 'true';
+
 @Module({
   imports: [
     PrismaModule,
-    JwtModule.registerAsync({
+    ...(enableWebSocket ? [JwtModule.registerAsync({
       useFactory: (config: ConfigService) => ({
         secret: config.get<string>('JWT_SECRET'),
       }),
       inject: [ConfigService],
-    }),
+    })] : []),
   ],
   controllers: [NotificationsController, SmsWebhookController],
-  providers: [NotificationsService, EventsGateway],
-  exports: [NotificationsService, EventsGateway],
+  providers: [NotificationsService, ...(enableWebSocket ? [EventsGateway] : [])],
+  exports: [NotificationsService, ...(enableWebSocket ? [EventsGateway] : [])],
 })
 export class NotificationsModule {}

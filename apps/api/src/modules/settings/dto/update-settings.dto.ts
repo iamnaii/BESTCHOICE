@@ -4,7 +4,7 @@ import { Type } from 'class-transformer';
 export class SettingItemDto {
   @IsString()
   @MaxLength(100, { message: 'key ต้องไม่เกิน 100 ตัวอักษร' })
-  @Matches(/^[a-z_]+$/, { message: 'key ต้องเป็น snake_case เท่านั้น' })
+  @Matches(/^[a-z][a-z0-9_]*$/, { message: 'key ต้องเป็น snake_case เท่านั้น' })
   key: string;
 
   @IsString()

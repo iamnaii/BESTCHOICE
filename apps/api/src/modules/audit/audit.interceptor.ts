@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { AuditService } from './audit.service';
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const { tap } = require('rxjs');
 
 @Injectable()

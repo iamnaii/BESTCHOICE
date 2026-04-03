@@ -409,7 +409,8 @@ export class OverdueService {
     const BATCH_SIZE = 500;
     let contracts: { id: string; contractNumber: string; dunningStage: DunningStage; payments: { dueDate: Date }[] }[] = [];
     let skip = 0;
-    while (true) {
+    let hasMore = true;
+    while (hasMore) {
       const batch = await this.prisma.contract.findMany({
         where: {
           status: { in: ['OVERDUE', 'DEFAULT'] },
@@ -433,7 +434,7 @@ export class OverdueService {
         skip,
       });
       contracts = contracts.concat(batch as typeof contracts);
-      if (batch.length < BATCH_SIZE) break;
+      if (batch.length < BATCH_SIZE) { hasMore = false; break; }
       skip += BATCH_SIZE;
     }
 

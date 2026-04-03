@@ -7,7 +7,6 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PaymentMethod } from '@prisma/client';
-import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LineOaService } from '../line-oa/line-oa.service';
 import { buildPaymentSuccessFlex } from '../line-oa/flex-messages/payment-success.flex';
@@ -37,6 +36,7 @@ export class PaySolutionsService {
   private readonly apiUrl: string;
   private readonly returnUrl: string;
   private readonly apiBaseUrl: string;
+  private readonly terminalId: string;
 
   constructor(
     private prisma: PrismaService,
@@ -48,13 +48,14 @@ export class PaySolutionsService {
     this.apiKey = this.config.get<string>('PAYSOLUTIONS_API_KEY', '');
     this.apiUrl = this.config.get<string>(
       'PAYSOLUTIONS_API_URL',
-      'https://api.paysolutions.asia',
+      'https://apis.paysolutions.asia',
     );
     this.returnUrl = this.config.get<string>('PAYSOLUTIONS_RETURN_URL', '');
     this.apiBaseUrl = this.config.get<string>(
       'API_BASE_URL',
       'https://api.bestchoicephone.app',
     );
+    this.terminalId = this.config.get<string>('PAYSOLUTIONS_TERMINAL_ID', 'TID00001');
   }
 
   /**
@@ -87,8 +88,8 @@ export class PaySolutionsService {
       }
     }
 
-    // สร้าง unique order reference
-    const orderRef = `BC-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+    // สร้าง unique reference (max 12 chars ตาม API spec)
+    const orderRef = `BC${Date.now().toString(36).toUpperCase()}`.slice(0, 12);
 
     // หา payment record ที่ต้องชำระ (ถ้าระบุ installmentNo)
     let paymentRecord: Awaited<ReturnType<typeof this.prisma.payment.findUnique>> = null;
@@ -104,22 +105,22 @@ export class PaySolutionsService {
       }
     }
 
-    // เรียก Pay Solutions API
-    const customerName = contract.customer.name;
-    const productDetail = description || `ชำระค่างวด สัญญา ${contract.contractNumber}`;
+    // เรียก Pay Solutions API v2 (ตาม Web API Guideline v1.2.2)
+    const returnUrlWithRef = `${this.returnUrl || `${this.config.get('FRONTEND_URL', 'http://localhost:5173')}/liff/contract`}?ref=${orderRef}`;
 
     const paymentPayload = {
-      merchantid: this.merchantId,
-      refno: orderRef,
-      customeremail: contract.customer.email || 'noreply@bestchoice.com',
-      productdetail: productDetail,
-      total: amount.toFixed(2),
+      merchantId: this.merchantId,
+      customerEmail: contract.customer.email || 'noreply@bestchoice.com',
+      referenceNo: orderRef,
+      description: description || `ชำระค่างวด สัญญา ${contract.contractNumber}`,
+      amount,
+      paymentChannel: 'ALL',
+      currencyCode: '00',
       lang: 'TH',
-      postback_url: `${this.apiBaseUrl}/api/paysolutions/webhook`,
-      return_url: `${this.returnUrl || `${this.config.get('FRONTEND_URL', 'http://localhost:5173')}/liff/contract`}?ref=${orderRef}`,
-      cc: '00', // Allow all payment methods
-      customer_name: customerName,
-      customer_phone: contract.customer.phone,
+      returnUrl: returnUrlWithRef,
+      postbackUrl: `${this.apiBaseUrl}/api/paysolutions/webhook`,
+      terminalId: this.terminalId,
+      keyVersion: 1,
     };
 
     let gatewayResponse: Record<string, unknown>;
@@ -127,29 +128,37 @@ export class PaySolutionsService {
     let gatewayRef: string;
 
     try {
-      const response = await fetch(`${this.apiUrl}/api/v2/payment`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': this.apiKey,
-          'secretkey': this.secretKey,
+      const response = await fetch(
+        `${this.apiUrl}/payment/gateway/v2/ui-payments`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json; charset=utf-8',
+            'apiKey': this.apiKey,
+            'secretKey': this.secretKey,
+          },
+          body: JSON.stringify(paymentPayload),
         },
-        body: JSON.stringify(paymentPayload),
-      });
+      );
 
       gatewayResponse = (await response.json()) as Record<string, unknown>;
 
       if (!response.ok) {
-        this.logger.error(`Pay Solutions API error: ${JSON.stringify(gatewayResponse)}`);
-        throw new InternalServerErrorException('ไม่สามารถสร้างรายการชำระเงินได้ กรุณาลองใหม่');
+        const status = gatewayResponse.status as Record<string, string> | undefined;
+        this.logger.error(
+          `Pay Solutions API error: ${status?.statusCode} ${status?.message} — ${JSON.stringify(gatewayResponse)}`,
+        );
+        throw new InternalServerErrorException(
+          `ไม่สามารถสร้างรายการชำระเงินได้: ${status?.message || 'กรุณาลองใหม่'}`,
+        );
       }
 
-      // Pay Solutions returns payment URL and reference
-      paymentUrl = (gatewayResponse.payment_url as string) || (gatewayResponse.url as string) || '';
-      gatewayRef = (gatewayResponse.refno as string) || orderRef;
+      // Pay Solutions v2 response: { redirectUrl, transactionId, status }
+      paymentUrl = (gatewayResponse.redirectUrl as string) || '';
+      gatewayRef = (gatewayResponse.transactionId as string) || orderRef;
 
       if (!paymentUrl) {
-        this.logger.error(`Pay Solutions missing payment_url: ${JSON.stringify(gatewayResponse)}`);
+        this.logger.error(`Pay Solutions missing redirectUrl: ${JSON.stringify(gatewayResponse)}`);
         throw new InternalServerErrorException('ไม่ได้รับลิงก์ชำระเงินจากระบบ');
       }
     } catch (error) {

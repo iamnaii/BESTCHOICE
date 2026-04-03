@@ -405,27 +405,37 @@ export class OverdueService {
       { minDays: 1, stage: 'REMINDER' },
     ];
 
-    // Find all overdue/default contracts with their oldest unpaid payment
-    const contracts = await this.prisma.contract.findMany({
-      where: {
-        status: { in: ['OVERDUE', 'DEFAULT'] },
-        deletedAt: null,
-      },
-      select: {
-        id: true,
-        contractNumber: true,
-        dunningStage: true,
-        payments: {
-          where: {
-            status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] },
-            dueDate: { lt: now },
-          },
-          orderBy: { dueDate: 'asc' },
-          take: 1,
-          select: { dueDate: true },
+    // Find overdue/default contracts in batches to prevent unbounded memory usage
+    const BATCH_SIZE = 500;
+    let contracts: { id: string; contractNumber: string; dunningStage: DunningStage; payments: { dueDate: Date }[] }[] = [];
+    let skip = 0;
+    while (true) {
+      const batch = await this.prisma.contract.findMany({
+        where: {
+          status: { in: ['OVERDUE', 'DEFAULT'] },
+          deletedAt: null,
         },
-      },
-    });
+        select: {
+          id: true,
+          contractNumber: true,
+          dunningStage: true,
+          payments: {
+            where: {
+              status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] },
+              dueDate: { lt: now },
+            },
+            orderBy: { dueDate: 'asc' },
+            take: 1,
+            select: { dueDate: true },
+          },
+        },
+        take: BATCH_SIZE,
+        skip,
+      });
+      contracts = contracts.concat(batch as typeof contracts);
+      if (batch.length < BATCH_SIZE) break;
+      skip += BATCH_SIZE;
+    }
 
     const escalated: { contractId: string; contractNumber: string; from: DunningStage; to: DunningStage; daysOverdue: number }[] = [];
 

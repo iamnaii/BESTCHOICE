@@ -116,12 +116,6 @@ export class AuthService {
       throw new UnauthorizedException('ผู้ใช้งานไม่ถูกต้อง');
     }
 
-    // Rotation: revoke old token, issue new one
-    await this.prisma.refreshToken.update({
-      where: { id: storedToken.id },
-      data: { isRevoked: true, revokedAt: new Date() },
-    });
-
     const payload = {
       sub: user.id,
       email: user.email,
@@ -134,9 +128,26 @@ export class AuthService {
       expiresIn: this.configService.get<string>('JWT_EXPIRATION', '15m'),
     });
 
-    const newRefreshToken = await this.createRefreshToken(user.id);
+    // Rotation: revoke old + create new ATOMICALLY in a transaction
+    // Prevents user lockout if crash occurs between revoke and create
+    const newRawToken = crypto.randomBytes(64).toString('hex');
+    const newTokenHash = this.hashToken(newRawToken);
+    const expiresIn = this.configService.get<string>('JWT_REFRESH_EXPIRATION', '7d');
+    const expiresAt = new Date();
+    const days = parseInt(expiresIn) || 7;
+    expiresAt.setDate(expiresAt.getDate() + days);
 
-    return { accessToken, refreshToken: newRefreshToken };
+    await this.prisma.$transaction([
+      this.prisma.refreshToken.update({
+        where: { id: storedToken.id },
+        data: { isRevoked: true, revokedAt: new Date() },
+      }),
+      this.prisma.refreshToken.create({
+        data: { token: newTokenHash, userId: user.id, expiresAt },
+      }),
+    ]);
+
+    return { accessToken, refreshToken: newRawToken };
   }
 
   async logout(refreshToken: string, userId: string) {

@@ -452,8 +452,8 @@ export class LineOaController {
         if (bankAccount?.value) {
           bankInfo = `\n\nโอนเงินได้ที่:\n🏦 ${bankName?.value || 'ธนาคาร'}\nเลขบัญชี: ${bankAccount.value}\nชื่อบัญชี: ${bankAccountName?.value || '-'}`;
         }
-      } catch {
-        // ignore config lookup failure
+      } catch (err) {
+        this.logger.warn('Bank config lookup failed', err instanceof Error ? err.message : err);
       }
 
       await this.lineOaService.replyMessage(replyToken, [
@@ -569,8 +569,8 @@ export class LineOaController {
       try {
         const url = new URL(config.value);
         return `${url.origin}${url.pathname.replace(/\/pay\/?.*$/, '')}`;
-      } catch {
-        // invalid URL
+      } catch (err) {
+        this.logger.warn('Invalid LIFF URL in config', err instanceof Error ? err.message : err);
       }
     }
     return '';

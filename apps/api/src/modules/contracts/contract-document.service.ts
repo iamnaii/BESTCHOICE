@@ -163,8 +163,8 @@ export class ContractDocumentService {
           branchName: c?.branch?.name || '',
         };
       });
-    } catch {
-      // DocumentAuditLog might not exist yet
+    } catch (err) {
+      this.logger.warn('DocumentAuditLog query failed (table may not exist yet)', err instanceof Error ? err.message : err);
     }
 
     return {

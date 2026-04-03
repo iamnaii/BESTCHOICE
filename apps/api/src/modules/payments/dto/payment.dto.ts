@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, Matches, Min, IsNotEmpty } from 'class-validator';
+import { IsString, IsNumber, IsOptional, Matches, Min, IsNotEmpty, MaxLength } from 'class-validator';
 
 export class RecordPaymentDto {
   @IsString()
@@ -17,10 +17,13 @@ export class RecordPaymentDto {
 
   @IsString()
   @IsOptional()
+  @MaxLength(2048)
+  @Matches(/^https:\/\/.+/, { message: 'evidenceUrl ต้องเป็น HTTPS URL' })
   evidenceUrl?: string; // บังคับ: สลิปโอนเงิน / หลักฐานการชำระ
 
   @IsString()
   @IsOptional()
+  @MaxLength(255)
   transactionRef?: string; // เลขอ้างอิงธุรกรรม
 
   @IsString()

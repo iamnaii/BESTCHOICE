@@ -4,9 +4,19 @@ import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 
 interface SystemStatus {
-  api: { status: string; version: string; uptime: number; nodeVersion: string };
+  api: { status: string; version: string; uptime: number; nodeVersion: string; environment?: string };
   database: { connected: boolean; latencyMs: number; error?: string };
   ai: { configured: boolean; connected: boolean; model: string; error?: string };
+  redis?: { connected: boolean; type: string; error?: string };
+  services?: {
+    s3: { configured: boolean; endpoint: string; bucket: string };
+    line: { configured: boolean; liffId: string };
+    sms: { configured: boolean; provider: string };
+    payment: { configured: boolean; provider: string; merchantId: string };
+    email: { configured: boolean; host: string };
+    sentry: { configured: boolean };
+    queue: { available: boolean; waiting?: number; active?: number; failed?: number };
+  };
   memory: { heapUsedMB: number; heapTotalMB: number; rssMB: number };
   timestamp: string;
 }
@@ -87,8 +97,9 @@ export default function SystemStatusPage() {
     );
   }
 
-  const allOk = data!.api.status === 'ok' && data!.database.connected && data!.ai.connected;
-  const totalPages = 2;
+  const allOk = data!.api.status === 'ok' && data!.database.connected;
+  const svcs = data!.services;
+  const totalPages = 3;
 
   return (
     <div>
@@ -292,6 +303,141 @@ export default function SystemStatusPage() {
           })}
         </div>
       </A4Page>
+
+      {/* ═══════════════════ Page 3: Integration Services ═══════════════════ */}
+      <A4Page pageNum={3} totalPages={totalPages}>
+        <h2 className="text-lg font-bold mb-6 border-b pb-3">สถานะบริการเชื่อมต่อ (Integrations)</h2>
+
+        <div className="grid grid-cols-2 gap-4">
+          {/* Redis */}
+          <IntegrationCard
+            name="Redis Cache"
+            configured={data!.redis?.connected ?? false}
+            details={[
+              { label: 'ประเภท', value: data!.redis?.type || 'unknown' },
+              { label: 'สถานะ', value: data!.redis?.connected ? 'เชื่อมต่อแล้ว' : (data!.redis?.error || 'ไม่ได้เชื่อมต่อ') },
+            ]}
+          />
+
+          {/* S3 Storage */}
+          <IntegrationCard
+            name="S3 Storage (รูปภาพ/เอกสาร)"
+            configured={svcs?.s3.configured ?? false}
+            details={[
+              { label: 'Endpoint', value: svcs?.s3.endpoint || '-' },
+              { label: 'Bucket', value: svcs?.s3.bucket || '-' },
+            ]}
+          />
+
+          {/* LINE OA */}
+          <IntegrationCard
+            name="LINE OA"
+            configured={svcs?.line.configured ?? false}
+            details={[
+              { label: 'LIFF ID', value: svcs?.line.liffId || '-' },
+            ]}
+          />
+
+          {/* SMS */}
+          <IntegrationCard
+            name="SMS แจ้งเตือน"
+            configured={svcs?.sms.configured ?? false}
+            details={[
+              { label: 'Provider', value: svcs?.sms.provider || '-' },
+            ]}
+          />
+
+          {/* Payment Gateway */}
+          <IntegrationCard
+            name="Payment Gateway"
+            configured={svcs?.payment.configured ?? false}
+            details={[
+              { label: 'Provider', value: svcs?.payment.provider || '-' },
+              { label: 'Merchant', value: svcs?.payment.merchantId || '-' },
+            ]}
+          />
+
+          {/* Email */}
+          <IntegrationCard
+            name="Email (SMTP)"
+            configured={svcs?.email.configured ?? false}
+            details={[
+              { label: 'Host', value: svcs?.email.host || '-' },
+            ]}
+          />
+
+          {/* Sentry */}
+          <IntegrationCard
+            name="Sentry Error Monitoring"
+            configured={svcs?.sentry.configured ?? false}
+            details={[
+              { label: 'สถานะ', value: svcs?.sentry.configured ? 'เปิดใช้งาน' : 'ยังไม่ได้ตั้งค่า' },
+            ]}
+          />
+
+          {/* Notification Queue */}
+          <IntegrationCard
+            name="Notification Queue (BullMQ)"
+            configured={svcs?.queue.available ?? false}
+            details={[
+              { label: 'รอส่ง', value: String(svcs?.queue.waiting ?? 0) },
+              { label: 'กำลังส่ง', value: String(svcs?.queue.active ?? 0) },
+              { label: 'ส่งไม่สำเร็จ', value: String(svcs?.queue.failed ?? 0) },
+            ]}
+          />
+        </div>
+
+        {/* Config Checklist */}
+        <div className="mt-8 border-t pt-4">
+          <h3 className="text-sm font-semibold mb-3">Checklist ก่อน Go-Live</h3>
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            {[
+              { label: 'Database', ok: data!.database.connected },
+              { label: 'AI (Anthropic)', ok: data!.ai.connected },
+              { label: 'Redis Cache', ok: data!.redis?.connected ?? false },
+              { label: 'S3 Storage', ok: svcs?.s3.configured ?? false },
+              { label: 'LINE OA', ok: svcs?.line.configured ?? false },
+              { label: 'SMS', ok: svcs?.sms.configured ?? false },
+              { label: 'Payment Gateway', ok: svcs?.payment.configured ?? false },
+              { label: 'Email (SMTP)', ok: svcs?.email.configured ?? false },
+              { label: 'Sentry', ok: svcs?.sentry.configured ?? false },
+              { label: 'Notification Queue', ok: svcs?.queue.available ?? false },
+            ].map(item => (
+              <div key={item.label} className="flex items-center gap-2">
+                <span className={`inline-flex items-center justify-center w-4 h-4 rounded text-[10px] font-bold ${item.ok ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                  {item.ok ? '✓' : '✗'}
+                </span>
+                <span className={item.ok ? 'text-foreground' : 'text-muted-foreground'}>{item.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </A4Page>
+    </div>
+  );
+}
+
+/* ─── Integration Service Card ─── */
+function IntegrationCard({ name, configured, details }: { name: string; configured: boolean; details: { label: string; value: string }[] }) {
+  return (
+    <div className={`rounded-lg border p-4 ${configured ? 'border-green-200 bg-green-50/50 dark:bg-green-950/20 dark:border-green-900' : 'border-border bg-muted/30'}`}>
+      <div className="flex items-center gap-2 mb-2">
+        <StatusDot ok={configured} />
+        <span className="text-sm font-medium text-foreground">{name}</span>
+      </div>
+      <div className="space-y-1">
+        {details.map(d => (
+          <div key={d.label} className="flex justify-between text-xs">
+            <span className="text-muted-foreground">{d.label}</span>
+            <span className="text-foreground font-mono truncate max-w-[180px]" title={d.value}>{d.value}</span>
+          </div>
+        ))}
+      </div>
+      <div className="mt-2 text-right">
+        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${configured ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' : 'bg-red-100 text-red-600 dark:bg-red-900 dark:text-red-300'}`}>
+          {configured ? 'ตั้งค่าแล้ว' : 'ยังไม่ได้ตั้งค่า'}
+        </span>
+      </div>
     </div>
   );
 }

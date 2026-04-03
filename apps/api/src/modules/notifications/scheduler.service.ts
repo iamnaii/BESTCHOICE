@@ -3,6 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { NotificationsService } from './notifications.service';
 import { OverdueService } from '../overdue/overdue.service';
 import { ReorderPointsService } from '../reorder-points/reorder-points.service';
+import { WarrantyService } from '../products/warranty.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LineOaService } from '../line-oa/line-oa.service';
 import { PaymentLinkService } from '../line-oa/payment-links/payment-link.service';
@@ -17,6 +18,7 @@ export class SchedulerService {
     private notificationsService: NotificationsService,
     private overdueService: OverdueService,
     private reorderPointsService: ReorderPointsService,
+    private warrantyService: WarrantyService,
     private prisma: PrismaService,
     private lineOaService: LineOaService,
     private paymentLinkService: PaymentLinkService,
@@ -447,6 +449,22 @@ export class SchedulerService {
       );
     } catch (error) {
       this.logger.error(`Data retention cleanup failed: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+
+  /**
+   * Daily: Mark expired warranties and log count.
+   * Runs at 02:30 ICT (19:30 UTC previous day) to avoid overlap with backup cron.
+   */
+  @Cron('30 19 * * *') // 02:30 ICT
+  async handleWarrantyExpiry() {
+    try {
+      const count = await this.warrantyService.markExpiredWarranties();
+      if (count > 0) {
+        this.logger.log(`Warranty check: ${count} products marked as warranty expired`);
+      }
+    } catch (error) {
+      this.logger.error(`Warranty expiry check failed: ${error instanceof Error ? error.message : error}`);
     }
   }
 }

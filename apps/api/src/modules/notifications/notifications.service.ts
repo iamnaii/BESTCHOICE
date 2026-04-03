@@ -205,6 +205,11 @@ export class NotificationsService implements OnModuleInit {
     this.logger.log(`[LINE] Flex message sent to ${recipient}`);
   }
 
+  /** Public wrapper for queue worker to send SMS */
+  async sendSmsFromQueue(recipient: string, message: string): Promise<string | undefined> {
+    return this.sendSms(recipient, message);
+  }
+
   /**
    * Send SMS via ThaiBulkSMS API V2
    * Docs: https://assets.thaibulksms.com/documents/ThaibulksmsAPIDocument_V2.0_EN.pdf

@@ -25,6 +25,7 @@ import { ExchangeModule } from './modules/exchange/exchange.module';
 import { RepossessionsModule } from './modules/repossessions/repossessions.module';
 import { PurchaseOrdersModule } from './modules/purchase-orders/purchase-orders.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { NotificationQueueModule } from './modules/notifications/notification-queue.module';
 import { SchedulerModule } from './modules/notifications/scheduler.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { ReportsModule } from './modules/reports/reports.module';
@@ -111,6 +112,7 @@ import { AppCacheModule } from './cache/cache.module';
     StockCountModule,
     // MASTER: Communication
     NotificationsModule,
+    NotificationQueueModule,
     SchedulerModule,
     // MASTER: Intelligence
     DashboardModule,

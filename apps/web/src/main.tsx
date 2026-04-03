@@ -1,4 +1,5 @@
 import '@/lib/env';
+import * as Sentry from '@sentry/react';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
@@ -9,6 +10,28 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import App from './App';
 import './index.css';
+
+// Initialize Sentry (only if DSN is configured)
+const sentryDsn = import.meta.env.VITE_SENTRY_DSN;
+if (sentryDsn) {
+  Sentry.init({
+    dsn: sentryDsn,
+    environment: import.meta.env.MODE,
+    tracesSampleRate: import.meta.env.PROD ? 0.2 : 1.0,
+    replaysSessionSampleRate: 0,
+    replaysOnErrorSampleRate: import.meta.env.PROD ? 0.5 : 0,
+    // Don't send PII to Sentry
+    beforeSend(event) {
+      if (event.request?.data) {
+        const data = event.request.data as Record<string, unknown>;
+        for (const key of ['nationalId', 'password', 'phone']) {
+          if (key in data) data[key] = '[REDACTED]';
+        }
+      }
+      return event;
+    },
+  });
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {

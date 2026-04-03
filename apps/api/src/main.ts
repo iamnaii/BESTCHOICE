@@ -1,8 +1,13 @@
+// Sentry must be imported before everything else
+import './sentry';
+
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { json, urlencoded } from 'express';
 import cookieParser from 'cookie-parser';
+import { HttpAdapterHost } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { SentryExceptionFilter } from './filters/sentry-exception.filter';
 import { validateEnv } from './utils/env-validation';
 
 async function bootstrap() {
@@ -44,6 +49,10 @@ async function bootstrap() {
   );
 
   app.setGlobalPrefix('api');
+
+  // Global exception filter: reports 5xx to Sentry, consistent error responses
+  const { httpAdapter } = app.get(HttpAdapterHost);
+  app.useGlobalFilters(new SentryExceptionFilter(httpAdapter));
 
   // Graceful shutdown
   app.enableShutdownHooks();

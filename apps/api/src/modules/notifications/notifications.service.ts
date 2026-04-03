@@ -317,10 +317,6 @@ export class NotificationsService implements OnModuleInit {
       return { configured: false, error: 'SMS_API_KEY and SMS_API_SECRET not set in .env' };
     }
 
-    if (this.configService.get('NODE_ENV') !== 'production') {
-      return { configured: true, credit: -1, error: 'Dev mode: SMS sending is mocked' };
-    }
-
     try {
       const basicAuth = Buffer.from(`${this.smsApiKey}:${this.smsApiSecret}`).toString('base64');
       const response = await fetch('https://api-v2.thaibulksms.com/credit', {
@@ -329,13 +325,16 @@ export class NotificationsService implements OnModuleInit {
           'Authorization': `Basic ${basicAuth}`,
         },
       });
-      const data = await response.json();
+      const data = await response.json() as Record<string, unknown>;
 
       if (!response.ok || data.error) {
-        return { configured: true, error: data.error?.message || `HTTP ${response.status}` };
+        const err = data.error as Record<string, string> | undefined;
+        return { configured: true, error: err?.description || err?.message || `HTTP ${response.status}` };
       }
 
-      return { configured: true, credit: data.data?.credit_remain ?? data.credit_remain };
+      const remaining = data.remaining_credit as Record<string, number> | undefined;
+      const credit = remaining?.standard ?? (data as Record<string, number>).credit_remain ?? 0;
+      return { configured: true, credit };
     } catch (err) {
       return { configured: true, error: err instanceof Error ? err.message : 'Unknown error' };
     }

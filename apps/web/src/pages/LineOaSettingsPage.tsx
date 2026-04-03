@@ -126,7 +126,7 @@ export default function LineOaSettingsPage() {
   // Check which steps are done
   const hasToken = !!(form.line_channel_access_token);
   const hasSecret = !!(form.line_channel_secret);
-  const hasPromptPay = !!(form.promptpay_id);
+
   const hasLiff = !!(form.liff_id);
 
   if (isLoading) {
@@ -320,98 +320,16 @@ export default function LineOaSettingsPage() {
           </div>
         </div>
 
-        {/* Step 3: PromptPay (Optional) */}
-        <div className="mb-6">
-          <div className="flex items-center gap-3 mb-4">
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-              hasPromptPay ? 'bg-green-500 text-white' : 'bg-muted text-muted-foreground'
-            }`}>
-              {hasPromptPay ? '✓' : '3'}
-            </div>
-            <div>
-              <h3 className="font-semibold">ขั้นตอนที่ 3: ตั้งค่า PromptPay <span className="text-xs font-normal text-muted-foreground">(ไม่บังคับ)</span></h3>
-              <p className="text-xs text-muted-foreground">สร้าง QR พร้อมเพย์ให้ลูกค้าสแกนจ่ายผ่านไลน์</p>
-            </div>
-          </div>
-
-          <div className="bg-card rounded-xl shadow-xs shadow-black/5 border p-5 ml-4 border-l-4 border-l-purple-400">
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1">
-                  เลข PromptPay
-                </label>
-                <input
-                  type="text"
-                  value={form.promptpay_id || ''}
-                  onChange={(e) => handleChange('promptpay_id', e.target.value)}
-                  placeholder="เช่น 0812345678 หรือ เลขบัตรประชาชน 13 หลัก"
-                  className="w-full border rounded-lg px-3 py-2.5 text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background"
-                />
-                <p className="text-xs text-muted-foreground mt-1">ใส่เบอร์โทรหรือเลขบัตรประชาชนที่ผูกกับ PromptPay</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1">
-                  ชื่อบัญชี (แสดงบน QR)
-                </label>
-                <input
-                  type="text"
-                  value={form.promptpay_account_name || ''}
-                  onChange={(e) => handleChange('promptpay_account_name', e.target.value)}
-                  placeholder="เช่น BESTCHOICE Co.,Ltd."
-                  className="w-full border rounded-lg px-3 py-2.5 text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background"
-                />
-              </div>
-
-              <div className="border-t pt-4 mt-4">
-                <p className="text-sm font-medium text-foreground mb-3">บัญชีธนาคาร (สำรอง)</p>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-xs text-muted-foreground mb-1">ชื่อธนาคาร</label>
-                    <input
-                      type="text"
-                      value={form.bank_name || ''}
-                      onChange={(e) => handleChange('bank_name', e.target.value)}
-                      placeholder="เช่น กสิกรไทย"
-                      className="w-full border rounded-lg px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-muted-foreground mb-1">เลขบัญชี</label>
-                    <input
-                      type="text"
-                      value={form.bank_account_number || ''}
-                      onChange={(e) => handleChange('bank_account_number', e.target.value)}
-                      placeholder="xxx-x-xxxxx-x"
-                      className="w-full border rounded-lg px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-muted-foreground mb-1">ชื่อบัญชี</label>
-                    <input
-                      type="text"
-                      value={form.bank_account_name || ''}
-                      onChange={(e) => handleChange('bank_account_name', e.target.value)}
-                      placeholder="ชื่อเจ้าของบัญชี"
-                      className="w-full border rounded-lg px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Step 4: LIFF (Optional) */}
+        {/* Step 3: LIFF (Optional) */}
         <div className="mb-6">
           <div className="flex items-center gap-3 mb-4">
             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
               hasLiff ? 'bg-green-500 text-white' : 'bg-muted text-muted-foreground'
             }`}>
-              {hasLiff ? '✓' : '4'}
+              {hasLiff ? '✓' : '3'}
             </div>
             <div>
-              <h3 className="font-semibold">ขั้นตอนที่ 4: ตั้งค่า LIFF <span className="text-xs font-normal text-muted-foreground">(ไม่บังคับ)</span></h3>
+              <h3 className="font-semibold">ขั้นตอนที่ 3: ตั้งค่า LIFF <span className="text-xs font-normal text-muted-foreground">(ไม่บังคับ)</span></h3>
               <p className="text-xs text-muted-foreground">ลงทะเบียน, ดูสัญญา และชำระเงินผ่าน LINE</p>
             </div>
           </div>

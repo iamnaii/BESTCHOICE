@@ -207,7 +207,7 @@ jobs:
             --max-instances=10 \
             --memory=2Gi \
             --cpu=2 \
-            --startup-cpu-boost \
+            --cpu-boost \
             --timeout=300 \
             --execution-environment=gen2 \
             --set-secrets="\

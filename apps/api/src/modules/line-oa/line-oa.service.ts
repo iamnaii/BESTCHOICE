@@ -34,7 +34,8 @@ export class LineOaService {
       const config = await this.prisma.systemConfig.findUnique({
         where: { key: 'line_channel_access_token' },
       });
-      if (config?.value) {
+      // Only override env token if DB has a real value (not empty/masked)
+      if (config?.value && config.value.length > 10 && !config.value.startsWith('****')) {
         this.lineChannelAccessToken = config.value;
         this.logger.log('[LINE] Config loaded from database');
       }

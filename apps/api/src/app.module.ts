@@ -112,7 +112,7 @@ import { AppCacheModule } from './cache/cache.module';
     StockCountModule,
     // MASTER: Communication
     NotificationsModule,
-    NotificationQueueModule,
+    NotificationQueueModule.register(),
     SchedulerModule,
     // MASTER: Intelligence
     DashboardModule,

@@ -383,7 +383,7 @@ function InfoField({ label, value }: { label: string; value: string | null | und
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-border p-4">
-      <div className="text-xs text-muted-foreground mb-1">{label}</div>
+      <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">{label}</div>
       <div className="text-lg font-semibold text-foreground">{value}</div>
     </div>
   );

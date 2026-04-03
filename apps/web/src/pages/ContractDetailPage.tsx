@@ -441,23 +441,23 @@ export default function ContractDetailPage() {
       {/* Status + Workflow + Summary */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
         <div className="rounded-lg border p-4">
-          <div className="text-xs text-muted-foreground mb-1">สถานะสัญญา</div>
+          <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สถานะสัญญา</div>
           <span className={`px-3 py-1 rounded-full text-sm font-medium ${s.className}`}>{s.label}</span>
         </div>
         <div className="rounded-lg border p-4">
-          <div className="text-xs text-muted-foreground mb-1">Workflow</div>
+          <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Workflow</div>
           <WorkflowStatusBadge status={contract.workflowStatus} />
         </div>
         <div className="rounded-lg border p-4">
-          <div className="text-xs text-muted-foreground mb-1">ค่างวด/เดือน</div>
+          <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ค่างวด/เดือน</div>
           <div className="text-xl font-bold text-primary">{parseFloat(contract.monthlyPayment).toLocaleString()} ฿</div>
         </div>
         <div className="rounded-lg border p-4">
-          <div className="text-xs text-muted-foreground mb-1">ชำระแล้ว</div>
+          <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ชำระแล้ว</div>
           <div className="text-xl font-bold text-success">{paidCount}/{contract.totalMonths} งวด</div>
         </div>
         <div className="rounded-lg border p-4">
-          <div className="text-xs text-muted-foreground mb-1">ยอดผ่อนรวม</div>
+          <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ยอดผ่อนรวม</div>
           <div className="text-xl font-bold">{parseFloat(contract.financedAmount).toLocaleString()} ฿</div>
         </div>
         {contract.creditBalance && parseFloat(contract.creditBalance) > 0 && (
@@ -494,7 +494,7 @@ export default function ContractDetailPage() {
             contract.dunningStage === 'NOTICE' ? 'border-orange-300 bg-orange-50' :
             'border-yellow-300 bg-yellow-50'
           }`}>
-            <div className="text-xs text-muted-foreground mb-1">ระดับติดตามหนี้</div>
+            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ระดับติดตามหนี้</div>
             <div className={`text-sm font-bold ${
               contract.dunningStage === 'LEGAL_ACTION' ? 'text-destructive' :
               contract.dunningStage === 'FINAL_WARNING' ? 'text-destructive' :
@@ -588,23 +588,23 @@ export default function ContractDetailPage() {
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-muted-foreground mb-1">ราคาขาย</label>
+                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ราคาขาย</label>
                   <input type="number" value={editForm.sellingPrice} onChange={(e) => setEditForm({ ...editForm, sellingPrice: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs text-muted-foreground mb-1">เงินดาวน์</label>
+                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เงินดาวน์</label>
                   <input type="number" value={editForm.downPayment} onChange={(e) => setEditForm({ ...editForm, downPayment: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs text-muted-foreground mb-1">จำนวนงวด (เดือน)</label>
+                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">จำนวนงวด (เดือน)</label>
                   <input type="number" value={editForm.totalMonths} onChange={(e) => setEditForm({ ...editForm, totalMonths: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs text-muted-foreground mb-1">อัตราดอกเบี้ย (ทศนิยม เช่น 0.08)</label>
+                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">อัตราดอกเบี้ย (ทศนิยม เช่น 0.08)</label>
                   <input type="number" step="0.01" value={editForm.interestRate} onChange={(e) => setEditForm({ ...editForm, interestRate: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs text-muted-foreground mb-1">วันชำระ</label>
+                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">วันชำระ</label>
                   <select value={editForm.paymentDueDay} onChange={(e) => setEditForm({ ...editForm, paymentDueDay: parseInt(e.target.value) || 1 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm">
                     {[...Array.from({ length: 28 }, (_, i) => i + 1), 31].map((d) => (
                       <option key={d} value={d}>{d === 31 ? 'สิ้นเดือน' : `วันที่ ${d}`}</option>
@@ -613,7 +613,7 @@ export default function ContractDetailPage() {
                 </div>
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">หมายเหตุ</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หมายเหตุ</label>
                 <textarea value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} rows={2} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
               </div>
               {/* Preview calculation */}

@@ -471,7 +471,7 @@ function SummaryCard({
 }) {
   return (
     <div className="bg-muted rounded-xl p-4">
-      <div className="text-xs text-muted-foreground mb-1">{label}</div>
+      <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">{label}</div>
       <AnimatedCounter value={value} className={`text-lg font-bold ${color}`} />
       {isCurrency && <div className="text-xs text-muted-foreground mt-0.5">บาท</div>}
     </div>

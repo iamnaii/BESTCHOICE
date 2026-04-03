@@ -406,37 +406,37 @@ export default function SalesHistoryPage() {
       {summary && salesData && (
         <div className={`grid grid-cols-2 ${isOwner ? 'md:grid-cols-5' : 'md:grid-cols-4'} gap-5 lg:gap-7.5 mb-6`}>
           <Card>
-            <CardContent className="pt-6">
-              <div className="text-xs text-muted-foreground mb-1">ทั้งหมด {salesData.total.toLocaleString()} รายการ</div>
+            <CardContent className="p-5">
+              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ทั้งหมด {salesData.total.toLocaleString()} รายการ</div>
               <div className="text-xl font-bold">{summary.totalAmount.toLocaleString()} <span className="text-sm font-normal text-muted-foreground">฿</span></div>
               {summary.totalDiscount > 0 && <div className="text-xs text-red-500">ส่วนลดรวม {summary.totalDiscount.toLocaleString()} ฿</div>}
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="pt-6">
-              <div className="text-xs text-muted-foreground mb-1">เงินสด</div>
+            <CardContent className="p-5">
+              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เงินสด</div>
               <div className="text-xl font-bold text-success">{summary.cashCount}</div>
               <div className="text-sm text-success mt-1">{summary.cashAmount.toLocaleString()} ฿</div>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="pt-6">
-              <div className="text-xs text-muted-foreground mb-1">ผ่อนร้าน</div>
+            <CardContent className="p-5">
+              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ผ่อนร้าน</div>
               <div className="text-xl font-bold text-primary">{summary.installmentCount}</div>
               <div className="text-sm text-primary mt-1">{summary.installmentAmount.toLocaleString()} ฿</div>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="pt-6">
-              <div className="text-xs text-muted-foreground mb-1">ไฟแนนซ์</div>
+            <CardContent className="p-5">
+              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ไฟแนนซ์</div>
               <div className="text-xl font-bold text-primary">{summary.financeCount}</div>
               <div className="text-sm text-primary mt-1">{summary.financeAmount.toLocaleString()} ฿</div>
             </CardContent>
           </Card>
           {isOwner && (
             <Card>
-              <CardContent className="pt-6">
-                <div className="text-xs text-muted-foreground mb-1">กำไรรวม</div>
+              <CardContent className="p-5">
+                <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">กำไรรวม</div>
                 <div className={`text-xl font-bold ${summary.totalProfit >= 0 ? 'text-success' : 'text-destructive'}`}>
                   {summary.totalProfit >= 0 ? '+' : ''}{summary.totalProfit.toLocaleString()} <span className="text-sm font-normal">฿</span>
                 </div>
@@ -447,7 +447,7 @@ export default function SalesHistoryPage() {
       )}
 
       {/* Filters */}
-      <div className="bg-card rounded-lg border p-4 mb-6">
+      <div className="bg-card rounded-lg border border-border/60 p-4 mb-6">
         {/* Row 1: Search + Type + Payment Method + Contract Status */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
           <input

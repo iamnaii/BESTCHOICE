@@ -375,7 +375,7 @@ export default function InterestConfigPage() {
 
                     {/* Simulation */}
                     <div className="mt-3 bg-muted rounded-lg p-3">
-                      <div className="text-xs text-muted-foreground mb-1">ตัวอย่างคำนวณ (ราคา 12,900 บาท / {sim.months} งวด)</div>
+                      <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ตัวอย่างคำนวณ (ราคา 12,900 บาท / {sim.months} งวด)</div>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
                         <div><span className="text-muted-foreground">ดาวน์:</span> <span className="font-medium">{sim.down.toLocaleString()} ฿</span></div>
                         <div><span className="text-muted-foreground">ยอดปล่อย:</span> <span className="font-medium">{sim.loan.toLocaleString()} ฿</span></div>

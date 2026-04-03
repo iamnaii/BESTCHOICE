@@ -228,19 +228,19 @@ export default function PaymentCsvImportPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
             <Card className="shadow-xs shadow-black/5">
               <CardContent className="p-4">
-                <div className="text-xs text-muted-foreground mb-1">ทั้งหมด</div>
+                <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ทั้งหมด</div>
                 <div className="text-2xl font-bold">{result.total}</div>
               </CardContent>
             </Card>
             <Card className="shadow-xs shadow-black/5">
               <CardContent className="p-4">
-                <div className="text-xs text-muted-foreground mb-1">สำเร็จ</div>
+                <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สำเร็จ</div>
                 <div className="text-2xl font-bold text-success">{result.success}</div>
               </CardContent>
             </Card>
             <Card className="shadow-xs shadow-black/5">
               <CardContent className="p-4">
-                <div className="text-xs text-muted-foreground mb-1">ผิดพลาด</div>
+                <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ผิดพลาด</div>
                 <div className="text-2xl font-bold text-destructive">{result.errors.length}</div>
               </CardContent>
             </Card>

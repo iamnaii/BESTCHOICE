@@ -246,25 +246,25 @@ export default function SlipReviewPage() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <Card>
           <CardContent className="pt-4">
-            <div className="text-xs text-muted-foreground mb-1">รอตรวจ</div>
+            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">รอตรวจ</div>
             <div className="text-2xl font-bold text-warning">{stats?.pendingCount ?? 0}</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4">
-            <div className="text-xs text-muted-foreground mb-1">อนุมัติวันนี้</div>
+            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">อนุมัติวันนี้</div>
             <div className="text-2xl font-bold text-success">{stats?.approvedToday ?? 0}</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4">
-            <div className="text-xs text-muted-foreground mb-1">ปฏิเสธวันนี้</div>
+            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ปฏิเสธวันนี้</div>
             <div className="text-2xl font-bold text-destructive">{stats?.rejectedToday ?? 0}</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4">
-            <div className="text-xs text-muted-foreground mb-1">ยอดรวมอนุมัติวันนี้</div>
+            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ยอดรวมอนุมัติวันนี้</div>
             <div className="text-2xl font-bold text-success">
               {Number(stats?.approvedAmountToday || 0).toLocaleString()} ฿
             </div>
@@ -298,7 +298,7 @@ export default function SlipReviewPage() {
       </div>
 
       {/* Search/Filter Bar */}
-      <div className="bg-card rounded-lg border p-4 mb-6">
+      <div className="bg-card rounded-lg border border-border/60 p-4 mb-6">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <input
             type="text"

@@ -297,7 +297,7 @@ export function CreatePOModal({
                   {/* Multi-model selection for accessories (non-charger) */}
                   {isAccessory && !isCharger && item.accessoryType && item.brand && availableModels.length > 0 && (
                     <div>
-                      <label className="block text-xs text-muted-foreground mb-1">สำหรับรุ่น (เลือกได้หลายรุ่น)</label>
+                      <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สำหรับรุ่น (เลือกได้หลายรุ่น)</label>
                       <div className="flex flex-wrap gap-1.5">
                         {availableModels.map((m) => {
                           const isSelected = selectedModels.includes(m.name);

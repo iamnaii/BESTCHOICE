@@ -495,13 +495,13 @@ export default function PaymentsPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <Card>
                 <CardContent className="p-4">
-                  <div className="text-xs text-muted-foreground mb-1">รายการรอชำระ</div>
+                  <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">รายการรอชำระ</div>
                   <div className="text-2xl font-bold">{pendingSummary.count}</div>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="p-4">
-                  <div className="text-xs text-muted-foreground mb-1">ยอดรอชำระรวม</div>
+                  <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ยอดรอชำระรวม</div>
                   <div className="text-2xl font-bold text-destructive">{pendingSummary.totalDue.toLocaleString()} ฿</div>
                 </CardContent>
               </Card>

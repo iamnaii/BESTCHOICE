@@ -163,14 +163,14 @@ export default function InspectionDetailPage() {
           <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
             {infoItems.map((item) => (
               <div key={item.label}>
-                <p className="text-xs text-muted-foreground mb-1">{item.label}</p>
+                <p className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">{item.label}</p>
                 <p className="text-sm font-medium text-foreground">{item.value}</p>
               </div>
             ))}
           </div>
           {product.notes && (
             <div className="px-5 pb-5">
-              <p className="text-xs text-muted-foreground mb-1">หมายเหตุ</p>
+              <p className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หมายเหตุ</p>
               <p className="text-sm text-foreground bg-muted/50 rounded-lg p-3">{product.notes}</p>
             </div>
           )}

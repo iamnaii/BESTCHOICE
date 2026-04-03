@@ -591,7 +591,7 @@ export default function POSPage() {
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
                   ราคาขาย *
                   <span className="ml-1 text-primary">(จากระบบ)</span>
                 </label>
@@ -604,7 +604,7 @@ export default function POSPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">ส่วนลด</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ส่วนลด</label>
                 <input type="number" value={discount} onChange={(e) => setDiscount(e.target.value)} className={inputClass} placeholder="0" />
                 {parseFloat(sellingPrice) > 0 && (
                   <div className="flex gap-1 mt-1">
@@ -622,13 +622,13 @@ export default function POSPage() {
             {saleType === 'CASH' && (
               <div className="grid grid-cols-2 gap-3 mt-3">
                 <div>
-                  <label className="block text-xs text-muted-foreground mb-1">วิธีชำระเงิน</label>
+                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">วิธีชำระเงิน</label>
                   <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className={selectClass}>
                     {paymentMethods.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-muted-foreground mb-1">เงินที่รับ</label>
+                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เงินที่รับ</label>
                   <input type="number" value={amountReceived} onChange={(e) => setAmountReceived(e.target.value)} className={inputClass} placeholder={String(netAmount)} />
                 </div>
               </div>
@@ -638,21 +638,21 @@ export default function POSPage() {
               <div className="space-y-3 mt-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-muted-foreground mb-1">บริษัทไฟแนนซ์ *</label>
+                    <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">บริษัทไฟแนนซ์ *</label>
                     <input type="text" value={financeCompany} onChange={(e) => setFinanceCompany(e.target.value)} className={inputClass} placeholder="ชื่อบริษัทไฟแนนซ์" />
                   </div>
                   <div>
-                    <label className="block text-xs text-muted-foreground mb-1">เลขที่สัญญา</label>
+                    <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เลขที่สัญญา</label>
                     <input type="text" value={contractNumber} onChange={(e) => setContractNumber(e.target.value)} className={inputClass} placeholder="เลขที่สัญญาไฟแนนซ์" />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-muted-foreground mb-1">เงินดาวน์</label>
+                    <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เงินดาวน์</label>
                     <input type="number" value={downPayment} onChange={(e) => setDownPayment(e.target.value)} className={inputClass} placeholder="0" />
                   </div>
                   <div>
-                    <label className="block text-xs text-muted-foreground mb-1">รับเงินดาวน์โดย</label>
+                    <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">รับเงินดาวน์โดย</label>
                     <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className={selectClass}>
                       {paymentMethods.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                     </select>
@@ -670,7 +670,7 @@ export default function POSPage() {
 
             {/* Notes */}
             <div className="mt-3">
-              <label className="block text-xs text-muted-foreground mb-1">หมายเหตุ</label>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หมายเหตุ</label>
               <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} className={inputClass} placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)" />
             </div>
             </CardContent>
@@ -702,7 +702,7 @@ export default function POSPage() {
             {/* Bundle products info */}
             {bundleProducts.length > 0 && (
               <div className="mb-3">
-                <div className="text-xs text-muted-foreground mb-1">ของแถม ({bundleProducts.length} รายการ)</div>
+                <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ของแถม ({bundleProducts.length} รายการ)</div>
                 {bundleProducts.map((p) => (
                   <div key={p.id} className="text-xs text-success flex items-center gap-1">
                     <span>+</span>

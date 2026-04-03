@@ -701,13 +701,13 @@ export default function CreditChecksPage() {
                   <div className="space-y-2">
                     {cc.aiSummary && (
                       <div className="bg-card rounded border p-3">
-                        <div className="text-xs text-muted-foreground mb-1">สรุปผลวิเคราะห์</div>
+                        <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สรุปผลวิเคราะห์</div>
                         <div className="text-sm">{cc.aiSummary}</div>
                       </div>
                     )}
                     {cc.aiRecommendation && (
                       <div className="bg-card rounded border p-3">
-                        <div className="text-xs text-muted-foreground mb-1">คำแนะนำ</div>
+                        <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">คำแนะนำ</div>
                         <div className="text-sm">{cc.aiRecommendation}</div>
                       </div>
                     )}
@@ -808,7 +808,7 @@ export default function CreditChecksPage() {
                   </div>
 
                   <div>
-                    <label className="block text-xs text-muted-foreground mb-1">ธนาคาร</label>
+                    <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ธนาคาร</label>
                     <input
                       type="text"
                       value={bankName}
@@ -818,7 +818,7 @@ export default function CreditChecksPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-muted-foreground mb-1">Statement ย้อนหลัง 3 เดือน (ภาพ/PDF)</label>
+                    <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Statement ย้อนหลัง 3 เดือน (ภาพ/PDF)</label>
                     <input
                       ref={fileRef}
                       type="file"

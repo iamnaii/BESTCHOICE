@@ -572,7 +572,7 @@ export default function SuppliersPage() {
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs text-muted-foreground mb-1">วิธีชำระเงิน *</label>
+                      <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">วิธีชำระเงิน *</label>
                       <select
                         value={pm.paymentMethod}
                         onChange={(e) => updatePaymentMethod(index, 'paymentMethod', e.target.value)}
@@ -587,7 +587,7 @@ export default function SuppliersPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs text-muted-foreground mb-1">เครดิต (วัน)</label>
+                      <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เครดิต (วัน)</label>
                       <input
                         type="number"
                         value={pm.creditTermDays}
@@ -600,7 +600,7 @@ export default function SuppliersPage() {
                     {(pm.paymentMethod === 'BANK_TRANSFER' || pm.paymentMethod === 'CHECK') && (
                       <>
                         <div>
-                          <label className="block text-xs text-muted-foreground mb-1">ธนาคาร</label>
+                          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ธนาคาร</label>
                           <input
                             type="text"
                             value={pm.bankName}
@@ -610,7 +610,7 @@ export default function SuppliersPage() {
                           />
                         </div>
                         <div>
-                          <label className="block text-xs text-muted-foreground mb-1">ชื่อบัญชี</label>
+                          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ชื่อบัญชี</label>
                           <input
                             type="text"
                             value={pm.bankAccountName}
@@ -619,7 +619,7 @@ export default function SuppliersPage() {
                           />
                         </div>
                         <div className="col-span-2">
-                          <label className="block text-xs text-muted-foreground mb-1">เลขบัญชี</label>
+                          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เลขบัญชี</label>
                           <input
                             type="text"
                             value={pm.bankAccountNumber}

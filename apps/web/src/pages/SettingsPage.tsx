@@ -609,7 +609,7 @@ export default function SettingsPage() {
 
                 {/* Signature preview */}
                 <div className="border-t border-border pt-3">
-                  <div className="text-xs text-muted-foreground mb-1">ลายเซ็นผู้ให้เช่าซื้อ</div>
+                  <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ลายเซ็นผู้ให้เช่าซื้อ</div>
                   {vals['lessor_signature_image'] ? (
                     <div className="inline-flex items-center gap-3">
                       <img src={vals['lessor_signature_image']} alt="ลายเซ็น" style={{ maxHeight: '50px' }} />

@@ -231,17 +231,17 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
             </h3>
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">วันที่ *</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">วันที่ *</label>
                 <input type="date" value={form.expenseDate} onChange={(e) => setForm({ ...form, expenseDate: e.target.value })} required className={inputClass} />
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">สาขา *</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สาขา *</label>
                 <select value={form.branchId} onChange={(e) => setForm({ ...form, branchId: e.target.value })} required className={inputClass}>
                   {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">สถานะ</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สถานะ</label>
                 <div className="px-3 py-2 bg-muted rounded-lg text-sm">
                   {editingExpense ? statusLabels[editingExpense.status] || editingExpense.status : 'ใหม่'}
                 </div>
@@ -257,11 +257,11 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
             </h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">ชื่อผู้รับเงิน</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ชื่อผู้รับเงิน</label>
                 <input type="text" value={form.vendorName} onChange={(e) => setForm({ ...form, vendorName: e.target.value })} placeholder="เช่น การไฟฟ้านครหลวง" className={inputClass} />
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">เลขผู้เสียภาษี</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เลขผู้เสียภาษี</label>
                 <input type="text" value={form.vendorTaxId} onChange={(e) => setForm({ ...form, vendorTaxId: e.target.value })} placeholder="13 หลัก" className={inputClass} />
               </div>
             </div>
@@ -275,36 +275,36 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
             </h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">หมวดบัญชี *</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หมวดบัญชี *</label>
                 <select value={form.accountType} onChange={(e) => { const t = e.target.value; setForm({ ...form, accountType: t, category: categoryGroups[t]?.[0]?.value || '' }); }} className={inputClass}>
                   {Object.entries(accountTypeLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">หมวดย่อย *</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หมวดย่อย *</label>
                 <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className={inputClass}>
                   {availableCategories.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                 </select>
               </div>
             </div>
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">รายละเอียด *</label>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">รายละเอียด *</label>
               <input type="text" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} required placeholder="เช่น ค่าไฟฟ้าเดือน เม.ย. 2569" className={inputClass} />
             </div>
 
             {/* Amount row */}
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">จำนวนเงิน *</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">จำนวนเงิน *</label>
                 <input type="number" step="0.01" min="0.01" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} required className={inputClass} />
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">VAT</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">VAT</label>
                 <input type="number" step="0.01" min="0" value={form.vatAmount} onChange={(e) => { if (!includeVat) setForm({ ...form, vatAmount: e.target.value }); }}
                   readOnly={includeVat} className={`${inputClass} ${includeVat ? 'bg-muted' : ''}`} />
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">หัก ณ ที่จ่าย</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หัก ณ ที่จ่าย</label>
                 <input type="number" step="0.01" min="0" value={form.withholdingTax} onChange={(e) => setForm({ ...form, withholdingTax: e.target.value })} className={inputClass} />
               </div>
             </div>
@@ -336,18 +336,18 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
             </h3>
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">วิธีจ่ายเงิน</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">วิธีจ่ายเงิน</label>
                 <select value={form.paymentMethod} onChange={(e) => setForm({ ...form, paymentMethod: e.target.value })} className={inputClass}>
                   <option value="">ยังไม่จ่าย</option>
                   {Object.entries(paymentMethodLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">เลขอ้างอิง</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เลขอ้างอิง</label>
                 <input type="text" value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} placeholder="เลขที่บิล, เลขเช็ค" className={inputClass} />
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">เลขใบกำกับภาษี</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เลขใบกำกับภาษี</label>
                 <input type="text" value={form.taxInvoiceNo} onChange={(e) => setForm({ ...form, taxInvoiceNo: e.target.value })} className={inputClass} />
               </div>
             </div>
@@ -599,21 +599,21 @@ export default function ExpensesPage() {
       {/* Filters — grouped in card */}
       <div className="flex flex-wrap gap-4 mb-5 bg-card rounded-xl border border-border p-4">
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">สถานะ</label>
+          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สถานะ</label>
           <select value={statusFilter} onChange={(e) => setFilter('status', e.target.value)} className={`${inputClass} w-auto min-w-[120px]`}>
             <option value="">ทั้งหมด</option>
             {Object.entries(statusLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
         </div>
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">หมวดบัญชี</label>
+          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หมวดบัญชี</label>
           <select value={accountTypeFilter} onChange={(e) => { setFilter('accountType', e.target.value); setFilter('category', ''); }} className={`${inputClass} w-auto min-w-[160px]`}>
             <option value="">ทั้งหมด</option>
             {Object.entries(accountTypeLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
         </div>
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">หมวดย่อย</label>
+          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หมวดย่อย</label>
           <select value={categoryFilter} onChange={(e) => setFilter('category', e.target.value)} className={`${inputClass} w-auto min-w-[180px]`}>
             <option value="">ทั้งหมด</option>
             {Object.entries(categoryGroups).filter(([key]) => !accountTypeFilter || key === accountTypeFilter).map(([groupKey, cats]) => (
@@ -622,25 +622,25 @@ export default function ExpensesPage() {
           </select>
         </div>
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">สาขา</label>
+          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สาขา</label>
           <select value={branchFilter} onChange={(e) => setFilter('branch', e.target.value)} className={`${inputClass} w-auto min-w-[120px]`}>
             <option value="">ทุกสาขา</option>
             {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
         </div>
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">ตั้งแต่</label>
+          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ตั้งแต่</label>
           <input type="date" value={startDate} onChange={(e) => setFilter('startDate', e.target.value)} className={`${inputClass} w-auto`} />
         </div>
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">ถึง</label>
+          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ถึง</label>
           <input type="date" value={endDate} onChange={(e) => setFilter('endDate', e.target.value)} className={`${inputClass} w-auto`} />
         </div>
         <div className="flex items-end gap-1">
           {quickPresets.map((p) => <button key={p.label} onClick={p.fn} className="px-3 py-2 text-xs border border-input rounded-lg hover:bg-muted">{p.label}</button>)}
         </div>
         <div className="flex-1 min-w-[160px]">
-          <label className="block text-xs text-muted-foreground mb-1">ค้นหา</label>
+          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ค้นหา</label>
           <input type="text" placeholder="เลขที่, รายละเอียด, ผู้รับเงิน..." value={search} onChange={(e) => setSearch(e.target.value)} className={inputClass} />
         </div>
       </div>
@@ -664,7 +664,7 @@ export default function ExpensesPage() {
       {/* Reject Dialog */}
       <Modal isOpen={rejectDialog.open} onClose={() => setRejectDialog({ open: false, expenseId: '', reason: '' })} title="ไม่อนุมัติรายจ่าย">
         <div className="space-y-4">
-          <div><label className="block text-xs text-muted-foreground mb-1">เหตุผล *</label><textarea value={rejectDialog.reason} onChange={(e) => setRejectDialog(prev => ({ ...prev, reason: e.target.value }))} rows={3} placeholder="กรุณาระบุเหตุผล..." className={inputClass} /></div>
+          <div><label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เหตุผล *</label><textarea value={rejectDialog.reason} onChange={(e) => setRejectDialog(prev => ({ ...prev, reason: e.target.value }))} rows={3} placeholder="กรุณาระบุเหตุผล..." className={inputClass} /></div>
           <div className="flex justify-end gap-3">
             <button onClick={() => setRejectDialog({ open: false, expenseId: '', reason: '' })} className="px-4 py-2 text-sm text-muted-foreground">ยกเลิก</button>
             <button onClick={() => { if (!rejectDialog.reason.trim()) { toast.error('กรุณาระบุเหตุผล'); return; } actionMutation.mutate({ id: rejectDialog.expenseId, action: 'reject', body: { reason: rejectDialog.reason } }); setRejectDialog({ open: false, expenseId: '', reason: '' }); }}

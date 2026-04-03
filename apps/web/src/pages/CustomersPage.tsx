@@ -705,30 +705,30 @@ export default function CustomersPage() {
             <h3 className={sectionTitle}>ข้อมูลหลัก *</h3>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">คำนำหน้า</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">คำนำหน้า</label>
                 <select value={form.prefix} onChange={(e) => setForm({ ...form, prefix: e.target.value })} className={selectClass}>
                   <option value="">-- เลือก --</option>
                   {THAI_NAME_PREFIXES.map(p => <option key={p} value={p}>{p}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">ชื่อ *</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ชื่อ *</label>
                 <input type="text" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} className={inputClass} required />
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">นามสกุล *</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">นามสกุล *</label>
                 <input type="text" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} className={inputClass} required />
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">เลขบัตรประชาชน (13 หลัก) *</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เลขบัตรประชาชน (13 หลัก) *</label>
                 <input type="text" maxLength={13} value={form.nationalId} onChange={(e) => setForm({ ...form, nationalId: e.target.value.replace(/\D/g, '') })} className={`${inputClass} font-mono`} required />
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">เบอร์โทร *</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เบอร์โทร *</label>
                 <input type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className={inputClass} required />
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">ชื่อเล่น</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ชื่อเล่น</label>
                 <input type="text" value={form.nickname} onChange={(e) => setForm({ ...form, nickname: e.target.value })} className={inputClass} />
               </div>
             </div>
@@ -743,7 +743,7 @@ export default function CustomersPage() {
             </summary>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-3">
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">วันเกิด</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">วันเกิด</label>
                 <input type="date" value={form.birthDate} onChange={(e) => setForm({ ...form, birthDate: e.target.value })} className={inputClass} />
               </div>
               <div className="flex items-end gap-3">
@@ -785,7 +785,7 @@ export default function CustomersPage() {
                 )}
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">Link Google Map</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Link Google Map</label>
                 <input type="url" value={form.googleMapLink} onChange={(e) => setForm({ ...form, googleMapLink: e.target.value })} className={inputClass} placeholder="https://maps.google.com/..." />
               </div>
             </div>
@@ -800,27 +800,27 @@ export default function CustomersPage() {
             </summary>
             <div className="grid grid-cols-2 gap-3 mt-3">
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">เบอร์สำรอง</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เบอร์สำรอง</label>
                 <input type="tel" value={form.phoneSecondary} onChange={(e) => setForm({ ...form, phoneSecondary: e.target.value })} className={inputClass} />
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">อีเมล</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">อีเมล</label>
                 <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={inputClass} />
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">LINE ID</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">LINE ID</label>
                 <input type="text" value={form.lineId} onChange={(e) => setForm({ ...form, lineId: e.target.value })} className={inputClass} />
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">ลิงก์ Facebook</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ลิงก์ Facebook</label>
                 <input type="url" value={form.facebookLink} onChange={(e) => setForm({ ...form, facebookLink: e.target.value })} className={inputClass} placeholder="https://facebook.com/..." />
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">ชื่อ Facebook</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ชื่อ Facebook</label>
                 <input type="text" value={form.facebookName} onChange={(e) => setForm({ ...form, facebookName: e.target.value })} className={inputClass} />
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">จำนวนเพื่อน Facebook</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">จำนวนเพื่อน Facebook</label>
                 <input type="text" value={form.facebookFriends} onChange={(e) => setForm({ ...form, facebookFriends: e.target.value })} className={inputClass} />
               </div>
             </div>
@@ -836,24 +836,24 @@ export default function CustomersPage() {
             <div className="mt-3">
               <div className="grid grid-cols-2 gap-3 mb-3">
                 <div>
-                  <label className="block text-xs text-muted-foreground mb-1">ชื่อที่ทำงาน</label>
+                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ชื่อที่ทำงาน</label>
                   <input type="text" value={form.workplace} onChange={(e) => setForm({ ...form, workplace: e.target.value })} className={inputClass} />
                 </div>
                 <div>
-                  <label className="block text-xs text-muted-foreground mb-1">อาชีพ</label>
+                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">อาชีพ</label>
                   <input type="text" value={form.occupation} onChange={(e) => setForm({ ...form, occupation: e.target.value })} className={inputClass} />
                 </div>
                 <div>
-                  <label className="block text-xs text-muted-foreground mb-1">รายละเอียดอาชีพ</label>
+                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">รายละเอียดอาชีพ</label>
                   <input type="text" value={form.occupationDetail} onChange={(e) => setForm({ ...form, occupationDetail: e.target.value })} className={inputClass} />
                 </div>
                 <div>
-                  <label className="block text-xs text-muted-foreground mb-1">เงินเดือน</label>
+                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เงินเดือน</label>
                   <input type="number" value={form.salary} onChange={(e) => setForm({ ...form, salary: e.target.value })} className={inputClass} placeholder="0.00" />
                 </div>
               </div>
               <div className="mt-2">
-                <label className="block text-xs text-muted-foreground mb-1">ที่อยู่ที่ทำงาน</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ที่อยู่ที่ทำงาน</label>
                 <AddressForm value={addressWork} onChange={setAddressWork} />
               </div>
             </div>
@@ -872,26 +872,26 @@ export default function CustomersPage() {
                   <div className="text-xs font-medium text-muted-foreground mb-2">บุคคลอ้างอิง {idx + 1}</div>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-xs text-muted-foreground mb-1">คำนำหน้า</label>
+                      <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">คำนำหน้า</label>
                       <select value={ref.prefix} onChange={(e) => updateRef(idx, 'prefix', e.target.value)} className={selectClass}>
                         <option value="">-- เลือก --</option>
                         {THAI_NAME_PREFIXES.map(p => <option key={p} value={p}>{p}</option>)}
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs text-muted-foreground mb-1">ชื่อ</label>
+                      <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ชื่อ</label>
                       <input type="text" value={ref.firstName} onChange={(e) => updateRef(idx, 'firstName', e.target.value)} className={inputClass} />
                     </div>
                     <div>
-                      <label className="block text-xs text-muted-foreground mb-1">นามสกุล</label>
+                      <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">นามสกุล</label>
                       <input type="text" value={ref.lastName} onChange={(e) => updateRef(idx, 'lastName', e.target.value)} className={inputClass} />
                     </div>
                     <div>
-                      <label className="block text-xs text-muted-foreground mb-1">เบอร์หลัก</label>
+                      <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เบอร์หลัก</label>
                       <input type="tel" value={ref.phone} onChange={(e) => updateRef(idx, 'phone', e.target.value)} className={inputClass} />
                     </div>
                     <div>
-                      <label className="block text-xs text-muted-foreground mb-1">ความสัมพันธ์</label>
+                      <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ความสัมพันธ์</label>
                       <select value={ref.relationship} onChange={(e) => updateRef(idx, 'relationship', e.target.value)} className={selectClass}>
                         <option value="">-- เลือก --</option>
                         {RELATIONSHIP_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}

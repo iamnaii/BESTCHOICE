@@ -247,39 +247,39 @@ export default function FinanceReceivablePage() {
       {/* Filters — grouped in card */}
       <div className="flex flex-wrap gap-4 mb-5 bg-card rounded-xl border border-border p-4">
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">สถานะ</label>
+          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สถานะ</label>
           <select value={statusFilter} onChange={(e) => setFilter('status', e.target.value)} className={`${inputClass} w-auto min-w-[130px]`}>
             <option value="">ทั้งหมด</option>
             {Object.entries(statusLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
         </div>
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">ไฟแนนซ์</label>
+          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ไฟแนนซ์</label>
           <select value={companyFilter} onChange={(e) => setFilter('company', e.target.value)} className={`${inputClass} w-auto min-w-[130px]`}>
             <option value="">ทั้งหมด</option>
             {companies.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">สาขา</label>
+          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สาขา</label>
           <select value={branchFilter} onChange={(e) => setFilter('branch', e.target.value)} className={`${inputClass} w-auto min-w-[130px]`}>
             <option value="">ทุกสาขา</option>
             {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
         </div>
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">ตั้งแต่</label>
+          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ตั้งแต่</label>
           <input type="date" value={startDate} onChange={(e) => setFilter('startDate', e.target.value)} className={`${inputClass} w-auto`} />
         </div>
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">ถึง</label>
+          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ถึง</label>
           <input type="date" value={endDate} onChange={(e) => setFilter('endDate', e.target.value)} className={`${inputClass} w-auto`} />
         </div>
         <div className="flex items-end gap-1">
           {quickPresets.map((p) => <button key={p.label} onClick={p.fn} className="px-3 py-2 text-xs border border-input rounded-lg hover:bg-muted">{p.label}</button>)}
         </div>
         <div className="flex-1 min-w-[180px]">
-          <label className="block text-xs text-muted-foreground mb-1">ค้นหา</label>
+          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ค้นหา</label>
           <input type="text" placeholder="เลขที่ขาย, ชื่อลูกค้า, Ref..." value={search} onChange={(e) => setSearch(e.target.value)} className={inputClass} />
         </div>
       </div>
@@ -342,10 +342,10 @@ export default function FinanceReceivablePage() {
               <div>ไฟแนนซ์: <span className="font-medium">{selectedRecord.financeCompany}</span></div>
               <div>ยอดสุทธิ: <span className="font-medium text-primary">{fmt(selectedRecord.netExpectedAmount)} บาท</span></div>
             </div>
-            <div><label className="block text-xs text-muted-foreground mb-1">จำนวนเงินที่ได้รับ *</label><input type="number" step="0.01" min="0.01" value={receiveForm.receivedAmount} onChange={(e) => setReceiveForm({ ...receiveForm, receivedAmount: e.target.value })} required className={inputClass} /></div>
-            <div><label className="block text-xs text-muted-foreground mb-1">วันที่ได้รับ *</label><input type="date" value={receiveForm.receivedDate} onChange={(e) => setReceiveForm({ ...receiveForm, receivedDate: e.target.value })} required className={inputClass} /></div>
-            <div><label className="block text-xs text-muted-foreground mb-1">เลขอ้างอิงธนาคาร</label><input type="text" value={receiveForm.bankRef} onChange={(e) => setReceiveForm({ ...receiveForm, bankRef: e.target.value })} placeholder="เลขอ้างอิงการโอน" className={inputClass} /></div>
-            <div><label className="block text-xs text-muted-foreground mb-1">หมายเหตุ</label><textarea value={receiveForm.note} onChange={(e) => setReceiveForm({ ...receiveForm, note: e.target.value })} rows={2} className={inputClass} /></div>
+            <div><label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">จำนวนเงินที่ได้รับ *</label><input type="number" step="0.01" min="0.01" value={receiveForm.receivedAmount} onChange={(e) => setReceiveForm({ ...receiveForm, receivedAmount: e.target.value })} required className={inputClass} /></div>
+            <div><label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">วันที่ได้รับ *</label><input type="date" value={receiveForm.receivedDate} onChange={(e) => setReceiveForm({ ...receiveForm, receivedDate: e.target.value })} required className={inputClass} /></div>
+            <div><label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เลขอ้างอิงธนาคาร</label><input type="text" value={receiveForm.bankRef} onChange={(e) => setReceiveForm({ ...receiveForm, bankRef: e.target.value })} placeholder="เลขอ้างอิงการโอน" className={inputClass} /></div>
+            <div><label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หมายเหตุ</label><textarea value={receiveForm.note} onChange={(e) => setReceiveForm({ ...receiveForm, note: e.target.value })} rows={2} className={inputClass} /></div>
             <div className="flex justify-end gap-3 pt-2">
               <button type="button" onClick={() => setIsReceiveModalOpen(false)} className="px-4 py-2 text-sm text-muted-foreground">ยกเลิก</button>
               <button type="submit" disabled={recordReceiveMutation.isPending} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50">{recordReceiveMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกรับเงิน'}</button>
@@ -358,10 +358,10 @@ export default function FinanceReceivablePage() {
       <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title="แก้ไขข้อมูล">
         {selectedRecord && (
           <form onSubmit={(e) => { e.preventDefault(); const d: Record<string, unknown> = {}; if (editForm.financeRefNumber) d.financeRefNumber = editForm.financeRefNumber; if (editForm.commissionRate) d.commissionRate = parseFloat(editForm.commissionRate) / 100; if (editForm.expectedDate) d.expectedDate = editForm.expectedDate; if (editForm.note) d.note = editForm.note; updateMutation.mutate({ id: selectedRecord.id, data: d }); }} className="space-y-4">
-            <div><label className="block text-xs text-muted-foreground mb-1">เลข Ref ไฟแนนซ์</label><input type="text" value={editForm.financeRefNumber} onChange={(e) => setEditForm({ ...editForm, financeRefNumber: e.target.value })} className={inputClass} /></div>
-            <div><label className="block text-xs text-muted-foreground mb-1">ค่าคอมมิชชั่น (%)</label><input type="number" step="0.1" min="0" max="100" value={editForm.commissionRate} onChange={(e) => setEditForm({ ...editForm, commissionRate: e.target.value })} className={inputClass} /></div>
-            <div><label className="block text-xs text-muted-foreground mb-1">กำหนดรับเงิน</label><input type="date" value={editForm.expectedDate} onChange={(e) => setEditForm({ ...editForm, expectedDate: e.target.value })} className={inputClass} /></div>
-            <div><label className="block text-xs text-muted-foreground mb-1">หมายเหตุ</label><textarea value={editForm.note} onChange={(e) => setEditForm({ ...editForm, note: e.target.value })} rows={2} className={inputClass} /></div>
+            <div><label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เลข Ref ไฟแนนซ์</label><input type="text" value={editForm.financeRefNumber} onChange={(e) => setEditForm({ ...editForm, financeRefNumber: e.target.value })} className={inputClass} /></div>
+            <div><label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ค่าคอมมิชชั่น (%)</label><input type="number" step="0.1" min="0" max="100" value={editForm.commissionRate} onChange={(e) => setEditForm({ ...editForm, commissionRate: e.target.value })} className={inputClass} /></div>
+            <div><label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">กำหนดรับเงิน</label><input type="date" value={editForm.expectedDate} onChange={(e) => setEditForm({ ...editForm, expectedDate: e.target.value })} className={inputClass} /></div>
+            <div><label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หมายเหตุ</label><textarea value={editForm.note} onChange={(e) => setEditForm({ ...editForm, note: e.target.value })} rows={2} className={inputClass} /></div>
             <div className="flex justify-end gap-3 pt-2">
               <button type="button" onClick={() => setIsEditModalOpen(false)} className="px-4 py-2 text-sm text-muted-foreground">ยกเลิก</button>
               <button type="submit" disabled={updateMutation.isPending} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50">{updateMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}</button>
@@ -375,7 +375,7 @@ export default function FinanceReceivablePage() {
         {selectedRecord && (
           <div className="space-y-4">
             <div className="p-3 bg-muted rounded-lg text-sm">ไฟแนนซ์: <span className="font-medium">{selectedRecord.financeCompany}</span> &middot; ยอด: <span className="font-medium">{fmt(selectedRecord.netExpectedAmount)}</span></div>
-            <div><label className="block text-xs text-muted-foreground mb-1">เหตุผล *</label><textarea value={disputeReason} onChange={(e) => setDisputeReason(e.target.value)} rows={3} placeholder="เช่น ไฟแนนซ์ปฏิเสธ, ยอดไม่ตรง..." className={inputClass} /></div>
+            <div><label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เหตุผล *</label><textarea value={disputeReason} onChange={(e) => setDisputeReason(e.target.value)} rows={3} placeholder="เช่น ไฟแนนซ์ปฏิเสธ, ยอดไม่ตรง..." className={inputClass} /></div>
             <div className="flex justify-end gap-3">
               <button onClick={() => setIsDisputeModalOpen(false)} className="px-4 py-2 text-sm text-muted-foreground">ยกเลิก</button>
               <button onClick={() => { if (!disputeReason.trim()) { toast.error('กรุณาระบุเหตุผล'); return; } disputeMutation.mutate({ id: selectedRecord.id, note: disputeReason }); }}

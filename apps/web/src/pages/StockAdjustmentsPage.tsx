@@ -355,11 +355,11 @@ export default function StockAdjustmentsPage() {
         <div className="flex flex-col gap-5 lg:gap-7.5">
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <div className="rounded-lg border p-4 border-l-4 border-l-gray-400">
-              <div className="text-xs text-muted-foreground mb-1">รายการทั้งหมด</div>
+              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">รายการทั้งหมด</div>
               <div className="text-2xl font-bold text-foreground">{summary.totalCount}</div>
             </div>
             <div className="rounded-lg border p-4 border-l-4 border-l-red-500">
-              <div className="text-xs text-muted-foreground mb-1">มูลค่ารวมที่ปรับ</div>
+              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">มูลค่ารวมที่ปรับ</div>
               <div className="text-2xl font-bold text-destructive">{summary.totalValue.toLocaleString()} ฿</div>
             </div>
           </div>

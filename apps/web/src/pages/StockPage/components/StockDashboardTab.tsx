@@ -18,7 +18,7 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 function StatCard({ label, value, sub, accent }: { label: string; value: string | number; sub?: string; accent?: string }) {
   return (
     <div className={`rounded-xl border p-4 transition-shadow hover:shadow-xs ${accent ? `border-l-4 ${accent}` : ''}`}>
-      <div className="text-xs text-muted-foreground mb-1">{label}</div>
+      <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">{label}</div>
       <div className="text-xl font-bold text-foreground">
         {typeof value === 'number' ? <AnimatedCounter value={value} /> : value}
       </div>

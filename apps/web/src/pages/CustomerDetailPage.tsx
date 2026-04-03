@@ -501,7 +501,7 @@ export default function CustomerDetailPage() {
 
       {/* Other info */}
       <Card className="mb-6">
-        <CardContent className="pt-6">
+        <CardContent className="p-5">
         <Info label="วันที่เพิ่ม" value={new Date(customer.createdAt).toLocaleDateString('th-TH')} />
         </CardContent>
       </Card>
@@ -575,11 +575,11 @@ export default function CustomerDetailPage() {
           <p className="text-xs text-muted-foreground">อัปโหลด Statement ธนาคารย้อนหลัง 3 เดือน เพื่อเช็คเครดิตก่อนทำสัญญา</p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">ธนาคาร</label>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ธนาคาร</label>
               <input type="text" value={creditBankName} onChange={(e) => setCreditBankName(e.target.value)} placeholder="เช่น กสิกร, กรุงไทย..." className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
             </div>
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">Statement (ภาพ/PDF)</label>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Statement (ภาพ/PDF)</label>
               <input ref={creditFileRef} type="file" accept="image/*,.pdf" multiple onChange={(e) => e.target.files && uploadCreditMutation.mutate(e.target.files)} disabled={uploadCreditMutation.isPending} className="w-full text-sm text-muted-foreground file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary-50 file:text-primary-700" />
             </div>
           </div>
@@ -682,22 +682,22 @@ export default function CustomerDetailPage() {
             <h3 className="text-sm font-semibold text-foreground mb-3">ข้อมูลส่วนตัว</h3>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">คำนำหน้า</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">คำนำหน้า</label>
                 <select value={editForm.prefix} onChange={(e) => setEditForm({ ...editForm, prefix: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background">
                   <option value="">-- เลือก --</option>
                   {THAI_NAME_PREFIXES.map(p => <option key={p} value={p}>{p}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">ชื่อ-นามสกุล *</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ชื่อ-นามสกุล *</label>
                 <input type="text" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" required />
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">ชื่อเล่น</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ชื่อเล่น</label>
                 <input type="text" value={editForm.nickname} onChange={(e) => setEditForm({ ...editForm, nickname: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">วันเกิด</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">วันเกิด</label>
                 <input type="date" value={editForm.birthDate} onChange={(e) => setEditForm({ ...editForm, birthDate: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
               </div>
             </div>
@@ -722,7 +722,7 @@ export default function CustomerDetailPage() {
               <AddressForm value={editAddrCurrent} onChange={setEditAddrCurrent} />
             )}
             <div className="mt-3">
-              <label className="block text-xs text-muted-foreground mb-1">Link Google Map</label>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Link Google Map</label>
               <input type="url" value={editForm.googleMapLink} onChange={(e) => setEditForm({ ...editForm, googleMapLink: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" placeholder="https://maps.google.com/..." />
             </div>
           </div>
@@ -732,31 +732,31 @@ export default function CustomerDetailPage() {
             <h3 className="text-sm font-semibold text-foreground mb-3">ข้อมูลติดต่อ</h3>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">เบอร์หลัก *</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เบอร์หลัก *</label>
                 <input type="tel" value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" required />
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">เบอร์สำรอง</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เบอร์สำรอง</label>
                 <input type="tel" value={editForm.phoneSecondary} onChange={(e) => setEditForm({ ...editForm, phoneSecondary: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">อีเมล</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">อีเมล</label>
                 <input type="email" value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">LINE ID</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">LINE ID</label>
                 <input type="text" value={editForm.lineId} onChange={(e) => setEditForm({ ...editForm, lineId: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">ลิงก์ Facebook</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ลิงก์ Facebook</label>
                 <input type="url" value={editForm.facebookLink} onChange={(e) => setEditForm({ ...editForm, facebookLink: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">ชื่อ Facebook</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ชื่อ Facebook</label>
                 <input type="text" value={editForm.facebookName} onChange={(e) => setEditForm({ ...editForm, facebookName: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">จำนวนเพื่อน Facebook</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">จำนวนเพื่อน Facebook</label>
                 <input type="text" value={editForm.facebookFriends} onChange={(e) => setEditForm({ ...editForm, facebookFriends: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
               </div>
             </div>
@@ -767,24 +767,24 @@ export default function CustomerDetailPage() {
             <h3 className="text-sm font-semibold text-foreground mb-3">ข้อมูลที่ทำงาน</h3>
             <div className="grid grid-cols-2 gap-3 mb-3">
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">ชื่อที่ทำงาน</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ชื่อที่ทำงาน</label>
                 <input type="text" value={editForm.workplace} onChange={(e) => setEditForm({ ...editForm, workplace: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">อาชีพ</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">อาชีพ</label>
                 <input type="text" value={editForm.occupation} onChange={(e) => setEditForm({ ...editForm, occupation: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">รายละเอียดอาชีพ</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">รายละเอียดอาชีพ</label>
                 <input type="text" value={editForm.occupationDetail} onChange={(e) => setEditForm({ ...editForm, occupationDetail: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">เงินเดือน</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เงินเดือน</label>
                 <input type="number" value={editForm.salary} onChange={(e) => setEditForm({ ...editForm, salary: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" placeholder="0.00" />
               </div>
             </div>
             <div className="mt-2">
-              <label className="block text-xs text-muted-foreground mb-1">ที่อยู่ที่ทำงาน</label>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ที่อยู่ที่ทำงาน</label>
               <AddressForm value={editAddrWork} onChange={setEditAddrWork} />
             </div>
           </div>
@@ -798,26 +798,26 @@ export default function CustomerDetailPage() {
                   <div className="text-xs font-medium text-muted-foreground mb-2">บุคคลอ้างอิง {idx + 1}</div>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-xs text-muted-foreground mb-1">คำนำหน้า</label>
+                      <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">คำนำหน้า</label>
                       <select value={ref.prefix || ''} onChange={(e) => updateEditRef(idx, 'prefix', e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background">
                         <option value="">-- เลือก --</option>
                         {THAI_NAME_PREFIXES.map(p => <option key={p} value={p}>{p}</option>)}
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs text-muted-foreground mb-1">ชื่อ</label>
+                      <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ชื่อ</label>
                       <input type="text" value={ref.firstName || ''} onChange={(e) => updateEditRef(idx, 'firstName', e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                     </div>
                     <div>
-                      <label className="block text-xs text-muted-foreground mb-1">นามสกุล</label>
+                      <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">นามสกุล</label>
                       <input type="text" value={ref.lastName || ''} onChange={(e) => updateEditRef(idx, 'lastName', e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                     </div>
                     <div>
-                      <label className="block text-xs text-muted-foreground mb-1">เบอร์โทร</label>
+                      <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เบอร์โทร</label>
                       <input type="tel" value={ref.phone || ''} onChange={(e) => updateEditRef(idx, 'phone', e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                     </div>
                     <div>
-                      <label className="block text-xs text-muted-foreground mb-1">ความสัมพันธ์</label>
+                      <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ความสัมพันธ์</label>
                       <select value={ref.relationship || ''} onChange={(e) => updateEditRef(idx, 'relationship', e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background">
                         <option value="">-- เลือก --</option>
                         {RELATIONSHIP_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}

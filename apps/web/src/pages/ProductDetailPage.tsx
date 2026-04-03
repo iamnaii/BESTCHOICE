@@ -411,13 +411,13 @@ export default function ProductDetailPage() {
       <div className="grid grid-cols-3 gap-5 lg:gap-7.5 mb-5 lg:mb-7.5">
         <Card>
           <CardContent>
-            <div className="text-xs text-muted-foreground mb-1">ราคาทุน</div>
+            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ราคาทุน</div>
             <div className="text-lg font-semibold text-foreground">{parseFloat(product.costPrice).toLocaleString()} ฿</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent>
-            <div className="text-xs text-muted-foreground mb-1">ราคาขาย (default)</div>
+            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ราคาขาย (default)</div>
             <div className="text-lg font-semibold text-primary">
               {defaultPrice ? `${parseFloat(defaultPrice.amount).toLocaleString()} ฿` : '-'}
             </div>
@@ -425,7 +425,7 @@ export default function ProductDetailPage() {
         </Card>
         <Card>
           <CardContent>
-            <div className="text-xs text-muted-foreground mb-1">กำไร</div>
+            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">กำไร</div>
             <div className={`text-lg font-semibold ${profit === null ? 'text-muted-foreground' : profit > 0 ? 'text-success' : profit === 0 ? 'text-muted-foreground' : 'text-destructive'}`}>
               {profit !== null ? `${profit.toLocaleString()} ฿` : '-'}
             </div>

@@ -137,15 +137,15 @@ export default function ProfitLossPage() {
       {/* Filters */}
       <div className="flex flex-wrap gap-3 mb-6">
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">ตั้งแต่</label>
+          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ตั้งแต่</label>
           <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={`${inputClass} w-auto`} />
         </div>
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">ถึง</label>
+          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ถึง</label>
           <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className={`${inputClass} w-auto`} />
         </div>
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">สาขา</label>
+          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สาขา</label>
           <select value={branchId} onChange={(e) => setBranchId(e.target.value)} className={`${inputClass} w-auto min-w-[150px]`}>
             <option value="">ทุกสาขา</option>
             {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}

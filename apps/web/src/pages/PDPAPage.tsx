@@ -290,7 +290,7 @@ function PDPAPage() {
               <div className="text-sm text-muted-foreground mt-1">{selectedDSAR.description}</div>
             </div>
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">สถานะ</label>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สถานะ</label>
               <select
                 value={processForm.status}
                 onChange={(e) => setProcessForm({ ...processForm, status: e.target.value })}
@@ -302,7 +302,7 @@ function PDPAPage() {
               </select>
             </div>
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">หมายเหตุ</label>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หมายเหตุ</label>
               <textarea
                 value={processForm.responseNotes}
                 onChange={(e) => setProcessForm({ ...processForm, responseNotes: e.target.value })}
@@ -332,7 +332,7 @@ function PDPAPage() {
         <Modal title="สร้างคำร้อง DSAR" onClose={() => setShowCreateDSAR(false)}>
           <div className="flex flex-col gap-5 lg:gap-7.5">
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">Customer ID</label>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Customer ID</label>
               <input
                 type="text"
                 value={dsarForm.customerId}
@@ -342,7 +342,7 @@ function PDPAPage() {
               />
             </div>
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">ประเภทคำร้อง</label>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ประเภทคำร้อง</label>
               <select
                 value={dsarForm.requestType}
                 onChange={(e) => setDsarForm({ ...dsarForm, requestType: e.target.value })}
@@ -354,7 +354,7 @@ function PDPAPage() {
               </select>
             </div>
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">รายละเอียด</label>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">รายละเอียด</label>
               <textarea
                 value={dsarForm.description}
                 onChange={(e) => setDsarForm({ ...dsarForm, description: e.target.value })}

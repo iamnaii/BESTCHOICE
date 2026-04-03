@@ -455,7 +455,7 @@ function VerticalLine({ ok }: { ok: boolean }) {
 function MemoryCard({ label, value, total, pct }: { label: string; value: string; total?: string; pct?: number }) {
   return (
     <div className="border border-border rounded-lg p-3">
-      <p className="text-xs text-muted-foreground mb-1">{label}</p>
+      <p className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">{label}</p>
       <p className="text-lg font-bold text-foreground">{value}</p>
       {total && pct !== undefined && (
         <>

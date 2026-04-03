@@ -221,13 +221,13 @@ function ReceiptsPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <Card>
           <CardContent className="pt-4">
-            <div className="text-xs text-muted-foreground mb-1">จำนวนใบเสร็จ</div>
+            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">จำนวนใบเสร็จ</div>
             <div className="text-2xl font-bold">{summary?.totalCount?.toLocaleString() || 0}</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4">
-            <div className="text-xs text-muted-foreground mb-1">ยอดรวม</div>
+            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ยอดรวม</div>
             <div className="text-2xl font-bold text-success">
               {Number(summary?.totalAmount || 0).toLocaleString()} ฿
             </div>
@@ -236,7 +236,7 @@ function ReceiptsPage() {
         <Card>
           <CardContent className="pt-4 flex items-center justify-between">
             <div>
-              <div className="text-xs text-muted-foreground mb-1">Export</div>
+              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Export</div>
               <div className="text-sm text-muted-foreground">ดาวน์โหลดข้อมูลตามตัวกรอง</div>
             </div>
             <button
@@ -251,7 +251,7 @@ function ReceiptsPage() {
       </div>
 
       {/* Filter Bar */}
-      <div className="bg-card rounded-lg border p-4 mb-6">
+      <div className="bg-card rounded-lg border border-border/60 p-4 mb-6">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <input
             type="text"

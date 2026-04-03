@@ -78,26 +78,26 @@ export function CustomerCreateModal({
           <h3 className="text-sm font-semibold text-foreground mb-3">ข้อมูลส่วนตัว</h3>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">คำนำหน้า</label>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">คำนำหน้า</label>
               <select value={custForm.prefix} onChange={(e) => setCustForm({ ...custForm, prefix: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background">
                 <option value="">-- เลือก --</option>
                 {THAI_NAME_PREFIXES.map(p => <option key={p} value={p}>{p}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">ชื่อ *</label>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ชื่อ *</label>
               <input type="text" value={custForm.firstName} onChange={(e) => setCustForm({ ...custForm, firstName: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" required />
             </div>
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">นามสกุล *</label>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">นามสกุล *</label>
               <input type="text" value={custForm.lastName} onChange={(e) => setCustForm({ ...custForm, lastName: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" required />
             </div>
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">ชื่อเล่น</label>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ชื่อเล่น</label>
               <input type="text" value={custForm.nickname} onChange={(e) => setCustForm({ ...custForm, nickname: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
             </div>
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">เลขบัตรประชาชน (13 หลัก) *</label>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เลขบัตรประชาชน (13 หลัก) *</label>
               <input type="text" maxLength={13} value={custForm.nationalId} onChange={(e) => setCustForm({ ...custForm, nationalId: e.target.value.replace(/\D/g, '') })} className="w-full px-3 py-2 border border-input rounded-lg text-sm font-mono" required />
             </div>
             <div className="flex items-end gap-3">
@@ -110,7 +110,7 @@ export function CustomerCreateModal({
               </div>
             </div>
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">วันเกิด</label>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">วันเกิด</label>
               <input type="date" value={custForm.birthDate} onChange={(e) => setCustForm({ ...custForm, birthDate: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
             </div>
           </div>
@@ -137,7 +137,7 @@ export function CustomerCreateModal({
             <AddressForm value={custAddrCurrent} onChange={setCustAddrCurrent} />
           )}
           <div className="mt-3">
-            <label className="block text-xs text-muted-foreground mb-1">Link Google Map</label>
+            <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Link Google Map</label>
             <input type="url" value={custForm.googleMapLink} onChange={(e) => setCustForm({ ...custForm, googleMapLink: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" placeholder="https://maps.google.com/..." />
           </div>
         </div>
@@ -147,31 +147,31 @@ export function CustomerCreateModal({
           <h3 className="text-sm font-semibold text-foreground mb-3">ข้อมูลติดต่อ</h3>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">เบอร์หลัก *</label>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เบอร์หลัก *</label>
               <input type="tel" value={custForm.phone} onChange={(e) => setCustForm({ ...custForm, phone: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" required />
             </div>
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">เบอร์สำรอง</label>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เบอร์สำรอง</label>
               <input type="tel" value={custForm.phoneSecondary} onChange={(e) => setCustForm({ ...custForm, phoneSecondary: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
             </div>
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">อีเมล</label>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">อีเมล</label>
               <input type="email" value={custForm.email} onChange={(e) => setCustForm({ ...custForm, email: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
             </div>
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">LINE ID</label>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">LINE ID</label>
               <input type="text" value={custForm.lineId} onChange={(e) => setCustForm({ ...custForm, lineId: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
             </div>
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">ลิงก์ Facebook</label>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ลิงก์ Facebook</label>
               <input type="url" value={custForm.facebookLink} onChange={(e) => setCustForm({ ...custForm, facebookLink: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" placeholder="https://facebook.com/..." />
             </div>
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">ชื่อ Facebook</label>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ชื่อ Facebook</label>
               <input type="text" value={custForm.facebookName} onChange={(e) => setCustForm({ ...custForm, facebookName: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
             </div>
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">จำนวนเพื่อน Facebook</label>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">จำนวนเพื่อน Facebook</label>
               <input type="text" value={custForm.facebookFriends} onChange={(e) => setCustForm({ ...custForm, facebookFriends: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
             </div>
           </div>
@@ -182,24 +182,24 @@ export function CustomerCreateModal({
           <h3 className="text-sm font-semibold text-foreground mb-3">ข้อมูลที่ทำงาน</h3>
           <div className="grid grid-cols-2 gap-3 mb-3">
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">ชื่อที่ทำงาน</label>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ชื่อที่ทำงาน</label>
               <input type="text" value={custForm.workplace} onChange={(e) => setCustForm({ ...custForm, workplace: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
             </div>
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">อาชีพ</label>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">อาชีพ</label>
               <input type="text" value={custForm.occupation} onChange={(e) => setCustForm({ ...custForm, occupation: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
             </div>
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">รายละเอียดอาชีพ</label>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">รายละเอียดอาชีพ</label>
               <input type="text" value={custForm.occupationDetail} onChange={(e) => setCustForm({ ...custForm, occupationDetail: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
             </div>
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">เงินเดือน</label>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เงินเดือน</label>
               <input type="number" value={custForm.salary} onChange={(e) => setCustForm({ ...custForm, salary: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" placeholder="0.00" />
             </div>
           </div>
           <div className="mt-2">
-            <label className="block text-xs text-muted-foreground mb-1">ที่อยู่ที่ทำงาน</label>
+            <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ที่อยู่ที่ทำงาน</label>
             <AddressForm value={custAddrWork} onChange={setCustAddrWork} />
           </div>
         </div>
@@ -213,26 +213,26 @@ export function CustomerCreateModal({
                 <div className="text-xs font-medium text-muted-foreground mb-2">บุคคลอ้างอิง {idx + 1}</div>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   <div>
-                    <label className="block text-xs text-muted-foreground mb-1">คำนำหน้า</label>
+                    <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">คำนำหน้า</label>
                     <select value={ref.prefix} onChange={(e) => updateCustRef(idx, 'prefix', e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background">
                       <option value="">-- เลือก --</option>
                       {THAI_NAME_PREFIXES.map(p => <option key={p} value={p}>{p}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs text-muted-foreground mb-1">ชื่อ</label>
+                    <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ชื่อ</label>
                     <input type="text" value={ref.firstName} onChange={(e) => updateCustRef(idx, 'firstName', e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                   </div>
                   <div>
-                    <label className="block text-xs text-muted-foreground mb-1">นามสกุล</label>
+                    <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">นามสกุล</label>
                     <input type="text" value={ref.lastName} onChange={(e) => updateCustRef(idx, 'lastName', e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                   </div>
                   <div>
-                    <label className="block text-xs text-muted-foreground mb-1">เบอร์หลัก</label>
+                    <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เบอร์หลัก</label>
                     <input type="tel" value={ref.phone} onChange={(e) => updateCustRef(idx, 'phone', e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                   </div>
                   <div>
-                    <label className="block text-xs text-muted-foreground mb-1">ความสัมพันธ์</label>
+                    <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ความสัมพันธ์</label>
                     <select value={ref.relationship} onChange={(e) => updateCustRef(idx, 'relationship', e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background">
                       <option value="">-- เลือก --</option>
                       {RELATIONSHIP_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}

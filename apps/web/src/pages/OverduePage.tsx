@@ -258,25 +258,25 @@ export default function OverduePage() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-5 lg:gap-7.5 mb-6">
         <Card className="shadow-xs shadow-black/5">
           <CardContent className="p-4">
-            <div className="text-xs text-muted-foreground mb-1">สัญญาค้างชำระ</div>
+            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สัญญาค้างชำระ</div>
             <div className="text-2xl font-bold text-destructive">{uniqueContracts}</div>
           </CardContent>
         </Card>
         <Card className="shadow-xs shadow-black/5">
           <CardContent className="p-4">
-            <div className="text-xs text-muted-foreground mb-1">รายการค้างชำระ</div>
+            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">รายการค้างชำระ</div>
             <div className="text-2xl font-bold">{overduePayments.length}</div>
           </CardContent>
         </Card>
         <Card className="shadow-xs shadow-black/5">
           <CardContent className="p-4">
-            <div className="text-xs text-muted-foreground mb-1">ยอดค้างรวม</div>
+            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ยอดค้างรวม</div>
             <div className="text-2xl font-bold">{totalOutstanding.toLocaleString()} ฿</div>
           </CardContent>
         </Card>
         <Card className="shadow-xs shadow-black/5">
           <CardContent className="p-4">
-            <div className="text-xs text-muted-foreground mb-1">ค่าปรับรวม</div>
+            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ค่าปรับรวม</div>
             <div className="text-2xl font-bold text-destructive">{totalLateFees.toLocaleString()} ฿</div>
           </CardContent>
         </Card>

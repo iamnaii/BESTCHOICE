@@ -30,14 +30,14 @@ function MobileBottomNav() {
   };
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-30 bg-card border-t border-border lg:hidden safe-area-bottom">
+    <nav className="fixed bottom-0 left-0 right-0 z-30 bg-card/95 backdrop-blur-md border-t border-border/60 lg:hidden safe-area-bottom">
       <div className="flex items-center justify-around h-14">
         {tabs.map((tab) =>
           tab.action === 'sidebar' ? (
             <button
               key={tab.label}
               onClick={() => setMobileSidebarOpen(true)}
-              className="flex flex-col items-center justify-center gap-0.5 flex-1 py-1.5 text-muted-foreground"
+              className="flex flex-col items-center justify-center gap-0.5 flex-1 py-1.5 text-muted-foreground active:scale-95 transition-all"
             >
               <tab.icon className="size-5" />
               <span className="text-[10px] font-medium">{tab.label}</span>
@@ -47,12 +47,15 @@ function MobileBottomNav() {
               key={tab.path}
               to={tab.path}
               className={cn(
-                'flex flex-col items-center justify-center gap-0.5 flex-1 py-1.5 transition-colors',
+                'flex flex-col items-center justify-center gap-0.5 flex-1 py-1.5 transition-all active:scale-95 relative',
                 isActive(tab.path)
                   ? 'text-primary'
                   : 'text-muted-foreground',
               )}
             >
+              {isActive(tab.path) && (
+                <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-[2px] bg-primary rounded-full" />
+              )}
               <tab.icon className={cn('size-5', isActive(tab.path) && 'stroke-[2.5]')} />
               <span className={cn(
                 'text-[10px]',

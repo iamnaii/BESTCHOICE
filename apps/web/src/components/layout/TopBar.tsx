@@ -29,14 +29,14 @@ export default function TopBar() {
   const { open: openCommandPalette } = useCommandPalette();
 
   return (
-    <header className="header sticky top-0 z-10 flex items-center justify-between shrink-0 h-16 px-5 lg:px-7 bg-card border-b border-border">
+    <header className="header sticky top-0 z-10 flex items-center justify-between shrink-0 h-[60px] px-5 lg:px-7 bg-card/95 backdrop-blur-md border-b border-border/60">
       {/* Left: Hamburger (mobile) + Page context */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2.5">
         {isMobile && (
           <Button
             variant="ghost"
             size="icon"
-            className="size-8"
+            className="size-8 rounded-lg"
             aria-label="เปิดเมนู"
             onClick={() => setMobileSidebarOpen(true)}
           >
@@ -57,9 +57,9 @@ export default function TopBar() {
         {/* Branch badge */}
         {user?.branchName && (
           <>
-            <div className="hidden sm:block w-px h-4 bg-border" />
-            <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-muted text-2xs font-medium text-muted-foreground">
-              <Building2 className="size-3" />
+            <div className="hidden sm:block w-px h-4 bg-border/50" />
+            <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-muted/60 text-2xs font-medium text-muted-foreground">
+              <Building2 className="size-3 opacity-60" />
               {user.branchName}
             </span>
           </>
@@ -67,16 +67,16 @@ export default function TopBar() {
       </div>
 
       {/* Right: Search + Icons + User */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5">
         {/* Search bar — opens Command Palette */}
         <button
           onClick={openCommandPalette}
-          className="flex items-center gap-2 h-9 px-3.5 rounded-lg bg-muted/70 text-sm text-muted-foreground hover:bg-muted transition-colors"
+          className="flex items-center gap-2 h-8.5 px-3 rounded-lg border border-border/60 bg-muted/40 text-2sm text-muted-foreground hover:bg-muted/70 transition-colors"
           aria-label="ค้นหา (Ctrl+K)"
         >
-          <Search className="size-4" />
+          <Search className="size-3.5 opacity-60" />
           <span className="hidden sm:inline">ค้นหา...</span>
-          <kbd className="hidden lg:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-background text-2xs text-muted-foreground/70 border border-border font-mono ml-4">
+          <kbd className="hidden lg:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-background/80 text-[10px] text-muted-foreground/60 border border-border/50 font-mono ml-6">
             ⌘K
           </kbd>
         </button>
@@ -86,10 +86,10 @@ export default function TopBar() {
           variant="ghost"
           size="icon"
           aria-label="การแจ้งเตือน"
-          className="size-9 rounded-lg relative"
+          className="size-8.5 rounded-lg relative text-muted-foreground hover:text-foreground"
         >
           <Bell className="size-4" />
-          <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-green-500" aria-hidden="true" />
+          <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-green-500 ring-2 ring-card" aria-hidden="true" />
         </Button>
 
         {/* Dark mode toggle */}
@@ -97,22 +97,22 @@ export default function TopBar() {
           variant="ghost"
           size="icon"
           onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-          className="size-9 rounded-lg relative"
+          className="size-8.5 rounded-lg relative text-muted-foreground hover:text-foreground"
         >
           <Sun className="size-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
           <Moon className="absolute size-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
           <span className="sr-only">Toggle theme</span>
         </Button>
 
-        <div className="w-px h-5 bg-border mx-1" />
+        <div className="w-px h-5 bg-border/50 mx-0.5" />
 
         {/* User avatar */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 pl-1">
           <div className="text-right hidden sm:block">
             <p className="text-2sm font-medium text-foreground leading-tight">{user?.name}</p>
           </div>
           <img
-            className="size-9 rounded-lg border-2 border-primary/20 shrink-0 cursor-pointer bg-muted"
+            className="size-8.5 rounded-lg border-2 border-primary/15 shrink-0 cursor-pointer bg-muted"
             src={`https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'U')}&background=3b82f6&color=fff&size=36`}
             alt={`${user?.name || 'User'} avatar`}
           />

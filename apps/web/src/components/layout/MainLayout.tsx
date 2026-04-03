@@ -49,8 +49,8 @@ function MainContent() {
         }}
       >
         <TopBar />
-        <main className="flex-1 grow pt-5 px-5 lg:px-7 pb-7 lg:pb-7 pb-20 bg-background" key={pathname}>
-          <div className="animate-fadeIn">
+        <main className="flex-1 grow pt-5 px-5 lg:px-7 pb-20 lg:pb-7 bg-background" key={pathname}>
+          <div className="container-fluid animate-fadeIn">
             <Outlet />
           </div>
         </main>

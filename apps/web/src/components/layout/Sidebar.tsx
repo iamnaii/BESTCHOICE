@@ -162,12 +162,12 @@ const navSections: NavSection[] = [
   },
 ];
 
-/* Expanded sidebar menu classNames (dark bg, white text) */
+/* Expanded sidebar menu classNames (dark bg, white text) — Metronic-inspired */
 const expandedMenuClassNames: AccordionMenuClassNames = {
-  root: 'space-y-1',
-  item: 'h-9 rounded-lg text-2sm text-white/70 hover:bg-white/10 hover:text-white data-[selected=true]:bg-primary data-[selected=true]:text-white data-[selected=true]:font-medium',
+  root: 'space-y-0.5',
+  item: 'h-9 rounded-lg text-2sm text-white/70 hover:bg-white/[0.06] hover:text-white transition-colors data-[selected=true]:bg-primary/15 data-[selected=true]:text-primary-foreground data-[selected=true]:font-medium relative data-[selected=true]:before:absolute data-[selected=true]:before:left-0 data-[selected=true]:before:top-1.5 data-[selected=true]:before:bottom-1.5 data-[selected=true]:before:w-[3px] data-[selected=true]:before:bg-primary data-[selected=true]:before:rounded-r-full',
   sub: '',
-  subTrigger: 'h-10 rounded-lg text-2sm font-medium text-white/50 hover:bg-white/10 hover:text-white data-[state=open]:text-white',
+  subTrigger: 'h-10 rounded-lg text-2sm font-medium text-white/50 hover:bg-white/[0.06] hover:text-white data-[state=open]:text-white transition-colors',
   subContent: 'py-0 pl-3',
 };
 
@@ -204,10 +204,10 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
   );
 
   return (
-    <div className="sidebar fixed top-0 bottom-0 left-0 z-20 w-[70px] flex flex-col items-center bg-sidebar-dark py-5 gap-1 transition-all duration-300">
+    <div className="sidebar fixed top-0 bottom-0 left-0 z-20 w-[70px] flex flex-col items-center bg-sidebar-dark py-4 gap-0.5 transition-all duration-300">
       {/* Logo */}
-      <Link to="/" className="flex items-center justify-center mb-2 shrink-0">
-        <div className="size-10 rounded-xl bg-primary flex items-center justify-center">
+      <Link to="/" className="flex items-center justify-center mb-1 shrink-0">
+        <div className="size-10 rounded-xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/20">
           <span className="text-white text-lg font-bold">B</span>
         </div>
       </Link>
@@ -215,11 +215,14 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
       {/* Expand toggle */}
       <button
         onClick={onToggle}
-        className="flex items-center justify-center size-8 rounded-lg text-white/30 hover:text-white hover:bg-white/10 transition-colors mb-2"
+        className="flex items-center justify-center size-8 rounded-lg text-white/25 hover:text-white/70 hover:bg-white/[0.06] transition-all mb-1"
         aria-label="ขยายเมนู"
       >
         <ChevronsRight className="size-4" />
       </button>
+
+      {/* Divider */}
+      <div className="w-8 h-px bg-white/[0.08] mb-1" />
 
       {/* Home icon */}
       <TooltipProvider delayDuration={0}>
@@ -228,13 +231,13 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
             <Link
               to="/"
               className={cn(
-                'flex items-center justify-center size-10 rounded-xl transition-colors',
+                'flex items-center justify-center size-10 rounded-xl transition-all',
                 pathname === '/'
-                  ? 'bg-primary text-white'
-                  : 'text-white/50 hover:text-white hover:bg-white/10',
+                  ? 'bg-primary/15 text-white shadow-sm'
+                  : 'text-white/40 hover:text-white/80 hover:bg-white/[0.06]',
               )}
             >
-              <Home className="size-5" />
+              <Home className="size-[18px]" />
             </Link>
           </TooltipTrigger>
           <TooltipContent side="right" sideOffset={8}>
@@ -244,7 +247,7 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
       </TooltipProvider>
 
       {/* Section icons with popovers */}
-      <div className="flex-1 flex flex-col items-center gap-1 py-2 overflow-y-auto">
+      <div className="flex-1 flex flex-col items-center gap-0.5 py-1.5 overflow-y-auto scrollbar-none">
         <TooltipProvider delayDuration={0}>
           {filteredSections.map((section) => (
             <Popover
@@ -257,13 +260,16 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
                   <PopoverTrigger asChild>
                     <button
                       className={cn(
-                        'flex items-center justify-center size-10 rounded-xl transition-colors',
+                        'flex items-center justify-center size-10 rounded-xl transition-all relative',
                         isSectionActive(section)
-                          ? 'bg-primary text-white'
-                          : 'text-white/50 hover:text-white hover:bg-white/10',
+                          ? 'bg-primary/15 text-white'
+                          : 'text-white/40 hover:text-white/80 hover:bg-white/[0.06]',
                       )}
                     >
-                      <section.icon className="size-5" />
+                      {isSectionActive(section) && (
+                        <span className="absolute left-0 top-2 bottom-2 w-[3px] bg-primary rounded-r-full" />
+                      )}
+                      <section.icon className="size-[18px]" />
                     </button>
                   </PopoverTrigger>
                 </TooltipTrigger>
@@ -277,9 +283,9 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
                 side="right"
                 sideOffset={12}
                 align="start"
-                className="w-56 p-2"
+                className="w-56 p-1.5"
               >
-                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-2 py-1.5 mb-1">
+                <div className="text-2xs font-semibold text-muted-foreground uppercase tracking-wider px-2.5 py-1.5 mb-0.5">
                   {section.label}
                 </div>
                 {section.items.map((item) => (
@@ -288,13 +294,13 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
                     to={item.path}
                     onClick={() => setOpenPopover(null)}
                     className={cn(
-                      'flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm transition-colors',
+                      'flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-2sm transition-colors',
                       isItemActive(item.path)
                         ? 'bg-primary/10 text-primary font-medium'
                         : 'text-foreground/80 hover:bg-muted hover:text-foreground',
                     )}
                   >
-                    {item.icon && <item.icon className="size-4 shrink-0" />}
+                    {item.icon && <item.icon className="size-4 shrink-0 opacity-70" />}
                     <span>{item.label}</span>
                   </Link>
                 ))}
@@ -305,12 +311,13 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
       </div>
 
       {/* Bottom: User avatar + logout */}
-      <div className="flex flex-col items-center gap-2 mt-auto pt-2">
+      <div className="flex flex-col items-center gap-1.5 mt-auto pt-2">
+        <div className="w-8 h-px bg-white/[0.08] mb-0.5" />
         {user && (
           <TooltipProvider delayDuration={0}>
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="size-9 rounded-full bg-primary/30 flex items-center justify-center cursor-default">
+                <div className="size-9 rounded-full bg-gradient-to-br from-primary/40 to-primary/20 flex items-center justify-center cursor-default ring-2 ring-white/[0.08]">
                   <span className="text-white text-sm font-semibold">{user.name?.charAt(0)}</span>
                 </div>
               </TooltipTrigger>
@@ -328,9 +335,9 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
             <TooltipTrigger asChild>
               <button
                 onClick={logout}
-                className="flex items-center justify-center size-10 rounded-xl text-white/40 hover:text-white hover:bg-white/10 transition-colors"
+                className="flex items-center justify-center size-9 rounded-xl text-white/30 hover:text-red-400 hover:bg-red-500/10 transition-all"
               >
-                <LogOut className="size-5" />
+                <LogOut className="size-4" />
               </button>
             </TooltipTrigger>
             <TooltipContent side="right" sideOffset={8}>
@@ -368,9 +375,9 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
   return (
     <div className="sidebar fixed top-0 bottom-0 left-0 z-20 w-[264px] flex flex-col bg-sidebar-dark transition-all duration-300">
       {/* Header */}
-      <div className="flex items-center justify-between px-5 h-[70px] shrink-0 border-b border-white/10">
+      <div className="flex items-center justify-between px-5 h-[70px] shrink-0 border-b border-white/[0.06]">
         <Link to="/" className="flex items-center gap-2.5">
-          <div className="size-9 rounded-lg bg-primary flex items-center justify-center">
+          <div className="size-9 rounded-lg bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/20">
             <span className="text-white text-base font-bold">B</span>
           </div>
           <span className="text-base font-bold text-white leading-tight tracking-tight">
@@ -379,7 +386,7 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
         </Link>
         <button
           onClick={onToggle}
-          className="flex items-center justify-center size-8 rounded-lg text-white/30 hover:text-white hover:bg-white/10 transition-colors"
+          className="flex items-center justify-center size-8 rounded-lg text-white/25 hover:text-white/70 hover:bg-white/[0.06] transition-all"
           aria-label="ย่อเมนู"
         >
           <ChevronsLeft className="size-4" />
@@ -424,16 +431,16 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
 
       {/* User footer */}
       {user && (
-        <div className="px-4 py-4 border-t border-white/10 shrink-0">
+        <div className="px-4 py-3.5 border-t border-white/[0.06] shrink-0">
           <div className="flex items-center gap-3">
-            <div className="size-9 rounded-full bg-primary/30 flex items-center justify-center shrink-0">
+            <div className="size-9 rounded-full bg-gradient-to-br from-primary/40 to-primary/20 flex items-center justify-center shrink-0 ring-2 ring-white/[0.08]">
               <span className="text-white text-sm font-semibold">{user.name?.charAt(0)}</span>
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-2sm font-medium text-white truncate">{user.name}</p>
-              <p className="text-2xs text-white/50 truncate">{user.branchName}</p>
+              <p className="text-2xs text-white/40 truncate">{user.branchName}</p>
             </div>
-            <button onClick={logout} className="text-white/40 hover:text-white transition-colors">
+            <button onClick={logout} className="text-white/30 hover:text-red-400 hover:bg-red-500/10 p-1.5 rounded-lg transition-all">
               <LogOut className="size-4" />
             </button>
           </div>
@@ -468,8 +475,8 @@ function MobileSidebar() {
   return (
     <div className="w-full h-full flex flex-col bg-sidebar-dark">
       {/* Header */}
-      <div className="flex items-center gap-2.5 px-5 h-[70px] shrink-0 border-b border-white/10">
-        <div className="size-9 rounded-lg bg-primary flex items-center justify-center">
+      <div className="flex items-center gap-2.5 px-5 h-[70px] shrink-0 border-b border-white/[0.06]">
+        <div className="size-9 rounded-lg bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/20">
           <span className="text-white text-base font-bold">B</span>
         </div>
         <span className="text-base font-bold text-white leading-tight tracking-tight">
@@ -515,16 +522,16 @@ function MobileSidebar() {
 
       {/* User footer */}
       {user && (
-        <div className="px-4 py-4 border-t border-white/10 shrink-0">
+        <div className="px-4 py-3.5 border-t border-white/[0.06] shrink-0">
           <div className="flex items-center gap-3">
-            <div className="size-9 rounded-full bg-primary/30 flex items-center justify-center shrink-0">
+            <div className="size-9 rounded-full bg-gradient-to-br from-primary/40 to-primary/20 flex items-center justify-center shrink-0 ring-2 ring-white/[0.08]">
               <span className="text-white text-sm font-semibold">{user.name?.charAt(0)}</span>
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-2sm font-medium text-white truncate">{user.name}</p>
-              <p className="text-2xs text-white/50 truncate">{user.branchName}</p>
+              <p className="text-2xs text-white/40 truncate">{user.branchName}</p>
             </div>
-            <button onClick={logout} className="text-white/40 hover:text-white transition-colors">
+            <button onClick={logout} className="text-white/30 hover:text-red-400 hover:bg-red-500/10 p-1.5 rounded-lg transition-all">
               <LogOut className="size-4" />
             </button>
           </div>

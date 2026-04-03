@@ -209,7 +209,7 @@ test.describe('Customer CRUD Flow', () => {
 test.describe('Expense CRUD Flow', () => {
   const uniqueSuffix = Date.now().toString().slice(-6);
   const testDescription = `E2E ทดสอบรายจ่าย ${uniqueSuffix}`;
-  let createdExpenseId = '';
+  const createdExpenseId = '';
   let branchId = '';
 
   test.beforeAll(async ({ browser }) => {
@@ -318,7 +318,7 @@ test.describe('Expense CRUD Flow', () => {
 test.describe('Supplier CRUD Flow', () => {
   const uniqueSuffix = Date.now().toString().slice(-6);
   const testSupplierName = `ร้านทดสอบ E2E ${uniqueSuffix}`;
-  let createdSupplierId = '';
+  const createdSupplierId = '';
 
   test.afterAll(async ({ browser }) => {
     if (createdSupplierId) {

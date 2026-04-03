@@ -9,6 +9,8 @@ import { ConfigService } from '@nestjs/config';
 import { PaymentMethod } from '@prisma/client';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { LineOaService } from '../line-oa/line-oa.service';
+import { buildPaymentSuccessFlex } from '../line-oa/flex-messages/payment-success.flex';
 
 export interface PaymentIntentResult {
   paymentId: string;
@@ -39,6 +41,7 @@ export class PaySolutionsService {
   constructor(
     private prisma: PrismaService,
     private config: ConfigService,
+    private lineOaService: LineOaService,
   ) {
     this.merchantId = this.config.get<string>('PAYSOLUTIONS_MERCHANT_ID', '');
     this.secretKey = this.config.get<string>('PAYSOLUTIONS_SECRET_KEY', '');
@@ -113,7 +116,7 @@ export class PaySolutionsService {
       total: amount.toFixed(2),
       lang: 'TH',
       postback_url: `${this.apiBaseUrl}/api/paysolutions/webhook`,
-      return_url: this.returnUrl || `${this.config.get('FRONTEND_URL', 'http://localhost:5173')}/liff/contract`,
+      return_url: `${this.returnUrl || `${this.config.get('FRONTEND_URL', 'http://localhost:5173')}/liff/contract`}?ref=${orderRef}`,
       cc: '00', // Allow all payment methods
       customer_name: customerName,
       customer_phone: contract.customer.phone,
@@ -263,6 +266,9 @@ export class PaySolutionsService {
       });
 
       this.logger.log(`Payment SUCCESS: refno=${refno}, contractId=${paymentLink.contractId}`);
+
+      // ส่ง LINE notification แจ้งลูกค้า
+      await this.sendPaymentSuccessNotification(paymentLink.contractId, paymentLink.paymentId);
     } else {
       // ชำระไม่สำเร็จ
       if (paymentLink.paymentId) {
@@ -282,6 +288,55 @@ export class PaySolutionsService {
       });
 
       this.logger.log(`Payment FAILED: refno=${refno}, result_code=${result_code}`);
+    }
+  }
+
+  /**
+   * ส่ง LINE flex message แจ้งลูกค้าว่าชำระสำเร็จ
+   */
+  private async sendPaymentSuccessNotification(
+    contractId: string,
+    paymentId: string | null,
+  ): Promise<void> {
+    try {
+      const contract = await this.prisma.contract.findUnique({
+        where: { id: contractId },
+        include: {
+          customer: { select: { name: true, lineId: true } },
+          payments: { orderBy: { installmentNo: 'asc' } },
+        },
+      });
+
+      if (!contract?.customer.lineId) return;
+
+      const payment = paymentId
+        ? contract.payments.find((p) => p.id === paymentId)
+        : null;
+
+      if (!payment) return;
+
+      const paidCount = contract.payments.filter((p) => p.status === 'PAID').length;
+
+      const flex = buildPaymentSuccessFlex({
+        customerName: contract.customer.name,
+        contractNumber: contract.contractNumber,
+        installmentNo: payment.installmentNo,
+        totalInstallments: contract.payments.length,
+        amountPaid: Number(payment.amountPaid),
+        paymentMethod: 'ONLINE_GATEWAY',
+        paidDate: new Date().toLocaleDateString('th-TH', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+        }),
+        remainingInstallments: contract.payments.length - paidCount,
+      });
+
+      await this.lineOaService.sendFlexMessage(contract.customer.lineId, flex);
+      this.logger.log(`LINE notification sent for contract ${contract.contractNumber}`);
+    } catch (err) {
+      // ไม่ให้ notification error ทำให้ webhook fail
+      this.logger.error(`Failed to send LINE notification: ${err}`);
     }
   }
 

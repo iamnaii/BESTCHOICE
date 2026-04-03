@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLiffInit } from '@/hooks/useLiffInit';
 import { liffApi } from '@/lib/api';
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -57,6 +57,38 @@ export default function LiffContract() {
   const { lineId, loading, error } = useLiffInit();
   const [selectedContract, setSelectedContract] = useState(0);
   const [showAllPayments, setShowAllPayments] = useState(false);
+
+  // ตรวจสอบ payment status เมื่อ redirect กลับจาก Pay Solutions
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const ref = params.get('ref');
+    if (!ref) return;
+
+    // ลบ query param ออกจาก URL เพื่อไม่ให้ poll ซ้ำเมื่อ refresh
+    window.history.replaceState({}, '', window.location.pathname);
+
+    let attempts = 0;
+    const maxAttempts = 20; // poll สูงสุด 60 วินาที (20 × 3s)
+    const pollId = setInterval(async () => {
+      attempts++;
+      try {
+        const { data: status } = await liffApi.get(`/paysolutions/status/${ref}`);
+        if (status.status === 'PAID') {
+          clearInterval(pollId);
+          toast.success('ชำระเงินสำเร็จ!');
+        } else if (status.status === 'FAILED' || attempts >= maxAttempts) {
+          clearInterval(pollId);
+          if (status.status === 'FAILED') {
+            toast.error('การชำระเงินไม่สำเร็จ กรุณาลองใหม่');
+          }
+        }
+      } catch {
+        if (attempts >= maxAttempts) clearInterval(pollId);
+      }
+    }, 3000);
+
+    return () => clearInterval(pollId);
+  }, []);
 
   const { data, isLoading: dataLoading, error: dataError } = useQuery<ContractData>({
     queryKey: ['liff-contracts', lineId],

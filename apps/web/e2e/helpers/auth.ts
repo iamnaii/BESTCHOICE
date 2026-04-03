@@ -10,6 +10,19 @@ export const TEST_USER = {
   password: 'admin1234',
 };
 
+/**
+ * Multi-role test accounts (all seeded with the same password).
+ * Used for role-based access testing.
+ */
+export type TestRole = 'OWNER' | 'BRANCH_MANAGER' | 'SALES' | 'ACCOUNTANT';
+
+export const ROLE_ACCOUNTS: Record<TestRole, { email: string; password: string; name: string }> = {
+  OWNER: { email: 'admin@bestchoice.com', password: 'admin1234', name: 'สุรชัย เจ้าของร้าน' },
+  BRANCH_MANAGER: { email: 'manager.ladprao@bestchoice.com', password: 'admin1234', name: 'วิภา ผู้จัดการลาดพร้าว' },
+  SALES: { email: 'sales1@bestchoice.com', password: 'admin1234', name: 'สมศักดิ์ พนักงานขาย' },
+  ACCOUNTANT: { email: 'accountant@bestchoice.com', password: 'admin1234', name: 'พิมพ์ใจ ฝ่ายบัญชี' },
+};
+
 const AUTH_FILE = path.join(__dirname, '../../.playwright-auth.json');
 
 // JWT expiry is 15m — treat token as stale after 12 min to be safe
@@ -130,6 +143,42 @@ export async function loginViaAPI(page: Page) {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
 
   // Wait for auth to resolve — use toHaveURL (polls) instead of waitForURL
+  await expect(page).toHaveURL('/', { timeout: 30000 });
+}
+
+/**
+ * Login as a specific role via API (no cached token — always fresh login).
+ * Use this for role-based access tests where you need non-OWNER accounts.
+ */
+export async function loginAsRole(page: Page, role: TestRole) {
+  const account = ROLE_ACCOUNTS[role];
+  const apiURL = process.env.API_DIRECT_URL || 'http://localhost:3000';
+  const response = await page.request.post(`${apiURL}/api/auth/login`, {
+    data: { email: account.email, password: account.password },
+    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+  });
+
+  if (!response.ok()) {
+    throw new Error(`loginAsRole(${role}) failed: HTTP ${response.status()}`);
+  }
+
+  const data = await response.json();
+  if (!data.accessToken) {
+    throw new Error(`loginAsRole(${role}): no accessToken in response`);
+  }
+
+  const token = data.accessToken;
+
+  await page.setExtraHTTPHeaders({
+    Authorization: `Bearer ${token}`,
+    'X-Requested-With': 'XMLHttpRequest',
+  });
+
+  await page.addInitScript((t: string) => {
+    localStorage.setItem('access_token', t);
+  }, token);
+
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page).toHaveURL('/', { timeout: 30000 });
 }
 

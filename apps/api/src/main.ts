@@ -1,7 +1,6 @@
-// Sentry: only import if DSN is configured (avoids startup overhead in production without DSN)
-if (process.env.SENTRY_DSN) {
-  require('./sentry');
-}
+// Sentry: only import if DSN is configured (avoids startup overhead without DSN)
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+if (process.env.SENTRY_DSN) require('./sentry');
 
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger, VersioningType } from '@nestjs/common';

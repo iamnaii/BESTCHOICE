@@ -1,5 +1,6 @@
 import { StockDashboard } from '../types';
 import { statusLabels, categoryLabels } from '@/lib/constants';
+import AnimatedCounter from '@/components/ui/animated-counter';
 
 export interface StockDashboardTabProps {
   dashboard: StockDashboard | undefined;
@@ -16,9 +17,11 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 
 function StatCard({ label, value, sub, accent }: { label: string; value: string | number; sub?: string; accent?: string }) {
   return (
-    <div className={`rounded-lg border p-4 ${accent ? `border-l-4 ${accent}` : ''}`}>
+    <div className={`rounded-xl border p-4 transition-shadow hover:shadow-xs ${accent ? `border-l-4 ${accent}` : ''}`}>
       <div className="text-xs text-muted-foreground mb-1">{label}</div>
-      <div className="text-xl font-bold text-foreground">{typeof value === 'number' ? value.toLocaleString() : value}</div>
+      <div className="text-xl font-bold text-foreground">
+        {typeof value === 'number' ? <AnimatedCounter value={value} /> : value}
+      </div>
       {sub && <div className="text-xs text-muted-foreground mt-1">{sub}</div>}
     </div>
   );
@@ -41,18 +44,18 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
   return (
     <>
       {warrantyExpiring.length > 0 && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
-          <div className="text-sm font-medium text-yellow-800">
+        <div className="bg-warning/5 dark:bg-warning/10 border border-warning/20 rounded-xl p-4 mb-4">
+          <div className="text-sm font-medium text-warning">
             รับประกันใกล้หมด: {warrantyExpiring.length} รายการ
           </div>
           <div className="mt-2 space-y-1">
             {warrantyExpiring.slice(0, 5).map(p => (
-              <div key={p.id} className="text-xs text-yellow-700 flex justify-between">
+              <div key={p.id} className="text-xs text-warning/80 flex justify-between">
                 <span>{p.brand} {p.model}</span>
                 <span>{new Date(p.warrantyExpireDate).toLocaleDateString('th-TH')}</span>
               </div>
             ))}
-            {warrantyExpiring.length > 5 && <div className="text-xs text-yellow-600">...และอีก {warrantyExpiring.length - 5} รายการ</div>}
+            {warrantyExpiring.length > 5 && <div className="text-xs text-warning/70">...และอีก {warrantyExpiring.length - 5} รายการ</div>}
           </div>
         </div>
       )}
@@ -67,16 +70,16 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
               <SectionTitle>รอดำเนินการ ({actionTotal})</SectionTitle>
               <div className="grid grid-cols-2 gap-3">
                 {dashboard.actionRequired.inspection > 0 && (
-                  <div className="flex items-center gap-3 p-3 bg-yellow-50 rounded-lg">
-                    <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center text-yellow-600 text-lg font-bold">
+                  <div className="flex items-center gap-3 p-3 bg-warning/5 dark:bg-warning/10 rounded-xl">
+                    <div className="w-10 h-10 bg-warning/10 rounded-xl flex items-center justify-center text-warning text-lg font-bold">
                       {dashboard.actionRequired.inspection}
                     </div>
-                    <div className="text-sm text-yellow-700">รอตรวจสอบ</div>
+                    <div className="text-sm text-warning">รอตรวจสอบ</div>
                   </div>
                 )}
                 {(dashboard.actionRequired.photoPending || 0) > 0 && (
-                  <div className="flex items-center gap-3 p-3 bg-primary-50 rounded-lg">
-                    <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center text-primary text-lg font-bold">
+                  <div className="flex items-center gap-3 p-3 bg-primary/5 dark:bg-primary/10 rounded-xl">
+                    <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary text-lg font-bold">
                       {dashboard.actionRequired.photoPending}
                     </div>
                     <div className="text-sm text-primary-700">รอถ่ายรูป</div>
@@ -91,11 +94,11 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
                   </div>
                 )}
                 {dashboard.actionRequired.repossessed > 0 && (
-                  <div className="flex items-center gap-3 p-3 bg-red-50 rounded-lg">
+                  <div className="flex items-center gap-3 p-3 bg-destructive/5 dark:bg-destructive/10 rounded-lg">
                     <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center text-red-600 text-lg font-bold">
                       {dashboard.actionRequired.repossessed}
                     </div>
-                    <div className="text-sm text-red-700">ยึดคืน รอปรับสภาพ</div>
+                    <div className="text-sm text-destructive">ยึดคืน รอปรับสภาพ</div>
                   </div>
                 )}
                 {dashboard.actionRequired.agingOver90 > 0 && (
@@ -184,7 +187,7 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
                     <div key={m.month} className="space-y-1">
                       <div className="text-xs text-muted-foreground font-medium">{m.month}</div>
                       <div className="flex items-center gap-2">
-                        <div className="w-12 text-xs text-right text-green-600">{m.in}</div>
+                        <div className="w-12 text-xs text-right text-success">{m.in}</div>
                         <div className="flex-1 bg-muted rounded-full h-3 overflow-hidden">
                           <div className="h-full bg-green-400 rounded-full" style={{ width: `${(m.in / maxVal) * 100}%` }} />
                         </div>
@@ -314,9 +317,9 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
                   {dashboard.topSellers.map((item, i) => (
                     <div key={item.name} className="flex items-center gap-3">
                       <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                        i === 0 ? 'bg-yellow-100 text-yellow-700' :
+                        i === 0 ? 'bg-warning/10 text-warning dark:bg-warning/15' :
                         i === 1 ? 'bg-muted text-muted-foreground' :
-                        i === 2 ? 'bg-orange-100 text-orange-700' :
+                        i === 2 ? 'bg-warning/10 text-warning dark:bg-warning/15' :
                         'bg-muted text-muted-foreground'
                       }`}>{i + 1}</span>
                       <div className="flex-1 min-w-0">
@@ -339,15 +342,15 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
                   {dashboard.slowMovers.map((item, i) => (
                     <div key={`${item.name}-${i}`} className="flex items-center gap-3">
                       <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                        item.days > 90 ? 'bg-red-100 text-red-700' :
-                        item.days > 60 ? 'bg-orange-100 text-orange-700' :
-                        'bg-yellow-100 text-yellow-700'
+                        item.days > 90 ? 'bg-destructive/10 text-destructive dark:bg-destructive/15' :
+                        item.days > 60 ? 'bg-warning/10 text-warning dark:bg-warning/15' :
+                        'bg-warning/10 text-warning dark:bg-warning/15'
                       }`}>{i + 1}</span>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-medium text-foreground truncate">{item.name}</div>
                         {isManager && <div className="text-xs text-muted-foreground">{(Number(item.costPrice) || 0).toLocaleString()} ฿</div>}
                       </div>
-                      <span className={`text-sm font-bold ${item.days > 90 ? 'text-red-600' : item.days > 60 ? 'text-orange-600' : 'text-yellow-600'}`}>
+                      <span className={`text-sm font-bold ${item.days > 90 ? 'text-destructive' : item.days > 60 ? 'text-warning' : 'text-yellow-600'}`}>
                         {item.days} วัน
                       </span>
                     </div>

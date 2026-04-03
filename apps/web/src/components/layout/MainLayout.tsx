@@ -5,6 +5,8 @@ import { LayoutProvider, useLayout } from './LayoutContext';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import { Sheet, SheetContent, SheetBody } from '@/components/ui/sheet';
+import CommandPalette from '@/components/CommandPalette';
+import MobileBottomNav from './MobileBottomNav';
 
 function MobileSidebar() {
   const { mobileSidebarOpen, setMobileSidebarOpen } = useLayout();
@@ -29,6 +31,7 @@ function MobileSidebar() {
 function MainContent() {
   const isMobile = useIsMobile();
   const { sidebarCollapse } = useLayout();
+  const { pathname } = useLocation();
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -46,10 +49,18 @@ function MainContent() {
         }}
       >
         <TopBar />
-        <main className="flex-1 grow pt-5 px-5 lg:px-7 pb-7 bg-background">
-          <Outlet />
+        <main className="flex-1 grow pt-5 px-5 lg:px-7 pb-7 lg:pb-7 pb-20 bg-background" key={pathname}>
+          <div className="animate-fadeIn">
+            <Outlet />
+          </div>
         </main>
       </div>
+
+      {/* Mobile bottom tab bar */}
+      {isMobile && <MobileBottomNav />}
+
+      {/* Global Command Palette (Ctrl+K) */}
+      <CommandPalette />
     </div>
   );
 }

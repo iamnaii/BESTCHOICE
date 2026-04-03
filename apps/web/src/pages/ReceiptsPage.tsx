@@ -106,7 +106,7 @@ function ReceiptsPage() {
       render: (r: Receipt) => {
         const isCredit = r.receiptType === 'CREDIT_NOTE';
         return (
-          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${isCredit ? 'bg-yellow-100 text-yellow-700' : 'bg-blue-50 text-blue-700'}`}>
+          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${isCredit ? 'bg-warning/10 text-warning dark:bg-warning/15' : 'bg-blue-50 text-blue-700'}`}>
             {receiptTypeLabels[r.receiptType] || r.receiptType}
           </span>
         );
@@ -147,8 +147,8 @@ function ReceiptsPage() {
       key: 'status',
       label: 'สถานะ',
       render: (r: Receipt) => r.isVoided
-        ? <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">ยกเลิก</span>
-        : <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">ปกติ</span>,
+        ? <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-destructive/10 text-destructive dark:bg-destructive/15">ยกเลิก</span>
+        : <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-success/10 text-success dark:bg-success/15">ปกติ</span>,
     },
     {
       key: 'actions',
@@ -228,7 +228,7 @@ function ReceiptsPage() {
         <Card>
           <CardContent className="pt-4">
             <div className="text-xs text-muted-foreground mb-1">ยอดรวม</div>
-            <div className="text-2xl font-bold text-green-600">
+            <div className="text-2xl font-bold text-success">
               {Number(summary?.totalAmount || 0).toLocaleString()} ฿
             </div>
           </CardContent>

@@ -51,7 +51,7 @@ export function PaymentModal({
             {Number(selectedPO.discount) > 0 && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">ส่วนลด:</span>
-                <span className="text-red-600">-{Number(selectedPO.discount).toLocaleString()} บาท</span>
+                <span className="text-destructive">-{Number(selectedPO.discount).toLocaleString()} บาท</span>
               </div>
             )}
             {Number(selectedPO.vatAmount) > 0 && (
@@ -66,7 +66,7 @@ export function PaymentModal({
             </div>
             {Number(selectedPO.paidAmount) > 0 && (
               <>
-                <div className="flex justify-between text-green-700">
+                <div className="flex justify-between text-success">
                   <span>จ่ายแล้วก่อนหน้า:</span>
                   <span>{Number(selectedPO.paidAmount).toLocaleString()} บาท</span>
                 </div>
@@ -77,7 +77,7 @@ export function PaymentModal({
               </>
             )}
             {selectedPO.dueDate && (
-              <div className={`flex justify-between border-t pt-1 ${new Date(selectedPO.dueDate) < new Date() && paymentForm.paymentStatus !== 'FULLY_PAID' ? 'text-red-600 font-semibold' : 'text-muted-foreground'}`}>
+              <div className={`flex justify-between border-t pt-1 ${new Date(selectedPO.dueDate) < new Date() && paymentForm.paymentStatus !== 'FULLY_PAID' ? 'text-destructive font-semibold' : 'text-muted-foreground'}`}>
                 <span>ครบกำหนดชำระ:</span>
                 <span>
                   {new Date(selectedPO.dueDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
@@ -177,8 +177,8 @@ export function PaymentModal({
               }
               if (paid > netAmt && netAmt > 0) {
                 return (
-                  <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg text-sm">
-                    <span className="text-red-600">จำนวนที่จ่ายเกินยอดสุทธิ {(paid - netAmt).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท</span>
+                  <div className="mt-2 p-2 bg-destructive/5 dark:bg-destructive/10 border border-destructive/20 rounded-lg text-sm">
+                    <span className="text-destructive">จำนวนที่จ่ายเกินยอดสุทธิ {(paid - netAmt).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท</span>
                   </div>
                 );
               }

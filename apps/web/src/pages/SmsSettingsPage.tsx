@@ -100,10 +100,10 @@ export default function SmsSettingsPage() {
       {/* Connection Status Card */}
       <div className={`mb-8 p-5 rounded-2xl border-2 ${
         data?.isConfigured && testResult?.success
-          ? 'bg-green-50 border-green-300'
+          ? 'bg-success/5 dark:bg-success/10 border-success/30'
           : data?.isConfigured
             ? 'bg-blue-50 border-blue-300'
-            : 'bg-orange-50 border-orange-300'
+            : 'bg-warning/5 dark:bg-warning/10 border-warning/30'
       }`}>
         <div className="flex items-start gap-4">
           <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl shrink-0 ${
@@ -141,7 +141,7 @@ export default function SmsSettingsPage() {
         </div>
         {testResult && !testResult.success && (
           <div className="mt-3 p-3 bg-red-100 border border-red-200 rounded-lg">
-            <p className="text-sm text-red-700">เชื่อมต่อไม่สำเร็จ: {testResult.error}</p>
+            <p className="text-sm text-destructive">เชื่อมต่อไม่สำเร็จ: {testResult.error}</p>
             <p className="text-xs text-red-500 mt-1">กรุณาตรวจสอบ API Key และ API Secret ว่าถูกต้อง</p>
           </div>
         )}
@@ -240,9 +240,9 @@ export default function SmsSettingsPage() {
           </div>
 
           <div className="bg-card rounded-xl shadow-xs shadow-black/5 border p-5 ml-4 border-l-4 border-l-green-400">
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
-              <p className="text-sm text-green-800 font-medium mb-1">Sender ID คืออะไร?</p>
-              <p className="text-sm text-green-700">ชื่อที่แสดงแทนเบอร์โทรผู้ส่ง เช่น &quot;BESTCHOICE&quot; ต้องลงทะเบียนกับ ThaiBulkSMS ก่อนใช้งาน หากยังไม่ลงทะเบียน ให้ปล่อยว่างไว้</p>
+            <div className="bg-success/5 dark:bg-success/10 border border-success/20 rounded-lg p-4 mb-4">
+              <p className="text-sm text-success font-medium mb-1">Sender ID คืออะไร?</p>
+              <p className="text-sm text-success">ชื่อที่แสดงแทนเบอร์โทรผู้ส่ง เช่น &quot;BESTCHOICE&quot; ต้องลงทะเบียนกับ ThaiBulkSMS ก่อนใช้งาน หากยังไม่ลงทะเบียน ให้ปล่อยว่างไว้</p>
             </div>
 
             <div className="space-y-4">
@@ -328,7 +328,7 @@ export default function SmsSettingsPage() {
                   {testSendMutation.isPending ? 'กำลังส่ง...' : 'ส่ง SMS ทดสอบ'}
                 </button>
                 {testSendResult && (
-                  <span className={`text-sm ${testSendResult.success ? 'text-green-600' : 'text-red-600'}`}>
+                  <span className={`text-sm ${testSendResult.success ? 'text-success' : 'text-destructive'}`}>
                     {testSendResult.success ? testSendResult.message : testSendResult.error}
                   </span>
                 )}
@@ -348,7 +348,7 @@ export default function SmsSettingsPage() {
             { icon: '⚠️', title: 'แจ้งเตือนค้างชำระ', desc: 'ส่ง SMS เตือนเมื่อเลยกำหนดชำระ' },
             { icon: '📱', title: 'สำรอง LINE', desc: 'ใช้ SMS เป็นช่องทางสำรองเมื่อ LINE ส่งไม่ได้' },
           ].map((f) => (
-            <div key={f.title} className="flex items-start gap-3 bg-white/70 rounded-lg p-3">
+            <div key={f.title} className="flex items-start gap-3 bg-muted rounded-lg p-3">
               <span className="text-xl">{f.icon}</span>
               <div>
                 <p className="text-sm font-medium text-foreground">{f.title}</p>

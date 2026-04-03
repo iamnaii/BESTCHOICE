@@ -20,6 +20,21 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import AnimatedCounter from '@/components/ui/animated-counter';
+import { DashboardSkeleton } from '@/components/ui/page-skeletons';
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+} from 'recharts';
 
 /* ─── Types ─── */
 
@@ -128,6 +143,16 @@ const agingTextColors: Record<string, string> = {
   red: 'text-red-600 dark:text-red-400',
 };
 
+/* Pie chart hex colors (matching statusColors Tailwind classes) */
+const pieColors: Record<string, string> = {
+  ACTIVE: '#22c55e',
+  OVERDUE: '#eab308',
+  DEFAULT: '#ef4444',
+  COMPLETED: '#3b82f6',
+  EXCHANGED: '#a855f7',
+  CLOSED_BAD_DEBT: '#a1a1aa',
+};
+
 /* ─── Quick Action Shortcut Card (Demo 9 style) ─── */
 function ShortcutCard({ icon: Icon, label, path, color }: { icon: LucideIcon; label: string; path: string; color: string }) {
   const navigate = useNavigate();
@@ -180,7 +205,7 @@ export default function DashboardPage() {
   const dashboardStaleTime = 5 * 60 * 1000;
 
   /* ─── Existing queries ─── */
-  const { data: kpis, isError: kpisError, refetch: refetchKpis } = useQuery<KPIs>({
+  const { data: kpis, isLoading: kpisLoading, isError: kpisError, refetch: refetchKpis } = useQuery<KPIs>({
     queryKey: ['dashboard-kpis'],
     queryFn: async () => (await api.get('/dashboard/kpis')).data,
     staleTime: dashboardStaleTime,
@@ -240,6 +265,8 @@ export default function DashboardPage() {
   }, [trend]);
   const agingMax = useMemo(() => (aging ? Math.max(...aging.buckets.map((b) => b.amount), 1) : 1), [aging]);
 
+  if (kpisLoading && !kpis) return <DashboardSkeleton />;
+
   return (
     <div className="flex flex-col gap-5 lg:gap-7">
       {/* Page Title */}
@@ -260,41 +287,49 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ═══ KPI Banner (full-width) ═══ */}
+      {/* ═══ KPI Banner (full-width) — animated counters ═══ */}
       {kpis && (
         <div className="rounded-xl bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-700 text-white p-6 lg:p-8">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="cursor-pointer" onClick={() => navigate('/contracts')}>
+            <div className="cursor-pointer group" onClick={() => navigate('/contracts')}>
               <div className="flex items-center gap-2 mb-2">
-                <FileCheck className="size-4 opacity-70" />
+                <div className="size-8 rounded-lg bg-white/15 flex items-center justify-center group-hover:bg-white/25 transition-colors">
+                  <FileCheck className="size-4" />
+                </div>
                 <span className="text-xs text-white/70 font-medium">สัญญาทั้งหมด</span>
               </div>
-              <div className="text-2xl lg:text-3xl font-bold">{kpis.contracts.total}</div>
-              <div className="text-xs text-white/60 mt-1">ปกติ {kpis.contracts.active}</div>
+              <AnimatedCounter value={kpis.contracts.total} className="text-2xl lg:text-3xl font-bold" />
+              <div className="text-xs text-white/60 mt-1">ปกติ <AnimatedCounter value={kpis.contracts.active} /></div>
             </div>
-            <div className="cursor-pointer" onClick={() => navigate('/overdue')}>
+            <div className="cursor-pointer group" onClick={() => navigate('/overdue')}>
               <div className="flex items-center gap-2 mb-2">
-                <AlertTriangle className="size-4 opacity-70" />
+                <div className="size-8 rounded-lg bg-white/15 flex items-center justify-center group-hover:bg-white/25 transition-colors">
+                  <AlertTriangle className="size-4" />
+                </div>
                 <span className="text-xs text-white/70 font-medium">ค้าง/ผิดนัด</span>
               </div>
-              <div className="text-2xl lg:text-3xl font-bold">{(kpis.contracts.overdue ?? 0) + (kpis.contracts.default ?? 0)}</div>
+              <AnimatedCounter value={(kpis.contracts.overdue ?? 0) + (kpis.contracts.default ?? 0)} className="text-2xl lg:text-3xl font-bold" />
               <div className="text-xs text-white/60 mt-1">{(kpis.overdueRate ?? 0).toFixed(1)}%</div>
             </div>
-            <div className="cursor-pointer" onClick={() => navigate('/payments')}>
+            <div className="cursor-pointer group" onClick={() => navigate('/payments')}>
               <div className="flex items-center gap-2 mb-2">
-                <TrendingUp className="size-4 opacity-70" />
+                <div className="size-8 rounded-lg bg-white/15 flex items-center justify-center group-hover:bg-white/25 transition-colors">
+                  <TrendingUp className="size-4" />
+                </div>
                 <span className="text-xs text-white/70 font-medium">ยอดรับวันนี้</span>
               </div>
-              <div className="text-2xl lg:text-3xl font-bold">฿{kpis.financial.todayPayments.toLocaleString()}</div>
-              <div className="text-xs text-white/60 mt-1">{kpis.financial.todayPaymentCount} รายการ</div>
+              <AnimatedCounter value={kpis.financial.todayPayments} prefix="฿" className="text-2xl lg:text-3xl font-bold" />
+              <div className="text-xs text-white/60 mt-1"><AnimatedCounter value={kpis.financial.todayPaymentCount} /> รายการ</div>
             </div>
-            <div className="cursor-pointer" onClick={() => navigate('/stock')}>
+            <div className="cursor-pointer group" onClick={() => navigate('/stock')}>
               <div className="flex items-center gap-2 mb-2">
-                <Warehouse className="size-4 opacity-70" />
+                <div className="size-8 rounded-lg bg-white/15 flex items-center justify-center group-hover:bg-white/25 transition-colors">
+                  <Warehouse className="size-4" />
+                </div>
                 <span className="text-xs text-white/70 font-medium">สินค้าในสต็อก</span>
               </div>
-              <div className="text-2xl lg:text-3xl font-bold">{kpis.products.inStock}</div>
-              <div className="text-xs text-white/60 mt-1">จาก {kpis.products.total}</div>
+              <AnimatedCounter value={kpis.products.inStock} className="text-2xl lg:text-3xl font-bold" />
+              <div className="text-xs text-white/60 mt-1">จาก <AnimatedCounter value={kpis.products.total} /></div>
             </div>
           </div>
         </div>
@@ -540,7 +575,7 @@ export default function DashboardPage() {
                                     ? 'bg-destructive/10 text-destructive'
                                     : s.overdueRate > 10
                                       ? 'bg-warning/10 text-warning'
-                                      : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+                                      : 'bg-success/10 text-success dark:bg-success/15 dark:bg-green-900/30 dark:text-green-400',
                                 )}
                               >
                                 {s.overdueRate}%
@@ -597,52 +632,80 @@ export default function DashboardPage() {
         </CardContent>
       </Card>}
 
-      {/* ═══ Two-Column: Trend + Status Distribution ═══ */}
+      {/* ═══ Two-Column: Trend (AreaChart) + Status Distribution (PieChart + bars) ═══ */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-7">
-        {/* Monthly Trend */}
-        <div className="lg:col-span-5">
+        {/* Monthly Trend — Recharts AreaChart */}
+        <div className="lg:col-span-7">
           <Card>
             <CardHeader>
               <CardTitle>แนวโน้ม 12 เดือน</CardTitle>
               <CardToolbar>
-                <span className="text-2xs text-muted-foreground">Latest trends</span>
+                <div className="flex gap-4 text-2xs text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <span className="size-2.5 bg-primary rounded-full inline-block" /> สัญญาใหม่
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="size-2.5 bg-success rounded-full inline-block" /> ยอดชำระ
+                  </span>
+                </div>
               </CardToolbar>
             </CardHeader>
             <CardContent>
               {trendError ? (
                 <ErrorBlock message="โหลดข้อมูลไม่สำเร็จ" onRetry={() => refetchTrend()} />
               ) : trend.length > 0 ? (
-                <div className="space-y-2">
-                  {trend.map((t) => (
-                    <div key={t.month} className="flex items-center gap-3 text-xs">
-                      <div className="w-14 text-muted-foreground shrink-0 font-medium">{t.month}</div>
-                      <div className="flex-1 space-y-1">
-                        <div className="flex items-center gap-2">
-                          <div
-                            className="h-2.5 bg-primary rounded-full"
-                            style={{ width: `${(t.newContracts / trendMax) * 100}%`, minWidth: '2px' }}
-                          />
-                          <span className="text-foreground font-medium">{t.newContracts}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div
-                            className="h-2.5 bg-success rounded-full"
-                            style={{ width: `${(t.paymentsReceived / trendMax) * 100}%`, minWidth: '2px' }}
-                          />
-                          <span className="text-foreground font-medium">{t.paymentsReceived.toLocaleString()}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  <div className="flex gap-4 text-2xs text-muted-foreground mt-4 pt-3 border-t border-border/50">
-                    <span className="flex items-center gap-1.5">
-                      <span className="size-2.5 bg-primary rounded-full inline-block" /> สัญญาใหม่
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <span className="size-2.5 bg-success rounded-full inline-block" /> ยอดชำระ (บาท)
-                    </span>
-                  </div>
-                </div>
+                <ResponsiveContainer width="100%" height={280}>
+                  <AreaChart data={trend} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="gradContracts" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="hsl(217 91% 60%)" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="hsl(217 91% 60%)" stopOpacity={0} />
+                      </linearGradient>
+                      <linearGradient id="gradPayments" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="hsl(142 71% 45%)" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="hsl(142 71% 45%)" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                    <XAxis
+                      dataKey="month"
+                      tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <RechartsTooltip
+                      contentStyle={{
+                        backgroundColor: 'hsl(var(--popover))',
+                        border: '1px solid hsl(var(--border))',
+                        borderRadius: '8px',
+                        fontSize: '12px',
+                        boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+                      }}
+                      labelStyle={{ fontWeight: 600, marginBottom: 4 }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="newContracts"
+                      name="สัญญาใหม่"
+                      stroke="hsl(217 91% 60%)"
+                      strokeWidth={2}
+                      fill="url(#gradContracts)"
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="paymentsReceived"
+                      name="ยอดชำระ (฿)"
+                      stroke="hsl(142 71% 45%)"
+                      strokeWidth={2}
+                      fill="url(#gradPayments)"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
               ) : (
                 <div className="text-center text-muted-foreground py-8 text-sm">ไม่มีข้อมูล</div>
               )}
@@ -650,8 +713,8 @@ export default function DashboardPage() {
           </Card>
         </div>
 
-        {/* Status Distribution */}
-        <div className="lg:col-span-7">
+        {/* Status Distribution — PieChart + legend bars */}
+        <div className="lg:col-span-5">
           <Card>
             <CardHeader>
               <CardTitle>สถานะสัญญา</CardTitle>
@@ -665,25 +728,60 @@ export default function DashboardPage() {
               {statusDistError ? (
                 <ErrorBlock message="โหลดข้อมูลไม่สำเร็จ" onRetry={() => refetchStatusDist()} />
               ) : statusDist.length > 0 ? (
-                <div className="space-y-3">
-                  {statusDist.map((s) => (
-                    <div key={s.status} className="flex items-center gap-3">
-                      <div className="w-24 text-xs text-foreground font-medium flex items-center gap-2">
-                        <span className={cn('size-2 rounded-full', statusColors[s.status] || 'bg-zinc-400')} />
-                        {statusLabels[s.status] || s.status}
+                <div>
+                  {/* Donut chart */}
+                  <ResponsiveContainer width="100%" height={180}>
+                    <PieChart>
+                      <Pie
+                        data={statusDist.map((s) => ({
+                          name: statusLabels[s.status] || s.status,
+                          value: s.count,
+                          fill: pieColors[s.status] || '#a1a1aa',
+                        }))}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={50}
+                        outerRadius={75}
+                        paddingAngle={2}
+                        dataKey="value"
+                        stroke="none"
+                      >
+                        {statusDist.map((s) => (
+                          <Cell key={s.status} fill={pieColors[s.status] || '#a1a1aa'} />
+                        ))}
+                      </Pie>
+                      <RechartsTooltip
+                        contentStyle={{
+                          backgroundColor: 'hsl(var(--popover))',
+                          border: '1px solid hsl(var(--border))',
+                          borderRadius: '8px',
+                          fontSize: '12px',
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+
+                  {/* Legend bars */}
+                  <div className="space-y-2.5 mt-2">
+                    {statusDist.map((s) => (
+                      <div key={s.status} className="flex items-center gap-3">
+                        <div className="w-24 text-xs text-foreground font-medium flex items-center gap-2">
+                          <span className={cn('size-2 rounded-full', statusColors[s.status] || 'bg-zinc-400')} />
+                          {statusLabels[s.status] || s.status}
+                        </div>
+                        <div className="flex-1 bg-muted rounded-full h-2.5 overflow-hidden">
+                          <div
+                            className={cn('h-full rounded-full opacity-80', statusColors[s.status] || 'bg-zinc-400')}
+                            style={{
+                              width: totalStatusCount > 0 ? `${(s.count / totalStatusCount) * 100}%` : '0%',
+                              minWidth: s.count > 0 ? '8px' : '0',
+                            }}
+                          />
+                        </div>
+                        <div className="w-10 text-right text-2sm font-semibold text-foreground">{s.count}</div>
                       </div>
-                      <div className="flex-1 bg-muted rounded-full h-3 overflow-hidden">
-                        <div
-                          className={cn('h-full rounded-full opacity-80', statusColors[s.status] || 'bg-zinc-400')}
-                          style={{
-                            width: totalStatusCount > 0 ? `${(s.count / totalStatusCount) * 100}%` : '0%',
-                            minWidth: s.count > 0 ? '8px' : '0',
-                          }}
-                        />
-                      </div>
-                      <div className="w-10 text-right text-2sm font-semibold text-foreground">{s.count}</div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               ) : (
                 <div className="text-center text-muted-foreground py-8 text-sm">ไม่มีข้อมูล</div>
@@ -740,7 +838,7 @@ export default function DashboardPage() {
                               ? 'bg-destructive/10 text-destructive'
                               : item.daysOverdue > 30
                                 ? 'bg-warning/10 text-warning'
-                                : 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
+                                : 'bg-warning/10 text-warning dark:bg-warning/15 dark:bg-orange-900/30 dark:text-orange-400',
                           )}
                         >
                           {item.daysOverdue} วัน

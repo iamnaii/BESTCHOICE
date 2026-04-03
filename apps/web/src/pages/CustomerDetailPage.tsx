@@ -6,10 +6,13 @@ import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import AddressForm, { AddressData, emptyAddress, displayAddress, serializeAddress, deserializeAddress } from '@/components/ui/AddressForm';
 import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-
+import { Pencil, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
+import { DetailPageSkeleton } from '@/components/ui/page-skeletons';
 import { maskNationalId } from '@/utils/mask.util';
 import { THAI_NAME_PREFIXES, RELATIONSHIP_OPTIONS } from '@/lib/constants';
 
@@ -68,13 +71,13 @@ interface RiskFlag {
 
 const statusLabels: Record<string, { label: string; className: string }> = {
   DRAFT: { label: 'ร่าง', className: 'bg-muted text-foreground' },
-  ACTIVE: { label: 'ผ่อนอยู่', className: 'bg-green-100 text-green-700' },
-  OVERDUE: { label: 'ค้างชำระ', className: 'bg-yellow-100 text-yellow-700' },
-  DEFAULT: { label: 'ผิดนัด', className: 'bg-red-100 text-red-700' },
+  ACTIVE: { label: 'ผ่อนอยู่', className: 'bg-success/10 text-success dark:bg-success/15' },
+  OVERDUE: { label: 'ค้างชำระ', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
+  DEFAULT: { label: 'ผิดนัด', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
   EARLY_PAYOFF: { label: 'ปิดก่อน', className: 'bg-primary-100 text-primary-700' },
-  COMPLETED: { label: 'ครบ', className: 'bg-teal-100 text-teal-700' },
+  COMPLETED: { label: 'ครบ', className: 'bg-success/10 text-success dark:bg-success/15' },
   EXCHANGED: { label: 'เปลี่ยนเครื่อง', className: 'bg-primary-100 text-primary-700' },
-  CLOSED_BAD_DEBT: { label: 'หนี้สูญ', className: 'bg-red-200 text-red-800' },
+  CLOSED_BAD_DEBT: { label: 'หนี้สูญ', className: 'bg-red-200 text-destructive' },
 };
 
 interface CreditCheckItem {
@@ -95,8 +98,8 @@ interface CreditCheckItem {
 
 const creditStatusLabels: Record<string, { label: string; className: string }> = {
   PENDING: { label: 'รอวิเคราะห์', className: 'bg-muted text-foreground' },
-  APPROVED: { label: 'ผ่าน', className: 'bg-green-100 text-green-700' },
-  REJECTED: { label: 'ไม่ผ่าน', className: 'bg-red-100 text-red-700' },
+  APPROVED: { label: 'ผ่าน', className: 'bg-success/10 text-success dark:bg-success/15' },
+  REJECTED: { label: 'ไม่ผ่าน', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
   MANUAL_REVIEW: { label: 'ต้องตรวจเพิ่ม', className: 'bg-amber-100 text-amber-700' },
 };
 
@@ -336,7 +339,7 @@ export default function CustomerDetailPage() {
   });
 
   if (isLoading || !customer) {
-    return <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>;
+    return <DetailPageSkeleton />;
   }
 
   const contractColumns = [
@@ -358,28 +361,42 @@ export default function CustomerDetailPage() {
       <PageHeader title={displayName} subtitle="รายละเอียดลูกค้า" action={
         <div className="flex gap-2">
           {canEdit && (
-            <button onClick={startEdit} className="px-4 py-2 text-sm bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200">
+            <Button variant="outline" size="md" onClick={startEdit}>
+              <Pencil className="size-4" />
               แก้ไขข้อมูล
-            </button>
+            </Button>
           )}
-          <button onClick={() => navigate('/customers')} className="px-4 py-2 text-sm text-muted-foreground border border-input rounded-lg">กลับ</button>
+          <Button variant="ghost" size="md" onClick={() => navigate('/customers')}>
+            <ArrowLeft className="size-4" />
+            กลับ
+          </Button>
         </div>
       } />
 
-      {/* Risk Warning */}
+      {/* Risk Warning — dark mode friendly */}
       {risk?.hasRisk && (
-        <div className={`rounded-lg p-4 mb-6 ${risk.riskLevel === 'HIGH' ? 'bg-red-50 border border-red-200' : 'bg-yellow-50 border border-yellow-200'}`}>
-          <div className={`font-semibold text-sm ${risk.riskLevel === 'HIGH' ? 'text-red-700' : 'text-yellow-700'}`}>
+        <div className={`rounded-xl p-4 mb-6 ${risk.riskLevel === 'HIGH' ? 'bg-destructive/5 dark:bg-destructive/10 border border-destructive/20' : 'bg-warning/5 dark:bg-warning/10 border border-warning/20'}`}>
+          <div className={`font-semibold text-sm ${risk.riskLevel === 'HIGH' ? 'text-destructive' : 'text-warning'}`}>
             {risk.riskLevel === 'HIGH' ? 'ลูกค้ามีสัญญาผิดนัด (DEFAULT)' : 'ลูกค้ามีสัญญาค้างชำระ (OVERDUE)'}
           </div>
-          <div className="text-xs mt-1">
+          <div className="text-xs mt-1 text-muted-foreground">
             {risk.overdueContracts.map((c) => `${c.contractNumber} (${c.status})`).join(', ')}
           </div>
         </div>
       )}
 
-      {/* Customer Info */}
-      <Card className="mb-6">
+      {/* Customer Info — Tabbed Layout */}
+      <Tabs defaultValue="info" className="mb-6">
+        <TabsList variant="line" className="mb-5">
+          <TabsTrigger value="info">ข้อมูลส่วนตัว</TabsTrigger>
+          <TabsTrigger value="contact">ติดต่อ & ที่อยู่</TabsTrigger>
+          <TabsTrigger value="work">งาน & อ้างอิง</TabsTrigger>
+          <TabsTrigger value="credit">เครดิต</TabsTrigger>
+          <TabsTrigger value="contracts">สัญญา ({customer.contracts.length})</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="info">
+      <Card>
         <CardHeader>
           <CardTitle>ข้อมูลส่วนตัว</CardTitle>
         </CardHeader>
@@ -394,7 +411,9 @@ export default function CustomerDetailPage() {
           </div>
         </CardContent>
       </Card>
+        </TabsContent>
 
+        <TabsContent value="contact">
       {/* Address */}
       <Card className="mb-6">
         <CardHeader>
@@ -436,7 +455,9 @@ export default function CustomerDetailPage() {
           </div>
         </CardContent>
       </Card>
+        </TabsContent>
 
+        <TabsContent value="work">
       {/* Work */}
       <Card className="mb-6">
         <CardHeader>
@@ -517,7 +538,7 @@ export default function CustomerDetailPage() {
                     <div key={idx} className="border rounded-lg p-3 flex items-start gap-3">
                       <div className="flex-1 min-w-0">
                         {isImage && <img src={docUrl} alt={`doc-${idx}`} className="w-full h-24 object-cover rounded" />}
-                        {isPdf && <div className="bg-red-50 text-red-700 text-xs font-medium px-2 py-1 rounded">PDF</div>}
+                        {isPdf && <div className="bg-destructive/5 dark:bg-destructive/10 text-destructive text-xs font-medium px-2 py-1 rounded">PDF</div>}
                       </div>
                       {canEdit && (
                         <button
@@ -539,6 +560,9 @@ export default function CustomerDetailPage() {
         </Card>
       )}
 
+        </TabsContent>
+
+        <TabsContent value="credit">
       {/* Credit Check */}
       <Card className="mb-6">
         <CardHeader>
@@ -584,7 +608,7 @@ export default function CustomerDetailPage() {
                   </div>
                   {cc.aiScore !== null && (
                     <div className="flex items-center gap-4">
-                      <div className={`text-2xl font-bold ${cc.aiScore >= 70 ? 'text-green-600' : cc.aiScore >= 50 ? 'text-amber-600' : 'text-red-600'}`}>{cc.aiScore}</div>
+                      <div className={`text-2xl font-bold ${cc.aiScore >= 70 ? 'text-success' : cc.aiScore >= 50 ? 'text-amber-600' : 'text-destructive'}`}>{cc.aiScore}</div>
                       <div className="flex-1">
                         <div className="w-full bg-border rounded-full h-2">
                           <div className={`h-2 rounded-full ${cc.aiScore >= 70 ? 'bg-green-500' : cc.aiScore >= 50 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${cc.aiScore}%` }} />
@@ -593,7 +617,7 @@ export default function CustomerDetailPage() {
                     </div>
                   )}
                   {cc.aiSummary && <div className="text-xs text-muted-foreground">{cc.aiSummary}</div>}
-                  {cc.aiRecommendation && <div className={`text-xs font-medium p-2 rounded ${cc.aiScore && cc.aiScore >= 70 ? 'bg-green-50 text-green-700' : cc.aiScore && cc.aiScore >= 50 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>{cc.aiRecommendation}</div>}
+                  {cc.aiRecommendation && <div className={`text-xs font-medium p-2 rounded ${cc.aiScore && cc.aiScore >= 70 ? 'bg-success/5 dark:bg-success/10 text-success' : cc.aiScore && cc.aiScore >= 50 ? 'bg-amber-50 text-amber-700' : 'bg-destructive/5 dark:bg-destructive/10 text-destructive'}`}>{cc.aiRecommendation}</div>}
                   {cc.checkedBy && <div className="text-xs text-primary">ตรวจสอบโดย: {cc.checkedBy.name}{cc.reviewNotes ? ` - ${cc.reviewNotes}` : ''}</div>}
                 </div>
               );
@@ -605,9 +629,11 @@ export default function CustomerDetailPage() {
         </CardContent>
       </Card>
 
+        </TabsContent>
+
+        <TabsContent value="contracts">
       {/* Contracts */}
       <div className="mb-6">
-        <h2 className="text-lg font-semibold text-foreground mb-3">สัญญาทั้งหมด ({customer.contracts.length})</h2>
         <DataTable columns={contractColumns} data={customer.contracts} emptyMessage="ยังไม่มีสัญญา" />
       </div>
 
@@ -625,7 +651,7 @@ export default function CustomerDetailPage() {
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs font-medium px-2 py-0.5 rounded bg-primary-50 text-primary-700">
+                          <span className="text-xs font-medium px-2 py-0.5 rounded bg-primary/10 text-primary">
                             {actionLabels[log.action] || log.action}
                           </span>
                           <span className="text-xs text-muted-foreground">
@@ -644,6 +670,8 @@ export default function CustomerDetailPage() {
           </CardContent>
         </Card>
       )}
+        </TabsContent>
+      </Tabs>
 
       {/* Edit Customer Modal */}
       <Modal isOpen={showEditModal} onClose={() => setShowEditModal(false)} title="แก้ไขข้อมูลลูกค้า" size="lg">

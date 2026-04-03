@@ -5,6 +5,7 @@ import { useLayout } from './LayoutContext';
 import { cn } from '@/lib/utils';
 import { Menu, Sun, Moon, Search, Bell, Building2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useCommandPalette } from '@/components/CommandPalette';
 
 const roleLabels: Record<string, string> = {
   OWNER: 'เจ้าของ',
@@ -16,8 +17,8 @@ const roleLabels: Record<string, string> = {
 const roleBadgeColors: Record<string, string> = {
   OWNER: 'bg-primary/10 text-primary',
   BRANCH_MANAGER: 'bg-primary/10 text-primary',
-  SALES: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-  ACCOUNTANT: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
+  SALES: 'bg-success/10 text-success dark:bg-success/15',
+  ACCOUNTANT: 'bg-warning/10 text-warning dark:bg-warning/15',
 };
 
 export default function TopBar() {
@@ -25,6 +26,7 @@ export default function TopBar() {
   const isMobile = useIsMobile();
   const { setMobileSidebarOpen } = useLayout();
   const { theme, setTheme } = useTheme();
+  const { open: openCommandPalette } = useCommandPalette();
 
   return (
     <header className="header sticky top-0 z-10 flex items-center justify-between shrink-0 h-16 px-5 lg:px-7 bg-card border-b border-border">
@@ -66,10 +68,11 @@ export default function TopBar() {
 
       {/* Right: Search + Icons + User */}
       <div className="flex items-center gap-2">
-        {/* Search bar */}
+        {/* Search bar — opens Command Palette */}
         <button
+          onClick={openCommandPalette}
           className="flex items-center gap-2 h-9 px-3.5 rounded-lg bg-muted/70 text-sm text-muted-foreground hover:bg-muted transition-colors"
-          aria-label="ค้นหา"
+          aria-label="ค้นหา (Ctrl+K)"
         >
           <Search className="size-4" />
           <span className="hidden sm:inline">ค้นหา...</span>

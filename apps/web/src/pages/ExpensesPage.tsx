@@ -57,9 +57,9 @@ const statusLabels: Record<string, string> = {
 };
 
 const statusColors: Record<string, string> = {
-  DRAFT: 'bg-muted text-muted-foreground', PENDING_APPROVAL: 'bg-yellow-100 text-yellow-700',
-  APPROVED: 'bg-blue-100 text-blue-700', REJECTED: 'bg-red-100 text-red-700',
-  PAID: 'bg-green-100 text-green-700', VOIDED: 'bg-muted text-muted-foreground line-through',
+  DRAFT: 'bg-muted text-muted-foreground', PENDING_APPROVAL: 'bg-warning/10 text-warning dark:bg-warning/15',
+  APPROVED: 'bg-blue-100 text-blue-700', REJECTED: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
+  PAID: 'bg-success/10 text-success dark:bg-success/15', VOIDED: 'bg-muted text-muted-foreground line-through',
 };
 
 const paymentMethodLabels: Record<string, string> = {
@@ -309,7 +309,7 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
               <div className="bg-gray-50 rounded-lg p-4 space-y-1 text-sm border-t">
                 <div className="flex justify-between"><span className="text-muted-foreground">รวมก่อน VAT</span><span>{fmt(amt)}</span></div>
                 {vat > 0 && <div className="flex justify-between"><span className="text-muted-foreground">VAT 7%</span><span>{fmt(vat)}</span></div>}
-                {wht > 0 && <div className="flex justify-between text-red-600"><span>หัก ณ ที่จ่าย</span><span>({fmt(wht)})</span></div>}
+                {wht > 0 && <div className="flex justify-between text-destructive"><span>หัก ณ ที่จ่าย</span><span>({fmt(wht)})</span></div>}
                 <div className="border-t border-dashed pt-2 mt-2 flex justify-between font-bold text-base">
                   <span>ยอดจ่ายสุทธิ</span><span className="text-foreground">{fmt(netPay)}</span>
                 </div>
@@ -475,7 +475,7 @@ export default function ExpensesPage() {
 
   const summaryCards = [
     { label: 'รายจ่ายทั้งหมด', amount: summary?.totalAmount, sub: `${summary?.totalCount || 0} รายการ | รออนุมัติ ${summary?.pendingCount || 0}`, icon: Receipt, color: 'text-blue-600', bg: 'bg-blue-50' },
-    { label: 'ต้นทุนขาย', amount: summary?.byAccountType?.COST_OF_SALES, icon: ShoppingBag, color: 'text-orange-600', bg: 'bg-orange-50' },
+    { label: 'ต้นทุนขาย', amount: summary?.byAccountType?.COST_OF_SALES, icon: ShoppingBag, color: 'text-warning', bg: 'bg-orange-50' },
     { label: 'ค่าใช้จ่ายขาย', amount: summary?.byAccountType?.SELLING_EXPENSE, icon: Megaphone, color: 'text-purple-600', bg: 'bg-purple-50' },
     { label: 'ค่าใช้จ่ายบริหาร', amount: summary?.byAccountType?.ADMINISTRATIVE_EXPENSE, icon: Building2, color: 'text-cyan-600', bg: 'bg-cyan-50' },
     { label: 'ค่าใช้จ่ายอื่น', amount: summary?.byAccountType?.OTHER_EXPENSE, icon: MoreHorizontal, color: 'text-gray-600', bg: 'bg-gray-100' },
@@ -530,8 +530,8 @@ export default function ExpensesPage() {
               {openMenuId === e.id && (
                 <div className="absolute right-0 top-full mt-1 z-10 bg-background border rounded-lg shadow-lg py-1 min-w-[130px]">
                   {(e.status === 'DRAFT' || e.status === 'REJECTED') && <button onClick={() => openEdit(e)} className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted flex items-center gap-2"><Pencil className="size-3.5" /> แก้ไข</button>}
-                  {e.status === 'PENDING_APPROVAL' && isOwner && <button onClick={() => { setRejectDialog({ open: true, expenseId: e.id, reason: '' }); setOpenMenuId(null); }} className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted text-red-600">ไม่อนุมัติ</button>}
-                  {isOwner && <button onClick={() => { setConfirmDialog({ open: true, message: `ยกเลิก "${e.expenseNumber}"?`, action: () => actionMutation.mutate({ id: e.id, action: 'void' }) }); setOpenMenuId(null); }} className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted text-red-600">ยกเลิก</button>}
+                  {e.status === 'PENDING_APPROVAL' && isOwner && <button onClick={() => { setRejectDialog({ open: true, expenseId: e.id, reason: '' }); setOpenMenuId(null); }} className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted text-destructive">ไม่อนุมัติ</button>}
+                  {isOwner && <button onClick={() => { setConfirmDialog({ open: true, message: `ยกเลิก "${e.expenseNumber}"?`, action: () => actionMutation.mutate({ id: e.id, action: 'void' }) }); setOpenMenuId(null); }} className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted text-destructive">ยกเลิก</button>}
                 </div>
               )}
             </div>

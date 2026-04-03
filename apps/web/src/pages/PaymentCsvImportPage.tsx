@@ -109,7 +109,7 @@ export default function PaymentCsvImportPage() {
     {
       key: 'message',
       label: 'ข้อผิดพลาด',
-      render: (e: { message: string }) => <span className="text-sm text-red-600">{e.message}</span>,
+      render: (e: { message: string }) => <span className="text-sm text-destructive">{e.message}</span>,
     },
   ];
 
@@ -235,13 +235,13 @@ export default function PaymentCsvImportPage() {
             <Card className="shadow-xs shadow-black/5">
               <CardContent className="p-4">
                 <div className="text-xs text-muted-foreground mb-1">สำเร็จ</div>
-                <div className="text-2xl font-bold text-green-600">{result.success}</div>
+                <div className="text-2xl font-bold text-success">{result.success}</div>
               </CardContent>
             </Card>
             <Card className="shadow-xs shadow-black/5">
               <CardContent className="p-4">
                 <div className="text-xs text-muted-foreground mb-1">ผิดพลาด</div>
-                <div className="text-2xl font-bold text-red-600">{result.errors.length}</div>
+                <div className="text-2xl font-bold text-destructive">{result.errors.length}</div>
               </CardContent>
             </Card>
           </div>

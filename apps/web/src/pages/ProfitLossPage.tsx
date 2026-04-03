@@ -75,7 +75,7 @@ function PLRow({ label, amount, bold, indent, sub }: { label: string; amount: nu
   return (
     <div className={`flex justify-between items-center py-1.5 ${bold ? 'font-semibold border-t border-border pt-2' : ''} ${indent ? 'pl-6' : ''} ${sub ? 'text-muted-foreground text-sm' : ''}`}>
       <span>{label}</span>
-      <span className={`tabular-nums ${isNeg ? 'text-red-600' : ''} ${bold ? 'text-base' : 'text-sm'}`}>
+      <span className={`tabular-nums ${isNeg ? 'text-destructive' : ''} ${bold ? 'text-base' : 'text-sm'}`}>
         {isNeg ? `(${fmt(Math.abs(amount))})` : fmt(amount)}
       </span>
     </div>
@@ -181,7 +181,7 @@ export default function ProfitLossPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-green-600">{fmt(pl.summary.totalRevenue)}</div>
+                <div className="text-2xl font-bold text-success">{fmt(pl.summary.totalRevenue)}</div>
               </CardContent>
             </Card>
             <Card>
@@ -192,7 +192,7 @@ export default function ProfitLossPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-red-600">{fmt(pl.summary.totalExpenses)}</div>
+                <div className="text-2xl font-bold text-destructive">{fmt(pl.summary.totalExpenses)}</div>
               </CardContent>
             </Card>
             <Card>
@@ -203,7 +203,7 @@ export default function ProfitLossPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className={`text-2xl font-bold ${isProfit ? 'text-green-600' : 'text-red-600'}`}>
+                <div className={`text-2xl font-bold ${isProfit ? 'text-success' : 'text-destructive'}`}>
                   {fmt(pl.netProfit)}
                 </div>
               </CardContent>
@@ -216,7 +216,7 @@ export default function ProfitLossPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className={`text-2xl font-bold ${margin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                <div className={`text-2xl font-bold ${margin >= 0 ? 'text-success' : 'text-destructive'}`}>
                   {margin.toFixed(1)}%
                 </div>
               </CardContent>
@@ -313,7 +313,7 @@ export default function ProfitLossPage() {
               <PLRow label="รวมค่าใช้จ่ายอื่น" amount={pl.otherExpenses.totalOther} bold />
 
               {/* Net Profit */}
-              <div className={`flex justify-between items-center py-3 mt-3 border-t-2 border-double border-foreground ${isProfit ? 'text-green-700' : 'text-red-700'}`}>
+              <div className={`flex justify-between items-center py-3 mt-3 border-t-2 border-double border-foreground ${isProfit ? 'text-success' : 'text-destructive'}`}>
                 <span className="text-lg font-bold">กำไรสุทธิ (Net Profit)</span>
                 <span className="text-lg font-bold tabular-nums">{fmt(pl.netProfit)}</span>
               </div>

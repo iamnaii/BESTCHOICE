@@ -66,7 +66,7 @@ export default function PurchaseOrdersPage() {
         >
           ยอดค้างจ่ายผู้ขาย
           {data.payableData && data.payableData.grandTotal > 0 && (
-            <span className="ml-1.5 px-1.5 py-0.5 bg-red-100 text-red-700 rounded-full text-xs">{(Number(data.payableData.grandTotal) || 0).toLocaleString()}</span>
+            <span className="ml-1.5 px-1.5 py-0.5 bg-destructive/10 text-destructive dark:bg-destructive/15 rounded-full text-xs">{(Number(data.payableData.grandTotal) || 0).toLocaleString()}</span>
           )}
         </button>
       </div>

@@ -1,4 +1,5 @@
 import { Injectable, Logger, BadRequestException, InternalServerErrorException } from '@nestjs/common';
+import { CHATBOT_RESPONSES } from './chatbot-system-prompt.constants';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LineMessagePayload } from './dto/webhook-event.dto';
@@ -160,7 +161,7 @@ export class LineOaService {
       await this.pushMessage(lineUserId, [
         {
           type: 'text',
-          text: 'สวัสดีค่ะ ยินดีต้อนรับสู่ BEST CHOICE 🎉\n\nกรุณาพิมพ์เบอร์โทรศัพท์ที่ลงทะเบียนไว้ เพื่อเชื่อมบัญชีกับระบบค่ะ\n\nตัวอย่าง: 0812345678',
+          text: CHATBOT_RESPONSES.welcomeFollow,
         } as unknown as LineMessagePayload,
       ]);
     } catch (err) {

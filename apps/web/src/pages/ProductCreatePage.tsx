@@ -424,22 +424,70 @@ export default function ProductCreatePage() {
                   )}
                 </div>
 
-                {/* สี */}
+                {/* สี — chip selector */}
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">สี</label>
-                  <select value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} className={inputCls} disabled={!form.model}>
-                    <option value="">เลือกสี</option>
-                    {availableColors.map((c) => <option key={c} value={c}>{c}</option>)}
-                  </select>
+                  <label className="block text-sm font-medium text-foreground mb-1.5">สี</label>
+                  {availableColors.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {availableColors.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => setForm({ ...form, color: c })}
+                          disabled={!form.model}
+                          className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+                            form.color === c
+                              ? 'border-primary bg-primary/5 text-primary ring-2 ring-primary/20'
+                              : 'border-border hover:border-input text-foreground disabled:opacity-50'
+                          }`}
+                        >
+                          {c}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <input
+                      type="text"
+                      value={form.color}
+                      onChange={(e) => setForm({ ...form, color: e.target.value })}
+                      className={inputCls}
+                      placeholder="พิมพ์สี"
+                      disabled={!form.model}
+                    />
+                  )}
                 </div>
 
-                {/* ความจุ */}
+                {/* ความจุ — chip selector */}
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">ความจุ</label>
-                  <select value={form.storage} onChange={(e) => setForm({ ...form, storage: e.target.value })} className={inputCls} disabled={!form.model}>
-                    <option value="">เลือกความจุ</option>
-                    {availableStorage.map((s) => <option key={s} value={s}>{s}</option>)}
-                  </select>
+                  <label className="block text-sm font-medium text-foreground mb-1.5">ความจุ</label>
+                  {availableStorage.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {availableStorage.map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => setForm({ ...form, storage: s })}
+                          disabled={!form.model}
+                          className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+                            form.storage === s
+                              ? 'border-primary bg-primary/5 text-primary ring-2 ring-primary/20'
+                              : 'border-border hover:border-input text-foreground disabled:opacity-50'
+                          }`}
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <input
+                      type="text"
+                      value={form.storage}
+                      onChange={(e) => setForm({ ...form, storage: e.target.value })}
+                      className={inputCls}
+                      placeholder="พิมพ์ความจุ"
+                      disabled={!form.model}
+                    />
+                  )}
                 </div>
               </>
             )}
@@ -509,7 +557,7 @@ export default function ProductCreatePage() {
 
           {/* Used phone fields */}
           {form.category === 'PHONE_USED' && (
-            <div className="col-span-2 mt-2 border border-orange-200 bg-orange-50 rounded-lg p-4 space-y-4">
+            <div className="col-span-2 mt-2 border border-warning/20 bg-warning/5 dark:bg-warning/10 rounded-lg p-4 space-y-4">
               <h3 className="text-sm font-semibold text-orange-700">ข้อมูลมือสอง</h3>
               <div className="grid grid-cols-3 gap-4">
                 <div>

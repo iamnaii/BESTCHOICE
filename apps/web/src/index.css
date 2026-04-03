@@ -152,6 +152,10 @@ body {
   .font-sarabun {
     font-family: 'Noto Sans Thai', sans-serif;
   }
+  /* Safe area padding for iOS bottom bar / notch */
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
   /* Metronic-style stat card */
   .stat-card {
     @apply bg-card rounded-xl border border-border p-5 transition-shadow hover:shadow-md;

@@ -125,9 +125,9 @@ export default function StockCountPage() {
 
   const statusColors: Record<string, string> = {
     DRAFT: 'bg-muted text-foreground',
-    IN_PROGRESS: 'bg-yellow-100 text-yellow-700',
-    COMPLETED: 'bg-green-100 text-green-700',
-    CANCELLED: 'bg-red-100 text-red-700',
+    IN_PROGRESS: 'bg-warning/10 text-warning dark:bg-warning/15',
+    COMPLETED: 'bg-success/10 text-success dark:bg-success/15',
+    CANCELLED: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
   };
 
   const counts: StockCount[] = stockCounts?.data || [];
@@ -161,7 +161,7 @@ export default function StockCountPage() {
           {item.status === 'IN_PROGRESS' && (
             <button
               onClick={(e) => { e.stopPropagation(); cancelMutation.mutate(item.id); }}
-              className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200"
+              className="px-2 py-1 text-xs bg-destructive/10 text-destructive dark:bg-destructive/15 rounded hover:bg-red-200"
             >
               ยกเลิก
             </button>
@@ -282,8 +282,8 @@ export default function StockCountPage() {
                 <div className="bg-muted rounded-lg p-3 text-sm">
                   <div className="flex gap-4">
                     <span>ทั้งหมด: <strong>{countItems.length}</strong></span>
-                    <span className="text-green-700">พบ: <strong>{countItems.filter((i) => i.actualFound).length}</strong></span>
-                    <span className="text-red-700">ไม่พบ: <strong>{countItems.filter((i) => !i.actualFound).length}</strong></span>
+                    <span className="text-success">พบ: <strong>{countItems.filter((i) => i.actualFound).length}</strong></span>
+                    <span className="text-destructive">ไม่พบ: <strong>{countItems.filter((i) => !i.actualFound).length}</strong></span>
                   </div>
                 </div>
                 <button
@@ -297,7 +297,7 @@ export default function StockCountPage() {
             )}
 
             {selectedCount.status === 'COMPLETED' && (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-700">
+              <div className="bg-success/5 dark:bg-success/10 border border-success/20 rounded-lg p-3 text-sm text-success">
                 ตรวจนับเสร็จสิ้นแล้ว | พบ: {countItems.filter((i) => i.actualFound).length} | ไม่พบ: {countItems.filter((i) => !i.actualFound).length}
               </div>
             )}

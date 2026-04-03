@@ -40,11 +40,11 @@ interface DocumentStats {
 function StatCard({ label, value, color = 'blue', icon }: { label: string; value: number; color?: string; icon: string }) {
   const colors: Record<string, string> = {
     blue: 'bg-blue-50 text-blue-700 border-blue-200',
-    green: 'bg-green-50 text-green-700 border-green-200',
-    yellow: 'bg-yellow-50 text-yellow-700 border-yellow-200',
-    red: 'bg-red-50 text-red-700 border-red-200',
+    green: 'bg-success/5 dark:bg-success/10 text-success border-success/20',
+    yellow: 'bg-warning/5 dark:bg-warning/10 text-yellow-700 border-yellow-200',
+    red: 'bg-destructive/5 dark:bg-destructive/10 text-destructive border-destructive/20',
     purple: 'bg-purple-50 text-purple-700 border-purple-200',
-    orange: 'bg-orange-50 text-orange-700 border-orange-200',
+    orange: 'bg-warning/5 dark:bg-warning/10 text-orange-700 border-orange-200',
   };
   return (
     <div className={`rounded-lg border p-4 ${colors[color] || colors.blue}`}>
@@ -126,7 +126,7 @@ function DocumentDashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:gap-7.5">
         {/* SLA Alerts */}
         <div className="bg-card rounded-lg border p-4">
-          <h3 className="text-sm font-semibold text-red-700 mb-3">
+          <h3 className="text-sm font-semibold text-destructive mb-3">
             แจ้งเตือน SLA - สัญญารออนุมัตินาน
           </h3>
           {s.slaAlerts.length === 0 ? (
@@ -134,14 +134,14 @@ function DocumentDashboardPage() {
           ) : (
             <div className="space-y-2 max-h-80 overflow-y-auto">
               {s.slaAlerts.map((alert) => (
-                <div key={alert.id} className="flex items-center justify-between p-2 bg-red-50 rounded text-sm">
+                <div key={alert.id} className="flex items-center justify-between p-2 bg-destructive/5 dark:bg-destructive/10 rounded text-sm">
                   <div>
                     <span className="font-medium">{alert.contractNumber}</span>
                     <span className="text-muted-foreground ml-2">{alert.customerName}</span>
                     {alert.branchName && <span className="text-xs text-muted-foreground ml-2">({alert.branchName})</span>}
                   </div>
                   <div className="text-right">
-                    <span className={`font-medium ${alert.hoursWaiting >= 48 ? 'text-red-600' : 'text-yellow-600'}`}>
+                    <span className={`font-medium ${alert.hoursWaiting >= 48 ? 'text-destructive' : 'text-yellow-600'}`}>
                       {alert.hoursWaiting >= 24 ? `${Math.floor(alert.hoursWaiting / 24)} วัน` : `${alert.hoursWaiting} ชม.`}
                     </span>
                     <div className="text-xs text-muted-foreground">{alert.workflowStatus}</div>

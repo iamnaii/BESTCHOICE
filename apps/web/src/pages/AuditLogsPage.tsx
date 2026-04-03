@@ -27,13 +27,13 @@ interface AuditStats {
 }
 
 const actionColors: Record<string, string> = {
-  POST: 'bg-green-100 text-green-700',
+  POST: 'bg-success/10 text-success dark:bg-success/15',
   PUT: 'bg-primary-100 text-primary-700',
-  PATCH: 'bg-yellow-100 text-yellow-700',
-  DELETE: 'bg-red-100 text-red-700',
+  PATCH: 'bg-warning/10 text-warning dark:bg-warning/15',
+  DELETE: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
   EXCHANGE: 'bg-primary-100 text-primary-700',
-  REPOSSESSION: 'bg-orange-100 text-orange-700',
-  CREATE_CALL_LOG: 'bg-teal-100 text-teal-700',
+  REPOSSESSION: 'bg-warning/10 text-warning dark:bg-warning/15',
+  CREATE_CALL_LOG: 'bg-success/10 text-success dark:bg-success/15',
   STATUS_CHANGE: 'bg-indigo-100 text-indigo-700',
 };
 
@@ -142,7 +142,7 @@ export default function AuditLogsPage() {
           </div>
           <div className="bg-card rounded-lg border border-border p-4">
             <p className="text-xs text-muted-foreground">Error (7 วัน)</p>
-            <p className={`text-2xl font-bold ${stats.recentErrors > 0 ? 'text-red-600' : 'text-green-600'}`}>
+            <p className={`text-2xl font-bold ${stats.recentErrors > 0 ? 'text-destructive' : 'text-success'}`}>
               {stats.recentErrors}
             </p>
           </div>
@@ -241,7 +241,7 @@ export default function AuditLogsPage() {
                           <div className="px-4 py-3 w-32 shrink-0">
                             <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                               actionColors[log.action] ||
-                              (log.action.endsWith('_ERROR') ? 'bg-red-100 text-red-700' : 'bg-muted text-foreground')
+                              (log.action.endsWith('_ERROR') ? 'bg-destructive/10 text-destructive dark:bg-destructive/15' : 'bg-muted text-foreground')
                             }`}>
                               {actionLabels[log.action] || log.action}
                             </span>

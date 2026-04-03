@@ -11,11 +11,11 @@ export const statusLabels: Record<string, string> = {
 
 export const statusColors: Record<string, string> = {
   PENDING: 'bg-muted text-foreground',
-  DRAFT: 'bg-orange-100 text-orange-700',
+  DRAFT: 'bg-warning/10 text-warning dark:bg-warning/15',
   APPROVED: 'bg-primary-100 text-primary-700',
-  PARTIALLY_RECEIVED: 'bg-yellow-100 text-yellow-700',
-  FULLY_RECEIVED: 'bg-green-100 text-green-700',
-  CANCELLED: 'bg-red-100 text-red-700',
+  PARTIALLY_RECEIVED: 'bg-warning/10 text-warning dark:bg-warning/15',
+  FULLY_RECEIVED: 'bg-success/10 text-success dark:bg-success/15',
+  CANCELLED: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
 };
 
 export const paymentStatusLabels: Record<string, string> = {
@@ -26,10 +26,10 @@ export const paymentStatusLabels: Record<string, string> = {
 };
 
 export const paymentStatusColors: Record<string, string> = {
-  UNPAID: 'bg-red-100 text-red-700',
-  DEPOSIT_PAID: 'bg-yellow-100 text-yellow-700',
+  UNPAID: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
+  DEPOSIT_PAID: 'bg-warning/10 text-warning dark:bg-warning/15',
   PARTIALLY_PAID: 'bg-primary-100 text-primary-700',
-  FULLY_PAID: 'bg-green-100 text-green-700',
+  FULLY_PAID: 'bg-success/10 text-success dark:bg-success/15',
 };
 
 export const accessoryTypes = [

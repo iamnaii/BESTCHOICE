@@ -207,24 +207,24 @@ export default function MigrationPage() {
           {importResult ? (
             <div>
               <div className="grid grid-cols-2 gap-4 mb-4">
-                <div className="bg-green-50 rounded-lg p-4 text-center">
-                  <div className="text-2xl font-bold text-green-600">{importResult.success}</div>
-                  <div className="text-xs text-green-700">สำเร็จ</div>
+                <div className="bg-success/5 dark:bg-success/10 rounded-lg p-4 text-center">
+                  <div className="text-2xl font-bold text-success">{importResult.success}</div>
+                  <div className="text-xs text-success">สำเร็จ</div>
                 </div>
-                <div className="bg-red-50 rounded-lg p-4 text-center">
-                  <div className="text-2xl font-bold text-red-600">{importResult.failed}</div>
-                  <div className="text-xs text-red-700">ผิดพลาด</div>
+                <div className="bg-destructive/5 dark:bg-destructive/10 rounded-lg p-4 text-center">
+                  <div className="text-2xl font-bold text-destructive">{importResult.failed}</div>
+                  <div className="text-xs text-destructive">ผิดพลาด</div>
                 </div>
               </div>
 
               {importResult.errors.length > 0 && (
                 <div>
-                  <h4 className="text-xs font-medium text-red-700 mb-2">
+                  <h4 className="text-xs font-medium text-destructive mb-2">
                     รายละเอียดข้อผิดพลาด ({importResult.errors.length} รายการ)
                   </h4>
                   <div className="max-h-64 overflow-y-auto space-y-1">
                     {importResult.errors.map((err, i) => (
-                      <div key={i} className="text-xs bg-red-50 rounded p-2">
+                      <div key={i} className="text-xs bg-destructive/5 dark:bg-destructive/10 rounded p-2">
                         <span className="font-medium">แถว {err.row}</span>
                         {err.field && (
                           <span className="text-muted-foreground"> [{err.field}]</span>

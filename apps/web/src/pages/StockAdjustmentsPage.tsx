@@ -45,9 +45,9 @@ interface Branch {
 }
 
 const reasonLabels: Record<string, { label: string; className: string }> = {
-  DAMAGED: { label: 'เสียหาย', className: 'bg-red-100 text-red-700' },
-  LOST: { label: 'สูญหาย', className: 'bg-orange-100 text-orange-700' },
-  FOUND: { label: 'พบเพิ่ม', className: 'bg-green-100 text-green-700' },
+  DAMAGED: { label: 'เสียหาย', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
+  LOST: { label: 'สูญหาย', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
+  FOUND: { label: 'พบเพิ่ม', className: 'bg-success/10 text-success dark:bg-success/15' },
   CORRECTION: { label: 'แก้ไขข้อมูล', className: 'bg-primary-100 text-primary-700' },
   WRITE_OFF: { label: 'ตัดจำหน่าย', className: 'bg-muted text-foreground' },
   OTHER: { label: 'อื่นๆ', className: 'bg-muted text-muted-foreground' },
@@ -272,7 +272,7 @@ export default function StockAdjustmentsPage() {
         <button
           onClick={() => setActiveTab('list')}
           className={`px-4 py-2 text-sm rounded-md font-medium transition-colors ${
-            activeTab === 'list' ? 'bg-white text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+            activeTab === 'list' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
           }`}
         >
           รายการ
@@ -280,7 +280,7 @@ export default function StockAdjustmentsPage() {
         <button
           onClick={() => setActiveTab('summary')}
           className={`px-4 py-2 text-sm rounded-md font-medium transition-colors ${
-            activeTab === 'summary' ? 'bg-white text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+            activeTab === 'summary' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
           }`}
         >
           สรุป
@@ -360,7 +360,7 @@ export default function StockAdjustmentsPage() {
             </div>
             <div className="rounded-lg border p-4 border-l-4 border-l-red-500">
               <div className="text-xs text-muted-foreground mb-1">มูลค่ารวมที่ปรับ</div>
-              <div className="text-2xl font-bold text-red-600">{summary.totalValue.toLocaleString()} ฿</div>
+              <div className="text-2xl font-bold text-destructive">{summary.totalValue.toLocaleString()} ฿</div>
             </div>
           </div>
 
@@ -438,7 +438,7 @@ export default function StockAdjustmentsPage() {
               </div>
             )}
             {form.productId && (
-              <div className="mt-1 text-xs text-green-600">เลือกสินค้าแล้ว</div>
+              <div className="mt-1 text-xs text-success">เลือกสินค้าแล้ว</div>
             )}
           </div>
 

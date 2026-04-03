@@ -234,7 +234,7 @@ export default function ExchangePage() {
           )}
 
           {selectedProduct && selectedProduct.prices.length === 0 && (
-            <div className="text-sm text-yellow-600 bg-yellow-50 p-3 rounded-lg">
+            <div className="text-sm text-warning bg-warning/5 dark:bg-warning/10 p-3 rounded-lg">
               สินค้านี้ยังไม่มีราคา กรุณาเพิ่มราคาก่อน
             </div>
           )}
@@ -261,25 +261,25 @@ export default function ExchangePage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
               {/* Old Contract */}
-              <div className="bg-red-50 rounded-lg p-4">
-                <div className="text-sm font-medium text-red-700 mb-2">สัญญาเดิม</div>
+              <div className="bg-destructive/5 dark:bg-destructive/10 rounded-lg p-4">
+                <div className="text-sm font-medium text-destructive mb-2">สัญญาเดิม</div>
                 <div className="text-sm space-y-1">
                   <div><strong>สัญญา:</strong> {quote.oldContract.contractNumber}</div>
                   <div><strong>ลูกค้า:</strong> {quote.oldContract.customer.name}</div>
                   <div><strong>สินค้า:</strong> {quote.oldContract.product.brand} {quote.oldContract.product.model}</div>
-                  <div><strong>ยอมคงเหลือ:</strong> <span className="text-red-600 font-medium">{quote.oldContract.remainingPrincipal.toLocaleString()} บาท</span></div>
+                  <div><strong>ยอมคงเหลือ:</strong> <span className="text-destructive font-medium">{quote.oldContract.remainingPrincipal.toLocaleString()} บาท</span></div>
                   <div><strong>ค่าปรับ:</strong> {quote.oldContract.totalLateFees.toLocaleString()} บาท</div>
-                  <div><strong>ยอดค้างชำระรวม:</strong> <span className="text-red-700 font-bold">{quote.oldContract.outstandingBalance.toLocaleString()} บาท</span></div>
+                  <div><strong>ยอดค้างชำระรวม:</strong> <span className="text-destructive font-bold">{quote.oldContract.outstandingBalance.toLocaleString()} บาท</span></div>
                 </div>
               </div>
 
               {/* New Product */}
-              <div className="bg-green-50 rounded-lg p-4">
-                <div className="text-sm font-medium text-green-700 mb-2">สินค้าใหม่</div>
+              <div className="bg-success/5 dark:bg-success/10 rounded-lg p-4">
+                <div className="text-sm font-medium text-success mb-2">สินค้าใหม่</div>
                 <div className="text-sm space-y-1">
                   <div><strong>สินค้า:</strong> {quote.newProduct.brand} {quote.newProduct.model}</div>
                   <div><strong>แผนราคา:</strong> {quote.newProduct.selectedPrice.label}</div>
-                  <div><strong>ราคา:</strong> <span className="text-green-700 font-bold">{quote.newProduct.selectedPrice.amount.toLocaleString()} บาท</span></div>
+                  <div><strong>ราคา:</strong> <span className="text-success font-bold">{quote.newProduct.selectedPrice.amount.toLocaleString()} บาท</span></div>
                 </div>
               </div>
             </div>
@@ -290,15 +290,15 @@ export default function ExchangePage() {
               <div className="grid grid-cols-3 gap-4 text-center">
                 <div>
                   <div className="text-xs text-muted-foreground">ยอดค้างเดิม</div>
-                  <div className="text-lg font-bold text-red-600">{quote.summary.outstandingBalance.toLocaleString()}</div>
+                  <div className="text-lg font-bold text-destructive">{quote.summary.outstandingBalance.toLocaleString()}</div>
                 </div>
                 <div>
                   <div className="text-xs text-muted-foreground">ราคาเครื่องใหม่</div>
-                  <div className="text-lg font-bold text-green-600">{quote.summary.newProductPrice.toLocaleString()}</div>
+                  <div className="text-lg font-bold text-success">{quote.summary.newProductPrice.toLocaleString()}</div>
                 </div>
                 <div>
                   <div className="text-xs text-muted-foreground">ส่วนต่าง</div>
-                  <div className={`text-lg font-bold ${quote.summary.difference >= 0 ? 'text-primary' : 'text-orange-600'}`}>
+                  <div className={`text-lg font-bold ${quote.summary.difference >= 0 ? 'text-primary' : 'text-warning'}`}>
                     {quote.summary.difference.toLocaleString()}
                   </div>
                 </div>
@@ -373,9 +373,9 @@ export default function ExchangePage() {
           <CardContent className="p-6">
           <h3 className="text-lg font-medium mb-4">ยืนยันการเปลี่ยนเครื่อง</h3>
 
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-            <div className="text-sm text-yellow-700 font-medium mb-2">กรุณาตรวจสอบข้อมูลก่อนยืนยัน</div>
-            <div className="text-sm text-yellow-600">
+          <div className="bg-warning/5 dark:bg-warning/10 border border-warning/20 rounded-lg p-4 mb-6">
+            <div className="text-sm text-warning font-medium mb-2">กรุณาตรวจสอบข้อมูลก่อนยืนยัน</div>
+            <div className="text-sm text-warning">
               การเปลี่ยนเครื่องจะปิดสัญญาเดิมและสร้างสัญญาใหม่ ไม่สามารถย้อนกลับได้
             </div>
           </div>
@@ -434,8 +434,8 @@ export default function ExchangePage() {
       {step === 'done' && exchangeResult && (
         <Card className="shadow-xs shadow-black/5">
           <CardContent className="p-6 text-center">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="w-16 h-16 bg-success/10 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 text-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           </div>

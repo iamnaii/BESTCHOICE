@@ -21,10 +21,10 @@ export function AccountsPayableTab({ payableData, onOpenDetail }: AccountsPayabl
   return (
     <div className="flex flex-col gap-5 lg:gap-7.5">
       {/* Grand Total */}
-      <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center justify-between">
+      <div className="bg-destructive/5 dark:bg-destructive/10 border border-destructive/20 rounded-xl p-4 flex items-center justify-between">
         <div>
-          <div className="text-sm text-red-600 font-medium">ยอดค้างจ่ายทั้งหมด</div>
-          <div className="text-2xl font-bold text-red-700">{(payableData?.grandTotal || 0).toLocaleString()} บาท</div>
+          <div className="text-sm text-destructive font-medium">ยอดค้างจ่ายทั้งหมด</div>
+          <div className="text-2xl font-bold text-destructive">{(payableData?.grandTotal || 0).toLocaleString()} บาท</div>
         </div>
         <div className="text-sm text-red-500">
           {payableData?.suppliers.length || 0} ผู้ขาย, {payableData?.suppliers.reduce((sum, s) => sum + s.poCount, 0) || 0} ใบ PO
@@ -41,7 +41,7 @@ export function AccountsPayableTab({ payableData, onOpenDetail }: AccountsPayabl
               <div className="text-xs text-muted-foreground">{entry.supplier.contactName} | {entry.supplier.phone}</div>
             </div>
             <div className="text-right">
-              <div className="text-lg font-bold text-red-600">{(Number(entry.totalRemaining) || 0).toLocaleString()} บาท</div>
+              <div className="text-lg font-bold text-destructive">{(Number(entry.totalRemaining) || 0).toLocaleString()} บาท</div>
               <div className="text-xs text-muted-foreground">จาก {(Number(entry.totalNet) || 0).toLocaleString()} (จ่ายแล้ว {(Number(entry.totalPaid) || 0).toLocaleString()})</div>
             </div>
           </div>
@@ -70,9 +70,9 @@ export function AccountsPayableTab({ payableData, onOpenDetail }: AccountsPayabl
                   <td className="px-4 py-2 text-muted-foreground">{new Date(po.orderDate).toLocaleDateString('th-TH')}</td>
                   <td className="px-4 py-2">
                     {po.dueDate ? (
-                      <span className={`text-sm ${new Date(po.dueDate) < new Date() ? 'text-red-600 font-semibold' : 'text-muted-foreground'}`}>
+                      <span className={`text-sm ${new Date(po.dueDate) < new Date() ? 'text-destructive font-semibold' : 'text-muted-foreground'}`}>
                         {new Date(po.dueDate).toLocaleDateString('th-TH')}
-                        {new Date(po.dueDate) < new Date() && <span className="ml-1 text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full">เลยกำหนด</span>}
+                        {new Date(po.dueDate) < new Date() && <span className="ml-1 text-xs bg-destructive/10 text-destructive dark:bg-destructive/15 px-1.5 py-0.5 rounded-full">เลยกำหนด</span>}
                       </span>
                     ) : (
                       <span className="text-muted-foreground text-xs">-</span>
@@ -80,8 +80,8 @@ export function AccountsPayableTab({ payableData, onOpenDetail }: AccountsPayabl
                   </td>
                   <td className="px-4 py-2 text-muted-foreground truncate max-w-[200px]" title={po.itemsSummary}>{po.itemsSummary}</td>
                   <td className="px-4 py-2 text-right">{(Number(po.netAmount) || 0).toLocaleString()}</td>
-                  <td className="px-4 py-2 text-right text-green-600">{(Number(po.paidAmount) || 0).toLocaleString()}</td>
-                  <td className="px-4 py-2 text-right font-medium text-red-600">{(Number(po.remaining) || 0).toLocaleString()}</td>
+                  <td className="px-4 py-2 text-right text-success">{(Number(po.paidAmount) || 0).toLocaleString()}</td>
+                  <td className="px-4 py-2 text-right font-medium text-destructive">{(Number(po.remaining) || 0).toLocaleString()}</td>
                   <td className="px-4 py-2 text-center">
                     <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${paymentStatusColors[po.paymentStatus] || 'bg-muted text-foreground'}`}>
                       {paymentStatusLabels[po.paymentStatus] || po.paymentStatus}

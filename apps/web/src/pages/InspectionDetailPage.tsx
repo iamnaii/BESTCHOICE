@@ -34,9 +34,9 @@ interface ProductDetail {
 
 const statusConfig: Record<string, { label: string; class: string; icon: typeof Package }> = {
   RECEIVED: { label: 'รอตรวจ', class: 'bg-blue-100 text-blue-700', icon: Package },
-  INSPECTING: { label: 'กำลังตรวจ', class: 'bg-yellow-100 text-yellow-700', icon: Clock },
-  QC_PASSED: { label: 'ผ่าน QC', class: 'bg-green-100 text-green-700', icon: CheckCircle2 },
-  QC_FAILED: { label: 'ไม่ผ่าน QC', class: 'bg-red-100 text-red-700', icon: XCircle },
+  INSPECTING: { label: 'กำลังตรวจ', class: 'bg-warning/10 text-warning dark:bg-warning/15', icon: Clock },
+  QC_PASSED: { label: 'ผ่าน QC', class: 'bg-success/10 text-success dark:bg-success/15', icon: CheckCircle2 },
+  QC_FAILED: { label: 'ไม่ผ่าน QC', class: 'bg-destructive/10 text-destructive dark:bg-destructive/15', icon: XCircle },
   IN_STOCK: { label: 'เข้าสต็อกแล้ว', class: 'bg-primary/10 text-primary', icon: Warehouse },
 };
 

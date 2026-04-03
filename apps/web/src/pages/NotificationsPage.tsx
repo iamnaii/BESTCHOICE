@@ -53,9 +53,9 @@ const statusLabels: Record<string, string> = {
 };
 
 const statusColors: Record<string, string> = {
-  SENT: 'bg-green-100 text-green-700',
-  FAILED: 'bg-red-100 text-red-700',
-  PENDING: 'bg-yellow-100 text-yellow-700',
+  SENT: 'bg-success/10 text-success dark:bg-success/15',
+  FAILED: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
+  PENDING: 'bg-warning/10 text-warning dark:bg-warning/15',
 };
 
 const eventTypeLabels: Record<string, string> = {
@@ -543,7 +543,7 @@ export default function NotificationsPage() {
       label: 'รูปแบบ',
       render: (t: NotificationTemplate) => (
         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-          t.format === 'flex' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
+          t.format === 'flex' ? 'bg-info/10 text-info dark:bg-info/15' : 'bg-blue-100 text-blue-700'
         }`}>
           {t.format === 'flex' ? 'Flex JSON' : 'Text'}
         </span>
@@ -560,7 +560,7 @@ export default function NotificationsPage() {
       key: 'isActive',
       label: 'สถานะ',
       render: (t: NotificationTemplate) => (
-        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${t.isActive ? 'bg-green-100 text-green-700' : 'bg-muted text-muted-foreground'}`}>
+        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${t.isActive ? 'bg-success/10 text-success dark:bg-success/15' : 'bg-muted text-muted-foreground'}`}>
           {t.isActive ? 'เปิดใช้งาน' : 'ปิด'}
         </span>
       ),
@@ -601,15 +601,15 @@ export default function NotificationsPage() {
           </div>
           <div className="bg-card rounded-lg border border-border p-4">
             <div className="text-sm text-muted-foreground">ส่งสำเร็จ</div>
-            <div className="text-2xl font-bold text-green-600">{stats.sent}</div>
+            <div className="text-2xl font-bold text-success">{stats.sent}</div>
           </div>
           <div className="bg-card rounded-lg border border-border p-4">
             <div className="text-sm text-muted-foreground">ล้มเหลว</div>
-            <div className="text-2xl font-bold text-red-600">{stats.failed}</div>
+            <div className="text-2xl font-bold text-destructive">{stats.failed}</div>
           </div>
           <div className="bg-card rounded-lg border border-border p-4">
             <div className="text-sm text-muted-foreground">รอส่ง</div>
-            <div className="text-2xl font-bold text-yellow-600">{stats.pending}</div>
+            <div className="text-2xl font-bold text-warning">{stats.pending}</div>
           </div>
         </div>
       )}
@@ -863,7 +863,7 @@ export default function NotificationsPage() {
                   <button
                     type="button"
                     onClick={loadDefaultFlexTemplate}
-                    className="px-3 py-1 text-xs bg-purple-100 text-purple-700 rounded-md hover:bg-purple-200 font-medium"
+                    className="px-3 py-1 text-xs bg-info/10 text-info dark:bg-info/15 rounded-md hover:bg-purple-200 font-medium"
                   >
                     โหลด Template เริ่มต้น
                   </button>
@@ -878,7 +878,7 @@ export default function NotificationsPage() {
                     href="https://developers.line.biz/flex-simulator/"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="px-3 py-1 text-xs bg-green-100 text-green-700 rounded-md hover:bg-green-200 font-medium"
+                    className="px-3 py-1 text-xs bg-success/10 text-success dark:bg-success/15 rounded-md hover:bg-green-200 font-medium"
                   >
                     LINE Flex Simulator
                   </a>
@@ -895,8 +895,8 @@ export default function NotificationsPage() {
                 spellCheck={false}
               />
               {jsonError && (
-                <div className="mt-1 p-2 bg-red-50 border border-red-200 rounded-lg">
-                  <p className="text-xs text-red-600">{jsonError}</p>
+                <div className="mt-1 p-2 bg-destructive/5 dark:bg-destructive/10 border border-destructive/20 rounded-lg">
+                  <p className="text-xs text-destructive">{jsonError}</p>
                 </div>
               )}
               <div className="mt-2 p-3 bg-purple-50 border border-purple-200 rounded-lg">

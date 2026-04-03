@@ -41,8 +41,8 @@ const roleLabels: Record<string, string> = {
 const roleColors: Record<string, string> = {
   OWNER: 'bg-primary-100 text-primary-700',
   BRANCH_MANAGER: 'bg-primary-100 text-primary-700',
-  SALES: 'bg-green-100 text-green-700',
-  ACCOUNTANT: 'bg-orange-100 text-orange-700',
+  SALES: 'bg-success/10 text-success dark:bg-success/15',
+  ACCOUNTANT: 'bg-warning/10 text-warning dark:bg-warning/15',
 };
 
 const inputClass = 'w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none';
@@ -60,9 +60,9 @@ interface InviteToken {
 }
 
 function getInviteStatus(invite: InviteToken): { label: string; className: string } {
-  if (invite.usedAt) return { label: 'ใช้แล้ว', className: 'bg-green-100 text-green-700' };
+  if (invite.usedAt) return { label: 'ใช้แล้ว', className: 'bg-success/10 text-success dark:bg-success/15' };
   if (new Date(invite.expiresAt) < new Date()) return { label: 'หมดอายุ', className: 'bg-muted text-muted-foreground' };
-  return { label: 'รอลงทะเบียน', className: 'bg-yellow-100 text-yellow-700' };
+  return { label: 'รอลงทะเบียน', className: 'bg-warning/10 text-warning dark:bg-warning/15' };
 }
 
 const emptyForm = {
@@ -321,7 +321,7 @@ export default function UsersPage() {
       render: (u: User) => (
         <button
           onClick={() => setConfirmDialog({ open: true, message: `ต้องการ${u.isActive ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}ผู้ใช้ "${u.name}" หรือไม่?`, action: () => toggleActiveMutation.mutate({ id: u.id, isActive: !u.isActive }) })}
-          className={`px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer ${u.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}
+          className={`px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer ${u.isActive ? 'bg-success/10 text-success dark:bg-success/15' : 'bg-destructive/10 text-destructive dark:bg-destructive/15'}`}
         >
           {u.isActive ? 'ใช้งาน' : 'ปิดใช้งาน'}
         </button>
@@ -448,9 +448,9 @@ export default function UsersPage() {
       <Modal isOpen={isInviteModalOpen} onClose={() => setIsInviteModalOpen(false)} title="เชิญผู้ใช้ใหม่">
         {lastInviteUrl ? (
           <div className="space-y-4">
-            <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-              <p className="text-sm font-medium text-green-800 mb-1">สร้างคำเชิญสำเร็จ!</p>
-              <p className="text-xs text-green-600">อีเมลเชิญถูกส่งแล้ว คุณสามารถคัดลอกลิงก์ด้านล่างเพื่อส่งเองได้</p>
+            <div className="p-3 bg-success/5 dark:bg-success/10 border border-success/20 rounded-lg">
+              <p className="text-sm font-medium text-success mb-1">สร้างคำเชิญสำเร็จ!</p>
+              <p className="text-xs text-success">อีเมลเชิญถูกส่งแล้ว คุณสามารถคัดลอกลิงก์ด้านล่างเพื่อส่งเองได้</p>
             </div>
             <div className="flex gap-2">
               <input

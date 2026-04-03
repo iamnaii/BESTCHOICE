@@ -55,7 +55,7 @@ interface SalesResponse {
 }
 
 const saleTypeLabels: Record<string, { label: string; className: string }> = {
-  CASH: { label: 'เงินสด', className: 'bg-green-100 text-green-700' },
+  CASH: { label: 'เงินสด', className: 'bg-success/10 text-success dark:bg-success/15' },
   INSTALLMENT: { label: 'ผ่อนร้าน', className: 'bg-primary-100 text-primary-700' },
   EXTERNAL_FINANCE: { label: 'ไฟแนนซ์', className: 'bg-primary-100 text-primary-700' },
 };
@@ -328,7 +328,7 @@ export default function SalesHistoryPage() {
         if (!s.product.costPrice) return <span className="text-xs text-muted-foreground">-</span>;
         const profit = Number(s.netAmount) - Number(s.product.costPrice);
         return (
-          <span className={`text-sm font-medium ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+          <span className={`text-sm font-medium ${profit >= 0 ? 'text-success' : 'text-destructive'}`}>
             {profit >= 0 ? '+' : ''}{profit.toLocaleString()} ฿
           </span>
         );
@@ -370,9 +370,9 @@ export default function SalesHistoryPage() {
         if (!s.contract) return <span className="text-xs text-muted-foreground">-</span>;
         const statusMap: Record<string, { label: string; cls: string }> = {
           DRAFT: { label: 'ร่าง', cls: 'text-muted-foreground' },
-          ACTIVE: { label: 'ใช้งาน', cls: 'text-green-600' },
-          OVERDUE: { label: 'ค้างชำระ', cls: 'text-red-600' },
-          DEFAULT: { label: 'ผิดนัด', cls: 'text-red-700 font-semibold' },
+          ACTIVE: { label: 'ใช้งาน', cls: 'text-success' },
+          OVERDUE: { label: 'ค้างชำระ', cls: 'text-destructive' },
+          DEFAULT: { label: 'ผิดนัด', cls: 'text-destructive font-semibold' },
           COMPLETED: { label: 'ปิดแล้ว', cls: 'text-muted-foreground' },
         };
         const cs = statusMap[s.contract.status] || { label: s.contract.status, cls: 'text-muted-foreground' };
@@ -415,8 +415,8 @@ export default function SalesHistoryPage() {
           <Card>
             <CardContent className="pt-6">
               <div className="text-xs text-muted-foreground mb-1">เงินสด</div>
-              <div className="text-xl font-bold text-green-600">{summary.cashCount}</div>
-              <div className="text-sm text-green-600 mt-1">{summary.cashAmount.toLocaleString()} ฿</div>
+              <div className="text-xl font-bold text-success">{summary.cashCount}</div>
+              <div className="text-sm text-success mt-1">{summary.cashAmount.toLocaleString()} ฿</div>
             </CardContent>
           </Card>
           <Card>
@@ -437,7 +437,7 @@ export default function SalesHistoryPage() {
             <Card>
               <CardContent className="pt-6">
                 <div className="text-xs text-muted-foreground mb-1">กำไรรวม</div>
-                <div className={`text-xl font-bold ${summary.totalProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                <div className={`text-xl font-bold ${summary.totalProfit >= 0 ? 'text-success' : 'text-destructive'}`}>
                   {summary.totalProfit >= 0 ? '+' : ''}{summary.totalProfit.toLocaleString()} <span className="text-sm font-normal">฿</span>
                 </div>
               </CardContent>

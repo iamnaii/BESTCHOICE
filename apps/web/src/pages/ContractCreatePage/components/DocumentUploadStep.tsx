@@ -63,7 +63,7 @@ function DocTypeSection({
                 {doc.file.type.startsWith('image/') ? (
                   <img src={doc.preview} alt="" className="w-8 h-8 rounded object-cover flex-shrink-0" />
                 ) : (
-                  <div className="w-8 h-8 rounded bg-red-100 flex items-center justify-center text-2xs font-bold text-red-600 flex-shrink-0">PDF</div>
+                  <div className="w-8 h-8 rounded bg-red-100 flex items-center justify-center text-2xs font-bold text-destructive flex-shrink-0">PDF</div>
                 )}
                 <div className="min-w-0 flex-1">
                   <div className="text-xs font-medium text-foreground truncate">{doc.file.name}</div>
@@ -187,11 +187,11 @@ export function DocumentUploadStep({
 
       {/* OCR Results Panel */}
       {showOcrPanel && ocrResult && (
-        <div className="bg-green-50 border border-green-200 rounded-lg p-4 space-y-3">
+        <div className="bg-success/5 dark:bg-success/10 border border-success/20 rounded-lg p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-green-800">ข้อมูลที่อ่านจากบัตรประชาชน</h3>
+            <h3 className="text-sm font-semibold text-success">ข้อมูลที่อ่านจากบัตรประชาชน</h3>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-green-600">ความมั่นใจ: {(ocrResult.confidence * 100).toFixed(0)}%</span>
+              <span className="text-xs text-success">ความมั่นใจ: {(ocrResult.confidence * 100).toFixed(0)}%</span>
               <button onClick={() => setShowOcrPanel(false)} className="text-xs text-muted-foreground hover:text-foreground">ปิด</button>
             </div>
           </div>

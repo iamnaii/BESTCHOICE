@@ -51,10 +51,10 @@ const statusLabels: Record<string, string> = {
 };
 
 const paymentStatusColors: Record<string, string> = {
-  PAID: 'bg-green-100 text-green-700',
+  PAID: 'bg-success/10 text-success dark:bg-success/15',
   PENDING: 'bg-muted text-muted-foreground',
-  OVERDUE: 'bg-red-100 text-red-700',
-  PARTIALLY_PAID: 'bg-yellow-100 text-yellow-700',
+  OVERDUE: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
+  PARTIALLY_PAID: 'bg-warning/10 text-warning dark:bg-warning/15',
 };
 
 function CustomerPortalPage() {
@@ -129,9 +129,9 @@ function CustomerPortalPage() {
               <div className="font-bold text-lg">{c.contractNumber}</div>
             </div>
             <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-              c.status === 'ACTIVE' ? 'bg-green-100 text-green-700' :
+              c.status === 'ACTIVE' ? 'bg-success/10 text-success dark:bg-success/15' :
               c.status === 'COMPLETED' ? 'bg-blue-100 text-blue-700' :
-              'bg-yellow-100 text-yellow-700'
+              'bg-warning/10 text-warning dark:bg-warning/15'
             }`}>
               {statusLabels[c.status] || c.status}
             </span>
@@ -216,7 +216,7 @@ function CustomerPortalPage() {
             <h3 className="text-sm font-semibold mb-2">การลงนาม</h3>
             <div className="grid grid-cols-2 gap-2">
               {data.signatures.map((s, i) => (
-                <div key={i} className="text-xs p-2 bg-green-50 rounded">
+                <div key={i} className="text-xs p-2 bg-success/5 dark:bg-success/10 rounded">
                   <div className="font-medium">{s.signerName}</div>
                   <div className="text-muted-foreground">{s.signerType} - {new Date(s.signedAt).toLocaleDateString('th-TH')}</div>
                 </div>

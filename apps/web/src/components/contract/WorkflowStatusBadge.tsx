@@ -1,8 +1,8 @@
 const workflowLabels: Record<string, { label: string; className: string }> = {
   CREATING: { label: 'กำลังสร้าง', className: 'bg-muted text-foreground' },
-  PENDING_REVIEW: { label: 'รอตรวจสอบ', className: 'bg-amber-100 text-amber-700' },
-  APPROVED: { label: 'อนุมัติแล้ว', className: 'bg-green-100 text-green-700' },
-  REJECTED: { label: 'ปฏิเสธ', className: 'bg-red-100 text-red-700' },
+  PENDING_REVIEW: { label: 'รอตรวจสอบ', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
+  APPROVED: { label: 'อนุมัติแล้ว', className: 'bg-success/10 text-success dark:bg-success/15' },
+  REJECTED: { label: 'ปฏิเสธ', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
 };
 
 export default function WorkflowStatusBadge({ status }: { status: string }) {

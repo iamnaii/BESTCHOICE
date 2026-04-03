@@ -75,12 +75,12 @@ export default function SystemStatusPage() {
     return (
       <div>
         <PageHeader title="สถานะระบบ" subtitle="ตรวจสอบการเชื่อมต่อ API, ฐานข้อมูล และ AI" />
-        <div className="bg-red-50 border border-red-200 rounded-xl p-8 text-center max-w-lg mx-auto mt-8">
+        <div className="bg-destructive/5 dark:bg-destructive/10 border border-destructive/20 rounded-xl p-8 text-center max-w-lg mx-auto mt-8">
           <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-3">
             <svg className="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
           </div>
-          <p className="text-red-700 font-medium mb-1">ไม่สามารถเชื่อมต่อ API ได้</p>
-          <p className="text-red-600 text-sm mb-4">{getErrorMessage(error)}</p>
+          <p className="text-destructive font-medium mb-1">ไม่สามารถเชื่อมต่อ API ได้</p>
+          <p className="text-destructive text-sm mb-4">{getErrorMessage(error)}</p>
           <button onClick={() => refetch()} className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700">ลองใหม่</button>
         </div>
       </div>
@@ -119,10 +119,10 @@ export default function SystemStatusPage() {
         </div>
 
         {/* Overall Status */}
-        <div className={`rounded-lg p-4 mb-8 flex items-center gap-3 ${allOk ? 'bg-green-50 border border-green-200' : 'bg-amber-50 border border-amber-200'}`}>
+        <div className={`rounded-lg p-4 mb-8 flex items-center gap-3 ${allOk ? 'bg-success/5 dark:bg-success/10 border border-success/20' : 'bg-amber-50 border border-amber-200'}`}>
           <StatusDot ok={allOk} />
           <div>
-            <p className={`font-semibold ${allOk ? 'text-green-800' : 'text-amber-800'}`}>
+            <p className={`font-semibold ${allOk ? 'text-success' : 'text-amber-800'}`}>
               {allOk ? 'ระบบทั้งหมดทำงานปกติ' : 'มีบางบริการที่ไม่พร้อมใช้งาน'}
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">รีเฟรชอัตโนมัติทุก 30 วินาที</p>
@@ -281,10 +281,10 @@ export default function SystemStatusPage() {
           ].map(f => {
             const ok = data!.ai.connected;
             return (
-              <div key={f.name} className={`flex items-start gap-3 p-3 rounded-lg border ${ok ? 'bg-green-50 border-green-200' : 'bg-muted border-border'}`}>
+              <div key={f.name} className={`flex items-start gap-3 p-3 rounded-lg border ${ok ? 'bg-success/5 dark:bg-success/10 border-success/20' : 'bg-muted border-border'}`}>
                 <StatusDot ok={ok} />
                 <div>
-                  <p className={`text-sm font-medium ${ok ? 'text-green-800' : 'text-muted-foreground'}`}>{f.name}</p>
+                  <p className={`text-sm font-medium ${ok ? 'text-success' : 'text-muted-foreground'}`}>{f.name}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">{f.desc}</p>
                 </div>
               </div>
@@ -345,9 +345,9 @@ function ServiceCard({
     emerald: 'text-emerald-600',
   };
   const statusColors: Record<string, string> = {
-    ok: 'text-green-700',
+    ok: 'text-success',
     warn: 'text-amber-700',
-    error: 'text-red-700',
+    error: 'text-destructive',
   };
 
   return (

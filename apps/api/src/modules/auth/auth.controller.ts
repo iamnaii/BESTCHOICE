@@ -1,9 +1,11 @@
-import { Controller, Post, Get, Body, Req, Res, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Body, Req, Res, UseGuards, UnauthorizedException } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
+import { TwoFactorService } from './two-factor.service';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto, ResetPasswordDto } from './dto/password-reset.dto';
+import { VerifyTwoFactorDto } from './dto/two-factor.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 
@@ -37,17 +39,40 @@ function clearRefreshCookie(res: Response) {
 
 @Controller('auth')
 export class AuthController {
-  constructor(private authService: AuthService) {}
+  constructor(
+    private authService: AuthService,
+    private twoFactorService: TwoFactorService,
+  ) {}
 
   @Post('login')
   @Throttle({ short: { ttl: 60000, limit: 10 } })
   async login(@Body() loginDto: LoginDto, @Res({ passthrough: true }) res: Response) {
     const result = await this.authService.login(loginDto);
+
+    // If user has 2FA enabled, require verification before issuing tokens
+    if (result.user && await this.twoFactorService.isTwoFactorEnabled(result.user.id)) {
+      // Don't return tokens yet — return a challenge
+      return {
+        requiresTwoFactor: true,
+        userId: result.user.id,
+        message: 'กรุณากรอกรหัส OTP จาก Authenticator App',
+      };
+    }
+
     setRefreshCookie(res, result.refreshToken);
     return {
       accessToken: result.accessToken,
       user: result.user,
     };
+  }
+
+  @Post('login/2fa')
+  @Throttle({ short: { ttl: 60000, limit: 5 } })
+  async loginWith2FA(@Body() body: { email: string; password: string; code: string }, @Res({ passthrough: true }) res: Response) {
+    // Re-authenticate + verify 2FA code in one step
+    const result = await this.authService.loginWith2FA(body.email, body.password, body.code, this.twoFactorService);
+    setRefreshCookie(res, result.refreshToken);
+    return { accessToken: result.accessToken, user: result.user };
   }
 
   @Post('refresh')
@@ -95,5 +120,35 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   async getMe(@CurrentUser('id') userId: string) {
     return this.authService.getMe(userId);
+  }
+
+  // ─── Two-Factor Authentication ───────────────────────
+
+  @Post('2fa/generate')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ short: { ttl: 60000, limit: 3 } })
+  async generate2FA(@CurrentUser('id') userId: string) {
+    return this.twoFactorService.generateSecret(userId);
+  }
+
+  @Post('2fa/enable')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ short: { ttl: 60000, limit: 5 } })
+  async enable2FA(@CurrentUser('id') userId: string, @Body() dto: VerifyTwoFactorDto) {
+    return this.twoFactorService.enableTwoFactor(userId, dto.code);
+  }
+
+  @Post('2fa/disable')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ short: { ttl: 60000, limit: 5 } })
+  async disable2FA(@CurrentUser('id') userId: string, @Body() dto: VerifyTwoFactorDto) {
+    return this.twoFactorService.disableTwoFactor(userId, dto.code);
+  }
+
+  @Get('2fa/status')
+  @UseGuards(JwtAuthGuard)
+  async get2FAStatus(@CurrentUser('id') userId: string) {
+    const enabled = await this.twoFactorService.isTwoFactorEnabled(userId);
+    return { enabled };
   }
 }

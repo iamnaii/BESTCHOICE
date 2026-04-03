@@ -280,6 +280,11 @@ model User {
   startDate      DateTime? @map("start_date")
   nationalId     String?   @map("national_id")
   birthDate      DateTime? @map("birth_date")
+  // Two-Factor Authentication (TOTP)
+  twoFactorEnabled Boolean  @default(false) @map("two_factor_enabled")
+  twoFactorSecret  String?  @map("two_factor_secret")  // encrypted TOTP secret
+  twoFactorBackup  String?  @map("two_factor_backup")  // encrypted recovery codes (JSON)
+
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 

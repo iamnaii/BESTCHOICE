@@ -76,6 +76,31 @@ export class AuthService {
     };
   }
 
+  /**
+   * Login with 2FA verification (re-authenticates credentials + verifies TOTP).
+   */
+  async loginWith2FA(email: string, password: string, code: string, twoFactorService: { verifyCode: (s: string, b: string | null, c: string) => boolean; consumeRecoveryCode: (id: string, c: string) => Promise<void> }) {
+    const result = await this.login({ email, password });
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: result.user.id },
+      select: { twoFactorSecret: true, twoFactorBackup: true, twoFactorEnabled: true },
+    });
+
+    if (user?.twoFactorEnabled && user.twoFactorSecret) {
+      const isValid = twoFactorService.verifyCode(user.twoFactorSecret, user.twoFactorBackup, code);
+      if (!isValid) {
+        throw new UnauthorizedException('รหัส OTP ไม่ถูกต้อง');
+      }
+      // Consume recovery code if used (8-char hex)
+      if (code.length === 8) {
+        await twoFactorService.consumeRecoveryCode(result.user.id, code);
+      }
+    }
+
+    return result;
+  }
+
   async refreshToken(token: string) {
     const tokenHash = this.hashToken(token);
 

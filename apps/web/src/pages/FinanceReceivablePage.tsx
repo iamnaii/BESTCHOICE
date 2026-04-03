@@ -9,6 +9,8 @@ import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { Banknote, Clock, AlertTriangle, CheckCircle2, Ban, Pencil, MoreVertical } from 'lucide-react';
+import AnimatedCounter from '@/components/ui/animated-counter';
+import { Button } from '@/components/ui/button';
 
 interface FinanceReceivable {
   id: string; financeCompany: string; financeRefNumber: string | null;
@@ -136,10 +138,10 @@ export default function FinanceReceivablePage() {
   const receivedPct = totalAll > 0 ? (Number(summary?.receivedAmount || 0) / totalAll * 100) : 0;
 
   const summaryCards = [
-    { label: 'รอรับเงิน', count: summary?.totalPending || 0, amount: summary?.pendingAmount, icon: Clock, color: 'text-yellow-600', bg: 'bg-yellow-50' },
-    { label: 'ได้รับแล้ว', count: summary?.totalReceived || 0, amount: summary?.receivedAmount, icon: CheckCircle2, color: 'text-success', bg: 'bg-green-50' },
-    { label: 'เกินกำหนด', count: summary?.totalOverdue || 0, amount: summary?.overdueAmount, icon: AlertTriangle, color: 'text-destructive', bg: 'bg-red-50' },
-    { label: 'มีปัญหา', count: summary?.totalDisputed || 0, amount: summary?.disputedAmount, icon: Ban, color: 'text-destructive', bg: 'bg-red-50' },
+    { label: 'รอรับเงิน', count: summary?.totalPending || 0, amount: summary?.pendingAmount, icon: Clock, color: 'text-warning', iconBg: 'bg-warning/20', stripe: 'bg-warning' },
+    { label: 'ได้รับแล้ว', count: summary?.totalReceived || 0, amount: summary?.receivedAmount, icon: CheckCircle2, color: 'text-success', iconBg: 'bg-success/20', stripe: 'bg-success' },
+    { label: 'เกินกำหนด', count: summary?.totalOverdue || 0, amount: summary?.overdueAmount, icon: AlertTriangle, color: 'text-destructive', iconBg: 'bg-destructive/20', stripe: 'bg-destructive' },
+    { label: 'มีปัญหา', count: summary?.totalDisputed || 0, amount: summary?.disputedAmount, icon: Ban, color: 'text-destructive', iconBg: 'bg-destructive/20', stripe: 'bg-destructive/60' },
   ];
 
   const totalPages = Math.ceil((receivables?.total || 0) / 20);
@@ -206,38 +208,44 @@ export default function FinanceReceivablePage() {
 
   return (
     <div onClick={() => setOpenMenuId(null)}>
-      <PageHeader title="เงินรับจากไฟแนนซ์" subtitle={`ทั้งหมด ${receivables?.total || 0} รายการ`} icon={<Banknote className="size-6" />} />
+      <PageHeader title="เงินรับจากไฟแนนซ์" subtitle={`ทั้งหมด ${receivables?.total || 0} รายการ`} />
 
-      {/* Summary Cards + Progress */}
+      {/* Summary Cards — color stripe */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {summaryCards.map((card) => (
-          <Card key={card.label}>
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">{card.label}</span>
-                <div className={`p-2 rounded-lg ${card.bg}`}><card.icon className={`size-4 ${card.color}`} /></div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{card.count}</div>
-              <div className="text-sm text-muted-foreground">{fmt(card.amount)} บาท</div>
-            </CardContent>
+          <Card key={card.label} className="h-full overflow-hidden">
+            <div className="flex h-full">
+              <div className={`w-1 shrink-0 ${card.stripe}`} />
+              <CardContent className="p-4 flex flex-col justify-between flex-1">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-medium text-muted-foreground">{card.label}</span>
+                  <div className={`size-8 rounded-lg flex items-center justify-center shrink-0 ${card.iconBg}`}>
+                    <card.icon className={`size-4 ${card.color}`} />
+                  </div>
+                </div>
+                <div>
+                  <AnimatedCounter value={card.count} className={`text-2xl font-bold ${card.color}`} />
+                  <div className="text-2xs text-muted-foreground mt-1">{fmt(card.amount)} บาท</div>
+                </div>
+              </CardContent>
+            </div>
           </Card>
         ))}
       </div>
-      {/* Progress bar */}
-      <div className="mb-6 p-3 bg-muted/50 rounded-lg">
-        <div className="flex justify-between text-xs text-muted-foreground mb-1.5">
-          <span>ยอดรับแล้ว {receivedPct.toFixed(0)}%</span>
+
+      {/* Progress bar — enhanced */}
+      <div className="mb-6 p-4 bg-card rounded-xl border border-border">
+        <div className="flex justify-between text-xs text-muted-foreground mb-2">
+          <span className="font-medium">ยอดรับแล้ว <span className="text-success">{receivedPct.toFixed(0)}%</span></span>
           <span>{fmt(summary?.receivedAmount)} / {fmt(totalAll)} บาท</span>
         </div>
-        <div className="h-2 bg-muted rounded-full overflow-hidden">
-          <div className="h-full bg-green-500 rounded-full transition-all" style={{ width: `${Math.min(receivedPct, 100)}%` }} />
+        <div className="h-3 bg-muted rounded-full overflow-hidden">
+          <div className="h-full bg-success rounded-full transition-all duration-700" style={{ width: `${Math.min(receivedPct, 100)}%` }} />
         </div>
       </div>
 
-      {/* Filters with labels */}
-      <div className="flex flex-wrap gap-4 mb-4">
+      {/* Filters — grouped in card */}
+      <div className="flex flex-wrap gap-4 mb-5 bg-card rounded-xl border border-border p-4">
         <div>
           <label className="block text-xs text-muted-foreground mb-1">สถานะ</label>
           <select value={statusFilter} onChange={(e) => setFilter('status', e.target.value)} className={`${inputClass} w-auto min-w-[130px]`}>
@@ -283,8 +291,8 @@ export default function FinanceReceivablePage() {
         <div className="flex items-center justify-between mt-4">
           <span className="text-sm text-muted-foreground">หน้า {page} / {totalPages} (ทั้งหมด {receivables?.total} รายการ)</span>
           <div className="flex gap-1">
-            <button disabled={page <= 1} onClick={() => setFilter('page', String(page - 1))} className="px-3 py-1.5 text-sm border border-input rounded-lg hover:bg-muted disabled:opacity-50">ก่อนหน้า</button>
-            <button disabled={page >= totalPages} onClick={() => setFilter('page', String(page + 1))} className="px-3 py-1.5 text-sm border border-input rounded-lg hover:bg-muted disabled:opacity-50">ถัดไป</button>
+            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setFilter('page', String(page - 1))}>ก่อนหน้า</Button>
+            <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setFilter('page', String(page + 1))}>ถัดไป</Button>
           </div>
         </div>
       )}

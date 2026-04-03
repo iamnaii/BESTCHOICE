@@ -95,7 +95,7 @@ export function PriceManagementModal({
                       </div>
                     </div>
                     {priceForm.amount && (
-                      <div className={`text-xs ${parseFloat(priceForm.amount) - parseFloat(editingProduct.costPrice) > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      <div className={`text-xs ${parseFloat(priceForm.amount) - parseFloat(editingProduct.costPrice) > 0 ? 'text-success' : 'text-destructive'}`}>
                         กำไร: {(parseFloat(priceForm.amount) - parseFloat(editingProduct.costPrice)).toLocaleString()} ฿
                       </div>
                     )}
@@ -149,7 +149,7 @@ export function PriceManagementModal({
           {/* Add new price form */}
           {editingPriceId === 'new' ? (
             <form onSubmit={handlePriceSubmit} className="border-2 border-green-200 rounded-lg p-3 bg-green-50 space-y-2">
-              <div className="text-xs font-medium text-green-700 mb-1">เพิ่มราคาใหม่</div>
+              <div className="text-xs font-medium text-success mb-1">เพิ่มราคาใหม่</div>
               <div className="grid grid-cols-2 gap-2">
                 <input
                   type="text"

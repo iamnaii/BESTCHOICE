@@ -3,8 +3,10 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
+import { Button } from '@/components/ui/button';
 import { statusLabels, categoryLabels } from '@/lib/constants';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { ArrowRightLeft, Download, Plus } from 'lucide-react';
 import { StockProduct } from './types';
 import { useStockData, useEditingProductSync } from './hooks/useStockData';
 import { useStockFilters } from './hooks/useStockFilters';
@@ -211,25 +213,19 @@ export default function StockPage() {
           isManager && activeTab === 'list' ? (
             <div className="flex gap-2">
               {selectedIds.size > 0 && (
-                <button
-                  onClick={() => setShowBulkTransfer(true)}
-                  className="px-4 py-2 border border-primary-300 text-primary rounded-lg text-sm font-medium hover:bg-primary-50 transition-colors"
-                >
+                <Button variant="outline" size="md" onClick={() => setShowBulkTransfer(true)}>
+                  <ArrowRightLeft className="size-4" />
                   โอนสินค้า ({selectedIds.size})
-                </button>
+                </Button>
               )}
-              <button
-                onClick={() => handleExport(listProducts)}
-                className="px-4 py-2 border border-input rounded-lg text-sm font-medium hover:bg-muted/50 transition-colors"
-              >
+              <Button variant="outline" size="md" onClick={() => handleExport(listProducts)}>
+                <Download className="size-4" />
                 {selectedIds.size > 0 ? `ส่งออก (${selectedIds.size})` : 'ส่งออก CSV'}
-              </button>
-              <button
-                onClick={() => navigate('/products/create')}
-                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
-              >
-                + เพิ่มสินค้า
-              </button>
+              </Button>
+              <Button variant="primary" size="md" onClick={() => navigate('/products/create')}>
+                <Plus className="size-4" />
+                เพิ่มสินค้า
+              </Button>
             </div>
           ) : undefined
         }
@@ -241,20 +237,20 @@ export default function StockPage() {
         setFilterBranch={setFilterBranch}
       />
 
-      {/* Tabs: Dashboard / List */}
-      <div className="flex gap-1 mb-6 bg-muted rounded-lg p-1 w-fit">
+      {/* Tabs: Dashboard / List — dark mode friendly */}
+      <div className="flex gap-1 mb-6 bg-muted rounded-xl p-1 w-fit">
         <button
           onClick={() => handleTabChange('dashboard')}
-          className={`px-4 py-2 text-sm rounded-md font-medium transition-colors ${
-            activeTab === 'dashboard' ? 'bg-white text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+          className={`px-4 py-2 text-sm rounded-lg font-medium transition-all ${
+            activeTab === 'dashboard' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
           }`}
         >
           Dashboard
         </button>
         <button
           onClick={() => handleTabChange('list')}
-          className={`px-4 py-2 text-sm rounded-md font-medium transition-colors ${
-            activeTab === 'list' ? 'bg-white text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+          className={`px-4 py-2 text-sm rounded-lg font-medium transition-all ${
+            activeTab === 'list' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
           }`}
         >
           รายการสินค้า {listResult ? `(${listResult.total})` : ''}

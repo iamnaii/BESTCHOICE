@@ -32,14 +32,14 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 const ACTION_COLORS: Record<string, string> = {
-  PAYMENT_RECORDED: 'bg-green-100 text-green-800',
+  PAYMENT_RECORDED: 'bg-success/10 text-success dark:bg-success/15',
   PAYMENT_PARTIAL: 'bg-blue-100 text-blue-800',
-  LATE_FEE_WAIVED: 'bg-yellow-100 text-yellow-800',
-  CREDIT_APPLIED: 'bg-purple-100 text-purple-800',
+  LATE_FEE_WAIVED: 'bg-warning/10 text-warning dark:bg-warning/15',
+  CREDIT_APPLIED: 'bg-info/10 text-info dark:bg-info/15',
   RECEIPT_GENERATED: 'bg-emerald-100 text-emerald-800',
-  RECEIPT_VOIDED: 'bg-red-100 text-red-800',
-  CREDIT_NOTE_ISSUED: 'bg-orange-100 text-orange-800',
-  DUNNING_ESCALATION: 'bg-red-100 text-red-800',
+  RECEIPT_VOIDED: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
+  CREDIT_NOTE_ISSUED: 'bg-warning/10 text-warning dark:bg-warning/15',
+  DUNNING_ESCALATION: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
   STATUS_CHANGE: 'bg-gray-100 text-gray-800',
 };
 

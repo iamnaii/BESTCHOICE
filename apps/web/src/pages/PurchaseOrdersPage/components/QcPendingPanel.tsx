@@ -23,7 +23,7 @@ export function QcPendingPanel({
     <div className="mb-4">
       <button
         onClick={() => setShowQcPanel(!showQcPanel)}
-        className="flex items-center gap-2 px-4 py-2 bg-yellow-50 border border-yellow-200 rounded-lg text-sm font-medium text-yellow-800 hover:bg-yellow-100 transition-colors"
+        className="flex items-center gap-2 px-4 py-2 bg-warning/5 dark:bg-warning/10 border border-warning/20 rounded-lg text-sm font-medium text-warning hover:bg-yellow-100 transition-colors"
       >
         รอตรวจ QC
         <span className="px-2 py-0.5 bg-yellow-200 text-yellow-900 rounded-full text-xs font-bold">{qcPendingItems.length}</span>
@@ -33,7 +33,7 @@ export function QcPendingPanel({
           <h3 className="text-sm font-semibold mb-3 text-yellow-900">รายการรอตรวจ QC</h3>
           <div className="space-y-2 max-h-64 overflow-y-auto">
             {qcPendingItems.map((item) => (
-              <div key={item.productId} className="flex items-center gap-3 bg-white p-3 rounded-lg border">
+              <div key={item.productId} className="flex items-center gap-3 bg-card p-3 rounded-lg border">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{item.productName}</p>
                   {item.imeiSerial && <p className="text-xs text-muted-foreground">IMEI: {item.imeiSerial}</p>}

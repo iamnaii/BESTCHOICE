@@ -313,7 +313,7 @@ export default function StockTransfersPage() {
             >
               {tab.label}
               {tab.key === 'incoming' && pendingList.length > 0 && (
-                <span className="ml-1.5 px-1.5 py-0.5 text-xs rounded-full bg-yellow-100 text-yellow-700">
+                <span className="ml-1.5 px-1.5 py-0.5 text-xs rounded-full bg-warning/10 text-warning dark:bg-warning/15">
                   {pendingList.length}
                 </span>
               )}
@@ -520,7 +520,7 @@ export default function StockTransfersPage() {
                         <span className="font-mono text-sm font-semibold text-primary">
                           {batch.batchNumber || '-'}
                         </span>
-                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-warning/10 text-warning dark:bg-warning/15">
                           รอตรวจรับ
                         </span>
                         <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
@@ -628,7 +628,7 @@ export default function StockTransfersPage() {
                       <td className="px-4 py-3">{r.receivedBy?.name || '-'}</td>
                       <td className="px-4 py-3 text-center">
                         <span className={`px-2 py-0.5 rounded-full text-xs ${
-                          r.status === 'COMPLETED' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                          r.status === 'COMPLETED' ? 'bg-success/10 text-success dark:bg-success/15' : 'bg-destructive/10 text-destructive dark:bg-destructive/15'
                         }`}>
                           {r.status === 'COMPLETED' ? 'ผ่าน' : 'ไม่ผ่าน'}
                         </span>
@@ -664,12 +664,12 @@ export default function StockTransfersPage() {
 
               {/* Branch Info */}
               <div className="grid grid-cols-2 gap-4">
-                <div className="bg-orange-50 rounded-lg p-3">
-                  <div className="text-xs text-orange-600 font-medium mb-1">ต้นทาง</div>
+                <div className="bg-warning/5 dark:bg-warning/10 rounded-lg p-3">
+                  <div className="text-xs text-warning font-medium mb-1">ต้นทาง</div>
                   <div className="font-semibold text-foreground">{first.fromBranch.name}</div>
                 </div>
-                <div className="bg-green-50 rounded-lg p-3">
-                  <div className="text-xs text-green-600 font-medium mb-1">ปลายทาง</div>
+                <div className="bg-success/5 dark:bg-success/10 rounded-lg p-3">
+                  <div className="text-xs text-success font-medium mb-1">ปลายทาง</div>
                   <div className="font-semibold text-foreground">{first.toBranch.name}</div>
                 </div>
               </div>
@@ -763,7 +763,7 @@ export default function StockTransfersPage() {
                 const s = itemStatuses[t.id];
                 if (!s) return null;
                 return (
-                  <div key={t.id} className={`border rounded-lg p-3 ${s.status === 'REJECT' ? 'border-red-200 bg-red-50' : 'border-border'}`}>
+                  <div key={t.id} className={`border rounded-lg p-3 ${s.status === 'REJECT' ? 'border-destructive/20 bg-destructive/5 dark:bg-destructive/10' : 'border-border'}`}>
                     {/* Item header */}
                     <div className="flex items-start gap-3 mb-2">
                       <span className="text-xs text-muted-foreground mt-0.5 w-5 flex-shrink-0">{idx + 1}.</span>
@@ -809,10 +809,10 @@ export default function StockTransfersPage() {
                           className="w-full px-2 py-1 border border-input rounded text-xs font-mono"
                         />
                         {s.imei && s.imei === t.product.imeiSerial && (
-                          <span className="text-xs text-green-600">IMEI ตรงกัน</span>
+                          <span className="text-xs text-success">IMEI ตรงกัน</span>
                         )}
                         {s.imei && s.imei !== t.product.imeiSerial && (
-                          <span className="text-xs text-red-600">IMEI ไม่ตรง!</span>
+                          <span className="text-xs text-destructive">IMEI ไม่ตรง!</span>
                         )}
                       </div>
                     )}
@@ -862,9 +862,9 @@ export default function StockTransfersPage() {
             <div className="border-t border-border pt-3">
               <div className="flex items-center justify-between mb-3 text-sm">
                 <span className="text-muted-foreground">
-                  ผ่าน: <span className="text-green-600 font-medium">{Object.values(itemStatuses).filter((s) => s.status === 'PASS').length}</span>
+                  ผ่าน: <span className="text-success font-medium">{Object.values(itemStatuses).filter((s) => s.status === 'PASS').length}</span>
                   {' / '}
-                  ไม่ผ่าน: <span className="text-red-600 font-medium">{Object.values(itemStatuses).filter((s) => s.status === 'REJECT').length}</span>
+                  ไม่ผ่าน: <span className="text-destructive font-medium">{Object.values(itemStatuses).filter((s) => s.status === 'REJECT').length}</span>
                 </span>
               </div>
               <button

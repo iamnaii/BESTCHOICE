@@ -56,9 +56,9 @@ interface DailySummary {
 
 const paymentStatusLabels: Record<string, { label: string; className: string }> = {
   PENDING: { label: 'รอชำระ', className: 'bg-muted text-foreground' },
-  PAID: { label: 'ชำระแล้ว', className: 'bg-green-100 text-green-700' },
-  OVERDUE: { label: 'เกินกำหนด', className: 'bg-red-100 text-red-700' },
-  PARTIALLY_PAID: { label: 'ชำระบางส่วน', className: 'bg-yellow-100 text-yellow-700' },
+  PAID: { label: 'ชำระแล้ว', className: 'bg-success/10 text-success dark:bg-success/15' },
+  OVERDUE: { label: 'เกินกำหนด', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
+  PARTIALLY_PAID: { label: 'ชำระบางส่วน', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
 };
 
 const methodLabels: Record<string, string> = {
@@ -431,7 +431,7 @@ export default function PaymentsPage() {
     { key: 'installmentNo', label: 'งวดที่', render: (p: PendingPayment) => <span className="font-medium">{p.installmentNo}</span> },
     { key: 'dueDate', label: 'วันครบกำหนด', render: (p: PendingPayment) => {
       const isOverdue = new Date(p.dueDate) < new Date();
-      return <span className={`text-sm ${isOverdue ? 'text-red-600 font-medium' : ''}`}>{new Date(p.dueDate).toLocaleDateString('th-TH')}</span>;
+      return <span className={`text-sm ${isOverdue ? 'text-destructive font-medium' : ''}`}>{new Date(p.dueDate).toLocaleDateString('th-TH')}</span>;
     }},
     { key: 'amountDue', label: 'ยอดที่ต้องชำระ', render: (p: PendingPayment) => {
       const total = parseFloat(p.amountDue) + parseFloat(p.lateFee);
@@ -439,11 +439,11 @@ export default function PaymentsPage() {
     }},
     { key: 'amountPaid', label: 'ชำระแล้ว', render: (p: PendingPayment) => {
       const paid = parseFloat(p.amountPaid);
-      return paid > 0 ? <span className="text-sm text-green-600">{paid.toLocaleString()} ฿</span> : <span className="text-xs text-muted-foreground">-</span>;
+      return paid > 0 ? <span className="text-sm text-success">{paid.toLocaleString()} ฿</span> : <span className="text-xs text-muted-foreground">-</span>;
     }},
     { key: 'lateFee', label: 'ค่าปรับ', render: (p: PendingPayment) => {
       const fee = parseFloat(p.lateFee);
-      return fee > 0 ? <span className="text-sm text-red-600">{fee.toLocaleString()} ฿</span> : <span className="text-xs text-muted-foreground">-</span>;
+      return fee > 0 ? <span className="text-sm text-destructive">{fee.toLocaleString()} ฿</span> : <span className="text-xs text-muted-foreground">-</span>;
     }},
     {
       key: 'status',
@@ -502,7 +502,7 @@ export default function PaymentsPage() {
               <Card>
                 <CardContent className="p-4">
                   <div className="text-xs text-muted-foreground mb-1">ยอดรอชำระรวม</div>
-                  <div className="text-2xl font-bold text-red-600">{pendingSummary.totalDue.toLocaleString()} ฿</div>
+                  <div className="text-2xl font-bold text-destructive">{pendingSummary.totalDue.toLocaleString()} ฿</div>
                 </CardContent>
               </Card>
               <Card>
@@ -549,7 +549,7 @@ export default function PaymentsPage() {
           {selectedIds.size > 0 && (
             <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground px-6 py-3 rounded-xl shadow-lg flex items-center gap-4 z-50">
               <span className="text-sm font-medium">เลือก {selectedIds.size} รายการ ({Math.round(batchTotal).toLocaleString()} ฿)</span>
-              <button onClick={() => setShowBatchModal(true)} className="px-4 py-1.5 bg-white text-primary rounded-lg text-sm font-medium hover:bg-white/90">
+              <button onClick={() => setShowBatchModal(true)} className="px-4 py-1.5 bg-card text-primary rounded-lg text-sm font-medium hover:bg-white/90">
                 รับชำระรวม
               </button>
               <button onClick={() => setSelectedIds(new Set())} className="text-xs text-white/70 hover:text-white">ยกเลิก</button>
@@ -585,13 +585,13 @@ export default function PaymentsPage() {
                 <Card>
                   <CardContent>
                     <div className="text-xs text-muted-foreground mb-1">ยอดรวม</div>
-                    <div className="text-2xl font-bold text-green-600">{summary.totalAmount.toLocaleString()} ฿</div>
+                    <div className="text-2xl font-bold text-success">{summary.totalAmount.toLocaleString()} ฿</div>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent>
                     <div className="text-xs text-muted-foreground mb-1">ค่าปรับรวม</div>
-                    <div className="text-2xl font-bold text-red-600">{summary.totalLateFees.toLocaleString()} ฿</div>
+                    <div className="text-2xl font-bold text-destructive">{summary.totalLateFees.toLocaleString()} ฿</div>
                   </CardContent>
                 </Card>
                 <Card>
@@ -656,16 +656,16 @@ export default function PaymentsPage() {
                 <span className="font-bold text-lg">{(parseFloat(selectedPayment.amountDue) + parseFloat(selectedPayment.lateFee) - parseFloat(selectedPayment.amountPaid)).toLocaleString()} ฿</span>
               </div>
               {parseFloat(selectedPayment.lateFee) > 0 && (
-                <div className="text-xs text-red-600 mt-1">รวมค่าปรับ {parseFloat(selectedPayment.lateFee).toLocaleString()} ฿</div>
+                <div className="text-xs text-destructive mt-1">รวมค่าปรับ {parseFloat(selectedPayment.lateFee).toLocaleString()} ฿</div>
               )}
             </div>
 
             {/* OCR Slip Scanner */}
-            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+            <div className="bg-success/5 dark:bg-success/10 border border-success/20 rounded-lg p-3">
               <div className="flex items-center justify-between mb-1">
-                <h4 className="text-sm font-semibold text-green-800">สแกนสลิปโอนเงิน (OCR)</h4>
+                <h4 className="text-sm font-semibold text-success">สแกนสลิปโอนเงิน (OCR)</h4>
               </div>
-              <p className="text-xs text-green-600 mb-2">ถ่ายรูปสลิปเพื่อกรอกข้อมูลอัตโนมัติ</p>
+              <p className="text-xs text-success mb-2">ถ่ายรูปสลิปเพื่อกรอกข้อมูลอัตโนมัติ</p>
               <input
                 ref={slipFileRef}
                 type="file"
@@ -695,9 +695,9 @@ export default function PaymentsPage() {
 
               {/* Show OCR slip result */}
               {slipResult && (
-                <div className="mt-2 p-2 rounded border border-green-200 space-y-1">
+                <div className="mt-2 p-2 rounded border border-success/20 space-y-1">
                   <div className="text-xs text-muted-foreground">ผลการสแกน:</div>
-                  {slipResult.amount && <div className="text-xs"><span className="text-muted-foreground">จำนวนเงิน:</span> <span className="font-bold text-green-700">{slipResult.amount.toLocaleString()} ฿</span></div>}
+                  {slipResult.amount && <div className="text-xs"><span className="text-muted-foreground">จำนวนเงิน:</span> <span className="font-bold text-success">{slipResult.amount.toLocaleString()} ฿</span></div>}
                   {slipResult.senderName && <div className="text-xs"><span className="text-muted-foreground">ผู้โอน:</span> {slipResult.senderName} {slipResult.senderBank && `(${slipResult.senderBank})`}</div>}
                   {slipResult.receiverName && <div className="text-xs"><span className="text-muted-foreground">ผู้รับ:</span> {slipResult.receiverName} {slipResult.receiverBank && `(${slipResult.receiverBank})`}</div>}
                   {slipResult.transactionRef && <div className="text-xs"><span className="text-muted-foreground">Ref:</span> <span className="font-mono">{slipResult.transactionRef}</span></div>}
@@ -777,11 +777,11 @@ export default function PaymentsPage() {
 
             {/* Slip upload for batch - required for non-CASH */}
             {isSlipRequired(batchPayMethod) && (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+              <div className="bg-success/5 dark:bg-success/10 border border-success/20 rounded-lg p-3">
                 <div className="flex items-center justify-between mb-1">
-                  <h4 className="text-sm font-semibold text-green-800">แนบสลิปโอนเงิน <span className="text-red-500">*</span></h4>
+                  <h4 className="text-sm font-semibold text-success">แนบสลิปโอนเงิน <span className="text-red-500">*</span></h4>
                 </div>
-                <p className="text-xs text-green-600 mb-2">กรุณาแนบสลิปเพื่อยืนยันการชำระ</p>
+                <p className="text-xs text-success mb-2">กรุณาแนบสลิปเพื่อยืนยันการชำระ</p>
                 <input ref={batchSlipFileRef} type="file" accept="image/*" capture="environment" onChange={handleBatchSlipScan} className="hidden" />
                 <button type="button" onClick={() => batchSlipFileRef.current?.click()} disabled={batchOcrLoading} className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700 disabled:opacity-50">
                   {batchOcrLoading ? (
@@ -791,9 +791,9 @@ export default function PaymentsPage() {
                   )}
                 </button>
                 {batchSlipResult && (
-                  <div className="mt-2 p-2 rounded border border-green-200 space-y-1">
+                  <div className="mt-2 p-2 rounded border border-success/20 space-y-1">
                     <div className="text-xs text-muted-foreground">ผลการสแกน:</div>
-                    {batchSlipResult.amount && <div className="text-xs"><span className="text-muted-foreground">จำนวนเงิน:</span> <span className="font-bold text-green-700">{batchSlipResult.amount.toLocaleString()} ฿</span></div>}
+                    {batchSlipResult.amount && <div className="text-xs"><span className="text-muted-foreground">จำนวนเงิน:</span> <span className="font-bold text-success">{batchSlipResult.amount.toLocaleString()} ฿</span></div>}
                     {batchSlipResult.senderName && <div className="text-xs"><span className="text-muted-foreground">ผู้โอน:</span> {batchSlipResult.senderName}</div>}
                     {batchSlipResult.transactionRef && <div className="text-xs"><span className="text-muted-foreground">Ref:</span> <span className="font-mono">{batchSlipResult.transactionRef}</span></div>}
                     {batchSlipResult.transactionDate && <div className="text-xs"><span className="text-muted-foreground">วันเวลา:</span> {batchSlipResult.transactionDate} {batchSlipResult.transactionTime || ''}</div>}
@@ -837,11 +837,11 @@ export default function PaymentsPage() {
 
             {/* Slip upload for advance - required for non-CASH */}
             {isSlipRequired(advanceMethod) && (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+              <div className="bg-success/5 dark:bg-success/10 border border-success/20 rounded-lg p-3">
                 <div className="flex items-center justify-between mb-1">
-                  <h4 className="text-sm font-semibold text-green-800">แนบสลิปโอนเงิน <span className="text-red-500">*</span></h4>
+                  <h4 className="text-sm font-semibold text-success">แนบสลิปโอนเงิน <span className="text-red-500">*</span></h4>
                 </div>
-                <p className="text-xs text-green-600 mb-2">กรุณาแนบสลิปเพื่อยืนยันการชำระ</p>
+                <p className="text-xs text-success mb-2">กรุณาแนบสลิปเพื่อยืนยันการชำระ</p>
                 <input ref={advanceSlipFileRef} type="file" accept="image/*" capture="environment" onChange={handleAdvanceSlipScan} className="hidden" />
                 <button type="button" onClick={() => advanceSlipFileRef.current?.click()} disabled={advanceOcrLoading} className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700 disabled:opacity-50">
                   {advanceOcrLoading ? (
@@ -851,9 +851,9 @@ export default function PaymentsPage() {
                   )}
                 </button>
                 {advanceSlipResult && (
-                  <div className="mt-2 p-2 rounded border border-green-200 space-y-1">
+                  <div className="mt-2 p-2 rounded border border-success/20 space-y-1">
                     <div className="text-xs text-muted-foreground">ผลการสแกน:</div>
-                    {advanceSlipResult.amount && <div className="text-xs"><span className="text-muted-foreground">จำนวนเงิน:</span> <span className="font-bold text-green-700">{advanceSlipResult.amount.toLocaleString()} ฿</span></div>}
+                    {advanceSlipResult.amount && <div className="text-xs"><span className="text-muted-foreground">จำนวนเงิน:</span> <span className="font-bold text-success">{advanceSlipResult.amount.toLocaleString()} ฿</span></div>}
                     {advanceSlipResult.senderName && <div className="text-xs"><span className="text-muted-foreground">ผู้โอน:</span> {advanceSlipResult.senderName}</div>}
                     {advanceSlipResult.transactionRef && <div className="text-xs"><span className="text-muted-foreground">Ref:</span> <span className="font-mono">{advanceSlipResult.transactionRef}</span></div>}
                     {advanceSlipResult.transactionDate && <div className="text-xs"><span className="text-muted-foreground">วันเวลา:</span> {advanceSlipResult.transactionDate} {advanceSlipResult.transactionTime || ''}</div>}

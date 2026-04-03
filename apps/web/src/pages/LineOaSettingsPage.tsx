@@ -147,10 +147,10 @@ export default function LineOaSettingsPage() {
       {/* Connection Status Card */}
       <div className={`mb-8 p-5 rounded-2xl border-2 ${
         data?.isConfigured && testResult?.success
-          ? 'bg-green-50 border-green-300'
+          ? 'bg-success/5 dark:bg-success/10 border-success/30'
           : data?.isConfigured
             ? 'bg-blue-50 border-blue-300'
-            : 'bg-orange-50 border-orange-300'
+            : 'bg-warning/5 dark:bg-warning/10 border-warning/30'
       }`}>
         <div className="flex items-start gap-4">
           <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl shrink-0 ${
@@ -191,7 +191,7 @@ export default function LineOaSettingsPage() {
         </div>
         {testResult && !testResult.success && (
           <div className="mt-3 p-3 bg-red-100 border border-red-200 rounded-lg">
-            <p className="text-sm text-red-700">เชื่อมต่อไม่สำเร็จ: {testResult.error}</p>
+            <p className="text-sm text-destructive">เชื่อมต่อไม่สำเร็จ: {testResult.error}</p>
             <p className="text-xs text-red-500 mt-1">กรุณาตรวจสอบ Channel Access Token ว่าถูกต้อง</p>
           </div>
         )}
@@ -292,8 +292,8 @@ export default function LineOaSettingsPage() {
           </div>
 
           <div className="bg-card rounded-xl shadow-xs shadow-black/5 border p-5 ml-4 border-l-4 border-l-green-400">
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
-              <p className="text-sm text-green-800 font-medium mb-2">คัดลอก URL ด้านล่าง แล้วไปวางใน LINE Developers Console:</p>
+            <div className="bg-success/5 dark:bg-success/10 border border-success/20 rounded-lg p-4 mb-4">
+              <p className="text-sm text-success font-medium mb-2">คัดลอก URL ด้านล่าง แล้วไปวางใน LINE Developers Console:</p>
               <ol className="text-sm text-green-700 space-y-1 list-decimal list-inside">
                 <li>เปิด LINE Developers Console &rarr; เลือก Channel ของคุณ</li>
                 <li>ไปที่ tab <strong>"Messaging API"</strong></li>
@@ -417,8 +417,8 @@ export default function LineOaSettingsPage() {
           </div>
 
           <div className="bg-card rounded-xl shadow-xs shadow-black/5 border p-5 ml-4 border-l-4 border-l-orange-400">
-            <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-4">
-              <p className="text-sm text-orange-800 font-medium mb-2">วิธีสร้าง LIFF App:</p>
+            <div className="bg-warning/5 dark:bg-warning/10 border border-warning/20 rounded-lg p-4 mb-4">
+              <p className="text-sm text-warning font-medium mb-2">วิธีสร้าง LIFF App:</p>
               <ol className="text-sm text-orange-700 space-y-1.5 list-decimal list-inside">
                 <li>เปิด LINE Developers Console &rarr; เลือก Channel</li>
                 <li>ไปที่ tab <strong>"LIFF"</strong> &rarr; กด <strong>"Add"</strong></li>
@@ -432,7 +432,7 @@ export default function LineOaSettingsPage() {
                 </li>
                 <li>คัดลอก <strong>LIFF ID</strong> มาวางด้านล่าง</li>
               </ol>
-              <div className="mt-2 text-xs text-orange-600">
+              <div className="mt-2 text-xs text-warning">
                 LIFF จะเปิดหน้าลงทะเบียนผูก LINE ให้ลูกค้าเชื่อมบัญชีกับระบบ
               </div>
             </div>
@@ -554,7 +554,7 @@ export default function LineOaSettingsPage() {
                     ดึง User ID
                   </button>
                 </div>
-                <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <div className="mt-2 p-3 bg-warning/5 dark:bg-warning/10 border border-warning/20 rounded-lg">
                   <p className="text-sm text-yellow-800 font-medium mb-1">วิธีง่ายที่สุด:</p>
                   <ol className="text-xs text-yellow-700 space-y-1 list-decimal list-inside">
                     <li>เพิ่ม Bot เป็นเพื่อนในไลน์</li>
@@ -596,7 +596,7 @@ export default function LineOaSettingsPage() {
                   {testSendMutation.isPending ? 'กำลังส่ง...' : 'ส่งทดสอบ'}
                 </button>
                 {testSendResult && (
-                  <span className={`text-sm ${testSendResult.success ? 'text-green-600' : 'text-red-600'}`}>
+                  <span className={`text-sm ${testSendResult.success ? 'text-success' : 'text-destructive'}`}>
                     {testSendResult.success ? testSendResult.message : testSendResult.error}
                   </span>
                 )}
@@ -618,7 +618,7 @@ export default function LineOaSettingsPage() {
             { icon: '✅', title: 'แจ้งผลการชำระ', desc: 'อนุมัติสลิปแล้ว ส่ง Flex แจ้งลูกค้าอัตโนมัติ' },
             { icon: '💬', title: 'ตอบอัตโนมัติ', desc: 'พิมพ์ "เช็คยอด" "งวด" "ช่วยเหลือ" ตอบทันที' },
           ].map((f) => (
-            <div key={f.title} className="flex items-start gap-3 bg-white/70 rounded-lg p-3">
+            <div key={f.title} className="flex items-start gap-3 bg-muted rounded-lg p-3">
               <span className="text-xl">{f.icon}</span>
               <div>
                 <p className="text-sm font-medium text-foreground">{f.title}</p>

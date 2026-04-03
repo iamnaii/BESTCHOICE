@@ -224,9 +224,9 @@ export default function SlipReviewPage() {
   // ─── Status Badge ───
   const statusBadge = (status: string) => {
     const styles: Record<string, string> = {
-      PENDING_REVIEW: 'bg-yellow-100 text-yellow-800',
-      APPROVED: 'bg-green-100 text-green-800',
-      REJECTED: 'bg-red-100 text-red-800',
+      PENDING_REVIEW: 'bg-warning/10 text-warning dark:bg-warning/15',
+      APPROVED: 'bg-success/10 text-success dark:bg-success/15',
+      REJECTED: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
     };
     return (
       <span className={`px-2 py-1 rounded-full text-xs font-medium ${styles[status] || 'bg-muted'}`}>
@@ -247,25 +247,25 @@ export default function SlipReviewPage() {
         <Card>
           <CardContent className="pt-4">
             <div className="text-xs text-muted-foreground mb-1">รอตรวจ</div>
-            <div className="text-2xl font-bold text-yellow-600">{stats?.pendingCount ?? 0}</div>
+            <div className="text-2xl font-bold text-warning">{stats?.pendingCount ?? 0}</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4">
             <div className="text-xs text-muted-foreground mb-1">อนุมัติวันนี้</div>
-            <div className="text-2xl font-bold text-green-600">{stats?.approvedToday ?? 0}</div>
+            <div className="text-2xl font-bold text-success">{stats?.approvedToday ?? 0}</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4">
             <div className="text-xs text-muted-foreground mb-1">ปฏิเสธวันนี้</div>
-            <div className="text-2xl font-bold text-red-600">{stats?.rejectedToday ?? 0}</div>
+            <div className="text-2xl font-bold text-destructive">{stats?.rejectedToday ?? 0}</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4">
             <div className="text-xs text-muted-foreground mb-1">ยอดรวมอนุมัติวันนี้</div>
-            <div className="text-2xl font-bold text-green-600">
+            <div className="text-2xl font-bold text-success">
               {Number(stats?.approvedAmountToday || 0).toLocaleString()} ฿
             </div>
           </CardContent>
@@ -384,7 +384,7 @@ export default function SlipReviewPage() {
               <div className="flex justify-between text-sm text-muted-foreground">
                 <span>{new Date(ev.createdAt).toLocaleString('th-TH')}</span>
                 {ev.amount && (
-                  <span className="font-medium text-green-600">
+                  <span className="font-medium text-success">
                     {Number(ev.amount).toLocaleString()} บาท
                   </span>
                 )}

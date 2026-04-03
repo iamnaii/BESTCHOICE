@@ -32,9 +32,9 @@ interface ReceiptItem {
 
 const statusLabels: Record<string, { label: string; className: string }> = {
   PENDING: { label: 'รอชำระ', className: 'bg-muted text-foreground' },
-  PAID: { label: 'ชำระแล้ว', className: 'bg-green-100 text-green-700' },
-  OVERDUE: { label: 'เกินกำหนด', className: 'bg-red-100 text-red-700' },
-  PARTIALLY_PAID: { label: 'ชำระบางส่วน', className: 'bg-yellow-100 text-yellow-700' },
+  PAID: { label: 'ชำระแล้ว', className: 'bg-success/10 text-success dark:bg-success/15' },
+  OVERDUE: { label: 'เกินกำหนด', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
+  PARTIALLY_PAID: { label: 'ชำระบางส่วน', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
 };
 
 interface PaymentHistorySheetProps {
@@ -198,7 +198,7 @@ export default function PaymentHistorySheet({ contractId, onClose, onViewReceipt
       {showWaiveModal && waiveTarget && (
         <Modal isOpen title="ยกเว้นค่าปรับ" onClose={() => { setShowWaiveModal(false); setWaiveTarget(null); }}>
           <div className="flex flex-col gap-4">
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+            <div className="bg-warning/5 dark:bg-warning/10 border border-warning/20 rounded-lg p-3">
               <div className="text-sm"><span className="text-muted-foreground">งวดที่: </span><span className="font-bold">{waiveTarget.installmentNo}</span></div>
               <div className="text-sm"><span className="text-muted-foreground">ค่าปรับปัจจุบัน: </span><span className="font-bold text-red-600">{Number(waiveTarget.lateFee).toLocaleString()} ฿</span></div>
             </div>

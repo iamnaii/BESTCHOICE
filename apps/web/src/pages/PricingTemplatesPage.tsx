@@ -319,13 +319,13 @@ export default function PricingTemplatesPage() {
                     <td className="px-4 py-3 text-muted-foreground">{t.storage || '-'}</td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                        t.category === 'PHONE_NEW' ? 'bg-primary-100 text-primary-700' : 'bg-orange-100 text-orange-700'
+                        t.category === 'PHONE_NEW' ? 'bg-primary-100 text-primary-700' : 'bg-warning/10 text-warning dark:bg-warning/15'
                       }`}>
                         {t.category === 'PHONE_NEW' ? 'มือ 1' : 'มือ 2'}
                       </span>
                       {t.category === 'PHONE_USED' && warrantyLabel(t.hasWarranty) && (
                         <span className={`ml-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                          t.hasWarranty ? 'bg-green-100 text-green-700' : 'bg-muted text-muted-foreground'
+                          t.hasWarranty ? 'bg-success/10 text-success dark:bg-success/15' : 'bg-muted text-muted-foreground'
                         }`}>
                           {warrantyLabel(t.hasWarranty)}
                         </span>

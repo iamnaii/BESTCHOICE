@@ -228,7 +228,7 @@ export default function StockAlertsPage() {
       key: 'stock',
       label: 'สต็อกปัจจุบัน',
       render: (r: ReorderPoint) => (
-        <span className={`text-sm font-bold ${r.isLow ? 'text-red-600' : 'text-green-600'}`}>
+        <span className={`text-sm font-bold ${r.isLow ? 'text-destructive' : 'text-success'}`}>
           {r.currentStock}
         </span>
       ),
@@ -249,9 +249,9 @@ export default function StockAlertsPage() {
       render: (r: ReorderPoint) => (
         <div className="flex items-center gap-2">
           {r.isLow ? (
-            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">ต่ำกว่าเกณฑ์</span>
+            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-destructive/10 text-destructive dark:bg-destructive/15">ต่ำกว่าเกณฑ์</span>
           ) : (
-            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">ปกติ</span>
+            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-success/10 text-success dark:bg-success/15">ปกติ</span>
           )}
           {!r.isActive && (
             <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground">ปิดใช้งาน</span>
@@ -287,7 +287,7 @@ export default function StockAlertsPage() {
               </button>
               <button
                 onClick={() => updateMutation.mutate({ id: r.id, data: { isActive: !r.isActive } })}
-                className={`text-xs ${r.isActive ? 'text-muted-foreground hover:text-red-600' : 'text-muted-foreground hover:text-green-600'}`}
+                className={`text-xs ${r.isActive ? 'text-muted-foreground hover:text-red-600' : 'text-muted-foreground hover:text-success'}`}
                 title={r.isActive ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}
               >
                 {r.isActive ? 'ปิด' : 'เปิด'}
@@ -328,7 +328,7 @@ export default function StockAlertsPage() {
       label: 'สต็อก / ขั้นต่ำ',
       render: (a: StockAlert) => (
         <span className="text-sm">
-          <span className="font-bold text-red-600">{a.currentStock}</span>
+          <span className="font-bold text-destructive">{a.currentStock}</span>
           <span className="text-muted-foreground"> / {a.minQuantity}</span>
         </span>
       ),
@@ -343,9 +343,9 @@ export default function StockAlertsPage() {
       label: 'สถานะ',
       render: (a: StockAlert) => {
         const styles: Record<string, string> = {
-          ACTIVE: 'bg-red-100 text-red-700',
+          ACTIVE: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
           PO_CREATED: 'bg-primary-100 text-primary-700',
-          RESOLVED: 'bg-green-100 text-green-700',
+          RESOLVED: 'bg-success/10 text-success dark:bg-success/15',
         };
         const labels: Record<string, string> = {
           ACTIVE: 'ต้องดำเนินการ',
@@ -425,7 +425,7 @@ export default function StockAlertsPage() {
               key={tab}
               onClick={() => setActiveTab(tab)}
               className={`px-4 py-2 text-sm rounded-md font-medium transition-colors ${
-                activeTab === tab ? 'bg-white text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                activeTab === tab ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               {labels[tab]}
@@ -470,11 +470,11 @@ export default function StockAlertsPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="rounded-lg border p-4 border-l-4 border-l-red-500">
               <div className="text-xs text-muted-foreground mb-1">สินค้าต่ำกว่าเกณฑ์</div>
-              <div className="text-2xl font-bold text-red-600">{dashboard?.totalLowStock || 0}</div>
+              <div className="text-2xl font-bold text-destructive">{dashboard?.totalLowStock || 0}</div>
             </div>
             <div className="rounded-lg border p-4 border-l-4 border-l-orange-500">
               <div className="text-xs text-muted-foreground mb-1">แจ้งเตือนรอดำเนินการ</div>
-              <div className="text-2xl font-bold text-orange-600">{activeAlerts}</div>
+              <div className="text-2xl font-bold text-warning">{activeAlerts}</div>
             </div>
             <div className="rounded-lg border p-4 border-l-4 border-l-primary-500">
               <div className="text-xs text-muted-foreground mb-1">Reorder Points ทั้งหมด</div>
@@ -482,7 +482,7 @@ export default function StockAlertsPage() {
             </div>
             <div className="rounded-lg border p-4 border-l-4 border-l-green-500">
               <div className="text-xs text-muted-foreground mb-1">สินค้าปกติ</div>
-              <div className="text-2xl font-bold text-green-600">
+              <div className="text-2xl font-bold text-success">
                 {(reorderPoints?.filter((r) => !r.isLow).length) || 0}
               </div>
             </div>
@@ -503,7 +503,7 @@ export default function StockAlertsPage() {
                       </div>
                       <div className="w-32">
                         <div className="flex justify-between text-xs mb-1">
-                          <span className="text-red-600 font-medium">{item.currentStock}</span>
+                          <span className="text-destructive font-medium">{item.currentStock}</span>
                           <span className="text-muted-foreground">/ {item.minQuantity}</span>
                         </div>
                         <div className="bg-muted rounded-full h-2 overflow-hidden">
@@ -517,7 +517,7 @@ export default function StockAlertsPage() {
                         ควรสั่ง <span className="font-bold text-primary">{item.reorderQuantity}</span>
                       </div>
                       {item.hasActiveAlert && (
-                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">แจ้งเตือนแล้ว</span>
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-destructive/10 text-destructive dark:bg-destructive/15">แจ้งเตือนแล้ว</span>
                       )}
                     </div>
                   );

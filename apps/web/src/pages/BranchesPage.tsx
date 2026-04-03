@@ -113,7 +113,7 @@ export default function BranchesPage() {
       render: (b: Branch) => (
         <span
           className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-            b.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+            b.isActive ? 'bg-success/10 text-success dark:bg-success/15' : 'bg-destructive/10 text-destructive dark:bg-destructive/15'
           }`}
         >
           {b.isActive ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}

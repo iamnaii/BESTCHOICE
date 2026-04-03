@@ -23,9 +23,9 @@ interface InspectionItem {
 
 const statusBadge: Record<string, { label: string; class: string }> = {
   RECEIVED: { label: 'รอตรวจ', class: 'bg-blue-100 text-blue-700' },
-  INSPECTING: { label: 'กำลังตรวจ', class: 'bg-yellow-100 text-yellow-700' },
-  QC_PASSED: { label: 'ผ่าน QC', class: 'bg-green-100 text-green-700' },
-  QC_FAILED: { label: 'ไม่ผ่าน QC', class: 'bg-red-100 text-red-700' },
+  INSPECTING: { label: 'กำลังตรวจ', class: 'bg-warning/10 text-warning dark:bg-warning/15' },
+  QC_PASSED: { label: 'ผ่าน QC', class: 'bg-success/10 text-success dark:bg-success/15' },
+  QC_FAILED: { label: 'ไม่ผ่าน QC', class: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
   IN_STOCK: { label: 'เข้าสต็อกแล้ว', class: 'bg-primary/10 text-primary' },
 };
 

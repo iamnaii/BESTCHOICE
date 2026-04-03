@@ -74,17 +74,17 @@ export function CustomerSelectStep({
 
       {/* Credit check status for selected customer */}
       {selectedCustomer && (
-        <div className={`mt-4 rounded-lg border p-4 ${customerCreditApproved ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+        <div className={`mt-4 rounded-lg border p-4 ${customerCreditApproved ? 'bg-success/5 dark:bg-success/10 border-success/20' : 'bg-destructive/5 dark:bg-destructive/10 border-destructive/20'}`}>
           <div className="flex items-center justify-between">
             <div>
-              <div className={`text-sm font-semibold ${customerCreditApproved ? 'text-green-800' : 'text-red-800'}`}>
+              <div className={`text-sm font-semibold ${customerCreditApproved ? 'text-success' : 'text-destructive'}`}>
                 สถานะเครดิต: {customerCreditApproved ? 'ผ่าน' : latestCreditCheck ? (latestCreditCheck.status === 'PENDING' ? 'รอวิเคราะห์' : latestCreditCheck.status === 'REJECTED' ? 'ไม่ผ่าน' : 'ต้องตรวจเพิ่ม') : 'ยังไม่ได้ตรวจ'}
               </div>
               {latestCreditCheck?.aiScore != null && (
                 <div className="text-xs mt-1">คะแนน: {latestCreditCheck.aiScore}/100</div>
               )}
               {!customerCreditApproved && (
-                <div className="text-xs text-red-600 mt-1">ลูกค้าต้องผ่านการตรวจเครดิตก่อนถึงจะสร้างสัญญาได้</div>
+                <div className="text-xs text-destructive mt-1">ลูกค้าต้องผ่านการตรวจเครดิตก่อนถึงจะสร้างสัญญาได้</div>
               )}
             </div>
             {!customerCreditApproved && (

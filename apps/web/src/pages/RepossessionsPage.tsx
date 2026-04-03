@@ -37,17 +37,17 @@ const statusLabels: Record<string, string> = {
 };
 
 const statusColors: Record<string, string> = {
-  REPOSSESSED: 'bg-red-100 text-red-700',
-  UNDER_REPAIR: 'bg-yellow-100 text-yellow-700',
-  READY_FOR_SALE: 'bg-green-100 text-green-700',
+  REPOSSESSED: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
+  UNDER_REPAIR: 'bg-warning/10 text-warning dark:bg-warning/15',
+  READY_FOR_SALE: 'bg-success/10 text-success dark:bg-success/15',
   SOLD: 'bg-primary-100 text-primary-700',
 };
 
 const gradeColors: Record<string, string> = {
-  A: 'bg-green-100 text-green-700',
+  A: 'bg-success/10 text-success dark:bg-success/15',
   B: 'bg-primary-100 text-primary-700',
-  C: 'bg-yellow-100 text-yellow-700',
-  D: 'bg-red-100 text-red-700',
+  C: 'bg-warning/10 text-warning dark:bg-warning/15',
+  D: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
 };
 
 export default function RepossessionsPage() {
@@ -236,7 +236,7 @@ export default function RepossessionsPage() {
             <button
               onClick={() => setConfirmDialog({ open: true, message: 'เปลี่ยนสถานะเป็น พร้อมขาย?', action: () => readyForSaleMutation.mutate(r.id) })}
               disabled={readyForSaleMutation.isPending}
-              className="text-green-600 hover:text-green-700 text-sm font-medium"
+              className="text-success hover:text-success/80 text-sm font-medium"
             >
               พร้อมขาย
             </button>
@@ -297,7 +297,7 @@ export default function RepossessionsPage() {
           <Card className="shadow-xs shadow-black/5">
             <CardContent className="p-4">
               <div className="text-sm text-muted-foreground">กำไร/ขาดทุน</div>
-              <div className={`text-lg font-bold ${(profitLoss.summary.totalProfit ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              <div className={`text-lg font-bold ${(profitLoss.summary.totalProfit ?? 0) >= 0 ? 'text-success' : 'text-destructive'}`}>
                 {(profitLoss.summary.totalProfit ?? 0).toLocaleString()} บาท
               </div>
             </CardContent>
@@ -340,7 +340,7 @@ export default function RepossessionsPage() {
                     <td className="px-4 py-2 text-right">{item.appraisalPrice.toLocaleString()}</td>
                     <td className="px-4 py-2 text-right">{item.repairCost.toLocaleString()}</td>
                     <td className="px-4 py-2 text-right">{item.resellPrice.toLocaleString()}</td>
-                    <td className={`px-4 py-2 text-right font-medium ${item.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    <td className={`px-4 py-2 text-right font-medium ${item.profit >= 0 ? 'text-success' : 'text-destructive'}`}>
                       {item.profit.toLocaleString()}
                     </td>
                     <td className="px-4 py-2 text-right text-muted-foreground">{item.marginPct}%</td>

@@ -35,9 +35,9 @@ export default function ReceiptVerifyPage() {
         )}
 
         {error && (
-          <div className="bg-red-50 border-2 border-red-300 rounded-xl p-8 text-center">
+          <div className="bg-destructive/5 dark:bg-destructive/10 border-2 border-destructive/30 rounded-xl p-8 text-center">
             <XCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-            <h2 className="text-xl font-bold text-red-700 mb-2">ไม่พบใบเสร็จ</h2>
+            <h2 className="text-xl font-bold text-destructive mb-2">ไม่พบใบเสร็จ</h2>
             <p className="text-red-600 text-sm">
               ไม่พบใบเสร็จเลขที่ <span className="font-mono">{receiptNumber}</span>
             </p>
@@ -49,13 +49,13 @@ export default function ReceiptVerifyPage() {
           <div>
             {/* Verification Status */}
             {!receipt.isVoided ? (
-              <div className="bg-green-50 border-2 border-green-300 rounded-xl p-6 mb-6 text-center">
+              <div className="bg-success/5 dark:bg-success/10 border-2 border-success/30 rounded-xl p-6 mb-6 text-center">
                 <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto mb-3" />
-                <h2 className="text-lg font-bold text-green-700 mb-1">ใบเสร็จถูกต้อง</h2>
+                <h2 className="text-lg font-bold text-success mb-1">ใบเสร็จถูกต้อง</h2>
                 <p className="text-green-600 text-sm">ใบเสร็จนี้ออกโดย {receipt.company?.nameTh || 'BESTCHOICE'}</p>
               </div>
             ) : (
-              <div className="bg-yellow-50 border-2 border-yellow-300 rounded-xl p-6 mb-6 text-center">
+              <div className="bg-warning/5 dark:bg-warning/10 border-2 border-warning/30 rounded-xl p-6 mb-6 text-center">
                 <AlertCircle className="w-12 h-12 text-yellow-500 mx-auto mb-3" />
                 <h2 className="text-lg font-bold text-yellow-700 mb-1">ใบเสร็จถูกยกเลิก</h2>
                 <p className="text-yellow-600 text-sm">ใบเสร็จนี้ถูกยกเลิกแล้ว</p>

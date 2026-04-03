@@ -75,23 +75,23 @@ interface PORecord {
 
 const statusLabels: Record<string, { label: string; className: string }> = {
   PO_RECEIVED: { label: 'รับจาก PO', className: 'bg-primary-100 text-primary-700' },
-  INSPECTION: { label: 'กำลังตรวจ', className: 'bg-yellow-100 text-yellow-700' },
-  IN_STOCK: { label: 'พร้อมขาย', className: 'bg-green-100 text-green-700' },
+  INSPECTION: { label: 'กำลังตรวจ', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
+  IN_STOCK: { label: 'พร้อมขาย', className: 'bg-success/10 text-success dark:bg-success/15' },
   RESERVED: { label: 'จอง', className: 'bg-primary-100 text-primary-700' },
   SOLD_INSTALLMENT: { label: 'ขายผ่อน', className: 'bg-indigo-100 text-indigo-700' },
-  SOLD_CASH: { label: 'ขายสด', className: 'bg-teal-100 text-teal-700' },
-  REPOSSESSED: { label: 'ยึดคืน', className: 'bg-red-100 text-red-700' },
-  REFURBISHED: { label: 'ซ่อมแล้ว', className: 'bg-orange-100 text-orange-700' },
+  SOLD_CASH: { label: 'ขายสด', className: 'bg-success/10 text-success dark:bg-success/15' },
+  REPOSSESSED: { label: 'ยึดคืน', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
+  REFURBISHED: { label: 'ซ่อมแล้ว', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
   SOLD_RESELL: { label: 'ขายต่อ', className: 'bg-cyan-100 text-cyan-700' },
 };
 
 const poStatusLabels: Record<string, { label: string; className: string }> = {
   DRAFT: { label: 'ร่าง', className: 'bg-muted text-foreground' },
-  PENDING: { label: 'รอรับสินค้า', className: 'bg-orange-100 text-orange-700' },
+  PENDING: { label: 'รอรับสินค้า', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
   APPROVED: { label: 'อนุมัติ', className: 'bg-primary-100 text-primary-700' },
-  PARTIALLY_RECEIVED: { label: 'รับบางส่วน', className: 'bg-yellow-100 text-yellow-700' },
-  FULLY_RECEIVED: { label: 'รับครบ', className: 'bg-green-100 text-green-700' },
-  CANCELLED: { label: 'ยกเลิก', className: 'bg-red-100 text-red-700' },
+  PARTIALLY_RECEIVED: { label: 'รับบางส่วน', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
+  FULLY_RECEIVED: { label: 'รับครบ', className: 'bg-success/10 text-success dark:bg-success/15' },
+  CANCELLED: { label: 'ยกเลิก', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
 };
 
 const categoryLabels: Record<string, string> = {
@@ -206,10 +206,10 @@ export default function SupplierDetailPage() {
     )},
     { key: 'paymentStatus', label: 'การจ่ายเงิน', render: (po: PORecord) => {
       const psLabels: Record<string, { label: string; className: string }> = {
-        UNPAID: { label: 'ยังไม่จ่าย', className: 'bg-red-100 text-red-700' },
-        DEPOSIT_PAID: { label: 'จ่ายมัดจำ', className: 'bg-yellow-100 text-yellow-700' },
-        PARTIALLY_PAID: { label: 'จ่ายบางส่วน', className: 'bg-orange-100 text-orange-700' },
-        FULLY_PAID: { label: 'จ่ายครบ', className: 'bg-green-100 text-green-700' },
+        UNPAID: { label: 'ยังไม่จ่าย', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
+        DEPOSIT_PAID: { label: 'จ่ายมัดจำ', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
+        PARTIALLY_PAID: { label: 'จ่ายบางส่วน', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
+        FULLY_PAID: { label: 'จ่ายครบ', className: 'bg-success/10 text-success dark:bg-success/15' },
       };
       const ps = psLabels[po.paymentStatus || 'UNPAID'] || { label: po.paymentStatus || '-', className: 'bg-muted text-foreground' };
       return (
@@ -270,7 +270,7 @@ export default function SupplierDetailPage() {
           <h2 className="text-lg font-semibold text-foreground">ข้อมูลผู้ขาย</h2>
           <span
             className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-              supplier.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+              supplier.isActive ? 'bg-success/10 text-success dark:bg-success/15' : 'bg-destructive/10 text-destructive dark:bg-destructive/15'
             }`}
           >
             {supplier.isActive ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}
@@ -314,7 +314,7 @@ export default function SupplierDetailPage() {
                     {paymentMethodLabels[pm.paymentMethod] || pm.paymentMethod}
                   </span>
                   {pm.isDefault && (
-                    <span className="px-2 py-0.5 rounded-full text-2xs font-medium bg-yellow-100 text-yellow-700">
+                    <span className="px-2 py-0.5 rounded-full text-2xs font-medium bg-warning/10 text-warning dark:bg-warning/15">
                       ค่าเริ่มต้น
                     </span>
                   )}

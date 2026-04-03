@@ -295,7 +295,7 @@ export default function SuppliersPage() {
             s.paymentMethods.map((pm, i) => (
               <div key={i} className="flex items-center gap-1">
                 <span className="text-sm">{paymentMethodLabels[pm.paymentMethod] || pm.paymentMethod}</span>
-                {pm.isDefault && <span className="text-2xs bg-yellow-100 text-yellow-700 px-1 rounded">หลัก</span>}
+                {pm.isDefault && <span className="text-2xs bg-warning/10 text-warning dark:bg-warning/15 px-1 rounded">หลัก</span>}
                 {pm.bankName && <span className="text-xs text-muted-foreground">({pm.bankName})</span>}
               </div>
             ))
@@ -311,7 +311,7 @@ export default function SuppliersPage() {
       render: (s: Supplier) => (
         <span
           className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-            s.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+            s.isActive ? 'bg-success/10 text-success dark:bg-success/15' : 'bg-destructive/10 text-destructive dark:bg-destructive/15'
           }`}
         >
           {s.isActive ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}

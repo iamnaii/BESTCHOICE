@@ -82,8 +82,8 @@ interface Branch {
 
 const statusLabels: Record<string, { label: string; className: string }> = {
   PENDING: { label: 'รอวิเคราะห์', className: 'bg-muted text-foreground' },
-  APPROVED: { label: 'ผ่าน', className: 'bg-green-100 text-green-700' },
-  REJECTED: { label: 'ไม่ผ่าน', className: 'bg-red-100 text-red-700' },
+  APPROVED: { label: 'ผ่าน', className: 'bg-success/10 text-success dark:bg-success/15' },
+  REJECTED: { label: 'ไม่ผ่าน', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
   MANUAL_REVIEW: { label: 'ต้องตรวจเพิ่ม', className: 'bg-amber-100 text-amber-700' },
 };
 
@@ -92,15 +92,15 @@ function getRiskBadge(aiScore: number | null) {
     return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">รอวิเคราะห์</span>;
   }
   if (aiScore >= 70) {
-    return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">ความเสี่ยงต่ำ</span>;
+    return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-success/10 text-success dark:bg-success/15">ความเสี่ยงต่ำ</span>;
   }
   if (aiScore >= 50) {
-    return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">ความเสี่ยงปานกลาง</span>;
+    return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-warning/10 text-warning dark:bg-warning/15">ความเสี่ยงปานกลาง</span>;
   }
   if (aiScore >= 40) {
-    return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700">ต้องตรวจเพิ่ม</span>;
+    return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-warning/10 text-warning dark:bg-warning/15">ต้องตรวจเพิ่ม</span>;
   }
-  return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">ความเสี่ยงสูง</span>;
+  return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-destructive/10 text-destructive dark:bg-destructive/15">ความเสี่ยงสูง</span>;
 }
 
 export default function CreditChecksPage() {
@@ -423,7 +423,7 @@ export default function CreditChecksPage() {
       label: 'คะแนน',
       render: (cc: CreditCheckItem) => cc.aiScore !== null ? (
         <div className="flex items-center gap-2">
-          <span className={`text-sm font-bold ${cc.aiScore >= 70 ? 'text-green-600' : cc.aiScore >= 50 ? 'text-amber-600' : 'text-red-600'}`}>{cc.aiScore}</span>
+          <span className={`text-sm font-bold ${cc.aiScore >= 70 ? 'text-success' : cc.aiScore >= 50 ? 'text-amber-600' : 'text-destructive'}`}>{cc.aiScore}</span>
           <div className="w-16 bg-muted rounded-full h-1.5">
             <div className={`h-1.5 rounded-full ${cc.aiScore >= 70 ? 'bg-green-500' : cc.aiScore >= 50 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${cc.aiScore}%` }} />
           </div>
@@ -480,19 +480,19 @@ export default function CreditChecksPage() {
   ];
 
   const avgScoreColor = (score: number) => {
-    if (score >= 60) return 'text-green-700';
-    if (score >= 40) return 'text-amber-700';
-    return 'text-red-700';
+    if (score >= 60) return 'text-success';
+    if (score >= 40) return 'text-amber-700 dark:text-amber-500';
+    return 'text-destructive';
   };
   const avgScoreBg = (score: number) => {
-    if (score >= 60) return 'bg-green-50 border-green-200';
-    if (score >= 40) return 'bg-amber-50 border-amber-200';
-    return 'bg-red-50 border-red-200';
+    if (score >= 60) return 'bg-success/5 dark:bg-success/10 border-success/20';
+    if (score >= 40) return 'bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20';
+    return 'bg-destructive/5 dark:bg-destructive/10 border-destructive/20';
   };
   const avgScoreLabel = (score: number) => {
-    if (score >= 60) return 'text-green-600';
-    if (score >= 40) return 'text-amber-600';
-    return 'text-red-600';
+    if (score >= 60) return 'text-success';
+    if (score >= 40) return 'text-amber-600 dark:text-amber-500';
+    return 'text-destructive';
   };
 
   return (
@@ -560,7 +560,7 @@ export default function CreditChecksPage() {
           <button onClick={() => setDateRange('week')} className="px-2 py-1.5 text-xs border border-input rounded-lg hover:bg-muted">สัปดาห์นี้</button>
           <button onClick={() => setDateRange('month')} className="px-2 py-1.5 text-xs border border-input rounded-lg hover:bg-muted">เดือนนี้</button>
           {(startDate || endDate) && (
-            <button onClick={() => { setStartDate(''); setEndDate(''); }} className="px-2 py-1.5 text-xs text-red-600 border border-red-200 rounded-lg hover:bg-red-50">ล้าง</button>
+            <button onClick={() => { setStartDate(''); setEndDate(''); }} className="px-2 py-1.5 text-xs text-destructive border border-destructive/20 rounded-lg hover:bg-destructive/5">ล้าง</button>
           )}
         </div>
 
@@ -585,17 +585,17 @@ export default function CreditChecksPage() {
           <div className="text-xs text-muted-foreground">ทั้งหมด</div>
           <div className="text-xl font-bold">{summary?.totalCount ?? 0}</div>
         </div>
-        <div className="bg-green-50 rounded-lg border border-green-200 p-4">
-          <div className="text-xs text-green-600">ผ่าน</div>
-          <div className="text-xl font-bold text-green-700">{summary?.approvedCount ?? 0}</div>
+        <div className="bg-success/5 dark:bg-success/10 rounded-lg border border-success/20 p-4">
+          <div className="text-xs text-success">ผ่าน</div>
+          <div className="text-xl font-bold text-success">{summary?.approvedCount ?? 0}</div>
         </div>
-        <div className="bg-amber-50 rounded-lg border border-amber-200 p-4">
-          <div className="text-xs text-amber-600">รอวิเคราะห์ / ตรวจเพิ่ม</div>
-          <div className="text-xl font-bold text-amber-700">{summary?.pendingCount ?? 0}</div>
+        <div className="bg-amber-50 dark:bg-amber-500/10 rounded-lg border border-amber-200 dark:border-amber-500/20 p-4">
+          <div className="text-xs text-amber-600 dark:text-amber-500">รอวิเคราะห์ / ตรวจเพิ่ม</div>
+          <div className="text-xl font-bold text-amber-700 dark:text-amber-500">{summary?.pendingCount ?? 0}</div>
         </div>
-        <div className="bg-red-50 rounded-lg border border-red-200 p-4">
-          <div className="text-xs text-red-600">ไม่ผ่าน</div>
-          <div className="text-xl font-bold text-red-700">{summary?.rejectedCount ?? 0}</div>
+        <div className="bg-destructive/5 dark:bg-destructive/10 rounded-lg border border-destructive/20 p-4">
+          <div className="text-xs text-destructive">ไม่ผ่าน</div>
+          <div className="text-xl font-bold text-destructive">{summary?.rejectedCount ?? 0}</div>
         </div>
         <div className={`rounded-lg border p-4 ${summary?.avgScore ? avgScoreBg(summary.avgScore) : 'bg-card'}`}>
           <div className={`text-xs ${summary?.avgScore ? avgScoreLabel(summary.avgScore) : 'text-muted-foreground'}`}>คะแนน AI เฉลี่ย</div>
@@ -658,7 +658,7 @@ export default function CreditChecksPage() {
                     {ai.incomeConsistency && (
                       <div className="bg-card rounded border p-3">
                         <div className="text-xs text-muted-foreground">ความสม่ำเสมอรายได้</div>
-                        <div className={`text-sm font-bold ${ai.incomeConsistency === 'stable' ? 'text-green-600' : 'text-amber-600'}`}>
+                        <div className={`text-sm font-bold ${ai.incomeConsistency === 'stable' ? 'text-success' : 'text-amber-600'}`}>
                           {ai.incomeConsistency === 'stable' ? 'สม่ำเสมอ' : 'ไม่สม่ำเสมอ'}
                         </div>
                       </div>
@@ -671,11 +671,11 @@ export default function CreditChecksPage() {
                 {/* Risk & Positive factors */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {ai?.riskFactors && ai.riskFactors.length > 0 && (
-                    <div className="bg-red-50 border border-red-200 rounded p-3">
-                      <div className="text-xs font-medium text-red-700 mb-1">ปัจจัยเสี่ยง</div>
+                    <div className="bg-destructive/5 dark:bg-destructive/10 border border-destructive/20 rounded p-3">
+                      <div className="text-xs font-medium text-destructive mb-1">ปัจจัยเสี่ยง</div>
                       <ul className="space-y-1">
                         {ai.riskFactors.map((f, i) => (
-                          <li key={i} className="text-xs text-red-600 flex items-start gap-1">
+                          <li key={i} className="text-xs text-destructive flex items-start gap-1">
                             <span className="mt-0.5">•</span> {f}
                           </li>
                         ))}
@@ -683,11 +683,11 @@ export default function CreditChecksPage() {
                     </div>
                   )}
                   {ai?.positiveFactors && ai.positiveFactors.length > 0 && (
-                    <div className="bg-green-50 border border-green-200 rounded p-3">
-                      <div className="text-xs font-medium text-green-700 mb-1">ปัจจัยบวก</div>
+                    <div className="bg-success/5 dark:bg-success/10 border border-success/20 rounded p-3">
+                      <div className="text-xs font-medium text-success mb-1">ปัจจัยบวก</div>
                       <ul className="space-y-1">
                         {ai.positiveFactors.map((f, i) => (
-                          <li key={i} className="text-xs text-green-600 flex items-start gap-1">
+                          <li key={i} className="text-xs text-success flex items-start gap-1">
                             <span className="mt-0.5">•</span> {f}
                           </li>
                         ))}
@@ -802,7 +802,7 @@ export default function CreditChecksPage() {
                         {bookBankResult.accountNo && <div className="text-xs"><span className="text-muted-foreground">เลขที่บัญชี:</span> <span className="font-mono">{bookBankResult.accountNo}</span></div>}
                         {bookBankResult.bankName && <div className="text-xs"><span className="text-muted-foreground">ธนาคาร:</span> {bookBankResult.bankName} {bookBankResult.branchName && `(${bookBankResult.branchName})`}</div>}
                         {bookBankResult.accountType && <div className="text-xs"><span className="text-muted-foreground">ประเภท:</span> {bookBankResult.accountType}</div>}
-                        {bookBankResult.balance !== null && <div className="text-xs"><span className="text-muted-foreground">ยอดเงิน:</span> <span className="font-bold text-green-700">{bookBankResult.balance.toLocaleString()} ฿</span></div>}
+                        {bookBankResult.balance !== null && <div className="text-xs"><span className="text-muted-foreground">ยอดเงิน:</span> <span className="font-bold text-success">{bookBankResult.balance.toLocaleString()} ฿</span></div>}
                       </div>
                     )}
                   </div>

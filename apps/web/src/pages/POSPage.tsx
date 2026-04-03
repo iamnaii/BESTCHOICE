@@ -299,7 +299,7 @@ export default function POSPage() {
         {/* Left Column - Main Form */}
         <div className="lg:col-span-2 flex flex-col gap-5 lg:gap-7.5">
 
-          {/* Sale Type Selector */}
+          {/* Sale Type Selector — enhanced */}
           <Card>
             <CardHeader>
               <div className="text-sm font-semibold text-foreground">ประเภทการขาย</div>
@@ -310,10 +310,10 @@ export default function POSPage() {
                   <button
                     key={type}
                     onClick={() => setSaleType(type)}
-                    className={`p-3 rounded-lg border-2 text-center transition-all ${
+                    className={`p-4 rounded-xl border-2 text-center transition-all ${
                       saleType === type
-                        ? `${config.bg} ring-2`
-                        : 'border-border hover:border-input'
+                        ? `${config.bg} ring-2 shadow-sm`
+                        : 'border-border hover:border-input hover:shadow-xs'
                     }`}
                   >
                     <div className={`text-sm font-semibold ${saleType === type ? config.color : 'text-muted-foreground'}`}>
@@ -322,8 +322,8 @@ export default function POSPage() {
                   </button>
                 ))}
               </div>
-              <div className="mt-3 text-center">
-                <button onClick={() => navigate('/contracts/create')} className="text-xs text-primary hover:underline">
+              <div className="mt-4 p-3 rounded-lg bg-primary/5 border border-primary/10 text-center">
+                <button onClick={() => navigate('/contracts/create')} className="text-xs text-primary font-medium hover:underline">
                   ต้องการผ่อนกับ BESTCHOICE? → ไปสร้างสัญญาผ่อนชำระ
                 </button>
               </div>
@@ -344,10 +344,10 @@ export default function POSPage() {
                       onClick={() => {
                         setProductSearch(tp.brand + ' ' + tp.model);
                       }}
-                      className="p-2 rounded-lg border border-border hover:border-primary hover:bg-primary/5 text-left transition-all"
+                      className="p-3 rounded-xl border border-border hover:border-primary hover:bg-primary/5 hover:shadow-xs text-left transition-all group"
                     >
-                      <div className="text-xs font-medium truncate">{tp.brand} {tp.model}</div>
-                      <div className="text-[10px] text-muted-foreground">ขายแล้ว {tp.count} เครื่อง</div>
+                      <div className="text-xs font-medium truncate group-hover:text-primary">{tp.brand} {tp.model}</div>
+                      <div className="text-2xs text-muted-foreground mt-0.5">ขายแล้ว {tp.count} เครื่อง</div>
                     </button>
                   ))}
                 </div>
@@ -391,7 +391,7 @@ export default function POSPage() {
                     className={inputClass}
                   />
                   {productSearch.length >= 2 && (
-                    <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    <div className="absolute z-50 w-full mt-1 bg-popover border border-border rounded-xl shadow-xl max-h-60 overflow-y-auto">
                       {productsError ? (
                         <div className="px-3 py-4 text-center text-sm text-destructive">
                           ค้นหาสินค้าไม่สำเร็จ กรุณาลองใหม่
@@ -445,17 +445,17 @@ export default function POSPage() {
               {bundleProducts.length > 0 && (
                 <div className="space-y-2 mb-3">
                   {bundleProducts.map((p) => (
-                    <div key={p.id} className="flex items-center justify-between bg-green-50 rounded-lg px-3 py-2 border border-green-200">
+                    <div key={p.id} className="flex items-center justify-between bg-success/5 dark:bg-success/10 rounded-xl px-3 py-2.5 border border-success/20">
                       <div>
-                        <div className="text-sm font-medium text-green-800">{p.brand} {p.model}</div>
-                        <div className="text-xs text-green-600">
+                        <div className="text-sm font-medium text-success">{p.brand} {p.model}</div>
+                        <div className="text-xs text-success/70">
                           {p.imeiSerial && <span className="font-mono">IMEI: {p.imeiSerial}</span>}
                           {p.category === 'ACCESSORY' && <span className="ml-1">({p.name})</span>}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-xs text-green-600 font-medium">ของแถม</span>
-                        <button onClick={() => handleRemoveBundle(p.id)} className="text-xs text-red-500 hover:underline">ลบ</button>
+                        <span className="text-xs text-success font-medium">ของแถม</span>
+                        <button onClick={() => handleRemoveBundle(p.id)} className="text-xs text-destructive hover:underline">ลบ</button>
                       </div>
                     </div>
                   ))}
@@ -472,7 +472,7 @@ export default function POSPage() {
                   className={inputClass}
                 />
                 {bundleSearch.length >= 2 && (
-                  <div className="absolute z-40 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                  <div className="absolute z-40 w-full mt-1 bg-popover border border-border rounded-xl shadow-xl max-h-48 overflow-y-auto">
                     {bundleSearchFetching ? (
                       <div className="px-3 py-3 text-center text-sm text-muted-foreground">กำลังค้นหา...</div>
                     ) : bundleSearchResults && bundleSearchResults.length > 0 ? (
@@ -525,7 +525,7 @@ export default function POSPage() {
                   className={inputClass}
                 />
                 {customerSearch.length >= 2 && (
-                  <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                  <div className="absolute z-50 w-full mt-1 bg-popover border border-border rounded-xl shadow-xl max-h-60 overflow-y-auto">
                     {customersError ? (
                       <div className="px-3 py-4 text-center text-sm text-destructive">
                         ค้นหาลูกค้าไม่สำเร็จ กรุณาลองใหม่
@@ -677,16 +677,16 @@ export default function POSPage() {
           </Card>
         </div>
 
-        {/* Right Column - Summary */}
+        {/* Right Column - Summary (sticky) */}
         <div className="flex flex-col gap-5 lg:gap-7.5">
-          <Card className="sticky top-4">
+          <Card className="sticky top-20 shadow-card">
             <CardHeader>
               <div className="text-sm font-semibold text-foreground">สรุปรายการ</div>
             </CardHeader>
             <CardContent>
 
             {/* Sale type badge */}
-            <div className={`inline-block px-3 py-1 rounded-full text-xs font-medium mb-4 ${saleTypeConfig[saleType].bg} ${saleTypeConfig[saleType].color}`}>
+            <div className={`inline-block px-3 py-1.5 rounded-lg text-xs font-semibold mb-4 ${saleTypeConfig[saleType].bg} ${saleTypeConfig[saleType].color}`}>
               {saleTypeConfig[saleType].label}
             </div>
 
@@ -704,7 +704,7 @@ export default function POSPage() {
               <div className="mb-3">
                 <div className="text-xs text-muted-foreground mb-1">ของแถม ({bundleProducts.length} รายการ)</div>
                 {bundleProducts.map((p) => (
-                  <div key={p.id} className="text-xs text-green-700 flex items-center gap-1">
+                  <div key={p.id} className="text-xs text-success flex items-center gap-1">
                     <span>+</span>
                     <span>{p.brand} {p.model}</span>
                   </div>
@@ -746,7 +746,7 @@ export default function POSPage() {
                   <span className="text-muted-foreground">เงินรับ</span>
                   <span>{parseFloat(amountReceived).toLocaleString()} ฿</span>
                 </div>
-                <div className={`flex justify-between text-sm font-bold ${changeAmount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                <div className={`flex justify-between text-sm font-bold ${changeAmount >= 0 ? 'text-success' : 'text-destructive'}`}>
                   <span>เงินทอน</span>
                   <span>{changeAmount.toLocaleString()} ฿</span>
                 </div>
@@ -777,13 +777,13 @@ export default function POSPage() {
               <button
                 onClick={() => createSaleMutation.mutate()}
                 disabled={!selectedProduct || !selectedCustomer || !sellingPrice || createSaleMutation.isPending}
-                className="w-full py-3 bg-primary text-primary-foreground rounded-lg text-sm font-semibold disabled:opacity-50 hover:bg-primary/90 transition-colors"
+                className="w-full py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 hover:bg-primary/90 transition-all hover:shadow-md shadow-sm"
               >
                 {createSaleMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกการขาย'}
               </button>
               <button
                 onClick={resetForm}
-                className="w-full py-2 text-sm text-muted-foreground hover:text-foreground"
+                className="w-full py-2.5 text-sm text-muted-foreground hover:text-foreground rounded-xl hover:bg-muted transition-colors"
               >
                 ล้างข้อมูล
               </button>

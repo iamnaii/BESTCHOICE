@@ -33,10 +33,10 @@ interface Consent {
 }
 
 const dsarStatusLabels: Record<string, { label: string; className: string }> = {
-  PENDING: { label: 'รอดำเนินการ', className: 'bg-yellow-100 text-yellow-700' },
+  PENDING: { label: 'รอดำเนินการ', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
   IN_PROGRESS: { label: 'กำลังดำเนินการ', className: 'bg-blue-100 text-blue-700' },
-  COMPLETED: { label: 'เสร็จสิ้น', className: 'bg-green-100 text-green-700' },
-  REJECTED: { label: 'ปฏิเสธ', className: 'bg-red-100 text-red-700' },
+  COMPLETED: { label: 'เสร็จสิ้น', className: 'bg-success/10 text-success dark:bg-success/15' },
+  REJECTED: { label: 'ปฏิเสธ', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
 };
 
 const requestTypeLabels: Record<string, string> = {
@@ -251,7 +251,7 @@ function PDPAPage() {
                 <div key={c.id} className={`p-4 rounded-lg border ${c.isActive ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
                   <div className="flex justify-between items-center">
                     <div>
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${c.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${c.isActive ? 'bg-success/10 text-success dark:bg-success/15' : 'bg-destructive/10 text-destructive dark:bg-destructive/15'}`}>
                         {c.isActive ? 'Active' : 'Revoked'}
                       </span>
                       <span className="text-xs text-muted-foreground ml-2">Version: {c.consentVersion}</span>
@@ -261,7 +261,7 @@ function PDPAPage() {
                       {c.revokedAt && <span className="text-red-500 ml-2">ถอน: {new Date(c.revokedAt).toLocaleString('th-TH')}</span>}
                     </div>
                   </div>
-                  {c.revokeReason && <div className="text-xs text-red-600 mt-1">เหตุผล: {c.revokeReason}</div>}
+                  {c.revokeReason && <div className="text-xs text-destructive mt-1">เหตุผล: {c.revokeReason}</div>}
                   {c.isActive && user?.role === 'OWNER' && (
                     <button
                       onClick={() => revokeMutation.mutate(c.id)}

@@ -13,6 +13,8 @@ import { toast } from 'sonner';
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import PaymentTimeline from '@/components/contract/PaymentTimeline';
+import { DetailPageSkeleton } from '@/components/ui/page-skeletons';
 
 interface Payment {
   id: string;
@@ -73,20 +75,20 @@ interface EarlyPayoffQuote {
 
 const statusLabels: Record<string, { label: string; className: string }> = {
   DRAFT: { label: 'ร่าง', className: 'bg-secondary text-foreground' },
-  ACTIVE: { label: 'ผ่อนอยู่', className: 'bg-green-100 text-green-700' },
-  OVERDUE: { label: 'ค้างชำระ', className: 'bg-yellow-100 text-yellow-700' },
-  DEFAULT: { label: 'ผิดนัด', className: 'bg-red-100 text-red-700' },
-  EARLY_PAYOFF: { label: 'ปิดก่อน', className: 'bg-primary/10 text-primary' },
-  COMPLETED: { label: 'ครบ', className: 'bg-teal-100 text-teal-700' },
-  EXCHANGED: { label: 'เปลี่ยนเครื่อง', className: 'bg-primary/10 text-primary' },
-  CLOSED_BAD_DEBT: { label: 'หนี้สูญ', className: 'bg-red-200 text-red-800' },
+  ACTIVE: { label: 'ผ่อนอยู่', className: 'bg-success/10 text-success dark:bg-success/15' },
+  OVERDUE: { label: 'ค้างชำระ', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
+  DEFAULT: { label: 'ผิดนัด', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
+  EARLY_PAYOFF: { label: 'ปิดก่อน', className: 'bg-primary/10 text-primary dark:bg-primary/15' },
+  COMPLETED: { label: 'ครบ', className: 'bg-success/10 text-success dark:bg-success/15' },
+  EXCHANGED: { label: 'เปลี่ยนเครื่อง', className: 'bg-info/10 text-info dark:bg-info/15' },
+  CLOSED_BAD_DEBT: { label: 'หนี้สูญ', className: 'bg-destructive/15 text-destructive dark:bg-destructive/20' },
 };
 
 const paymentStatusLabels: Record<string, { label: string; className: string }> = {
   PENDING: { label: 'รอชำระ', className: 'bg-secondary text-foreground' },
-  PAID: { label: 'ชำระแล้ว', className: 'bg-green-100 text-green-700' },
-  OVERDUE: { label: 'เกินกำหนด', className: 'bg-red-100 text-red-700' },
-  PARTIALLY_PAID: { label: 'ชำระบางส่วน', className: 'bg-yellow-100 text-yellow-700' },
+  PAID: { label: 'ชำระแล้ว', className: 'bg-success/10 text-success dark:bg-success/15' },
+  OVERDUE: { label: 'เกินกำหนด', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
+  PARTIALLY_PAID: { label: 'ชำระบางส่วน', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
 };
 
 export default function ContractDetailPage() {
@@ -250,7 +252,7 @@ export default function ContractDetailPage() {
   };
 
   if (isLoading || !contract) {
-    return <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>;
+    return <DetailPageSkeleton />;
   }
 
   const s = statusLabels[contract.status] || { label: contract.status, className: 'bg-secondary' };
@@ -275,14 +277,14 @@ export default function ContractDetailPage() {
     {
       key: 'amountPaid',
       label: 'ยอดที่ชำระ',
-      render: (p: Payment) => p.amountPaid ? <span className="text-sm text-green-600">{parseFloat(p.amountPaid).toLocaleString()} ฿</span> : <span className="text-xs text-muted-foreground">-</span>,
+      render: (p: Payment) => p.amountPaid ? <span className="text-sm text-success">{parseFloat(p.amountPaid).toLocaleString()} ฿</span> : <span className="text-xs text-muted-foreground">-</span>,
     },
     {
       key: 'lateFee',
       label: 'ค่าปรับ',
       render: (p: Payment) => {
         const fee = parseFloat(p.lateFee);
-        return fee > 0 ? <span className="text-sm text-red-600">{fee.toLocaleString()} ฿</span> : <span className="text-xs text-muted-foreground">-</span>;
+        return fee > 0 ? <span className="text-sm text-destructive">{fee.toLocaleString()} ฿</span> : <span className="text-xs text-muted-foreground">-</span>;
       },
     },
     {
@@ -412,7 +414,7 @@ export default function ContractDetailPage() {
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${step.done ? 'bg-green-600 text-white' : i === currentStep ? 'bg-primary text-primary-foreground ring-2 ring-primary/30 ring-offset-1' : 'bg-muted text-muted-foreground'}`}>
                       {step.done ? '✓' : i + 1}
                     </div>
-                    <span className={`text-2xs md:text-xs text-center leading-tight ${step.done ? 'text-green-700 font-medium' : i === currentStep ? 'text-primary font-medium' : 'text-muted-foreground'}`}>
+                    <span className={`text-2xs md:text-xs text-center leading-tight ${step.done ? 'text-success font-medium' : i === currentStep ? 'text-primary font-medium' : 'text-muted-foreground'}`}>
                       {step.label}
                     </span>
                   </div>
@@ -452,16 +454,16 @@ export default function ContractDetailPage() {
         </div>
         <div className="rounded-lg border p-4">
           <div className="text-xs text-muted-foreground mb-1">ชำระแล้ว</div>
-          <div className="text-xl font-bold text-green-600">{paidCount}/{contract.totalMonths} งวด</div>
+          <div className="text-xl font-bold text-success">{paidCount}/{contract.totalMonths} งวด</div>
         </div>
         <div className="rounded-lg border p-4">
           <div className="text-xs text-muted-foreground mb-1">ยอดผ่อนรวม</div>
           <div className="text-xl font-bold">{parseFloat(contract.financedAmount).toLocaleString()} ฿</div>
         </div>
         {contract.creditBalance && parseFloat(contract.creditBalance) > 0 && (
-          <div className="rounded-lg border border-green-200 bg-green-50 p-4">
-            <div className="text-xs text-green-700 mb-1">ยอดเครดิตคงเหลือ</div>
-            <div className="text-xl font-bold text-green-600">{parseFloat(contract.creditBalance).toLocaleString()} ฿</div>
+          <div className="rounded-lg border border-success/20 bg-success/5 dark:bg-success/10 p-4">
+            <div className="text-xs text-success mb-1">ยอดเครดิตคงเหลือ</div>
+            <div className="text-xl font-bold text-success">{parseFloat(contract.creditBalance).toLocaleString()} ฿</div>
             {['ACTIVE', 'OVERDUE'].includes(contract.status) && (
               <button
                 onClick={() => setConfirmDialog({
@@ -494,9 +496,9 @@ export default function ContractDetailPage() {
           }`}>
             <div className="text-xs text-muted-foreground mb-1">ระดับติดตามหนี้</div>
             <div className={`text-sm font-bold ${
-              contract.dunningStage === 'LEGAL_ACTION' ? 'text-red-700' :
-              contract.dunningStage === 'FINAL_WARNING' ? 'text-red-600' :
-              contract.dunningStage === 'NOTICE' ? 'text-orange-600' :
+              contract.dunningStage === 'LEGAL_ACTION' ? 'text-destructive' :
+              contract.dunningStage === 'FINAL_WARNING' ? 'text-destructive' :
+              contract.dunningStage === 'NOTICE' ? 'text-warning' :
               'text-yellow-600'
             }`}>
               {{ REMINDER: 'แจ้งเตือน', NOTICE: 'แจ้งค้างชำระ', FINAL_WARNING: 'เตือนครั้งสุดท้าย', LEGAL_ACTION: 'ดำเนินคดี' }[contract.dunningStage]}
@@ -516,14 +518,14 @@ export default function ContractDetailPage() {
                 <p className="text-xs font-medium text-amber-700">เอกสารที่ต้องมี:</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
                   {docChecklist.checklist.map((item) => (
-                    <div key={item.type} className={`flex items-center gap-1.5 text-xs ${item.present ? 'text-green-700' : 'text-red-600'}`}>
+                    <div key={item.type} className={`flex items-center gap-1.5 text-xs ${item.present ? 'text-success' : 'text-destructive'}`}>
                       <span>{item.present ? '✓' : '✗'}</span>
                       <span>{item.label}</span>
                     </div>
                   ))}
                 </div>
                 {!docChecklist.complete && (
-                  <p className="text-xs text-red-600 font-medium mt-1">กรุณาอัปโหลดเอกสารให้ครบก่อนอนุมัติ</p>
+                  <p className="text-xs text-destructive font-medium mt-1">กรุณาอัปโหลดเอกสารให้ครบก่อนอนุมัติ</p>
                 )}
               </div>
             )}
@@ -559,9 +561,9 @@ export default function ContractDetailPage() {
 
       {/* Rejection notes */}
       {contract.workflowStatus === 'REJECTED' && contract.reviewNotes && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-          <h3 className="text-sm font-semibold text-red-800">สัญญาถูกปฏิเสธ</h3>
-          <div className="text-sm text-red-700 mt-1">เหตุผล: {contract.reviewNotes}</div>
+        <div className="bg-destructive/5 dark:bg-destructive/10 border border-destructive/20 rounded-lg p-4 mb-6">
+          <h3 className="text-sm font-semibold text-destructive">สัญญาถูกปฏิเสธ</h3>
+          <div className="text-sm text-destructive mt-1">เหตุผล: {contract.reviewNotes}</div>
           {contract.reviewedBy && <div className="text-xs text-red-500 mt-1">โดย: {contract.reviewedBy.name} | {contract.reviewedAt && new Date(contract.reviewedAt).toLocaleString('th-TH')}</div>}
         </div>
       )}
@@ -634,10 +636,10 @@ export default function ContractDetailPage() {
                   </div>
                 );
               })()}
-              {editForm.totalMonths <= 0 && <div className="text-xs text-red-600">จำนวนงวดต้องมากกว่า 0</div>}
-              {editForm.downPayment >= editForm.sellingPrice && editForm.sellingPrice > 0 && <div className="text-xs text-red-600">เงินดาวน์ต้องน้อยกว่าราคาขาย</div>}
-              {editForm.sellingPrice <= 0 && <div className="text-xs text-red-600">ราคาขายต้องมากกว่า 0</div>}
-              {(editForm.paymentDueDay < 1 || (editForm.paymentDueDay > 28 && editForm.paymentDueDay !== 31)) && <div className="text-xs text-red-600">วันชำระต้องอยู่ระหว่าง 1-28 หรือสิ้นเดือน</div>}
+              {editForm.totalMonths <= 0 && <div className="text-xs text-destructive">จำนวนงวดต้องมากกว่า 0</div>}
+              {editForm.downPayment >= editForm.sellingPrice && editForm.sellingPrice > 0 && <div className="text-xs text-destructive">เงินดาวน์ต้องน้อยกว่าราคาขาย</div>}
+              {editForm.sellingPrice <= 0 && <div className="text-xs text-destructive">ราคาขายต้องมากกว่า 0</div>}
+              {(editForm.paymentDueDay < 1 || (editForm.paymentDueDay > 28 && editForm.paymentDueDay !== 31)) && <div className="text-xs text-destructive">วันชำระต้องอยู่ระหว่าง 1-28 หรือสิ้นเดือน</div>}
               <div className="flex gap-2 pt-2">
                 <button onClick={() => setIsEditing(false)} className="px-4 py-2 text-sm border border-input rounded-lg">ยกเลิก</button>
                 <button
@@ -720,7 +722,7 @@ export default function ContractDetailPage() {
               <div className="text-xs text-muted-foreground mb-2">Hash: <span className="font-mono">{contract.contractHash?.slice(0, 16)}...</span></div>
               <div className="flex items-center gap-2">
                 <span className="inline-block w-3 h-3 bg-green-500 rounded-full"></span>
-                <span className="text-xs text-green-700">สัญญาได้รับการยืนยันแล้ว</span>
+                <span className="text-xs text-success">สัญญาได้รับการยืนยันแล้ว</span>
               </div>
               <div className="mt-2 text-xs text-muted-foreground">
                 URL: /api/contracts/{id}/verify
@@ -738,8 +740,8 @@ export default function ContractDetailPage() {
             <div><div className="text-xs text-primary">งวดคงเหลือ</div><div className="font-medium">{payoffQuote.remainingMonths} งวด</div></div>
             <div><div className="text-xs text-primary">เงินต้นคงเหลือ</div><div className="font-medium">{payoffQuote.remainingPrincipal.toLocaleString()} ฿</div></div>
             <div><div className="text-xs text-primary">ดอกเบี้ยคงเหลือ</div><div className="font-medium">{payoffQuote.remainingInterest.toLocaleString()} ฿</div></div>
-            <div><div className="text-xs text-green-600">ส่วนลดดอกเบี้ย (50%)</div><div className="font-medium text-green-700">-{payoffQuote.discount.toLocaleString()} ฿</div></div>
-            {payoffQuote.unpaidLateFees > 0 && <div><div className="text-xs text-red-600">ค่าปรับค้างชำระ</div><div className="font-medium text-red-700">{payoffQuote.unpaidLateFees.toLocaleString()} ฿</div></div>}
+            <div><div className="text-xs text-success">ส่วนลดดอกเบี้ย (50%)</div><div className="font-medium text-success">-{payoffQuote.discount.toLocaleString()} ฿</div></div>
+            {payoffQuote.unpaidLateFees > 0 && <div><div className="text-xs text-destructive">ค่าปรับค้างชำระ</div><div className="font-medium text-destructive">{payoffQuote.unpaidLateFees.toLocaleString()} ฿</div></div>}
             <div><div className="text-xs text-primary font-semibold">ยอดปิดสัญญา</div><div className="text-xl font-bold text-primary">{payoffQuote.totalPayoff.toLocaleString()} ฿</div></div>
           </div>
         </div>
@@ -758,7 +760,7 @@ export default function ContractDetailPage() {
             ].map(({ type, label }) => {
               const sig = contract.signatures.find(s => (s.signerType === 'STAFF' ? 'COMPANY' : s.signerType) === type);
               return (
-                <div key={type} className={`p-2 rounded-lg text-center text-xs ${sig ? 'bg-green-50 text-green-700' : 'bg-muted text-muted-foreground'}`}>
+                <div key={type} className={`p-2 rounded-lg text-center text-xs ${sig ? 'bg-success/5 dark:bg-success/10 text-success' : 'bg-muted text-muted-foreground'}`}>
                   {sig ? '\u2713' : '\u2B1C'} {label}
                   {sig && <div className="text-2xs mt-0.5">{new Date(sig.signedAt).toLocaleDateString('th-TH')}</div>}
                 </div>
@@ -766,7 +768,7 @@ export default function ContractDetailPage() {
             })}
           </div>
           {contract.pdpaConsentId && (
-            <div className="text-xs text-green-600 mb-3">{'\u2713'} ยินยอม PDPA แล้ว</div>
+            <div className="text-xs text-success mb-3">{'\u2713'} ยินยอม PDPA แล้ว</div>
           )}
           {eDocuments.length > 0 && (
             <div className="space-y-2">
@@ -844,7 +846,10 @@ export default function ContractDetailPage() {
       )}
 
       {activeTab === 'schedule' && (
-        <DataTable columns={paymentColumns} data={contract.payments} emptyMessage="ยังไม่มีตารางผ่อน" />
+        <>
+          <PaymentTimeline payments={contract.payments} />
+          <DataTable columns={paymentColumns} data={contract.payments} emptyMessage="ยังไม่มีตารางผ่อน" />
+        </>
       )}
 
       {activeTab === 'documents' && (

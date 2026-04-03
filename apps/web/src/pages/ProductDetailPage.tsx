@@ -7,6 +7,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import Modal from '@/components/ui/Modal';
 import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card';
 import ProductPhotosPanel from '@/components/product/ProductPhotosPanel';
+import { ColorSelector, StorageSelector } from '@/components/product/VariantSelector';
 import { useAuth } from '@/contexts/AuthContext';
 import { statusLabels, categoryLabels, categoryOptions, transferableStatuses } from '@/lib/constants';
 
@@ -425,7 +426,7 @@ export default function ProductDetailPage() {
         <Card>
           <CardContent>
             <div className="text-xs text-muted-foreground mb-1">กำไร</div>
-            <div className={`text-lg font-semibold ${profit === null ? 'text-muted-foreground' : profit > 0 ? 'text-green-600' : profit === 0 ? 'text-muted-foreground' : 'text-red-600'}`}>
+            <div className={`text-lg font-semibold ${profit === null ? 'text-muted-foreground' : profit > 0 ? 'text-success' : profit === 0 ? 'text-muted-foreground' : 'text-destructive'}`}>
               {profit !== null ? `${profit.toLocaleString()} ฿` : '-'}
             </div>
           </CardContent>
@@ -493,7 +494,7 @@ export default function ProductDetailPage() {
           <CardContent>
           <div className="flex items-center gap-4">
             <span className={`px-2.5 py-1 rounded-full text-sm font-medium ${
-              product.inspection.isCompleted ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+              product.inspection.isCompleted ? 'bg-success/10 text-success dark:bg-success/15' : 'bg-warning/10 text-warning dark:bg-warning/15'
             }`}>
               {product.inspection.isCompleted ? 'ตรวจเสร็จ' : 'กำลังตรวจ'}
             </span>
@@ -598,12 +599,12 @@ export default function ProductDetailPage() {
                 <input type="text" value={editForm.model} onChange={(e) => setEditForm({ ...editForm, model: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" required />
               </div>
               <div>
-                <label className="block text-xs font-medium text-foreground mb-1">สี</label>
-                <input type="text" value={editForm.color} onChange={(e) => setEditForm({ ...editForm, color: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
+                <label className="block text-xs font-medium text-foreground mb-1.5">สี</label>
+                <ColorSelector value={editForm.color} onChange={(v) => setEditForm({ ...editForm, color: v })} />
               </div>
               <div>
-                <label className="block text-xs font-medium text-foreground mb-1">ความจุ</label>
-                <input type="text" value={editForm.storage} onChange={(e) => setEditForm({ ...editForm, storage: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
+                <label className="block text-xs font-medium text-foreground mb-1.5">ความจุ</label>
+                <StorageSelector value={editForm.storage} onChange={(v) => setEditForm({ ...editForm, storage: v })} />
               </div>
             </div>
           )}

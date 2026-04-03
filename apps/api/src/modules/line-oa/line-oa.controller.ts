@@ -19,8 +19,15 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ParseFilePipe, MaxFileSizeValidator, FileTypeValidator } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { LineOaService } from './line-oa.service';
+import { ChatbotService } from './chatbot.service';
 import { LineWebhookGuard } from './line-webhook.guard';
 import { LineWebhookBody, LineMessageEvent, LinePostbackEvent } from './dto/webhook-event.dto';
+import {
+  CHATBOT_RESPONSES,
+  ANDROID_KEYWORDS,
+  IPAD_USED_KEYWORDS,
+  GREETING_KEYWORDS,
+} from './chatbot-system-prompt.constants';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -38,6 +45,7 @@ export class LineOaController {
 
   constructor(
     private lineOaService: LineOaService,
+    private chatbotService: ChatbotService,
     private prisma: PrismaService,
     private promptPayQrService: PromptPayQrService,
     private paymentLinkService: PaymentLinkService,
@@ -150,10 +158,7 @@ export class LineOaController {
     // Outside-hours auto-reply (หลังผ่าน #owner และ phone self-link แล้ว)
     if (!this.isBusinessHours()) {
       await this.lineOaService.replyMessage(event.replyToken, [
-        {
-          type: 'text',
-          text: 'สวัสดีค่ะ ขณะนี้อยู่นอกเวลาทำการ (09:00–18:00 น.) น้องเบสจะตอบกลับในวันทำการถัดไปนะคะ หากต้องการสอบถามด่วน สามารถโทร [เบอร์สาขา] ได้เลยค่ะ 🙏',
-        },
+        { type: 'text', text: CHATBOT_RESPONSES.outsideHours },
       ]);
       return;
     }
@@ -174,11 +179,14 @@ export class LineOaController {
       await this.handleRegisterLink(userId, event.replyToken);
     } else if (['ช่วยเหลือ', 'help', 'เมนู', 'menu'].includes(textLower)) {
       await this.handleHelp(event.replyToken);
+    } else if (GREETING_KEYWORDS.some((kw) => textLower.includes(kw))) {
+      await this.handleGreeting(event.replyToken);
+    } else if (ANDROID_KEYWORDS.some((kw) => textLower.includes(kw))) {
+      await this.handleAndroidRedirect(event.replyToken);
+    } else if (IPAD_USED_KEYWORDS.some((kw) => textLower.includes(kw))) {
+      await this.handleIpadUsedRedirect(event.replyToken);
     } else {
-      // Business hours: ส่ง auto-acknowledge (replyToken ใช้ได้ครั้งเดียว ดังนั้น acknowledge คือ response หลัก)
-      await this.lineOaService.replyMessage(event.replyToken, [
-        { type: 'text', text: 'ได้รับข้อความแล้วค่ะ น้องเบสจะตอบกลับภายใน 5 นาทีนะคะ 🙏' },
-      ]);
+      await this.handleFreeformMessage(text, event.replyToken);
     }
   }
 
@@ -612,6 +620,35 @@ export class LineOaController {
       {
         type: 'text',
         text: `กรุณาลงทะเบียนเพื่อผูกบัญชี LINE กับระบบค่ะ${registerUrl ? `\n\n👉 ลงทะเบียน:\n${registerUrl}` : '\n\nหรือพิมพ์เบอร์โทรที่ลงทะเบียนไว้เพื่อเชื่อมบัญชี'}`,
+      },
+    ]);
+  }
+
+  private async handleGreeting(replyToken: string): Promise<void> {
+    await this.lineOaService.replyMessage(replyToken, [
+      { type: 'text', text: CHATBOT_RESPONSES.onboarding },
+    ]);
+  }
+
+  private async handleAndroidRedirect(replyToken: string): Promise<void> {
+    await this.lineOaService.replyMessage(replyToken, [
+      { type: 'text', text: CHATBOT_RESPONSES.androidRedirect },
+    ]);
+  }
+
+  private async handleIpadUsedRedirect(replyToken: string): Promise<void> {
+    await this.lineOaService.replyMessage(replyToken, [
+      { type: 'text', text: CHATBOT_RESPONSES.ipadUsedRedirect },
+    ]);
+  }
+
+  private async handleFreeformMessage(text: string, replyToken: string): Promise<void> {
+    // ลอง AI response ก่อน — ถ้าไม่มี API key หรือ error ใช้ fallback
+    const aiResponse = await this.chatbotService.generateResponse(text);
+    await this.lineOaService.replyMessage(replyToken, [
+      {
+        type: 'text',
+        text: aiResponse ?? 'ได้รับข้อความแล้วค่ะ น้องเบสจะตอบกลับภายใน 5 นาทีนะคะ 🙏',
       },
     ]);
   }

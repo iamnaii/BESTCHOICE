@@ -50,11 +50,11 @@ export function CustomerCreateModal({
       <form onSubmit={(e) => { e.preventDefault(); createCustomerMutation.mutate(); }} className="space-y-5 max-h-[75vh] overflow-y-auto pr-1">
 
         {/* Smart Card Reader - pre-fill form */}
-        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+        <div className="bg-success/5 dark:bg-success/10 border border-success/20 rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-semibold text-green-800">อ่านบัตรประชาชน (Smart Card)</h3>
-              <p className="text-xs text-green-600 mt-0.5">เสียบบัตรเข้าเครื่องอ่าน — กรอกข้อมูลให้อัตโนมัติ</p>
+              <h3 className="text-sm font-semibold text-success">อ่านบัตรประชาชน (Smart Card)</h3>
+              <p className="text-xs text-success mt-0.5">เสียบบัตรเข้าเครื่องอ่าน — กรอกข้อมูลให้อัตโนมัติ</p>
             </div>
             <button
               type="button"
@@ -68,7 +68,7 @@ export function CustomerCreateModal({
           {cardReaderLoading && (
             <div className="flex items-center gap-3 pt-2">
               <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-green-600" />
-              <div className="text-sm text-green-700">กำลังอ่านข้อมูลจาก Smart Card...</div>
+              <div className="text-sm text-success">กำลังอ่านข้อมูลจาก Smart Card...</div>
             </div>
           )}
         </div>

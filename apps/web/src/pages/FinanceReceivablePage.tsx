@@ -37,9 +37,9 @@ const statusLabels: Record<string, string> = {
   OVERDUE: 'เกินกำหนด', DISPUTED: 'มีปัญหา',
 };
 const statusColors: Record<string, string> = {
-  PENDING: 'bg-yellow-100 text-yellow-700', RECEIVED: 'bg-green-100 text-green-700',
-  PARTIALLY_RECEIVED: 'bg-orange-100 text-orange-700', OVERDUE: 'bg-red-100 text-red-700',
-  DISPUTED: 'bg-red-100 text-red-800',
+  PENDING: 'bg-warning/10 text-warning dark:bg-warning/15', RECEIVED: 'bg-success/10 text-success dark:bg-success/15',
+  PARTIALLY_RECEIVED: 'bg-warning/10 text-warning dark:bg-warning/15', OVERDUE: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
+  DISPUTED: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
 };
 const inputClass = 'w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none';
 
@@ -137,9 +137,9 @@ export default function FinanceReceivablePage() {
 
   const summaryCards = [
     { label: 'รอรับเงิน', count: summary?.totalPending || 0, amount: summary?.pendingAmount, icon: Clock, color: 'text-yellow-600', bg: 'bg-yellow-50' },
-    { label: 'ได้รับแล้ว', count: summary?.totalReceived || 0, amount: summary?.receivedAmount, icon: CheckCircle2, color: 'text-green-600', bg: 'bg-green-50' },
-    { label: 'เกินกำหนด', count: summary?.totalOverdue || 0, amount: summary?.overdueAmount, icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50' },
-    { label: 'มีปัญหา', count: summary?.totalDisputed || 0, amount: summary?.disputedAmount, icon: Ban, color: 'text-red-800', bg: 'bg-red-50' },
+    { label: 'ได้รับแล้ว', count: summary?.totalReceived || 0, amount: summary?.receivedAmount, icon: CheckCircle2, color: 'text-success', bg: 'bg-green-50' },
+    { label: 'เกินกำหนด', count: summary?.totalOverdue || 0, amount: summary?.overdueAmount, icon: AlertTriangle, color: 'text-destructive', bg: 'bg-red-50' },
+    { label: 'มีปัญหา', count: summary?.totalDisputed || 0, amount: summary?.disputedAmount, icon: Ban, color: 'text-destructive', bg: 'bg-red-50' },
   ];
 
   const totalPages = Math.ceil((receivables?.total || 0) / 20);
@@ -165,14 +165,14 @@ export default function FinanceReceivablePage() {
     },
     {
       key: 'receivedAmount', label: 'ได้รับ',
-      render: (r: FinanceReceivable) => <div className="text-right font-medium">{r.receivedAmount ? <span className="text-green-600">{fmt(r.receivedAmount)}</span> : '-'}</div>,
+      render: (r: FinanceReceivable) => <div className="text-right font-medium">{r.receivedAmount ? <span className="text-success">{fmt(r.receivedAmount)}</span> : '-'}</div>,
     },
     {
       key: 'expectedDate', label: 'กำหนดรับ',
       render: (r: FinanceReceivable) => {
         const d = new Date(r.expectedDate);
         const isOverdue = d < new Date() && r.status !== 'RECEIVED';
-        return <span className={isOverdue ? 'text-red-600 font-medium' : ''}>{d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}</span>;
+        return <span className={isOverdue ? 'text-destructive font-medium' : ''}>{d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}</span>;
       },
     },
     {
@@ -194,7 +194,7 @@ export default function FinanceReceivablePage() {
               {openMenuId === r.id && (
                 <div className="absolute right-0 top-full mt-1 z-10 bg-background border rounded-lg shadow-lg py-1 min-w-[120px]">
                   <button onClick={() => openEditModal(r)} className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted flex items-center gap-2"><Pencil className="size-3.5" /> แก้ไข</button>
-                  {r.status !== 'DISPUTED' && <button onClick={() => openDisputeModal(r)} className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted text-red-600">แจ้งปัญหา</button>}
+                  {r.status !== 'DISPUTED' && <button onClick={() => openDisputeModal(r)} className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted text-destructive">แจ้งปัญหา</button>}
                 </div>
               )}
             </div>
@@ -310,9 +310,9 @@ export default function FinanceReceivablePage() {
               <div className="flex justify-between"><span className="text-muted-foreground">ไฟแนนซ์</span><span className="font-medium">{selectedRecord.financeCompany}</span></div>
               {selectedRecord.financeRefNumber && <div className="flex justify-between"><span className="text-muted-foreground">Ref</span><span>{selectedRecord.financeRefNumber}</span></div>}
               <div className="flex justify-between"><span className="text-muted-foreground">ยอดเต็ม</span><span>{fmt(selectedRecord.expectedAmount)}</span></div>
-              {selectedRecord.commissionRate && <div className="flex justify-between"><span className="text-muted-foreground">ค่าคอม ({(Number(selectedRecord.commissionRate)*100).toFixed(1)}%)</span><span className="text-red-600">-{fmt(selectedRecord.commissionAmount)}</span></div>}
+              {selectedRecord.commissionRate && <div className="flex justify-between"><span className="text-muted-foreground">ค่าคอม ({(Number(selectedRecord.commissionRate)*100).toFixed(1)}%)</span><span className="text-destructive">-{fmt(selectedRecord.commissionAmount)}</span></div>}
               <div className="flex justify-between font-semibold"><span>ยอดสุทธิ</span><span>{fmt(selectedRecord.netExpectedAmount)}</span></div>
-              {selectedRecord.receivedAmount && <div className="flex justify-between text-green-600"><span>ได้รับแล้ว</span><span>{fmt(selectedRecord.receivedAmount)}</span></div>}
+              {selectedRecord.receivedAmount && <div className="flex justify-between text-success"><span>ได้รับแล้ว</span><span>{fmt(selectedRecord.receivedAmount)}</span></div>}
             </div>
             <div className="border-t pt-3 space-y-2 text-sm">
               <div className="flex justify-between"><span className="text-muted-foreground">วันที่สร้าง</span><span>{new Date(selectedRecord.createdAt).toLocaleDateString('th-TH')}</span></div>

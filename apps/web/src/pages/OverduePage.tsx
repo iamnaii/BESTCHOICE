@@ -168,7 +168,7 @@ export default function OverduePage() {
         return (
           <div>
             <div className="text-sm">{due.toLocaleDateString('th-TH')}</div>
-            {daysLate > 0 && <div className="text-xs text-red-600 font-medium">เกินกำหนด {daysLate} วัน</div>}
+            {daysLate > 0 && <div className="text-xs text-destructive font-medium">เกินกำหนด {daysLate} วัน</div>}
           </div>
         );
       },
@@ -187,7 +187,7 @@ export default function OverduePage() {
       render: (p: OverduePayment) => {
         const fee = parseFloat(p.lateFee);
         return fee > 0 ? (
-          <span className="text-sm font-medium text-red-600">{fee.toLocaleString()} ฿</span>
+          <span className="text-sm font-medium text-destructive">{fee.toLocaleString()} ฿</span>
         ) : (
           <span className="text-xs text-muted-foreground">-</span>
         );
@@ -198,7 +198,7 @@ export default function OverduePage() {
       label: 'ยอดรวม',
       render: (p: OverduePayment) => {
         const total = (parseFloat(p.amountDue) || 0) + (parseFloat(p.lateFee) || 0) - (parseFloat(p.amountPaid) || 0);
-        return <span className="text-sm font-bold text-red-700">{total.toLocaleString()} ฿</span>;
+        return <span className="text-sm font-bold text-destructive">{total.toLocaleString()} ฿</span>;
       },
     },
     {
@@ -259,7 +259,7 @@ export default function OverduePage() {
         <Card className="shadow-xs shadow-black/5">
           <CardContent className="p-4">
             <div className="text-xs text-muted-foreground mb-1">สัญญาค้างชำระ</div>
-            <div className="text-2xl font-bold text-red-600">{uniqueContracts}</div>
+            <div className="text-2xl font-bold text-destructive">{uniqueContracts}</div>
           </CardContent>
         </Card>
         <Card className="shadow-xs shadow-black/5">
@@ -277,7 +277,7 @@ export default function OverduePage() {
         <Card className="shadow-xs shadow-black/5">
           <CardContent className="p-4">
             <div className="text-xs text-muted-foreground mb-1">ค่าปรับรวม</div>
-            <div className="text-2xl font-bold text-red-600">{totalLateFees.toLocaleString()} ฿</div>
+            <div className="text-2xl font-bold text-destructive">{totalLateFees.toLocaleString()} ฿</div>
           </CardContent>
         </Card>
       </div>
@@ -288,10 +288,10 @@ export default function OverduePage() {
           <div className="text-xs font-medium text-muted-foreground mb-3">ขั้นตอนติดตามหนี้</div>
           <div className="flex items-center gap-2 overflow-x-auto">
             {[
-              { stage: 'REMINDER', label: 'แจ้งเตือน', color: 'bg-yellow-100 text-yellow-800 border-yellow-300', desc: '1-7 วัน' },
-              { stage: 'NOTICE', label: 'แจ้งค้างชำระ', color: 'bg-orange-100 text-orange-800 border-orange-300', desc: '8-30 วัน' },
-              { stage: 'FINAL_WARNING', label: 'เตือนครั้งสุดท้าย', color: 'bg-red-100 text-red-800 border-red-300', desc: '31-60 วัน' },
-              { stage: 'LEGAL_ACTION', label: 'ดำเนินคดี', color: 'bg-red-200 text-red-900 border-red-500', desc: '>60 วัน' },
+              { stage: 'REMINDER', label: 'แจ้งเตือน', color: 'bg-warning/10 text-warning border-warning/30', desc: '1-7 วัน' },
+              { stage: 'NOTICE', label: 'แจ้งค้างชำระ', color: 'bg-warning/10 text-warning border-warning/30', desc: '8-30 วัน' },
+              { stage: 'FINAL_WARNING', label: 'เตือนครั้งสุดท้าย', color: 'bg-destructive/10 text-destructive border-destructive/30', desc: '31-60 วัน' },
+              { stage: 'LEGAL_ACTION', label: 'ดำเนินคดี', color: 'bg-destructive/20 text-destructive border-destructive/50', desc: '>60 วัน' },
             ].map((s, i) => (
               <div key={s.stage} className="flex items-center gap-2">
                 {i > 0 && <div className="text-muted-foreground">→</div>}
@@ -306,8 +306,8 @@ export default function OverduePage() {
       </Card>
 
       {/* Info box */}
-      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
-        <div className="text-sm text-yellow-800">
+      <div className="bg-warning/5 dark:bg-warning/10 border border-warning/20 rounded-lg p-4 mb-4">
+        <div className="text-sm text-warning">
           <strong>กฎค่าปรับ:</strong> 100 บาท/วัน สูงสุด 200 บาท/งวด |
           ค้าง &gt; 7 วัน → สถานะ OVERDUE |
           ค้าง 2 งวดติดต่อกัน → สถานะ DEFAULT

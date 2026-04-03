@@ -479,8 +479,8 @@ export default function CustomersPage() {
       render: (c: Customer) => (
         <div className="text-xs">
           <span className="text-sm">{c._count.contracts} สัญญา</span>
-          {c.activeContracts > 0 && <div className="text-green-600">{c.activeContracts} ใช้งาน</div>}
-          {c.overdueContracts > 0 && <div className="text-red-600">{c.overdueContracts} ค้างชำระ</div>}
+          {c.activeContracts > 0 && <div className="text-success">{c.activeContracts} ใช้งาน</div>}
+          {c.overdueContracts > 0 && <div className="text-destructive">{c.overdueContracts} ค้างชำระ</div>}
         </div>
       ),
     },
@@ -490,10 +490,10 @@ export default function CustomersPage() {
       render: (c: Customer) => {
         if (!c.latestCreditStatus) return <span className="text-xs text-muted-foreground">-</span>;
         const statusMap: Record<string, { label: string; cls: string }> = {
-          APPROVED: { label: 'ผ่าน', cls: 'bg-green-100 text-green-700' },
-          REJECTED: { label: 'ไม่ผ่าน', cls: 'bg-red-100 text-red-700' },
-          PENDING: { label: 'รอตรวจ', cls: 'bg-yellow-100 text-yellow-700' },
-          MANUAL_REVIEW: { label: 'รอรีวิว', cls: 'bg-orange-100 text-orange-700' },
+          APPROVED: { label: 'ผ่าน', cls: 'bg-success/10 text-success dark:bg-success/15' },
+          REJECTED: { label: 'ไม่ผ่าน', cls: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
+          PENDING: { label: 'รอตรวจ', cls: 'bg-warning/10 text-warning dark:bg-warning/15' },
+          MANUAL_REVIEW: { label: 'รอรีวิว', cls: 'bg-warning/10 text-warning dark:bg-warning/15' },
         };
         const s = statusMap[c.latestCreditStatus] || { label: c.latestCreditStatus, cls: 'bg-muted text-foreground' };
         return (
@@ -546,19 +546,19 @@ export default function CustomersPage() {
           <Card>
             <CardContent className="pt-6">
               <div className="text-xs text-muted-foreground mb-1">มีสัญญา Active</div>
-              <div className="text-xl font-bold text-green-600">{result.summary.withActiveContract.toLocaleString()}</div>
+              <div className="text-xl font-bold text-success">{result.summary.withActiveContract.toLocaleString()}</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-6">
               <div className="text-xs text-muted-foreground mb-1">ค้างชำระ</div>
-              <div className={`text-xl font-bold ${result.summary.withOverdue > 0 ? 'text-red-600' : 'text-muted-foreground'}`}>{result.summary.withOverdue.toLocaleString()}</div>
+              <div className={`text-xl font-bold ${result.summary.withOverdue > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>{result.summary.withOverdue.toLocaleString()}</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-6">
               <div className="text-xs text-muted-foreground mb-1">เพิ่มเดือนนี้</div>
-              <div className="text-xl font-bold text-green-600">{result.summary.newThisMonth.toLocaleString()}</div>
+              <div className="text-xl font-bold text-success">{result.summary.newThisMonth.toLocaleString()}</div>
             </CardContent>
           </Card>
         </div>
@@ -599,7 +599,7 @@ export default function CustomersPage() {
             onClick={() => setHasOverdueFilter(!hasOverdueFilter)}
             className={`px-3 py-2 text-sm font-medium rounded-lg border transition-colors ${
               hasOverdueFilter
-                ? 'bg-red-100 text-red-700 border-red-300'
+                ? 'bg-destructive/10 text-destructive border-destructive/30'
                 : 'border-input hover:bg-accent'
             }`}
           >

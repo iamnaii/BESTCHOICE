@@ -59,7 +59,7 @@ export function PODetailModal({
             {selectedPO.dueDate && (
               <div>
                 <span className="text-muted-foreground">ครบกำหนดชำระ:</span>{' '}
-                <span className={new Date(selectedPO.dueDate) < new Date() && selectedPO.paymentStatus !== 'FULLY_PAID' ? 'text-red-600 font-semibold' : ''}>
+                <span className={new Date(selectedPO.dueDate) < new Date() && selectedPO.paymentStatus !== 'FULLY_PAID' ? 'text-destructive font-semibold' : ''}>
                   {new Date(selectedPO.dueDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
                   {new Date(selectedPO.dueDate) < new Date() && selectedPO.paymentStatus !== 'FULLY_PAID' && ' (เลยกำหนด!)'}
                 </span>
@@ -92,7 +92,7 @@ export function PODetailModal({
           {(Number(selectedPO.discount) > 0 || Number(selectedPO.vatAmount) > 0) && (
             <div className="bg-muted rounded-lg p-3 text-sm space-y-1">
               <div className="flex justify-between"><span className="text-muted-foreground">ยอดรวมสินค้า</span><span>{Number(selectedPO.totalAmount).toLocaleString()} บาท</span></div>
-              {Number(selectedPO.discount) > 0 && <div className="flex justify-between"><span className="text-muted-foreground">ส่วนลด</span><span className="text-red-600">-{Number(selectedPO.discount).toLocaleString()} บาท</span></div>}
+              {Number(selectedPO.discount) > 0 && <div className="flex justify-between"><span className="text-muted-foreground">ส่วนลด</span><span className="text-destructive">-{Number(selectedPO.discount).toLocaleString()} บาท</span></div>}
               {Number(selectedPO.vatAmount) > 0 && <div className="flex justify-between"><span className="text-muted-foreground">VAT 7%</span><span>{Number(selectedPO.vatAmount).toLocaleString()} บาท</span></div>}
               <div className="flex justify-between font-semibold border-t pt-1"><span>ยอดสุทธิ</span><span>{Number(selectedPO.netAmount).toLocaleString()} บาท</span></div>
             </div>
@@ -105,7 +105,7 @@ export function PODetailModal({
                 <div className="flex items-baseline gap-3 flex-wrap">
                   <span>
                     <span className="text-muted-foreground">จ่ายแล้ว:</span>{' '}
-                    <span className="font-medium text-lg text-green-700">{Number(selectedPO.paidAmount || 0).toLocaleString()}</span>
+                    <span className="font-medium text-lg text-success">{Number(selectedPO.paidAmount || 0).toLocaleString()}</span>
                     <span className="text-muted-foreground"> / {Number(selectedPO.netAmount ?? selectedPO.totalAmount).toLocaleString()} บาท</span>
                   </span>
                   {(() => {
@@ -193,12 +193,12 @@ export function PODetailModal({
                     <td className="px-3 py-2 text-right">{item.quantity}</td>
                     <td className="px-3 py-2 text-right">{Number(item.unitPrice).toLocaleString()}</td>
                     <td className="px-3 py-2 text-right">
-                      <span className={item.receivedQty >= item.quantity ? 'text-green-600 font-medium' : 'text-yellow-600'}>
+                      <span className={item.receivedQty >= item.quantity ? 'text-success font-medium' : 'text-yellow-600'}>
                         {item.receivedQty}
                       </span>
                     </td>
                     <td className="px-3 py-2 text-right">
-                      <span className={item.quantity - item.receivedQty > 0 ? 'text-red-600' : 'text-green-600'}>
+                      <span className={item.quantity - item.receivedQty > 0 ? 'text-destructive' : 'text-success'}>
                         {item.quantity - item.receivedQty}
                       </span>
                     </td>
@@ -235,11 +235,11 @@ export function PODetailModal({
                           </span>
                         </div>
                         <div className="flex gap-2">
-                          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-success/10 text-success dark:bg-success/15">
                             ผ่าน {passCount}
                           </span>
                           {rejectCount > 0 && (
-                            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+                            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-destructive/10 text-destructive dark:bg-destructive/15">
                               ไม่ผ่าน {rejectCount}
                             </span>
                           )}
@@ -249,7 +249,7 @@ export function PODetailModal({
                         {gr.items.map((item) => (
                           <div key={item.id} className="flex items-center gap-2 text-xs">
                             <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
-                              item.status === 'PASS' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+                              item.status === 'PASS' ? 'bg-success/5 dark:bg-success/10 text-success' : 'bg-destructive/5 dark:bg-destructive/10 text-destructive'
                             }`}>
                               {item.status === 'PASS' ? 'PASS' : 'REJECT'}
                             </span>

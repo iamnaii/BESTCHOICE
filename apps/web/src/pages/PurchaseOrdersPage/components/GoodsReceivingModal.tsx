@@ -93,7 +93,7 @@ export function GoodsReceivingModal({
                 </div>
                 )}
                 {unit.category === 'PHONE_USED' && unit.status === 'PASS' && (
-                  <div className="mt-2 border border-orange-200 bg-orange-50 rounded-lg p-3 space-y-2">
+                  <div className="mt-2 border border-warning/20 bg-warning/5 dark:bg-warning/10 rounded-lg p-3 space-y-2">
                     <div className="text-xs font-medium text-orange-700 mb-1">ข้อมูลมือสอง</div>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
@@ -171,7 +171,7 @@ export function GoodsReceivingModal({
                                 >
                                   {c.passed ? '\u2713' : '\u2717'}
                                 </button>
-                                <span className={`text-xs flex-1 ${c.passed ? 'text-foreground' : 'text-red-700 font-medium'}`}>
+                                <span className={`text-xs flex-1 ${c.passed ? 'text-foreground' : 'text-destructive font-medium'}`}>
                                   {c.item}
                                 </span>
                                 {!c.passed && (
@@ -233,8 +233,8 @@ export function GoodsReceivingModal({
             <div className="bg-muted rounded-lg p-3 text-sm">
               <div className="flex gap-4">
                 <span>ทั้งหมด: <strong>{receivingUnits.length}</strong></span>
-                <span className="text-green-700">ผ่าน: <strong>{receivingUnits.filter((u) => u.status === 'PASS').length}</strong></span>
-                <span className="text-red-700">ไม่ผ่าน: <strong>{receivingUnits.filter((u) => u.status === 'REJECT').length}</strong></span>
+                <span className="text-success">ผ่าน: <strong>{receivingUnits.filter((u) => u.status === 'PASS').length}</strong></span>
+                <span className="text-destructive">ไม่ผ่าน: <strong>{receivingUnits.filter((u) => u.status === 'REJECT').length}</strong></span>
               </div>
             </div>
           )}

@@ -5,11 +5,14 @@ import api from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useAuth } from '@/contexts/AuthContext';
 import PageHeader from '@/components/ui/PageHeader';
+import { Button } from '@/components/ui/button';
 import DataTable from '@/components/ui/DataTable';
 import WorkflowStatusBadge from '@/components/contract/WorkflowStatusBadge';
+import AnimatedCounter from '@/components/ui/animated-counter';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
-
+import { Download, Plus, LayoutGrid, List, Calendar, DollarSign, User } from 'lucide-react';
+import { KanbanBoard, type KanbanColumn } from '@/components/ui/KanbanBoard';
 import { exportToExcel } from '@/utils/excel.util';
 
 interface Contract {
@@ -34,13 +37,13 @@ interface Contract {
 
 const statusLabels: Record<string, { label: string; className: string }> = {
   DRAFT: { label: 'ร่าง', className: 'bg-muted text-foreground' },
-  ACTIVE: { label: 'ผ่อนอยู่', className: 'bg-green-100 text-green-700' },
-  OVERDUE: { label: 'ค้างชำระ', className: 'bg-yellow-100 text-yellow-700' },
-  DEFAULT: { label: 'ผิดนัด', className: 'bg-red-100 text-red-700' },
-  EARLY_PAYOFF: { label: 'ปิดก่อน', className: 'bg-primary-100 text-primary-700' },
-  COMPLETED: { label: 'ครบ', className: 'bg-teal-100 text-teal-700' },
-  EXCHANGED: { label: 'เปลี่ยนเครื่อง', className: 'bg-primary-100 text-primary-700' },
-  CLOSED_BAD_DEBT: { label: 'หนี้สูญ', className: 'bg-red-200 text-red-800' },
+  ACTIVE: { label: 'ผ่อนอยู่', className: 'bg-success/10 text-success dark:bg-success/15' },
+  OVERDUE: { label: 'ค้างชำระ', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
+  DEFAULT: { label: 'ผิดนัด', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
+  EARLY_PAYOFF: { label: 'ปิดก่อน', className: 'bg-primary/10 text-primary dark:bg-primary/15' },
+  COMPLETED: { label: 'ครบ', className: 'bg-success/10 text-success dark:bg-success/15' },
+  EXCHANGED: { label: 'เปลี่ยนเครื่อง', className: 'bg-info/10 text-info dark:bg-info/15' },
+  CLOSED_BAD_DEBT: { label: 'หนี้สูญ', className: 'bg-destructive/15 text-destructive dark:bg-destructive/20' },
 };
 
 interface PaginatedResponse<T> {
@@ -57,12 +60,14 @@ interface PaginatedResponse<T> {
 }
 
 type ViewTab = 'all' | 'my' | 'pending_review';
+type ViewMode = 'table' | 'kanban';
 
 export default function ContractsPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>('table');
 
   const search = searchParams.get('q') || '';
   const statusFilter = searchParams.get('status') || '';
@@ -216,7 +221,7 @@ export default function ContractsPage() {
         const hasW2 = c.signatures?.some(s => s.signerType === 'WITNESS_2');
         const allFour = hasCust && hasCompany && hasW1 && hasW2;
         const count = [hasCust, hasCompany, hasW1, hasW2].filter(Boolean).length;
-        if (allFour) return <span className="text-xs text-green-600 font-medium">ครบ ({count}/4)</span>;
+        if (allFour) return <span className="text-xs text-success font-medium">ครบ ({count}/4)</span>;
         if (count > 0) return <span className="text-xs text-amber-600">{count}/4</span>;
         return <span className="text-xs text-muted-foreground">-</span>;
       },
@@ -258,6 +263,22 @@ export default function ContractsPage() {
     },
   ], []);
 
+  /* ─── Kanban columns: group contracts by status ─── */
+  const kanbanColumns = useMemo<KanbanColumn<Contract>[]>(() => {
+    const groups: { id: string; title: string; color: string; statuses: string[] }[] = [
+      { id: 'draft', title: 'ร่าง', color: 'bg-zinc-400', statuses: ['DRAFT'] },
+      { id: 'active', title: 'ผ่อนอยู่', color: 'bg-green-500', statuses: ['ACTIVE'] },
+      { id: 'overdue', title: 'ค้างชำระ', color: 'bg-yellow-500', statuses: ['OVERDUE'] },
+      { id: 'default', title: 'ผิดนัด', color: 'bg-red-500', statuses: ['DEFAULT'] },
+      { id: 'completed', title: 'ปิดสัญญา', color: 'bg-blue-500', statuses: ['COMPLETED', 'EARLY_PAYOFF'] },
+      { id: 'other', title: 'อื่นๆ', color: 'bg-purple-500', statuses: ['EXCHANGED', 'CLOSED_BAD_DEBT'] },
+    ];
+    return groups.map((g) => ({
+      ...g,
+      items: contracts.filter((c) => g.statuses.includes(c.status)),
+    })).filter((g) => g.items.length > 0 || ['draft', 'active', 'overdue', 'default'].includes(g.id));
+  }, [contracts]);
+
   return (
     <div>
       <PageHeader
@@ -266,42 +287,44 @@ export default function ContractsPage() {
         action={
           <div className="flex gap-2">
             {contracts.length > 0 && (
-              <button onClick={handleExport} className="px-4 py-2 border border-input rounded-lg text-sm font-medium hover:bg-muted">
+              <Button variant="outline" size="md" onClick={handleExport}>
+                <Download className="size-4" />
                 ส่งออก Excel
-              </button>
+              </Button>
             )}
-            <button onClick={() => navigate('/contracts/create')} className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90">
-              + สร้างสัญญา
-            </button>
+            <Button variant="primary" size="md" onClick={() => navigate('/contracts/create')}>
+              <Plus className="size-4" />
+              สร้างสัญญา
+            </Button>
           </div>
         }
       />
 
-      {/* Summary Cards */}
+      {/* Summary Cards — animated + dark mode friendly */}
       {summary && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <Card>
             <CardContent className="p-4">
               <div className="text-xs text-muted-foreground mb-1">สัญญาทั้งหมด</div>
-              <div className="text-2xl font-bold">{summary.totalContracts}</div>
+              <AnimatedCounter value={summary.totalContracts} className="text-2xl font-bold" />
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4">
               <div className="text-xs text-muted-foreground mb-1">สัญญาอยู่</div>
-              <div className="text-2xl font-bold text-green-600">{summary.activeContracts}</div>
+              <AnimatedCounter value={summary.activeContracts} className="text-2xl font-bold text-success" />
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4">
               <div className="text-xs text-muted-foreground mb-1">ค้างชำระ</div>
-              <div className="text-2xl font-bold text-red-600">{summary.overdueContracts}</div>
+              <AnimatedCounter value={summary.overdueContracts} className="text-2xl font-bold text-destructive" />
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4">
               <div className="text-xs text-muted-foreground mb-1">มูลค่าพอร์ตโฟลิโอ</div>
-              <div className="text-2xl font-bold text-blue-600">{summary.portfolioValue.toLocaleString()} ฿</div>
+              <AnimatedCounter value={summary.portfolioValue} suffix=" ฿" className="text-2xl font-bold text-primary" />
             </CardContent>
           </Card>
         </div>
@@ -410,25 +433,84 @@ export default function ContractsPage() {
         </div>
       )}
 
+      {/* View mode toggle */}
+      <div className="flex items-center justify-between mb-4">
+        <div />
+        <div className="flex gap-1 bg-muted rounded-lg p-1">
+          <button
+            onClick={() => setViewMode('table')}
+            className={`p-2 rounded-md transition-all ${viewMode === 'table' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+            aria-label="มุมมองตาราง"
+          >
+            <List className="size-4" />
+          </button>
+          <button
+            onClick={() => setViewMode('kanban')}
+            className={`p-2 rounded-md transition-all ${viewMode === 'kanban' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+            aria-label="มุมมอง Kanban"
+          >
+            <LayoutGrid className="size-4" />
+          </button>
+        </div>
+      </div>
+
       {isError && (
-        <div className="text-center py-10 rounded-xl border border-red-200">
-          <div className="text-red-500 mb-2">เกิดข้อผิดพลาดในการโหลดข้อมูล</div>
-          <button onClick={() => refetch()} className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90">ลองใหม่</button>
+        <div className="text-center py-10 rounded-xl border border-destructive/20">
+          <div className="text-destructive mb-2">เกิดข้อผิดพลาดในการโหลดข้อมูล</div>
+          <Button variant="primary" size="md" onClick={() => refetch()}>ลองใหม่</Button>
         </div>
       )}
 
-      {!isError && <DataTable
-        columns={columns}
-        data={contracts}
-        isLoading={isLoading}
-        emptyMessage="ยังไม่มีสัญญา"
-        pagination={result ? {
-          page: result.page,
-          totalPages: result.totalPages,
-          total: result.total,
-          onPageChange: setPage,
-        } : undefined}
-      />}
+      {/* Table View */}
+      {!isError && viewMode === 'table' && (
+        <DataTable
+          columns={columns}
+          data={contracts}
+          isLoading={isLoading}
+          emptyMessage="ยังไม่มีสัญญา"
+          pagination={result ? {
+            page: result.page,
+            totalPages: result.totalPages,
+            total: result.total,
+            onPageChange: setPage,
+          } : undefined}
+        />
+      )}
+
+      {/* Kanban View */}
+      {!isError && viewMode === 'kanban' && !isLoading && (
+        <KanbanBoard<Contract>
+          columns={kanbanColumns}
+          onCardClick={(c) => navigate(`/contracts/${c.id}`)}
+          renderCard={(c) => (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-mono text-primary font-medium">{c.contractNumber}</span>
+                <span className={`px-1.5 py-0.5 rounded text-2xs font-medium ${(statusLabels[c.status] || { className: 'bg-muted' }).className}`}>
+                  {(statusLabels[c.status] || { label: c.status }).label}
+                </span>
+              </div>
+              <div className="text-sm font-medium text-foreground mb-1 flex items-center gap-1.5">
+                <User className="size-3 text-muted-foreground" />
+                {c.customer.name}
+              </div>
+              <div className="text-xs text-muted-foreground mb-2">
+                {c.product.brand} {c.product.model}
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="flex items-center gap-1 text-muted-foreground">
+                  <DollarSign className="size-3" />
+                  {parseFloat(c.monthlyPayment).toLocaleString()} ฿ x {c.totalMonths}
+                </span>
+                <span className="flex items-center gap-1 text-muted-foreground">
+                  <Calendar className="size-3" />
+                  {new Date(c.createdAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
+                </span>
+              </div>
+            </div>
+          )}
+        />
+      )}
     </div>
   );
 }

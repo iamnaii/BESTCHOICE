@@ -1,5 +1,7 @@
 import React, { useRef } from 'react';
 import PageHeader from '@/components/ui/PageHeader';
+import { Button } from '@/components/ui/button';
+import { ArrowLeft, ArrowRight, Save, Send } from 'lucide-react';
 import { STEPS } from './constants';
 import type { PendingDoc } from './types';
 import { useContractCreateData } from './hooks/useContractCreateData';
@@ -82,8 +84,8 @@ export default function ContractCreatePage() {
         }
       />
 
-      {/* Step indicator */}
-      <StepIndicator steps={STEPS} currentStep={data.step} />
+      {/* Step indicator — Metronic style */}
+      <StepIndicator steps={STEPS} currentStep={data.step} onStepClick={(s) => goToStep(s)} />
 
       {/* Step 1: Select Product */}
       {data.step === 0 && (
@@ -178,38 +180,48 @@ export default function ContractCreatePage() {
         />
       )}
 
-      {/* Navigation buttons */}
-      <div className="flex justify-between mt-6">
-        <button
+      {/* Navigation buttons — polished */}
+      <div className="flex justify-between mt-8 pt-6 border-t border-border">
+        <Button
+          variant="outline"
+          size="lg"
           onClick={() => data.step > 0 && goToStep(data.step - 1)}
-          className={`px-6 py-2 text-sm rounded-lg border ${data.step === 0 ? 'invisible' : 'border-input text-muted-foreground hover:bg-muted'}`}
+          className={data.step === 0 ? 'invisible' : ''}
         >
+          <ArrowLeft className="size-4" />
           ย้อนกลับ
-        </button>
+        </Button>
         {data.step < 3 ? (
-          <button
+          <Button
+            variant="primary"
+            size="lg"
             onClick={() => canNext() && goToStep(data.step + 1)}
             disabled={!canNext()}
-            className="px-6 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             ถัดไป
-          </button>
+            <ArrowRight className="size-4" />
+          </Button>
         ) : (
           <div className="flex gap-2">
-            <button
+            <Button
+              variant="outline"
+              size="lg"
               onClick={() => handleSubmit(false)}
               disabled={data.createMutation.isPending}
-              className="px-6 py-2 text-sm border border-input text-foreground rounded-lg hover:bg-muted disabled:opacity-50"
             >
+              <Save className="size-4" />
               {data.createMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกร่าง'}
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="primary"
+              size="lg"
               onClick={() => handleSubmit(true)}
               disabled={data.createMutation.isPending}
-              className="px-6 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+              className="bg-green-600 hover:bg-green-700"
             >
+              <Send className="size-4" />
               {data.createMutation.isPending ? 'กำลังส่ง...' : 'สร้าง + ส่งตรวจสอบ'}
-            </button>
+            </Button>
           </div>
         )}
       </div>

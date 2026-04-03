@@ -11,7 +11,9 @@ import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { compressImageForOcr } from '@/lib/compressImage';
-import { Receipt, Plus, Pencil, Upload, X, ArrowLeft, ShoppingBag, Megaphone, Building2, MoreHorizontal, MoreVertical } from 'lucide-react';
+import { Receipt, Plus, Pencil, Upload, X, ArrowLeft, ShoppingBag, Megaphone, Building2, MoreHorizontal, MoreVertical, TrendingDown } from 'lucide-react';
+import AnimatedCounter from '@/components/ui/animated-counter';
+import { Button } from '@/components/ui/button';
 
 // ─── Types ───
 interface Expense {
@@ -58,7 +60,7 @@ const statusLabels: Record<string, string> = {
 
 const statusColors: Record<string, string> = {
   DRAFT: 'bg-muted text-muted-foreground', PENDING_APPROVAL: 'bg-warning/10 text-warning dark:bg-warning/15',
-  APPROVED: 'bg-blue-100 text-blue-700', REJECTED: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
+  APPROVED: 'bg-primary/10 text-primary dark:bg-primary/15', REJECTED: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
   PAID: 'bg-success/10 text-success dark:bg-success/15', VOIDED: 'bg-muted text-muted-foreground line-through',
 };
 
@@ -222,8 +224,11 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
 
         <div className="p-6 space-y-6">
           {/* Section: ข้อมูลเอกสาร */}
-          <div className="border rounded-lg p-4 space-y-3">
-            <h3 className="font-semibold text-foreground border-b pb-2">ข้อมูลเอกสาร</h3>
+          <div className="border border-border rounded-xl p-5 space-y-3">
+            <h3 className="font-semibold text-foreground flex items-center gap-2 border-b border-border pb-3">
+              <span className="size-2 rounded-full bg-primary" />
+              ข้อมูลเอกสาร
+            </h3>
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className="block text-xs text-muted-foreground mb-1">วันที่ *</label>
@@ -245,8 +250,11 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
           </div>
 
           {/* Section: ผู้รับเงิน */}
-          <div className="border rounded-lg p-4 space-y-3">
-            <h3 className="font-semibold text-foreground border-b pb-2">ผู้รับเงิน / ร้านค้า</h3>
+          <div className="border border-border rounded-xl p-5 space-y-3">
+            <h3 className="font-semibold text-foreground flex items-center gap-2 border-b border-border pb-3">
+              <span className="size-2 rounded-full bg-warning" />
+              ผู้รับเงิน / ร้านค้า
+            </h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs text-muted-foreground mb-1">ชื่อผู้รับเงิน</label>
@@ -260,8 +268,11 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
           </div>
 
           {/* Section: รายการค่าใช้จ่าย */}
-          <div className="border rounded-lg p-4 space-y-4">
-            <h3 className="font-semibold text-foreground border-b pb-2">รายการค่าใช้จ่าย</h3>
+          <div className="border border-border rounded-xl p-5 space-y-4">
+            <h3 className="font-semibold text-foreground flex items-center gap-2 border-b border-border pb-3">
+              <span className="size-2 rounded-full bg-info" />
+              รายการค่าใช้จ่าย
+            </h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs text-muted-foreground mb-1">หมวดบัญชี *</label>
@@ -306,20 +317,23 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
 
             {/* Summary box */}
             {amt > 0 && (
-              <div className="bg-gray-50 rounded-lg p-4 space-y-1 text-sm border-t">
-                <div className="flex justify-between"><span className="text-muted-foreground">รวมก่อน VAT</span><span>{fmt(amt)}</span></div>
-                {vat > 0 && <div className="flex justify-between"><span className="text-muted-foreground">VAT 7%</span><span>{fmt(vat)}</span></div>}
-                {wht > 0 && <div className="flex justify-between text-destructive"><span>หัก ณ ที่จ่าย</span><span>({fmt(wht)})</span></div>}
-                <div className="border-t border-dashed pt-2 mt-2 flex justify-between font-bold text-base">
-                  <span>ยอดจ่ายสุทธิ</span><span className="text-foreground">{fmt(netPay)}</span>
+              <div className="bg-primary/5 dark:bg-primary/10 rounded-xl p-4 space-y-1.5 text-sm border border-primary/10">
+                <div className="flex justify-between"><span className="text-muted-foreground">รวมก่อน VAT</span><span className="font-medium">{fmt(amt)}</span></div>
+                {vat > 0 && <div className="flex justify-between"><span className="text-muted-foreground">VAT 7%</span><span className="font-medium">{fmt(vat)}</span></div>}
+                {wht > 0 && <div className="flex justify-between text-destructive"><span>หัก ณ ที่จ่าย</span><span className="font-medium">({fmt(wht)})</span></div>}
+                <div className="border-t border-primary/20 pt-2 mt-2 flex justify-between font-bold text-lg">
+                  <span className="text-primary">ยอดจ่ายสุทธิ</span><span className="text-primary">{fmt(netPay)}</span>
                 </div>
               </div>
             )}
           </div>
 
           {/* Section: ข้อมูลการจ่ายเงิน */}
-          <div className="border rounded-lg p-4 space-y-3">
-            <h3 className="font-semibold text-foreground border-b pb-2">ข้อมูลการจ่ายเงิน</h3>
+          <div className="border border-border rounded-xl p-5 space-y-3">
+            <h3 className="font-semibold text-foreground flex items-center gap-2 border-b border-border pb-3">
+              <span className="size-2 rounded-full bg-success" />
+              ข้อมูลการจ่ายเงิน
+            </h3>
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className="block text-xs text-muted-foreground mb-1">วิธีจ่ายเงิน</label>
@@ -340,8 +354,11 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
           </div>
 
           {/* Section: แนบไฟล์ */}
-          <div className="border rounded-lg p-4 space-y-3">
-            <h3 className="font-semibold text-foreground border-b pb-2">แนบไฟล์</h3>
+          <div className="border border-border rounded-xl p-5 space-y-3">
+            <h3 className="font-semibold text-foreground flex items-center gap-2 border-b border-border pb-3">
+              <span className="size-2 rounded-full bg-destructive" />
+              แนบไฟล์
+            </h3>
             {form.receiptImageUrl ? (
               <div className="flex items-start gap-3">
                 <img src={form.receiptImageUrl} alt="ใบเสร็จ" className="w-24 h-24 object-cover rounded-lg border" />
@@ -366,8 +383,11 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
           </div>
 
           {/* Section: หมายเหตุ */}
-          <div className="border rounded-lg p-4 space-y-3">
-            <h3 className="font-semibold text-foreground border-b pb-2">หมายเหตุ</h3>
+          <div className="border border-border rounded-xl p-5 space-y-3">
+            <h3 className="font-semibold text-foreground flex items-center gap-2 border-b border-border pb-3">
+              <span className="size-2 rounded-full bg-muted-foreground" />
+              หมายเหตุ
+            </h3>
             <textarea value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} rows={2} placeholder="หมายเหตุเพิ่มเติม..." className={inputClass} />
             <div className="flex items-center gap-4">
               <label className="flex items-center gap-1.5 text-sm cursor-pointer">
@@ -385,18 +405,17 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
         </div>
 
         {/* Footer buttons */}
-        <div className="sticky bottom-0 bg-background border-t px-6 py-4 flex justify-end gap-3">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground border border-input rounded-lg">
+        <div className="sticky bottom-0 bg-background border-t border-border px-6 py-4 flex justify-end gap-3">
+          <Button variant="ghost" size="md" onClick={onClose}>
             ยกเลิก
-          </button>
-          <button onClick={() => handleSave(false)} disabled={saveMutation.isPending}
-            className="px-4 py-2 text-sm font-medium border border-input rounded-lg hover:bg-muted disabled:opacity-50">
+          </Button>
+          <Button variant="outline" size="md" onClick={() => handleSave(false)} disabled={saveMutation.isPending}>
             {saveMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกร่าง'}
-          </button>
-          <button onClick={() => handleSave(true)} disabled={saveMutation.isPending}
-            className="px-4 py-2 text-sm font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50">
+          </Button>
+          <Button variant="primary" size="md" onClick={() => handleSave(true)} disabled={saveMutation.isPending}
+            className="bg-success hover:bg-success/90">
             {saveMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกและส่งอนุมัติ'}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -474,12 +493,12 @@ export default function ExpensesPage() {
   const handleFormSaved = () => { setShowForm(false); setEditingExpense(null); invalidateAll(); };
 
   const summaryCards = [
-    { label: 'รายจ่ายทั้งหมด', amount: summary?.totalAmount, sub: `${summary?.totalCount || 0} รายการ | รออนุมัติ ${summary?.pendingCount || 0}`, icon: Receipt, color: 'text-blue-600', bg: 'bg-blue-50' },
-    { label: 'ต้นทุนขาย', amount: summary?.byAccountType?.COST_OF_SALES, icon: ShoppingBag, color: 'text-warning', bg: 'bg-orange-50' },
-    { label: 'ค่าใช้จ่ายขาย', amount: summary?.byAccountType?.SELLING_EXPENSE, icon: Megaphone, color: 'text-purple-600', bg: 'bg-purple-50' },
-    { label: 'ค่าใช้จ่ายบริหาร', amount: summary?.byAccountType?.ADMINISTRATIVE_EXPENSE, icon: Building2, color: 'text-cyan-600', bg: 'bg-cyan-50' },
-    { label: 'ค่าใช้จ่ายอื่น', amount: summary?.byAccountType?.OTHER_EXPENSE, icon: MoreHorizontal, color: 'text-gray-600', bg: 'bg-gray-100' },
-  ];
+    { label: 'รายจ่ายทั้งหมด', amount: summary?.totalAmount, sub: `${summary?.totalCount || 0} รายการ | รออนุมัติ ${summary?.pendingCount || 0}`, icon: TrendingDown, color: 'text-primary', iconBg: 'bg-primary/20', stripe: 'bg-primary', accent: true },
+    { label: 'ต้นทุนขาย', amount: summary?.byAccountType?.COST_OF_SALES, icon: ShoppingBag, color: 'text-warning', iconBg: 'bg-warning/20', stripe: 'bg-warning' },
+    { label: 'ค่าใช้จ่ายขาย', amount: summary?.byAccountType?.SELLING_EXPENSE, icon: Megaphone, color: 'text-info', iconBg: 'bg-info/20', stripe: 'bg-info' },
+    { label: 'ค่าใช้จ่ายบริหาร', amount: summary?.byAccountType?.ADMINISTRATIVE_EXPENSE, icon: Building2, color: 'text-success', iconBg: 'bg-success/20', stripe: 'bg-success' },
+    { label: 'ค่าใช้จ่ายอื่น', amount: summary?.byAccountType?.OTHER_EXPENSE, icon: MoreHorizontal, color: 'text-muted-foreground', iconBg: 'bg-muted-foreground/15', stripe: 'bg-muted-foreground/50' },
+  ] as const;
 
   const totalPages = Math.ceil((expensesData?.total || 0) / 20);
 
@@ -543,34 +562,42 @@ export default function ExpensesPage() {
 
   return (
     <div onClick={() => setOpenMenuId(null)}>
-      <PageHeader title="บันทึกรายจ่าย" subtitle={`ทั้งหมด ${expensesData?.total || 0} รายการ`} icon={<Receipt className="size-6" />}
+      <PageHeader title="บันทึกรายจ่าย" subtitle={`ทั้งหมด ${expensesData?.total || 0} รายการ`}
         action={
-          <button onClick={openCreate} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors flex items-center gap-1.5">
+          <Button variant="primary" size="md" onClick={openCreate}>
             <Plus className="size-4" /> บันทึกรายจ่าย
-          </button>
+          </Button>
         }
       />
 
-      {/* Summary Cards with icons */}
+      {/* Summary Cards — color stripe left border */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         {summaryCards.map((card) => (
-          <Card key={card.label}>
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">{card.label}</span>
-                <div className={`p-2 rounded-lg ${card.bg}`}><card.icon className={`size-4 ${card.color}`} /></div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{fmt(card.amount)}</div>
-              {card.sub && <div className="text-sm text-muted-foreground">{card.sub}</div>}
-            </CardContent>
+          <Card key={card.label} className="h-full overflow-hidden">
+            <div className="flex h-full">
+              {/* Color stripe */}
+              <div className={`w-1 shrink-0 ${card.stripe}`} />
+              <CardContent className="p-4 flex flex-col justify-between flex-1">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-medium text-muted-foreground">{card.label}</span>
+                  <div className={`size-8 rounded-lg flex items-center justify-center shrink-0 ${card.iconBg}`}>
+                    <card.icon className={`size-4 ${card.color}`} />
+                  </div>
+                </div>
+                <div>
+                  <AnimatedCounter value={card.amount || 0} className={`text-xl font-bold ${'accent' in card && card.accent ? card.color : 'text-foreground'}`} />
+                  <div className="text-2xs text-muted-foreground mt-1 min-h-[1rem]">
+                    {'sub' in card && card.sub ? card.sub : '\u00A0'}
+                  </div>
+                </div>
+              </CardContent>
+            </div>
           </Card>
         ))}
       </div>
 
-      {/* Filters with labels */}
-      <div className="flex flex-wrap gap-4 mb-4">
+      {/* Filters — grouped in card */}
+      <div className="flex flex-wrap gap-4 mb-5 bg-card rounded-xl border border-border p-4">
         <div>
           <label className="block text-xs text-muted-foreground mb-1">สถานะ</label>
           <select value={statusFilter} onChange={(e) => setFilter('status', e.target.value)} className={`${inputClass} w-auto min-w-[120px]`}>
@@ -625,8 +652,8 @@ export default function ExpensesPage() {
         <div className="flex items-center justify-between mt-4">
           <span className="text-sm text-muted-foreground">หน้า {page} / {totalPages} (ทั้งหมด {expensesData?.total} รายการ)</span>
           <div className="flex gap-1">
-            <button disabled={page <= 1} onClick={() => setFilter('page', String(page - 1))} className="px-3 py-1.5 text-sm border border-input rounded-lg hover:bg-muted disabled:opacity-50">ก่อนหน้า</button>
-            <button disabled={page >= totalPages} onClick={() => setFilter('page', String(page + 1))} className="px-3 py-1.5 text-sm border border-input rounded-lg hover:bg-muted disabled:opacity-50">ถัดไป</button>
+            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setFilter('page', String(page - 1))}>ก่อนหน้า</Button>
+            <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setFilter('page', String(page + 1))}>ถัดไป</Button>
           </div>
         </div>
       )}

@@ -56,6 +56,7 @@ import { ExpensesModule } from './modules/expenses/expenses.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
 import { CsrfGuard } from './guards/csrf.guard';
+import { AppCacheModule } from './cache/cache.module';
 
 @Module({
   imports: [
@@ -77,6 +78,7 @@ import { CsrfGuard } from './guards/csrf.guard';
         limit: 200, // Allow 200 req/sec per IP (supports 20+ concurrent employees on same network)
       },
     ]),
+    AppCacheModule,
     StorageModule,
     PrismaModule,
     AuthModule,

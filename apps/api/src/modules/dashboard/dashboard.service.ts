@@ -1,15 +1,34 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { Cache } from 'cache-manager';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class DashboardService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Inject(CACHE_MANAGER) private cache: Cache,
+  ) {}
+
+  /** Cache helper: get from cache or compute and store */
+  private async cached<T>(key: string, ttl: number, compute: () => Promise<T>): Promise<T> {
+    const cached = await this.cache.get<T>(key);
+    if (cached !== undefined && cached !== null) return cached;
+    const result = await compute();
+    await this.cache.set(key, result, ttl);
+    return result;
+  }
 
   /**
    * Get main dashboard KPIs
    */
   async getKPIs(branchId?: string) {
+    const cacheKey = `dashboard:kpis:${branchId || 'all'}`;
+    return this.cached(cacheKey, 60, () => this._computeKPIs(branchId)); // 60s cache
+  }
+
+  private async _computeKPIs(branchId?: string) {
     const branchFilter: Prisma.ContractWhereInput = branchId ? { branchId } : {};
     const productBranchFilter: Prisma.ProductWhereInput = branchId ? { branchId } : {};
 

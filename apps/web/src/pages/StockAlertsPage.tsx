@@ -103,7 +103,8 @@ export default function StockAlertsPage() {
     queryKey: ['low-stock-dashboard'],
     queryFn: async () => {
       const { data } = await api.get('/reorder-points/low-stock');
-      return data;
+      // API returns { totalLowStock, data: [...] } — map to { items: [...] }
+      return { ...data, items: data.data ?? data.items ?? [] };
     },
   });
 
@@ -113,7 +114,7 @@ export default function StockAlertsPage() {
       const params: Record<string, string> = {};
       if (filterBranch) params.branchId = filterBranch;
       const { data } = await api.get('/reorder-points', { params });
-      return data;
+      return Array.isArray(data) ? data : data.data ?? [];
     },
   });
 

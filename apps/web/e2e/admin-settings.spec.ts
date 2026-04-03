@@ -225,10 +225,10 @@ test.describe('เทมเพลตสัญญา', () => {
 
   test('should load contract templates page', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    // Uses HeaderBar, not PageHeader
-    await expect(
-      page.getByText(/เทมเพลต|สัญญา|template/i).first(),
-    ).toBeVisible({ timeout: 15000 });
+    // Page uses HeaderBar with a <select> for template switching, not a standard heading.
+    // Avoid getByText on full contract content (80KB+ DOM) — use targeted locator.
+    const headerBar = page.locator('select, button:has-text("บันทึก"), button:has-text("Save")').first();
+    await expect(headerBar).toBeVisible({ timeout: 15000 });
   });
 
   test('should show template list or editor', async ({ page }) => {

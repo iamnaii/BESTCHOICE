@@ -90,7 +90,10 @@ export default function UsersPage() {
 
   const { data: users = [], isLoading } = useQuery<User[]>({
     queryKey: ['users'],
-    queryFn: async () => (await api.get('/users')).data,
+    queryFn: async () => {
+      const { data } = await api.get('/users');
+      return Array.isArray(data) ? data : data.data ?? [];
+    },
   });
 
   const { data: branches = [] } = useQuery<{ id: string; name: string }[]>({

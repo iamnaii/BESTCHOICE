@@ -35,7 +35,7 @@ export default function StickerPrintPage() {
     queryKey: ['sticker-templates'],
     queryFn: async () => {
       const { data } = await api.get('/sticker-templates');
-      return data;
+      return Array.isArray(data) ? data : data.data ?? [];
     },
   });
 

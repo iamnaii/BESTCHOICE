@@ -19,6 +19,9 @@ export class EmailService {
         port: port || 587,
         secure: port === 465,
         auth: { user, pass },
+        connectionTimeout: 5000,
+        greetingTimeout: 5000,
+        socketTimeout: 10000,
       });
       this.logger.log(`SMTP transport configured (host: ${host})`);
     } else {
@@ -49,8 +52,12 @@ export class EmailService {
       return;
     }
 
-    await this.transporter.sendMail({ from, to, subject, html });
-    this.logger.log(`Password reset email sent to ${to}`);
+    try {
+      await this.transporter.sendMail({ from, to, subject, html });
+      this.logger.log(`Password reset email sent to ${to}`);
+    } catch (err) {
+      this.logger.error(`Failed to send password reset email to ${to}: ${err}`);
+    }
   }
 
   /**
@@ -79,8 +86,12 @@ export class EmailService {
       return;
     }
 
-    await this.transporter.sendMail({ from, to, subject, html });
-    this.logger.log(`Invite email sent to ${to}`);
+    try {
+      await this.transporter.sendMail({ from, to, subject, html });
+      this.logger.log(`Invite email sent to ${to}`);
+    } catch (err) {
+      this.logger.error(`Failed to send invite email to ${to}: ${err}`);
+    }
   }
 
   private buildInviteHtml(

@@ -147,27 +147,43 @@ export async function loginViaAPI(page: Page) {
 }
 
 /**
- * Login as a specific role via API (no cached token — always fresh login).
+ * Per-worker token cache for role-based logins.
+ * Avoids hitting the login API for every test in the same worker,
+ * which would trigger ThrottlerGuard rate limiting.
+ */
+const roleTokenCache: Partial<Record<TestRole, { token: string; timestamp: number }>> = {};
+const ROLE_TOKEN_MAX_AGE_MS = 10 * 60 * 1000; // 10 min (JWT expires at 15 min)
+
+/**
+ * Login as a specific role via API (cached per worker to avoid rate limiting).
  * Use this for role-based access tests where you need non-OWNER accounts.
  */
 export async function loginAsRole(page: Page, role: TestRole) {
-  const account = ROLE_ACCOUNTS[role];
-  const apiURL = process.env.API_DIRECT_URL || 'http://localhost:3000';
-  const response = await page.request.post(`${apiURL}/api/auth/login`, {
-    data: { email: account.email, password: account.password },
-    headers: { 'X-Requested-With': 'XMLHttpRequest' },
-  });
+  let token: string;
 
-  if (!response.ok()) {
-    throw new Error(`loginAsRole(${role}) failed: HTTP ${response.status()}`);
+  const cached = roleTokenCache[role];
+  if (cached && Date.now() - cached.timestamp < ROLE_TOKEN_MAX_AGE_MS) {
+    token = cached.token;
+  } else {
+    const account = ROLE_ACCOUNTS[role];
+    const apiURL = process.env.API_DIRECT_URL || 'http://localhost:3000';
+    const response = await page.request.post(`${apiURL}/api/auth/login`, {
+      data: { email: account.email, password: account.password },
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+    });
+
+    if (!response.ok()) {
+      throw new Error(`loginAsRole(${role}) failed: HTTP ${response.status()}`);
+    }
+
+    const data = await response.json();
+    if (!data.accessToken) {
+      throw new Error(`loginAsRole(${role}): no accessToken in response`);
+    }
+
+    token = data.accessToken;
+    roleTokenCache[role] = { token, timestamp: Date.now() };
   }
-
-  const data = await response.json();
-  if (!data.accessToken) {
-    throw new Error(`loginAsRole(${role}): no accessToken in response`);
-  }
-
-  const token = data.accessToken;
 
   await page.setExtraHTTPHeaders({
     Authorization: `Bearer ${token}`,

@@ -23,7 +23,12 @@ test.describe('Customer CRUD Flow', () => {
   const uniqueSuffix = Date.now().toString().slice(-6);
   const testFirstName = `${TEST_CUSTOMER.firstName}${uniqueSuffix}`;
   const testLastName = `${TEST_CUSTOMER.lastName}${uniqueSuffix}`;
-  const testNationalId = `9${uniqueSuffix}${uniqueSuffix.slice(0, 6)}0`;
+  // Generate Thai national ID with valid mod-11 checksum
+  const idBase = `9${uniqueSuffix}${uniqueSuffix.slice(0, 5)}`;
+  const weights = [13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2];
+  const sum = idBase.split('').reduce((s, d, i) => s + parseInt(d) * weights[i], 0);
+  const checkDigit = (11 - (sum % 11)) % 10;
+  const testNationalId = `${idBase}${checkDigit}`;
   const testPhone = `09${uniqueSuffix}1234`.slice(0, 10);
   let createdCustomerId = '';
 

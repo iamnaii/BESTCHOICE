@@ -16,9 +16,9 @@ test.describe('Landing Page', () => {
 
   test('should load landing page', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    // Landing page should show BESTCHOICE branding
+    // Landing page shows "best choice" branding, "สินค้าคุณภาพ", "ผ่อนสบาย"
     await expect(
-      page.getByText(/BESTCHOICE|เบสช้อยส์|ผ่อนสินค้า/).first(),
+      page.getByText(/best\s*choice|สินค้าคุณภาพ|ผ่อนสบาย/i).first(),
     ).toBeVisible({ timeout: 15000 });
   });
 

@@ -168,7 +168,7 @@ function DataTable<T extends { id: string }>({
     state: {
       sorting,
       globalFilter: searchable ? globalFilter : undefined,
-      rowSelection: selectable ? rowSelection : undefined,
+      rowSelection: selectable ? rowSelection : {},
       columnVisibility,
     },
     enableRowSelection: selectable,

@@ -31,9 +31,10 @@ export class PaySolutionsService {
   private readonly logger = new Logger(PaySolutionsService.name);
   private readonly merchantId: string;
   private readonly secretKey: string;
+  private readonly apiKey: string;
   private readonly apiUrl: string;
   private readonly returnUrl: string;
-  private readonly webhookSecret: string;
+  private readonly apiBaseUrl: string;
 
   constructor(
     private prisma: PrismaService,
@@ -41,12 +42,16 @@ export class PaySolutionsService {
   ) {
     this.merchantId = this.config.get<string>('PAYSOLUTIONS_MERCHANT_ID', '');
     this.secretKey = this.config.get<string>('PAYSOLUTIONS_SECRET_KEY', '');
+    this.apiKey = this.config.get<string>('PAYSOLUTIONS_API_KEY', '');
     this.apiUrl = this.config.get<string>(
       'PAYSOLUTIONS_API_URL',
       'https://api.paysolutions.asia',
     );
     this.returnUrl = this.config.get<string>('PAYSOLUTIONS_RETURN_URL', '');
-    this.webhookSecret = this.config.get<string>('PAYSOLUTIONS_WEBHOOK_SECRET', '');
+    this.apiBaseUrl = this.config.get<string>(
+      'API_BASE_URL',
+      'https://api.bestchoicephone.app',
+    );
   }
 
   /**
@@ -107,7 +112,7 @@ export class PaySolutionsService {
       productdetail: productDetail,
       total: amount.toFixed(2),
       lang: 'TH',
-      postback_url: `${this.config.get('FRONTEND_URL', 'http://localhost:5173')}/api/paysolutions/webhook`,
+      postback_url: `${this.apiBaseUrl}/api/paysolutions/webhook`,
       return_url: this.returnUrl || `${this.config.get('FRONTEND_URL', 'http://localhost:5173')}/liff/contract`,
       cc: '00', // Allow all payment methods
       customer_name: customerName,
@@ -123,7 +128,8 @@ export class PaySolutionsService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.secretKey}`,
+          'apikey': this.apiKey,
+          'secretkey': this.secretKey,
         },
         body: JSON.stringify(paymentPayload),
       });
@@ -186,24 +192,22 @@ export class PaySolutionsService {
   }
 
   /**
-   * ตรวจสอบ webhook signature จาก Pay Solutions
-   * ใช้ HMAC-SHA256 กับ webhookSecret
+   * ตรวจสอบ webhook callback จาก Pay Solutions
+   * Pay Solutions ส่ง form POST กลับมาพร้อม merchantid — ตรวจว่าตรงกับ config
    */
-  verifyWebhookSignature(payload: string, signature: string): boolean {
-    if (!this.webhookSecret) {
-      this.logger.warn('PAYSOLUTIONS_WEBHOOK_SECRET not configured — skipping verification');
-      return true; // ถ้าไม่ได้ config secret ให้ผ่าน (dev mode)
+  verifyWebhookMerchant(merchantid: string): boolean {
+    if (!this.merchantId) {
+      this.logger.warn('PAYSOLUTIONS_MERCHANT_ID not configured — skipping verification');
+      return true;
     }
 
-    const expected = crypto
-      .createHmac('sha256', this.webhookSecret)
-      .update(payload)
-      .digest('hex');
-
-    return crypto.timingSafeEqual(
-      Buffer.from(signature, 'hex'),
-      Buffer.from(expected, 'hex'),
-    );
+    const isValid = merchantid === this.merchantId;
+    if (!isValid) {
+      this.logger.warn(
+        `Webhook merchantid mismatch: received=${merchantid}, expected=${this.merchantId}`,
+      );
+    }
+    return isValid;
   }
 
   /**

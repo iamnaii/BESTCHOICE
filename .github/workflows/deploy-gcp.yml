@@ -205,10 +205,11 @@ jobs:
             --port=3000 \
             --min-instances=1 \
             --max-instances=10 \
-            --memory=1Gi \
-            --cpu=1 \
+            --memory=2Gi \
+            --cpu=2 \
             --startup-cpu-boost \
             --timeout=300 \
+            --execution-environment=gen2 \
             --set-secrets="\
           JWT_SECRET=JWT_SECRET:latest,\
           JWT_REFRESH_SECRET=JWT_REFRESH_SECRET:latest,\

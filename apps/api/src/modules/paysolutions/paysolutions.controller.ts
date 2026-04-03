@@ -4,16 +4,12 @@ import {
   Get,
   Body,
   Param,
-  Req,
   HttpCode,
   Logger,
-  UseGuards,
   BadRequestException,
-  RawBodyRequest,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import { Request } from 'express';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
 import { PaySolutionsService } from './paysolutions.service';
 import { CreatePaymentIntentDto } from './dto';
@@ -65,28 +61,19 @@ export class PaySolutionsController {
   /**
    * POST /api/paysolutions/webhook
    * Webhook callback จาก Pay Solutions — ไม่มี auth guard
-   * Verify signature แทน JWT
+   * Pay Solutions ส่ง form POST พร้อม parameters กลับมา ตรวจ merchantid แทน signature
    */
   @Post('webhook')
   @SkipCsrf()
   @HttpCode(200)
-  async handleWebhook(
-    @Req() req: RawBodyRequest<Request>,
-    @Body() body: Record<string, string>,
-  ) {
+  async handleWebhook(@Body() body: Record<string, string>) {
     this.logger.log(`Webhook received: ${JSON.stringify(body)}`);
 
-    // Verify webhook signature
-    const signature = req.headers['x-signature'] as string || req.headers['x-paysolutions-signature'] as string || '';
-    const rawBody = req.rawBody?.toString() || JSON.stringify(body);
-
-    if (signature) {
-      const isValid = this.paySolutionsService.verifyWebhookSignature(rawBody, signature);
-      if (!isValid) {
-        this.logger.warn('Invalid webhook signature');
-        // Return 200 anyway to prevent retries, but don't process
-        return { received: true, processed: false };
-      }
+    // Verify merchantid ตรงกับ config
+    const isValid = this.paySolutionsService.verifyWebhookMerchant(body.merchantid || '');
+    if (!isValid) {
+      this.logger.warn('Invalid webhook merchantid');
+      return { received: true, processed: false };
     }
 
     // Process payment callback

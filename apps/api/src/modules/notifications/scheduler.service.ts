@@ -4,6 +4,7 @@ import { NotificationsService } from './notifications.service';
 import { OverdueService } from '../overdue/overdue.service';
 import { ReorderPointsService } from '../reorder-points/reorder-points.service';
 import { WarrantyService } from '../products/warranty.service';
+import { ReportGeneratorService } from '../reports/report-generator.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LineOaService } from '../line-oa/line-oa.service';
 import { PaymentLinkService } from '../line-oa/payment-links/payment-link.service';
@@ -19,6 +20,7 @@ export class SchedulerService {
     private overdueService: OverdueService,
     private reorderPointsService: ReorderPointsService,
     private warrantyService: WarrantyService,
+    private reportGeneratorService: ReportGeneratorService,
     private prisma: PrismaService,
     private lineOaService: LineOaService,
     private paymentLinkService: PaymentLinkService,
@@ -449,6 +451,33 @@ export class SchedulerService {
       );
     } catch (error) {
       this.logger.error(`Data retention cleanup failed: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+
+  /**
+   * Daily: Generate daily financial summary report.
+   * Runs at 23:55 ICT (16:55 UTC) to capture full day's data.
+   */
+  @Cron('55 16 * * *') // 23:55 ICT
+  async handleDailyReport() {
+    try {
+      const report = await this.reportGeneratorService.generateDailySummary();
+      this.logger.log(`Daily report: ฿${report.revenue.toLocaleString()}, ${report.paymentsCount} payments`);
+    } catch (error) {
+      this.logger.error(`Daily report generation failed: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+
+  /**
+   * Weekly: Generate weekly summary (every Monday at 00:05 ICT).
+   */
+  @Cron('5 17 * * 0') // Monday 00:05 ICT (Sunday 17:05 UTC)
+  async handleWeeklyReport() {
+    try {
+      const report = await this.reportGeneratorService.generateWeeklySummary();
+      this.logger.log(`Weekly report: ฿${report.totalRevenue.toLocaleString()} total revenue`);
+    } catch (error) {
+      this.logger.error(`Weekly report generation failed: ${error instanceof Error ? error.message : error}`);
     }
   }
 

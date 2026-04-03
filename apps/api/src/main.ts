@@ -51,6 +51,14 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api');
 
+  // API versioning: enable URI-based versioning (e.g., /api/v1/...)
+  // Default version is empty (no /v1/ prefix) for backward compatibility.
+  // New endpoints can use @Version('1') to opt into versioning.
+  app.enableVersioning({
+    type: (await import('@nestjs/common')).VersioningType.URI,
+    defaultVersion: '', // existing routes stay at /api/*
+  });
+
   // Global exception filter: reports 5xx to Sentry, consistent error responses
   const { httpAdapter } = app.get(HttpAdapterHost);
   app.useGlobalFilters(new SentryExceptionFilter(httpAdapter));

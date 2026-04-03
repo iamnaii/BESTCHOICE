@@ -1,13 +1,12 @@
-import { Controller, Post, Body, Logger } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { Controller, Post, Get, Body, Query, Logger } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { NotificationsService } from './notifications.service';
 
 /**
  * Public webhook endpoint for ThaiBulkSMS delivery reports (DLR).
  * No authentication — ThaiBulkSMS calls this URL with delivery status updates.
  *
- * To configure: set this URL as the callback_url in ThaiBulkSMS dashboard
- * or when sending SMS via API (if supported).
+ * Supports both GET (ThaiBulkSMS default) and POST methods.
  * Example: https://your-domain.com/api/notifications/sms-webhook
  */
 @ApiTags('Notifications')
@@ -17,9 +16,15 @@ export class SmsWebhookController {
 
   constructor(private notificationsService: NotificationsService) {}
 
+  @Get('sms-webhook')
+  async handleDeliveryReportGet(@Query() query: Record<string, unknown>) {
+    this.logger.log(`[SMS-Webhook] Delivery report received (GET)`);
+    return this.notificationsService.handleSmsDeliveryReport(query);
+  }
+
   @Post('sms-webhook')
-  async handleDeliveryReport(@Body() body: Record<string, unknown>) {
-    this.logger.log(`[SMS-Webhook] Delivery report received`);
+  async handleDeliveryReportPost(@Body() body: Record<string, unknown>) {
+    this.logger.log(`[SMS-Webhook] Delivery report received (POST)`);
     return this.notificationsService.handleSmsDeliveryReport(body);
   }
 }

@@ -158,14 +158,14 @@ function ShortcutCard({ icon: Icon, label, path, color }: { icon: LucideIcon; la
   const navigate = useNavigate();
   return (
     <Card
-      className="cursor-pointer hover:shadow-card-hover transition-shadow"
+      className="cursor-pointer hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 group"
       onClick={() => navigate(path)}
     >
       <CardContent className="p-5 flex flex-col items-center justify-center gap-3 text-center min-h-[120px]">
-        <div className={cn('size-11 rounded-xl flex items-center justify-center', color)}>
+        <div className={cn('size-11 rounded-xl flex items-center justify-center transition-transform group-hover:scale-105', color)}>
           <Icon className="size-5 text-white" />
         </div>
-        <span className="text-sm font-medium text-foreground leading-tight">{label}</span>
+        <span className="text-2sm font-medium text-foreground leading-tight">{label}</span>
       </CardContent>
     </Card>
   );
@@ -268,11 +268,11 @@ export default function DashboardPage() {
   if (kpisLoading && !kpis) return <DashboardSkeleton />;
 
   return (
-    <div className="flex flex-col gap-5 lg:gap-7">
+    <div className="flex flex-col gap-5 lg:gap-7.5">
       {/* Page Title */}
       <div>
-        <h1 className="text-xl font-semibold text-foreground">Dashboard</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
+        <h1 className="text-xl font-bold text-foreground">Dashboard</h1>
+        <p className="text-sm text-muted-foreground mt-1">
           สวัสดี {user?.name} — ภาพรวมธุรกิจและการกำกับพนักงาน
         </p>
       </div>

@@ -536,43 +536,43 @@ export default function CustomersPage() {
 
       {/* Summary Cards */}
       {result?.summary && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6">
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-xs text-muted-foreground mb-1">ลูกค้าทั้งหมด</div>
-              <div className="text-xl font-bold">{result.summary.totalCustomers.toLocaleString()}</div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 lg:gap-5 mb-6">
+          <Card className="hover:shadow-card-hover transition-shadow">
+            <CardContent className="p-5">
+              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ลูกค้าทั้งหมด</div>
+              <div className="text-2xl font-bold text-foreground">{result.summary.totalCustomers.toLocaleString()}</div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-xs text-muted-foreground mb-1">มีสัญญา Active</div>
-              <div className="text-xl font-bold text-success">{result.summary.withActiveContract.toLocaleString()}</div>
+          <Card className="hover:shadow-card-hover transition-shadow">
+            <CardContent className="p-5">
+              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">มีสัญญา Active</div>
+              <div className="text-2xl font-bold text-success">{result.summary.withActiveContract.toLocaleString()}</div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-xs text-muted-foreground mb-1">ค้างชำระ</div>
-              <div className={`text-xl font-bold ${result.summary.withOverdue > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>{result.summary.withOverdue.toLocaleString()}</div>
+          <Card className="hover:shadow-card-hover transition-shadow">
+            <CardContent className="p-5">
+              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ค้างชำระ</div>
+              <div className={`text-2xl font-bold ${result.summary.withOverdue > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>{result.summary.withOverdue.toLocaleString()}</div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-xs text-muted-foreground mb-1">เพิ่มเดือนนี้</div>
-              <div className="text-xl font-bold text-success">{result.summary.newThisMonth.toLocaleString()}</div>
+          <Card className="hover:shadow-card-hover transition-shadow">
+            <CardContent className="p-5">
+              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เพิ่มเดือนนี้</div>
+              <div className="text-2xl font-bold text-success">{result.summary.newThisMonth.toLocaleString()}</div>
             </CardContent>
           </Card>
         </div>
       )}
 
       {/* Filters */}
-      <div className="bg-card rounded-lg border p-4 mb-6">
+      <div className="bg-card rounded-lg border border-border/60 p-4 mb-6">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
           <input
             type="text"
             placeholder="ค้นหาชื่อ, เบอร์โทร, เลขบัตร ปชช..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="px-3 py-2 border border-input rounded-lg text-sm outline-none"
+            className="px-3 py-2 border border-input rounded-lg text-sm outline-none focus:ring-2 focus:ring-ring/30 focus:border-ring transition-colors"
           />
           <select
             value={contractStatusFilter}

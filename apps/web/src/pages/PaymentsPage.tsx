@@ -575,28 +575,28 @@ export default function PaymentsPage() {
           ) : summary ? (
             <div>
               {/* Summary Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-5 lg:gap-7.5 mb-6">
-                <Card>
-                  <CardContent>
-                    <div className="text-xs text-muted-foreground mb-1">จำนวนรายการ</div>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 lg:gap-5 mb-6">
+                <Card className="hover:shadow-card-hover transition-shadow">
+                  <CardContent className="p-5">
+                    <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">จำนวนรายการ</div>
                     <div className="text-2xl font-bold">{summary.totalPayments}</div>
                   </CardContent>
                 </Card>
-                <Card>
-                  <CardContent>
-                    <div className="text-xs text-muted-foreground mb-1">ยอดรวม</div>
+                <Card className="hover:shadow-card-hover transition-shadow">
+                  <CardContent className="p-5">
+                    <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ยอดรวม</div>
                     <div className="text-2xl font-bold text-success">{summary.totalAmount.toLocaleString()} ฿</div>
                   </CardContent>
                 </Card>
-                <Card>
-                  <CardContent>
-                    <div className="text-xs text-muted-foreground mb-1">ค่าปรับรวม</div>
+                <Card className="hover:shadow-card-hover transition-shadow">
+                  <CardContent className="p-5">
+                    <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ค่าปรับรวม</div>
                     <div className="text-2xl font-bold text-destructive">{summary.totalLateFees.toLocaleString()} ฿</div>
                   </CardContent>
                 </Card>
-                <Card>
-                  <CardContent>
-                    <div className="text-xs text-muted-foreground mb-1">แยกตามวิธี</div>
+                <Card className="hover:shadow-card-hover transition-shadow">
+                  <CardContent className="p-5">
+                    <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">แยกตามวิธี</div>
                     {Object.entries(summary.byMethod).map(([method, amount]) => (
                       <div key={method} className="flex justify-between text-sm">
                         <span className="text-muted-foreground">{methodLabels[method] || method}</span>

@@ -302,28 +302,28 @@ export default function ContractsPage() {
 
       {/* Summary Cards — animated + dark mode friendly */}
       {summary && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <Card>
-            <CardContent className="p-4">
-              <div className="text-xs text-muted-foreground mb-1">สัญญาทั้งหมด</div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 lg:gap-5 mb-6">
+          <Card className="hover:shadow-card-hover transition-shadow">
+            <CardContent className="p-5">
+              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สัญญาทั้งหมด</div>
               <AnimatedCounter value={summary.totalContracts} className="text-2xl font-bold" />
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="text-xs text-muted-foreground mb-1">สัญญาอยู่</div>
+          <Card className="hover:shadow-card-hover transition-shadow">
+            <CardContent className="p-5">
+              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สัญญาอยู่</div>
               <AnimatedCounter value={summary.activeContracts} className="text-2xl font-bold text-success" />
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="text-xs text-muted-foreground mb-1">ค้างชำระ</div>
+          <Card className="hover:shadow-card-hover transition-shadow">
+            <CardContent className="p-5">
+              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ค้างชำระ</div>
               <AnimatedCounter value={summary.overdueContracts} className="text-2xl font-bold text-destructive" />
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="text-xs text-muted-foreground mb-1">มูลค่าพอร์ตโฟลิโอ</div>
+          <Card className="hover:shadow-card-hover transition-shadow">
+            <CardContent className="p-5">
+              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">มูลค่าพอร์ตโฟลิโอ</div>
               <AnimatedCounter value={summary.portfolioValue} suffix=" ฿" className="text-2xl font-bold text-primary" />
             </CardContent>
           </Card>

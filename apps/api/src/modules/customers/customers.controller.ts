@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards } from '@nestjs/common';
 import { CustomersService } from './customers.service';
 import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer.dto';
+import { UploadDocumentDto, DeleteDocumentDto } from './dto/document.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -82,14 +83,14 @@ export class CustomersController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   uploadDocument(
     @Param('id') id: string,
-    @Body() dto: { fileName: string; fileUrl: string; mimeType: string; fileSize: number },
+    @Body() dto: UploadDocumentDto,
   ) {
     return this.customersService.uploadDocument(id, dto);
   }
 
   @Delete(':id/documents')
   @Roles('OWNER', 'BRANCH_MANAGER')
-  deleteDocument(@Param('id') id: string, @Body() dto: { fileUrl: string }) {
+  deleteDocument(@Param('id') id: string, @Body() dto: DeleteDocumentDto) {
     return this.customersService.deleteDocument(id, dto.fileUrl);
   }
 }

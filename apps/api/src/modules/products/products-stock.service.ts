@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, Logger, InternalServerErrorException, HttpException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger, InternalServerErrorException, HttpException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TransferProductDto, BulkTransferDto } from './dto/transfer-product.dto';
 
@@ -263,11 +263,13 @@ export class ProductsStockService {
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
-  async getTransferById(transferId: string) {
+  async getTransferById(transferId: string, user?: { role: string; branchId: string | null }) {
     const transfer = await this.prisma.stockTransfer.findUnique({
       where: { id: transferId },
       select: {
         ...stockTransferSelect,
+        fromBranchId: true,
+        toBranchId: true,
         fromBranch: { select: { id: true, name: true } },
         toBranch: { select: { id: true, name: true } },
         confirmedBy: { select: { id: true, name: true } },
@@ -282,6 +284,14 @@ export class ProductsStockService {
       },
     });
     if (!transfer) throw new NotFoundException('ไม่พบรายการโอน');
+
+    // Branch-level access: non-OWNER/ACCOUNTANT can only see transfers involving their branch
+    if (user && user.role !== 'OWNER' && user.role !== 'ACCOUNTANT' && user.branchId) {
+      if (transfer.fromBranchId !== user.branchId && transfer.toBranchId !== user.branchId) {
+        throw new ForbiddenException('ไม่สามารถดูรายการโอนข้ามสาขาได้');
+      }
+    }
+
     return transfer;
   }
 

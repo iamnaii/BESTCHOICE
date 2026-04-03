@@ -50,23 +50,23 @@ export class PaymentsService {
       throw new BadRequestException('ต้อง upload หลักฐานการชำระเงิน (สลิปโอนเงิน) หรือระบุเลขอ้างอิงธุรกรรม');
     }
 
-    // Idempotency: reject duplicate transactionRef for the same contract
-    // Check all payment statuses (not just PAID) to prevent concurrent duplicates
-    if (transactionRef) {
-      const existing = await this.prisma.payment.findFirst({
-        where: {
-          contractId,
-          notes: { contains: `ref:${transactionRef}` },
-          status: { in: ['PAID', 'PARTIALLY_PAID'] },
-        },
-      });
-      if (existing) {
-        throw new BadRequestException(`ธุรกรรมนี้ถูกบันทึกแล้ว (อ้างอิง: ${transactionRef})`);
-      }
-    }
-
     // Use serializable transaction to prevent concurrent duplicate payments
     const updated = await this.prisma.$transaction(async (tx) => {
+      // Idempotency: reject duplicate transactionRef INSIDE transaction
+      // to prevent race condition where two concurrent requests both pass the check
+      if (transactionRef) {
+        const existing = await tx.payment.findFirst({
+          where: {
+            contractId,
+            notes: { contains: `ref:${transactionRef}` },
+            status: { in: ['PAID', 'PARTIALLY_PAID'] },
+          },
+        });
+        if (existing) {
+          throw new BadRequestException(`ธุรกรรมนี้ถูกบันทึกแล้ว (อ้างอิง: ${transactionRef})`);
+        }
+      }
+
       const contract = await tx.contract.findUnique({ where: { id: contractId } });
       if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
       if (!['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status)) {
@@ -79,7 +79,24 @@ export class PaymentsService {
       if (!payment) throw new NotFoundException('ไม่พบงวดที่ต้องการ');
       if (payment.status === 'PAID') throw new BadRequestException('งวดนี้ชำระแล้ว');
 
-      const amountDue = Number(payment.amountDue) + Number(payment.lateFee);
+      // Real-time late fee: recalculate at payment time (cron may not have run yet)
+      let lateFee = Number(payment.lateFee);
+      if (!payment.lateFeeWaived && payment.dueDate < new Date()) {
+        const daysOverdue = Math.floor((Date.now() - payment.dueDate.getTime()) / (1000 * 60 * 60 * 24));
+        if (daysOverdue > 0) {
+          const config = await tx.systemConfig.findUnique({ where: { key: 'late_fee_per_day' } });
+          const capConfig = await tx.systemConfig.findUnique({ where: { key: 'late_fee_cap' } });
+          const feePerDay = config ? Number(config.value) : 50;
+          const cap = capConfig ? Number(capConfig.value) : 1500;
+          const calculatedFee = Math.min(daysOverdue * feePerDay, cap);
+          if (calculatedFee > lateFee) {
+            lateFee = calculatedFee;
+            await tx.payment.update({ where: { id: payment.id }, data: { lateFee } });
+          }
+        }
+      }
+
+      const amountDue = Number(payment.amountDue) + lateFee;
       const prevPaid = Number(payment.amountPaid);
       const remaining = amountDue - prevPaid;
 

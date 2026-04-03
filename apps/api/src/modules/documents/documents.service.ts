@@ -734,8 +734,8 @@ ${(() => {
     try {
       const allSettings = await this.settingsService.findAll();
       for (const s of allSettings) configMap[s.key] = s.value;
-    } catch {
-      // Settings not available — use defaults
+    } catch (err) {
+      this.logger.warn('Settings not available, using defaults', err instanceof Error ? err.message : err);
     }
     const cfg = (key: string, fallback: string) => configMap[key] || fallback;
     const esc = this.escapeHtml.bind(this);

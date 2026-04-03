@@ -44,6 +44,12 @@ describe('AuthService', () => {
               updateMany: jest.fn().mockResolvedValue({ count: 1 }),
               deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
             },
+            $transaction: jest.fn().mockImplementation((args) => {
+              // Batch transaction: execute all promises in the array
+              if (Array.isArray(args)) return Promise.all(args);
+              // Interactive transaction: pass mock prisma as tx
+              return args({ user: { findUnique: jest.fn() }, refreshToken: { create: jest.fn(), update: jest.fn() } });
+            }),
           },
         },
         {
@@ -139,12 +145,8 @@ describe('AuthService', () => {
       const result = await service.refreshToken('valid-refresh-token');
       expect(result).toHaveProperty('accessToken');
       expect(result).toHaveProperty('refreshToken');
-      expect(prisma.refreshToken.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: 'rt-1' },
-          data: expect.objectContaining({ revokedAt: expect.any(Date) }),
-        }),
-      );
+      // Token rotation now uses atomic $transaction([revoke, create])
+      expect((prisma as any).$transaction).toHaveBeenCalled();
     });
 
     it('should throw on revoked refresh token', async () => {

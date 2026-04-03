@@ -1,8 +1,10 @@
-// Sentry must be imported before everything else
-import './sentry';
+// Sentry: only import if DSN is configured (avoids startup overhead in production without DSN)
+if (process.env.SENTRY_DSN) {
+  require('./sentry');
+}
 
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe, Logger } from '@nestjs/common';
+import { ValidationPipe, Logger, VersioningType } from '@nestjs/common';
 import { json, urlencoded } from 'express';
 import cookieParser from 'cookie-parser';
 import { HttpAdapterHost } from '@nestjs/core';
@@ -55,8 +57,8 @@ async function bootstrap() {
   // Default version is empty (no /v1/ prefix) for backward compatibility.
   // New endpoints can use @Version('1') to opt into versioning.
   app.enableVersioning({
-    type: (await import('@nestjs/common')).VersioningType.URI,
-    defaultVersion: '', // existing routes stay at /api/*
+    type: VersioningType.URI,
+    defaultVersion: '',
   });
 
   // Global exception filter: reports 5xx to Sentry, consistent error responses

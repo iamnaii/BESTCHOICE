@@ -86,7 +86,6 @@ const configGroups: ConfigGroup[] = [
     title: 'การแจ้งเตือน (SMS / LINE)',
     subtitle: 'ตั้งค่า sender name, ข้อความเตือน และช่วงเวลาส่ง',
     items: [
-      { key: 'sms_sender_name', label: 'SMS Sender Name', shortLabel: 'Sender', suffix: '', type: 'text', step: '', desc: 'ชื่อผู้ส่ง SMS ที่แสดงบนมือถือลูกค้า' },
       { key: 'notification_quiet_start', label: 'เวลาเริ่มห้ามส่ง (ชม.)', shortLabel: 'ห้ามส่งตั้งแต่', suffix: ' น.', type: 'number', step: '1', desc: 'ไม่ส่งแจ้งเตือนหลังเวลานี้ (เช่น 21)' },
       { key: 'notification_quiet_end', label: 'เวลาหยุดห้ามส่ง (ชม.)', shortLabel: 'ส่งได้ตั้งแต่', suffix: ' น.', type: 'number', step: '1', desc: 'เริ่มส่งแจ้งเตือนได้หลังเวลานี้ (เช่น 8)' },
       { key: 'payment_reminder_days_before', label: 'เตือนก่อนครบกำหนด (วัน)', shortLabel: 'เตือนล่วงหน้า', suffix: ' วัน', type: 'number', step: '1', desc: 'ส่ง LINE เตือนก่อนถึงวันครบกำหนดกี่วัน' },
@@ -95,10 +94,9 @@ const configGroups: ConfigGroup[] = [
   {
     key: 'payment_link',
     title: 'Payment Gateway',
-    subtitle: 'ตั้งค่าลิงก์ชำระเงินและ PromptPay QR',
+    subtitle: 'ตั้งค่าลิงก์ชำระเงิน (ชำระผ่าน PaySolutions)',
     items: [
       { key: 'payment_link_expiry_hours', label: 'อายุลิงก์ชำระเงิน (ชั่วโมง)', shortLabel: 'อายุ Link', suffix: ' ชม.', type: 'number', step: '1', desc: 'ลิงก์ชำระเงินหมดอายุหลังกี่ชั่วโมง' },
-      { key: 'promptpay_id', label: 'PromptPay ID (เบอร์/เลขประจำตัว)', shortLabel: 'PromptPay', suffix: '', type: 'text', step: '', desc: 'เบอร์โทรหรือเลขผู้เสียภาษีที่ผูก PromptPay' },
     ],
   },
 ];

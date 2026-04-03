@@ -1,4 +1,5 @@
 import { Controller, Post, Body, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { OcrService } from './ocr.service';
 import {
@@ -11,6 +12,8 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 
+@ApiTags('OCR')
+@ApiBearerAuth('JWT')
 @Controller('ocr')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class OcrController {

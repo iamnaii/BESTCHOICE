@@ -15,6 +15,7 @@ import {
   BadRequestException,
   NotFoundException,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ParseFilePipe, MaxFileSizeValidator, FileTypeValidator } from '@nestjs/common';
 import { Request, Response } from 'express';
@@ -39,6 +40,8 @@ import { SkipCsrf } from '../../guards/skip-csrf.decorator';
 import * as fs from 'fs';
 import * as path from 'path';
 
+@ApiTags('LINE OA')
+@ApiBearerAuth('JWT')
 @Controller('line-oa')
 export class LineOaController {
   private readonly logger = new Logger(LineOaController.name);

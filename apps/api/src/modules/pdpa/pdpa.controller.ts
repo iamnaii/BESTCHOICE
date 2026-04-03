@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards, Req } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { PDPAService } from './pdpa.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -34,6 +35,8 @@ class ProcessDSARDto {
   responseNotes: string;
 }
 
+@ApiTags('PDPA')
+@ApiBearerAuth('JWT')
 @Controller('pdpa')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class PDPAController {

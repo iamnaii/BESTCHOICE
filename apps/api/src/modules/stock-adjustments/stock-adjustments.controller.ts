@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { StockAdjustmentsService } from './stock-adjustments.service';
 import { CreateStockAdjustmentDto } from './dto/create-stock-adjustment.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -6,6 +7,8 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
+@ApiTags('Products')
+@ApiBearerAuth('JWT')
 @Controller('stock-adjustments')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class StockAdjustmentsController {

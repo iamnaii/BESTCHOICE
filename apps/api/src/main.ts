@@ -6,6 +6,7 @@ import { ValidationPipe, Logger } from '@nestjs/common';
 import { json, urlencoded } from 'express';
 import cookieParser from 'cookie-parser';
 import { HttpAdapterHost } from '@nestjs/core';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { SentryExceptionFilter } from './filters/sentry-exception.filter';
 import { validateEnv } from './utils/env-validation';
@@ -53,6 +54,50 @@ async function bootstrap() {
   // Global exception filter: reports 5xx to Sentry, consistent error responses
   const { httpAdapter } = app.get(HttpAdapterHost);
   app.useGlobalFilters(new SentryExceptionFilter(httpAdapter));
+
+  // Swagger API Documentation (disabled in production for security)
+  if (process.env.NODE_ENV !== 'production') {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('BESTCHOICE API')
+      .setDescription('ระบบผ่อนชำระ BESTCHOICE — API Documentation')
+      .setVersion('1.0')
+      .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }, 'JWT')
+      .addTag('Auth', 'Authentication & 2FA')
+      .addTag('Users', 'จัดการผู้ใช้')
+      .addTag('Branches', 'จัดการสาขา')
+      .addTag('Customers', 'จัดการลูกค้า')
+      .addTag('Contracts', 'สัญญาผ่อนชำระ')
+      .addTag('Payments', 'การชำระเงิน')
+      .addTag('Receipts', 'ใบเสร็จรับเงิน')
+      .addTag('Products', 'คลังสินค้า & สต็อก')
+      .addTag('Purchase Orders', 'ใบสั่งซื้อ')
+      .addTag('Suppliers', 'จัดการผู้ขาย')
+      .addTag('Inspections', 'ตรวจสอบสินค้า')
+      .addTag('Sales', 'POS ขายสินค้า')
+      .addTag('Dashboard', 'ภาพรวมธุรกิจ')
+      .addTag('Reports', 'รายงาน')
+      .addTag('Overdue', 'ติดตามหนี้')
+      .addTag('Exchange', 'เปลี่ยนเครื่อง')
+      .addTag('Repossessions', 'ยึดคืน & ขายต่อ')
+      .addTag('Expenses', 'บันทึกรายจ่าย')
+      .addTag('Finance', 'เงินรับจากไฟแนนซ์')
+      .addTag('Documents', 'เอกสารสัญญา')
+      .addTag('Notifications', 'แจ้งเตือน')
+      .addTag('Settings', 'ตั้งค่าระบบ')
+      .addTag('Audit', 'Audit Logs')
+      .addTag('PDPA', 'คุ้มครองข้อมูลส่วนบุคคล')
+      .addTag('LINE OA', 'LINE Integration')
+      .addTag('OCR', 'AI OCR')
+      .addTag('Credit Check', 'ตรวจเครดิต')
+      .addTag('Storage', 'File Storage')
+      .build();
+
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('api/docs', app, document, {
+      customSiteTitle: 'BESTCHOICE API Docs',
+    });
+    logger.log('Swagger docs available at /api/docs');
+  }
 
   // Graceful shutdown
   app.enableShutdownHooks();

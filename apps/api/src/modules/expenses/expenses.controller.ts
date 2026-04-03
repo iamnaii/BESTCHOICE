@@ -9,6 +9,7 @@ import {
   UseGuards,
   Request,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { ExpensesService } from './expenses.service';
 import { CreateExpenseDto, UpdateExpenseDto, RejectExpenseDto } from './dto/expense.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -16,6 +17,8 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { ExpenseAccountType, ExpenseCategory, ExpenseStatus } from '@prisma/client';
 
+@ApiTags('Expenses')
+@ApiBearerAuth('JWT')
 @Controller('expenses')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ExpensesController {

@@ -1,10 +1,13 @@
 import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { StickersService } from './stickers.service';
 import { CreateStickerTemplateDto, UpdateStickerTemplateDto } from './dto/sticker.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 
+@ApiTags('Products')
+@ApiBearerAuth('JWT')
 @Controller('sticker-templates')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class StickersController {

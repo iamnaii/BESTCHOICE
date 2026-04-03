@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth , ApiOperation} from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { PaymentsService } from './payments.service';
 import { RecordPaymentDto, BulkRecordPaymentDto, WaiveLateFeeDto } from './dto/payment.dto';
@@ -9,6 +10,8 @@ import { UserThrottlerGuard } from '../../guards/user-throttler.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
+@ApiTags('Payments')
+@ApiBearerAuth('JWT')
 @Controller('payments')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class PaymentsController {
@@ -63,6 +66,7 @@ export class PaymentsController {
 
   @Get('contract/:contractId')
   @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @ApiOperation({ summary: 'ดูงวดชำระทั้งหมดของสัญญา' })
   async getContractPayments(
     @Param('contractId') contractId: string,
     @Query('page') page?: string,
@@ -84,6 +88,7 @@ export class PaymentsController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'ACCOUNTANT')
   @UseGuards(UserThrottlerGuard)
   @Throttle({ short: { ttl: 10000, limit: 5 } }) // Max 5 payment records per 10s per user
+  @ApiOperation({ summary: 'บันทึกการชำระเงิน (งวดเดียว)' })
   async recordPayment(
     @Body() dto: RecordPaymentDto,
     @CurrentUser() user: { id: string; role: string; branchId: string | null },

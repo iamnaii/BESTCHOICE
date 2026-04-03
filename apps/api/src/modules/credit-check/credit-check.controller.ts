@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Param, Body, UseGuards, Query } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { CreditCheckService } from './credit-check.service';
 import { CreateCreditCheckDto, OverrideCreditCheckDto } from './dto/credit-check.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -7,6 +8,8 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 // === Global credit check list ===
+@ApiTags('Credit Check')
+@ApiBearerAuth('JWT')
 @Controller('credit-checks')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class GlobalCreditCheckController {

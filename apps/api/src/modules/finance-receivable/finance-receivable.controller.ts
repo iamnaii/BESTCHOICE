@@ -9,6 +9,7 @@ import {
   UseGuards,
   Request,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { FinanceReceivableService } from './finance-receivable.service';
 import { RecordReceiveDto, UpdateFinanceReceivableDto } from './dto/finance-receivable.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -16,6 +17,8 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { FinanceReceivableStatus } from '@prisma/client';
 
+@ApiTags('Finance')
+@ApiBearerAuth('JWT')
 @Controller('finance-receivable')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class FinanceReceivableController {

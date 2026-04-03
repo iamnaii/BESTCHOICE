@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { BranchesService } from './branches.service';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
@@ -7,6 +8,8 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
+@ApiTags('Branches')
+@ApiBearerAuth('JWT')
 @Controller('branches')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class BranchesController {

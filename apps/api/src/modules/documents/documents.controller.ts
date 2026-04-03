@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Req, Res } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { DocumentsService } from './documents.service';
 import { CreateTemplateDto, UpdateTemplateDto, SignContractDto, GenerateDocumentDto } from './dto/document.dto';
@@ -9,6 +10,8 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
+@ApiTags('Documents')
+@ApiBearerAuth('JWT')
 @Controller()
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class DocumentsController {

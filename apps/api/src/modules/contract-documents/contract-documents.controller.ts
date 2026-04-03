@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Delete, Param, Body, Query, UseGuards, Req } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { ContractDocumentsService } from './contract-documents.service';
 import { UploadContractDocumentDto } from './dto/contract-document.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -6,6 +7,8 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
+@ApiTags('Documents')
+@ApiBearerAuth('JWT')
 @Controller('contracts/:contractId/documents')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ContractDocumentsController {

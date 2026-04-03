@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Param, Body, Query, UseGuards, BadRequestException } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { BranchReceivingService } from './branch-receiving.service';
 import { CreateBranchReceivingDto } from './dto/branch-receiving.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -6,6 +7,8 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
+@ApiTags('Products')
+@ApiBearerAuth('JWT')
 @Controller('branch-receiving')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class BranchReceivingController {

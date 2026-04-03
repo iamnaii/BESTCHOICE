@@ -1,9 +1,12 @@
 import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { AuditService } from './audit.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 
+@ApiTags('Audit')
+@ApiBearerAuth('JWT')
 @Controller('audit')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('OWNER')

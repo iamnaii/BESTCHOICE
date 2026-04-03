@@ -1,4 +1,5 @@
 import { Controller, Post, Get, Body, Req, Res, UseGuards, UnauthorizedException } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth , ApiOperation} from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
@@ -37,6 +38,8 @@ function clearRefreshCookie(res: Response) {
   res.clearCookie(REFRESH_COOKIE, { path: '/api/auth' });
 }
 
+@ApiTags('Auth')
+@ApiBearerAuth('JWT')
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -46,6 +49,7 @@ export class AuthController {
 
   @Post('login')
   @Throttle({ short: { ttl: 60000, limit: 10 } })
+  @ApiOperation({ summary: 'เข้าสู่ระบบ (email + password)' })
   async login(@Body() loginDto: LoginDto, @Res({ passthrough: true }) res: Response) {
     const result = await this.authService.login(loginDto);
 
@@ -68,6 +72,7 @@ export class AuthController {
 
   @Post('login/2fa')
   @Throttle({ short: { ttl: 60000, limit: 5 } })
+  @ApiOperation({ summary: 'เข้าสู่ระบบด้วย 2FA (email + password + OTP)' })
   async loginWith2FA(@Body() body: { email: string; password: string; code: string }, @Res({ passthrough: true }) res: Response) {
     // Re-authenticate + verify 2FA code in one step
     const result = await this.authService.loginWith2FA(body.email, body.password, body.code, this.twoFactorService);
@@ -77,6 +82,7 @@ export class AuthController {
 
   @Post('refresh')
   @Throttle({ short: { ttl: 60000, limit: 10 } }) // 10 refresh attempts per minute
+  @ApiOperation({ summary: 'Refresh access token' })
   async refresh(@Req() req: Request, @Body() body: { refreshToken?: string }, @Res({ passthrough: true }) res: Response) {
     // Read from cookie first, fall back to body for backward compatibility
     const token = req.cookies?.[REFRESH_COOKIE] || body.refreshToken;
@@ -92,6 +98,7 @@ export class AuthController {
 
   @Post('logout')
   @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'ออกจากระบบ' })
   async logout(
     @Req() req: Request,
     @Body() body: { refreshToken?: string },
@@ -106,18 +113,21 @@ export class AuthController {
 
   @Post('forgot-password')
   @Throttle({ short: { ttl: 60000, limit: 5 } }) // 5 requests per minute to prevent abuse
+  @ApiOperation({ summary: 'ขอลิงก์รีเซ็ตรหัสผ่าน' })
   async forgotPassword(@Body() dto: ForgotPasswordDto) {
     return this.authService.forgotPassword(dto);
   }
 
   @Post('reset-password')
   @Throttle({ short: { ttl: 60000, limit: 5 } })
+  @ApiOperation({ summary: 'ตั้งรหัสผ่านใหม่' })
   async resetPassword(@Body() dto: ResetPasswordDto) {
     return this.authService.resetPassword(dto);
   }
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'ข้อมูลผู้ใช้ปัจจุบัน' })
   async getMe(@CurrentUser('id') userId: string) {
     return this.authService.getMe(userId);
   }
@@ -127,6 +137,7 @@ export class AuthController {
   @Post('2fa/generate')
   @UseGuards(JwtAuthGuard)
   @Throttle({ short: { ttl: 60000, limit: 3 } })
+  @ApiOperation({ summary: 'สร้าง QR code สำหรับ 2FA' })
   async generate2FA(@CurrentUser('id') userId: string) {
     return this.twoFactorService.generateSecret(userId);
   }
@@ -134,6 +145,7 @@ export class AuthController {
   @Post('2fa/enable')
   @UseGuards(JwtAuthGuard)
   @Throttle({ short: { ttl: 60000, limit: 5 } })
+  @ApiOperation({ summary: 'เปิดใช้ 2FA (ยืนยันด้วย OTP)' })
   async enable2FA(@CurrentUser('id') userId: string, @Body() dto: VerifyTwoFactorDto) {
     return this.twoFactorService.enableTwoFactor(userId, dto.code);
   }
@@ -141,12 +153,14 @@ export class AuthController {
   @Post('2fa/disable')
   @UseGuards(JwtAuthGuard)
   @Throttle({ short: { ttl: 60000, limit: 5 } })
+  @ApiOperation({ summary: 'ปิด 2FA' })
   async disable2FA(@CurrentUser('id') userId: string, @Body() dto: VerifyTwoFactorDto) {
     return this.twoFactorService.disableTwoFactor(userId, dto.code);
   }
 
   @Get('2fa/status')
   @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'ตรวจสอบสถานะ 2FA' })
   async get2FAStatus(@CurrentUser('id') userId: string) {
     const enabled = await this.twoFactorService.isTwoFactorEnabled(userId);
     return { enabled };

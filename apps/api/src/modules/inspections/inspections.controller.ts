@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { InspectionsService } from './inspections.service';
 import {
   CreateTemplateDto, UpdateTemplateDto,
@@ -10,6 +11,8 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
+@ApiTags('Inspections')
+@ApiBearerAuth('JWT')
 @Controller()
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class InspectionsController {

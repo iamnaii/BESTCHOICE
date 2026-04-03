@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth , ApiOperation} from '@nestjs/swagger';
 import { ProductsService } from './products.service';
 import { ProductsPricingService } from './products-pricing.service';
 import { ProductsStockService } from './products-stock.service';
@@ -11,6 +12,8 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
+@ApiTags('Products')
+@ApiBearerAuth('JWT')
 @Controller('products')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ProductsController {

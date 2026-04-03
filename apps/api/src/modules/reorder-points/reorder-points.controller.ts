@@ -1,10 +1,13 @@
 import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { ReorderPointsService } from './reorder-points.service';
 import { CreateReorderPointDto, UpdateReorderPointDto } from './dto/reorder-point.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 
+@ApiTags('Products')
+@ApiBearerAuth('JWT')
 @Controller('reorder-points')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ReorderPointsController {

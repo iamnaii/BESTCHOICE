@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { OverdueService } from './overdue.service';
 import { CreateCallLogDto } from './dto/create-call-log.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -6,6 +7,8 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
+@ApiTags('Overdue')
+@ApiBearerAuth('JWT')
 @Controller('overdue')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class OverdueController {

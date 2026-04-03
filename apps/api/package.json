@@ -29,6 +29,7 @@
     "@nestjs/passport": "^10.0.3",
     "@nestjs/platform-express": "^10.4.0",
     "@nestjs/schedule": "^6.1.1",
+    "@nestjs/swagger": "^8.1.1",
     "@nestjs/throttler": "^6.0.0",
     "@otplib/preset-default": "^12.0.1",
     "@prisma/client": "^6.19.2",

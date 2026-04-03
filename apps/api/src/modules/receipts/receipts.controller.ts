@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Param, Body, Query, UseGuards, Res } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Response } from 'express';
 import { ReceiptsService } from './receipts.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -7,6 +8,8 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { VoidReceiptDto } from './dto/void-receipt.dto';
 
+@ApiTags('Receipts')
+@ApiBearerAuth('JWT')
 @Controller('receipts')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ReceiptsController {

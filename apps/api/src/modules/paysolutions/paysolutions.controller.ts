@@ -11,6 +11,7 @@ import {
   BadRequestException,
   RawBodyRequest,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
@@ -23,6 +24,8 @@ import { CreatePaymentIntentDto } from './dto';
  * NOTE: ไม่ใช้ JwtAuthGuard ที่ class level เพราะ webhook endpoint ต้องเป็น public
  * Endpoints ที่ต้อง auth จะใส่ guard เฉพาะ method
  */
+@ApiTags('Payments')
+@ApiBearerAuth('JWT')
 @Controller('paysolutions')
 export class PaySolutionsController {
   private readonly logger = new Logger(PaySolutionsController.name);

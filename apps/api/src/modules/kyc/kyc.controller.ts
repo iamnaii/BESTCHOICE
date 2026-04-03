@@ -1,4 +1,5 @@
 import { Controller, Post, Get, Param, Body, UseGuards, Req } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { KycService } from './kyc.service';
 import { SendOtpDto, VerifyOtpDto, UploadIdCardDto } from './dto/kyc.dto';
@@ -6,6 +7,8 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 
+@ApiTags('Customers')
+@ApiBearerAuth('JWT')
 @Controller('contracts')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class KycController {

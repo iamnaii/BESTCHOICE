@@ -1,4 +1,5 @@
 import { Controller, Post, Body, Logger } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { NotificationsService } from './notifications.service';
 
 /**
@@ -9,6 +10,7 @@ import { NotificationsService } from './notifications.service';
  * or when sending SMS via API (if supported).
  * Example: https://your-domain.com/api/notifications/sms-webhook
  */
+@ApiTags('Notifications')
 @Controller('notifications')
 export class SmsWebhookController {
   private readonly logger = new Logger(SmsWebhookController.name);

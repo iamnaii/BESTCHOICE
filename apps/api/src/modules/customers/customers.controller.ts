@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth , ApiOperation} from '@nestjs/swagger';
 import { CustomersService } from './customers.service';
 import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer.dto';
 import { UploadDocumentDto, DeleteDocumentDto } from './dto/document.dto';
@@ -6,6 +7,8 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 
+@ApiTags('Customers')
+@ApiBearerAuth('JWT')
 @Controller('customers')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class CustomersController {

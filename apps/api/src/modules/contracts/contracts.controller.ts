@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Req } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth , ApiOperation} from '@nestjs/swagger';
 import { ContractsService } from './contracts.service';
 import { ContractWorkflowService } from './contract-workflow.service';
 import { ContractPaymentService } from './contract-payment.service';
@@ -10,6 +11,8 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
+@ApiTags('Contracts')
+@ApiBearerAuth('JWT')
 @Controller('contracts')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ContractsController {

@@ -1,8 +1,10 @@
 import { Controller, Get, Query } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
 import { THAI_ADDRESS_DATA } from './thai-address-data';
 
 @SkipThrottle()
+@ApiTags('Customers')
 @Controller('address')
 export class AddressController {
   @Get('provinces')

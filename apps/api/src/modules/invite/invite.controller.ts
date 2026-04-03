@@ -9,6 +9,7 @@ import {
   UseGuards,
   Request,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { InviteService } from './invite.service';
 import { CreateInviteDto } from './dto/create-invite.dto';
@@ -18,6 +19,8 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 
+@ApiTags('Users')
+@ApiBearerAuth('JWT')
 @Controller('invite')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class InviteController {

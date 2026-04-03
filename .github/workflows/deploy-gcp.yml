@@ -224,7 +224,7 @@ jobs:
           SMS_API_SECRET=SMS_API_SECRET:latest,\
           SMTP_PASS=SMTP_PASS:latest,\
           PAYSOLUTIONS_SECRET_KEY=PAYSOLUTIONS_SECRET_KEY:latest,\
-          PAYSOLUTIONS_WEBHOOK_SECRET=PAYSOLUTIONS_WEBHOOK_SECRET:latest" \
+          PAYSOLUTIONS_API_KEY=PAYSOLUTIONS_API_KEY:latest" \
             --set-env-vars="\
           NODE_ENV=production,\
           SMTP_HOST=smtp.resend.com,\
@@ -237,7 +237,12 @@ jobs:
           JWT_EXPIRATION=15m,\
           JWT_REFRESH_EXPIRATION=7d,\
           DATABASE_CONNECTION_LIMIT=10,\
-          DATABASE_POOL_TIMEOUT=15" \
+          DATABASE_POOL_TIMEOUT=15,\
+          PAYSOLUTIONS_MERCHANT_ID=09753259,\
+          PAYSOLUTIONS_API_URL=https://apis.paysolutions.asia,\
+          PAYSOLUTIONS_RETURN_URL=https://liff.line.me/2009442540-d9XnzWwl/contract,\
+          PAYSOLUTIONS_TERMINAL_ID=TID00001,\
+          API_BASE_URL=https://api.bestchoicephone.app" \
             --set-cloudsql-instances=${{ secrets.CLOUD_SQL_CONNECTION_NAME }} \
             --allow-unauthenticated
 

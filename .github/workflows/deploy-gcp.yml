@@ -226,6 +226,7 @@ jobs:
           PAYSOLUTIONS_SECRET_KEY=PAYSOLUTIONS_SECRET_KEY:latest,\
           PAYSOLUTIONS_API_KEY=PAYSOLUTIONS_API_KEY:latest" \
             --set-env-vars="\
+          TZ=Asia/Bangkok,\
           NODE_ENV=production,\
           SMTP_HOST=smtp.resend.com,\
           SMTP_PORT=465,\

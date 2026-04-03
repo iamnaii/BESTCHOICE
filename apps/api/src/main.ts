@@ -1,3 +1,6 @@
+// Set timezone to Asia/Bangkok (UTC+7) for all Date operations
+process.env.TZ = 'Asia/Bangkok';
+
 // Sentry: only import if DSN is configured (avoids startup overhead without DSN)
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 if (process.env.SENTRY_DSN) require('./sentry');

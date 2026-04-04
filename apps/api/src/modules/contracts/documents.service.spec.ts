@@ -107,6 +107,9 @@ describe('DocumentsService', () => {
       findMany: jest.fn().mockResolvedValue([mockEDocument]),
       count: jest.fn().mockResolvedValue(1),
     },
+    contractDocument: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
     signature: {
       create: jest.fn(),
       findMany: jest.fn().mockResolvedValue([]),

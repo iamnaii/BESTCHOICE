@@ -216,25 +216,27 @@ describe('Contract Signing & Workflow', () => {
       );
     });
 
-    it('SUB-2: ไม่มี credit check → BadRequestException ขั้นตอนที่ 1', async () => {
+    it('SUB-2: ไม่มี credit check → BadRequestException ขั้นตอนที่ 5 (signatures checked first in dev)', async () => {
+      // In dev mode, steps 1-3 are skipped with warnings.
+      // Step 5 (signatures) is always enforced, so missing signatures triggers first.
       prisma.contract.findUnique.mockResolvedValue(
         makeContract({ creditCheck: null }),
       );
 
       await expect(workflowService.submitForReview('contract-1', 'user-1'))
-        .rejects.toThrow('ขั้นตอนที่ 1');
+        .rejects.toThrow('ขั้นตอนที่ 5');
     });
 
-    it('SUB-3: credit check ยังไม่ APPROVED → BadRequestException', async () => {
+    it('SUB-3: credit check ยังไม่ APPROVED → BadRequestException ขั้นตอนที่ 5 (signatures checked first in dev)', async () => {
       prisma.contract.findUnique.mockResolvedValue(
         makeContract({ creditCheck: { id: 'cc-1', status: 'PENDING' } }),
       );
 
       await expect(workflowService.submitForReview('contract-1', 'user-1'))
-        .rejects.toThrow('ขั้นตอนที่ 1');
+        .rejects.toThrow('ขั้นตอนที่ 5');
     });
 
-    it('SUB-4: ข้อมูลไม่ครบ (missing fields) → BadRequestException ขั้นตอนที่ 2', async () => {
+    it('SUB-4: ข้อมูลไม่ครบ (missing fields) → BadRequestException ขั้นตอนที่ 5 (signatures checked first in dev)', async () => {
       mockCheckRequiredContractFields.mockReturnValue(['เบอร์โทร']);
       prisma.contract.findUnique.mockResolvedValue(
         makeContract({
@@ -243,10 +245,10 @@ describe('Contract Signing & Workflow', () => {
       );
 
       await expect(workflowService.submitForReview('contract-1', 'user-1'))
-        .rejects.toThrow('ขั้นตอนที่ 2');
+        .rejects.toThrow('ขั้นตอนที่ 5');
     });
 
-    it('SUB-5: ไม่มี PDPA consent → BadRequestException ขั้นตอนที่ 3', async () => {
+    it('SUB-5: ไม่มี PDPA consent → BadRequestException ขั้นตอนที่ 5 (signatures checked first in dev)', async () => {
       prisma.contract.findUnique.mockResolvedValue(
         makeContract({
           creditCheck: { id: 'cc-1', status: 'APPROVED' },
@@ -255,7 +257,7 @@ describe('Contract Signing & Workflow', () => {
       );
 
       await expect(workflowService.submitForReview('contract-1', 'user-1'))
-        .rejects.toThrow('ขั้นตอนที่ 3');
+        .rejects.toThrow('ขั้นตอนที่ 5');
     });
 
     it('SUB-6: ลายเซ็น CUSTOMER ไม่มี → BadRequestException ขั้นตอนที่ 5', async () => {

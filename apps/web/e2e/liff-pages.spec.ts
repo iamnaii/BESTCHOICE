@@ -27,8 +27,9 @@ test.describe('LIFF Contract', () => {
     if (await hasErrorBoundary(page)) return;
     await page.goto('/liff/contract', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2000);
-    // Should not redirect to /login (it's a LIFF page)
-    expect(page.url()).not.toContain('/login');
+    // Should not redirect to app's /login page (LIFF pages are public)
+    // Note: LINE SDK may redirect to access.line.me/oauth2/.../login which is expected
+    expect(page.url()).not.toMatch(/localhost.*\/login/);
   });
 });
 
@@ -78,7 +79,8 @@ test.describe('LIFF History', () => {
     if (await hasErrorBoundary(page)) return;
     await page.goto('/liff/history', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2000);
-    expect(page.url()).not.toContain('/login');
+    // Should not redirect to app's /login page (LINE SDK may redirect to access.line.me which is expected)
+    expect(page.url()).not.toMatch(/localhost.*\/login/);
   });
 });
 
@@ -99,7 +101,8 @@ test.describe('LIFF Profile', () => {
     if (await hasErrorBoundary(page)) return;
     await page.goto('/liff/profile', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2000);
-    expect(page.url()).not.toContain('/login');
+    // Should not redirect to app's /login page (LINE SDK may redirect to access.line.me which is expected)
+    expect(page.url()).not.toMatch(/localhost.*\/login/);
   });
 });
 
@@ -120,7 +123,8 @@ test.describe('LIFF Register', () => {
     if (await hasErrorBoundary(page)) return;
     await page.goto('/liff/register', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2000);
-    expect(page.url()).not.toContain('/login');
+    // Should not redirect to app's /login page (LINE SDK may redirect to access.line.me which is expected)
+    expect(page.url()).not.toMatch(/localhost.*\/login/);
   });
 });
 
@@ -141,6 +145,7 @@ test.describe('LIFF Early Payoff', () => {
     if (await hasErrorBoundary(page)) return;
     await page.goto('/liff/early-payoff', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2000);
-    expect(page.url()).not.toContain('/login');
+    // Should not redirect to app's /login page (LINE SDK may redirect to access.line.me which is expected)
+    expect(page.url()).not.toMatch(/localhost.*\/login/);
   });
 });

@@ -71,9 +71,10 @@ test.describe('ตรวจสอบสลิป', () => {
     await expect(page.getByText(/ตรวจสอบสลิป/).first()).toBeVisible({ timeout: 15000 });
   });
 
-  test('should display subtitle about LINE OA', async ({ page }) => {
+  test('should display slip review summary cards', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    await expect(page.getByText(/LINE OA/).first()).toBeVisible({ timeout: 10000 });
+    // SlipReviewTab shows summary cards — check for any visible summary metric
+    await expect(page.getByText(/รอตรวจ|อนุมัติ|ปฏิเสธ/).first()).toBeVisible({ timeout: 10000 });
   });
 
   test('should show pending slips or empty state', async ({ page }) => {

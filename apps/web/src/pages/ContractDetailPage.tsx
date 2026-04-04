@@ -318,32 +318,24 @@ export default function ContractDetailPage() {
               ลงนาม/เอกสาร
             </button>
             <button
-              onClick={() => {
-                setActiveTab('preview');
-                const tryPrint = (attempts = 0) => {
-                  // Guard: stop polling if component/iframe no longer in DOM
-                  const iframe = document.querySelector('iframe[title="contract-preview"]') as HTMLIFrameElement;
-                  if (!iframe || !document.body.contains(iframe)) return;
-                  if (iframe.contentWindow && iframe.contentDocument?.body?.innerHTML) {
-                    // Wait for fonts to load inside iframe before printing
-                    const iframeDoc = iframe.contentDocument;
-                    const fontsReady = iframeDoc?.fonts?.ready;
-                    if (fontsReady) {
-                      fontsReady.then(() => iframe.contentWindow?.print()).catch(() => iframe.contentWindow?.print());
-                    } else {
-                      iframe.contentWindow.print();
-                    }
-                  } else if (attempts < 15) {
-                    setTimeout(() => tryPrint(attempts + 1), 400);
-                  } else {
-                    window.print();
-                  }
-                };
-                setTimeout(() => tryPrint(), 600);
+              onClick={async () => {
+                try {
+                  toast.loading('กำลังสร้าง PDF...', { id: 'pdf-gen' });
+                  const res = await api.get(`/contracts/${id}/download-pdf`, { responseType: 'blob' });
+                  const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `${contract.contractNumber}.pdf`;
+                  a.click();
+                  window.URL.revokeObjectURL(url);
+                  toast.success('ดาวน์โหลด PDF สำเร็จ', { id: 'pdf-gen' });
+                } catch (err) {
+                  toast.error(getErrorMessage(err) || 'ไม่สามารถสร้าง PDF ได้', { id: 'pdf-gen' });
+                }
               }}
               className="px-4 py-2 text-sm border border-input text-foreground rounded-lg hover:bg-muted"
             >
-              พิมพ์สัญญา
+              ดาวน์โหลด PDF
             </button>
 
             {/* Workflow buttons */}
@@ -1027,8 +1019,19 @@ function ContractPreviewFrame({ html }: { html: string }) {
     if (!iframe) return;
     const doc = iframe.contentDocument || iframe.contentWindow?.document;
     if (!doc) return;
+    // Strip Google Fonts — force local TH Sarabun PSK only
+    let cleaned = html.replace(/<link[^>]*fonts\.googleapis\.com[^>]*>/gi, '');
+    cleaned = cleaned.replace(/<link[^>]*fonts\.gstatic\.com[^>]*>/gi, '');
+    // Inject font-face declarations to ensure TH Sarabun PSK loads
+    const fontFix = `<style>
+      @font-face { font-family:'TH Sarabun PSK'; src:url('/fonts/THSarabunPSK-Regular.ttf') format('truetype'); font-weight:400; font-display:swap; }
+      @font-face { font-family:'TH Sarabun PSK'; src:url('/fonts/THSarabunPSK-Bold.ttf') format('truetype'); font-weight:700; font-display:swap; }
+    </style>`;
+    const injected = cleaned.includes('</head>')
+      ? cleaned.replace('</head>', `${fontFix}</head>`)
+      : `${fontFix}${cleaned}`;
     doc.open();
-    doc.write(html);
+    doc.write(injected);
     doc.close();
   }, [html]);
 

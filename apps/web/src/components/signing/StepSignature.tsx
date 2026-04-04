@@ -59,7 +59,7 @@ export default function StepSignature({
   // Existing signatures
   const { data: signatures = [] } = useQuery<Signature[]>({
     queryKey: ['contract-signatures', contractId],
-    queryFn: async () => { const { data } = await api.get(`/contracts/${contractId}/signatures`); return data; },
+    queryFn: async () => { const { data } = await api.get(`/contracts/${contractId}/signatures`); return Array.isArray(data) ? data : data?.data || []; },
   });
 
   // Saved staff signature

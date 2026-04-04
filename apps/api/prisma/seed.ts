@@ -1213,9 +1213,9 @@ async function main() {
 
   let contractHtml = '';
   const templatePaths = [
-    path.join(__dirname, '../src/modules/documents/templates/hire-purchase-contract.html'),
-    path.resolve(process.cwd(), 'src/modules/documents/templates/hire-purchase-contract.html'),
-    path.resolve(process.cwd(), 'dist/modules/documents/templates/hire-purchase-contract.html'),
+    path.join(__dirname, '../src/modules/contracts/templates/hire-purchase-contract.html'),
+    path.resolve(process.cwd(), 'src/modules/contracts/templates/hire-purchase-contract.html'),
+    path.resolve(process.cwd(), 'dist/modules/contracts/templates/hire-purchase-contract.html'),
   ];
   for (const htmlPath of templatePaths) {
     try {

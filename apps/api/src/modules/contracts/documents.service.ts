@@ -225,7 +225,7 @@ export class DocumentsService {
     let pdfGenerated = false;
 
     try {
-      const pdfBuffer = await this.htmlToPdf(renderedHtml);
+      const pdfBuffer = await this.htmlToPdf(renderedHtml, contract.contractNumber);
       fileHash = crypto.createHash('sha256').update(pdfBuffer).digest('hex');
       const s3Key = `contracts/${new Date().getFullYear()}/${contract.contractNumber}/${documentType}_${Date.now()}.pdf`;
       fileUrl = await this.storageService.upload(s3Key, pdfBuffer, 'application/pdf');
@@ -249,6 +249,39 @@ export class DocumentsService {
     });
 
     return { ...doc, renderedHtml, pdfGenerated };
+  }
+
+  /** Generate PDF buffer directly (no S3 upload) for download */
+  async generatePdfBuffer(contractId: string, userId: string): Promise<Buffer> {
+    const contract = await this.prisma.contract.findUnique({
+      where: { id: contractId },
+      include: {
+        customer: true, product: true, branch: true, salesperson: true,
+        payments: { orderBy: { installmentNo: 'asc' } },
+        signatures: { where: { deletedAt: null } },
+      },
+    });
+    if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
+
+    const { html: htmlContent, settings: templateSettings } = await this.resolveTemplate(
+      contract.planType || 'STORE_DIRECT', 'CONTRACT',
+    );
+    const lessorSig = await this.getSystemLessorSignature();
+    const renderedHtml = this.wrapWithA4Styles(
+      await this.replacePlaceholders(htmlContent, contract, lessorSig),
+      templateSettings,
+      contract.contractNumber,
+    );
+    return this.htmlToPdf(renderedHtml, contract.contractNumber);
+  }
+
+  /** Get contract number by ID */
+  async getContractNumber(contractId: string): Promise<string> {
+    const contract = await this.prisma.contract.findUnique({
+      where: { id: contractId },
+      select: { contractNumber: true },
+    });
+    return contract?.contractNumber || '';
   }
 
   async getDocuments(contractId: string, page = 1, limit = 50) {
@@ -582,18 +615,8 @@ export class DocumentsService {
   private wrapWithA4Styles(bodyHtml: string, templateSettings?: any, contractNumber?: string): string {
     // Use template settings if available, otherwise fallback to defaults
     const margins = templateSettings?.margins || { top: 25.4, bottom: 25.4, left: 19.1, right: 19.1 };
-    const fontSize = templateSettings?.fontSize || { body: 16, heading: 20, footer: 12 };
+    const fontSize = templateSettings?.fontSize || { body: '16pt', heading: '18pt', footer: '10pt' };
     const letterhead = templateSettings?.letterhead || 'none';
-    const showPageNumber = templateSettings?.showPageNumber ?? true;
-    const pageNumberFormat = templateSettings?.pageNumberFormat || 'หน้า {page}/{total}';
-    let footerText: string = templateSettings?.footerText ?? 'BESTCHOICEPHONE Co., Ltd.';
-    // Resolve variables in footer text (e.g. {{= CONTRACT_NUMBER}}, {contract_number})
-    if (contractNumber && footerText) {
-      footerText = footerText
-        .replace(/\{\{=\s*CONTRACT\.?NUMBER\s*\}\}/g, contractNumber)
-        .replace(/\{contract_number\}/g, contractNumber);
-    }
-
     // Build letterhead HTML
     let letterheadHtml = '';
     if (letterhead === 'bestchoice') {
@@ -604,10 +627,6 @@ export class DocumentsService {
           <p style="font-size:12px;color:#888;margin:0">456/21 ชั้น 2 ถนนนารายณ์มหาราช ตำบลทะเลชุบศร อำเภอเมือง จังหวัดลพบุรี 15000</p>
         </div>`;
     }
-
-    // Build fixed footer content (appears on every printed page)
-    const hasFooter = footerText || showPageNumber;
-    const footerLeftText = footerText ? this.escapeHtml(footerText) : '';
 
     return `<!DOCTYPE html>
 <html lang="th">
@@ -636,14 +655,14 @@ export class DocumentsService {
 <style>
   @page {
     size: A4;
-    margin: ${margins.top}mm ${margins.right}mm ${hasFooter ? Math.max(margins.bottom, 20) : margins.bottom}mm ${margins.left}mm;
+    margin: ${margins.top}mm ${margins.right}mm ${margins.bottom}mm ${margins.left}mm;
   }
   * { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0;
     font-family: 'TH Sarabun PSK', 'Sarabun', 'Noto Sans Thai', sans-serif;
-    font-size: ${fontSize.body}px;
-    line-height: 1.7;
+    font-size: ${fontSize.body};
+    line-height: 1.5;
     color: #1a1a1a;
   }
   .a4-page {
@@ -657,30 +676,10 @@ export class DocumentsService {
   .page-break { page-break-after: always; break-after: page; }
   .no-break { page-break-inside: avoid; break-inside: avoid; }
 
-  /* Fixed footer — repeats on every printed page */
-  .page-footer-fixed {
-    display: none;
-  }
   @media print {
     body { margin: 0; padding: 0; }
     .a4-page { width: 100%; min-height: auto; page-break-after: always; break-after: page; }
     .a4-page:last-child { page-break-after: avoid; break-after: avoid; }
-    .page-footer-fixed {
-      display: flex;
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      justify-content: space-between;
-      align-items: flex-end;
-      font-size: ${fontSize.footer}px;
-      color: #9ca3af;
-      border-top: 1px solid #d1d5db;
-      padding-top: 6px;
-      padding-bottom: 2px;
-    }
-    /* Hide the screen-only footer when printing */
-    .page-footer-screen { display: none; }
   }
   /* Screen preview: simulate A4 pages */
   @media screen {
@@ -690,34 +689,18 @@ export class DocumentsService {
       width: 210mm;
       min-height: 297mm;
       padding: ${margins.top}mm ${margins.right}mm ${margins.bottom}mm ${margins.left}mm;
-      margin: 0 auto 20px auto;
+      margin: 0 auto 40px auto;
       box-shadow: 0 4px 24px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08);
-    }
-    .page-footer-screen {
-      margin-top: 2.5rem;
-      padding-top: 0.75rem;
-      border-top: 1px solid #d1d5db;
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-end;
-      font-size: ${fontSize.footer}px;
-      color: #9ca3af;
     }
   }
 </style>
 </head>
 <body>
-${hasFooter ? `<div class="page-footer-fixed"><span>${footerLeftText}</span>${showPageNumber ? '<span>สัญญาเช่าซื้อ</span>' : ''}</div>` : ''}
 ${(() => {
   const pages = bodyHtml.split(/<!--\s*PAGE_BREAK\s*-->/);
-  const totalPages = pages.length;
   return pages.map((pageContent, i) => {
-    const pageNum = i + 1;
     const header = i === 0 ? letterheadHtml : '';
-    const footer = hasFooter
-      ? `<div class="page-footer-screen"><span>${footerLeftText}</span>${showPageNumber ? `<span>${pageNumberFormat.replace('{page}', String(pageNum)).replace('{total}', String(totalPages))}</span>` : ''}</div>`
-      : '';
-    return `<div class="a4-page">${header}${pageContent}${footer}</div>`;
+    return `<div class="a4-page">${header}${pageContent}</div>`;
   }).join('\n');
 })()}
 </body>
@@ -787,10 +770,11 @@ ${(() => {
       }
     }
 
+    const tblCell = 'padding:4px 16px;border:1px solid #000;font-size:16pt';
     const paymentScheduleRows = payments
       .map(
         (p: any) =>
-          `<tr><td style="text-align:center">${p.installmentNo}</td><td style="text-align:center">${esc(new Date(p.dueDate).toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' }))}</td><td style="text-align:right">${Number(p.amountDue).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>`,
+          `<tr><td style="text-align:center;${tblCell}">${p.installmentNo}</td><td style="text-align:center;${tblCell}">${esc(new Date(p.dueDate).toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' }))}</td><td style="text-align:right;${tblCell}">${Number(p.amountDue).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>`,
       )
       .join('');
 
@@ -886,7 +870,7 @@ ${(() => {
       '{witness2_name}': witness2Sig?.signerName ? esc(witness2Sig.signerName) : (references[1] ? esc(`${references[1].prefix || ''}${references[1].firstName || ''} ${references[1].lastName || ''}`.trim()) : ''),
       '{staff_signer_name}': esc(contract.salesperson?.name || ''),
       '{date}': new Date().toLocaleDateString('th-TH'),
-      '{payment_schedule_table}': `<table border="1" cellpadding="6" style="border-collapse:collapse;width:100%;margin:10px auto"><thead><tr style="background:#f5f5f5"><th style="text-align:center">งวดที่</th><th style="text-align:center">วันที่ครบกำหนดชำระ</th><th style="text-align:center">จำนวนเงิน</th></tr></thead><tbody>${paymentScheduleRows}</tbody></table>`,
+      '{payment_schedule_table}': `<table style="border-collapse:collapse;width:70%;margin:10px auto;page-break-inside:auto"><thead><tr style="background:#f5f5f5"><th style="text-align:center;${tblCell};font-weight:bold">งวดที่</th><th style="text-align:center;${tblCell};font-weight:bold">วันที่ครบกำหนดชำระ</th><th style="text-align:center;${tblCell};font-weight:bold">จำนวนเงิน</th></tr></thead><tbody>${paymentScheduleRows}</tbody></table>`,
       '{customer_signature}': customerSigSafe ? `<img src="${customerSig.signatureImage}" style="max-height:60px;display:inline-block;vertical-align:middle;margin:0 4px"/>` : '<span style="display:inline-block;width:150px;border-bottom:1px solid #000;vertical-align:middle;margin:0 4px">&nbsp;</span>',
       '{staff_signature}': staffSigSafe ? `<img src="${staffSig.signatureImage}" style="max-height:60px;display:inline-block;vertical-align:middle;margin:0 4px"/>` : '<span style="display:inline-block;width:150px;border-bottom:1px solid #000;vertical-align:middle;margin:0 4px">&nbsp;</span>',
       '{witness1_signature}': witness1SigSafe ? `<img src="${witness1Sig.signatureImage}" style="max-height:60px;display:inline-block;vertical-align:middle;margin:0 4px"/>` : '<span style="display:inline-block;width:150px;border-bottom:1px solid #000;vertical-align:middle;margin:0 4px">&nbsp;</span>',
@@ -1382,7 +1366,7 @@ ${(() => {
   }
 
   // ─── PDF Generation (Puppeteer) ──────────────────────
-  private async htmlToPdf(html: string): Promise<Buffer> {
+  private async htmlToPdf(html: string, contractNumber?: string): Promise<Buffer> {
     // Dynamic import — uses puppeteer-core with system Chromium
     const puppeteer = await import('puppeteer-core');
     const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser';
@@ -1399,7 +1383,14 @@ ${(() => {
       // (relative /fonts/ URLs don't resolve in setContent context)
       let fontCss = '';
       try {
-        const fontsDir = path.join(__dirname, '..', '..', '..', '..', 'public', 'fonts');
+        // Try multiple font paths (dev: src/../public, prod: dist/../public)
+        const fontPaths = [
+          path.join(process.cwd(), 'public', 'fonts'),
+          path.join(__dirname, '..', '..', '..', '..', 'public', 'fonts'),
+          path.join(process.cwd(), '..', 'web', 'public', 'fonts'),
+        ];
+        const fontsDir = fontPaths.find(p => fs.existsSync(path.join(p, 'THSarabunPSK-Regular.ttf'))) || fontPaths[0];
+        this.logger.log(`Font directory: ${fontsDir} (exists: ${fs.existsSync(fontsDir)})`);
         const regularPath = path.join(fontsDir, 'THSarabunPSK-Regular.ttf');
         const boldPath = path.join(fontsDir, 'THSarabunPSK-Bold.ttf');
         if (fs.existsSync(regularPath)) {
@@ -1414,19 +1405,26 @@ ${(() => {
         this.logger.warn('Could not embed TH Sarabun PSK fonts', err instanceof Error ? err.message : err);
       }
 
-      // Override @page CSS margins (Puppeteer margins take over) and hide CSS fixed footer
-      // so Puppeteer's displayHeaderFooter handles page numbering without double-footer
+      // Embed fonts + reset screen-mode CSS for clean PDF output
       await page.addStyleTag({
-        content: `${fontCss} @page { margin: 0 !important; } .page-footer-fixed { display: none !important; }`,
+        content: `${fontCss}
+          body { background: #fff !important; padding: 0 !important; margin: 0 !important; }
+          .a4-page { box-shadow: none !important; margin: 0 !important; min-height: auto !important; padding: 0 !important; width: 100% !important; }
+          .a4-page + .a4-page { page-break-before: always !important; break-before: page !important; }
+          html, body, div, p, td, th, span, strong, u, h1, h2, h3 { font-family: 'TH Sarabun PSK', sans-serif !important; }
+        `,
       });
 
+      const footerLeft = this.escapeHtml(`สัญญาเช่าซื้อเลขที่ ${contractNumber || ''}`);
+      // Build footer with embedded font
+      const footerFontCss = fontCss ? `<style>${fontCss}</style>` : '';
       const pdf = await page.pdf({
         format: 'A4',
         printBackground: true,
-        margin: { top: '25.4mm', right: '19.1mm', bottom: '20mm', left: '19.1mm' },
+        margin: { top: '20mm', right: '19mm', bottom: '20mm', left: '19mm' },
         displayHeaderFooter: true,
         headerTemplate: '<span></span>',
-        footerTemplate: `<div style="width:100%;font-size:9px;font-family:sans-serif;color:#9ca3af;display:flex;justify-content:space-between;padding:0 19.1mm;"><span>BESTCHOICEPHONE Co., Ltd.</span><span>หน้า <span class="pageNumber"></span>/<span class="totalPages"></span></span></div>`,
+        footerTemplate: `${footerFontCss}<div style="width:100%;padding:0 19mm;font-family:'TH Sarabun PSK',sans-serif;font-size:16px;color:#000;display:flex;justify-content:space-between;align-items:center"><span>${footerLeft}</span><span>หน้าที่ <span class="pageNumber"></span> / <span class="totalPages"></span></span></div>`,
       });
       return Buffer.from(pdf);
     } finally {

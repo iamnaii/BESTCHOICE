@@ -124,6 +124,23 @@ export class DocumentsController {
     return this.documentsService.generateDocument(id, user.id, dto.documentType || 'CONTRACT', dto.templateId);
   }
 
+  @Get('contracts/:id/download-pdf')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  async downloadPdf(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string },
+    @Res() res: any,
+  ) {
+    const pdfBuffer = await this.documentsService.generatePdfBuffer(id, user.id);
+    const contract = await this.documentsService.getContractNumber(id);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${encodeURIComponent(contract || 'contract')}.pdf"`,
+      'Content-Length': pdfBuffer.length,
+    });
+    res.send(pdfBuffer);
+  }
+
   @Post('contracts/:id/generate-signed-documents')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   generateSignedDocuments(

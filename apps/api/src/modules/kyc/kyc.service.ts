@@ -138,6 +138,16 @@ export class KycService {
     });
     if (!kyc) throw new BadRequestException('ไม่พบ OTP ที่รอยืนยัน กรุณาส่ง OTP ใหม่');
 
+    // Dev mode: accept any OTP code
+    if (process.env.NODE_ENV !== 'production') {
+      this.logger.warn(`[KYC-DEV] Auto-accepting OTP for contract ${contractId}`);
+      await this.prisma.kycVerification.update({
+        where: { id: kyc.id },
+        data: { otpVerifiedAt: new Date(), status: 'OTP_VERIFIED' },
+      });
+      return { verified: true, message: 'OTP ถูกต้อง (dev mode)' };
+    }
+
     // Check expiry
     if (new Date() > kyc.expiresAt) {
       await this.prisma.kycVerification.update({

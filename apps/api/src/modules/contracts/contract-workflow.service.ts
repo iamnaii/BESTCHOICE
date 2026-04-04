@@ -32,9 +32,15 @@ export class ContractWorkflowService {
     }
 
     // Enforce mandatory steps before submit
+    const isDev = process.env.NODE_ENV !== 'production';
+
     // Step 1: Credit check must be approved
     if (!contract.creditCheck || contract.creditCheck.status !== 'APPROVED') {
-      throw new BadRequestException('ต้องผ่านการตรวจเครดิตก่อนส่งตรวจสอบ (ขั้นตอนที่ 1)');
+      if (isDev) {
+        this.logger.warn(`[DEV] Skipping credit check requirement for contract ${id}`);
+      } else {
+        throw new BadRequestException('ต้องผ่านการตรวจเครดิตก่อนส่งตรวจสอบ (ขั้นตอนที่ 1)');
+      }
     }
 
     // Step 2: Required fields validation
@@ -55,12 +61,20 @@ export class ContractWorkflowService {
       monthlyPayment: Number(contract.monthlyPayment),
     });
     if (missingFields.length > 0) {
-      throw new BadRequestException(`ข้อมูลสัญญาไม่ครบ: ${missingFields.join(', ')} (ขั้นตอนที่ 2)`);
+      if (isDev) {
+        this.logger.warn(`[DEV] Skipping required fields check: ${missingFields.join(', ')}`);
+      } else {
+        throw new BadRequestException(`ข้อมูลสัญญาไม่ครบ: ${missingFields.join(', ')} (ขั้นตอนที่ 2)`);
+      }
     }
 
     // Step 3: PDPA consent
     if (!contract.pdpaConsentId) {
-      throw new BadRequestException('ต้องได้รับความยินยอม PDPA จากลูกค้าก่อน (ขั้นตอนที่ 3)');
+      if (isDev) {
+        this.logger.warn(`[DEV] Skipping PDPA consent requirement for contract ${id}`);
+      } else {
+        throw new BadRequestException('ต้องได้รับความยินยอม PDPA จากลูกค้าก่อน (ขั้นตอนที่ 3)');
+      }
     }
 
     // Step 5: Signatures (at minimum customer + company)

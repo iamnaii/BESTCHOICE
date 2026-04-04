@@ -61,12 +61,38 @@ export default function StepContractReview({ previewHtml, onComplete, onBack }: 
 
 const IFRAME_STYLE = `
 <style>
+  /* Fix font loading in srcDoc iframe — use absolute URLs */
+  @font-face {
+    font-family: 'TH Sarabun PSK';
+    src: url('/fonts/THSarabunPSK-Regular.ttf') format('truetype');
+    font-weight: 400; font-style: normal; font-display: swap;
+  }
+  @font-face {
+    font-family: 'TH Sarabun PSK';
+    src: url('/fonts/THSarabunPSK-Bold.ttf') format('truetype');
+    font-weight: 700; font-style: normal; font-display: swap;
+  }
+  /* Force TH Sarabun PSK everywhere */
+  html, body, div, p, td, th, span, strong, u, h1, h2, h3, h4, h5, h6 {
+    font-family: 'TH Sarabun PSK', 'Sarabun', sans-serif !important;
+  }
   /* Prevent horizontal overflow only */
   html, body {
     overflow-x: hidden !important;
     max-width: 100% !important;
     box-sizing: border-box !important;
   }
+  /* Compact mode: remove A4 paper simulation, show as continuous scroll */
+  body { background: #fff !important; padding: 0 !important; }
+  .a4-page {
+    width: 100% !important;
+    min-height: auto !important;
+    padding: 16px 20px !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    border-bottom: 1px dashed #d1d5db;
+  }
+  .a4-page:last-child { border-bottom: none; }
   /* Responsive images/tables */
   img, table, pre, svg {
     max-width: 100% !important;
@@ -81,10 +107,18 @@ const IFRAME_STYLE = `
 `;
 
 function ContractIframe({ html }: { html: string }) {
-  // Inject styles to prevent horizontal overflow and style scrollbar
-  const styledHtml = html.includes('</head>')
-    ? html.replace('</head>', `${IFRAME_STYLE}</head>`)
-    : `${IFRAME_STYLE}${html}`;
+  // Strip Google Fonts links — force local TH Sarabun PSK only
+  let cleaned = html.replace(/<link[^>]*fonts\.googleapis\.com[^>]*>/gi, '');
+  cleaned = cleaned.replace(/<link[^>]*fonts\.gstatic\.com[^>]*>/gi, '');
+
+  // Inject <base> tag so srcDoc iframe can resolve relative font/image URLs
+  const baseTag = `<base href="${window.location.origin}/" />`;
+  const injection = `${baseTag}${IFRAME_STYLE}`;
+  const styledHtml = cleaned.includes('</head>')
+    ? cleaned.replace('</head>', `${injection}</head>`)
+    : cleaned.includes('<head>')
+      ? cleaned.replace('<head>', `<head>${injection}`)
+      : `<html><head>${injection}</head><body>${cleaned}</body></html>`;
 
   return (
     <iframe

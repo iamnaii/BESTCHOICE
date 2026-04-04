@@ -210,7 +210,7 @@ export class DocumentsService {
       htmlContent = template.contentHtml;
       templateSettings = template.settings;
     } else {
-      const resolved = await this.resolveTemplate('STORE_DIRECT', documentType);
+      const resolved = await this.resolveTemplate(contract.planType || 'STORE_DIRECT', documentType);
       htmlContent = resolved.html;
       templateSettings = resolved.settings;
     }
@@ -415,7 +415,7 @@ export class DocumentsService {
       htmlContent = template.contentHtml;
       templateSettings = template.settings;
     } else {
-      const resolved = await this.resolveTemplate('STORE_DIRECT', 'CONTRACT');
+      const resolved = await this.resolveTemplate(contract.planType || 'STORE_DIRECT', 'CONTRACT');
       htmlContent = resolved.html;
       templateSettings = resolved.settings;
     }

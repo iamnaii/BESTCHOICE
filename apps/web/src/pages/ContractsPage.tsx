@@ -331,23 +331,23 @@ export default function ContractsPage() {
       )}
 
       {/* View Tabs */}
-      <div className="flex gap-1 mb-4 border-b">
+      <div className="flex gap-0.5 mb-4 border-b border-border/60">
         <button
           onClick={() => updateParams({ tab: '', status: '', workflow: '', q: '', page: '' })}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${viewTab === 'all' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          className={`px-4 py-2.5 text-2sm font-medium border-b-2 transition-colors ${viewTab === 'all' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'}`}
         >
           ทั้งหมด
         </button>
         <button
           onClick={() => updateParams({ tab: 'my', status: '', workflow: '', q: '', page: '' })}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${viewTab === 'my' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          className={`px-4 py-2.5 text-2sm font-medium border-b-2 transition-colors ${viewTab === 'my' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'}`}
         >
           สัญญาของฉัน
         </button>
         {isManager && (
           <button
             onClick={() => updateParams({ tab: 'pending_review', status: '', workflow: '', q: '', page: '' })}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${viewTab === 'pending_review' ? 'border-amber-600 text-amber-700' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+            className={`px-4 py-2.5 text-2sm font-medium border-b-2 transition-colors ${viewTab === 'pending_review' ? 'border-amber-500 text-amber-600 dark:text-amber-400' : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'}`}
           >
             รอตรวจสอบ
           </button>

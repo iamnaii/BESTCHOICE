@@ -268,7 +268,7 @@ export default function DashboardPage() {
   if (kpisLoading && !kpis) return <DashboardSkeleton />;
 
   return (
-    <div className="flex flex-col gap-5 lg:gap-7.5">
+    <div className="flex flex-col gap-5 lg:gap-7.5.5">
       {/* Page Title */}
       <div>
         <h1 className="text-xl font-bold text-foreground">Dashboard</h1>
@@ -287,56 +287,62 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ═══ KPI Banner (full-width) — animated counters ═══ */}
+      {/* ═══ KPI Stats (Metronic CRM-style) ═══ */}
       {kpis && (
-        <div className="rounded-xl bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-700 text-white p-6 lg:p-8">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="cursor-pointer group" onClick={() => navigate('/contracts')}>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="size-8 rounded-lg bg-white/15 flex items-center justify-center group-hover:bg-white/25 transition-colors">
-                  <FileCheck className="size-4" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-5">
+          <Card className="cursor-pointer group hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 border-l-[3px] border-l-primary" onClick={() => navigate('/contracts')}>
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/15 transition-colors">
+                  <FileCheck className="size-5 text-primary" />
                 </div>
-                <span className="text-xs text-white/70 font-medium">สัญญาทั้งหมด</span>
               </div>
-              <AnimatedCounter value={kpis.contracts.total} className="text-2xl lg:text-3xl font-bold" />
-              <div className="text-xs text-white/60 mt-1">ปกติ <AnimatedCounter value={kpis.contracts.active} /></div>
-            </div>
-            <div className="cursor-pointer group" onClick={() => navigate('/overdue')}>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="size-8 rounded-lg bg-white/15 flex items-center justify-center group-hover:bg-white/25 transition-colors">
-                  <AlertTriangle className="size-4" />
+              <AnimatedCounter value={kpis.contracts.total} className="text-2xl lg:text-3xl font-bold text-foreground" />
+              <div className="text-2xs font-medium text-muted-foreground mt-1.5 uppercase tracking-wider">สัญญาทั้งหมด</div>
+              <div className="text-xs text-muted-foreground mt-1">ปกติ <AnimatedCounter value={kpis.contracts.active} className="text-success font-semibold" /></div>
+            </CardContent>
+          </Card>
+          <Card className="cursor-pointer group hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 border-l-[3px] border-l-destructive" onClick={() => navigate('/overdue')}>
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="size-10 rounded-xl bg-destructive/10 flex items-center justify-center group-hover:bg-destructive/15 transition-colors">
+                  <AlertTriangle className="size-5 text-destructive" />
                 </div>
-                <span className="text-xs text-white/70 font-medium">ค้าง/ผิดนัด</span>
+                <span className="text-2xs font-semibold text-destructive bg-destructive/10 px-2 py-0.5 rounded-md">{(kpis.overdueRate ?? 0).toFixed(1)}%</span>
               </div>
-              <AnimatedCounter value={(kpis.contracts.overdue ?? 0) + (kpis.contracts.default ?? 0)} className="text-2xl lg:text-3xl font-bold" />
-              <div className="text-xs text-white/60 mt-1">{(kpis.overdueRate ?? 0).toFixed(1)}%</div>
-            </div>
-            <div className="cursor-pointer group" onClick={() => navigate('/payments')}>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="size-8 rounded-lg bg-white/15 flex items-center justify-center group-hover:bg-white/25 transition-colors">
-                  <TrendingUp className="size-4" />
+              <AnimatedCounter value={(kpis.contracts.overdue ?? 0) + (kpis.contracts.default ?? 0)} className="text-2xl lg:text-3xl font-bold text-foreground" />
+              <div className="text-2xs font-medium text-muted-foreground mt-1.5 uppercase tracking-wider">ค้าง/ผิดนัด</div>
+            </CardContent>
+          </Card>
+          <Card className="cursor-pointer group hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 border-l-[3px] border-l-success" onClick={() => navigate('/payments')}>
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="size-10 rounded-xl bg-success/10 flex items-center justify-center group-hover:bg-success/15 transition-colors">
+                  <TrendingUp className="size-5 text-success" />
                 </div>
-                <span className="text-xs text-white/70 font-medium">ยอดรับวันนี้</span>
+                <span className="text-2xs font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded-md"><AnimatedCounter value={kpis.financial.todayPaymentCount} /> รายการ</span>
               </div>
-              <AnimatedCounter value={kpis.financial.todayPayments} prefix="฿" className="text-2xl lg:text-3xl font-bold" />
-              <div className="text-xs text-white/60 mt-1"><AnimatedCounter value={kpis.financial.todayPaymentCount} /> รายการ</div>
-            </div>
-            <div className="cursor-pointer group" onClick={() => navigate('/stock')}>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="size-8 rounded-lg bg-white/15 flex items-center justify-center group-hover:bg-white/25 transition-colors">
-                  <Warehouse className="size-4" />
+              <AnimatedCounter value={kpis.financial.todayPayments} prefix="฿" className="text-2xl lg:text-3xl font-bold text-foreground" />
+              <div className="text-2xs font-medium text-muted-foreground mt-1.5 uppercase tracking-wider">ยอดรับวันนี้</div>
+            </CardContent>
+          </Card>
+          <Card className="cursor-pointer group hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 border-l-[3px] border-l-warning" onClick={() => navigate('/stock')}>
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="size-10 rounded-xl bg-warning/10 flex items-center justify-center group-hover:bg-warning/15 transition-colors">
+                  <Warehouse className="size-5 text-warning" />
                 </div>
-                <span className="text-xs text-white/70 font-medium">สินค้าในสต็อก</span>
               </div>
-              <AnimatedCounter value={kpis.products.inStock} className="text-2xl lg:text-3xl font-bold" />
-              <div className="text-xs text-white/60 mt-1">จาก <AnimatedCounter value={kpis.products.total} /></div>
-            </div>
-          </div>
+              <AnimatedCounter value={kpis.products.inStock} className="text-2xl lg:text-3xl font-bold text-foreground" />
+              <div className="text-2xs font-medium text-muted-foreground mt-1.5 uppercase tracking-wider">สินค้าในสต็อก</div>
+              <div className="text-xs text-muted-foreground mt-1">จาก <AnimatedCounter value={kpis.products.total} className="font-semibold" /></div>
+            </CardContent>
+          </Card>
         </div>
       )}
 
       {/* ═══ Two-Column: Shortcuts + Monthly Revenue ═══ */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-7">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-7.5">
         {/* Quick Action Shortcuts — role-based */}
         <div className="lg:col-span-5">
           <div className="grid grid-cols-2 gap-4">
@@ -356,7 +362,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Monthly Revenue + Financial Summary — lg:col-span-7 */}
-        <div className="lg:col-span-7 flex flex-col gap-5 lg:gap-7">
+        <div className="lg:col-span-7 flex flex-col gap-5 lg:gap-7.5">
           {/* Monthly Revenue — OWNER/BRANCH_MANAGER/ACCOUNTANT only */}
           {user?.role !== 'SALES' && (
             <Card>
@@ -633,7 +639,7 @@ export default function DashboardPage() {
       </Card>}
 
       {/* ═══ Two-Column: Trend (AreaChart) + Status Distribution (PieChart + bars) ═══ */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-7">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-7.5">
         {/* Monthly Trend — Recharts AreaChart */}
         <div className="lg:col-span-7">
           <Card>

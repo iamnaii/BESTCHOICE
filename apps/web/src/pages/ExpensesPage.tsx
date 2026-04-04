@@ -573,7 +573,7 @@ export default function ExpensesPage() {
       {/* Summary Cards — color stripe left border */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         {summaryCards.map((card) => (
-          <Card key={card.label} className="h-full overflow-hidden">
+          <Card key={card.label} className="h-full overflow-hidden hover:shadow-card-hover transition-all">
             <div className="flex h-full">
               {/* Color stripe */}
               <div className={`w-1 shrink-0 ${card.stripe}`} />

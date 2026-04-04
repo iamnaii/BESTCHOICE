@@ -39,15 +39,15 @@ interface DocumentStats {
 
 function StatCard({ label, value, color = 'blue', icon }: { label: string; value: number; color?: string; icon: string }) {
   const colors: Record<string, string> = {
-    blue: 'bg-blue-50 text-blue-700 border-blue-200',
-    green: 'bg-success/5 dark:bg-success/10 text-success border-success/20',
-    yellow: 'bg-warning/5 dark:bg-warning/10 text-yellow-700 border-yellow-200',
-    red: 'bg-destructive/5 dark:bg-destructive/10 text-destructive border-destructive/20',
-    purple: 'bg-purple-50 text-purple-700 border-purple-200',
-    orange: 'bg-warning/5 dark:bg-warning/10 text-orange-700 border-orange-200',
+    blue: 'bg-blue-50 text-blue-700 border-blue-200 border-l-primary',
+    green: 'bg-success/5 dark:bg-success/10 text-success border-success/20 border-l-success',
+    yellow: 'bg-warning/5 dark:bg-warning/10 text-yellow-700 border-yellow-200 border-l-warning',
+    red: 'bg-destructive/5 dark:bg-destructive/10 text-destructive border-destructive/20 border-l-destructive',
+    purple: 'bg-purple-50 text-purple-700 border-purple-200 border-l-purple-500',
+    orange: 'bg-warning/5 dark:bg-warning/10 text-orange-700 border-orange-200 border-l-warning',
   };
   return (
-    <div className={`rounded-lg border p-4 ${colors[color] || colors.blue}`}>
+    <div className={`rounded-lg border border-l-[3px] p-4 hover:shadow-card-hover transition-all ${colors[color] || colors.blue}`}>
       <div className="flex items-center gap-2 mb-1">
         <span className="text-lg">{icon}</span>
         <span className="text-sm font-medium">{label}</span>

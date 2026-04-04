@@ -213,7 +213,7 @@ export default function FinanceReceivablePage() {
       {/* Summary Cards — color stripe */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {summaryCards.map((card) => (
-          <Card key={card.label} className="h-full overflow-hidden">
+          <Card key={card.label} className="h-full overflow-hidden hover:shadow-card-hover transition-all">
             <div className="flex h-full">
               <div className={`w-1 shrink-0 ${card.stripe}`} />
               <CardContent className="p-4 flex flex-col justify-between flex-1">

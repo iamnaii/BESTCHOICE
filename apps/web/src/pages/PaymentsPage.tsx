@@ -493,19 +493,19 @@ export default function PaymentsPage() {
           {/* Summary Cards */}
           {pendingPayments.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-              <Card>
+              <Card className="border-l-[3px] border-l-primary hover:shadow-card-hover transition-all">
                 <CardContent className="p-4">
                   <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">รายการรอชำระ</div>
                   <div className="text-2xl font-bold">{pendingSummary.count}</div>
                 </CardContent>
               </Card>
-              <Card>
+              <Card className="border-l-[3px] border-l-destructive hover:shadow-card-hover transition-all">
                 <CardContent className="p-4">
                   <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ยอดรอชำระรวม</div>
                   <div className="text-2xl font-bold text-destructive">{pendingSummary.totalDue.toLocaleString()} ฿</div>
                 </CardContent>
               </Card>
-              <Card>
+              <Card className="border-l-[3px] border-l-primary hover:shadow-card-hover transition-all">
                 <CardContent className="p-4">
                   <button onClick={handleExport} className="w-full px-4 py-2 border border-input rounded-lg text-sm font-medium hover:bg-muted">
                     📊 ส่งออก Excel

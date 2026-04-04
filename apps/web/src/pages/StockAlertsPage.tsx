@@ -469,19 +469,19 @@ export default function StockAlertsPage() {
         <div className="flex flex-col gap-5 lg:gap-7.5">
           {/* Summary Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="rounded-lg border p-4 border-l-4 border-l-red-500">
+            <div className="rounded-lg border p-4 border-l-4 border-l-red-500 hover:shadow-card-hover transition-all">
               <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สินค้าต่ำกว่าเกณฑ์</div>
               <div className="text-2xl font-bold text-destructive">{dashboard?.totalLowStock || 0}</div>
             </div>
-            <div className="rounded-lg border p-4 border-l-4 border-l-orange-500">
+            <div className="rounded-lg border p-4 border-l-4 border-l-orange-500 hover:shadow-card-hover transition-all">
               <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">แจ้งเตือนรอดำเนินการ</div>
               <div className="text-2xl font-bold text-warning">{activeAlerts}</div>
             </div>
-            <div className="rounded-lg border p-4 border-l-4 border-l-primary-500">
+            <div className="rounded-lg border p-4 border-l-4 border-l-primary-500 hover:shadow-card-hover transition-all">
               <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Reorder Points ทั้งหมด</div>
               <div className="text-2xl font-bold text-primary">{reorderPoints?.length || 0}</div>
             </div>
-            <div className="rounded-lg border p-4 border-l-4 border-l-green-500">
+            <div className="rounded-lg border p-4 border-l-4 border-l-green-500 hover:shadow-card-hover transition-all">
               <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สินค้าปกติ</div>
               <div className="text-2xl font-bold text-success">
                 {(reorderPoints?.filter((r) => !r.isLow).length) || 0}

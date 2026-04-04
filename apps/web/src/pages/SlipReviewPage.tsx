@@ -244,25 +244,25 @@ export default function SlipReviewPage() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <Card>
+        <Card className="border-l-[3px] border-l-warning hover:shadow-card-hover transition-all">
           <CardContent className="pt-4">
             <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">รอตรวจ</div>
             <div className="text-2xl font-bold text-warning">{stats?.pendingCount ?? 0}</div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-l-[3px] border-l-success hover:shadow-card-hover transition-all">
           <CardContent className="pt-4">
             <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">อนุมัติวันนี้</div>
             <div className="text-2xl font-bold text-success">{stats?.approvedToday ?? 0}</div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-l-[3px] border-l-destructive hover:shadow-card-hover transition-all">
           <CardContent className="pt-4">
             <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ปฏิเสธวันนี้</div>
             <div className="text-2xl font-bold text-destructive">{stats?.rejectedToday ?? 0}</div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-l-[3px] border-l-success hover:shadow-card-hover transition-all">
           <CardContent className="pt-4">
             <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ยอดรวมอนุมัติวันนี้</div>
             <div className="text-2xl font-bold text-success">

@@ -270,31 +270,31 @@ export default function RepossessionsPage() {
       {/* Profit/Loss Summary */}
       {profitLoss?.summary && (
         <div className="grid grid-cols-1 sm:grid-cols-5 gap-5 lg:gap-7.5 mb-6">
-          <Card className="shadow-card">
+          <Card className="shadow-card hover:shadow-card-hover transition-all border-l-[3px] border-l-primary">
             <CardContent className="p-4">
               <div className="text-sm text-muted-foreground">เครื่องที่ขายแล้ว</div>
               <div className="text-2xl font-bold">{profitLoss.summary.count ?? 0}</div>
             </CardContent>
           </Card>
-          <Card className="shadow-card">
+          <Card className="shadow-card hover:shadow-card-hover transition-all border-l-[3px] border-l-primary">
             <CardContent className="p-4">
               <div className="text-sm text-muted-foreground">ราคาตีรวม</div>
               <div className="text-lg font-bold">{(profitLoss.summary.totalAppraisal ?? 0).toLocaleString()} บาท</div>
             </CardContent>
           </Card>
-          <Card className="shadow-card">
+          <Card className="shadow-card hover:shadow-card-hover transition-all border-l-[3px] border-l-warning">
             <CardContent className="p-4">
               <div className="text-sm text-muted-foreground">ค่าซ่อมรวม</div>
               <div className="text-lg font-bold">{(profitLoss.summary.totalRepairCost ?? 0).toLocaleString()} บาท</div>
             </CardContent>
           </Card>
-          <Card className="shadow-card">
+          <Card className="shadow-card hover:shadow-card-hover transition-all border-l-[3px] border-l-success">
             <CardContent className="p-4">
               <div className="text-sm text-muted-foreground">ราคาขายรวม</div>
               <div className="text-lg font-bold">{(profitLoss.summary.totalResellPrice ?? 0).toLocaleString()} บาท</div>
             </CardContent>
           </Card>
-          <Card className="shadow-card">
+          <Card className="shadow-card hover:shadow-card-hover transition-all border-l-[3px] border-l-success">
             <CardContent className="p-4">
               <div className="text-sm text-muted-foreground">กำไร/ขาดทุน</div>
               <div className={`text-lg font-bold ${(profitLoss.summary.totalProfit ?? 0) >= 0 ? 'text-success' : 'text-destructive'}`}>

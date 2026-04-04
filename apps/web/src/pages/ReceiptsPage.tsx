@@ -219,13 +219,13 @@ function ReceiptsPage() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <Card>
+        <Card className="border-l-[3px] border-l-primary hover:shadow-card-hover transition-all">
           <CardContent className="pt-4">
             <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">จำนวนใบเสร็จ</div>
             <div className="text-2xl font-bold">{summary?.totalCount?.toLocaleString() || 0}</div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-l-[3px] border-l-success hover:shadow-card-hover transition-all">
           <CardContent className="pt-4">
             <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ยอดรวม</div>
             <div className="text-2xl font-bold text-success">
@@ -233,7 +233,7 @@ function ReceiptsPage() {
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="hover:shadow-card-hover transition-all">
           <CardContent className="pt-4 flex items-center justify-between">
             <div>
               <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Export</div>

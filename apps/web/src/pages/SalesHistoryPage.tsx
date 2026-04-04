@@ -405,28 +405,28 @@ export default function SalesHistoryPage() {
       {/* Summary Cards */}
       {summary && salesData && (
         <div className={`grid grid-cols-2 ${isOwner ? 'md:grid-cols-5' : 'md:grid-cols-4'} gap-5 lg:gap-7.5 mb-6`}>
-          <Card>
+          <Card className="border-l-[3px] border-l-foreground hover:shadow-card-hover transition-all">
             <CardContent className="p-5">
               <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ทั้งหมด {salesData.total.toLocaleString()} รายการ</div>
               <div className="text-xl font-bold">{summary.totalAmount.toLocaleString()} <span className="text-sm font-normal text-muted-foreground">฿</span></div>
               {summary.totalDiscount > 0 && <div className="text-xs text-red-500">ส่วนลดรวม {summary.totalDiscount.toLocaleString()} ฿</div>}
             </CardContent>
           </Card>
-          <Card>
+          <Card className="border-l-[3px] border-l-success hover:shadow-card-hover transition-all">
             <CardContent className="p-5">
               <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เงินสด</div>
               <div className="text-xl font-bold text-success">{summary.cashCount}</div>
               <div className="text-sm text-success mt-1">{summary.cashAmount.toLocaleString()} ฿</div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="border-l-[3px] border-l-primary hover:shadow-card-hover transition-all">
             <CardContent className="p-5">
               <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ผ่อนร้าน</div>
               <div className="text-xl font-bold text-primary">{summary.installmentCount}</div>
               <div className="text-sm text-primary mt-1">{summary.installmentAmount.toLocaleString()} ฿</div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="border-l-[3px] border-l-primary hover:shadow-card-hover transition-all">
             <CardContent className="p-5">
               <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ไฟแนนซ์</div>
               <div className="text-xl font-bold text-primary">{summary.financeCount}</div>
@@ -434,7 +434,7 @@ export default function SalesHistoryPage() {
             </CardContent>
           </Card>
           {isOwner && (
-            <Card>
+            <Card className="border-l-[3px] border-l-warning hover:shadow-card-hover transition-all">
               <CardContent className="p-5">
                 <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">กำไรรวม</div>
                 <div className={`text-xl font-bold ${summary.totalProfit >= 0 ? 'text-success' : 'text-destructive'}`}>

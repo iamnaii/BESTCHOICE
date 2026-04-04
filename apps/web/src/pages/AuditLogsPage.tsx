@@ -128,19 +128,19 @@ export default function AuditLogsPage() {
       {/* Stats Cards */}
       {stats && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-card rounded-lg border border-border p-4">
+          <div className="bg-card rounded-lg border border-border border-l-[3px] border-l-primary p-4 hover:shadow-card-hover transition-all">
             <p className="text-xs text-muted-foreground">วันนี้</p>
             <p className="text-2xl font-bold text-foreground">{stats.todayCount.toLocaleString()}</p>
           </div>
-          <div className="bg-card rounded-lg border border-border p-4">
+          <div className="bg-card rounded-lg border border-border border-l-[3px] border-l-success p-4 hover:shadow-card-hover transition-all">
             <p className="text-xs text-muted-foreground">7 วันล่าสุด</p>
             <p className="text-2xl font-bold text-foreground">{stats.weekCount.toLocaleString()}</p>
           </div>
-          <div className="bg-card rounded-lg border border-border p-4">
+          <div className="bg-card rounded-lg border border-border border-l-[3px] border-l-foreground p-4 hover:shadow-card-hover transition-all">
             <p className="text-xs text-muted-foreground">ทั้งหมด</p>
             <p className="text-2xl font-bold text-foreground">{stats.totalCount.toLocaleString()}</p>
           </div>
-          <div className="bg-card rounded-lg border border-border p-4">
+          <div className="bg-card rounded-lg border border-border border-l-[3px] border-l-destructive p-4 hover:shadow-card-hover transition-all">
             <p className="text-xs text-muted-foreground">Error (7 วัน)</p>
             <p className={`text-2xl font-bold ${stats.recentErrors > 0 ? 'text-destructive' : 'text-success'}`}>
               {stats.recentErrors}
@@ -150,7 +150,7 @@ export default function AuditLogsPage() {
       )}
 
       {/* Filters */}
-      <div className="bg-card rounded-lg border border-border p-4 mb-6">
+      <div className="bg-card rounded-lg border border-border/60 p-4 mb-6">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1">Entity</label>
@@ -212,7 +212,7 @@ export default function AuditLogsPage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-muted border-b">
+              <thead className="bg-muted/40 border-b">
                 <tr>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">เวลา</th>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">ผู้ใช้</th>

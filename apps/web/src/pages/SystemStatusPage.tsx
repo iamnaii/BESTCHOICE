@@ -228,7 +228,7 @@ export default function SystemStatusPage() {
         <h2 className="text-base font-bold text-foreground mb-4 border-b pb-2">สรุปสถานะบริการ</h2>
         <table className="w-full text-sm mb-8 border-collapse">
           <thead>
-            <tr className="bg-muted">
+            <tr className="bg-muted/40">
               <th className="text-left p-3 border border-border font-semibold text-foreground">บริการ</th>
               <th className="text-left p-3 border border-border font-semibold text-foreground">สถานะ</th>
               <th className="text-left p-3 border border-border font-semibold text-foreground">รายละเอียด</th>

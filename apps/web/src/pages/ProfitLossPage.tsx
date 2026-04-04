@@ -173,7 +173,7 @@ export default function ProfitLossPage() {
         <>
           {/* Summary Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <Card>
+            <Card className="border-l-[3px] border-l-success hover:shadow-card-hover transition-all">
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">รายได้รวม</span>
@@ -184,7 +184,7 @@ export default function ProfitLossPage() {
                 <div className="text-2xl font-bold text-success">{fmt(pl.summary.totalRevenue)}</div>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="border-l-[3px] border-l-destructive hover:shadow-card-hover transition-all">
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">ค่าใช้จ่ายรวม</span>
@@ -195,7 +195,7 @@ export default function ProfitLossPage() {
                 <div className="text-2xl font-bold text-destructive">{fmt(pl.summary.totalExpenses)}</div>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="border-l-[3px] border-l-primary hover:shadow-card-hover transition-all">
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">กำไรสุทธิ</span>
@@ -208,7 +208,7 @@ export default function ProfitLossPage() {
                 </div>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="border-l-[3px] border-l-warning hover:shadow-card-hover transition-all">
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">อัตรากำไร</span>
@@ -227,7 +227,7 @@ export default function ProfitLossPage() {
           {monthlyData?.months && (
             <Card className="mb-6">
               <CardHeader>
-                <h2 className="text-lg font-semibold">เปรียบเทียบรายเดือน {monthlyData.year}</h2>
+                <h2 className="text-lg font-bold">เปรียบเทียบรายเดือน {monthlyData.year}</h2>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
@@ -250,7 +250,7 @@ export default function ProfitLossPage() {
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold">งบกำไรขาดทุน</h2>
+                <h2 className="text-lg font-bold">งบกำไรขาดทุน</h2>
                 <span className="text-sm text-muted-foreground">
                   {new Date(startDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })}
                   {' — '}

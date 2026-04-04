@@ -595,19 +595,19 @@ export default function NotificationsPage() {
       {/* Stats */}
       {stats && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-          <div className="bg-card rounded-lg border border-border p-4">
+          <div className="bg-card rounded-lg border border-border border-l-[3px] border-l-foreground p-4 hover:shadow-card-hover transition-all">
             <div className="text-sm text-muted-foreground">ทั้งหมด</div>
             <div className="text-2xl font-bold">{stats.total}</div>
           </div>
-          <div className="bg-card rounded-lg border border-border p-4">
+          <div className="bg-card rounded-lg border border-border border-l-[3px] border-l-success p-4 hover:shadow-card-hover transition-all">
             <div className="text-sm text-muted-foreground">ส่งสำเร็จ</div>
             <div className="text-2xl font-bold text-success">{stats.sent}</div>
           </div>
-          <div className="bg-card rounded-lg border border-border p-4">
+          <div className="bg-card rounded-lg border border-border border-l-[3px] border-l-destructive p-4 hover:shadow-card-hover transition-all">
             <div className="text-sm text-muted-foreground">ล้มเหลว</div>
             <div className="text-2xl font-bold text-destructive">{stats.failed}</div>
           </div>
-          <div className="bg-card rounded-lg border border-border p-4">
+          <div className="bg-card rounded-lg border border-border border-l-[3px] border-l-warning p-4 hover:shadow-card-hover transition-all">
             <div className="text-sm text-muted-foreground">รอส่ง</div>
             <div className="text-2xl font-bold text-warning">{stats.pending}</div>
           </div>

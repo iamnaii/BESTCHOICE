@@ -581,23 +581,23 @@ export default function CreditChecksPage() {
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-5 lg:gap-7.5 mb-6">
-        <div className="bg-card rounded-lg border p-4">
+        <div className="bg-card rounded-lg border border-l-[3px] border-l-foreground p-4 hover:shadow-card-hover transition-all">
           <div className="text-xs text-muted-foreground">ทั้งหมด</div>
           <div className="text-xl font-bold">{summary?.totalCount ?? 0}</div>
         </div>
-        <div className="bg-success/5 dark:bg-success/10 rounded-lg border border-success/20 p-4">
+        <div className="bg-success/5 dark:bg-success/10 rounded-lg border border-success/20 border-l-[3px] border-l-success p-4 hover:shadow-card-hover transition-all">
           <div className="text-xs text-success">ผ่าน</div>
           <div className="text-xl font-bold text-success">{summary?.approvedCount ?? 0}</div>
         </div>
-        <div className="bg-amber-50 dark:bg-amber-500/10 rounded-lg border border-amber-200 dark:border-amber-500/20 p-4">
+        <div className="bg-amber-50 dark:bg-amber-500/10 rounded-lg border border-amber-200 dark:border-amber-500/20 border-l-[3px] border-l-warning p-4 hover:shadow-card-hover transition-all">
           <div className="text-xs text-amber-600 dark:text-amber-500">รอวิเคราะห์ / ตรวจเพิ่ม</div>
           <div className="text-xl font-bold text-amber-700 dark:text-amber-500">{summary?.pendingCount ?? 0}</div>
         </div>
-        <div className="bg-destructive/5 dark:bg-destructive/10 rounded-lg border border-destructive/20 p-4">
+        <div className="bg-destructive/5 dark:bg-destructive/10 rounded-lg border border-destructive/20 border-l-[3px] border-l-destructive p-4 hover:shadow-card-hover transition-all">
           <div className="text-xs text-destructive">ไม่ผ่าน</div>
           <div className="text-xl font-bold text-destructive">{summary?.rejectedCount ?? 0}</div>
         </div>
-        <div className={`rounded-lg border p-4 ${summary?.avgScore ? avgScoreBg(summary.avgScore) : 'bg-card'}`}>
+        <div className={`rounded-lg border p-4 hover:shadow-card-hover transition-all ${summary?.avgScore ? avgScoreBg(summary.avgScore) : 'bg-card'}`}>
           <div className={`text-xs ${summary?.avgScore ? avgScoreLabel(summary.avgScore) : 'text-muted-foreground'}`}>คะแนน AI เฉลี่ย</div>
           <div className={`text-xl font-bold ${summary?.avgScore ? avgScoreColor(summary.avgScore) : ''}`}>
             {summary?.avgScore ?? '-'}

@@ -98,7 +98,7 @@ const CARD_READER_DOWNLOAD_URL = 'https://github.com/iamnaii/BESTCHOICE/releases
 function StatCard({ label, value, suffix, desc }: { label: string; value: string; suffix: string; desc: string }) {
   const display = value ? `${value}${suffix}` : '-';
   return (
-    <div className="bg-muted rounded-lg p-3">
+    <div className="bg-muted rounded-xl p-3">
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="text-lg font-bold text-foreground mt-0.5">{display}</div>
       {desc && <div className="text-xs text-muted-foreground/70 mt-1">{desc}</div>}
@@ -168,10 +168,10 @@ function SettingsCard({
   };
 
   return (
-    <div className="bg-card rounded-lg border border-border p-5">
+    <div className="bg-card rounded-xl border border-border/60 border-l-[3px] border-l-primary shadow-card p-5">
       <div className="flex items-start justify-between">
         <div>
-          <h3 className="text-lg font-semibold text-foreground">{group.title}</h3>
+          <h3 className="text-lg font-bold text-foreground">{group.title}</h3>
           <p className="text-xs text-muted-foreground mt-0.5">{group.subtitle}</p>
         </div>
         {!isEditing && (
@@ -390,7 +390,7 @@ function SignatureEditor({
   };
 
   return (
-    <div className="border-t border-border pt-4 mt-2">
+    <div className="border-t border-border/60 pt-4 mt-2">
       <div className="text-sm font-medium text-foreground mb-1">ลายเซ็นผู้ให้เช่าซื้อ</div>
       <div className="text-xs text-muted-foreground/70 mb-3">ลายเซ็นนี้จะถูกใช้อัตโนมัติในทุกสัญญา ไม่ต้องเซ็นใหม่ทุกครั้ง</div>
 
@@ -539,7 +539,7 @@ export default function SettingsPage() {
         <CardReaderSetup />
 
         {/* Link to LINE OA Settings */}
-        <div className="bg-success/5 dark:bg-success/10 border border-success/20 rounded-lg p-4 flex items-center justify-between">
+        <div className="bg-success/5 dark:bg-success/10 border border-success/20 rounded-xl p-4 flex items-center justify-between">
           <div>
             <div className="text-sm font-medium text-success">เชื่อมต่อ LINE OA</div>
             <div className="text-xs text-success mt-0.5">เชื่อมต่อ LINE Official Account เพื่อส่งแจ้งเตือนค่างวด, สลิปชำระเงิน และติดตามหนี้ผ่าน LINE</div>
@@ -550,7 +550,7 @@ export default function SettingsPage() {
         </div>
 
         {/* Link to InterestConfig */}
-        <div className="bg-primary-50 border border-primary-200 rounded-lg p-4 flex items-center justify-between">
+        <div className="bg-primary-50 border border-primary-200 rounded-xl p-4 flex items-center justify-between">
           <div>
             <div className="text-sm font-medium text-primary-800">ตั้งค่าอัตราดอกเบี้ยตามประเภทสินค้า</div>
             <div className="text-xs text-primary mt-0.5">ตั้งค่าดอกเบี้ย เงินดาวน์ขั้นต่ำ จำนวนงวด แยกตามประเภทสินค้า (มือ1, มือ2, แท็บเล็ต ฯลฯ)</div>
@@ -561,7 +561,7 @@ export default function SettingsPage() {
         </div>
 
         {/* Link to SMS Settings */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center justify-between">
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center justify-between">
           <div>
             <div className="text-sm font-medium text-blue-800">ตั้งค่า SMS (ThaiBulkSMS)</div>
             <div className="text-xs text-blue-600 mt-0.5">เชื่อมต่อ ThaiBulkSMS เพื่อส่ง OTP ยืนยันตัวตน และแจ้งเตือนค่างวดผ่าน SMS</div>
@@ -608,7 +608,7 @@ export default function SettingsPage() {
                 </div>
 
                 {/* Signature preview */}
-                <div className="border-t border-border pt-3">
+                <div className="border-t border-border/60 pt-3">
                   <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ลายเซ็นผู้ให้เช่าซื้อ</div>
                   {vals['lessor_signature_image'] ? (
                     <div className="inline-flex items-center gap-3">

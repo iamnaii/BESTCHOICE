@@ -171,7 +171,9 @@ export default function BranchesPage() {
         }
       />
 
-      <DataTable columns={columns} data={branches} isLoading={isLoading} />
+      <div className="rounded-xl border border-border/60 overflow-hidden">
+        <DataTable columns={columns} data={branches} isLoading={isLoading} />
+      </div>
 
       <Modal
         isOpen={isModalOpen}

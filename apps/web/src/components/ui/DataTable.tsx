@@ -194,7 +194,7 @@ function DataTable<T extends { id: string }>({
 
   if (isLoading) {
     return (
-      <div className="bg-card rounded-xl border border-border overflow-hidden shadow-card" role="status" aria-label="กำลังโหลดข้อมูล">
+      <div className="bg-card rounded-xl border border-border/60 overflow-hidden shadow-card" role="status" aria-label="กำลังโหลดข้อมูล">
         <div className="p-1">
           <div className="space-y-0">
             <div className="flex gap-4 px-5 py-3.5 bg-muted/50">
@@ -219,10 +219,10 @@ function DataTable<T extends { id: string }>({
   const hasToolbar = searchable || columnToggle || toolbar || (selectable && selectedRows.length > 0);
 
   return (
-    <div className="bg-card rounded-xl border border-border overflow-hidden shadow-card">
+    <div className="bg-card rounded-xl border border-border/60 overflow-hidden shadow-card">
       {/* Toolbar */}
       {hasToolbar && (
-        <div className="flex items-center justify-between gap-3 flex-wrap px-5 py-3 border-b border-border">
+        <div className="flex items-center justify-between gap-3 flex-wrap px-5 py-3 border-b border-border/60">
           <div className="flex items-center gap-3 flex-1 min-w-0">
             {/* Search */}
             {searchable && (
@@ -316,7 +316,7 @@ function DataTable<T extends { id: string }>({
         <table className="w-full min-w-[640px]">
           <thead>
             {table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id} className="bg-muted/50 border-b border-border">
+              <tr key={headerGroup.id} className="bg-muted/40 border-b border-border/60">
                 {headerGroup.headers.map((header) => {
                   const canSort = header.column.getCanSort();
                   const sorted = header.column.getIsSorted();
@@ -353,7 +353,7 @@ function DataTable<T extends { id: string }>({
               </tr>
             ))}
           </thead>
-          <tbody className="divide-y divide-border">
+          <tbody className="divide-y divide-border/60">
             {rows.length === 0 ? (
               <tr>
                 <td colSpan={table.getVisibleLeafColumns().length} className="px-5 py-16 text-center">
@@ -372,7 +372,7 @@ function DataTable<T extends { id: string }>({
                   className={cn(
                     'transition-colors hover:bg-muted/50',
                     (onRowClick || onRowDoubleClick) && 'cursor-pointer',
-                    row.getIsSelected() && 'bg-primary/5',
+                    row.getIsSelected() && 'bg-primary/5 border-l-[2px] border-l-primary',
                   )}
                   onClick={() => onRowClick?.(row.original)}
                   onDoubleClick={() => onRowDoubleClick?.(row.original)}
@@ -398,7 +398,7 @@ function DataTable<T extends { id: string }>({
 
       {/* Pagination — enhanced */}
       {pagination && pagination.totalPages > 1 && (
-        <div className="flex items-center justify-between px-5 py-3 border-t border-border bg-muted/30">
+        <div className="flex items-center justify-between px-5 py-3 border-t border-border/60 bg-muted/20">
           <span className="text-sm text-muted-foreground">
             ทั้งหมด {pagination.total.toLocaleString()} รายการ
           </span>

@@ -7,7 +7,8 @@ import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { compressImageForOcr } from '@/lib/compressImage';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { Camera, X, CreditCard, Mail, Copy, Link2, Clock } from 'lucide-react';
+import { Camera, X, CreditCard, Mail, Copy, Link2, Clock, Users, UserCheck, Shield } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
 import { checkCardReaderStatus, readSmartCard } from '@/lib/cardReader';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -416,7 +417,7 @@ export default function UsersPage() {
 
       {/* Tabs (only for OWNER) */}
       {isOwner && (
-        <div className="flex gap-1 mb-4 border-b border-border">
+        <div className="flex gap-1 mb-4 border-b border-border/60">
           <button
             onClick={() => setActiveTab('users')}
             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
@@ -441,11 +442,64 @@ export default function UsersPage() {
         </div>
       )}
 
-      {activeTab === 'users' ? (
-        <DataTable columns={columns} data={users} isLoading={isLoading} />
-      ) : (
-        <DataTable columns={inviteColumns} data={invitesData?.data || []} isLoading={invitesLoading} />
+      {/* User Stats Summary */}
+      {activeTab === 'users' && users.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+          <Card className="hover:shadow-card-hover transition-all border-l-[3px] border-l-primary">
+            <CardContent className="p-5">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-primary/10">
+                  <Users className="size-5 text-primary" />
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-foreground">{users.length}</div>
+                  <div className="text-xs text-muted-foreground">ผู้ใช้ทั้งหมด</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="hover:shadow-card-hover transition-all border-l-[3px] border-l-success">
+            <CardContent className="p-5">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-success/10">
+                  <UserCheck className="size-5 text-success" />
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-foreground">{users.filter(u => u.isActive).length}</div>
+                  <div className="text-xs text-muted-foreground">ใช้งานอยู่</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="hover:shadow-card-hover transition-all border-l-[3px] border-l-warning">
+            <CardContent className="p-5">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-warning/10">
+                  <Shield className="size-5 text-warning" />
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-foreground">
+                    {(() => {
+                      const roleCounts = users.reduce<Record<string, number>>((acc, u) => { acc[u.role] = (acc[u.role] || 0) + 1; return acc; }, {});
+                      const topRole = Object.entries(roleCounts).sort((a, b) => b[1] - a[1])[0];
+                      return topRole ? `${roleLabels[topRole[0]] || topRole[0]}` : '-';
+                    })()}
+                  </div>
+                  <div className="text-xs text-muted-foreground">ตำแหน่งที่มีมากที่สุด</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       )}
+
+      <div className="rounded-xl border border-border/60 overflow-hidden">
+        {activeTab === 'users' ? (
+          <DataTable columns={columns} data={users} isLoading={isLoading} />
+        ) : (
+          <DataTable columns={inviteColumns} data={invitesData?.data || []} isLoading={invitesLoading} />
+        )}
+      </div>
 
       {/* Invite Modal */}
       <Modal isOpen={isInviteModalOpen} onClose={() => setIsInviteModalOpen(false)} title="เชิญผู้ใช้ใหม่">

@@ -35,6 +35,7 @@ import {
   Cell,
   Legend,
 } from 'recharts';
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 
 /* ─── Types ─── */
 
@@ -660,45 +661,42 @@ export default function DashboardPage() {
               {trendError ? (
                 <ErrorBlock message="โหลดข้อมูลไม่สำเร็จ" onRetry={() => refetchTrend()} />
               ) : trend.length > 0 ? (
-                <ResponsiveContainer width="100%" height={280}>
+                <ChartContainer
+                  config={{
+                    newContracts: { label: 'สัญญาใหม่', color: 'hsl(217 91% 60%)' },
+                    paymentsReceived: { label: 'ยอดชำระ (฿)', color: 'hsl(142 71% 45%)' },
+                  } satisfies ChartConfig}
+                  className="h-[280px] w-full"
+                >
                   <AreaChart data={trend} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
                     <defs>
                       <linearGradient id="gradContracts" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="hsl(217 91% 60%)" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="hsl(217 91% 60%)" stopOpacity={0} />
+                        <stop offset="5%" stopColor="var(--color-newContracts)" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="var(--color-newContracts)" stopOpacity={0} />
                       </linearGradient>
                       <linearGradient id="gradPayments" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="hsl(142 71% 45%)" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="hsl(142 71% 45%)" stopOpacity={0} />
+                        <stop offset="5%" stopColor="var(--color-paymentsReceived)" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="var(--color-paymentsReceived)" stopOpacity={0} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
                     <XAxis
                       dataKey="month"
-                      tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                      tick={{ fontSize: 11 }}
                       axisLine={false}
                       tickLine={false}
                     />
                     <YAxis
-                      tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                      tick={{ fontSize: 11 }}
                       axisLine={false}
                       tickLine={false}
                     />
-                    <RechartsTooltip
-                      contentStyle={{
-                        backgroundColor: 'hsl(var(--popover))',
-                        border: '1px solid hsl(var(--border))',
-                        borderRadius: '8px',
-                        fontSize: '12px',
-                        boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
-                      }}
-                      labelStyle={{ fontWeight: 600, marginBottom: 4 }}
-                    />
+                    <ChartTooltip content={<ChartTooltipContent />} />
                     <Area
                       type="monotone"
                       dataKey="newContracts"
                       name="สัญญาใหม่"
-                      stroke="hsl(217 91% 60%)"
+                      stroke="var(--color-newContracts)"
                       strokeWidth={2}
                       fill="url(#gradContracts)"
                     />
@@ -706,12 +704,12 @@ export default function DashboardPage() {
                       type="monotone"
                       dataKey="paymentsReceived"
                       name="ยอดชำระ (฿)"
-                      stroke="hsl(142 71% 45%)"
+                      stroke="var(--color-paymentsReceived)"
                       strokeWidth={2}
                       fill="url(#gradPayments)"
                     />
                   </AreaChart>
-                </ResponsiveContainer>
+                </ChartContainer>
               ) : (
                 <div className="text-center text-muted-foreground py-8 text-sm">ไม่มีข้อมูล</div>
               )}

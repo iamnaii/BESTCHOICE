@@ -313,7 +313,7 @@ export default function POSPage() {
                     className={`p-4 rounded-xl border-2 text-center transition-all ${
                       saleType === type
                         ? `${config.bg} ring-2 shadow-sm`
-                        : 'border-border hover:border-input hover:shadow-xs'
+                        : 'border-border hover:border-input hover:shadow-card-hover hover:-translate-y-0.5'
                     }`}
                   >
                     <div className={`text-sm font-semibold ${saleType === type ? config.color : 'text-muted-foreground'}`}>
@@ -344,7 +344,7 @@ export default function POSPage() {
                       onClick={() => {
                         setProductSearch(tp.brand + ' ' + tp.model);
                       }}
-                      className="p-3 rounded-xl border border-border hover:border-primary hover:bg-primary/5 hover:shadow-xs text-left transition-all group"
+                      className="p-3 rounded-xl border border-border hover:border-primary hover:bg-primary/5 hover:shadow-card-hover hover:-translate-y-0.5 text-left transition-all group"
                     >
                       <div className="text-xs font-medium truncate group-hover:text-primary">{tp.brand} {tp.model}</div>
                       <div className="text-2xs text-muted-foreground mt-0.5">ขายแล้ว {tp.count} เครื่อง</div>
@@ -679,7 +679,7 @@ export default function POSPage() {
 
         {/* Right Column - Summary (sticky) */}
         <div className="flex flex-col gap-5 lg:gap-7.5">
-          <Card className="sticky top-20 shadow-card">
+          <Card className="sticky top-20 border-border/60 shadow-card">
             <CardHeader>
               <div className="text-sm font-semibold text-foreground">สรุปรายการ</div>
             </CardHeader>

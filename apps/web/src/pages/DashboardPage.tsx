@@ -553,7 +553,7 @@ export default function DashboardPage() {
                   <div className="overflow-x-auto -mx-1">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="border-b border-border/50 text-left text-muted-foreground">
+                        <tr className="bg-muted/40 border-b border-border/60 text-left text-muted-foreground">
                           <th className="px-3 pb-3 pt-2 font-medium text-xs">พนักงาน</th>
                           <th className="px-3 pb-3 pt-2 font-medium text-xs">สาขา</th>
                           <th className="px-3 pb-3 pt-2 font-medium text-xs text-right">สัญญา</th>
@@ -817,7 +817,7 @@ export default function DashboardPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-border/50 text-left text-muted-foreground">
+                  <tr className="bg-muted/40 border-b border-border/60 text-left text-muted-foreground">
                     <th className="px-5 pb-3 pt-4 font-medium text-xs">เลขสัญญา</th>
                     <th className="px-5 pb-3 pt-4 font-medium text-xs">ลูกค้า</th>
                     <th className="px-5 pb-3 pt-4 font-medium text-xs">เบอร์โทร</th>
@@ -879,7 +879,7 @@ export default function DashboardPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-border/50 text-left text-muted-foreground">
+                  <tr className="bg-muted/40 border-b border-border/60 text-left text-muted-foreground">
                     <th className="px-5 pb-3 pt-4 font-medium text-xs">สาขา</th>
                     <th className="px-5 pb-3 pt-4 font-medium text-xs text-right">สัญญา</th>
                     <th className="px-5 pb-3 pt-4 font-medium text-xs text-right">สินค้า</th>

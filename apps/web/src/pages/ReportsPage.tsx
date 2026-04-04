@@ -138,7 +138,7 @@ function AgingReport() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b text-left text-muted-foreground">
+              <tr className="bg-muted/40 border-b border-border/60 text-left text-muted-foreground">
                 <th className="pb-2 font-medium">ช่วงวัน</th>
                 <th className="pb-2 font-medium text-right">จำนวนสัญญา</th>
                 <th className="pb-2 font-medium text-right">ยอดค้างชำระ (บาท)</th>
@@ -207,7 +207,7 @@ function HighRiskReport() {
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b text-left text-muted-foreground">
+            <tr className="bg-muted/40 border-b border-border/60 text-left text-muted-foreground">
               <th className="pb-2 font-medium">ลูกค้า</th>
               <th className="pb-2 font-medium">เบอร์โทร</th>
               <th className="pb-2 font-medium text-right">สัญญาค้าง</th>
@@ -252,7 +252,7 @@ function SalesReport() {
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b text-left text-muted-foreground">
+            <tr className="bg-muted/40 border-b border-border/60 text-left text-muted-foreground">
               <th className="pb-2 font-medium">พนักงาน</th>
               <th className="pb-2 font-medium text-right">สัญญาทั้งหมด</th>
               <th className="pb-2 font-medium text-right">ยอดขาย (บาท)</th>
@@ -308,7 +308,7 @@ function BranchReport() {
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b text-left text-muted-foreground">
+            <tr className="bg-muted/40 border-b border-border/60 text-left text-muted-foreground">
               <th className="pb-2 font-medium">สาขา</th>
               <th className="pb-2 font-medium text-right">สัญญา</th>
               <th className="pb-2 font-medium text-right">ยอดขาย (บาท)</th>
@@ -365,7 +365,7 @@ function DailyPaymentReport({ date, onDateChange }: { date: string; onDateChange
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b text-left text-muted-foreground">
+              <tr className="bg-muted/40 border-b border-border/60 text-left text-muted-foreground">
                 <th className="pb-2 font-medium">สาขา</th>
                 <th className="pb-2 font-medium text-right">รายการ</th>
                 <th className="pb-2 font-medium text-right">ยอดรวม (บาท)</th>
@@ -410,7 +410,7 @@ function StockReport() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b text-left text-muted-foreground">
+              <tr className="bg-muted/40 border-b border-border/60 text-left text-muted-foreground">
                 <th className="pb-2 font-medium">สถานะ</th>
                 <th className="pb-2 font-medium text-right">จำนวน</th>
                 <th className="pb-2 font-medium text-right">มูลค่า (บาท)</th>
@@ -435,7 +435,7 @@ function StockReport() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b text-left text-muted-foreground">
+                <tr className="bg-muted/40 border-b border-border/60 text-left text-muted-foreground">
                   <th className="pb-2 font-medium">สาขา</th>
                   <th className="pb-2 font-medium text-right">จำนวน</th>
                   <th className="pb-2 font-medium text-right">มูลค่า (บาท)</th>

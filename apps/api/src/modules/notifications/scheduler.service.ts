@@ -10,6 +10,8 @@ import { LineOaService } from '../line-oa/line-oa.service';
 import { PaymentLinkService } from '../line-oa/payment-links/payment-link.service';
 import { buildOverdueNoticeFlex } from '../line-oa/flex-messages/overdue-notice.flex';
 import { buildPaymentReminderFlex } from '../line-oa/flex-messages/payment-reminder.flex';
+import { buildDailyReportFlex } from '../line-oa/flex-messages/daily-report.flex';
+import { DashboardService } from '../dashboard/dashboard.service';
 
 @Injectable()
 export class SchedulerService {
@@ -24,6 +26,7 @@ export class SchedulerService {
     private prisma: PrismaService,
     private lineOaService: LineOaService,
     private paymentLinkService: PaymentLinkService,
+    private dashboardService: DashboardService,
   ) {}
 
   /**
@@ -494,6 +497,83 @@ export class SchedulerService {
       }
     } catch (error) {
       this.logger.error(`Warranty expiry check failed: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+
+  /**
+   * Daily at 20:00 ICT (13:00 UTC): Send daily summary report via LINE to all OWNER users
+   */
+  @Cron('0 13 * * *') // 20:00 ICT
+  async handleDailyLineReport() {
+    this.logger.log('Starting daily LINE report to OWNER users...');
+    try {
+      // Find OWNER users with LINE IDs configured
+      const owners = await this.prisma.user.findMany({
+        where: { role: 'OWNER', isActive: true, lineId: { not: null } },
+        select: { name: true, lineId: true },
+      });
+
+      if (owners.length === 0) {
+        this.logger.log('Daily LINE report: no OWNER users with LINE ID configured, skipping');
+        return;
+      }
+
+      // Fetch KPIs from DashboardService
+      const kpis = await this.dashboardService.getKPIs();
+
+      // Count new contracts approved today
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const todayEnd = new Date();
+      todayEnd.setHours(23, 59, 59, 999);
+
+      const [newContractsToday, pendingApprovals] = await Promise.all([
+        this.prisma.contract.count({
+          where: {
+            createdAt: { gte: todayStart, lte: todayEnd },
+            deletedAt: null,
+          },
+        }),
+        this.prisma.contract.count({
+          where: {
+            workflowStatus: { in: ['PENDING_REVIEW', 'CREATING'] },
+            reviewedAt: null,
+            deletedAt: null,
+          },
+        }),
+      ]);
+
+      const dateLabel = new Date().toLocaleDateString('th-TH', {
+        weekday: 'short',
+        year: '2-digit',
+        month: 'short',
+        day: 'numeric',
+      });
+
+      const flex = buildDailyReportFlex({
+        date: dateLabel,
+        todayPaymentCount: kpis.financial.todayPaymentCount,
+        todayPaymentAmount: kpis.financial.todayPayments,
+        overdueCount: kpis.contracts.overdue,
+        overdueAmount: kpis.financial.totalReceivable,
+        defaultCount: kpis.contracts.default,
+        newContractsToday,
+        pendingApprovals,
+      });
+
+      let sent = 0;
+      for (const owner of owners) {
+        try {
+          await this.lineOaService.sendFlexMessage(owner.lineId!, flex);
+          sent++;
+        } catch (err) {
+          this.logger.warn(`Daily LINE report: failed to send to ${owner.name}: ${err}`);
+        }
+      }
+
+      this.logger.log(`Daily LINE report sent: ${sent}/${owners.length} OWNER users`);
+    } catch (error) {
+      this.logger.error(`Daily LINE report failed: ${error instanceof Error ? error.message : error}`);
     }
   }
 }

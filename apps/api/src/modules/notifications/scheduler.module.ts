@@ -6,9 +6,10 @@ import { ReorderPointsModule } from '../reorder-points/reorder-points.module';
 import { ProductsModule } from '../products/products.module';
 import { ReportsModule } from '../reports/reports.module';
 import { LineOaModule } from '../line-oa/line-oa.module';
+import { DashboardModule } from '../dashboard/dashboard.module';
 
 @Module({
-  imports: [NotificationsModule, OverdueModule, ReorderPointsModule, ProductsModule, ReportsModule, LineOaModule],
+  imports: [NotificationsModule, OverdueModule, ReorderPointsModule, ProductsModule, ReportsModule, LineOaModule, DashboardModule],
   providers: [SchedulerService],
 })
 export class SchedulerModule {}

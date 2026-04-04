@@ -38,8 +38,8 @@ export function BulkTransferModal({
     >
       <form onSubmit={onSubmit} className="space-y-4">
         {/* Selected items summary */}
-        <div className="bg-muted rounded-lg p-3 max-h-48 overflow-y-auto">
-          <div className="text-xs font-medium text-muted-foreground mb-2">สินค้าที่เลือก:</div>
+        <div className="bg-muted/60 rounded-xl p-3.5 max-h-48 overflow-y-auto border border-border/40">
+          <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สินค้าที่เลือก:</div>
           <div className="space-y-1">
             {listProducts.filter(p => selectedIds.has(p.id)).map(p => (
               <div key={p.id} className="flex items-center justify-between text-sm">

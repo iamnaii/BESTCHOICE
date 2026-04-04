@@ -47,7 +47,7 @@ export default function ContractTemplatesPage() {
   const showPreview = viewMode === 'split' || viewMode === 'preview';
 
   return (
-    <div className="-m-6 flex flex-col bg-secondary font-sarabun" style={{ height: 'calc(100vh - 56px)' }}>
+    <div className="-m-6 flex flex-col bg-secondary/80 font-sarabun" style={{ height: 'calc(100vh - 56px)' }}>
       {/* Header Bar */}
       <HeaderBar
         onBack={() => {

@@ -73,7 +73,7 @@ export default function ReportsPage() {
             onClick={() => setActiveTab(tab.key)}
             className={`px-3 py-2 text-xs font-medium rounded-md transition-colors ${
               activeTab === tab.key
-                ? 'bg-card text-primary shadow-xs shadow-black/5'
+                ? 'bg-card text-primary shadow-card'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >

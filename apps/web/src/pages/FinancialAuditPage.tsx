@@ -118,7 +118,7 @@ export default function FinancialAuditPage() {
         subtitle="ประวัติธุรกรรมการเงินของสัญญา"
       />
 
-      <Card className="shadow-xs shadow-black/5 mb-6">
+      <Card className="shadow-card mb-6">
         <CardContent className="p-4">
           <div className="flex gap-3">
             <input
@@ -140,7 +140,7 @@ export default function FinancialAuditPage() {
       </Card>
 
       {contractId && (
-        <Card className="shadow-xs shadow-black/5 mb-4">
+        <Card className="shadow-card mb-4">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div className="text-sm text-muted-foreground">

@@ -347,7 +347,7 @@ export default function SlipReviewPage() {
           {evidences.map((ev) => (
             <div
               key={ev.id}
-              className="relative bg-card rounded-xl shadow-xs shadow-black/5 border p-4 cursor-pointer hover:shadow-md transition-shadow"
+              className="relative bg-card rounded-xl shadow-card border p-4 cursor-pointer hover:shadow-md transition-shadow"
               onClick={() => {
                 setSelectedEvidence(ev);
                 setApproveAmount(ev.amount?.toString() || '');

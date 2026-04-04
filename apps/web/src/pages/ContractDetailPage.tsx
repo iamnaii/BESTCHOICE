@@ -1,6 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
+import { Card, CardContent } from '@/components/ui/card';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
@@ -440,26 +441,36 @@ export default function ContractDetailPage() {
 
       {/* Status + Workflow + Summary */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-        <div className="rounded-lg border p-4">
-          <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สถานะสัญญา</div>
-          <span className={`px-3 py-1 rounded-full text-sm font-medium ${s.className}`}>{s.label}</span>
-        </div>
-        <div className="rounded-lg border p-4">
-          <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Workflow</div>
-          <WorkflowStatusBadge status={contract.workflowStatus} />
-        </div>
-        <div className="rounded-lg border p-4">
-          <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ค่างวด/เดือน</div>
-          <div className="text-xl font-bold text-primary">{parseFloat(contract.monthlyPayment).toLocaleString()} ฿</div>
-        </div>
-        <div className="rounded-lg border p-4">
-          <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ชำระแล้ว</div>
-          <div className="text-xl font-bold text-success">{paidCount}/{contract.totalMonths} งวด</div>
-        </div>
-        <div className="rounded-lg border p-4">
-          <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ยอดผ่อนรวม</div>
-          <div className="text-xl font-bold">{parseFloat(contract.financedAmount).toLocaleString()} ฿</div>
-        </div>
+        <Card className="border-l-[3px] border-l-primary">
+          <CardContent className="p-4">
+            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สถานะสัญญา</div>
+            <span className={`px-3 py-1 rounded-full text-sm font-medium ${s.className}`}>{s.label}</span>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Workflow</div>
+            <WorkflowStatusBadge status={contract.workflowStatus} />
+          </CardContent>
+        </Card>
+        <Card className="border-l-[3px] border-l-primary">
+          <CardContent className="p-4">
+            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ค่างวด/เดือน</div>
+            <div className="text-xl font-bold text-primary">{parseFloat(contract.monthlyPayment).toLocaleString()} ฿</div>
+          </CardContent>
+        </Card>
+        <Card className="border-l-[3px] border-l-success">
+          <CardContent className="p-4">
+            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ชำระแล้ว</div>
+            <div className="text-xl font-bold text-success">{paidCount}/{contract.totalMonths} งวด</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ยอดผ่อนรวม</div>
+            <div className="text-xl font-bold">{parseFloat(contract.financedAmount).toLocaleString()} ฿</div>
+          </CardContent>
+        </Card>
         {contract.creditBalance && parseFloat(contract.creditBalance) > 0 && (
           <div className="rounded-lg border border-success/20 bg-success/5 dark:bg-success/10 p-4">
             <div className="text-xs text-success mb-1">ยอดเครดิตคงเหลือ</div>

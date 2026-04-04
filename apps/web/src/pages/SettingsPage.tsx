@@ -257,7 +257,7 @@ function CardReaderSetup() {
   const textColor = { green: 'text-success', yellow: 'text-warning', red: 'text-destructive', blue: 'text-primary-700', gray: 'text-muted-foreground' }[statusInfo.color] || 'text-muted-foreground';
 
   return (
-    <div className="bg-card rounded-lg border border-border p-6">
+    <div className="bg-card rounded-lg border border-border/60 p-6">
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1">
           <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
@@ -291,7 +291,7 @@ function CardReaderSetup() {
             href={CARD_READER_DOWNLOAD_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="px-5 py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors flex items-center gap-2 shadow-xs shadow-black/5"
+            className="px-5 py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors flex items-center gap-2 shadow-card"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
             ดาวน์โหลด

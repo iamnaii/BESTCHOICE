@@ -167,7 +167,7 @@ export default function SmsSettingsPage() {
             </div>
           </div>
 
-          <div className="bg-card rounded-xl shadow-xs shadow-black/5 border p-5 ml-4 border-l-4 border-l-blue-400">
+          <div className="bg-card rounded-xl shadow-card border p-5 ml-4 border-l-4 border-l-blue-400">
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-5">
               <p className="text-sm text-blue-800 font-medium mb-2">วิธีหา API Key:</p>
               <ol className="text-sm text-blue-700 space-y-1.5 list-decimal list-inside">
@@ -239,7 +239,7 @@ export default function SmsSettingsPage() {
             </div>
           </div>
 
-          <div className="bg-card rounded-xl shadow-xs shadow-black/5 border p-5 ml-4 border-l-4 border-l-green-400">
+          <div className="bg-card rounded-xl shadow-card border p-5 ml-4 border-l-4 border-l-green-400">
             <div className="bg-success/5 dark:bg-success/10 border border-success/20 rounded-lg p-4 mb-4">
               <p className="text-sm text-success font-medium mb-1">Sender ID คืออะไร?</p>
               <p className="text-sm text-success">ชื่อที่แสดงแทนเบอร์โทรผู้ส่ง เช่น &quot;BESTCHOICE&quot; ต้องลงทะเบียนกับ ThaiBulkSMS ก่อนใช้งาน หากยังไม่ลงทะเบียน ให้ปล่อยว่างไว้</p>
@@ -278,7 +278,7 @@ export default function SmsSettingsPage() {
           <button
             type="submit"
             disabled={saveMutation.isPending || (!hasKey && !hasSecret)}
-            className="px-8 py-3 bg-primary text-primary-foreground rounded-xl font-semibold hover:bg-primary/90 disabled:bg-muted disabled:cursor-not-allowed text-base shadow-xs shadow-black/5"
+            className="px-8 py-3 bg-primary text-primary-foreground rounded-xl font-semibold hover:bg-primary/90 disabled:bg-muted disabled:cursor-not-allowed text-base shadow-card"
           >
             {saveMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกการตั้งค่า'}
           </button>
@@ -287,7 +287,7 @@ export default function SmsSettingsPage() {
               type="button"
               onClick={() => testMutation.mutate()}
               disabled={testMutation.isPending}
-              className="px-6 py-3 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 disabled:bg-muted text-base shadow-xs shadow-black/5"
+              className="px-6 py-3 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 disabled:bg-muted text-base shadow-card"
             >
               {testMutation.isPending ? 'กำลังทดสอบ...' : 'ทดสอบการเชื่อมต่อ'}
             </button>
@@ -299,7 +299,7 @@ export default function SmsSettingsPage() {
       {data?.isConfigured && (
         <div className="mt-10 mb-6">
           <h3 className="font-semibold text-foreground mb-4 ml-4">ทดสอบส่ง SMS</h3>
-          <div className="bg-card rounded-xl shadow-xs shadow-black/5 border p-5 ml-4 border-l-4 border-l-yellow-400">
+          <div className="bg-card rounded-xl shadow-card border p-5 ml-4 border-l-4 border-l-yellow-400">
             <p className="text-sm text-muted-foreground mb-4">
               ส่ง SMS ทดสอบเพื่อยืนยันว่าระบบทำงานถูกต้อง
             </p>
@@ -323,7 +323,7 @@ export default function SmsSettingsPage() {
                   type="button"
                   onClick={() => testSendMutation.mutate()}
                   disabled={testSendMutation.isPending || !testPhone}
-                  className="px-6 py-2.5 bg-yellow-500 text-white rounded-xl font-semibold hover:bg-yellow-600 disabled:bg-muted disabled:cursor-not-allowed text-sm shadow-xs shadow-black/5"
+                  className="px-6 py-2.5 bg-yellow-500 text-white rounded-xl font-semibold hover:bg-yellow-600 disabled:bg-muted disabled:cursor-not-allowed text-sm shadow-card"
                 >
                   {testSendMutation.isPending ? 'กำลังส่ง...' : 'ส่ง SMS ทดสอบ'}
                 </button>

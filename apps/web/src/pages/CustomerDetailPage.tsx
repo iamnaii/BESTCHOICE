@@ -373,6 +373,28 @@ export default function CustomerDetailPage() {
         </div>
       } />
 
+      {/* Profile Header Card — Metronic style */}
+      <Card className="mb-6">
+        <CardContent className="p-5 lg:p-6">
+          <div className="flex items-center gap-4">
+            <div className="size-14 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center shrink-0 ring-2 ring-primary/10">
+              <span className="text-xl font-bold text-primary">{customer?.name?.charAt(0) || 'C'}</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <h2 className="text-lg font-bold text-foreground truncate">{displayName}</h2>
+              <div className="flex flex-wrap items-center gap-2 mt-1">
+                {customer?.phone && <span className="text-sm text-muted-foreground">{customer.phone}</span>}
+                {customer?.contracts?.length > 0 && (
+                  <span className="text-2xs font-medium px-2 py-0.5 rounded-md bg-primary/10 text-primary">
+                    {customer.contracts.length} สัญญา
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Risk Warning — dark mode friendly */}
       {risk?.hasRisk && (
         <div className={`rounded-xl p-4 mb-6 ${risk.riskLevel === 'HIGH' ? 'bg-destructive/5 dark:bg-destructive/10 border border-destructive/20' : 'bg-warning/5 dark:bg-warning/10 border border-warning/20'}`}>

@@ -479,10 +479,10 @@ export default function PaymentsPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-4 bg-muted rounded-lg p-1 w-fit">
-        <button onClick={() => setTab('pending')} className={`px-4 py-2 text-sm rounded-md ${tab === 'pending' ? 'bg-card shadow-xs shadow-black/5 font-medium' : 'text-muted-foreground'}`}>
+        <button onClick={() => setTab('pending')} className={`px-4 py-2 text-sm rounded-md ${tab === 'pending' ? 'bg-card shadow-card font-medium' : 'text-muted-foreground'}`}>
           รายการรอชำระ
         </button>
-        <button onClick={() => setTab('summary')} className={`px-4 py-2 text-sm rounded-md ${tab === 'summary' ? 'bg-card shadow-xs shadow-black/5 font-medium' : 'text-muted-foreground'}`}>
+        <button onClick={() => setTab('summary')} className={`px-4 py-2 text-sm rounded-md ${tab === 'summary' ? 'bg-card shadow-card font-medium' : 'text-muted-foreground'}`}>
           สรุปรายวัน
         </button>
       </div>

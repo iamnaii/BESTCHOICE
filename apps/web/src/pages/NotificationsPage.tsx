@@ -697,7 +697,7 @@ export default function NotificationsPage() {
       )}
 
       {activeTab === 'send' && (
-        <div className="bg-card rounded-lg border border-border p-6 max-w-lg">
+        <div className="bg-card rounded-lg border border-border/60 p-6 max-w-lg">
           <h3 className="text-lg font-semibold mb-4">ส่งการแจ้งเตือนด้วยตนเอง</h3>
           <form
             onSubmit={(e) => {

@@ -126,7 +126,7 @@ export default function PaymentCsvImportPage() {
       />
 
       {/* Format info */}
-      <Card className="shadow-xs shadow-black/5 mb-6">
+      <Card className="shadow-card mb-6">
         <CardContent className="p-4">
           <div className="text-xs font-medium text-muted-foreground mb-2">รูปแบบ CSV ที่รองรับ</div>
           <code className="block text-xs bg-muted p-3 rounded-lg overflow-x-auto whitespace-pre">
@@ -139,7 +139,7 @@ export default function PaymentCsvImportPage() {
       </Card>
 
       {/* Upload area */}
-      <Card className="shadow-xs shadow-black/5 mb-6">
+      <Card className="shadow-card mb-6">
         <CardContent className="p-4">
           <div
             className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
@@ -176,7 +176,7 @@ export default function PaymentCsvImportPage() {
 
       {/* Preview */}
       {csvText && previewLines.length > 0 && (
-        <Card className="shadow-xs shadow-black/5 mb-6">
+        <Card className="shadow-card mb-6">
           <CardContent className="p-4">
             <div className="text-xs font-medium text-muted-foreground mb-2">ตัวอย่างข้อมูล (5 แถวแรก)</div>
             <div className="overflow-x-auto">
@@ -226,19 +226,19 @@ export default function PaymentCsvImportPage() {
       {result && (
         <>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
-            <Card className="shadow-xs shadow-black/5">
+            <Card className="shadow-card">
               <CardContent className="p-4">
                 <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ทั้งหมด</div>
                 <div className="text-2xl font-bold">{result.total}</div>
               </CardContent>
             </Card>
-            <Card className="shadow-xs shadow-black/5">
+            <Card className="shadow-card">
               <CardContent className="p-4">
                 <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สำเร็จ</div>
                 <div className="text-2xl font-bold text-success">{result.success}</div>
               </CardContent>
             </Card>
-            <Card className="shadow-xs shadow-black/5">
+            <Card className="shadow-card">
               <CardContent className="p-4">
                 <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ผิดพลาด</div>
                 <div className="text-2xl font-bold text-destructive">{result.errors.length}</div>

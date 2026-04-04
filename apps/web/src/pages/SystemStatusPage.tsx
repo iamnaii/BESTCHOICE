@@ -43,7 +43,7 @@ function StatusDot({ ok }: { ok: boolean }) {
 function A4Page({ pageNum, totalPages, children }: { pageNum: number; totalPages: number; children: React.ReactNode }) {
   return (
     <div
-      className="bg-card border border-border shadow-xs shadow-black/5 mx-auto mb-6 relative"
+      className="bg-card border border-border shadow-card mx-auto mb-6 relative"
       style={{ width: '210mm', minHeight: '297mm', maxWidth: '100%', padding: '20mm 18mm 25mm 18mm' }}
     >
       {children}

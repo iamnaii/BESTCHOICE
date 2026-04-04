@@ -181,7 +181,7 @@ export default function ExchangePage() {
 
       {/* Step 1: Select */}
       {step === 'select' && (
-        <Card className="shadow-xs shadow-black/5">
+        <Card className="shadow-card">
           <CardContent className="p-6 flex flex-col gap-5 lg:gap-7.5">
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">เลือกสัญญาเดิม (ACTIVE/OVERDUE) *</label>
@@ -255,7 +255,7 @@ export default function ExchangePage() {
       {/* Step 2: Quote */}
       {step === 'quote' && quote && (
         <div className="flex flex-col gap-5 lg:gap-7.5">
-          <Card className="shadow-xs shadow-black/5">
+          <Card className="shadow-card">
             <CardContent className="p-6">
             <h3 className="text-lg font-medium mb-4">ใบเสนอราคาเปลี่ยนเครื่อง</h3>
 
@@ -369,7 +369,7 @@ export default function ExchangePage() {
 
       {/* Step 3: Confirm */}
       {step === 'confirm' && quote && (
-        <Card className="shadow-xs shadow-black/5">
+        <Card className="shadow-card">
           <CardContent className="p-6">
           <h3 className="text-lg font-medium mb-4">ยืนยันการเปลี่ยนเครื่อง</h3>
 
@@ -432,7 +432,7 @@ export default function ExchangePage() {
 
       {/* Step 4: Done */}
       {step === 'done' && exchangeResult && (
-        <Card className="shadow-xs shadow-black/5">
+        <Card className="shadow-card">
           <CardContent className="p-6 text-center">
           <div className="w-16 h-16 bg-success/10 rounded-full flex items-center justify-center mx-auto mb-4">
             <svg className="w-8 h-8 text-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">

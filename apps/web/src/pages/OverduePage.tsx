@@ -283,7 +283,7 @@ export default function OverduePage() {
       </div>
 
       {/* Dunning Workflow Pipeline */}
-      <Card className="shadow-xs shadow-black/5 mb-6">
+      <Card className="shadow-card mb-6">
         <CardContent className="p-4">
           <div className="text-xs font-medium text-muted-foreground mb-3">ขั้นตอนติดตามหนี้</div>
           <div className="flex items-center gap-2 overflow-x-auto">

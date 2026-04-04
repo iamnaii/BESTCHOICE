@@ -226,7 +226,7 @@ function PDPAPage() {
       )}
 
       {tab === 'consent-lookup' && (
-        <div className="bg-card rounded-lg border border-border p-6">
+        <div className="bg-card rounded-lg border border-border/60 p-6">
           <div className="flex gap-3 mb-6">
             <input
               type="text"

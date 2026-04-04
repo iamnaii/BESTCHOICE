@@ -265,7 +265,7 @@ export default function SupplierDetailPage() {
       />
 
       {/* ข้อมูลผู้ขาย */}
-      <div className="rounded-lg border border-border p-6 mb-6">
+      <div className="rounded-lg border border-border/60 p-6 mb-6">
         <div className="flex items-start justify-between mb-4">
           <h2 className="text-lg font-semibold text-foreground">ข้อมูลผู้ขาย</h2>
           <span
@@ -303,7 +303,7 @@ export default function SupplierDetailPage() {
       </div>
 
       {/* Payment Methods Card */}
-      <div className="rounded-lg border border-border p-6 mb-6">
+      <div className="rounded-lg border border-border/60 p-6 mb-6">
         <h2 className="text-lg font-semibold text-foreground mb-4">ข้อมูลการชำระเงิน ({supplier.paymentMethods?.length || 0} วิธี)</h2>
         {supplier.paymentMethods?.length ? (
           <div className="space-y-3">

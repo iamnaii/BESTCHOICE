@@ -1,5 +1,3 @@
-/* eslint-disable react-hooks/exhaustive-deps */
-
 import * as React from 'react';
 import { createContext, useContext } from 'react';
 import { cn } from '@/lib/utils';

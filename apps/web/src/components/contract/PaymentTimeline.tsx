@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils';
+import { formatDateShort } from '@/utils/formatters';
 import { Check, Clock, AlertTriangle, CircleDot } from 'lucide-react';
 
 interface Payment {
@@ -112,7 +113,7 @@ export default function PaymentTimeline({ payments }: PaymentTimelineProps) {
                       งวดที่ {p.installmentNo}
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      {new Date(p.dueDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}
+                      {formatDateShort(p.dueDate)}
                     </span>
                   </div>
                   <div className="flex items-center gap-3 mt-0.5">
@@ -132,7 +133,7 @@ export default function PaymentTimeline({ payments }: PaymentTimelineProps) {
                   </div>
                   {p.paidDate && (
                     <div className="text-2xs text-muted-foreground mt-0.5">
-                      ชำระเมื่อ {new Date(p.paidDate).toLocaleDateString('th-TH')}
+                      ชำระเมื่อ {formatDateShort(p.paidDate)}
                     </div>
                   )}
                 </div>

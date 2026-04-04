@@ -2,6 +2,7 @@ import { useState, useRef, useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { compressImageForOcr } from '@/lib/compressImage';
+import { formatDateShort } from '@/utils/formatters';
 import { toast } from 'sonner';
 import type { OcrResult } from '@/types/ocr';
 
@@ -443,7 +444,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
             {ocrResult.birthDate && (
               <div>
                 <div className="text-xs text-muted-foreground">วันเกิด</div>
-                <div className="text-sm font-medium text-foreground">{new Date(ocrResult.birthDate).toLocaleDateString('th-TH')}</div>
+                <div className="text-sm font-medium text-foreground">{formatDateShort(ocrResult.birthDate)}</div>
               </div>
             )}
             {ocrResult.address && (
@@ -455,13 +456,13 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
             {ocrResult.issueDate && (
               <div>
                 <div className="text-xs text-muted-foreground">วันออกบัตร</div>
-                <div className="text-sm text-foreground">{new Date(ocrResult.issueDate).toLocaleDateString('th-TH')}</div>
+                <div className="text-sm text-foreground">{formatDateShort(ocrResult.issueDate)}</div>
               </div>
             )}
             {ocrResult.expiryDate && (
               <div>
                 <div className="text-xs text-muted-foreground">วันหมดอายุ</div>
-                <div className="text-sm text-foreground">{new Date(ocrResult.expiryDate).toLocaleDateString('th-TH')}</div>
+                <div className="text-sm text-foreground">{formatDateShort(ocrResult.expiryDate)}</div>
               </div>
             )}
           </div>
@@ -505,7 +506,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
                       {getTypeLabel(doc.documentType)}
                       {doc.notes && ` - ${doc.notes}`}
                       {' | '}อัปโหลดโดย {doc.uploadedBy.name}
-                      {' | '}{new Date(doc.createdAt).toLocaleDateString('th-TH')}
+                      {' | '}{formatDateShort(doc.createdAt)}
                     </div>
                   </div>
                 </div>

@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, InternalServerErrorException, Logger, OnModuleInit } from '@nestjs/common';
+import { formatDateShort, formatDateTime } from '../../utils/thai-date.util';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SendNotificationDto, CreateNotificationTemplateDto, UpdateNotificationTemplateDto } from './dto/create-notification.dto';
@@ -345,7 +346,7 @@ export class NotificationsService implements OnModuleInit {
    */
   async sendTestSms(phone: string): Promise<{ success: boolean; message?: string; error?: string }> {
     try {
-      const testMessage = `[BESTCHOICE] ทดสอบระบบ SMS สำเร็จ (${new Date().toLocaleString('th-TH')})`;
+      const testMessage = `[BESTCHOICE] ทดสอบระบบ SMS สำเร็จ (${formatDateTime(new Date())})`;
       await this.sendSms(phone, testMessage);
       return { success: true, message: `ส่ง SMS ทดสอบไปยัง ${phone} สำเร็จ` };
     } catch (err) {
@@ -877,7 +878,7 @@ export class NotificationsService implements OnModuleInit {
       });
       if (alreadySent) continue;
 
-      const message = `สวัสดีค่ะ คุณ${customer.name}\nแจ้งเตือน: ค่างวดที่ ${payment.installmentNo} สัญญา ${payment.contract.contractNumber}\nจำนวน ${Number(payment.amountDue).toLocaleString()} บาท\nครบกำหนดชำระ${daysUntil === 0 ? 'วันนี้' : `อีก ${daysUntil} วัน`} (${new Date(payment.dueDate).toLocaleDateString('th-TH')})\nกรุณาชำระตามกำหนด ขอบคุณค่ะ`;
+      const message = `สวัสดีค่ะ คุณ${customer.name}\nแจ้งเตือน: ค่างวดที่ ${payment.installmentNo} สัญญา ${payment.contract.contractNumber}\nจำนวน ${Number(payment.amountDue).toLocaleString()} บาท\nครบกำหนดชำระ${daysUntil === 0 ? 'วันนี้' : `อีก ${daysUntil} วัน`} (${formatDateShort(payment.dueDate)})\nกรุณาชำระตามกำหนด ขอบคุณค่ะ`;
 
       // Try LINE Flex Message first, fallback to text, then SMS
       if (customer.lineId) {
@@ -888,7 +889,7 @@ export class NotificationsService implements OnModuleInit {
             installmentNo: payment.installmentNo,
             totalInstallments: payment.contract._count.payments,
             amountDue: Number(payment.amountDue),
-            dueDate: new Date(payment.dueDate).toLocaleDateString('th-TH'),
+            dueDate: formatDateShort(payment.dueDate),
             daysUntilDue: daysUntil,
           });
           await this.sendLineFlexMessage(customer.lineId, flex);
@@ -992,7 +993,7 @@ export class NotificationsService implements OnModuleInit {
             amountDue: Number(payment.amountDue),
             lateFee: Number(payment.lateFee),
             totalOutstanding: outstanding,
-            dueDate: new Date(payment.dueDate).toLocaleDateString('th-TH'),
+            dueDate: formatDateShort(payment.dueDate),
             daysOverdue,
           });
           await this.sendLineFlexMessage(customer.lineId, flex);

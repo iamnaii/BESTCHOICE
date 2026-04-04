@@ -13,6 +13,7 @@ import Modal from '@/components/ui/Modal';
 import PaymentHistorySheet from '@/components/payment/PaymentHistorySheet';
 import ReceiptModal from '@/components/payment/ReceiptModal';
 import { toast } from 'sonner';
+import { formatDateShort } from '@/utils/formatters';
 
 import { exportToExcel } from '@/utils/excel.util';
 
@@ -435,7 +436,7 @@ export default function PaymentsPage() {
     { key: 'installmentNo', label: 'งวดที่', render: (p: PendingPayment) => <span className="font-medium">{p.installmentNo}</span> },
     { key: 'dueDate', label: 'วันครบกำหนด', render: (p: PendingPayment) => {
       const isOverdue = new Date(p.dueDate) < new Date();
-      return <span className={`text-sm ${isOverdue ? 'text-destructive font-medium' : ''}`}>{new Date(p.dueDate).toLocaleDateString('th-TH')}</span>;
+      return <span className={`text-sm ${isOverdue ? 'text-destructive font-medium' : ''}`}>{formatDateShort(p.dueDate)}</span>;
     }},
     { key: 'amountDue', label: 'ยอดที่ต้องชำระ', render: (p: PendingPayment) => {
       const total = parseFloat(p.amountDue) + parseFloat(p.lateFee);

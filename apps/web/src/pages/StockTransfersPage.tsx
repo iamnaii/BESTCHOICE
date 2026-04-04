@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import clsx from 'clsx';
 import api, { getErrorMessage } from '@/lib/api';
+import { formatDateShort, formatDateTime } from '@/utils/formatters';
 import PageHeader from '@/components/ui/PageHeader';
 import Modal from '@/components/ui/Modal';
 import { transferStatusLabels } from '@/lib/constants';
@@ -381,7 +382,7 @@ export default function StockTransfersPage() {
                       </div>
                       <div className="flex items-center gap-4 text-xs text-muted-foreground flex-shrink-0">
                         <span>{batch.fromBranch.name} → {batch.toBranch.name}</span>
-                        <span>{new Date(batch.createdAt).toLocaleDateString('th-TH')}</span>
+                        <span>{formatDateShort(batch.createdAt)}</span>
                       </div>
                       <div className="flex gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
                         {batch.status === 'PENDING' && (
@@ -463,9 +464,9 @@ export default function StockTransfersPage() {
                         {/* Batch footer info */}
                         <div className="px-4 py-2 bg-muted text-xs text-muted-foreground flex gap-4 flex-wrap">
                           {batch.dispatchedBy && <span>จัดส่งโดย: {batch.dispatchedBy.name}</span>}
-                          {batch.dispatchedAt && <span>วันจัดส่ง: {new Date(batch.dispatchedAt).toLocaleString('th-TH')}</span>}
+                          {batch.dispatchedAt && <span>วันจัดส่ง: {formatDateTime(batch.dispatchedAt)}</span>}
                           {batch.confirmedBy && <span>ยืนยันโดย: {batch.confirmedBy.name}</span>}
-                          {batch.confirmedAt && <span>วันยืนยัน: {new Date(batch.confirmedAt).toLocaleString('th-TH')}</span>}
+                          {batch.confirmedAt && <span>วันยืนยัน: {formatDateTime(batch.confirmedAt)}</span>}
                         </div>
                       </div>
                     )}
@@ -529,7 +530,7 @@ export default function StockTransfersPage() {
                       </div>
                       <div className="flex items-center gap-4 text-xs text-muted-foreground flex-shrink-0">
                         <span>จาก: {batch.fromBranch.name}</span>
-                        {batch.dispatchedAt && <span>ส่ง: {new Date(batch.dispatchedAt).toLocaleDateString('th-TH')}</span>}
+                        {batch.dispatchedAt && <span>ส่ง: {formatDateShort(batch.dispatchedAt)}</span>}
                       </div>
                       <div className="flex-shrink-0" onClick={(e) => e.stopPropagation()}>
                         <button
@@ -634,7 +635,7 @@ export default function StockTransfersPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-xs text-muted-foreground">
-                        {new Date(r.createdAt).toLocaleDateString('th-TH')}
+                        {formatDateShort(r.createdAt)}
                       </td>
                     </tr>
                   ))}
@@ -702,12 +703,12 @@ export default function StockTransfersPage() {
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
                   <span className="text-muted-foreground">วันที่สร้างใบโอน:</span>
-                  <span className="ml-2 font-medium">{new Date(first.createdAt).toLocaleDateString('th-TH')}</span>
+                  <span className="ml-2 font-medium">{formatDateShort(first.createdAt)}</span>
                 </div>
                 {first.dispatchedAt && (
                   <div>
                     <span className="text-muted-foreground">วันที่จัดส่ง:</span>
-                    <span className="ml-2 font-medium">{new Date(first.dispatchedAt).toLocaleDateString('th-TH')}</span>
+                    <span className="ml-2 font-medium">{formatDateShort(first.dispatchedAt)}</span>
                   </div>
                 )}
                 {first.dispatchedBy && (

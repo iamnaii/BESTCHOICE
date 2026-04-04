@@ -1,4 +1,5 @@
 import Modal from '@/components/ui/Modal';
+import { formatDateShort, formatDateMedium, formatDateTime } from '@/utils/formatters';
 import { PurchaseOrder, PODetail, POItem } from '../types';
 import { statusLabels, statusColors, paymentStatusLabels, paymentStatusColors } from '../constants';
 
@@ -54,13 +55,13 @@ export function PODetailModal({
             </div>
             <div>
               <span className="text-muted-foreground">วันที่สั่ง:</span>{' '}
-              {new Date(selectedPO.orderDate).toLocaleDateString('th-TH')}
+              {formatDateShort(selectedPO.orderDate)}
             </div>
             {selectedPO.dueDate && (
               <div>
                 <span className="text-muted-foreground">ครบกำหนดชำระ:</span>{' '}
                 <span className={new Date(selectedPO.dueDate) < new Date() && selectedPO.paymentStatus !== 'FULLY_PAID' ? 'text-destructive font-semibold' : ''}>
-                  {new Date(selectedPO.dueDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  {formatDateMedium(selectedPO.dueDate)}
                   {new Date(selectedPO.dueDate) < new Date() && selectedPO.paymentStatus !== 'FULLY_PAID' && ' (เลยกำหนด!)'}
                 </span>
               </div>
@@ -231,7 +232,7 @@ export function PODetailModal({
                         <div className="text-sm">
                           <span className="font-medium">{gr.receivedBy.name}</span>
                           <span className="text-muted-foreground ml-2">
-                            {new Date(gr.createdAt).toLocaleString('th-TH')}
+                            {formatDateTime(gr.createdAt)}
                           </span>
                         </div>
                         <div className="flex gap-2">

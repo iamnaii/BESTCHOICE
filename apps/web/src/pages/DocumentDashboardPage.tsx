@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import { useAuth } from '@/contexts/AuthContext';
+import { formatDateTime } from '@/utils/formatters';
 
 interface DocumentStats {
   totalContracts: number;
@@ -201,7 +202,7 @@ function DocumentDashboardPage() {
                     {act.branchName && <span className="text-xs text-muted-foreground ml-2">({act.branchName})</span>}
                   </div>
                   <span className="text-xs text-muted-foreground whitespace-nowrap">
-                    {new Date(act.createdAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}
+                    {formatDateTime(act.createdAt)}
                   </span>
                 </div>
               ))}

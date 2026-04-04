@@ -1,5 +1,6 @@
 import { UseMutationResult } from '@tanstack/react-query';
 import Modal from '@/components/ui/Modal';
+import { formatDateMedium } from '@/utils/formatters';
 import { PurchaseOrder } from '../types';
 
 export interface PaymentModalProps {
@@ -80,7 +81,7 @@ export function PaymentModal({
               <div className={`flex justify-between border-t pt-1 ${new Date(selectedPO.dueDate) < new Date() && paymentForm.paymentStatus !== 'FULLY_PAID' ? 'text-destructive font-semibold' : 'text-muted-foreground'}`}>
                 <span>ครบกำหนดชำระ:</span>
                 <span>
-                  {new Date(selectedPO.dueDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  {formatDateMedium(selectedPO.dueDate)}
                   {new Date(selectedPO.dueDate) < new Date() && paymentForm.paymentStatus !== 'FULLY_PAID' && ' (เลยกำหนด)'}
                 </span>
               </div>

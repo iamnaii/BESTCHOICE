@@ -2,6 +2,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
+import { formatDateShort } from '@/utils/formatters';
 import { useAuth } from '@/contexts/AuthContext';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
@@ -179,7 +180,7 @@ export default function SupplierDetailPage() {
       <span className="text-xs">{p.branch.name}</span>
     )},
     { key: 'createdAt', label: 'วันที่รับ', render: (p: ProductRecord) => (
-      <span className="text-xs">{new Date(p.createdAt).toLocaleDateString('th-TH')}</span>
+      <span className="text-xs">{formatDateShort(p.createdAt)}</span>
     )},
   ];
 
@@ -188,7 +189,7 @@ export default function SupplierDetailPage() {
       <span className="font-mono text-sm font-medium">{po.poNumber}</span>
     )},
     { key: 'orderDate', label: 'วันที่สั่ง', render: (po: PORecord) => (
-      <span className="text-sm">{new Date(po.orderDate).toLocaleDateString('th-TH')}</span>
+      <span className="text-sm">{formatDateShort(po.orderDate)}</span>
     )},
     { key: 'status', label: 'สถานะ', render: (po: PORecord) => {
       const s = poStatusLabels[po.status] || { label: po.status, className: 'bg-muted text-foreground' };
@@ -295,7 +296,7 @@ export default function SupplierDetailPage() {
           </div>
           <InfoField
             label="วันที่เพิ่ม"
-            value={new Date(supplier.createdAt).toLocaleDateString('th-TH')}
+            value={formatDateShort(supplier.createdAt)}
           />
           <InfoField label="ที่อยู่" value={displayAddress(supplier.address)} />
           {supplier.notes && <InfoField label="หมายเหตุ" value={supplier.notes} />}

@@ -1,5 +1,6 @@
 import { useLiffInit } from '@/hooks/useLiffInit';
 import { liffApi } from '@/lib/api';
+import { formatDateMedium } from '@/utils/formatters';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -131,11 +132,7 @@ export default function LiffHistory() {
                   </p>
                   <p className="text-xs text-muted-foreground">{p.contractNumber}</p>
                   <p className="text-xs text-muted-foreground">
-                    {new Date(p.paidDate).toLocaleDateString('th-TH', {
-                      day: 'numeric',
-                      month: 'short',
-                      year: 'numeric',
-                    })}
+                    {formatDateMedium(p.paidDate)}
                     {p.paymentMethod && ` · ${methodLabels[p.paymentMethod] || p.paymentMethod}`}
                   </p>
                 </div>

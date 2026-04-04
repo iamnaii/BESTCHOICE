@@ -1,6 +1,7 @@
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { formatDateShort, formatDateTime } from '@/utils/formatters';
 
 interface ContractAccess {
   contract: {
@@ -114,7 +115,7 @@ function CustomerPortalPage() {
               <p className="text-xs text-muted-foreground">ข้อมูลสัญญาผ่อนชำระ</p>
             </div>
             <div className="text-xs text-muted-foreground">
-              หมดอายุ: {new Date(data.expiresAt).toLocaleString('th-TH')}
+              หมดอายุ: {formatDateTime(data.expiresAt)}
             </div>
           </div>
         </div>
@@ -173,7 +174,7 @@ function CustomerPortalPage() {
                 <div>
                   <div className="text-sm font-medium">งวดที่ {p.installmentNo}</div>
                   <div className="text-xs text-muted-foreground">
-                    กำหนด: {new Date(p.dueDate).toLocaleDateString('th-TH')}
+                    กำหนด: {formatDateShort(p.dueDate)}
                   </div>
                 </div>
                 <div className="text-right">
@@ -201,7 +202,7 @@ function CustomerPortalPage() {
                 <div key={i} className="px-4 py-3 flex items-center justify-between">
                   <div>
                     <div className="text-xs font-mono">{r.receiptNumber}</div>
-                    <div className="text-xs text-muted-foreground">{new Date(r.paidDate).toLocaleDateString('th-TH')}</div>
+                    <div className="text-xs text-muted-foreground">{formatDateShort(r.paidDate)}</div>
                   </div>
                   <div className="text-sm font-medium">{Number(r.amount).toLocaleString()} ฿</div>
                 </div>
@@ -218,7 +219,7 @@ function CustomerPortalPage() {
               {data.signatures.map((s, i) => (
                 <div key={i} className="text-xs p-2 bg-success/5 dark:bg-success/10 rounded">
                   <div className="font-medium">{s.signerName}</div>
-                  <div className="text-muted-foreground">{s.signerType} - {new Date(s.signedAt).toLocaleDateString('th-TH')}</div>
+                  <div className="text-muted-foreground">{s.signerType} - {formatDateShort(s.signedAt)}</div>
                 </div>
               ))}
             </div>
@@ -228,7 +229,7 @@ function CustomerPortalPage() {
         {/* Footer */}
         <div className="text-center text-xs text-muted-foreground py-4">
           <p>เอกสารนี้สร้างโดยระบบ BESTCHOICE อัตโนมัติ</p>
-          <p>ข้อมูล ณ วันที่ {new Date().toLocaleDateString('th-TH')}</p>
+          <p>ข้อมูล ณ วันที่ {formatDateShort(new Date())}</p>
         </div>
       </div>
     </div>

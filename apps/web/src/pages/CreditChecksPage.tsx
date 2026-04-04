@@ -5,6 +5,7 @@ import { exportToExcel, type ExcelColumn } from '@/utils/excel.util';
 import api, { getErrorMessage } from '@/lib/api';
 import { compressImageForOcr } from '@/lib/compressImage';
 import { useDebounce } from '@/hooks/useDebounce';
+import { formatDateShort } from '@/utils/formatters';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
@@ -382,7 +383,7 @@ export default function CreditChecksPage() {
             checkedByName: cc.checkedBy?.name || '-',
             reviewNotes: cc.reviewNotes || '-',
             contractNumber: cc.contract?.contractNumber || '-',
-            createdAt: new Date(cc.createdAt).toLocaleDateString('th-TH'),
+            createdAt: formatDateShort(cc.createdAt),
           };
           if (isOwnerOrManager) {
             row.monthlyIncome = ai?.monthlyIncome != null ? Number(ai.monthlyIncome) : '-';
@@ -450,7 +451,7 @@ export default function CreditChecksPage() {
     {
       key: 'createdAt',
       label: 'วันที่',
-      render: (cc: CreditCheckItem) => <span className="text-xs text-muted-foreground">{new Date(cc.createdAt).toLocaleDateString('th-TH')}</span>,
+      render: (cc: CreditCheckItem) => <span className="text-xs text-muted-foreground">{formatDateShort(cc.createdAt)}</span>,
     },
     {
       key: 'actions',

@@ -11,6 +11,7 @@ import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { Banknote, Clock, AlertTriangle, CheckCircle2, Ban, Pencil, MoreVertical } from 'lucide-react';
 import AnimatedCounter from '@/components/ui/animated-counter';
 import { Button } from '@/components/ui/button';
+import { formatDateShortThai, formatDateShort } from '@/utils/formatters';
 
 interface FinanceReceivable {
   id: string; financeCompany: string; financeRefNumber: string | null;
@@ -174,7 +175,7 @@ export default function FinanceReceivablePage() {
       render: (r: FinanceReceivable) => {
         const d = new Date(r.expectedDate);
         const isOverdue = d < new Date() && r.status !== 'RECEIVED';
-        return <span className={isOverdue ? 'text-destructive font-medium' : ''}>{d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}</span>;
+        return <span className={isOverdue ? 'text-destructive font-medium' : ''}>{formatDateShortThai(d)}</span>;
       },
     },
     {
@@ -323,9 +324,9 @@ export default function FinanceReceivablePage() {
               {selectedRecord.receivedAmount && <div className="flex justify-between text-success"><span>ได้รับแล้ว</span><span>{fmt(selectedRecord.receivedAmount)}</span></div>}
             </div>
             <div className="border-t pt-3 space-y-2 text-sm">
-              <div className="flex justify-between"><span className="text-muted-foreground">วันที่สร้าง</span><span>{new Date(selectedRecord.createdAt).toLocaleDateString('th-TH')}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">กำหนดรับเงิน</span><span>{new Date(selectedRecord.expectedDate).toLocaleDateString('th-TH')}</span></div>
-              {selectedRecord.receivedDate && <div className="flex justify-between"><span className="text-muted-foreground">วันที่ได้รับ</span><span>{new Date(selectedRecord.receivedDate).toLocaleDateString('th-TH')}</span></div>}
+              <div className="flex justify-between"><span className="text-muted-foreground">วันที่สร้าง</span><span>{formatDateShort(selectedRecord.createdAt)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">กำหนดรับเงิน</span><span>{formatDateShort(selectedRecord.expectedDate)}</span></div>
+              {selectedRecord.receivedDate && <div className="flex justify-between"><span className="text-muted-foreground">วันที่ได้รับ</span><span>{formatDateShort(selectedRecord.receivedDate)}</span></div>}
               {selectedRecord.bankRef && <div className="flex justify-between"><span className="text-muted-foreground">Ref ธนาคาร</span><span>{selectedRecord.bankRef}</span></div>}
               {selectedRecord.note && <div><span className="text-muted-foreground">หมายเหตุ:</span> {selectedRecord.note}</div>}
             </div>

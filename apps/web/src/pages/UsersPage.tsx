@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
+import { formatDateShort, formatDateMedium } from '@/utils/formatters';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
@@ -318,7 +319,7 @@ export default function UsersPage() {
     { key: 'lineId', label: 'LINE ID', render: (u: User) => u.lineId || '-' },
     {
       key: 'startDate', label: 'วันเริ่มงาน',
-      render: (u: User) => u.startDate ? new Date(u.startDate).toLocaleDateString('th-TH') : '-',
+      render: (u: User) => u.startDate ? formatDateShort(u.startDate) : '-',
     },
     {
       key: 'isActive', label: 'สถานะ',
@@ -362,7 +363,7 @@ export default function UsersPage() {
     },
     {
       key: 'createdAt', label: 'วันที่สร้าง',
-      render: (i: InviteToken) => new Date(i.createdAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }),
+      render: (i: InviteToken) => formatDateMedium(i.createdAt),
     },
     {
       key: 'actions', label: '',

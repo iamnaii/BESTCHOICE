@@ -7,6 +7,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable, { type Column } from '@/components/ui/DataTable';
 import { Search } from 'lucide-react';
+import { formatDateShort } from '@/utils/formatters';
 
 interface InspectionItem {
   id: string;
@@ -104,7 +105,7 @@ export default function InspectionPage() {
       label: 'วันที่รับ',
       render: (row) => (
         <span className="text-sm text-muted-foreground">
-          {new Date(row.createdAt).toLocaleDateString('th-TH')}
+          {formatDateShort(row.createdAt)}
         </span>
       ),
     },

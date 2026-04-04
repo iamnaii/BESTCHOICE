@@ -14,6 +14,7 @@ import { compressImageForOcr } from '@/lib/compressImage';
 import { Receipt, Plus, Pencil, Upload, X, ArrowLeft, ShoppingBag, Megaphone, Building2, MoreHorizontal, MoreVertical, TrendingDown } from 'lucide-react';
 import AnimatedCounter from '@/components/ui/animated-counter';
 import { Button } from '@/components/ui/button';
+import { formatDateShortThai } from '@/utils/formatters';
 
 // ─── Types ───
 interface Expense {
@@ -526,7 +527,7 @@ export default function ExpensesPage() {
     { key: 'totalAmount', label: 'รวม', render: (e: Expense) => <div className="text-right font-medium">{fmt(e.totalAmount)}</div> },
     {
       key: 'expenseDate', label: 'วันที่',
-      render: (e: Expense) => new Date(e.expenseDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }),
+      render: (e: Expense) => formatDateShortThai(e.expenseDate),
     },
     {
       key: 'status', label: 'สถานะ',

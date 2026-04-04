@@ -1,3 +1,4 @@
+import { formatDateShort } from '../../../utils/thai-date.util';
 import {
   FlexMessagePayload,
   FlexBubble,
@@ -69,7 +70,7 @@ export function buildReceiptMessage(data: ReceiptData): FlexMessagePayload {
 
     // Payment Details
     createDetailRow('ผู้ชำระ', data.payerName),
-    createDetailRow('วันที่', new Date(data.paidDate).toLocaleDateString('th-TH')),
+    createDetailRow('วันที่', formatDateShort(data.paidDate)),
     ...(data.paymentMethod ? [createDetailRow('วิธีชำระ', methodLabels[data.paymentMethod] || data.paymentMethod)] : []),
     ...(data.installmentNo ? [createDetailRow('งวดที่', data.installmentNo.toString())] : []),
 

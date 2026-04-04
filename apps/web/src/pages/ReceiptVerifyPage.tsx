@@ -4,6 +4,7 @@ import api from '@/lib/api';
 import MobileReceipt from '@/components/payment/MobileReceipt';
 import type { Receipt } from '@/types/receipt';
 import { CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
+import { formatDateTime } from '@/utils/formatters';
 
 export default function ReceiptVerifyPage() {
   const { receiptNumber } = useParams<{ receiptNumber: string }>();
@@ -81,7 +82,7 @@ export default function ReceiptVerifyPage() {
                 )}
               </p>
               <p className="text-xs text-gray-400 mt-2">
-                ตรวจสอบเมื่อ: {new Date().toLocaleString('th-TH')}
+                ตรวจสอบเมื่อ: {formatDateTime(new Date())}
               </p>
             </div>
           </div>

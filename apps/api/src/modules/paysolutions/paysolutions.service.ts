@@ -5,6 +5,7 @@ import {
   NotFoundException,
   InternalServerErrorException,
 } from '@nestjs/common';
+import { formatDateLong } from '../../utils/thai-date.util';
 import { ConfigService } from '@nestjs/config';
 import { PaymentMethod } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -334,11 +335,7 @@ export class PaySolutionsService {
         totalInstallments: contract.payments.length,
         amountPaid: Number(payment.amountPaid),
         paymentMethod: 'ONLINE_GATEWAY',
-        paidDate: new Date().toLocaleDateString('th-TH', {
-          day: 'numeric',
-          month: 'long',
-          year: 'numeric',
-        }),
+        paidDate: formatDateLong(new Date()),
         remainingInstallments: contract.payments.length - paidCount,
       });
 

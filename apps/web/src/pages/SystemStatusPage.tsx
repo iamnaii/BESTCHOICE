@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
+import { formatDateMedium } from '@/utils/formatters';
 
 interface SystemStatus {
   api: { status: string; version: string; uptime: number; nodeVersion: string; environment?: string };
@@ -124,7 +125,7 @@ export default function SystemStatusPage() {
         <div className="text-center mb-8">
           <h1 className="text-xl font-bold text-foreground">รายงานสถานะระบบ</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            วันที่: {new Date(data!.timestamp).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}
+            วันที่: {formatDateMedium(data!.timestamp)}
             {' '}เวลา: {new Date(data!.timestamp).toLocaleTimeString('th-TH')}
           </p>
         </div>

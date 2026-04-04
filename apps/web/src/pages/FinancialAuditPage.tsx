@@ -4,6 +4,7 @@ import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import { Card, CardContent } from '@/components/ui/card';
+import { formatDateShort } from '@/utils/formatters';
 
 interface AuditEntry {
   id: string;
@@ -67,7 +68,7 @@ export default function FinancialAuditPage() {
       label: 'วันที่',
       render: (e: AuditEntry) => (
         <div className="text-xs">
-          <div>{new Date(e.createdAt).toLocaleDateString('th-TH')}</div>
+          <div>{formatDateShort(e.createdAt)}</div>
           <div className="text-muted-foreground">{new Date(e.createdAt).toLocaleTimeString('th-TH')}</div>
         </div>
       ),

@@ -12,6 +12,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Pencil, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatDateShort, formatDateTime } from '@/utils/formatters';
 import { DetailPageSkeleton } from '@/components/ui/page-skeletons';
 import { maskNationalId } from '@/utils/mask.util';
 import { THAI_NAME_PREFIXES, RELATIONSHIP_OPTIONS } from '@/lib/constants';
@@ -429,7 +430,7 @@ export default function CustomerDetailPage() {
             <Info label="ชื่อเล่น" value={customer.nickname} />
             <Info label="เลขบัตร ปชช." value={maskNationalId(customer.nationalId)} />
             <Info label="ต่างด้าว" value={customer.isForeigner ? 'ใช่' : 'ไม่ใช่'} />
-            <Info label="วันเกิด" value={customer.birthDate ? new Date(customer.birthDate).toLocaleDateString('th-TH') : null} />
+            <Info label="วันเกิด" value={customer.birthDate ? formatDateShort(customer.birthDate) : null} />
           </div>
         </CardContent>
       </Card>
@@ -524,7 +525,7 @@ export default function CustomerDetailPage() {
       {/* Other info */}
       <Card className="mb-6">
         <CardContent className="p-5">
-        <Info label="วันที่เพิ่ม" value={new Date(customer.createdAt).toLocaleDateString('th-TH')} />
+        <Info label="วันที่เพิ่ม" value={formatDateShort(customer.createdAt)} />
         </CardContent>
       </Card>
 
@@ -619,7 +620,7 @@ export default function CustomerDetailPage() {
                     <div className="flex items-center gap-3">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cs.className}`}>{cs.label}</span>
                       {cc.bankName && <span className="text-xs text-muted-foreground">ธนาคาร: {cc.bankName}</span>}
-                      <span className="text-xs text-muted-foreground">{new Date(cc.createdAt).toLocaleDateString('th-TH')}</span>
+                      <span className="text-xs text-muted-foreground">{formatDateShort(cc.createdAt)}</span>
                       {cc.contract && <span className="text-xs text-primary">สัญญา: {cc.contract.contractNumber}</span>}
                     </div>
                     {cc.status === 'PENDING' && (
@@ -677,7 +678,7 @@ export default function CustomerDetailPage() {
                             {actionLabels[log.action] || log.action}
                           </span>
                           <span className="text-xs text-muted-foreground">
-                            {new Date(log.createdAt).toLocaleDateString('th-TH')} {new Date(log.createdAt).toLocaleTimeString('th-TH')}
+                            {formatDateTime(log.createdAt)}
                           </span>
                         </div>
                         <div className="text-sm text-foreground">โดย: {log.user.name}</div>

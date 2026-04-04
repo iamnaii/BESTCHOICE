@@ -1,5 +1,6 @@
 import { UseMutationResult } from '@tanstack/react-query';
 import DataTable from '@/components/ui/DataTable';
+import { formatDateShort } from '@/utils/formatters';
 import { PurchaseOrder } from '../types';
 import { statusLabels, statusColors, paymentStatusLabels, paymentStatusColors } from '../constants';
 
@@ -57,7 +58,7 @@ export function POListTab({
       key: 'orderDate',
       label: 'วันที่สั่ง',
       render: (po: PurchaseOrder) => (
-        <span className="text-sm">{new Date(po.orderDate).toLocaleDateString('th-TH')}</span>
+        <span className="text-sm">{formatDateShort(po.orderDate)}</span>
       ),
     },
     {

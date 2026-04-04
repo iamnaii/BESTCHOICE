@@ -1,4 +1,8 @@
 import {
+  formatDateShort,
+  formatDateShortThai,
+} from '../../utils/thai-date.util';
+import {
   Controller,
   Post,
   Get,
@@ -306,7 +310,7 @@ export class LineOaController {
         totalInstallments: c.payments.length,
         paidInstallments: paidPayments.length,
         nextDueDate: nextPending
-          ? new Date(nextPending.dueDate).toLocaleDateString('th-TH')
+          ? formatDateShort(nextPending.dueDate)
           : null,
         nextAmountDue: nextPending
           ? Number(nextPending.amountDue) + Number(nextPending.lateFee) - Number(nextPending.amountPaid)
@@ -365,7 +369,7 @@ export class LineOaController {
         : p.status === 'OVERDUE' ? '❌'
         : p.status === 'PARTIALLY_PAID' ? '⏳'
         : '⬜';
-      const date = new Date(p.dueDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
+      const date = formatDateShortThai(p.dueDate);
       return `${status} งวด ${p.installmentNo} | ${date} | ${Number(p.amountDue).toLocaleString()} บาท`;
     });
 
@@ -462,7 +466,7 @@ export class LineOaController {
       await this.lineOaService.replyMessage(replyToken, [
         {
           type: 'text',
-          text: `ข้อมูลชำระเงิน:\nสัญญา: ${contract.contractNumber}\nงวดที่: ${nextPayment.installmentNo}/${contract.payments.length}\nยอด: ${amount.toLocaleString()} บาท\nกำหนด: ${new Date(nextPayment.dueDate).toLocaleDateString('th-TH')}${bankInfo}\n\nหลังโอนเงินแล้ว ส่งสลิปมาในแชทนี้ได้เลยค่ะ`,
+          text: `ข้อมูลชำระเงิน:\nสัญญา: ${contract.contractNumber}\nงวดที่: ${nextPayment.installmentNo}/${contract.payments.length}\nยอด: ${amount.toLocaleString()} บาท\nกำหนด: ${formatDateShort(nextPayment.dueDate)}${bankInfo}\n\nหลังโอนเงินแล้ว ส่งสลิปมาในแชทนี้ได้เลยค่ะ`,
         },
       ]);
     }
@@ -497,7 +501,7 @@ export class LineOaController {
           installmentNo: p.installmentNo,
           amountPaid: Number(p.amountPaid),
           paidDate: p.paidDate
-            ? new Date(p.paidDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })
+            ? formatDateShort(p.paidDate)
             : '-',
         })),
         remainingCount: c.payments.filter((p) => p.status !== 'PAID').length,
@@ -803,7 +807,7 @@ export class LineOaController {
               totalInstallments,
               amountPaid: Number(evidence.amount) || 0,
               paymentMethod: body.paymentMethod,
-              paidDate: new Date().toLocaleDateString('th-TH'),
+              paidDate: formatDateShort(new Date()),
               remainingInstallments: totalInstallments - paidCount - 1,
             });
             await this.lineOaService.sendFlexMessage(evidence.lineUserId, flex);
@@ -941,7 +945,7 @@ export class LineOaController {
         totalInstallments,
         amountPaid: body.amount,
         paymentMethod: body.paymentMethod,
-        paidDate: new Date().toLocaleDateString('th-TH'),
+        paidDate: formatDateShort(new Date()),
         remainingInstallments: totalInstallments - paidCount - 1,
       });
 
@@ -1249,7 +1253,7 @@ export class LineOaController {
           totalInstallments,
           amountPaid: amount,
           paymentMethod: 'BANK_TRANSFER',
-          paidDate: new Date().toLocaleDateString('th-TH'),
+          paidDate: formatDateShort(new Date()),
           remainingInstallments: totalInstallments - paidCount,
         });
         await this.lineOaService.sendFlexMessage(customerLineId, flex);

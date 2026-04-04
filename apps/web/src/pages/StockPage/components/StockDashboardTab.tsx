@@ -1,6 +1,7 @@
 import { StockDashboard } from '../types';
 import { statusLabels, categoryLabels } from '@/lib/constants';
 import AnimatedCounter from '@/components/ui/animated-counter';
+import { formatDateShort } from '@/utils/formatters';
 
 export interface StockDashboardTabProps {
   dashboard: StockDashboard | undefined;
@@ -52,7 +53,7 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
             {warrantyExpiring.slice(0, 5).map(p => (
               <div key={p.id} className="text-xs text-warning/80 flex justify-between">
                 <span>{p.brand} {p.model}</span>
-                <span>{new Date(p.warrantyExpireDate).toLocaleDateString('th-TH')}</span>
+                <span>{formatDateShort(p.warrantyExpireDate)}</span>
               </div>
             ))}
             {warrantyExpiring.length > 5 && <div className="text-xs text-warning/70">...และอีก {warrantyExpiring.length - 5} รายการ</div>}

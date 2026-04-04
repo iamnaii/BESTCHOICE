@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { SignerType } from '@prisma/client';
+import { formatDateShort, formatDateMedium, formatDateLong, getThaiDateParts } from '../../utils/thai-date.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -339,8 +340,8 @@ export class DocumentsService {
       : '<div style="border-bottom:1px solid #000;width:200px;height:80px"></div>';
 
     const consentDate = contract.pdpaConsent.grantedAt
-      ? new Date(contract.pdpaConsent.grantedAt).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })
-      : new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+      ? formatDateLong(contract.pdpaConsent.grantedAt)
+      : formatDateLong(new Date());
 
     htmlContent = htmlContent
       .replace(/\{pdpa_signature\}/g, pdpaSignature)
@@ -774,7 +775,7 @@ ${(() => {
     const paymentScheduleRows = payments
       .map(
         (p: any) =>
-          `<tr><td style="text-align:center;${tblCell}">${p.installmentNo}</td><td style="text-align:center;${tblCell}">${esc(new Date(p.dueDate).toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' }))}</td><td style="text-align:right;${tblCell}">${Number(p.amountDue).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>`,
+          `<tr><td style="text-align:center;${tblCell}">${p.installmentNo}</td><td style="text-align:center;${tblCell}">${esc(formatDateMedium(p.dueDate))}</td><td style="text-align:right;${tblCell}">${Number(p.amountDue).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>`,
       )
       .join('');
 
@@ -796,10 +797,11 @@ ${(() => {
 
     // Format contract date in Thai
     const contractDate = new Date(contract.createdAt);
-    const thaiDate = contractDate.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
-    const thaiDay = contractDate.toLocaleDateString('th-TH', { day: 'numeric' });
-    const thaiMonth = contractDate.toLocaleDateString('th-TH', { month: 'long' });
-    const thaiYear = contractDate.toLocaleDateString('th-TH', { year: 'numeric' }).replace(/[^\d]/g, '');
+    const contractDateParts = getThaiDateParts(contractDate);
+    const thaiDate = contractDateParts.full;
+    const thaiDay = contractDateParts.day;
+    const thaiMonth = contractDateParts.month;
+    const thaiYear = contractDateParts.year;
 
     // Build guarantor/references as numbered list (matching contract format)
     const references: any[] = contract.customer?.references || [];
@@ -810,11 +812,12 @@ ${(() => {
     // Compute first and last payment dates
     const firstPayment = payments.length > 0 ? new Date(payments[0].dueDate) : contractDate;
     const lastPayment = payments.length > 0 ? new Date(payments[payments.length - 1].dueDate) : contractDate;
-    const firstPaymentDue = firstPayment.toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' });
-    const firstPaymentDay = firstPayment.toLocaleDateString('th-TH', { day: 'numeric' });
-    const firstPaymentMonth = firstPayment.toLocaleDateString('th-TH', { month: 'long' });
-    const firstPaymentYear = firstPayment.toLocaleDateString('th-TH', { year: 'numeric' }).replace(/[^\d]/g, '');
-    const lastPaymentDue = lastPayment.toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' });
+    const firstPaymentParts = getThaiDateParts(firstPayment);
+    const firstPaymentDue = firstPaymentParts.medium;
+    const firstPaymentDay = firstPaymentParts.day;
+    const firstPaymentMonth = firstPaymentParts.month;
+    const firstPaymentYear = firstPaymentParts.year;
+    const lastPaymentDue = getThaiDateParts(lastPayment).medium;
 
     const replacements: Record<string, string> = {
       '{contract_number}': esc(contract.contractNumber || ''),
@@ -869,7 +872,7 @@ ${(() => {
       '{witness1_name}': witness1Sig?.signerName ? esc(witness1Sig.signerName) : (references[0] ? esc(`${references[0].prefix || ''}${references[0].firstName || ''} ${references[0].lastName || ''}`.trim()) : ''),
       '{witness2_name}': witness2Sig?.signerName ? esc(witness2Sig.signerName) : (references[1] ? esc(`${references[1].prefix || ''}${references[1].firstName || ''} ${references[1].lastName || ''}`.trim()) : ''),
       '{staff_signer_name}': esc(contract.salesperson?.name || ''),
-      '{date}': new Date().toLocaleDateString('th-TH'),
+      '{date}': formatDateShort(new Date()),
       '{payment_schedule_table}': `<table style="border-collapse:collapse;width:70%;margin:10px auto;page-break-inside:auto"><thead><tr style="background:#f5f5f5"><th style="text-align:center;${tblCell};font-weight:bold">งวดที่</th><th style="text-align:center;${tblCell};font-weight:bold">วันที่ครบกำหนดชำระ</th><th style="text-align:center;${tblCell};font-weight:bold">จำนวนเงิน</th></tr></thead><tbody>${paymentScheduleRows}</tbody></table>`,
       '{customer_signature}': customerSigSafe ? `<img src="${customerSig.signatureImage}" style="max-height:60px;display:inline-block;vertical-align:middle;margin:0 4px"/>` : '<span style="display:inline-block;width:150px;border-bottom:1px solid #000;vertical-align:middle;margin:0 4px">&nbsp;</span>',
       '{staff_signature}': staffSigSafe ? `<img src="${staffSig.signatureImage}" style="max-height:60px;display:inline-block;vertical-align:middle;margin:0 4px"/>` : '<span style="display:inline-block;width:150px;border-bottom:1px solid #000;vertical-align:middle;margin:0 4px">&nbsp;</span>',
@@ -972,7 +975,7 @@ ${(() => {
       'CUSTOMER.PREFIX': replacements['{customer_prefix}'],
       'CUSTOMER.IDCARD': replacements['{national_id}'],
       'CUSTOMER.IDCARD_FULL': replacements['{national_id_full}'],
-      'CUSTOMER.BIRTHDATE': contract.customer?.birthdate ? new Date(contract.customer.birthdate).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' }) : '-',
+      'CUSTOMER.BIRTHDATE': contract.customer?.birthdate ? formatDateLong(contract.customer.birthdate) : '-',
       'CUSTOMER.NICKNAME': esc(contract.customer?.nickname || '-'),
       'CUSTOMER.TEL': replacements['{customer_phone}'],
       'CUSTOMER.TEL_SECONDARY': replacements['{customer_phone_secondary}'],
@@ -997,7 +1000,7 @@ ${(() => {
       'PHONE.IMEI': replacements['{imei}'],
       'PHONE.SERIAL': replacements['{serial_number}'],
       'PHONE.BATTERY_HEALTH': esc(contract.product?.batteryHealth ? `${contract.product.batteryHealth}%` : '-'),
-      'PHONE.WARRANTY_EXPIRE': contract.product?.warrantyExpireDate ? new Date(contract.product.warrantyExpireDate).toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' }) : '-',
+      'PHONE.WARRANTY_EXPIRE': contract.product?.warrantyExpireDate ? formatDateMedium(contract.product.warrantyExpireDate) : '-',
 
       // === Branch / Staff ===
       'BRANCH.NAME': replacements['{branch_name}'],
@@ -1025,15 +1028,9 @@ ${(() => {
       const d = dateMap[key];
       if (!d) return newSyntaxMap[key] ?? _match;
       switch (fmt) {
-        case 's': return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear() + 543}`;
-        case 'm': {
-          const monthsShort = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
-          return `${d.getDate()} ${monthsShort[d.getMonth()]} ${d.getFullYear() + 543}`;
-        }
-        case 'l': {
-          const monthsFull = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
-          return `${d.getDate()} เดือน ${monthsFull[d.getMonth()]} พ.ศ. ${d.getFullYear() + 543}`;
-        }
+        case 's': return formatDateShort(d);
+        case 'm': return formatDateMedium(d);
+        case 'l': return formatDateLong(d);
         default: return newSyntaxMap[key] ?? _match;
       }
     });
@@ -1076,10 +1073,8 @@ ${(() => {
 
     // Handle INSTALLMENTS block rendering
     if (result.includes('INSTALLMENTS')) {
-      const monthsShort = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
       const installmentsRows = payments.map((p: any) => {
-        const d = new Date(p.dueDate);
-        const dateStr = `${d.getDate()} ${monthsShort[d.getMonth()]} ${d.getFullYear() + 543}`;
+        const dateStr = formatDateMedium(p.dueDate);
         return `<tr><td style="text-align:center;padding:4px 12px;border:1px solid #9ca3af">${p.installmentNo}</td><td style="text-align:center;padding:4px 12px;border:1px solid #9ca3af">${dateStr}</td><td style="text-align:right;padding:4px 12px;border:1px solid #9ca3af">${Number(p.amountDue).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>`;
       }).join('');
       // Match PaymentTable.tsx: 75% width, centered, border-gray-400, matching column headers

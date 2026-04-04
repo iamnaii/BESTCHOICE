@@ -1,4 +1,5 @@
 import type { Receipt } from '@/types/receipt';
+import { formatDateMedium } from '@/utils/formatters';
 import QRCodeSVG from 'react-qr-code';
 
 interface MobileReceiptProps {
@@ -19,11 +20,7 @@ const methodLabels: Record<string, string> = {
 };
 
 export default function MobileReceipt({ receipt }: MobileReceiptProps) {
-  const thaiDate = new Date(receipt.paidDate).toLocaleDateString('th-TH', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
+  const thaiDate = formatDateMedium(receipt.paidDate);
 
   // Generate verify URL for QR code
   const verifyUrl = `${window.location.origin}/verify/${receipt.receiptNumber}`;

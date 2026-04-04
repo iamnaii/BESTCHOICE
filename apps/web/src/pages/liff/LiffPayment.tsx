@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
+import { formatDateShort, formatDateTime } from '@/utils/formatters';
 import {
   CreditCard,
   QrCode,
@@ -205,7 +206,7 @@ export default function LiffPayment() {
   const amount = data ? Number(data.amount) : 0;
   const payment = data?.payment;
   const lateFee = payment ? Number(payment.lateFee) : 0;
-  const dueDate = payment ? new Date(payment.dueDate).toLocaleDateString('th-TH') : '-';
+  const dueDate = payment ? formatDateShort(payment.dueDate) : '-';
 
   // ─── Handlers ───
   const handleGatewayPay = () => {
@@ -351,7 +352,7 @@ export default function LiffPayment() {
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">เวลา</span>
                   <span className="font-medium">
-                    {new Date(paymentStatus.paidAt).toLocaleString('th-TH')}
+                    {formatDateTime(paymentStatus.paidAt)}
                   </span>
                 </div>
               )}

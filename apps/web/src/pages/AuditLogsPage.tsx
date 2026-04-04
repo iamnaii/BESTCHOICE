@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import { useDebounce } from '@/hooks/useDebounce';
+import { formatDateTimeSeconds } from '@/utils/formatters';
 
 interface AuditLog {
   id: string;
@@ -67,17 +68,6 @@ const entityLabels: Record<string, string> = {
   documents: 'เอกสาร',
   notifications: 'แจ้งเตือน',
 };
-
-function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleString('th-TH', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-}
 
 export default function AuditLogsPage() {
   const [entity, setEntity] = useState('');
@@ -233,7 +223,7 @@ export default function AuditLogsPage() {
                       >
                         <div className="flex items-center">
                           <div className="px-4 py-3 w-44 shrink-0 text-muted-foreground text-xs">
-                            {formatDate(log.createdAt)}
+                            {formatDateTimeSeconds(log.createdAt)}
                           </div>
                           <div className="px-4 py-3 w-36 shrink-0 truncate">
                             {log.user?.name || '-'}

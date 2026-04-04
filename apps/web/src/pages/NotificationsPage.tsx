@@ -5,6 +5,7 @@ import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
+import { formatDateTime } from '@/utils/formatters';
 
 interface NotificationLog {
   id: string;
@@ -516,7 +517,7 @@ export default function NotificationsPage() {
       label: 'เวลาส่ง',
       render: (l: NotificationLog) => (
         <span className="text-xs text-muted-foreground">
-          {l.sentAt ? new Date(l.sentAt).toLocaleString('th-TH') : '-'}
+          {l.sentAt ? formatDateTime(l.sentAt) : '-'}
         </span>
       ),
     },

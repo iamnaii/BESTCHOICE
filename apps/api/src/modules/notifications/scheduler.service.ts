@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { formatDateShort } from '../../utils/thai-date.util';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { NotificationsService } from './notifications.service';
 import { OverdueService } from '../overdue/overdue.service';
@@ -102,7 +103,7 @@ export class SchedulerService {
           amountDue: totalOverdue,
           lateFee,
           totalOutstanding: totalOverdue,
-          dueDate: oldestDue?.toLocaleDateString('th-TH') || '-',
+          dueDate: oldestDue ? formatDateShort(oldestDue) : '-',
           daysOverdue,
         });
 
@@ -357,7 +358,7 @@ export class SchedulerService {
             installmentNo: payment.installmentNo,
             totalInstallments: payment.contract.totalMonths,
             amountDue,
-            dueDate: payment.dueDate.toLocaleDateString('th-TH'),
+            dueDate: formatDateShort(payment.dueDate),
             daysUntilDue: 3,
             paymentUrl: link.url,
           });

@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { formatDateShort } from '../../utils/thai-date.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -214,7 +215,7 @@ export class ProductsService {
         name: 'ตรวจรับสินค้า (QC)',
         status: product.receivingItem ? 'completed' : 'pending',
         description: product.receivingItem
-          ? `QC: ${product.receivingItem.status} (${new Date(product.receivingItem.createdAt).toLocaleDateString('th-TH')})`
+          ? `QC: ${product.receivingItem.status} (${formatDateShort(product.receivingItem.createdAt)})`
           : 'ยังไม่ได้ตรวจรับ',
       },
     ];

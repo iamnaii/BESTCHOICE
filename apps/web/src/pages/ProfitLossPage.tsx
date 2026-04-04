@@ -5,6 +5,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { TrendingUp, TrendingDown, DollarSign, ArrowDown, ArrowUp, Minus } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { formatDateMedium } from '@/utils/formatters';
 
 interface PLData {
   period: { start: string; end: string };
@@ -252,9 +253,9 @@ export default function ProfitLossPage() {
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-bold">งบกำไรขาดทุน</h2>
                 <span className="text-sm text-muted-foreground">
-                  {new Date(startDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })}
+                  {formatDateMedium(startDate)}
                   {' — '}
-                  {new Date(endDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })}
+                  {formatDateMedium(endDate)}
                 </span>
               </div>
             </CardHeader>

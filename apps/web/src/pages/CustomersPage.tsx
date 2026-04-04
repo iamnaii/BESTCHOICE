@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { exportToExcel, type ExcelColumn } from '@/utils/excel.util';
+import { formatDateShort } from '@/utils/formatters';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { compressImageForOcr } from '@/lib/compressImage';
@@ -418,7 +419,7 @@ export default function CustomersPage() {
             overdueContracts: c.overdueContracts,
             creditStatus: c.latestCreditStatus || '-',
             creditScore: c.latestCreditScore != null ? `${c.latestCreditScore}/100` : '-',
-            createdAt: new Date(c.createdAt).toLocaleDateString('th-TH'),
+            createdAt: formatDateShort(c.createdAt),
           };
           if (isOwnerOrManager) {
             row.nationalId = c.nationalId;
@@ -507,7 +508,7 @@ export default function CustomersPage() {
     {
       key: 'createdAt',
       label: 'วันที่เพิ่ม',
-      render: (c: Customer) => <span className="text-xs">{new Date(c.createdAt).toLocaleDateString('th-TH')}</span>,
+      render: (c: Customer) => <span className="text-xs">{formatDateShort(c.createdAt)}</span>,
     },
   ], [navigateToCustomer, result?.page]);
 

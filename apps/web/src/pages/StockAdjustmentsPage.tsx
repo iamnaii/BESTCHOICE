@@ -7,6 +7,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
+import { formatDateShort } from '@/utils/formatters';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -154,7 +155,7 @@ export default function StockAdjustmentsPage() {
     }
     const headers = ['วันที่', 'สินค้า', 'IMEI/Serial', 'สาเหตุ', 'สถานะเดิม', 'หมายเหตุ', 'สาขา', 'ผู้ปรับ', 'ราคาทุน'];
     const rows = items.map((a) => [
-      new Date(a.createdAt).toLocaleDateString('th-TH'),
+      formatDateShort(a.createdAt),
       `${a.product.brand} ${a.product.model}`,
       a.product.imeiSerial || '',
       reasonLabels[a.reason]?.label || a.reason,
@@ -183,7 +184,7 @@ export default function StockAdjustmentsPage() {
       label: 'วันที่',
       render: (a: StockAdjustment) => (
         <span className="text-xs text-muted-foreground">
-          {new Date(a.createdAt).toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: '2-digit' })}
+          {formatDateShort(a.createdAt)}
           <br />
           {new Date(a.createdAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}
         </span>

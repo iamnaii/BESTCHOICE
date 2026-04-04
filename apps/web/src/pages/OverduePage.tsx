@@ -8,6 +8,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
+import { formatDateShort } from '@/utils/formatters';
 
 interface OverduePayment {
   id: string;
@@ -167,7 +168,7 @@ export default function OverduePage() {
         const daysLate = Math.floor((now.getTime() - due.getTime()) / (1000 * 60 * 60 * 24));
         return (
           <div>
-            <div className="text-sm">{due.toLocaleDateString('th-TH')}</div>
+            <div className="text-sm">{formatDateShort(due)}</div>
             {daysLate > 0 && <div className="text-xs text-destructive font-medium">เกินกำหนด {daysLate} วัน</div>}
           </div>
         );
@@ -381,7 +382,7 @@ export default function OverduePage() {
                   <div className="space-y-2">
                     {timeline.map((e, i) => (
                       <div key={i} className="flex gap-3 text-sm">
-                        <div className="text-xs text-muted-foreground whitespace-nowrap">{new Date(e.date).toLocaleDateString('th-TH')}</div>
+                        <div className="text-xs text-muted-foreground whitespace-nowrap">{formatDateShort(e.date)}</div>
                         <div>
                           <div className="font-medium">{e.type}</div>
                           <div className="text-xs text-muted-foreground">{e.description}</div>
@@ -403,7 +404,7 @@ export default function OverduePage() {
                       <div key={log.id} className="border rounded-lg p-2 text-sm">
                         <div className="flex justify-between">
                           <span className="font-medium">{log.result}</span>
-                          <span className="text-xs text-muted-foreground">{new Date(log.callDate).toLocaleDateString('th-TH')}</span>
+                          <span className="text-xs text-muted-foreground">{formatDateShort(log.callDate)}</span>
                         </div>
                         {log.notes && <div className="text-xs text-muted-foreground mt-1">{log.notes}</div>}
                         <div className="text-xs text-muted-foreground">โดย {log.calledBy.name}</div>

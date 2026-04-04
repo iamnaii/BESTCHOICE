@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { formatDateShort } from '../../utils/thai-date.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import {
@@ -324,7 +325,7 @@ export class ContractWorkflowService {
       select: { dueDate: true },
     });
     const firstDueDate = firstPayment
-      ? new Date(firstPayment.dueDate).toLocaleDateString('th-TH')
+      ? formatDateShort(firstPayment.dueDate)
       : 'ตามสัญญา';
 
     const message = [

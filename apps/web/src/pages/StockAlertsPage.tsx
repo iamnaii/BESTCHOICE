@@ -8,6 +8,7 @@ import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { categoryLabels } from '@/lib/constants';
 import { brands, getModels, getModelInfo } from '@/data/productCatalog';
+import { formatDateShort } from '@/utils/formatters';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -365,7 +366,7 @@ export default function StockAlertsPage() {
       label: 'วันที่แจ้ง',
       render: (a: StockAlert) => (
         <span className="text-xs text-muted-foreground">
-          {new Date(a.createdAt).toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: '2-digit' })}
+          {formatDateShort(a.createdAt)}
         </span>
       ),
     },

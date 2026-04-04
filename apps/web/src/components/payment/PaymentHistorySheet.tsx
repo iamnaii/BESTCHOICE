@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetBody } from '@/components/ui/sheet';
 import Modal from '@/components/ui/Modal';
+import { formatDateShort } from '@/utils/formatters';
 import { toast } from 'sonner';
 
 interface PaymentItem {
@@ -122,7 +123,7 @@ export default function PaymentHistorySheet({ contractId, onClose, onViewReceipt
                           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.className}`}>{s.label}</span>
                         </div>
                         <span className={`text-xs ${isOverdue ? 'text-red-600 font-medium' : 'text-muted-foreground'}`}>
-                          {new Date(p.dueDate).toLocaleDateString('th-TH')}
+                          {formatDateShort(p.dueDate)}
                         </span>
                       </div>
 
@@ -150,7 +151,7 @@ export default function PaymentHistorySheet({ contractId, onClose, onViewReceipt
                       {/* Paid info */}
                       {p.paidDate && (
                         <div className="text-xs text-muted-foreground">
-                          ชำระเมื่อ {new Date(p.paidDate).toLocaleDateString('th-TH')} {p.recordedBy ? `โดย ${p.recordedBy.name}` : ''}
+                          ชำระเมื่อ {formatDateShort(p.paidDate)} {p.recordedBy ? `โดย ${p.recordedBy.name}` : ''}
                         </div>
                       )}
 

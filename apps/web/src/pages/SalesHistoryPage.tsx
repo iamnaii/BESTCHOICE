@@ -10,6 +10,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import { Card, CardContent } from '@/components/ui/card';
 import { Download, RotateCcw } from 'lucide-react';
+import { formatDateShort } from '@/utils/formatters';
 
 interface Sale {
   id: string;
@@ -217,7 +218,7 @@ export default function SalesHistoryPage() {
         data: allData.data.map((s: Sale) => {
           const row: Record<string, unknown> = {
             saleNumber: s.saleNumber,
-            date: new Date(s.createdAt).toLocaleDateString('th-TH'),
+            date: formatDateShort(s.createdAt),
             saleType: saleTypeLabels[s.saleType]?.label || s.saleType,
             product: `${s.product.brand} ${s.product.model}`,
             imei: s.product.imeiSerial || s.product.serialNumber || '-',
@@ -273,7 +274,7 @@ export default function SalesHistoryPage() {
       label: 'วันที่',
       render: (s: Sale) => (
         <div>
-          <div className="text-sm">{new Date(s.createdAt).toLocaleDateString('th-TH')}</div>
+          <div className="text-sm">{formatDateShort(s.createdAt)}</div>
           <div className="text-xs text-muted-foreground">{new Date(s.createdAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</div>
         </div>
       ),

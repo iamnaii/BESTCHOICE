@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
+import { formatDateShort } from '../../utils/thai-date.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
@@ -422,7 +423,7 @@ export class ReceiptsService {
       </div>` : ''}
       <div class="row">
         <span class="label">วันที่ชำระ:</span>
-        <span class="value">${new Date(receipt.paidDate).toLocaleDateString('th-TH')}</span>
+        <span class="value">${formatDateShort(receipt.paidDate)}</span>
       </div>
     </div>
 

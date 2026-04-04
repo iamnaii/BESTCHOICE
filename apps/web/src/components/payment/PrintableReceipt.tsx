@@ -1,4 +1,5 @@
 import type { Receipt } from '@/types/receipt';
+import { formatDateMedium, formatDateTime } from '@/utils/formatters';
 import QRCodeSVG from 'react-qr-code';
 
 interface PrintableReceiptProps {
@@ -33,11 +34,7 @@ export default function PrintableReceipt({ receipt, size }: PrintableReceiptProp
     );
   }
 
-  const thaiDate = new Date(receipt.paidDate || new Date()).toLocaleDateString('th-TH', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
+  const thaiDate = formatDateMedium(receipt.paidDate || new Date().toISOString());
 
   const thaiTime = new Date(receipt.paidDate || new Date()).toLocaleTimeString('th-TH', {
     hour: '2-digit',
@@ -398,7 +395,7 @@ export default function PrintableReceipt({ receipt, size }: PrintableReceiptProp
               เอกสารนี้ออกโดยระบบอัตโนมัติ
             </div>
             <div className="text-[9px] text-gray-400">
-              พิมพ์เมื่อ: {new Date().toLocaleString('th-TH')}
+              พิมพ์เมื่อ: {formatDateTime(new Date())}
             </div>
           </div>
         </div>

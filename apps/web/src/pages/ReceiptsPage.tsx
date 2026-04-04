@@ -8,6 +8,7 @@ import ReceiptModal from '@/components/payment/ReceiptModal';
 import { useDebounce } from '@/hooks/useDebounce';
 import { exportToExcel } from '@/utils/excel.util';
 import { toast } from 'sonner';
+import { formatDateShort } from '@/utils/formatters';
 
 interface Receipt {
   id: string;
@@ -140,7 +141,7 @@ function ReceiptsPage() {
       key: 'paidDate',
       label: 'วันที่',
       render: (r: Receipt) => (
-        <span className="text-xs">{new Date(r.paidDate).toLocaleDateString('th-TH')}</span>
+        <span className="text-xs">{formatDateShort(r.paidDate)}</span>
       ),
     },
     {
@@ -198,7 +199,7 @@ function ReceiptsPage() {
           installmentNo: r.installmentNo || '-',
           paymentMethod: r.paymentMethod ? methodLabels[r.paymentMethod] || r.paymentMethod : '-',
           transactionRef: r.transactionRef || '-',
-          paidDate: new Date(r.paidDate).toLocaleDateString('th-TH'),
+          paidDate: formatDateShort(r.paidDate),
           status: r.isVoided ? 'ยกเลิก' : 'ปกติ',
         })),
         sheetName: 'ใบเสร็จ',

@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { Download, Plus, LayoutGrid, List, Calendar, DollarSign, User } from 'lucide-react';
 import { KanbanBoard, type KanbanColumn } from '@/components/ui/KanbanBoard';
 import { exportToExcel } from '@/utils/excel.util';
+import { formatDateShort, formatDateShortThai } from '@/utils/formatters';
 
 interface Contract {
   id: string;
@@ -166,7 +167,7 @@ export default function ContractsPage() {
         status: statusLabels[c.status]?.label || c.status,
         branch: c.branch.name,
         salesperson: c.salesperson.name,
-        createdAt: new Date(c.createdAt).toLocaleDateString('th-TH'),
+        createdAt: formatDateShort(c.createdAt),
       })),
       sheetName: 'สัญญา',
       filename: `contracts-${new Date().toISOString().split('T')[0]}.xlsx`,
@@ -259,7 +260,7 @@ export default function ContractsPage() {
     {
       key: 'createdAt',
       label: 'วันที่สร้าง',
-      render: (c: Contract) => <span className="text-xs">{new Date(c.createdAt).toLocaleDateString('th-TH')}</span>,
+      render: (c: Contract) => <span className="text-xs">{formatDateShort(c.createdAt)}</span>,
     },
   ], []);
 
@@ -504,7 +505,7 @@ export default function ContractsPage() {
                 </span>
                 <span className="flex items-center gap-1 text-muted-foreground">
                   <Calendar className="size-3" />
-                  {new Date(c.createdAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
+                  {formatDateShortThai(c.createdAt)}
                 </span>
               </div>
             </div>

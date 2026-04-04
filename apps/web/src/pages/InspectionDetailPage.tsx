@@ -12,6 +12,7 @@ import {
   Clock,
   Warehouse,
 } from 'lucide-react';
+import { formatDateMedium } from '@/utils/formatters';
 
 interface ProductDetail {
   id: string;
@@ -112,7 +113,7 @@ export default function InspectionDetailPage() {
     { label: 'ราคาทุน', value: `${Number(product.costPrice).toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท` },
     { label: 'สาขา', value: product.branch.name },
     { label: 'ผู้ขาย', value: product.supplier?.name ?? '-' },
-    { label: 'วันที่รับ', value: new Date(product.createdAt).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' }) },
+    { label: 'วันที่รับ', value: formatDateMedium(product.createdAt) },
   ];
 
   // Available next-status transitions

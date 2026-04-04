@@ -1,6 +1,7 @@
 import React from 'react';
 import type { PendingDoc, OcrResult, Customer } from '../types';
 import { DOCUMENT_TYPES } from '../constants';
+import { formatDateShort } from '@/utils/formatters';
 
 export interface DocumentUploadStepProps {
   pendingDocs: PendingDoc[];
@@ -219,7 +220,7 @@ export function DocumentUploadStep({
             {ocrResult.birthDate && (
               <div>
                 <div className="text-xs text-muted-foreground">วันเกิด</div>
-                <div className="text-sm font-medium text-foreground">{new Date(ocrResult.birthDate).toLocaleDateString('th-TH')}</div>
+                <div className="text-sm font-medium text-foreground">{formatDateShort(ocrResult.birthDate)}</div>
               </div>
             )}
             {ocrResult.address && (
@@ -231,13 +232,13 @@ export function DocumentUploadStep({
             {ocrResult.issueDate && (
               <div>
                 <div className="text-xs text-muted-foreground">วันออกบัตร</div>
-                <div className="text-sm text-foreground">{new Date(ocrResult.issueDate).toLocaleDateString('th-TH')}</div>
+                <div className="text-sm text-foreground">{formatDateShort(ocrResult.issueDate)}</div>
               </div>
             )}
             {ocrResult.expiryDate && (
               <div>
                 <div className="text-xs text-muted-foreground">วันหมดอายุ</div>
-                <div className="text-sm text-foreground">{new Date(ocrResult.expiryDate).toLocaleDateString('th-TH')}</div>
+                <div className="text-sm text-foreground">{formatDateShort(ocrResult.expiryDate)}</div>
               </div>
             )}
           </div>

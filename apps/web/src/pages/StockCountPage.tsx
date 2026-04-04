@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { formatDateShort } from '@/utils/formatters';
 import { toast } from 'sonner';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable, { type Column } from '@/components/ui/DataTable';
@@ -146,7 +147,7 @@ export default function StockCountPage() {
         </span>
       ),
     },
-    { key: 'createdAt', label: 'วันที่', render: (item) => <span className="text-xs text-muted-foreground">{new Date(item.createdAt).toLocaleDateString('th-TH')}</span> },
+    { key: 'createdAt', label: 'วันที่', render: (item) => <span className="text-xs text-muted-foreground">{formatDateShort(item.createdAt)}</span> },
     {
       key: 'actions',
       label: '',

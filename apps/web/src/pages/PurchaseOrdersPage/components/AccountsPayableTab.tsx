@@ -1,4 +1,5 @@
 import api from '@/lib/api';
+import { formatDateShort } from '@/utils/formatters';
 import { PurchaseOrder, PODetail } from '../types';
 import { paymentStatusLabels, paymentStatusColors } from '../constants';
 
@@ -67,11 +68,11 @@ export function AccountsPayableTab({ payableData, onOpenDetail }: AccountsPayabl
                       {po.poNumber}
                     </button>
                   </td>
-                  <td className="px-4 py-2 text-muted-foreground">{new Date(po.orderDate).toLocaleDateString('th-TH')}</td>
+                  <td className="px-4 py-2 text-muted-foreground">{formatDateShort(po.orderDate)}</td>
                   <td className="px-4 py-2">
                     {po.dueDate ? (
                       <span className={`text-sm ${new Date(po.dueDate) < new Date() ? 'text-destructive font-semibold' : 'text-muted-foreground'}`}>
-                        {new Date(po.dueDate).toLocaleDateString('th-TH')}
+                        {formatDateShort(po.dueDate)}
                         {new Date(po.dueDate) < new Date() && <span className="ml-1 text-xs bg-destructive/10 text-destructive dark:bg-destructive/15 px-1.5 py-0.5 rounded-full">เลยกำหนด</span>}
                       </span>
                     ) : (

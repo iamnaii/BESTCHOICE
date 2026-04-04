@@ -10,6 +10,7 @@ import ProductPhotosPanel from '@/components/product/ProductPhotosPanel';
 import { ColorSelector, StorageSelector } from '@/components/product/VariantSelector';
 import { useAuth } from '@/contexts/AuthContext';
 import { statusLabels, categoryLabels, categoryOptions, transferableStatuses } from '@/lib/constants';
+import { formatDateShort } from '@/utils/formatters';
 
 interface Price {
   id: string;
@@ -395,14 +396,14 @@ export default function ProductDetailPage() {
           {product.category === 'PHONE_USED' && (
             <>
               <InfoField label="แบตเตอรี่" value={product.batteryHealth != null ? `${product.batteryHealth}%` : null} />
-              <InfoField label="ประกันศูนย์" value={product.warrantyExpired ? 'หมดประกันแล้ว' : product.warrantyExpireDate ? `ถึง ${new Date(product.warrantyExpireDate).toLocaleDateString('th-TH')}` : null} />
+              <InfoField label="ประกันศูนย์" value={product.warrantyExpired ? 'หมดประกันแล้ว' : product.warrantyExpireDate ? `ถึง ${formatDateShort(product.warrantyExpireDate)}` : null} />
               <InfoField label="กล่อง" value={product.hasBox != null ? (product.hasBox ? 'มีกล่อง' : 'ไม่มีกล่อง') : null} />
             </>
           )}
           <InfoField label="สาขา" value={product.branch.name} />
           <InfoField label="ผู้ขาย" value={product.supplier?.name} />
           <InfoField label="PO" value={product.po?.poNumber} mono />
-          <InfoField label="วันที่เพิ่ม" value={new Date(product.createdAt).toLocaleDateString('th-TH')} />
+          <InfoField label="วันที่เพิ่ม" value={formatDateShort(product.createdAt)} />
         </div>
         </CardContent>
       </Card>

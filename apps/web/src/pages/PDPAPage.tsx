@@ -7,6 +7,7 @@ import Modal from '@/components/ui/Modal';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { maskNationalId } from '@/utils/mask.util';
+import { formatDateShort, formatDateTime } from '@/utils/formatters';
 
 interface DSARRequest {
   id: string;
@@ -168,7 +169,7 @@ function PDPAPage() {
                 key: 'createdAt',
                 label: 'วันที่',
                 render: (r: DSARRequest) => (
-                  <span className="text-xs">{new Date(r.createdAt).toLocaleDateString('th-TH')}</span>
+                  <span className="text-xs">{formatDateShort(r.createdAt)}</span>
                 ),
               },
               {
@@ -257,8 +258,8 @@ function PDPAPage() {
                       <span className="text-xs text-muted-foreground ml-2">Version: {c.consentVersion}</span>
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      ให้ consent: {new Date(c.consentedAt).toLocaleString('th-TH')}
-                      {c.revokedAt && <span className="text-red-500 ml-2">ถอน: {new Date(c.revokedAt).toLocaleString('th-TH')}</span>}
+                      ให้ consent: {formatDateTime(c.consentedAt)}
+                      {c.revokedAt && <span className="text-red-500 ml-2">ถอน: {formatDateTime(c.revokedAt)}</span>}
                     </div>
                   </div>
                   {c.revokeReason && <div className="text-xs text-destructive mt-1">เหตุผล: {c.revokeReason}</div>}

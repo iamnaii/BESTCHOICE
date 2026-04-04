@@ -5,6 +5,7 @@ import Modal from '@/components/ui/Modal';
 import { Card, CardContent } from '@/components/ui/card';
 import { useDebounce } from '@/hooks/useDebounce';
 import { exportToExcel } from '@/utils/excel.util';
+import { formatDateTime, formatDateShort } from '@/utils/formatters';
 import { toast } from 'sonner';
 
 interface PaymentEvidence {
@@ -218,8 +219,8 @@ export default function SlipReviewTab() {
           amount: ev.amount ? Number(ev.amount) : '-',
           status: statusLabels[ev.status] || ev.status,
           reviewer: ev.reviewedBy?.name || '-',
-          createdAt: new Date(ev.createdAt).toLocaleString('th-TH'),
-          reviewedAt: ev.reviewedAt ? new Date(ev.reviewedAt).toLocaleString('th-TH') : '-',
+          createdAt: formatDateTime(ev.createdAt),
+          reviewedAt: ev.reviewedAt ? formatDateTime(ev.reviewedAt) : '-',
           note: ev.reviewNote || '-',
         })),
         sheetName: 'สลิปชำระเงิน',
@@ -386,7 +387,7 @@ export default function SlipReviewTab() {
               />
 
               <div className="flex justify-between text-sm text-muted-foreground">
-                <span>{new Date(ev.createdAt).toLocaleString('th-TH')}</span>
+                <span>{formatDateTime(ev.createdAt)}</span>
                 {ev.amount && (
                   <span className="font-medium text-success">
                     {Number(ev.amount).toLocaleString()} บาท
@@ -534,7 +535,7 @@ export default function SlipReviewTab() {
 
               <div>
                 <h3 className="text-sm font-medium text-muted-foreground">เวลาส่ง</h3>
-                <p>{new Date(selectedEvidence.createdAt).toLocaleString('th-TH')}</p>
+                <p>{formatDateTime(selectedEvidence.createdAt)}</p>
               </div>
 
               {selectedEvidence.status === 'PENDING_REVIEW' && (
@@ -574,7 +575,7 @@ export default function SlipReviewTab() {
                                 </span>
                               </div>
                               <div className="flex items-center justify-between mt-0.5 text-xs text-muted-foreground">
-                                <span>ครบกำหนด {new Date(match.dueDate).toLocaleDateString('th-TH')}</span>
+                                <span>ครบกำหนด {formatDateShort(match.dueDate)}</span>
                                 <span className={match.isOverdue ? 'text-destructive font-medium' : ''}>
                                   {match.amountDue.toLocaleString()} ฿
                                   {match.isOverdue && ` (เกิน ${match.daysOverdue} วัน)`}

@@ -7,6 +7,7 @@ import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { formatDateShort } from '@/utils/formatters';
 
 interface Repossession {
   id: string;
@@ -224,7 +225,7 @@ export default function RepossessionsPage() {
       key: 'date',
       label: 'วันที่ยึด',
       render: (r: Repossession) => (
-        <span className="text-sm">{new Date(r.repossessedDate).toLocaleDateString('th-TH')}</span>
+        <span className="text-sm">{formatDateShort(r.repossessedDate)}</span>
       ),
     },
     {

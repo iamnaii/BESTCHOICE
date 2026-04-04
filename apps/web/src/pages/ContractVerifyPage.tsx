@@ -1,6 +1,7 @@
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { formatDateMedium } from '@/utils/formatters';
 
 interface VerifyResponse {
   verified: boolean;
@@ -127,11 +128,7 @@ export default function ContractVerifyPage() {
                     <div className="flex justify-between">
                       <dt className="text-muted-foreground">วันที่สร้าง</dt>
                       <dd className="font-medium text-foreground">
-                        {new Date(data.contract.createdAt).toLocaleDateString('th-TH', {
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric',
-                        })}
+                        {formatDateMedium(data.contract.createdAt)}
                       </dd>
                     </div>
                   </dl>
@@ -151,11 +148,7 @@ export default function ContractVerifyPage() {
                           <span className="font-medium text-foreground">{sig.name}</span>
                         </div>
                         <span className="text-muted-foreground text-xs">
-                          {new Date(sig.signedAt).toLocaleDateString('th-TH', {
-                            year: 'numeric',
-                            month: 'short',
-                            day: 'numeric',
-                          })}
+                          {formatDateMedium(sig.signedAt)}
                         </span>
                       </div>
                     ))}

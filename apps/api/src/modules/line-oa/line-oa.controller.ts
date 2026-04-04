@@ -1000,6 +1000,73 @@ export class LineOaController {
     return { success: true, message: 'ปฏิเสธสลิปเรียบร้อย' };
   }
 
+  @Get('evidence/:id/suggested-matches')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  async getSuggestedMatches(@Param('id') id: string) {
+    const evidence = await this.prisma.paymentEvidence.findUnique({
+      where: { id },
+      include: {
+        contract: {
+          include: {
+            payments: {
+              where: { status: { not: 'PAID' } },
+              orderBy: { installmentNo: 'asc' },
+            },
+          },
+        },
+      },
+    });
+
+    if (!evidence) {
+      throw new NotFoundException('ไม่พบหลักฐานการชำระ');
+    }
+
+    const slipAmount = evidence.amount ? Number(evidence.amount) : null;
+    const today = new Date();
+
+    const suggestions = evidence.contract.payments.map((payment) => {
+      const amountDue = Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid);
+      let score = 0;
+
+      if (slipAmount !== null) {
+        const diff = Math.abs(slipAmount - amountDue);
+        if (diff <= 1) score = 1.0;
+        else if (diff <= 100) score = 0.85;
+        else if (diff <= 300) score = 0.65;
+        else if (diff <= 1000) score = 0.4;
+        else score = 0.1;
+      } else {
+        // No amount from OCR — rank by due date proximity
+        score = 0.3;
+      }
+
+      // Boost for overdue payments (most likely to need payment)
+      const daysOverdue = Math.floor((today.getTime() - payment.dueDate.getTime()) / (1000 * 60 * 60 * 24));
+      if (daysOverdue > 0 && daysOverdue <= 30) score = Math.min(score + 0.1, 1.0);
+
+      return {
+        paymentId: payment.id,
+        installmentNo: payment.installmentNo,
+        dueDate: payment.dueDate,
+        amountDue: amountDue,
+        status: payment.status,
+        score: Math.round(score * 100) / 100,
+        isOverdue: daysOverdue > 0,
+        daysOverdue: Math.max(0, daysOverdue),
+      };
+    });
+
+    // Sort by score desc, then by installmentNo asc
+    suggestions.sort((a, b) => b.score - a.score || a.installmentNo - b.installmentNo);
+
+    return {
+      evidenceId: id,
+      slipAmount,
+      suggestions: suggestions.slice(0, 5),
+    };
+  }
+
   // ─── PromptPay QR Code ──────────────────────────────
 
   @Get('payment/:paymentId/qr')
@@ -1058,6 +1125,7 @@ export class LineOaController {
       status: link.status,
       expiresAt: link.expiresAt,
       contract: {
+        id: contract.id,
         contractNumber: contract.contractNumber,
         customer: { name: contract.customer.name },
       },

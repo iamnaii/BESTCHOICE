@@ -52,7 +52,7 @@ const pages: NavEntry[] = [
   { label: 'สัญญาผ่อน', path: '/contracts', icon: FileCheck, keywords: 'contract สัญญา ผ่อน' },
   { label: 'ชำระเงิน', path: '/payments', icon: DollarSign, keywords: 'payment ชำระ จ่าย' },
   { label: 'ใบเสร็จรับเงิน', path: '/receipts', icon: Receipt, keywords: 'receipt ใบเสร็จ', roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
-  { label: 'ตรวจสอบสลิป', path: '/slip-review', icon: FileCheck, keywords: 'slip review สลิป', roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
+  { label: 'ตรวจสอบสลิป', path: '/payments?tab=slip-review', icon: FileCheck, keywords: 'slip review สลิป', roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
   { label: 'ติดตามหนี้', path: '/overdue', icon: AlertTriangle, keywords: 'overdue หนี้ ค้าง ติดตาม' },
   { label: 'คลังสินค้า', path: '/stock', icon: Warehouse, keywords: 'stock inventory สต็อก คลัง' },
   { label: 'สั่งซื้อ', path: '/purchase-orders', icon: Warehouse, keywords: 'purchase order PO สั่งซื้อ', roles: ['OWNER', 'BRANCH_MANAGER'] },

@@ -152,11 +152,71 @@ export class CustomersService {
           },
           orderBy: { createdAt: 'desc' },
         },
-        _count: { select: { contracts: true } },
+        _count: { select: { contracts: true, referrals: true } },
+        referredBy: { select: { id: true, name: true, phone: true } },
       },
     });
     if (!customer || customer.deletedAt) throw new NotFoundException('ไม่พบลูกค้า');
     return customer;
+  }
+
+  async getReferrals(id: string) {
+    await this.findOne(id);
+    const referrals = await this.prisma.customer.findMany({
+      where: { referredById: id, deletedAt: null },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        createdAt: true,
+        _count: { select: { contracts: true } },
+        contracts: {
+          where: { deletedAt: null },
+          select: { status: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return {
+      total: referrals.length,
+      referrals: referrals.map((r) => ({
+        id: r.id,
+        name: r.name,
+        phone: r.phone,
+        createdAt: r.createdAt,
+        contractCount: r._count.contracts,
+        hasActiveContract: r.contracts.some((c) => c.status === 'ACTIVE'),
+      })),
+    };
+  }
+
+  async getReferralStats(limit = 10) {
+    const rows = await this.prisma.$queryRaw<
+      { referrerId: string; referrerName: string; referrerPhone: string; referralCount: number }[]
+    >(Prisma.sql`
+      SELECT
+        ref.id AS "referrerId",
+        ref.name AS "referrerName",
+        ref.phone AS "referrerPhone",
+        COUNT(c.id) AS "referralCount"
+      FROM customers ref
+      JOIN customers c ON c.referred_by_id = ref.id AND c.deleted_at IS NULL
+      WHERE ref.deleted_at IS NULL
+      GROUP BY ref.id, ref.name, ref.phone
+      ORDER BY "referralCount" DESC
+      LIMIT ${limit}
+    `);
+
+    return {
+      total: rows.length,
+      topReferrers: rows.map((r) => ({
+        referrerId: r.referrerId,
+        referrerName: r.referrerName,
+        referrerPhone: r.referrerPhone,
+        referralCount: Number(r.referralCount),
+      })),
+    };
   }
 
   async search(q: string) {
@@ -281,6 +341,183 @@ export class CustomersService {
       where: { id },
       data: { documents: updatedDocs },
     });
+  }
+
+  async getUpsellCandidates(branchId?: string, limit = 20) {
+    // Use raw SQL to compute paid ratio (paidInstallments / totalMonths)
+    // Prisma ORM cannot HAVING on aggregate counts directly
+    const branchFilter = branchId ? Prisma.sql`AND c.branch_id = ${branchId}` : Prisma.empty;
+
+    const rows = await this.prisma.$queryRaw<
+      {
+        contractId: string;
+        contractNumber: string;
+        customerId: string;
+        customerName: string;
+        customerPhone: string;
+        totalMonths: number;
+        paidCount: number;
+        paidRatio: number;
+        contractStatus: string;
+        hasExchangeHistory: boolean;
+        productModel: string | null;
+        monthlyPayment: number;
+      }[]
+    >(Prisma.sql`
+      SELECT
+        c.id AS "contractId",
+        c.contract_number AS "contractNumber",
+        cu.id AS "customerId",
+        cu.name AS "customerName",
+        cu.phone AS "customerPhone",
+        c.total_months AS "totalMonths",
+        COUNT(p.id) FILTER (WHERE p.status = 'PAID') AS "paidCount",
+        ROUND(COUNT(p.id) FILTER (WHERE p.status = 'PAID')::numeric / NULLIF(c.total_months, 0), 3) AS "paidRatio",
+        c.status AS "contractStatus",
+        (c.parent_contract_id IS NOT NULL) AS "hasExchangeHistory",
+        pr.model AS "productModel",
+        c.monthly_payment AS "monthlyPayment"
+      FROM contracts c
+      JOIN customers cu ON cu.id = c.customer_id
+      LEFT JOIN payments p ON p.contract_id = c.id
+      LEFT JOIN products pr ON pr.id = c.product_id
+      WHERE c.deleted_at IS NULL
+        AND cu.deleted_at IS NULL
+        AND c.status IN ('ACTIVE', 'COMPLETED')
+        AND c.dunning_stage = 'NONE'
+        ${branchFilter}
+      GROUP BY c.id, cu.id, pr.model
+      HAVING
+        c.status = 'COMPLETED'
+        OR (c.parent_contract_id IS NOT NULL)
+        OR (
+          COUNT(p.id) FILTER (WHERE p.status = 'PAID')::numeric / NULLIF(c.total_months, 0) >= 0.7
+        )
+      ORDER BY "paidRatio" DESC NULLS LAST, c.created_at DESC
+      LIMIT ${limit}
+    `);
+
+    return {
+      total: rows.length,
+      candidates: rows.map((r) => ({
+        contractId: r.contractId,
+        contractNumber: r.contractNumber,
+        customerId: r.customerId,
+        customerName: r.customerName,
+        customerPhone: r.customerPhone,
+        totalMonths: Number(r.totalMonths),
+        paidCount: Number(r.paidCount),
+        paidRatio: Number(r.paidRatio),
+        contractStatus: r.contractStatus,
+        hasExchangeHistory: r.hasExchangeHistory,
+        productModel: r.productModel,
+        monthlyPayment: Number(r.monthlyPayment),
+        reason:
+          r.contractStatus === 'COMPLETED'
+            ? 'ปิดสัญญาแล้ว'
+            : r.hasExchangeHistory
+              ? 'มีประวัติเปลี่ยนเครื่อง'
+              : `ผ่อนแล้ว ${Math.round(Number(r.paidRatio) * 100)}%`,
+      })),
+    };
+  }
+
+  async getWatchList(branchId?: string, limit = 30) {
+    const branchFilter = branchId ? Prisma.sql`AND c.branch_id = ${branchId}` : Prisma.empty;
+
+    const rows = await this.prisma.$queryRaw<
+      {
+        customerId: string;
+        customerName: string;
+        customerPhone: string;
+        contractId: string;
+        contractNumber: string;
+        latePaymentCount: number;
+        partialPaymentCount: number;
+        hadDunningReset: boolean;
+        dunningStage: string;
+        totalMonths: number;
+        paidCount: number;
+        nextDueDate: Date | null;
+        nextAmountDue: number | null;
+      }[]
+    >(Prisma.sql`
+      SELECT
+        cu.id AS "customerId",
+        cu.name AS "customerName",
+        cu.phone AS "customerPhone",
+        c.id AS "contractId",
+        c.contract_number AS "contractNumber",
+        COUNT(p.id) FILTER (
+          WHERE p.paid_date IS NOT NULL AND p.paid_date::date > p.due_date::date
+        ) AS "latePaymentCount",
+        COUNT(p.id) FILTER (WHERE p.status = 'PARTIALLY_PAID') AS "partialPaymentCount",
+        (c.dunning_last_action_at IS NOT NULL AND c.dunning_stage = 'NONE') AS "hadDunningReset",
+        c.dunning_stage AS "dunningStage",
+        c.total_months AS "totalMonths",
+        COUNT(p.id) FILTER (WHERE p.status = 'PAID') AS "paidCount",
+        MIN(p2.due_date) AS "nextDueDate",
+        MIN(p2.amount_due) AS "nextAmountDue"
+      FROM customers cu
+      JOIN contracts c ON c.customer_id = cu.id AND c.deleted_at IS NULL
+      LEFT JOIN payments p ON p.contract_id = c.id
+      LEFT JOIN payments p2 ON p2.contract_id = c.id AND p2.status IN ('PENDING', 'OVERDUE')
+      WHERE cu.deleted_at IS NULL
+        AND c.status = 'ACTIVE'
+        ${branchFilter}
+      GROUP BY cu.id, c.id
+      HAVING
+        COUNT(p.id) FILTER (
+          WHERE p.paid_date IS NOT NULL AND p.paid_date::date > p.due_date::date
+        ) >= 2
+        OR COUNT(p.id) FILTER (WHERE p.status = 'PARTIALLY_PAID') >= 1
+        OR (c.dunning_last_action_at IS NOT NULL AND c.dunning_stage = 'NONE')
+      ORDER BY
+        (
+          LEAST(COUNT(p.id) FILTER (
+            WHERE p.paid_date IS NOT NULL AND p.paid_date::date > p.due_date::date
+          ), 5)
+          + COUNT(p.id) FILTER (WHERE p.status = 'PARTIALLY_PAID') * 2
+          + CASE WHEN c.dunning_last_action_at IS NOT NULL AND c.dunning_stage = 'NONE' THEN 3 ELSE 0 END
+        ) DESC
+      LIMIT ${limit}
+    `);
+
+    const candidates = rows.map((r) => {
+      const late = Number(r.latePaymentCount);
+      const partial = Number(r.partialPaymentCount);
+      const dunningReset = Boolean(r.hadDunningReset);
+      const score = Math.min(late, 5) + partial * 2 + (dunningReset ? 3 : 0);
+      const riskLevel: 'HIGH' | 'MEDIUM' | 'LOW' = score >= 5 ? 'HIGH' : score >= 3 ? 'MEDIUM' : 'LOW';
+
+      const reasons: string[] = [];
+      if (late >= 2) reasons.push(`ชำระล่าช้า ${late} ครั้ง`);
+      if (partial >= 1) reasons.push(`จ่ายไม่ครบ ${partial} ครั้ง`);
+      if (dunningReset) reasons.push('เคยถูกติดตามหนี้แล้ว reset');
+
+      return {
+        customerId: r.customerId,
+        customerName: r.customerName,
+        customerPhone: r.customerPhone,
+        contractId: r.contractId,
+        contractNumber: r.contractNumber,
+        riskScore: score,
+        riskLevel,
+        reasons,
+        latePaymentCount: late,
+        partialPaymentCount: partial,
+        hadDunningReset: dunningReset,
+        totalMonths: Number(r.totalMonths),
+        paidCount: Number(r.paidCount),
+        nextDueDate: r.nextDueDate,
+        nextAmountDue: r.nextAmountDue ? Number(r.nextAmountDue) : null,
+      };
+    });
+
+    return {
+      total: candidates.length,
+      watchList: candidates,
+    };
   }
 
   private validateNationalId(id: string): boolean {

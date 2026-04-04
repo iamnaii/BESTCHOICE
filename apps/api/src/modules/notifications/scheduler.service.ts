@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { NotificationsService } from './notifications.service';
 import { OverdueService } from '../overdue/overdue.service';
-import { ReorderPointsService } from '../reorder-points/reorder-points.service';
+import { ReorderPointsService } from '../inventory/reorder-points.service';
 import { WarrantyService } from '../products/warranty.service';
 import { ReportGeneratorService } from '../reports/report-generator.service';
 import { PrismaService } from '../../prisma/prisma.service';

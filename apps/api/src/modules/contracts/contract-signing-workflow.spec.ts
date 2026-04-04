@@ -4,7 +4,7 @@ import { ContractsService } from './contracts.service';
 import { ContractWorkflowService } from './contract-workflow.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { DocumentsService } from '../documents/documents.service';
+import { DocumentsService } from './documents.service';
 
 // Mock utility modules
 jest.mock('../../utils/installment.util', () => ({

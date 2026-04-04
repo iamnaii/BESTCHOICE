@@ -89,6 +89,10 @@ export class CreateCustomerDto {
   @IsOptional()
   references?: Record<string, unknown>[];
 
+  @IsString()
+  @IsOptional()
+  referredById?: string;
+
   @IsArray()
   @IsOptional()
   documents?: string[];
@@ -179,6 +183,10 @@ export class UpdateCustomerDto {
   @IsArray()
   @IsOptional()
   references?: Record<string, unknown>[];
+
+  @IsString()
+  @IsOptional()
+  referredById?: string;
 
   @IsArray()
   @IsOptional()

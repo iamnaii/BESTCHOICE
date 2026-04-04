@@ -506,6 +506,52 @@ export class OverdueService {
   }
 
   /**
+   * Get collection pipeline statistics grouped by dunning stage
+   * Used for dashboard widget
+   */
+  async getCollectionPipelineStats(userRole?: string, userBranchId?: string) {
+    const branchFilter: Prisma.ContractWhereInput =
+      (userRole === 'SALES' || userRole === 'BRANCH_MANAGER') && userBranchId
+        ? { branchId: userBranchId }
+        : {};
+
+    const grouped = await this.prisma.contract.groupBy({
+      by: ['dunningStage'],
+      where: {
+        status: { in: ['OVERDUE', 'DEFAULT'] },
+        deletedAt: null,
+        ...branchFilter,
+      },
+      _count: { _all: true },
+      _sum: { financedAmount: true },
+    });
+
+    const stages = ['NONE', 'REMINDER', 'NOTICE', 'FINAL_WARNING', 'LEGAL_ACTION'] as const;
+    const stageLabels: Record<string, string> = {
+      NONE: 'เพิ่งค้างชำระ',
+      REMINDER: 'แจ้งเตือน (1-7 วัน)',
+      NOTICE: 'แจ้งค้างชำระ (8-30 วัน)',
+      FINAL_WARNING: 'เตือนครั้งสุดท้าย (31-60 วัน)',
+      LEGAL_ACTION: 'ดำเนินคดี (>60 วัน)',
+    };
+
+    const result = stages.map((stage) => {
+      const found = grouped.find((g) => g.dunningStage === stage);
+      return {
+        stage,
+        label: stageLabels[stage],
+        count: found?._count._all ?? 0,
+        totalAmount: Number(found?._sum?.financedAmount ?? 0),
+      };
+    });
+
+    const totalContracts = result.reduce((sum, s) => sum + s.count, 0);
+    const totalAmount = result.reduce((sum, s) => sum + s.totalAmount, 0);
+
+    return { stages: result, totalContracts, totalAmount };
+  }
+
+  /**
    * Reset dunning stage when a contract is no longer overdue
    * (e.g., after a payment brings it back to ACTIVE)
    */

@@ -1,7 +1,9 @@
 import { useState, useMemo, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import SlipReviewTab from '@/components/payment/SlipReviewTab';
 import { compressImageForOcr } from '@/lib/compressImage';
 import { useDebounce } from '@/hooks/useDebounce';
 import PageHeader from '@/components/ui/PageHeader';
@@ -78,7 +80,9 @@ export default function PaymentsPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const isOwner = user?.role === 'OWNER';
-  const [tab, setTab] = useState<'pending' | 'summary'>('pending');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = (searchParams.get('tab') || 'pending') as 'pending' | 'summary' | 'slip-review';
+  const setTab = (value: 'pending' | 'summary' | 'slip-review') => setSearchParams({ tab: value });
   const [statusFilter, setStatusFilter] = useState('');
   const [branchFilter, setBranchFilter] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
@@ -485,6 +489,9 @@ export default function PaymentsPage() {
         <button onClick={() => setTab('summary')} className={`px-4 py-2 text-sm rounded-md ${tab === 'summary' ? 'bg-card shadow-card font-medium' : 'text-muted-foreground'}`}>
           สรุปรายวัน
         </button>
+        <button onClick={() => setTab('slip-review')} className={`px-4 py-2 text-sm rounded-md ${tab === 'slip-review' ? 'bg-card shadow-card font-medium' : 'text-muted-foreground'}`}>
+          ตรวจสอบสลิป
+        </button>
       </div>
 
       {/* Pending Tab */}
@@ -887,6 +894,9 @@ export default function PaymentsPage() {
           </div>
         </Modal>
       )}
+
+      {/* Slip Review Tab */}
+      {tab === 'slip-review' && <SlipReviewTab />}
 
       {/* Payment History Sheet */}
       <PaymentHistorySheet

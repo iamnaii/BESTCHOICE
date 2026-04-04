@@ -23,7 +23,9 @@ export interface PaymentReminderData {
 
 export function buildPaymentReminderFlex(data: PaymentReminderData): FlexMessagePayload {
   const urgencyText =
-    data.daysUntilDue <= 1
+    data.daysUntilDue === 0
+      ? 'วันนี้ครบกำหนด!'
+      : data.daysUntilDue <= 1
       ? 'ครบกำหนดพรุ่งนี้!'
       : `อีก ${data.daysUntilDue} วัน`;
 

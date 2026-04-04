@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
-import PageHeader from '@/components/ui/PageHeader';
 import Modal from '@/components/ui/Modal';
 import { Card, CardContent } from '@/components/ui/card';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -25,49 +24,54 @@ interface PaymentEvidence {
   reviewedBy: { name: string } | null;
 }
 
+interface SuggestedMatch {
+  paymentId: string;
+  installmentNo: number;
+  dueDate: string;
+  amountDue: number;
+  status: string;
+  score: number;
+  isOverdue: boolean;
+  daysOverdue: number;
+}
+
 const statusLabels: Record<string, string> = {
   PENDING_REVIEW: 'รอตรวจ',
   APPROVED: 'อนุมัติ',
   REJECTED: 'ปฏิเสธ',
 };
 
-export default function SlipReviewPage() {
+export default function SlipReviewTab() {
   const queryClient = useQueryClient();
 
-  // Filter state
   const [statusFilter, setStatusFilter] = useState('PENDING_REVIEW');
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const debouncedSearch = useDebounce(searchTerm, 400);
 
-  // Review modal state
   const [selectedEvidence, setSelectedEvidence] = useState<PaymentEvidence | null>(null);
   const [reviewNote, setReviewNote] = useState('');
   const [approveAmount, setApproveAmount] = useState('');
   const [approveMethod, setApproveMethod] = useState('BANK_TRANSFER');
 
-  // Zoom/rotate state
+  const [selectedInstallmentNo, setSelectedInstallmentNo] = useState(1);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [rotation, setRotation] = useState(0);
 
-  // Batch selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showBatchRejectModal, setShowBatchRejectModal] = useState(false);
   const [batchRejectNote, setBatchRejectNote] = useState('');
 
-  // Reset zoom/rotate when changing evidence
   useEffect(() => {
     setZoomLevel(1);
     setRotation(0);
   }, [selectedEvidence]);
 
-  // Clear selection when changing filters
   useEffect(() => {
     setSelectedIds(new Set());
   }, [statusFilter, debouncedSearch, dateFrom, dateTo]);
 
-  // ─── Stats Query ───
   const { data: stats } = useQuery({
     queryKey: ['payment-evidences-stats'],
     queryFn: async () => {
@@ -76,7 +80,6 @@ export default function SlipReviewPage() {
     },
   });
 
-  // ─── Evidence List Query ───
   const { data: evidences = [], isLoading } = useQuery({
     queryKey: ['payment-evidences', statusFilter, debouncedSearch, dateFrom, dateTo],
     queryFn: async () => {
@@ -90,18 +93,26 @@ export default function SlipReviewPage() {
     },
   });
 
-  // ─── Mutations ───
   const invalidateAll = () => {
     queryClient.invalidateQueries({ queryKey: ['payment-evidences'] });
     queryClient.invalidateQueries({ queryKey: ['payment-evidences-stats'] });
   };
+
+  const { data: suggestedMatches } = useQuery({
+    queryKey: ['suggested-matches', selectedEvidence?.id],
+    queryFn: async () => {
+      const res = await api.get(`/line-oa/evidence/${selectedEvidence!.id}/suggested-matches`);
+      return res.data as { evidenceId: string; slipAmount: number | null; suggestions: SuggestedMatch[] };
+    },
+    enabled: !!selectedEvidence && selectedEvidence.status === 'PENDING_REVIEW',
+  });
 
   const approveMutation = useMutation({
     mutationFn: async (evidenceId: string) => {
       return api.post(`/line-oa/evidence/${evidenceId}/approve`, {
         amount: Number(approveAmount),
         paymentMethod: approveMethod,
-        installmentNo: 1,
+        installmentNo: selectedInstallmentNo,
         reviewNote,
       });
     },
@@ -111,6 +122,7 @@ export default function SlipReviewPage() {
       setSelectedEvidence(null);
       setReviewNote('');
       setApproveAmount('');
+      setSelectedInstallmentNo(1);
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
@@ -160,7 +172,6 @@ export default function SlipReviewPage() {
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
-  // ─── Batch Selection Helpers ───
   const toggleSelection = (id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -178,7 +189,6 @@ export default function SlipReviewPage() {
     }
   };
 
-  // ─── Export Excel ───
   const exportExcel = async () => {
     try {
       toast.loading('กำลังสร้างไฟล์ Excel...', { id: 'excel-export' });
@@ -221,7 +231,6 @@ export default function SlipReviewPage() {
     }
   };
 
-  // ─── Status Badge ───
   const statusBadge = (status: string) => {
     const styles: Record<string, string> = {
       PENDING_REVIEW: 'bg-warning/10 text-warning dark:bg-warning/15',
@@ -236,12 +245,7 @@ export default function SlipReviewPage() {
   };
 
   return (
-    <div className="p-6">
-      <PageHeader
-        title="ตรวจสอบสลิปชำระเงิน"
-        subtitle="สลิปที่ลูกค้าส่งผ่าน LINE OA"
-      />
-
+    <div>
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <Card className="border-l-[3px] border-l-warning hover:shadow-card-hover transition-all">
@@ -351,9 +355,9 @@ export default function SlipReviewPage() {
               onClick={() => {
                 setSelectedEvidence(ev);
                 setApproveAmount(ev.amount?.toString() || '');
+                setSelectedInstallmentNo(1);
               }}
             >
-              {/* Batch checkbox */}
               {statusFilter === 'PENDING_REVIEW' && (
                 <input
                   type="checkbox"
@@ -468,6 +472,8 @@ export default function SlipReviewPage() {
           onClose={() => {
             setSelectedEvidence(null);
             setReviewNote('');
+            setApproveAmount('');
+            setSelectedInstallmentNo(1);
           }}
           title={`ตรวจสอบสลิป - ${selectedEvidence.contract.customer.name}`}
           size="lg"
@@ -533,6 +539,67 @@ export default function SlipReviewPage() {
 
               {selectedEvidence.status === 'PENDING_REVIEW' && (
                 <>
+                  {/* Suggested Matches */}
+                  {suggestedMatches && suggestedMatches.suggestions.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-medium text-foreground mb-2 flex items-center gap-1">
+                        <span className="inline-block w-2 h-2 rounded-full bg-primary"></span>
+                        คำแนะนำอัตโนมัติ
+                      </h3>
+                      <div className="space-y-1.5">
+                        {suggestedMatches.suggestions.map((match) => {
+                          const isSelected = selectedInstallmentNo === match.installmentNo;
+                          const pct = Math.round(match.score * 100);
+                          return (
+                            <button
+                              key={match.paymentId}
+                              onClick={() => {
+                                setSelectedInstallmentNo(match.installmentNo);
+                                if (!approveAmount) setApproveAmount(String(match.amountDue));
+                              }}
+                              className={`w-full text-left p-2.5 rounded-lg border text-sm transition-colors ${
+                                isSelected
+                                  ? 'border-primary bg-primary/5 text-foreground'
+                                  : 'border-border hover:border-primary/50 hover:bg-muted/50'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="font-medium">งวดที่ {match.installmentNo}</span>
+                                <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                                  pct >= 85 ? 'bg-success/10 text-success' :
+                                  pct >= 60 ? 'bg-warning/10 text-warning' :
+                                  'bg-muted text-muted-foreground'
+                                }`}>
+                                  {pct}%
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between mt-0.5 text-xs text-muted-foreground">
+                                <span>ครบกำหนด {new Date(match.dueDate).toLocaleDateString('th-TH')}</span>
+                                <span className={match.isOverdue ? 'text-destructive font-medium' : ''}>
+                                  {match.amountDue.toLocaleString()} ฿
+                                  {match.isOverdue && ` (เกิน ${match.daysOverdue} วัน)`}
+                                </span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1">
+                      งวดที่
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={selectedInstallmentNo}
+                      onChange={(e) => setSelectedInstallmentNo(Number(e.target.value))}
+                      className="w-full border rounded-lg px-3 py-2"
+                    />
+                  </div>
+
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1">
                       จำนวนเงิน (บาท)

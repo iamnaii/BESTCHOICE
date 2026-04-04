@@ -593,6 +593,7 @@ export class LineOaService {
     const customer = await this.prisma.customer.findFirst({
       where: { lineId, deletedAt: null },
       select: {
+        id: true,
         name: true,
         phone: true,
         _count: { select: { contracts: { where: { deletedAt: null } } } },
@@ -601,10 +602,16 @@ export class LineOaService {
 
     if (!customer) return null;
 
+    const pointsAggregate = await this.prisma.loyaltyPoint.aggregate({
+      where: { customerId: customer.id, deletedAt: null },
+      _sum: { points: true },
+    });
+
     return {
       name: customer.name,
       phone: customer.phone || '-',
       contractCount: customer._count.contracts,
+      totalPoints: pointsAggregate._sum.points ?? 0,
     };
   }
 

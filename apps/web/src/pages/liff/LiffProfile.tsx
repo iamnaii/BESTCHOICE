@@ -12,6 +12,7 @@ interface ProfileData {
   phone: string;
   lineDisplayName: string;
   contractCount: number;
+  totalPoints: number;
 }
 
 export default function LiffProfile() {
@@ -127,6 +128,26 @@ export default function LiffProfile() {
             <div className="flex justify-between items-center py-2">
               <span className="text-sm text-muted-foreground">จำนวนสัญญา</span>
               <span className="text-sm font-medium">{data.contractCount} สัญญา</span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Loyalty Points */}
+      <Card className="mb-4">
+        <CardContent>
+          <h2 className="text-sm font-bold mb-3">แต้มสะสม</h2>
+          <div className="flex items-center justify-between bg-primary/10 rounded-lg p-4">
+            <div>
+              <p className="text-xs text-muted-foreground mb-0.5">แต้มสะสมของคุณ</p>
+              <p className="text-2xl font-bold text-primary">
+                {(data.totalPoints ?? 0).toLocaleString()}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">แต้ม</p>
+            </div>
+            <div className="text-right text-xs text-muted-foreground space-y-1">
+              <p>ชำระตรงเวลา = 1 แต้ม / 100 บาท</p>
+              <p>ใช้แลกส่วนลดดาวน์เครื่องใหม่</p>
             </div>
           </div>
         </CardContent>

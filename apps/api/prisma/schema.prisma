@@ -354,6 +354,11 @@ model Customer {
   guardianRelation   String? @map("guardian_relation")
   guardianAddress    String? @map("guardian_address")
 
+  // Referral — ลูกค้าที่แนะนำมา
+  referredById String?   @map("referred_by_id")
+  referredBy   Customer? @relation("Referral", fields: [referredById], references: [id])
+  referrals    Customer[] @relation("Referral")
+
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
@@ -364,11 +369,13 @@ model Customer {
   pdpaConsents     PDPAConsent[]
   dsarRequests     DSARRequest[]
   kycVerifications KycVerification[]
+  loyaltyPoints    LoyaltyPoint[]
 
   @@index([phone])
   @@index([name])
   @@index([createdAt])
   @@index([deletedAt])
+  @@index([referredById])
   @@map("customers")
 }
 
@@ -457,6 +464,7 @@ model Contract {
   paymentLinks      PaymentLink[]
   paymentEvidences  PaymentEvidence[]
   kycVerifications  KycVerification[]
+  loyaltyPoints     LoyaltyPoint[]
 
   @@index([customerId])
   @@index([branchId])
@@ -497,6 +505,7 @@ model Payment {
   recordedBy       User?             @relation("RecordedBy", fields: [recordedById], references: [id])
   paymentLinks     PaymentLink[]
   paymentEvidences PaymentEvidence[]
+  loyaltyPoint     LoyaltyPoint?
 
   @@unique([contractId, installmentNo])
   @@index([contractId])
@@ -1810,4 +1819,28 @@ model Expense {
   @@index([createdById])
   @@index([deletedAt])
   @@map("expenses")
+}
+
+// ============================================================
+// LOYALTY PROGRAM (ระบบสะสมแต้มลูกค้า)
+// ============================================================
+
+model LoyaltyPoint {
+  id         String    @id @default(uuid())
+  customerId String    @map("customer_id")
+  paymentId  String    @unique @map("payment_id") // idempotent: 1 payment = 1 point record
+  contractId String    @map("contract_id")
+  points     Int       // 1 point per 100 baht, on-time only
+  reason     String    @default("ON_TIME_PAYMENT")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at")
+
+  customer Customer @relation(fields: [customerId], references: [id])
+  payment  Payment  @relation(fields: [paymentId], references: [id])
+  contract Contract @relation(fields: [contractId], references: [id])
+
+  @@index([customerId])
+  @@index([contractId])
+  @@map("loyalty_points")
 }

@@ -50,6 +50,10 @@ export class PaymentsService {
       throw new BadRequestException('ต้อง upload หลักฐานการชำระเงิน (สลิปโอนเงิน) หรือระบุเลขอ้างอิงธุรกรรม');
     }
 
+    // Capture dueDate for loyalty points check (on-time = paidDate <= dueDate)
+    let capturedDueDate: Date | null = null;
+    let capturedCustomerId: string | null = null;
+
     // Use serializable transaction to prevent concurrent duplicate payments
     const updated = await this.prisma.$transaction(async (tx) => {
       // Idempotency: reject duplicate transactionRef INSIDE transaction
@@ -72,12 +76,14 @@ export class PaymentsService {
       if (!['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status)) {
         throw new BadRequestException('ไม่สามารถชำระเงินได้ สัญญาต้องอยู่ในสถานะ ACTIVE, OVERDUE หรือ DEFAULT');
       }
+      capturedCustomerId = contract.customerId;
 
       const payment = await tx.payment.findFirst({
         where: { contractId, installmentNo },
       });
       if (!payment) throw new NotFoundException('ไม่พบงวดที่ต้องการ');
       if (payment.status === 'PAID') throw new BadRequestException('งวดนี้ชำระแล้ว');
+      capturedDueDate = payment.dueDate;
 
       // Real-time late fee: recalculate at payment time (cron may not have run yet)
       let lateFee = Number(payment.lateFee);
@@ -165,6 +171,18 @@ export class PaymentsService {
         this.logger.error(
           `Failed to generate receipt for payment ${updated.id} (contract: ${contractId}, installment: ${installmentNo})`,
           error instanceof Error ? error.stack : String(error),
+        );
+      }
+
+      // Award loyalty points for on-time payment (non-blocking)
+      if (capturedCustomerId && capturedDueDate) {
+        await this.awardLoyaltyPoints(
+          capturedCustomerId,
+          contractId,
+          updated.id,
+          amount,
+          updated.paidDate,
+          capturedDueDate,
         );
       }
     }
@@ -674,5 +692,35 @@ export class PaymentsService {
     });
 
     return { ...result.updated, originalLateFee: result.originalLateFee };
+  }
+
+  // ─── Award loyalty points for on-time payment ──────────
+  private async awardLoyaltyPoints(
+    customerId: string,
+    contractId: string,
+    paymentId: string,
+    amount: number,
+    paidDate: Date | null,
+    dueDate: Date,
+  ) {
+    // Only award for on-time payments (ชำระตรงเวลาหรือก่อนกำหนด)
+    if (!paidDate || paidDate > dueDate) return;
+
+    const points = Math.floor(amount / 100); // 1 point per 100 baht
+    if (points <= 0) return;
+
+    try {
+      // Idempotent upsert: paymentId is unique — safe to call multiple times
+      await this.prisma.loyaltyPoint.upsert({
+        where: { paymentId },
+        create: { customerId, paymentId, contractId, points, reason: 'ON_TIME_PAYMENT' },
+        update: {}, // Already awarded — do nothing
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to award loyalty points for payment ${paymentId}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
   }
 }

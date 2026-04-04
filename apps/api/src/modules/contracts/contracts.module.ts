@@ -4,12 +4,18 @@ import { ContractsService } from './contracts.service';
 import { ContractWorkflowService } from './contract-workflow.service';
 import { ContractPaymentService } from './contract-payment.service';
 import { ContractDocumentService } from './contract-document.service';
+import { ContractDocumentsController } from './contract-documents.controller';
+import { ContractDocumentsService } from './contract-documents.service';
+import { DocumentsController } from './documents.controller';
+import { DocumentsService } from './documents.service';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { OcrModule } from '../ocr/ocr.module';
+import { SettingsModule } from '../settings/settings.module';
 
 @Module({
-  imports: [NotificationsModule],
-  controllers: [ContractsController],
-  providers: [ContractsService, ContractWorkflowService, ContractPaymentService, ContractDocumentService],
-  exports: [ContractsService, ContractWorkflowService, ContractPaymentService, ContractDocumentService],
+  imports: [NotificationsModule, OcrModule, SettingsModule],
+  controllers: [ContractsController, ContractDocumentsController, DocumentsController],
+  providers: [ContractsService, ContractWorkflowService, ContractPaymentService, ContractDocumentService, ContractDocumentsService, DocumentsService],
+  exports: [ContractsService, ContractWorkflowService, ContractPaymentService, ContractDocumentService, ContractDocumentsService, DocumentsService],
 })
 export class ContractsModule {}

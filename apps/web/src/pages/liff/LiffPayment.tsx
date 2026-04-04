@@ -26,6 +26,7 @@ interface PaymentLinkData {
   status: string;
   expiresAt: string;
   contract: {
+    id: string;
     contractNumber: string;
     customer: { name: string };
   };
@@ -137,7 +138,7 @@ export default function LiffPayment() {
     mutationFn: async () => {
       if (!data) throw new Error('ไม่พบข้อมูลการชำระเงิน');
       const payload = {
-        contractId: data.contract.contractNumber,
+        contractId: data.contract.id,
         amount: Number(data.amount),
         description: `ชำระค่างวด สัญญา ${data.contract.contractNumber}`,
         lineId: queryLineId || undefined,

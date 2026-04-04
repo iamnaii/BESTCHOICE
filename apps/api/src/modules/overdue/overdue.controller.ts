@@ -41,6 +41,12 @@ export class OverdueController {
     return this.overdueService.getOverdueSummary(user.role, user.branchId || undefined);
   }
 
+  @Get('pipeline')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'ACCOUNTANT')
+  getCollectionPipeline(@CurrentUser() user: { role: string; branchId: string | null }) {
+    return this.overdueService.getCollectionPipelineStats(user.role, user.branchId || undefined);
+  }
+
   @Get('contracts/:id/timeline')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'ACCOUNTANT')
   getTimeline(@Param('id') id: string) {
@@ -88,5 +94,13 @@ export class OverdueController {
   @Roles('OWNER')
   escalateDunning() {
     return this.overdueService.escalateDunningStages();
+  }
+
+  @Post('cron/run-daily')
+  @Roles('OWNER')
+  async runDailyTasks() {
+    const lateFees = await this.overdueService.calculateLateFees();
+    const statuses = await this.overdueService.updateContractStatuses();
+    return { lateFees, statuses, runAt: new Date() };
   }
 }

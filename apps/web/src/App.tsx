@@ -59,7 +59,6 @@ const ReceiptsPage = lazy(() => import('@/pages/ReceiptsPage'));
 const ReceiptVerifyPage = lazy(() => import('@/pages/ReceiptVerifyPage'));
 const CustomerPortalPage = lazy(() => import('@/pages/CustomerPortalPage'));
 const ContractVerifyPage = lazy(() => import('@/pages/ContractVerifyPage'));
-const SlipReviewPage = lazy(() => import('@/pages/SlipReviewPage'));
 const LiffPayment = lazy(() => import('@/pages/liff/LiffPayment'));
 const LiffContract = lazy(() => import('@/pages/liff/LiffContract'));
 const LiffRegister = lazy(() => import('@/pages/liff/LiffRegister'));
@@ -340,14 +339,7 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/slip-review"
-            element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT']}>
-                <SlipReviewPage />
-              </ProtectedRoute>
-            }
-          />
+          <Route path="/slip-review" element={<Navigate to="/payments?tab=slip-review" replace />} />
           <Route
             path="/reports"
             element={

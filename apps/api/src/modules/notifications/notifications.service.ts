@@ -832,7 +832,8 @@ export class NotificationsService implements OnModuleInit {
     const now = new Date();
     const today = new Date(now.toISOString().split('T')[0]);
 
-    // Only fetch payments due in exactly 1 or 3 days (filter at DB level)
+    // Fetch payments due in exactly 0 (today), 1, or 3 days (filter at DB level)
+    const day0End = new Date(today.getTime() + 24 * 60 * 60 * 1000);
     const day1 = new Date(today.getTime() + 1 * 24 * 60 * 60 * 1000);
     const day1End = new Date(day1.getTime() + 24 * 60 * 60 * 1000);
     const day3 = new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000);
@@ -842,6 +843,7 @@ export class NotificationsService implements OnModuleInit {
       where: {
         status: 'PENDING',
         OR: [
+          { dueDate: { gte: today, lt: day0End } },
           { dueDate: { gte: day1, lt: day1End } },
           { dueDate: { gte: day3, lt: day3End } },
         ],
@@ -860,11 +862,22 @@ export class NotificationsService implements OnModuleInit {
     let sent = 0;
     for (const payment of upcomingPayments) {
       const customer = payment.contract.customer;
-      const daysUntil = Math.ceil(
-        (new Date(payment.dueDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+      const daysUntil = Math.max(
+        0,
+        Math.round((new Date(payment.dueDate).getTime() - today.getTime()) / (1000 * 60 * 60 * 24)),
       );
 
-      const message = `สวัสดีค่ะ คุณ${customer.name}\nแจ้งเตือน: ค่างวดที่ ${payment.installmentNo} สัญญา ${payment.contract.contractNumber}\nจำนวน ${Number(payment.amountDue).toLocaleString()} บาท\nครบกำหนดชำระอีก ${daysUntil} วัน (${new Date(payment.dueDate).toLocaleDateString('th-TH')})\nกรุณาชำระตามกำหนด ขอบคุณค่ะ`;
+      // Dedup: skip if already sent a reminder for this payment today
+      const alreadySent = await this.prisma.notificationLog.findFirst({
+        where: {
+          relatedId: payment.id,
+          subject: 'แจ้งเตือนค่างวด',
+          sentAt: { gte: today },
+        },
+      });
+      if (alreadySent) continue;
+
+      const message = `สวัสดีค่ะ คุณ${customer.name}\nแจ้งเตือน: ค่างวดที่ ${payment.installmentNo} สัญญา ${payment.contract.contractNumber}\nจำนวน ${Number(payment.amountDue).toLocaleString()} บาท\nครบกำหนดชำระ${daysUntil === 0 ? 'วันนี้' : `อีก ${daysUntil} วัน`} (${new Date(payment.dueDate).toLocaleDateString('th-TH')})\nกรุณาชำระตามกำหนด ขอบคุณค่ะ`;
 
       // Try LINE Flex Message first, fallback to text, then SMS
       if (customer.lineId) {
@@ -884,9 +897,9 @@ export class NotificationsService implements OnModuleInit {
               channel: 'LINE',
               recipient: customer.lineId,
               subject: 'แจ้งเตือนค่างวด',
-              message: `Flex: งวด ${payment.installmentNo} จำนวน ${Number(payment.amountDue).toLocaleString()} บาท`,
+              message: `งวด ${payment.installmentNo} จำนวน ${Number(payment.amountDue).toLocaleString()} บาท อีก ${daysUntil} วัน`,
               status: 'SENT',
-              relatedId: payment.contractId,
+              relatedId: payment.id,
               sentAt: new Date(),
             },
           });
@@ -897,7 +910,7 @@ export class NotificationsService implements OnModuleInit {
             channel: 'LINE',
             recipient: customer.lineId,
             message,
-            relatedId: payment.contractId,
+            relatedId: payment.id,
             fallbackPhone: customer.phone || undefined,
           });
           sent++;
@@ -907,7 +920,7 @@ export class NotificationsService implements OnModuleInit {
           channel: 'SMS',
           recipient: customer.phone,
           message,
-          relatedId: payment.contractId,
+          relatedId: payment.id,
         });
         sent++;
       }
@@ -955,6 +968,16 @@ export class NotificationsService implements OnModuleInit {
         (now.getTime() - new Date(payment.dueDate).getTime()) / (1000 * 60 * 60 * 24),
       );
 
+      // Dedup: skip if already sent an overdue notice for this payment today
+      const alreadySent = await this.prisma.notificationLog.findFirst({
+        where: {
+          relatedId: payment.id,
+          subject: 'แจ้งค้างชำระ',
+          sentAt: { gte: today },
+        },
+      });
+      if (alreadySent) continue;
+
       const outstanding = Number(payment.amountDue) - Number(payment.amountPaid) + Number(payment.lateFee);
       const message = `แจ้งเตือน: คุณ${customer.name}\nค่างวดที่ ${payment.installmentNo} สัญญา ${payment.contract.contractNumber}\nเลยกำหนดชำระ ${daysOverdue} วัน\nยอดค้างชำระ ${outstanding.toLocaleString()} บาท (รวมค่าปรับ)\nกรุณาชำระโดยเร็ว`;
 
@@ -978,9 +1001,9 @@ export class NotificationsService implements OnModuleInit {
               channel: 'LINE',
               recipient: customer.lineId,
               subject: 'แจ้งค้างชำระ',
-              message: `Flex: งวด ${payment.installmentNo} ค้าง ${outstanding.toLocaleString()} บาท เลยกำหนด ${daysOverdue} วัน`,
+              message: `งวด ${payment.installmentNo} ค้าง ${outstanding.toLocaleString()} บาท เลยกำหนด ${daysOverdue} วัน`,
               status: 'SENT',
-              relatedId: payment.contractId,
+              relatedId: payment.id,
               sentAt: new Date(),
             },
           });
@@ -991,7 +1014,7 @@ export class NotificationsService implements OnModuleInit {
             channel: 'LINE',
             recipient: customer.lineId,
             message,
-            relatedId: payment.contractId,
+            relatedId: payment.id,
             fallbackPhone: customer.phone || undefined,
           });
           sent++;
@@ -1001,7 +1024,7 @@ export class NotificationsService implements OnModuleInit {
           channel: 'SMS',
           recipient: customer.phone,
           message,
-          relatedId: payment.contractId,
+          relatedId: payment.id,
         });
         sent++;
       }

@@ -11,14 +11,11 @@ import { BranchesModule } from './modules/branches/branches.module';
 // Supplier Management (Phase 2 step-by-step modules)
 import { SuppliersModule } from './modules/suppliers/suppliers.module';
 import { ProductsModule } from './modules/products/products.module';
-import { ProductPhotosModule } from './modules/product-photos/product-photos.module';
-import { InspectionsModule } from './modules/inspections/inspections.module';
+import { QualityControlModule } from './modules/quality-control/quality-control.module';
 import { StickersModule } from './modules/stickers/stickers.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { ContractsModule } from './modules/contracts/contracts.module';
-import { DocumentsModule } from './modules/documents/documents.module';
 import { PaymentsModule } from './modules/payments/payments.module';
-import { CronModule } from './modules/cron/cron.module';
 // MASTER-only modules
 import { OverdueModule } from './modules/overdue/overdue.module';
 import { ExchangeModule } from './modules/exchange/exchange.module';
@@ -33,14 +30,10 @@ import { MigrationModule } from './modules/migration/migration.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { UsersModule } from './modules/users/users.module';
 import { SettingsModule } from './modules/settings/settings.module';
-import { StockAdjustmentsModule } from './modules/stock-adjustments/stock-adjustments.module';
+import { InventoryModule } from './modules/inventory/inventory.module';
 import { SalesModule } from './modules/sales/sales.module';
-import { ReorderPointsModule } from './modules/reorder-points/reorder-points.module';
-import { BranchReceivingModule } from './modules/branch-receiving/branch-receiving.module';
-import { StockCountModule } from './modules/stock-count/stock-count.module';
 import { InterestConfigModule } from './modules/interest-config/interest-config.module';
 import { PricingTemplatesModule } from './modules/pricing-templates/pricing-templates.module';
-import { ContractDocumentsModule } from './modules/contract-documents/contract-documents.module';
 import { CreditCheckModule } from './modules/credit-check/credit-check.module';
 import { OcrModule } from './modules/ocr/ocr.module';
 import { PDPAModule } from './modules/pdpa/pdpa.module';
@@ -53,7 +46,7 @@ import { EmailModule } from './modules/email/email.module';
 import { InviteModule } from './modules/invite/invite.module';
 import { PaySolutionsModule } from './modules/paysolutions/paysolutions.module';
 import { FinanceReceivableModule } from './modules/finance-receivable/finance-receivable.module';
-import { ExpensesModule } from './modules/expenses/expenses.module';
+import { AccountingModule } from './modules/accounting/accounting.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
 import { CsrfGuard } from './guards/csrf.guard';
@@ -87,29 +80,22 @@ import { AppCacheModule } from './cache/cache.module';
     // Supplier Management (Phase 2 step-by-step modules)
     SuppliersModule,
     ProductsModule,
-    ProductPhotosModule,
-    InspectionsModule,
+    QualityControlModule,
     StickersModule,
     CustomersModule,
     ContractsModule,
     InterestConfigModule,
     PricingTemplatesModule,
-    ContractDocumentsModule,
     CreditCheckModule,
     OcrModule,
     SalesModule,
-    DocumentsModule,
     PaymentsModule,
-    CronModule,
     // MASTER: Operations
     OverdueModule,
     ExchangeModule,
     RepossessionsModule,
     PurchaseOrdersModule,
-    StockAdjustmentsModule,
-    ReorderPointsModule,
-    BranchReceivingModule,
-    StockCountModule,
+    InventoryModule,
     // MASTER: Communication
     NotificationsModule,
     NotificationQueueModule.register(),
@@ -136,7 +122,7 @@ import { AppCacheModule } from './cache/cache.module';
     // Finance Receivable
     FinanceReceivableModule,
     // Expense Management
-    ExpensesModule,
+    AccountingModule,
     // MASTER: Management
     UsersModule,
     SettingsModule,

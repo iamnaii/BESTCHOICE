@@ -78,7 +78,7 @@ export default function OverduePage() {
 
   const runCronMutation = useMutation({
     mutationFn: async () => {
-      const { data } = await api.post('/cron/run-daily');
+      const { data } = await api.post('/overdue/cron/run-daily');
       return data;
     },
     onSuccess: (data) => {
@@ -89,13 +89,13 @@ export default function OverduePage() {
   });
 
   const calcLateFeeMutation = useMutation({
-    mutationFn: async () => { const { data } = await api.post('/cron/calculate-late-fees'); return data; },
+    mutationFn: async () => { const { data } = await api.post('/overdue/cron/calculate-late-fees'); return data; },
     onSuccess: () => { toast.success('คำนวณค่าปรับสำเร็จ'); queryClient.invalidateQueries({ queryKey: ['overdue-payments'] }); },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const updateStatusMutation = useMutation({
-    mutationFn: async () => { const { data } = await api.post('/cron/update-contract-statuses'); return data; },
+    mutationFn: async () => { const { data } = await api.post('/overdue/cron/update-statuses'); return data; },
     onSuccess: () => { toast.success('อัปเดตสถานะสัญญาสำเร็จ'); queryClient.invalidateQueries({ queryKey: ['overdue-payments'] }); },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });

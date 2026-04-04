@@ -14,6 +14,15 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 export class DashboardController {
   constructor(private dashboardService: DashboardService) {}
 
+  @Get('alerts')
+  getAlerts(
+    @CurrentUser() user: { role: string; branchId: string | null },
+    @Query('branchId') branchId?: string,
+  ) {
+    const effectiveBranch = this.getEffectiveBranch(branchId, user);
+    return this.dashboardService.getAlerts(effectiveBranch);
+  }
+
   @Get('kpis')
   getKPIs(
     @CurrentUser() user: { role: string; branchId: string | null },
@@ -82,6 +91,16 @@ export class DashboardController {
   ) {
     const effectiveBranch = this.getEffectiveBranch(branchId, user);
     return this.dashboardService.getSlaMetrics(effectiveBranch);
+  }
+
+  @Get('watch-list')
+  @ApiOperation({ summary: 'Watch list: ลูกค้าเสี่ยงค้างชำระ (early warning)' })
+  getWatchList(
+    @CurrentUser() user: { role: string; branchId: string | null },
+    @Query('branchId') branchId?: string,
+  ) {
+    const effectiveBranch = this.getEffectiveBranch(branchId, user);
+    return this.dashboardService.getWatchList(effectiveBranch);
   }
 
   @Get('staff-performance')

@@ -40,6 +40,33 @@ export class CustomersController {
     );
   }
 
+  @Get('referral-stats')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @ApiOperation({ summary: 'Top referrers: ลูกค้าที่แนะนำมากที่สุด' })
+  getReferralStats(@Query('limit') limit?: string) {
+    return this.customersService.getReferralStats(limit ? parseInt(limit) : 10);
+  }
+
+  @Get('watch-list')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @ApiOperation({ summary: 'Watch list: ลูกค้าเสี่ยงค้างชำระ (early warning)' })
+  getWatchList(
+    @Query('branchId') branchId?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.customersService.getWatchList(branchId, limit ? parseInt(limit) : 30);
+  }
+
+  @Get('upsell-candidates')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @ApiOperation({ summary: 'ลูกค้าพร้อมอัพเกรด (ผ่อน >70% หรือปิดสัญญาแล้ว)' })
+  getUpsellCandidates(
+    @Query('branchId') branchId?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.customersService.getUpsellCandidates(branchId, limit ? parseInt(limit) : 20);
+  }
+
   @Get('search')
   @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   search(@Query('q') q: string) {
@@ -62,6 +89,13 @@ export class CustomersController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   getRiskFlag(@Param('id') id: string) {
     return this.customersService.getRiskFlag(id);
+  }
+
+  @Get(':id/referrals')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @ApiOperation({ summary: 'ลูกค้าที่ถูกแนะนำมาโดยลูกค้านี้' })
+  getReferrals(@Param('id') id: string) {
+    return this.customersService.getReferrals(id);
   }
 
   @Post()

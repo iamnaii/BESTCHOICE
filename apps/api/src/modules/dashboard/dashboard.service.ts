@@ -432,6 +432,104 @@ export class DashboardService {
   }
 
   /**
+   * Smart Dashboard Alerts: KPI alerts across overdue, stock, contracts, payments
+   */
+  async getAlerts(branchId?: string) {
+    const cacheKey = `dashboard:alerts:${branchId || 'all'}`;
+    return this.cached(cacheKey, 30, () => this._computeAlerts(branchId)); // 30s cache
+  }
+
+  private async _computeAlerts(branchId?: string) {
+    const branchFilter = branchId ? { branchId } : {};
+
+    const [
+      overdueCount,
+      defaultCount,
+      pendingContractsCount,
+      pendingEvidenceCount,
+      activeStockAlerts,
+    ] = await Promise.all([
+      this.prisma.contract.count({
+        where: { status: 'OVERDUE', deletedAt: null, ...branchFilter },
+      }),
+      this.prisma.contract.count({
+        where: { status: 'DEFAULT', deletedAt: null, ...branchFilter },
+      }),
+      this.prisma.contract.count({
+        where: {
+          deletedAt: null,
+          workflowStatus: { in: ['PENDING_REVIEW', 'CREATING'] },
+          reviewedAt: null,
+          ...branchFilter,
+        },
+      }),
+      this.prisma.paymentEvidence.count({
+        where: {
+          status: 'PENDING_REVIEW',
+          contract: { deletedAt: null, ...branchFilter },
+        },
+      }),
+      this.prisma.stockAlert.count({
+        where: {
+          status: 'ACTIVE',
+          ...(branchId ? { reorderPoint: { branchId } } : {}),
+        },
+      }),
+    ]);
+
+    const alerts: {
+      type: string;
+      severity: 'critical' | 'warning' | 'info';
+      message: string;
+      link: string;
+      count: number;
+    }[] = [];
+
+    const totalOverdue = overdueCount + defaultCount;
+    if (totalOverdue > 0) {
+      alerts.push({
+        type: 'overdue',
+        severity: totalOverdue >= 10 ? 'critical' : 'warning',
+        message: `มี ${totalOverdue} สัญญาค้างชำระ`,
+        link: '/overdue',
+        count: totalOverdue,
+      });
+    }
+
+    if (activeStockAlerts > 0) {
+      alerts.push({
+        type: 'low_stock',
+        severity: 'warning',
+        message: `สินค้าใกล้หมด ${activeStockAlerts} รายการ`,
+        link: '/stock?tab=alerts',
+        count: activeStockAlerts,
+      });
+    }
+
+    if (pendingContractsCount > 0) {
+      alerts.push({
+        type: 'pending_contracts',
+        severity: 'info',
+        message: `มี ${pendingContractsCount} สัญญารอ approval`,
+        link: '/contracts',
+        count: pendingContractsCount,
+      });
+    }
+
+    if (pendingEvidenceCount > 0) {
+      alerts.push({
+        type: 'payment_mismatch',
+        severity: pendingEvidenceCount >= 5 ? 'warning' : 'info',
+        message: `มี ${pendingEvidenceCount} สลิปรอตรวจสอบ`,
+        link: '/slip-review',
+        count: pendingEvidenceCount,
+      });
+    }
+
+    return alerts;
+  }
+
+  /**
    * Staff performance: sales metrics (current month) + recent activity (last 7 days)
    */
   async getStaffPerformance(branchId?: string) {
@@ -529,5 +627,102 @@ export class DashboardService {
       .slice(0, 20);
 
     return { salesMetrics, recentActivity };
+  }
+
+  async getWatchList(branchId?: string) {
+    const cacheKey = `dashboard:watch-list:${branchId || 'all'}`;
+    return this.cached(cacheKey, 120, () => this._computeWatchList(branchId)); // 2min cache
+  }
+
+  private async _computeWatchList(branchId?: string) {
+    const branchFilter = branchId ? Prisma.sql`AND c.branch_id = ${branchId}` : Prisma.empty;
+
+    const rows = await this.prisma.$queryRaw<
+      {
+        customerId: string;
+        customerName: string;
+        customerPhone: string;
+        contractId: string;
+        contractNumber: string;
+        latePaymentCount: number;
+        partialPaymentCount: number;
+        hadDunningReset: boolean;
+        nextDueDate: Date | null;
+        nextAmountDue: number | null;
+      }[]
+    >(Prisma.sql`
+      SELECT
+        cu.id AS "customerId",
+        cu.name AS "customerName",
+        cu.phone AS "customerPhone",
+        c.id AS "contractId",
+        c.contract_number AS "contractNumber",
+        COUNT(p.id) FILTER (
+          WHERE p.paid_date IS NOT NULL AND p.paid_date::date > p.due_date::date
+        ) AS "latePaymentCount",
+        COUNT(p.id) FILTER (WHERE p.status = 'PARTIALLY_PAID') AS "partialPaymentCount",
+        (c.dunning_last_action_at IS NOT NULL AND c.dunning_stage = 'NONE') AS "hadDunningReset",
+        MIN(p2.due_date) AS "nextDueDate",
+        MIN(p2.amount_due) AS "nextAmountDue"
+      FROM customers cu
+      JOIN contracts c ON c.customer_id = cu.id AND c.deleted_at IS NULL
+      LEFT JOIN payments p ON p.contract_id = c.id
+      LEFT JOIN payments p2 ON p2.contract_id = c.id AND p2.status IN ('PENDING', 'OVERDUE')
+      WHERE cu.deleted_at IS NULL
+        AND c.status = 'ACTIVE'
+        ${branchFilter}
+      GROUP BY cu.id, c.id
+      HAVING
+        COUNT(p.id) FILTER (
+          WHERE p.paid_date IS NOT NULL AND p.paid_date::date > p.due_date::date
+        ) >= 2
+        OR COUNT(p.id) FILTER (WHERE p.status = 'PARTIALLY_PAID') >= 1
+        OR (c.dunning_last_action_at IS NOT NULL AND c.dunning_stage = 'NONE')
+      ORDER BY
+        (
+          LEAST(COUNT(p.id) FILTER (
+            WHERE p.paid_date IS NOT NULL AND p.paid_date::date > p.due_date::date
+          ), 5)
+          + COUNT(p.id) FILTER (WHERE p.status = 'PARTIALLY_PAID') * 2
+          + CASE WHEN c.dunning_last_action_at IS NOT NULL AND c.dunning_stage = 'NONE' THEN 3 ELSE 0 END
+        ) DESC
+      LIMIT 10
+    `);
+
+    const watchList = rows.map((r) => {
+      const late = Number(r.latePaymentCount);
+      const partial = Number(r.partialPaymentCount);
+      const dunningReset = Boolean(r.hadDunningReset);
+      const score = Math.min(late, 5) + partial * 2 + (dunningReset ? 3 : 0);
+      const riskLevel: 'HIGH' | 'MEDIUM' | 'LOW' = score >= 5 ? 'HIGH' : score >= 3 ? 'MEDIUM' : 'LOW';
+
+      const reasons: string[] = [];
+      if (late >= 2) reasons.push(`ชำระล่าช้า ${late} ครั้ง`);
+      if (partial >= 1) reasons.push(`จ่ายไม่ครบ ${partial} ครั้ง`);
+      if (dunningReset) reasons.push('เคยถูกติดตามหนี้แล้ว reset');
+
+      return {
+        customerId: r.customerId,
+        customerName: r.customerName,
+        customerPhone: r.customerPhone,
+        contractId: r.contractId,
+        contractNumber: r.contractNumber,
+        riskScore: score,
+        riskLevel,
+        reasons,
+        nextDueDate: r.nextDueDate,
+        nextAmountDue: r.nextAmountDue ? Number(r.nextAmountDue) : null,
+      };
+    });
+
+    const highCount = watchList.filter((w) => w.riskLevel === 'HIGH').length;
+    const mediumCount = watchList.filter((w) => w.riskLevel === 'MEDIUM').length;
+
+    return {
+      total: watchList.length,
+      highCount,
+      mediumCount,
+      watchList,
+    };
   }
 }

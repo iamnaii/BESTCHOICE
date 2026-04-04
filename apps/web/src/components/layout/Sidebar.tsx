@@ -93,11 +93,19 @@ const navSections: NavSection[] = [
       { label: 'สัญญาผ่อน', path: '/contracts', icon: FileCheck },
       { label: 'ชำระเงิน', path: '/payments', icon: DollarSign },
       { label: 'ใบเสร็จรับเงิน', path: '/receipts', icon: Receipt, roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
-      { label: 'ตรวจสอบสลิป', path: '/slip-review', icon: FileCheck, roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
+      { label: 'ตรวจสอบสลิป', path: '/payments?tab=slip-review', icon: FileCheck, roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
       { label: 'นำเข้าชำระเงิน (CSV)', path: '/payments/import-csv', icon: Upload, roles: ['OWNER', 'ACCOUNTANT'] },
       { label: 'เงินรับจากไฟแนนซ์', path: '/finance-receivable', icon: Banknote, roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
-      { label: 'บันทึกรายจ่าย', path: '/expenses', icon: Receipt, roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
       { label: 'สถานะเอกสาร', path: '/document-dashboard', icon: FileText, roles: ['OWNER', 'BRANCH_MANAGER'] },
+    ],
+  },
+  {
+    key: 'accounting',
+    label: 'บัญชี & การเงิน',
+    icon: Receipt,
+    items: [
+      { label: 'บันทึกรายจ่าย', path: '/expenses', icon: Receipt, roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
+      { label: 'งบกำไรขาดทุน', path: '/profit-loss', icon: DollarSign, roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
     ],
   },
   {
@@ -131,7 +139,6 @@ const navSections: NavSection[] = [
     icon: BarChart3,
     items: [
       { label: 'รายงาน', path: '/reports', icon: BarChart3, roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
-      { label: 'งบกำไรขาดทุน', path: '/profit-loss', icon: DollarSign, roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
       { label: 'แจ้งเตือน', path: '/notifications', icon: Bell, roles: ['OWNER', 'BRANCH_MANAGER'] },
     ],
   },

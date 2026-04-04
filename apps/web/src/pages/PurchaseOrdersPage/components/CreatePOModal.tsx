@@ -3,6 +3,7 @@ import Modal from '@/components/ui/Modal';
 import { brands, getModels, getModelInfo } from '@/data/productCatalog';
 import { ItemForm } from '../types';
 import { accessoryTypes, chargerConnectorTypes } from '../constants';
+import ThaiDateInput from '@/components/ui/ThaiDateInput';
 
 export interface CreatePOModalProps {
   isOpen: boolean;
@@ -122,8 +123,7 @@ export function CreatePOModal({
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">วันที่สั่ง *</label>
-            <input
-              type="date"
+            <ThaiDateInput
               value={form.orderDate}
               onChange={(e) => setForm({ ...form, orderDate: e.target.value })}
               className={inputClass}
@@ -132,8 +132,7 @@ export function CreatePOModal({
           </div>
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">วันที่คาดรับสินค้า</label>
-            <input
-              type="date"
+            <ThaiDateInput
               value={form.expectedDate}
               onChange={(e) => setForm({ ...form, expectedDate: e.target.value })}
               className={inputClass}

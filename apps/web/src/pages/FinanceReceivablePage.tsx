@@ -12,6 +12,7 @@ import { Banknote, Clock, AlertTriangle, CheckCircle2, Ban, Pencil, MoreVertical
 import AnimatedCounter from '@/components/ui/animated-counter';
 import { Button } from '@/components/ui/button';
 import { formatDateShortThai, formatDateShort } from '@/utils/formatters';
+import ThaiDateInput from '@/components/ui/ThaiDateInput';
 
 interface FinanceReceivable {
   id: string; financeCompany: string; financeRefNumber: string | null;
@@ -270,11 +271,11 @@ export default function FinanceReceivablePage() {
         </div>
         <div>
           <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ตั้งแต่</label>
-          <input type="date" value={startDate} onChange={(e) => setFilter('startDate', e.target.value)} className={`${inputClass} w-auto`} />
+          <ThaiDateInput value={startDate} onChange={(e) => setFilter('startDate', e.target.value)} className={`${inputClass} w-auto`} />
         </div>
         <div>
           <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ถึง</label>
-          <input type="date" value={endDate} onChange={(e) => setFilter('endDate', e.target.value)} className={`${inputClass} w-auto`} />
+          <ThaiDateInput value={endDate} onChange={(e) => setFilter('endDate', e.target.value)} className={`${inputClass} w-auto`} />
         </div>
         <div className="flex items-end gap-1">
           {quickPresets.map((p) => <button key={p.label} onClick={p.fn} className="px-3 py-2 text-xs border border-input rounded-lg hover:bg-muted">{p.label}</button>)}
@@ -344,7 +345,7 @@ export default function FinanceReceivablePage() {
               <div>ยอดสุทธิ: <span className="font-medium text-primary">{fmt(selectedRecord.netExpectedAmount)} บาท</span></div>
             </div>
             <div><label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">จำนวนเงินที่ได้รับ *</label><input type="number" step="0.01" min="0.01" value={receiveForm.receivedAmount} onChange={(e) => setReceiveForm({ ...receiveForm, receivedAmount: e.target.value })} required className={inputClass} /></div>
-            <div><label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">วันที่ได้รับ *</label><input type="date" value={receiveForm.receivedDate} onChange={(e) => setReceiveForm({ ...receiveForm, receivedDate: e.target.value })} required className={inputClass} /></div>
+            <div><label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">วันที่ได้รับ *</label><ThaiDateInput value={receiveForm.receivedDate} onChange={(e) => setReceiveForm({ ...receiveForm, receivedDate: e.target.value })} required className={inputClass} /></div>
             <div><label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เลขอ้างอิงธนาคาร</label><input type="text" value={receiveForm.bankRef} onChange={(e) => setReceiveForm({ ...receiveForm, bankRef: e.target.value })} placeholder="เลขอ้างอิงการโอน" className={inputClass} /></div>
             <div><label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หมายเหตุ</label><textarea value={receiveForm.note} onChange={(e) => setReceiveForm({ ...receiveForm, note: e.target.value })} rows={2} className={inputClass} /></div>
             <div className="flex justify-end gap-3 pt-2">
@@ -361,7 +362,7 @@ export default function FinanceReceivablePage() {
           <form onSubmit={(e) => { e.preventDefault(); const d: Record<string, unknown> = {}; if (editForm.financeRefNumber) d.financeRefNumber = editForm.financeRefNumber; if (editForm.commissionRate) d.commissionRate = parseFloat(editForm.commissionRate) / 100; if (editForm.expectedDate) d.expectedDate = editForm.expectedDate; if (editForm.note) d.note = editForm.note; updateMutation.mutate({ id: selectedRecord.id, data: d }); }} className="space-y-4">
             <div><label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เลข Ref ไฟแนนซ์</label><input type="text" value={editForm.financeRefNumber} onChange={(e) => setEditForm({ ...editForm, financeRefNumber: e.target.value })} className={inputClass} /></div>
             <div><label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ค่าคอมมิชชั่น (%)</label><input type="number" step="0.1" min="0" max="100" value={editForm.commissionRate} onChange={(e) => setEditForm({ ...editForm, commissionRate: e.target.value })} className={inputClass} /></div>
-            <div><label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">กำหนดรับเงิน</label><input type="date" value={editForm.expectedDate} onChange={(e) => setEditForm({ ...editForm, expectedDate: e.target.value })} className={inputClass} /></div>
+            <div><label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">กำหนดรับเงิน</label><ThaiDateInput value={editForm.expectedDate} onChange={(e) => setEditForm({ ...editForm, expectedDate: e.target.value })} className={inputClass} /></div>
             <div><label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หมายเหตุ</label><textarea value={editForm.note} onChange={(e) => setEditForm({ ...editForm, note: e.target.value })} rows={2} className={inputClass} /></div>
             <div className="flex justify-end gap-3 pt-2">
               <button type="button" onClick={() => setIsEditModalOpen(false)} className="px-4 py-2 text-sm text-muted-foreground">ยกเลิก</button>

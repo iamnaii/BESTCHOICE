@@ -5,6 +5,7 @@ import Modal from '@/components/ui/Modal';
 import AddressForm, { AddressData, emptyAddress, serializeAddress, deserializeAddress } from '@/components/ui/AddressForm';
 import { toast } from 'sonner';
 import { THAI_NAME_PREFIXES, RELATIONSHIP_OPTIONS } from '@/lib/constants';
+import ThaiDateInput from '@/components/ui/ThaiDateInput';
 
 interface CustReferenceData {
   prefix?: string;
@@ -171,7 +172,7 @@ export default function CustomerEditModal({ customerId, customerSnapshot, custom
               </div>
               <div>
                 <label className="block text-xs text-muted-foreground mb-1">วันเกิด</label>
-                <input type="date" value={form.birthDate} onChange={(e) => setForm({ ...form, birthDate: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
+                <ThaiDateInput value={form.birthDate} onChange={(e) => setForm({ ...form, birthDate: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
               </div>
             </div>
           </div>

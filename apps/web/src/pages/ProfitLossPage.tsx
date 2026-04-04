@@ -6,6 +6,7 @@ import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { TrendingUp, TrendingDown, DollarSign, ArrowDown, ArrowUp, Minus } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { formatDateMedium } from '@/utils/formatters';
+import ThaiDateInput from '@/components/ui/ThaiDateInput';
 
 interface PLData {
   period: { start: string; end: string };
@@ -139,11 +140,11 @@ export default function ProfitLossPage() {
       <div className="flex flex-wrap gap-3 mb-6">
         <div>
           <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ตั้งแต่</label>
-          <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={`${inputClass} w-auto`} />
+          <ThaiDateInput value={startDate} onChange={(e) => setStartDate(e.target.value)} className={`${inputClass} w-auto`} />
         </div>
         <div>
           <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ถึง</label>
-          <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className={`${inputClass} w-auto`} />
+          <ThaiDateInput value={endDate} onChange={(e) => setEndDate(e.target.value)} className={`${inputClass} w-auto`} />
         </div>
         <div>
           <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สาขา</label>

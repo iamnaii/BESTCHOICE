@@ -12,6 +12,7 @@ import { Camera, X, CreditCard, Mail, Copy, Link2, Clock, Users, UserCheck, Shie
 import { Card, CardContent } from '@/components/ui/card';
 import { checkCardReaderStatus, readSmartCard } from '@/lib/cardReader';
 import { useAuth } from '@/contexts/AuthContext';
+import ThaiDateInput from '@/components/ui/ThaiDateInput';
 
 interface User {
   id: string;
@@ -645,7 +646,7 @@ export default function UsersPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">วันเริ่มงาน</label>
-              <input type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} className={inputClass} />
+              <ThaiDateInput value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} className={inputClass} />
             </div>
           </div>
 
@@ -658,7 +659,7 @@ export default function UsersPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">วันเกิด</label>
-              <input type="date" value={form.birthDate} onChange={(e) => setForm({ ...form, birthDate: e.target.value })} className={inputClass} />
+              <ThaiDateInput value={form.birthDate} onChange={(e) => setForm({ ...form, birthDate: e.target.value })} className={inputClass} />
             </div>
           </div>
 

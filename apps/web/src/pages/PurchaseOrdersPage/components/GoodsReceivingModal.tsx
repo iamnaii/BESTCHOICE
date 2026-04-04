@@ -2,6 +2,7 @@ import { UseMutationResult } from '@tanstack/react-query';
 import Modal from '@/components/ui/Modal';
 import { PurchaseOrder, ReceivingUnitForm } from '../types';
 import { checklistCategories } from '../constants';
+import ThaiDateInput from '@/components/ui/ThaiDateInput';
 
 export interface GoodsReceivingModalProps {
   isOpen: boolean;
@@ -141,8 +142,7 @@ export function GoodsReceivingModal({
                           <span className="text-xs text-muted-foreground">หมดประกันแล้ว</span>
                         </label>
                         {!unit.warrantyExpired && (
-                          <input
-                            type="date"
+                          <ThaiDateInput
                             value={unit.warrantyExpireDate}
                             onChange={(e) => updateReceivingUnit(idx, 'warrantyExpireDate', e.target.value)}
                             className="flex-1 px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"

@@ -13,6 +13,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Pencil, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDateShort, formatDateTime } from '@/utils/formatters';
+import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { DetailPageSkeleton } from '@/components/ui/page-skeletons';
 import { maskNationalId } from '@/utils/mask.util';
 import { THAI_NAME_PREFIXES, RELATIONSHIP_OPTIONS } from '@/lib/constants';
@@ -429,8 +430,14 @@ export default function CustomerDetailPage() {
             <Info label="ชื่อ-นามสกุล" value={customer.name} />
             <Info label="ชื่อเล่น" value={customer.nickname} />
             <Info label="เลขบัตร ปชช." value={maskNationalId(customer.nationalId)} />
-            <Info label="ต่างด้าว" value={customer.isForeigner ? 'ใช่' : 'ไม่ใช่'} />
             <Info label="วันเกิด" value={customer.birthDate ? formatDateShort(customer.birthDate) : null} />
+            <Info label="อายุ" value={customer.birthDate ? (() => {
+              const bd = new Date(customer.birthDate);
+              const today = new Date();
+              let age = today.getFullYear() - bd.getFullYear();
+              if (today.getMonth() < bd.getMonth() || (today.getMonth() === bd.getMonth() && today.getDate() < bd.getDate())) age--;
+              return `${age} ปี`;
+            })() : null} />
           </div>
         </CardContent>
       </Card>
@@ -721,7 +728,7 @@ export default function CustomerDetailPage() {
               </div>
               <div>
                 <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">วันเกิด</label>
-                <input type="date" value={editForm.birthDate} onChange={(e) => setEditForm({ ...editForm, birthDate: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
+                <ThaiDateInput value={editForm.birthDate} onChange={(e) => setEditForm({ ...editForm, birthDate: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
               </div>
             </div>
           </div>

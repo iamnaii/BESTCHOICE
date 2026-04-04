@@ -212,11 +212,11 @@ function CustomerPortalPage() {
         )}
 
         {/* Signatures */}
-        {data.signatures.length > 0 && (
+        {(data.signatures?.length ?? 0) > 0 && (
           <div className="bg-card rounded-lg border border-border p-4 shadow-card">
             <h3 className="text-sm font-semibold mb-2">การลงนาม</h3>
             <div className="grid grid-cols-2 gap-2">
-              {data.signatures.map((s, i) => (
+              {(data.signatures || []).map((s, i) => (
                 <div key={i} className="text-xs p-2 bg-success/5 dark:bg-success/10 rounded">
                   <div className="font-medium">{s.signerName}</div>
                   <div className="text-muted-foreground">{s.signerType} - {formatDateShort(s.signedAt)}</div>

@@ -763,7 +763,7 @@ export default function ContractDetailPage() {
       )}
 
       {/* Signing Status + E-Document Downloads */}
-      {(contract.signatures.length > 0 || eDocuments.length > 0) && (
+      {((contract.signatures?.length ?? 0) > 0 || eDocuments.length > 0) && (
         <div className="rounded-lg border p-4 mb-6">
           <h3 className="text-sm font-semibold text-foreground mb-3">สถานะเอกสารและลายเซ็น</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
@@ -773,7 +773,7 @@ export default function ContractDetailPage() {
               { type: 'WITNESS_1', label: 'พยาน 1' },
               { type: 'WITNESS_2', label: 'พยาน 2' },
             ].map(({ type, label }) => {
-              const sig = contract.signatures.find(s => (s.signerType === 'STAFF' ? 'COMPANY' : s.signerType) === type);
+              const sig = (contract.signatures || []).find(s => (s.signerType === 'STAFF' ? 'COMPANY' : s.signerType) === type);
               return (
                 <div key={type} className={`p-2 rounded-lg text-center text-xs ${sig ? 'bg-success/5 dark:bg-success/10 text-success' : 'bg-muted text-muted-foreground'}`}>
                   {sig ? '\u2713' : '\u2B1C'} {label}

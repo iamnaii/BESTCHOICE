@@ -11,6 +11,7 @@ import DataTable from '@/components/ui/DataTable';
 import { Card, CardContent } from '@/components/ui/card';
 import { Download, RotateCcw } from 'lucide-react';
 import { formatDateShort } from '@/utils/formatters';
+import ThaiDateInput from '@/components/ui/ThaiDateInput';
 
 interface Sale {
   id: string;
@@ -494,20 +495,16 @@ export default function SalesHistoryPage() {
 
         {/* Row 2: Date filters + shortcuts + Excel */}
         <div className="flex flex-wrap items-center gap-3 mb-3">
-          <input
-            type="date"
+          <ThaiDateInput
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
             className={`${inputClass} w-40`}
-            title="วันที่เริ่มต้น"
           />
           <span className="text-sm text-muted-foreground">ถึง</span>
-          <input
-            type="date"
+          <ThaiDateInput
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
             className={`${inputClass} w-40`}
-            title="วันที่สิ้นสุด"
           />
           <div className="flex gap-1.5">
             <button onClick={() => setDateRange('today')} className="px-3 py-2 text-xs rounded-lg border border-input hover:bg-accent transition-colors">วันนี้</button>

@@ -11,6 +11,7 @@ import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import ThaiDateInput from '@/components/ui/ThaiDateInput';
 
 interface OcrBookBankResult {
   accountName: string | null;
@@ -542,15 +543,13 @@ export default function CreditChecksPage() {
 
         {/* Date range */}
         <div className="flex items-center gap-2">
-          <input
-            type="date"
+          <ThaiDateInput
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
             className="px-3 py-2 border border-input rounded-lg text-sm"
           />
           <span className="text-sm text-muted-foreground">ถึง</span>
-          <input
-            type="date"
+          <ThaiDateInput
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
             className="px-3 py-2 border border-input rounded-lg text-sm"

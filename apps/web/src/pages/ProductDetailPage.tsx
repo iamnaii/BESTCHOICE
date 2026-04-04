@@ -11,6 +11,7 @@ import { ColorSelector, StorageSelector } from '@/components/product/VariantSele
 import { useAuth } from '@/contexts/AuthContext';
 import { statusLabels, categoryLabels, categoryOptions, transferableStatuses } from '@/lib/constants';
 import { formatDateShort } from '@/utils/formatters';
+import ThaiDateInput from '@/components/ui/ThaiDateInput';
 
 interface Price {
   id: string;
@@ -649,7 +650,7 @@ export default function ProductDetailPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-foreground mb-1">วันหมดประกัน</label>
-                  <input type="date" value={editForm.warrantyExpireDate} onChange={(e) => setEditForm({ ...editForm, warrantyExpireDate: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" disabled={editForm.warrantyExpired} />
+                  <ThaiDateInput value={editForm.warrantyExpireDate} onChange={(e) => setEditForm({ ...editForm, warrantyExpireDate: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" disabled={editForm.warrantyExpired} />
                 </div>
               </div>
               <div className="flex gap-6">

@@ -9,6 +9,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { exportToExcel } from '@/utils/excel.util';
 import { toast } from 'sonner';
 import { formatDateShort } from '@/utils/formatters';
+import ThaiDateInput from '@/components/ui/ThaiDateInput';
 
 interface Receipt {
   id: string;
@@ -272,15 +273,13 @@ function ReceiptsPage() {
             <option value="EARLY_PAYOFF">ปิดก่อนกำหนด</option>
             <option value="CREDIT_NOTE">ใบลดหนี้</option>
           </select>
-          <input
-            type="date"
+          <ThaiDateInput
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
             className="px-3 py-2 border border-input rounded-lg text-sm"
             placeholder="จากวันที่"
           />
-          <input
-            type="date"
+          <ThaiDateInput
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
             className="px-3 py-2 border border-input rounded-lg text-sm"

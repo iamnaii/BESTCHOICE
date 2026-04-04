@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import AnimatedCounter from '@/components/ui/animated-counter';
 import { toast } from 'sonner';
 import { Download } from 'lucide-react';
+import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import {
   BarChart,
   Bar,
@@ -348,8 +349,7 @@ function DailyPaymentReport({ date, onDateChange }: { date: string; onDateChange
     <div className="bg-card rounded-lg border border-border p-5">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-foreground">สรุปชำระรายวัน</h3>
-        <input
-          type="date"
+        <ThaiDateInput
           value={date}
           onChange={(e) => onDateChange(e.target.value)}
           className="px-3 py-1.5 border rounded-lg text-sm"

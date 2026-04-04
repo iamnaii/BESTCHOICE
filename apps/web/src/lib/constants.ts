@@ -36,7 +36,7 @@ export const THAI_NAME_PREFIXES = ['นาย', 'นาง', 'นางสาว
 
 // --- Relationship Options (บุคคลอ้างอิง) ---
 
-export const RELATIONSHIP_OPTIONS = ['บิดา', 'มารดา', 'พี่น้อง', 'คู่สมรส', 'ญาติ', 'เพื่อน', 'อื่นๆ'];
+export const RELATIONSHIP_OPTIONS = ['บิดา', 'มารดา', 'พี่น้อง', 'คู่สมรส', 'แฟน', 'บุตร', 'ญาติ', 'เพื่อน', 'อื่นๆ'];
 
 // --- Product Category ---
 

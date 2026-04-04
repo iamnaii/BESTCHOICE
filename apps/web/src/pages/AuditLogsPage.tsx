@@ -4,6 +4,7 @@ import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import { useDebounce } from '@/hooks/useDebounce';
 import { formatDateTimeSeconds } from '@/utils/formatters';
+import ThaiDateInput from '@/components/ui/ThaiDateInput';
 
 interface AuditLog {
   id: string;
@@ -172,8 +173,7 @@ export default function AuditLogsPage() {
           </div>
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1">จากวันที่</label>
-            <input
-              type="date"
+            <ThaiDateInput
               value={dateFrom}
               onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
               className="w-full border rounded-lg px-3 py-2 text-sm"
@@ -181,8 +181,7 @@ export default function AuditLogsPage() {
           </div>
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1">ถึงวันที่</label>
-            <input
-              type="date"
+            <ThaiDateInput
               value={dateTo}
               onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
               className="w-full border rounded-lg px-3 py-2 text-sm"

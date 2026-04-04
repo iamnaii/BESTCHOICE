@@ -13,6 +13,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { Download, Plus, LayoutGrid, List, Calendar, DollarSign, User } from 'lucide-react';
 import { KanbanBoard, type KanbanColumn } from '@/components/ui/KanbanBoard';
+import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { exportToExcel } from '@/utils/excel.util';
 import { formatDateShort, formatDateShortThai } from '@/utils/formatters';
 
@@ -405,8 +406,7 @@ export default function ContractsPage() {
         <div className="flex gap-3 mb-4 p-4 bg-muted rounded-lg">
           <div className="flex-1">
             <label className="text-xs text-muted-foreground block mb-1">วันเริ่มต้น</label>
-            <input
-              type="date"
+            <ThaiDateInput
               value={startDateFilter}
               onChange={(e) => setStartDate(e.target.value)}
               className="w-full px-3 py-2 border border-input rounded-lg text-sm"
@@ -414,8 +414,7 @@ export default function ContractsPage() {
           </div>
           <div className="flex-1">
             <label className="text-xs text-muted-foreground block mb-1">วันสิ้นสุด</label>
-            <input
-              type="date"
+            <ThaiDateInput
               value={endDateFilter}
               onChange={(e) => setEndDate(e.target.value)}
               className="w-full px-3 py-2 border border-input rounded-lg text-sm"

@@ -7,6 +7,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card';
 import { brands, getModels, getModelInfo } from '@/data/productCatalog';
 import { categoryOptions, createProductStatusOptions } from '@/lib/constants';
+import ThaiDateInput from '@/components/ui/ThaiDateInput';
 
 interface PriceRow {
   label: string;
@@ -586,8 +587,7 @@ export default function ProductCreatePage() {
                     </label>
                   </div>
                   {!form.warrantyExpired && (
-                    <input
-                      type="date"
+                    <ThaiDateInput
                       value={form.warrantyExpireDate}
                       onChange={(e) => setForm({ ...form, warrantyExpireDate: e.target.value })}
                       className={`${inputCls} mt-2`}

@@ -8,6 +8,7 @@ import Modal from '@/components/ui/Modal';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { formatDateShort } from '@/utils/formatters';
+import ThaiDateInput from '@/components/ui/ThaiDateInput';
 
 interface Repossession {
   id: string;
@@ -392,8 +393,7 @@ export default function RepossessionsPage() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">วันที่ยึดคืน *</label>
-              <input
-                type="date"
+              <ThaiDateInput
                 value={createForm.repossessedDate}
                 onChange={(e) => setCreateForm({ ...createForm, repossessedDate: e.target.value })}
                 className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"

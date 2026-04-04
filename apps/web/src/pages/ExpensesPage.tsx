@@ -13,6 +13,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { compressImageForOcr } from '@/lib/compressImage';
 import { Receipt, Plus, Pencil, Upload, X, ArrowLeft, ShoppingBag, Megaphone, Building2, MoreHorizontal, MoreVertical, TrendingDown } from 'lucide-react';
 import AnimatedCounter from '@/components/ui/animated-counter';
+import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Button } from '@/components/ui/button';
 import { formatDateShortThai } from '@/utils/formatters';
 
@@ -233,7 +234,7 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">วันที่ *</label>
-                <input type="date" value={form.expenseDate} onChange={(e) => setForm({ ...form, expenseDate: e.target.value })} required className={inputClass} />
+                <ThaiDateInput value={form.expenseDate} onChange={(e) => setForm({ ...form, expenseDate: e.target.value })} required className={inputClass} />
               </div>
               <div>
                 <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สาขา *</label>
@@ -631,11 +632,11 @@ export default function ExpensesPage() {
         </div>
         <div>
           <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ตั้งแต่</label>
-          <input type="date" value={startDate} onChange={(e) => setFilter('startDate', e.target.value)} className={`${inputClass} w-auto`} />
+          <ThaiDateInput value={startDate} onChange={(e) => setFilter('startDate', e.target.value)} className={`${inputClass} w-auto`} />
         </div>
         <div>
           <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ถึง</label>
-          <input type="date" value={endDate} onChange={(e) => setFilter('endDate', e.target.value)} className={`${inputClass} w-auto`} />
+          <ThaiDateInput value={endDate} onChange={(e) => setFilter('endDate', e.target.value)} className={`${inputClass} w-auto`} />
         </div>
         <div className="flex items-end gap-1">
           {quickPresets.map((p) => <button key={p.label} onClick={p.fn} className="px-3 py-2 text-xs border border-input rounded-lg hover:bg-muted">{p.label}</button>)}

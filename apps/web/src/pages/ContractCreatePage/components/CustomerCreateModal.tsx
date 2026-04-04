@@ -5,6 +5,7 @@ import { THAI_NAME_PREFIXES, RELATIONSHIP_OPTIONS } from '@/lib/constants';
 import type { UseMutationResult } from '@tanstack/react-query';
 import type { CustReferenceData } from '../types';
 import type { emptyCustForm } from '../constants';
+import ThaiDateInput from '@/components/ui/ThaiDateInput';
 
 export interface CustomerCreateModalProps {
   isOpen: boolean;
@@ -100,18 +101,18 @@ export function CustomerCreateModal({
               <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เลขบัตรประชาชน (13 หลัก) *</label>
               <input type="text" maxLength={13} value={custForm.nationalId} onChange={(e) => setCustForm({ ...custForm, nationalId: e.target.value.replace(/\D/g, '') })} className="w-full px-3 py-2 border border-input rounded-lg text-sm font-mono" required />
             </div>
-            <div className="flex items-end gap-3">
-              <div className="flex items-center gap-2 pb-2">
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input type="checkbox" checked={custForm.isForeigner} onChange={(e) => setCustForm({ ...custForm, isForeigner: e.target.checked })} className="sr-only peer" />
-                  <div className="w-9 h-5 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-input after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
-                  <span className="ml-2 text-xs text-muted-foreground">ต่างด้าว</span>
-                </label>
-              </div>
-            </div>
             <div>
               <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">วันเกิด</label>
-              <input type="date" value={custForm.birthDate} onChange={(e) => setCustForm({ ...custForm, birthDate: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
+              <ThaiDateInput value={custForm.birthDate} onChange={(e) => setCustForm({ ...custForm, birthDate: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
+            </div>
+            <div className="flex items-end pb-2">
+              {custForm.birthDate && (() => {
+                const bd = new Date(custForm.birthDate);
+                const today = new Date();
+                let age = today.getFullYear() - bd.getFullYear();
+                if (today.getMonth() < bd.getMonth() || (today.getMonth() === bd.getMonth() && today.getDate() < bd.getDate())) age--;
+                return <span className="text-sm text-muted-foreground">อายุ <span className="font-semibold text-foreground">{age}</span> ปี</span>;
+              })()}
             </div>
           </div>
         </div>
@@ -187,7 +188,23 @@ export function CustomerCreateModal({
             </div>
             <div>
               <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">อาชีพ</label>
-              <input type="text" value={custForm.occupation} onChange={(e) => setCustForm({ ...custForm, occupation: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
+              <select value={custForm.occupation} onChange={(e) => setCustForm({ ...custForm, occupation: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm">
+                <option value="">-- เลือก --</option>
+                <option value="พนักงานบริษัท">พนักงานบริษัท</option>
+                <option value="รับจ้างทั่วไป">รับจ้างทั่วไป</option>
+                <option value="ค้าขาย/ธุรกิจส่วนตัว">ค้าขาย/ธุรกิจส่วนตัว</option>
+                <option value="พนักงานโรงงาน">พนักงานโรงงาน</option>
+                <option value="เกษตรกร">เกษตรกร</option>
+                <option value="ข้าราชการ/รัฐวิสาหกิจ">ข้าราชการ/รัฐวิสาหกิจ</option>
+                <option value="ขับรถ/ส่งของ">ขับรถ/ส่งของ</option>
+                <option value="ช่างซ่อม/ช่างเทคนิค">ช่างซ่อม/ช่างเทคนิค</option>
+                <option value="ก่อสร้าง">ก่อสร้าง</option>
+                <option value="ร้านอาหาร/บริการ">ร้านอาหาร/บริการ</option>
+                <option value="Freelance/อิสระ">Freelance/อิสระ</option>
+                <option value="นักศึกษา">นักศึกษา</option>
+                <option value="แม่บ้าน/ไม่ได้ทำงาน">แม่บ้าน/ไม่ได้ทำงาน</option>
+                <option value="อื่นๆ">อื่นๆ</option>
+              </select>
             </div>
             <div>
               <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">รายละเอียดอาชีพ</label>

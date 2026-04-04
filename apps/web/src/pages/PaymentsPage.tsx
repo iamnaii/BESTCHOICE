@@ -13,6 +13,7 @@ import Modal from '@/components/ui/Modal';
 import PaymentHistorySheet from '@/components/payment/PaymentHistorySheet';
 import ReceiptModal from '@/components/payment/ReceiptModal';
 import { toast } from 'sonner';
+import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { formatDateShort } from '@/utils/formatters';
 
 import { exportToExcel } from '@/utils/excel.util';
@@ -570,8 +571,7 @@ export default function PaymentsPage() {
       {tab === 'summary' && (
         <div>
           <div className="mb-4">
-            <input
-              type="date"
+            <ThaiDateInput
               value={summaryDate}
               onChange={(e) => setSummaryDate(e.target.value)}
               className="px-3 py-2 border border-input rounded-lg text-sm"

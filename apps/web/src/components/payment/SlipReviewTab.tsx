@@ -7,6 +7,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { exportToExcel } from '@/utils/excel.util';
 import { formatDateTime, formatDateShort } from '@/utils/formatters';
 import { toast } from 'sonner';
+import ThaiDateInput from '@/components/ui/ThaiDateInput';
 
 interface PaymentEvidence {
   id: string;
@@ -312,14 +313,12 @@ export default function SlipReviewTab() {
             placeholder="ค้นหาชื่อลูกค้า / เลขสัญญา..."
             className="px-3 py-2 border border-input rounded-lg text-sm md:col-span-2"
           />
-          <input
-            type="date"
+          <ThaiDateInput
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
             className="px-3 py-2 border border-input rounded-lg text-sm"
           />
-          <input
-            type="date"
+          <ThaiDateInput
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
             className="px-3 py-2 border border-input rounded-lg text-sm"

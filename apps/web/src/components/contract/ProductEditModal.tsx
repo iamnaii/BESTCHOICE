@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import Modal from '@/components/ui/Modal';
 import { toast } from 'sonner';
+import ThaiDateInput from '@/components/ui/ThaiDateInput';
 
 interface ProductData {
   id: string;
@@ -159,7 +160,7 @@ export default function ProductEditModal({ product, onClose, onSuccess }: Props)
               </div>
               <div>
                 <label className="block text-xs text-muted-foreground mb-1">วันหมดประกัน</label>
-                <input type="date" value={form.warrantyExpireDate} onChange={(e) => setForm({ ...form, warrantyExpireDate: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" disabled={form.warrantyExpired} />
+                <ThaiDateInput value={form.warrantyExpireDate} onChange={(e) => setForm({ ...form, warrantyExpireDate: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" disabled={form.warrantyExpired} />
               </div>
             </div>
             <div className="flex gap-6">

@@ -406,7 +406,7 @@ export class LineOaService {
         name: true,
         contracts: {
           where: {
-            status: { in: ['ACTIVE', 'OVERDUE', 'COMPLETED', 'EARLY_PAYOFF'] },
+            status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT', 'COMPLETED', 'EARLY_PAYOFF'] },
             deletedAt: null,
           },
           orderBy: { createdAt: 'desc' },
@@ -416,6 +416,7 @@ export class LineOaService {
             status: true,
             sellingPrice: true,
             downPayment: true,
+            monthlyPayment: true,
             totalMonths: true,
             createdAt: true,
             product: {

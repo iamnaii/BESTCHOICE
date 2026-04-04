@@ -1311,9 +1311,10 @@ export class LineOaController {
           product: c.product ? `${c.product.brand || ''} ${c.product.model || c.product.name}`.trim() : '-',
           sellingPrice: Number(c.sellingPrice),
           downPayment: Number(c.downPayment),
+          monthlyPayment: Number(c.monthlyPayment),
           totalMonths: c.totalMonths,
           paidInstallments: totalPaid,
-          totalOutstanding: Math.round(totalOutstanding),
+          totalOutstanding: Math.round(totalOutstanding * 100) / 100,
           createdAt: c.createdAt,
           payments: c.payments.map((p) => ({
             installmentNo: p.installmentNo,

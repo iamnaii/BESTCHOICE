@@ -693,28 +693,24 @@ ${(() => {
 
   /**
    * Resolve which template HTML to use:
-   * - If DB template was edited by admin (updatedAt significantly after createdAt), use DB version
-   * - Otherwise use the file template (picks up code fixes automatically)
+   * - If active DB template exists for this planType, always use it (admin-configured)
+   * - Otherwise fall back to file template or inline default
    */
   private async resolveTemplate(planType: string, documentType: string): Promise<{ html: string; settings: any }> {
     const template = await this.prisma.contractTemplate.findFirst({
-      where: { type: planType, isActive: true },
-      orderBy: { createdAt: 'desc' },
+      where: { type: planType, isActive: true, deletedAt: null },
+      orderBy: { updatedAt: 'desc' },
     });
 
     if (template) {
-      // If admin edited the template (updatedAt > createdAt + 60s), prefer DB version
-      const wasEdited = template.updatedAt.getTime() - template.createdAt.getTime() > 60_000;
-      if (wasEdited) {
-        return { html: template.contentHtml, settings: template.settings };
-      }
+      return { html: template.contentHtml, settings: template.settings };
     }
 
-    // Use file template (latest code), fall back to DB, then inline fallback
+    // No DB template for this planType — use file template or inline fallback
     const fileHtml = this.getDefaultTemplate(documentType);
     return {
-      html: fileHtml || template?.contentHtml || '',
-      settings: template?.settings || null,
+      html: fileHtml || '',
+      settings: null,
     };
   }
 

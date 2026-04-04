@@ -1,6 +1,19 @@
 import { Injectable, Logger, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
+export interface RichMenuUrls {
+  /** URL หน้าหลักร้าน / รายการสินค้า เช่น https://bestchoicephone.app */
+  websiteUrl: string;
+  /** URL หน้าคำนวณค่างวด เช่น https://bestchoicephone.app/calculator */
+  calculatorUrl: string;
+  /** LIFF URL สำหรับหน้าเช็คสัญญา เช่น https://liff.line.me/xxxx/liff/contract */
+  liffContractUrl: string;
+  /** LIFF URL สำหรับหน้าจ่ายค่างวด เช่น https://liff.line.me/xxxx/liff/early-payoff */
+  liffPayUrl: string;
+  /** Google Maps URL ของร้าน */
+  mapsUrl: string;
+}
+
 /**
  * Rich Menu Management Service
  * Creates and manages LINE Rich Menu via LINE Messaging API
@@ -16,47 +29,47 @@ export class RichMenuService {
   }
 
   /**
-   * Create the BEST CHOICE Rich Menu
+   * Create the BESTCHOICE Rich Menu (New Brand — 2026)
    * Layout: 2 rows x 3 columns
    *
-   * ┌──────────┬──────────┬──────────┐
-   * │ ชำระเงิน │ เช็คยอด  │ ติดต่อ   │
-   * ├──────────┼──────────┼──────────┤
-   * │ ประวัติ  │ ใบเสร็จ  │ ช่วยเหลือ│
-   * └──────────┴──────────┴──────────┘
+   * ┌────────────────┬────────────────┬──────────────────┐
+   * │ 📱 ดูรุ่นที่มี │ 💰 คำนวณค่างวด │ 📋 เช็คสัญญา    │
+   * ├────────────────┼────────────────┼──────────────────┤
+   * │ 💳 จ่ายค่างวด │ 📍 แผนที่ร้าน  │ 💬 แชทกับเรา    │
+   * └────────────────┴────────────────┴──────────────────┘
    */
-  async createRichMenu(): Promise<string> {
+  async createRichMenu(urls: RichMenuUrls): Promise<string> {
     const richMenu = {
       size: { width: 2500, height: 1686 },
       selected: true,
-      name: 'BEST CHOICE Menu',
+      name: 'BESTCHOICE Menu v2',
       chatBarText: 'เมนู',
       areas: [
         // Row 1
         {
           bounds: { x: 0, y: 0, width: 833, height: 843 },
-          action: { type: 'postback', label: 'ชำระเงิน', data: 'action=pay' },
+          action: { type: 'uri', label: 'ดูรุ่นที่มี', uri: urls.websiteUrl },
         },
         {
           bounds: { x: 833, y: 0, width: 834, height: 843 },
-          action: { type: 'postback', label: 'เช็คยอด', data: 'action=check_balance' },
+          action: { type: 'uri', label: 'คำนวณค่างวด', uri: urls.calculatorUrl },
         },
         {
           bounds: { x: 1667, y: 0, width: 833, height: 843 },
-          action: { type: 'message', label: 'ติดต่อ', text: 'ติดต่อ' },
+          action: { type: 'uri', label: 'เช็คสัญญา', uri: urls.liffContractUrl },
         },
         // Row 2
         {
           bounds: { x: 0, y: 843, width: 833, height: 843 },
-          action: { type: 'postback', label: 'ประวัติ', data: 'action=check_installments' },
+          action: { type: 'uri', label: 'จ่ายค่างวด', uri: urls.liffPayUrl },
         },
         {
           bounds: { x: 833, y: 843, width: 834, height: 843 },
-          action: { type: 'message', label: 'ใบเสร็จ', text: 'ใบเสร็จ' },
+          action: { type: 'uri', label: 'แผนที่ร้าน', uri: urls.mapsUrl },
         },
         {
           bounds: { x: 1667, y: 843, width: 833, height: 843 },
-          action: { type: 'message', label: 'ช่วยเหลือ', text: 'ช่วยเหลือ' },
+          action: { type: 'message', label: 'แชทกับเรา', text: 'ติดต่อ' },
         },
       ],
     };

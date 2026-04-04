@@ -4,6 +4,7 @@ import { liffApi } from '@/lib/api';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { CreditCard, ChevronDown } from 'lucide-react';
+import { formatNumber, formatDateMedium, formatDateShortThai } from '@/utils/formatters';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -27,6 +28,7 @@ interface Contract {
   product: string;
   sellingPrice: number;
   downPayment: number;
+  monthlyPayment: number;
   totalMonths: number;
   paidInstallments: number;
   totalOutstanding: number;
@@ -42,6 +44,7 @@ interface ContractData {
 const statusConfig: Record<string, { label: string; variant: 'success' | 'destructive' | 'secondary' | 'info' }> = {
   ACTIVE: { label: 'ปกติ', variant: 'success' },
   OVERDUE: { label: 'ค้างชำระ', variant: 'destructive' },
+  DEFAULT: { label: 'ผิดนัด', variant: 'destructive' },
   COMPLETED: { label: 'ครบแล้ว', variant: 'secondary' },
   EARLY_PAYOFF: { label: 'ปิดก่อนกำหนด', variant: 'info' },
 };
@@ -223,11 +226,17 @@ export default function LiffContract() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <p className="text-xs text-muted-foreground">ราคาสินค้า</p>
-              <p className="text-sm font-medium">{contract.sellingPrice.toLocaleString()} บาท</p>
+              <p className="text-sm font-medium">{formatNumber(contract.sellingPrice)} บาท</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">เงินดาวน์</p>
-              <p className="text-sm font-medium">{contract.downPayment.toLocaleString()} บาท</p>
+              <p className="text-sm font-medium">{formatNumber(contract.downPayment)} บาท</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">ค่างวด/เดือน</p>
+              <p className="text-sm font-bold text-primary">
+                {formatNumber(contract.monthlyPayment)} บาท
+              </p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">ชำระแล้ว</p>
@@ -239,7 +248,7 @@ export default function LiffContract() {
               <p className="text-xs text-muted-foreground">ยอดค้าง</p>
               <p className="text-sm font-bold text-destructive">
                 {contract.totalOutstanding > 0
-                  ? `${contract.totalOutstanding.toLocaleString()} บาท`
+                  ? `${formatNumber(contract.totalOutstanding)} บาท`
                   : 'ครบแล้ว'}
               </p>
             </div>
@@ -293,11 +302,7 @@ export default function LiffContract() {
               <p className="text-sm font-medium">งวดถัดไป: งวดที่ {nextUnpaid.installmentNo}</p>
               <p className="text-xs text-muted-foreground">
                 ครบกำหนด{' '}
-                {new Date(nextUnpaid.dueDate).toLocaleDateString('th-TH', {
-                  day: 'numeric',
-                  month: 'short',
-                  year: 'numeric',
-                })}
+                {formatDateMedium(nextUnpaid.dueDate)}
               </p>
             </div>
             <Button
@@ -331,10 +336,7 @@ export default function LiffContract() {
           <h2 className="text-sm font-bold mb-3">ตารางค่างวด</h2>
           <div className="space-y-2">
             {displayPayments.map((p) => {
-              const dueDateStr = new Date(p.dueDate).toLocaleDateString('th-TH', {
-                day: 'numeric',
-                month: 'short',
-              });
+              const dueDateStr = formatDateShortThai(p.dueDate);
               const totalAmount = p.amountDue + p.lateFee;
               const isPaid = p.status === 'PAID';
               const isOverdue = p.status === 'OVERDUE';
@@ -363,18 +365,15 @@ export default function LiffContract() {
                         isPaid ? 'text-success' : isOverdue ? 'text-destructive' : ''
                       }`}
                     >
-                      {totalAmount.toLocaleString()} บาท
+                      {formatNumber(totalAmount)} บาท
                     </p>
                     {isPaid && p.paidDate && (
                       <p className="text-xs text-muted-foreground">
-                        {new Date(p.paidDate).toLocaleDateString('th-TH', {
-                          day: 'numeric',
-                          month: 'short',
-                        })}
+                        {formatDateShortThai(p.paidDate)}
                       </p>
                     )}
                     {p.lateFee > 0 && !isPaid && (
-                      <p className="text-xs text-destructive">ค่าปรับ {p.lateFee.toLocaleString()}</p>
+                      <p className="text-xs text-destructive">ค่าปรับ {formatNumber(p.lateFee)} บาท</p>
                     )}
                   </div>
                 </div>

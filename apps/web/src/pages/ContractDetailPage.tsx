@@ -16,6 +16,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import PaymentTimeline from '@/components/contract/PaymentTimeline';
 import { DetailPageSkeleton } from '@/components/ui/page-skeletons';
+import { formatNumber, formatDateMedium, formatDateShortThai } from '@/utils/formatters';
 
 interface Payment {
   id: string;
@@ -258,6 +259,9 @@ export default function ContractDetailPage() {
 
   const s = statusLabels[contract.status] || { label: contract.status, className: 'bg-secondary' };
   const paidCount = contract.payments.filter((p) => p.status === 'PAID').length;
+  const totalOutstanding = contract.payments
+    .filter((p) => p.status !== 'PAID')
+    .reduce((sum, p) => sum + parseFloat(p.amountDue) + parseFloat(p.lateFee) - parseFloat(p.amountPaid || '0'), 0);
   const isReviewer = user && ['OWNER', 'BRANCH_MANAGER'].includes(user.role) && (user.role === 'OWNER' || contract.salespersonId !== user.id);
   const isCreator = user && contract.salespersonId === user.id;
   const isOwner = user?.role === 'OWNER';
@@ -273,19 +277,19 @@ export default function ContractDetailPage() {
 
   const paymentColumns = [
     { key: 'installmentNo', label: 'งวดที่', render: (p: Payment) => <span className="font-medium">{p.installmentNo}</span> },
-    { key: 'dueDate', label: 'วันครบกำหนด', render: (p: Payment) => <span className="text-sm">{new Date(p.dueDate).toLocaleDateString('th-TH')}</span> },
-    { key: 'amountDue', label: 'ยอดที่ต้องชำระ', render: (p: Payment) => <span className="text-sm">{parseFloat(p.amountDue).toLocaleString()} ฿</span> },
+    { key: 'dueDate', label: 'วันครบกำหนด', render: (p: Payment) => <span className="text-sm">{formatDateMedium(p.dueDate)}</span> },
+    { key: 'amountDue', label: 'ยอดที่ต้องชำระ', render: (p: Payment) => <span className="text-sm">{formatNumber(p.amountDue)} บาท</span> },
     {
       key: 'amountPaid',
       label: 'ยอดที่ชำระ',
-      render: (p: Payment) => p.amountPaid ? <span className="text-sm text-success">{parseFloat(p.amountPaid).toLocaleString()} ฿</span> : <span className="text-xs text-muted-foreground">-</span>,
+      render: (p: Payment) => p.amountPaid ? <span className="text-sm text-success">{formatNumber(p.amountPaid)} บาท</span> : <span className="text-xs text-muted-foreground">-</span>,
     },
     {
       key: 'lateFee',
       label: 'ค่าปรับ',
       render: (p: Payment) => {
         const fee = parseFloat(p.lateFee);
-        return fee > 0 ? <span className="text-sm text-destructive">{fee.toLocaleString()} ฿</span> : <span className="text-xs text-muted-foreground">-</span>;
+        return fee > 0 ? <span className="text-sm text-destructive">{formatNumber(fee)} บาท</span> : <span className="text-xs text-muted-foreground">-</span>;
       },
     },
     {
@@ -299,7 +303,7 @@ export default function ContractDetailPage() {
     {
       key: 'paidDate',
       label: 'วันที่ชำระ',
-      render: (p: Payment) => p.paidDate ? <span className="text-xs">{new Date(p.paidDate).toLocaleDateString('th-TH')}</span> : <span className="text-xs text-muted-foreground">-</span>,
+      render: (p: Payment) => p.paidDate ? <span className="text-xs">{formatDateMedium(p.paidDate)}</span> : <span className="text-xs text-muted-foreground">-</span>,
     },
   ];
 
@@ -456,7 +460,7 @@ export default function ContractDetailPage() {
         <Card className="border-l-[3px] border-l-primary">
           <CardContent className="p-4">
             <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ค่างวด/เดือน</div>
-            <div className="text-xl font-bold text-primary">{parseFloat(contract.monthlyPayment).toLocaleString()} ฿</div>
+            <div className="text-xl font-bold text-primary">{formatNumber(contract.monthlyPayment)} บาท</div>
           </CardContent>
         </Card>
         <Card className="border-l-[3px] border-l-success">
@@ -468,19 +472,27 @@ export default function ContractDetailPage() {
         <Card>
           <CardContent className="p-4">
             <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ยอดผ่อนรวม</div>
-            <div className="text-xl font-bold">{parseFloat(contract.financedAmount).toLocaleString()} ฿</div>
+            <div className="text-xl font-bold">{formatNumber(contract.financedAmount)} บาท</div>
           </CardContent>
         </Card>
+        {['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status) && totalOutstanding > 0 && (
+          <Card className="border-l-[3px] border-l-destructive">
+            <CardContent className="p-4">
+              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ยอดค้างรวม</div>
+              <div className="text-xl font-bold text-destructive">{formatNumber(totalOutstanding)} บาท</div>
+            </CardContent>
+          </Card>
+        )}
         {contract.creditBalance && parseFloat(contract.creditBalance) > 0 && (
           <div className="rounded-lg border border-success/20 bg-success/5 dark:bg-success/10 p-4">
             <div className="text-xs text-success mb-1">ยอดเครดิตคงเหลือ</div>
-            <div className="text-xl font-bold text-success">{parseFloat(contract.creditBalance).toLocaleString()} ฿</div>
+            <div className="text-xl font-bold text-success">{formatNumber(contract.creditBalance)} บาท</div>
             {['ACTIVE', 'OVERDUE'].includes(contract.status) && (
               <button
                 onClick={() => setConfirmDialog({
                   open: true,
                   title: 'ใช้เครดิตชำระ',
-                  message: `ใช้เครดิต ${parseFloat(contract.creditBalance!).toLocaleString()} ฿ ชำระงวดถัดไป?`,
+                  message: `ใช้เครดิต ${formatNumber(contract.creditBalance!)} บาท ชำระงวดถัดไป?`,
                   action: async () => {
                     try {
                       await api.post(`/payments/apply-credit/${contract.id}`);
@@ -575,7 +587,7 @@ export default function ContractDetailPage() {
         <div className="bg-destructive/5 dark:bg-destructive/10 border border-destructive/20 rounded-lg p-4 mb-6">
           <h3 className="text-sm font-semibold text-destructive">สัญญาถูกปฏิเสธ</h3>
           <div className="text-sm text-destructive mt-1">เหตุผล: {contract.reviewNotes}</div>
-          {contract.reviewedBy && <div className="text-xs text-red-500 mt-1">โดย: {contract.reviewedBy.name} | {contract.reviewedAt && new Date(contract.reviewedAt).toLocaleString('th-TH')}</div>}
+          {contract.reviewedBy && <div className="text-xs text-red-500 mt-1">โดย: {contract.reviewedBy.name} | {contract.reviewedAt && formatDateMedium(contract.reviewedAt)}</div>}
         </div>
       )}
 
@@ -639,11 +651,11 @@ export default function ContractDetailPage() {
                 const monthly = Math.ceil(total / editForm.totalMonths);
                 return (
                   <div className="bg-muted rounded-lg p-3 text-xs space-y-1">
-                    <div>ยอดปล่อย: {p.toLocaleString()} ฿</div>
-                    <div>ค่าคอมหน้าร้าน ({(commPct * 100).toFixed(0)}%): {comm.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</div>
-                    <div>ดอกเบี้ยรวม: {interest.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</div>
-                    <div>VAT ({(vPct * 100).toFixed(0)}%): {vat.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</div>
-                    <div className="font-semibold">ค่างวด/เดือน: {monthly.toLocaleString()} ฿</div>
+                    <div>ยอดปล่อย: {formatNumber(p)} บาท</div>
+                    <div>ค่าคอมหน้าร้าน ({(commPct * 100).toFixed(0)}%): {formatNumber(Math.round(comm))} บาท</div>
+                    <div>ดอกเบี้ยรวม: {formatNumber(Math.round(interest))} บาท</div>
+                    <div>VAT ({(vPct * 100).toFixed(0)}%): {formatNumber(Math.round(vat))} บาท</div>
+                    <div className="font-semibold">ค่างวด/เดือน: {formatNumber(monthly)} บาท</div>
                   </div>
                 );
               })()}
@@ -665,17 +677,17 @@ export default function ContractDetailPage() {
           ) : (
             <div className="grid grid-cols-2 gap-3">
               <Info label="ประเภทแผน" value="ผ่อนกับ BESTCHOICE" />
-              <Info label="ราคาขาย" value={`${parseFloat(contract.sellingPrice).toLocaleString()} ฿`} />
-              <Info label="เงินดาวน์" value={`${parseFloat(contract.downPayment).toLocaleString()} ฿`} />
-              <Info label="ยอดปล่อย (Loan)" value={`${(parseFloat(contract.sellingPrice) - parseFloat(contract.downPayment)).toLocaleString()} ฿`} />
+              <Info label="ราคาขาย" value={`${formatNumber(contract.sellingPrice)} บาท`} />
+              <Info label="เงินดาวน์" value={`${formatNumber(contract.downPayment)} บาท`} />
+              <Info label="ยอดปล่อย (Loan)" value={`${formatNumber(parseFloat(contract.sellingPrice) - parseFloat(contract.downPayment))} บาท`} />
               <Info label="อัตราดอกเบี้ย" value={`${(parseFloat(contract.interestRate) * 100).toFixed(1)}%${contract.interestConfig ? ` (${contract.interestConfig.name})` : ''}`} />
-              <Info label="ดอกเบี้ยรวม" value={`${parseFloat(contract.interestTotal).toLocaleString()} ฿`} />
-              <Info label="ยอดจัดไฟแนนซ์" value={`${parseFloat(contract.financedAmount).toLocaleString()} ฿`} />
+              <Info label="ดอกเบี้ยรวม" value={`${formatNumber(contract.interestTotal)} บาท`} />
+              <Info label="ยอดจัดไฟแนนซ์" value={`${formatNumber(contract.financedAmount)} บาท`} />
               <Info label="จำนวนงวด" value={`${contract.totalMonths} เดือน`} />
               <Info label="วันชำระ" value={contract.paymentDueDay === 31 ? 'สิ้นเดือน' : contract.paymentDueDay ? `ทุกวันที่ ${contract.paymentDueDay}` : 'วันที่ 1'} />
               <Info label="พนักงานขาย" value={contract.salesperson.name} />
               <Info label="สาขา" value={contract.branch.name} />
-              <Info label="วันที่สร้าง" value={new Date(contract.createdAt).toLocaleDateString('th-TH')} />
+              <Info label="วันที่สร้าง" value={formatDateMedium(contract.createdAt)} />
               {contract.notes && <Info label="หมายเหตุ" value={contract.notes} />}
             </div>
           )}
@@ -701,7 +713,7 @@ export default function ContractDetailPage() {
               <Info label="ชื่อเล่น" value={contract.customerSnapshot?.nickname || '-'} />
               <Info label="เบอร์โทร" value={contract.customerSnapshot?.phone || contract.customer.phone} />
               <Info label="อาชีพ" value={contract.customerSnapshot?.occupation || '-'} />
-              {contract.customerSnapshot?.salary && <Info label="รายได้" value={`${parseFloat(contract.customerSnapshot.salary).toLocaleString()} ฿`} />}
+              {contract.customerSnapshot?.salary && <Info label="รายได้" value={`${formatNumber(contract.customerSnapshot.salary)} บาท`} />}
             </div>
             <button onClick={() => navigate(`/customers/${contract.customer.id}`)} className="mt-3 text-xs text-primary hover:underline">ดูรายละเอียดลูกค้า (ข้อมูลปัจจุบัน)</button>
           </div>
@@ -749,11 +761,11 @@ export default function ContractDetailPage() {
           <h2 className="text-lg font-semibold text-primary mb-3">ประเมินปิดก่อนกำหนด</h2>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <div><div className="text-xs text-primary">งวดคงเหลือ</div><div className="font-medium">{payoffQuote.remainingMonths} งวด</div></div>
-            <div><div className="text-xs text-primary">เงินต้นคงเหลือ</div><div className="font-medium">{payoffQuote.remainingPrincipal.toLocaleString()} ฿</div></div>
-            <div><div className="text-xs text-primary">ดอกเบี้ยคงเหลือ</div><div className="font-medium">{payoffQuote.remainingInterest.toLocaleString()} ฿</div></div>
-            <div><div className="text-xs text-success">ส่วนลดดอกเบี้ย (50%)</div><div className="font-medium text-success">-{payoffQuote.discount.toLocaleString()} ฿</div></div>
-            {payoffQuote.unpaidLateFees > 0 && <div><div className="text-xs text-destructive">ค่าปรับค้างชำระ</div><div className="font-medium text-destructive">{payoffQuote.unpaidLateFees.toLocaleString()} ฿</div></div>}
-            <div><div className="text-xs text-primary font-semibold">ยอดปิดสัญญา</div><div className="text-xl font-bold text-primary">{payoffQuote.totalPayoff.toLocaleString()} ฿</div></div>
+            <div><div className="text-xs text-primary">เงินต้นคงเหลือ</div><div className="font-medium">{formatNumber(payoffQuote.remainingPrincipal)} บาท</div></div>
+            <div><div className="text-xs text-primary">ดอกเบี้ยคงเหลือ</div><div className="font-medium">{formatNumber(payoffQuote.remainingInterest)} บาท</div></div>
+            <div><div className="text-xs text-success">ส่วนลดดอกเบี้ย (50%)</div><div className="font-medium text-success">-{formatNumber(payoffQuote.discount)} บาท</div></div>
+            {payoffQuote.unpaidLateFees > 0 && <div><div className="text-xs text-destructive">ค่าปรับค้างชำระ</div><div className="font-medium text-destructive">{formatNumber(payoffQuote.unpaidLateFees)} บาท</div></div>}
+            <div><div className="text-xs text-primary font-semibold">ยอดปิดสัญญา</div><div className="text-xl font-bold text-primary">{formatNumber(payoffQuote.totalPayoff)} บาท</div></div>
           </div>
         </div>
       )}
@@ -773,7 +785,7 @@ export default function ContractDetailPage() {
               return (
                 <div key={type} className={`p-2 rounded-lg text-center text-xs ${sig ? 'bg-success/5 dark:bg-success/10 text-success' : 'bg-muted text-muted-foreground'}`}>
                   {sig ? '\u2713' : '\u2B1C'} {label}
-                  {sig && <div className="text-2xs mt-0.5">{new Date(sig.signedAt).toLocaleDateString('th-TH')}</div>}
+                  {sig && <div className="text-2xs mt-0.5">{formatDateMedium(sig.signedAt)}</div>}
                 </div>
               );
             })}
@@ -788,7 +800,7 @@ export default function ContractDetailPage() {
                 <div key={doc.id} className="flex items-center justify-between p-2 bg-muted rounded-lg">
                   <div className="text-xs">
                     <span className="font-medium">{doc.documentType === 'CONTRACT' ? 'สัญญา' : doc.documentType === 'PDPA_CONSENT' ? 'PDPA' : doc.documentType}</span>
-                    <span className="text-muted-foreground ml-2">{new Date(doc.createdAt).toLocaleDateString('th-TH')}</span>
+                    <span className="text-muted-foreground ml-2">{formatDateMedium(doc.createdAt)}</span>
                   </div>
                   <div className="flex gap-2">
                     <button
@@ -898,7 +910,7 @@ export default function ContractDetailPage() {
           <div className="space-y-4">
             <div className="bg-primary/5 rounded-lg p-4">
               <div className="text-sm">ยอดที่ต้องชำระ</div>
-              <div className="text-2xl font-bold text-primary">{payoffQuote.totalPayoff.toLocaleString()} ฿</div>
+              <div className="text-2xl font-bold text-primary">{formatNumber(payoffQuote.totalPayoff)} บาท</div>
               <div className="text-xs text-primary mt-1">(รวมส่วนลดดอกเบี้ย 50% แล้ว)</div>
             </div>
             <div>

@@ -538,6 +538,39 @@ export class DocumentsService {
     return String(num);
   }
 
+  /** Convert an S3 file URL/key to a base64 data URL for embedding in PDF */
+  private async fileUrlToBase64DataUrl(fileUrl: string): Promise<string> {
+    try {
+      // Already a data URL — return as-is
+      if (fileUrl.startsWith('data:')) return fileUrl;
+
+      // S3 must be configured to download files
+      if (!this.storageService.configured) {
+        this.logger.warn(`S3 not configured, cannot embed image: ${fileUrl}`);
+        return fileUrl;
+      }
+
+      // Extract S3 key from full URL or use as-is if it's a key
+      const key = fileUrl.replace(/^https?:\/\/[^/]+\//, '');
+      const stream = await this.storageService.getStream(key);
+      const chunks: Buffer[] = [];
+      for await (const chunk of stream) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      }
+      const buffer = Buffer.concat(chunks);
+
+      // Detect MIME type from file extension or default to jpeg
+      const ext = key.split('.').pop()?.toLowerCase() || '';
+      const mimeMap: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' };
+      const mime = mimeMap[ext] || 'image/jpeg';
+
+      return `data:${mime};base64,${buffer.toString('base64')}`;
+    } catch (err) {
+      this.logger.warn(`Failed to convert file to base64: ${fileUrl}`, err instanceof Error ? err.message : err);
+      return fileUrl; // Fallback to original URL
+    }
+  }
+
   /** Validate that a data URL is a safe image format */
   private isSafeImageDataUrl(url: string): boolean {
     if (!url || typeof url !== 'string') return false;
@@ -553,7 +586,7 @@ export class DocumentsService {
     const letterhead = templateSettings?.letterhead || 'none';
     const showPageNumber = templateSettings?.showPageNumber ?? true;
     const pageNumberFormat = templateSettings?.pageNumberFormat || 'หน้า {page}/{total}';
-    let footerText: string = templateSettings?.footerText || '';
+    let footerText: string = templateSettings?.footerText ?? 'BESTCHOICEPHONE Co., Ltd.';
     // Resolve variables in footer text (e.g. {{= CONTRACT_NUMBER}}, {contract_number})
     if (contractNumber && footerText) {
       footerText = footerText
@@ -831,7 +864,9 @@ ${(() => {
       '{product_category}': contract.product?.category === 'PHONE_NEW' ? 'มือ1' : contract.product?.category === 'PHONE_USED' ? 'มือ2' : esc(contract.product?.category || ''),
       '{selling_price}': Number(contract.sellingPrice).toLocaleString(),
       '{down_payment}': Number(contract.downPayment).toLocaleString(),
+      '{down_payment_text}': this.numberToThaiText(Number(contract.downPayment)),
       '{monthly_payment}': Number(contract.monthlyPayment).toLocaleString(),
+      '{monthly_payment_text}': this.numberToThaiText(Number(contract.monthlyPayment)),
       '{total_months}': String(contract.totalMonths),
       '{interest_rate}': `${(Number(contract.interestRate) * 100).toFixed(1)}%`,
       '{interest_total}': Number(contract.interestTotal).toLocaleString(),
@@ -856,7 +891,49 @@ ${(() => {
       '{staff_signature}': staffSigSafe ? `<img src="${staffSig.signatureImage}" style="max-height:60px;display:inline-block;vertical-align:middle;margin:0 4px"/>` : '<span style="display:inline-block;width:150px;border-bottom:1px solid #000;vertical-align:middle;margin:0 4px">&nbsp;</span>',
       '{witness1_signature}': witness1SigSafe ? `<img src="${witness1Sig.signatureImage}" style="max-height:60px;display:inline-block;vertical-align:middle;margin:0 4px"/>` : '<span style="display:inline-block;width:150px;border-bottom:1px solid #000;vertical-align:middle;margin:0 4px">&nbsp;</span>',
       '{witness2_signature}': witness2SigSafe ? `<img src="${witness2Sig.signatureImage}" style="max-height:60px;display:inline-block;vertical-align:middle;margin:0 4px"/>` : '<span style="display:inline-block;width:150px;border-bottom:1px solid #000;vertical-align:middle;margin:0 4px">&nbsp;</span>',
+      // Company director info (from system settings)
+      '{company_director_name}': esc(cfg('company_director', 'เอกนรินทร์ คงเดช')),
+      '{company_director_id}': esc(cfg('company_director_id', '1-1601-00452-40-7')),
+      '{company_director_address}': esc(cfg('company_director_address', '517 ถนนนารายณ์มหาราช ตำบลทะเลชุบศร อำเภอเมืองลพบุรี จังหวัดลพบุรี 15000')),
+      '{company_name}': esc(cfg('company_name_th', 'บริษัท เบสท์ช้อยส์โฟน จำกัด')),
+      '{company_tax_id}': esc(cfg('company_tax_id', '0165568000050')),
+      // Full national ID for signed contract PDF (no masking)
+      '{national_id_full}': esc(contract.customer?.nationalId || ''),
     };
+
+    // Device photos grid for page 6 — query DEVICE_PHOTO documents
+    if (html.includes('{device_photos_grid}')) {
+      const devicePhotos = await this.prisma.contractDocument.findMany({
+        where: { contractId: contract.id, documentType: 'DEVICE_PHOTO', deletedAt: null, isLatest: true },
+        orderBy: { createdAt: 'asc' },
+        take: 6,
+      });
+
+      let photosGridHtml = '';
+      if (devicePhotos.length > 0) {
+        // Convert S3 URLs to base64 data URLs so Puppeteer can render them in PDF
+        const base64Urls = await Promise.all(
+          devicePhotos.map((p) => this.fileUrlToBase64DataUrl(p.fileUrl)),
+        );
+        const photoRows: string[] = [];
+        for (let i = 0; i < devicePhotos.length; i += 2) {
+          const leftUrl = base64Urls[i];
+          const rightUrl = base64Urls[i + 1];
+          photoRows.push(`<tr>
+            <td style="width:50%;padding:8px;text-align:center;vertical-align:middle">
+              <img src="${leftUrl}" style="max-width:90%;max-height:200px;object-fit:contain"/>
+            </td>
+            ${rightUrl ? `<td style="width:50%;padding:8px;text-align:center;vertical-align:middle">
+              <img src="${rightUrl}" style="max-width:90%;max-height:200px;object-fit:contain"/>
+            </td>` : '<td></td>'}
+          </tr>`);
+        }
+        photosGridHtml = `<table style="width:100%;border-collapse:collapse">${photoRows.join('')}</table>`;
+      } else {
+        photosGridHtml = '<div style="text-align:center;padding:40px;color:#999;border:2px dashed #ddd;border-radius:8px">ยังไม่มีรูปถ่ายโทรศัพท์</div>';
+      }
+      replacements['{device_photos_grid}'] = photosGridHtml;
+    }
 
     let result = html;
     for (const [key, value] of Object.entries(replacements)) {
@@ -903,13 +980,14 @@ ${(() => {
       'COMPANY.TAX_ID': esc(cfg('company_tax_id', '0165568000050')),
       'COMPANY.ADDRESS': esc(cfg('company_address', 'เลขที่ 456/21 ชั้น 2 ถนนนารายณ์มหาราช ตำบลทะเลชุบศร อำเภอเมืองลพบุรี จังหวัดลพบุรี 15000')),
       'COMPANY.DIRECTOR': esc(cfg('company_director', 'เอกนรินทร์ คงเดช')),
-      'COMPANY.DIRECTOR_ID': esc(cfg('company_director_id', '1160100452407')),
+      'COMPANY.DIRECTOR_ID': esc(cfg('company_director_id', '1-1601-00452-40-7')),
       'COMPANY.DIRECTOR_ADDRESS': esc(cfg('company_director_address', '517 ถนนนารายณ์มหาราช ตำบลทะเลชุบศร อำเภอเมืองลพบุรี จังหวัดลพบุรี 15000')),
 
       // === Customer ===
       'CUSTOMER.NAME': replacements['{customer_name}'],
       'CUSTOMER.PREFIX': replacements['{customer_prefix}'],
       'CUSTOMER.IDCARD': replacements['{national_id}'],
+      'CUSTOMER.IDCARD_FULL': replacements['{national_id_full}'],
       'CUSTOMER.BIRTHDATE': contract.customer?.birthdate ? new Date(contract.customer.birthdate).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' }) : '-',
       'CUSTOMER.NICKNAME': esc(contract.customer?.nickname || '-'),
       'CUSTOMER.TEL': replacements['{customer_phone}'],
@@ -1125,7 +1203,7 @@ ${(() => {
       } catch {
         this.logger.warn('Failed to read hire-purchase-contract.html, using inline fallback');
       }
-      // Fallback: inline default template
+      // Fallback: inline default template (simplified version of hire-purchase-contract.html)
       return `
 <div>
   <h1 style="text-align:center;margin:0 0 4px">สัญญาผ่อนชำระ</h1>
@@ -1134,10 +1212,19 @@ ${(() => {
   <hr style="border:none;border-top:1px solid #ccc;margin:0 0 16px"/>
 
   <div class="no-break">
+    <h3 style="margin:0 0 8px;border-bottom:1px solid #eee;padding-bottom:4px">ผู้ให้เช่าซื้อ</h3>
+    <table style="width:100%;margin-bottom:12px;font-size:13px">
+      <tr><td style="width:160px;color:#666">บริษัท</td><td><strong>{company_name}</strong></td></tr>
+      <tr><td style="color:#666">ผู้มีอำนาจ</td><td>{company_director_name}</td></tr>
+      <tr><td style="color:#666">เลขประจำตัวผู้เสียภาษี</td><td>{company_tax_id}</td></tr>
+    </table>
+  </div>
+
+  <div class="no-break">
     <h3 style="margin:0 0 8px;border-bottom:1px solid #eee;padding-bottom:4px">ข้อมูลลูกค้า</h3>
     <table style="width:100%;margin-bottom:12px;font-size:13px">
       <tr><td style="width:120px;color:#666">ชื่อ-นามสกุล</td><td><strong>{customer_name}</strong></td></tr>
-      <tr><td style="color:#666">เลขบัตร ปชช.</td><td>{national_id}</td></tr>
+      <tr><td style="color:#666">เลขบัตร ปชช.</td><td>{national_id_full}</td></tr>
       <tr><td style="color:#666">เบอร์โทร</td><td>{customer_phone}</td></tr>
       <tr><td style="color:#666">ที่อยู่ (บัตร)</td><td>{customer_address_id_card}</td></tr>
       <tr><td style="color:#666">ที่อยู่ปัจจุบัน</td><td>{customer_address_current}</td></tr>
@@ -1178,7 +1265,7 @@ ${(() => {
     </table>
   </div>
 
-  <div class="page-break"></div>
+  <!-- PAGE_BREAK -->
 
   <h3 style="margin:0 0 8px;border-bottom:1px solid #eee;padding-bottom:4px">ตารางผ่อนชำระ</h3>
   {payment_schedule_table}
@@ -1187,12 +1274,12 @@ ${(() => {
     <h3 style="margin:0 0 8px;border-bottom:1px solid #eee;padding-bottom:4px">ลงนาม</h3>
     <div style="display:flex;justify-content:space-around;margin-top:20px">
       <div style="text-align:center">
-        <p style="margin:0;font-size:13px">ลงชื่อ {customer_signature} ผู้เช่าซื้อ</p>
-        <p style="margin:4px 0 0;font-size:13px">({customer_name})</p>
-      </div>
-      <div style="text-align:center">
         <p style="margin:0;font-size:13px">ลงชื่อ {staff_signature} ผู้ให้เช่าซื้อ</p>
         <p style="margin:4px 0 0;font-size:13px">({salesperson_name})</p>
+      </div>
+      <div style="text-align:center">
+        <p style="margin:0;font-size:13px">ลงชื่อ {customer_signature} ผู้เช่าซื้อ</p>
+        <p style="margin:4px 0 0;font-size:13px">({customer_name})</p>
       </div>
     </div>
     <div style="display:flex;justify-content:space-around;margin-top:30px">
@@ -1205,6 +1292,14 @@ ${(() => {
         <p style="margin:4px 0 0;font-size:13px">({witness2_name})</p>
       </div>
     </div>
+  </div>
+
+  <!-- PAGE_BREAK -->
+
+  <h3 style="margin:0 0 8px;border-bottom:1px solid #eee;padding-bottom:4px">รูปถ่ายโทรศัพท์</h3>
+  {device_photos_grid}
+  <div style="margin-top:20px">
+    <p style="font-size:13px">ชื่อ ........................................................... ผู้เช่าซื้อ วันที่ .............. เดือน .............................. พ.ศ ....................</p>
   </div>
 </div>`;
     }
@@ -1299,10 +1394,39 @@ ${(() => {
     try {
       const page = await browser.newPage();
       await page.setContent(html, { waitUntil: 'networkidle0', timeout: 15000 });
+
+      // Embed TH Sarabun PSK fonts as base64 so Puppeteer can render them
+      // (relative /fonts/ URLs don't resolve in setContent context)
+      let fontCss = '';
+      try {
+        const fontsDir = path.join(__dirname, '..', '..', '..', '..', 'public', 'fonts');
+        const regularPath = path.join(fontsDir, 'THSarabunPSK-Regular.ttf');
+        const boldPath = path.join(fontsDir, 'THSarabunPSK-Bold.ttf');
+        if (fs.existsSync(regularPath)) {
+          const regularB64 = fs.readFileSync(regularPath).toString('base64');
+          fontCss += `@font-face { font-family: 'TH Sarabun PSK'; src: url(data:font/truetype;base64,${regularB64}) format('truetype'); font-weight: 400; font-style: normal; }`;
+        }
+        if (fs.existsSync(boldPath)) {
+          const boldB64 = fs.readFileSync(boldPath).toString('base64');
+          fontCss += `@font-face { font-family: 'TH Sarabun PSK'; src: url(data:font/truetype;base64,${boldB64}) format('truetype'); font-weight: 700; font-style: normal; }`;
+        }
+      } catch (err) {
+        this.logger.warn('Could not embed TH Sarabun PSK fonts', err instanceof Error ? err.message : err);
+      }
+
+      // Override @page CSS margins (Puppeteer margins take over) and hide CSS fixed footer
+      // so Puppeteer's displayHeaderFooter handles page numbering without double-footer
+      await page.addStyleTag({
+        content: `${fontCss} @page { margin: 0 !important; } .page-footer-fixed { display: none !important; }`,
+      });
+
       const pdf = await page.pdf({
         format: 'A4',
         printBackground: true,
-        margin: { top: '10mm', right: '10mm', bottom: '10mm', left: '10mm' },
+        margin: { top: '25.4mm', right: '19.1mm', bottom: '20mm', left: '19.1mm' },
+        displayHeaderFooter: true,
+        headerTemplate: '<span></span>',
+        footerTemplate: `<div style="width:100%;font-size:9px;font-family:sans-serif;color:#9ca3af;display:flex;justify-content:space-between;padding:0 19.1mm;"><span>BESTCHOICEPHONE Co., Ltd.</span><span>หน้า <span class="pageNumber"></span>/<span class="totalPages"></span></span></div>`,
       });
       return Buffer.from(pdf);
     } finally {

@@ -9,7 +9,7 @@ export class PurchaseOrdersService {
   constructor(private prisma: PrismaService) {}
 
   async findAll(filters: { status?: string; supplierId?: string; page?: number; limit?: number }) {
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { deletedAt: null };
     if (filters.status) where.status = filters.status;
     if (filters.supplierId) where.supplierId = filters.supplierId;
 

@@ -440,8 +440,9 @@ export class SchedulerService {
       let consentsCleared = 0;
       try {
         const oneYearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
-        const result = await this.prisma.pDPAConsent.deleteMany({
-          where: { status: 'REVOKED', revokedAt: { lt: oneYearAgo } },
+        const result = await this.prisma.pDPAConsent.updateMany({
+          where: { status: 'REVOKED', revokedAt: { lt: oneYearAgo }, deletedAt: null },
+          data: { deletedAt: now },
         });
         consentsCleared = result.count;
       } catch {

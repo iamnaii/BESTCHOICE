@@ -56,9 +56,9 @@ export class ContractPaymentService {
     );
     const totalPayoff = Math.max(0, remainingPrincipal + (remainingInterest - discount) - partiallyPaidAmount);
 
-    // Add any unpaid late fees
+    // Add any unpaid late fees (exclude waived)
     const unpaidLateFees = contract.payments
-      .filter((p) => p.status !== 'PAID')
+      .filter((p) => p.status !== 'PAID' && !p.lateFeeWaived)
       .reduce((sum, p) => sum + Number(p.lateFee), 0);
 
     return {
@@ -92,7 +92,8 @@ export class ContractPaymentService {
 
       let remainingPayoff = quote.totalPayoff;
       for (const payment of unpaidPayments) {
-        const owed = Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid);
+        const lateFee = payment.lateFeeWaived ? 0 : Number(payment.lateFee);
+        const owed = Number(payment.amountDue) + lateFee - Number(payment.amountPaid);
         const payAmount = Math.min(remainingPayoff, owed);
         remainingPayoff -= payAmount;
 

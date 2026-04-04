@@ -83,7 +83,7 @@ export class StockAdjustmentsService {
     page?: number;
     limit?: number;
   }) {
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { deletedAt: null };
     if (filters.branchId) where.branchId = filters.branchId;
     if (filters.reason) where.reason = filters.reason;
     if (filters.productId) where.productId = filters.productId;

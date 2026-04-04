@@ -24,7 +24,7 @@ export class SalesService {
     userRole?: string;
   }) {
     const { saleType, branchId, search, startDate, endDate, paymentMethod, salespersonId, contractStatus, page = 1, limit = 50, userRole } = filters;
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { deletedAt: null };
 
     if (saleType) where.saleType = saleType;
     if (branchId) where.branchId = branchId;

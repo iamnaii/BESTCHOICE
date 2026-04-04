@@ -34,7 +34,7 @@ export class CreditCheckService {
     branchId?: string;
     checkedById?: string;
   }) {
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { deletedAt: null };
     if (filters.status) where.status = filters.status;
     if (filters.search) {
       where.customer = { name: { contains: filters.search, mode: 'insensitive' } };

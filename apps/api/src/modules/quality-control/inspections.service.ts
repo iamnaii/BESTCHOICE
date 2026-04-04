@@ -77,7 +77,7 @@ export class InspectionsService {
   // === Inspections ===
 
   async findAllInspections(filters: { isCompleted?: string; productId?: string }) {
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { deletedAt: null };
     if (filters.isCompleted === 'true') where.isCompleted = true;
     if (filters.isCompleted === 'false') where.isCompleted = false;
     if (filters.productId) where.productId = filters.productId;

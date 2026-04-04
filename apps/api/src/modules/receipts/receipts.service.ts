@@ -152,7 +152,7 @@ export class ReceiptsService {
   }) {
     const page = filters.page || 1;
     const limit = Math.min(filters.limit || 20, 200);
-    const where: Prisma.ReceiptWhereInput = {};
+    const where: Prisma.ReceiptWhereInput = { deletedAt: null };
 
     if (filters.search) {
       where.OR = [

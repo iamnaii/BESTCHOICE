@@ -227,8 +227,15 @@ function App() {
             }
           />
 
-          {/* Detail pages still need their own routes */}
-          <Route path="/suppliers/:id" element={<SupplierDetailPage />} />
+          {/* Detail pages with role-based access */}
+          <Route
+            path="/suppliers/:id"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}>
+                <SupplierDetailPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/products/create"
             element={
@@ -237,7 +244,14 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route path="/products/:id" element={<ProductDetailPage />} />
+          <Route
+            path="/products/:id"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'SALES']}>
+                <ProductDetailPage />
+              </ProtectedRoute>
+            }
+          />
 
           <Route path="/stickers" element={<StickerPrintPage />} />
           <Route path="/pos" element={<POSPage />} />

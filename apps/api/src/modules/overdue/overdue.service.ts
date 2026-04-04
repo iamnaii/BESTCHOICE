@@ -128,8 +128,8 @@ export class OverdueService {
    * Get contract detail with full call log timeline
    */
   async getContractTimeline(contractId: string) {
-    const contract = await this.prisma.contract.findUnique({
-      where: { id: contractId },
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: contractId, deletedAt: null },
       include: {
         customer: true,
         product: { select: { id: true, name: true, brand: true, model: true, imeiSerial: true } },
@@ -151,8 +151,8 @@ export class OverdueService {
    * Create a call log entry with audit trail
    */
   async createCallLog(dto: CreateCallLogDto, callerId: string) {
-    const contract = await this.prisma.contract.findUnique({
-      where: { id: dto.contractId },
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: dto.contractId, deletedAt: null },
     });
     if (!contract) throw new NotFoundException('ไม่พบสัญญา');
 

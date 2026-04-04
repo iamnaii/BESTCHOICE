@@ -109,7 +109,8 @@ export class RepossessionsService {
       let totalPaid = 0;
       for (const p of contract.payments) {
         if (['PENDING', 'OVERDUE', 'PARTIALLY_PAID'].includes(p.status)) {
-          outstandingBalance += Number(p.amountDue) - Number(p.amountPaid) + Number(p.lateFee);
+          const lateFee = p.lateFeeWaived ? 0 : Number(p.lateFee);
+          outstandingBalance += Number(p.amountDue) - Number(p.amountPaid) + lateFee;
         }
         totalPaid += Number(p.amountPaid);
       }

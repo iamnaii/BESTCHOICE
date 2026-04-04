@@ -7,7 +7,7 @@ export class StockCountService {
   constructor(private prisma: PrismaService) {}
 
   async findAll(filters: { branchId?: string; status?: string; page?: number; limit?: number }) {
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { deletedAt: null };
     if (filters.branchId) where.branchId = filters.branchId;
     if (filters.status) where.status = filters.status;
 

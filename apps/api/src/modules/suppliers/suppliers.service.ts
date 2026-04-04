@@ -8,7 +8,7 @@ export class SuppliersService {
   constructor(private prisma: PrismaService) {}
 
   async findAll(search?: string, isActive?: string, page = 1, limit = 50) {
-    const andConditions: Record<string, unknown>[] = [];
+    const andConditions: Record<string, unknown>[] = [{ deletedAt: null }];
 
     if (isActive === 'true') {
       andConditions.push({ isActive: true });

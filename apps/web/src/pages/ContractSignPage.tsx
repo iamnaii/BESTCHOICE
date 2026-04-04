@@ -83,9 +83,9 @@ export default function ContractSignPage() {
             </button>
           }
         />
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mt-4">
-          <div className="text-sm font-medium text-amber-800">ไม่สามารถลงนามได้</div>
-          <div className="text-xs text-amber-600 mt-1">สัญญาไม่อยู่ในสถานะร่าง (สถานะปัจจุบัน: {contract.status})</div>
+        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4 mt-4">
+          <div className="text-sm font-semibold text-amber-800 dark:text-amber-300">ไม่สามารถลงนามได้</div>
+          <div className="text-xs text-amber-600 dark:text-amber-400 mt-1">สัญญาไม่อยู่ในสถานะร่าง (สถานะปัจจุบัน: {contract.status})</div>
         </div>
       </div>
     );

@@ -59,29 +59,29 @@ export default function StickerPrintPage() {
       <div className="print:hidden">
         <PageHeader title="พิมพ์สติกเกอร์" subtitle="สร้างสติกเกอร์ QR code สำหรับสินค้า" />
 
-        <div className="bg-card rounded-lg border p-6 mb-6">
-          <div className="grid grid-cols-3 gap-5 lg:gap-7.5">
+        <div className="bg-card rounded-xl border border-border/60 shadow-card p-6 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 lg:gap-7.5">
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Product ID</label>
+              <label className="block text-2sm font-medium text-foreground mb-1.5">Product ID</label>
               <div className="flex gap-2">
                 <input
                   type="text"
                   value={productId}
                   onChange={(e) => setProductId(e.target.value)}
                   placeholder="ระบุ ID สินค้า"
-                  className="flex-1 px-3 py-2 border border-input rounded-lg text-sm outline-none"
+                  className="flex-1 px-3 py-2 border border-input rounded-lg text-sm outline-none focus:ring-2 focus:ring-ring/30 focus:border-ring transition-colors"
                 />
-                <button onClick={() => productId && previewMutation.mutate()} disabled={!productId || previewMutation.isPending} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm disabled:opacity-50">
+                <button onClick={() => productId && previewMutation.mutate()} disabled={!productId || previewMutation.isPending} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-primary/90 transition-colors">
                   โหลด
                 </button>
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Template</label>
+              <label className="block text-2sm font-medium text-foreground mb-1.5">Template</label>
               <select
                 value={selectedTemplate}
                 onChange={(e) => setSelectedTemplate(e.target.value)}
-                className="w-full px-3 py-2 border border-input rounded-lg text-sm outline-none"
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm outline-none bg-background focus:ring-2 focus:ring-ring/30 focus:border-ring transition-colors"
               >
                 <option value="">เลือก Template</option>
                 {templates.filter((t) => t.isActive).map((t) => (
@@ -93,7 +93,7 @@ export default function StickerPrintPage() {
               <button
                 onClick={handlePrint}
                 disabled={!previewData}
-                className="px-6 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+                className="px-6 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition-colors"
               >
                 พิมพ์สติกเกอร์
               </button>

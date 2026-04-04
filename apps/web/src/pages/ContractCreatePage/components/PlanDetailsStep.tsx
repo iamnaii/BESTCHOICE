@@ -57,7 +57,7 @@ export function PlanDetailsStep({
 }: PlanDetailsStepProps) {
   return (
     <div className="max-w-xl">
-      <div className="rounded-lg border p-6 space-y-4">
+      <div className="rounded-xl border border-border/60 p-6 space-y-4">
         {/* Interest Config Badge */}
         {interestConfig && (
           <div className="bg-primary/5 border border-primary/30 rounded-lg p-3 flex items-center gap-2">

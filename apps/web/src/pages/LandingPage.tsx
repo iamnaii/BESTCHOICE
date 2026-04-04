@@ -90,17 +90,17 @@ export default function LandingPage() {
 
                 {/* Stats */}
                 <div className="mt-12 grid grid-cols-3 gap-6">
-                  <div>
+                  <div className="bg-white/[0.06] backdrop-blur-sm border border-white/[0.08] rounded-xl p-4">
                     <div className="text-2xl lg:text-3xl font-bold text-white">500+</div>
-                    <div className="text-sm text-gray-400 mt-1">สินค้าพร้อมขาย</div>
+                    <div className="text-sm text-white/50 mt-1">สินค้าพร้อมขาย</div>
                   </div>
-                  <div>
+                  <div className="bg-white/[0.06] backdrop-blur-sm border border-white/[0.08] rounded-xl p-4">
                     <div className="text-2xl lg:text-3xl font-bold text-white">1,000+</div>
-                    <div className="text-sm text-gray-400 mt-1">ลูกค้าที่ไว้ใจ</div>
+                    <div className="text-sm text-white/50 mt-1">ลูกค้าที่ไว้ใจ</div>
                   </div>
-                  <div>
+                  <div className="bg-white/[0.06] backdrop-blur-sm border border-white/[0.08] rounded-xl p-4">
                     <div className="text-2xl lg:text-3xl font-bold text-white">5+</div>
-                    <div className="text-sm text-gray-400 mt-1">สาขาทั่วประเทศ</div>
+                    <div className="text-sm text-white/50 mt-1">สาขาทั่วประเทศ</div>
                   </div>
                 </div>
               </div>
@@ -248,7 +248,7 @@ export default function LandingPage() {
             ].map((service, i) => (
               <div
                 key={i}
-                className="text-center p-6 rounded-2xl bg-muted hover:bg-card hover:shadow-xl border border-transparent hover:border-border transition-all duration-300 group"
+                className="text-center p-6 rounded-2xl bg-card border border-border/60 hover:shadow-card-hover hover:-translate-y-1 transition-all duration-300 group"
               >
                 <div className="w-14 h-14 mx-auto rounded-xl bg-primary/10 text-primary flex items-center justify-center group-hover:bg-primary group-hover:text-primary-foreground transition-colors duration-300">
                   {service.icon}

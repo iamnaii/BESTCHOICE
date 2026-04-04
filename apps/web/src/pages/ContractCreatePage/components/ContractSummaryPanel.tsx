@@ -26,16 +26,16 @@ export function ContractSummaryPanel({
   return (
     <details className="mt-4">
       <summary className="cursor-pointer text-sm font-semibold text-foreground hover:text-primary">สรุปสัญญาก่อนยืนยัน</summary>
-      <div className="mt-3 rounded-lg border p-4 space-y-3">
-        <div className="bg-muted rounded-lg p-3 grid grid-cols-2 gap-2 text-sm">
-          <div><span className="text-xs text-muted-foreground">สินค้า</span><div className="font-medium">{selectedProduct.brand} {selectedProduct.model}</div></div>
-          <div><span className="text-xs text-muted-foreground">ลูกค้า</span><div className="font-medium">{selectedCustomer.name}</div></div>
-          <div><span className="text-xs text-muted-foreground">ราคาขาย</span><div className="font-medium">{sellingPrice.toLocaleString()} ฿</div></div>
-          <div><span className="text-xs text-muted-foreground">เงินดาวน์</span><div className="font-medium">{downPayment.toLocaleString()} ฿</div></div>
-          <div><span className="text-xs text-muted-foreground">จำนวนงวด</span><div className="font-medium">{totalMonths} เดือน</div></div>
-          <div><span className="text-xs text-muted-foreground">ค่างวด/เดือน</span><div className="font-bold text-primary">{monthlyPayment.toLocaleString()} ฿</div></div>
-          <div><span className="text-xs text-muted-foreground">ดอกเบี้ย</span><div className="font-medium">{(interestRate * 100).toFixed(1)}%{interestConfig ? ` (${interestConfig.name})` : ''}</div></div>
-          <div><span className="text-xs text-muted-foreground">เอกสารแนบ</span><div className="font-medium">{pendingDocs.length} ไฟล์</div></div>
+      <div className="mt-3 rounded-xl border border-border/60 p-4 space-y-3">
+        <div className="bg-muted/60 rounded-lg p-3.5 grid grid-cols-2 gap-3 text-sm">
+          <div><span className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">สินค้า</span><div className="font-medium mt-0.5">{selectedProduct.brand} {selectedProduct.model}</div></div>
+          <div><span className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">ลูกค้า</span><div className="font-medium mt-0.5">{selectedCustomer.name}</div></div>
+          <div><span className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">ราคาขาย</span><div className="font-medium mt-0.5">{sellingPrice.toLocaleString()} ฿</div></div>
+          <div><span className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">เงินดาวน์</span><div className="font-medium mt-0.5">{downPayment.toLocaleString()} ฿</div></div>
+          <div><span className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">จำนวนงวด</span><div className="font-medium mt-0.5">{totalMonths} เดือน</div></div>
+          <div><span className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">ค่างวด/เดือน</span><div className="font-bold text-primary mt-0.5">{monthlyPayment.toLocaleString()} ฿</div></div>
+          <div><span className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">ดอกเบี้ย</span><div className="font-medium mt-0.5">{(interestRate * 100).toFixed(1)}%{interestConfig ? ` (${interestConfig.name})` : ''}</div></div>
+          <div><span className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">เอกสารแนบ</span><div className="font-medium mt-0.5">{pendingDocs.length} ไฟล์</div></div>
         </div>
       </div>
     </details>

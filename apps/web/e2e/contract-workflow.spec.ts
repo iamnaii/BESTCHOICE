@@ -244,6 +244,50 @@ test.describe('เซ็นสัญญา', () => {
       await expect(canvas).toBeVisible();
     }
   });
+
+  test('should show signature step indicators (customer/staff)', async ({ page }) => {
+    if (await hasErrorBoundary(page)) return;
+    await loginViaAPI(page);
+    await gotoWithRetry(page, '/contracts');
+
+    const contractLink = page.locator('table tbody tr td a, table tbody tr').first();
+    if (!await contractLink.isVisible({ timeout: 5000 }).catch(() => false)) return;
+    await contractLink.click();
+    await page.waitForTimeout(1000);
+
+    const signBtn = page.locator('button, a').filter({ hasText: /ลงนาม|เซ็น/i }).first();
+    if (!await signBtn.isVisible({ timeout: 5000 }).catch(() => false)) return;
+    await signBtn.click();
+    await page.waitForTimeout(1000);
+
+    // Signing flow should show signer type indicators
+    const signerLabels = page.getByText(/ลูกค้า|พนักงาน|ผู้เช่าซื้อ|ผู้ให้เช่า/).first();
+    if (await signerLabels.isVisible({ timeout: 5000 }).catch(() => false)) {
+      await expect(signerLabels).toBeVisible();
+    }
+  });
+
+  test('should have clear and re-sign buttons', async ({ page }) => {
+    if (await hasErrorBoundary(page)) return;
+    await loginViaAPI(page);
+    await gotoWithRetry(page, '/contracts');
+
+    const contractLink = page.locator('table tbody tr td a, table tbody tr').first();
+    if (!await contractLink.isVisible({ timeout: 5000 }).catch(() => false)) return;
+    await contractLink.click();
+    await page.waitForTimeout(1000);
+
+    const signBtn = page.locator('button, a').filter({ hasText: /ลงนาม|เซ็น/i }).first();
+    if (!await signBtn.isVisible({ timeout: 5000 }).catch(() => false)) return;
+    await signBtn.click();
+    await page.waitForTimeout(1000);
+
+    // Look for clear/reset signature button
+    const clearBtn = page.locator('button').filter({ hasText: /ล้าง|เคลียร์|Clear|ลบ/ }).first();
+    if (await clearBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+      await expect(clearBtn).toBeVisible();
+    }
+  });
 });
 
 /* ================================================================

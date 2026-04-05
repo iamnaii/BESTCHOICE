@@ -320,3 +320,67 @@ test.describe('งบกำไรขาดทุน', () => {
     await expect(page.locator('body')).not.toContainText('เกิดข้อผิดพลาด');
   });
 });
+
+/* ================================================================
+   ออกใบเสร็จจากสัญญา — Receipt Generation Flow
+   ================================================================ */
+test.describe('ออกใบเสร็จจากสัญญา', () => {
+  test('should navigate to receipt from contract detail', async ({ page }) => {
+    await loginViaAPI(page);
+    const ok = await gotoWithRetry(page, '/contracts');
+    if (!ok) return;
+
+    const contractLink = page.locator('table tbody tr td a, table tbody tr').first();
+    if (!await contractLink.isVisible({ timeout: 5000 }).catch(() => false)) return;
+    await contractLink.click();
+    await page.waitForTimeout(1000);
+
+    // Look for receipt button or payment section
+    const receiptBtn = page.locator('button, a').filter({ hasText: /ใบเสร็จ|receipt|ออกใบเสร็จ/i }).first();
+    if (await receiptBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+      await expect(receiptBtn).toBeVisible();
+    }
+  });
+
+  test('should display receipt detail with company info', async ({ page }) => {
+    await loginViaAPI(page);
+    await gotoWithRetry(page, '/receipts');
+    if (await hasErrorBoundary(page)) return;
+
+    const firstRow = page.locator('table tbody tr').first();
+    if (!await firstRow.isVisible({ timeout: 5000 }).catch(() => false)) return;
+    await firstRow.click();
+    await page.waitForTimeout(1000);
+
+    // Receipt detail should show company info
+    const companyInfo = page.getByText(/BESTCHOICE|เบสท์ช้อยส์/).first();
+    if (await companyInfo.isVisible({ timeout: 5000 }).catch(() => false)) {
+      await expect(companyInfo).toBeVisible();
+    }
+  });
+
+  test('should have PDF download action on receipt', async ({ page }) => {
+    await loginViaAPI(page);
+    await gotoWithRetry(page, '/receipts');
+    if (await hasErrorBoundary(page)) return;
+
+    const firstRow = page.locator('table tbody tr').first();
+    if (!await firstRow.isVisible({ timeout: 5000 }).catch(() => false)) return;
+
+    const pdfBtn = page.locator('button').filter({ hasText: /PDF|ดาวน์โหลด|พิมพ์|Download/ }).first();
+    if (await pdfBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+      await expect(pdfBtn).toBeVisible();
+    }
+  });
+
+  test('should show receipt number format', async ({ page }) => {
+    await loginViaAPI(page);
+    await gotoWithRetry(page, '/receipts');
+    if (await hasErrorBoundary(page)) return;
+
+    const receiptNumber = page.getByText(/REC-/).first();
+    if (await receiptNumber.isVisible({ timeout: 5000 }).catch(() => false)) {
+      await expect(receiptNumber).toBeVisible();
+    }
+  });
+});

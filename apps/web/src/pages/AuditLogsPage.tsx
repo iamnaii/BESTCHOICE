@@ -121,25 +121,29 @@ export default function AuditLogsPage() {
           logs.length > 0 && (
             <button
               onClick={async () => {
-                await exportToExcel({
-                  columns: [
-                    { header: 'วันที่', key: 'createdAt', width: 20 },
-                    { header: 'ผู้ใช้', key: 'user', width: 20 },
-                    { header: 'Action', key: 'action', width: 15 },
-                    { header: 'Entity', key: 'entity', width: 15 },
-                    { header: 'รายละเอียด', key: 'detail', width: 30 },
-                  ],
-                  data: logs.map((log) => ({
-                    createdAt: formatDateTimeSeconds(log.createdAt),
-                    user: log.user?.name || '-',
-                    action: actionLabels[log.action] || log.action,
-                    entity: entityLabels[log.entity] || log.entity,
-                    detail: log.entityId ? `${log.entity}/${log.entityId.substring(0, 8)}` : '-',
-                  })),
-                  sheetName: 'Audit Logs',
-                  filename: `audit_logs_${new Date().toISOString().slice(0, 10)}.xlsx`,
-                });
-                toast.success('ส่งออก Excel สำเร็จ');
+                try {
+                  await exportToExcel({
+                    columns: [
+                      { header: 'วันที่', key: 'createdAt', width: 20 },
+                      { header: 'ผู้ใช้', key: 'user', width: 20 },
+                      { header: 'Action', key: 'action', width: 15 },
+                      { header: 'Entity', key: 'entity', width: 15 },
+                      { header: 'รายละเอียด', key: 'detail', width: 30 },
+                    ],
+                    data: logs.map((log) => ({
+                      createdAt: formatDateTimeSeconds(log.createdAt),
+                      user: log.user?.name || '-',
+                      action: actionLabels[log.action] || log.action,
+                      entity: entityLabels[log.entity] || log.entity,
+                      detail: log.entityId ? `${log.entity}/${log.entityId.substring(0, 8)}` : '-',
+                    })),
+                    sheetName: 'Audit Logs',
+                    filename: `audit_logs_${new Date().toISOString().slice(0, 10)}.xlsx`,
+                  });
+                  toast.success('ส่งออก Excel สำเร็จ');
+                } catch {
+                  toast.error('ไม่สามารถส่งออก Excel ได้');
+                }
               }}
               className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-input rounded-lg hover:bg-muted transition-colors"
             >

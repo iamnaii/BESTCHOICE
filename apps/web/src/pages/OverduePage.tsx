@@ -328,36 +328,40 @@ export default function OverduePage() {
         {overduePayments.length > 0 && (
           <button
             onClick={async () => {
-              await exportToExcel({
-                columns: [
-                  { header: 'เลขสัญญา', key: 'contractNumber', width: 15 },
-                  { header: 'ลูกค้า', key: 'customer', width: 20 },
-                  { header: 'เบอร์โทร', key: 'phone', width: 15 },
-                  { header: 'งวดที่', key: 'installmentNo', width: 10 },
-                  { header: 'ยอดค้าง', key: 'outstanding', width: 15 },
-                  { header: 'ค่าปรับ', key: 'lateFee', width: 15 },
-                  { header: 'วันครบกำหนด', key: 'dueDate', width: 15 },
-                  { header: 'จำนวนวันเลย', key: 'daysLate', width: 15 },
-                ],
-                data: overduePayments.map((p) => {
-                  const due = new Date(p.dueDate);
-                  const now = new Date();
-                  const daysLate = Math.max(0, Math.floor((now.getTime() - due.getTime()) / (1000 * 60 * 60 * 24)));
-                  return {
-                    contractNumber: p.contract.contractNumber,
-                    customer: p.contract.customer.name,
-                    phone: p.contract.customer.phone,
-                    installmentNo: p.installmentNo,
-                    outstanding: (parseFloat(p.amountDue) - parseFloat(p.amountPaid)).toLocaleString(),
-                    lateFee: parseFloat(p.lateFee).toLocaleString(),
-                    dueDate: formatDateShort(due),
-                    daysLate,
-                  };
-                }),
-                sheetName: 'ค้างชำระ',
-                filename: `overdue_${new Date().toISOString().slice(0, 10)}.xlsx`,
-              });
-              toast.success('ส่งออก Excel สำเร็จ');
+              try {
+                await exportToExcel({
+                  columns: [
+                    { header: 'เลขสัญญา', key: 'contractNumber', width: 15 },
+                    { header: 'ลูกค้า', key: 'customer', width: 20 },
+                    { header: 'เบอร์โทร', key: 'phone', width: 15 },
+                    { header: 'งวดที่', key: 'installmentNo', width: 10 },
+                    { header: 'ยอดค้าง', key: 'outstanding', width: 15 },
+                    { header: 'ค่าปรับ', key: 'lateFee', width: 15 },
+                    { header: 'วันครบกำหนด', key: 'dueDate', width: 15 },
+                    { header: 'จำนวนวันเลย', key: 'daysLate', width: 15 },
+                  ],
+                  data: overduePayments.map((p) => {
+                    const due = new Date(p.dueDate);
+                    const now = new Date();
+                    const daysLate = Math.max(0, Math.floor((now.getTime() - due.getTime()) / (1000 * 60 * 60 * 24)));
+                    return {
+                      contractNumber: p.contract.contractNumber,
+                      customer: p.contract.customer.name,
+                      phone: p.contract.customer.phone,
+                      installmentNo: p.installmentNo,
+                      outstanding: (parseFloat(p.amountDue) - parseFloat(p.amountPaid)).toLocaleString(),
+                      lateFee: parseFloat(p.lateFee).toLocaleString(),
+                      dueDate: formatDateShort(due),
+                      daysLate,
+                    };
+                  }),
+                  sheetName: 'ค้างชำระ',
+                  filename: `overdue_${new Date().toISOString().slice(0, 10)}.xlsx`,
+                });
+                toast.success('ส่งออก Excel สำเร็จ');
+              } catch {
+                toast.error('ไม่สามารถส่งออก Excel ได้');
+              }
             }}
             className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-input rounded-lg hover:bg-muted transition-colors"
           >

@@ -43,27 +43,31 @@ export default function PurchaseOrdersPage() {
             {data.pos.length > 0 && (
               <button
                 onClick={async () => {
-                  await exportToExcel({
-                    columns: [
-                      { header: 'เลข PO', key: 'poNumber', width: 15 },
-                      { header: 'ผู้ขาย', key: 'supplier', width: 20 },
-                      { header: 'วันที่สั่ง', key: 'orderDate', width: 15 },
-                      { header: 'ยอดรวม', key: 'totalAmount', width: 15 },
-                      { header: 'สถานะ', key: 'status', width: 15 },
-                      { header: 'สถานะชำระเงิน', key: 'paymentStatus', width: 15 },
-                    ],
-                    data: data.pos.map((po) => ({
-                      poNumber: po.poNumber,
-                      supplier: po.supplier.name,
-                      orderDate: formatDateShort(po.orderDate),
-                      totalAmount: Number(po.netAmount).toLocaleString(),
-                      status: statusLabels[po.status] || po.status,
-                      paymentStatus: paymentStatusLabels[po.paymentStatus] || po.paymentStatus,
-                    })),
-                    sheetName: 'ใบสั่งซื้อ',
-                    filename: `purchase_orders_${new Date().toISOString().slice(0, 10)}.xlsx`,
-                  });
-                  toast.success('ส่งออก Excel สำเร็จ');
+                  try {
+                    await exportToExcel({
+                      columns: [
+                        { header: 'เลข PO', key: 'poNumber', width: 15 },
+                        { header: 'ผู้ขาย', key: 'supplier', width: 20 },
+                        { header: 'วันที่สั่ง', key: 'orderDate', width: 15 },
+                        { header: 'ยอดรวม', key: 'totalAmount', width: 15 },
+                        { header: 'สถานะ', key: 'status', width: 15 },
+                        { header: 'สถานะชำระเงิน', key: 'paymentStatus', width: 15 },
+                      ],
+                      data: data.pos.map((po) => ({
+                        poNumber: po.poNumber,
+                        supplier: po.supplier.name,
+                        orderDate: formatDateShort(po.orderDate),
+                        totalAmount: Number(po.netAmount).toLocaleString(),
+                        status: statusLabels[po.status] || po.status,
+                        paymentStatus: paymentStatusLabels[po.paymentStatus] || po.paymentStatus,
+                      })),
+                      sheetName: 'ใบสั่งซื้อ',
+                      filename: `purchase_orders_${new Date().toISOString().slice(0, 10)}.xlsx`,
+                    });
+                    toast.success('ส่งออก Excel สำเร็จ');
+                  } catch {
+                    toast.error('ไม่สามารถส่งออก Excel ได้');
+                  }
                 }}
                 className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-input rounded-lg hover:bg-muted transition-colors"
               >

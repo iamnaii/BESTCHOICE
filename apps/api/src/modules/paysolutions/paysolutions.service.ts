@@ -104,6 +104,14 @@ export class PaySolutionsService {
       if (paymentRecord.status === 'PAID') {
         throw new BadRequestException(`งวดที่ ${installmentNo} ชำระเรียบร้อยแล้ว`);
       }
+
+      // Validate amount matches actual outstanding for this installment
+      const expectedAmount = Number(paymentRecord.amountDue) + Number(paymentRecord.lateFee) - Number(paymentRecord.amountPaid);
+      if (Math.abs(amount - expectedAmount) > 0.01) {
+        throw new BadRequestException(
+          `ยอดชำระไม่ตรง: ส่งมา ${amount.toLocaleString()} บาท แต่ยอดค้างจริง ${expectedAmount.toLocaleString()} บาท`,
+        );
+      }
     }
 
     // เรียก Pay Solutions API v2 (ตาม Web API Guideline v1.2.2)

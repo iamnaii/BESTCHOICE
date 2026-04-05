@@ -664,7 +664,7 @@ export class LineOaService {
    * Send a bulk LINE campaign to a target group of customers.
    * Fire-and-forget: validates input, then sends asynchronously.
    */
-  async sendCampaign(dto: CampaignSendDto): Promise<{ sent: number; failed: number; skipped: number }> {
+  async sendCampaign(dto: CampaignSendDto): Promise<{ queued: number; sent: number; failed: number }> {
     // Validate: text messages require message body, flex requires template
     if (dto.messageType === CampaignMessageType.TEXT && !dto.message) {
       throw new BadRequestException('กรุณาระบุข้อความสำหรับ text message');
@@ -676,13 +676,13 @@ export class LineOaService {
     // Query target customers with lineId
     const customers = await this.getCampaignTargetCustomers(dto.targetGroup);
     if (customers.length === 0) {
-      return { sent: 0, failed: 0, skipped: 0 };
+      return { queued: 0, sent: 0, failed: 0 };
     }
 
     // Build message payload
     const buildMessage = (customerName: string): LineMessagePayload[] | FlexMessagePayload => {
       if (dto.messageType === CampaignMessageType.TEXT) {
-        return [{ type: 'text', text: dto.message! } as unknown as LineMessagePayload];
+        return [{ type: 'text', text: dto.message! }] as LineMessagePayload[];
       }
 
       // Flex message
@@ -712,7 +712,7 @@ export class LineOaService {
     };
 
     // Send in batches of 50 with 1s delay — fire-and-forget
-    const result = { sent: 0, failed: 0, skipped: 0 };
+    const result = { sent: 0, failed: 0 };
     const batchSize = 50;
 
     // Execute sending asynchronously (don't block the request)
@@ -720,8 +720,8 @@ export class LineOaService {
       this.logger.error(`[Campaign] Async send failed: ${err}`);
     });
 
-    // Return immediately with estimated counts
-    return { sent: 0, failed: 0, skipped: customers.length };
+    // Return immediately — sending happens asynchronously
+    return { queued: customers.length, sent: 0, failed: 0 };
   }
 
   /**
@@ -732,7 +732,7 @@ export class LineOaService {
     buildMessage: (customerName: string) => LineMessagePayload[] | FlexMessagePayload,
     dto: CampaignSendDto,
     batchSize: number,
-    _result: { sent: number; failed: number; skipped: number },
+    _result: { sent: number; failed: number },
   ): Promise<void> {
     let totalSent = 0;
     let totalFailed = 0;
@@ -900,6 +900,7 @@ export class LineOaService {
       where: {
         channel: 'LINE',
         subject: { startsWith: 'campaign:' },
+        deletedAt: null,
       },
       orderBy: { sentAt: 'desc' },
       take: 1000,

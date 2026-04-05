@@ -388,25 +388,29 @@ export default function SuppliersPage() {
             {suppliers.length > 0 && (
               <button
                 onClick={async () => {
-                  await exportToExcel({
-                    columns: [
-                      { header: 'ชื่อผู้ขาย', key: 'name', width: 25 },
-                      { header: 'เบอร์โทร', key: 'phone', width: 15 },
-                      { header: 'อีเมล', key: 'lineId', width: 20 },
-                      { header: 'ที่อยู่', key: 'address', width: 30 },
-                      { header: 'สถานะ', key: 'status', width: 12 },
-                    ],
-                    data: suppliers.map((s) => ({
-                      name: s.name,
-                      phone: s.phone,
-                      lineId: s.lineId || '-',
-                      address: s.address || '-',
-                      status: s.isActive ? 'เปิดใช้งาน' : 'ปิดใช้งาน',
-                    })),
-                    sheetName: 'ผู้ขาย',
-                    filename: `suppliers_${new Date().toISOString().slice(0, 10)}.xlsx`,
-                  });
-                  toast.success('ส่งออก Excel สำเร็จ');
+                  try {
+                    await exportToExcel({
+                      columns: [
+                        { header: 'ชื่อผู้ขาย', key: 'name', width: 25 },
+                        { header: 'เบอร์โทร', key: 'phone', width: 15 },
+                        { header: 'อีเมล', key: 'lineId', width: 20 },
+                        { header: 'ที่อยู่', key: 'address', width: 30 },
+                        { header: 'สถานะ', key: 'status', width: 12 },
+                      ],
+                      data: suppliers.map((s) => ({
+                        name: s.name,
+                        phone: s.phone,
+                        lineId: s.lineId || '-',
+                        address: s.address || '-',
+                        status: s.isActive ? 'เปิดใช้งาน' : 'ปิดใช้งาน',
+                      })),
+                      sheetName: 'ผู้ขาย',
+                      filename: `suppliers_${new Date().toISOString().slice(0, 10)}.xlsx`,
+                    });
+                    toast.success('ส่งออก Excel สำเร็จ');
+                  } catch {
+                    toast.error('ไม่สามารถส่งออก Excel ได้');
+                  }
                 }}
                 className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-input rounded-lg hover:bg-muted transition-colors"
               >

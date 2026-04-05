@@ -486,7 +486,7 @@ export class PaymentsService {
   private async checkContractCompletion(contractId: string, tx?: { payment: { count: (...args: unknown[]) => Promise<number> }; contract: { update: (...args: unknown[]) => Promise<unknown> } }) {
     const db = tx || this.prisma;
     const unpaid = await db.payment.count({
-      where: { contractId, status: { not: 'PAID' } },
+      where: { contractId, status: { not: 'PAID' }, deletedAt: null },
     });
 
     if (unpaid === 0) {

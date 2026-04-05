@@ -13,6 +13,9 @@ import { ReorderPointsService } from './reorder-points.service';
 import { BranchReceivingController } from './branch-receiving.controller';
 import { BranchReceivingService } from './branch-receiving.service';
 
+import { InventoryForecastController } from './inventory-forecast.controller';
+import { InventoryForecastService } from './inventory-forecast.service';
+
 @Module({
   imports: [NotificationsModule],
   controllers: [
@@ -20,18 +23,21 @@ import { BranchReceivingService } from './branch-receiving.service';
     StockCountController,
     ReorderPointsController,
     BranchReceivingController,
+    InventoryForecastController,
   ],
   providers: [
     StockAdjustmentsService,
     StockCountService,
     ReorderPointsService,
     BranchReceivingService,
+    InventoryForecastService,
   ],
   exports: [
     StockAdjustmentsService,
     StockCountService,
     ReorderPointsService,
     BranchReceivingService,
+    InventoryForecastService,
   ],
 })
 export class InventoryModule {}

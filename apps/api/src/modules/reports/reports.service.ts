@@ -429,4 +429,138 @@ export class ReportsService {
       createdAt: c.createdAt,
     }));
   }
+
+  /**
+   * Entity Profit Report: BESTCHOICE SHOP vs BESTCHOICE FINANCE
+   * Uses InterCompanyTransaction data to calculate profit per entity.
+   */
+  async getEntityProfitReport(startDate: string, endDate: string, branchId?: string, entity?: string) {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+
+    const where: Record<string, unknown> = {
+      deletedAt: null,
+      createdAt: { gte: start, lte: end },
+    };
+    if (branchId) where.branchId = branchId;
+
+    const transactions = await this.prisma.interCompanyTransaction.findMany({
+      where,
+      include: {
+        sale: {
+          select: { saleNumber: true, customer: { select: { name: true } } },
+        },
+        contract: { select: { contractNumber: true, status: true, totalMonths: true } },
+        branch: { select: { name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Aggregate late fees from contracts in this period (Finance revenue)
+    const lateFeesWhere: Record<string, unknown> = {
+      paidDate: { gte: start, lte: end },
+      lateFee: { gt: 0 },
+      contract: { deletedAt: null, ...(branchId ? { branchId } : {}) },
+    };
+    const lateFeeAgg = await this.prisma.payment.aggregate({
+      where: lateFeesWhere,
+      _sum: { lateFee: true },
+    });
+    const totalLateFees = Number(lateFeeAgg._sum.lateFee || 0);
+
+    // Summaries
+    const shop = {
+      revenue: 0,
+      costOfGoods: 0,
+      commission: 0,
+      profit: 0,
+      transactionCount: 0,
+    };
+    const finance = {
+      interestIncome: 0,
+      commissionExpense: 0,
+      lateFeeIncome: totalLateFees,
+      profit: 0,
+      transactionCount: 0,
+    };
+
+    const details: Array<{
+      id: string;
+      saleNumber: string;
+      customerName: string;
+      contractNumber: string | null;
+      branchName: string;
+      sellingPrice: number;
+      costPrice: number;
+      downPayment: number;
+      principal: number;
+      commission: number;
+      interestTotal: number;
+      shopProfit: number;
+      financeProfit: number;
+      createdAt: Date;
+    }> = [];
+
+    for (const t of transactions) {
+      const shopProfit = Number(t.shopProfit);
+      const financeProfit = Number(t.financeProfit);
+      const commission = Number(t.commission);
+      const interestTotal = Number(t.interestTotal);
+      const costPrice = Number(t.costPrice);
+      const principal = Number(t.principal);
+      const downPayment = Number(t.downPayment);
+      const sellingPrice = Number(t.sellingPrice);
+
+      shop.revenue += downPayment + principal + commission;
+      shop.costOfGoods += costPrice;
+      shop.commission += commission;
+      shop.profit += shopProfit;
+      shop.transactionCount++;
+
+      finance.interestIncome += interestTotal;
+      finance.commissionExpense += commission;
+      finance.profit += financeProfit;
+      finance.transactionCount++;
+
+      details.push({
+        id: t.id,
+        saleNumber: t.sale.saleNumber,
+        customerName: t.sale.customer?.name || '-',
+        contractNumber: t.contract?.contractNumber || null,
+        branchName: t.branch.name,
+        sellingPrice,
+        costPrice,
+        downPayment,
+        principal,
+        commission,
+        interestTotal,
+        shopProfit,
+        financeProfit,
+        createdAt: t.createdAt,
+      });
+    }
+
+    // Add late fees to finance profit
+    finance.profit += totalLateFees;
+
+    // Filter by entity if specified
+    if (entity === 'SHOP') {
+      return { period: { start: startDate, end: endDate }, entity: 'BESTCHOICE SHOP', shop, details };
+    }
+    if (entity === 'FINANCE') {
+      return { period: { start: startDate, end: endDate }, entity: 'BESTCHOICE FINANCE', finance, details };
+    }
+
+    return {
+      period: { start: startDate, end: endDate },
+      shop,
+      finance,
+      combined: {
+        totalProfit: shop.profit + finance.profit,
+        totalVat: transactions.reduce((s, t) => s + Number(t.vatAmount), 0),
+      },
+      details,
+    };
+  }
 }

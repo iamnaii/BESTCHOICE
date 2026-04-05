@@ -130,6 +130,17 @@ export class ReportsController {
     return this.reportsService.getStockReport(effectiveBranch);
   }
 
+  @Get('entity-profit')
+  @Roles('OWNER', 'ACCOUNTANT')
+  getEntityProfit(
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string,
+    @Query('branchId') branchId?: string,
+    @Query('entity') entity?: string,
+  ) {
+    return this.reportsService.getEntityProfitReport(startDate, endDate, branchId, entity);
+  }
+
   @Get('export/contracts')
   exportContracts(
     @Query('status') status?: string,

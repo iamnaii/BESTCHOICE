@@ -384,6 +384,22 @@ export default function DashboardPage() {
     refetchInterval: 5 * 60 * 1000, // auto-refresh ทุก 5min
   });
 
+  const { data: entityProfit } = useQuery<{
+    shop: { revenue: number; costOfGoods: number; commission: number; profit: number; transactionCount: number };
+    finance: { interestIncome: number; commissionExpense: number; lateFeeIncome: number; profit: number; transactionCount: number };
+    combined: { totalProfit: number; totalVat: number };
+  }>({
+    queryKey: ['dashboard-entity-profit'],
+    queryFn: async () => {
+      const now = new Date();
+      const startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+      const endDate = now.toISOString().slice(0, 10);
+      return (await api.get(`/reports/entity-profit?startDate=${startDate}&endDate=${endDate}`)).data;
+    },
+    enabled: user?.role === 'OWNER' || user?.role === 'ACCOUNTANT',
+    staleTime: dashboardStaleTime,
+  });
+
   /* ─── Computed ─── */
   const totalStatusCount = useMemo(() => statusDist.reduce((sum, s) => sum + s.count, 0), [statusDist]);
   const trendMax = useMemo(() => {
@@ -724,6 +740,58 @@ export default function DashboardPage() {
                 ) : (
                   <div className="text-center text-muted-foreground py-8 text-sm">กำลังโหลด...</div>
                 )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Entity Profit: SHOP vs FINANCE — OWNER/ACCOUNTANT only */}
+          {entityProfit && (user?.role === 'OWNER' || user?.role === 'ACCOUNTANT') && (
+            <Card>
+              <CardHeader>
+                <CardTitle>กำไร Shop / Finance เดือนนี้</CardTitle>
+                <CardToolbar>
+                  <span className="text-2xs text-muted-foreground bg-muted px-2.5 py-1 rounded-md font-medium">
+                    {(entityProfit.shop?.transactionCount || 0)} รายการ
+                  </span>
+                </CardToolbar>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="divide-y divide-border/50">
+                  <div className="flex items-center gap-4 px-5 py-3.5">
+                    <div className="w-1 h-8 rounded-full bg-blue-500" />
+                    <div className="flex-1">
+                      <div className="text-sm font-medium text-foreground">BESTCHOICE SHOP</div>
+                      <div className="text-2xs text-muted-foreground">ดาวน์ + เงินต้น + คอมมิชชัน - ต้นทุน</div>
+                    </div>
+                    <div className="text-sm font-semibold text-success">
+                      {(entityProfit.shop?.profit || 0).toLocaleString()} ฿
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4 px-5 py-3.5">
+                    <div className="w-1 h-8 rounded-full bg-indigo-500" />
+                    <div className="flex-1">
+                      <div className="text-sm font-medium text-foreground">BESTCHOICE FINANCE</div>
+                      <div className="text-2xs text-muted-foreground">ดอกเบี้ย - คอมมิชชัน + ค่าปรับ</div>
+                    </div>
+                    <div className="text-sm font-semibold text-success">
+                      {(entityProfit.finance?.profit || 0).toLocaleString()} ฿
+                    </div>
+                  </div>
+                  <div
+                    className="flex items-center gap-4 px-5 py-3.5 cursor-pointer hover:bg-muted/50 transition-colors"
+                    onClick={() => navigate('/reports')}
+                  >
+                    <div className="w-1 h-8 rounded-full bg-green-500" />
+                    <div className="flex-1">
+                      <div className="text-sm font-medium text-foreground">กำไรรวม</div>
+                      <div className="text-2xs text-muted-foreground">SHOP + FINANCE (ไม่รวม VAT)</div>
+                    </div>
+                    <div className="text-sm font-bold text-success">
+                      {(entityProfit.combined?.totalProfit || 0).toLocaleString()} ฿
+                    </div>
+                    <ArrowRight className="size-4 text-muted-foreground" />
+                  </div>
+                </div>
               </CardContent>
             </Card>
           )}

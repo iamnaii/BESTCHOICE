@@ -273,7 +273,7 @@ export class SalesService {
         contractNumber = await generateContractNumber(tx);
       }
 
-      // Create contract
+      // Create contract (with storeCommission)
       const contract = await tx.contract.create({
         data: {
           contractNumber,
@@ -288,6 +288,7 @@ export class SalesService {
           totalMonths: dto.totalMonths!,
           interestTotal: calc.interestTotal,
           financedAmount: calc.financedAmount,
+          storeCommission: calc.storeCommission,
           monthlyPayment: calc.monthlyPayment,
           status: 'DRAFT',
           workflowStatus: 'CREATING',
@@ -328,6 +329,53 @@ export class SalesService {
       await tx.product.update({
         where: { id: dto.productId },
         data: { status: 'RESERVED' },
+      });
+
+      // ── Inter-Company Transaction: BESTCHOICE SHOP ↔ BESTCHOICE FINANCE ──
+      const costPrice = product ? Number(product.costPrice) : 0;
+      const downPaymentNum = dto.downPayment!;
+      // Shop profit = downPayment + principal + commission - costPrice
+      const shopProfit = downPaymentNum + calc.principal + calc.storeCommission - costPrice;
+      // Finance profit = interestTotal - commission (late fees added later)
+      const financeProfit = calc.interestTotal - calc.storeCommission;
+
+      await tx.interCompanyTransaction.create({
+        data: {
+          saleId: sale.id,
+          contractId: contract.id,
+          branchId: dto.branchId,
+          type: 'FINANCE_PURCHASE',
+          fromEntity: 'BESTCHOICE FINANCE',
+          toEntity: 'BESTCHOICE SHOP',
+          principal: calc.principal,
+          commission: calc.storeCommission,
+          commissionPct: params.storeCommissionPct,
+          vatAmount: calc.vatAmount,
+          vatPct: params.vatPct,
+          totalAmount: calc.principal + calc.storeCommission,
+          interestTotal: calc.interestTotal,
+          costPrice,
+          downPayment: downPaymentNum,
+          sellingPrice: netAmount,
+          shopProfit,
+          financeProfit,
+        },
+      });
+
+      // ── Finance Receivable for BESTCHOICE FINANCE (internal) ──
+      const expectedDate = new Date();
+      expectedDate.setDate(expectedDate.getDate() + 1); // Internal: expect next day
+      await tx.financeReceivable.create({
+        data: {
+          saleId: sale.id,
+          branchId: dto.branchId,
+          financeCompany: 'BESTCHOICE FINANCE',
+          expectedAmount: calc.principal + calc.storeCommission,
+          commissionRate: params.storeCommissionPct,
+          commissionAmount: calc.storeCommission,
+          netExpectedAmount: calc.principal,
+          expectedDate,
+        },
       });
 
       return sale;

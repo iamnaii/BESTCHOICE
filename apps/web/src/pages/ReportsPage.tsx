@@ -18,7 +18,7 @@ import {
   Cell,
 } from 'recharts';
 
-type ReportType = 'aging' | 'revenue' | 'high-risk' | 'sales' | 'branch' | 'daily-payment' | 'stock';
+type ReportType = 'aging' | 'revenue' | 'high-risk' | 'sales' | 'branch' | 'daily-payment' | 'stock' | 'entity-profit';
 
 /** Safe number formatter - prevents crash on undefined/null */
 function fmt(val: unknown): string {
@@ -33,6 +33,7 @@ const reportTabs: { key: ReportType; label: string }[] = [
   { key: 'branch', label: 'เปรียบเทียบสาขา' },
   { key: 'daily-payment', label: 'ชำระรายวัน' },
   { key: 'stock', label: 'สต็อกสินค้า' },
+  { key: 'entity-profit', label: 'กำไร Shop/Finance' },
 ];
 
 export default function ReportsPage() {
@@ -90,6 +91,7 @@ export default function ReportsPage() {
       {activeTab === 'branch' && <BranchReport />}
       {activeTab === 'daily-payment' && <DailyPaymentReport date={dateFilter} onDateChange={setDateFilter} />}
       {activeTab === 'stock' && <StockReport />}
+      {activeTab === 'entity-profit' && <EntityProfitReport />}
     </div>
   );
 }
@@ -452,6 +454,154 @@ function StockReport() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EntityProfitReport() {
+  const today = new Date();
+  const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
+  const lastDay = today.toISOString().slice(0, 10);
+  const [startDate, setStartDate] = useState(firstDay);
+  const [endDate, setEndDate] = useState(lastDay);
+  const [entity, setEntity] = useState<string>('ALL');
+
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ['report-entity-profit', startDate, endDate, entity],
+    queryFn: async () => {
+      const params = new URLSearchParams({ startDate, endDate });
+      if (entity !== 'ALL') params.set('entity', entity);
+      return (await api.get(`/reports/entity-profit?${params}`)).data;
+    },
+  });
+
+  if (isLoading) return <LoadingState />;
+  if (isError) return <ErrorState onRetry={() => refetch()} />;
+
+  const shop = data?.shop || { revenue: 0, costOfGoods: 0, commission: 0, profit: 0, transactionCount: 0 };
+  const finance = data?.finance || { interestIncome: 0, commissionExpense: 0, lateFeeIncome: 0, profit: 0, transactionCount: 0 };
+  const combined = data?.combined || { totalProfit: 0, totalVat: 0 };
+  const details = data?.details || [];
+
+  return (
+    <div className="space-y-5">
+      {/* Date Filters */}
+      <div className="bg-card rounded-xl border border-border p-4">
+        <div className="flex flex-wrap gap-3 items-end">
+          <div>
+            <label className="text-2xs font-medium text-muted-foreground block mb-1">จากวันที่</label>
+            <ThaiDateInput value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-2xs font-medium text-muted-foreground block mb-1">ถึงวันที่</label>
+            <ThaiDateInput value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-2xs font-medium text-muted-foreground block mb-1">แสดง</label>
+            <select
+              value={entity}
+              onChange={(e) => setEntity(e.target.value)}
+              className="h-9 px-3 text-sm border border-border rounded-lg bg-background"
+            >
+              <option value="ALL">ทั้งหมด</option>
+              <option value="SHOP">BESTCHOICE SHOP</option>
+              <option value="FINANCE">BESTCHOICE FINANCE</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Summary Cards */}
+      {(entity === 'ALL' || entity === 'SHOP') && (
+        <div className="bg-card rounded-xl border border-border p-5">
+          <h3 className="text-sm font-semibold text-foreground mb-4">BESTCHOICE SHOP</h3>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <SummaryCard label="รายได้รวม" value={shop.revenue} color="text-primary" />
+            <SummaryCard label="ต้นทุนสินค้า" value={shop.costOfGoods} color="text-muted-foreground" />
+            <SummaryCard label="ค่าคอมมิชชัน" value={shop.commission} color="text-success" />
+            <SummaryCard label="กำไร Shop" value={shop.profit} color="text-success" />
+          </div>
+          <div className="text-xs text-muted-foreground mt-3">
+            สูตร: เงินดาวน์ + เงินต้น + คอมมิชชัน - ต้นทุนสินค้า | จำนวน {shop.transactionCount} รายการ
+          </div>
+        </div>
+      )}
+
+      {(entity === 'ALL' || entity === 'FINANCE') && (
+        <div className="bg-card rounded-xl border border-border p-5">
+          <h3 className="text-sm font-semibold text-foreground mb-4">BESTCHOICE FINANCE</h3>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <SummaryCard label="รายได้ดอกเบี้ย" value={finance.interestIncome} color="text-primary" />
+            <SummaryCard label="จ่ายคอมมิชชัน" value={finance.commissionExpense} color="text-destructive" />
+            <SummaryCard label="ค่าปรับล่าช้า" value={finance.lateFeeIncome} color="text-warning" />
+            <SummaryCard label="กำไร Finance" value={finance.profit} color="text-success" />
+          </div>
+          <div className="text-xs text-muted-foreground mt-3">
+            สูตร: ดอกเบี้ยรวม - คอมมิชชัน + ค่าปรับล่าช้า | จำนวน {finance.transactionCount} รายการ
+          </div>
+        </div>
+      )}
+
+      {entity === 'ALL' && (
+        <div className="bg-card rounded-xl border border-border p-5">
+          <h3 className="text-sm font-semibold text-foreground mb-4">รวมทั้งระบบ</h3>
+          <div className="grid grid-cols-2 gap-4">
+            <SummaryCard label="กำไรรวม (SHOP + FINANCE)" value={combined.totalProfit} color="text-success" />
+            <SummaryCard label="VAT รวม" value={combined.totalVat} color="text-muted-foreground" />
+          </div>
+        </div>
+      )}
+
+      {/* Detail Table */}
+      {details.length > 0 && (
+        <div className="bg-card rounded-xl border border-border p-5">
+          <h3 className="text-sm font-semibold text-foreground mb-4">รายละเอียด</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-muted/40 border-b border-border/60 text-left text-muted-foreground">
+                  <th className="pb-2 font-medium">เลขที่ขาย</th>
+                  <th className="pb-2 font-medium">ลูกค้า</th>
+                  <th className="pb-2 font-medium">สาขา</th>
+                  <th className="pb-2 font-medium text-right">ราคาขาย</th>
+                  <th className="pb-2 font-medium text-right">ต้นทุน</th>
+                  <th className="pb-2 font-medium text-right">เงินดาวน์</th>
+                  <th className="pb-2 font-medium text-right">เงินต้น</th>
+                  <th className="pb-2 font-medium text-right">คอมมิชชัน</th>
+                  <th className="pb-2 font-medium text-right">กำไร Shop</th>
+                  <th className="pb-2 font-medium text-right">กำไร Finance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {details.map((d: {
+                  id: string; saleNumber: string; customerName: string; branchName: string;
+                  sellingPrice: number; costPrice: number; downPayment: number; principal: number;
+                  commission: number; shopProfit: number; financeProfit: number;
+                }) => (
+                  <tr key={d.id} className="border-b last:border-0">
+                    <td className="py-2 font-medium">{d.saleNumber}</td>
+                    <td className="py-2">{d.customerName}</td>
+                    <td className="py-2 text-muted-foreground">{d.branchName}</td>
+                    <td className="py-2 text-right">{fmt(d.sellingPrice)}</td>
+                    <td className="py-2 text-right text-muted-foreground">{fmt(d.costPrice)}</td>
+                    <td className="py-2 text-right">{fmt(d.downPayment)}</td>
+                    <td className="py-2 text-right">{fmt(d.principal)}</td>
+                    <td className="py-2 text-right text-primary">{fmt(d.commission)}</td>
+                    <td className="py-2 text-right text-success font-medium">{fmt(d.shopProfit)}</td>
+                    <td className="py-2 text-right text-success font-medium">{fmt(d.financeProfit)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {details.length === 0 && (
+        <div className="bg-card rounded-xl border border-border p-8 text-center text-muted-foreground text-sm">
+          ไม่พบข้อมูล Inter-Company Transaction ในช่วงเวลาที่เลือก
         </div>
       )}
     </div>

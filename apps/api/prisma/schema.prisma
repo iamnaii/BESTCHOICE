@@ -259,6 +259,7 @@ model Branch {
   inviteTokens     InviteToken[]
   financeReceivables FinanceReceivable[]
   expenses           Expense[]
+  interCompanyTransactions InterCompanyTransaction[]
 
   @@map("branches")
 }
@@ -440,6 +441,9 @@ model Contract {
   hasNoTransferClause   Boolean @default(false) @map("has_no_transfer_clause")
   hasAcknowledgement    Boolean @default(false) @map("has_acknowledgement") // ผู้ซื้อได้อ่านและเข้าใจ
 
+  // Store commission: ค่าคอมที่ Shop ได้จาก Finance (principal × storeCommissionPct)
+  storeCommission Decimal @default(0) @map("store_commission") @db.Decimal(12, 2)
+
   // Credit balance: เงินเกินที่ลูกค้าชำระเกินยอดค้าง (สำหรับ apply ในงวดถัดไป)
   creditBalance Decimal @default(0) @map("credit_balance") @db.Decimal(12, 2)
 
@@ -467,6 +471,7 @@ model Contract {
   paymentEvidences  PaymentEvidence[]
   kycVerifications  KycVerification[]
   loyaltyPoints     LoyaltyPoint[]
+  interCompanyTransaction InterCompanyTransaction?
 
   @@index([customerId])
   @@index([branchId])
@@ -1167,6 +1172,7 @@ model Sale {
   salesperson        User               @relation("SalesSalesperson", fields: [salespersonId], references: [id])
   contract           Contract?          @relation(fields: [contractId], references: [id])
   financeReceivable  FinanceReceivable?
+  interCompanyTransaction InterCompanyTransaction?
 
   @@index([saleType])
   @@index([branchId])
@@ -1887,4 +1893,44 @@ model LoyaltyPoint {
   @@index([customerId])
   @@index([contractId])
   @@map("loyalty_points")
+}
+
+// ============================================================
+// INTER-COMPANY TRANSACTIONS (Shop ↔ Finance)
+// ============================================================
+
+model InterCompanyTransaction {
+  id                String    @id @default(uuid())
+  saleId            String    @unique @map("sale_id")
+  contractId        String    @unique @map("contract_id")
+  branchId          String    @map("branch_id")
+
+  // ข้อมูลราคา
+  costPrice         Decimal   @map("cost_price") @db.Decimal(12, 2)
+  sellingPrice      Decimal   @map("selling_price") @db.Decimal(12, 2)
+  downPayment       Decimal   @map("down_payment") @db.Decimal(12, 2)
+  principal         Decimal   @map("principal") @db.Decimal(12, 2)          // เงินต้น = sellingPrice - downPayment
+
+  // Inter-company (Finance จ่ายให้ Shop ตอนสัญญาอนุมัติ)
+  commissionRate    Decimal   @map("commission_rate") @db.Decimal(5, 4)     // storeCommissionPct e.g. 0.10
+  commissionAmount  Decimal   @map("commission_amount") @db.Decimal(12, 2)  // = principal × commissionRate
+  financeCost       Decimal   @map("finance_cost") @db.Decimal(12, 2)       // = principal + commissionAmount
+  interestTotal     Decimal   @map("interest_total") @db.Decimal(12, 2)     // ดอกเบี้ยรวม (ไม่รวม VAT)
+
+  // กำไรแยก entity (snapshot)
+  shopProfit              Decimal   @map("shop_profit") @db.Decimal(12, 2)              // = downPayment + principal + commission - costPrice
+  financeExpectedProfit   Decimal   @map("finance_expected_profit") @db.Decimal(12, 2)  // = interestTotal - commission
+
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
+
+  sale     Sale     @relation(fields: [saleId], references: [id])
+  contract Contract @relation(fields: [contractId], references: [id])
+  branch   Branch   @relation(fields: [branchId], references: [id])
+
+  @@index([branchId])
+  @@index([createdAt])
+  @@index([deletedAt])
+  @@map("inter_company_transactions")
 }

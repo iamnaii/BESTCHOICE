@@ -3,7 +3,7 @@ import { useLiffInit } from '@/hooks/useLiffInit';
 import { liffApi } from '@/lib/api';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { CreditCard, ChevronDown } from 'lucide-react';
+import { QrCode, ChevronDown } from 'lucide-react';
 import { formatNumber, formatDateMedium, formatDateShortThai } from '@/utils/formatters';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -108,17 +108,25 @@ export default function LiffContract() {
     enabled: !!lineId,
   });
 
-  const payLinkMutation = useMutation({
-    mutationFn: async (contractId: string) => {
-      const { data: result } = await liffApi.post('/line-oa/liff/create-payment-link', { lineId, contractId });
-      if (!result.url) throw new Error(result.error || 'ไม่สามารถสร้างลิงก์ชำระเงินได้');
-      return result;
+  const payMutation = useMutation({
+    mutationFn: async ({ contractId, installmentNo, amount }: { contractId: string; installmentNo: number; amount: number }) => {
+      const { data: result } = await liffApi.post('/paysolutions/create-intent', {
+        contractId,
+        amount,
+        lineId,
+        installmentNo,
+        description: `ชำระค่างวดที่ ${installmentNo}`,
+      });
+      if (!result.success || !result.paymentUrl) {
+        throw new Error('ไม่สามารถสร้าง QR ชำระเงินได้');
+      }
+      return result as { paymentUrl: string; gatewayRef: string };
     },
     onSuccess: (result) => {
-      window.location.href = result.url;
+      window.location.href = result.paymentUrl;
     },
-    onError: (err: Error) => {
-      toast.error(err.message);
+    onError: (err: unknown) => {
+      toast.error(err instanceof Error ? err.message : 'เกิดข้อผิดพลาด กรุณาลองใหม่');
     },
   });
 
@@ -178,9 +186,16 @@ export default function LiffContract() {
   // Find next unpaid installment for "ชำระงวดถัดไป" button
   const nextUnpaid = payments.find((p) => p.status !== 'PAID');
 
-  function handlePayClick() {
-    if (payLinkMutation.isPending) return;
-    payLinkMutation.mutate(contract.id);
+  function handlePayClick(payment?: Payment) {
+    const target = payment || nextUnpaid;
+    if (!target || payMutation.isPending) return;
+    const amount = target.amountDue + target.lateFee - target.amountPaid;
+    if (amount <= 0) return;
+    payMutation.mutate({
+      contractId: contract.id,
+      installmentNo: target.installmentNo,
+      amount,
+    });
   }
 
   return (
@@ -297,23 +312,32 @@ export default function LiffContract() {
       {/* Pay Next Installment CTA */}
       {nextUnpaid && contract.totalOutstanding > 0 && (
         <Card className="mb-4 border-primary/20 bg-primary/5">
-          <CardContent className="flex items-center justify-between py-4">
-            <div>
-              <p className="text-sm font-medium">งวดถัดไป: งวดที่ {nextUnpaid.installmentNo}</p>
-              <p className="text-xs text-muted-foreground">
-                ครบกำหนด{' '}
-                {formatDateMedium(nextUnpaid.dueDate)}
-              </p>
+          <CardContent className="py-4">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-sm font-medium">งวดถัดไป: งวดที่ {nextUnpaid.installmentNo}</p>
+                <p className="text-xs text-muted-foreground">
+                  ครบกำหนด {formatDateMedium(nextUnpaid.dueDate)}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-lg font-bold text-primary">
+                  {formatNumber(nextUnpaid.amountDue + nextUnpaid.lateFee - nextUnpaid.amountPaid)} บาท
+                </p>
+                {nextUnpaid.lateFee > 0 && (
+                  <p className="text-xs text-destructive">รวมค่าปรับ {formatNumber(nextUnpaid.lateFee)} บาท</p>
+                )}
+              </div>
             </div>
             <Button
               variant="primary"
-              size="md"
-              className="gap-1.5"
-              onClick={handlePayClick}
-              disabled={payLinkMutation.isPending}
+              size="lg"
+              className="w-full gap-2"
+              onClick={() => handlePayClick()}
+              disabled={payMutation.isPending}
             >
-              <CreditCard className="size-4" />
-              {payLinkMutation.isPending ? 'กำลังสร้าง...' : 'ชำระเงิน'}
+              <QrCode className="size-5" />
+              {payMutation.isPending ? 'กำลังสร้าง QR...' : 'ชำระค่างวด (สแกน QR)'}
             </Button>
           </CardContent>
         </Card>
@@ -359,21 +383,34 @@ export default function LiffContract() {
                       <p className="text-xs text-muted-foreground">{dueDateStr}</p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p
-                      className={`text-sm font-medium ${
-                        isPaid ? 'text-success' : isOverdue ? 'text-destructive' : ''
-                      }`}
-                    >
-                      {formatNumber(totalAmount)} บาท
-                    </p>
-                    {isPaid && p.paidDate && (
-                      <p className="text-xs text-muted-foreground">
-                        {formatDateShortThai(p.paidDate)}
+                  <div className="text-right flex items-center gap-2">
+                    <div>
+                      <p
+                        className={`text-sm font-medium ${
+                          isPaid ? 'text-success' : isOverdue ? 'text-destructive' : ''
+                        }`}
+                      >
+                        {formatNumber(totalAmount)} บาท
                       </p>
-                    )}
-                    {p.lateFee > 0 && !isPaid && (
-                      <p className="text-xs text-destructive">ค่าปรับ {formatNumber(p.lateFee)} บาท</p>
+                      {isPaid && p.paidDate && (
+                        <p className="text-xs text-muted-foreground">
+                          {formatDateShortThai(p.paidDate)}
+                        </p>
+                      )}
+                      {p.lateFee > 0 && !isPaid && (
+                        <p className="text-xs text-destructive">ค่าปรับ {formatNumber(p.lateFee)} บาท</p>
+                      )}
+                    </div>
+                    {!isPaid && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-xs px-2 py-1 h-auto"
+                        onClick={() => handlePayClick(p)}
+                        disabled={payMutation.isPending}
+                      >
+                        <QrCode className="size-3" />
+                      </Button>
                     )}
                   </div>
                 </div>

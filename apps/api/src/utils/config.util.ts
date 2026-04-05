@@ -42,7 +42,7 @@ export const BUSINESS_RULES = {
  * Load installment-related system configs with defaults
  */
 export async function loadInstallmentConfig(
-  prisma: PrismaService | { systemConfig: { findMany: (...args: any[]) => Promise<any[]> } },
+  prisma: PrismaService | { systemConfig: { findMany: (...args: unknown[]) => Promise<{ key: string; value: string }[]> } },
 ): Promise<InstallmentConfig> {
   const configs = await prisma.systemConfig.findMany({
     where: { key: { in: [...INSTALLMENT_CONFIG_KEYS] }, deletedAt: null },
@@ -65,7 +65,7 @@ export async function loadInstallmentConfig(
  * Resolve installment config: prefer InterestConfig entity, fallback to system config
  */
 export function resolveInstallmentParams(
-  interestConfig: { interestRate: any; minDownPaymentPct: any; storeCommissionPct?: any; vatPct?: any; minInstallmentMonths: number; maxInstallmentMonths: number } | null,
+  interestConfig: { interestRate: { toString(): string }; minDownPaymentPct: { toString(): string }; storeCommissionPct?: { toString(): string } | null; vatPct?: { toString(): string } | null; minInstallmentMonths: number; maxInstallmentMonths: number } | null,
   systemConfig: InstallmentConfig,
   overrideInterestRate?: number | null,
 ): {

@@ -1,4 +1,5 @@
 import { Controller, Post, Get, Param, Body, UseGuards, Req } from '@nestjs/common';
+import { Request } from 'express';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { KycService } from './kyc.service';
@@ -20,7 +21,7 @@ export class KycController {
   sendOtp(
     @Param('id') id: string,
     @Body() dto: SendOtpDto,
-    @Req() req: any,
+    @Req() req: Request,
   ) {
     return this.kycService.sendOtp(id, dto.channel, {
       ip: req.ip,
@@ -44,7 +45,7 @@ export class KycController {
   uploadIdCard(
     @Param('id') id: string,
     @Body() dto: UploadIdCardDto,
-    @Req() req: any,
+    @Req() req: Request,
   ) {
     return this.kycService.uploadIdCard(id, dto.imageBase64, {
       ip: req.ip,

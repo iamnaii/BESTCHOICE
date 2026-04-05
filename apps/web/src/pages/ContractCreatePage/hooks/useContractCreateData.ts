@@ -54,7 +54,7 @@ export function useContractCreateData() {
 
   // Edit product modal state
   const [showEditProductModal, setShowEditProductModal] = useState(false);
-  const [editProductForm, setEditProductForm] = useState<Record<string, any>>({});
+  const [editProductForm, setEditProductForm] = useState<Record<string, unknown>>({});
 
   const startEditProduct = () => {
     if (!selectedProduct) return;
@@ -68,7 +68,7 @@ export function useContractCreateData() {
 
   // Edit customer modal state
   const [showEditCustomerModal, setShowEditCustomerModal] = useState(false);
-  const [editCustForm, setEditCustForm] = useState<Record<string, any>>({});
+  const [editCustForm, setEditCustForm] = useState<Record<string, unknown>>({});
 
   const startEditCustomer = () => {
     if (!selectedCustomer) return;
@@ -222,7 +222,7 @@ export function useContractCreateData() {
       }
       navigate(`/contracts/${data.id}`);
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       toast.error(getErrorMessage(err));
     },
   });

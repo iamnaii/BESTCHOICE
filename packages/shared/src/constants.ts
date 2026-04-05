@@ -44,11 +44,13 @@ export const ProductStatus = {
   WRITTEN_OFF: 'WRITTEN_OFF',
 } as const;
 
-// Payment Methods
+// Payment Methods (synced with Prisma schema)
 export const PaymentMethod = {
   CASH: 'CASH',
   BANK_TRANSFER: 'BANK_TRANSFER',
   QR_EWALLET: 'QR_EWALLET',
+  CREDIT_BALANCE: 'CREDIT_BALANCE',
+  ONLINE_GATEWAY: 'ONLINE_GATEWAY',
 } as const;
 
 // Plan Type (synced with Prisma schema)
@@ -212,6 +214,8 @@ export const STATUS_LABELS = {
     CASH: 'เงินสด',
     BANK_TRANSFER: 'โอนธนาคาร',
     QR_EWALLET: 'QR/E-Wallet',
+    CREDIT_BALANCE: 'เครดิตคงเหลือ',
+    ONLINE_GATEWAY: 'ชำระออนไลน์',
   },
   product: {
     PO_RECEIVED: 'รับจาก PO',

@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateStickerTemplateDto, UpdateStickerTemplateDto } from './dto/sticker.dto';
 
@@ -29,12 +30,12 @@ export class StickersService {
   }
 
   async create(dto: CreateStickerTemplateDto) {
-    return this.prisma.stickerTemplate.create({ data: dto as any });
+    return this.prisma.stickerTemplate.create({ data: dto as Prisma.StickerTemplateCreateInput });
   }
 
   async update(id: string, dto: UpdateStickerTemplateDto) {
     await this.findOne(id);
-    return this.prisma.stickerTemplate.update({ where: { id }, data: dto as any });
+    return this.prisma.stickerTemplate.update({ where: { id }, data: dto as Prisma.StickerTemplateUpdateInput });
   }
 
   async remove(id: string) {

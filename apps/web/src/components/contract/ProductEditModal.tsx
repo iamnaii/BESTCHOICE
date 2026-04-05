@@ -60,7 +60,7 @@ export default function ProductEditModal({ product, onClose, onSuccess }: Props)
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['products-available'] });
     },
-    onError: (err: any) => toast.error(getErrorMessage(err)),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const handleSubmit = (e: React.FormEvent) => {

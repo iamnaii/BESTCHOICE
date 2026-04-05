@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Prisma, StockAdjustmentReason } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateStockAdjustmentDto } from './dto/create-stock-adjustment.dto';
 
@@ -40,7 +41,7 @@ export class StockAdjustmentsService {
         data: {
           productId: dto.productId,
           branchId: product.branchId,
-          reason: dto.reason as any,
+          reason: dto.reason as StockAdjustmentReason,
           previousStatus: product.status,
           notes: dto.notes,
           photos: dto.photos || [],
@@ -167,7 +168,7 @@ export class StockAdjustmentsService {
     // Use groupBy for efficient DB-level aggregation
     const grouped = await this.prisma.stockAdjustment.groupBy({
       by: ['reason'],
-      where: where as any,
+      where: where as Prisma.StockAdjustmentGroupByArgs['where'],
       _count: true,
     });
 

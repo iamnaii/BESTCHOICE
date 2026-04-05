@@ -13,7 +13,7 @@ interface CreditCheckData {
   aiScore: number | null;
   aiSummary: string | null;
   aiRecommendation: string | null;
-  aiAnalysis: any;
+  aiAnalysis: { monthlyIncome?: number; monthlyPayment?: number; affordabilityRatio?: number; [key: string]: unknown } | null;
   reviewNotes: string | null;
   checkedBy: { id: string; name: string } | null;
   checkedAt: string | null;
@@ -233,13 +233,13 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
               {/* Analysis details */}
               {creditCheck.aiAnalysis && (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {creditCheck.aiAnalysis.monthlyIncome > 0 && (
+                  {(creditCheck.aiAnalysis.monthlyIncome ?? 0) > 0 && (
                     <div className="bg-muted rounded-lg p-2">
                       <div className="text-xs text-muted-foreground">รายได้/เดือน</div>
                       <div className="text-sm font-medium">{creditCheck.aiAnalysis.monthlyIncome?.toLocaleString()} ฿</div>
                     </div>
                   )}
-                  {creditCheck.aiAnalysis.monthlyPayment > 0 && (
+                  {(creditCheck.aiAnalysis.monthlyPayment ?? 0) > 0 && (
                     <div className="bg-muted rounded-lg p-2">
                       <div className="text-xs text-muted-foreground">ค่างวด/เดือน</div>
                       <div className="text-sm font-medium">{creditCheck.aiAnalysis.monthlyPayment?.toLocaleString()} ฿</div>

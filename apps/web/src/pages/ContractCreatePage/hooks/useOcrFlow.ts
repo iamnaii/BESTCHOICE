@@ -5,11 +5,14 @@ import { checkCardReaderStatus, readSmartCard } from '@/lib/cardReader';
 import { AddressData } from '@/components/ui/AddressForm';
 import { toast } from 'sonner';
 import type { Customer, OcrResult, PendingDoc } from '../types';
+import type { emptyCustForm } from '../constants';
+
+type CustFormData = typeof emptyCustForm;
 
 interface UseOcrFlowParams {
   setSelectedCustomer: (c: Customer | null) => void;
   setPendingDocs: (updater: PendingDoc[] | ((prev: PendingDoc[]) => PendingDoc[])) => void;
-  setCustForm: (updater: any) => void;
+  setCustForm: (updater: CustFormData | ((prev: CustFormData) => CustFormData)) => void;
   setCustAddrIdCard: (updater: AddressData | ((prev: AddressData) => AddressData)) => void;
 }
 
@@ -129,8 +132,8 @@ export function useOcrFlow({
           setShowCreateCustomer(true);
         }
       }
-    } catch (err: any) {
-      toast.error(err.message || 'ไม่สามารถอ่านบัตรได้');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'ไม่สามารถอ่านบัตรได้');
     } finally {
       setCardReaderLoading(false);
     }
@@ -159,7 +162,7 @@ export function useOcrFlow({
 
     try {
       const card = await readSmartCard();
-      setCustForm((prev: any) => ({
+      setCustForm((prev: CustFormData) => ({
         ...prev,
         prefix: card.prefix || prev.prefix,
         firstName: card.firstName || prev.firstName,
@@ -181,8 +184,8 @@ export function useOcrFlow({
         });
       }
       toast.success('อ่านบัตรสำเร็จ — กรอกข้อมูลให้อัตโนมัติแล้ว');
-    } catch (err: any) {
-      toast.error(err.message || 'ไม่สามารถอ่านบัตรได้');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'ไม่สามารถอ่านบัตรได้');
     } finally {
       setCardReaderLoading(false);
     }
@@ -248,8 +251,9 @@ export function useOcrFlow({
           toast.success('อ่านบัตรสำเร็จ');
         }
       }
-    } catch (err: any) {
-      if (err.code === 'ECONNABORTED' || !err.response) {
+    } catch (err: unknown) {
+      const axiosErr = err as { code?: string; response?: unknown };
+      if (axiosErr.code === 'ECONNABORTED' || !axiosErr.response) {
         toast.error('OCR ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาลองใหม่อีกครั้ง');
       } else {
         toast.error(getErrorMessage(err));
@@ -292,9 +296,10 @@ export function useOcrFlow({
         const preview = URL.createObjectURL(ocrScannedFile);
         setPendingDocs((prev) => [...prev, { id: crypto.randomUUID(), type: 'ID_CARD_COPY', file: ocrScannedFile, preview }]);
       }
-    } catch (err: any) {
-      const existing = err.response?.data?.existingCustomer;
-      if (existing && err.response?.status === 409) {
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { existingCustomer?: { id: string; name: string } }; status?: number } };
+      const existing = axiosErr.response?.data?.existingCustomer;
+      if (existing && axiosErr.response?.status === 409) {
         try {
           const { data: fullCustomer } = await api.get(`/customers/${existing.id}`);
           setSelectedCustomer(fullCustomer);
@@ -332,7 +337,7 @@ export function useOcrFlow({
       await api.patch(`/customers/${selectedCustomer.id}`, updateData);
       toast.success('อัปเดตข้อมูลลูกค้าสำเร็จ');
       setShowOcrPanel(false);
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast.error(getErrorMessage(err));
     }
   };

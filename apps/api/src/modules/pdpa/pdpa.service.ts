@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { DSARRequestType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 const DEFAULT_PRIVACY_NOTICE = `ประกาศความเป็นส่วนตัว (Privacy Notice)
@@ -146,7 +147,7 @@ export class PDPAService {
       data: {
         requestNumber,
         customerId,
-        requestType: requestType as any,
+        requestType: requestType as DSARRequestType,
         description,
         dueDate,
       },

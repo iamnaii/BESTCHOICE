@@ -91,9 +91,9 @@ export async function readSmartCard(): Promise<SmartCardData> {
 
     const body = await resp.json();
     return (body as CardReaderResponse).data;
-  } catch (err: any) {
+  } catch (err: unknown) {
     clearTimeout(timeoutId);
-    if (err.name === 'AbortError') {
+    if (err instanceof Error && err.name === 'AbortError') {
       throw new Error('Card reader service ไม่ตอบสนอง (timeout)');
     }
     throw err;

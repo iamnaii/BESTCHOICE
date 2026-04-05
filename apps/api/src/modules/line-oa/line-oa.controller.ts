@@ -705,7 +705,7 @@ export class LineOaController {
     @Query('amountMax') amountMax?: string,
     @Query('limit') limit?: string,
   ) {
-    const where: any = {};
+    const where: Record<string, unknown> = {};
     if (status) where.status = status;
 
     if (search) {
@@ -718,19 +718,21 @@ export class LineOaController {
     }
 
     if (dateFrom || dateTo) {
-      where.createdAt = {};
-      if (dateFrom) where.createdAt.gte = new Date(dateFrom);
+      const dateFilter: Record<string, Date> = {};
+      if (dateFrom) dateFilter.gte = new Date(dateFrom);
       if (dateTo) {
         const end = new Date(dateTo);
         end.setHours(23, 59, 59, 999);
-        where.createdAt.lte = end;
+        dateFilter.lte = end;
       }
+      where.createdAt = dateFilter;
     }
 
     if (amountMin || amountMax) {
-      where.amount = {};
-      if (amountMin) where.amount.gte = Number(amountMin);
-      if (amountMax) where.amount.lte = Number(amountMax);
+      const amountFilter: Record<string, number> = {};
+      if (amountMin) amountFilter.gte = Number(amountMin);
+      if (amountMax) amountFilter.lte = Number(amountMax);
+      where.amount = amountFilter;
     }
 
     const take = limit ? Math.min(Number(limit), 10000) : 50;
@@ -758,7 +760,7 @@ export class LineOaController {
     @Body() body: { ids: string[]; paymentMethod: string },
     @Req() req: Request,
   ) {
-    const userId = (req as any).user?.id;
+    const userId = (req as Request & { user?: { id: string } }).user?.id;
     const errors: string[] = [];
     let count = 0;
 
@@ -830,7 +832,7 @@ export class LineOaController {
     @Body() body: { ids: string[]; reviewNote?: string },
     @Req() req: Request,
   ) {
-    const userId = (req as any).user?.id;
+    const userId = (req as Request & { user?: { id: string } }).user?.id;
     const errors: string[] = [];
     let count = 0;
 
@@ -886,7 +888,7 @@ export class LineOaController {
     @Body() body: { installmentNo: number; amount: number; paymentMethod: string; reviewNote?: string },
     @Req() req: Request,
   ) {
-    const userId = (req as any).user?.id;
+    const userId = (req as Request & { user?: { id: string } }).user?.id;
     const evidence = await this.prisma.paymentEvidence.findUnique({
       where: { id },
       include: {
@@ -967,7 +969,7 @@ export class LineOaController {
     @Body() body: { reviewNote?: string },
     @Req() req: Request,
   ) {
-    const userId = (req as any).user?.id;
+    const userId = (req as Request & { user?: { id: string } }).user?.id;
     const evidence = await this.prisma.paymentEvidence.findUnique({
       where: { id },
       include: { contract: { include: { customer: true } } },

@@ -283,7 +283,19 @@ export class LineOaService {
   /**
    * Send receipt to customer after payment is recorded
    */
-  async sendPaymentReceipt(customerId: string, receipt: any): Promise<boolean> {
+  async sendPaymentReceipt(customerId: string, receipt: {
+    id: string;
+    contractId: string;
+    receiptNumber: string;
+    receiptType: string;
+    payerName: string;
+    amount: { toString(): string } | number;
+    installmentNo?: number | null;
+    remainingBalance?: { toString(): string } | number | null;
+    remainingMonths?: number | null;
+    paymentMethod: string | null;
+    paidDate: Date;
+  }): Promise<boolean> {
     try {
       // Find customer with LINE ID
       const customer = await this.prisma.customer.findFirst({
@@ -320,10 +332,10 @@ export class LineOaService {
         receiptType: receipt.receiptType,
         payerName: receipt.payerName,
         amount: Number(receipt.amount),
-        installmentNo: receipt.installmentNo,
+        installmentNo: receipt.installmentNo ?? undefined,
         remainingBalance: receipt.remainingBalance ? Number(receipt.remainingBalance) : undefined,
-        remainingMonths: receipt.remainingMonths,
-        paymentMethod: receipt.paymentMethod,
+        remainingMonths: receipt.remainingMonths ?? undefined,
+        paymentMethod: receipt.paymentMethod || 'CASH',
         paidDate: receipt.paidDate.toISOString(),
         productName: contract?.product?.name,
         contractNumber: contract?.contractNumber,

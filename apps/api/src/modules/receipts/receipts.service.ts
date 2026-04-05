@@ -18,7 +18,7 @@ export class ReceiptsService {
    * Generate receipt number: RC-YYYY-MM-NNNNN
    * Uses SELECT FOR UPDATE to prevent race conditions with concurrent payments.
    */
-  private async generateReceiptNumber(tx?: any): Promise<string> {
+  private async generateReceiptNumber(tx?: Prisma.TransactionClient): Promise<string> {
     const db = tx || this.prisma;
     const now = new Date();
     const year = now.getFullYear();

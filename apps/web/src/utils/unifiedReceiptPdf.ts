@@ -45,7 +45,7 @@ function forceInlineStyles(
   // Apply computed styles to the root element itself
   const cs = window.getComputedStyle(original);
   for (const prop of dominated) {
-    (cloned.style as any)[prop] = cs.getPropertyValue(
+    (cloned.style as unknown as Record<string, string>)[prop] = cs.getPropertyValue(
       prop.replace(/[A-Z]/g, m => `-${m.toLowerCase()}`)
     );
   }

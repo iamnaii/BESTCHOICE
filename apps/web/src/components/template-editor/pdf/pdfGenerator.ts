@@ -512,7 +512,7 @@ export async function generatePDF(template: Template): Promise<Blob> {
 
       case 'payment-table': {
         checkPageBreak(80);
-        const installments = ctx['INSTALLMENTS'] as any[];
+        const installments = ctx['INSTALLMENTS'] as { NO: number; DUE_DATE: string; AMOUNT: number }[];
         const tableWidth = contentWidth * 0.75;
         const tableMarginLeft = margin.left + (contentWidth - tableWidth) / 2;
         autoTable(doc, {
@@ -541,7 +541,7 @@ export async function generatePDF(template: Template): Promise<Blob> {
             2: { halign: 'right', cellWidth: 35 },
           },
         });
-        y = (doc as any).lastAutoTable.finalY + 5;
+        y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 5;
         break;
       }
 

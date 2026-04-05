@@ -72,7 +72,7 @@ function CustomerPortalPage() {
   });
 
   const error = queryError
-    ? ((queryError as any).response?.data?.message || 'ลิงก์ไม่ถูกต้องหรือหมดอายุ')
+    ? ((queryError as { response?: { data?: { message?: string } } }).response?.data?.message || 'ลิงก์ไม่ถูกต้องหรือหมดอายุ')
     : null;
 
   if (loading) {

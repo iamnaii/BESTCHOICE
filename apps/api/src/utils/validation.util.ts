@@ -169,7 +169,7 @@ export function checkRequiredContractFields(data: {
   customerPhone?: string | null;
   customerAddressIdCard?: string | null;
   customerAddressCurrent?: string | null;
-  references?: any[] | null;
+  references?: unknown[] | null;
   productName?: string | null;
   productImei?: string | null;
   sellingPrice?: number | null;

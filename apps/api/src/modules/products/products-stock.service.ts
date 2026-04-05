@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger, InternalServerErrorException, HttpException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TransferProductDto, BulkTransferDto } from './dto/transfer-product.dto';
 
@@ -29,7 +30,7 @@ export class ProductsStockService {
 
   // === Stock Transfer ===
 
-  private async generateBatchNumber(tx: any): Promise<string> {
+  private async generateBatchNumber(tx: Prisma.TransactionClient): Promise<string> {
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -160,6 +161,7 @@ export class ProductsStockService {
         const batchNumber = await this.generateBatchNumber(tx);
 
         // Create transfer records sequentially to avoid transaction serialization errors
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const transfers: any[] = [];
         for (const product of products) {
           const transfer = await tx.stockTransfer.create({
@@ -481,7 +483,7 @@ export class ProductsStockService {
 
     const summaryData = await this.prisma.product.groupBy({
       by: ['branchId', 'status'],
-      where: summaryWhere as any,
+      where: summaryWhere as Prisma.ProductWhereInput,
       _count: true,
       _sum: { costPrice: true },
     });
@@ -514,7 +516,7 @@ export class ProductsStockService {
     ] = await Promise.all([
       // All active products (for aging, breakdowns, condition grade, margin)
       this.prisma.product.findMany({
-        where: baseWhere as any,
+        where: baseWhere as Prisma.ProductWhereInput,
         select: {
           id: true, status: true, category: true, brand: true, model: true,
           color: true, storage: true, costPrice: true,
@@ -793,7 +795,7 @@ export class ProductsStockService {
     if (branchId) where.branchId = branchId;
 
     const products = await this.prisma.product.findMany({
-      where: where as any,
+      where: where as Prisma.ProductWhereInput,
       include: {
         branch: { select: { id: true, name: true } },
         prices: { where: { isDefault: true }, take: 1 },

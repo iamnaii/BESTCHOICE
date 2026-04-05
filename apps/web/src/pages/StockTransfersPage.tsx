@@ -619,7 +619,7 @@ export default function StockTransfersPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {historyList.map((r: any) => (
+                  {historyList.map((r: { id: string; status: string; createdAt: string; transfer?: { product?: { name: string; imeiSerial?: string }; fromBranch?: { name: string } }; receivedBy?: { name: string } }) => (
                     <tr key={r.id} className="hover:bg-muted/50">
                       <td className="px-4 py-3">
                         <div className="font-medium">{r.transfer?.product?.name || '-'}</div>

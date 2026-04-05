@@ -49,13 +49,23 @@ interface PendingPayment {
   };
 }
 
+interface DailySummaryPayment {
+  id: string;
+  installmentNo: number;
+  amountPaid: string;
+  paymentMethod: string;
+  paidDate: string | null;
+  contract?: { contractNumber: string; customer?: { name: string } };
+  recordedBy?: { name: string } | null;
+}
+
 interface DailySummary {
   date: string;
   totalPayments: number;
   totalAmount: number;
   totalLateFees: number;
   byMethod: Record<string, number>;
-  data: any[];
+  data: DailySummaryPayment[];
 }
 
 const paymentStatusLabels: Record<string, { label: string; className: string }> = {
@@ -171,7 +181,7 @@ export default function PaymentsPage() {
       setSelectedPayment(null);
       setSlipResult(null);
     },
-    onError: (err: any) => toast.error(getErrorMessage(err)),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   // Batch payment mutation
@@ -192,12 +202,12 @@ export default function PaymentsPage() {
       setShowBatchModal(false);
       setBatchSlipResult(null);
     },
-    onError: (err: any) => toast.error(getErrorMessage(err)),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   // Advance payment mutation (auto-allocate)
   const advanceMutation = useMutation({
-    mutationFn: async (body: { contractId: string; amount: number; paymentMethod: string }) => {
+    mutationFn: async (body: { contractId: string; amount: number; paymentMethod: string; transactionRef?: string }) => {
       const { data } = await api.post('/payments/auto-allocate', body);
       return data;
     },
@@ -212,7 +222,7 @@ export default function PaymentsPage() {
       setAdvanceAmount('');
       setAdvanceSlipResult(null);
     },
-    onError: (err: any) => toast.error(getErrorMessage(err)),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   // Pending summary totals
@@ -347,8 +357,9 @@ export default function PaymentsPage() {
       } else {
         toast.success(`อ่านสลิปสำเร็จ (ความมั่นใจ ${pct}%)`);
       }
-    } catch (err: any) {
-      if (err.code === 'ECONNABORTED' || !err.response) {
+    } catch (err: unknown) {
+      const axiosErr = err as { code?: string; response?: unknown };
+      if (axiosErr.code === 'ECONNABORTED' || !axiosErr.response) {
         toast.error('ไม่สามารถเชื่อมต่อ OCR ได้ กรุณาลองใหม่');
       } else {
         toast.error(getErrorMessage(err));
@@ -631,7 +642,7 @@ export default function PaymentsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {summary.data.map((p: any) => (
+                      {summary.data.map((p: DailySummaryPayment) => (
                         <tr key={p.id} className="border-t">
                           <td className="p-3 font-mono text-xs">{p.contract?.contractNumber}</td>
                           <td className="p-3 text-xs">{p.contract?.customer?.name}</td>
@@ -884,7 +895,7 @@ export default function PaymentsPage() {
                     amount: parseFloat(advanceAmount) || 0,
                     paymentMethod: advanceMethod,
                     transactionRef: advanceSlipResult?.transactionRef || `ADV-${Date.now()}`,
-                  } as any);
+                  });
                 }}
                 disabled={advanceMutation.isPending || !advanceAmount || parseFloat(advanceAmount) <= 0 || (isSlipRequired(advanceMethod) && !advanceSlipResult)}
                 className="flex-1 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"

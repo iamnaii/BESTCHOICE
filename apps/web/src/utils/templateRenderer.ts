@@ -3,7 +3,7 @@ import { applyFormat } from './formatters';
 import type { VariableDefinition } from '@/types/template';
 
 interface RenderContext {
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 // Build flat context from variable definitions using sample values
@@ -16,15 +16,15 @@ export function buildSampleContext(variables: VariableDefinition[]): RenderConte
 }
 
 // Resolve a dotted key like "CONTRACT.NUMBER" from context
-function resolveKey(ctx: RenderContext, key: string): any {
+function resolveKey(ctx: RenderContext, key: string): unknown {
   // Try direct match first
   if (key in ctx) return ctx[key];
   // Try dotted path
   const parts = key.split('.');
-  let current: any = ctx;
+  let current: unknown = ctx;
   for (const part of parts) {
     if (current == null) return undefined;
-    current = current[part];
+    current = (current as Record<string, unknown>)[part];
   }
   return current;
 }
@@ -46,7 +46,7 @@ export function renderVariables(template: string, ctx: RenderContext): string {
     (_match, itemVar: string, arrayKey: string, body: string) => {
       const arr = resolveKey(ctx, arrayKey.trim());
       if (!Array.isArray(arr)) return '';
-      return arr.map((item, index) => {
+      return arr.map((item: unknown, index: number) => {
         // Replace @index0 and @index1 BEFORE {{= ... }} so that {{= @index1}} resolves correctly
         let rendered = body;
         rendered = rendered.replace(/@index0/g, String(index));
@@ -54,13 +54,13 @@ export function renderVariables(template: string, ctx: RenderContext): string {
         // Replace {{= ITEM.PROP }} and {{= ITEM.PROP | format }}
         rendered = rendered.replace(/\{\{=\s*([^|}]+?)(?:\s*\|\s*([^}]+?))?\s*\}\}/g, (_m, k: string, fmt: string) => {
           const trimmedKey = k.trim();
-          let val: any;
+          let val: unknown;
           // Handle pure numeric values (from resolved @index)
           if (/^\d+$/.test(trimmedKey)) {
             val = trimmedKey;
           } else if (trimmedKey.startsWith(itemVar + '.')) {
             const prop = trimmedKey.substring(itemVar.length + 1);
-            val = item[prop];
+            val = (item as Record<string, unknown>)[prop];
           } else {
             val = resolveKey(ctx, trimmedKey);
           }

@@ -470,7 +470,7 @@ export class PurchaseOrdersService {
         throw new BadRequestException('PO นี้ไม่อยู่ในสถานะที่สามารถรับสินค้าได้');
       }
 
-      const receivedProducts: any[] = [];
+      const receivedProducts: Awaited<ReturnType<typeof tx.product.create>>[] = [];
 
       for (const receiveItem of dto.items) {
         const poItem = po.items.find((i) => i.id === receiveItem.poItemId);
@@ -591,8 +591,8 @@ export class PurchaseOrdersService {
         },
       });
 
-      const passedProducts: any[] = [];
-      const rejectedItems: any[] = [];
+      const passedProducts: Awaited<ReturnType<typeof tx.product.update>>[] = [];
+      const rejectedItems: Awaited<ReturnType<typeof tx.goodsReceivingItem.create>>[] = [];
 
       // Group items by poItemId to count per PO item
       const countByPoItem: Record<string, number> = {};

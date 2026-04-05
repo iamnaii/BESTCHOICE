@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { formatDateShort } from '../../utils/thai-date.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -53,7 +54,7 @@ export class ContractWorkflowService {
       customerPhone: customer?.phone,
       customerAddressIdCard: customer?.addressIdCard,
       customerAddressCurrent: customer?.addressCurrent,
-      references: customer?.references as any[],
+      references: customer?.references as Prisma.JsonArray,
       productName: product?.name,
       productImei: product?.imeiSerial,
       sellingPrice: Number(contract.sellingPrice),
@@ -310,7 +311,7 @@ export class ContractWorkflowService {
     return this.findOne(id);
   }
 
-  private async sendContractActivatedNotification(contract: any) {
+  private async sendContractActivatedNotification(contract: Awaited<ReturnType<ContractWorkflowService['findOne']>>) {
     if (!this.notificationsService) {
       this.logger.warn(
         `NotificationsService unavailable - cannot send activation notification for contract ${contract.contractNumber || contract.id}`,

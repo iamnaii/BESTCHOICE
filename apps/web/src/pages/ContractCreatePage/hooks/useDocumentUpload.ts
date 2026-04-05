@@ -63,8 +63,9 @@ export function useDocumentUpload({
           } else {
             toast.success(`อ่านบัตรประชาชนสำเร็จ (ความมั่นใจ ${pct}%)`);
           }
-        } catch (err: any) {
-          if (err.code === 'ECONNABORTED' || !err.response) {
+        } catch (err: unknown) {
+          const axiosErr = err as { code?: string; response?: unknown };
+          if (axiosErr.code === 'ECONNABORTED' || !axiosErr.response) {
             toast.error('OCR ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาลองใหม่อีกครั้ง');
           } else {
             toast.error(getErrorMessage(err));

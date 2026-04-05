@@ -81,7 +81,7 @@ export default function PaymentHistorySheet({ contractId, onClose, onViewReceipt
       setWaiveTarget(null);
       setWaiveReason('');
     },
-    onError: (err: any) => toast.error(getErrorMessage(err)),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   // Find receipt for a given installment

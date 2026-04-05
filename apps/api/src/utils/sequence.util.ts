@@ -4,9 +4,9 @@
  */
 
 type PrismaTx = {
-  contract: { findFirst: (...args: any[]) => Promise<any> };
-  sale: { findFirst: (...args: any[]) => Promise<any> };
-  purchaseOrder: { count: (...args: any[]) => Promise<number> };
+  contract: { findFirst: (...args: unknown[]) => Promise<{ contractNumber: string } | null> };
+  sale: { findFirst: (...args: unknown[]) => Promise<{ saleNumber: string } | null> };
+  purchaseOrder: { count: (...args: unknown[]) => Promise<number> };
 };
 
 /**

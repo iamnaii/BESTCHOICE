@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards, Req } from '@nestjs/common';
+import { Request } from 'express';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { PDPAService } from './pdpa.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -50,7 +51,7 @@ export class PDPAController {
 
   @Post('consent')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
-  recordConsent(@Body() dto: RecordConsentDto, @Req() req: any) {
+  recordConsent(@Body() dto: RecordConsentDto, @Req() req: Request) {
     return this.pdpaService.recordConsent(dto.customerId, {
       ip: req.ip,
       userAgent: req.headers?.['user-agent'],

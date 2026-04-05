@@ -49,8 +49,8 @@ export class ContractsService {
     if (filters.salespersonId) where.salespersonId = filters.salespersonId;
     if (filters.startDate || filters.endDate) {
       where.createdAt = {};
-      if (filters.startDate) (where.createdAt as any).gte = new Date(filters.startDate);
-      if (filters.endDate) (where.createdAt as any).lte = new Date(new Date(filters.endDate).getTime() + 86400000 - 1);
+      if (filters.startDate) (where.createdAt as Record<string, Date>).gte = new Date(filters.startDate);
+      if (filters.endDate) (where.createdAt as Record<string, Date>).lte = new Date(new Date(filters.endDate).getTime() + 86400000 - 1);
     }
     if (filters.search) {
       where.OR = [
@@ -165,7 +165,7 @@ export class ContractsService {
       customerPhone: customer?.phone,
       customerAddressIdCard: customer?.addressIdCard,
       customerAddressCurrent: customer?.addressCurrent,
-      references: customer?.references as any[],
+      references: (customer?.references ?? []) as Prisma.JsonArray,
       productName: product?.name,
       productImei: product?.imeiSerial,
       sellingPrice: Number(contract.sellingPrice),
@@ -209,7 +209,7 @@ export class ContractsService {
     }
 
     // 6. Check references (ผู้ค้ำประกัน/ผู้ติดต่อฉุกเฉิน)
-    const refs = (customer?.references as any[]) || [];
+    const refs = (customer?.references as Prisma.JsonArray) || [];
     if (refs.length === 0) {
       errors.push('ต้องมีบุคคลค้ำประกัน/ผู้ติดต่อฉุกเฉิน อย่างน้อย 1 คน');
     }
@@ -386,9 +386,10 @@ export class ContractsService {
           return newContract;
         }, { timeout: 15000 });
         break; // success — exit retry loop
-      } catch (err: any) {
+      } catch (err: unknown) {
         // Retry on unique constraint (P2002) or serialization failure (P2034)
-        const isRetryable = err?.code === 'P2002' || err?.code === 'P2034';
+        const prismaErr = err instanceof Prisma.PrismaClientKnownRequestError ? err : null;
+        const isRetryable = prismaErr?.code === 'P2002' || prismaErr?.code === 'P2034';
         if (isRetryable && attempt < MAX_RETRIES - 1) {
           continue;
         }
@@ -397,15 +398,17 @@ export class ContractsService {
           throw err;
         }
 
-        this.logger.error(`Failed to create contract (attempt ${attempt + 1}/${MAX_RETRIES}): [${err?.code}] ${err?.message}`, err?.stack);
+        const errMsg = err instanceof Error ? err.message : String(err);
+        const errStack = err instanceof Error ? err.stack : undefined;
+        this.logger.error(`Failed to create contract (attempt ${attempt + 1}/${MAX_RETRIES}): [${prismaErr?.code}] ${errMsg}`, errStack);
 
         // Provide specific error messages for known Prisma errors
-        if (err instanceof Prisma.PrismaClientKnownRequestError) {
-          switch (err.code) {
+        if (prismaErr) {
+          switch (prismaErr.code) {
             case 'P2002':
               throw new BadRequestException('เลขสัญญาซ้ำ กรุณาลองใหม่อีกครั้ง');
             case 'P2003': {
-              const field = (err.meta as any)?.field_name || '';
+              const field = (prismaErr.meta?.field_name as string) || '';
               if (field.includes('branch')) throw new BadRequestException('ไม่พบสาขาที่เลือก');
               if (field.includes('customer')) throw new BadRequestException('ไม่พบข้อมูลลูกค้า');
               if (field.includes('product')) throw new BadRequestException('ไม่พบสินค้าที่เลือก');
@@ -421,7 +424,7 @@ export class ContractsService {
           }
         }
 
-        this.logger.error(`Contract creation failed: ${err?.message}`, err?.stack);
+        this.logger.error(`Contract creation failed: ${errMsg}`, errStack);
         throw new InternalServerErrorException('ไม่สามารถสร้างสัญญาได้ กรุณาลองใหม่อีกครั้ง');
       }
     }

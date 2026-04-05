@@ -54,7 +54,7 @@ export interface VariableDefinition {
   key: string;
   label: string;
   type: 'text' | 'date' | 'number' | 'array';
-  sampleValue: any;
+  sampleValue: string | number | boolean | Record<string, unknown>[] | null;
 }
 
 export interface BlockTypeInfo {

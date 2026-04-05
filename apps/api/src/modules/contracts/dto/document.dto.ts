@@ -16,10 +16,10 @@ export class CreateTemplateDto {
   placeholders?: string[];
 
   @IsOptional()
-  blocks?: any; // Block-based editor content (JSON)
+  blocks?: unknown; // Block-based editor content (JSON)
 
   @IsOptional()
-  settings?: any; // Template settings (JSON)
+  settings?: unknown; // Template settings (JSON)
 
   @IsBoolean()
   @IsOptional()
@@ -40,10 +40,10 @@ export class UpdateTemplateDto {
   placeholders?: string[];
 
   @IsOptional()
-  blocks?: any; // Block-based editor content (JSON)
+  blocks?: unknown; // Block-based editor content (JSON)
 
   @IsOptional()
-  settings?: any; // Template settings (JSON)
+  settings?: unknown; // Template settings (JSON)
 
   @IsBoolean()
   @IsOptional()

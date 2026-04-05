@@ -91,7 +91,7 @@ interface CreditCheckItem {
   aiScore: number | null;
   aiSummary: string | null;
   aiRecommendation: string | null;
-  aiAnalysis: any;
+  aiAnalysis: Record<string, unknown> | null;
   reviewNotes: string | null;
   checkedBy: { id: string; name: string } | null;
   contract: { id: string; contractNumber: string } | null;
@@ -110,8 +110,8 @@ interface AuditLog {
   action: string;
   entity: string;
   entityId: string;
-  oldValue: any;
-  newValue: any;
+  oldValue: unknown;
+  newValue: unknown;
   user: { id: string; name: string; email: string };
   createdAt: string;
 }

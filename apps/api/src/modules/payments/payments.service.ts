@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
-import { PaymentMethod } from '@prisma/client';
+import { Prisma, PaymentMethod } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ReceiptsService } from '../receipts/receipts.service';
 import { AuditService } from '../audit/audit.service';
@@ -214,7 +214,7 @@ export class PaymentsService {
       }
 
       let remaining = amount;
-      const results: any[] = [];
+      const results: Awaited<ReturnType<typeof tx.payment.update>>[] = [];
 
       // Get unpaid payments in order
       const unpaid = contract.payments.filter((p) => p.status !== 'PAID');
@@ -481,7 +481,7 @@ export class PaymentsService {
   }
 
   // ─── Check if contract is fully paid ──────────────────
-  private async checkContractCompletion(contractId: string, tx?: { payment: { count: (...args: any[]) => Promise<number> }; contract: { update: (...args: any[]) => Promise<any> } }) {
+  private async checkContractCompletion(contractId: string, tx?: { payment: { count: (...args: unknown[]) => Promise<number> }; contract: { update: (...args: unknown[]) => Promise<unknown> } }) {
     const db = tx || this.prisma;
     const unpaid = await db.payment.count({
       where: { contractId, status: { not: 'PAID' } },
@@ -517,7 +517,7 @@ export class PaymentsService {
       }
 
       let remaining = credit;
-      const results: any[] = [];
+      const results: Awaited<ReturnType<typeof tx.payment.update>>[] = [];
 
       for (const payment of unpaid) {
         if (remaining <= 0) break;

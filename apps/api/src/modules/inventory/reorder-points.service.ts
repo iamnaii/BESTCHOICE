@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { ProductCategory } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CreateReorderPointDto, UpdateReorderPointDto } from './dto/reorder-point.dto';
@@ -71,7 +72,7 @@ export class ReorderPointsService {
         brand: dto.brand,
         model: dto.model,
         storage: dto.storage || null,
-        category: dto.category as any,
+        category: dto.category as ProductCategory,
         branchId: dto.branchId,
       },
     });
@@ -88,7 +89,7 @@ export class ReorderPointsService {
         brand: dto.brand,
         model: dto.model,
         storage: dto.storage || null,
-        category: dto.category as any,
+        category: dto.category as ProductCategory,
         branchId: dto.branchId,
         minQuantity: dto.minQuantity,
         reorderQuantity: dto.reorderQuantity,

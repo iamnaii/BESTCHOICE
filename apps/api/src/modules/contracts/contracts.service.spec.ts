@@ -43,6 +43,7 @@ jest.mock('../../utils/sequence.util', () => ({
 
 describe('ContractsService', () => {
   let service: ContractsService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
 
   const mockContract = {
@@ -141,6 +142,7 @@ describe('ContractsService', () => {
 
     it('should reject financial changes when payments exist', async () => {
       // Override $transaction to make payment count return > 0
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       prisma.$transaction.mockImplementation(async (cb: (tx: any) => Promise<any>) => {
         const txWithPayments = {
           contract: {
@@ -163,6 +165,7 @@ describe('ContractsService', () => {
     });
 
     it('should allow non-financial updates when payments exist', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       prisma.$transaction.mockImplementation(async (cb: (tx: any) => Promise<any>) => {
         const txWithPayments = {
           contract: {

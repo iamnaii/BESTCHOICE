@@ -305,8 +305,9 @@ export default function CustomersPage() {
       } else {
         toast.success(`อ่านบัตรสำเร็จ (ความมั่นใจ ${pct}%)`);
       }
-    } catch (err: any) {
-      if (err.code === 'ECONNABORTED' || !err.response) {
+    } catch (err: unknown) {
+      const axiosErr = err as { code?: string; response?: unknown };
+      if (axiosErr.code === 'ECONNABORTED' || !axiosErr.response) {
         toast.error('OCR ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาลองใหม่อีกครั้ง');
       } else {
         toast.error(getErrorMessage(err));
@@ -361,8 +362,8 @@ export default function CustomersPage() {
       }
 
       toast.success('อ่านบัตรประชาชนสำเร็จ (Smart Card — ข้อมูลแม่นยำ 100%)');
-    } catch (err: any) {
-      toast.error(err.message || 'ไม่สามารถอ่านบัตรได้');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'ไม่สามารถอ่านบัตรได้');
     } finally {
       setCardReaderLoading(false);
     }

@@ -79,14 +79,14 @@ export class ReportGeneratorService {
     totalRevenue: number;
     totalPayments: number;
     avgDailyRevenue: number;
-    dailySummaries: any[];
+    dailySummaries: Record<string, unknown>[];
   }> {
     const now = new Date();
     const weekEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const weekStart = new Date(weekEnd);
     weekStart.setDate(weekStart.getDate() - 7);
 
-    const dailySummaries: any[] = [];
+    const dailySummaries: Record<string, unknown>[] = [];
     for (let i = 0; i < 7; i++) {
       const d = new Date(weekStart);
       d.setDate(d.getDate() + i);
@@ -98,8 +98,8 @@ export class ReportGeneratorService {
       }
     }
 
-    const totalRevenue = dailySummaries.reduce((s, d) => s + (d.revenue || 0), 0);
-    const totalPayments = dailySummaries.reduce((s, d) => s + (d.paymentsCount || 0), 0);
+    const totalRevenue = dailySummaries.reduce((s, d) => s + (Number(d.revenue) || 0), 0);
+    const totalPayments = dailySummaries.reduce((s, d) => s + (Number(d.paymentsCount) || 0), 0);
 
     const summary = {
       weekStart: weekStart.toISOString().slice(0, 10),

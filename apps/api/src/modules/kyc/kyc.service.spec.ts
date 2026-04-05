@@ -7,7 +7,9 @@ import { NotificationsService } from '../notifications/notifications.service';
 
 describe('KycService', () => {
   let service: KycService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let notifications: any;
 
   const mockContract = {
@@ -59,7 +61,9 @@ describe('KycService', () => {
 
   beforeEach(async () => {
     // Reset mocks
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     Object.values(mockPrisma.contract).forEach((fn: any) => fn.mockClear());
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     Object.values(mockPrisma.kycVerification).forEach((fn: any) => fn.mockClear());
     mockNotifications.send.mockClear();
 

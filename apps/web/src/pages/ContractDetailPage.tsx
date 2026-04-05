@@ -62,8 +62,8 @@ interface ContractDetail {
   dunningStage: string | null;
   payments: Payment[];
   signatures: { id: string; signerType: string; signedAt: string }[];
-  contractDocuments: any[];
-  creditCheck: any;
+  contractDocuments: { id: string; documentType: string; fileName: string; fileUrl: string; createdAt: string }[];
+  creditCheck: { id: string; status: string; aiScore: number | null; aiSummary: string | null } | null;
 }
 
 interface EarlyPayoffQuote {
@@ -153,17 +153,19 @@ export default function ContractDetailPage() {
         if (validation.errors && validation.errors.length > 0) {
           throw { isValidation: true, errors: validation.errors };
         }
-      } catch (err: any) {
-        if (err.isValidation) throw err;
+      } catch (err: unknown) {
+        const validationErr = err as { isValidation?: boolean };
+        if (validationErr.isValidation) throw err;
         // If validate endpoint fails, proceed anyway (endpoint might not exist)
       }
       const { data } = await api.post(`/contracts/${id}/submit-review`);
       return data;
     },
     onSuccess: () => { toast.success('ส่งตรวจสอบแล้ว'); invalidateContract(); },
-    onError: (err: any) => {
-      if (err.isValidation) {
-        toast.error(`สัญญาไม่ครบถ้วน: ${err.errors.join(', ')}`);
+    onError: (err: unknown) => {
+      const validationErr = err as { isValidation?: boolean; errors?: string[] };
+      if (validationErr.isValidation) {
+        toast.error(`สัญญาไม่ครบถ้วน: ${validationErr.errors?.join(', ')}`);
       } else {
         toast.error(getErrorMessage(err));
       }
@@ -173,19 +175,19 @@ export default function ContractDetailPage() {
   const approveMutation = useMutation({
     mutationFn: async () => { const { data } = await api.post(`/contracts/${id}/approve`, { reviewNotes: approveNotes || undefined }); return data; },
     onSuccess: () => { toast.success('อนุมัติสัญญาแล้ว'); invalidateContract(); setApproveNotes(''); },
-    onError: (err: any) => toast.error(getErrorMessage(err)),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const rejectMutation = useMutation({
     mutationFn: async () => { const { data } = await api.post(`/contracts/${id}/reject`, { reviewNotes: rejectNotes }); return data; },
     onSuccess: () => { toast.success('ปฏิเสธสัญญาแล้ว'); invalidateContract(); setShowRejectModal(false); setRejectNotes(''); },
-    onError: (err: any) => toast.error(getErrorMessage(err)),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const activateMutation = useMutation({
     mutationFn: async () => { const { data } = await api.post(`/contracts/${id}/activate`); return data; },
     onSuccess: () => { toast.success('เปิดใช้งานสัญญาแล้ว'); invalidateContract(); },
-    onError: (err: any) => toast.error(getErrorMessage(err)),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const earlyPayoffMutation = useMutation({
@@ -198,13 +200,13 @@ export default function ContractDetailPage() {
       setShowPayoffModal(false);
       invalidateContract();
     },
-    onError: (err: any) => toast.error(getErrorMessage(err)),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const deleteMutation = useMutation({
     mutationFn: async () => { const { data } = await api.delete(`/contracts/${id}`); return data; },
     onSuccess: () => { toast.success('ลบสัญญาแล้ว'); navigate('/contracts'); },
-    onError: (err: any) => toast.error(getErrorMessage(err)),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const customerLinkMutation = useMutation({
@@ -230,7 +232,7 @@ export default function ContractDetailPage() {
       setIsEditing(false);
       invalidateContract();
     },
-    onError: (err: any) => toast.error(getErrorMessage(err)),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   // Edit modal states

@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePricingTemplateDto, UpdatePricingTemplateDto } from './dto/pricing-template.dto';
-import { Prisma } from '@prisma/client';
+import { Prisma, ProductCategory } from '@prisma/client';
 
 @Injectable()
 export class PricingTemplatesService {
@@ -10,7 +10,7 @@ export class PricingTemplatesService {
   async findAll(query?: { brand?: string; category?: string }) {
     const where: Prisma.PricingTemplateWhereInput = { isActive: true };
     if (query?.brand) where.brand = { contains: query.brand, mode: 'insensitive' };
-    if (query?.category) where.category = query.category as any;
+    if (query?.category) where.category = query.category as ProductCategory;
 
     return this.prisma.pricingTemplate.findMany({
       where,
@@ -34,7 +34,7 @@ export class PricingTemplatesService {
         brand: { equals: brand, mode: 'insensitive' },
         model: { equals: model, mode: 'insensitive' },
         storage: storage || '',
-        category: category as any,
+        category: category as ProductCategory,
         hasWarranty: category === 'PHONE_USED' ? (hasWarranty ?? false) : false,
         isActive: true,
       },
@@ -49,7 +49,7 @@ export class PricingTemplatesService {
           brand: { equals: brand, mode: 'insensitive' },
           model: { equals: model, mode: 'insensitive' },
           storage: '',
-          category: category as any,
+          category: category as ProductCategory,
           hasWarranty: category === 'PHONE_USED' ? (hasWarranty ?? false) : false,
           isActive: true,
         },
@@ -66,15 +66,15 @@ export class PricingTemplatesService {
           brand: dto.brand,
           model: dto.model,
           storage: dto.storage || '',
-          category: dto.category as any,
+          category: dto.category as ProductCategory,
           hasWarranty: dto.category === 'PHONE_USED' ? (dto.hasWarranty ?? false) : false,
           cashPrice: dto.cashPrice,
           installmentBestchoicePrice: dto.installmentBestchoicePrice,
           installmentFinancePrice: dto.installmentFinancePrice,
         },
       });
-    } catch (e: any) {
-      if (e.code === 'P2002') {
+    } catch (e: unknown) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
         throw new ConflictException('ราคาตั้งต้นสำหรับ brand/model/storage/category/warranty นี้มีอยู่แล้ว');
       }
       throw e;
@@ -109,7 +109,7 @@ export class PricingTemplatesService {
               brand: item.brand,
               model: item.model,
               storage: item.storage || '',
-              category: item.category as any,
+              category: item.category as ProductCategory,
               hasWarranty,
             },
           },
@@ -123,7 +123,7 @@ export class PricingTemplatesService {
             brand: item.brand,
             model: item.model,
             storage: item.storage || '',
-            category: item.category as any,
+            category: item.category as ProductCategory,
             hasWarranty,
             cashPrice: item.cashPrice,
             installmentBestchoicePrice: item.installmentBestchoicePrice,
@@ -131,8 +131,9 @@ export class PricingTemplatesService {
           },
         });
         results.success++;
-      } catch (e: any) {
-        results.errors.push(`${item.brand} ${item.model} ${item.storage || ''}: ${e.message}`);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        results.errors.push(`${item.brand} ${item.model} ${item.storage || ''}: ${msg}`);
         results.skipped++;
       }
     }

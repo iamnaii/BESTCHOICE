@@ -44,7 +44,7 @@ export class CustomersService {
 
     // Determine sort order
     const order = sortOrder === 'asc' ? 'asc' : 'desc';
-    let orderBy: any = { createdAt: 'desc' };
+    let orderBy: Prisma.CustomerOrderByWithRelationInput = { createdAt: 'desc' };
 
     if (sortBy === 'name') {
       orderBy = { name: order };

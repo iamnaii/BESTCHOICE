@@ -4,11 +4,12 @@ import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UserThrottlerGuard } from '../../guards/user-throttler.guard';
+import { RecordPaymentDto, BulkRecordPaymentDto } from './dto/payment.dto';
 
 describe('PaymentsController', () => {
   let controller: PaymentsController;
-  let _prisma: any;
-  let paymentsService: any;
+  let _prisma: unknown;
+  let paymentsService: PaymentsService;
 
   const mockContract = {
     id: 'contract-1',
@@ -56,7 +57,7 @@ describe('PaymentsController', () => {
       const user = { id: 'user-1', role: 'OWNER', branchId: 'branch-2' };
       const dto = { contractId: 'contract-1', installmentNo: 1, amount: 3000, paymentMethod: 'CASH', evidenceUrl: 'http://slip.jpg' };
 
-      await controller.recordPayment(dto as any, user);
+      await controller.recordPayment(dto as RecordPaymentDto, user);
       expect(paymentsService.recordPayment).toHaveBeenCalled();
     });
 
@@ -64,7 +65,7 @@ describe('PaymentsController', () => {
       const user = { id: 'user-1', role: 'ACCOUNTANT', branchId: 'branch-2' };
       const dto = { contractId: 'contract-1', installmentNo: 1, amount: 3000, paymentMethod: 'CASH', evidenceUrl: 'http://slip.jpg' };
 
-      await controller.recordPayment(dto as any, user);
+      await controller.recordPayment(dto as RecordPaymentDto, user);
       expect(paymentsService.recordPayment).toHaveBeenCalled();
     });
 
@@ -72,7 +73,7 @@ describe('PaymentsController', () => {
       const user = { id: 'user-1', role: 'SALES', branchId: 'branch-1' }; // same branch as contract
       const dto = { contractId: 'contract-1', installmentNo: 1, amount: 3000, paymentMethod: 'CASH', evidenceUrl: 'http://slip.jpg' };
 
-      await controller.recordPayment(dto as any, user);
+      await controller.recordPayment(dto as RecordPaymentDto, user);
       expect(paymentsService.recordPayment).toHaveBeenCalled();
     });
 
@@ -80,21 +81,21 @@ describe('PaymentsController', () => {
       const user = { id: 'user-1', role: 'SALES', branchId: 'branch-2' }; // different branch
       const dto = { contractId: 'contract-1', installmentNo: 1, amount: 3000, paymentMethod: 'CASH', evidenceUrl: 'http://slip.jpg' };
 
-      await expect(controller.recordPayment(dto as any, user)).rejects.toThrow(ForbiddenException);
+      await expect(controller.recordPayment(dto as RecordPaymentDto, user)).rejects.toThrow(ForbiddenException);
     });
 
     it('should reject BRANCH_MANAGER recording payment for different branch', async () => {
       const user = { id: 'user-1', role: 'BRANCH_MANAGER', branchId: 'branch-2' };
       const dto = { contractId: 'contract-1', installmentNo: 1, amount: 3000, paymentMethod: 'CASH', evidenceUrl: 'http://slip.jpg' };
 
-      await expect(controller.recordPayment(dto as any, user)).rejects.toThrow(ForbiddenException);
+      await expect(controller.recordPayment(dto as RecordPaymentDto, user)).rejects.toThrow(ForbiddenException);
     });
 
     it('should allow BRANCH_MANAGER to record payment for own branch', async () => {
       const user = { id: 'user-1', role: 'BRANCH_MANAGER', branchId: 'branch-1' };
       const dto = { contractId: 'contract-1', installmentNo: 1, amount: 3000, paymentMethod: 'CASH', evidenceUrl: 'http://slip.jpg' };
 
-      await controller.recordPayment(dto as any, user);
+      await controller.recordPayment(dto as RecordPaymentDto, user);
       expect(paymentsService.recordPayment).toHaveBeenCalled();
     });
   });
@@ -104,14 +105,14 @@ describe('PaymentsController', () => {
       const user = { id: 'user-1', role: 'SALES', branchId: 'branch-2' };
       const dto = { contractId: 'contract-1', amount: 5000, paymentMethod: 'CASH' };
 
-      await expect(controller.autoAllocatePayment(dto as any, user)).rejects.toThrow(ForbiddenException);
+      await expect(controller.autoAllocatePayment(dto as BulkRecordPaymentDto, user)).rejects.toThrow(ForbiddenException);
     });
 
     it('should allow OWNER to auto-allocate for any branch', async () => {
       const user = { id: 'user-1', role: 'OWNER', branchId: 'branch-2' };
       const dto = { contractId: 'contract-1', amount: 5000, paymentMethod: 'CASH' };
 
-      await controller.autoAllocatePayment(dto as any, user);
+      await controller.autoAllocatePayment(dto as BulkRecordPaymentDto, user);
       expect(paymentsService.autoAllocatePayment).toHaveBeenCalled();
     });
   });

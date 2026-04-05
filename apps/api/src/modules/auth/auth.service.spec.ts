@@ -146,7 +146,7 @@ describe('AuthService', () => {
       expect(result).toHaveProperty('accessToken');
       expect(result).toHaveProperty('refreshToken');
       // Token rotation now uses atomic $transaction([revoke, create])
-      expect((prisma as any).$transaction).toHaveBeenCalled();
+      expect((prisma as unknown as { $transaction: jest.Mock }).$transaction).toHaveBeenCalled();
     });
 
     it('should throw on revoked refresh token', async () => {

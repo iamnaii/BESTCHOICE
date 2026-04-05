@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Delete, Param, Body, Query, UseGuards, Req } from '@nestjs/common';
+import { Request } from 'express';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { ContractDocumentsService } from './contract-documents.service';
 import { UploadContractDocumentDto } from './dto/contract-document.dto';
@@ -58,7 +59,7 @@ export class ContractDocumentsController {
     @Param('contractId') contractId: string,
     @Param('docId') docId: string,
     @CurrentUser() user: { id: string },
-    @Req() req: any,
+    @Req() req: Request,
   ) {
     return this.service.recordView(contractId, docId, user.id, {
       ip: req.ip,
@@ -72,7 +73,7 @@ export class ContractDocumentsController {
     @Param('contractId') contractId: string,
     @Param('docId') docId: string,
     @CurrentUser() user: { id: string },
-    @Req() req: any,
+    @Req() req: Request,
   ) {
     return this.service.recordDownload(contractId, docId, user.id, {
       ip: req.ip,

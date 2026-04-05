@@ -84,7 +84,7 @@ export function formatNumberDecimal(value: number | string, decimals = 2): strin
 }
 
 // Apply format pipe
-export function applyFormat(value: any, format: string): string {
+export function applyFormat(value: unknown, format: string): string {
   if (value == null) return '';
   const fmt = format.trim();
   switch (fmt) {
@@ -95,11 +95,11 @@ export function applyFormat(value: any, format: string): string {
     case 'date:month_name': return formatMonthName(String(value));
     case 'date:dt': return formatDateTime(String(value));
     case 'date:dts': return formatDateTimeSeconds(String(value));
-    case 'num': return formatNumber(value);
+    case 'num': return formatNumber(value as number | string);
     default: {
       // Handle num:N pattern (e.g. num:0, num:2, num:3)
       const numMatch = fmt.match(/^num:(\d+)$/);
-      if (numMatch) return formatNumberDecimal(value, parseInt(numMatch[1], 10));
+      if (numMatch) return formatNumberDecimal(value as number | string, parseInt(numMatch[1], 10));
       return String(value);
     }
   }

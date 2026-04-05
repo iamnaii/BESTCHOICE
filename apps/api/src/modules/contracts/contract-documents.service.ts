@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
-import { ContractDocumentType } from '@prisma/client';
+import { ContractDocumentType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UploadContractDocumentDto } from './dto/contract-document.dto';
 import * as crypto from 'crypto';
@@ -88,7 +88,7 @@ export class ContractDocumentsService {
     const docTypes = new Set(contract.contractDocuments.map((d) => d.documentType));
     const checklist = required.map((r) => ({
       ...r,
-      present: docTypes.has(r.type as any),
+      present: docTypes.has(r.type as ContractDocumentType),
     }));
 
     return {
@@ -124,7 +124,7 @@ export class ContractDocumentsService {
     return this.prisma.$transaction(async (tx) => {
       // Version control: mark previous versions as not latest
       const existingLatest = await tx.contractDocument.findFirst({
-        where: { contractId, documentType: dto.documentType as any, isLatest: true, deletedAt: null },
+        where: { contractId, documentType: dto.documentType as ContractDocumentType, isLatest: true, deletedAt: null },
       });
 
       let version = 1;
@@ -175,7 +175,7 @@ export class ContractDocumentsService {
           contractId,
           action: 'UPLOAD',
           userId,
-          details: { fileName: dto.fileName, version, fileHash } as any,
+          details: { fileName: dto.fileName, version, fileHash } as Prisma.InputJsonValue,
         },
       });
 

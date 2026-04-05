@@ -95,7 +95,7 @@ export default function PricingTemplatesPage() {
   });
 
   const importMutation = useMutation({
-    mutationFn: async (items: any[]) => {
+    mutationFn: async (items: { brand: string; model: string; storage?: string; category: string; hasWarranty?: boolean; cashPrice: number; installmentBestchoicePrice: number; installmentFinancePrice: number }[]) => {
       const { data } = await api.post('/pricing-templates/import', { items });
       return data;
     },

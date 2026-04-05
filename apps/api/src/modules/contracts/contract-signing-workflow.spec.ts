@@ -37,11 +37,11 @@ const mockCheckAgeEligibility = jest.fn().mockReturnValue({ eligible: true, requ
 jest.mock('../../utils/validation.util', () => ({
   validateIMEI: jest.fn().mockReturnValue(true),
   validateThaiPhone: jest.fn().mockReturnValue(true),
-  checkAgeEligibility: (...args: any[]) => mockCheckAgeEligibility(...args),
+  checkAgeEligibility: (...args: unknown[]) => mockCheckAgeEligibility(...args),
   validateAddress: jest.fn().mockReturnValue(true),
-  checkRequiredContractFields: (...args: any[]) => mockCheckRequiredContractFields(...args),
-  checkRequiredDocuments: (...args: any[]) => mockCheckRequiredDocuments(...args),
-  checkRequiredSignatures: (...args: any[]) => mockCheckRequiredSignatures(...args),
+  checkRequiredContractFields: (...args: unknown[]) => mockCheckRequiredContractFields(...args),
+  checkRequiredDocuments: (...args: unknown[]) => mockCheckRequiredDocuments(...args),
+  checkRequiredSignatures: (...args: unknown[]) => mockCheckRequiredSignatures(...args),
 }));
 
 jest.mock('../../utils/sequence.util', () => ({
@@ -52,10 +52,12 @@ jest.mock('../../utils/sequence.util', () => ({
 describe('Contract Signing & Workflow', () => {
   let service: ContractsService;
   let workflowService: ContractWorkflowService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let docsService: any;
 
-  const makeContract = (overrides: any = {}) => ({
+  const makeContract = (overrides: Record<string, unknown> = {}) => ({
     id: 'contract-1',
     contractNumber: 'BC-2026-001',
     customerId: 'customer-1',
@@ -108,6 +110,7 @@ describe('Contract Signing & Workflow', () => {
     ...overrides,
   });
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mockContract: any;
 
   beforeEach(async () => {

@@ -293,7 +293,7 @@ export class OverdueService {
 
     if (activeIds.length > 0) {
       // Batch update + audit logs in a single transaction
-      const txOps: any[] = [
+      const txOps: Prisma.PrismaPromise<unknown>[] = [
         this.prisma.contract.updateMany({
           where: { id: { in: activeIds } },
           data: { status: 'OVERDUE' },
@@ -356,7 +356,7 @@ export class OverdueService {
     const defaultIds = defaultCandidates.map((c) => c.id);
 
     if (defaultIds.length > 0) {
-      const txOps: any[] = [
+      const txOps: Prisma.PrismaPromise<unknown>[] = [
         this.prisma.contract.updateMany({
           where: { id: { in: defaultIds } },
           data: { status: 'DEFAULT' },

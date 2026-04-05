@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
-import { SignerType } from '@prisma/client';
+import { SignerType, Prisma } from '@prisma/client';
 import { formatDateShort, formatDateMedium, formatDateLong, getThaiDateParts } from '../../utils/thai-date.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
@@ -55,7 +55,7 @@ export class DocumentsService {
         contentHtml: sanitizedHtml,
         placeholders,
         blocks: dto.blocks ?? [],
-        settings: dto.settings ?? null,
+        settings: (dto.settings ?? Prisma.JsonNull) as Prisma.InputJsonValue,
         isActive: dto.isActive ?? true,
       },
     });
@@ -205,7 +205,7 @@ export class DocumentsService {
 
     // Get template
     let htmlContent = '';
-    let templateSettings: any = null;
+    let templateSettings: Prisma.JsonValue = null;
     if (templateId) {
       const template = await this.findOneTemplate(templateId);
       htmlContent = template.contentHtml;
@@ -366,14 +366,14 @@ export class DocumentsService {
 
   // ─── Auto-generate documents after all signatures ────
   async generateSignedDocuments(contractId: string, createdById: string) {
-    const results: { contract?: any; pdpa?: any; errors?: string[] } = {};
+    const results: { contract?: Awaited<ReturnType<DocumentsService['generateDocument']>>; pdpa?: Awaited<ReturnType<DocumentsService['generatePdpaDocument']>>; errors?: string[] } = {};
     const errors: string[] = [];
 
     // Generate contract document
     try {
       results.contract = await this.generateDocument(contractId, createdById, 'CONTRACT');
-    } catch (err: any) {
-      const msg = err?.message || 'Unknown error';
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
       this.logger.error('Failed to auto-generate contract document:', msg);
       errors.push(`สัญญา: ${msg}`);
     }
@@ -381,8 +381,8 @@ export class DocumentsService {
     // Generate PDPA document
     try {
       results.pdpa = await this.generatePdpaDocument(contractId, createdById);
-    } catch (err: any) {
-      const msg = err?.message || 'Unknown error';
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
       this.logger.error('Failed to auto-generate PDPA document:', msg);
       errors.push(`PDPA: ${msg}`);
     }
@@ -443,7 +443,7 @@ export class DocumentsService {
     if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
 
     let htmlContent = '';
-    let templateSettings: any = null;
+    let templateSettings: Prisma.JsonValue = null;
     if (templateId) {
       const template = await this.findOneTemplate(templateId);
       htmlContent = template.contentHtml;
@@ -613,11 +613,12 @@ export class DocumentsService {
   }
 
   /** Wrap rendered HTML with A4 page styles and page numbering */
-  private wrapWithA4Styles(bodyHtml: string, templateSettings?: any, contractNumber?: string): string {
+  private wrapWithA4Styles(bodyHtml: string, templateSettings?: Prisma.JsonValue, contractNumber?: string): string {
     // Use template settings if available, otherwise fallback to defaults
-    const margins = templateSettings?.margins || { top: 25.4, bottom: 25.4, left: 19.1, right: 19.1 };
-    const fontSize = templateSettings?.fontSize || { body: '16pt', heading: '18pt', footer: '10pt' };
-    const letterhead = templateSettings?.letterhead || 'none';
+    const settings = templateSettings as Record<string, unknown> | null | undefined;
+    const margins = (settings?.margins as Record<string, number>) || { top: 25.4, bottom: 25.4, left: 19.1, right: 19.1 };
+    const fontSize = (settings?.fontSize as Record<string, string>) || { body: '16pt', heading: '18pt', footer: '10pt' };
+    const letterhead = (settings?.letterhead as string) || 'none';
     // Build letterhead HTML
     let letterheadHtml = '';
     if (letterhead === 'bestchoice') {
@@ -713,7 +714,7 @@ ${(() => {
    * - If active DB template exists for this planType, always use it (admin-configured)
    * - Otherwise fall back to file template or inline default
    */
-  private async resolveTemplate(planType: string, documentType: string): Promise<{ html: string; settings: any }> {
+  private async resolveTemplate(planType: string, documentType: string): Promise<{ html: string; settings: Prisma.JsonValue }> {
     const template = await this.prisma.contractTemplate.findFirst({
       where: { type: planType, isActive: true, deletedAt: null },
       orderBy: { updatedAt: 'desc' },
@@ -741,6 +742,7 @@ ${(() => {
     return null;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private async replacePlaceholders(html: string, contract: any, lessorSig?: { image: string; name: string } | null): Promise<string> {
     // Load configurable settings with hardcoded fallbacks
     const configMap: Record<string, string> = {};
@@ -753,6 +755,7 @@ ${(() => {
     const cfg = (key: string, fallback: string) => configMap[key] || fallback;
     const esc = this.escapeHtml.bind(this);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const payments: any[] = contract.payments || [];
 
     // Fallback: generate display-only rows from contract metadata when payments are missing
@@ -774,14 +777,19 @@ ${(() => {
     const tblCell = 'padding:4px 16px;border:1px solid #000;font-size:16pt';
     const paymentScheduleRows = payments
       .map(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (p: any) =>
           `<tr><td style="text-align:center;${tblCell}">${p.installmentNo}</td><td style="text-align:center;${tblCell}">${esc(formatDateMedium(p.dueDate))}</td><td style="text-align:right;${tblCell}">${Number(p.amountDue).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>`,
       )
       .join('');
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const customerSig = contract.signatures?.find((s: any) => s.signerType === 'CUSTOMER');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let staffSig = contract.signatures?.find((s: any) => s.signerType === 'STAFF' || s.signerType === 'COMPANY');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const witness1Sig = contract.signatures?.find((s: any) => s.signerType === 'WITNESS_1');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const witness2Sig = contract.signatures?.find((s: any) => s.signerType === 'WITNESS_2');
 
     // Fallback to system settings lessor signature if no COMPANY/STAFF signature on contract
@@ -804,7 +812,9 @@ ${(() => {
     const thaiYear = contractDateParts.year;
 
     // Build guarantor/references as numbered list (matching contract format)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const references: any[] = contract.customer?.references || [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const referencesHtml = references.map((r: any, i: number) =>
       `<p style="margin-left:3em">${i + 1}. ชื่อ-นามสกุล <u>&nbsp;&nbsp;${esc(r.prefix || '')}${esc(r.firstName || '')} ${esc(r.lastName || '')}&nbsp;&nbsp;</u> เบอร์โทรศัพท์ <u>&nbsp;&nbsp;${esc(r.phone || '')}&nbsp;&nbsp;</u> ความสัมพันธ์ <u>&nbsp;&nbsp;${esc(r.relationship || '')}&nbsp;&nbsp;</u></p>`
     ).join('');
@@ -928,6 +938,7 @@ ${(() => {
     }
 
     // Build EMERGENCY_CONTACTS array with NAME/TEL/RELATION structure for new syntax
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const emergencyContacts = references.map((r: any) => ({
       NAME: `${r.prefix || ''}${r.firstName || ''} ${r.lastName || ''}`.trim(),
       TEL: r.phone || '',
@@ -1073,6 +1084,7 @@ ${(() => {
 
     // Handle INSTALLMENTS block rendering
     if (result.includes('INSTALLMENTS')) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const installmentsRows = payments.map((p: any) => {
         const dateStr = formatDateMedium(p.dueDate);
         return `<tr><td style="text-align:center;padding:4px 12px;border:1px solid #9ca3af">${p.installmentNo}</td><td style="text-align:center;padding:4px 12px;border:1px solid #9ca3af">${dateStr}</td><td style="text-align:right;padding:4px 12px;border:1px solid #9ca3af">${Number(p.amountDue).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>`;

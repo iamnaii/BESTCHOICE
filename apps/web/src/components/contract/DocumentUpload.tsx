@@ -124,8 +124,9 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
       } else {
         toast.success(`อ่าน${ocrConfig.label}สำเร็จ (ความมั่นใจ ${pct}%)`);
       }
-    } catch (err: any) {
-      if (err.code === 'ECONNABORTED' || !err.response) {
+    } catch (err: unknown) {
+      const axiosErr = err as { code?: string; response?: unknown };
+      if (axiosErr.code === 'ECONNABORTED' || !axiosErr.response) {
         toast.error('OCR ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาลองใหม่อีกครั้ง');
       } else {
         toast.error(getErrorMessage(err));
@@ -188,7 +189,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
       await api.patch(`/customers/${customerId}`, updateData);
       toast.success('อัปเดตข้อมูลลูกค้าสำเร็จ');
       setShowOcrPanel(false);
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast.error(getErrorMessage(err));
     }
   };

@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, InternalServerErrorException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Prisma } from '@prisma/client';
+import { Prisma, CreditCheckStatus } from '@prisma/client';
 import Anthropic from '@anthropic-ai/sdk';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCreditCheckDto, OverrideCreditCheckDto } from './dto/credit-check.dto';
@@ -50,7 +50,7 @@ export class CreditCheckService {
     }
     if (filters.branchId) {
       where.customer = {
-        ...((where.customer as Record<string, any>) || {}),
+        ...((where.customer as Record<string, unknown>) || {}),
         contracts: { some: { branchId: filters.branchId } },
       };
     }
@@ -209,7 +209,7 @@ export class CreditCheckService {
     return this.prisma.creditCheck.update({
       where: { id: creditCheckId },
       data: {
-        status: dto.status as any,
+        status: dto.status as CreditCheckStatus,
         reviewNotes: dto.reviewNotes,
         checkedById: userId,
         checkedAt: new Date(),
@@ -327,7 +327,7 @@ export class CreditCheckService {
     return this.prisma.creditCheck.update({
       where: { contractId },
       data: {
-        status: dto.status as any,
+        status: dto.status as CreditCheckStatus,
         reviewNotes: dto.reviewNotes,
         checkedById: userId,
         checkedAt: new Date(),

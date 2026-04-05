@@ -307,8 +307,9 @@ export default function CreditChecksPage() {
       } else {
         toast.success(`อ่านสมุดบัญชีสำเร็จ (ความมั่นใจ ${pct}%)`);
       }
-    } catch (err: any) {
-      if (err.code === 'ECONNABORTED' || !err.response) {
+    } catch (err: unknown) {
+      const axiosErr = err as { code?: string; response?: unknown };
+      if (axiosErr.code === 'ECONNABORTED' || !axiosErr.response) {
         toast.error('ไม่สามารถเชื่อมต่อ OCR ได้ กรุณาลองใหม่');
       } else {
         toast.error(getErrorMessage(err));

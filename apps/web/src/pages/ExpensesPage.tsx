@@ -11,7 +11,7 @@ import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { compressImageForOcr } from '@/lib/compressImage';
-import { Receipt, Plus, Pencil, Upload, X, ArrowLeft, ShoppingBag, Megaphone, Building2, MoreHorizontal, MoreVertical, TrendingDown } from 'lucide-react';
+import { Receipt, Plus, Pencil, Upload, X, ArrowLeft, ShoppingBag, Megaphone, Building2, MoreHorizontal, MoreVertical, TrendingDown, FileText, Store, Layers, CreditCard, Paperclip, StickyNote } from 'lucide-react';
 import AnimatedCounter from '@/components/ui/animated-counter';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Button } from '@/components/ui/button';
@@ -216,35 +216,40 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center pt-8 pb-8">
       <div className="w-full max-w-4xl bg-background rounded-xl shadow-2xl overflow-y-auto max-h-[calc(100vh-4rem)]">
         {/* Header */}
-        <div className="sticky top-0 z-10 bg-background border-b px-6 py-4 flex items-center justify-between">
-          <button onClick={onClose} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b px-6 py-4 flex items-center justify-between">
+          <button onClick={onClose} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
             <ArrowLeft className="size-4" /> กลับ
           </button>
-          <h2 className="text-lg font-semibold">{editingExpense ? 'แก้ไขรายจ่าย' : 'บันทึกรายจ่าย'}</h2>
+          <h2 className="text-lg font-semibold text-foreground">{editingExpense ? 'แก้ไขรายจ่าย' : 'บันทึกรายจ่าย'}</h2>
           <div className="w-16" />
         </div>
 
-        <div className="p-6 space-y-6">
+        <div className="p-6 space-y-5">
           {/* Section: ข้อมูลเอกสาร */}
-          <div className="border border-border rounded-xl p-5 space-y-3">
-            <h3 className="font-semibold text-foreground flex items-center gap-2 border-b border-border pb-3">
-              <span className="size-2 rounded-full bg-primary" />
-              ข้อมูลเอกสาร
-            </h3>
+          <div className="rounded-xl border border-border bg-card p-5">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-primary/10 text-primary">
+                <FileText className="size-4" strokeWidth={1.5} />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">ข้อมูลเอกสาร</h3>
+                <p className="text-xs text-muted-foreground">วันที่, สาขา, สถานะ</p>
+              </div>
+            </div>
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">วันที่ *</label>
+                <label className="block text-xs font-medium text-foreground mb-1.5">วันที่ <span className="text-destructive">*</span></label>
                 <ThaiDateInput value={form.expenseDate} onChange={(e) => setForm({ ...form, expenseDate: e.target.value })} required className={inputClass} />
               </div>
               <div>
-                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สาขา *</label>
+                <label className="block text-xs font-medium text-foreground mb-1.5">สาขา <span className="text-destructive">*</span></label>
                 <select value={form.branchId} onChange={(e) => setForm({ ...form, branchId: e.target.value })} required className={inputClass}>
                   {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สถานะ</label>
-                <div className="px-3 py-2 bg-muted rounded-lg text-sm">
+                <label className="block text-xs font-medium text-foreground mb-1.5">สถานะ</label>
+                <div className="px-3 py-2 bg-muted rounded-lg text-sm font-medium">
                   {editingExpense ? statusLabels[editingExpense.status] || editingExpense.status : 'ใหม่'}
                 </div>
               </div>
@@ -252,153 +257,183 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
           </div>
 
           {/* Section: ผู้รับเงิน */}
-          <div className="border border-border rounded-xl p-5 space-y-3">
-            <h3 className="font-semibold text-foreground flex items-center gap-2 border-b border-border pb-3">
-              <span className="size-2 rounded-full bg-warning" />
-              ผู้รับเงิน / ร้านค้า
-            </h3>
+          <div className="rounded-xl border border-border bg-card p-5">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-orange-500/10 text-orange-500">
+                <Store className="size-4" strokeWidth={1.5} />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">ผู้รับเงิน / ร้านค้า</h3>
+                <p className="text-xs text-muted-foreground">ข้อมูลผู้ออกใบเสร็จ</p>
+              </div>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ชื่อผู้รับเงิน</label>
+                <label className="block text-xs font-medium text-foreground mb-1.5">ชื่อผู้รับเงิน</label>
                 <input type="text" value={form.vendorName} onChange={(e) => setForm({ ...form, vendorName: e.target.value })} placeholder="เช่น การไฟฟ้านครหลวง" className={inputClass} />
               </div>
               <div>
-                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เลขผู้เสียภาษี</label>
-                <input type="text" value={form.vendorTaxId} onChange={(e) => setForm({ ...form, vendorTaxId: e.target.value })} placeholder="13 หลัก" className={inputClass} />
+                <label className="block text-xs font-medium text-foreground mb-1.5">เลขผู้เสียภาษี</label>
+                <input type="text" value={form.vendorTaxId} onChange={(e) => setForm({ ...form, vendorTaxId: e.target.value })} placeholder="13 หลัก" className={`${inputClass} font-mono`} />
               </div>
             </div>
           </div>
 
           {/* Section: รายการค่าใช้จ่าย */}
-          <div className="border border-border rounded-xl p-5 space-y-4">
-            <h3 className="font-semibold text-foreground flex items-center gap-2 border-b border-border pb-3">
-              <span className="size-2 rounded-full bg-info" />
-              รายการค่าใช้จ่าย
-            </h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หมวดบัญชี *</label>
-                <select value={form.accountType} onChange={(e) => { const t = e.target.value; setForm({ ...form, accountType: t, category: categoryGroups[t]?.[0]?.value || '' }); }} className={inputClass}>
-                  {Object.entries(accountTypeLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                </select>
+          <div className="rounded-xl border border-border bg-card p-5">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-violet-500/10 text-violet-500">
+                <Layers className="size-4" strokeWidth={1.5} />
               </div>
               <div>
-                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หมวดย่อย *</label>
-                <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className={inputClass}>
-                  {availableCategories.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-                </select>
+                <h3 className="text-sm font-semibold text-foreground">รายการค่าใช้จ่าย</h3>
+                <p className="text-xs text-muted-foreground">หมวดบัญชี, จำนวนเงิน, ภาษี</p>
               </div>
             </div>
-            <div>
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">รายละเอียด *</label>
-              <input type="text" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} required placeholder="เช่น ค่าไฟฟ้าเดือน เม.ย. 2569" className={inputClass} />
-            </div>
-
-            {/* Amount row */}
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">จำนวนเงิน *</label>
-                <input type="number" step="0.01" min="0.01" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} required className={inputClass} />
-              </div>
-              <div>
-                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">VAT</label>
-                <input type="number" step="0.01" min="0" value={form.vatAmount} onChange={(e) => { if (!includeVat) setForm({ ...form, vatAmount: e.target.value }); }}
-                  readOnly={includeVat} className={`${inputClass} ${includeVat ? 'bg-muted' : ''}`} />
-              </div>
-              <div>
-                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หัก ณ ที่จ่าย</label>
-                <input type="number" step="0.01" min="0" value={form.withholdingTax} onChange={(e) => setForm({ ...form, withholdingTax: e.target.value })} className={inputClass} />
-              </div>
-            </div>
-
-            {/* VAT toggle */}
-            <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-              <input type="checkbox" checked={includeVat} onChange={(e) => { setIncludeVat(e.target.checked); if (!e.target.checked) setForm(prev => ({ ...prev, vatAmount: '0' })); }} className="rounded border-input" />
-              คำนวณ VAT 7% อัตโนมัติ
-            </label>
-
-            {/* Summary box */}
-            {amt > 0 && (
-              <div className="bg-primary/5 dark:bg-primary/10 rounded-xl p-4 space-y-1.5 text-sm border border-primary/10">
-                <div className="flex justify-between"><span className="text-muted-foreground">รวมก่อน VAT</span><span className="font-medium">{fmt(amt)}</span></div>
-                {vat > 0 && <div className="flex justify-between"><span className="text-muted-foreground">VAT 7%</span><span className="font-medium">{fmt(vat)}</span></div>}
-                {wht > 0 && <div className="flex justify-between text-destructive"><span>หัก ณ ที่จ่าย</span><span className="font-medium">({fmt(wht)})</span></div>}
-                <div className="border-t border-primary/20 pt-2 mt-2 flex justify-between font-bold text-lg">
-                  <span className="text-primary">ยอดจ่ายสุทธิ</span><span className="text-primary">{fmt(netPay)}</span>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1.5">หมวดบัญชี <span className="text-destructive">*</span></label>
+                  <select value={form.accountType} onChange={(e) => { const t = e.target.value; setForm({ ...form, accountType: t, category: categoryGroups[t]?.[0]?.value || '' }); }} className={inputClass}>
+                    {Object.entries(accountTypeLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1.5">หมวดย่อย <span className="text-destructive">*</span></label>
+                  <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className={inputClass}>
+                    {availableCategories.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                  </select>
                 </div>
               </div>
-            )}
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1.5">รายละเอียด <span className="text-destructive">*</span></label>
+                <input type="text" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} required placeholder="เช่น ค่าไฟฟ้าเดือน เม.ย. 2569" className={inputClass} />
+              </div>
+
+              {/* Amount row */}
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1.5">จำนวนเงิน <span className="text-destructive">*</span></label>
+                  <input type="number" step="0.01" min="0.01" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} required className={inputClass} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1.5">VAT</label>
+                  <input type="number" step="0.01" min="0" value={form.vatAmount} onChange={(e) => { if (!includeVat) setForm({ ...form, vatAmount: e.target.value }); }}
+                    readOnly={includeVat} className={`${inputClass} ${includeVat ? 'bg-muted' : ''}`} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1.5">หัก ณ ที่จ่าย</label>
+                  <input type="number" step="0.01" min="0" value={form.withholdingTax} onChange={(e) => setForm({ ...form, withholdingTax: e.target.value })} className={inputClass} />
+                </div>
+              </div>
+
+              {/* VAT toggle */}
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input type="checkbox" checked={includeVat} onChange={(e) => { setIncludeVat(e.target.checked); if (!e.target.checked) setForm(prev => ({ ...prev, vatAmount: '0' })); }} className="rounded border-input text-primary" />
+                <span className="text-muted-foreground">คำนวณ VAT 7% อัตโนมัติ</span>
+              </label>
+
+              {/* Summary box */}
+              {amt > 0 && (
+                <div className="bg-gradient-to-br from-primary/5 to-primary/10 dark:from-primary/10 dark:to-primary/15 rounded-xl p-4 space-y-2 text-sm border border-primary/15">
+                  <div className="flex justify-between"><span className="text-muted-foreground">รวมก่อน VAT</span><span className="font-medium">{fmt(amt)}</span></div>
+                  {vat > 0 && <div className="flex justify-between"><span className="text-muted-foreground">VAT 7%</span><span className="font-medium">{fmt(vat)}</span></div>}
+                  {wht > 0 && <div className="flex justify-between text-destructive"><span>หัก ณ ที่จ่าย</span><span className="font-medium">({fmt(wht)})</span></div>}
+                  <div className="border-t border-primary/20 pt-2.5 mt-1 flex justify-between font-bold text-lg">
+                    <span className="text-primary">ยอดจ่ายสุทธิ</span><span className="text-primary">{fmt(netPay)}</span>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Section: ข้อมูลการจ่ายเงิน */}
-          <div className="border border-border rounded-xl p-5 space-y-3">
-            <h3 className="font-semibold text-foreground flex items-center gap-2 border-b border-border pb-3">
-              <span className="size-2 rounded-full bg-success" />
-              ข้อมูลการจ่ายเงิน
-            </h3>
+          <div className="rounded-xl border border-border bg-card p-5">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-emerald-500/10 text-emerald-500">
+                <CreditCard className="size-4" strokeWidth={1.5} />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">ข้อมูลการจ่ายเงิน</h3>
+                <p className="text-xs text-muted-foreground">วิธีชำระ, เลขอ้างอิง</p>
+              </div>
+            </div>
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">วิธีจ่ายเงิน</label>
+                <label className="block text-xs font-medium text-foreground mb-1.5">วิธีจ่ายเงิน</label>
                 <select value={form.paymentMethod} onChange={(e) => setForm({ ...form, paymentMethod: e.target.value })} className={inputClass}>
                   <option value="">ยังไม่จ่าย</option>
                   {Object.entries(paymentMethodLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เลขอ้างอิง</label>
+                <label className="block text-xs font-medium text-foreground mb-1.5">เลขอ้างอิง</label>
                 <input type="text" value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} placeholder="เลขที่บิล, เลขเช็ค" className={inputClass} />
               </div>
               <div>
-                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เลขใบกำกับภาษี</label>
+                <label className="block text-xs font-medium text-foreground mb-1.5">เลขใบกำกับภาษี</label>
                 <input type="text" value={form.taxInvoiceNo} onChange={(e) => setForm({ ...form, taxInvoiceNo: e.target.value })} className={inputClass} />
               </div>
             </div>
           </div>
 
           {/* Section: แนบไฟล์ */}
-          <div className="border border-border rounded-xl p-5 space-y-3">
-            <h3 className="font-semibold text-foreground flex items-center gap-2 border-b border-border pb-3">
-              <span className="size-2 rounded-full bg-destructive" />
-              แนบไฟล์
-            </h3>
+          <div className="rounded-xl border border-border bg-card p-5">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-rose-500/10 text-rose-500">
+                <Paperclip className="size-4" strokeWidth={1.5} />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">แนบไฟล์</h3>
+                <p className="text-xs text-muted-foreground">ใบเสร็จ, ใบกำกับภาษี</p>
+              </div>
+            </div>
             {form.receiptImageUrl ? (
-              <div className="flex items-start gap-3">
-                <img src={form.receiptImageUrl} alt="ใบเสร็จ" className="w-24 h-24 object-cover rounded-lg border" />
+              <div className="flex items-start gap-4 p-3 rounded-lg border border-border bg-muted/30">
+                <img src={form.receiptImageUrl} alt="ใบเสร็จ" className="w-20 h-20 object-cover rounded-lg border shadow-sm" />
                 <div className="flex-1">
-                  <p className="text-sm text-foreground">ใบเสร็จ/ใบกำกับภาษี</p>
-                  <button onClick={() => setForm(prev => ({ ...prev, receiptImageUrl: '' }))} className="text-red-500 hover:text-red-600 text-sm flex items-center gap-1 mt-1">
-                    <X className="size-3" /> ลบ
+                  <p className="text-sm font-medium text-foreground">ใบเสร็จ/ใบกำกับภาษี</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">อัพโหลดเรียบร้อย</p>
+                  <button onClick={() => setForm(prev => ({ ...prev, receiptImageUrl: '' }))} className="text-destructive hover:text-destructive/80 text-xs font-medium flex items-center gap-1 mt-2">
+                    <X className="size-3" /> ลบไฟล์
                   </button>
                 </div>
               </div>
             ) : (
               <div
                 onClick={() => fileRef.current?.click()}
-                className="border-2 border-dashed border-input rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 transition-colors"
+                className="border-2 border-dashed border-input rounded-xl p-8 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-all"
               >
                 <input type="file" accept="image/*,.pdf" hidden ref={fileRef} onChange={handleFileSelect} />
-                <Upload className="size-8 mx-auto text-muted-foreground mb-2" />
-                <p className="text-sm text-muted-foreground">คลิกหรือลากไฟล์มาวาง</p>
+                <div className="flex items-center justify-center size-12 rounded-full bg-muted mx-auto mb-3">
+                  <Upload className="size-5 text-muted-foreground" />
+                </div>
+                <p className="text-sm font-medium text-foreground">คลิกหรือลากไฟล์มาวาง</p>
                 <p className="text-xs text-muted-foreground mt-1">JPG, PNG ไม่เกิน 5MB</p>
               </div>
             )}
           </div>
 
           {/* Section: หมายเหตุ */}
-          <div className="border border-border rounded-xl p-5 space-y-3">
-            <h3 className="font-semibold text-foreground flex items-center gap-2 border-b border-border pb-3">
-              <span className="size-2 rounded-full bg-muted-foreground" />
-              หมายเหตุ
-            </h3>
-            <textarea value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} rows={2} placeholder="หมายเหตุเพิ่มเติม..." className={inputClass} />
-            <div className="flex items-center gap-4">
-              <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-                <input type="checkbox" checked={form.isRecurring} onChange={(e) => setForm({ ...form, isRecurring: e.target.checked, recurringDay: e.target.checked ? form.recurringDay : '' })} className="rounded border-input" />
-                รายจ่ายประจำ (ทุกเดือน)
+          <div className="rounded-xl border border-border bg-card p-5">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-slate-500/10 text-slate-500">
+                <StickyNote className="size-4" strokeWidth={1.5} />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">หมายเหตุ</h3>
+                <p className="text-xs text-muted-foreground">บันทึกเพิ่มเติม, รายจ่ายประจำ</p>
+              </div>
+            </div>
+            <textarea value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} rows={2} placeholder="หมายเหตุเพิ่มเติม..." className={`${inputClass} resize-none`} />
+            <div className="flex items-center gap-4 mt-3">
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input type="checkbox" checked={form.isRecurring} onChange={(e) => setForm({ ...form, isRecurring: e.target.checked, recurringDay: e.target.checked ? form.recurringDay : '' })} className="rounded border-input text-primary" />
+                <span className="text-muted-foreground">รายจ่ายประจำ (ทุกเดือน)</span>
               </label>
               {form.isRecurring && (
                 <div className="flex items-center gap-1.5">
-                  <span className="text-sm text-muted-foreground">วันที่</span>
+                  <span className="text-sm text-muted-foreground">ทุกวันที่</span>
                   <input type="number" min="1" max="31" value={form.recurringDay} onChange={(e) => setForm({ ...form, recurringDay: e.target.value })} className={`${inputClass} w-16 text-center`} placeholder="1-31" />
                 </div>
               )}
@@ -407,17 +442,19 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
         </div>
 
         {/* Footer buttons */}
-        <div className="sticky bottom-0 bg-background border-t border-border px-6 py-4 flex justify-end gap-3">
+        <div className="sticky bottom-0 bg-background border-t border-border px-6 py-4 flex items-center justify-end gap-3">
           <Button variant="ghost" size="md" onClick={onClose}>
             ยกเลิก
           </Button>
           <Button variant="outline" size="md" onClick={() => handleSave(false)} disabled={saveMutation.isPending}>
             {saveMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกร่าง'}
           </Button>
-          <Button variant="primary" size="md" onClick={() => handleSave(true)} disabled={saveMutation.isPending}
-            className="bg-success hover:bg-success/90">
-            {saveMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกและส่งอนุมัติ'}
-          </Button>
+          <button onClick={() => handleSave(true)} disabled={saveMutation.isPending}
+            className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-green-600 text-white rounded-lg text-sm font-semibold shadow-sm hover:shadow-md hover:from-emerald-600 hover:to-green-700 transition-all disabled:opacity-50 inline-flex items-center gap-2">
+            {saveMutation.isPending ? (
+              <><div className="animate-spin rounded-full h-4 w-4 border-2 border-white/30 border-t-white" /> กำลังบันทึก...</>
+            ) : 'บันทึกและส่งอนุมัติ'}
+          </button>
         </div>
       </div>
     </div>

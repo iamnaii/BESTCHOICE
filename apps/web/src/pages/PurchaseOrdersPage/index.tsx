@@ -1,8 +1,13 @@
 import { useCallback, useRef } from 'react';
+import { toast } from 'sonner';
 import PageHeader from '@/components/ui/PageHeader';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { exportToExcel } from '@/utils/excel.util';
+import { Download } from 'lucide-react';
+import { formatDateShort } from '@/utils/formatters';
 import { usePurchaseOrdersData } from './hooks/usePurchaseOrdersData';
 import { usePOForm } from './hooks/usePOForm';
+import { statusLabels, paymentStatusLabels } from './constants';
 import { QcPendingPanel } from './components/QcPendingPanel';
 import { POListTab } from './components/POListTab';
 import { AccountsPayableTab } from './components/AccountsPayableTab';
@@ -34,12 +39,45 @@ export default function PurchaseOrdersPage() {
         title="ใบสั่งซื้อ (PO)"
         subtitle="จัดการการสั่งซื้อสินค้า"
         action={
-          <button
-            onClick={() => data.setIsCreateModalOpen(true)}
-            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
-          >
-            + สร้าง PO
-          </button>
+          <div className="flex gap-2">
+            {data.pos.length > 0 && (
+              <button
+                onClick={async () => {
+                  await exportToExcel({
+                    columns: [
+                      { header: 'เลข PO', key: 'poNumber', width: 15 },
+                      { header: 'ผู้ขาย', key: 'supplier', width: 20 },
+                      { header: 'วันที่สั่ง', key: 'orderDate', width: 15 },
+                      { header: 'ยอดรวม', key: 'totalAmount', width: 15 },
+                      { header: 'สถานะ', key: 'status', width: 15 },
+                      { header: 'สถานะชำระเงิน', key: 'paymentStatus', width: 15 },
+                    ],
+                    data: data.pos.map((po) => ({
+                      poNumber: po.poNumber,
+                      supplier: po.supplier.name,
+                      orderDate: formatDateShort(po.orderDate),
+                      totalAmount: Number(po.netAmount).toLocaleString(),
+                      status: statusLabels[po.status] || po.status,
+                      paymentStatus: paymentStatusLabels[po.paymentStatus] || po.paymentStatus,
+                    })),
+                    sheetName: 'ใบสั่งซื้อ',
+                    filename: `purchase_orders_${new Date().toISOString().slice(0, 10)}.xlsx`,
+                  });
+                  toast.success('ส่งออก Excel สำเร็จ');
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-input rounded-lg hover:bg-muted transition-colors"
+              >
+                <Download className="size-4" />
+                ส่งออก Excel
+              </button>
+            )}
+            <button
+              onClick={() => data.setIsCreateModalOpen(true)}
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+            >
+              + สร้าง PO
+            </button>
+          </div>
         }
       />
 

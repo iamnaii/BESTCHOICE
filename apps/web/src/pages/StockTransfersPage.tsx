@@ -8,6 +8,8 @@ import { formatDateShort, formatDateTime } from '@/utils/formatters';
 import PageHeader from '@/components/ui/PageHeader';
 import Modal from '@/components/ui/Modal';
 import { transferStatusLabels } from '@/lib/constants';
+import { exportToExcel } from '@/utils/excel.util';
+import { Download } from 'lucide-react';
 
 interface TransferProduct {
   id: string;
@@ -296,6 +298,39 @@ export default function StockTransfersPage() {
       <PageHeader
         title="จัดการโอนสินค้าระหว่างสาขา"
         subtitle="โอนออก ตรวจรับเข้า และดูประวัติทั้งหมด"
+        action={
+          transfers.length > 0 && (
+            <button
+              onClick={async () => {
+                await exportToExcel({
+                  columns: [
+                    { header: 'เลขที่โอน', key: 'batchNumber', width: 15 },
+                    { header: 'สาขาต้นทาง', key: 'fromBranch', width: 20 },
+                    { header: 'สาขาปลายทาง', key: 'toBranch', width: 20 },
+                    { header: 'สถานะ', key: 'status', width: 15 },
+                    { header: 'จำนวนสินค้า', key: 'productCount', width: 15 },
+                    { header: 'วันที่', key: 'createdAt', width: 15 },
+                  ],
+                  data: batchGroups.map((bg) => ({
+                    batchNumber: bg.batchNumber || '-',
+                    fromBranch: bg.fromBranch.name,
+                    toBranch: bg.toBranch.name,
+                    status: transferStatusLabels[bg.status]?.label || bg.status,
+                    productCount: bg.items.length,
+                    createdAt: formatDateShort(bg.createdAt),
+                  })),
+                  sheetName: 'โอนสินค้า',
+                  filename: `stock_transfers_${new Date().toISOString().slice(0, 10)}.xlsx`,
+                });
+                toast.success('ส่งออก Excel สำเร็จ');
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-input rounded-lg hover:bg-muted transition-colors"
+            >
+              <Download className="size-4" />
+              ส่งออก Excel
+            </button>
+          )
+        }
       />
 
       {/* Tab Bar */}

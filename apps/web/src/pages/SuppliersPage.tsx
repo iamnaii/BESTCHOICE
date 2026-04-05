@@ -10,6 +10,8 @@ import Modal from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
 import AddressForm, { AddressData, emptyAddress, serializeAddress, deserializeAddress } from '@/components/ui/AddressForm';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { exportToExcel } from '@/utils/excel.util';
+import { Download } from 'lucide-react';
 
 interface PaymentMethod {
   id?: string;
@@ -382,14 +384,45 @@ export default function SuppliersPage() {
         title="จัดการผู้ขาย"
         subtitle={`ทั้งหมด ${result?.total ?? 0} ราย`}
         action={
-          isManager ? (
-            <button
-              onClick={openCreate}
-              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
-            >
-              + เพิ่มผู้ขาย
-            </button>
-          ) : undefined
+          <div className="flex gap-2">
+            {suppliers.length > 0 && (
+              <button
+                onClick={async () => {
+                  await exportToExcel({
+                    columns: [
+                      { header: 'ชื่อผู้ขาย', key: 'name', width: 25 },
+                      { header: 'เบอร์โทร', key: 'phone', width: 15 },
+                      { header: 'อีเมล', key: 'lineId', width: 20 },
+                      { header: 'ที่อยู่', key: 'address', width: 30 },
+                      { header: 'สถานะ', key: 'status', width: 12 },
+                    ],
+                    data: suppliers.map((s) => ({
+                      name: s.name,
+                      phone: s.phone,
+                      lineId: s.lineId || '-',
+                      address: s.address || '-',
+                      status: s.isActive ? 'เปิดใช้งาน' : 'ปิดใช้งาน',
+                    })),
+                    sheetName: 'ผู้ขาย',
+                    filename: `suppliers_${new Date().toISOString().slice(0, 10)}.xlsx`,
+                  });
+                  toast.success('ส่งออก Excel สำเร็จ');
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-input rounded-lg hover:bg-muted transition-colors"
+              >
+                <Download className="size-4" />
+                ส่งออก Excel
+              </button>
+            )}
+            {isManager && (
+              <button
+                onClick={openCreate}
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+              >
+                + เพิ่มผู้ขาย
+              </button>
+            )}
+          </div>
         }
       />
 

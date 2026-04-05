@@ -12,6 +12,15 @@ import { buildPromptPayQrFlex, PromptPayQrData } from './flex-messages/promptpay
 import { buildReceiptHistory, ReceiptHistoryData } from './flex-messages/receipt-history.flex';
 import { buildContractSelector, ContractOption } from './flex-messages/contract-selector.flex';
 import { buildReceiptMessage, ReceiptData } from './flex-messages/receipt.flex';
+import { buildPromotionFlex } from './flex-messages/campaign.flex';
+import { buildThankYouFlex } from './flex-messages/campaign.flex';
+import { buildNewProductFlex } from './flex-messages/campaign.flex';
+import {
+  CampaignSendDto,
+  CampaignTargetGroup,
+  CampaignMessageType,
+  CampaignFlexTemplate,
+} from './dto/campaign-send.dto';
 
 @Injectable()
 export class LineOaService {
@@ -647,6 +656,294 @@ export class LineOaService {
 
     this.logger.log(`[LIFF] Unlinked LINE ${lineId} from customer ${customer.name}`);
     return { success: true };
+  }
+
+  // ─── Campaign Methods ─────────────────────────────────
+
+  /**
+   * Send a bulk LINE campaign to a target group of customers.
+   * Fire-and-forget: validates input, then sends asynchronously.
+   */
+  async sendCampaign(dto: CampaignSendDto): Promise<{ sent: number; failed: number; skipped: number }> {
+    // Validate: text messages require message body, flex requires template
+    if (dto.messageType === CampaignMessageType.TEXT && !dto.message) {
+      throw new BadRequestException('กรุณาระบุข้อความสำหรับ text message');
+    }
+    if (dto.messageType === CampaignMessageType.FLEX && !dto.flexTemplate) {
+      throw new BadRequestException('กรุณาเลือก Flex template');
+    }
+
+    // Query target customers with lineId
+    const customers = await this.getCampaignTargetCustomers(dto.targetGroup);
+    if (customers.length === 0) {
+      return { sent: 0, failed: 0, skipped: 0 };
+    }
+
+    // Build message payload
+    const buildMessage = (customerName: string): LineMessagePayload[] | FlexMessagePayload => {
+      if (dto.messageType === CampaignMessageType.TEXT) {
+        return [{ type: 'text', text: dto.message! } as unknown as LineMessagePayload];
+      }
+
+      // Flex message
+      switch (dto.flexTemplate) {
+        case CampaignFlexTemplate.PROMOTION:
+          return buildPromotionFlex({
+            title: dto.customData?.title || 'โปรโมชั่นพิเศษ',
+            subtitle: dto.customData?.subtitle || 'จาก BEST CHOICE',
+            imageUrl: dto.customData?.imageUrl,
+            ctaUrl: dto.customData?.ctaUrl,
+          });
+        case CampaignFlexTemplate.THANK_YOU:
+          return buildThankYouFlex({
+            customerName,
+            message: dto.message,
+          });
+        case CampaignFlexTemplate.NEW_PRODUCT:
+          return buildNewProductFlex({
+            productName: dto.customData?.title || 'สินค้าใหม่',
+            imageUrl: dto.customData?.imageUrl,
+            price: dto.customData?.price,
+            ctaUrl: dto.customData?.ctaUrl,
+          });
+        default:
+          throw new BadRequestException(`ไม่รู้จัก flex template: ${dto.flexTemplate}`);
+      }
+    };
+
+    // Send in batches of 50 with 1s delay — fire-and-forget
+    const result = { sent: 0, failed: 0, skipped: 0 };
+    const batchSize = 50;
+
+    // Execute sending asynchronously (don't block the request)
+    this.executeCampaignSend(customers, buildMessage, dto, batchSize, result).catch((err) => {
+      this.logger.error(`[Campaign] Async send failed: ${err}`);
+    });
+
+    // Return immediately with estimated counts
+    return { sent: 0, failed: 0, skipped: customers.length };
+  }
+
+  /**
+   * Execute campaign sending in batches (runs asynchronously)
+   */
+  private async executeCampaignSend(
+    customers: Array<{ lineId: string; name: string }>,
+    buildMessage: (customerName: string) => LineMessagePayload[] | FlexMessagePayload,
+    dto: CampaignSendDto,
+    batchSize: number,
+    _result: { sent: number; failed: number; skipped: number },
+  ): Promise<void> {
+    let totalSent = 0;
+    let totalFailed = 0;
+    const campaignId = `campaign-${Date.now()}`;
+
+    for (let i = 0; i < customers.length; i += batchSize) {
+      const batch = customers.slice(i, i + batchSize);
+
+      const results = await Promise.allSettled(
+        batch.map(async (customer) => {
+          try {
+            const msg = buildMessage(customer.name);
+
+            if (dto.messageType === CampaignMessageType.TEXT) {
+              await this.pushMessage(customer.lineId, msg as LineMessagePayload[]);
+            } else {
+              await this.sendFlexMessage(customer.lineId, msg as FlexMessagePayload);
+            }
+
+            // Log success
+            await this.prisma.notificationLog.create({
+              data: {
+                channel: 'LINE',
+                recipient: customer.lineId,
+                subject: `campaign:${dto.targetGroup}:${dto.flexTemplate || 'text'}`,
+                message: dto.message || `campaign flex: ${dto.flexTemplate}`,
+                status: 'SENT',
+                sentAt: new Date(),
+                relatedId: campaignId,
+              },
+            });
+
+            return 'sent';
+          } catch (err) {
+            // Log failure
+            await this.prisma.notificationLog.create({
+              data: {
+                channel: 'LINE',
+                recipient: customer.lineId,
+                subject: `campaign:${dto.targetGroup}:${dto.flexTemplate || 'text'}`,
+                message: dto.message || `campaign flex: ${dto.flexTemplate}`,
+                status: 'FAILED',
+                errorMsg: err instanceof Error ? err.message : String(err),
+                sentAt: new Date(),
+                relatedId: campaignId,
+              },
+            });
+
+            return 'failed';
+          }
+        }),
+      );
+
+      for (const r of results) {
+        if (r.status === 'fulfilled' && r.value === 'sent') totalSent++;
+        else totalFailed++;
+      }
+
+      // Wait 1 second between batches (LINE rate limit)
+      if (i + batchSize < customers.length) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+    }
+
+    this.logger.log(
+      `[Campaign] Completed: sent=${totalSent}, failed=${totalFailed}, target=${dto.targetGroup}`,
+    );
+  }
+
+  /**
+   * Query customers matching the campaign target group who have lineId
+   */
+  private async getCampaignTargetCustomers(
+    targetGroup: CampaignTargetGroup,
+  ): Promise<Array<{ lineId: string; name: string }>> {
+    switch (targetGroup) {
+      case CampaignTargetGroup.ALL: {
+        const customers = await this.prisma.customer.findMany({
+          where: { lineId: { not: null }, deletedAt: null },
+          select: { lineId: true, name: true },
+        });
+        return customers.filter((c): c is { lineId: string; name: string } => c.lineId !== null);
+      }
+
+      case CampaignTargetGroup.ACTIVE: {
+        const customers = await this.prisma.customer.findMany({
+          where: {
+            lineId: { not: null },
+            deletedAt: null,
+            contracts: {
+              some: { status: 'ACTIVE', deletedAt: null },
+            },
+          },
+          select: { lineId: true, name: true },
+        });
+        return customers.filter((c): c is { lineId: string; name: string } => c.lineId !== null);
+      }
+
+      case CampaignTargetGroup.OVERDUE: {
+        const customers = await this.prisma.customer.findMany({
+          where: {
+            lineId: { not: null },
+            deletedAt: null,
+            contracts: {
+              some: { status: { in: ['OVERDUE', 'DEFAULT'] }, deletedAt: null },
+            },
+          },
+          select: { lineId: true, name: true },
+        });
+        return customers.filter((c): c is { lineId: string; name: string } => c.lineId !== null);
+      }
+
+      case CampaignTargetGroup.COMPLETED: {
+        // Customers who have all contracts completed (loyalty group)
+        const customers = await this.prisma.customer.findMany({
+          where: {
+            lineId: { not: null },
+            deletedAt: null,
+            contracts: {
+              some: { deletedAt: null },
+            },
+          },
+          select: {
+            lineId: true,
+            name: true,
+            contracts: {
+              where: { deletedAt: null },
+              select: { status: true },
+            },
+          },
+        });
+
+        return customers
+          .filter((c) => {
+            // All contracts must be COMPLETED or EARLY_PAYOFF
+            return (
+              c.lineId !== null &&
+              c.contracts.length > 0 &&
+              c.contracts.every((con) =>
+                ['COMPLETED', 'EARLY_PAYOFF'].includes(con.status),
+              )
+            );
+          })
+          .map((c) => ({ lineId: c.lineId!, name: c.name }));
+      }
+
+      default:
+        return [];
+    }
+  }
+
+  /**
+   * Get campaign history from NotificationLog
+   */
+  async getCampaignHistory(): Promise<
+    Array<{
+      date: string;
+      targetGroup: string;
+      messageType: string;
+      sent: number;
+      failed: number;
+    }>
+  > {
+    const logs = await this.prisma.notificationLog.findMany({
+      where: {
+        channel: 'LINE',
+        subject: { startsWith: 'campaign:' },
+      },
+      orderBy: { sentAt: 'desc' },
+      take: 1000,
+    });
+
+    // Group by relatedId (campaign batch)
+    const campaignMap = new Map<
+      string,
+      {
+        date: string;
+        targetGroup: string;
+        messageType: string;
+        sent: number;
+        failed: number;
+      }
+    >();
+
+    for (const log of logs) {
+      const key = log.relatedId || log.id;
+      const existing = campaignMap.get(key);
+
+      // Parse subject: "campaign:ALL:promotion"
+      const parts = (log.subject || '').split(':');
+      const targetGroup = parts[1] || 'UNKNOWN';
+      const messageType = parts[2] || 'text';
+      const date = log.sentAt
+        ? log.sentAt.toISOString().split('T')[0]
+        : new Date().toISOString().split('T')[0];
+
+      if (existing) {
+        if (log.status === 'SENT') existing.sent++;
+        else existing.failed++;
+      } else {
+        campaignMap.set(key, {
+          date,
+          targetGroup,
+          messageType,
+          sent: log.status === 'SENT' ? 1 : 0,
+          failed: log.status === 'FAILED' ? 1 : 0,
+        });
+      }
+    }
+
+    return Array.from(campaignMap.values()).sort((a, b) => b.date.localeCompare(a.date));
   }
 
   // ─── Private Helpers ──────────────────────────────────

@@ -18,7 +18,10 @@ import {
   UploadedFile,
   BadRequestException,
   NotFoundException,
+  UsePipes,
+  ValidationPipe,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ParseFilePipe, MaxFileSizeValidator, FileTypeValidator } from '@nestjs/common';
@@ -41,6 +44,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PromptPayQrService } from './promptpay/promptpay-qr.service';
 import { PaymentLinkService } from './payment-links/payment-link.service';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
+import { CampaignSendDto } from './dto/campaign-send.dto';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -1765,6 +1769,30 @@ export class LineOaController {
         error: err instanceof Error ? err.message : 'ส่งข้อความล้มเหลว',
       };
     }
+  }
+
+  // ─── Bulk Campaign ───────────────────────────────────
+
+  @Post('campaign/send')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER')
+  @Throttle({ short: { ttl: 600000, limit: 1 } }) // Max 1 campaign per 10 minutes
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async sendCampaign(@Body() dto: CampaignSendDto) {
+    const result = await this.lineOaService.sendCampaign(dto);
+    return {
+      success: true,
+      message: 'เริ่มส่งแคมเปญแล้ว ระบบกำลังดำเนินการส่งข้อความ',
+      ...result,
+    };
+  }
+
+  @Get('campaign/history')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER')
+  async getCampaignHistory() {
+    const history = await this.lineOaService.getCampaignHistory();
+    return { data: history };
   }
 
   // ─── LINE OA Statistics ──────────────────────────────

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTemplateStore } from '@/store/templateStore';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import HeaderBar from '@/components/template-editor/layout/HeaderBar';
 import CheatSheet from '@/components/template-editor/layout/CheatSheet';
@@ -23,6 +24,7 @@ export default function ContractTemplatesPage() {
     editingBlock, showSettings, showExportModal,
     isDirty, saveTemplate, saveTemplateToApi, fetchTemplates, loadFromLocalStorage,
   } = useTemplateStore();
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
 
   // Keyboard shortcuts
   useKeyboardShortcuts();
@@ -51,7 +53,10 @@ export default function ContractTemplatesPage() {
       {/* Header Bar */}
       <HeaderBar
         onBack={() => {
-          if (isDirty && !confirm('มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก ต้องการออกหรือไม่?')) return;
+          if (isDirty) {
+            setConfirmDialog({ open: true, message: 'มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก ต้องการออกหรือไม่?', action: () => navigate('/') });
+            return;
+          }
           navigate('/');
         }}
         onToggleCheatSheet={() => setShowCheatSheet(v => !v)}
@@ -84,6 +89,7 @@ export default function ContractTemplatesPage() {
       {editingBlock && <BlockEditModal />}
       {showSettings && <SettingsModal />}
       {showExportModal && <PDFExportModal />}
+      <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))} description={confirmDialog.message} onConfirm={confirmDialog.action} />
     </div>
   );
 }

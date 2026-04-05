@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
@@ -89,6 +90,7 @@ export default function StockAlertsPage() {
     minQuantity: '1',
     reorderQuantity: '5',
   });
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
 
   // ---- Queries ----
 
@@ -296,7 +298,7 @@ export default function StockAlertsPage() {
               </button>
               {user?.role === 'OWNER' && (
                 <button
-                  onClick={() => { if (confirm('ลบ Reorder Point นี้?')) deleteMutation.mutate(r.id); }}
+                  onClick={() => setConfirmDialog({ open: true, message: 'ลบ Reorder Point นี้?', action: () => deleteMutation.mutate(r.id) })}
                   className="text-muted-foreground hover:text-red-600"
                   title="ลบ"
                 >
@@ -693,6 +695,7 @@ export default function StockAlertsPage() {
           </div>
         </form>
       </Modal>
+      <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))} description={confirmDialog.message} variant="destructive" onConfirm={confirmDialog.action} />
     </div>
   );
 }

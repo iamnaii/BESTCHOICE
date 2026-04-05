@@ -4,6 +4,7 @@ import api, { getErrorMessage } from '@/lib/api';
 import { compressImageForOcr } from '@/lib/compressImage';
 import { formatDateShort } from '@/utils/formatters';
 import { toast } from 'sonner';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import type { OcrResult } from '@/types/ocr';
 
 interface ContractDocument {
@@ -49,6 +50,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
   const [showOcrPanel, setShowOcrPanel] = useState(false);
   const [viewingDoc, setViewingDoc] = useState<ContractDocument | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
 
   const { data: documents = [] } = useQuery<ContractDocument[]>({
     queryKey: ['contract-documents', contractId],
@@ -522,7 +524,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
                   )}
                   <button
                     onClick={() => {
-                      if (confirm(`ต้องการลบเอกสาร "${doc.fileName}" (${getTypeLabel(doc.documentType)}) หรือไม่?`)) deleteMutation.mutate(doc.id);
+                      setConfirmDialog({ open: true, message: `ต้องการลบเอกสาร "${doc.fileName}" (${getTypeLabel(doc.documentType)}) หรือไม่?`, action: () => deleteMutation.mutate(doc.id) });
                     }}
                     className="text-xs text-red-600 hover:text-red-800 px-2 py-1"
                   >
@@ -556,6 +558,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
           </div>
         </div>
       )}
+      <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))} description={confirmDialog.message} variant="destructive" onConfirm={confirmDialog.action} />
     </div>
   );
 }

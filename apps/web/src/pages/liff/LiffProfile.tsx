@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
 interface ProfileData {
   name: string;
@@ -18,6 +19,7 @@ interface ProfileData {
 export default function LiffProfile() {
   const { lineId, profile, loading, error } = useLiffInit();
   const [unlinked, setUnlinked] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
 
   const { data, isLoading: dataLoading, error: dataError } = useQuery<ProfileData>({
     queryKey: ['liff-profile', lineId],
@@ -48,10 +50,11 @@ export default function LiffProfile() {
   });
 
   function handleUnlink() {
-    if (!window.confirm('ต้องการยกเลิกผูก LINE จริงหรือไม่?\n\nหลังจากยกเลิก จะไม่สามารถใช้งานผ่าน LINE ได้อีก ต้องลงทะเบียนใหม่')) {
-      return;
-    }
-    unlinkMutation.mutate();
+    setConfirmDialog({
+      open: true,
+      message: 'ต้องการยกเลิกผูก LINE จริงหรือไม่?\n\nหลังจากยกเลิก จะไม่สามารถใช้งานผ่าน LINE ได้อีก ต้องลงทะเบียนใหม่',
+      action: () => unlinkMutation.mutate(),
+    });
   }
 
   if (loading || dataLoading) {
@@ -185,6 +188,7 @@ export default function LiffProfile() {
       <p className="text-center text-xs text-muted-foreground mt-4">
         BEST CHOICE - ระบบผ่อนชำระมือถือ
       </p>
+      <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))} title="ยืนยันยกเลิก" description={confirmDialog.message} variant="destructive" onConfirm={confirmDialog.action} />
     </div>
   );
 }

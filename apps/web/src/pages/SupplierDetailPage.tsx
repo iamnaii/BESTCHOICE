@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { formatDateShort } from '@/utils/formatters';
 import { useAuth } from '@/contexts/AuthContext';
 import PageHeader from '@/components/ui/PageHeader';
@@ -108,6 +110,7 @@ export default function SupplierDetailPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const isManager = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
 
   const { data: supplier, isLoading: supplierLoading } = useQuery<Supplier>({
     queryKey: ['supplier', id],
@@ -241,9 +244,7 @@ export default function SupplierDetailPage() {
               <button
                 onClick={() => {
                   const action = supplier.isActive ? 'ซ่อน' : 'เปิดใช้งาน';
-                  if (confirm(`ต้องการ${action}ผู้ขาย "${supplier.name}" ?`)) {
-                    toggleActiveMutation.mutate({ supplierId: supplier.id, isActive: !supplier.isActive });
-                  }
+                  setConfirmDialog({ open: true, message: `ต้องการ${action}ผู้ขาย "${supplier.name}" ?`, action: () => toggleActiveMutation.mutate({ supplierId: supplier.id, isActive: !supplier.isActive }) });
                 }}
                 disabled={toggleActiveMutation.isPending}
                 className={`px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${
@@ -368,6 +369,7 @@ export default function SupplierDetailPage() {
           emptyMessage="ยังไม่มีสินค้าจากผู้ขายนี้"
         />
       </div>
+      <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))} description={confirmDialog.message} onConfirm={confirmDialog.action} />
     </div>
   );
 }

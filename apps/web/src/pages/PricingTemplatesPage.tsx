@@ -6,6 +6,7 @@ import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import Modal from '@/components/ui/Modal';
 import { toast } from 'sonner';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
 interface PricingTemplate {
   id: string;
@@ -43,6 +44,7 @@ export default function PricingTemplatesPage() {
   const [form, setForm] = useState(defaultForm);
   const [filterCategory, setFilterCategory] = useState<string>('');
   const [filterBrand, setFilterBrand] = useState('');
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: templates = [], isLoading } = useQuery<PricingTemplate[]>({
@@ -337,7 +339,7 @@ export default function PricingTemplatesPage() {
                     <td className="px-4 py-3 text-right">
                       <button onClick={() => openEdit(t)} className="text-xs text-primary hover:underline mr-2">แก้ไข</button>
                       <button
-                        onClick={() => { if (confirm('ต้องการลบ?')) deleteMutation.mutate(t.id); }}
+                        onClick={() => setConfirmDialog({ open: true, message: 'ต้องการลบ?', action: () => deleteMutation.mutate(t.id) })}
                         className="text-xs text-red-600 hover:underline"
                       >
                         ลบ
@@ -488,6 +490,7 @@ export default function PricingTemplatesPage() {
           </div>
         </Modal>
       )}
+      <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))} description={confirmDialog.message} variant="destructive" onConfirm={confirmDialog.action} />
     </div>
   );
 }

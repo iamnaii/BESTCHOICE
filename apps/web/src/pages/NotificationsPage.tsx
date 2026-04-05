@@ -6,6 +6,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { formatDateTime } from '@/utils/formatters';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
 interface NotificationLog {
   id: string;
@@ -318,6 +319,7 @@ export default function NotificationsPage() {
   });
   const [jsonError, setJsonError] = useState<string | null>(null);
   const [sendForm, setSendForm] = useState({ customerId: '', channel: 'LINE', subject: '', message: '' });
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
 
   // Logs
   const { data: logs = [], isLoading: logsLoading } = useQuery<NotificationLog[]>({
@@ -578,7 +580,7 @@ export default function NotificationsPage() {
             แก้ไข
           </button>
           <button
-            onClick={() => { if (confirm('ต้องการลบ template นี้?')) deleteTemplateMutation.mutate(t.id); }}
+            onClick={() => setConfirmDialog({ open: true, message: 'ต้องการลบ template นี้?', action: () => deleteTemplateMutation.mutate(t.id) })}
             disabled={deleteTemplateMutation.isPending}
             className="text-red-600 hover:text-red-500 text-sm font-medium"
           >
@@ -959,6 +961,7 @@ export default function NotificationsPage() {
           </div>
         </form>
       </Modal>
+      <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))} description={confirmDialog.message} variant="destructive" onConfirm={confirmDialog.action} />
     </div>
   );
 }

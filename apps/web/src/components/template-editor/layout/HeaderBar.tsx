@@ -3,6 +3,7 @@ import { ArrowLeft, Settings, Plus, Save, Undo2, Download, Loader2, BookOpen, Co
 import { useTemplateStore } from '@/store/templateStore';
 import api from '@/lib/api';
 import { toast } from 'sonner';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import type { BlockType } from '@/types/template';
 import type { ViewMode } from '@/pages/ContractTemplatesPage';
 
@@ -42,6 +43,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
 
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
   const addMenuRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -90,7 +92,10 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
   const handleTemplateChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const id = e.target.value;
     if (id && id !== currentTemplate.id) {
-      if (isDirty && !confirm('มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก ต้องการเปลี่ยนเทมเพลตหรือไม่?')) return;
+      if (isDirty) {
+        setConfirmDialog({ open: true, message: 'มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก ต้องการเปลี่ยนเทมเพลตหรือไม่?', action: () => loadTemplate(id) });
+        return;
+      }
       loadTemplate(id);
     }
   };
@@ -273,6 +278,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
           PDF
         </button>
       </div>
+      <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))} description={confirmDialog.message} onConfirm={confirmDialog.action} />
     </div>
   );
 }

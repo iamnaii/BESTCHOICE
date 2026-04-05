@@ -4,6 +4,7 @@ import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import Modal from '@/components/ui/Modal';
 import { toast } from 'sonner';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
 interface ConfigItem {
   id: string;
@@ -83,6 +84,7 @@ export default function InterestConfigPage() {
   const [defaultsChanged, setDefaultsChanged] = useState(false);
   const defaultsChangedRef = useRef(false);
   const [editingDefaults, setEditingDefaults] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
 
   const { data: systemConfigs = [] } = useQuery<ConfigItem[]>({
     queryKey: ['settings'],
@@ -390,7 +392,7 @@ export default function InterestConfigPage() {
                   <div className="flex gap-2 ml-4">
                     <button onClick={() => openEdit(config)} className="text-xs text-primary hover:underline px-2 py-1">แก้ไข</button>
                     <button
-                      onClick={() => { if (confirm('ต้องการลบ?')) deleteMutation.mutate(config.id); }}
+                      onClick={() => setConfirmDialog({ open: true, message: 'ต้องการลบ?', action: () => deleteMutation.mutate(config.id) })}
                       className="text-xs text-red-600 hover:underline px-2 py-1"
                     >
                       ลบ
@@ -572,6 +574,7 @@ export default function InterestConfigPage() {
           </div>
         </Modal>
       )}
+      <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))} description={confirmDialog.message} variant="destructive" onConfirm={confirmDialog.action} />
     </div>
   );
 }

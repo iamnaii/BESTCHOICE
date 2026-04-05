@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { formatDateShort } from '../../utils/thai-date.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
@@ -8,6 +8,7 @@ import { LineOaService } from '../line-oa/line-oa.service';
 
 @Injectable()
 export class ReceiptsService {
+  private readonly logger = new Logger(ReceiptsService.name);
   constructor(
     private prisma: PrismaService,
     @Inject(forwardRef(() => LineOaService))
@@ -128,12 +129,12 @@ export class ReceiptsService {
           if (customer) {
             // Send receipt in background (don't wait)
             this.lineOaService.sendPaymentReceipt(customer.id, receipt).catch(err => {
-              console.error('[Receipt] Failed to send LINE receipt:', err);
+              this.logger.error('[Receipt] Failed to send LINE receipt:', err);
             });
           }
         } catch (error) {
           // Log but don't fail the receipt generation
-          console.error('[Receipt] Error checking LINE status:', error);
+          this.logger.error('[Receipt] Error checking LINE status:', error);
         }
       }
 

@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
 interface PhotoData {
   productId: string;
@@ -67,6 +68,7 @@ export default function ProductPhotosPanel({
   const queryClient = useQueryClient();
   const [uploadingAngle, setUploadingAngle] = useState<string | null>(null);
   const [previewPhoto, setPreviewPhoto] = useState<{ angle: string; src: string } | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingAngleRef = useRef<string | null>(null);
 
@@ -232,7 +234,7 @@ export default function ProductPhotosPanel({
                       </button>
                       <button
                         onClick={() => {
-                          if (confirm(`ลบรูป${ANGLE_LABELS[angle]}?`)) deleteMutation.mutate(angle);
+                          setConfirmDialog({ open: true, message: `ลบรูป${ANGLE_LABELS[angle]}?`, action: () => deleteMutation.mutate(angle) });
                         }}
                         disabled={deleteMutation.isPending}
                         className="flex-1 px-1 py-0.5 bg-red-50 rounded text-[10px] text-red-600 hover:bg-red-100 font-medium disabled:opacity-50"
@@ -306,6 +308,7 @@ export default function ProductPhotosPanel({
           </div>
         </div>
       )}
+      <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))} description={confirmDialog.message} variant="destructive" onConfirm={confirmDialog.action} />
     </div>
   );
 }

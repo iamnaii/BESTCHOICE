@@ -66,12 +66,12 @@ export default function StepKycVerification({ contractId, customerName, customer
     }, 1000);
 
     return () => { if (countdownRef.current) clearInterval(countdownRef.current); };
-  }, [otpSent, otpVerified]); // eslint-disable-line
+  }, [otpSent, otpVerified]); // countdown intentionally omitted — interval manages its own decrement
 
   const handleSendOtp = useCallback((channel: string) => {
     setLastChannel(channel);
     sendOtpMutation.mutate(channel);
-  }, []); // eslint-disable-line
+  }, []); // sendOtpMutation intentionally omitted — declared below, stable reference
 
   const sendOtpMutation = useMutation({
     mutationFn: async (channel: string) => {

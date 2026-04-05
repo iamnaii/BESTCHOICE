@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, ChevronUp, ChevronDown, Edit3, Copy, Trash2, ChevronRight, ChevronDown as ChevronDownIcon } from 'lucide-react';
 import type { Block } from '@/types/template';
 import { BLOCK_TYPES } from '@/constants/blockTypes';
 import { useTemplateStore } from '@/store/templateStore';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
 interface Props {
   block: Block;
@@ -33,6 +35,7 @@ const TYPE_COLORS: Record<string, string> = {
 
 export default function BlockItem({ block, index, totalBlocks, clauseIndex }: Props) {
   const { deleteBlock, duplicateBlock, moveBlock, setEditingBlock, toggleCollapse } = useTemplateStore();
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; action: () => void }>({ open: false, action: () => {} });
 
   const {
     attributes, listeners, setNodeRef, transform, transition, isDragging,
@@ -48,9 +51,7 @@ export default function BlockItem({ block, index, totalBlocks, clauseIndex }: Pr
   const label = blockType?.label || block.type;
 
   const handleDelete = () => {
-    if (confirm('ต้องการลบ block นี้?')) {
-      deleteBlock(block.id);
-    }
+    setConfirmDialog({ open: true, action: () => deleteBlock(block.id) });
   };
 
   // Truncate content for display (strip HTML tags if rich text)
@@ -154,6 +155,7 @@ export default function BlockItem({ block, index, totalBlocks, clauseIndex }: Pr
           {displayContent || <span className="text-muted-foreground italic">คลิกเพื่อเพิ่มเนื้อหา...</span>}
         </div>
       )}
+      <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))} description="ต้องการลบ block นี้?" variant="destructive" onConfirm={confirmDialog.action} />
     </div>
   );
 }

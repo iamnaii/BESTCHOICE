@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { toast } from 'sonner';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import SignaturePadFull from './SignaturePadFull';
 
 type SignerType = 'CUSTOMER' | 'COMPANY' | 'WITNESS_1' | 'WITNESS_2' | 'GUARDIAN';
@@ -54,6 +55,7 @@ export default function StepSignature({
   const [gpsLoading, setGpsLoading] = useState(false);
   const [autoSignedCompany, setAutoSignedCompany] = useState(false);
   const [selectedSigner, setSelectedSigner] = useState<SignerType | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
   const draftSignatures = useRef<Partial<Record<SignerType, string>>>({});
 
   // Existing signatures
@@ -247,9 +249,7 @@ export default function StepSignature({
                 <span
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (window.confirm(`ต้องการลบลายเซ็น${SIGNER_LABELS[type]}และเซ็นใหม่?`)) {
-                      deleteSignatureMutation.mutate(type);
-                    }
+                    setConfirmDialog({ open: true, message: `ต้องการลบลายเซ็น${SIGNER_LABELS[type]}และเซ็นใหม่?`, action: () => deleteSignatureMutation.mutate(type) });
                   }}
                   className="ml-1 text-2xs text-red-500 hover:text-red-700 underline"
                 >
@@ -347,6 +347,7 @@ export default function StepSignature({
       >
         ย้อนกลับ
       </button>
+      <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))} description={confirmDialog.message} variant="destructive" onConfirm={confirmDialog.action} />
     </div>
   );
 }

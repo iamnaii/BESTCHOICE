@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import PageHeader from '@/components/ui/PageHeader';
 import Modal from '@/components/ui/Modal';
 import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card';
@@ -94,6 +95,7 @@ export default function ProductDetailPage() {
   // Transfer modal state
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [transferForm, setTransferForm] = useState({ toBranchId: '', notes: '' });
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
 
   const { data: product, isLoading } = useQuery<Product>({
     queryKey: ['product', id],
@@ -469,7 +471,7 @@ export default function ProductDetailPage() {
                     </button>
                     <button
                       onClick={() => {
-                        if (confirm('ต้องการลบราคานี้?')) deletePriceMutation.mutate(price.id);
+                        setConfirmDialog({ open: true, message: 'ต้องการลบราคานี้?', action: () => deletePriceMutation.mutate(price.id) });
                       }}
                       className="text-xs text-red-500 hover:text-red-700"
                     >
@@ -727,6 +729,7 @@ export default function ProductDetailPage() {
           </div>
         </form>
       </Modal>
+      <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))} description={confirmDialog.message} variant="destructive" onConfirm={confirmDialog.action} />
     </div>
   );
 }

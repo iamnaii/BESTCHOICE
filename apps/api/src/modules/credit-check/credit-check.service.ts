@@ -140,7 +140,7 @@ export class CreditCheckService {
     const customer = await this.prisma.customer.findUnique({ where: { id: customerId } });
     if (!customer || customer.deletedAt) throw new NotFoundException('ไม่พบลูกค้า');
 
-    return this.prisma.creditCheck.create({
+    const creditCheck = await this.prisma.creditCheck.create({
       data: {
         customerId,
         bankName: dto.bankName,
@@ -152,6 +152,23 @@ export class CreditCheckService {
         checkedBy: { select: { id: true, name: true } },
       },
     });
+
+    // Auto-calculate risk score in background (don't block creation)
+    this.calculateRiskScore(creditCheck.id)
+      .then(async (result) => {
+        await this.prisma.creditCheck.update({
+          where: { id: creditCheck.id },
+          data: {
+            aiScore: result.score,
+            aiSummary: `คะแนนอัตโนมัติ: ${result.score}/100 (${result.riskLevel})`,
+            aiRecommendation: result.recommendation,
+            aiAnalysis: { autoScore: true, factors: result.factors },
+          },
+        });
+      })
+      .catch((err) => this.logger.warn(`Auto-score failed for ${creditCheck.id}: ${err.message}`));
+
+    return creditCheck;
   }
 
   async analyzeForCustomer(creditCheckId: string) {
@@ -252,7 +269,7 @@ export class CreditCheckService {
       });
     }
 
-    return this.prisma.creditCheck.create({
+    const creditCheck = await this.prisma.creditCheck.create({
       data: {
         contractId,
         customerId: contract.customerId,
@@ -265,6 +282,23 @@ export class CreditCheckService {
         checkedBy: { select: { id: true, name: true } },
       },
     });
+
+    // Auto-calculate risk score in background (don't block creation)
+    this.calculateRiskScore(creditCheck.id)
+      .then(async (result) => {
+        await this.prisma.creditCheck.update({
+          where: { id: creditCheck.id },
+          data: {
+            aiScore: result.score,
+            aiSummary: `คะแนนอัตโนมัติ: ${result.score}/100 (${result.riskLevel})`,
+            aiRecommendation: result.recommendation,
+            aiAnalysis: { autoScore: true, factors: result.factors },
+          },
+        });
+      })
+      .catch((err) => this.logger.warn(`Auto-score failed for ${creditCheck.id}: ${err.message}`));
+
+    return creditCheck;
   }
 
   async analyze(contractId: string) {
@@ -338,6 +372,209 @@ export class CreditCheckService {
         checkedBy: { select: { id: true, name: true } },
       },
     });
+  }
+
+  // === Automated Risk Score (rule-based, no AI needed) ===
+  async calculateRiskScore(creditCheckId: string) {
+    const creditCheck = await this.prisma.creditCheck.findUnique({
+      where: { id: creditCheckId },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            birthDate: true,
+            salary: true,
+            occupation: true,
+            workplace: true,
+            references: true,
+          },
+        },
+        contract: {
+          select: { id: true, monthlyPayment: true },
+        },
+      },
+    });
+    if (!creditCheck || creditCheck.deletedAt) {
+      throw new NotFoundException('ไม่พบข้อมูลตรวจสอบเครดิต');
+    }
+
+    const customer = creditCheck.customer;
+    const monthlyPayment = creditCheck.contract ? Number(creditCheck.contract.monthlyPayment) : 0;
+    const monthlySalary = customer.salary ? Number(customer.salary) : 0;
+
+    const factors: { name: string; weight: number; score: number; detail: string }[] = [];
+
+    // 1. Income ratio (30%)
+    let incomeScore = 0;
+    if (monthlySalary > 0 && monthlyPayment > 0) {
+      const ratio = monthlySalary / monthlyPayment; // higher = better
+      if (ratio >= 5) incomeScore = 100;
+      else if (ratio >= 4) incomeScore = 90;
+      else if (ratio >= 3) incomeScore = 75;
+      else if (ratio >= 2.5) incomeScore = 60;
+      else if (ratio >= 2) incomeScore = 45;
+      else if (ratio >= 1.5) incomeScore = 30;
+      else incomeScore = 10;
+      factors.push({
+        name: 'สัดส่วนรายได้ต่อค่างวด',
+        weight: 30,
+        score: incomeScore,
+        detail: `รายได้ ${monthlySalary.toLocaleString()} บาท / ค่างวด ${monthlyPayment.toLocaleString()} บาท (${ratio.toFixed(1)}x)`,
+      });
+    } else {
+      incomeScore = 20;
+      factors.push({
+        name: 'สัดส่วนรายได้ต่อค่างวด',
+        weight: 30,
+        score: incomeScore,
+        detail: monthlySalary <= 0 ? 'ไม่มีข้อมูลรายได้' : 'ไม่มีข้อมูลค่างวด',
+      });
+    }
+
+    // 2. Age factor (15%)
+    let ageScore = 50; // default if no birthDate
+    if (customer.birthDate) {
+      const now = new Date();
+      const age = Math.floor((now.getTime() - new Date(customer.birthDate).getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+      if (age >= 25 && age <= 55) {
+        ageScore = 100;
+      } else if (age >= 20 && age < 25) {
+        ageScore = 70;
+      } else if (age > 55 && age <= 65) {
+        ageScore = 65;
+      } else if (age >= 18 && age < 20) {
+        ageScore = 40;
+      } else {
+        ageScore = 25;
+      }
+      factors.push({
+        name: 'อายุ',
+        weight: 15,
+        score: ageScore,
+        detail: `อายุ ${age} ปี`,
+      });
+    } else {
+      factors.push({
+        name: 'อายุ',
+        weight: 15,
+        score: ageScore,
+        detail: 'ไม่มีข้อมูลวันเกิด',
+      });
+    }
+
+    // 3. Employment (15%)
+    let employmentScore = 0;
+    const hasOccupation = !!customer.occupation;
+    const hasWorkplace = !!customer.workplace;
+    if (hasOccupation && hasWorkplace) {
+      employmentScore = 100;
+    } else if (hasOccupation) {
+      employmentScore = 60;
+    } else {
+      employmentScore = 15;
+    }
+    factors.push({
+      name: 'ข้อมูลอาชีพและที่ทำงาน',
+      weight: 15,
+      score: employmentScore,
+      detail: hasOccupation
+        ? `${customer.occupation}${hasWorkplace ? ` (${customer.workplace})` : ' (ไม่ระบุที่ทำงาน)'}`
+        : 'ไม่มีข้อมูลอาชีพ',
+    });
+
+    // 4. References (10%)
+    let referencesScore = 0;
+    let refCount = 0;
+    if (customer.references) {
+      try {
+        const refs = Array.isArray(customer.references) ? customer.references : [];
+        refCount = refs.length;
+      } catch {
+        refCount = 0;
+      }
+    }
+    if (refCount >= 3) referencesScore = 100;
+    else if (refCount === 2) referencesScore = 75;
+    else if (refCount === 1) referencesScore = 40;
+    else referencesScore = 0;
+    factors.push({
+      name: 'ผู้ค้ำประกัน/บุคคลอ้างอิง',
+      weight: 10,
+      score: referencesScore,
+      detail: refCount > 0 ? `${refCount} คน` : 'ไม่มีบุคคลอ้างอิง',
+    });
+
+    // 5. Customer history (30%)
+    const contracts = await this.prisma.contract.findMany({
+      where: { customerId: customer.id, deletedAt: null },
+      select: { status: true },
+    });
+    let historyScore = 50; // default for first-time customers
+    if (contracts.length > 0) {
+      const completed = contracts.filter((c) => c.status === 'COMPLETED' || c.status === 'EARLY_PAYOFF').length;
+      const defaulted = contracts.filter((c) => c.status === 'DEFAULT' || c.status === 'CLOSED_BAD_DEBT').length;
+      const total = contracts.length;
+      if (defaulted > 0) {
+        historyScore = Math.max(0, 30 - defaulted * 20);
+      } else if (completed > 0) {
+        historyScore = Math.min(100, 60 + completed * 15);
+      } else {
+        historyScore = 50; // only active/draft contracts
+      }
+      factors.push({
+        name: 'ประวัติสัญญา',
+        weight: 30,
+        score: historyScore,
+        detail: `ทั้งหมด ${total} สัญญา, สำเร็จ ${completed}, ผิดนัด ${defaulted}`,
+      });
+    } else {
+      factors.push({
+        name: 'ประวัติสัญญา',
+        weight: 30,
+        score: historyScore,
+        detail: 'ลูกค้าใหม่ — ไม่มีประวัติ',
+      });
+    }
+
+    // Calculate weighted score
+    const totalScore = Math.round(
+      factors.reduce((sum, f) => sum + (f.score * f.weight) / 100, 0),
+    );
+    const score = Math.max(0, Math.min(100, totalScore));
+
+    // Map score to risk level and recommendation
+    let riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
+    let recommendation: string;
+    if (score >= 80) {
+      riskLevel = 'LOW';
+      recommendation = 'แนะนำอนุมัติ — ความเสี่ยงต่ำ';
+    } else if (score >= 60) {
+      riskLevel = 'MEDIUM';
+      recommendation = 'ควรพิจารณาเพิ่มเติม — ความเสี่ยงปานกลาง';
+    } else {
+      riskLevel = 'HIGH';
+      recommendation = 'ไม่แนะนำอนุมัติ — ความเสี่ยงสูง';
+    }
+
+    return { score, riskLevel, recommendation, factors };
+  }
+
+  async getAutoScore(creditCheckId: string) {
+    const result = await this.calculateRiskScore(creditCheckId);
+
+    // Store the auto-calculated score
+    await this.prisma.creditCheck.update({
+      where: { id: creditCheckId },
+      data: {
+        aiScore: result.score,
+        aiSummary: `คะแนนอัตโนมัติ: ${result.score}/100 (${result.riskLevel})`,
+        aiRecommendation: result.recommendation,
+        aiAnalysis: { autoScore: true, factors: result.factors },
+      },
+    });
+
+    return result;
   }
 
   private async performAIAnalysis(params: {

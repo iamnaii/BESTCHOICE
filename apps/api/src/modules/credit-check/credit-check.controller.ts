@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Param, Body, UseGuards, Query } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { CreditCheckService } from './credit-check.service';
 import { CreateCreditCheckDto, OverrideCreditCheckDto } from './dto/credit-check.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -37,6 +37,13 @@ export class GlobalCreditCheckController {
       branchId,
       checkedById,
     });
+  }
+
+  @Get(':id/auto-score')
+  @ApiOperation({ summary: 'คำนวณคะแนนความเสี่ยงอัตโนมัติ (0-100)' })
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  getAutoScore(@Param('id') id: string) {
+    return this.service.getAutoScore(id);
   }
 }
 

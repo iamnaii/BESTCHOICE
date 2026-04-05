@@ -686,7 +686,7 @@ export class DashboardService {
           + COUNT(p.id) FILTER (WHERE p.status = 'PARTIALLY_PAID') * 2
           + CASE WHEN c.dunning_last_action_at IS NOT NULL AND c.dunning_stage = 'NONE' THEN 3 ELSE 0 END
         ) DESC
-      LIMIT 10
+      LIMIT 20
     `);
 
     const watchList = rows.map((r) => {

@@ -154,7 +154,7 @@ export class ReceiptsService {
   }) {
     const page = filters.page || 1;
     const limit = Math.min(filters.limit || 20, 200);
-    const where: Prisma.ReceiptWhereInput = { deletedAt: null };
+    const where: Prisma.ReceiptWhereInput = { deletedAt: null, isVoided: false };
 
     if (filters.search) {
       where.OR = [
@@ -227,7 +227,7 @@ export class ReceiptsService {
   /** Get receipts for a contract */
   async getContractReceipts(contractId: string) {
     return this.prisma.receipt.findMany({
-      where: { contractId, deletedAt: null },
+      where: { contractId, deletedAt: null, isVoided: false },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -330,11 +330,22 @@ export class ReceiptsService {
    * Void a receipt (ถ้าผิด → ออกใบลดหนี้/ใบแก้ไขแทน)
    * ใบเสร็จที่ออกแล้วห้ามแก้ไข/ลบ
    */
-  async voidReceipt(id: string, reason: string, issuedById: string) {
+  async voidReceipt(id: string, reason: string, issuedById: string, approvedById: string) {
+    if (!reason?.trim()) {
+      throw new BadRequestException('กรุณาระบุเหตุผลในการยกเลิก');
+    }
     return this.prisma.$transaction(async (tx) => {
       const receipt = await tx.receipt.findUnique({ where: { id } });
       if (!receipt || receipt.deletedAt) throw new NotFoundException('ไม่พบใบเสร็จ');
       if (receipt.isVoided) throw new BadRequestException('ใบเสร็จนี้ถูกยกเลิกแล้ว');
+
+      // W-006: Credit Note 30-day time limit
+      const daysSinceIssue = Math.floor(
+        (Date.now() - receipt.createdAt.getTime()) / (1000 * 60 * 60 * 24),
+      );
+      if (daysSinceIssue > 30) {
+        throw new BadRequestException('ไม่สามารถยกเลิกใบเสร็จที่ออกเกิน 30 วัน');
+      }
 
       // Generate credit note number inside transaction (uses FOR UPDATE lock)
       const creditNoteNumber = await this.generateReceiptNumber(tx);
@@ -355,10 +366,15 @@ export class ReceiptsService {
         },
       });
 
-      // Mark original as voided
+      // Mark original as voided with approval trail
       await tx.receipt.update({
         where: { id },
-        data: { isVoided: true, voidReason: reason },
+        data: {
+          isVoided: true,
+          voidReason: reason.trim(),
+          voidApprovedById: approvedById,
+          voidApprovedAt: new Date(),
+        },
       });
 
       return { voidedReceipt: receipt, creditNote };

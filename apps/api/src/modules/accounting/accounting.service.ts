@@ -62,6 +62,9 @@ export class AccountingService {
   // ─── Expenses CRUD ───────────────────────────────────────────────────────────
 
   async createExpense(dto: CreateExpenseDto, createdById: string) {
+    // W-013: Validate expense date is not in a closed period
+    await this.validatePeriodOpen(new Date(dto.expenseDate));
+
     const expectedAccountType = CATEGORY_ACCOUNT_MAP[dto.category];
     if (expectedAccountType && expectedAccountType !== dto.accountType) {
       throw new BadRequestException(
@@ -76,7 +79,10 @@ export class AccountingService {
       vatAmount = Math.round(dto.amount * vatRate * 100) / 100;
     }
     const withholdingTax = dto.withholdingTax || 0;
+    const whtRate = dto.whtRate || null;
+    const whtIncomeType = dto.whtIncomeType || null;
     const totalAmount = dto.amount + vatAmount;
+    const netPayment = Math.round((totalAmount - withholdingTax) * 100) / 100;
     const accountCode = dto.accountCode || CATEGORY_CODE_MAP[dto.category] || null;
 
     return this.prisma.$transaction(async (tx) => {
@@ -94,6 +100,9 @@ export class AccountingService {
           vatAmount,
           totalAmount,
           withholdingTax,
+          whtRate,
+          whtIncomeType,
+          netPayment,
           expenseDate: new Date(dto.expenseDate),
           paymentMethod: dto.paymentMethod,
           paymentDate: dto.paymentDate ? new Date(dto.paymentDate) : null,
@@ -244,6 +253,9 @@ export class AccountingService {
     if (expense.status !== 'PENDING_APPROVAL') {
       throw new BadRequestException('รายจ่ายนี้ไม่ได้อยู่ในสถานะรออนุมัติ');
     }
+    if (expense.createdById === approvedById) {
+      throw new BadRequestException('ผู้อนุมัติต้องไม่ใช่ผู้สร้างรายการ (Segregation of Duties)');
+    }
     return this.prisma.expense.update({
       where: { id },
       data: { status: 'APPROVED', approvedById, approvedAt: new Date() },
@@ -274,13 +286,19 @@ export class AccountingService {
     });
   }
 
-  async voidExpense(id: string) {
+  async voidExpense(id: string, voidedById: string, voidReason: string) {
+    if (!voidReason?.trim()) {
+      throw new BadRequestException('กรุณาระบุเหตุผลในการยกเลิก');
+    }
     const expense = await this.prisma.expense.findFirst({ where: { id, deletedAt: null } });
     if (!expense) throw new NotFoundException('ไม่พบรายจ่าย');
     if (expense.status === 'VOIDED') {
       throw new BadRequestException('รายจ่ายนี้ถูกยกเลิกไปแล้ว');
     }
-    return this.prisma.expense.update({ where: { id }, data: { status: 'VOIDED' } });
+    return this.prisma.expense.update({
+      where: { id },
+      data: { status: 'VOIDED', voidReason: voidReason.trim(), voidedById, voidedAt: new Date() },
+    });
   }
 
   async getExpenseSummary(filters: { branchId?: string; startDate?: string; endDate?: string }) {
@@ -407,7 +425,7 @@ export class AccountingService {
       }),
       this.prisma.sale.findMany({
         where: { createdAt: dateRange, ...branchFilter },
-        select: { product: { select: { costPrice: true } } },
+        select: { product: { select: { costPrice: true } }, bundleProductIds: true },
       }),
     ]);
 
@@ -421,19 +439,36 @@ export class AccountingService {
     let lateFeeIncome = 0;
     for (const p of paidPayments) {
       installmentPayments += Number(p.amountPaid);
+      // Accounting policy: Interest income recognized using straight-line method (เกณฑ์เส้นตรง)
+      // for flat-rate hire-purchase contracts per TFRS for NPAEs.
+      // Monthly interest = total interest / total months (equal allocation per payment received)
       interestIncome += Number(p.contract.interestTotal) / p.contract.totalMonths;
       if (!p.lateFeeWaived) lateFeeIncome += Number(p.lateFee);
     }
 
-    const totalRevenue = cashSales + installmentDownPayments + installmentPayments
-      + lateFeeIncome + financeDownPayments + financeReceivedAmount;
+    // R-011: Separate operating revenue from other income per TAS 1
+    const operatingRevenue = cashSales + installmentDownPayments + installmentPayments
+      + financeDownPayments + financeReceivedAmount;
+    const otherIncomeTotal = interestIncome + lateFeeIncome;
+    const totalRevenue = operatingRevenue + otherIncomeTotal;
 
     const expMap: Record<string, number> = {};
     for (const e of expensesByCategory) {
       expMap[e.category] = (expMap[e.category] || 0) + Number(e.totalAmount);
     }
 
-    const purchaseOrderCost = productCosts.reduce((sum, s) => sum + Number(s.product.costPrice || 0), 0);
+    // COGS: main product cost + bundle product costs
+    const allBundleIds = productCosts.flatMap((s) => s.bundleProductIds || []);
+    let bundleCost = 0;
+    if (allBundleIds.length > 0) {
+      const bundleProducts = await this.prisma.product.findMany({
+        where: { id: { in: allBundleIds } },
+        select: { costPrice: true },
+      });
+      bundleCost = bundleProducts.reduce((sum, p) => sum + Number(p.costPrice || 0), 0);
+    }
+    const purchaseOrderCost = productCosts.reduce((sum, s) => sum + Number(s.product.costPrice || 0), 0)
+      + bundleCost;
 
     const costOfSales = {
       cogsProduct: expMap['COGS_PRODUCT'] || 0,
@@ -442,7 +477,8 @@ export class AccountingService {
       totalCOGS: (expMap['COGS_PRODUCT'] || 0) + (expMap['COGS_REPAIR_PARTS'] || 0) + purchaseOrderCost,
     };
 
-    const grossProfit = totalRevenue - costOfSales.totalCOGS;
+    // Gross profit from operating revenue only (excludes interest/late fees)
+    const grossProfit = operatingRevenue - costOfSales.totalCOGS;
 
     const sellingExpenses = {
       commission: expMap['SELL_COMMISSION'] || 0,
@@ -472,7 +508,7 @@ export class AccountingService {
       + adminExpenses.depreciation + adminExpenses.insurance + adminExpenses.taxFee
       + adminExpenses.maintenance + adminExpenses.travel + adminExpenses.telephone;
 
-    const operatingProfit = grossProfit - sellingExpenses.totalSelling - adminExpenses.totalAdmin;
+    const operatingProfit = grossProfit - sellingExpenses.totalSelling - adminExpenses.totalAdmin + otherIncomeTotal;
 
     const otherExpenses = {
       interest: expMap['OTHER_INTEREST'] || 0,
@@ -493,11 +529,15 @@ export class AccountingService {
         cashSales,
         installmentDownPayments,
         installmentPayments,
-        interestIncome: Math.round(interestIncome),
-        lateFeeIncome,
         financeDownPayments,
         financeReceived: financeReceivedAmount,
+        operatingRevenue,
         totalRevenue,
+      },
+      otherIncome: {
+        interestIncome: Math.round(interestIncome),
+        lateFeeIncome,
+        totalOtherIncome: otherIncomeTotal,
       },
       costOfSales,
       grossProfit,
@@ -589,5 +629,366 @@ export class AccountingService {
     });
 
     return { year, months };
+  }
+
+  // ─── W-012: Comparative P&L (MoM / YoY) ──────────────────────────────────────
+
+  async getComparativePL(year: number, month: number, branchId?: string) {
+    // Helper: get last day of month as YYYY-MM-DD string (local time, no UTC shift)
+    const lastDayOf = (y: number, m: number) => {
+      const d = new Date(y, m, 0); // day 0 of next month = last day of m
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+
+    const startCurrent = `${year}-${String(month).padStart(2, '0')}-01`;
+    const endCurrent = lastDayOf(year, month);
+
+    // Previous month
+    const prevMonth = month === 1 ? 12 : month - 1;
+    const prevYear = month === 1 ? year - 1 : year;
+    const startPrev = `${prevYear}-${String(prevMonth).padStart(2, '0')}-01`;
+    const endPrev = lastDayOf(prevYear, prevMonth);
+
+    // Same month last year
+    const startYoY = `${year - 1}-${String(month).padStart(2, '0')}-01`;
+    const endYoY = lastDayOf(year - 1, month);
+
+    const [current, prevPeriod, lastYear] = await Promise.all([
+      this.getProfitLossReport(startCurrent, endCurrent, branchId),
+      this.getProfitLossReport(startPrev, endPrev, branchId),
+      this.getProfitLossReport(startYoY, endYoY, branchId),
+    ]);
+
+    const pctChange = (curr: number, prev: number) =>
+      prev === 0
+        ? curr > 0
+          ? 100
+          : 0
+        : Math.round(((curr - prev) / Math.abs(prev)) * 10000) / 100;
+
+    return {
+      current,
+      previousMonth: prevPeriod,
+      lastYear,
+      momChange: {
+        revenue: pctChange(current.revenue.totalRevenue, prevPeriod.revenue.totalRevenue),
+        grossProfit: pctChange(current.grossProfit, prevPeriod.grossProfit),
+        netProfit: pctChange(current.netProfit, prevPeriod.netProfit),
+      },
+      yoyChange: {
+        revenue: pctChange(current.revenue.totalRevenue, lastYear.revenue.totalRevenue),
+        grossProfit: pctChange(current.grossProfit, lastYear.grossProfit),
+        netProfit: pctChange(current.netProfit, lastYear.netProfit),
+      },
+    };
+  }
+
+  // ─── W-013: Period Closing Lock ───────────────────────────────────────────────
+
+  /** Check if a date falls in a closed accounting period */
+  private async validatePeriodOpen(date: Date): Promise<void> {
+    const config = await this.prisma.systemConfig.findUnique({
+      where: { key: 'accounting_period_closed_until' },
+    });
+    if (config) {
+      const closedUntil = new Date(config.value);
+      if (date <= closedUntil) {
+        throw new BadRequestException(
+          `ไม่สามารถบันทึกรายการในงวดที่ปิดแล้ว (ปิดถึง ${closedUntil.toISOString().split('T')[0]})`,
+        );
+      }
+    }
+  }
+
+  async closeAccountingPeriod(closedUntil: string) {
+    await this.prisma.systemConfig.upsert({
+      where: { key: 'accounting_period_closed_until' },
+      update: { value: closedUntil },
+      create: { key: 'accounting_period_closed_until', value: closedUntil },
+    });
+    return { closedUntil };
+  }
+
+  async getAccountingPeriodStatus() {
+    const config = await this.prisma.systemConfig.findUnique({
+      where: { key: 'accounting_period_closed_until' },
+    });
+    return { closedUntil: config?.value || null };
+  }
+
+  // ─── Balance Sheet (derived from existing data, no general ledger) ────────────
+
+  async getBalanceSheet(asOfDate: string, branchId?: string) {
+    const endDate = new Date(asOfDate);
+    endDate.setHours(23, 59, 59, 999);
+    const branchFilter = branchId ? { branchId } : {};
+
+    // ── ASSETS ──
+
+    // 1110 Cash & Bank: Derived from cash inflows minus cash outflows
+    const [paymentsReceived, cashSalesTotal, downPaymentsTotal, financeReceivedTotal, expensesPaid] =
+      await Promise.all([
+        // Installment payments received
+        this.prisma.payment.aggregate({
+          where: {
+            status: 'PAID',
+            paidDate: { lte: endDate },
+            contract: { deletedAt: null, ...branchFilter },
+          },
+          _sum: { amountPaid: true },
+        }),
+        // Cash sales revenue
+        this.prisma.sale.aggregate({
+          where: { saleType: 'CASH', createdAt: { lte: endDate }, deletedAt: null, ...branchFilter },
+          _sum: { netAmount: true },
+        }),
+        // Down payments from installment & external finance sales
+        this.prisma.sale.aggregate({
+          where: {
+            saleType: { in: ['INSTALLMENT', 'EXTERNAL_FINANCE'] },
+            createdAt: { lte: endDate },
+            deletedAt: null,
+            ...branchFilter,
+          },
+          _sum: { downPaymentAmount: true },
+        }),
+        // Finance company payments received
+        this.prisma.financeReceivable.aggregate({
+          where: { status: 'RECEIVED', receivedDate: { lte: endDate }, deletedAt: null, ...branchFilter },
+          _sum: { receivedAmount: true },
+        }),
+        // Expenses paid (cash outflow)
+        this.prisma.expense.aggregate({
+          where: { status: 'PAID', paymentDate: { lte: endDate }, deletedAt: null, ...branchFilter },
+          _sum: { totalAmount: true },
+        }),
+      ]);
+
+    // Purchase orders paid (cash outflow for inventory)
+    const purchaseOrdersPaid = await this.prisma.purchaseOrder.aggregate({
+      where: {
+        paymentStatus: 'FULLY_PAID',
+        orderDate: { lte: endDate },
+        deletedAt: null,
+      },
+      _sum: { paidAmount: true },
+    });
+
+    const totalCashInflows =
+      Number(paymentsReceived._sum.amountPaid || 0) +
+      Number(cashSalesTotal._sum.netAmount || 0) +
+      Number(downPaymentsTotal._sum.downPaymentAmount || 0) +
+      Number(financeReceivedTotal._sum.receivedAmount || 0);
+    const totalCashOutflows =
+      Number(expensesPaid._sum.totalAmount || 0) +
+      Number(purchaseOrdersPaid._sum.paidAmount || 0);
+    const cashAndBank = totalCashInflows - totalCashOutflows;
+
+    // 1220 Hire-purchase receivables: Outstanding installments on active contracts
+    const [hpReceivables, provisions, pendingFinance, inventory, creditBalances, whtPayable, accruedExpenses] =
+      await Promise.all([
+        // Unpaid/partially-paid installments on active contracts
+        this.prisma.payment.aggregate({
+          where: {
+            status: { in: ['PENDING', 'PARTIALLY_PAID'] },
+            contract: {
+              deletedAt: null,
+              status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] },
+              ...branchFilter,
+            },
+          },
+          _sum: { amountDue: true, amountPaid: true },
+        }),
+        // 1229 Allowance for doubtful accounts
+        this.prisma.badDebtProvision.aggregate({
+          where: { status: 'ACTIVE' },
+          _sum: { provisionAmount: true },
+        }),
+        // 1230 Finance receivables (pending from external finance companies)
+        this.prisma.financeReceivable.aggregate({
+          where: { status: 'PENDING', deletedAt: null, ...branchFilter },
+          _sum: { expectedAmount: true },
+        }),
+        // 1300 Inventory at cost
+        this.prisma.product.aggregate({
+          where: { status: 'IN_STOCK', deletedAt: null, ...(branchId ? { branchId } : {}) },
+          _sum: { costPrice: true },
+          _count: true,
+        }),
+        // 2510 Customer credit balances (overpayments held)
+        this.prisma.contract.aggregate({
+          where: { creditBalance: { gt: 0 }, deletedAt: null, ...branchFilter },
+          _sum: { creditBalance: true },
+        }),
+        // 2300 WHT payable (from expenses with withholding tax)
+        this.prisma.expense.aggregate({
+          where: {
+            status: { in: ['APPROVED', 'PAID'] },
+            deletedAt: null,
+            withholdingTax: { gt: 0 },
+            expenseDate: { lte: endDate },
+            ...branchFilter,
+          },
+          _sum: { withholdingTax: true },
+        }),
+        // 2600 Accrued expenses (approved but not yet paid)
+        this.prisma.expense.aggregate({
+          where: { status: 'APPROVED', deletedAt: null, expenseDate: { lte: endDate }, ...branchFilter },
+          _sum: { totalAmount: true },
+        }),
+      ]);
+
+    const grossReceivables = Number(hpReceivables._sum.amountDue || 0);
+    const paidOnReceivables = Number(hpReceivables._sum.amountPaid || 0);
+    const netReceivables = grossReceivables - paidOnReceivables;
+    const allowanceForDoubtful = Number(provisions._sum.provisionAmount || 0);
+    const financeReceivables = Number(pendingFinance._sum.expectedAmount || 0);
+    const inventoryValue = Number(inventory._sum.costPrice || 0);
+    const inventoryCount = inventory._count || 0;
+
+    const totalCurrentAssets =
+      cashAndBank + netReceivables - allowanceForDoubtful + financeReceivables + inventoryValue;
+    const totalAssets = totalCurrentAssets; // No fixed assets tracked in system
+
+    // ── LIABILITIES ──
+
+    const customerCreditBalances = Number(creditBalances._sum.creditBalance || 0);
+    const totalWhtPayable = Number(whtPayable._sum.withholdingTax || 0);
+    const totalAccrued = Number(accruedExpenses._sum.totalAmount || 0);
+
+    const totalLiabilities = customerCreditBalances + totalWhtPayable + totalAccrued;
+
+    // ── EQUITY ──
+    // Retained earnings = Total Assets - Total Liabilities (balancing figure)
+    // In a full accounting system this would come from accumulated P&L; here we derive it.
+    const retainedEarnings = totalAssets - totalLiabilities;
+
+    return {
+      asOfDate,
+      assets: {
+        currentAssets: {
+          cashAndBank,
+          hirePurchaseReceivables: {
+            gross: grossReceivables,
+            paid: paidOnReceivables,
+            net: netReceivables,
+            allowanceForDoubtful: -allowanceForDoubtful,
+            netAfterAllowance: netReceivables - allowanceForDoubtful,
+          },
+          financeReceivables,
+          inventory: { value: inventoryValue, count: inventoryCount },
+          totalCurrentAssets,
+        },
+        totalAssets,
+      },
+      liabilities: {
+        currentLiabilities: {
+          customerCreditBalances,
+          withholdingTaxPayable: totalWhtPayable,
+          accruedExpenses: totalAccrued,
+        },
+        totalLiabilities,
+      },
+      equity: {
+        retainedEarnings,
+        totalEquity: retainedEarnings,
+      },
+      // Note: Balance Sheet is derived (not from general ledger). Retained earnings is
+      // calculated as Assets - Liabilities, so it always balances by definition.
+      // When a general ledger is implemented, this should verify A = L + E independently.
+    };
+  }
+
+  // ─── Cash Flow Statement (derived from existing data, no general ledger) ──────
+
+  async getCashFlowStatement(startDate: string, endDate: string, branchId?: string) {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+    const dateRange = { gte: start, lte: end };
+    const branchFilter = branchId ? { branchId } : {};
+
+    // ── OPERATING ACTIVITIES ──
+
+    const [cashSales, downPayments, installmentPayments, financeReceived, expensesPaid] =
+      await Promise.all([
+        // Cash received from direct cash sales
+        this.prisma.sale.aggregate({
+          where: { saleType: 'CASH', createdAt: dateRange, deletedAt: null, ...branchFilter },
+          _sum: { netAmount: true },
+        }),
+        // Cash received from down payments (installment + external finance)
+        this.prisma.sale.aggregate({
+          where: {
+            saleType: { in: ['INSTALLMENT', 'EXTERNAL_FINANCE'] },
+            createdAt: dateRange,
+            deletedAt: null,
+            ...branchFilter,
+          },
+          _sum: { downPaymentAmount: true },
+        }),
+        // Cash received from installment payments
+        this.prisma.payment.aggregate({
+          where: {
+            status: 'PAID',
+            paidDate: dateRange,
+            contract: { deletedAt: null, ...branchFilter },
+          },
+          _sum: { amountPaid: true, lateFee: true },
+        }),
+        // Cash received from finance companies
+        this.prisma.financeReceivable.aggregate({
+          where: { status: 'RECEIVED', receivedDate: dateRange, deletedAt: null, ...branchFilter },
+          _sum: { receivedAmount: true },
+        }),
+        // Cash paid for expenses
+        this.prisma.expense.aggregate({
+          where: { status: 'PAID', paymentDate: dateRange, deletedAt: null, ...branchFilter },
+          _sum: { totalAmount: true },
+        }),
+      ]);
+
+    // Cash paid for inventory (purchase orders paid in the period)
+    const purchaseOrdersPaid = await this.prisma.purchaseOrder.aggregate({
+      where: {
+        paymentStatus: { in: ['FULLY_PAID', 'DEPOSIT_PAID', 'PARTIALLY_PAID'] },
+        orderDate: dateRange,
+        deletedAt: null,
+      },
+      _sum: { paidAmount: true },
+    });
+
+    const cashFromSales = Number(cashSales._sum.netAmount || 0);
+    const cashFromDownPayments = Number(downPayments._sum.downPaymentAmount || 0);
+    const cashFromInstallments = Number(installmentPayments._sum.amountPaid || 0);
+    const cashFromLateFees = Number(installmentPayments._sum.lateFee || 0);
+    const cashFromFinanceCompanies = Number(financeReceived._sum.receivedAmount || 0);
+
+    const cashFromCustomers =
+      cashFromSales + cashFromDownPayments + cashFromInstallments + cashFromLateFees + cashFromFinanceCompanies;
+
+    const cashPaidForExpenses = Number(expensesPaid._sum.totalAmount || 0);
+    const cashPaidForInventory = Number(purchaseOrdersPaid._sum.paidAmount || 0);
+
+    const netOperating = cashFromCustomers - cashPaidForExpenses - cashPaidForInventory;
+
+    // No investing or financing activities are tracked separately in this system
+    const netCashChange = netOperating;
+
+    return {
+      period: { start: startDate, end: endDate },
+      operatingActivities: {
+        cashFromCustomers,
+        cashFromSales,
+        cashFromDownPayments,
+        cashFromInstallments,
+        cashFromLateFees,
+        cashFromFinanceCompanies,
+        cashPaidForExpenses: -cashPaidForExpenses,
+        cashPaidForInventory: -cashPaidForInventory,
+        netOperatingCashFlow: netOperating,
+      },
+      netCashChange,
+    };
   }
 }

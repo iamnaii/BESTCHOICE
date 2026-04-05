@@ -7,8 +7,8 @@ generator client {
 // Local / TCP connection format:
 //   postgresql://USER:PASS@HOST:5432/DB
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 // ============================================================
@@ -35,11 +35,11 @@ enum ContractStatus {
 
 // Dunning escalation stages for overdue debt collection
 enum DunningStage {
-  NONE           // ปกติ ยังไม่ overdue
-  REMINDER       // แจ้งเตือน (1-7 วัน overdue)
-  NOTICE         // แจ้งค้างชำระ (8-30 วัน)
-  FINAL_WARNING  // เตือนครั้งสุดท้าย (31-60 วัน)
-  LEGAL_ACTION   // ดำเนินคดี/ยึดคืน (>60 วัน)
+  NONE // ปกติ ยังไม่ overdue
+  REMINDER // แจ้งเตือน (1-7 วัน overdue)
+  NOTICE // แจ้งค้างชำระ (8-30 วัน)
+  FINAL_WARNING // เตือนครั้งสุดท้าย (31-60 วัน)
+  LEGAL_ACTION // ดำเนินคดี/ยึดคืน (>60 วัน)
 }
 
 enum PlanType {
@@ -195,9 +195,9 @@ enum SaleType {
 }
 
 enum InterCompanyTransactionType {
-  FINANCE_PURCHASE    // Finance ซื้อลูกหนี้จาก Shop (principal + commission)
-  COMMISSION_PAYMENT  // Finance จ่าย commission ให้ Shop
-  LATE_FEE_SHARE      // ส่วนแบ่งค่าปรับล่าช้า
+  FINANCE_PURCHASE // Finance ซื้อลูกหนี้จาก Shop (principal + commission)
+  COMMISSION_PAYMENT // Finance จ่าย commission ให้ Shop
+  LATE_FEE_SHARE // ส่วนแบ่งค่าปรับล่าช้า
 }
 
 enum InterCompanyTransactionStatus {
@@ -256,82 +256,83 @@ model Branch {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  isMainWarehouse Boolean @default(false) @map("is_main_warehouse")
-  deletedAt DateTime? @map("deleted_at")
+  isMainWarehouse Boolean   @default(false) @map("is_main_warehouse")
+  deletedAt       DateTime? @map("deleted_at")
 
-  users            User[]
-  products         Product[]
-  contracts        Contract[]
-  sales            Sale[]
-  stockFroms       StockTransfer[]   @relation("TransferFrom")
-  stockTos         StockTransfer[]   @relation("TransferTo")
-  stockAdjustments StockAdjustment[]
-  reorderPoints    ReorderPoint[]
-  stockAlerts      StockAlert[]
-  stockCounts      StockCount[]
-  inviteTokens     InviteToken[]
-  financeReceivables FinanceReceivable[]
-  expenses           Expense[]
+  users                    User[]
+  products                 Product[]
+  contracts                Contract[]
+  sales                    Sale[]
+  stockFroms               StockTransfer[]           @relation("TransferFrom")
+  stockTos                 StockTransfer[]           @relation("TransferTo")
+  stockAdjustments         StockAdjustment[]
+  reorderPoints            ReorderPoint[]
+  stockAlerts              StockAlert[]
+  stockCounts              StockCount[]
+  inviteTokens             InviteToken[]
+  financeReceivables       FinanceReceivable[]
+  expenses                 Expense[]
   interCompanyTransactions InterCompanyTransaction[]
 
   @@map("branches")
 }
 
 model User {
-  id             String   @id @default(uuid())
-  email          String   @unique
-  password       String
-  name           String
-  role           UserRole @default(SALES)
-  branchId       String?  @map("branch_id")
-  isActive       Boolean  @default(true) @map("is_active")
-  savedSignature String?  @map("saved_signature") @db.Text
-  employeeId     String?  @unique @map("employee_id")
-  nickname       String?  @map("nickname")
-  phone          String?  @map("phone")
-  lineId         String?  @map("line_id")
-  address        String?  @map("address") @db.Text
-  avatarUrl      String?  @map("avatar_url") @db.Text
-  startDate      DateTime? @map("start_date")
-  nationalId     String?   @map("national_id")
-  birthDate      DateTime? @map("birth_date")
+  id               String    @id @default(uuid())
+  email            String    @unique
+  password         String
+  name             String
+  role             UserRole  @default(SALES)
+  branchId         String?   @map("branch_id")
+  isActive         Boolean   @default(true) @map("is_active")
+  savedSignature   String?   @map("saved_signature") @db.Text
+  employeeId       String?   @unique @map("employee_id")
+  nickname         String?   @map("nickname")
+  phone            String?   @map("phone")
+  lineId           String?   @map("line_id")
+  address          String?   @map("address") @db.Text
+  avatarUrl        String?   @map("avatar_url") @db.Text
+  startDate        DateTime? @map("start_date")
+  nationalId       String?   @map("national_id")
+  birthDate        DateTime? @map("birth_date")
   // Two-Factor Authentication (TOTP)
-  twoFactorEnabled Boolean  @default(false) @map("two_factor_enabled")
-  twoFactorSecret  String?  @map("two_factor_secret")  // encrypted TOTP secret
-  twoFactorBackup  String?  @map("two_factor_backup")  // encrypted recovery codes (JSON)
+  twoFactorEnabled Boolean   @default(false) @map("two_factor_enabled")
+  twoFactorSecret  String?   @map("two_factor_secret") // encrypted TOTP secret
+  twoFactorBackup  String?   @map("two_factor_backup") // encrypted recovery codes (JSON)
 
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
-  deletedAt      DateTime? @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
 
   branch Branch? @relation(fields: [branchId], references: [id])
 
-  contractsAsSalesperson Contract[]         @relation("Salesperson")
-  contractsReviewed      Contract[]         @relation("ContractReviewer")
-  salesAsSalesperson     Sale[]             @relation("SalesSalesperson")
-  paymentsRecorded       Payment[]          @relation("RecordedBy")
+  contractsAsSalesperson Contract[]           @relation("Salesperson")
+  contractsReviewed      Contract[]           @relation("ContractReviewer")
+  salesAsSalesperson     Sale[]               @relation("SalesSalesperson")
+  paymentsRecorded       Payment[]            @relation("RecordedBy")
   inspections            Inspection[]
   callLogs               CallLog[]
   auditLogs              AuditLog[]
-  purchaseOrdersCreated  PurchaseOrder[]    @relation("POCreatedBy")
-  purchaseOrdersApproved PurchaseOrder[]    @relation("POApprovedBy")
-  repossessionsAppraised Repossession[]     @relation("AppraisedBy")
-  goodsReceivings        GoodsReceiving[]   @relation("GoodsReceivedBy")
-  transfersConfirmed     StockTransfer[]    @relation("TransferConfirmedBy")
-  transfersDispatched    StockTransfer[]    @relation("TransferDispatchedBy")
-  stockAdjustments       StockAdjustment[]  @relation("StockAdjustedBy")
-  documentsUploaded      ContractDocument[] @relation("DocumentUploadedBy")
-  creditChecks           CreditCheck[]      @relation("CreditCheckedBy")
-  branchReceivings       BranchReceiving[]  @relation("BranchReceivedBy")
-  stockCounts            StockCount[]       @relation("StockCountedBy")
-  productPhotosUploaded  ProductPhoto[]     @relation("ProductPhotoUploadedBy")
+  purchaseOrdersCreated  PurchaseOrder[]      @relation("POCreatedBy")
+  purchaseOrdersApproved PurchaseOrder[]      @relation("POApprovedBy")
+  repossessionsAppraised Repossession[]       @relation("AppraisedBy")
+  goodsReceivings        GoodsReceiving[]     @relation("GoodsReceivedBy")
+  transfersConfirmed     StockTransfer[]      @relation("TransferConfirmedBy")
+  transfersDispatched    StockTransfer[]      @relation("TransferDispatchedBy")
+  stockAdjustments       StockAdjustment[]    @relation("StockAdjustedBy")
+  documentsUploaded      ContractDocument[]   @relation("DocumentUploadedBy")
+  creditChecks           CreditCheck[]        @relation("CreditCheckedBy")
+  branchReceivings       BranchReceiving[]    @relation("BranchReceivedBy")
+  stockCounts            StockCount[]         @relation("StockCountedBy")
+  productPhotosUploaded  ProductPhoto[]       @relation("ProductPhotoUploadedBy")
   refreshTokens          RefreshToken[]
   passwordResetTokens    PasswordResetToken[]
-  reviewedEvidences      PaymentEvidence[]  @relation("EvidenceReviewedBy")
+  reviewedEvidences      PaymentEvidence[]    @relation("EvidenceReviewedBy")
   inviteTokens           InviteToken[]
-  financeRecorded        FinanceReceivable[] @relation("FinanceRecordedBy")
-  expensesCreated        Expense[]           @relation("ExpenseCreatedBy")
-  expensesApproved       Expense[]           @relation("ExpenseApprovedBy")
+  financeRecorded        FinanceReceivable[]  @relation("FinanceRecordedBy")
+  expensesCreated        Expense[]            @relation("ExpenseCreatedBy")
+  expensesApproved       Expense[]            @relation("ExpenseApprovedBy")
+  expensesVoided         Expense[]            @relation("ExpenseVoidedBy")
 
   @@index([branchId])
   @@map("users")
@@ -371,8 +372,8 @@ model Customer {
   guardianAddress    String? @map("guardian_address")
 
   // Referral — ลูกค้าที่แนะนำมา
-  referredById String?   @map("referred_by_id")
-  referredBy   Customer? @relation("Referral", fields: [referredById], references: [id])
+  referredById String?    @map("referred_by_id")
+  referredBy   Customer?  @relation("Referral", fields: [referredById], references: [id])
   referrals    Customer[] @relation("Referral")
 
   createdAt DateTime  @default(now()) @map("created_at")
@@ -468,21 +469,22 @@ model Contract {
   retentionExpiry DateTime?               @map("retention_expiry")
   legalHoldReason String?                 @map("legal_hold_reason")
 
-  payments          Payment[]
-  signatures        Signature[]
-  eDocuments        EDocument[]
-  callLogs          CallLog[]
-  repossession      Repossession?
-  sale              Sale?
-  contractDocuments ContractDocument[]
-  creditCheck       CreditCheck?
-  pdpaConsent       PDPAConsent?       @relation(fields: [pdpaConsentId], references: [id])
-  receipts          Receipt[]
-  paymentLinks      PaymentLink[]
-  paymentEvidences  PaymentEvidence[]
-  kycVerifications  KycVerification[]
-  loyaltyPoints     LoyaltyPoint[]
+  payments                 Payment[]
+  signatures               Signature[]
+  eDocuments               EDocument[]
+  callLogs                 CallLog[]
+  repossession             Repossession?
+  sale                     Sale?
+  contractDocuments        ContractDocument[]
+  creditCheck              CreditCheck?
+  pdpaConsent              PDPAConsent?              @relation(fields: [pdpaConsentId], references: [id])
+  receipts                 Receipt[]
+  paymentLinks             PaymentLink[]
+  paymentEvidences         PaymentEvidence[]
+  kycVerifications         KycVerification[]
+  loyaltyPoints            LoyaltyPoint[]
   interCompanyTransactions InterCompanyTransaction[]
+  provisions               BadDebtProvision[]
 
   @@index([customerId])
   @@index([branchId])
@@ -498,16 +500,16 @@ model Contract {
 }
 
 model Payment {
-  id            String         @id @default(uuid())
-  contractId    String         @map("contract_id")
-  installmentNo Int            @map("installment_no")
-  dueDate       DateTime       @map("due_date")
-  amountDue     Decimal        @map("amount_due") @db.Decimal(12, 2)
-  amountPaid    Decimal        @default(0) @map("amount_paid") @db.Decimal(12, 2)
-  paidDate      DateTime?      @map("paid_date")
-  paymentMethod PaymentMethod? @map("payment_method")
-  lateFee       Decimal        @default(0) @map("late_fee") @db.Decimal(12, 2)
-  lateFeeWaived Boolean        @default(false) @map("late_fee_waived")
+  id              String         @id @default(uuid())
+  contractId      String         @map("contract_id")
+  installmentNo   Int            @map("installment_no")
+  dueDate         DateTime       @map("due_date")
+  amountDue       Decimal        @map("amount_due") @db.Decimal(12, 2)
+  amountPaid      Decimal        @default(0) @map("amount_paid") @db.Decimal(12, 2)
+  paidDate        DateTime?      @map("paid_date")
+  paymentMethod   PaymentMethod? @map("payment_method")
+  lateFee         Decimal        @default(0) @map("late_fee") @db.Decimal(12, 2)
+  lateFeeWaived   Boolean        @default(false) @map("late_fee_waived")
   evidenceUrl     String?        @map("evidence_url")
   notes           String?
   status          PaymentStatus  @default(PENDING)
@@ -541,20 +543,20 @@ model Payment {
 // ============================================================
 
 model Supplier {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
   name           String
-  contactName    String   @map("contact_name")
+  contactName    String    @map("contact_name")
   nickname       String?
   phone          String
-  phoneSecondary String?  @map("phone_secondary")
-  lineId         String?  @map("line_id")
+  phoneSecondary String?   @map("phone_secondary")
+  lineId         String?   @map("line_id")
   address        String?
-  taxId          String?  @map("tax_id")
-  hasVat         Boolean  @default(false) @map("has_vat")
+  taxId          String?   @map("tax_id")
+  hasVat         Boolean   @default(false) @map("has_vat")
   notes          String?
-  isActive       Boolean  @default(true) @map("is_active")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  isActive       Boolean   @default(true) @map("is_active")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
   deletedAt      DateTime? @map("deleted_at")
 
   products       Product[]
@@ -566,14 +568,14 @@ model Supplier {
 }
 
 model SupplierPaymentMethod {
-  id                String   @id @default(uuid())
-  supplierId        String   @map("supplier_id")
-  paymentMethod     String   @map("payment_method") // CASH, BANK_TRANSFER, CHECK, CREDIT
-  bankName          String?  @map("bank_name")
-  bankAccountName   String?  @map("bank_account_name")
-  bankAccountNumber String?  @map("bank_account_number")
-  creditTermDays    Int?     @map("credit_term_days")
-  isDefault         Boolean  @default(false) @map("is_default")
+  id                String    @id @default(uuid())
+  supplierId        String    @map("supplier_id")
+  paymentMethod     String    @map("payment_method") // CASH, BANK_TRANSFER, CHECK, CREDIT
+  bankName          String?   @map("bank_name")
+  bankAccountName   String?   @map("bank_account_name")
+  bankAccountNumber String?   @map("bank_account_number")
+  creditTermDays    Int?      @map("credit_term_days")
+  isDefault         Boolean   @default(false) @map("is_default")
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
   deletedAt         DateTime? @map("deleted_at")
@@ -706,18 +708,18 @@ model Product {
 }
 
 model ProductPhoto {
-  id           String   @id @default(uuid())
-  productId    String   @unique @map("product_id")
+  id           String    @id @default(uuid())
+  productId    String    @unique @map("product_id")
   front        String? // ด้านหน้า
   back         String? // ด้านหลัง
   left         String? // ข้างซ้าย
   right        String? // ข้างขวา
   top          String? // ด้านบน
   bottom       String? // ด้านล่าง
-  isCompleted  Boolean  @default(false) @map("is_completed")
-  uploadedById String?  @map("uploaded_by_id")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  isCompleted  Boolean   @default(false) @map("is_completed")
+  uploadedById String?   @map("uploaded_by_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
   deletedAt    DateTime? @map("deleted_at")
 
   product    Product @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -727,13 +729,13 @@ model ProductPhoto {
 }
 
 model ProductPrice {
-  id        String   @id @default(uuid())
-  productId String   @map("product_id")
+  id        String    @id @default(uuid())
+  productId String    @map("product_id")
   label     String // e.g. "ราคาเงินสด", "ราคาผ่อน"
-  amount    Decimal  @db.Decimal(12, 2)
-  isDefault Boolean  @default(false) @map("is_default")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  amount    Decimal   @db.Decimal(12, 2)
+  isDefault Boolean   @default(false) @map("is_default")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -801,12 +803,12 @@ model StockTransfer {
 }
 
 model GoodsReceiving {
-  id           String   @id @default(uuid())
-  poId         String   @map("po_id")
-  receivedById String   @map("received_by_id")
+  id           String    @id @default(uuid())
+  poId         String    @map("po_id")
+  receivedById String    @map("received_by_id")
   notes        String?
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
   deletedAt    DateTime? @map("deleted_at")
 
   po         PurchaseOrder        @relation(fields: [poId], references: [id], onDelete: Cascade)
@@ -874,12 +876,12 @@ model StockAdjustment {
 // ============================================================
 
 model InspectionTemplate {
-  id         String   @id @default(uuid())
+  id         String    @id @default(uuid())
   name       String
-  deviceType String   @map("device_type") // PHONE, TABLET
-  isActive   Boolean  @default(true) @map("is_active")
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  deviceType String    @map("device_type") // PHONE, TABLET
+  isActive   Boolean   @default(true) @map("is_active")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
   deletedAt  DateTime? @map("deleted_at")
 
   items       InspectionTemplateItem[]
@@ -960,28 +962,28 @@ model InspectionResult {
 // ============================================================
 
 model ContractTemplate {
-  id           String   @id @default(uuid())
+  id           String    @id @default(uuid())
   name         String
   type         String // e.g. STORE_DIRECT, CREDIT_CARD, EXCHANGE
-  contentHtml  String   @map("content_html")
-  placeholders String[] @default([])
-  blocks       Json?    @default("[]") // Block-based editor content (JSON array)
+  contentHtml  String    @map("content_html")
+  placeholders String[]  @default([])
+  blocks       Json?     @default("[]") // Block-based editor content (JSON array)
   settings     Json? // Template settings (letterhead, margins, font sizes, etc.)
-  isActive     Boolean  @default(true) @map("is_active")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
   deletedAt    DateTime? @map("deleted_at")
 
   @@map("contract_templates")
 }
 
 model EDocument {
-  id           String   @id @default(uuid())
-  contractId   String   @map("contract_id")
-  documentType String   @map("document_type") // CONTRACT, RECEIPT_DOWN, RECEIPT_INSTALLMENT, PAYOFF
-  fileUrl      String   @map("file_url")
-  fileHash     String   @map("file_hash") // SHA-256
-  createdById  String   @map("created_by_id")
+  id           String    @id @default(uuid())
+  contractId   String    @map("contract_id")
+  documentType String    @map("document_type") // CONTRACT, RECEIPT_DOWN, RECEIPT_INSTALLMENT, PAYOFF
+  fileUrl      String    @map("file_url")
+  fileHash     String    @map("file_hash") // SHA-256
+  createdById  String    @map("created_by_id")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
   deletedAt    DateTime? @map("deleted_at")
@@ -1019,15 +1021,15 @@ model Signature {
 }
 
 model StickerTemplate {
-  id           String   @id @default(uuid())
+  id           String    @id @default(uuid())
   name         String
-  sizeWidthMm  Int      @map("size_width_mm")
-  sizeHeightMm Int      @map("size_height_mm")
-  layoutConfig Json     @map("layout_config")
-  placeholders String[] @default([])
-  isActive     Boolean  @default(true) @map("is_active")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  sizeWidthMm  Int       @map("size_width_mm")
+  sizeHeightMm Int       @map("size_height_mm")
+  layoutConfig Json      @map("layout_config")
+  placeholders String[]  @default([])
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
   deletedAt    DateTime? @map("deleted_at")
 
   @@map("sticker_templates")
@@ -1097,10 +1099,10 @@ model NotificationLog {
 }
 
 model CallLog {
-  id         String   @id @default(uuid())
-  contractId String   @map("contract_id")
-  callerId   String   @map("caller_id")
-  calledAt   DateTime @map("called_at")
+  id         String    @id @default(uuid())
+  contractId String    @map("contract_id")
+  callerId   String    @map("caller_id")
+  calledAt   DateTime  @map("called_at")
   result     String // e.g. ANSWERED, NO_ANSWER, PROMISED, REFUSED
   notes      String?
   createdAt  DateTime  @default(now()) @map("created_at")
@@ -1127,7 +1129,6 @@ model AuditLog {
   userAgent String?  @map("user_agent")
   duration  Int? // request duration in ms
   createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id])
 
@@ -1138,12 +1139,12 @@ model AuditLog {
 }
 
 model SystemConfig {
-  id        String   @id @default(uuid())
-  key       String   @unique
+  id        String    @id @default(uuid())
+  key       String    @unique
   value     String
   label     String? // Thai description
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
   @@map("system_config")
@@ -1177,12 +1178,12 @@ model Sale {
   updatedAt         DateTime       @updatedAt @map("updated_at")
   deletedAt         DateTime?      @map("deleted_at")
 
-  customer           Customer           @relation(fields: [customerId], references: [id])
-  product            Product            @relation(fields: [productId], references: [id])
-  branch             Branch             @relation(fields: [branchId], references: [id])
-  salesperson        User               @relation("SalesSalesperson", fields: [salespersonId], references: [id])
-  contract           Contract?          @relation(fields: [contractId], references: [id])
-  financeReceivable  FinanceReceivable?
+  customer                 Customer                  @relation(fields: [customerId], references: [id])
+  product                  Product                   @relation(fields: [productId], references: [id])
+  branch                   Branch                    @relation(fields: [branchId], references: [id])
+  salesperson              User                      @relation("SalesSalesperson", fields: [salespersonId], references: [id])
+  contract                 Contract?                 @relation(fields: [contractId], references: [id])
+  financeReceivable        FinanceReceivable?
   interCompanyTransactions InterCompanyTransaction[]
 
   @@index([saleType])
@@ -1200,18 +1201,18 @@ model Sale {
 // ============================================================
 
 model InterestConfig {
-  id                   String   @id @default(uuid())
+  id                   String    @id @default(uuid())
   name                 String // เช่น "มือ 1", "มือ 2"
-  productCategories    String[] @default([]) @map("product_categories")
-  interestRate         Decimal  @map("interest_rate") @db.Decimal(5, 4)
-  minDownPaymentPct    Decimal  @map("min_down_payment_pct") @db.Decimal(5, 4)
-  storeCommissionPct   Decimal  @default(0.10) @map("store_commission_pct") @db.Decimal(5, 4)
-  vatPct               Decimal  @default(0.07) @map("vat_pct") @db.Decimal(5, 4)
-  maxInstallmentMonths Int      @map("max_installment_months")
-  minInstallmentMonths Int      @map("min_installment_months")
-  isActive             Boolean  @default(true) @map("is_active")
-  createdAt            DateTime @default(now()) @map("created_at")
-  updatedAt            DateTime @updatedAt @map("updated_at")
+  productCategories    String[]  @default([]) @map("product_categories")
+  interestRate         Decimal   @map("interest_rate") @db.Decimal(5, 4)
+  minDownPaymentPct    Decimal   @map("min_down_payment_pct") @db.Decimal(5, 4)
+  storeCommissionPct   Decimal   @default(0.10) @map("store_commission_pct") @db.Decimal(5, 4)
+  vatPct               Decimal   @default(0.07) @map("vat_pct") @db.Decimal(5, 4)
+  maxInstallmentMonths Int       @map("max_installment_months")
+  minInstallmentMonths Int       @map("min_installment_months")
+  isActive             Boolean   @default(true) @map("is_active")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
   deletedAt            DateTime? @map("deleted_at")
 
   contracts Contract[]
@@ -1360,13 +1361,13 @@ model StockCount {
 }
 
 model StockCountItem {
-  id             String   @id @default(uuid())
-  stockCountId   String   @map("stock_count_id")
-  productId      String   @map("product_id")
-  expectedStatus String   @map("expected_status") // status ในระบบ
-  actualFound    Boolean  @default(false) @map("actual_found") // พบสินค้าจริง (default: ยังไม่ตรวจนับ)
-  conditionNotes String?  @map("condition_notes")
-  scannedImei    String?  @map("scanned_imei") // IMEI ที่สแกนยืนยัน
+  id             String    @id @default(uuid())
+  stockCountId   String    @map("stock_count_id")
+  productId      String    @map("product_id")
+  expectedStatus String    @map("expected_status") // status ในระบบ
+  actualFound    Boolean   @default(false) @map("actual_found") // พบสินค้าจริง (default: ยังไม่ตรวจนับ)
+  conditionNotes String?   @map("condition_notes")
+  scannedImei    String?   @map("scanned_imei") // IMEI ที่สแกนยืนยัน
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
   deletedAt      DateTime? @map("deleted_at")
@@ -1385,10 +1386,10 @@ model StockCountItem {
 // ============================================================
 
 model BranchReceiving {
-  id           String   @id @default(uuid())
-  transferId   String   @unique @map("transfer_id")
-  receivedById String   @map("received_by_id")
-  status       String   @default("PENDING") // PENDING, COMPLETED, PARTIAL_REJECT
+  id           String    @id @default(uuid())
+  transferId   String    @unique @map("transfer_id")
+  receivedById String    @map("received_by_id")
+  status       String    @default("PENDING") // PENDING, COMPLETED, PARTIAL_REJECT
   notes        String?
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at")
@@ -1403,14 +1404,14 @@ model BranchReceiving {
 }
 
 model BranchReceivingItem {
-  id             String   @id @default(uuid())
-  receivingId    String   @map("receiving_id")
-  productId      String   @map("product_id")
-  imeiSerial     String?  @map("imei_serial") // สแกนยืนยัน
-  status         String   @default("PASS") // PASS, REJECT
-  conditionNotes String?  @map("condition_notes")
-  photos         String[] @default([])
-  rejectReason   String?  @map("reject_reason")
+  id             String    @id @default(uuid())
+  receivingId    String    @map("receiving_id")
+  productId      String    @map("product_id")
+  imeiSerial     String?   @map("imei_serial") // สแกนยืนยัน
+  status         String    @default("PASS") // PASS, REJECT
+  conditionNotes String?   @map("condition_notes")
+  photos         String[]  @default([])
+  rejectReason   String?   @map("reject_reason")
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
   deletedAt      DateTime? @map("deleted_at")
@@ -1460,7 +1461,7 @@ model PasswordResetToken {
 
 model InviteToken {
   id        String    @id @default(uuid())
-  token     String    @unique                    // SHA-256 hash of raw token
+  token     String    @unique // SHA-256 hash of raw token
   email     String
   role      UserRole
   branchId  String?   @map("branch_id")
@@ -1537,31 +1538,31 @@ model DSARRequest {
 // ============================================================
 
 model KycVerification {
-  id             String   @id @default(uuid())
-  contractId     String   @map("contract_id")
-  customerId     String   @map("customer_id")
+  id         String @id @default(uuid())
+  contractId String @map("contract_id")
+  customerId String @map("customer_id")
 
   // OTP verification
-  otpHash        String?  @map("otp_hash") // SHA-256 hash of OTP (never store plaintext)
-  otpPhone       String   @map("otp_phone") // phone number OTP was sent to
-  otpChannel     String   @map("otp_channel") // SMS | LINE
-  otpAttempts    Int      @default(0) @map("otp_attempts") // failed attempts
-  otpSentCount   Int      @default(0) @map("otp_sent_count") // times OTP was sent
-  otpRefCode     String?  @map("otp_ref_code") // 4-char ref code shown to user
-  otpVerifiedAt  DateTime? @map("otp_verified_at")
+  otpHash       String?   @map("otp_hash") // SHA-256 hash of OTP (never store plaintext)
+  otpPhone      String    @map("otp_phone") // phone number OTP was sent to
+  otpChannel    String    @map("otp_channel") // SMS | LINE
+  otpAttempts   Int       @default(0) @map("otp_attempts") // failed attempts
+  otpSentCount  Int       @default(0) @map("otp_sent_count") // times OTP was sent
+  otpRefCode    String?   @map("otp_ref_code") // 4-char ref code shown to user
+  otpVerifiedAt DateTime? @map("otp_verified_at")
 
   // ID Card photo verification
-  idCardImageUrl String?  @map("id_card_image_url") // S3 path
-  idCardVerified Boolean  @default(false) @map("id_card_verified")
+  idCardImageUrl String? @map("id_card_image_url") // S3 path
+  idCardVerified Boolean @default(false) @map("id_card_verified")
 
   // Metadata
-  ipAddress      String?  @map("ip_address")
-  deviceInfo     String?  @map("device_info") // User-Agent
-  status         String   @default("PENDING") // PENDING, OTP_VERIFIED, VERIFIED, EXPIRED, FAILED
-  expiresAt      DateTime @map("expires_at") // OTP expiry (10 min)
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at")
-  deletedAt      DateTime? @map("deleted_at")
+  ipAddress  String?   @map("ip_address")
+  deviceInfo String?   @map("device_info") // User-Agent
+  status     String    @default("PENDING") // PENDING, OTP_VERIFIED, VERIFIED, EXPIRED, FAILED
+  expiresAt  DateTime  @map("expires_at") // OTP expiry (10 min)
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @default(now()) @updatedAt @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at")
 
   contract Contract @relation(fields: [contractId], references: [id])
   customer Customer @relation(fields: [customerId], references: [id])
@@ -1577,26 +1578,33 @@ model KycVerification {
 // ============================================================
 
 model Receipt {
-  id               String   @id @default(uuid())
-  receiptNumber    String   @unique @map("receipt_number") // RC-YYYY-MM-NNNNN
-  contractId       String   @map("contract_id")
-  paymentId        String?  @map("payment_id")
-  receiptType      String   @default("PAYMENT") // PAYMENT, DOWN_PAYMENT, EARLY_PAYOFF, CREDIT_NOTE
-  payerName        String   @map("payer_name")
-  receiverName     String   @map("receiver_name")
-  amount           Decimal  @db.Decimal(12, 2)
-  installmentNo    Int?     @map("installment_no") // งวดที่
-  remainingBalance Decimal? @map("remaining_balance") @db.Decimal(12, 2)
-  remainingMonths  Int?     @map("remaining_months")
-  paymentMethod    String?  @map("payment_method")
-  transactionRef   String?  @map("transaction_ref") // เลขอ้างอิงธุรกรรม
-  paidDate         DateTime @map("paid_date")
-  fileUrl          String?  @map("file_url") // PDF URL
-  fileHash         String?  @map("file_hash") // SHA-256
-  isVoided         Boolean  @default(false) @map("is_voided")
-  voidReason       String?  @map("void_reason")
-  voidedReceiptId  String?  @map("voided_receipt_id") // อ้างอิงใบเสร็จที่ถูกยกเลิก
-  issuedById       String   @map("issued_by_id")
+  id               String    @id @default(uuid())
+  receiptNumber    String    @unique @map("receipt_number") // RC-YYYY-MM-NNNNN
+  contractId       String    @map("contract_id")
+  paymentId        String?   @map("payment_id")
+  receiptType      String    @default("PAYMENT") // PAYMENT, DOWN_PAYMENT, EARLY_PAYOFF, CREDIT_NOTE
+  payerName        String    @map("payer_name")
+  payerAddress     String?   @map("payer_address")
+  payerTaxId       String?   @map("payer_tax_id") // เลขประจำตัวผู้เสียภาษีผู้ซื้อ
+  receiverName     String    @map("receiver_name")
+  amount           Decimal   @db.Decimal(12, 2)
+  amountBeforeVat  Decimal?  @map("amount_before_vat") @db.Decimal(12, 2) // ราคาก่อน VAT
+  vatAmount        Decimal?  @map("vat_amount") @db.Decimal(12, 2) // จำนวน VAT
+  installmentNo    Int?      @map("installment_no") // งวดที่
+  remainingBalance Decimal?  @map("remaining_balance") @db.Decimal(12, 2)
+  remainingMonths  Int?      @map("remaining_months")
+  paymentMethod    String?   @map("payment_method")
+  transactionRef   String?   @map("transaction_ref") // เลขอ้างอิงธุรกรรม
+  itemDescription  String?   @map("item_description") // รายละเอียดสินค้า/บริการ
+  paidDate         DateTime  @map("paid_date")
+  fileUrl          String?   @map("file_url") // PDF URL
+  fileHash         String?   @map("file_hash") // SHA-256
+  isVoided         Boolean   @default(false) @map("is_voided")
+  voidReason       String?   @map("void_reason")
+  voidApprovedById String?   @map("void_approved_by_id") // ผู้อนุมัติการยกเลิก
+  voidApprovedAt   DateTime? @map("void_approved_at")
+  voidedReceiptId  String?   @map("voided_receipt_id") // อ้างอิงใบเสร็จที่ถูกยกเลิก
+  issuedById       String    @map("issued_by_id")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at")
   deletedAt        DateTime? @map("deleted_at")
@@ -1656,20 +1664,20 @@ model DocumentAuditLog {
 // ============================================================
 
 model CompanyInfo {
-  id                 String   @id @default(uuid())
-  nameTh             String   @map("name_th")
-  nameEn             String?  @map("name_en")
-  taxId              String   @map("tax_id") // เลขทะเบียนนิติบุคคล/ผู้เสียภาษี
+  id                 String    @id @default(uuid())
+  nameTh             String    @map("name_th")
+  nameEn             String?   @map("name_en")
+  taxId              String    @map("tax_id") // เลขทะเบียนนิติบุคคล/ผู้เสียภาษี
   address            String
   phone              String?
-  directorName       String   @map("director_name") // ชื่อผู้มีอำนาจลงนาม
-  directorPosition   String?  @map("director_position") // ตำแหน่ง
-  directorNationalId String?  @map("director_national_id")
-  directorAddress    String?  @map("director_address")
-  logoUrl            String?  @map("logo_url")
-  isActive           Boolean  @default(true) @map("is_active")
-  createdAt          DateTime @default(now()) @map("created_at")
-  updatedAt          DateTime @updatedAt @map("updated_at")
+  directorName       String    @map("director_name") // ชื่อผู้มีอำนาจลงนาม
+  directorPosition   String?   @map("director_position") // ตำแหน่ง
+  directorNationalId String?   @map("director_national_id")
+  directorAddress    String?   @map("director_address")
+  logoUrl            String?   @map("logo_url")
+  isActive           Boolean   @default(true) @map("is_active")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
   deletedAt          DateTime? @map("deleted_at")
 
   @@map("company_info")
@@ -1770,9 +1778,9 @@ model FinanceReceivable {
   updatedAt         DateTime                @updatedAt @map("updated_at")
   deletedAt         DateTime?               @map("deleted_at")
 
-  sale       Sale    @relation(fields: [saleId], references: [id])
-  branch     Branch  @relation(fields: [branchId], references: [id])
-  recordedBy User?   @relation("FinanceRecordedBy", fields: [recordedById], references: [id])
+  sale       Sale   @relation(fields: [saleId], references: [id])
+  branch     Branch @relation(fields: [branchId], references: [id])
+  recordedBy User?  @relation("FinanceRecordedBy", fields: [recordedById], references: [id])
 
   @@index([status])
   @@index([financeCompany])
@@ -1780,6 +1788,35 @@ model FinanceReceivable {
   @@index([expectedDate])
   @@index([deletedAt])
   @@map("finance_receivables")
+}
+
+// ============================================================
+// CHART OF ACCOUNTS (ผังบัญชี)
+// ============================================================
+
+enum AccountGroup {
+  ASSET // 1xxx สินทรัพย์
+  LIABILITY // 2xxx หนี้สิน
+  EQUITY // 3xxx ส่วนของเจ้าของ
+  REVENUE // 4xxx รายได้
+  EXPENSE // 5xxx ค่าใช้จ่าย
+}
+
+model ChartOfAccount {
+  id           String       @id @default(uuid())
+  code         String       @unique // e.g. "1100", "4100"
+  nameTh       String       @map("name_th") // ชื่อบัญชีภาษาไทย
+  nameEn       String?      @map("name_en") // English name (optional)
+  accountGroup AccountGroup @map("account_group")
+  parentCode   String?      @map("parent_code") // parent account code for hierarchy
+  level        Int          @default(1) // 1=group, 2=sub-group, 3=detail
+  isActive     Boolean      @default(true) @map("is_active")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  @@index([accountGroup])
+  @@index([code])
+  @@map("chart_of_accounts")
 }
 
 // ============================================================
@@ -1831,46 +1868,53 @@ enum ExpenseStatus {
 }
 
 model Expense {
-  id              String             @id @default(uuid())
-  expenseNumber   String             @unique @map("expense_number")
-  branchId        String             @map("branch_id")
-  accountType     ExpenseAccountType @map("account_type")
-  category        ExpenseCategory
-  accountCode     String?            @map("account_code")
-  description     String
-  amount          Decimal            @db.Decimal(12, 2)
-  vatAmount       Decimal            @default(0) @map("vat_amount") @db.Decimal(12, 2)
-  totalAmount     Decimal            @map("total_amount") @db.Decimal(12, 2)
-  withholdingTax  Decimal            @default(0) @map("withholding_tax") @db.Decimal(12, 2)
+  id             String             @id @default(uuid())
+  expenseNumber  String             @unique @map("expense_number")
+  branchId       String             @map("branch_id")
+  accountType    ExpenseAccountType @map("account_type")
+  category       ExpenseCategory
+  accountCode    String?            @map("account_code")
+  description    String
+  amount         Decimal            @db.Decimal(12, 2)
+  vatAmount      Decimal            @default(0) @map("vat_amount") @db.Decimal(12, 2)
+  totalAmount    Decimal            @map("total_amount") @db.Decimal(12, 2)
+  withholdingTax Decimal            @default(0) @map("withholding_tax") @db.Decimal(12, 2)
+  whtRate        Decimal?           @map("wht_rate") @db.Decimal(5, 4) // อัตราภาษีหัก ณ ที่จ่าย (0.01, 0.02, 0.03, 0.05)
+  whtIncomeType  String?            @map("wht_income_type") // ประเภทเงินได้ เช่น 40(2), 40(5), 40(8)
+  netPayment     Decimal?           @map("net_payment") @db.Decimal(12, 2) // จำนวนจ่ายจริง = totalAmount - withholdingTax
 
-  expenseDate     DateTime           @map("expense_date")
-  paymentMethod   PaymentMethod?     @map("payment_method")
-  paymentDate     DateTime?          @map("payment_date")
-  reference       String?
+  expenseDate   DateTime       @map("expense_date")
+  paymentMethod PaymentMethod? @map("payment_method")
+  paymentDate   DateTime?      @map("payment_date")
+  reference     String?
 
-  vendorName      String?            @map("vendor_name")
-  vendorTaxId     String?            @map("vendor_tax_id")
-  receiptImageUrl String?            @map("receipt_image_url")
-  taxInvoiceNo    String?            @map("tax_invoice_no")
+  vendorName      String? @map("vendor_name")
+  vendorTaxId     String? @map("vendor_tax_id")
+  receiptImageUrl String? @map("receipt_image_url")
+  taxInvoiceNo    String? @map("tax_invoice_no")
 
-  status          ExpenseStatus      @default(DRAFT)
-  approvedById    String?            @map("approved_by_id")
-  approvedAt      DateTime?          @map("approved_at")
-  rejectReason    String?            @map("reject_reason")
-  createdById     String             @map("created_by_id")
+  status       ExpenseStatus @default(DRAFT)
+  approvedById String?       @map("approved_by_id")
+  approvedAt   DateTime?     @map("approved_at")
+  rejectReason String?       @map("reject_reason")
+  voidReason   String?       @map("void_reason")
+  voidedById   String?       @map("voided_by_id")
+  voidedAt     DateTime?     @map("voided_at")
+  createdById  String        @map("created_by_id")
 
-  isRecurring     Boolean            @default(false) @map("is_recurring")
-  recurringDay    Int?               @map("recurring_day")
+  isRecurring  Boolean @default(false) @map("is_recurring")
+  recurringDay Int?    @map("recurring_day")
 
-  note            String?
+  note String?
 
-  createdAt       DateTime           @default(now()) @map("created_at")
-  updatedAt       DateTime           @updatedAt @map("updated_at")
-  deletedAt       DateTime?          @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
 
   branch     Branch @relation(fields: [branchId], references: [id])
   createdBy  User   @relation("ExpenseCreatedBy", fields: [createdById], references: [id])
   approvedBy User?  @relation("ExpenseApprovedBy", fields: [approvedById], references: [id])
+  voidedBy   User?  @relation("ExpenseVoidedBy", fields: [voidedById], references: [id])
 
   @@index([branchId])
   @@index([accountType])
@@ -1891,7 +1935,7 @@ model LoyaltyPoint {
   customerId String    @map("customer_id")
   paymentId  String    @unique @map("payment_id") // idempotent: 1 payment = 1 point record
   contractId String    @map("contract_id")
-  points     Int       // 1 point per 100 baht, on-time only
+  points     Int // 1 point per 100 baht, on-time only
   reason     String    @default("ON_TIME_PAYMENT")
   createdAt  DateTime  @default(now()) @map("created_at")
   updatedAt  DateTime  @updatedAt @map("updated_at")
@@ -1911,38 +1955,38 @@ model LoyaltyPoint {
 // ============================================================
 
 model InterCompanyTransaction {
-  id              String                        @id @default(uuid())
-  saleId          String                        @map("sale_id")
-  contractId      String?                       @map("contract_id")
-  branchId        String                        @map("branch_id")
-  type            InterCompanyTransactionType
-  status          InterCompanyTransactionStatus  @default(PENDING)
+  id         String                        @id @default(uuid())
+  saleId     String                        @map("sale_id")
+  contractId String?                       @map("contract_id")
+  branchId   String                        @map("branch_id")
+  type       InterCompanyTransactionType
+  status     InterCompanyTransactionStatus @default(PENDING)
 
   // Entity identification
-  fromEntity      String                        @map("from_entity")  // e.g. "BESTCHOICE FINANCE"
-  toEntity        String                        @map("to_entity")    // e.g. "BESTCHOICE SHOP"
+  fromEntity String @map("from_entity") // e.g. "BESTCHOICE FINANCE"
+  toEntity   String @map("to_entity") // e.g. "BESTCHOICE SHOP"
 
   // Financial fields
-  principal       Decimal                       @db.Decimal(12, 2)   // ยอดจัดไฟแนนซ์ (sellingPrice - downPayment)
-  commission      Decimal                       @db.Decimal(12, 2)   // Store commission (principal × commissionPct)
-  commissionPct   Decimal                       @map("commission_pct") @db.Decimal(5, 4) // e.g. 0.10
-  vatAmount       Decimal                       @map("vat_amount") @db.Decimal(12, 2)
-  vatPct          Decimal                       @map("vat_pct") @db.Decimal(5, 4) // e.g. 0.07
-  totalAmount     Decimal                       @map("total_amount") @db.Decimal(12, 2) // principal + commission (Finance จ่ายให้ Shop)
-  interestTotal   Decimal                       @map("interest_total") @db.Decimal(12, 2)
-  costPrice       Decimal                       @map("cost_price") @db.Decimal(12, 2)
-  downPayment     Decimal                       @map("down_payment") @db.Decimal(12, 2)
-  sellingPrice    Decimal                       @map("selling_price") @db.Decimal(12, 2)
+  principal     Decimal @db.Decimal(12, 2) // ยอดจัดไฟแนนซ์ (sellingPrice - downPayment)
+  commission    Decimal @db.Decimal(12, 2) // Store commission (principal × commissionPct)
+  commissionPct Decimal @map("commission_pct") @db.Decimal(5, 4) // e.g. 0.10
+  vatAmount     Decimal @map("vat_amount") @db.Decimal(12, 2)
+  vatPct        Decimal @map("vat_pct") @db.Decimal(5, 4) // e.g. 0.07
+  totalAmount   Decimal @map("total_amount") @db.Decimal(12, 2) // principal + commission (Finance จ่ายให้ Shop)
+  interestTotal Decimal @map("interest_total") @db.Decimal(12, 2)
+  costPrice     Decimal @map("cost_price") @db.Decimal(12, 2)
+  downPayment   Decimal @map("down_payment") @db.Decimal(12, 2)
+  sellingPrice  Decimal @map("selling_price") @db.Decimal(12, 2)
 
   // Calculated profits (snapshot at creation time)
-  shopProfit      Decimal                       @map("shop_profit") @db.Decimal(12, 2)    // downPayment + principal + commission - costPrice
-  financeProfit   Decimal                       @map("finance_profit") @db.Decimal(12, 2) // interestTotal - commission (+ lateFees later)
+  shopProfit    Decimal @map("shop_profit") @db.Decimal(12, 2) // downPayment + principal + commission - costPrice
+  financeProfit Decimal @map("finance_profit") @db.Decimal(12, 2) // interestTotal - commission (+ lateFees later)
 
-  note            String?
-  reconciledAt    DateTime?                     @map("reconciled_at")
-  createdAt       DateTime                      @default(now()) @map("created_at")
-  updatedAt       DateTime                      @updatedAt @map("updated_at")
-  deletedAt       DateTime?                     @map("deleted_at")
+  note         String?
+  reconciledAt DateTime? @map("reconciled_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
 
   sale     Sale      @relation(fields: [saleId], references: [id])
   contract Contract? @relation(fields: [contractId], references: [id])
@@ -1958,4 +2002,34 @@ model InterCompanyTransaction {
   @@index([createdAt])
   @@index([deletedAt])
   @@map("inter_company_transactions")
+}
+
+// ============================================================
+// BAD DEBT PROVISIONING (ค่าเผื่อหนี้สงสัยจะสูญ)
+// ============================================================
+
+model BadDebtProvision {
+  id                String    @id @default(uuid())
+  contractId        String    @map("contract_id")
+  provisionDate     DateTime  @map("provision_date")
+  agingBucket       String    @map("aging_bucket") // "1-30", "31-60", "61-90", "91-180", "181-360", "360+"
+  daysOverdue       Int       @map("days_overdue")
+  outstandingAmount Decimal   @map("outstanding_amount") @db.Decimal(12, 2)
+  provisionRate     Decimal   @map("provision_rate") @db.Decimal(5, 4) // e.g. 0.05 = 5%
+  provisionAmount   Decimal   @map("provision_amount") @db.Decimal(12, 2)
+  status            String    @default("ACTIVE") // ACTIVE, REVERSED, WRITTEN_OFF
+  writtenOffAt      DateTime? @map("written_off_at")
+  writtenOffById    String?   @map("written_off_by_id")
+  approvedById      String?   @map("approved_by_id")
+  approvedAt        DateTime? @map("approved_at")
+  notes             String?
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  contract Contract @relation(fields: [contractId], references: [id])
+
+  @@index([contractId])
+  @@index([provisionDate])
+  @@index([status])
+  @@map("bad_debt_provisions")
 }

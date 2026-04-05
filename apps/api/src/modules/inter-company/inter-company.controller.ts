@@ -59,6 +59,12 @@ export class InterCompanyController {
     return this.interCompanyService.createFromSale(dto);
   }
 
+  @Patch(':id/confirm')
+  @Roles('OWNER', 'ACCOUNTANT')
+  confirm(@Param('id') id: string) {
+    return this.interCompanyService.confirmTransaction(id);
+  }
+
   @Patch(':id/reconcile')
   @Roles('OWNER', 'ACCOUNTANT')
   reconcile(@Param('id') id: string) {

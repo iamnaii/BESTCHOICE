@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AccountingService } from '../accounting/accounting.service';
 
@@ -127,6 +127,19 @@ export class ReportsService {
 
   getMonthlyPLSummary(year: number, branchId?: string) {
     return this.accounting.getMonthlyPLSummary(year, branchId);
+  }
+
+  getComparativePL(year: number, month: number, branchId?: string) {
+    return this.accounting.getComparativePL(year, month, branchId);
+  }
+
+  // Balance Sheet & Cash Flow delegated to AccountingService
+  getBalanceSheet(asOfDate: string, branchId?: string) {
+    return this.accounting.getBalanceSheet(asOfDate, branchId);
+  }
+
+  getCashFlowStatement(startDate: string, endDate: string, branchId?: string) {
+    return this.accounting.getCashFlowStatement(startDate, endDate, branchId);
   }
 
   /**
@@ -562,5 +575,20 @@ export class ReportsService {
       },
       details,
     };
+  }
+
+  /**
+   * R-015: Quarterly P&L report aggregation
+   * Calculates start/end dates for the given quarter and delegates to AccountingService.
+   */
+  async getQuarterlyReport(year: number, quarter: number, branchId?: string) {
+    if (quarter < 1 || quarter > 4) {
+      throw new BadRequestException('ไตรมาสต้องอยู่ระหว่าง 1-4');
+    }
+    const startMonth = (quarter - 1) * 3 + 1;
+    const endMonth = startMonth + 2;
+    const startDate = `${year}-${String(startMonth).padStart(2, '0')}-01`;
+    const endDate = new Date(year, endMonth, 0).toISOString().split('T')[0];
+    return this.accounting.getProfitLossReport(startDate, endDate, branchId);
   }
 }

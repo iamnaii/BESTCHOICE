@@ -208,6 +208,7 @@ export class SalesService {
       await this.markBundleProductsSold(tx, dto.bundleProductIds || []);
       const saleNumber = await generateSaleNumber(tx);
 
+      // Tax point (จุดความรับผิดทางภาษี): วันส่งมอบสินค้า = วันที่สร้างรายการขาย
       const sale = await tx.sale.create({
         data: {
           saleNumber,
@@ -231,6 +232,11 @@ export class SalesService {
         where: { id: dto.productId },
         data: { status: 'SOLD_CASH' },
       });
+
+      // W-007: COGS tracked via sale.product.costPrice relationship.
+      // P&L report (AccountingService.getProfitLossReport) captures product cost
+      // by joining Sale → Product.costPrice, including bundle products.
+      // TODO: Implement perpetual inventory journal for real-time COGS ledger entries.
 
       return sale;
     }, { isolationLevel: 'Serializable' });
@@ -304,6 +310,7 @@ export class SalesService {
       );
       await tx.payment.createMany({ data: payments });
 
+      // Tax point (จุดความรับผิดทางภาษี): วันส่งมอบสินค้า = วันที่สร้างรายการขาย
       // Create sale record linked to contract
       const sale = await tx.sale.create({
         data: {
@@ -331,6 +338,10 @@ export class SalesService {
         data: { status: 'RESERVED' },
       });
 
+      // W-007: COGS tracked via sale.product.costPrice + InterCompanyTransaction.costPrice.
+      // P&L report captures product cost by joining Sale → Product.costPrice.
+      // TODO: Implement perpetual inventory journal for real-time COGS ledger entries.
+
       // ── Inter-Company Transaction: BESTCHOICE SHOP ↔ BESTCHOICE FINANCE ──
       const costPrice = product ? Number(product.costPrice) : 0;
       const downPaymentNum = dto.downPayment!;
@@ -338,6 +349,9 @@ export class SalesService {
       const shopProfit = downPaymentNum + calc.principal + calc.storeCommission - costPrice;
       // Finance profit = interestTotal - commission (late fees added later)
       const financeProfit = calc.interestTotal - calc.storeCommission;
+
+      // W-009: Double-entry description for both entities
+      const interCompanyNote = `SHOP: Debit ลูกหนี้เช่าซื้อ ${calc.principal}, Credit รายได้จากการขาย ${calc.principal + calc.storeCommission}; FINANCE: Debit ลูกหนี้เช่าซื้อ ${calc.principal + calc.interestTotal}, Credit เจ้าหนี้ SHOP ${calc.principal + calc.storeCommission}`;
 
       await tx.interCompanyTransaction.create({
         data: {
@@ -359,6 +373,7 @@ export class SalesService {
           sellingPrice: netAmount,
           shopProfit,
           financeProfit,
+          note: interCompanyNote,
         },
       });
 
@@ -393,6 +408,7 @@ export class SalesService {
       await this.markBundleProductsSold(tx, dto.bundleProductIds || []);
       const saleNumber = await generateSaleNumber(tx);
 
+      // Tax point (จุดความรับผิดทางภาษี): วันส่งมอบสินค้า = วันที่สร้างรายการขาย
       const sale = await tx.sale.create({
         data: {
           saleNumber,
@@ -420,6 +436,10 @@ export class SalesService {
         where: { id: dto.productId },
         data: { status: 'SOLD_INSTALLMENT' },
       });
+
+      // W-007: COGS tracked via sale.product.costPrice relationship.
+      // P&L report captures product cost by joining Sale → Product.costPrice.
+      // TODO: Implement perpetual inventory journal for real-time COGS ledger entries.
 
       // Auto-create FinanceReceivable to track money from finance company
       const expectedDate = new Date();

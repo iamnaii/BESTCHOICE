@@ -55,6 +55,46 @@ export class ReportsController {
     return this.reportsService.getProfitLossReport(startDate, endDate, effectiveBranch);
   }
 
+  @Get('comparative-pl')
+  @Roles('OWNER', 'ACCOUNTANT')
+  getComparativePL(
+    @Query('year') year: string,
+    @Query('month') month: string,
+    @CurrentUser() user: { role: string; branchId: string | null },
+    @Query('branchId') branchId?: string,
+  ) {
+    const effectiveBranch = user.role === 'BRANCH_MANAGER' ? user.branchId || undefined : branchId;
+    return this.reportsService.getComparativePL(
+      parseInt(year) || new Date().getFullYear(),
+      parseInt(month) || new Date().getMonth() + 1,
+      effectiveBranch,
+    );
+  }
+
+  @Get('balance-sheet')
+  @Roles('OWNER', 'ACCOUNTANT')
+  getBalanceSheet(
+    @Query('asOfDate') asOfDate?: string,
+    @Query('branchId') branchId?: string,
+  ) {
+    return this.reportsService.getBalanceSheet(
+      asOfDate || new Date().toISOString().split('T')[0],
+      branchId,
+    );
+  }
+
+  @Get('cash-flow')
+  @Roles('OWNER', 'ACCOUNTANT')
+  getCashFlowStatement(
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string,
+    @CurrentUser() user: { role: string; branchId: string | null },
+    @Query('branchId') branchId?: string,
+  ) {
+    const effectiveBranch = user.role === 'BRANCH_MANAGER' ? user.branchId || undefined : branchId;
+    return this.reportsService.getCashFlowStatement(startDate, endDate, effectiveBranch);
+  }
+
   @Get('high-risk')
   getHighRisk(
     @CurrentUser() user: { role: string; branchId: string | null },
@@ -139,6 +179,22 @@ export class ReportsController {
     @Query('entity') entity?: string,
   ) {
     return this.reportsService.getEntityProfitReport(startDate, endDate, branchId, entity);
+  }
+
+  @Get('quarterly')
+  @Roles('OWNER', 'ACCOUNTANT', 'BRANCH_MANAGER')
+  getQuarterly(
+    @Query('year') year: string,
+    @Query('quarter') quarter: string,
+    @CurrentUser() user: { role: string; branchId: string | null },
+    @Query('branchId') branchId?: string,
+  ) {
+    const effectiveBranch = user.role === 'BRANCH_MANAGER' ? user.branchId || undefined : branchId;
+    return this.reportsService.getQuarterlyReport(
+      parseInt(year) || new Date().getFullYear(),
+      parseInt(quarter) || 1,
+      effectiveBranch,
+    );
   }
 
   @Get('export/contracts')

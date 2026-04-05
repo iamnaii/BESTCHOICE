@@ -1,11 +1,13 @@
 import { useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { useGlobalShortcuts } from '@/hooks/useGlobalShortcuts';
 import { LayoutProvider, useLayout } from './LayoutContext';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import { Sheet, SheetContent, SheetBody } from '@/components/ui/sheet';
 import CommandPalette from '@/components/CommandPalette';
+import ShortcutsHelpOverlay from '@/components/ShortcutsHelpOverlay';
 import MobileBottomNav from './MobileBottomNav';
 
 function MobileSidebar() {
@@ -32,6 +34,7 @@ function MainContent() {
   const isMobile = useIsMobile();
   const { sidebarCollapse } = useLayout();
   const { pathname } = useLocation();
+  const { showShortcutsHelp, setShowShortcutsHelp } = useGlobalShortcuts();
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -61,6 +64,11 @@ function MainContent() {
 
       {/* Global Command Palette (Ctrl+K) */}
       <CommandPalette />
+
+      {/* Shortcuts Help Overlay (Shift+?) */}
+      {showShortcutsHelp && (
+        <ShortcutsHelpOverlay onClose={() => setShowShortcutsHelp(false)} />
+      )}
     </div>
   );
 }

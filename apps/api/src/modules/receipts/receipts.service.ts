@@ -65,13 +65,13 @@ export class ReceiptsService {
         where: { id: contractId },
         include: {
           customer: { select: { name: true } },
-          payments: { where: { status: 'PAID' }, select: { amountPaid: true } },
+          payments: { where: { status: 'PAID', deletedAt: null }, select: { amountPaid: true } },
         },
       });
-      if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+      if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
 
       // Get company info
-      const company = await tx.companyInfo.findFirst({ where: { isActive: true } });
+      const company = await tx.companyInfo.findFirst({ where: { isActive: true, deletedAt: null } });
       const receiverName = company?.nameTh || 'บริษัท เบสท์ช้อยส์โฟน จำกัด';
 
       // Calculate remaining balance
@@ -227,7 +227,7 @@ export class ReceiptsService {
   /** Get receipts for a contract */
   async getContractReceipts(contractId: string) {
     return this.prisma.receipt.findMany({
-      where: { contractId },
+      where: { contractId, deletedAt: null },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -261,11 +261,11 @@ export class ReceiptsService {
         },
       },
     });
-    if (!receipt) throw new NotFoundException('ไม่พบใบเสร็จ');
+    if (!receipt || receipt.deletedAt) throw new NotFoundException('ไม่พบใบเสร็จ');
 
     // Get company info
     const company = await this.prisma.companyInfo.findFirst({
-      where: { isActive: true },
+      where: { isActive: true, deletedAt: null },
       select: {
         nameTh: true,
         nameEn: true,
@@ -308,11 +308,11 @@ export class ReceiptsService {
         },
       },
     });
-    if (!receipt) throw new NotFoundException('ไม่พบใบเสร็จ');
+    if (!receipt || receipt.deletedAt) throw new NotFoundException('ไม่พบใบเสร็จ');
 
     // Get company info
     const company = await this.prisma.companyInfo.findFirst({
-      where: { isActive: true },
+      where: { isActive: true, deletedAt: null },
       select: {
         nameTh: true,
         nameEn: true,
@@ -333,7 +333,7 @@ export class ReceiptsService {
   async voidReceipt(id: string, reason: string, issuedById: string) {
     return this.prisma.$transaction(async (tx) => {
       const receipt = await tx.receipt.findUnique({ where: { id } });
-      if (!receipt) throw new NotFoundException('ไม่พบใบเสร็จ');
+      if (!receipt || receipt.deletedAt) throw new NotFoundException('ไม่พบใบเสร็จ');
       if (receipt.isVoided) throw new BadRequestException('ใบเสร็จนี้ถูกยกเลิกแล้ว');
 
       // Generate credit note number inside transaction (uses FOR UPDATE lock)

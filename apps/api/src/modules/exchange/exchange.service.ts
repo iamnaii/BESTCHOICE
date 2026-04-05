@@ -24,7 +24,7 @@ export class ExchangeService {
       },
     });
 
-    if (!oldContract) throw new NotFoundException('ไม่พบสัญญาเดิม');
+    if (!oldContract || oldContract.deletedAt) throw new NotFoundException('ไม่พบสัญญาเดิม');
     if (!['ACTIVE', 'OVERDUE'].includes(oldContract.status)) {
       throw new BadRequestException('สัญญานี้ไม่สามารถเปลี่ยนเครื่องได้');
     }
@@ -34,7 +34,7 @@ export class ExchangeService {
       include: { prices: true },
     });
 
-    if (!newProduct) throw new NotFoundException('ไม่พบสินค้าใหม่');
+    if (!newProduct || newProduct.deletedAt) throw new NotFoundException('ไม่พบสินค้าใหม่');
     if (newProduct.status !== 'IN_STOCK') {
       throw new BadRequestException('สินค้าใหม่ไม่พร้อมจำหน่าย');
     }
@@ -95,7 +95,7 @@ export class ExchangeService {
         include: { payments: true, customer: true },
       });
 
-      if (!oldContract) throw new NotFoundException('ไม่พบสัญญาเดิม');
+      if (!oldContract || oldContract.deletedAt) throw new NotFoundException('ไม่พบสัญญาเดิม');
       if (!['ACTIVE', 'OVERDUE'].includes(oldContract.status)) {
         throw new BadRequestException('สัญญานี้ไม่สามารถเปลี่ยนเครื่องได้');
       }
@@ -106,7 +106,7 @@ export class ExchangeService {
         include: { prices: true },
       });
 
-      if (!newProduct) throw new NotFoundException('ไม่พบสินค้าใหม่');
+      if (!newProduct || newProduct.deletedAt) throw new NotFoundException('ไม่พบสินค้าใหม่');
       if (newProduct.status !== 'IN_STOCK') {
         throw new BadRequestException('สินค้าใหม่ไม่พร้อมจำหน่าย');
       }
@@ -200,7 +200,7 @@ export class ExchangeService {
       const newProductFull = await tx.product.findUnique({ where: { id: dto.newProductId } });
       const interestConfigRecord = newProductFull
         ? await tx.interestConfig.findFirst({
-            where: { isActive: true, productCategories: { has: newProductFull.category } },
+            where: { isActive: true, deletedAt: null, productCategories: { has: newProductFull.category } },
           })
         : null;
 

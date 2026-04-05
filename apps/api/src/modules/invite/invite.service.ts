@@ -30,7 +30,7 @@ export class InviteService {
     const existingUser = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
-    if (existingUser) {
+    if (existingUser && !existingUser.deletedAt) {
       throw new ConflictException('อีเมลนี้มีบัญชีอยู่แล้ว');
     }
 
@@ -62,9 +62,9 @@ export class InviteService {
     if (dto.branchId) {
       const branch = await this.prisma.branch.findUnique({
         where: { id: dto.branchId },
-        select: { name: true },
+        select: { name: true, deletedAt: true },
       });
-      branchName = branch?.name || null;
+      branchName = (branch && !branch.deletedAt) ? branch.name : null;
     }
 
     const invite = await this.prisma.inviteToken.create({
@@ -223,7 +223,7 @@ export class InviteService {
     const existingUser = await this.prisma.user.findUnique({
       where: { email: invite.email },
     });
-    if (existingUser) {
+    if (existingUser && !existingUser.deletedAt) {
       throw new ConflictException('อีเมลนี้มีบัญชีอยู่แล้ว');
     }
 

@@ -64,7 +64,7 @@ export class PurchaseOrdersService {
         },
       },
     });
-    if (!po) throw new NotFoundException('ไม่พบใบสั่งซื้อ');
+    if (!po || po.deletedAt) throw new NotFoundException('ไม่พบใบสั่งซื้อ');
     return po;
   }
 
@@ -73,13 +73,14 @@ export class PurchaseOrdersService {
     const supplier = await this.prisma.supplier.findUnique({
       where: { id: dto.supplierId },
       select: {
+        deletedAt: true,
         hasVat: true,
         paymentMethods: {
           select: { paymentMethod: true, creditTermDays: true, isDefault: true },
         },
       },
     });
-    if (!supplier) throw new NotFoundException('ไม่พบ Supplier');
+    if (!supplier || supplier.deletedAt) throw new NotFoundException('ไม่พบ Supplier');
 
     // Calculate total with discount & VAT (only if supplier has VAT)
     const totalAmount = dto.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
@@ -245,6 +246,7 @@ export class PurchaseOrdersService {
     // Get all non-cancelled POs that are not fully paid
     const pos = await this.prisma.purchaseOrder.findMany({
       where: {
+        deletedAt: null,
         status: { notIn: ['CANCELLED', 'DRAFT'] },
         paymentStatus: { not: 'FULLY_PAID' },
       },
@@ -338,7 +340,7 @@ export class PurchaseOrdersService {
     limit?: number;
   } = {}) {
     const po = await this.prisma.purchaseOrder.findUnique({ where: { id: poId } });
-    if (!po) throw new NotFoundException('ไม่พบใบสั่งซื้อ');
+    if (!po || po.deletedAt) throw new NotFoundException('ไม่พบใบสั่งซื้อ');
 
     // Build item-level filter for status (PASS/REJECT)
     const itemFilter: Record<string, unknown> = {};
@@ -409,7 +411,7 @@ export class PurchaseOrdersService {
       where: { id: poId },
       include: { items: true },
     });
-    if (!po) throw new NotFoundException('ไม่พบใบสั่งซื้อ');
+    if (!po || po.deletedAt) throw new NotFoundException('ไม่พบใบสั่งซื้อ');
 
     // Build date filter for receiving records
     const receivingWhere: Record<string, unknown> = { poId };
@@ -465,7 +467,7 @@ export class PurchaseOrdersService {
         include: { items: true, supplier: true },
       });
 
-      if (!po) throw new NotFoundException('ไม่พบใบสั่งซื้อ');
+      if (!po || po.deletedAt) throw new NotFoundException('ไม่พบใบสั่งซื้อ');
       if (!['APPROVED', 'PARTIALLY_RECEIVED'].includes(po.status)) {
         throw new BadRequestException('PO นี้ไม่อยู่ในสถานะที่สามารถรับสินค้าได้');
       }
@@ -562,19 +564,19 @@ export class PurchaseOrdersService {
         include: { items: true, supplier: true },
       });
 
-      if (!po) throw new NotFoundException('ไม่พบใบสั่งซื้อ');
+      if (!po || po.deletedAt) throw new NotFoundException('ไม่พบใบสั่งซื้อ');
       if (!['APPROVED', 'PARTIALLY_RECEIVED'].includes(po.status)) {
         throw new BadRequestException('PO นี้ไม่อยู่ในสถานะที่สามารถรับสินค้าได้ (ต้อง APPROVED หรือ PARTIALLY_RECEIVED)');
       }
 
       // Find main warehouse branch
       let mainWarehouse = await tx.branch.findFirst({
-        where: { isMainWarehouse: true, isActive: true },
+        where: { isMainWarehouse: true, isActive: true, deletedAt: null },
       });
       if (!mainWarehouse) {
         // Fallback: use first active branch
         mainWarehouse = await tx.branch.findFirst({
-          where: { isActive: true },
+          where: { isActive: true, deletedAt: null },
           orderBy: { createdAt: 'asc' },
         });
       }

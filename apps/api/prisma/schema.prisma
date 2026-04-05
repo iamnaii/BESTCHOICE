@@ -558,8 +558,9 @@ model SupplierPaymentMethod {
   bankAccountNumber String?  @map("bank_account_number")
   creditTermDays    Int?     @map("credit_term_days")
   isDefault         Boolean  @default(false) @map("is_default")
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
 
   supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
 
@@ -817,6 +818,7 @@ model GoodsReceivingItem {
   productId          String?             @unique @map("product_id")
   createdAt          DateTime            @default(now()) @map("created_at")
   updatedAt          DateTime            @updatedAt @map("updated_at")
+  deletedAt          DateTime?           @map("deleted_at")
 
   receiving GoodsReceiving @relation(fields: [receivingId], references: [id], onDelete: Cascade)
   poItem    POItem         @relation(fields: [poItemId], references: [id])
@@ -964,8 +966,9 @@ model EDocument {
   fileUrl      String   @map("file_url")
   fileHash     String   @map("file_hash") // SHA-256
   createdById  String   @map("created_by_id")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
 
   contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
 
@@ -1084,8 +1087,9 @@ model CallLog {
   calledAt   DateTime @map("called_at")
   result     String // e.g. ANSWERED, NO_ANSWER, PROMISED, REFUSED
   notes      String?
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at")
 
   contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
   caller   User     @relation(fields: [callerId], references: [id])
@@ -1346,7 +1350,9 @@ model StockCountItem {
   actualFound    Boolean  @default(false) @map("actual_found") // พบสินค้าจริง (default: ยังไม่ตรวจนับ)
   conditionNotes String?  @map("condition_notes")
   scannedImei    String?  @map("scanned_imei") // IMEI ที่สแกนยืนยัน
-  createdAt      DateTime @default(now()) @map("created_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
 
   stockCount StockCount @relation(fields: [stockCountId], references: [id], onDelete: Cascade)
   product    Product    @relation(fields: [productId], references: [id])
@@ -1388,7 +1394,9 @@ model BranchReceivingItem {
   conditionNotes String?  @map("condition_notes")
   photos         String[] @default([])
   rejectReason   String?  @map("reject_reason")
-  createdAt      DateTime @default(now()) @map("created_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
 
   receiving BranchReceiving @relation(fields: [receivingId], references: [id], onDelete: Cascade)
   product   Product         @relation(fields: [productId], references: [id])

@@ -109,13 +109,14 @@ export class CreditCheckService {
         checkedBy: { select: { id: true, name: true } },
       },
     });
+    if (creditCheck?.deletedAt) return null;
     return creditCheck;
   }
 
   // === Customer-level credit check (ไม่ต้องมีสัญญา) ===
   async findByCustomer(customerId: string) {
     return this.prisma.creditCheck.findMany({
-      where: { customerId },
+      where: { customerId, deletedAt: null },
       orderBy: { createdAt: 'desc' },
       include: {
         contract: { select: { id: true, contractNumber: true } },
@@ -126,7 +127,7 @@ export class CreditCheckService {
 
   async findLatestByCustomer(customerId: string) {
     return this.prisma.creditCheck.findFirst({
-      where: { customerId },
+      where: { customerId, deletedAt: null },
       orderBy: { createdAt: 'desc' },
       include: {
         customer: { select: { id: true, name: true, phone: true, salary: true, occupation: true } },
@@ -137,7 +138,7 @@ export class CreditCheckService {
 
   async createForCustomer(customerId: string, dto: CreateCreditCheckDto, _userId: string) {
     const customer = await this.prisma.customer.findUnique({ where: { id: customerId } });
-    if (!customer) throw new NotFoundException('ไม่พบลูกค้า');
+    if (!customer || customer.deletedAt) throw new NotFoundException('ไม่พบลูกค้า');
 
     return this.prisma.creditCheck.create({
       data: {
@@ -161,7 +162,7 @@ export class CreditCheckService {
         customer: { select: { name: true, salary: true, occupation: true, occupationDetail: true } },
       },
     });
-    if (!creditCheck) throw new NotFoundException('ไม่พบข้อมูลตรวจสอบเครดิต');
+    if (!creditCheck || creditCheck.deletedAt) throw new NotFoundException('ไม่พบข้อมูลตรวจสอบเครดิต');
 
     if (creditCheck.statementFiles.length === 0) {
       throw new BadRequestException('กรุณาอัปโหลด Statement ธนาคารก่อน');
@@ -199,7 +200,7 @@ export class CreditCheckService {
 
   async overrideById(creditCheckId: string, dto: OverrideCreditCheckDto, userId: string) {
     const creditCheck = await this.prisma.creditCheck.findUnique({ where: { id: creditCheckId } });
-    if (!creditCheck) throw new NotFoundException('ไม่พบข้อมูลตรวจสอบเครดิต');
+    if (!creditCheck || creditCheck.deletedAt) throw new NotFoundException('ไม่พบข้อมูลตรวจสอบเครดิต');
 
     const validStatuses = ['APPROVED', 'REJECTED', 'MANUAL_REVIEW'];
     if (!validStatuses.includes(dto.status)) {
@@ -226,7 +227,7 @@ export class CreditCheckService {
       where: { id: contractId },
       include: { customer: true },
     });
-    if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+    if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
 
     // Check if credit check already exists
     const existing = await this.prisma.creditCheck.findUnique({ where: { contractId } });
@@ -278,7 +279,7 @@ export class CreditCheckService {
         },
       },
     });
-    if (!creditCheck) throw new NotFoundException('ไม่พบข้อมูลตรวจสอบเครดิต');
+    if (!creditCheck || creditCheck.deletedAt) throw new NotFoundException('ไม่พบข้อมูลตรวจสอบเครดิต');
 
     if (creditCheck.statementFiles.length === 0) {
       throw new BadRequestException('กรุณาอัปโหลด Statement ธนาคารก่อน');
@@ -317,7 +318,7 @@ export class CreditCheckService {
 
   async override(contractId: string, dto: OverrideCreditCheckDto, userId: string) {
     const creditCheck = await this.prisma.creditCheck.findUnique({ where: { contractId } });
-    if (!creditCheck) throw new NotFoundException('ไม่พบข้อมูลตรวจสอบเครดิต');
+    if (!creditCheck || creditCheck.deletedAt) throw new NotFoundException('ไม่พบข้อมูลตรวจสอบเครดิต');
 
     const validStatuses = ['APPROVED', 'REJECTED', 'MANUAL_REVIEW'];
     if (!validStatuses.includes(dto.status)) {

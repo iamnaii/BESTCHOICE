@@ -145,7 +145,7 @@ export class SalesService {
         contract: true,
       },
     });
-    if (!sale) throw new NotFoundException('ไม่พบใบขาย');
+    if (!sale || sale.deletedAt) throw new NotFoundException('ไม่พบใบขาย');
     return sale;
   }
 
@@ -168,7 +168,7 @@ export class SalesService {
   /** Check product availability inside transaction to prevent race conditions */
   private async verifyProductInStock(tx: Parameters<Parameters<typeof this.prisma.$transaction>[0]>[0], productId: string) {
     const product = await tx.product.findUnique({ where: { id: productId } });
-    if (!product || product.status !== 'IN_STOCK') {
+    if (!product || product.deletedAt || product.status !== 'IN_STOCK') {
       throw new BadRequestException('สินค้าไม่พร้อมขาย หรือถูกขายไปแล้ว');
     }
     return product;
@@ -182,7 +182,7 @@ export class SalesService {
     if (!bundleProductIds.length) return;
     // Verify all bundle products are IN_STOCK
     const products = await tx.product.findMany({
-      where: { id: { in: bundleProductIds } },
+      where: { id: { in: bundleProductIds }, deletedAt: null },
       select: { id: true, status: true, name: true },
     });
     for (const p of products) {
@@ -244,9 +244,9 @@ export class SalesService {
 
     // Look up product to find matching InterestConfig
     const product = await this.prisma.product.findUnique({ where: { id: dto.productId } });
-    const interestConfig = product
+    const interestConfig = (product && !product.deletedAt)
       ? await this.prisma.interestConfig.findFirst({
-          where: { isActive: true, productCategories: { has: product.category } },
+          where: { isActive: true, deletedAt: null, productCategories: { has: product.category } },
         })
       : null;
 
@@ -399,6 +399,7 @@ export class SalesService {
   async getTopSellingProducts(limit = 6) {
     const results = await this.prisma.sale.groupBy({
       by: ['productId'],
+      where: { deletedAt: null },
       _count: { productId: true },
       orderBy: { _count: { productId: 'desc' } },
       take: limit,
@@ -407,7 +408,7 @@ export class SalesService {
     if (results.length === 0) return [];
 
     const products = await this.prisma.product.findMany({
-      where: { id: { in: results.map(r => r.productId) } },
+      where: { id: { in: results.map(r => r.productId) }, deletedAt: null },
       select: { id: true, name: true, brand: true, model: true },
     });
 
@@ -428,6 +429,7 @@ export class SalesService {
 
     const where: Record<string, unknown> = {
       createdAt: { gte: startOfDay, lte: endOfDay },
+      deletedAt: null,
     };
     if (branchId) where.branchId = branchId;
 

@@ -23,9 +23,9 @@ export class PaymentsService {
 
     const contract = await this.prisma.contract.findUnique({
       where: { id: contractId },
-      select: { branchId: true },
+      select: { branchId: true, deletedAt: true },
     });
-    if (contract && user.branchId && contract.branchId !== user.branchId) {
+    if (contract && !contract.deletedAt && user.branchId && contract.branchId !== user.branchId) {
       throw new ForbiddenException('ไม่สามารถบันทึกชำระเงินข้ามสาขาได้');
     }
   }
@@ -62,6 +62,7 @@ export class PaymentsService {
         const existing = await tx.payment.findFirst({
           where: {
             contractId,
+            deletedAt: null,
             notes: { contains: `ref:${transactionRef}` },
             status: { in: ['PAID', 'PARTIALLY_PAID'] },
           },
@@ -79,7 +80,7 @@ export class PaymentsService {
       capturedCustomerId = contract.customerId;
 
       const payment = await tx.payment.findFirst({
-        where: { contractId, installmentNo },
+        where: { contractId, installmentNo, deletedAt: null },
       });
       if (!payment) throw new NotFoundException('ไม่พบงวดที่ต้องการ');
       if (payment.status === 'PAID') throw new BadRequestException('งวดนี้ชำระแล้ว');
@@ -206,9 +207,9 @@ export class PaymentsService {
     return this.prisma.$transaction(async (tx) => {
       const contract = await tx.contract.findUnique({
         where: { id: contractId },
-        include: { payments: { orderBy: { installmentNo: 'asc' } } },
+        include: { payments: { where: { deletedAt: null }, orderBy: { installmentNo: 'asc' } } },
       });
-      if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+      if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
       if (!['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status)) {
         throw new BadRequestException('ไม่สามารถชำระเงินได้ สัญญาต้องอยู่ในสถานะ ACTIVE, OVERDUE หรือ DEFAULT');
       }
@@ -302,7 +303,7 @@ export class PaymentsService {
     const contract = await this.prisma.contract.findUnique({ where: { id: contractId } });
     if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
 
-    const where = { contractId };
+    const where = { contractId, deletedAt: null };
     const [data, total] = await Promise.all([
       this.prisma.payment.findMany({
         where,
@@ -329,7 +330,7 @@ export class PaymentsService {
     page?: number;
     limit?: number;
   }) {
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { deletedAt: null };
 
     if (filters.status) {
       where.status = filters.status;
@@ -404,6 +405,7 @@ export class PaymentsService {
     const where: Record<string, unknown> = {
       paidDate: { gte: startOfDay, lt: endOfDay },
       status: 'PAID',
+      deletedAt: null,
     };
 
     if (branchId) {
@@ -501,9 +503,9 @@ export class PaymentsService {
     return this.prisma.$transaction(async (tx) => {
       const contract = await tx.contract.findUnique({
         where: { id: contractId },
-        include: { payments: { orderBy: { installmentNo: 'asc' } } },
+        include: { payments: { where: { deletedAt: null }, orderBy: { installmentNo: 'asc' } } },
       });
-      if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+      if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
 
       const credit = Number(contract.creditBalance);
       if (credit <= 0) {
@@ -566,9 +568,9 @@ export class PaymentsService {
   async getCreditBalance(contractId: string) {
     const contract = await this.prisma.contract.findUnique({
       where: { id: contractId },
-      select: { id: true, contractNumber: true, creditBalance: true },
+      select: { id: true, contractNumber: true, creditBalance: true, deletedAt: true },
     });
-    if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+    if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
     return { creditBalance: Number(contract.creditBalance) };
   }
 
@@ -616,8 +618,8 @@ export class PaymentsService {
 
       try {
         // Lookup contract by number
-        const contract = await this.prisma.contract.findUnique({
-          where: { contractNumber },
+        const contract = await this.prisma.contract.findFirst({
+          where: { contractNumber, deletedAt: null },
           select: { id: true },
         });
         if (!contract) {
@@ -650,7 +652,7 @@ export class PaymentsService {
   async waiveLateFee(paymentId: string, reason: string, userId: string) {
     const result = await this.prisma.$transaction(async (tx) => {
       const payment = await tx.payment.findUnique({ where: { id: paymentId } });
-      if (!payment) throw new NotFoundException('ไม่พบรายการชำระ');
+      if (!payment || payment.deletedAt) throw new NotFoundException('ไม่พบรายการชำระ');
       if (payment.lateFeeWaived) throw new BadRequestException('รายการนี้ยกเว้นค่าปรับแล้ว');
       if (Number(payment.lateFee) <= 0) throw new BadRequestException('รายการนี้ไม่มีค่าปรับ');
 

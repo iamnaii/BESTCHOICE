@@ -39,7 +39,7 @@ export class AuthService {
       include: { branch: true },
     });
 
-    if (!user || !user.isActive) {
+    if (!user || user.deletedAt || !user.isActive) {
       throw new UnauthorizedException('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
     }
 
@@ -137,7 +137,7 @@ export class AuthService {
       where: { id: storedToken.userId },
     });
 
-    if (!user || !user.isActive) {
+    if (!user || user.deletedAt || !user.isActive) {
       throw new UnauthorizedException('ผู้ใช้งานไม่ถูกต้อง');
     }
 
@@ -191,11 +191,12 @@ export class AuthService {
         name: true,
         role: true,
         branchId: true,
+        deletedAt: true,
         branch: { select: { id: true, name: true } },
       },
     });
 
-    if (!user) {
+    if (!user || user.deletedAt) {
       throw new UnauthorizedException('ไม่พบผู้ใช้งาน');
     }
 
@@ -209,13 +210,13 @@ export class AuthService {
   async forgotPassword(dto: ForgotPasswordDto): Promise<{ message: string }> {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
-      select: { id: true, name: true, email: true, isActive: true },
+      select: { id: true, name: true, email: true, isActive: true, deletedAt: true },
     });
 
     // Always return success to prevent email enumeration attacks
     const successMessage = 'หากอีเมลนี้มีอยู่ในระบบ คุณจะได้รับลิงก์รีเซ็ตรหัสผ่าน';
 
-    if (!user || !user.isActive) {
+    if (!user || user.deletedAt || !user.isActive) {
       return { message: successMessage };
     }
 
@@ -358,7 +359,7 @@ export class AuthService {
         where: { id: payload.sub },
       });
 
-      if (!user || !user.isActive) {
+      if (!user || user.deletedAt || !user.isActive) {
         throw new UnauthorizedException('ผู้ใช้งานไม่ถูกต้อง');
       }
 

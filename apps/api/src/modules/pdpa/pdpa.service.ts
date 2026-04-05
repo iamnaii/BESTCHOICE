@@ -54,7 +54,7 @@ export class PDPAService {
     signatureImage?: string,
   ) {
     const customer = await this.prisma.customer.findUnique({ where: { id: customerId } });
-    if (!customer) throw new NotFoundException('ไม่พบลูกค้า');
+    if (!customer || customer.deletedAt) throw new NotFoundException('ไม่พบลูกค้า');
 
     const notice = await this.getPrivacyNotice();
 
@@ -83,12 +83,12 @@ export class PDPAService {
   /** Revoke PDPA consent */
   async revokeConsent(consentId: string, reason: string) {
     const consent = await this.prisma.pDPAConsent.findUnique({ where: { id: consentId } });
-    if (!consent) throw new NotFoundException('ไม่พบ Consent');
+    if (!consent || consent.deletedAt) throw new NotFoundException('ไม่พบ Consent');
     if (consent.status === 'REVOKED') throw new BadRequestException('Consent ถูกเพิกถอนแล้ว');
 
     // Check if there's an active contract linked to this consent
     const linkedContract = await this.prisma.contract.findFirst({
-      where: { pdpaConsentId: consentId, status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] } },
+      where: { pdpaConsentId: consentId, deletedAt: null, status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] } },
     });
     if (linkedContract) {
       throw new BadRequestException(
@@ -110,7 +110,7 @@ export class PDPAService {
   /** Get all consents for a customer */
   async getCustomerConsents(customerId: string) {
     return this.prisma.pDPAConsent.findMany({
-      where: { customerId },
+      where: { customerId, deletedAt: null },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -124,7 +124,7 @@ export class PDPAService {
     description: string,
   ) {
     const customer = await this.prisma.customer.findUnique({ where: { id: customerId } });
-    if (!customer) throw new NotFoundException('ไม่พบลูกค้า');
+    if (!customer || customer.deletedAt) throw new NotFoundException('ไม่พบลูกค้า');
 
     // Generate request number
     const now = new Date();
@@ -163,7 +163,7 @@ export class PDPAService {
   }) {
     const page = filters.page || 1;
     const limit = Math.min(filters.limit || 50, 100);
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { deletedAt: null };
     if (filters.status) where.status = filters.status;
     if (filters.customerId) where.customerId = filters.customerId;
 
@@ -191,7 +191,7 @@ export class PDPAService {
     responseNotes: string,
   ) {
     const request = await this.prisma.dSARRequest.findUnique({ where: { id } });
-    if (!request) throw new NotFoundException('ไม่พบคำร้อง DSAR');
+    if (!request || request.deletedAt) throw new NotFoundException('ไม่พบคำร้อง DSAR');
 
     const data: Record<string, unknown> = {
       status,

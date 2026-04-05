@@ -20,6 +20,7 @@ const stockTransferSelect = {
   trackingNote: true,
   expectedDeliveryDate: true,
   createdAt: true,
+  deletedAt: true,
 };
 
 @Injectable()
@@ -60,7 +61,7 @@ export class ProductsStockService {
   async transfer(productId: string, dto: TransferProductDto, userId: string) {
     // Verify destination branch exists (safe to check outside transaction)
     const toBranch = await this.prisma.branch.findUnique({ where: { id: dto.toBranchId } });
-    if (!toBranch) throw new NotFoundException('ไม่พบสาขาปลายทาง');
+    if (!toBranch || toBranch.deletedAt) throw new NotFoundException('ไม่พบสาขาปลายทาง');
 
     // All validation + creation inside transaction to prevent race conditions
     const transfer = await this.prisma.$transaction(async (tx) => {
@@ -116,7 +117,7 @@ export class ProductsStockService {
   async bulkTransfer(dto: BulkTransferDto, userId: string) {
     // Verify destination branch exists
     const toBranch = await this.prisma.branch.findUnique({ where: { id: dto.toBranchId } });
-    if (!toBranch) throw new NotFoundException('ไม่พบสาขาปลายทาง');
+    if (!toBranch || toBranch.deletedAt) throw new NotFoundException('ไม่พบสาขาปลายทาง');
 
     try {
       return await this.prisma.$transaction(async (tx) => {
@@ -198,7 +199,7 @@ export class ProductsStockService {
   }
 
   async getPendingTransfers(branchId?: string) {
-    const where: Record<string, unknown> = { status: 'PENDING' };
+    const where: Record<string, unknown> = { status: 'PENDING', deletedAt: null };
     if (branchId) where.toBranchId = branchId;
 
     return this.prisma.stockTransfer.findMany({
@@ -223,7 +224,7 @@ export class ProductsStockService {
     page?: number;
     limit?: number;
   }) {
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { deletedAt: null };
     if (filters.status) where.status = filters.status;
     if (filters.branchId) {
       where.OR = [
@@ -285,7 +286,7 @@ export class ProductsStockService {
         },
       },
     });
-    if (!transfer) throw new NotFoundException('ไม่พบรายการโอน');
+    if (!transfer || transfer.deletedAt) throw new NotFoundException('ไม่พบรายการโอน');
 
     // Branch-level access: non-OWNER/ACCOUNTANT can only see transfers involving their branch
     if (user && user.role !== 'OWNER' && user.role !== 'ACCOUNTANT' && user.branchId) {
@@ -310,7 +311,7 @@ export class ProductsStockService {
           toBranch: { select: { id: true, name: true } },
         },
       });
-      if (!transfer) throw new NotFoundException('ไม่พบรายการโอน');
+      if (!transfer || transfer.deletedAt) throw new NotFoundException('ไม่พบรายการโอน');
       if (transfer.status !== 'PENDING') {
         throw new BadRequestException('รายการโอนนี้ไม่อยู่ในสถานะรอจัดส่ง');
       }
@@ -343,9 +344,9 @@ export class ProductsStockService {
     return this.prisma.$transaction(async (tx) => {
       const transfer = await tx.stockTransfer.findUnique({
         where: { id: transferId },
-        select: { id: true, status: true, productId: true, toBranchId: true },
+        select: { id: true, status: true, productId: true, toBranchId: true, deletedAt: true },
       });
-      if (!transfer) throw new NotFoundException('ไม่พบรายการโอน');
+      if (!transfer || transfer.deletedAt) throw new NotFoundException('ไม่พบรายการโอน');
       if (transfer.status !== 'IN_TRANSIT') {
         throw new BadRequestException('รายการโอนนี้ไม่อยู่ในสถานะ IN_TRANSIT (ต้อง dispatch จัดส่งก่อน)');
       }
@@ -380,9 +381,9 @@ export class ProductsStockService {
     return this.prisma.$transaction(async (tx) => {
       const transfer = await tx.stockTransfer.findUnique({
         where: { id: transferId },
-        select: { id: true, status: true, trackingNote: true },
+        select: { id: true, status: true, trackingNote: true, deletedAt: true },
       });
-      if (!transfer) throw new NotFoundException('ไม่พบรายการโอน');
+      if (!transfer || transfer.deletedAt) throw new NotFoundException('ไม่พบรายการโอน');
       if (!['PENDING', 'IN_TRANSIT'].includes(transfer.status)) {
         throw new BadRequestException('รายการโอนนี้ไม่อยู่ในสถานะที่สามารถปฏิเสธได้');
       }

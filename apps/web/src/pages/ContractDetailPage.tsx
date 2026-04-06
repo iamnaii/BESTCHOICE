@@ -3,20 +3,21 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/card';
 import PageHeader from '@/components/ui/PageHeader';
-import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import WorkflowStatusBadge from '@/components/contract/WorkflowStatusBadge';
 import DocumentUpload from '@/components/contract/DocumentUpload';
 import CreditCheckPanel from '@/components/contract/CreditCheckPanel';
 import ProductEditModal from '@/components/contract/ProductEditModal';
 import CustomerEditModal from '@/components/contract/CustomerEditModal';
+import ContractPaymentSchedule from '@/components/contract/ContractPaymentSchedule';
+import ContractDocuments from '@/components/contract/ContractDocuments';
+import { ContractEarlyPayoffQuote, ContractEarlyPayoffModal } from '@/components/contract/ContractEarlyPayoff';
 import { toast } from 'sonner';
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import PaymentTimeline from '@/components/contract/PaymentTimeline';
 import { DetailPageSkeleton } from '@/components/ui/page-skeletons';
-import { formatNumber, formatDateMedium, formatDateShortThai } from '@/utils/formatters';
+import { formatNumber, formatDateMedium } from '@/utils/formatters';
 
 interface Payment {
   id: string;
@@ -86,12 +87,6 @@ const statusLabels: Record<string, { label: string; className: string }> = {
   CLOSED_BAD_DEBT: { label: 'หนี้สูญ', className: 'bg-destructive/15 text-destructive dark:bg-destructive/20' },
 };
 
-const paymentStatusLabels: Record<string, { label: string; className: string }> = {
-  PENDING: { label: 'รอชำระ', className: 'bg-secondary text-foreground' },
-  PAID: { label: 'ชำระแล้ว', className: 'bg-success/10 text-success dark:bg-success/15' },
-  OVERDUE: { label: 'เกินกำหนด', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
-  PARTIALLY_PAID: { label: 'ชำระบางส่วน', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
-};
 
 export default function ContractDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -276,38 +271,6 @@ export default function ContractDetailPage() {
   const witness1Signed = signedTypes.has('WITNESS_1');
   const witness2Signed = signedTypes.has('WITNESS_2');
   const allSigned = customerSigned && companySigned && witness1Signed && witness2Signed;
-
-  const paymentColumns = [
-    { key: 'installmentNo', label: 'งวดที่', render: (p: Payment) => <span className="font-medium">{p.installmentNo}</span> },
-    { key: 'dueDate', label: 'วันครบกำหนด', render: (p: Payment) => <span className="text-sm">{formatDateMedium(p.dueDate)}</span> },
-    { key: 'amountDue', label: 'ยอดที่ต้องชำระ', render: (p: Payment) => <span className="text-sm">{formatNumber(p.amountDue)} บาท</span> },
-    {
-      key: 'amountPaid',
-      label: 'ยอดที่ชำระ',
-      render: (p: Payment) => p.amountPaid ? <span className="text-sm text-success">{formatNumber(p.amountPaid)} บาท</span> : <span className="text-xs text-muted-foreground">-</span>,
-    },
-    {
-      key: 'lateFee',
-      label: 'ค่าปรับ',
-      render: (p: Payment) => {
-        const fee = parseFloat(p.lateFee);
-        return fee > 0 ? <span className="text-sm text-destructive">{formatNumber(fee)} บาท</span> : <span className="text-xs text-muted-foreground">-</span>;
-      },
-    },
-    {
-      key: 'status',
-      label: 'สถานะ',
-      render: (p: Payment) => {
-        const ps = paymentStatusLabels[p.status] || { label: p.status, className: 'bg-secondary' };
-        return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ps.className}`}>{ps.label}</span>;
-      },
-    },
-    {
-      key: 'paidDate',
-      label: 'วันที่ชำระ',
-      render: (p: Payment) => p.paidDate ? <span className="text-xs">{formatDateMedium(p.paidDate)}</span> : <span className="text-xs text-muted-foreground">-</span>,
-    },
-  ];
 
   return (
     <div>
@@ -750,74 +713,16 @@ export default function ContractDetailPage() {
       </div>
 
       {/* Early Payoff Quote */}
-      {payoffQuote && ['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status) && (
-        <div className="bg-primary/5 rounded-xl border border-primary/20 p-6 mb-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-primary mb-3">ประเมินปิดก่อนกำหนด</h2>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            <div><div className="text-xs text-primary">งวดคงเหลือ</div><div className="font-medium">{payoffQuote.remainingMonths} งวด</div></div>
-            <div><div className="text-xs text-primary">เงินต้นคงเหลือ</div><div className="font-medium">{formatNumber(payoffQuote.remainingPrincipal)} บาท</div></div>
-            <div><div className="text-xs text-primary">ดอกเบี้ยคงเหลือ</div><div className="font-medium">{formatNumber(payoffQuote.remainingInterest)} บาท</div></div>
-            <div><div className="text-xs text-success">ส่วนลดดอกเบี้ย (50%)</div><div className="font-medium text-success">-{formatNumber(payoffQuote.discount)} บาท</div></div>
-            {payoffQuote.unpaidLateFees > 0 && <div><div className="text-xs text-destructive">ค่าปรับค้างชำระ</div><div className="font-medium text-destructive">{formatNumber(payoffQuote.unpaidLateFees)} บาท</div></div>}
-            <div><div className="text-xs text-primary font-semibold">ยอดปิดสัญญา</div><div className="text-xl font-bold text-primary">{formatNumber(payoffQuote.totalPayoff)} บาท</div></div>
-          </div>
-        </div>
+      {payoffQuote && (
+        <ContractEarlyPayoffQuote payoffQuote={payoffQuote} contractStatus={contract.status} />
       )}
 
       {/* Signing Status + E-Document Downloads */}
-      {((contract.signatures?.length ?? 0) > 0 || eDocuments.length > 0) && (
-        <div className="rounded-lg border p-4 mb-6">
-          <h3 className="text-sm font-semibold text-foreground mb-3">สถานะเอกสารและลายเซ็น</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
-            {[
-              { type: 'CUSTOMER', label: 'ผู้ซื้อ' },
-              { type: 'COMPANY', label: 'ผู้ขาย' },
-              { type: 'WITNESS_1', label: 'พยาน 1' },
-              { type: 'WITNESS_2', label: 'พยาน 2' },
-            ].map(({ type, label }) => {
-              const sig = (contract.signatures || []).find(s => (s.signerType === 'STAFF' ? 'COMPANY' : s.signerType) === type);
-              return (
-                <div key={type} className={`p-2 rounded-lg text-center text-xs ${sig ? 'bg-success/5 dark:bg-success/10 text-success' : 'bg-muted text-muted-foreground'}`}>
-                  {sig ? '\u2713' : '\u2B1C'} {label}
-                  {sig && <div className="text-2xs mt-0.5">{formatDateMedium(sig.signedAt)}</div>}
-                </div>
-              );
-            })}
-          </div>
-          {contract.pdpaConsentId && (
-            <div className="text-xs text-success mb-3">{'\u2713'} ยินยอม PDPA แล้ว</div>
-          )}
-          {eDocuments.length > 0 && (
-            <div className="space-y-2">
-              <div className="text-xs text-muted-foreground font-medium">เอกสาร PDF:</div>
-              {eDocuments.map(doc => (
-                <div key={doc.id} className="flex items-center justify-between p-2 bg-muted rounded-lg">
-                  <div className="text-xs">
-                    <span className="font-medium">{doc.documentType === 'CONTRACT' ? 'สัญญา' : doc.documentType === 'PDPA_CONSENT' ? 'PDPA' : doc.documentType}</span>
-                    <span className="text-muted-foreground ml-2">{formatDateMedium(doc.createdAt)}</span>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={async () => {
-                        try {
-                          const { data } = await api.get(`/documents/${doc.id}/signed-url`);
-                          window.open(data.url, '_blank');
-                        } catch {
-                          // Fallback: direct download
-                          window.open(`/api/documents/${doc.id}/download`, '_blank');
-                        }
-                      }}
-                      className="px-3 py-1 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
-                    >
-                      ดาวน์โหลด
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+      <ContractDocuments
+        signatures={contract.signatures}
+        eDocuments={eDocuments}
+        pdpaConsentId={contract.pdpaConsentId}
+      />
 
       {/* Tabs: Schedule / Documents / Credit Check / Preview */}
       <div className="flex gap-1 mb-4 border-b">
@@ -863,10 +768,7 @@ export default function ContractDetailPage() {
       )}
 
       {activeTab === 'schedule' && (
-        <>
-          <PaymentTimeline payments={contract.payments} />
-          <DataTable columns={paymentColumns} data={contract.payments} emptyMessage="ยังไม่มีตารางผ่อน" />
-        </>
+        <ContractPaymentSchedule payments={contract.payments} />
       )}
 
       {activeTab === 'documents' && (
@@ -900,29 +802,14 @@ export default function ContractDetailPage() {
 
       {/* Early Payoff Modal */}
       {showPayoffModal && payoffQuote && (
-        <Modal isOpen title="ปิดสัญญาก่อนกำหนด" onClose={() => setShowPayoffModal(false)}>
-          <div className="space-y-4">
-            <div className="bg-primary/5 rounded-lg p-4">
-              <div className="text-sm">ยอดที่ต้องชำระ</div>
-              <div className="text-2xl font-bold text-primary">{formatNumber(payoffQuote.totalPayoff)} บาท</div>
-              <div className="text-xs text-primary mt-1">(รวมส่วนลดดอกเบี้ย 50% แล้ว)</div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1">วิธีชำระ</label>
-              <select value={payoffMethod} onChange={(e) => setPayoffMethod(e.target.value)} className="w-full px-3 py-2 border border-input rounded-lg text-sm">
-                <option value="CASH">เงินสด</option>
-                <option value="BANK_TRANSFER">โอนเงิน</option>
-                <option value="QR_EWALLET">QR/E-Wallet</option>
-              </select>
-            </div>
-            <div className="flex gap-3 pt-2">
-              <button onClick={() => setShowPayoffModal(false)} className="flex-1 px-4 py-2 text-sm border border-input rounded-lg">ยกเลิก</button>
-              <button onClick={() => earlyPayoffMutation.mutate()} disabled={earlyPayoffMutation.isPending} className="flex-1 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50">
-                {earlyPayoffMutation.isPending ? 'กำลังปิด...' : 'ยืนยันปิดสัญญา'}
-              </button>
-            </div>
-          </div>
-        </Modal>
+        <ContractEarlyPayoffModal
+          payoffQuote={payoffQuote}
+          payoffMethod={payoffMethod}
+          onPayoffMethodChange={setPayoffMethod}
+          onConfirm={() => earlyPayoffMutation.mutate()}
+          onClose={() => setShowPayoffModal(false)}
+          isPending={earlyPayoffMutation.isPending}
+        />
       )}
 
       {/* Submit Review Confirm Modal */}

@@ -31,6 +31,14 @@ const DEFAULTS: InstallmentConfig = {
   vatPct: 0.07,
 };
 
+/**
+ * INVENTORY COSTING METHOD: Specific Identification
+ * Each product has a unique costPrice (IMEI-level tracking).
+ * COGS is calculated as the specific costPrice of the sold product.
+ * This is compliant with TAS 2 for items that are not interchangeable.
+ */
+export const INVENTORY_COSTING_METHOD = 'SPECIFIC_IDENTIFICATION' as const;
+
 /** Business rule constants for overdue and early payoff */
 export const BUSINESS_RULES = {
   LATE_FEE_PER_DAY: 100,    // baht per day overdue

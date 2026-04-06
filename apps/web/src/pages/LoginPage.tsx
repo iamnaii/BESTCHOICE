@@ -53,6 +53,7 @@ export default function LoginPage() {
                 <input
                   id="email"
                   type="email"
+                  data-testid="login-email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full h-10 px-3.5 border border-input rounded-lg text-sm outline-none transition-all bg-background text-foreground placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background"
@@ -68,6 +69,7 @@ export default function LoginPage() {
                 <input
                   id="password"
                   type="password"
+                  data-testid="login-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full h-10 px-3.5 border border-input rounded-lg text-sm outline-none transition-all bg-background text-foreground placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background"
@@ -79,6 +81,7 @@ export default function LoginPage() {
 
               <button
                 type="submit"
+                data-testid="login-submit"
                 disabled={isSubmitting}
                 className="w-full bg-primary text-primary-foreground h-10 px-4 rounded-lg font-semibold text-sm hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-card"
               >

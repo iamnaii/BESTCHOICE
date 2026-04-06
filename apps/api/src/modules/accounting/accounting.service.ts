@@ -5,9 +5,17 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { ExpenseAccountType, ExpenseCategory, ExpenseStatus, Prisma } from '@prisma/client';
+import { ExpenseAccountType, ExpenseCategory, ExpenseStatus, Prisma, WhtIncomeType } from '@prisma/client';
 import { CreateExpenseDto, UpdateExpenseDto } from './dto/expense.dto';
 import { validatePeriodOpen as validatePeriodOpenUtil } from '../../utils/period-lock.util';
+
+/**
+ * INVENTORY COSTING METHOD: Specific Identification
+ * Each product has a unique costPrice (IMEI-level tracking).
+ * COGS is calculated as the specific costPrice of the sold product.
+ * This is compliant with TAS 2 for items that are not interchangeable.
+ */
+export const INVENTORY_COSTING_METHOD = 'SPECIFIC_IDENTIFICATION' as const;
 
 // Map category → accountType for validation
 const CATEGORY_ACCOUNT_MAP: Record<string, ExpenseAccountType> = {
@@ -118,7 +126,7 @@ export class AccountingService {
     }
     const withholdingTax = dto.withholdingTax || 0;
     const whtRate = dto.whtRate || null;
-    const whtIncomeType = dto.whtIncomeType || null;
+    const whtIncomeType = (dto.whtIncomeType as WhtIncomeType) || null;
     const totalAmount = dto.amount + vatAmount;
     const netPayment = Math.round((totalAmount - withholdingTax) * 100) / 100;
     const accountCode = dto.accountCode || CATEGORY_CODE_MAP[dto.category] || null;

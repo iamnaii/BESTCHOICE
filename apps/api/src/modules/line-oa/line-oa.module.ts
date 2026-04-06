@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { LineOaController } from './line-oa.controller';
+import { LineOaPaymentController } from './line-oa-payment.controller';
+import { LineOaCampaignController } from './line-oa-campaign.controller';
 import { LineOaService } from './line-oa.service';
 import { LineWebhookGuard } from './line-webhook.guard';
 import { PromptPayQrService } from './promptpay/promptpay-qr.service';
@@ -10,7 +12,7 @@ import { ContractsModule } from '../contracts/contracts.module';
 
 @Module({
   imports: [ContractsModule],
-  controllers: [LineOaController],
+  controllers: [LineOaController, LineOaPaymentController, LineOaCampaignController],
   providers: [
     LineOaService,
     LineWebhookGuard,

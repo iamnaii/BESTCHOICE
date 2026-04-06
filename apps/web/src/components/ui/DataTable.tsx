@@ -317,7 +317,7 @@ function DataTable<T extends { id: string }>({
         </div>
       )}
 
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" data-testid="data-table">
         <table className="w-full min-w-[640px]">
           <thead>
             {table.getHeaderGroups().map((headerGroup) => (

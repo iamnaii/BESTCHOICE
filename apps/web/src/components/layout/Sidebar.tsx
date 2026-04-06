@@ -422,7 +422,7 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
           </AccordionMenuItem>
 
           {filteredSections.map((section) => (
-            <AccordionMenuSub key={section.key} value={section.key}>
+            <AccordionMenuSub key={section.key} value={section.key} data-testid={`nav-${section.key}`}>
               <AccordionMenuSubTrigger>
                 <section.icon data-slot="accordion-menu-icon" className="size-4" />
                 <span data-slot="accordion-menu-title">{section.label}</span>
@@ -513,7 +513,7 @@ function MobileSidebar() {
           </AccordionMenuItem>
 
           {filteredSections.map((section) => (
-            <AccordionMenuSub key={section.key} value={section.key}>
+            <AccordionMenuSub key={section.key} value={section.key} data-testid={`nav-${section.key}`}>
               <AccordionMenuSubTrigger>
                 <section.icon data-slot="accordion-menu-icon" className="size-4" />
                 <span data-slot="accordion-menu-title">{section.label}</span>

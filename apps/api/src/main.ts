@@ -13,6 +13,7 @@ import { HttpAdapterHost } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { SentryExceptionFilter } from './filters/sentry-exception.filter';
+import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { validateEnv } from './utils/env-validation';
 
 async function bootstrap() {
@@ -66,6 +67,9 @@ async function bootstrap() {
   // Global exception filter: reports 5xx to Sentry, consistent error responses
   const { httpAdapter } = app.get(HttpAdapterHost);
   app.useGlobalFilters(new SentryExceptionFilter(httpAdapter));
+
+  // Global response envelope: wraps all successful responses in { success, data, timestamp }
+  app.useGlobalInterceptors(new ResponseInterceptor());
 
   // Swagger API Documentation (disabled in production for security)
   if (process.env.NODE_ENV !== 'production') {

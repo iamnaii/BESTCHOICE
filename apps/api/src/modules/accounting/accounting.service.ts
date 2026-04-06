@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
@@ -56,8 +57,32 @@ async function generateExpenseNumber(tx: Prisma.TransactionClient): Promise<stri
   return `${prefix}${String(seq).padStart(4, '0')}`;
 }
 
+/**
+ * ═══════════════════════════════════════════════════════════════
+ * นโยบายการบัญชี (Accounting Policies) — BESTCHOICE
+ * มาตรฐาน: TFRS for NPAEs (กิจการที่ไม่มีส่วนได้เสียสาธารณะ)
+ * ═══════════════════════════════════════════════════════════════
+ *
+ * 1. การรับรู้รายได้ (Revenue Recognition) — เกณฑ์เงินสด (Cash Basis)
+ *    - ขายเงินสด: รับรู้เมื่อส่งมอบสินค้าและรับเงิน
+ *    - ขายผ่อน (เงินดาวน์): รับรู้เมื่อรับเงินดาวน์
+ *    - ขายผ่อน (งวดผ่อน): รับรู้เมื่อลูกค้าชำระแต่ละงวด
+ *    - ไฟแนนซ์ภายนอก: รับรู้เมื่อได้รับเงินจากบริษัทไฟแนนซ์
+ *    หมายเหตุ: amountPaid รวมเงินต้น + ดอกเบี้ย + ค่าปรับ ทั้งหมดไว้แล้ว
+ *
+ * 2. ดอกเบี้ยเช่าซื้อ — Straight-line method (เกณฑ์เส้นตรง)
+ *    - ดอกเบี้ยรายเดือน = ดอกเบี้ยรวม / จำนวนงวด
+ *    - เป็นค่า memo สำหรับแสดงผลใน P&L (ไม่บวกเพิ่มจาก amountPaid)
+ *
+ * 3. ค่าใช้จ่าย — เกณฑ์คงค้าง (Accrual Basis)
+ *    - บันทึกเมื่อเกิดรายการ ไม่ว่าจะจ่ายเงินแล้วหรือยัง
+ *
+ * 4. สินค้าคงเหลือ — Specific Identification (ระบุเฉพาะ)
+ *    - สินค้าแต่ละชิ้นมี costPrice เฉพาะ (IMEI-level tracking)
+ */
 @Injectable()
 export class AccountingService {
+  private readonly logger = new Logger(AccountingService.name);
   constructor(private prisma: PrismaService) {}
 
   // ─── Expenses CRUD ───────────────────────────────────────────────────────────
@@ -473,6 +498,12 @@ export class AccountingService {
         where: { id: { in: allBundleIds } },
         select: { costPrice: true },
       });
+      // WR-010: Consistency check — warn if some bundle products were not found (deleted/missing)
+      if (bundleProducts.length !== allBundleIds.length) {
+        this.logger.warn(
+          `COGS bundle mismatch: expected ${allBundleIds.length} products, found ${bundleProducts.length}`,
+        );
+      }
       bundleCost = bundleProducts.reduce((sum, p) => sum + Number(p.costPrice || 0), 0);
     }
     const purchaseOrderCost = productCosts.reduce((sum, s) => sum + Number(s.product.costPrice || 0), 0)

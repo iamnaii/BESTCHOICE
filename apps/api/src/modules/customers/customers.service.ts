@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { paginatedResponse } from '../../common/helpers/pagination.helper';
 import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer.dto';
 
 @Injectable()
@@ -131,7 +132,7 @@ export class CustomersService {
       newThisMonth,
     };
 
-    return { data: enriched, total, page, limit, totalPages: Math.ceil(total / limit), summary };
+    return { ...paginatedResponse(enriched, total, page, limit), summary };
   }
 
   async findOne(id: string) {

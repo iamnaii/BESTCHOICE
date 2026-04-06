@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { loginViaAPI, getAuthHeaders } from './helpers/auth';
+import { unwrapResponse } from './helpers/api-utils';
 
 const API_URL = process.env.API_DIRECT_URL || 'http://localhost:3000';
 
@@ -67,7 +68,7 @@ test.describe('Invite Resend Feature', () => {
       test.skip();
       return;
     }
-    const invite = await createRes.json();
+    const invite = unwrapResponse(await createRes.json());
     const inviteId = invite.id;
     expect(inviteId).toBeTruthy();
 
@@ -101,7 +102,7 @@ test.describe('Invite Resend Feature', () => {
       headers: getAuthHeaders(),
     });
     expect(listRes.ok()).toBeTruthy();
-    const listData = await listRes.json();
+    const listData = unwrapResponse(await listRes.json());
     const invites = Array.isArray(listData) ? listData : listData.data ?? [];
     const invitesForEmail: Array<{ id: string; expiresAt: string; usedAt: string | null }> =
       invites.filter((i: { email: string }) => i.email === uniqueEmail);
@@ -163,7 +164,7 @@ test.describe('Invite Resend Feature', () => {
       test.skip();
       return;
     }
-    const listData = await listRes.json();
+    const listData = unwrapResponse(await listRes.json());
     const invites = Array.isArray(listData) ? listData : listData.data ?? [];
     const usedInvite = invites.find((i: { usedAt: string | null }) => i.usedAt !== null);
 
@@ -179,7 +180,7 @@ test.describe('Invite Resend Feature', () => {
     });
     expect(resendRes.status()).toBe(400);
 
-    const body = await resendRes.json();
+    const body = unwrapResponse(await resendRes.json());
     expect(body.message).toContain('ถูกใช้แล้ว');
   });
 });

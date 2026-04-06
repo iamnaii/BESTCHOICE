@@ -10,6 +10,8 @@ export class UploadContractDocumentDto {
   fileName: string;
 
   @IsString()
+  // Guards base64 string length (~33% overhead over raw bytes).
+  // Actual decoded file size is validated in ContractDocumentsService.upload() (10MB limit).
   @MaxLength(15_000_000, { message: 'ไฟล์ต้องมีขนาดไม่เกิน 10MB' })
   fileUrl: string; // base64 encoded file data
 

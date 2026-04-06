@@ -7,6 +7,12 @@ import { Page } from '@playwright/test';
 
 const API_URL = process.env.API_DIRECT_URL || 'http://localhost:3000';
 
+/** Unwrap API envelope { success, data, timestamp } if present */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function unwrapResponse(raw: any): any {
+  return raw && typeof raw === 'object' && 'success' in raw && 'data' in raw ? raw.data : raw;
+}
+
 /** Standard headers for API calls */
 function headers(token: string) {
   return {
@@ -23,7 +29,7 @@ export async function getApiToken(page: Page, email = 'admin@bestchoice.com', pa
     headers: { 'X-Requested-With': 'XMLHttpRequest' },
   });
   if (!res.ok()) throw new Error(`Login failed: ${res.status()}`);
-  const data = await res.json();
+  const data = unwrapResponse(await res.json());
   return data.accessToken;
 }
 
@@ -41,7 +47,7 @@ export async function createCustomer(page: Page, token: string, data: {
     const body = await res.text();
     throw new Error(`Create customer failed (${res.status()}): ${body}`);
   }
-  return res.json();
+  return unwrapResponse(await res.json());
 }
 
 export async function deleteCustomer(page: Page, token: string, id: string) {
@@ -57,7 +63,7 @@ export async function searchCustomers(page: Page, token: string, search: string)
     headers: headers(token),
   });
   if (!res.ok()) return { data: [], total: 0 };
-  return res.json();
+  return unwrapResponse(await res.json());
 }
 
 /* ─── Expense CRUD ─── */
@@ -74,7 +80,7 @@ export async function createExpense(page: Page, token: string, data: {
     const body = await res.text();
     throw new Error(`Create expense failed (${res.status()}): ${body}`);
   }
-  return res.json();
+  return unwrapResponse(await res.json());
 }
 
 export async function deleteExpense(page: Page, token: string, id: string) {
@@ -91,7 +97,7 @@ export async function getBranches(page: Page, token: string) {
     headers: headers(token),
   });
   if (!res.ok()) return [];
-  const data = await res.json();
+  const data = unwrapResponse(await res.json());
   return Array.isArray(data) ? data : data.data || [];
 }
 
@@ -108,7 +114,7 @@ export async function createSupplier(page: Page, token: string, data: {
     const body = await res.text();
     throw new Error(`Create supplier failed (${res.status()}): ${body}`);
   }
-  return res.json();
+  return unwrapResponse(await res.json());
 }
 
 export async function deleteSupplier(page: Page, token: string, id: string) {
@@ -125,5 +131,5 @@ export async function getProducts(page: Page, token: string, status = 'IN_STOCK'
     headers: headers(token),
   });
   if (!res.ok()) return { data: [], total: 0 };
-  return res.json();
+  return unwrapResponse(await res.json());
 }

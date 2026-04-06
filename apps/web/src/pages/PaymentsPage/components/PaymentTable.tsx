@@ -1,0 +1,116 @@
+import { useMemo } from 'react';
+import DataTable from '@/components/ui/DataTable';
+import { formatDateShort } from '@/utils/formatters';
+import type { PendingPayment } from '../types';
+import { paymentStatusLabels } from '../types';
+
+interface PaymentTableProps {
+  pendingPayments: PendingPayment[];
+  loadingPending: boolean;
+  selectedIds: Set<string>;
+  onToggleSelect: (id: string) => void;
+  onToggleAll: () => void;
+  onOpenPayModal: (payment: PendingPayment) => void;
+  onOpenAdvanceModal: (payment: PendingPayment) => void;
+  onViewHistory: (contractId: string) => void;
+  batchTotal: number;
+  onShowBatchModal: () => void;
+  onClearSelection: () => void;
+}
+
+export default function PaymentTable({
+  pendingPayments,
+  loadingPending,
+  selectedIds,
+  onToggleSelect,
+  onOpenPayModal,
+  onOpenAdvanceModal,
+  onViewHistory,
+  batchTotal,
+  onShowBatchModal,
+  onClearSelection,
+}: PaymentTableProps) {
+  const pendingColumns = useMemo(() => [
+    {
+      key: 'select',
+      label: '',
+      render: (p: PendingPayment) => (
+        <input type="checkbox" checked={selectedIds.has(p.id)} onChange={() => onToggleSelect(p.id)} className="rounded border-input" />
+      ),
+    },
+    {
+      key: 'contract',
+      label: 'สัญญา',
+      render: (p: PendingPayment) => (
+        <div>
+          <div className="font-mono text-sm text-primary">{p.contract.contractNumber}</div>
+          <div className="text-xs text-muted-foreground">{p.contract.customer.name}</div>
+        </div>
+      ),
+    },
+    { key: 'installmentNo', label: 'งวดที่', render: (p: PendingPayment) => <span className="font-medium">{p.installmentNo}</span> },
+    { key: 'dueDate', label: 'วันครบกำหนด', render: (p: PendingPayment) => {
+      const isOverdue = new Date(p.dueDate) < new Date();
+      return <span className={`text-sm ${isOverdue ? 'text-destructive font-medium' : ''}`}>{formatDateShort(p.dueDate)}</span>;
+    }},
+    { key: 'amountDue', label: 'ยอดที่ต้องชำระ', render: (p: PendingPayment) => {
+      const total = parseFloat(p.amountDue) + parseFloat(p.lateFee);
+      return <span className="text-sm font-medium">{total.toLocaleString()} ฿</span>;
+    }},
+    { key: 'amountPaid', label: 'ชำระแล้ว', render: (p: PendingPayment) => {
+      const paid = parseFloat(p.amountPaid);
+      return paid > 0 ? <span className="text-sm text-success">{paid.toLocaleString()} ฿</span> : <span className="text-xs text-muted-foreground">-</span>;
+    }},
+    { key: 'lateFee', label: 'ค่าปรับ', render: (p: PendingPayment) => {
+      const fee = parseFloat(p.lateFee);
+      return fee > 0 ? <span className="text-sm text-destructive">{fee.toLocaleString()} ฿</span> : <span className="text-xs text-muted-foreground">-</span>;
+    }},
+    {
+      key: 'status',
+      label: 'สถานะ',
+      render: (p: PendingPayment) => {
+        const s = paymentStatusLabels[p.status] || { label: p.status, className: 'bg-muted' };
+        return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.className}`}>{s.label}</span>;
+      },
+    },
+    { key: 'branch', label: 'สาขา', render: (p: PendingPayment) => <span className="text-xs">{p.contract.branch.name}</span> },
+    {
+      key: 'actions',
+      label: '',
+      render: (p: PendingPayment) => (
+        <div className="flex gap-1">
+          <button onClick={() => onOpenPayModal(p)} className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700">
+            รับชำระ
+          </button>
+          <button onClick={() => onOpenAdvanceModal(p)} className="px-2 py-1 text-xs border border-primary text-primary rounded hover:bg-primary/10">
+            ล่วงหน้า
+          </button>
+          <button onClick={() => onViewHistory(p.contract.id)} className="px-2 py-1 text-xs border border-muted-foreground/30 text-muted-foreground rounded hover:bg-muted">
+            ประวัติ
+          </button>
+        </div>
+      ),
+    },
+  ], [onOpenPayModal, onOpenAdvanceModal, onViewHistory, selectedIds, onToggleSelect]);
+
+  return (
+    <>
+      {loadingPending ? (
+        <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>
+      ) : (
+        <DataTable columns={pendingColumns} data={pendingPayments} emptyMessage="ไม่มีรายการรอชำระ" />
+      )}
+
+      {/* Batch action bar */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground px-6 py-3 rounded-xl shadow-lg flex items-center gap-4 z-50">
+          <span className="text-sm font-medium">เลือก {selectedIds.size} รายการ ({Math.round(batchTotal).toLocaleString()} ฿)</span>
+          <button onClick={onShowBatchModal} className="px-4 py-1.5 bg-card text-primary rounded-lg text-sm font-medium hover:bg-white/90">
+            รับชำระรวม
+          </button>
+          <button onClick={onClearSelection} className="text-xs text-white/70 hover:text-white">ยกเลิก</button>
+        </div>
+      )}
+    </>
+  );
+}

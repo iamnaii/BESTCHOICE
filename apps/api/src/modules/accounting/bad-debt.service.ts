@@ -98,7 +98,7 @@ export class BadDebtService {
     const contractIdsInScope = [...contractOutstanding.keys()];
     if (contractIdsInScope.length > 0) {
       await this.prisma.badDebtProvision.updateMany({
-        where: { status: 'ACTIVE', contractId: { in: contractIdsInScope } },
+        where: { status: 'ACTIVE', contractId: { in: contractIdsInScope }, deletedAt: null },
         data: { status: 'REVERSED' },
       });
     }
@@ -151,7 +151,7 @@ export class BadDebtService {
    */
   async getProvisionSummary() {
     const provisions = await this.prisma.badDebtProvision.findMany({
-      where: { status: 'ACTIVE' },
+      where: { status: 'ACTIVE', deletedAt: null },
       include: {
         contract: {
           select: {
@@ -234,7 +234,7 @@ export class BadDebtService {
 
       // Update active provisions to WRITTEN_OFF
       await tx.badDebtProvision.updateMany({
-        where: { contractId, status: 'ACTIVE' },
+        where: { contractId, status: 'ACTIVE', deletedAt: null },
         data: {
           status: 'WRITTEN_OFF',
           writtenOffAt: new Date(),

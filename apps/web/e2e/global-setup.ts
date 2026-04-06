@@ -25,7 +25,9 @@ export default async function globalSetup() {
     throw new Error(`Global setup login failed: HTTP ${response.status()}`);
   }
 
-  const data = await response.json();
+  const raw = await response.json();
+  // Unwrap API envelope if present (ResponseInterceptor wraps as { success, data, timestamp })
+  const data = raw.success && raw.data ? raw.data : raw;
   if (!data.accessToken) {
     await browser.close();
     throw new Error('Global setup: accessToken missing from login response');

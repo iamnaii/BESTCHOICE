@@ -2,6 +2,7 @@ import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@ne
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { RepossessionsService } from './repossessions.service';
 import { CreateRepossessionDto, UpdateRepossessionDto } from './dto/create-repossession.dto';
+import { ReadyForSaleDto } from './dto/ready-for-sale.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -69,8 +70,8 @@ export class RepossessionsController {
   @Roles('OWNER', 'BRANCH_MANAGER')
   markReadyForSale(
     @Param('id') id: string,
-    @Body('resellPrice') resellPrice: number,
+    @Body() dto: ReadyForSaleDto,
   ) {
-    return this.repossessionsService.markReadyForSale(id, resellPrice);
+    return this.repossessionsService.markReadyForSale(id, dto.resellPrice);
   }
 }

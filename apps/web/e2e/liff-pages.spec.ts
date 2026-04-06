@@ -110,7 +110,9 @@ test.describe('LIFF Profile', () => {
    LIFF Register (/liff/register)
    ================================================================ */
 test.describe('LIFF Register', () => {
-  test('should load LIFF register page', async ({ page }) => {
+  test('should load LIFF register page', async ({ page, browserName }) => {
+    // LIFF pages depend on LINE SDK which may not initialize in non-Chromium browsers
+    test.skip(browserName === 'firefox', 'LIFF SDK unreliable in Firefox (blank page due to LINE redirect)');
     await gotoWithRetry(page, '/liff/register');
     await page.waitForTimeout(3000);
 

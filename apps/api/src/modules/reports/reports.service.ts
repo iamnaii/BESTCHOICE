@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AccountingService } from '../accounting/accounting.service';
+import { calculateDaysOverdue, calculateDaysElapsed } from '../../utils/date.util';
 
 @Injectable()
 export class ReportsService {
@@ -36,7 +37,7 @@ export class ReportsService {
     const buckets = { '1-30': [] as typeof overduePayments, '31-60': [] as typeof overduePayments, '61-90': [] as typeof overduePayments, '90+': [] as typeof overduePayments };
 
     for (const p of overduePayments) {
-      const days = Math.floor((now.getTime() - new Date(p.dueDate).getTime()) / (1000 * 60 * 60 * 24));
+      const days = calculateDaysElapsed(p.dueDate, now);
       if (days <= 30) buckets['1-30'].push(p);
       else if (days <= 60) buckets['31-60'].push(p);
       else if (days <= 90) buckets['61-90'].push(p);
@@ -186,7 +187,7 @@ export class ReportsService {
         branch: c.branch.name,
         overdueInstallments: c.payments.length,
         totalOutstanding,
-        daysOverdue: Math.max(0, Math.floor((Date.now() - oldestDue.getTime()) / (1000 * 60 * 60 * 24))),
+        daysOverdue: calculateDaysOverdue(oldestDue),
       };
     });
 
@@ -253,30 +254,67 @@ export class ReportsService {
       select: { id: true, name: true },
     });
 
-    return Promise.all(
-      branches.map(async (branch) => {
-        const [newContracts, activeContracts, overdueContracts, payments, products] = await Promise.all([
-          this.prisma.contract.count({ where: { branchId: branch.id, createdAt: { gte: start, lte: end }, deletedAt: null } }),
-          this.prisma.contract.count({ where: { branchId: branch.id, status: 'ACTIVE', deletedAt: null } }),
-          this.prisma.contract.count({ where: { branchId: branch.id, status: { in: ['OVERDUE', 'DEFAULT'] }, deletedAt: null } }),
-          this.prisma.payment.aggregate({
-            where: { paidDate: { gte: start, lte: end }, status: 'PAID', contract: { branchId: branch.id } },
-            _sum: { amountPaid: true },
-          }),
-          this.prisma.product.count({ where: { branchId: branch.id, status: 'IN_STOCK', deletedAt: null } }),
-        ]);
+    const branchIds = branches.map((b) => b.id);
 
-        return {
-          branchId: branch.id,
-          branchName: branch.name,
-          newContracts,
-          activeContracts,
-          overdueContracts,
-          paymentsReceived: Number(payments._sum.amountPaid || 0),
-          inStockProducts: products,
-        };
+    // Batch: one query per metric for all branches (5 queries total instead of 5 * N)
+    const [newByBranch, activeByBranch, overdueByBranch, paymentsByBranch, productsByBranch] = await Promise.all([
+      this.prisma.contract.groupBy({
+        by: ['branchId'],
+        where: { branchId: { in: branchIds }, createdAt: { gte: start, lte: end }, deletedAt: null },
+        _count: true,
       }),
-    );
+      this.prisma.contract.groupBy({
+        by: ['branchId'],
+        where: { branchId: { in: branchIds }, status: 'ACTIVE', deletedAt: null },
+        _count: true,
+      }),
+      this.prisma.contract.groupBy({
+        by: ['branchId'],
+        where: { branchId: { in: branchIds }, status: { in: ['OVERDUE', 'DEFAULT'] }, deletedAt: null },
+        _count: true,
+      }),
+      this.prisma.payment.groupBy({
+        by: ['contractId'],
+        where: { paidDate: { gte: start, lte: end }, status: 'PAID', contract: { branchId: { in: branchIds } } },
+        _sum: { amountPaid: true },
+      }).then(async (groups) => {
+        // We need branchId from the contract, so fetch a lightweight mapping
+        if (groups.length === 0) return new Map<string, number>();
+        const contractIds = groups.map((g) => g.contractId);
+        const contracts = await this.prisma.contract.findMany({
+          where: { id: { in: contractIds } },
+          select: { id: true, branchId: true },
+        });
+        const contractBranchMap = new Map(contracts.map((c) => [c.id, c.branchId]));
+        const result = new Map<string, number>();
+        for (const g of groups) {
+          const bid = contractBranchMap.get(g.contractId);
+          if (bid) result.set(bid, (result.get(bid) || 0) + Number(g._sum.amountPaid || 0));
+        }
+        return result;
+      }),
+      this.prisma.product.groupBy({
+        by: ['branchId'],
+        where: { branchId: { in: branchIds }, status: 'IN_STOCK', deletedAt: null },
+        _count: true,
+      }),
+    ]);
+
+    // Build lookup maps
+    const newMap = new Map(newByBranch.map((g) => [g.branchId, g._count]));
+    const activeMap = new Map(activeByBranch.map((g) => [g.branchId, g._count]));
+    const overdueMap = new Map(overdueByBranch.map((g) => [g.branchId, g._count]));
+    const productsMap = new Map(productsByBranch.map((g) => [g.branchId, g._count]));
+
+    return branches.map((branch) => ({
+      branchId: branch.id,
+      branchName: branch.name,
+      newContracts: newMap.get(branch.id) || 0,
+      activeContracts: activeMap.get(branch.id) || 0,
+      overdueContracts: overdueMap.get(branch.id) || 0,
+      paymentsReceived: paymentsByBranch.get(branch.id) || 0,
+      inStockProducts: productsMap.get(branch.id) || 0,
+    }));
   }
 
   /**

@@ -6,6 +6,7 @@ import { ContractWorkflowService } from './contract-workflow.service';
 import { ContractPaymentService } from './contract-payment.service';
 import { ContractDocumentService } from './contract-document.service';
 import { CreateContractDto, UpdateContractDto, EarlyPayoffDto, ReviewContractDto, RejectContractDto } from './dto/contract.dto';
+import { PdpaConsentDto } from './dto/pdpa-consent.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -180,10 +181,10 @@ export class ContractsController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   recordPdpaConsent(
     @Param('id') id: string,
-    @Body('signatureImage') signatureImage: string,
+    @Body() dto: PdpaConsentDto,
     @Req() req: Request,
   ) {
-    return this.documentService.recordPdpaConsent(id, signatureImage, {
+    return this.documentService.recordPdpaConsent(id, dto.signatureImage, {
       ip: req.ip,
       userAgent: req.headers?.['user-agent'],
     });

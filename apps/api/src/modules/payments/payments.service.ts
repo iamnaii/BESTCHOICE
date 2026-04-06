@@ -1,9 +1,11 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { Prisma, PaymentMethod } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { paginatedResponse } from '../../common/helpers/pagination.helper';
 import { ReceiptsService } from '../receipts/receipts.service';
 import { AuditService } from '../audit/audit.service';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
+import { roundBaht } from '../../utils/installment.util';
 
 @Injectable()
 export class PaymentsService {
@@ -106,7 +108,7 @@ export class PaymentsService {
           const capConfig = await tx.systemConfig.findUnique({ where: { key: 'late_fee_cap' } });
           const feePerDay = config ? Number(config.value) : 50;
           const cap = capConfig ? Number(capConfig.value) : 1500;
-          const calculatedFee = Math.min(daysOverdue * feePerDay, cap);
+          const calculatedFee = Math.round(Math.min(daysOverdue * feePerDay, cap) * 100) / 100;
           if (calculatedFee > lateFee) {
             lateFee = calculatedFee;
             await tx.payment.update({ where: { id: payment.id }, data: { lateFee } });
@@ -114,9 +116,9 @@ export class PaymentsService {
         }
       }
 
-      const amountDue = Number(payment.amountDue) + lateFee;
-      const prevPaid = Number(payment.amountPaid);
-      const remaining = amountDue - prevPaid;
+      const amountDue = roundBaht(Number(payment.amountDue) + lateFee);
+      const prevPaid = roundBaht(Number(payment.amountPaid));
+      const remaining = roundBaht(amountDue - prevPaid);
 
       // Prevent overpayment: cap amount at what is owed for this installment
       if (amount > remaining) {
@@ -235,10 +237,10 @@ export class PaymentsService {
       for (const payment of unpaid) {
         if (remaining <= 0) break;
 
-        const amountDue = Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid);
-        const payAmount = Math.min(remaining, amountDue);
-        const totalPaid = Number(payment.amountPaid) + payAmount;
-        const isPaidInFull = totalPaid >= (Number(payment.amountDue) + Number(payment.lateFee));
+        const amountDue = roundBaht(Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid));
+        const payAmount = roundBaht(Math.min(remaining, amountDue));
+        const totalPaid = roundBaht(Number(payment.amountPaid) + payAmount);
+        const isPaidInFull = totalPaid >= roundBaht(Number(payment.amountDue) + Number(payment.lateFee));
 
         const updated = await tx.payment.update({
           where: { id: payment.id },
@@ -253,7 +255,7 @@ export class PaymentsService {
         });
 
         results.push(updated);
-        remaining -= payAmount;
+        remaining = roundBaht(remaining - payAmount);
 
         // Check contract completion after each full payment
         if (isPaidInFull) {
@@ -268,7 +270,7 @@ export class PaymentsService {
             contractId,
             paid.id,
             'INSTALLMENT',
-            Number(paid.amountPaid),
+            roundBaht(Number(paid.amountPaid)),
             paid.installmentNo,
             paymentMethod,
             null,
@@ -282,7 +284,7 @@ export class PaymentsService {
         }
       }
 
-      const overpayment = remaining > 0 ? remaining : 0;
+      const overpayment = remaining > 0 ? Math.round(remaining * 100) / 100 : 0;
       if (overpayment > 0) {
         // Store overpayment as credit balance on the contract
         await tx.contract.update({
@@ -328,7 +330,7 @@ export class PaymentsService {
       this.prisma.payment.count({ where }),
     ]);
 
-    return { data, total, page, limit };
+    return paginatedResponse(data, total, page, limit);
   }
 
   // ─── Get all pending payments (for payment queue view) ─
@@ -404,7 +406,7 @@ export class PaymentsService {
       this.prisma.payment.count({ where }),
     ]);
 
-    return { data, total, page, limit };
+    return paginatedResponse(data, total, page, limit);
   }
 
   // ─── Daily summary ────────────────────────────────────
@@ -451,7 +453,7 @@ export class PaymentsService {
     const byMethod: Record<string, number> = {};
     payments.forEach((p) => {
       const method = p.paymentMethod || 'UNKNOWN';
-      byMethod[method] = (byMethod[method] || 0) + Number(p.amountPaid);
+      byMethod[method] = roundBaht((byMethod[method] || 0) + Number(p.amountPaid));
     });
 
     return {
@@ -535,10 +537,10 @@ export class PaymentsService {
       for (const payment of unpaid) {
         if (remaining <= 0) break;
 
-        const amountDue = Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid);
-        const payAmount = Math.min(remaining, amountDue);
-        const totalPaid = Number(payment.amountPaid) + payAmount;
-        const isPaidInFull = totalPaid >= (Number(payment.amountDue) + Number(payment.lateFee));
+        const amountDue = roundBaht(Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid));
+        const payAmount = roundBaht(Math.min(remaining, amountDue));
+        const totalPaid = roundBaht(Number(payment.amountPaid) + payAmount);
+        const isPaidInFull = totalPaid >= roundBaht(Number(payment.amountDue) + Number(payment.lateFee));
 
         const updated = await tx.payment.update({
           where: { id: payment.id },
@@ -553,7 +555,7 @@ export class PaymentsService {
         });
 
         results.push(updated);
-        remaining -= payAmount;
+        remaining = roundBaht(remaining - payAmount);
 
         if (isPaidInFull) {
           await this.checkContractCompletion(contractId, tx);
@@ -561,7 +563,7 @@ export class PaymentsService {
       }
 
       // Update credit balance
-      const usedCredit = credit - remaining;
+      const usedCredit = roundBaht(credit - remaining);
       await tx.contract.update({
         where: { id: contractId },
         data: { creditBalance: remaining },
@@ -667,12 +669,12 @@ export class PaymentsService {
       if (payment.lateFeeWaived) throw new BadRequestException('รายการนี้ยกเว้นค่าปรับแล้ว');
       if (Number(payment.lateFee) <= 0) throw new BadRequestException('รายการนี้ไม่มีค่าปรับ');
 
-      const originalLateFee = Number(payment.lateFee);
+      const originalLateFee = roundBaht(Number(payment.lateFee));
       const notes = [payment.notes, `ยกเว้นค่าปรับ ${originalLateFee.toLocaleString()} บาท — ${reason}`].filter(Boolean).join(' | ');
 
       // Check if payment becomes fully paid after waiving late fee
-      const totalOwed = Number(payment.amountDue); // without late fee
-      const amountPaid = Number(payment.amountPaid);
+      const totalOwed = roundBaht(Number(payment.amountDue)); // without late fee
+      const amountPaid = roundBaht(Number(payment.amountPaid));
       const isNowFullyPaid = amountPaid >= totalOwed;
 
       const updated = await tx.payment.update({

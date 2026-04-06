@@ -235,10 +235,10 @@ export class OverdueService {
     const result = await this.prisma.$executeRaw`
       UPDATE "payments"
       SET
-        "late_fee" = LEAST(
+        "late_fee" = ROUND(LEAST(
           GREATEST(FLOOR(EXTRACT(EPOCH FROM (${now}::timestamp - "due_date")) / 86400)::int, 0) * ${lateFeePerDay},
           ${lateFeeCap}
-        ),
+        )::numeric, 2),
         "status" = 'OVERDUE'
       WHERE "status" IN ('PENDING', 'PARTIALLY_PAID', 'OVERDUE')
         AND "due_date" < ${now}

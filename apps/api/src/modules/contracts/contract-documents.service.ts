@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, ForbiddenException 
 import { ContractDocumentType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UploadContractDocumentDto } from './dto/contract-document.dto';
+import { calculateAgeInYears } from '../../utils/date.util';
 import * as crypto from 'crypto';
 
 const VALID_DOCUMENT_TYPES = [
@@ -67,7 +68,7 @@ export class ContractDocumentsService {
 
     const requiresGuardian = contract.customer?.birthDate
       ? (() => {
-          const age = Math.floor((Date.now() - new Date(contract.customer.birthDate).getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+          const age = calculateAgeInYears(contract.customer.birthDate);
           return age >= 17 && age < 20;
         })()
       : false;
@@ -105,6 +106,17 @@ export class ContractDocumentsService {
 
     if (!VALID_DOCUMENT_TYPES.includes(dto.documentType)) {
       throw new BadRequestException(`ประเภทเอกสารไม่ถูกต้อง: ${dto.documentType}`);
+    }
+
+    // WR-004: Validate actual file size (base64 encoding is ~33% larger than raw bytes)
+    // The DTO @MaxLength(15_000_000) guards the base64 string length;
+    // this checks the decoded binary size does not exceed 10MB.
+    if (dto.fileUrl.startsWith('data:')) {
+      const rawBase64 = dto.fileUrl.substring(dto.fileUrl.indexOf(',') + 1);
+      const actualSize = Buffer.byteLength(rawBase64, 'base64');
+      if (actualSize > 10 * 1024 * 1024) {
+        throw new BadRequestException('ไฟล์มีขนาดเกิน 10MB');
+      }
     }
 
     // Compute file hash from actual file content (base64 bytes) for integrity verification

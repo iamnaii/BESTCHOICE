@@ -27,6 +27,7 @@ export class AuditController {
   }
 
   @Get('logs')
+  @Roles('OWNER')
   getLogs(
     @Query('userId') userId?: string,
     @Query('entity') entity?: string,
@@ -52,6 +53,7 @@ export class AuditController {
   }
 
   @Get('stats')
+  @Roles('OWNER')
   getStats() {
     return this.auditService.getAuditStats();
   }

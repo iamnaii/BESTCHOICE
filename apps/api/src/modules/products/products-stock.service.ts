@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, ForbiddenException,
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TransferProductDto, BulkTransferDto } from './dto/transfer-product.dto';
+import { calculateDaysElapsed } from '../../utils/date.util';
 
 // Core StockTransfer select - only columns guaranteed to exist
 const stockTransferSelect = {
@@ -558,7 +559,7 @@ export class ProductsStockService {
     ];
     for (const p of inStockProducts) {
       const refDate = p.stockInDate ? new Date(p.stockInDate) : new Date(p.createdAt);
-      const days = Math.floor((now.getTime() - refDate.getTime()) / (1000 * 60 * 60 * 24));
+      const days = calculateDaysElapsed(refDate, now);
       const bucket = agingBuckets.find((b) => days >= b.min && days <= b.max);
       if (bucket) {
         bucket.count++;
@@ -640,7 +641,7 @@ export class ProductsStockService {
     // Average days in stock (from stockInDate or createdAt as fallback)
     const totalDays = inStockProducts.reduce((sum, p) => {
       const refDate = p.stockInDate ? new Date(p.stockInDate) : new Date(p.createdAt);
-      return sum + Math.floor((now.getTime() - refDate.getTime()) / (1000 * 60 * 60 * 24));
+      return sum + calculateDaysElapsed(refDate, now);
     }, 0);
     const avgDaysInStock = inStockProducts.length > 0 ? Math.round(totalDays / inStockProducts.length) : 0;
 
@@ -659,7 +660,7 @@ export class ProductsStockService {
     const slowMovers = inStockProducts
       .map((p) => ({
         name: `${p.brand} ${p.model}`,
-        days: Math.floor((now.getTime() - new Date(p.stockInDate || p.createdAt).getTime()) / (1000 * 60 * 60 * 24)),
+        days: calculateDaysElapsed(new Date(p.stockInDate || p.createdAt), now),
         costPrice: Number(p.costPrice),
       }))
       .sort((a, b) => b.days - a.days)

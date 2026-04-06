@@ -3,6 +3,7 @@ import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { SuppliersService } from './suppliers.service';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { UpdateSupplierDto } from './dto/update-supplier.dto';
+import { PaginationDto } from '../../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -17,12 +18,11 @@ export class SuppliersController {
   @Get()
   @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
   findAll(
+    @Query() pagination: PaginationDto,
     @Query('search') search?: string,
     @Query('isActive') isActive?: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
   ) {
-    return this.suppliersService.findAll(search, isActive, page ? parseInt(page) : 1, limit ? parseInt(limit) : 50);
+    return this.suppliersService.findAll(search, isActive, pagination.page, pagination.limit);
   }
 
   @Get(':id')

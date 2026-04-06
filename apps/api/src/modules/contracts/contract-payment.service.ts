@@ -39,11 +39,12 @@ export class ContractPaymentService {
       throw new BadRequestException('ไม่มีงวดค้างชำระ ไม่จำเป็นต้องปิดก่อนกำหนด');
     }
 
-    // Use satang-precision arithmetic (round at each step to avoid floating-point errors)
+    // C-6 fix: truePrincipal = sellingPrice - downPayment (the actual loan principal)
+    // NOT financedAmount - interestTotal which would include commission + VAT
     const interestTotal = Number(contract.interestTotal);
     const financedAmount = Number(contract.financedAmount);
+    const truePrincipal = Math.round((Number(contract.sellingPrice) - Number(contract.downPayment)) * 100) / 100;
     const monthlyInterest = Math.round(interestTotal * 100 / contract.totalMonths) / 100;
-    const truePrincipal = Math.round((financedAmount - interestTotal) * 100) / 100;
     const monthlyPrincipal = Math.round(truePrincipal * 100 / contract.totalMonths) / 100;
 
     const remainingPrincipal = Math.round(monthlyPrincipal * remainingMonths * 100) / 100;

@@ -435,6 +435,10 @@ export class AccountingService {
     const financeDownPayments = Number(externalFinanceSales._sum.downPaymentAmount || 0);
     const financeReceivedAmount = Number(financeReceived._sum.receivedAmount || 0);
 
+    // C-2 fix: amountPaid includes interest (because monthlyPayment = financedAmount/months
+    // and financedAmount = principal + commission + interest + VAT).
+    // So we must NOT add interestIncome separately to totalRevenue — it's already in installmentPayments.
+    // Instead, we extract interest for display purposes only.
     let installmentPayments = 0;
     let interestIncome = 0;
     let lateFeeIncome = 0;
@@ -442,16 +446,19 @@ export class AccountingService {
       installmentPayments += Number(p.amountPaid);
       // Accounting policy: Interest income recognized using straight-line method (เกณฑ์เส้นตรง)
       // for flat-rate hire-purchase contracts per TFRS for NPAEs.
-      // Monthly interest = total interest / total months (equal allocation per payment received)
+      // This is a memo/display value — already included in amountPaid above.
       interestIncome += Number(p.contract.interestTotal) / p.contract.totalMonths;
+      // Late fees are SEPARATE from amountPaid (amountDue includes lateFee but amountPaid
+      // tracks the total paid including lateFee portion, so it's already in installmentPayments)
       if (!p.lateFeeWaived) lateFeeIncome += Number(p.lateFee);
     }
 
     // R-011: Separate operating revenue from other income per TAS 1
+    // Note: installmentPayments already includes interest and lateFee portions.
+    // interestIncome and lateFeeIncome are memo values for P&L display, not additive.
     const operatingRevenue = cashSales + installmentDownPayments + installmentPayments
       + financeDownPayments + financeReceivedAmount;
-    const otherIncomeTotal = interestIncome + lateFeeIncome;
-    const totalRevenue = operatingRevenue + otherIncomeTotal;
+    const totalRevenue = operatingRevenue; // No double-counting: interest/lateFee already in installmentPayments
 
     const expMap: Record<string, number> = {};
     for (const e of expensesByCategory) {
@@ -509,7 +516,8 @@ export class AccountingService {
       + adminExpenses.depreciation + adminExpenses.insurance + adminExpenses.taxFee
       + adminExpenses.maintenance + adminExpenses.travel + adminExpenses.telephone;
 
-    const operatingProfit = grossProfit - sellingExpenses.totalSelling - adminExpenses.totalAdmin + otherIncomeTotal;
+    // C-1 fix: TAS 1 structure — operatingProfit excludes other income/expenses
+    const operatingProfit = grossProfit - sellingExpenses.totalSelling - adminExpenses.totalAdmin;
 
     const otherExpenses = {
       interest: expMap['OTHER_INTEREST'] || 0,
@@ -520,6 +528,9 @@ export class AccountingService {
         + (expMap['OTHER_FINE'] || 0) + (expMap['OTHER_MISC'] || 0),
     };
 
+    // C-1 fix: netProfit = operatingProfit + otherIncome - otherExpenses (TAS 1)
+    // Note: interestIncome and lateFeeIncome are memo values (already in installmentPayments)
+    // so we don't add them again here — they're for P&L line-item display only.
     const netProfit = operatingProfit - otherExpenses.totalOther;
     const totalExpenses = costOfSales.totalCOGS + sellingExpenses.totalSelling
       + adminExpenses.totalAdmin + otherExpenses.totalOther;
@@ -535,10 +546,11 @@ export class AccountingService {
         operatingRevenue,
         totalRevenue,
       },
+      // Memo: interest and lateFee breakdown (already included in installmentPayments)
       otherIncome: {
         interestIncome: Math.round(interestIncome),
         lateFeeIncome,
-        totalOtherIncome: otherIncomeTotal,
+        note: 'ดอกเบี้ยและค่าปรับรวมอยู่ใน installmentPayments แล้ว — ค่านี้เป็น breakdown สำหรับแสดงผลเท่านั้น',
       },
       costOfSales,
       grossProfit,
@@ -606,8 +618,8 @@ export class AccountingService {
 
       for (const p of payments) {
         if (getMonth(p.paidDate) !== i) continue;
+        // C-5 fix: amountPaid already includes lateFee — don't add it separately
         revenue += Number(p.amountPaid);
-        if (!p.lateFeeWaived) revenue += Number(p.lateFee);
       }
 
       for (const f of financeRecs) {
@@ -756,6 +768,8 @@ export class AccountingService {
       ]);
 
     // Purchase orders paid (cash outflow for inventory)
+    // Note: PurchaseOrder model has no branchId — PO costs are company-wide.
+    // Branch-level Balance Sheet will show company-wide PO costs.
     const purchaseOrdersPaid = await this.prisma.purchaseOrder.aggregate({
       where: {
         paymentStatus: 'FULLY_PAID',
@@ -940,6 +954,7 @@ export class AccountingService {
       ]);
 
     // Cash paid for inventory (purchase orders paid in the period)
+    // Note: PurchaseOrder has no branchId — PO costs are company-wide
     const purchaseOrdersPaid = await this.prisma.purchaseOrder.aggregate({
       where: {
         paymentStatus: { in: ['FULLY_PAID', 'DEPOSIT_PAID', 'PARTIALLY_PAID'] },
@@ -951,12 +966,13 @@ export class AccountingService {
 
     const cashFromSales = Number(cashSales._sum.netAmount || 0);
     const cashFromDownPayments = Number(downPayments._sum.downPaymentAmount || 0);
+    // C-3 fix: amountPaid already includes lateFee portion (customer pays amountDue + lateFee as one sum)
+    // so we don't add lateFee separately to avoid double-counting
     const cashFromInstallments = Number(installmentPayments._sum.amountPaid || 0);
-    const cashFromLateFees = Number(installmentPayments._sum.lateFee || 0);
     const cashFromFinanceCompanies = Number(financeReceived._sum.receivedAmount || 0);
 
     const cashFromCustomers =
-      cashFromSales + cashFromDownPayments + cashFromInstallments + cashFromLateFees + cashFromFinanceCompanies;
+      cashFromSales + cashFromDownPayments + cashFromInstallments + cashFromFinanceCompanies;
 
     const cashPaidForExpenses = Number(expensesPaid._sum.totalAmount || 0);
     const cashPaidForInventory = Number(purchaseOrdersPaid._sum.paidAmount || 0);
@@ -972,8 +988,7 @@ export class AccountingService {
         cashFromCustomers,
         cashFromSales,
         cashFromDownPayments,
-        cashFromInstallments,
-        cashFromLateFees,
+        cashFromInstallments, // includes lateFee portion (amountPaid = principal + interest + lateFee)
         cashFromFinanceCompanies,
         cashPaidForExpenses: -cashPaidForExpenses,
         cashPaidForInventory: -cashPaidForInventory,

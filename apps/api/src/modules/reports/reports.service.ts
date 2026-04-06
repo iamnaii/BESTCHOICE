@@ -81,9 +81,12 @@ export class ReportsService {
           contract: { select: { interestTotal: true, totalMonths: true } },
         },
       }),
+      // C-7 fix: filter status=PAID and lateFeeWaived=false for accurate aggregation
       this.prisma.payment.aggregate({
         where: {
           paidDate: { gte: start, lte: end },
+          status: 'PAID',
+          lateFeeWaived: false,
           contract: { deletedAt: null, ...branchFilter },
         },
         _sum: { lateFee: true, amountPaid: true },

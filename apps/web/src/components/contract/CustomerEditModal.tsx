@@ -40,7 +40,7 @@ export default function CustomerEditModal({ customerId, customerSnapshot, custom
     prefix: '', name: '', nickname: '', birthDate: '',
     phone: '', phoneSecondary: '', email: '', lineId: '',
     facebookLink: '', facebookName: '', facebookFriends: '', googleMapLink: '',
-    occupation: '', occupationDetail: '', salary: '', workplace: '',
+    addressCurrentType: '', occupation: '', occupationDetail: '', salary: '', workplace: '',
   });
   const [addrIdCard, setAddrIdCard] = useState<AddressData>(emptyAddress);
   const [addrCurrent, setAddrCurrent] = useState<AddressData>(emptyAddress);
@@ -64,6 +64,7 @@ export default function CustomerEditModal({ customerId, customerSnapshot, custom
           email: fc.email || '', lineId: fc.lineId || '',
           facebookLink: fc.facebookLink || '', facebookName: fc.facebookName || '',
           facebookFriends: fc.facebookFriends || '', googleMapLink: fc.googleMapLink || '',
+          addressCurrentType: fc.addressCurrentType || '',
           occupation: fc.occupation || '', occupationDetail: fc.occupationDetail || '',
           salary: fc.salary || '', workplace: fc.workplace || '',
         });
@@ -84,6 +85,7 @@ export default function CustomerEditModal({ customerId, customerSnapshot, custom
           phone: snap?.phone || customerBasic.phone || '', phoneSecondary: '',
           email: '', lineId: '', facebookLink: '', facebookName: '',
           facebookFriends: '', googleMapLink: '',
+          addressCurrentType: '',
           occupation: snap?.occupation || '', occupationDetail: '',
           salary: snap?.salary || '', workplace: '',
         });
@@ -124,6 +126,7 @@ export default function CustomerEditModal({ customerId, customerSnapshot, custom
       facebookName: form.facebookName || null,
       facebookFriends: form.facebookFriends || null,
       googleMapLink: form.googleMapLink || null,
+      addressCurrentType: form.addressCurrentType || null,
       occupation: form.occupation || null,
       occupationDetail: form.occupationDetail || null,
       salary: form.salary && !isNaN(parseFloat(form.salary)) ? parseFloat(form.salary) : null,
@@ -189,6 +192,15 @@ export default function CustomerEditModal({ customerId, customerSnapshot, custom
                 <input type="checkbox" checked={sameAddress} onChange={(e) => setSameAddress(e.target.checked)} className="rounded border-input text-primary focus-visible:ring-2 focus-visible:ring-ring/30" />
                 <span className="text-xs text-muted-foreground">เหมือนที่อยู่ตามบัตร</span>
               </label>
+            </div>
+            <div className="mb-3">
+              <label className="block text-xs text-muted-foreground mb-1">ประเภทที่อยู่</label>
+              <select value={form.addressCurrentType || ''} onChange={(e) => setForm({ ...form, addressCurrentType: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm">
+                <option value="">-- เลือก --</option>
+                <option value="OWN">บ้านตัวเอง</option>
+                <option value="RELATIVE">บ้านญาติ</option>
+                <option value="RENT">เช่าอาศัย</option>
+              </select>
             </div>
             {sameAddress ? (
               <p className="text-xs text-muted-foreground italic">ใช้ที่อยู่เดียวกับที่อยู่ตามบัตรประชาชน</p>

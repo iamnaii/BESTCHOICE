@@ -80,6 +80,7 @@ const emptyForm = {
   facebookName: '',
   facebookFriends: '',
   googleMapLink: '',
+  addressCurrentType: '',
   occupation: '',
   occupationDetail: '',
   salary: '',
@@ -177,6 +178,7 @@ export default function CustomersPage() {
       if (form.occupationDetail) payload.occupationDetail = form.occupationDetail;
       if (form.salary && !isNaN(parseFloat(form.salary))) payload.salary = parseFloat(form.salary);
       if (form.workplace) payload.workplace = form.workplace;
+      if (form.addressCurrentType) payload.addressCurrentType = form.addressCurrentType;
 
       const addrIdCard = serializeAddress(addressIdCard);
       const addrCurrent = serializeAddress(addressCurrent);
@@ -782,6 +784,15 @@ export default function CustomersPage() {
                     <input type="checkbox" checked={sameAddress} onChange={(e) => setSameAddress(e.target.checked)} className="rounded border-input text-primary focus-visible:ring-ring/30" />
                     <span className="text-xs text-muted-foreground">เหมือนที่อยู่ตามบัตร</span>
                   </label>
+                </div>
+                <div className="mb-3">
+                  <label className="block text-xs font-medium text-foreground mb-1.5">ประเภทที่อยู่</label>
+                  <select value={form.addressCurrentType || ''} onChange={(e) => setForm({ ...form, addressCurrentType: e.target.value })} className={inputClass}>
+                    <option value="">-- เลือก --</option>
+                    <option value="OWN">บ้านตัวเอง</option>
+                    <option value="RELATIVE">บ้านญาติ</option>
+                    <option value="RENT">เช่าอาศัย</option>
+                  </select>
                 </div>
                 {sameAddress ? (
                   <p className="text-xs text-muted-foreground italic">ใช้ที่อยู่เดียวกับที่อยู่ตามบัตรประชาชน</p>

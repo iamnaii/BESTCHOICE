@@ -66,6 +66,10 @@ export class CreateCustomerDto {
 
   @IsString()
   @IsOptional()
+  addressCurrentType?: string; // บ้านตัวเอง, บ้านญาติ, เช่าอาศัย
+
+  @IsString()
+  @IsOptional()
   occupation?: string;
 
   @IsString()
@@ -160,6 +164,10 @@ export class UpdateCustomerDto {
   @IsString()
   @IsOptional()
   addressCurrent?: string;
+
+  @IsString()
+  @IsOptional()
+  addressCurrentType?: string; // บ้านตัวเอง, บ้านญาติ, เช่าอาศัย
 
   @IsString()
   @IsOptional()

@@ -21,6 +21,10 @@ export interface PendingPayment {
   amountPaid: string;
   lateFee: string;
   status: string;
+  monthlyPrincipal: string | null;
+  monthlyInterest: string | null;
+  monthlyCommission: string | null;
+  vatAmount: string | null;
   contract: {
     id: string;
     contractNumber: string;

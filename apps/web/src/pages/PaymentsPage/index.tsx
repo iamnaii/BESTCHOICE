@@ -37,7 +37,7 @@ export default function PaymentsPage() {
   const [receiptId, setReceiptId] = useState<string | null>(null);
   const [showPayModal, setShowPayModal] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<PendingPayment | null>(null);
-  const [payForm, setPayForm] = useState({ amount: 0, paymentMethod: 'CASH', notes: '' });
+  const [payForm, setPayForm] = useState({ amount: 0, paymentMethod: 'CASH', notes: '', paidDate: new Date().toISOString().split('T')[0] });
 
   // Batch selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -244,7 +244,7 @@ export default function PaymentsPage() {
   const openPayModal = useCallback((payment: PendingPayment) => {
     setSelectedPayment(payment);
     const remaining = parseFloat(payment.amountDue) + parseFloat(payment.lateFee) - parseFloat(payment.amountPaid);
-    setPayForm({ amount: Math.round(remaining * 100) / 100, paymentMethod: 'CASH', notes: '' });
+    setPayForm({ amount: Math.round(remaining * 100) / 100, paymentMethod: 'CASH', notes: '', paidDate: new Date().toISOString().split('T')[0] });
     setSlipResult(null);
     setShowPayModal(true);
   }, []);
@@ -482,7 +482,7 @@ export default function PaymentsPage() {
         payment={selectedPayment}
         payForm={payForm}
         onPayFormChange={setPayForm}
-        onClose={() => { setShowPayModal(false); setSelectedPayment(null); setSlipResult(null); setPayForm({ amount: 0, paymentMethod: 'CASH', notes: '' }); }}
+        onClose={() => { setShowPayModal(false); setSelectedPayment(null); setSlipResult(null); setPayForm({ amount: 0, paymentMethod: 'CASH', notes: '', paidDate: new Date().toISOString().split('T')[0] }); }}
         onSubmit={handlePay}
         isPending={recordMutation.isPending}
         slipFileRef={slipFileRef}

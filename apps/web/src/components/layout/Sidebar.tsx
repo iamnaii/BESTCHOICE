@@ -109,6 +109,7 @@ const navSections: NavSection[] = [
       { label: 'บันทึกรายจ่าย', path: '/expenses', icon: Receipt, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
       { label: 'งบกำไรขาดทุน', path: '/profit-loss', icon: DollarSign, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
       { label: 'คอมมิชชัน', path: '/commissions', icon: DollarSign, roles: ['OWNER', 'FINANCE_MANAGER', 'SALES'] },
+      { label: 'สินทรัพย์ถาวร', path: '/assets', icon: Building2, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
     ],
   },
   {

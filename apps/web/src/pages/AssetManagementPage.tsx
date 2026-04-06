@@ -1,0 +1,790 @@
+import { useState, useMemo } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import api, { getErrorMessage } from '@/lib/api';
+import { useDebounce } from '@/hooks/useDebounce';
+import { useAuth } from '@/contexts/AuthContext';
+import PageHeader from '@/components/ui/PageHeader';
+import DataTable from '@/components/ui/DataTable';
+import Modal from '@/components/ui/Modal';
+import { Card, CardContent } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { Button } from '@/components/ui/button';
+import AnimatedCounter from '@/components/ui/animated-counter';
+import ThaiDateInput from '@/components/ui/ThaiDateInput';
+import {
+  Building2,
+  Plus,
+  Pencil,
+  Trash2,
+  Eye,
+  Play,
+  Package,
+  TrendingDown,
+  Banknote,
+  Calculator,
+  ChevronDown,
+  ChevronUp,
+} from 'lucide-react';
+
+// ─── Types ───
+interface Asset {
+  id: string;
+  assetCode: string;
+  name: string;
+  description: string | null;
+  category: string;
+  costValue: string;
+  salvageValue: string;
+  usefulLife: number;
+  accumulatedDepreciation: string;
+  purchaseDate: string;
+  status: string;
+  branch: { id: string; name: string } | null;
+  createdAt: string;
+}
+
+interface AssetSummary {
+  totalCount: number;
+  totalCostValue: number;
+  totalAccumulatedDepreciation: number;
+  totalNetBookValue: number;
+}
+
+interface Branch {
+  id: string;
+  name: string;
+}
+
+// ─── Constants ───
+const categoryLabels: Record<string, string> = {
+  BUILDING: 'อาคาร',
+  VEHICLE: 'ยานพาหนะ',
+  EQUIPMENT: 'อุปกรณ์',
+  FURNITURE: 'เฟอร์นิเจอร์',
+  COMPUTER: 'คอมพิวเตอร์',
+  LEASEHOLD: 'สิทธิการเช่า',
+  OTHER: 'อื่นๆ',
+};
+
+const categoryOptions = Object.entries(categoryLabels).map(([value, label]) => ({ value, label }));
+
+const statusLabels: Record<string, string> = {
+  ACTIVE: 'ใช้งาน',
+  FULLY_DEPRECIATED: 'หมดค่าเสื่อม',
+  DISPOSED: 'จำหน่ายแล้ว',
+};
+
+const statusColors: Record<string, string> = {
+  ACTIVE: 'bg-success/10 text-success dark:bg-success/15',
+  FULLY_DEPRECIATED: 'bg-warning/10 text-warning dark:bg-warning/15',
+  DISPOSED: 'bg-muted text-muted-foreground',
+};
+
+const inputClass =
+  'w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none';
+
+function fmt(n: string | number | null | undefined): string {
+  if (n == null) return '-';
+  return Number(n).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+const emptyForm = {
+  assetCode: '',
+  name: '',
+  description: '',
+  category: 'EQUIPMENT',
+  branchId: '',
+  costValue: '',
+  salvageValue: '0',
+  usefulLife: '5',
+  purchaseDate: new Date().toISOString().split('T')[0],
+  depreciationAccountCode: '',
+  accumulatedDepreAccountCode: '',
+  assetAccountCode: '',
+};
+
+// ─── Component ───
+export default function AssetManagementPage() {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const isOwner = user?.role === 'OWNER';
+  const isOwnerOrManager = ['OWNER', 'BRANCH_MANAGER'].includes(user?.role ?? '');
+  const canRunDepreciation = ['OWNER', 'FINANCE_MANAGER'].includes(user?.role ?? '');
+
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const debouncedSearch = useDebounce(search);
+
+  const [showModal, setShowModal] = useState(false);
+  const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
+  const [form, setForm] = useState(emptyForm);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  const [viewAsset, setViewAsset] = useState<Asset | null>(null);
+  const [disposeTarget, setDisposeTarget] = useState<Asset | null>(null);
+
+  // ─── Queries ───
+  const { data: assetsData, isLoading } = useQuery({
+    queryKey: ['assets', page, debouncedSearch, statusFilter, categoryFilter],
+    queryFn: () =>
+      api
+        .get('/assets', {
+          params: {
+            page,
+            limit: 20,
+            search: debouncedSearch || undefined,
+            status: statusFilter || undefined,
+            category: categoryFilter || undefined,
+          },
+        })
+        .then((r) => r.data),
+  });
+
+  const { data: summary } = useQuery<AssetSummary>({
+    queryKey: ['assets', 'summary'],
+    queryFn: () => api.get('/assets/summary').then((r) => r.data),
+  });
+
+  const { data: branches } = useQuery<Branch[]>({
+    queryKey: ['branches'],
+    queryFn: () => api.get('/branches').then((r) => r.data?.data ?? r.data),
+  });
+
+  const assets: Asset[] = assetsData?.data ?? [];
+  const totalPages = assetsData?.totalPages ?? 1;
+  const total = assetsData?.total ?? 0;
+
+  // ─── Mutations ───
+  const createMutation = useMutation({
+    mutationFn: (data: typeof form) =>
+      api.post('/assets', {
+        ...data,
+        costValue: Number(data.costValue),
+        salvageValue: Number(data.salvageValue),
+        usefulLife: Number(data.usefulLife),
+      }),
+    onSuccess: () => {
+      toast.success('เพิ่มสินทรัพย์เรียบร้อย');
+      queryClient.invalidateQueries({ queryKey: ['assets'] });
+      closeModal();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: typeof form }) =>
+      api.patch(`/assets/${id}`, {
+        ...data,
+        costValue: Number(data.costValue),
+        salvageValue: Number(data.salvageValue),
+        usefulLife: Number(data.usefulLife),
+      }),
+    onSuccess: () => {
+      toast.success('แก้ไขสินทรัพย์เรียบร้อย');
+      queryClient.invalidateQueries({ queryKey: ['assets'] });
+      closeModal();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const disposeMutation = useMutation({
+    mutationFn: (id: string) => api.post(`/assets/${id}/dispose`),
+    onSuccess: () => {
+      toast.success('จำหน่ายสินทรัพย์เรียบร้อย');
+      queryClient.invalidateQueries({ queryKey: ['assets'] });
+      setDisposeTarget(null);
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const runDepreciationMutation = useMutation({
+    mutationFn: () => api.post('/assets/run-depreciation'),
+    onSuccess: (res) => {
+      const count = res.data?.processedCount ?? 0;
+      toast.success(`คำนวณค่าเสื่อมราคาเรียบร้อย (${count} รายการ)`);
+      queryClient.invalidateQueries({ queryKey: ['assets'] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  // ─── Handlers ───
+  function closeModal() {
+    setShowModal(false);
+    setEditingAsset(null);
+    setForm(emptyForm);
+    setShowAdvanced(false);
+  }
+
+  function openCreate() {
+    setEditingAsset(null);
+    setForm(emptyForm);
+    setShowModal(true);
+  }
+
+  function openEdit(asset: Asset) {
+    setEditingAsset(asset);
+    setForm({
+      assetCode: asset.assetCode,
+      name: asset.name,
+      description: asset.description ?? '',
+      category: asset.category,
+      branchId: asset.branch?.id ?? '',
+      costValue: String(asset.costValue),
+      salvageValue: String(asset.salvageValue),
+      usefulLife: String(asset.usefulLife),
+      purchaseDate: asset.purchaseDate?.split('T')[0] ?? '',
+      depreciationAccountCode: '',
+      accumulatedDepreAccountCode: '',
+      assetAccountCode: '',
+    });
+    setShowModal(true);
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.assetCode || !form.name || !form.costValue) {
+      toast.error('กรุณากรอกข้อมูลที่จำเป็น');
+      return;
+    }
+    if (editingAsset) {
+      updateMutation.mutate({ id: editingAsset.id, data: form });
+    } else {
+      createMutation.mutate(form);
+    }
+  }
+
+  function setField(field: string, value: string | number | boolean) {
+    setForm((prev) => ({ ...prev, [field]: value }));
+  }
+
+  // ─── Summary Cards ───
+  const summaryCards = useMemo(
+    () => [
+      {
+        label: 'สินทรัพย์ทั้งหมด',
+        value: summary?.totalCount ?? 0,
+        icon: Package,
+        color: 'border-l-primary',
+        isCurrency: false,
+      },
+      {
+        label: 'มูลค่ารวม',
+        value: summary?.totalCostValue ?? 0,
+        icon: Banknote,
+        color: 'border-l-blue-500',
+        isCurrency: true,
+      },
+      {
+        label: 'ค่าเสื่อมราคาสะสม',
+        value: summary?.totalAccumulatedDepreciation ?? 0,
+        icon: TrendingDown,
+        color: 'border-l-warning',
+        isCurrency: true,
+      },
+      {
+        label: 'มูลค่าสุทธิ',
+        value: summary?.totalNetBookValue ?? 0,
+        icon: Calculator,
+        color: 'border-l-success',
+        isCurrency: true,
+      },
+    ],
+    [summary],
+  );
+
+  // ─── Table Columns ───
+  const columns = useMemo(
+    () => [
+      {
+        key: 'assetCode',
+        label: 'รหัส',
+        sortable: true,
+        render: (item: Asset) => (
+          <span className="font-mono text-xs">{item.assetCode}</span>
+        ),
+      },
+      {
+        key: 'name',
+        label: 'ชื่อสินทรัพย์',
+        sortable: true,
+        render: (item: Asset) => (
+          <div>
+            <div className="font-medium">{item.name}</div>
+            {item.description && (
+              <div className="text-xs text-muted-foreground truncate max-w-[200px]">
+                {item.description}
+              </div>
+            )}
+          </div>
+        ),
+      },
+      {
+        key: 'category',
+        label: 'หมวดหมู่',
+        render: (item: Asset) => (
+          <span className="text-sm">{categoryLabels[item.category] ?? item.category}</span>
+        ),
+      },
+      {
+        key: 'costValue',
+        label: 'ราคาทุน',
+        sortable: true,
+        render: (item: Asset) => (
+          <span className="font-mono text-sm tabular-nums">{fmt(item.costValue)}</span>
+        ),
+      },
+      {
+        key: 'accumulatedDepreciation',
+        label: 'ค่าเสื่อมสะสม',
+        sortable: true,
+        render: (item: Asset) => (
+          <span className="font-mono text-sm tabular-nums text-warning">
+            {fmt(item.accumulatedDepreciation)}
+          </span>
+        ),
+      },
+      {
+        key: 'netBookValue',
+        label: 'มูลค่าสุทธิ',
+        sortable: true,
+        render: (item: Asset) => {
+          const net = Number(item.costValue) - Number(item.accumulatedDepreciation);
+          return (
+            <span className="font-mono text-sm tabular-nums font-medium">
+              {fmt(net)}
+            </span>
+          );
+        },
+      },
+      {
+        key: 'status',
+        label: 'สถานะ',
+        render: (item: Asset) => (
+          <span
+            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[item.status] ?? 'bg-muted text-muted-foreground'}`}
+          >
+            {statusLabels[item.status] ?? item.status}
+          </span>
+        ),
+      },
+      {
+        key: 'actions',
+        label: '',
+        render: (item: Asset) => (
+          <div className="flex items-center gap-1">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setViewAsset(item);
+              }}
+              className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground"
+              title="ดูรายละเอียด"
+            >
+              <Eye className="size-4" />
+            </button>
+            {isOwnerOrManager && item.status !== 'DISPOSED' && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openEdit(item);
+                }}
+                className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground"
+                title="แก้ไข"
+              >
+                <Pencil className="size-4" />
+              </button>
+            )}
+            {isOwner && item.status === 'ACTIVE' && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDisposeTarget(item);
+                }}
+                className="p-1.5 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                title="จำหน่าย"
+              >
+                <Trash2 className="size-4" />
+              </button>
+            )}
+          </div>
+        ),
+      },
+    ],
+    [isOwner, isOwnerOrManager],
+  );
+
+  // ─── Render ───
+  return (
+    <div className="p-4 lg:p-6 space-y-6">
+      <PageHeader
+        title="สินทรัพย์ถาวร"
+        subtitle="จัดการสินทรัพย์ถาวรและค่าเสื่อมราคา"
+        icon={<Building2 className="size-6" />}
+        action={
+          <div className="flex items-center gap-2">
+            {canRunDepreciation && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => runDepreciationMutation.mutate()}
+                disabled={runDepreciationMutation.isPending}
+              >
+                <Play className="size-4 mr-1.5" />
+                {runDepreciationMutation.isPending ? 'กำลังคำนวณ...' : 'คำนวณค่าเสื่อมราคา'}
+              </Button>
+            )}
+            {isOwnerOrManager && (
+              <Button size="sm" onClick={openCreate}>
+                <Plus className="size-4 mr-1.5" />
+                เพิ่มสินทรัพย์
+              </Button>
+            )}
+          </div>
+        }
+      />
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {summaryCards.map((card) => (
+          <Card key={card.label} className={`border-l-4 ${card.color}`}>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">{card.label}</p>
+                  <div className="text-xl font-bold">
+                    <AnimatedCounter
+                      value={card.value}
+                      prefix={card.isCurrency ? '฿' : ''}
+                      decimals={card.isCurrency ? 2 : 0}
+                    />
+                  </div>
+                </div>
+                <card.icon className="size-8 text-muted-foreground/30" />
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-3">
+        <input
+          type="text"
+          placeholder="ค้นหาชื่อ/รหัสสินทรัพย์..."
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setPage(1);
+          }}
+          className={`${inputClass} max-w-xs`}
+        />
+        <select
+          value={statusFilter}
+          onChange={(e) => {
+            setStatusFilter(e.target.value);
+            setPage(1);
+          }}
+          className={`${inputClass} max-w-[180px]`}
+        >
+          <option value="">สถานะทั้งหมด</option>
+          {Object.entries(statusLabels).map(([val, label]) => (
+            <option key={val} value={val}>
+              {label}
+            </option>
+          ))}
+        </select>
+        <select
+          value={categoryFilter}
+          onChange={(e) => {
+            setCategoryFilter(e.target.value);
+            setPage(1);
+          }}
+          className={`${inputClass} max-w-[180px]`}
+        >
+          <option value="">หมวดหมู่ทั้งหมด</option>
+          {categoryOptions.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Data Table */}
+      <DataTable
+        columns={columns}
+        data={assets}
+        isLoading={isLoading}
+        emptyMessage="ไม่พบสินทรัพย์"
+        emptyIcon={Building2}
+        emptyDescription="ยังไม่มีข้อมูลสินทรัพย์ถาวร"
+        pagination={{
+          page,
+          totalPages,
+          total,
+          onPageChange: setPage,
+        }}
+      />
+
+      {/* Create / Edit Modal */}
+      <Modal
+        isOpen={showModal}
+        onClose={closeModal}
+        title={editingAsset ? 'แก้ไขสินทรัพย์' : 'เพิ่มสินทรัพย์ใหม่'}
+        size="lg"
+      >
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                รหัสสินทรัพย์ <span className="text-destructive">*</span>
+              </label>
+              <input
+                className={inputClass}
+                value={form.assetCode}
+                onChange={(e) => setField('assetCode', e.target.value)}
+                placeholder="เช่น FA-001"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                ชื่อสินทรัพย์ <span className="text-destructive">*</span>
+              </label>
+              <input
+                className={inputClass}
+                value={form.name}
+                onChange={(e) => setField('name', e.target.value)}
+                placeholder="ชื่อสินทรัพย์"
+                required
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">รายละเอียด</label>
+            <textarea
+              className={`${inputClass} min-h-[60px]`}
+              value={form.description}
+              onChange={(e) => setField('description', e.target.value)}
+              placeholder="รายละเอียดเพิ่มเติม (ถ้ามี)"
+              rows={2}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">หมวดหมู่</label>
+              <select
+                className={inputClass}
+                value={form.category}
+                onChange={(e) => setField('category', e.target.value)}
+              >
+                {categoryOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">สาขา</label>
+              <select
+                className={inputClass}
+                value={form.branchId}
+                onChange={(e) => setField('branchId', e.target.value)}
+              >
+                <option value="">-- เลือกสาขา --</option>
+                {(branches ?? []).map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                ราคาทุน (บาท) <span className="text-destructive">*</span>
+              </label>
+              <input
+                type="number"
+                className={inputClass}
+                value={form.costValue}
+                onChange={(e) => setField('costValue', e.target.value)}
+                placeholder="0.00"
+                min="0"
+                step="0.01"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">มูลค่าซาก (บาท)</label>
+              <input
+                type="number"
+                className={inputClass}
+                value={form.salvageValue}
+                onChange={(e) => setField('salvageValue', e.target.value)}
+                placeholder="0.00"
+                min="0"
+                step="0.01"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">อายุใช้งาน (ปี)</label>
+              <input
+                type="number"
+                className={inputClass}
+                value={form.usefulLife}
+                onChange={(e) => setField('usefulLife', e.target.value)}
+                placeholder="5"
+                min="1"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">วันที่ซื้อ</label>
+            <ThaiDateInput
+              value={form.purchaseDate}
+              onChange={(e) => setField('purchaseDate', e.target.value)}
+            />
+          </div>
+
+          {/* Advanced Section */}
+          <div className="border-t pt-3">
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+            >
+              {showAdvanced ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
+              รหัสบัญชี (ขั้นสูง)
+            </button>
+            {showAdvanced && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-3">
+                <div>
+                  <label className="block text-sm font-medium mb-1">รหัสบัญชีสินทรัพย์</label>
+                  <input
+                    className={inputClass}
+                    value={form.assetAccountCode}
+                    onChange={(e) => setField('assetAccountCode', e.target.value)}
+                    placeholder="เช่น 1200"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">รหัสบัญชีค่าเสื่อม</label>
+                  <input
+                    className={inputClass}
+                    value={form.depreciationAccountCode}
+                    onChange={(e) => setField('depreciationAccountCode', e.target.value)}
+                    placeholder="เช่น 5306"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">รหัสบัญชีค่าเสื่อมสะสม</label>
+                  <input
+                    className={inputClass}
+                    value={form.accumulatedDepreAccountCode}
+                    onChange={(e) => setField('accumulatedDepreAccountCode', e.target.value)}
+                    placeholder="เช่น 1290"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="outline" onClick={closeModal}>
+              ยกเลิก
+            </Button>
+            <Button
+              type="submit"
+              disabled={createMutation.isPending || updateMutation.isPending}
+            >
+              {createMutation.isPending || updateMutation.isPending
+                ? 'กำลังบันทึก...'
+                : editingAsset
+                  ? 'บันทึกการแก้ไข'
+                  : 'เพิ่มสินทรัพย์'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* View Detail Modal */}
+      <Modal
+        isOpen={!!viewAsset}
+        onClose={() => setViewAsset(null)}
+        title="รายละเอียดสินทรัพย์"
+        size="lg"
+      >
+        {viewAsset && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <DetailRow label="รหัส" value={viewAsset.assetCode} />
+              <DetailRow label="ชื่อ" value={viewAsset.name} />
+              <DetailRow label="หมวดหมู่" value={categoryLabels[viewAsset.category] ?? viewAsset.category} />
+              <DetailRow label="สาขา" value={viewAsset.branch?.name ?? '-'} />
+              <DetailRow label="ราคาทุน" value={`฿${fmt(viewAsset.costValue)}`} />
+              <DetailRow label="มูลค่าซาก" value={`฿${fmt(viewAsset.salvageValue)}`} />
+              <DetailRow label="อายุใช้งาน" value={`${viewAsset.usefulLife} ปี`} />
+              <DetailRow
+                label="ค่าเสื่อมสะสม"
+                value={`฿${fmt(viewAsset.accumulatedDepreciation)}`}
+              />
+              <DetailRow
+                label="มูลค่าสุทธิ"
+                value={`฿${fmt(Number(viewAsset.costValue) - Number(viewAsset.accumulatedDepreciation))}`}
+              />
+              <DetailRow label="วันที่ซื้อ" value={viewAsset.purchaseDate?.split('T')[0] ?? '-'} />
+              <DetailRow
+                label="สถานะ"
+                value={
+                  <span
+                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[viewAsset.status] ?? ''}`}
+                  >
+                    {statusLabels[viewAsset.status] ?? viewAsset.status}
+                  </span>
+                }
+              />
+            </div>
+            {viewAsset.description && (
+              <div>
+                <p className="text-sm font-medium text-muted-foreground mb-1">รายละเอียด</p>
+                <p className="text-sm">{viewAsset.description}</p>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+
+      {/* Dispose Confirm */}
+      <ConfirmDialog
+        open={!!disposeTarget}
+        onOpenChange={(open) => !open && setDisposeTarget(null)}
+        title="จำหน่ายสินทรัพย์"
+        description={`ยืนยันจำหน่ายสินทรัพย์ "${disposeTarget?.name}" (${disposeTarget?.assetCode})? การดำเนินการนี้ไม่สามารถย้อนกลับได้`}
+        confirmLabel="จำหน่าย"
+        variant="destructive"
+        loading={disposeMutation.isPending}
+        onConfirm={() => disposeTarget && disposeMutation.mutate(disposeTarget.id)}
+      />
+    </div>
+  );
+}
+
+// ─── Helper ───
+function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div>
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <div className="text-sm font-medium">{value}</div>
+    </div>
+  );
+}

@@ -300,6 +300,7 @@ model Branch {
   financeReceivables       FinanceReceivable[]
   expenses                 Expense[]
   interCompanyTransactions InterCompanyTransaction[]
+  fixedAssets               FixedAsset[]
 
   @@index([companyId])
   @@map("branches")
@@ -368,6 +369,7 @@ model User {
   commissionsApproved    SalesCommission[]    @relation("CommissionApprovedBy")
   contractsAssigned      Contract[]           @relation("ContractAssignedTo")
   tradeInsAppraised      TradeIn[]            @relation("TradeInAppraisedBy")
+  assetsCreated          FixedAsset[]         @relation("AssetCreatedBy")
 
   @@index([branchId])
   @@map("users")
@@ -1802,6 +1804,51 @@ model TaxReport {
   @@index([reportYear, reportMonth])
   @@index([status])
   @@map("tax_reports")
+}
+
+// ============================================================
+// FIXED ASSET (สินทรัพย์ถาวร + ค่าเสื่อมราคา)
+// ============================================================
+
+enum AssetStatus {
+  ACTIVE // ใช้งานอยู่
+  FULLY_DEPRECIATED // หักค่าเสื่อมราคาครบแล้ว
+  DISPOSED // จำหน่ายแล้ว
+}
+
+model FixedAsset {
+  id                String      @id @default(uuid())
+  assetCode         String      @unique @map("asset_code") // รหัสสินทรัพย์ e.g. "PA-20241200002"
+  name              String // ชื่อสินทรัพย์
+  description       String?
+  category          String? // หมวดหมู่ (อุปกรณ์สำนักงาน, ส่วนปรับปรุงอาคาร, เครื่องตกแต่ง, ยานพาหนะ)
+  branchId          String?     @map("branch_id")
+  costValue         Decimal     @map("cost_value") @db.Decimal(12, 2) // ราคาทุนที่ซื้อมา
+  salvageValue      Decimal     @default(0) @map("salvage_value") @db.Decimal(12, 2) // ราคาซาก (ปกติ 1 บาท หรือ 0)
+  usefulLife        Int         @map("useful_life") // อายุการใช้งาน (จำนวนปี เช่น 5 ปี)
+  purchaseDate      DateTime    @map("purchase_date") // วันที่ซื้อ/เริ่มใช้งาน
+  accumulatedDepre  Decimal     @default(0) @map("accumulated_depre") @db.Decimal(12, 2) // ค่าเสื่อมราคาสะสม
+  status            AssetStatus @default(ACTIVE)
+  disposedAt        DateTime?   @map("disposed_at")
+  disposalNote      String?     @map("disposal_note")
+
+  // Account codes for journal entries
+  depreciationAccountCode String @default("53-1601") @map("depreciation_account_code") // Dr: ค่าเสื่อมราคา (Expense)
+  accumulatedAccountCode  String @default("12-2102") @map("accumulated_account_code") // Cr: ค่าเสื่อมราคาสะสม (Contra Asset)
+
+  createdById       String?     @map("created_by_id")
+  createdAt         DateTime    @default(now()) @map("created_at")
+  updatedAt         DateTime    @updatedAt @map("updated_at")
+  deletedAt         DateTime?   @map("deleted_at")
+
+  branch    Branch? @relation(fields: [branchId], references: [id])
+  createdBy User?   @relation("AssetCreatedBy", fields: [createdById], references: [id])
+
+  @@index([branchId])
+  @@index([status])
+  @@index([category])
+  @@index([purchaseDate])
+  @@map("fixed_assets")
 }
 
 // ============================================================

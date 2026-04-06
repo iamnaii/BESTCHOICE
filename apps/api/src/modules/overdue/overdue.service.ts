@@ -228,16 +228,19 @@ export class OverdueService {
 
     const lateFeePerDay = lateFeeConfig ? Number(lateFeeConfig.value) : BUSINESS_RULES.LATE_FEE_PER_DAY;
     const lateFeeCap = lateFeeCapConfig ? Number(lateFeeCapConfig.value) : BUSINESS_RULES.LATE_FEE_CAP;
+    const lateFeeCapPct = BUSINESS_RULES.LATE_FEE_CAP_PCT;
 
     // Single bulk UPDATE: calculate late fees and set status in one query
     // Use EXTRACT(EPOCH) / 86400 to get total days (not just the day component of the interval)
     // Skip payments with late_fee_waived flag to preserve manually adjusted fees
+    // Cap = min(fixed_cap, amount_due * pct_cap) per Thai law (max 5% of installment)
     const result = await this.prisma.$executeRaw`
       UPDATE "payments"
       SET
         "late_fee" = ROUND(LEAST(
           GREATEST(FLOOR(EXTRACT(EPOCH FROM (${now}::timestamp - "due_date")) / 86400)::int, 0) * ${lateFeePerDay},
-          ${lateFeeCap}
+          ${lateFeeCap},
+          "amount_due" * ${lateFeeCapPct}
         )::numeric, 2),
         "status" = 'OVERDUE'
       WHERE "status" IN ('PENDING', 'PARTIALLY_PAID', 'OVERDUE')

@@ -321,6 +321,12 @@ export class AccountingService {
     if (expense.status === 'VOIDED') {
       throw new BadRequestException('รายจ่ายนี้ถูกยกเลิกไปแล้ว');
     }
+    if (expense.status === 'PAID') {
+      const voider = await this.prisma.user.findUnique({ where: { id: voidedById } });
+      if (voider?.role !== 'OWNER') {
+        throw new BadRequestException('เฉพาะ OWNER เท่านั้นที่สามารถยกเลิกรายจ่ายที่จ่ายแล้ว');
+      }
+    }
     return this.prisma.expense.update({
       where: { id },
       data: { status: 'VOIDED', voidReason: voidReason.trim(), voidedById, voidedAt: new Date() },

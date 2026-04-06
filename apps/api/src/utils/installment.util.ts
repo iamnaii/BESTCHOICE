@@ -6,6 +6,7 @@
  * in financial calculations. All intermediate math uses integers; results are converted
  * back to baht (2 decimal places) only at the end.
  */
+import { BadRequestException } from '@nestjs/common';
 
 export interface InstallmentCalculation {
   principal: number;
@@ -41,11 +42,11 @@ export function calculateInstallment(
   storeCommissionPct: number = 0,
   vatPct: number = 0,
 ): InstallmentCalculation {
-  if (sellingPrice <= 0) throw new Error('ราคาขายต้องมากกว่า 0');
-  if (downPayment < 0) throw new Error('เงินดาวน์ต้องไม่ติดลบ');
-  if (downPayment >= sellingPrice) throw new Error('เงินดาวน์ต้องน้อยกว่าราคาขาย');
-  if (totalMonths <= 0) throw new Error('จำนวนงวดต้องมากกว่า 0');
-  if (interestRate < 0) throw new Error('อัตราดอกเบี้ยต้องไม่ติดลบ');
+  if (sellingPrice <= 0) throw new BadRequestException('ราคาขายต้องมากกว่า 0');
+  if (downPayment < 0) throw new BadRequestException('เงินดาวน์ต้องไม่ติดลบ');
+  if (downPayment >= sellingPrice) throw new BadRequestException('เงินดาวน์ต้องน้อยกว่าราคาขาย');
+  if (totalMonths <= 0) throw new BadRequestException('จำนวนงวดต้องมากกว่า 0');
+  if (interestRate < 0) throw new BadRequestException('อัตราดอกเบี้ยต้องไม่ติดลบ');
 
   // Use satang-based integer math: multiply by 100, compute, round at each step
   const principal = roundBaht(sellingPrice - downPayment);
@@ -104,7 +105,7 @@ export function generatePaymentSchedule(
   const sumPayments = payments.reduce((sum, p) => sum + p.amountDue, 0);
   const diff = Math.abs(sumPayments - financedAmount);
   if (diff > 0.01) {
-    throw new Error(`Payment schedule total mismatch: sum=${sumPayments}, expected=${financedAmount}, diff=${diff}`);
+    throw new BadRequestException(`Payment schedule total mismatch: sum=${roundBaht(sumPayments)}, expected=${roundBaht(financedAmount)}, diff=${roundBaht(diff)}`);
   }
 
   return payments;

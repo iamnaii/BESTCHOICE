@@ -14,6 +14,7 @@ export class AuditInterceptor implements NestInterceptor {
   private static readonly SENSITIVE_FIELDS = [
     'password', 'token', 'secret', 'accessToken', 'refreshToken',
     'currentPassword', 'newPassword', 'confirmPassword',
+    'nationalId', 'vendorTaxId',
   ];
 
   constructor(private auditService: AuditService) {}

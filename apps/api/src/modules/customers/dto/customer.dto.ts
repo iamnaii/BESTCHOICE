@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsArray, IsBoolean, IsDateString, IsNumber, Length } from 'class-validator';
+import { IsString, IsOptional, IsArray, IsBoolean, IsDateString, IsNumber, Length, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateCustomerDto {
@@ -86,6 +86,7 @@ export class CreateCustomerDto {
   addressWork?: string;
 
   @IsArray()
+  @ValidateNested({ each: true })
   @IsOptional()
   references?: Record<string, unknown>[];
 
@@ -94,6 +95,7 @@ export class CreateCustomerDto {
   referredById?: string;
 
   @IsArray()
+  @IsString({ each: true })
   @IsOptional()
   documents?: string[];
 }
@@ -181,6 +183,7 @@ export class UpdateCustomerDto {
   addressWork?: string;
 
   @IsArray()
+  @ValidateNested({ each: true })
   @IsOptional()
   references?: Record<string, unknown>[];
 
@@ -189,6 +192,7 @@ export class UpdateCustomerDto {
   referredById?: string;
 
   @IsArray()
+  @IsString({ each: true })
   @IsOptional()
   documents?: string[];
 }

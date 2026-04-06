@@ -82,7 +82,7 @@ export class ReorderPointsService {
 
     // Verify branch exists
     const branch = await this.prisma.branch.findUnique({ where: { id: dto.branchId } });
-    if (!branch) throw new NotFoundException('ไม่พบสาขา');
+    if (!branch || branch.deletedAt) throw new NotFoundException('ไม่พบสาขา');
 
     return this.prisma.reorderPoint.create({
       data: {
@@ -273,7 +273,7 @@ export class ReorderPointsService {
 
   async resolveAlert(alertId: string, poId?: string) {
     const alert = await this.prisma.stockAlert.findUnique({ where: { id: alertId } });
-    if (!alert) throw new NotFoundException('ไม่พบ Stock Alert');
+    if (!alert || alert.deletedAt) throw new NotFoundException('ไม่พบ Stock Alert');
 
     return this.prisma.stockAlert.update({
       where: { id: alertId },

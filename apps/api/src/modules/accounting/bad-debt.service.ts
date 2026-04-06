@@ -83,7 +83,8 @@ export class BadDebtService {
     >();
     for (const p of overduePayments) {
       const existing = contractOutstanding.get(p.contract.id);
-      const remaining = Number(p.amountDue) - Number(p.amountPaid);
+      const unpaidLateFee = !p.lateFeeWaived ? Number(p.lateFee) : 0;
+      const remaining = Number(p.amountDue) - Number(p.amountPaid) + unpaidLateFee;
       if (existing) {
         existing.amount += remaining;
       } else {

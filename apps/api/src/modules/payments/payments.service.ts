@@ -6,6 +6,7 @@ import { ReceiptsService } from '../receipts/receipts.service';
 import { AuditService } from '../audit/audit.service';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { roundBaht } from '../../utils/installment.util';
+import { BUSINESS_RULES } from '../../utils/config.util';
 
 @Injectable()
 export class PaymentsService {
@@ -108,7 +109,8 @@ export class PaymentsService {
           const capConfig = await tx.systemConfig.findUnique({ where: { key: 'late_fee_cap' } });
           const feePerDay = config ? Number(config.value) : 50;
           const cap = capConfig ? Number(capConfig.value) : 1500;
-          const calculatedFee = Math.round(Math.min(daysOverdue * feePerDay, cap) * 100) / 100;
+          const pctCap = Number(payment.amountDue) * BUSINESS_RULES.LATE_FEE_CAP_PCT;
+          const calculatedFee = Math.round(Math.min(daysOverdue * feePerDay, cap, pctCap) * 100) / 100;
           if (calculatedFee > lateFee) {
             lateFee = calculatedFee;
             await tx.payment.update({ where: { id: payment.id }, data: { lateFee } });

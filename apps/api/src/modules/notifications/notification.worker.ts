@@ -1,5 +1,5 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Logger } from '@nestjs/common';
+import { BadRequestException, Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { NOTIFICATION_QUEUE } from './notification-queue.module';
 import { NotificationsService } from './notifications.service';
@@ -25,7 +25,7 @@ export class NotificationWorker extends WorkerHost {
     try {
       switch (type) {
         case 'SMS':
-          if (!recipientPhone) throw new Error('recipientPhone required for SMS');
+          if (!recipientPhone) throw new BadRequestException('recipientPhone required for SMS');
           await this.notificationsService.sendSmsFromQueue(
             recipientPhone,
             this.renderTemplate(templateKey, variables),
@@ -33,7 +33,7 @@ export class NotificationWorker extends WorkerHost {
           break;
 
         case 'LINE':
-          if (!recipientLineId) throw new Error('recipientLineId required for LINE');
+          if (!recipientLineId) throw new BadRequestException('recipientLineId required for LINE');
           // LINE messages are sent via the existing LineOaService
           // For now, log that LINE should be sent (actual LINE send is in line-oa module)
           this.logger.log(`LINE notification queued for ${recipientLineId}: ${templateKey}`);

@@ -78,9 +78,10 @@
 | 6 | สร้าง JournalEntry + JournalLine models | F-D002 | M |
 | 7 | แยก P&L / Balance Sheet per company | F-012, AC-704 | L |
 | 8 | อัปเดต inter-company ให้ใช้ Company model | F-C002 | M |
+| 9 | Finance Receivable เพิ่ม tab BESTCHOICE FINANCE (ยอดที่ FINANCE จ่ายให้ SHOP) | UX | M |
 
 **Effort รวม**: L (2-4 สัปดาห์)
-**Unlocks**: Tax reporting, PEAK sync, แยกนิติบุคคล
+**Unlocks**: Tax reporting, PEAK sync, แยกนิติบุคคล, SHOP เห็นยอดรอรับครบทั้ง GFIN + FINANCE
 
 ---
 

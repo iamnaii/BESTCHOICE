@@ -37,8 +37,8 @@ interface Summary {
 
 // ─── Constants ───
 const accountTypeLabels: Record<string, string> = {
-  COST_OF_SALES: '5100 ต้นทุนขาย', SELLING_EXPENSE: '5200 ค่าใช้จ่ายในการขาย',
-  ADMINISTRATIVE_EXPENSE: '5300 ค่าใช้จ่ายในการบริหาร', OTHER_EXPENSE: '5900 ค่าใช้จ่ายอื่น',
+  COST_OF_SALES: '51 ต้นทุนขาย', SELLING_EXPENSE: '52 ค่าใช้จ่ายในการขาย',
+  ADMINISTRATIVE_EXPENSE: '53 ค่าใช้จ่ายในการบริหาร', OTHER_EXPENSE: '54 ค่าใช้จ่ายอื่น',
 };
 
 const categoryLabels: Record<string, string> = {
@@ -72,33 +72,33 @@ const paymentMethodLabels: Record<string, string> = {
 
 const categoryGroups: Record<string, { value: string; label: string }[]> = {
   COST_OF_SALES: [
-    { value: 'COGS_PRODUCT', label: '5101 ต้นทุนสินค้า' },
-    { value: 'COGS_REPAIR_PARTS', label: '5102 อะไหล่/ซ่อม' },
+    { value: 'COGS_PRODUCT', label: '51-1101 ต้นทุนมือถือ (ใหม่)' },
+    { value: 'COGS_REPAIR_PARTS', label: '51-1102 ต้นทุนมือถือ (มือสอง)' },
   ],
   SELLING_EXPENSE: [
-    { value: 'SELL_COMMISSION', label: '5201 ค่าคอมมิชชั่น' },
-    { value: 'SELL_ADVERTISING', label: '5202 ค่าโฆษณา/การตลาด' },
-    { value: 'SELL_TRANSPORT', label: '5203 ค่าขนส่ง' },
-    { value: 'SELL_PACKAGING', label: '5204 ค่าบรรจุภัณฑ์' },
+    { value: 'SELL_COMMISSION', label: '52-1101 ค่าคอมมิชชั่น' },
+    { value: 'SELL_ADVERTISING', label: '52-1102 ค่าส่งเสริมการขาย' },
+    { value: 'SELL_TRANSPORT', label: '53-1304 ค่าขนส่ง' },
+    { value: 'SELL_PACKAGING', label: '52-1103 ค่าบริการส่ง SMS' },
   ],
   ADMINISTRATIVE_EXPENSE: [
-    { value: 'ADMIN_SALARY', label: '5301 เงินเดือน/ค่าจ้าง' },
-    { value: 'ADMIN_SOCIAL_SECURITY', label: '5302 ประกันสังคม' },
-    { value: 'ADMIN_RENT', label: '5303 ค่าเช่าสถานที่' },
-    { value: 'ADMIN_UTILITIES', label: '5304 ค่าน้ำ/ไฟ/เน็ต' },
-    { value: 'ADMIN_OFFICE_SUPPLIES', label: '5305 วัสดุสำนักงาน' },
-    { value: 'ADMIN_DEPRECIATION', label: '5306 ค่าเสื่อมราคา' },
-    { value: 'ADMIN_INSURANCE', label: '5307 ค่าประกันภัย' },
-    { value: 'ADMIN_TAX_FEE', label: '5308 ภาษี/ค่าธรรมเนียม' },
-    { value: 'ADMIN_MAINTENANCE', label: '5309 ค่าซ่อมบำรุง' },
-    { value: 'ADMIN_TRAVEL', label: '5310 ค่าเดินทาง' },
-    { value: 'ADMIN_TELEPHONE', label: '5311 ค่าโทรศัพท์' },
+    { value: 'ADMIN_SALARY', label: '53-1101 เงินเดือน/ค่าจ้าง' },
+    { value: 'ADMIN_SOCIAL_SECURITY', label: '53-1103 ประกันสังคม/กองทุน' },
+    { value: 'ADMIN_RENT', label: '53-1301 ค่าเช่าสถานที่' },
+    { value: 'ADMIN_UTILITIES', label: '53-1302 ค่าน้ำ/ไฟฟ้า' },
+    { value: 'ADMIN_OFFICE_SUPPLIES', label: '53-1201 วัสดุสำนักงาน' },
+    { value: 'ADMIN_DEPRECIATION', label: '53-1601 ค่าเสื่อมราคา' },
+    { value: 'ADMIN_INSURANCE', label: '53-1103 ค่าประกันภัย' },
+    { value: 'ADMIN_TAX_FEE', label: '54-1103 ภาษี/ค่าธรรมเนียม' },
+    { value: 'ADMIN_MAINTENANCE', label: '53-1305 ค่าซ่อมบำรุง' },
+    { value: 'ADMIN_TRAVEL', label: '53-1304 ค่าเดินทาง/ขนส่ง' },
+    { value: 'ADMIN_TELEPHONE', label: '53-1303 ค่าโทรศัพท์' },
   ],
   OTHER_EXPENSE: [
-    { value: 'OTHER_INTEREST', label: '5901 ดอกเบี้ยจ่าย' },
-    { value: 'OTHER_LOSS', label: '5902 ขาดทุนจำหน่ายสินทรัพย์' },
-    { value: 'OTHER_FINE', label: '5903 ค่าปรับ' },
-    { value: 'OTHER_MISC', label: '5999 เบ็ดเตล็ด' },
+    { value: 'OTHER_INTEREST', label: '53-1501 ค่าธรรมเนียมธนาคาร' },
+    { value: 'OTHER_LOSS', label: '53-1503 ขาดทุนจากการปิดสัญญา' },
+    { value: 'OTHER_FINE', label: '54-1104 เบี้ยปรับเงินเพิ่ม' },
+    { value: 'OTHER_MISC', label: '53-1502 ค่าธรรมเนียมอื่น' },
   ],
 };
 

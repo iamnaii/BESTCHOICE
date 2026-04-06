@@ -3,8 +3,27 @@
 ## Project Overview
 BESTCHOICE is a full-stack installment payment management system for mobile/phone shops in Thailand.
 
+## Business Model
+- ปัจจุบัน 1 นิติบุคคล แบ่ง 2 ส่วนธุรกิจ (วางแผนแยก 2 นิติบุคคลในอนาคต):
+  - **BESTCHOICE SHOP** (หลายสาขา) — ขายมือถือใหม่+มือสอง+แถมอุปกรณ์เสริม, **ไม่จด VAT**
+  - **BESTCHOICE FINANCE** (ส่วนกลาง) — จัดไฟแนนซ์, **จด VAT**, ถือกรรมสิทธิ์สินค้าระหว่างผ่อน
+- เจ้าของเดียวกันทั้ง SHOP + FINANCE, บัญชีธนาคารแยก, LINE OA แยก
+- ขายเงินสด, ผ่อน (จำนวนงวดตั้งค่าได้, flat rate), ผ่านไฟแนนซ์ภายนอก (GFIN)
+- รับซื้อมือถือมือสองจากลูกค้า (ตรวจสภาพ → ตีราคาตามตารางกลาง → จ่ายเงินสด → เข้าสต็อก SHOP)
+- มือสองขายผ่อนได้เหมือนเครื่องใหม่
+
+### Flow เงินเมื่อขายผ่อน
+- ลูกค้าจ่ายดาวน์ → **SHOP เก็บ**
+- FINANCE จ่ายให้ SHOP = **ยอดจัดไฟแนนซ์ + ค่าคอม** (% ของยอดจัด)
+- กรรมสิทธิ์สินค้าย้ายจาก SHOP → FINANCE (จนลูกค้าผ่อนครบ)
+- ลูกค้าจ่ายค่างวดให้ FINANCE (โอน/PaySolutions QR ผ่าน LINE)
+- **VAT 7%** คิดจาก (เงินต้น+ดอกเบี้ย+ค่าคอม) → รวมในค่างวด → นำส่งรายเดือนตามจ่ายจริง
+
+### ระบบภายนอก
+- PEAK (บัญชี), CHATCONE (แชท LINE/Facebook/TikTok), MDM PJ-Soft (ล็อคเครื่อง), PaySolutions (QR)
+
 ## Tech Stack
-- **Frontend**: React 18 + TypeScript + Vite 6 + Tailwind CSS (`apps/web`)
+- **Frontend**: React 18 + TypeScript + Vite 6 + Tailwind CSS + Metronic v9 (`apps/web`)
 - **Backend**: NestJS + Prisma + PostgreSQL (`apps/api`)
 - **Monorepo**: Turborepo with npm workspaces
 - **Shared**: `packages/shared/` for shared types/utilities
@@ -25,7 +44,11 @@ cd apps/api && npm run dev
 ```
 
 ## Test Accounts (Dev Mode)
-- **Admin**: admin@bestchoice.com / admin1234
+- **Admin (OWNER)**: admin@bestchoice.com / admin1234
+- **ผจก.สาขา**: manager.ladprao@bestchoice.com / admin1234
+- **ผจก.การเงิน**: finance@bestchoice.com / admin1234
+- **พนง.ขาย**: sales1@bestchoice.com / admin1234
+- **ฝ่ายบัญชี**: accountant@bestchoice.com / admin1234
 
 ---
 
@@ -125,7 +148,7 @@ Agents อยู่ใน `.claude/agents/` — **เป็น read-only reporte
 apps/
   api/
     src/
-      modules/[feature]/     # NestJS modules (42 features)
+      modules/[feature]/     # NestJS modules (48+ features incl. company, journal, tax, commission, trade-in, promotions)
         [feature].module.ts
         [feature].controller.ts
         [feature].service.ts
@@ -216,8 +239,11 @@ scripts/                     # Deploy & backup scripts
 ### Collections & Risk
 `/overdue`, `/exchange`, `/repossessions`, `/credit-checks`, `/slip-review`
 
+### Revenue & Tax
+`/commissions`, `/tax-reports`, `/trade-in`, `/promotions`
+
 ### Admin & Settings
-`/settings(/interest-config/line-oa/sms/pricing-templates)`, `/users`, `/branches`, `/audit-logs`, `/financial-audit`, `/system-status`, `/notifications`, `/migration`, `/pdpa`, `/document-dashboard`
+`/settings(/interest-config/line-oa/sms/pricing-templates/companies)`, `/users`, `/branches`, `/audit-logs`, `/financial-audit`, `/system-status`, `/notifications`, `/migration`, `/pdpa`, `/document-dashboard`
 
 ### LINE LIFF (Customer Mobile)
 `/liff/contract`, `/liff/early-payoff`, `/liff/history`, `/liff/profile`, `/liff/register`
@@ -225,8 +251,15 @@ scripts/                     # Deploy & backup scripts
 ## User Roles
 - **OWNER** — Full access, system settings, user management
 - **BRANCH_MANAGER** — Branch-level operations
-- **ACCOUNTANT** — Financial access, reports
-- **SALES** — Sales operations, POS, customer management
+- **FINANCE_MANAGER** — Financial oversight, contract approval, reports, cross-branch access
+- **ACCOUNTANT** — Financial access, reports, payment recording
+- **SALES** — Sales operations, POS, customer management, own commissions
+
+## Multi-Entity Structure
+- **BESTCHOICE SHOP** (companyCode: "SHOP") — ไม่จด VAT, ทุก branch อยู่ใต้ SHOP
+- **BESTCHOICE FINANCE** (companyCode: "FINANCE") — จด VAT 7%, ส่วนกลาง ไม่มี branch
+- CompanyInfo model เชื่อมกับ Branch via `companyId`
+- Inter-company transactions track FINANCE↔SHOP flows
 
 ## Testing & Verification
 ```bash

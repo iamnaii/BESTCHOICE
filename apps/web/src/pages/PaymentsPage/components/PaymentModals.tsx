@@ -117,116 +117,156 @@ export function RecordPaymentModal({
   const received = payForm.amount;
   const change = received - outstanding;
 
+  const inputClass = 'w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none';
+
   return (
-    <Modal isOpen title="บันทึกการรับชำระ" onClose={onClose}>
-      <div className="flex flex-col gap-4">
-        {/* Contract info */}
-        <div className="bg-muted/60 rounded-xl p-4 space-y-1">
-          <div className="text-sm"><span className="text-muted-foreground">สัญญา: </span><span className="font-mono font-semibold">{payment.contract.contractNumber}</span></div>
-          <div className="text-sm"><span className="text-muted-foreground">ลูกค้า: </span>{payment.contract.customer.name}</div>
-          <div className="flex items-center gap-4 text-sm">
-            <span><span className="text-muted-foreground">งวดที่: </span><span className="font-medium">{payment.installmentNo}</span></span>
-            <span><span className="text-muted-foreground">ครบกำหนด: </span><span className="font-medium">{new Date(payment.dueDate).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span></span>
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center pt-8 pb-8">
+      <div className="w-full max-w-2xl bg-background rounded-xl shadow-2xl overflow-y-auto max-h-[calc(100vh-4rem)]">
+        {/* Sticky Header */}
+        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b px-6 py-4 flex items-center justify-between">
+          <button onClick={onClose} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+            ← กลับ
+          </button>
+          <h2 className="text-lg font-semibold text-foreground">บันทึกการรับชำระ</h2>
+          <div className="w-16" />
+        </div>
+
+        <div className="p-6 space-y-5">
+          {/* Section 1: ข้อมูลสัญญา */}
+          <div className="rounded-xl border border-border bg-card p-5">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-primary/10 text-primary">
+                <svg xmlns="http://www.w3.org/2000/svg" className="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15" /></svg>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">ข้อมูลสัญญา</h3>
+                <p className="text-xs text-muted-foreground">สัญญา, ลูกค้า, งวดที่ชำระ</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+              <div><span className="text-muted-foreground">สัญญา: </span><span className="font-mono font-semibold">{payment.contract.contractNumber}</span></div>
+              <div><span className="text-muted-foreground">ลูกค้า: </span><span className="font-medium">{payment.contract.customer.name}</span></div>
+              <div><span className="text-muted-foreground">งวดที่: </span><span className="font-medium">{payment.installmentNo}</span></div>
+              <div><span className="text-muted-foreground">ครบกำหนด: </span><span className="font-medium">{new Date(payment.dueDate).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span></div>
+              {payment.contract.branch && <div><span className="text-muted-foreground">สาขา: </span><span className="font-medium">{payment.contract.branch.name}</span></div>}
+            </div>
           </div>
-        </div>
 
-        {/* Breakdown */}
-        <div className="rounded-xl border border-border p-4 space-y-2 text-sm">
-          {hasBreakdown ? (
-            <>
-              <div className="flex justify-between"><span className="text-muted-foreground">เงินต้น + ดอกเบี้ย + ค่าคอม</span><span className="font-medium">{subtotal?.toLocaleString()} ฿</span></div>
-              {vat !== null && vat > 0 && <div className="flex justify-between"><span className="text-muted-foreground">VAT</span><span className="font-medium">{vat.toLocaleString()} ฿</span></div>}
-            </>
-          ) : (
-            <div className="flex justify-between"><span className="text-muted-foreground">ยอดค่างวด</span><span className="font-medium">{amountDue.toLocaleString()} ฿</span></div>
-          )}
-          {lateFee > 0 && (
-            <div className="flex justify-between text-destructive"><span>ค่าปรับล่าช้า</span><span className="font-medium">{lateFee.toLocaleString()} ฿</span></div>
-          )}
-          {amountPaid > 0 && (
-            <div className="flex justify-between text-success"><span>ชำระแล้ว</span><span className="font-medium">-{amountPaid.toLocaleString()} ฿</span></div>
-          )}
-          <div className="border-t border-border pt-2 flex justify-between font-bold text-base">
-            <span>ยอดคงค้าง</span><span>{outstanding.toLocaleString()} ฿</span>
-          </div>
-        </div>
-
-        {/* Slip scanner */}
-        <SlipScannerSection
-          title="สแกนสลิปโอนเงิน (OCR)"
-          description="ถ่ายรูปสลิปเพื่อกรอกข้อมูลอัตโนมัติ"
-          fileRef={slipFileRef}
-          onScan={onSlipScan}
-          loading={ocrSlipLoading}
-          result={slipResult}
-        />
-
-        {/* Form fields */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-foreground mb-1.5">จำนวนเงินที่รับ <span className="text-destructive">*</span></label>
-            <input
-              type="number"
-              value={payForm.amount}
-              onChange={(e) => onPayFormChange({ ...payForm, amount: Number(e.target.value) })}
-              className="w-full px-3 py-2 border border-input rounded-lg text-sm"
-              min={0}
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-foreground mb-1.5">วันที่ชำระ</label>
-            <input
-              type="date"
-              value={payForm.paidDate}
-              onChange={(e) => onPayFormChange({ ...payForm, paidDate: e.target.value })}
-              className="w-full px-3 py-2 border border-input rounded-lg text-sm"
-            />
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium text-foreground mb-1.5">วิธีชำระ</label>
-          <select value={payForm.paymentMethod} onChange={(e) => onPayFormChange({ ...payForm, paymentMethod: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm">
-            <option value="CASH">เงินสด</option>
-            <option value="BANK_TRANSFER">โอนเงิน</option>
-            <option value="QR_EWALLET">QR/E-Wallet</option>
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium text-foreground mb-1.5">หมายเหตุ</label>
-          <input
-            type="text"
-            value={payForm.notes}
-            onChange={(e) => onPayFormChange({ ...payForm, notes: e.target.value })}
-            className="w-full px-3 py-2 border border-input rounded-lg text-sm"
-            placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)"
-          />
-        </div>
-
-        {/* Summary box */}
-        {received > 0 && (
-          <div className="bg-gradient-to-br from-primary/5 to-primary/10 dark:from-primary/10 dark:to-primary/15 rounded-xl p-4 space-y-2 text-sm border border-primary/15">
-            <div className="flex justify-between"><span className="text-muted-foreground">ยอดคงค้าง</span><span className="font-medium">{outstanding.toLocaleString()} ฿</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">จำนวนที่รับ</span><span className="font-medium">{received.toLocaleString()} ฿</span></div>
-            <div className="border-t border-primary/20 pt-2 flex justify-between font-bold text-base">
-              {change >= 0 ? (
-                <><span className="text-success">เงินทอน/เงินเกิน</span><span className="text-success">{change.toLocaleString()} ฿</span></>
+          {/* Section 2: ยอดค่างวด */}
+          <div className="rounded-xl border border-border bg-card p-5">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-violet-500/10 text-violet-500">
+                <svg xmlns="http://www.w3.org/2000/svg" className="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75" /></svg>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">ยอดค่างวด</h3>
+                <p className="text-xs text-muted-foreground">รายละเอียดยอดชำระ</p>
+              </div>
+            </div>
+            <div className="space-y-2 text-sm">
+              {hasBreakdown ? (
+                <>
+                  <div className="flex justify-between"><span className="text-muted-foreground">เงินต้น + ดอกเบี้ย + ค่าคอม</span><span className="font-medium">{subtotal?.toLocaleString()} ฿</span></div>
+                  {vat !== null && vat > 0 && <div className="flex justify-between"><span className="text-muted-foreground">VAT 7%</span><span className="font-medium">{vat.toLocaleString()} ฿</span></div>}
+                </>
               ) : (
-                <><span className="text-warning">ยอดค้างเหลือ</span><span className="text-warning">{Math.abs(change).toLocaleString()} ฿</span></>
+                <div className="flex justify-between"><span className="text-muted-foreground">ยอดค่างวด</span><span className="font-medium">{amountDue.toLocaleString()} ฿</span></div>
+              )}
+              {lateFee > 0 && (
+                <div className="flex justify-between text-destructive"><span>ค่าปรับล่าช้า</span><span className="font-medium">+{lateFee.toLocaleString()} ฿</span></div>
+              )}
+              {amountPaid > 0 && (
+                <div className="flex justify-between text-success"><span>ชำระแล้ว</span><span className="font-medium">-{amountPaid.toLocaleString()} ฿</span></div>
+              )}
+              <div className="border-t border-border pt-2.5 mt-1 flex justify-between font-bold text-lg">
+                <span className="text-primary">ยอดคงค้าง</span><span className="text-primary">{outstanding.toLocaleString()} ฿</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 3: สแกนสลิป */}
+          <div className="rounded-xl border border-border bg-card p-5">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-emerald-500/10 text-emerald-500">
+                <svg xmlns="http://www.w3.org/2000/svg" className="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" /><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" /></svg>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">สแกนสลิป</h3>
+                <p className="text-xs text-muted-foreground">ถ่ายรูปสลิปเพื่อกรอกข้อมูลอัตโนมัติ</p>
+              </div>
+            </div>
+            <SlipScannerSection
+              title="สแกนสลิปโอนเงิน (OCR)"
+              description="ถ่ายรูปสลิปเพื่อกรอกข้อมูลอัตโนมัติ"
+              fileRef={slipFileRef}
+              onScan={onSlipScan}
+              loading={ocrSlipLoading}
+              result={slipResult}
+            />
+          </div>
+
+          {/* Section 4: บันทึกการชำระ */}
+          <div className="rounded-xl border border-border bg-card p-5">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-orange-500/10 text-orange-500">
+                <svg xmlns="http://www.w3.org/2000/svg" className="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" /></svg>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">บันทึกการชำระ</h3>
+                <p className="text-xs text-muted-foreground">จำนวนเงิน, วันที่, วิธีชำระ</p>
+              </div>
+            </div>
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1.5">จำนวนเงินที่รับ <span className="text-destructive">*</span></label>
+                  <input type="number" value={payForm.amount} onChange={(e) => onPayFormChange({ ...payForm, amount: Number(e.target.value) })} className={inputClass} min={0} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1.5">วันที่ชำระ</label>
+                  <input type="date" value={payForm.paidDate} onChange={(e) => onPayFormChange({ ...payForm, paidDate: e.target.value })} className={inputClass} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1.5">วิธีชำระ</label>
+                  <select value={payForm.paymentMethod} onChange={(e) => onPayFormChange({ ...payForm, paymentMethod: e.target.value })} className={inputClass}>
+                    <option value="CASH">เงินสด</option>
+                    <option value="BANK_TRANSFER">โอนเงิน</option>
+                    <option value="QR_EWALLET">QR/E-Wallet</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1.5">หมายเหตุ</label>
+                <input type="text" value={payForm.notes} onChange={(e) => onPayFormChange({ ...payForm, notes: e.target.value })} className={inputClass} placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)" />
+              </div>
+
+              {/* Summary box */}
+              {received > 0 && (
+                <div className="bg-gradient-to-br from-primary/5 to-primary/10 dark:from-primary/10 dark:to-primary/15 rounded-xl p-4 space-y-2 text-sm border border-primary/15">
+                  <div className="flex justify-between"><span className="text-muted-foreground">ยอดคงค้าง</span><span className="font-medium">{outstanding.toLocaleString()} ฿</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">จำนวนที่รับ</span><span className="font-medium">{received.toLocaleString()} ฿</span></div>
+                  <div className="border-t border-primary/20 pt-2.5 mt-1 flex justify-between font-bold text-lg">
+                    {change >= 0 ? (
+                      <><span className="text-success">เงินทอน/เงินเกิน</span><span className="text-success">{change.toLocaleString()} ฿</span></>
+                    ) : (
+                      <><span className="text-warning">ยอดค้างเหลือ</span><span className="text-warning">{Math.abs(change).toLocaleString()} ฿</span></>
+                    )}
+                  </div>
+                </div>
               )}
             </div>
           </div>
-        )}
+        </div>
 
-        <div className="flex gap-3 pt-1">
-          <button onClick={onClose} className="flex-1 px-4 py-2.5 text-sm border border-input rounded-lg hover:bg-muted transition-colors">ยกเลิก</button>
-          <button onClick={onSubmit} disabled={isPending || payForm.amount <= 0} className="flex-1 px-4 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-medium transition-colors">
+        {/* Sticky Footer */}
+        <div className="sticky bottom-0 bg-background/95 backdrop-blur-sm border-t px-6 py-4 flex justify-end gap-3">
+          <button onClick={onClose} className="px-6 py-2.5 text-sm border border-input rounded-lg hover:bg-muted transition-colors">ยกเลิก</button>
+          <button onClick={onSubmit} disabled={isPending || payForm.amount <= 0} className="px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm">
             {isPending ? 'กำลังบันทึก...' : 'ยืนยันรับชำระ'}
           </button>
         </div>
       </div>
-    </Modal>
+    </div>
   );
 }
 

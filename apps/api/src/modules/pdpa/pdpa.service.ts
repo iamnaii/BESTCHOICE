@@ -199,10 +199,63 @@ export class PDPAService {
       processedById: userId,
       processedAt: new Date(),
     };
+
+    // Auto-generate data export for ACCESS requests
+    if (request.requestType === 'ACCESS') {
+      const exportData = await this.generateCustomerDataExport(request.customerId);
+      data.responseData = exportData;
+    }
+
     if (status === 'COMPLETED') {
       data.completedAt = new Date();
     }
 
     return this.prisma.dSARRequest.update({ where: { id }, data });
+  }
+
+  /** Generate customer data export for DSAR ACCESS requests */
+  async generateCustomerDataExport(customerId: string) {
+    const customer = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+      include: {
+        contracts: {
+          where: { deletedAt: null },
+          select: {
+            contractNumber: true,
+            status: true,
+            sellingPrice: true,
+            downPayment: true,
+            totalMonths: true,
+            createdAt: true,
+          },
+        },
+        pdpaConsents: {
+          where: { deletedAt: null },
+          select: {
+            status: true,
+            purposes: true,
+            grantedAt: true,
+            revokedAt: true,
+          },
+        },
+      },
+    });
+
+    if (!customer) throw new NotFoundException('ไม่พบลูกค้า');
+
+    return {
+      exportDate: new Date().toISOString(),
+      customer: {
+        name: customer.name,
+        phone: customer.phone,
+        email: customer.email,
+        // DO NOT include nationalId (sensitive, masked only)
+        nationalIdMasked: customer.nationalId
+          ? '****' + customer.nationalId.slice(-4)
+          : null,
+      },
+      contracts: customer.contracts,
+      consents: customer.pdpaConsents,
+    };
   }
 }

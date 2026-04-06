@@ -853,7 +853,7 @@ export class NotificationsService implements OnModuleInit {
       include: {
         contract: {
           include: {
-            customer: { select: { name: true, phone: true, lineId: true } },
+            customer: { select: { id: true, name: true, phone: true, lineId: true } },
             _count: { select: { payments: true } },
           },
         },
@@ -877,6 +877,30 @@ export class NotificationsService implements OnModuleInit {
         },
       });
       if (alreadySent) continue;
+
+      // Check PDPA consent before sending notification
+      const consent = await this.prisma.pDPAConsent.findFirst({
+        where: {
+          customerId: customer.id,
+          status: 'GRANTED',
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+
+      if (!consent) {
+        await this.prisma.notificationLog.create({
+          data: {
+            channel: 'IN_APP',
+            recipient: customer.id,
+            subject: 'แจ้งเตือนค่างวด',
+            message: `ข้ามการแจ้งเตือน — ลูกค้าไม่มี PDPA consent`,
+            status: 'SKIPPED',
+            relatedId: payment.id,
+          },
+        });
+        continue;
+      }
 
       const message = `สวัสดีค่ะ คุณ${customer.name}\nแจ้งเตือน: ค่างวดที่ ${payment.installmentNo} สัญญา ${payment.contract.contractNumber}\nจำนวน ${Number(payment.amountDue).toLocaleString()} บาท\nครบกำหนดชำระ${daysUntil === 0 ? 'วันนี้' : `อีก ${daysUntil} วัน`} (${formatDateShort(payment.dueDate)})\nกรุณาชำระตามกำหนด ขอบคุณค่ะ`;
 
@@ -955,7 +979,7 @@ export class NotificationsService implements OnModuleInit {
       include: {
         contract: {
           include: {
-            customer: { select: { name: true, phone: true, lineId: true } },
+            customer: { select: { id: true, name: true, phone: true, lineId: true } },
             _count: { select: { payments: true } },
           },
         },
@@ -978,6 +1002,30 @@ export class NotificationsService implements OnModuleInit {
         },
       });
       if (alreadySent) continue;
+
+      // Check PDPA consent before sending notification
+      const consent = await this.prisma.pDPAConsent.findFirst({
+        where: {
+          customerId: customer.id,
+          status: 'GRANTED',
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+
+      if (!consent) {
+        await this.prisma.notificationLog.create({
+          data: {
+            channel: 'IN_APP',
+            recipient: customer.id,
+            subject: 'แจ้งค้างชำระ',
+            message: `ข้ามการแจ้งเตือน — ลูกค้าไม่มี PDPA consent`,
+            status: 'SKIPPED',
+            relatedId: payment.id,
+          },
+        });
+        continue;
+      }
 
       const outstanding = Number(payment.amountDue) - Number(payment.amountPaid) + Number(payment.lateFee);
       const message = `แจ้งเตือน: คุณ${customer.name}\nค่างวดที่ ${payment.installmentNo} สัญญา ${payment.contract.contractNumber}\nเลยกำหนดชำระ ${daysOverdue} วัน\nยอดค้างชำระ ${outstanding.toLocaleString()} บาท (รวมค่าปรับ)\nกรุณาชำระโดยเร็ว`;

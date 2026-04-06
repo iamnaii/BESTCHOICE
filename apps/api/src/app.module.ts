@@ -50,6 +50,7 @@ import { AccountingModule } from './modules/accounting/accounting.module';
 import { CompanyModule } from './modules/company/company.module';
 import { InterCompanyModule } from './modules/inter-company/inter-company.module';
 import { JournalModule } from './modules/journal/journal.module';
+import { TaxModule } from './modules/tax/tax.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
 import { CsrfGuard } from './guards/csrf.guard';
@@ -132,6 +133,8 @@ import { AppCacheModule } from './cache/cache.module';
     InterCompanyModule,
     // Journal Entries (double-entry accounting)
     JournalModule,
+    // Tax Reports (ภ.พ.30, ภ.ง.ด.3, ภ.ง.ด.53)
+    TaxModule,
     // MASTER: Management
     UsersModule,
     SettingsModule,

@@ -222,6 +222,30 @@ enum CreditCheckStatus {
   MANUAL_REVIEW
 }
 
+enum WhtIncomeType {
+  SALARY_40_1 // เงินเดือน ม.40(1)
+  HIRE_40_2 // ค่าจ้าง ม.40(2)
+  ROYALTY_40_3 // ค่าลิขสิทธิ์ ม.40(3)
+  INTEREST_40_4A // ดอกเบี้ย ม.40(4)(ก)
+  DIVIDEND_40_4B // เงินปันผล ม.40(4)(ข)
+  RENT_40_5 // ค่าเช่า ม.40(5)
+  PROFESSION_40_6 // วิชาชีพอิสระ ม.40(6)
+  CONTRACTOR_40_7 // รับเหมา ม.40(7)
+  OTHER_40_8 // อื่นๆ ม.40(8)
+}
+
+enum TaxReportType {
+  PP30 // ภ.พ.30 (VAT รายเดือน)
+  PND3 // ภ.ง.ด.3 (หัก ณ ที่จ่าย บุคคล)
+  PND53 // ภ.ง.ด.53 (หัก ณ ที่จ่าย นิติบุคคล)
+}
+
+enum TaxReportStatus {
+  DRAFT
+  SUBMITTED
+  FILED
+}
+
 enum ContractDocumentType {
   SIGNED_CONTRACT
   ID_CARD_COPY
@@ -339,6 +363,7 @@ model User {
   expensesVoided         Expense[]            @relation("ExpenseVoidedBy")
   journalEntriesCreated  JournalEntry[]       @relation("JournalCreatedBy")
   journalEntriesPosted   JournalEntry[]       @relation("JournalPostedBy")
+  taxReportsFiled        TaxReport[]          @relation("TaxReportFiledBy")
 
   @@index([branchId])
   @@map("users")
@@ -1531,6 +1556,7 @@ model DSARRequest {
   status        DSARStatus      @default(SUBMITTED)
   description   String          @db.Text
   responseNotes String?         @map("response_notes") @db.Text
+  responseData  Json?           @map("response_data") // auto-generated data export for ACCESS requests
   processedById String?         @map("processed_by_id")
   submittedAt   DateTime        @default(now()) @map("submitted_at")
   processedAt   DateTime?       @map("processed_at")
@@ -1710,8 +1736,53 @@ model CompanyInfo {
   fromInterCompanyTx      InterCompanyTransaction[] @relation("ICFromCompany")
   toInterCompanyTx        InterCompanyTransaction[] @relation("ICToCompany")
   journalEntries          JournalEntry[]
+  taxReports              TaxReport[]
 
   @@map("company_info")
+}
+
+// ============================================================
+// TAX REPORTS (ภ.พ.30, ภ.ง.ด.3/53)
+// ============================================================
+
+model TaxReport {
+  id               String          @id @default(uuid())
+  companyId        String          @map("company_id")
+  reportType       TaxReportType   @map("report_type") // PP30, PND3, PND53
+  reportYear       Int             @map("report_year")
+  reportMonth      Int             @map("report_month") // 1-12
+
+  // PP30 fields (VAT)
+  totalSales       Decimal?        @map("total_sales") @db.Decimal(12, 2)
+  totalVatOutput   Decimal?        @map("total_vat_output") @db.Decimal(12, 2)
+  totalPurchases   Decimal?        @map("total_purchases") @db.Decimal(12, 2)
+  totalVatInput    Decimal?        @map("total_vat_input") @db.Decimal(12, 2)
+  netVat           Decimal?        @map("net_vat") @db.Decimal(12, 2) // output - input
+
+  // PND fields (WHT)
+  totalWht         Decimal?        @map("total_wht") @db.Decimal(12, 2)
+  transactionCount Int?            @map("transaction_count")
+
+  // Common
+  status           TaxReportStatus @default(DRAFT)
+  generatedData    Json?           @map("generated_data") // snapshot of line items
+  notes            String?
+  filedAt          DateTime?       @map("filed_at")
+  filedById        String?         @map("filed_by_id")
+
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+  deletedAt        DateTime?       @map("deleted_at")
+
+  company          CompanyInfo     @relation(fields: [companyId], references: [id])
+  filedBy          User?           @relation("TaxReportFiledBy", fields: [filedById], references: [id])
+
+  @@unique([companyId, reportType, reportYear, reportMonth])
+  @@index([companyId])
+  @@index([reportType])
+  @@index([reportYear, reportMonth])
+  @@index([status])
+  @@map("tax_reports")
 }
 
 // ============================================================
@@ -1968,7 +2039,7 @@ model Expense {
   totalAmount    Decimal            @map("total_amount") @db.Decimal(12, 2)
   withholdingTax Decimal            @default(0) @map("withholding_tax") @db.Decimal(12, 2)
   whtRate        Decimal?           @map("wht_rate") @db.Decimal(5, 4) // อัตราภาษีหัก ณ ที่จ่าย (0.01, 0.02, 0.03, 0.05)
-  whtIncomeType  String?            @map("wht_income_type") // ประเภทเงินได้ เช่น 40(2), 40(5), 40(8)
+  whtIncomeType  WhtIncomeType?     @map("wht_income_type") // ประเภทเงินได้ตาม ม.40
   netPayment     Decimal?           @map("net_payment") @db.Decimal(12, 2) // จำนวนจ่ายจริง = totalAmount - withholdingTax
 
   expenseDate   DateTime       @map("expense_date")

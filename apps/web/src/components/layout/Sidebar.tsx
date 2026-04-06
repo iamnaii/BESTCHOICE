@@ -139,6 +139,7 @@ const navSections: NavSection[] = [
     icon: BarChart3,
     items: [
       { label: 'รายงาน', path: '/reports', icon: BarChart3, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
+      { label: 'รายงานภาษี', path: '/tax-reports', icon: FileText, roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
       { label: 'แจ้งเตือน', path: '/notifications', icon: Bell, roles: ['OWNER', 'BRANCH_MANAGER'] },
     ],
   },

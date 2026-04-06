@@ -60,8 +60,9 @@ export class InterCompanyService {
       financeProfit: number;
     },
   ) {
-    // W-009: Double-entry description for both entities
-    const note = `SHOP: Debit ลูกหนี้เช่าซื้อ ${data.principal}, Credit รายได้จากการขาย ${data.principal + data.commission}; FINANCE: Debit ลูกหนี้เช่าซื้อ ${data.principal + data.interestTotal}, Credit เจ้าหนี้ SHOP ${data.principal + data.commission}`;
+    // C-8 fix: Double-entry note includes downPayment for complete journal
+    const totalSalesRevenue = data.downPayment + data.principal + data.commission;
+    const note = `SHOP: Debit เงินสด ${data.downPayment} + ลูกหนี้เช่าซื้อ ${data.principal + data.commission}, Credit รายได้จากการขาย ${totalSalesRevenue}; FINANCE: Debit ลูกหนี้เช่าซื้อ ${data.principal + data.interestTotal}, Credit เจ้าหนี้ SHOP ${data.principal + data.commission}`;
 
     return tx.interCompanyTransaction.create({
       data: {

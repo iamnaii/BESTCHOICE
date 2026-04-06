@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
 import * as puppeteer from 'puppeteer';
 import { LineOaService } from '../line-oa/line-oa.service';
+import { validatePeriodOpen } from '../../utils/period-lock.util';
 
 @Injectable()
 export class ReceiptsService {
@@ -334,6 +335,8 @@ export class ReceiptsService {
     if (!reason?.trim()) {
       throw new BadRequestException('กรุณาระบุเหตุผลในการยกเลิก');
     }
+    // CR-7: Validate void date is not in a closed accounting period
+    await validatePeriodOpen(this.prisma, new Date());
     return this.prisma.$transaction(async (tx) => {
       const receipt = await tx.receipt.findUnique({ where: { id } });
       if (!receipt || receipt.deletedAt) throw new NotFoundException('ไม่พบใบเสร็จ');

@@ -86,6 +86,7 @@ Skills คือ shortcut commands ที่เรียกใช้ได้ใ
 | แก้ไข Database | `/db-change` | ต้องการเพิ่ม/แก้ Prisma model, field, enum |
 | Pre-Deploy Check | `/pre-deploy` | ต้องการตรวจสอบก่อน merge/deploy |
 | รัน E2E Tests | `/run-e2e` | ต้องการรัน Playwright E2E tests |
+| ตรวจสอบระบบบัญชี | `/accounting-audit` | ต้องการตรวจสอบระบบบัญชีตามหลักบัญชีไทย (TAS/TFRS) |
 
 Skills อยู่ใน `.claude/skills/` — แต่ละ skill จะ:
 1. อ่าน workflow ที่เกี่ยวข้องก่อนเริ่มงาน

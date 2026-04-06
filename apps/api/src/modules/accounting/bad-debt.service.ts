@@ -57,6 +57,9 @@ export class BadDebtService {
     const branchFilter = branchId ? { branchId } : {};
 
     // Find all overdue payments from active contracts
+    // Aging is based on the oldest UNPAID overdue installment per contract.
+    // Paid installments are excluded (status filter), so if installments 1-4 are paid
+    // and installment 5 (due 100 days ago) is unpaid, aging = 100 days. This is correct.
     const overduePayments = await this.prisma.payment.findMany({
       where: {
         status: { in: ['PENDING', 'PARTIALLY_PAID'] },

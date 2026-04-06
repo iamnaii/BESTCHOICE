@@ -66,12 +66,24 @@ export interface PaymentScheduleItem {
   installmentNo: number;
   dueDate: Date;
   amountDue: number;
+  monthlyPrincipal: number | null;
+  monthlyInterest: number | null;
+  monthlyCommission: number | null;
+  vatAmount: number | null;
   status: 'PENDING';
 }
 
+export interface BreakdownTotals {
+  principal: number;
+  interestTotal: number;
+  storeCommission: number;
+  vatAmount: number;
+}
+
 /**
- * Generate payment schedule with custom due day
- * Handles month overflow by clamping to last day of month
+ * Generate payment schedule with custom due day and optional breakdown
+ * When breakdownTotals is provided, each payment includes principal/interest/commission/VAT split
+ * Formula: amountDue = monthlyPrincipal + monthlyCommission + monthlyInterest + vatAmount
  */
 export function generatePaymentSchedule(
   contractId: string,
@@ -79,24 +91,55 @@ export function generatePaymentSchedule(
   financedAmount: number,
   monthlyPayment: number,
   paymentDueDay?: number | null,
+  breakdownTotals?: BreakdownTotals,
 ): PaymentScheduleItem[] {
   const now = new Date();
   const dueDay = paymentDueDay || 1;
   const payments: PaymentScheduleItem[] = [];
 
+  // Pre-compute per-month breakdowns (ceil for 1..N-1, remainder for last)
+  const hasBreakdown = !!breakdownTotals;
+  const mpPrincipal = hasBreakdown ? Math.ceil(breakdownTotals.principal / totalMonths) : 0;
+  const mpInterest = hasBreakdown ? Math.ceil(breakdownTotals.interestTotal / totalMonths) : 0;
+  const mpCommission = hasBreakdown ? Math.ceil(breakdownTotals.storeCommission / totalMonths) : 0;
+
+  let usedPrincipal = 0;
+  let usedInterest = 0;
+  let usedCommission = 0;
+
   for (let i = 1; i <= totalMonths; i++) {
     const targetMonth = now.getMonth() + i;
     const lastDay = new Date(now.getFullYear(), targetMonth + 1, 0).getDate();
     const dueDate = new Date(now.getFullYear(), targetMonth, Math.min(dueDay, lastDay));
-    // Last installment adjusts for Math.ceil rounding to avoid overcharging
     const isLast = i === totalMonths;
     const amount = isLast ? financedAmount - monthlyPayment * (totalMonths - 1) : monthlyPayment;
+
+    let principal: number | null = null;
+    let interest: number | null = null;
+    let commission: number | null = null;
+    let vat: number | null = null;
+
+    if (hasBreakdown) {
+      principal = isLast ? roundBaht(breakdownTotals.principal - usedPrincipal) : mpPrincipal;
+      interest = isLast ? roundBaht(breakdownTotals.interestTotal - usedInterest) : mpInterest;
+      commission = isLast ? roundBaht(breakdownTotals.storeCommission - usedCommission) : mpCommission;
+      // VAT absorbs rounding: amountDue - (principal + interest + commission)
+      vat = roundBaht(amount - principal - interest - commission);
+
+      usedPrincipal += principal;
+      usedInterest += interest;
+      usedCommission += commission;
+    }
 
     payments.push({
       contractId,
       installmentNo: i,
       dueDate,
       amountDue: amount,
+      monthlyPrincipal: principal,
+      monthlyInterest: interest,
+      monthlyCommission: commission,
+      vatAmount: vat,
       status: 'PENDING' as const,
     });
   }

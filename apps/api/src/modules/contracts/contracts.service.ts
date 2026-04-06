@@ -353,6 +353,9 @@ export class ContractsService {
               totalMonths: dto.totalMonths,
               interestTotal,
               financedAmount,
+              storeCommission: calc.storeCommission,
+              vatAmount: calc.vatAmount,
+              vatPct: params.vatPct,
               monthlyPayment,
               status: 'DRAFT',
               workflowStatus: 'CREATING',
@@ -366,6 +369,7 @@ export class ContractsService {
           // Create payment schedule using shared utility
           const payments = generatePaymentSchedule(
             newContract.id, dto.totalMonths, financedAmount, monthlyPayment, dto.paymentDueDay,
+            { principal: calc.principal, interestTotal: calc.interestTotal, storeCommission: calc.storeCommission, vatAmount: calc.vatAmount },
           );
           await tx.payment.createMany({ data: payments });
 
@@ -535,7 +539,10 @@ export class ContractsService {
           where: { contractId: id, status: 'PENDING' },
         });
 
-        const payments = generatePaymentSchedule(id, totalMonths, financedAmount, monthlyPayment, paymentDueDay);
+        const payments = generatePaymentSchedule(
+          id, totalMonths, financedAmount, monthlyPayment, paymentDueDay,
+          { principal: calc.principal, interestTotal: calc.interestTotal, storeCommission: calc.storeCommission, vatAmount: calc.vatAmount },
+        );
         await tx.payment.createMany({ data: payments });
       }
     });

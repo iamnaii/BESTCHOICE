@@ -451,6 +451,10 @@ export class AccountingService {
           amountPaid: true,
           lateFee: true,
           lateFeeWaived: true,
+          monthlyPrincipal: true,
+          monthlyInterest: true,
+          monthlyCommission: true,
+          vatAmount: true,
           contract: { select: { interestTotal: true, totalMonths: true } },
         },
       }),
@@ -478,30 +482,40 @@ export class AccountingService {
     const financeDownPayments = Number(externalFinanceSales._sum.downPaymentAmount || 0);
     const financeReceivedAmount = Number(financeReceived._sum.receivedAmount || 0);
 
-    // C-2 fix: amountPaid includes interest (because monthlyPayment = financedAmount/months
-    // and financedAmount = principal + commission + interest + VAT).
-    // So we must NOT add interestIncome separately to totalRevenue — it's already in installmentPayments.
-    // Instead, we extract interest for display purposes only.
-    let installmentPayments = 0;
-    let interestIncome = 0;
-    let lateFeeIncome = 0;
+    // Payment breakdown: use stored breakdowns when available, fallback for legacy payments
+    let installmentPaymentsTotal = 0; // ยอดรับชำระจากค่างวดรวม (amountPaid)
+    let interestIncome = 0;           // ดอกเบี้ย (4210) — breakdown info
+    let commissionIncome = 0;         // ค่าคอม (4400) — breakdown info
+    let principalIncome = 0;          // เงินต้น — breakdown info
+    let lateFeeIncome = 0;            // ค่าปรับ (4300)
+    let vatCollected = 0;             // VAT ที่เก็บ (2210 - liability not revenue)
+
     for (const p of paidPayments) {
-      installmentPayments += Number(p.amountPaid);
-      // Accounting policy: Interest income recognized using straight-line method (เกณฑ์เส้นตรง)
-      // for flat-rate hire-purchase contracts per TFRS for NPAEs.
-      // This is a memo/display value — already included in amountPaid above.
-      interestIncome += Number(p.contract.interestTotal) / p.contract.totalMonths;
-      // Late fees are SEPARATE from amountPaid (amountDue includes lateFee but amountPaid
-      // tracks the total paid including lateFee portion, so it's already in installmentPayments)
+      const paid = Number(p.amountPaid);
+      installmentPaymentsTotal += paid;
+
+      if (p.monthlyPrincipal !== null) {
+        // New: use stored breakdowns for detailed reporting
+        principalIncome += Number(p.monthlyPrincipal);
+        interestIncome += Number(p.monthlyInterest);
+        commissionIncome += Number(p.monthlyCommission);
+        vatCollected += Number(p.vatAmount ?? 0);
+      } else {
+        // Legacy fallback: estimate interest from contract data
+        principalIncome += paid;
+        interestIncome += Math.round(Number(p.contract.interestTotal) / p.contract.totalMonths * 100) / 100;
+      }
       if (!p.lateFeeWaived) lateFeeIncome += Number(p.lateFee);
     }
 
-    // R-011: Separate operating revenue from other income per TAS 1
-    // Note: installmentPayments already includes interest and lateFee portions.
-    // interestIncome and lateFeeIncome are memo values for P&L display, not additive.
+    // installmentPayments = total amountPaid from installment contracts (includes principal+interest+commission+VAT)
+    // Interest/commission/VAT breakdowns are informational, NOT additive on top of installmentPayments
+    const installmentPayments = installmentPaymentsTotal;
+
     const operatingRevenue = cashSales + installmentDownPayments + installmentPayments
       + financeDownPayments + financeReceivedAmount;
-    const totalRevenue = operatingRevenue; // No double-counting: interest/lateFee already in installmentPayments
+    // Late fee income is additive (it's separate from amountPaid — stored in lateFee field)
+    const totalRevenue = operatingRevenue + lateFeeIncome;
 
     const expMap: Record<string, number> = {};
     for (const e of expensesByCategory) {
@@ -577,10 +591,10 @@ export class AccountingService {
         + (expMap['OTHER_FINE'] || 0) + (expMap['OTHER_MISC'] || 0),
     };
 
-    // C-1 fix: netProfit = operatingProfit + otherIncome - otherExpenses (TAS 1)
-    // Note: interestIncome and lateFeeIncome are memo values (already in installmentPayments)
-    // so we don't add them again here — they're for P&L line-item display only.
-    const netProfit = operatingProfit - otherExpenses.totalOther;
+    // C-1 fix: netProfit = operatingProfit + lateFeeIncome - otherExpenses (TAS 1)
+    // Interest/commission/VAT are already inside installmentPayments (amountPaid).
+    // Only lateFee is truly additive (stored separately in lateFee field).
+    const netProfit = operatingProfit + lateFeeIncome - otherExpenses.totalOther;
     const totalExpenses = costOfSales.totalCOGS + sellingExpenses.totalSelling
       + adminExpenses.totalAdmin + otherExpenses.totalOther;
 
@@ -593,13 +607,21 @@ export class AccountingService {
         financeDownPayments,
         financeReceived: financeReceivedAmount,
         operatingRevenue,
+        lateFeeIncome: Math.round(lateFeeIncome * 100) / 100,
         totalRevenue,
       },
-      // Memo: interest and lateFee breakdown (already included in installmentPayments)
-      otherIncome: {
-        interestIncome: Math.round(interestIncome),
-        lateFeeIncome,
-        note: 'ดอกเบี้ยและค่าปรับรวมอยู่ใน installmentPayments แล้ว — ค่านี้เป็น breakdown สำหรับแสดงผลเท่านั้น',
+      // Breakdown of installmentPayments (informational — already included in installmentPayments)
+      paymentBreakdown: {
+        principalIncome: Math.round(principalIncome * 100) / 100,
+        interestIncome: Math.round(interestIncome * 100) / 100,
+        commissionIncome: Math.round(commissionIncome * 100) / 100,
+        note: 'เงินต้น/ดอกเบี้ย/ค่าคอม รวมอยู่ใน installmentPayments แล้ว — แสดงเพื่อแยกรายได้ตามหมวดบัญชี',
+      },
+      vatOutput: {
+        accountCode: '2210',
+        label: 'ภาษีขาย (Output VAT)',
+        amount: Math.round(vatCollected * 100) / 100,
+        note: 'เก็บจากค่างวดผ่อนชำระ — เป็นหนี้สินไม่ใช่รายได้',
       },
       costOfSales,
       grossProfit,
@@ -635,6 +657,7 @@ export class AccountingService {
         where: { paidDate: dateRange, status: 'PAID', contract: { deletedAt: null, ...branchFilter } },
         select: {
           amountPaid: true, lateFee: true, lateFeeWaived: true, paidDate: true,
+          monthlyPrincipal: true, monthlyInterest: true, monthlyCommission: true, vatAmount: true,
           contract: { select: { interestTotal: true, totalMonths: true } },
         },
       }),
@@ -667,8 +690,15 @@ export class AccountingService {
 
       for (const p of payments) {
         if (getMonth(p.paidDate) !== i) continue;
-        // C-5 fix: amountPaid already includes lateFee — don't add it separately
-        revenue += Number(p.amountPaid);
+        if (p.monthlyPrincipal !== null) {
+          // New: use stored breakdowns — principal + commission + interest + lateFee
+          revenue += Number(p.monthlyPrincipal) + Number(p.monthlyCommission)
+            + Number(p.monthlyInterest);
+          if (!p.lateFeeWaived) revenue += Number(p.lateFee);
+        } else {
+          // Legacy fallback: amountPaid already includes everything
+          revenue += Number(p.amountPaid);
+        }
       }
 
       for (const f of financeRecs) {

@@ -296,6 +296,8 @@ export class SalesService {
           interestTotal: calc.interestTotal,
           financedAmount: calc.financedAmount,
           storeCommission: calc.storeCommission,
+          vatAmount: calc.vatAmount,
+          vatPct: params.vatPct,
           monthlyPayment: calc.monthlyPayment,
           status: 'DRAFT',
           workflowStatus: 'CREATING',
@@ -308,6 +310,7 @@ export class SalesService {
       // Create payment schedule
       const payments = generatePaymentSchedule(
         contract.id, dto.totalMonths!, calc.financedAmount, calc.monthlyPayment, dto.paymentDueDay,
+        { principal: calc.principal, interestTotal: calc.interestTotal, storeCommission: calc.storeCommission, vatAmount: calc.vatAmount },
       );
       await tx.payment.createMany({ data: payments });
 

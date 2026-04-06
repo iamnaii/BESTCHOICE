@@ -417,6 +417,8 @@ model Contract {
   interestTotal    Decimal        @map("interest_total") @db.Decimal(12, 2)
   financedAmount   Decimal        @map("financed_amount") @db.Decimal(12, 2)
   storeCommission  Decimal?       @map("store_commission") @db.Decimal(12, 2)
+  vatAmount        Decimal?       @map("vat_amount") @db.Decimal(12, 2)
+  vatPct           Decimal?       @map("vat_pct") @db.Decimal(5, 4)
   monthlyPayment   Decimal        @map("monthly_payment") @db.Decimal(12, 2)
   status           ContractStatus @default(DRAFT)
   parentContractId String?        @map("parent_contract_id")
@@ -524,6 +526,13 @@ model Payment {
   gatewayStatus   String?        @map("gateway_status")
   gatewayResponse Json?          @map("gateway_response")
   paidAt          DateTime?      @map("paid_at")
+
+  // Payment breakdown (เงินต้น + ค่าคอม + ดอกเบี้ย + VAT = amountDue)
+  monthlyPrincipal  Decimal?  @map("monthly_principal") @db.Decimal(12, 2)
+  monthlyInterest   Decimal?  @map("monthly_interest") @db.Decimal(12, 2)
+  monthlyCommission Decimal?  @map("monthly_commission") @db.Decimal(12, 2)
+  vatAmount         Decimal?  @map("vat_amount") @db.Decimal(12, 2)
+
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")
   deletedAt       DateTime?      @map("deleted_at")

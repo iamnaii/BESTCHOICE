@@ -39,16 +39,30 @@ export class ContractPaymentService {
       throw new BadRequestException('ไม่มีงวดค้างชำระ ไม่จำเป็นต้องปิดก่อนกำหนด');
     }
 
-    // C-6 fix: truePrincipal = sellingPrice - downPayment (the actual loan principal)
-    // NOT financedAmount - interestTotal which would include commission + VAT
-    const interestTotal = Number(contract.interestTotal);
-    const financedAmount = Number(contract.financedAmount);
-    const truePrincipal = Math.round((Number(contract.sellingPrice) - Number(contract.downPayment)) * 100) / 100;
-    const monthlyInterest = Math.round(interestTotal * 100 / contract.totalMonths) / 100;
-    const monthlyPrincipal = Math.round(truePrincipal * 100 / contract.totalMonths) / 100;
+    // Use stored payment breakdowns when available, fallback to calculation for legacy
+    const unpaidPayments = contract.payments.filter(p => p.status !== 'PAID');
+    const hasBreakdown = unpaidPayments.length > 0 && unpaidPayments[0].monthlyPrincipal !== null;
 
-    const remainingPrincipal = Math.round(monthlyPrincipal * remainingMonths * 100) / 100;
-    const remainingInterest = Math.round(monthlyInterest * remainingMonths * 100) / 100;
+    let remainingPrincipal: number;
+    let remainingInterest: number;
+
+    if (hasBreakdown) {
+      remainingPrincipal = Math.round(
+        unpaidPayments.reduce((sum, p) => sum + Number(p.monthlyPrincipal), 0) * 100,
+      ) / 100;
+      remainingInterest = Math.round(
+        unpaidPayments.reduce((sum, p) => sum + Number(p.monthlyInterest), 0) * 100,
+      ) / 100;
+    } else {
+      // Legacy fallback: calculate from contract totals
+      // C-6 fix: truePrincipal = sellingPrice - downPayment (the actual loan principal)
+      const interestTotal = Number(contract.interestTotal);
+      const truePrincipal = Math.round((Number(contract.sellingPrice) - Number(contract.downPayment)) * 100) / 100;
+      const monthlyInterest = Math.round(interestTotal * 100 / contract.totalMonths) / 100;
+      const monthlyPrincipal = Math.round(truePrincipal * 100 / contract.totalMonths) / 100;
+      remainingPrincipal = Math.round(monthlyPrincipal * remainingMonths * 100) / 100;
+      remainingInterest = Math.round(monthlyInterest * remainingMonths * 100) / 100;
+    }
     const discount = Math.round(remainingInterest * BUSINESS_RULES.EARLY_PAYOFF_DISCOUNT * 100) / 100;
 
     // Deduct amounts already partially paid

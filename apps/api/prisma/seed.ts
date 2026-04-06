@@ -529,69 +529,72 @@ async function main() {
   // ============================================================
   console.log('STEP 14: Creating Contracts...');
 
-  // Helper: calculate installment
-  function calc(sellingPrice: number, downPayment: number, rate: number, months: number) {
-    const financedAmount = sellingPrice - downPayment;
-    const interestTotal = financedAmount * rate * months;
-    const monthlyPayment = Math.ceil((financedAmount + interestTotal) / months);
-    return { financedAmount, interestTotal, monthlyPayment };
+  // Helper: calculate installment with full breakdown
+  function calc(sellingPrice: number, downPayment: number, rate: number, months: number, commPct = 0.10, vatPct = 0.07) {
+    const principal = Math.round((sellingPrice - downPayment) * 100) / 100;
+    const storeCommission = Math.round(principal * commPct * 100) / 100;
+    const interestTotal = Math.round(principal * rate * months * 100) / 100;
+    const vatAmount = Math.round((principal + storeCommission + interestTotal) * vatPct * 100) / 100;
+    const financedAmount = Math.round((principal + storeCommission + interestTotal + vatAmount) * 100) / 100;
+    const monthlyPayment = Math.ceil(financedAmount / months);
+    return { principal, interestTotal, storeCommission, vatAmount, financedAmount, monthlyPayment };
   }
 
   // Contract 1: ACTIVE - สมชาย iPhone 16 Pro Max
   const c1 = calc(54900, 11000, 0.08, 10);
-  await prisma.contract.create({ data: { id: 'cont-001', contractNumber: 'BCP-2025-001', customerId: 'cust-001', productId: 'prod-001', branchId: 'branch-002', salespersonId: 'user-004', planType: 'STORE_DIRECT', sellingPrice: 54900, downPayment: 11000, interestRate: 0.08, totalMonths: 10, interestTotal: c1.interestTotal, financedAmount: c1.financedAmount, monthlyPayment: c1.monthlyPayment, status: 'ACTIVE', workflowStatus: 'APPROVED', reviewedById: 'user-002', paymentDueDay: 5, interestConfigId: 'ic-001', hasOwnershipClause: true, hasRepossessionClause: true, hasEarlyPayoffClause: true, hasNoTransferClause: true, hasAcknowledgement: true } });
+  await prisma.contract.create({ data: { id: 'cont-001', contractNumber: 'BCP-2025-001', customerId: 'cust-001', productId: 'prod-001', branchId: 'branch-002', salespersonId: 'user-004', planType: 'STORE_DIRECT', sellingPrice: 54900, downPayment: 11000, interestRate: 0.08, totalMonths: 10, interestTotal: c1.interestTotal, financedAmount: c1.financedAmount, storeCommission: c1.storeCommission, vatAmount: c1.vatAmount, vatPct: 0.07, monthlyPayment: c1.monthlyPayment, status: 'ACTIVE', workflowStatus: 'APPROVED', reviewedById: 'user-002', paymentDueDay: 5, interestConfigId: 'ic-001', hasOwnershipClause: true, hasRepossessionClause: true, hasEarlyPayoffClause: true, hasNoTransferClause: true, hasAcknowledgement: true } });
 
   // Contract 2: ACTIVE - วิภาวดี iPhone 16 Pro
   const c2 = calc(49900, 10000, 0.08, 10);
-  await prisma.contract.create({ data: { id: 'cont-002', contractNumber: 'BCP-2025-002', customerId: 'cust-002', productId: 'prod-004', branchId: 'branch-003', salespersonId: 'user-005', planType: 'STORE_DIRECT', sellingPrice: 49900, downPayment: 10000, interestRate: 0.08, totalMonths: 10, interestTotal: c2.interestTotal, financedAmount: c2.financedAmount, monthlyPayment: c2.monthlyPayment, status: 'ACTIVE', workflowStatus: 'APPROVED', reviewedById: 'user-003', paymentDueDay: 15, interestConfigId: 'ic-001', hasOwnershipClause: true, hasRepossessionClause: true, hasEarlyPayoffClause: true, hasNoTransferClause: true, hasAcknowledgement: true } });
+  await prisma.contract.create({ data: { id: 'cont-002', contractNumber: 'BCP-2025-002', customerId: 'cust-002', productId: 'prod-004', branchId: 'branch-003', salespersonId: 'user-005', planType: 'STORE_DIRECT', sellingPrice: 49900, downPayment: 10000, interestRate: 0.08, totalMonths: 10, interestTotal: c2.interestTotal, financedAmount: c2.financedAmount, storeCommission: c2.storeCommission, vatAmount: c2.vatAmount, vatPct: 0.07, monthlyPayment: c2.monthlyPayment, status: 'ACTIVE', workflowStatus: 'APPROVED', reviewedById: 'user-003', paymentDueDay: 15, interestConfigId: 'ic-001', hasOwnershipClause: true, hasRepossessionClause: true, hasEarlyPayoffClause: true, hasNoTransferClause: true, hasAcknowledgement: true } });
 
   // Contract 3: ACTIVE - ธนากร iPad Pro M2
   const c3 = calc(34900, 5000, 0.08, 10);
-  await prisma.contract.create({ data: { id: 'cont-003', contractNumber: 'BCP-2025-003', customerId: 'cust-003', productId: 'prod-016', branchId: 'branch-002', salespersonId: 'user-004', planType: 'STORE_DIRECT', sellingPrice: 34900, downPayment: 5000, interestRate: 0.08, totalMonths: 10, interestTotal: c3.interestTotal, financedAmount: c3.financedAmount, monthlyPayment: c3.monthlyPayment, status: 'ACTIVE', workflowStatus: 'APPROVED', reviewedById: 'user-002', paymentDueDay: 25, interestConfigId: 'ic-003', hasOwnershipClause: true, hasRepossessionClause: true, hasEarlyPayoffClause: true, hasNoTransferClause: true, hasAcknowledgement: true } });
+  await prisma.contract.create({ data: { id: 'cont-003', contractNumber: 'BCP-2025-003', customerId: 'cust-003', productId: 'prod-016', branchId: 'branch-002', salespersonId: 'user-004', planType: 'STORE_DIRECT', sellingPrice: 34900, downPayment: 5000, interestRate: 0.08, totalMonths: 10, interestTotal: c3.interestTotal, financedAmount: c3.financedAmount, storeCommission: c3.storeCommission, vatAmount: c3.vatAmount, vatPct: 0.07, monthlyPayment: c3.monthlyPayment, status: 'ACTIVE', workflowStatus: 'APPROVED', reviewedById: 'user-002', paymentDueDay: 25, interestConfigId: 'ic-003', hasOwnershipClause: true, hasRepossessionClause: true, hasEarlyPayoffClause: true, hasNoTransferClause: true, hasAcknowledgement: true } });
 
   // Contract 4: OVERDUE - สุดารัตน์ iPhone 14 Pro Max (used)
   const c4 = calc(24900, 5000, 0.1, 10);
-  await prisma.contract.create({ data: { id: 'cont-004', contractNumber: 'BCP-2025-004', customerId: 'cust-004', productId: 'prod-009', branchId: 'branch-002', salespersonId: 'user-004', planType: 'STORE_DIRECT', sellingPrice: 24900, downPayment: 5000, interestRate: 0.10, totalMonths: 10, interestTotal: c4.interestTotal, financedAmount: c4.financedAmount, monthlyPayment: c4.monthlyPayment, status: 'OVERDUE', workflowStatus: 'APPROVED', reviewedById: 'user-002', paymentDueDay: 1, interestConfigId: 'ic-002', hasOwnershipClause: true, hasRepossessionClause: true, hasEarlyPayoffClause: true, hasNoTransferClause: true, hasAcknowledgement: true } });
+  await prisma.contract.create({ data: { id: 'cont-004', contractNumber: 'BCP-2025-004', customerId: 'cust-004', productId: 'prod-009', branchId: 'branch-002', salespersonId: 'user-004', planType: 'STORE_DIRECT', sellingPrice: 24900, downPayment: 5000, interestRate: 0.10, totalMonths: 10, interestTotal: c4.interestTotal, financedAmount: c4.financedAmount, storeCommission: c4.storeCommission, vatAmount: c4.vatAmount, vatPct: 0.07, monthlyPayment: c4.monthlyPayment, status: 'OVERDUE', workflowStatus: 'APPROVED', reviewedById: 'user-002', paymentDueDay: 1, interestConfigId: 'ic-002', hasOwnershipClause: true, hasRepossessionClause: true, hasEarlyPayoffClause: true, hasNoTransferClause: true, hasAcknowledgement: true } });
 
   // Contract 5: OVERDUE - ประยุทธ์ iPhone 14 Pro Max (used)
   const c5 = calc(24900, 6000, 0.1, 10);
-  await prisma.contract.create({ data: { id: 'cont-005', contractNumber: 'BCP-2025-005', customerId: 'cust-005', productId: 'prod-010', branchId: 'branch-003', salespersonId: 'user-005', planType: 'STORE_DIRECT', sellingPrice: 24900, downPayment: 6000, interestRate: 0.10, totalMonths: 10, interestTotal: c5.interestTotal, financedAmount: c5.financedAmount, monthlyPayment: c5.monthlyPayment, status: 'OVERDUE', workflowStatus: 'APPROVED', reviewedById: 'user-003', paymentDueDay: 10, interestConfigId: 'ic-002', hasOwnershipClause: true, hasRepossessionClause: true, hasEarlyPayoffClause: true, hasNoTransferClause: true, hasAcknowledgement: true } });
+  await prisma.contract.create({ data: { id: 'cont-005', contractNumber: 'BCP-2025-005', customerId: 'cust-005', productId: 'prod-010', branchId: 'branch-003', salespersonId: 'user-005', planType: 'STORE_DIRECT', sellingPrice: 24900, downPayment: 6000, interestRate: 0.10, totalMonths: 10, interestTotal: c5.interestTotal, financedAmount: c5.financedAmount, storeCommission: c5.storeCommission, vatAmount: c5.vatAmount, vatPct: 0.07, monthlyPayment: c5.monthlyPayment, status: 'OVERDUE', workflowStatus: 'APPROVED', reviewedById: 'user-003', paymentDueDay: 10, interestConfigId: 'ic-002', hasOwnershipClause: true, hasRepossessionClause: true, hasEarlyPayoffClause: true, hasNoTransferClause: true, hasAcknowledgement: true } });
 
   // Contract 6: DEFAULT - วรุฒม์ iPhone 13 Pro (used) → repossessed
   const c6 = calc(16900, 4000, 0.1, 10);
-  await prisma.contract.create({ data: { id: 'cont-006', contractNumber: 'BCP-2025-006', customerId: 'cust-008', productId: 'prod-013', branchId: 'branch-003', salespersonId: 'user-005', planType: 'STORE_DIRECT', sellingPrice: 16900, downPayment: 4000, interestRate: 0.10, totalMonths: 10, interestTotal: c6.interestTotal, financedAmount: c6.financedAmount, monthlyPayment: c6.monthlyPayment, status: 'DEFAULT', workflowStatus: 'APPROVED', reviewedById: 'user-003', paymentDueDay: 5, interestConfigId: 'ic-002', hasOwnershipClause: true, hasRepossessionClause: true, hasEarlyPayoffClause: true, hasNoTransferClause: true, hasAcknowledgement: true } });
+  await prisma.contract.create({ data: { id: 'cont-006', contractNumber: 'BCP-2025-006', customerId: 'cust-008', productId: 'prod-013', branchId: 'branch-003', salespersonId: 'user-005', planType: 'STORE_DIRECT', sellingPrice: 16900, downPayment: 4000, interestRate: 0.10, totalMonths: 10, interestTotal: c6.interestTotal, financedAmount: c6.financedAmount, storeCommission: c6.storeCommission, vatAmount: c6.vatAmount, vatPct: 0.07, monthlyPayment: c6.monthlyPayment, status: 'DEFAULT', workflowStatus: 'APPROVED', reviewedById: 'user-003', paymentDueDay: 5, interestConfigId: 'ic-002', hasOwnershipClause: true, hasRepossessionClause: true, hasEarlyPayoffClause: true, hasNoTransferClause: true, hasAcknowledgement: true } });
 
   // Contract 7: COMPLETED - สุทธิ iPhone 16 Pro Max
   const c7 = calc(54900, 15000, 0.08, 8);
-  await prisma.contract.create({ data: { id: 'cont-007', contractNumber: 'BCP-2025-007', customerId: 'cust-012', productId: 'prod-002', branchId: 'branch-003', salespersonId: 'user-005', planType: 'STORE_DIRECT', sellingPrice: 54900, downPayment: 15000, interestRate: 0.08, totalMonths: 8, interestTotal: c7.interestTotal, financedAmount: c7.financedAmount, monthlyPayment: c7.monthlyPayment, status: 'COMPLETED', workflowStatus: 'APPROVED', reviewedById: 'user-003', paymentDueDay: 20, interestConfigId: 'ic-001', hasOwnershipClause: true, hasRepossessionClause: true, hasEarlyPayoffClause: true, hasNoTransferClause: true, hasAcknowledgement: true } });
+  await prisma.contract.create({ data: { id: 'cont-007', contractNumber: 'BCP-2025-007', customerId: 'cust-012', productId: 'prod-002', branchId: 'branch-003', salespersonId: 'user-005', planType: 'STORE_DIRECT', sellingPrice: 54900, downPayment: 15000, interestRate: 0.08, totalMonths: 8, interestTotal: c7.interestTotal, financedAmount: c7.financedAmount, storeCommission: c7.storeCommission, vatAmount: c7.vatAmount, vatPct: 0.07, monthlyPayment: c7.monthlyPayment, status: 'COMPLETED', workflowStatus: 'APPROVED', reviewedById: 'user-003', paymentDueDay: 20, interestConfigId: 'ic-001', hasOwnershipClause: true, hasRepossessionClause: true, hasEarlyPayoffClause: true, hasNoTransferClause: true, hasAcknowledgement: true } });
 
   // Contract 8: EARLY_PAYOFF - จิราภรณ์ iPad Air
   const c8 = calc(24900, 5000, 0.08, 10);
-  await prisma.contract.create({ data: { id: 'cont-008', contractNumber: 'BCP-2025-008', customerId: 'cust-009', productId: 'prod-019', branchId: 'branch-002', salespersonId: 'user-004', planType: 'STORE_DIRECT', sellingPrice: 24900, downPayment: 5000, interestRate: 0.08, totalMonths: 10, interestTotal: c8.interestTotal, financedAmount: c8.financedAmount, monthlyPayment: c8.monthlyPayment, status: 'EARLY_PAYOFF', workflowStatus: 'APPROVED', reviewedById: 'user-002', paymentDueDay: 15, interestConfigId: 'ic-003', hasOwnershipClause: true, hasRepossessionClause: true, hasEarlyPayoffClause: true, hasNoTransferClause: true, hasAcknowledgement: true } });
+  await prisma.contract.create({ data: { id: 'cont-008', contractNumber: 'BCP-2025-008', customerId: 'cust-009', productId: 'prod-019', branchId: 'branch-002', salespersonId: 'user-004', planType: 'STORE_DIRECT', sellingPrice: 24900, downPayment: 5000, interestRate: 0.08, totalMonths: 10, interestTotal: c8.interestTotal, financedAmount: c8.financedAmount, storeCommission: c8.storeCommission, vatAmount: c8.vatAmount, vatPct: 0.07, monthlyPayment: c8.monthlyPayment, status: 'EARLY_PAYOFF', workflowStatus: 'APPROVED', reviewedById: 'user-002', paymentDueDay: 15, interestConfigId: 'ic-003', hasOwnershipClause: true, hasRepossessionClause: true, hasEarlyPayoffClause: true, hasNoTransferClause: true, hasAcknowledgement: true } });
 
   // Contract 9: DRAFT - แพรวา (ยังไม่เสร็จ)
   const c9 = calc(24900, 5000, 0.1, 10);
-  await prisma.contract.create({ data: { id: 'cont-009', contractNumber: 'BCP-2026-001', customerId: 'cust-006', productId: 'prod-014', branchId: 'branch-002', salespersonId: 'user-004', planType: 'STORE_DIRECT', sellingPrice: 24900, downPayment: 5000, interestRate: 0.10, totalMonths: 10, interestTotal: c9.interestTotal, financedAmount: c9.financedAmount, monthlyPayment: c9.monthlyPayment, status: 'DRAFT', workflowStatus: 'CREATING', paymentDueDay: 1, interestConfigId: 'ic-002' } });
+  await prisma.contract.create({ data: { id: 'cont-009', contractNumber: 'BCP-2026-001', customerId: 'cust-006', productId: 'prod-014', branchId: 'branch-002', salespersonId: 'user-004', planType: 'STORE_DIRECT', sellingPrice: 24900, downPayment: 5000, interestRate: 0.10, totalMonths: 10, interestTotal: c9.interestTotal, financedAmount: c9.financedAmount, storeCommission: c9.storeCommission, vatAmount: c9.vatAmount, vatPct: 0.07, monthlyPayment: c9.monthlyPayment, status: 'DRAFT', workflowStatus: 'CREATING', paymentDueDay: 1, interestConfigId: 'ic-002' } });
 
   // Contract 10: ACTIVE - กิตติ iPhone 14 refurbished
   const c10 = calc(21900, 4000, 0.1, 10);
-  await prisma.contract.create({ data: { id: 'cont-010', contractNumber: 'BCP-2026-002', customerId: 'cust-007', productId: 'prod-029', branchId: 'branch-002', salespersonId: 'user-004', planType: 'STORE_DIRECT', sellingPrice: 21900, downPayment: 4000, interestRate: 0.10, totalMonths: 10, interestTotal: c10.interestTotal, financedAmount: c10.financedAmount, monthlyPayment: c10.monthlyPayment, status: 'ACTIVE', workflowStatus: 'APPROVED', reviewedById: 'user-002', paymentDueDay: 10, interestConfigId: 'ic-002', hasOwnershipClause: true, hasRepossessionClause: true, hasEarlyPayoffClause: true, hasNoTransferClause: true, hasAcknowledgement: true } });
+  await prisma.contract.create({ data: { id: 'cont-010', contractNumber: 'BCP-2026-002', customerId: 'cust-007', productId: 'prod-029', branchId: 'branch-002', salespersonId: 'user-004', planType: 'STORE_DIRECT', sellingPrice: 21900, downPayment: 4000, interestRate: 0.10, totalMonths: 10, interestTotal: c10.interestTotal, financedAmount: c10.financedAmount, storeCommission: c10.storeCommission, vatAmount: c10.vatAmount, vatPct: 0.07, monthlyPayment: c10.monthlyPayment, status: 'ACTIVE', workflowStatus: 'APPROVED', reviewedById: 'user-002', paymentDueDay: 10, interestConfigId: 'ic-002', hasOwnershipClause: true, hasRepossessionClause: true, hasEarlyPayoffClause: true, hasNoTransferClause: true, hasAcknowledgement: true } });
 
   // --- 5 Demo contracts (LINE OA) ---
   const cd1 = calc(54900, 11000, 0.08, 10);
-  await prisma.contract.create({ data: { id: 'cont-demo-001', contractNumber: 'BCP-DEMO-001', customerId: 'cust-demo-001', productId: 'prod-026', branchId: 'branch-002', salespersonId: 'user-004', planType: 'STORE_DIRECT', sellingPrice: 54900, downPayment: 11000, interestRate: 0.08, totalMonths: 10, interestTotal: cd1.interestTotal, financedAmount: cd1.financedAmount, monthlyPayment: cd1.monthlyPayment, status: 'ACTIVE', workflowStatus: 'APPROVED', reviewedById: 'user-002', paymentDueDay: 5, interestConfigId: 'ic-001', hasOwnershipClause: true, hasRepossessionClause: true, hasEarlyPayoffClause: true, hasNoTransferClause: true, hasAcknowledgement: true } });
+  await prisma.contract.create({ data: { id: 'cont-demo-001', contractNumber: 'BCP-DEMO-001', customerId: 'cust-demo-001', productId: 'prod-026', branchId: 'branch-002', salespersonId: 'user-004', planType: 'STORE_DIRECT', sellingPrice: 54900, downPayment: 11000, interestRate: 0.08, totalMonths: 10, interestTotal: cd1.interestTotal, financedAmount: cd1.financedAmount, storeCommission: cd1.storeCommission, vatAmount: cd1.vatAmount, vatPct: 0.07, monthlyPayment: cd1.monthlyPayment, status: 'ACTIVE', workflowStatus: 'APPROVED', reviewedById: 'user-002', paymentDueDay: 5, interestConfigId: 'ic-001', hasOwnershipClause: true, hasRepossessionClause: true, hasEarlyPayoffClause: true, hasNoTransferClause: true, hasAcknowledgement: true } });
 
   const cd2 = calc(54900, 11000, 0.08, 10);
-  await prisma.contract.create({ data: { id: 'cont-demo-002', contractNumber: 'BCP-DEMO-002', customerId: 'cust-demo-001', productId: 'prod-027', branchId: 'branch-003', salespersonId: 'user-005', planType: 'STORE_DIRECT', sellingPrice: 54900, downPayment: 11000, interestRate: 0.08, totalMonths: 10, interestTotal: cd2.interestTotal, financedAmount: cd2.financedAmount, monthlyPayment: cd2.monthlyPayment, status: 'ACTIVE', workflowStatus: 'APPROVED', reviewedById: 'user-003', paymentDueDay: 15, interestConfigId: 'ic-001', hasOwnershipClause: true, hasRepossessionClause: true, hasEarlyPayoffClause: true, hasNoTransferClause: true, hasAcknowledgement: true } });
+  await prisma.contract.create({ data: { id: 'cont-demo-002', contractNumber: 'BCP-DEMO-002', customerId: 'cust-demo-001', productId: 'prod-027', branchId: 'branch-003', salespersonId: 'user-005', planType: 'STORE_DIRECT', sellingPrice: 54900, downPayment: 11000, interestRate: 0.08, totalMonths: 10, interestTotal: cd2.interestTotal, financedAmount: cd2.financedAmount, storeCommission: cd2.storeCommission, vatAmount: cd2.vatAmount, vatPct: 0.07, monthlyPayment: cd2.monthlyPayment, status: 'ACTIVE', workflowStatus: 'APPROVED', reviewedById: 'user-003', paymentDueDay: 15, interestConfigId: 'ic-001', hasOwnershipClause: true, hasRepossessionClause: true, hasEarlyPayoffClause: true, hasNoTransferClause: true, hasAcknowledgement: true } });
 
   const cd3 = calc(54900, 11000, 0.08, 10);
-  await prisma.contract.create({ data: { id: 'cont-demo-003', contractNumber: 'BCP-DEMO-003', customerId: 'cust-demo-002', productId: 'prod-028', branchId: 'branch-004', salespersonId: 'user-007', planType: 'STORE_DIRECT', sellingPrice: 54900, downPayment: 11000, interestRate: 0.08, totalMonths: 10, interestTotal: cd3.interestTotal, financedAmount: cd3.financedAmount, monthlyPayment: cd3.monthlyPayment, status: 'OVERDUE', workflowStatus: 'APPROVED', reviewedById: 'user-008', paymentDueDay: 1, interestConfigId: 'ic-001', hasOwnershipClause: true, hasRepossessionClause: true, hasEarlyPayoffClause: true, hasNoTransferClause: true, hasAcknowledgement: true } });
+  await prisma.contract.create({ data: { id: 'cont-demo-003', contractNumber: 'BCP-DEMO-003', customerId: 'cust-demo-002', productId: 'prod-028', branchId: 'branch-004', salespersonId: 'user-007', planType: 'STORE_DIRECT', sellingPrice: 54900, downPayment: 11000, interestRate: 0.08, totalMonths: 10, interestTotal: cd3.interestTotal, financedAmount: cd3.financedAmount, storeCommission: cd3.storeCommission, vatAmount: cd3.vatAmount, vatPct: 0.07, monthlyPayment: cd3.monthlyPayment, status: 'OVERDUE', workflowStatus: 'APPROVED', reviewedById: 'user-008', paymentDueDay: 1, interestConfigId: 'ic-001', hasOwnershipClause: true, hasRepossessionClause: true, hasEarlyPayoffClause: true, hasNoTransferClause: true, hasAcknowledgement: true } });
 
   const cd4 = calc(21900, 4000, 0.1, 10);
-  await prisma.contract.create({ data: { id: 'cont-demo-004', contractNumber: 'BCP-DEMO-004', customerId: 'cust-demo-002', productId: 'prod-032', branchId: 'branch-002', salespersonId: 'user-004', planType: 'STORE_DIRECT', sellingPrice: 21900, downPayment: 4000, interestRate: 0.10, totalMonths: 10, interestTotal: cd4.interestTotal, financedAmount: cd4.financedAmount, monthlyPayment: cd4.monthlyPayment, status: 'ACTIVE', workflowStatus: 'APPROVED', reviewedById: 'user-002', paymentDueDay: 10, interestConfigId: 'ic-002', hasOwnershipClause: true, hasRepossessionClause: true, hasEarlyPayoffClause: true, hasNoTransferClause: true, hasAcknowledgement: true } });
+  await prisma.contract.create({ data: { id: 'cont-demo-004', contractNumber: 'BCP-DEMO-004', customerId: 'cust-demo-002', productId: 'prod-032', branchId: 'branch-002', salespersonId: 'user-004', planType: 'STORE_DIRECT', sellingPrice: 21900, downPayment: 4000, interestRate: 0.10, totalMonths: 10, interestTotal: cd4.interestTotal, financedAmount: cd4.financedAmount, storeCommission: cd4.storeCommission, vatAmount: cd4.vatAmount, vatPct: 0.07, monthlyPayment: cd4.monthlyPayment, status: 'ACTIVE', workflowStatus: 'APPROVED', reviewedById: 'user-002', paymentDueDay: 10, interestConfigId: 'ic-002', hasOwnershipClause: true, hasRepossessionClause: true, hasEarlyPayoffClause: true, hasNoTransferClause: true, hasAcknowledgement: true } });
 
   const cd5 = calc(49900, 10000, 0.08, 10);
-  await prisma.contract.create({ data: { id: 'cont-demo-005', contractNumber: 'BCP-DEMO-005', customerId: 'cust-demo-003', productId: 'prod-033', branchId: 'branch-004', salespersonId: 'user-007', planType: 'STORE_DIRECT', sellingPrice: 49900, downPayment: 10000, interestRate: 0.08, totalMonths: 10, interestTotal: cd5.interestTotal, financedAmount: cd5.financedAmount, monthlyPayment: cd5.monthlyPayment, status: 'COMPLETED', workflowStatus: 'APPROVED', reviewedById: 'user-008', paymentDueDay: 20, interestConfigId: 'ic-001', hasOwnershipClause: true, hasRepossessionClause: true, hasEarlyPayoffClause: true, hasNoTransferClause: true, hasAcknowledgement: true } });
+  await prisma.contract.create({ data: { id: 'cont-demo-005', contractNumber: 'BCP-DEMO-005', customerId: 'cust-demo-003', productId: 'prod-033', branchId: 'branch-004', salespersonId: 'user-007', planType: 'STORE_DIRECT', sellingPrice: 49900, downPayment: 10000, interestRate: 0.08, totalMonths: 10, interestTotal: cd5.interestTotal, financedAmount: cd5.financedAmount, storeCommission: cd5.storeCommission, vatAmount: cd5.vatAmount, vatPct: 0.07, monthlyPayment: cd5.monthlyPayment, status: 'COMPLETED', workflowStatus: 'APPROVED', reviewedById: 'user-008', paymentDueDay: 20, interestConfigId: 'ic-001', hasOwnershipClause: true, hasRepossessionClause: true, hasEarlyPayoffClause: true, hasNoTransferClause: true, hasAcknowledgement: true } });
 
   console.log('Contracts created: 15 (10 main + 5 demo)');
 
@@ -603,13 +606,24 @@ async function main() {
   const now = new Date();
   let paymentCount = 0;
 
-  // Helper to create payment schedule
-  async function createPayments(contractId: string, monthlyPayment: number, totalMonths: number, dueDay: number, startDate: Date, paidCount: number, overdueCount: number) {
+  // Helper to create payment schedule with breakdown
+  async function createPayments(
+    contractId: string, monthlyPayment: number, totalMonths: number, dueDay: number,
+    startDate: Date, paidCount: number, overdueCount: number,
+    calcData?: { principal: number; interestTotal: number; storeCommission: number; vatAmount: number },
+  ) {
+    // Pre-compute breakdowns per installment (ceil for 1..N-1, remainder for last)
+    const mpPrincipal = calcData ? Math.ceil(calcData.principal / totalMonths) : undefined;
+    const mpInterest = calcData ? Math.ceil(calcData.interestTotal / totalMonths) : undefined;
+    const mpCommission = calcData ? Math.ceil(calcData.storeCommission / totalMonths) : undefined;
+    let usedP = 0, usedI = 0, usedC = 0;
+
     for (let i = 1; i <= totalMonths; i++) {
       const dueDate = new Date(startDate.getFullYear(), startDate.getMonth() + i, dueDay);
       let status: 'PAID' | 'PENDING' | 'OVERDUE' | 'PARTIALLY_PAID' = 'PENDING';
       let amountPaid = 0;
       let paidDate: Date | null = null;
+      const isLast = i === totalMonths;
 
       if (i <= paidCount) {
         status = 'PAID';
@@ -618,10 +632,25 @@ async function main() {
       } else if (i <= paidCount + overdueCount) {
         status = 'OVERDUE';
       } else if (dueDate < now && i === paidCount + 1) {
-        // partially paid
         if (overdueCount > 0) {
           status = 'OVERDUE';
         }
+      }
+
+      // Breakdown fields
+      let principal: number | undefined;
+      let interest: number | undefined;
+      let commission: number | undefined;
+      let vat: number | undefined;
+
+      if (calcData && mpPrincipal !== undefined && mpInterest !== undefined && mpCommission !== undefined) {
+        principal = isLast ? Math.round((calcData.principal - usedP) * 100) / 100 : mpPrincipal;
+        interest = isLast ? Math.round((calcData.interestTotal - usedI) * 100) / 100 : mpInterest;
+        commission = isLast ? Math.round((calcData.storeCommission - usedC) * 100) / 100 : mpCommission;
+        vat = Math.round((monthlyPayment - principal - interest - commission) * 100) / 100;
+        usedP += principal;
+        usedI += interest;
+        usedC += commission;
       }
 
       const paymentId = `pay-${contractId}-${String(i).padStart(2, '0')}`;
@@ -637,6 +666,10 @@ async function main() {
           status,
           paymentMethod: amountPaid > 0 ? 'CASH' : undefined,
           recordedById: amountPaid > 0 ? 'user-004' : undefined,
+          monthlyPrincipal: principal,
+          monthlyInterest: interest,
+          monthlyCommission: commission,
+          vatAmount: vat,
         },
       });
       paymentCount++;
@@ -644,30 +677,30 @@ async function main() {
   }
 
   // Contract 1: ACTIVE - 3 paid, rest pending (started Oct 2025)
-  await createPayments('cont-001', c1.monthlyPayment, 10, 5, new Date('2025-10-01'), 4, 0);
+  await createPayments('cont-001', c1.monthlyPayment, 10, 5, new Date('2025-10-01'), 4, 0, c1);
   // Contract 2: ACTIVE - 4 paid
-  await createPayments('cont-002', c2.monthlyPayment, 10, 15, new Date('2025-10-01'), 4, 0);
+  await createPayments('cont-002', c2.monthlyPayment, 10, 15, new Date('2025-10-01'), 4, 0, c2);
   // Contract 3: ACTIVE - 2 paid
-  await createPayments('cont-003', c3.monthlyPayment, 10, 25, new Date('2025-11-01'), 3, 0);
+  await createPayments('cont-003', c3.monthlyPayment, 10, 25, new Date('2025-11-01'), 3, 0, c3);
   // Contract 4: OVERDUE - 2 paid, 2 overdue
-  await createPayments('cont-004', c4.monthlyPayment, 10, 1, new Date('2025-10-01'), 2, 2);
+  await createPayments('cont-004', c4.monthlyPayment, 10, 1, new Date('2025-10-01'), 2, 2, c4);
   // Contract 5: OVERDUE - 3 paid, 1 overdue
-  await createPayments('cont-005', c5.monthlyPayment, 10, 10, new Date('2025-10-01'), 3, 1);
+  await createPayments('cont-005', c5.monthlyPayment, 10, 10, new Date('2025-10-01'), 3, 1, c5);
   // Contract 6: DEFAULT - 1 paid, 4 overdue
-  await createPayments('cont-006', c6.monthlyPayment, 10, 5, new Date('2025-09-01'), 1, 4);
+  await createPayments('cont-006', c6.monthlyPayment, 10, 5, new Date('2025-09-01'), 1, 4, c6);
   // Contract 7: COMPLETED - all 8 paid
-  await createPayments('cont-007', c7.monthlyPayment, 8, 20, new Date('2025-06-01'), 8, 0);
+  await createPayments('cont-007', c7.monthlyPayment, 8, 20, new Date('2025-06-01'), 8, 0, c7);
   // Contract 8: EARLY_PAYOFF - 4 paid (then paid off early)
-  await createPayments('cont-008', c8.monthlyPayment, 10, 15, new Date('2025-10-01'), 4, 0);
+  await createPayments('cont-008', c8.monthlyPayment, 10, 15, new Date('2025-10-01'), 4, 0, c8);
   // Contract 10: ACTIVE - 1 paid
-  await createPayments('cont-010', c10.monthlyPayment, 10, 10, new Date('2026-01-01'), 1, 0);
+  await createPayments('cont-010', c10.monthlyPayment, 10, 10, new Date('2026-01-01'), 1, 0, c10);
 
   // Demo contracts
-  await createPayments('cont-demo-001', cd1.monthlyPayment, 10, 5, new Date('2026-01-01'), 2, 0);
-  await createPayments('cont-demo-002', cd2.monthlyPayment, 10, 15, new Date('2026-01-01'), 1, 0);
-  await createPayments('cont-demo-003', cd3.monthlyPayment, 10, 1, new Date('2026-01-01'), 1, 1);
-  await createPayments('cont-demo-004', cd4.monthlyPayment, 10, 10, new Date('2026-02-01'), 0, 0);
-  await createPayments('cont-demo-005', cd5.monthlyPayment, 10, 20, new Date('2025-04-01'), 10, 0);
+  await createPayments('cont-demo-001', cd1.monthlyPayment, 10, 5, new Date('2026-01-01'), 2, 0, cd1);
+  await createPayments('cont-demo-002', cd2.monthlyPayment, 10, 15, new Date('2026-01-01'), 1, 0, cd2);
+  await createPayments('cont-demo-003', cd3.monthlyPayment, 10, 1, new Date('2026-01-01'), 1, 1, cd3);
+  await createPayments('cont-demo-004', cd4.monthlyPayment, 10, 10, new Date('2026-02-01'), 0, 0, cd4);
+  await createPayments('cont-demo-005', cd5.monthlyPayment, 10, 20, new Date('2025-04-01'), 10, 0, cd5);
 
   console.log('Payments created:', paymentCount);
 

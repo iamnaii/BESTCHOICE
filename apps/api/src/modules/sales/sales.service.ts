@@ -5,10 +5,14 @@ import { CreateSaleDto } from './dto/sale.dto';
 import { calculateInstallment, generatePaymentSchedule } from '../../utils/installment.util';
 import { loadInstallmentConfig, resolveInstallmentParams } from '../../utils/config.util';
 import { generateContractNumber, generateSaleNumber } from '../../utils/sequence.util';
+import { InterCompanyService } from '../inter-company/inter-company.service';
 
 @Injectable()
 export class SalesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private interCompanyService: InterCompanyService,
+  ) {}
 
   async findAll(filters: {
     saleType?: string;
@@ -350,31 +354,23 @@ export class SalesService {
       // Finance profit = interestTotal - commission (late fees added later)
       const financeProfit = calc.interestTotal - calc.storeCommission;
 
-      // W-009: Double-entry description for both entities
-      const interCompanyNote = `SHOP: Debit ลูกหนี้เช่าซื้อ ${calc.principal}, Credit รายได้จากการขาย ${calc.principal + calc.storeCommission}; FINANCE: Debit ลูกหนี้เช่าซื้อ ${calc.principal + calc.interestTotal}, Credit เจ้าหนี้ SHOP ${calc.principal + calc.storeCommission}`;
-
-      await tx.interCompanyTransaction.create({
-        data: {
-          saleId: sale.id,
-          contractId: contract.id,
-          branchId: dto.branchId,
-          type: 'FINANCE_PURCHASE',
-          fromEntity: 'BESTCHOICE FINANCE',
-          toEntity: 'BESTCHOICE SHOP',
-          principal: calc.principal,
-          commission: calc.storeCommission,
-          commissionPct: params.storeCommissionPct,
-          vatAmount: calc.vatAmount,
-          vatPct: params.vatPct,
-          totalAmount: calc.principal + calc.storeCommission,
-          interestTotal: calc.interestTotal,
-          costPrice,
-          downPayment: downPaymentNum,
-          sellingPrice: netAmount,
-          shopProfit,
-          financeProfit,
-          note: interCompanyNote,
-        },
+      // CR-8: Delegate inter-company transaction to InterCompanyService
+      await this.interCompanyService.createFromSaleInTx(tx, {
+        saleId: sale.id,
+        contractId: contract.id,
+        branchId: dto.branchId,
+        principal: calc.principal,
+        commission: calc.storeCommission,
+        commissionPct: params.storeCommissionPct,
+        vatAmount: calc.vatAmount,
+        vatPct: params.vatPct,
+        totalAmount: calc.principal + calc.storeCommission,
+        interestTotal: calc.interestTotal,
+        costPrice,
+        downPayment: downPaymentNum,
+        sellingPrice: netAmount,
+        shopProfit,
+        financeProfit,
       });
 
       // ── Finance Receivable for BESTCHOICE FINANCE (internal) ──

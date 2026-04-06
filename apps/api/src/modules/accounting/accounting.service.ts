@@ -6,6 +6,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { ExpenseAccountType, ExpenseCategory, ExpenseStatus, Prisma } from '@prisma/client';
 import { CreateExpenseDto, UpdateExpenseDto } from './dto/expense.dto';
+import { validatePeriodOpen as validatePeriodOpenUtil } from '../../utils/period-lock.util';
 
 // Map category → accountType for validation
 const CATEGORY_ACCOUNT_MAP: Record<string, ExpenseAccountType> = {
@@ -687,17 +688,7 @@ export class AccountingService {
 
   /** Check if a date falls in a closed accounting period */
   private async validatePeriodOpen(date: Date): Promise<void> {
-    const config = await this.prisma.systemConfig.findUnique({
-      where: { key: 'accounting_period_closed_until' },
-    });
-    if (config) {
-      const closedUntil = new Date(config.value);
-      if (date <= closedUntil) {
-        throw new BadRequestException(
-          `ไม่สามารถบันทึกรายการในงวดที่ปิดแล้ว (ปิดถึง ${closedUntil.toISOString().split('T')[0]})`,
-        );
-      }
-    }
+    return validatePeriodOpenUtil(this.prisma, date);
   }
 
   async closeAccountingPeriod(closedUntil: string) {

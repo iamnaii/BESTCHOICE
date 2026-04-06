@@ -157,31 +157,8 @@ export class AccountingController {
     return this.service.voidExpense(id, req.user.id, reason);
   }
 
-  // ============================================================
-  // Balance Sheet & Cash Flow Statement
-  // ============================================================
-
-  @Get('balance-sheet')
-  @Roles('OWNER', 'ACCOUNTANT')
-  getBalanceSheet(
-    @Query('asOfDate') asOfDate?: string,
-    @Query('branchId') branchId?: string,
-  ) {
-    return this.service.getBalanceSheet(
-      asOfDate || new Date().toISOString().split('T')[0],
-      branchId,
-    );
-  }
-
-  @Get('cash-flow')
-  @Roles('OWNER', 'ACCOUNTANT')
-  getCashFlowStatement(
-    @Query('startDate') startDate: string,
-    @Query('endDate') endDate: string,
-    @Query('branchId') branchId?: string,
-  ) {
-    return this.service.getCashFlowStatement(startDate, endDate, branchId);
-  }
+  // Balance Sheet & Cash Flow endpoints are in ReportsController (/reports/balance-sheet, /reports/cash-flow)
+  // to avoid duplicate routes. See reports.controller.ts.
 
   // ============================================================
   // W-013: Period Closing Lock

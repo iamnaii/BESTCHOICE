@@ -3,6 +3,7 @@ import { Prisma, PaymentMethod } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ReceiptsService } from '../receipts/receipts.service';
 import { AuditService } from '../audit/audit.service';
+import { validatePeriodOpen } from '../../utils/period-lock.util';
 
 @Injectable()
 export class PaymentsService {
@@ -49,6 +50,9 @@ export class PaymentsService {
     if (!evidenceUrl && !transactionRef) {
       throw new BadRequestException('ต้อง upload หลักฐานการชำระเงิน (สลิปโอนเงิน) หรือระบุเลขอ้างอิงธุรกรรม');
     }
+
+    // CR-7: Validate payment date is not in a closed accounting period
+    await validatePeriodOpen(this.prisma, new Date());
 
     // Capture dueDate for loyalty points check (on-time = paidDate <= dueDate)
     let capturedDueDate: Date | null = null;

@@ -384,7 +384,7 @@ export default function DashboardPage() {
     refetchInterval: 5 * 60 * 1000, // auto-refresh ทุก 5min
   });
 
-  const { data: entityProfit } = useQuery<{
+  const { data: entityProfit, isError: entityProfitError } = useQuery<{
     shop: { revenue: number; costOfGoods: number; commission: number; profit: number; transactionCount: number };
     finance: { interestIncome: number; commissionExpense: number; lateFeeIncome: number; profit: number; transactionCount: number };
     combined: { totalProfit: number; totalVat: number };
@@ -398,6 +398,7 @@ export default function DashboardPage() {
     },
     enabled: user?.role === 'OWNER' || user?.role === 'ACCOUNTANT',
     staleTime: dashboardStaleTime,
+    retry: 1,
   });
 
   /* ─── Computed ─── */
@@ -745,7 +746,14 @@ export default function DashboardPage() {
           )}
 
           {/* Entity Profit: SHOP vs FINANCE — OWNER/ACCOUNTANT only */}
-          {entityProfit && (user?.role === 'OWNER' || user?.role === 'ACCOUNTANT') && (
+          {entityProfitError && (user?.role === 'OWNER' || user?.role === 'ACCOUNTANT') && (
+            <Card>
+              <CardContent className="py-6 text-center text-sm text-muted-foreground">
+                ไม่สามารถโหลดข้อมูลกำไร Shop/Finance ได้
+              </CardContent>
+            </Card>
+          )}
+          {entityProfit && !entityProfitError && (user?.role === 'OWNER' || user?.role === 'ACCOUNTANT') && (
             <Card>
               <CardHeader>
                 <CardTitle>กำไร Shop / Finance เดือนนี้</CardTitle>

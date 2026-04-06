@@ -18,9 +18,12 @@ test.describe('ตรวจสอบเครดิต', () => {
 
   test('should display status filter tabs or badges', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    // CreditChecksPage shows status badges: รอตรวจสอบ, ผ่าน, ไม่ผ่าน, รอพิจารณา
-    const statusBadge = page.getByText(/รอตรวจสอบ|ผ่าน|ไม่ผ่าน|รอพิจารณา/).first();
-    await expect(statusBadge).toBeVisible({ timeout: 10000 });
+    // CreditChecksPage shows heading + status summary section
+    // First verify heading loaded, then check visible badge text (exclude select options)
+    await expect(page.getByRole('heading', { name: /ตรวจเครดิต/ })).toBeVisible({ timeout: 10000 });
+    // Status badges are rendered as div/span (not option) - use CSS selector to exclude select>option
+    const badge = page.locator('main div, main span').filter({ hasText: /^ผ่าน$|^ไม่ผ่าน$|^รอวิเคราะห์/ }).first();
+    await expect(badge).toBeVisible({ timeout: 5000 });
   });
 
   test('should show credit check list or empty state', async ({ page }) => {

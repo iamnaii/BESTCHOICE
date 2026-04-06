@@ -3,6 +3,7 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
+import { calculateDaysOverdue, calculateDaysElapsed } from '../../utils/date.util';
 
 @Injectable()
 export class DashboardService {
@@ -169,7 +170,7 @@ export class DashboardService {
             return d < oldest ? d : oldest;
           }, new Date(c.payments[0].dueDate))
         : new Date();
-      const daysOverdue = Math.max(0, Math.floor((Date.now() - oldestDue.getTime()) / (1000 * 60 * 60 * 24)));
+      const daysOverdue = calculateDaysOverdue(oldestDue);
 
       return {
         contractNumber: c.contractNumber,
@@ -345,7 +346,7 @@ export class DashboardService {
 
     const buckets = bucketDefs.map((def) => {
       const items = overduePayments.filter((p) => {
-        const days = Math.floor((now.getTime() - new Date(p.dueDate).getTime()) / (1000 * 60 * 60 * 24));
+        const days = calculateDaysElapsed(p.dueDate, now);
         return days >= def.min && days <= def.max;
       });
       const amount = items.reduce((s, p) => s + Number(p.amountDue) - Number(p.amountPaid), 0);

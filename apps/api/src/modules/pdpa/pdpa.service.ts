@@ -83,8 +83,8 @@ export class PDPAService {
   /** Revoke PDPA consent */
   async revokeConsent(consentId: string, reason: string) {
     const consent = await this.prisma.pDPAConsent.findUnique({ where: { id: consentId } });
-    if (!consent || consent.deletedAt) throw new NotFoundException('ไม่พบ Consent');
-    if (consent.status === 'REVOKED') throw new BadRequestException('Consent ถูกเพิกถอนแล้ว');
+    if (!consent || consent.deletedAt) throw new NotFoundException('ไม่พบข้อมูลความยินยอม');
+    if (consent.status === 'REVOKED') throw new BadRequestException('ความยินยอมนี้ถูกเพิกถอนแล้ว');
 
     // Check if there's an active contract linked to this consent
     const linkedContract = await this.prisma.contract.findFirst({

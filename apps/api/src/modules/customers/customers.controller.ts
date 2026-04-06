@@ -3,6 +3,7 @@ import { ApiTags, ApiBearerAuth , ApiOperation} from '@nestjs/swagger';
 import { CustomersService } from './customers.service';
 import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer.dto';
 import { UploadDocumentDto, DeleteDocumentDto } from './dto/document.dto';
+import { PaginationDto } from '../../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -17,9 +18,8 @@ export class CustomersController {
   @Get()
   @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   findAll(
+    @Query() pagination: PaginationDto,
     @Query('search') search?: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
     @Query('contractStatus') contractStatus?: string,
     @Query('hasOverdue') hasOverdue?: string,
     @Query('creditStatus') creditStatus?: string,
@@ -29,8 +29,8 @@ export class CustomersController {
   ) {
     return this.customersService.findAll(
       search,
-      page ? parseInt(page) : 1,
-      limit ? parseInt(limit) : 50,
+      pagination.page,
+      pagination.limit,
       contractStatus,
       hasOverdue === 'true',
       creditStatus,

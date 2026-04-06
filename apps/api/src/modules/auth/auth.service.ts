@@ -130,7 +130,7 @@ export class AuthService {
         where: { id: storedToken.id },
         data: { isRevoked: true, revokedAt: new Date() },
       });
-      throw new UnauthorizedException('Refresh token หมดอายุ กรุณาเข้าสู่ระบบใหม่');
+      throw new UnauthorizedException('โทเค็นหมดอายุ กรุณาเข้าสู่ระบบใหม่');
     }
 
     const user = await this.prisma.user.findUnique({
@@ -381,7 +381,7 @@ export class AuthService {
       return { accessToken, refreshToken: newRefreshToken };
     } catch (err) {
       if (err instanceof UnauthorizedException) throw err;
-      throw new UnauthorizedException('Refresh token ไม่ถูกต้องหรือหมดอายุ');
+      throw new UnauthorizedException('โทเค็นไม่ถูกต้องหรือหมดอายุ');
     }
   }
 }

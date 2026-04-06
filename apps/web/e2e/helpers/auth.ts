@@ -2,6 +2,7 @@ import { Page, expect } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { unwrapResponse } from './api-utils';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -58,7 +59,7 @@ async function getToken(page: Page): Promise<string> {
     throw new Error(`loginViaAPI fallback failed: HTTP ${response.status()}`);
   }
 
-  const data = await response.json();
+  const data = unwrapResponse(await response.json());
   if (!data.accessToken) {
     throw new Error('loginViaAPI fallback: no accessToken in response');
   }
@@ -99,7 +100,8 @@ export async function loginAsAdmin(page: Page) {
     ]);
 
     if (response.ok()) {
-      const data = await response.json().catch(() => ({}));
+      const rawData = await response.json().catch(() => ({}));
+      const data = unwrapResponse(rawData);
       const token = (data as { accessToken?: string }).accessToken;
       if (token) {
         // addInitScript runs before any script on every subsequent page load
@@ -176,7 +178,7 @@ export async function loginAsRole(page: Page, role: TestRole) {
       throw new Error(`loginAsRole(${role}) failed: HTTP ${response.status()}`);
     }
 
-    const data = await response.json();
+    const data = unwrapResponse(await response.json());
     if (!data.accessToken) {
       throw new Error(`loginAsRole(${role}): no accessToken in response`);
     }

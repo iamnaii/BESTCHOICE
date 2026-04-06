@@ -48,8 +48,10 @@ export async function loadInstallmentConfig(
     where: { key: { in: [...INSTALLMENT_CONFIG_KEYS] }, deletedAt: null },
   });
 
-  const getValue = (key: string, def: number): number =>
-    parseFloat(configs.find((c: { key: string; value: string }) => c.key === key)?.value || String(def));
+  const getValue = (key: string, def: number): number => {
+    const raw = parseFloat(configs.find((c: { key: string; value: string }) => c.key === key)?.value || String(def));
+    return Math.round(raw * 10000) / 10000; // Round to 4 decimal places for rate precision
+  };
 
   return {
     interestRate: getValue('interest_rate', DEFAULTS.interestRate),

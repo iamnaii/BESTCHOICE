@@ -7,6 +7,9 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { CreateProductPriceDto, UpdateProductPriceDto } from './dto/product-price.dto';
 import { TransferProductDto, DispatchTransferDto, BulkTransferDto } from './dto/transfer-product.dto';
+import { ReserveProductDto } from './dto/reserve-product.dto';
+import { RejectTransferDto } from './dto/reject-transfer.dto';
+import { PaginationDto } from '../../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -26,37 +29,35 @@ export class ProductsController {
   @Get()
   @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   findAll(
+    @Query() pagination: PaginationDto,
     @Query('search') search?: string,
     @Query('branchId') branchId?: string,
     @Query('status') status?: string,
     @Query('category') category?: string,
     @Query('brand') brand?: string,
     @Query('supplierId') supplierId?: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
   ) {
     return this.productsService.findAll({
       search, branchId, status, category, brand, supplierId,
-      page: page ? parseInt(page) : undefined,
-      limit: limit ? parseInt(limit) : undefined,
+      page: pagination.page,
+      limit: pagination.limit,
     });
   }
 
   @Get('stock')
   @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   getStock(
+    @Query() pagination: PaginationDto,
     @Query('search') search?: string,
     @Query('branchId') branchId?: string,
     @Query('status') status?: string,
     @Query('category') category?: string,
     @Query('brand') brand?: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
   ) {
     return this.productsStockService.getStock({
       search, branchId, status, category, brand,
-      page: page ? parseInt(page) : undefined,
-      limit: limit ? parseInt(limit) : undefined,
+      page: pagination.page,
+      limit: pagination.limit,
     });
   }
 
@@ -107,17 +108,16 @@ export class ProductsController {
   @Get('transfers/history')
   @Roles('OWNER', 'BRANCH_MANAGER')
   getTransferHistory(
+    @Query() pagination: PaginationDto,
     @Query('branchId') branchId?: string,
     @Query('status') status?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
   ) {
     return this.productsStockService.getTransferHistory({
       branchId, status, startDate, endDate,
-      page: page ? parseInt(page) : undefined,
-      limit: limit ? parseInt(limit) : undefined,
+      page: pagination.page,
+      limit: pagination.limit,
     });
   }
 
@@ -188,8 +188,8 @@ export class ProductsController {
 
   @Post(':id/reserve')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
-  reserve(@Param('id') id: string, @Body('reason') reason?: string) {
-    return this.productsStockService.reserve(id, reason);
+  reserve(@Param('id') id: string, @Body() dto: ReserveProductDto) {
+    return this.productsStockService.reserve(id, dto.reason);
   }
 
   @Post(':id/unreserve')
@@ -243,9 +243,9 @@ export class ProductsController {
   rejectTransfer(
     @Param('transferId') transferId: string,
     @CurrentUser() user: { id: string },
-    @Body('reason') reason?: string,
+    @Body() dto: RejectTransferDto,
   ) {
-    return this.productsStockService.rejectTransfer(transferId, user.id, reason);
+    return this.productsStockService.rejectTransfer(transferId, user.id, dto.reason);
   }
 
 }

@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
@@ -81,6 +82,7 @@ async function generateExpenseNumber(tx: Prisma.TransactionClient): Promise<stri
  */
 @Injectable()
 export class AccountingService {
+  private readonly logger = new Logger(AccountingService.name);
   constructor(private prisma: PrismaService) {}
 
   // ─── Expenses CRUD ───────────────────────────────────────────────────────────
@@ -496,6 +498,12 @@ export class AccountingService {
         where: { id: { in: allBundleIds } },
         select: { costPrice: true },
       });
+      // WR-010: Consistency check — warn if some bundle products were not found (deleted/missing)
+      if (bundleProducts.length !== allBundleIds.length) {
+        this.logger.warn(
+          `COGS bundle mismatch: expected ${allBundleIds.length} products, found ${bundleProducts.length}`,
+        );
+      }
       bundleCost = bundleProducts.reduce((sum, p) => sum + Number(p.costPrice || 0), 0);
     }
     const purchaseOrderCost = productCosts.reduce((sum, s) => sum + Number(s.product.costPrice || 0), 0)

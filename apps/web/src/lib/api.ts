@@ -4,16 +4,16 @@ import { API_URL } from '@/lib/env';
 // In-memory token storage — not accessible via XSS unlike localStorage
 let accessToken: string | null = null;
 
-// One-time migration: read token from localStorage (for backward compat & E2E tests),
-// then remove it so future tokens are memory-only.
+// E2E test support: read token from localStorage (injected by Playwright addInitScript),
+// then immediately remove it so tokens are memory-only at runtime.
 try {
-  const legacyToken = localStorage.getItem('access_token');
-  if (legacyToken) {
-    accessToken = legacyToken;
+  const e2eToken = localStorage.getItem('access_token');
+  if (e2eToken) {
+    accessToken = e2eToken;
     localStorage.removeItem('access_token');
   }
 } catch {
-  // localStorage may be unavailable (e.g. SSR)
+  // localStorage unavailable (SSR)
 }
 
 export function setAccessToken(token: string | null) {
@@ -54,6 +54,14 @@ const refreshApi = axios.create({
   headers: { 'X-Requested-With': 'XMLHttpRequest' },
 });
 
+// Unwrap API envelope for refresh instance too
+refreshApi.interceptors.response.use((response) => {
+  if (response.data && typeof response.data === 'object' && 'success' in response.data && 'data' in response.data) {
+    response.data = response.data.data;
+  }
+  return response;
+});
+
 // Promise-based singleton for token refresh to avoid race conditions
 let refreshPromise: Promise<string> | null = null;
 
@@ -79,6 +87,16 @@ function refreshAccessToken(): Promise<string> {
 
   return refreshPromise;
 }
+
+// Response interceptor: unwrap API envelope { success, data, timestamp }
+api.interceptors.response.use(
+  (response) => {
+    if (response.data && typeof response.data === 'object' && 'success' in response.data && 'data' in response.data) {
+      response.data = response.data.data;
+    }
+    return response;
+  },
+);
 
 // Response interceptor: handle 401 with token refresh
 api.interceptors.response.use(

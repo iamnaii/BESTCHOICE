@@ -17,7 +17,7 @@ export interface InstallmentCalculation {
 }
 
 /** Round a number to 2 decimal places (satang precision) */
-function roundBaht(value: number): number {
+export function roundBaht(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
@@ -98,6 +98,13 @@ export function generatePaymentSchedule(
       amountDue: amount,
       status: 'PENDING' as const,
     });
+  }
+
+  // Post-generation validation: ensure sum(amountDue) === financedAmount
+  const sumPayments = payments.reduce((sum, p) => sum + p.amountDue, 0);
+  const diff = Math.abs(sumPayments - financedAmount);
+  if (diff > 0.01) {
+    throw new Error(`Payment schedule total mismatch: sum=${sumPayments}, expected=${financedAmount}, diff=${diff}`);
   }
 
   return payments;

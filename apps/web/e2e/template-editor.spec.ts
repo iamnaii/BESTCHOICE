@@ -13,7 +13,8 @@ test.describe('เทมเพลตสัญญา', () => {
 
   test('should load contract templates page', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    await expect(page.getByText(/เทมเพลต|template/i).first()).toBeVisible({ timeout: 15000 });
+    // Template editor page: verify it loaded by checking for editor UI elements (save button + template blocks)
+    await expect(page.getByRole('button', { name: /บันทึก/ })).toBeVisible({ timeout: 15000 });
   });
 
   test('should display template list or empty state', async ({ page }) => {

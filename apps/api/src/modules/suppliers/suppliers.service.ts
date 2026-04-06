@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { paginatedResponse } from '../../common/helpers/pagination.helper';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { UpdateSupplierDto } from './dto/update-supplier.dto';
 
@@ -59,7 +60,7 @@ export class SuppliersService {
       this.prisma.supplier.count({ where }),
     ]);
 
-    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+    return paginatedResponse(data, total, page, limit);
   }
 
   async findOne(id: string) {
@@ -70,7 +71,7 @@ export class SuppliersService {
         paymentMethods: { orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }] },
       },
     });
-    if (!supplier) throw new NotFoundException('ไม่พบ Supplier');
+    if (!supplier) throw new NotFoundException('ไม่พบผู้จัดจำหน่าย');
     return supplier;
   }
 

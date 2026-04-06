@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, InternalServerErrorException } from '@nestjs/common';
 import { PlanType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { paginatedResponse } from '../../common/helpers/pagination.helper';
 
 /** User context for branch-level access control */
 export interface BranchAccessUser {
@@ -92,11 +93,7 @@ export class ContractsService {
     ]);
 
     return {
-      data,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
+      ...paginatedResponse(data, total, page, limit),
       summary: {
         totalContracts: total,
         activeContracts: totalActive,
@@ -248,7 +245,7 @@ export class ContractsService {
   async create(dto: CreateContractDto, salespersonId: string) {
     // Try to find interest config by product category
     const product = await this.prisma.product.findUnique({ where: { id: dto.productId } });
-    if (!product || product.status !== 'IN_STOCK') {
+    if (!product || product.deletedAt || product.status !== 'IN_STOCK') {
       throw new BadRequestException('สินค้าไม่พร้อมขาย');
     }
 
@@ -261,6 +258,7 @@ export class ContractsService {
     const interestConfig = await this.prisma.interestConfig.findFirst({
       where: {
         isActive: true,
+        deletedAt: null,
         productCategories: { has: product.category },
       },
     });
@@ -315,7 +313,7 @@ export class ContractsService {
           }
 
           // Fetch customer data for snapshot (isolation from future edits)
-          const customerData = await tx.customer.findUnique({ where: { id: dto.customerId } });
+          const customerData = await tx.customer.findUnique({ where: { id: dto.customerId, deletedAt: null } });
           const customerSnapshot: Prisma.InputJsonValue | undefined = customerData ? {
             name: customerData.name,
             prefix: customerData.prefix,

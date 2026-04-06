@@ -2025,6 +2025,7 @@ model BadDebtProvision {
   notes             String?
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
 
   contract Contract @relation(fields: [contractId], references: [id])
 

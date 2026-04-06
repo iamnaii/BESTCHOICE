@@ -174,6 +174,7 @@ export function useContractCreateData() {
     },
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['customers-search'] });
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
       toast.success('เพิ่มลูกค้าสำเร็จ');
       setSelectedCustomer(res.data);
       setShowCustomerModal(false);
@@ -255,6 +256,7 @@ export function useContractCreateData() {
       toast.success('แก้ไขข้อมูลลูกค้าสำเร็จ');
       if (data) setSelectedCustomer({ ...selectedCustomer!, name: data.name, phone: data.phone });
       queryClient.invalidateQueries({ queryKey: ['customers-search'] });
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
       setShowEditCustomerModal(false);
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),

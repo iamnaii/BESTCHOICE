@@ -94,12 +94,9 @@ export class SalesService {
     let totalProfit = 0;
 
     if (userRole === 'OWNER') {
-      const salesWithCost = await this.prisma.sale.findMany({
-        where,
-        select: { netAmount: true, product: { select: { costPrice: true } } },
-      });
-      totalProfit = salesWithCost.reduce(
-        (sum, s) => sum + Number(s.netAmount) - Number(s.product.costPrice || 0), 0,
+      // Calculate profit from already-fetched data to avoid duplicate query
+      totalProfit = data.reduce(
+        (sum, s) => sum + Number(s.netAmount) - Number(s.product?.costPrice || 0), 0,
       );
     }
 

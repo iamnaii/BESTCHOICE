@@ -42,14 +42,14 @@ const CATEGORY_ACCOUNT_MAP: Record<string, ExpenseAccountType> = {
   OTHER_MISC: 'OTHER_EXPENSE',
 };
 
-// Map category → account code
+// Map category → account code (PEAK format XX-XXXX)
 const CATEGORY_CODE_MAP: Record<string, string> = {
-  COGS_PRODUCT: '5101', COGS_REPAIR_PARTS: '5102',
-  SELL_COMMISSION: '5201', SELL_ADVERTISING: '5202', SELL_TRANSPORT: '5203', SELL_PACKAGING: '5204',
-  ADMIN_SALARY: '5301', ADMIN_SOCIAL_SECURITY: '5302', ADMIN_RENT: '5303', ADMIN_UTILITIES: '5304',
-  ADMIN_OFFICE_SUPPLIES: '5305', ADMIN_DEPRECIATION: '5306', ADMIN_INSURANCE: '5307',
-  ADMIN_TAX_FEE: '5308', ADMIN_MAINTENANCE: '5309', ADMIN_TRAVEL: '5310', ADMIN_TELEPHONE: '5311',
-  OTHER_INTEREST: '5901', OTHER_LOSS: '5902', OTHER_FINE: '5903', OTHER_MISC: '5999',
+  COGS_PRODUCT: '51-1101', COGS_REPAIR_PARTS: '51-1102',
+  SELL_COMMISSION: '52-1101', SELL_ADVERTISING: '52-1102', SELL_TRANSPORT: '53-1304', SELL_PACKAGING: '52-1102',
+  ADMIN_SALARY: '53-1101', ADMIN_SOCIAL_SECURITY: '53-1103', ADMIN_RENT: '53-1301', ADMIN_UTILITIES: '53-1302',
+  ADMIN_OFFICE_SUPPLIES: '53-1201', ADMIN_DEPRECIATION: '53-1601', ADMIN_INSURANCE: '53-1103',
+  ADMIN_TAX_FEE: '54-1103', ADMIN_MAINTENANCE: '53-1305', ADMIN_TRAVEL: '53-1304', ADMIN_TELEPHONE: '53-1303',
+  OTHER_INTEREST: '53-1501', OTHER_LOSS: '53-1503', OTHER_FINE: '54-1104', OTHER_MISC: '53-1502',
 };
 
 async function generateExpenseNumber(tx: Prisma.TransactionClient): Promise<string> {
@@ -626,7 +626,7 @@ export class AccountingService {
         note: 'เงินต้น/ดอกเบี้ย/ค่าคอม รวมอยู่ใน installmentPayments แล้ว — แสดงเพื่อแยกรายได้ตามหมวดบัญชี',
       },
       vatOutput: {
-        accountCode: '2210',
+        accountCode: '21-2101',
         label: 'ภาษีขาย (Output VAT)',
         amount: Math.round(vatCollected * 100) / 100,
         note: 'เก็บจากค่างวดผ่อนชำระ — เป็นหนี้สินไม่ใช่รายได้',

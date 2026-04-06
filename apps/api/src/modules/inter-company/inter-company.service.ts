@@ -64,6 +64,12 @@ export class InterCompanyService {
     const totalSalesRevenue = data.downPayment + data.principal + data.commission;
     const note = `SHOP: Debit เงินสด ${data.downPayment} + ลูกหนี้เช่าซื้อ ${data.principal + data.commission}, Credit รายได้จากการขาย ${totalSalesRevenue}; FINANCE: Debit ลูกหนี้เช่าซื้อ ${data.principal + data.interestTotal}, Credit เจ้าหนี้ SHOP ${data.principal + data.commission}`;
 
+    // Resolve company IDs from companyCode
+    const [financeCompany, shopCompany] = await Promise.all([
+      tx.companyInfo.findFirst({ where: { companyCode: 'FINANCE', deletedAt: null }, select: { id: true } }),
+      tx.companyInfo.findFirst({ where: { companyCode: 'SHOP', deletedAt: null }, select: { id: true } }),
+    ]);
+
     return tx.interCompanyTransaction.create({
       data: {
         saleId: data.saleId,
@@ -72,6 +78,8 @@ export class InterCompanyService {
         type: 'FINANCE_PURCHASE',
         fromEntity: 'BESTCHOICE FINANCE',
         toEntity: 'BESTCHOICE SHOP',
+        fromCompanyId: financeCompany?.id ?? undefined,
+        toCompanyId: shopCompany?.id ?? undefined,
         principal: data.principal,
         commission: data.commission,
         commissionPct: data.commissionPct,
@@ -94,6 +102,7 @@ export class InterCompanyService {
     status?: string;
     type?: string;
     entity?: string;
+    companyId?: string;
     startDate?: string;
     endDate?: string;
     page?: number;
@@ -106,7 +115,12 @@ export class InterCompanyService {
     if (params.branchId) where.branchId = params.branchId;
     if (params.status) where.status = params.status;
     if (params.type) where.type = params.type;
-    if (params.entity) {
+    if (params.companyId) {
+      where.OR = [
+        { fromCompanyId: params.companyId },
+        { toCompanyId: params.companyId },
+      ];
+    } else if (params.entity) {
       where.OR = [
         { fromEntity: params.entity },
         { toEntity: params.entity },
@@ -201,11 +215,18 @@ export class InterCompanyService {
    */
   async getProfitSummary(params: {
     branchId?: string;
+    companyId?: string;
     startDate?: string;
     endDate?: string;
   }) {
     const where: Record<string, unknown> = { deletedAt: null };
     if (params.branchId) where.branchId = params.branchId;
+    if (params.companyId) {
+      where.OR = [
+        { fromCompanyId: params.companyId },
+        { toCompanyId: params.companyId },
+      ];
+    }
     if (params.startDate || params.endDate) {
       where.createdAt = {};
       if (params.startDate) (where.createdAt as Record<string, unknown>).gte = new Date(params.startDate);

@@ -54,6 +54,8 @@ async function main() {
   await prisma.supplier.deleteMany();
   await prisma.customer.deleteMany();
   await prisma.refreshToken.deleteMany();
+  await prisma.journalLine.deleteMany();
+  await prisma.journalEntry.deleteMany();
   await prisma.user.deleteMany();
   await prisma.branch.deleteMany();
   await prisma.systemConfig.deleteMany();
@@ -66,13 +68,14 @@ async function main() {
   // ============================================================
   // STEP 1: CompanyInfo
   // ============================================================
-  console.log('STEP 1: Creating CompanyInfo...');
+  console.log('STEP 1: Creating CompanyInfo (2 entities: SHOP + FINANCE)...');
 
-  await prisma.companyInfo.create({
+  const companyShop = await prisma.companyInfo.create({
     data: {
-      id: 'company-001',
-      nameTh: 'เบสท์ชอยส์ โมบาย',
-      nameEn: 'BESTCHOICE Mobile',
+      id: 'company-shop',
+      nameTh: 'เบสท์ชอยส์ ช็อป',
+      nameEn: 'BESTCHOICE Shop',
+      companyCode: 'SHOP',
       taxId: '0105566012345',
       address: '99 ถ.วิภาวดีรังสิต แขวงจตุจักร เขตจตุจักร กรุงเทพฯ 10900',
       phone: '02-100-0000',
@@ -80,10 +83,35 @@ async function main() {
       directorPosition: 'กรรมการผู้จัดการ',
       directorNationalId: '1100100100000',
       directorAddress: '99 ถ.วิภาวดีรังสิต แขวงจตุจักร เขตจตุจักร กรุงเทพฯ 10900',
+      vatRegistered: false,
+      bankName: 'ธนาคารกสิกรไทย',
+      bankAccountName: 'บจ. เบสท์ชอยส์ ช็อป',
+      bankAccountNumber: '012-3-45678-9',
     },
   });
 
-  console.log('CompanyInfo created: 1');
+  const companyFinance = await prisma.companyInfo.create({
+    data: {
+      id: 'company-finance',
+      nameTh: 'เบสท์ชอยส์ ไฟแนนซ์',
+      nameEn: 'BESTCHOICE Finance',
+      companyCode: 'FINANCE',
+      taxId: '0105566012346',
+      address: '99 ถ.วิภาวดีรังสิต แขวงจตุจักร เขตจตุจักร กรุงเทพฯ 10900',
+      phone: '02-100-0001',
+      directorName: 'สุรชัย เจ้าของร้าน',
+      directorPosition: 'กรรมการผู้จัดการ',
+      directorNationalId: '1100100100000',
+      directorAddress: '99 ถ.วิภาวดีรังสิต แขวงจตุจักร เขตจตุจักร กรุงเทพฯ 10900',
+      vatRegistered: true,
+      vatRate: 0.07,
+      bankName: 'ธนาคารกรุงเทพ',
+      bankAccountName: 'บจ. เบสท์ชอยส์ ไฟแนนซ์',
+      bankAccountNumber: '098-7-65432-1',
+    },
+  });
+
+  console.log('CompanyInfo created: 2 (SHOP + FINANCE)');
 
   // ============================================================
   // STEP 2: SystemConfig (21 configs)
@@ -127,16 +155,16 @@ async function main() {
   console.log('STEP 3: Creating Branches...');
 
   const branch1 = await prisma.branch.create({
-    data: { id: 'branch-001', name: 'คลังสินค้าหลัก (Main Warehouse)', location: '99 ถ.วิภาวดีรังสิต แขวงจตุจักร เขตจตุจักร กทม. 10900', phone: '02-100-0000', isMainWarehouse: true },
+    data: { id: 'branch-001', name: 'คลังสินค้าหลัก (Main Warehouse)', location: '99 ถ.วิภาวดีรังสิต แขวงจตุจักร เขตจตุจักร กทม. 10900', phone: '02-100-0000', isMainWarehouse: true, companyId: companyShop.id },
   });
   const branch2 = await prisma.branch.create({
-    data: { id: 'branch-002', name: 'สาขาลาดพร้าว', location: '123 ถ.ลาดพร้าว แขวงจอมพล เขตจตุจักร กทม. 10900', phone: '02-111-1111' },
+    data: { id: 'branch-002', name: 'สาขาลาดพร้าว', location: '123 ถ.ลาดพร้าว แขวงจอมพล เขตจตุจักร กทม. 10900', phone: '02-111-1111', companyId: companyShop.id },
   });
   const branch3 = await prisma.branch.create({
-    data: { id: 'branch-003', name: 'สาขารามคำแหง', location: '456 ถ.รามคำแหง แขวงหัวหมาก เขตบางกะปิ กทม. 10240', phone: '02-222-2222' },
+    data: { id: 'branch-003', name: 'สาขารามคำแหง', location: '456 ถ.รามคำแหง แขวงหัวหมาก เขตบางกะปิ กทม. 10240', phone: '02-222-2222', companyId: companyShop.id },
   });
   const branch4 = await prisma.branch.create({
-    data: { id: 'branch-004', name: 'สาขาบางแค', location: '789 ถ.เพชรเกษม แขวงบางแค เขตบางแค กทม. 10160', phone: '02-333-3333' },
+    data: { id: 'branch-004', name: 'สาขาบางแค', location: '789 ถ.เพชรเกษม แขวงบางแค เขตบางแค กทม. 10160', phone: '02-333-3333', companyId: companyShop.id },
   });
 
   console.log('Branches created: 4 (1 warehouse + 3 stores)');

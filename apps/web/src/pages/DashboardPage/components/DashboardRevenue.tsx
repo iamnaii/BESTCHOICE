@@ -1,5 +1,9 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import api from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardToolbar } from '@/components/ui/card';
+import CompanyFilter from '@/components/CompanyFilter';
 import type { LucideIcon } from 'lucide-react';
 import {
   ShoppingCart,
@@ -48,10 +52,30 @@ export default function DashboardRevenue({
   revenue,
   revenueError,
   refetchRevenue,
-  entityProfit,
-  entityProfitError,
+  entityProfit: defaultEntityProfit,
+  entityProfitError: defaultEntityProfitError,
 }: DashboardRevenueProps) {
   const navigate = useNavigate();
+  const [companyId, setCompanyId] = useState('');
+
+  // When a company filter is selected, re-fetch entity profit for that company
+  const { data: filteredEntityProfit, isError: filteredEntityProfitError } = useQuery<EntityProfit>({
+    queryKey: ['dashboard-entity-profit', companyId],
+    queryFn: async () => {
+      const now = new Date();
+      const startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+      const endDate = now.toISOString().slice(0, 10);
+      const params = new URLSearchParams({ startDate, endDate });
+      if (companyId) params.set('companyId', companyId);
+      return (await api.get(`/reports/entity-profit?${params}`)).data;
+    },
+    enabled: !!companyId && (userRole === 'OWNER' || userRole === 'FINANCE_MANAGER' || userRole === 'ACCOUNTANT'),
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  });
+
+  const entityProfit = companyId ? filteredEntityProfit : defaultEntityProfit;
+  const entityProfitError = companyId ? filteredEntityProfitError : defaultEntityProfitError;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-7.5">
@@ -133,53 +157,64 @@ export default function DashboardRevenue({
             </CardContent>
           </Card>
         )}
-        {entityProfit && !entityProfitError && (userRole === 'OWNER' || userRole === 'FINANCE_MANAGER' || userRole === 'ACCOUNTANT') && (
+        {!entityProfitError && (userRole === 'OWNER' || userRole === 'FINANCE_MANAGER' || userRole === 'ACCOUNTANT') && (
           <Card>
             <CardHeader>
               <CardTitle>กำไร Shop / Finance เดือนนี้</CardTitle>
               <CardToolbar>
-                <span className="text-2xs text-muted-foreground bg-muted px-2.5 py-1 rounded-md font-medium">
-                  {(entityProfit.shop?.transactionCount || 0)} รายการ
-                </span>
+                <CompanyFilter
+                  value={companyId}
+                  onChange={setCompanyId}
+                  className="[&_label]:hidden [&_select]:py-1 [&_select]:text-xs [&_select]:h-7"
+                />
+                {entityProfit && (
+                  <span className="text-2xs text-muted-foreground bg-muted px-2.5 py-1 rounded-md font-medium">
+                    {(entityProfit.shop?.transactionCount || 0)} รายการ
+                  </span>
+                )}
               </CardToolbar>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="divide-y divide-border/50">
-                <div className="flex items-center gap-4 px-5 py-3.5">
-                  <div className="w-1 h-8 rounded-full bg-blue-500" />
-                  <div className="flex-1">
-                    <div className="text-sm font-medium text-foreground">BESTCHOICE SHOP</div>
-                    <div className="text-2xs text-muted-foreground">ดาวน์ + เงินต้น + คอมมิชชัน - ต้นทุน</div>
+              {entityProfit ? (
+                <div className="divide-y divide-border/50">
+                  <div className="flex items-center gap-4 px-5 py-3.5">
+                    <div className="w-1 h-8 rounded-full bg-blue-500" />
+                    <div className="flex-1">
+                      <div className="text-sm font-medium text-foreground">BESTCHOICE SHOP</div>
+                      <div className="text-2xs text-muted-foreground">ดาวน์ + เงินต้น + คอมมิชชัน - ต้นทุน</div>
+                    </div>
+                    <div className="text-sm font-semibold text-success">
+                      {(entityProfit.shop?.profit || 0).toLocaleString()} ฿
+                    </div>
                   </div>
-                  <div className="text-sm font-semibold text-success">
-                    {(entityProfit.shop?.profit || 0).toLocaleString()} ฿
+                  <div className="flex items-center gap-4 px-5 py-3.5">
+                    <div className="w-1 h-8 rounded-full bg-indigo-500" />
+                    <div className="flex-1">
+                      <div className="text-sm font-medium text-foreground">BESTCHOICE FINANCE</div>
+                      <div className="text-2xs text-muted-foreground">ดอกเบี้ย - คอมมิชชัน + ค่าปรับ</div>
+                    </div>
+                    <div className="text-sm font-semibold text-success">
+                      {(entityProfit.finance?.profit || 0).toLocaleString()} ฿
+                    </div>
+                  </div>
+                  <div
+                    className="flex items-center gap-4 px-5 py-3.5 cursor-pointer hover:bg-muted/50 transition-colors"
+                    onClick={() => navigate('/reports')}
+                  >
+                    <div className="w-1 h-8 rounded-full bg-green-500" />
+                    <div className="flex-1">
+                      <div className="text-sm font-medium text-foreground">กำไรรวม</div>
+                      <div className="text-2xs text-muted-foreground">SHOP + FINANCE (ไม่รวม VAT)</div>
+                    </div>
+                    <div className="text-sm font-bold text-success">
+                      {(entityProfit.combined?.totalProfit || 0).toLocaleString()} ฿
+                    </div>
+                    <ArrowRight className="size-4 text-muted-foreground" />
                   </div>
                 </div>
-                <div className="flex items-center gap-4 px-5 py-3.5">
-                  <div className="w-1 h-8 rounded-full bg-indigo-500" />
-                  <div className="flex-1">
-                    <div className="text-sm font-medium text-foreground">BESTCHOICE FINANCE</div>
-                    <div className="text-2xs text-muted-foreground">ดอกเบี้ย - คอมมิชชัน + ค่าปรับ</div>
-                  </div>
-                  <div className="text-sm font-semibold text-success">
-                    {(entityProfit.finance?.profit || 0).toLocaleString()} ฿
-                  </div>
-                </div>
-                <div
-                  className="flex items-center gap-4 px-5 py-3.5 cursor-pointer hover:bg-muted/50 transition-colors"
-                  onClick={() => navigate('/reports')}
-                >
-                  <div className="w-1 h-8 rounded-full bg-green-500" />
-                  <div className="flex-1">
-                    <div className="text-sm font-medium text-foreground">กำไรรวม</div>
-                    <div className="text-2xs text-muted-foreground">SHOP + FINANCE (ไม่รวม VAT)</div>
-                  </div>
-                  <div className="text-sm font-bold text-success">
-                    {(entityProfit.combined?.totalProfit || 0).toLocaleString()} ฿
-                  </div>
-                  <ArrowRight className="size-4 text-muted-foreground" />
-                </div>
-              </div>
+              ) : (
+                <div className="text-center text-muted-foreground py-8 text-sm">กำลังโหลด...</div>
+              )}
             </CardContent>
           </Card>
         )}

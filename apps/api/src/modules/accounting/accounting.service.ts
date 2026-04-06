@@ -85,6 +85,18 @@ export class AccountingService {
   private readonly logger = new Logger(AccountingService.name);
   constructor(private prisma: PrismaService) {}
 
+  /**
+   * Resolve companyId to an array of branchIds belonging to that company.
+   * Used to scope financial reports by company entity.
+   */
+  async getBranchIdsForCompany(companyId: string): Promise<string[]> {
+    const branches = await this.prisma.branch.findMany({
+      where: { companyId, deletedAt: null },
+      select: { id: true },
+    });
+    return branches.map((b) => b.id);
+  }
+
   // ─── Expenses CRUD ───────────────────────────────────────────────────────────
 
   async createExpense(dto: CreateExpenseDto, createdById: string) {

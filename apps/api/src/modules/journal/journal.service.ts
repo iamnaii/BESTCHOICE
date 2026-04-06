@@ -1,0 +1,222 @@
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Decimal } from '@prisma/client/runtime/library';
+import { PrismaService } from '../../prisma/prisma.service';
+import { CreateJournalEntryDto } from './dto/journal.dto';
+
+@Injectable()
+export class JournalService {
+  constructor(private prisma: PrismaService) {}
+
+  async generateEntryNumber(): Promise<string> {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const prefix = `JE-${year}${month}`;
+
+    const startOfMonth = new Date(year, now.getMonth(), 1);
+    const startOfNextMonth = new Date(year, now.getMonth() + 1, 1);
+
+    const count = await this.prisma.journalEntry.count({
+      where: {
+        entryNumber: { startsWith: prefix },
+        createdAt: {
+          gte: startOfMonth,
+          lt: startOfNextMonth,
+        },
+      },
+    });
+
+    const sequence = String(count + 1).padStart(4, '0');
+    return `${prefix}-${sequence}`;
+  }
+
+  async create(dto: CreateJournalEntryDto, userId: string) {
+    // 1. Validate balance: sum debits must equal sum credits
+    const totalDebit = dto.lines.reduce((sum, line) => sum + line.debit, 0);
+    const totalCredit = dto.lines.reduce((sum, line) => sum + line.credit, 0);
+
+    if (Math.abs(totalDebit - totalCredit) > 0.001) {
+      throw new BadRequestException('ยอดเดบิตและเครดิตไม่สมดุล');
+    }
+
+    // 2. Validate each line: at least one of debit or credit must be > 0
+    for (const line of dto.lines) {
+      if (line.debit === 0 && line.credit === 0) {
+        throw new BadRequestException('แต่ละรายการต้องมียอดเดบิตหรือเครดิต');
+      }
+    }
+
+    // 3. Validate accountCodes exist in ChartOfAccount
+    const accountCodes = dto.lines.map((line) => line.accountCode);
+    const accounts = await this.prisma.chartOfAccount.findMany({
+      where: {
+        code: { in: accountCodes },
+        isActive: true,
+      },
+      select: { code: true },
+    });
+
+    const foundCodes = new Set(accounts.map((a) => a.code));
+    const missingCodes = accountCodes.filter((code) => !foundCodes.has(code));
+
+    if (missingCodes.length > 0) {
+      throw new BadRequestException(`รหัสบัญชีไม่ถูกต้อง: ${missingCodes.join(', ')}`);
+    }
+
+    // 4. Validate companyId exists and not deleted
+    const company = await this.prisma.companyInfo.findFirst({
+      where: { id: dto.companyId, deletedAt: null },
+    });
+
+    if (!company) {
+      throw new NotFoundException('ไม่พบบริษัท');
+    }
+
+    // 5. Generate entry number + create in transaction to avoid race condition
+    return this.prisma.$transaction(async (tx) => {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const prefix = `JE-${year}${month}`;
+
+      const count = await tx.journalEntry.count({
+        where: { entryNumber: { startsWith: prefix } },
+      });
+      const entryNumber = `${prefix}-${String(count + 1).padStart(4, '0')}`;
+
+      return tx.journalEntry.create({
+        data: {
+          entryNumber,
+          companyId: dto.companyId,
+          entryDate: new Date(dto.entryDate),
+          description: dto.description,
+          referenceType: dto.referenceType,
+          referenceId: dto.referenceId,
+          createdById: userId,
+          lines: {
+            create: dto.lines.map((line) => ({
+              accountCode: line.accountCode,
+              description: line.description,
+              debit: new Decimal(line.debit),
+              credit: new Decimal(line.credit),
+            })),
+          },
+        },
+        include: { lines: true },
+      });
+    });
+  }
+
+  async findAll(filters: {
+    companyId?: string;
+    status?: string;
+    startDate?: string;
+    endDate?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const page = filters.page || 1;
+    const limit = filters.limit || 50;
+
+    const where: Record<string, unknown> = { deletedAt: null };
+
+    if (filters.companyId) {
+      where.companyId = filters.companyId;
+    }
+
+    if (filters.status) {
+      where.status = filters.status;
+    }
+
+    if (filters.startDate || filters.endDate) {
+      const entryDate: Record<string, Date> = {};
+      if (filters.startDate) {
+        entryDate.gte = new Date(filters.startDate);
+      }
+      if (filters.endDate) {
+        entryDate.lte = new Date(filters.endDate);
+      }
+      where.entryDate = entryDate;
+    }
+
+    if (filters.search) {
+      where.OR = [
+        { description: { contains: filters.search, mode: 'insensitive' } },
+        { entryNumber: { contains: filters.search, mode: 'insensitive' } },
+      ];
+    }
+
+    const [data, total] = await Promise.all([
+      this.prisma.journalEntry.findMany({
+        where,
+        include: { lines: true },
+        orderBy: { entryDate: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.journalEntry.count({ where }),
+    ]);
+
+    return { data, total, page, limit };
+  }
+
+  async findOne(id: string) {
+    const entry = await this.prisma.journalEntry.findFirst({
+      where: { id, deletedAt: null },
+      include: { lines: true },
+    });
+
+    if (!entry) {
+      throw new NotFoundException('ไม่พบรายการบันทึกบัญชี');
+    }
+
+    return entry;
+  }
+
+  async post(id: string, userId: string) {
+    const entry = await this.findOne(id);
+
+    if (entry.status !== 'DRAFT') {
+      throw new BadRequestException('สถานะไม่ถูกต้อง');
+    }
+
+    // Re-validate balance
+    const totalDebit = entry.lines.reduce(
+      (sum, line) => sum.add(line.debit),
+      new Decimal(0),
+    );
+    const totalCredit = entry.lines.reduce(
+      (sum, line) => sum.add(line.credit),
+      new Decimal(0),
+    );
+
+    if (!totalDebit.equals(totalCredit)) {
+      throw new BadRequestException('ยอดเดบิตและเครดิตไม่สมดุล');
+    }
+
+    return this.prisma.journalEntry.update({
+      where: { id },
+      data: {
+        status: 'POSTED',
+        postedAt: new Date(),
+        postedById: userId,
+      },
+      include: { lines: true },
+    });
+  }
+
+  async void(id: string) {
+    const entry = await this.findOne(id);
+
+    if (entry.status !== 'POSTED') {
+      throw new BadRequestException('สถานะไม่ถูกต้อง');
+    }
+
+    return this.prisma.journalEntry.update({
+      where: { id },
+      data: { status: 'VOIDED' },
+      include: { lines: true },
+    });
+  }
+}

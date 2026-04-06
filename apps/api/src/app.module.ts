@@ -47,7 +47,9 @@ import { InviteModule } from './modules/invite/invite.module';
 import { PaySolutionsModule } from './modules/paysolutions/paysolutions.module';
 import { FinanceReceivableModule } from './modules/finance-receivable/finance-receivable.module';
 import { AccountingModule } from './modules/accounting/accounting.module';
+import { CompanyModule } from './modules/company/company.module';
 import { InterCompanyModule } from './modules/inter-company/inter-company.module';
+import { JournalModule } from './modules/journal/journal.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
 import { CsrfGuard } from './guards/csrf.guard';
@@ -124,8 +126,12 @@ import { AppCacheModule } from './cache/cache.module';
     FinanceReceivableModule,
     // Expense Management
     AccountingModule,
+    // Company Info (multi-entity foundation)
+    CompanyModule,
     // Inter-Company (SHOP ↔ FINANCE)
     InterCompanyModule,
+    // Journal Entries (double-entry accounting)
+    JournalModule,
     // MASTER: Management
     UsersModule,
     SettingsModule,

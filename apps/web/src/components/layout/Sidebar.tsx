@@ -153,6 +153,7 @@ const navSections: NavSection[] = [
       { label: 'ตั้งค่าระบบ', path: '/settings', icon: Settings, roles: ['OWNER'] },
       { label: 'ราคาตั้งต้น', path: '/settings/pricing-templates', icon: DollarSign, roles: ['OWNER'] },
       { label: 'เทมเพลตสัญญา', path: '/contract-templates', icon: FileSignature, roles: ['OWNER'] },
+      { label: 'จัดการนิติบุคคล', path: '/settings/companies', icon: Building2, roles: ['OWNER'] },
     ],
   },
   {

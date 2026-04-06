@@ -70,6 +70,7 @@ const SmsSettingsPage = lazy(() => import('@/pages/SmsSettingsPage'));
 const FinanceReceivablePage = lazy(() => import('@/pages/FinanceReceivablePage'));
 const ExpensesPage = lazy(() => import('@/pages/ExpensesPage'));
 const ProfitLossPage = lazy(() => import('@/pages/ProfitLossPage'));
+const CompanySettingsPage = lazy(() => import('@/pages/CompanySettingsPage'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -447,6 +448,14 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER']}>
                 <SmsSettingsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings/companies"
+            element={
+              <ProtectedRoute roles={['OWNER']}>
+                <CompanySettingsPage />
               </ProtectedRoute>
             }
           />

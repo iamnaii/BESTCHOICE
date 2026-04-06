@@ -35,23 +35,29 @@ export class ReportsController {
   }
 
   @Get('monthly-pl')
-  getMonthlyPL(
+  async getMonthlyPL(
     @Query('year') year: string,
     @CurrentUser() user: { role: string; branchId: string | null },
     @Query('branchId') branchId?: string,
+    @Query('companyId') companyId?: string,
   ) {
-    const effectiveBranch = user.role === 'BRANCH_MANAGER' ? user.branchId || undefined : branchId;
+    const effectiveBranch = user.role === 'BRANCH_MANAGER'
+      ? user.branchId || undefined
+      : await this.reportsService.resolveCompanyBranch(companyId, branchId);
     return this.reportsService.getMonthlyPLSummary(parseInt(year) || new Date().getFullYear(), effectiveBranch);
   }
 
   @Get('profit-loss')
-  getProfitLoss(
+  async getProfitLoss(
     @Query('startDate') startDate: string,
     @Query('endDate') endDate: string,
     @CurrentUser() user: { role: string; branchId: string | null },
     @Query('branchId') branchId?: string,
+    @Query('companyId') companyId?: string,
   ) {
-    const effectiveBranch = user.role === 'BRANCH_MANAGER' ? user.branchId || undefined : branchId;
+    const effectiveBranch = user.role === 'BRANCH_MANAGER'
+      ? user.branchId || undefined
+      : await this.reportsService.resolveCompanyBranch(companyId, branchId);
     return this.reportsService.getProfitLossReport(startDate, endDate, effectiveBranch);
   }
 
@@ -73,13 +79,15 @@ export class ReportsController {
 
   @Get('balance-sheet')
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  getBalanceSheet(
+  async getBalanceSheet(
     @Query('asOfDate') asOfDate?: string,
     @Query('branchId') branchId?: string,
+    @Query('companyId') companyId?: string,
   ) {
+    const effectiveBranch = await this.reportsService.resolveCompanyBranch(companyId, branchId);
     return this.reportsService.getBalanceSheet(
       asOfDate || new Date().toISOString().split('T')[0],
-      branchId,
+      effectiveBranch,
     );
   }
 
@@ -172,13 +180,15 @@ export class ReportsController {
 
   @Get('entity-profit')
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  getEntityProfit(
+  async getEntityProfit(
     @Query('startDate') startDate: string,
     @Query('endDate') endDate: string,
     @Query('branchId') branchId?: string,
     @Query('entity') entity?: string,
+    @Query('companyId') companyId?: string,
   ) {
-    return this.reportsService.getEntityProfitReport(startDate, endDate, branchId, entity);
+    const effectiveBranch = await this.reportsService.resolveCompanyBranch(companyId, branchId);
+    return this.reportsService.getEntityProfitReport(startDate, endDate, effectiveBranch, entity);
   }
 
   @Get('quarterly')

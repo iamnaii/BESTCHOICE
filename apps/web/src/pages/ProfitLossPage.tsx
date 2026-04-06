@@ -7,6 +7,7 @@ import { TrendingUp, TrendingDown, DollarSign, ArrowDown, ArrowUp, Minus } from 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { formatDateMedium } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
+import CompanyFilter from '@/components/CompanyFilter';
 
 interface PLData {
   period: { start: string; end: string };
@@ -99,6 +100,7 @@ export default function ProfitLossPage() {
   const [startDate, setStartDate] = useState(firstOfMonth.toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState(now.toISOString().split('T')[0]);
   const [branchId, setBranchId] = useState('');
+  const [companyId, setCompanyId] = useState('');
 
   const { data: branches = [] } = useQuery<{ id: string; name: string }[]>({
     queryKey: ['branches'],
@@ -106,21 +108,23 @@ export default function ProfitLossPage() {
   });
 
   const { data: pl, isLoading } = useQuery<PLData>({
-    queryKey: ['profit-loss', startDate, endDate, branchId],
+    queryKey: ['profit-loss', startDate, endDate, branchId, companyId],
     queryFn: async () => {
       const params = new URLSearchParams({ startDate, endDate });
       if (branchId) params.set('branchId', branchId);
+      if (companyId) params.set('companyId', companyId);
       return (await api.get(`/reports/profit-loss?${params}`)).data;
     },
     enabled: !!startDate && !!endDate,
   });
 
   const { data: monthlyData } = useQuery<{ year: number; months: { month: number; label: string; revenue: number; expenses: number; netProfit: number }[] }>({
-    queryKey: ['monthly-pl', startDate ? new Date(startDate).getFullYear() : new Date().getFullYear(), branchId],
+    queryKey: ['monthly-pl', startDate ? new Date(startDate).getFullYear() : new Date().getFullYear(), branchId, companyId],
     queryFn: async () => {
       const year = startDate ? new Date(startDate).getFullYear() : new Date().getFullYear();
       const params = new URLSearchParams({ year: year.toString() });
       if (branchId) params.set('branchId', branchId);
+      if (companyId) params.set('companyId', companyId);
       return (await api.get(`/reports/monthly-pl?${params}`)).data;
     },
   });
@@ -153,6 +157,7 @@ export default function ProfitLossPage() {
             {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
         </div>
+        <CompanyFilter value={companyId} onChange={setCompanyId} />
         {/* Quick presets */}
         <div className="flex items-end gap-1">
           {[

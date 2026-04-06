@@ -1,0 +1,63 @@
+import { IsOptional, IsString, IsBoolean, IsNumber, Min, Max } from 'class-validator';
+
+export class UpdateCompanyDto {
+  @IsOptional()
+  @IsString({ message: 'ชื่อบริษัท (ไทย) ต้องเป็นข้อความ' })
+  nameTh?: string;
+
+  @IsOptional()
+  @IsString({ message: 'ชื่อบริษัท (อังกฤษ) ต้องเป็นข้อความ' })
+  nameEn?: string;
+
+  @IsOptional()
+  @IsString({ message: 'เลขประจำตัวผู้เสียภาษีต้องเป็นข้อความ' })
+  taxId?: string;
+
+  // companyCode is immutable — cannot be changed via API (used as system identifier)
+
+  @IsOptional()
+  @IsString({ message: 'ที่อยู่ต้องเป็นข้อความ' })
+  address?: string;
+
+  @IsOptional()
+  @IsString({ message: 'เบอร์โทรศัพท์ต้องเป็นข้อความ' })
+  phone?: string;
+
+  @IsOptional()
+  @IsString({ message: 'ชื่อผู้มีอำนาจลงนามต้องเป็นข้อความ' })
+  directorName?: string;
+
+  @IsOptional()
+  @IsString({ message: 'ตำแหน่งผู้มีอำนาจลงนามต้องเป็นข้อความ' })
+  directorPosition?: string;
+
+  @IsOptional()
+  @IsBoolean({ message: 'สถานะจดทะเบียนภาษีมูลค่าเพิ่มต้องเป็น true หรือ false' })
+  vatRegistered?: boolean;
+
+  @IsOptional()
+  @IsNumber({}, { message: 'อัตราภาษีมูลค่าเพิ่มต้องเป็นตัวเลข' })
+  @Min(0, { message: 'อัตราภาษีมูลค่าเพิ่มต้องไม่ต่ำกว่า 0' })
+  @Max(1, { message: 'อัตราภาษีมูลค่าเพิ่มต้องไม่เกิน 1' })
+  vatRate?: number;
+
+  @IsOptional()
+  @IsString({ message: 'ชื่อธนาคารต้องเป็นข้อความ' })
+  bankName?: string;
+
+  @IsOptional()
+  @IsString({ message: 'ชื่อบัญชีธนาคารต้องเป็นข้อความ' })
+  bankAccountName?: string;
+
+  @IsOptional()
+  @IsString({ message: 'เลขบัญชีธนาคารต้องเป็นข้อความ' })
+  bankAccountNumber?: string;
+
+  @IsOptional()
+  @IsString({ message: 'LINE OA ID ต้องเป็นข้อความ' })
+  lineOaId?: string;
+
+  @IsOptional()
+  @IsString({ message: 'URL โลโก้ต้องเป็นข้อความ' })
+  logoUrl?: string;
+}

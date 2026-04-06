@@ -11,6 +11,25 @@ export class ReportsService {
   ) {}
 
   /**
+   * Resolve companyId + branchId → effective branchId for report filtering.
+   * When companyId is set without branchId, picks the first branch of that company
+   * (FINANCE has 0 branches → returns '__none__' to ensure empty result, not all-data leak).
+   */
+  async resolveCompanyBranch(companyId?: string, branchId?: string): Promise<string | undefined> {
+    if (!companyId) return branchId;
+    const branchIds = await this.accounting.getBranchIdsForCompany(companyId);
+    if (branchId) {
+      return branchIds.includes(branchId) ? branchId : '__none__';
+    }
+    // Company with no branches (e.g. FINANCE) → return sentinel to produce empty result
+    if (branchIds.length === 0) return '__none__';
+    // Company with 1 branch → return that branch
+    if (branchIds.length === 1) return branchIds[0];
+    // Company with multiple branches → return first (TODO: support multi-branch filter in accounting)
+    return branchIds[0];
+  }
+
+  /**
    * Aging Report: group receivables by age buckets (1-30, 31-60, 61-90, 90+)
    */
   async getAgingReport(branchId?: string) {

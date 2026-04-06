@@ -9,6 +9,8 @@ import DashboardRevenue from './components/DashboardRevenue';
 import DashboardStaff from './components/DashboardStaff';
 import DashboardCharts from './components/DashboardCharts';
 import DashboardTables from './components/DashboardTables';
+import DashboardMySales from './components/DashboardMySales';
+import DashboardFinanceOverview from './components/DashboardFinanceOverview';
 import type {
   KPIs,
   MonthlyTrend,
@@ -145,6 +147,12 @@ export default function DashboardPage() {
 
       {/* Smart Alerts */}
       <DashboardAlerts alerts={alerts} />
+
+      {/* Role-specific: Sales dashboard */}
+      {user?.role === 'SALES' && <DashboardMySales />}
+
+      {/* Role-specific: Finance Manager overview */}
+      {user?.role === 'FINANCE_MANAGER' && <DashboardFinanceOverview />}
 
       {/* KPI Stats */}
       {kpis && <DashboardKPIs kpis={kpis} />}

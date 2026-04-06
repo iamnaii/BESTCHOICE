@@ -555,6 +555,47 @@ export class OverdueService {
   }
 
   /**
+   * Assign a collections agent to a contract
+   */
+  async assignCollector(contractId: string, assignedToId: string) {
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: contractId, deletedAt: null },
+    });
+    if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+
+    return this.prisma.contract.update({
+      where: { id: contractId },
+      data: { assignedToId },
+    });
+  }
+
+  /**
+   * Record a settlement/promise-to-pay from a call
+   */
+  async recordSettlement(
+    contractId: string,
+    callerId: string,
+    dto: { settlementDate: string; settlementNotes: string; notes?: string },
+  ) {
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: contractId, deletedAt: null },
+    });
+    if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+
+    return this.prisma.callLog.create({
+      data: {
+        contractId,
+        callerId,
+        calledAt: new Date(),
+        result: 'PROMISED',
+        notes: dto.notes,
+        settlementDate: new Date(dto.settlementDate),
+        settlementNotes: dto.settlementNotes,
+      },
+    });
+  }
+
+  /**
    * Reset dunning stage when a contract is no longer overdue
    * (e.g., after a payment brings it back to ACTIVE)
    */

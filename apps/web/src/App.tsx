@@ -72,6 +72,7 @@ const ExpensesPage = lazy(() => import('@/pages/ExpensesPage'));
 const ProfitLossPage = lazy(() => import('@/pages/ProfitLossPage'));
 const CompanySettingsPage = lazy(() => import('@/pages/CompanySettingsPage'));
 const TaxReportsPage = lazy(() => import('@/pages/TaxReportsPage'));
+const CommissionsPage = lazy(() => import('@/pages/CommissionsPage'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -294,6 +295,14 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <ExpensesPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/commissions"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'SALES']}>
+                <CommissionsPage />
               </ProtectedRoute>
             }
           />

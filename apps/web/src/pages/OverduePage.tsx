@@ -10,7 +10,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { formatDateShort } from '@/utils/formatters';
 import { exportToExcel } from '@/utils/excel.util';
-import { Download, Info } from 'lucide-react';
+import { Download, Info, UserPlus, CalendarCheck } from 'lucide-react';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 
 interface OverduePayment {
@@ -57,6 +57,14 @@ export default function OverduePage() {
   const [timelineContractId, setTimelineContractId] = useState<string | null>(null);
   const [callLogForm, setCallLogForm] = useState({ result: 'NO_ANSWER', notes: '' });
 
+  // Assign collector state
+  const [assignContractId, setAssignContractId] = useState<string | null>(null);
+  const [assignUserId, setAssignUserId] = useState('');
+
+  // Settlement state
+  const [settlementContractId, setSettlementContractId] = useState<string | null>(null);
+  const [settlementForm, setSettlementForm] = useState({ settlementDate: '', settlementNotes: '', notes: '' });
+
   // Branches list for filter (OWNER only)
   const { data: branches = [] } = useQuery<{ id: string; name: string }[]>({
     queryKey: ['branches'],
@@ -65,6 +73,17 @@ export default function OverduePage() {
       return data;
     },
     enabled: isOwner,
+  });
+
+  // Users list for assign collector
+  const { data: staffUsers = [] } = useQuery<{ id: string; name: string; role: string }[]>({
+    queryKey: ['staff-users'],
+    queryFn: async () => {
+      const { data } = await api.get('/users');
+      const list = data.data || data || [];
+      return Array.isArray(list) ? list : [];
+    },
+    enabled: isOwnerOrManager,
   });
 
   const { data: overduePayments = [], isLoading } = useQuery<OverduePayment[]>({
@@ -128,6 +147,36 @@ export default function OverduePage() {
       toast.success('บันทึกการโทรสำเร็จ');
       setCallLogForm({ result: 'NO_ANSWER', notes: '' });
       queryClient.invalidateQueries({ queryKey: ['overdue-call-logs', timelineContractId] });
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  // Assign collector mutation
+  const assignCollectorMutation = useMutation({
+    mutationFn: async ({ contractId, userId }: { contractId: string; userId: string }) => {
+      const { data } = await api.post(`/overdue/${contractId}/assign`, { userId });
+      return data;
+    },
+    onSuccess: () => {
+      toast.success('มอบหมายผู้ติดตามสำเร็จ');
+      setAssignContractId(null);
+      setAssignUserId('');
+      queryClient.invalidateQueries({ queryKey: ['overdue-payments'] });
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  // Record settlement mutation
+  const settlementMutation = useMutation({
+    mutationFn: async ({ contractId, body }: { contractId: string; body: { settlementDate: string; settlementNotes: string; notes?: string } }) => {
+      const { data } = await api.post(`/overdue/${contractId}/settlement`, body);
+      return data;
+    },
+    onSuccess: () => {
+      toast.success('บันทึกนัดชำระสำเร็จ');
+      setSettlementContractId(null);
+      setSettlementForm({ settlementDate: '', settlementNotes: '', notes: '' });
+      queryClient.invalidateQueries({ queryKey: ['overdue-payments'] });
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
@@ -214,15 +263,35 @@ export default function OverduePage() {
       key: 'actions',
       label: '',
       render: (p: OverduePayment) => (
-        <button
-          onClick={() => setTimelineContractId(p.contract.id)}
-          className="text-primary hover:text-primary/80 text-xs font-medium"
-        >
-          ติดตาม
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => setTimelineContractId(p.contract.id)}
+            className="text-primary hover:text-primary/80 text-xs font-medium"
+          >
+            ติดตาม
+          </button>
+          {isOwnerOrManager && (
+            <>
+              <button
+                onClick={() => { setAssignContractId(p.contract.id); setAssignUserId(''); }}
+                className="text-muted-foreground hover:text-primary text-xs font-medium flex items-center gap-0.5"
+                title="มอบหมายผู้ติดตาม"
+              >
+                <UserPlus className="size-3.5" />
+              </button>
+              <button
+                onClick={() => { setSettlementContractId(p.contract.id); setSettlementForm({ settlementDate: '', settlementNotes: '', notes: '' }); }}
+                className="text-muted-foreground hover:text-success text-xs font-medium flex items-center gap-0.5"
+                title="บันทึกนัดชำระ"
+              >
+                <CalendarCheck className="size-3.5" />
+              </button>
+            </>
+          )}
+        </div>
       ),
     },
-  ], [navigateToContract]);
+  ], [navigateToContract, isOwnerOrManager]);
 
   return (
     <div>
@@ -418,6 +487,113 @@ export default function OverduePage() {
         <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>
       ) : (
         <DataTable columns={columns} data={overduePayments} emptyMessage="ไม่มีรายการค้างชำระ" />
+      )}
+
+      {/* Assign Collector Modal */}
+      {assignContractId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setAssignContractId(null)}>
+          <div className="absolute inset-0 bg-black/30" />
+          <div className="relative bg-background rounded-xl shadow-xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base font-semibold mb-4">มอบหมายผู้ติดตาม</h3>
+            <select
+              value={assignUserId}
+              onChange={(e) => setAssignUserId(e.target.value)}
+              className="w-full px-3 py-2 border border-input rounded-lg text-sm mb-4"
+            >
+              <option value="">เลือกพนักงาน...</option>
+              {staffUsers.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name} ({u.role})
+                </option>
+              ))}
+            </select>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setAssignContractId(null)}
+                className="px-4 py-2 text-sm border border-input rounded-lg hover:bg-muted"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={() => {
+                  if (!assignUserId) { toast.error('กรุณาเลือกพนักงาน'); return; }
+                  assignCollectorMutation.mutate({ contractId: assignContractId, userId: assignUserId });
+                }}
+                disabled={assignCollectorMutation.isPending || !assignUserId}
+                className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 disabled:opacity-50"
+              >
+                {assignCollectorMutation.isPending ? 'กำลังบันทึก...' : 'มอบหมาย'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Record Settlement Modal */}
+      {settlementContractId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setSettlementContractId(null)}>
+          <div className="absolute inset-0 bg-black/30" />
+          <div className="relative bg-background rounded-xl shadow-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base font-semibold mb-4">บันทึกนัดชำระ</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">วันที่นัดชำระ *</label>
+                <input
+                  type="date"
+                  value={settlementForm.settlementDate}
+                  onChange={(e) => setSettlementForm({ ...settlementForm, settlementDate: e.target.value })}
+                  className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">รายละเอียดนัดชำระ *</label>
+                <textarea
+                  value={settlementForm.settlementNotes}
+                  onChange={(e) => setSettlementForm({ ...settlementForm, settlementNotes: e.target.value })}
+                  placeholder="เช่น ลูกค้านัดชำระ 5,000 บาท..."
+                  rows={2}
+                  className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">หมายเหตุ (ถ้ามี)</label>
+                <textarea
+                  value={settlementForm.notes}
+                  onChange={(e) => setSettlementForm({ ...settlementForm, notes: e.target.value })}
+                  placeholder="หมายเหตุเพิ่มเติม..."
+                  rows={2}
+                  className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end mt-4">
+              <button
+                onClick={() => setSettlementContractId(null)}
+                className="px-4 py-2 text-sm border border-input rounded-lg hover:bg-muted"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={() => {
+                  if (!settlementForm.settlementDate) { toast.error('กรุณาเลือกวันที่นัดชำระ'); return; }
+                  if (!settlementForm.settlementNotes.trim()) { toast.error('กรุณากรอกรายละเอียดนัดชำระ'); return; }
+                  settlementMutation.mutate({
+                    contractId: settlementContractId,
+                    body: {
+                      settlementDate: settlementForm.settlementDate,
+                      settlementNotes: settlementForm.settlementNotes,
+                      notes: settlementForm.notes || undefined,
+                    },
+                  });
+                }}
+                disabled={settlementMutation.isPending}
+                className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 disabled:opacity-50"
+              >
+                {settlementMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกนัดชำระ'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Timeline & Call Logs Drawer */}

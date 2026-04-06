@@ -51,6 +51,7 @@ import { CompanyModule } from './modules/company/company.module';
 import { InterCompanyModule } from './modules/inter-company/inter-company.module';
 import { JournalModule } from './modules/journal/journal.module';
 import { TaxModule } from './modules/tax/tax.module';
+import { CommissionModule } from './modules/commission/commission.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
 import { CsrfGuard } from './guards/csrf.guard';
@@ -135,6 +136,8 @@ import { AppCacheModule } from './cache/cache.module';
     JournalModule,
     // Tax Reports (ภ.พ.30, ภ.ง.ด.3, ภ.ง.ด.53)
     TaxModule,
+    // Sales Commission
+    CommissionModule,
     // MASTER: Management
     UsersModule,
     SettingsModule,

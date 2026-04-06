@@ -11,6 +11,7 @@ import PaymentHistorySheet from '@/components/payment/PaymentHistorySheet';
 import ReceiptModal from '@/components/payment/ReceiptModal';
 import { toast } from 'sonner';
 import { exportToExcel } from '@/utils/excel.util';
+import { Upload, Camera } from 'lucide-react';
 import PaymentFilters from './components/PaymentFilters';
 import PaymentTable from './components/PaymentTable';
 import PaymentSummary from './components/PaymentSummary';
@@ -63,6 +64,10 @@ export default function PaymentsPage() {
   const advanceSlipFileRef = useRef<HTMLInputElement>(null);
   const [advanceOcrLoading, setAdvanceOcrLoading] = useState(false);
   const [advanceSlipResult, setAdvanceSlipResult] = useState<OcrPaymentSlipResult | null>(null);
+
+  // Quick scan slip (top-level)
+  const quickSlipFileRef = useRef<HTMLInputElement>(null);
+  const [quickOcrLoading, setQuickOcrLoading] = useState(false);
 
   // Branches list for filter (OWNER only)
   const { data: branches = [] } = useQuery<{ id: string; name: string }[]>({
@@ -354,6 +359,17 @@ export default function PaymentsPage() {
     });
   };
 
+  // Quick slip scan — opens the slip-review tab with the scanned result
+  const handleQuickSlipScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await scanSlip(file, setQuickOcrLoading, () => {}, quickSlipFileRef, () => {
+      // Navigate to slip-review tab after successful scan
+      setTab('slip-review');
+      toast.success('สลิปถูกส่งไปตรวจสอบแล้ว');
+    });
+  };
+
   const openAdvanceModal = useCallback((payment: PendingPayment) => {
     setAdvanceContract(payment);
     setAdvanceAmount('');
@@ -363,7 +379,45 @@ export default function PaymentsPage() {
 
   return (
     <div>
-      <PageHeader title="ชำระเงิน" subtitle="บันทึกการรับชำระค่างวด" />
+      <PageHeader
+        title="ชำระเงิน"
+        subtitle="บันทึกการรับชำระค่างวด"
+        action={
+          <div className="flex items-center gap-2">
+            <input
+              ref={quickSlipFileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleQuickSlipScan}
+            />
+            <button
+              onClick={() => quickSlipFileRef.current?.click()}
+              disabled={quickOcrLoading}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors shadow-sm disabled:opacity-50"
+            >
+              {quickOcrLoading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                  กำลังสแกนสลิป...
+                </>
+              ) : (
+                <>
+                  <Camera className="size-4" />
+                  สแกนสลิป
+                </>
+              )}
+            </button>
+            <button
+              onClick={() => setTab('slip-review')}
+              className="inline-flex items-center gap-2 px-4 py-2.5 border border-input rounded-lg text-sm font-medium hover:bg-muted transition-colors"
+            >
+              <Upload className="size-4" />
+              ตรวจสอบสลิป
+            </button>
+          </div>
+        }
+      />
 
       {/* Tabs */}
       <div className="flex gap-1 mb-4 bg-muted rounded-lg p-1 w-fit">

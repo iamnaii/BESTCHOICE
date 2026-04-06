@@ -239,6 +239,22 @@ export class SalesService {
       // by joining Sale → Product.costPrice, including bundle products.
       // TODO: Implement perpetual inventory journal for real-time COGS ledger entries.
 
+      // Auto-create sales commission
+      const now = new Date();
+      const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const commissionRate = 0.03; // Default 3% — TODO: read from CommissionRule
+      await tx.salesCommission.create({
+        data: {
+          salespersonId,
+          saleId: sale.id,
+          period,
+          saleAmount: netAmount,
+          commissionRate,
+          commissionAmount: Math.round(netAmount * commissionRate * 100) / 100,
+          status: 'PENDING',
+        },
+      });
+
       return sale;
     }, { isolationLevel: 'Serializable' });
   }
@@ -386,6 +402,23 @@ export class SalesService {
           commissionAmount: calc.storeCommission,
           netExpectedAmount: calc.principal,
           expectedDate,
+        },
+      });
+
+      // Auto-create sales commission
+      const now = new Date();
+      const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const commissionRate = 0.03; // Default 3% — TODO: read from CommissionRule
+      await tx.salesCommission.create({
+        data: {
+          salespersonId,
+          contractId: contract.id,
+          saleId: sale.id,
+          period,
+          saleAmount: netAmount,
+          commissionRate,
+          commissionAmount: Math.round(netAmount * commissionRate * 100) / 100,
+          status: 'PENDING',
         },
       });
 

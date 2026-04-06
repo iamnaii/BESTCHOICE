@@ -2,6 +2,8 @@ import { Controller, Get, Post, Body, Param, Query, UseGuards } from '@nestjs/co
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { OverdueService } from './overdue.service';
 import { CreateCallLogDto } from './dto/create-call-log.dto';
+import { AssignCollectorDto } from './dto/assign-collector.dto';
+import { RecordSettlementDto } from './dto/record-settlement.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -76,6 +78,25 @@ export class OverdueController {
     @CurrentUser() user: { id: string },
   ) {
     return this.overdueService.createCallLog(dto, user.id);
+  }
+
+  @Post(':contractId/assign')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
+  assignCollector(
+    @Param('contractId') contractId: string,
+    @Body() dto: AssignCollectorDto,
+  ) {
+    return this.overdueService.assignCollector(contractId, dto.assignedToId);
+  }
+
+  @Post(':contractId/settlement')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  recordSettlement(
+    @Param('contractId') contractId: string,
+    @Body() dto: RecordSettlementDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.overdueService.recordSettlement(contractId, user.id, dto);
   }
 
   @Post('cron/calculate-late-fees')

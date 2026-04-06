@@ -364,6 +364,9 @@ model User {
   journalEntriesCreated  JournalEntry[]       @relation("JournalCreatedBy")
   journalEntriesPosted   JournalEntry[]       @relation("JournalPostedBy")
   taxReportsFiled        TaxReport[]          @relation("TaxReportFiledBy")
+  commissionsEarned      SalesCommission[]    @relation("CommissionSalesperson")
+  commissionsApproved    SalesCommission[]    @relation("CommissionApprovedBy")
+  contractsAssigned      Contract[]           @relation("ContractAssignedTo")
 
   @@index([branchId])
   @@map("users")
@@ -518,9 +521,13 @@ model Contract {
   loyaltyPoints            LoyaltyPoint[]
   interCompanyTransactions InterCompanyTransaction[]
   provisions               BadDebtProvision[]
+  commissions              SalesCommission[]
+  assignedToId             String?          @map("assigned_to_id") // collections agent assignment
+  assignedTo               User?            @relation("ContractAssignedTo", fields: [assignedToId], references: [id])
 
   @@index([customerId])
   @@index([branchId])
+  @@index([assignedToId])
   @@index([status])
   @@index([salespersonId])
   @@index([createdAt])
@@ -1139,15 +1146,17 @@ model NotificationLog {
 }
 
 model CallLog {
-  id         String    @id @default(uuid())
-  contractId String    @map("contract_id")
-  callerId   String    @map("caller_id")
-  calledAt   DateTime  @map("called_at")
-  result     String // e.g. ANSWERED, NO_ANSWER, PROMISED, REFUSED
-  notes      String?
-  createdAt  DateTime  @default(now()) @map("created_at")
-  updatedAt  DateTime  @updatedAt @map("updated_at")
-  deletedAt  DateTime? @map("deleted_at")
+  id              String    @id @default(uuid())
+  contractId      String    @map("contract_id")
+  callerId        String    @map("caller_id")
+  calledAt        DateTime  @map("called_at")
+  result          String // e.g. ANSWERED, NO_ANSWER, PROMISED, REFUSED
+  notes           String?
+  settlementDate  DateTime? @map("settlement_date") // วันที่นัดชำระ (กรณี PROMISED)
+  settlementNotes String?   @map("settlement_notes") // รายละเอียดการนัดชำระ
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
 
   contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
   caller   User     @relation(fields: [callerId], references: [id])
@@ -1225,6 +1234,7 @@ model Sale {
   contract                 Contract?                 @relation(fields: [contractId], references: [id])
   financeReceivable        FinanceReceivable?
   interCompanyTransactions InterCompanyTransaction[]
+  commissions              SalesCommission[]
 
   @@index([saleType])
   @@index([branchId])
@@ -2167,6 +2177,76 @@ model InterCompanyTransaction {
   @@index([createdAt])
   @@index([deletedAt])
   @@map("inter_company_transactions")
+}
+
+// ============================================================
+// SALES COMMISSION (ค่าคอมมิชชันพนักงานขาย)
+// ============================================================
+
+enum CommissionStatus {
+  PENDING
+  APPROVED
+  PAID
+}
+
+enum CommissionRuleType {
+  PERCENTAGE
+  FIXED_AMOUNT
+  TIERED
+}
+
+model CommissionRule {
+  id             String             @id @default(uuid())
+  name           String
+  description    String?
+  ruleType       CommissionRuleType @map("rule_type")
+  rate           Decimal            @db.Decimal(5, 4) // e.g. 0.03 = 3%
+  fixedAmount    Decimal?           @map("fixed_amount") @db.Decimal(12, 2)
+  minSaleAmount  Decimal?           @map("min_sale_amount") @db.Decimal(12, 2)
+  maxSaleAmount  Decimal?           @map("max_sale_amount") @db.Decimal(12, 2)
+  isActive       Boolean            @default(true) @map("is_active")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+  deletedAt      DateTime?          @map("deleted_at")
+
+  commissions    SalesCommission[]
+
+  @@map("commission_rules")
+}
+
+model SalesCommission {
+  id               String           @id @default(uuid())
+  salespersonId    String           @map("salesperson_id")
+  contractId       String?          @map("contract_id")
+  saleId           String?          @map("sale_id")
+  commissionRuleId String?          @map("commission_rule_id")
+  period           String           // "YYYY-MM" for monthly grouping
+  saleAmount       Decimal          @map("sale_amount") @db.Decimal(12, 2)
+  commissionRate   Decimal          @map("commission_rate") @db.Decimal(5, 4)
+  commissionAmount Decimal          @map("commission_amount") @db.Decimal(12, 2)
+  status           CommissionStatus @default(PENDING)
+  approvedById     String?          @map("approved_by_id")
+  approvedAt       DateTime?        @map("approved_at")
+  paidAt           DateTime?        @map("paid_at")
+  paidAmount       Decimal?         @map("paid_amount") @db.Decimal(12, 2)
+  notes            String?
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  deletedAt        DateTime?        @map("deleted_at")
+
+  salesperson    User              @relation("CommissionSalesperson", fields: [salespersonId], references: [id])
+  contract       Contract?         @relation(fields: [contractId], references: [id])
+  sale           Sale?             @relation(fields: [saleId], references: [id])
+  commissionRule CommissionRule?   @relation(fields: [commissionRuleId], references: [id])
+  approvedBy     User?             @relation("CommissionApprovedBy", fields: [approvedById], references: [id])
+
+  @@index([salespersonId])
+  @@index([contractId])
+  @@index([saleId])
+  @@index([period])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("sales_commissions")
 }
 
 // ============================================================

@@ -71,107 +71,100 @@ interface NavSection {
   key: string;
   label: string;
   icon: LucideIcon;
+  group?: 'shop' | 'finance' | 'general'; // section group header
   items: NavItem[];
 }
 
 const navSections: NavSection[] = [
+  // ── SHOP (หน้าร้าน) ──────────────────────────────
   {
     key: 'sales',
-    label: 'ขายสินค้า',
+    label: 'ขาย',
     icon: ShoppingCart,
+    group: 'shop',
     items: [
-      { label: 'POS ขายสินค้า', path: '/pos', icon: ShoppingCart },
-      { label: 'ประวัติการขาย', path: '/sales', icon: Receipt },
+      { label: 'ขายของ', path: '/pos', icon: ShoppingCart },
       { label: 'ลูกค้า', path: '/customers', icon: Users },
-      { label: 'ตรวจเครดิต', path: '/credit-checks', icon: CreditCard },
+      { label: 'ตรวจสอบลูกค้า', path: '/credit-checks', icon: CreditCard },
       { label: 'รับซื้อเครื่อง', path: '/trade-in', icon: RefreshCw, roles: ['OWNER', 'BRANCH_MANAGER', 'SALES'] },
     ],
   },
   {
-    key: 'contracts',
-    label: 'สัญญา & ชำระเงิน',
-    icon: FileCheck,
+    key: 'inventory',
+    label: 'คลัง',
+    icon: Warehouse,
+    group: 'shop',
     items: [
-      { label: 'สัญญาผ่อน', path: '/contracts', icon: FileCheck },
-      { label: 'ชำระเงิน', path: '/payments', icon: DollarSign },
-      { label: 'ใบเสร็จรับเงิน', path: '/receipts', icon: Receipt, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
-      { label: 'ตรวจสอบสลิป', path: '/payments?tab=slip-review', icon: FileCheck, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
-      { label: 'นำเข้าชำระเงิน (CSV)', path: '/payments/import-csv', icon: Upload, roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
-      { label: 'เงินรับจากไฟแนนซ์', path: '/finance-receivable', icon: Banknote, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
-      { label: 'สถานะเอกสาร', path: '/document-dashboard', icon: FileText, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER'] },
+      { label: 'สต็อกสินค้า', path: '/stock', icon: Warehouse, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES'] },
+      { label: 'สั่งซื้อ', path: '/purchase-orders', icon: ClipboardList, roles: ['OWNER', 'BRANCH_MANAGER'] },
+      { label: 'โอนสินค้า', path: '/stock/transfers', icon: ArrowRightLeft, roles: ['OWNER', 'BRANCH_MANAGER'] },
+      { label: 'ผู้ขาย', path: '/suppliers', icon: Building2, roles: ['OWNER', 'BRANCH_MANAGER'] },
     ],
   },
+  // ── FINANCE (ไฟแนนซ์) ────────────────────────────
   {
-    key: 'accounting',
-    label: 'บัญชี & การเงิน',
-    icon: Receipt,
+    key: 'contracts',
+    label: 'สัญญา',
+    icon: FileCheck,
+    group: 'finance',
     items: [
-      { label: 'บันทึกรายจ่าย', path: '/expenses', icon: Receipt, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
-      { label: 'งบกำไรขาดทุน', path: '/profit-loss', icon: DollarSign, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
-      { label: 'คอมมิชชัน', path: '/commissions', icon: DollarSign, roles: ['OWNER', 'FINANCE_MANAGER', 'SALES'] },
-      { label: 'สินทรัพย์ถาวร', path: '/assets', icon: Building2, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
+      { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
+      { label: 'รับชำระค่างวด', path: '/payments', icon: DollarSign },
+      { label: 'เงินรับจาก FINANCE', path: '/finance-receivable', icon: Banknote, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
     ],
   },
   {
     key: 'debt',
-    label: 'ติดตามหนี้',
+    label: 'ติดตาม',
     icon: AlertTriangle,
+    group: 'finance',
     items: [
-      { label: 'ติดตามหนี้', path: '/overdue', icon: AlertTriangle },
+      { label: 'ลูกค้าค้างชำระ', path: '/overdue', icon: AlertTriangle },
       { label: 'เปลี่ยนเครื่อง', path: '/exchange', icon: RefreshCw, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER'] },
-      { label: 'ยึดคืน & ขายต่อ', path: '/repossessions', icon: Undo2, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER'] },
+      { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Undo2, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER'] },
     ],
   },
+  // ── ทั่วไป ───────────────────────────────────────
   {
-    key: 'inventory',
-    label: 'คลังสินค้า & จัดซื้อ',
-    icon: Warehouse,
+    key: 'accounting',
+    label: 'การเงิน',
+    icon: Receipt,
+    group: 'general',
     items: [
-      { label: 'คลังสินค้า', path: '/stock', icon: Warehouse, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES'] },
-      { label: 'สั่งซื้อ', path: '/purchase-orders', icon: ClipboardList, roles: ['OWNER', 'BRANCH_MANAGER'] },
-      { label: 'โอนสาขา', path: '/stock/transfers', icon: ArrowRightLeft, roles: ['OWNER', 'BRANCH_MANAGER'] },
-      { label: 'ปรับสต็อก', path: '/stock/adjustments', icon: Sliders, roles: ['OWNER', 'BRANCH_MANAGER'] },
-      { label: 'ตรวจนับสต็อก', path: '/stock/count', icon: ClipboardCheck, roles: ['OWNER', 'BRANCH_MANAGER'] },
-      { label: 'แจ้งเตือนสต็อก', path: '/stock/alerts', icon: Bell, roles: ['OWNER', 'BRANCH_MANAGER'] },
-      { label: 'ขั้นตอนสต็อก', path: '/stock/workflow', icon: GitBranchPlus, roles: ['OWNER', 'BRANCH_MANAGER', 'SALES'] },
-      { label: 'ตรวจสอบสินค้า', path: '/inspections', icon: ClipboardCheck, roles: ['OWNER', 'BRANCH_MANAGER', 'SALES'] },
+      { label: 'รายจ่าย', path: '/expenses', icon: Receipt, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
+      { label: 'ใบเสร็จ', path: '/receipts', icon: Receipt, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
+      { label: 'กำไร-ขาดทุน', path: '/profit-loss', icon: DollarSign, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
+      { label: 'ค่าคอม', path: '/commissions', icon: DollarSign, roles: ['OWNER', 'FINANCE_MANAGER', 'SALES'] },
+      { label: 'สินทรัพย์', path: '/assets', icon: Building2, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
     ],
   },
   {
     key: 'reports',
-    label: 'รายงาน & แจ้งเตือน',
+    label: 'รายงาน',
     icon: BarChart3,
+    group: 'general',
     items: [
       { label: 'รายงาน', path: '/reports', icon: BarChart3, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
-      { label: 'รายงานภาษี', path: '/tax-reports', icon: FileText, roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
+      { label: 'ภาษี', path: '/tax-reports', icon: FileText, roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
       { label: 'แจ้งเตือน', path: '/notifications', icon: Bell, roles: ['OWNER', 'BRANCH_MANAGER'] },
     ],
   },
   {
     key: 'settings',
-    label: 'ตั้งค่า & ผู้ใช้',
+    label: 'ตั้งค่า',
     icon: Settings,
+    group: 'general',
     items: [
-      { label: 'ผู้ขาย', path: '/suppliers', icon: Building2, roles: ['OWNER', 'BRANCH_MANAGER'] },
+      { label: 'ระบบ', path: '/settings', icon: Settings, roles: ['OWNER'] },
+      { label: 'ผู้ใช้', path: '/users', icon: UserCog, roles: ['OWNER'] },
       { label: 'สาขา', path: '/branches', icon: Building2, roles: ['OWNER'] },
-      { label: 'จัดการผู้ใช้', path: '/users', icon: UserCog, roles: ['OWNER'] },
-      { label: 'ตั้งค่าระบบ', path: '/settings', icon: Settings, roles: ['OWNER'] },
-      { label: 'ราคาตั้งต้น', path: '/settings/pricing-templates', icon: DollarSign, roles: ['OWNER'] },
-      { label: 'เทมเพลตสัญญา', path: '/contract-templates', icon: FileSignature, roles: ['OWNER'] },
-      { label: 'จัดการนิติบุคคล', path: '/settings/companies', icon: Building2, roles: ['OWNER'] },
+      { label: 'บริษัท', path: '/settings/companies', icon: Building2, roles: ['OWNER'] },
+      { label: 'ตั้งราคา', path: '/settings/pricing-templates', icon: DollarSign, roles: ['OWNER'] },
+      { label: 'แบบสัญญา', path: '/contract-templates', icon: FileSignature, roles: ['OWNER'] },
       { label: 'โปรโมชัน', path: '/promotions', icon: Zap, roles: ['OWNER'] },
-    ],
-  },
-  {
-    key: 'admin',
-    label: 'ผู้ดูแลระบบ',
-    icon: Shield,
-    items: [
       { label: 'PDPA', path: '/pdpa', icon: Shield, roles: ['OWNER', 'BRANCH_MANAGER'] },
-      { label: 'Audit Logs', path: '/audit-logs', icon: ScrollText, roles: ['OWNER'] },
-      { label: 'Financial Audit', path: '/financial-audit', icon: FileText, roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
-      { label: 'สถานะระบบ', path: '/system-status', icon: Activity, roles: ['OWNER'] },
-      { label: 'นำเข้าข้อมูล', path: '/migration', icon: Database, roles: ['OWNER'] },
+      { label: 'Audit Log', path: '/audit-logs', icon: ScrollText, roles: ['OWNER'] },
+      { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: FileText, roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
     ],
   },
 ];
@@ -422,24 +415,40 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
             </Link>
           </AccordionMenuItem>
 
-          {filteredSections.map((section) => (
-            <AccordionMenuSub key={section.key} value={section.key} data-testid={`nav-${section.key}`}>
-              <AccordionMenuSubTrigger>
-                <section.icon data-slot="accordion-menu-icon" className="size-4" />
-                <span data-slot="accordion-menu-title">{section.label}</span>
-              </AccordionMenuSubTrigger>
-              <AccordionMenuSubContent parentValue={section.key} type="single" collapsible>
-                {section.items.map((item) => (
-                  <AccordionMenuItem key={item.path} value={item.path} className="text-2sm">
-                    <Link to={item.path} className="flex items-center gap-2 w-full">
-                      {item.icon && <item.icon data-slot="accordion-menu-icon" className="size-4" />}
-                      <span data-slot="accordion-menu-title">{item.label}</span>
-                    </Link>
-                  </AccordionMenuItem>
-                ))}
-              </AccordionMenuSubContent>
-            </AccordionMenuSub>
-          ))}
+          {filteredSections.map((section, i) => {
+            const prevGroup = i > 0 ? filteredSections[i - 1].group : null;
+            const showGroupHeader = section.group && section.group !== prevGroup;
+            const groupLabels: Record<string, string> = { shop: 'SHOP', finance: 'FINANCE', general: 'ทั่วไป' };
+            const groupColors: Record<string, string> = { shop: 'text-blue-400', finance: 'text-violet-400', general: 'text-white/30' };
+
+            return (
+              <div key={section.key}>
+                {showGroupHeader && (
+                  <div className="px-3 pt-4 pb-1.5">
+                    <span className={`text-[10px] font-bold uppercase tracking-[0.15em] ${groupColors[section.group!] || 'text-white/30'}`}>
+                      {groupLabels[section.group!] || section.group}
+                    </span>
+                  </div>
+                )}
+                <AccordionMenuSub value={section.key} data-testid={`nav-${section.key}`}>
+                  <AccordionMenuSubTrigger>
+                    <section.icon data-slot="accordion-menu-icon" className="size-4" />
+                    <span data-slot="accordion-menu-title">{section.label}</span>
+                  </AccordionMenuSubTrigger>
+                  <AccordionMenuSubContent parentValue={section.key} type="single" collapsible>
+                    {section.items.map((item) => (
+                      <AccordionMenuItem key={item.path} value={item.path} className="text-2sm">
+                        <Link to={item.path} className="flex items-center gap-2 w-full">
+                          {item.icon && <item.icon data-slot="accordion-menu-icon" className="size-4" />}
+                          <span data-slot="accordion-menu-title">{item.label}</span>
+                        </Link>
+                      </AccordionMenuItem>
+                    ))}
+                  </AccordionMenuSubContent>
+                </AccordionMenuSub>
+              </div>
+            );
+          })}
         </AccordionMenu>
       </ScrollArea>
 
@@ -513,24 +522,40 @@ function MobileSidebar() {
             </Link>
           </AccordionMenuItem>
 
-          {filteredSections.map((section) => (
-            <AccordionMenuSub key={section.key} value={section.key} data-testid={`nav-${section.key}`}>
-              <AccordionMenuSubTrigger>
-                <section.icon data-slot="accordion-menu-icon" className="size-4" />
-                <span data-slot="accordion-menu-title">{section.label}</span>
-              </AccordionMenuSubTrigger>
-              <AccordionMenuSubContent parentValue={section.key} type="single" collapsible>
-                {section.items.map((item) => (
-                  <AccordionMenuItem key={item.path} value={item.path} className="text-2sm">
-                    <Link to={item.path} className="flex items-center gap-2 w-full">
-                      {item.icon && <item.icon data-slot="accordion-menu-icon" className="size-4" />}
-                      <span data-slot="accordion-menu-title">{item.label}</span>
-                    </Link>
-                  </AccordionMenuItem>
-                ))}
-              </AccordionMenuSubContent>
-            </AccordionMenuSub>
-          ))}
+          {filteredSections.map((section, i) => {
+            const prevGroup = i > 0 ? filteredSections[i - 1].group : null;
+            const showGroupHeader = section.group && section.group !== prevGroup;
+            const groupLabels: Record<string, string> = { shop: 'SHOP', finance: 'FINANCE', general: 'ทั่วไป' };
+            const groupColors: Record<string, string> = { shop: 'text-blue-400', finance: 'text-violet-400', general: 'text-white/30' };
+
+            return (
+              <div key={section.key}>
+                {showGroupHeader && (
+                  <div className="px-3 pt-4 pb-1.5">
+                    <span className={`text-[10px] font-bold uppercase tracking-[0.15em] ${groupColors[section.group!] || 'text-white/30'}`}>
+                      {groupLabels[section.group!] || section.group}
+                    </span>
+                  </div>
+                )}
+                <AccordionMenuSub value={section.key} data-testid={`nav-${section.key}`}>
+                  <AccordionMenuSubTrigger>
+                    <section.icon data-slot="accordion-menu-icon" className="size-4" />
+                    <span data-slot="accordion-menu-title">{section.label}</span>
+                  </AccordionMenuSubTrigger>
+                  <AccordionMenuSubContent parentValue={section.key} type="single" collapsible>
+                    {section.items.map((item) => (
+                      <AccordionMenuItem key={item.path} value={item.path} className="text-2sm">
+                        <Link to={item.path} className="flex items-center gap-2 w-full">
+                          {item.icon && <item.icon data-slot="accordion-menu-icon" className="size-4" />}
+                          <span data-slot="accordion-menu-title">{item.label}</span>
+                        </Link>
+                      </AccordionMenuItem>
+                    ))}
+                  </AccordionMenuSubContent>
+                </AccordionMenuSub>
+              </div>
+            );
+          })}
         </AccordionMenu>
       </ScrollArea>
 

@@ -8,11 +8,12 @@ import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
-import { Banknote, Clock, AlertTriangle, CheckCircle2, Ban, Pencil, MoreVertical } from 'lucide-react';
+import { Banknote, Clock, AlertTriangle, CheckCircle2, Ban, Pencil, MoreVertical, Receipt, Percent, Wallet } from 'lucide-react';
 import AnimatedCounter from '@/components/ui/animated-counter';
 import { Button } from '@/components/ui/button';
 import { formatDateShortThai, formatDateShort } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 
 interface FinanceReceivable {
   id: string; financeCompany: string; financeRefNumber: string | null;
@@ -47,9 +48,164 @@ const statusColors: Record<string, string> = {
 };
 const inputClass = 'w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none';
 
+interface InterCompanyTransaction {
+  id: string;
+  principal: string;
+  commission: string;
+  totalAmount: string;
+  status: string;
+  createdAt: string;
+  sale: {
+    id: string;
+    saleNumber: string;
+    customer: { id: string; name: string };
+  };
+  branch: { id: string; name: string };
+}
+
+interface InterCompanyProfitSummary {
+  transactionCount: number;
+  shop: { totalRevenue: number; totalCost: number; totalCommission: number; totalProfit: number };
+  finance: { totalInterest: number; totalCommissionPaid: number; totalProfit: number };
+  combined: { totalVat: number; totalProfit: number };
+}
+
+const icStatusLabels: Record<string, string> = {
+  PENDING: 'รอดำเนินการ',
+  CONFIRMED: 'ยืนยันแล้ว',
+  RECONCILED: 'กระทบยอดแล้ว',
+};
+const icStatusColors: Record<string, string> = {
+  PENDING: 'bg-warning/10 text-warning dark:bg-warning/15',
+  CONFIRMED: 'bg-primary/10 text-primary dark:bg-primary/15',
+  RECONCILED: 'bg-success/10 text-success dark:bg-success/15',
+};
+
 function fmt(n: string | number | null | undefined): string {
   if (n == null) return '-';
   return Number(n).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function BestchoiceFinanceTab() {
+  const [icPage, setIcPage] = useState(1);
+  const [icStatus, setIcStatus] = useState('');
+
+  const { data: profitSummary } = useQuery<InterCompanyProfitSummary>({
+    queryKey: ['inter-company-profit-summary'],
+    queryFn: async () => (await api.get('/inter-company/profit-summary')).data,
+  });
+
+  const { data: icData, isLoading: icLoading } = useQuery<{ data: InterCompanyTransaction[]; total: number }>({
+    queryKey: ['inter-company', icPage, icStatus],
+    queryFn: async () => {
+      const p = new URLSearchParams({ limit: '20', page: String(icPage) });
+      if (icStatus) p.set('status', icStatus);
+      return (await api.get(`/inter-company?${p}`)).data;
+    },
+  });
+
+  const icSummaryCards = [
+    { label: 'รายการทั้งหมด', value: profitSummary?.transactionCount || 0, isCount: true, icon: Receipt, color: 'text-primary', iconBg: 'bg-primary/20', stripe: 'bg-primary' },
+    { label: 'ยอดเงินต้นรวม', value: profitSummary?.shop?.totalRevenue || 0, isCount: false, icon: Banknote, color: 'text-blue-600', iconBg: 'bg-blue-100 dark:bg-blue-900/30', stripe: 'bg-blue-500' },
+    { label: 'ค่าคอมมิชชันรวม', value: profitSummary?.finance?.totalCommissionPaid || 0, isCount: false, icon: Percent, color: 'text-amber-600', iconBg: 'bg-amber-100 dark:bg-amber-900/30', stripe: 'bg-amber-500' },
+    { label: 'ยอดจ่ายรวม', value: profitSummary?.shop?.totalCost || 0, isCount: false, icon: Wallet, color: 'text-success', iconBg: 'bg-success/20', stripe: 'bg-success' },
+  ];
+
+  const icColumns = [
+    {
+      key: 'customer', label: 'ลูกค้า/สินค้า',
+      render: (r: InterCompanyTransaction) => (
+        <div className="min-w-0">
+          <div className="font-medium truncate">{r.sale.customer.name}</div>
+          <div className="text-xs text-muted-foreground">{r.sale.saleNumber}</div>
+        </div>
+      ),
+    },
+    { key: 'branch', label: 'สาขา', render: (r: InterCompanyTransaction) => r.branch.name },
+    {
+      key: 'principal', label: 'เงินต้น',
+      render: (r: InterCompanyTransaction) => <div className="text-right font-medium">{fmt(r.principal)} ฿</div>,
+    },
+    {
+      key: 'commission', label: 'ค่าคอม',
+      render: (r: InterCompanyTransaction) => <div className="text-right font-medium">{fmt(r.commission)} ฿</div>,
+    },
+    {
+      key: 'totalAmount', label: 'ยอดจ่าย SHOP',
+      render: (r: InterCompanyTransaction) => <div className="text-right font-semibold text-primary">{fmt(r.totalAmount)} ฿</div>,
+    },
+    {
+      key: 'status', label: 'สถานะ',
+      render: (r: InterCompanyTransaction) => (
+        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${icStatusColors[r.status] || 'bg-muted'}`}>
+          {icStatusLabels[r.status] || r.status}
+        </span>
+      ),
+    },
+    {
+      key: 'createdAt', label: 'วันที่',
+      render: (r: InterCompanyTransaction) => formatDateShort(r.createdAt),
+    },
+  ];
+
+  const icTotalPages = Math.ceil((icData?.total || 0) / 20);
+
+  return (
+    <div>
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        {icSummaryCards.map((card) => (
+          <Card key={card.label} className="h-full overflow-hidden hover:shadow-card-hover transition-all">
+            <div className="flex h-full">
+              <div className={`w-1 shrink-0 ${card.stripe}`} />
+              <CardContent className="p-4 flex flex-col justify-between flex-1">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-medium text-muted-foreground">{card.label}</span>
+                  <div className={`size-8 rounded-lg flex items-center justify-center shrink-0 ${card.iconBg}`}>
+                    <card.icon className={`size-4 ${card.color}`} />
+                  </div>
+                </div>
+                <div>
+                  {card.isCount ? (
+                    <AnimatedCounter value={card.value} className={`text-2xl font-bold ${card.color}`} />
+                  ) : (
+                    <div className={`text-2xl font-bold ${card.color}`}>{fmt(card.value)}</div>
+                  )}
+                  {!card.isCount && <div className="text-2xs text-muted-foreground mt-1">บาท</div>}
+                </div>
+              </CardContent>
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      {/* Status Filter */}
+      <div className="flex flex-wrap gap-4 mb-5 bg-card rounded-xl border border-border p-4">
+        <div>
+          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สถานะ</label>
+          <select value={icStatus} onChange={(e) => { setIcStatus(e.target.value); setIcPage(1); }} className={`${inputClass} w-auto min-w-[160px]`}>
+            <option value="">ทั้งหมด</option>
+            <option value="PENDING">รอดำเนินการ</option>
+            <option value="CONFIRMED">ยืนยันแล้ว</option>
+            <option value="RECONCILED">กระทบยอดแล้ว</option>
+          </select>
+        </div>
+      </div>
+
+      <DataTable columns={icColumns} data={icData?.data || []} isLoading={icLoading} emptyMessage="ไม่พบรายการ BESTCHOICE FINANCE" />
+
+      {/* Pagination */}
+      {icTotalPages > 1 && (
+        <div className="flex items-center justify-between mt-4">
+          <span className="text-sm text-muted-foreground">หน้า {icPage} / {icTotalPages} (ทั้งหมด {icData?.total} รายการ)</span>
+          <div className="flex gap-1">
+            <Button variant="outline" size="sm" disabled={icPage <= 1} onClick={() => setIcPage(icPage - 1)}>ก่อนหน้า</Button>
+            <Button variant="outline" size="sm" disabled={icPage >= icTotalPages} onClick={() => setIcPage(icPage + 1)}>ถัดไป</Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function FinanceReceivablePage() {
@@ -212,6 +368,14 @@ export default function FinanceReceivablePage() {
     <div onClick={() => setOpenMenuId(null)}>
       <PageHeader title="เงินรับจากไฟแนนซ์" subtitle={`ทั้งหมด ${receivables?.total || 0} รายการ`} />
 
+      <Tabs defaultValue="external" className="mb-6">
+        <TabsList variant="line" size="lg" className="mb-6">
+          <TabsTrigger value="external">ไฟแนนซ์ภายนอก</TabsTrigger>
+          <TabsTrigger value="bestchoice">BESTCHOICE FINANCE</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="external">
+
       {/* Summary Cards — color stripe */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {summaryCards.map((card) => (
@@ -298,6 +462,13 @@ export default function FinanceReceivablePage() {
           </div>
         </div>
       )}
+
+        </TabsContent>
+
+        <TabsContent value="bestchoice">
+          <BestchoiceFinanceTab />
+        </TabsContent>
+      </Tabs>
 
       {/* Detail Modal */}
       <Modal isOpen={isDetailModalOpen} onClose={() => setIsDetailModalOpen(false)} title="รายละเอียดเงินรับจากไฟแนนซ์">

@@ -1,4 +1,3 @@
-import type { UseMutationResult } from '@tanstack/react-query';
 import Modal from '@/components/ui/Modal';
 import { toast } from 'sonner';
 import type { PendingPayment, OcrPaymentSlipResult } from '../types';

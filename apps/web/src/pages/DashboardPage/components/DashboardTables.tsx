@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardToolbar, CardTable } from '@/components/ui/card';
 import { Layers } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -7,6 +8,15 @@ import type {
   BranchComparison,
 } from '../types';
 import { ErrorBlock } from '../types';
+
+/** Map dunning stage to query param for /overdue drill-down */
+const stageToDunning: Record<string, string> = {
+  NONE: '',
+  REMINDER: 'REMINDER',
+  NOTICE: 'NOTICE',
+  FINAL_WARNING: 'FINAL_WARNING',
+  LEGAL_ACTION: 'LEGAL_ACTION',
+};
 
 interface DashboardTablesProps {
   userRole: string | undefined;
@@ -33,6 +43,8 @@ export default function DashboardTables({
   branchError,
   refetchBranch,
 }: DashboardTablesProps) {
+  const navigate = useNavigate();
+
   return (
     <>
       {/* Top Overdue Table */}
@@ -132,8 +144,19 @@ export default function DashboardTables({
                   LEGAL_ACTION:  { bar: 'bg-destructive', badge: 'bg-destructive/20 text-destructive font-bold', text: 'text-destructive font-semibold' },
                 };
                 const colors = stageColors[stage.stage] ?? stageColors['NONE'];
+                const dunningParam = stageToDunning[stage.stage];
+                const drillDownUrl = dunningParam
+                  ? `/overdue?dunningStage=${dunningParam}`
+                  : '/overdue';
                 return (
-                  <div key={stage.stage} className="flex items-center gap-3">
+                  <div
+                    key={stage.stage}
+                    className="flex items-center gap-3 cursor-pointer rounded-lg px-1 -mx-1 py-1 hover:bg-muted/50 transition-colors"
+                    onClick={() => navigate(drillDownUrl)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => { if (e.key === 'Enter') navigate(drillDownUrl); }}
+                  >
                     <div className="w-44 shrink-0">
                       <span className={cn('text-xs', colors.text)}>{stage.label}</span>
                     </div>

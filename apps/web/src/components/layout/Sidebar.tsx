@@ -35,6 +35,7 @@ import {
   ChevronsRight,
   ChevronsLeft,
   Banknote,
+  Zap,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import {
@@ -83,6 +84,7 @@ const navSections: NavSection[] = [
       { label: 'ประวัติการขาย', path: '/sales', icon: Receipt },
       { label: 'ลูกค้า', path: '/customers', icon: Users },
       { label: 'ตรวจเครดิต', path: '/credit-checks', icon: CreditCard },
+      { label: 'รับซื้อเครื่อง', path: '/trade-in', icon: RefreshCw, roles: ['OWNER', 'BRANCH_MANAGER', 'SALES'] },
     ],
   },
   {
@@ -156,6 +158,7 @@ const navSections: NavSection[] = [
       { label: 'ราคาตั้งต้น', path: '/settings/pricing-templates', icon: DollarSign, roles: ['OWNER'] },
       { label: 'เทมเพลตสัญญา', path: '/contract-templates', icon: FileSignature, roles: ['OWNER'] },
       { label: 'จัดการนิติบุคคล', path: '/settings/companies', icon: Building2, roles: ['OWNER'] },
+      { label: 'โปรโมชัน', path: '/promotions', icon: Zap, roles: ['OWNER'] },
     ],
   },
   {

@@ -5,7 +5,10 @@ import {
   AlertTriangle,
   TrendingUp,
   Warehouse,
+  ArrowUpRight,
+  ArrowDownRight,
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import AnimatedCounter from '@/components/ui/animated-counter';
 import type { KPIs } from '../types';
 
@@ -13,8 +16,38 @@ interface DashboardKPIsProps {
   kpis: KPIs;
 }
 
+/**
+ * MoM comparison indicator.
+ * Shows percentage change vs previous month when `value` is provided.
+ * TODO: Wire to real API data when /dashboard/kpis returns `previousMonth` fields.
+ */
+function MoMIndicator({ value }: { value?: number | null }) {
+  if (value == null) return null;
+  const isPositive = value >= 0;
+  const Icon = isPositive ? ArrowUpRight : ArrowDownRight;
+  return (
+    <div
+      className={cn(
+        'flex items-center gap-0.5 text-2xs font-medium mt-1',
+        isPositive ? 'text-success' : 'text-destructive',
+      )}
+    >
+      <Icon className="size-3" />
+      <span>{isPositive ? '+' : ''}{value.toFixed(1)}% จากเดือนก่อน</span>
+    </div>
+  );
+}
+
 export default function DashboardKPIs({ kpis }: DashboardKPIsProps) {
   const navigate = useNavigate();
+
+  // MoM data — will be populated when the API provides previousMonth comparison
+  // Example: kpis.contracts.totalMoM, kpis.financial.todayPaymentsMoM, etc.
+  const kpisAny = kpis as unknown as Record<string, unknown>;
+  const contractsMoM = kpisAny.contractsMoM as number | undefined;
+  const overdueMoM = kpisAny.overdueMoM as number | undefined;
+  const paymentsMoM = kpisAny.paymentsMoM as number | undefined;
+  const stockMoM = kpisAny.stockMoM as number | undefined;
 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-5">
@@ -28,6 +61,7 @@ export default function DashboardKPIs({ kpis }: DashboardKPIsProps) {
           <AnimatedCounter value={kpis.contracts.total} className="text-2xl lg:text-3xl font-bold text-foreground" />
           <div className="text-2xs font-medium text-muted-foreground mt-1.5 uppercase tracking-wider">สัญญาทั้งหมด</div>
           <div className="text-xs text-muted-foreground mt-1">ปกติ <AnimatedCounter value={kpis.contracts.active} className="text-success font-semibold" /></div>
+          <MoMIndicator value={contractsMoM} />
         </CardContent>
       </Card>
       <Card className="cursor-pointer group hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 border-l-[3px] border-l-destructive" onClick={() => navigate('/overdue')}>
@@ -40,6 +74,7 @@ export default function DashboardKPIs({ kpis }: DashboardKPIsProps) {
           </div>
           <AnimatedCounter value={(kpis.contracts.overdue ?? 0) + (kpis.contracts.default ?? 0)} className="text-2xl lg:text-3xl font-bold text-foreground" />
           <div className="text-2xs font-medium text-muted-foreground mt-1.5 uppercase tracking-wider">ค้าง/ผิดนัด</div>
+          <MoMIndicator value={overdueMoM} />
         </CardContent>
       </Card>
       <Card className="cursor-pointer group hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 border-l-[3px] border-l-success" onClick={() => navigate('/payments')}>
@@ -52,6 +87,7 @@ export default function DashboardKPIs({ kpis }: DashboardKPIsProps) {
           </div>
           <AnimatedCounter value={kpis.financial.todayPayments} prefix="฿" className="text-2xl lg:text-3xl font-bold text-foreground" />
           <div className="text-2xs font-medium text-muted-foreground mt-1.5 uppercase tracking-wider">ยอดรับวันนี้</div>
+          <MoMIndicator value={paymentsMoM} />
         </CardContent>
       </Card>
       <Card className="cursor-pointer group hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 border-l-[3px] border-l-warning" onClick={() => navigate('/stock')}>
@@ -64,6 +100,7 @@ export default function DashboardKPIs({ kpis }: DashboardKPIsProps) {
           <AnimatedCounter value={kpis.products.inStock} className="text-2xl lg:text-3xl font-bold text-foreground" />
           <div className="text-2xs font-medium text-muted-foreground mt-1.5 uppercase tracking-wider">สินค้าในสต็อก</div>
           <div className="text-xs text-muted-foreground mt-1">จาก <AnimatedCounter value={kpis.products.total} className="font-semibold" /></div>
+          <MoMIndicator value={stockMoM} />
         </CardContent>
       </Card>
     </div>

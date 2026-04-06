@@ -367,6 +367,7 @@ model User {
   commissionsEarned      SalesCommission[]    @relation("CommissionSalesperson")
   commissionsApproved    SalesCommission[]    @relation("CommissionApprovedBy")
   contractsAssigned      Contract[]           @relation("ContractAssignedTo")
+  tradeInsAppraised      TradeIn[]            @relation("TradeInAppraisedBy")
 
   @@index([branchId])
   @@map("users")
@@ -414,13 +415,18 @@ model Customer {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  contracts        Contract[]
-  sales            Sale[]
-  creditChecks     CreditCheck[]
-  pdpaConsents     PDPAConsent[]
-  dsarRequests     DSARRequest[]
-  kycVerifications KycVerification[]
-  loyaltyPoints    LoyaltyPoint[]
+  loyaltyBalance   Int       @default(0) @map("loyalty_balance") // cached point balance
+
+  contracts          Contract[]
+  sales              Sale[]
+  creditChecks       CreditCheck[]
+  pdpaConsents       PDPAConsent[]
+  dsarRequests       DSARRequest[]
+  kycVerifications   KycVerification[]
+  loyaltyPoints      LoyaltyPoint[]
+  loyaltyRedemptions LoyaltyRedemption[]
+  tradeIns           TradeIn[]
+  promotionUsages    PromotionUsage[]
 
   @@index([phone])
   @@index([name])
@@ -522,6 +528,7 @@ model Contract {
   interCompanyTransactions InterCompanyTransaction[]
   provisions               BadDebtProvision[]
   commissions              SalesCommission[]
+  loyaltyRedemptions       LoyaltyRedemption[]
   assignedToId             String?          @map("assigned_to_id") // collections agent assignment
   assignedTo               User?            @relation("ContractAssignedTo", fields: [assignedToId], references: [id])
 
@@ -742,6 +749,7 @@ model Product {
   stockAdjustments     StockAdjustment[]
   stockCountItems      StockCountItem[]
   productPhotos        ProductPhoto?
+  tradeIns             TradeIn[]
 
   @@index([branchId])
   @@index([status])
@@ -1235,6 +1243,7 @@ model Sale {
   financeReceivable        FinanceReceivable?
   interCompanyTransactions InterCompanyTransaction[]
   commissions              SalesCommission[]
+  promotionUsages          PromotionUsage[]
 
   @@index([saleType])
   @@index([branchId])
@@ -2247,6 +2256,122 @@ model SalesCommission {
   @@index([status])
   @@index([deletedAt])
   @@map("sales_commissions")
+}
+
+// ============================================================
+// LOYALTY REDEMPTION (แลกแต้ม)
+// ============================================================
+
+model LoyaltyRedemption {
+  id              String    @id @default(uuid())
+  customerId      String    @map("customer_id")
+  points          Int // จำนวนแต้มที่ใช้ (ค่าบวก)
+  reason          String // เหตุผลการแลก
+  discountAmount  Decimal   @map("discount_amount") @db.Decimal(12, 2)
+  contractId      String?   @map("contract_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  customer Customer  @relation(fields: [customerId], references: [id])
+  contract Contract? @relation(fields: [contractId], references: [id])
+
+  @@index([customerId])
+  @@map("loyalty_redemptions")
+}
+
+// ============================================================
+// TRADE-IN VALUATION (รับซื้อเครื่องเก่า)
+// ============================================================
+
+enum TradeInStatus {
+  PENDING_APPRAISAL
+  APPRAISED
+  ACCEPTED
+  REJECTED
+  COMPLETED
+}
+
+model TradeIn {
+  id              String        @id @default(uuid())
+  customerId      String        @map("customer_id")
+  productId       String?       @map("product_id") // new product being purchased (optional)
+  deviceBrand     String        @map("device_brand")
+  deviceModel     String        @map("device_model")
+  deviceStorage   String?       @map("device_storage")
+  deviceCondition String?       @map("device_condition") // A/B/C/D
+  imei            String?
+  estimatedValue  Decimal?      @map("estimated_value") @db.Decimal(12, 2) // ราคาประเมินเบื้องต้น
+  offeredPrice    Decimal?      @map("offered_price") @db.Decimal(12, 2) // ราคาที่เสนอ
+  agreedPrice     Decimal?      @map("agreed_price") @db.Decimal(12, 2) // ราคาที่ตกลง
+  status          TradeInStatus @default(PENDING_APPRAISAL)
+  appraisedById   String?       @map("appraised_by_id")
+  notes           String?
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  deletedAt       DateTime?     @map("deleted_at")
+
+  customer    Customer @relation(fields: [customerId], references: [id])
+  product     Product? @relation(fields: [productId], references: [id])
+  appraisedBy User?    @relation("TradeInAppraisedBy", fields: [appraisedById], references: [id])
+
+  @@index([customerId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("trade_ins")
+}
+
+// ============================================================
+// PROMOTIONAL CAMPAIGNS (โปรโมชัน)
+// ============================================================
+
+enum PromotionType {
+  PERCENTAGE_DISCOUNT // ลดราคา %
+  FIXED_DISCOUNT // ลดราคาบาท
+  FREE_ACCESSORY // แถมอุปกรณ์เสริม
+  SPECIAL_RATE // อัตราดอกเบี้ยพิเศษ
+}
+
+model Promotion {
+  id                  String        @id @default(uuid())
+  name                String
+  description         String?
+  type                PromotionType
+  discountValue       Decimal?      @map("discount_value") @db.Decimal(12, 2) // % or fixed amount
+  specialInterestRate Decimal?      @map("special_interest_rate") @db.Decimal(5, 4)
+  conditions          Json? // { minPurchase?, productIds?, categories? }
+  startDate           DateTime      @map("start_date")
+  endDate             DateTime      @map("end_date")
+  maxUsageCount       Int?          @map("max_usage_count")
+  currentUsageCount   Int           @default(0) @map("current_usage_count")
+  isActive            Boolean       @default(true) @map("is_active")
+  createdAt           DateTime      @default(now()) @map("created_at")
+  updatedAt           DateTime      @updatedAt @map("updated_at")
+  deletedAt           DateTime?     @map("deleted_at")
+
+  usages PromotionUsage[]
+
+  @@index([startDate, endDate])
+  @@index([isActive])
+  @@map("promotions")
+}
+
+model PromotionUsage {
+  id              String   @id @default(uuid())
+  promotionId     String   @map("promotion_id")
+  saleId          String?  @map("sale_id")
+  customerId      String   @map("customer_id")
+  discountApplied Decimal  @map("discount_applied") @db.Decimal(12, 2)
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  promotion Promotion @relation(fields: [promotionId], references: [id])
+  sale      Sale?     @relation(fields: [saleId], references: [id])
+  customer  Customer  @relation(fields: [customerId], references: [id])
+
+  @@index([promotionId])
+  @@index([saleId])
+  @@index([customerId])
+  @@map("promotion_usages")
 }
 
 // ============================================================

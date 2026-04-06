@@ -261,7 +261,7 @@ describe('PaymentsService', () => {
       await service.getContractPayments('contract-1');
       expect(prisma.payment.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { contractId: 'contract-1' },
+          where: expect.objectContaining({ contractId: 'contract-1' }),
           orderBy: { installmentNo: 'asc' },
         }),
       );

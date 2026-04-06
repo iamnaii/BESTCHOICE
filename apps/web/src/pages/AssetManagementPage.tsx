@@ -771,30 +771,40 @@ export default function AssetManagementPage() {
                   <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-border">
                     <div>
                       <label className="block text-xs font-medium text-foreground mb-1.5">รหัสบัญชีสินทรัพย์</label>
-                      <input
-                        className={inputClass}
-                        value={form.assetAccountCode}
-                        onChange={(e) => setField('assetAccountCode', e.target.value)}
-                        placeholder="เช่น 1200"
-                      />
+                      <select className={inputClass} value={form.assetAccountCode} onChange={(e) => setField('assetAccountCode', e.target.value)}>
+                        <option value="">-- เลือก --</option>
+                        <optgroup label="อุปกรณ์สำนักงาน">
+                          <option value="12-2101">12-2101 อุปกรณ์สำนักงาน</option>
+                        </optgroup>
+                        <optgroup label="ส่วนปรับปรุงอาคาร">
+                          <option value="12-2103">12-2103 ส่วนปรับปรุงอาคาร</option>
+                        </optgroup>
+                        <optgroup label="เครื่องตกแต่ง">
+                          <option value="12-2105">12-2105 เครื่องตกแต่งสำนักงาน</option>
+                        </optgroup>
+                        <optgroup label="ยานพาหนะ">
+                          <option value="12-2107">12-2107 ยานพาหนะ</option>
+                        </optgroup>
+                      </select>
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-foreground mb-1.5">รหัสบัญชีค่าเสื่อม</label>
-                      <input
-                        className={inputClass}
-                        value={form.depreciationAccountCode}
-                        onChange={(e) => setField('depreciationAccountCode', e.target.value)}
-                        placeholder="เช่น 5306"
-                      />
+                      <select className={inputClass} value={form.depreciationAccountCode} onChange={(e) => setField('depreciationAccountCode', e.target.value)}>
+                        <option value="">-- เลือก --</option>
+                        <option value="53-1601">53-1601 ค่าเสื่อมราคา - อุปกรณ์สำนักงาน</option>
+                        <option value="53-1602">53-1602 ค่าเสื่อมราคา - ส่วนปรับปรุงอาคาร</option>
+                        <option value="53-1603">53-1603 ค่าเสื่อมราคา - เครื่องตกแต่ง</option>
+                        <option value="53-1604">53-1604 ค่าเสื่อมราคา - ยานพาหนะ</option>
+                      </select>
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-foreground mb-1.5">รหัสบัญชีค่าเสื่อมสะสม</label>
-                      <input
-                        className={inputClass}
-                        value={form.accumulatedDepreAccountCode}
-                        onChange={(e) => setField('accumulatedDepreAccountCode', e.target.value)}
-                        placeholder="เช่น 1290"
-                      />
+                      <select className={inputClass} value={form.accumulatedDepreAccountCode} onChange={(e) => setField('accumulatedDepreAccountCode', e.target.value)}>
+                        <option value="">-- เลือก --</option>
+                        <option value="12-2102">12-2102 ค่าเสื่อมสะสม - อุปกรณ์สำนักงาน</option>
+                        <option value="12-2104">12-2104 ค่าเสื่อมสะสม - ส่วนปรับปรุงอาคาร</option>
+                        <option value="12-2106">12-2106 ค่าเสื่อมสะสม - เครื่องตกแต่ง</option>
+                      </select>
                     </div>
                   </div>
                 )}

@@ -52,8 +52,9 @@ describe('PaymentsService — Financial Integration', () => {
       payment: {
         findFirst: jest.fn().mockImplementation(({ where }) => {
           if (where.installmentNo != null) return payments.find(p => p.installmentNo === where.installmentNo) ?? null;
-          return null; // idempotency check → no duplicate
+          return null;
         }),
+        findMany: jest.fn().mockResolvedValue([]), // idempotency check → no duplicate
         update: jest.fn().mockImplementation(({ where, data }) => {
           const p = payments.find(pp => pp.id === where.id);
           if (p) Object.assign(p, data);

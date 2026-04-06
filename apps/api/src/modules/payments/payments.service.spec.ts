@@ -145,21 +145,18 @@ describe('PaymentsService', () => {
     it('should accept payment with transaction ref instead of evidence URL', async () => {
       const updatedPayment = { ...mockPayment, amountPaid: 3000, status: 'PAID', paidDate: new Date() };
       prisma.payment.update.mockResolvedValue(updatedPayment);
-      prisma.payment.findFirst
-        .mockResolvedValueOnce(null) // idempotency check - no duplicate
-        .mockResolvedValueOnce(mockPayment); // inside transaction
+      prisma.payment.findMany.mockResolvedValueOnce([]); // idempotency check - no duplicate
 
       const result = await service.recordPayment('contract-1', 1, 3000, 'TRANSFER', 'user-1', undefined, undefined, 'TXN-12345');
       expect(result.status).toBe('PAID');
     });
 
     it('should reject duplicate transactionRef (idempotency)', async () => {
-      // First findFirst call returns an existing paid payment with the same ref
-      prisma.payment.findFirst.mockResolvedValueOnce({
-        ...mockPayment,
-        status: 'PAID',
+      // findMany returns a candidate with exact matching ref tag
+      prisma.payment.findMany.mockResolvedValueOnce([{
+        id: 'payment-dup',
         notes: 'ref:TXN-DUPLICATE',
-      });
+      }]);
 
       await expect(
         service.recordPayment('contract-1', 1, 3000, 'TRANSFER', 'user-1', undefined, undefined, 'TXN-DUPLICATE'),
@@ -169,9 +166,7 @@ describe('PaymentsService', () => {
     it('should append transactionRef to notes for tracking', async () => {
       const updatedPayment = { ...mockPayment, amountPaid: 3000, status: 'PAID', paidDate: new Date() };
       prisma.payment.update.mockResolvedValue(updatedPayment);
-      prisma.payment.findFirst
-        .mockResolvedValueOnce(null) // idempotency check
-        .mockResolvedValueOnce(mockPayment); // inside transaction
+      prisma.payment.findMany.mockResolvedValueOnce([]); // idempotency check - no dup
 
       await service.recordPayment('contract-1', 1, 3000, 'TRANSFER', 'user-1', undefined, 'customer note', 'TXN-99');
       expect(prisma.payment.update).toHaveBeenCalledWith(
@@ -266,7 +261,7 @@ describe('PaymentsService', () => {
       await service.getContractPayments('contract-1');
       expect(prisma.payment.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { contractId: 'contract-1' },
+          where: expect.objectContaining({ contractId: 'contract-1' }),
           orderBy: { installmentNo: 'asc' },
         }),
       );

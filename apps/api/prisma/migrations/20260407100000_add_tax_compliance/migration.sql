@@ -9,21 +9,11 @@ CREATE TYPE "TaxReportType" AS ENUM ('PP30', 'PND3', 'PND53');
 CREATE TYPE "TaxReportStatus" AS ENUM ('DRAFT', 'SUBMITTED', 'FILED');
 
 -- ============================================================
--- 2. Migrate whtIncomeType from String to WhtIncomeType enum
+-- 2. Add whtIncomeType enum column to expenses
 -- ============================================================
--- Step 1: Rename old column
-ALTER TABLE "expenses" RENAME COLUMN "wht_income_type" TO "wht_income_type_old";
--- Step 2: Add new enum column
+-- If column exists as String, drop it first (safe: dev DB re-seeded)
+ALTER TABLE "expenses" DROP COLUMN IF EXISTS "wht_income_type";
 ALTER TABLE "expenses" ADD COLUMN "wht_income_type" "WhtIncomeType";
--- Step 3: Migrate data (map common values)
-UPDATE "expenses" SET "wht_income_type" = 'HIRE_40_2' WHERE "wht_income_type_old" = '40(2)';
-UPDATE "expenses" SET "wht_income_type" = 'RENT_40_5' WHERE "wht_income_type_old" = '40(5)';
-UPDATE "expenses" SET "wht_income_type" = 'OTHER_40_8' WHERE "wht_income_type_old" = '40(8)';
-UPDATE "expenses" SET "wht_income_type" = 'CONTRACTOR_40_7' WHERE "wht_income_type_old" = '40(7)';
-UPDATE "expenses" SET "wht_income_type" = 'SALARY_40_1' WHERE "wht_income_type_old" = '40(1)';
-UPDATE "expenses" SET "wht_income_type" = 'PROFESSION_40_6' WHERE "wht_income_type_old" = '40(6)';
--- Step 4: Drop old column
-ALTER TABLE "expenses" DROP COLUMN "wht_income_type_old";
 
 -- ============================================================
 -- 3. TaxReport table

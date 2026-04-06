@@ -32,12 +32,33 @@ async function main() {
   await prisma.inspectionTemplate.deleteMany();
   await prisma.repossession.deleteMany();
   await prisma.callLog.deleteMany();
+  // Phase 6 models
+  await prisma.promotionUsage.deleteMany();
+  await prisma.promotion.deleteMany();
+  await prisma.tradeIn.deleteMany();
+  await prisma.loyaltyRedemption.deleteMany();
+  // Phase 5 models
+  await prisma.salesCommission.deleteMany();
+  await prisma.commissionRule.deleteMany();
+  // Phase 4 models
+  await prisma.taxReport.deleteMany();
+  // Core models (reverse dependency order)
   await prisma.notificationLog.deleteMany();
   await prisma.auditLog.deleteMany();
   await prisma.signature.deleteMany();
   await prisma.eDocument.deleteMany();
   await prisma.contractDocument.deleteMany();
+  await prisma.kycVerification.deleteMany();
   await prisma.creditCheck.deleteMany();
+  await prisma.loyaltyPoint.deleteMany();
+  await prisma.badDebtProvision.deleteMany();
+  await prisma.interCompanyTransaction.deleteMany();
+  await prisma.financeReceivable.deleteMany();
+  await prisma.repossession.deleteMany();
+  await prisma.callLog.deleteMany();
+  await prisma.paymentEvidence.deleteMany();
+  await prisma.paymentLink.deleteMany();
+  await prisma.receipt.deleteMany();
   await prisma.payment.deleteMany();
   await prisma.sale.deleteMany();
   await prisma.contract.deleteMany();
@@ -52,8 +73,12 @@ async function main() {
   await prisma.purchaseOrder.deleteMany();
   await prisma.supplierPaymentMethod.deleteMany();
   await prisma.supplier.deleteMany();
+  await prisma.dSARRequest.deleteMany();
+  await prisma.pDPAConsent.deleteMany();
   await prisma.customer.deleteMany();
   await prisma.refreshToken.deleteMany();
+  await prisma.passwordResetToken.deleteMany();
+  await prisma.inviteToken.deleteMany();
   await prisma.journalLine.deleteMany();
   await prisma.journalEntry.deleteMany();
   await prisma.user.deleteMany();

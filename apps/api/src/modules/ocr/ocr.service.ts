@@ -12,6 +12,8 @@ import {
   OcrPaymentSlipResult,
   OcrBookBankResult,
   OcrDrivingLicenseResult,
+  OcrSalarySlipResult,
+  OcrBankStatementResult,
 } from './dto/ocr.dto';
 
 @Injectable()
@@ -788,6 +790,114 @@ ${basePrompt}`;
         throw new BadRequestException('ไม่สามารถอ่านข้อมูลจากใบขับขี่ได้ กรุณาลองใช้รูปที่ชัดเจนกว่านี้');
       }
       this.logger.error('OCR driving license extraction failed');
+      throw new InternalServerErrorException('ระบบ OCR ขัดข้อง กรุณาลองใหม่อีกครั้ง');
+    }
+  }
+
+  // ─── 5. Salary Slip OCR ────────────────────────────────
+
+  private static readonly SALARY_SLIP_PROMPT =
+    'วิเคราะห์สลิปเงินเดือน/หลักฐานรายได้จากรูปนี้ ดึงข้อมูลต่อไปนี้:\n' +
+    '- netSalary: เงินเดือนสุทธิ (ตัวเลข, null ถ้าไม่พบ)\n' +
+    '- employerName: ชื่อบริษัท/นายจ้าง (string, null ถ้าไม่พบ)\n' +
+    '- slipDate: วันที่ในสลิป (YYYY-MM-DD, null ถ้าไม่พบ)\n' +
+    '- payDay: วันที่เงินเดือนออก (ตัวเลข 1-31, null ถ้าไม่ทราบ)\n' +
+    '- bankName: ธนาคารที่รับเงิน (string, null ถ้าไม่พบ)\n' +
+    '- confidence: ความมั่นใจในการอ่าน (0.0-1.0)\n\n' +
+    'ตอบเป็น JSON เท่านั้น ห้ามมี markdown code block';
+
+  private static readonly SALARY_SLIP_RETRY_PROMPT =
+    'ดูรูปอีกครั้งอย่างละเอียด โดยเฉพาะตัวเลขเงินเดือนสุทธิ ชื่อบริษัท และวันที่\n' +
+    'ถ้าเป็นสลิปธนาคาร ให้ดูยอดเงินเข้าที่เป็นเงินเดือน\n' +
+    'ตอบเป็น JSON: { netSalary, employerName, slipDate, payDay, bankName, confidence }';
+
+  async analyzeSalarySlip(imageBase64: string): Promise<OcrSalarySlipResult> {
+    this.ensureAnthropicReady();
+    const { mediaType, base64Data } = this.validateImageBase64(imageBase64);
+
+    try {
+      const result = await this.callClaudeOcrWithRetry(
+        mediaType,
+        base64Data,
+        OcrService.SALARY_SLIP_PROMPT,
+        OcrService.SALARY_SLIP_RETRY_PROMPT,
+      );
+
+      const netSalary = result.netSalary != null ? Number(result.netSalary) : null;
+      const payDay = result.payDay != null ? Math.max(1, Math.min(31, Math.round(Number(result.payDay)))) : null;
+      const slipDate = typeof result.slipDate === 'string' && this.isValidDate(result.slipDate) ? result.slipDate : null;
+
+      return {
+        netSalary: netSalary != null && !isNaN(netSalary) ? netSalary : null,
+        employerName: (result.employerName as string) || null,
+        slipDate,
+        payDay: payDay != null && !isNaN(payDay) ? payDay : null,
+        bankName: (result.bankName as string) || null,
+        confidence: Math.max(0, Math.min(1, Number(result.confidence) || 0.5)),
+      };
+    } catch (error) {
+      if (error instanceof BadRequestException) throw error;
+      if (error instanceof SyntaxError) {
+        this.logger.error('Failed to parse salary slip OCR response as JSON');
+        throw new BadRequestException('ไม่สามารถอ่านข้อมูลจากสลิปเงินเดือนได้ กรุณาลองใช้รูปที่ชัดเจนกว่านี้');
+      }
+      this.logger.error('OCR salary slip extraction failed');
+      throw new InternalServerErrorException('ระบบ OCR ขัดข้อง กรุณาลองใหม่อีกครั้ง');
+    }
+  }
+
+  // ─── 6. Bank Statement OCR ─────────────────────────────
+
+  private static readonly BANK_STATEMENT_PROMPT =
+    'วิเคราะห์ Statement ธนาคารจากรูปนี้ ดึงข้อมูลต่อไปนี้:\n' +
+    '- accountName: ชื่อบัญชี (string, null ถ้าไม่พบ)\n' +
+    '- bankName: ชื่อธนาคาร (string, null ถ้าไม่พบ)\n' +
+    '- totalIncome: ยอดเงินเข้ารวม (ตัวเลข, null ถ้าไม่พบ)\n' +
+    '- totalExpense: ยอดเงินออกรวม (ตัวเลข, null ถ้าไม่พบ)\n' +
+    '- balance: ยอดคงเหลือ (ตัวเลข, null ถ้าไม่พบ)\n' +
+    '- transactionCount: จำนวนรายการทั้งหมด (ตัวเลข, null ถ้าไม่ทราบ)\n' +
+    '- dateRange: ช่วงวันที่ของ statement เช่น "01/01/2025 - 31/01/2025" (string, null ถ้าไม่พบ)\n' +
+    '- confidence: ความมั่นใจในการอ่าน (0.0-1.0)\n\n' +
+    'ตอบเป็น JSON เท่านั้น ห้ามมี markdown code block';
+
+  private static readonly BANK_STATEMENT_RETRY_PROMPT =
+    'ดูรูปอีกครั้งอย่างละเอียด โดยเฉพาะยอดเงินเข้า เงินออก ยอดคงเหลือ และช่วงวันที่\n' +
+    'ตอบเป็น JSON: { accountName, bankName, totalIncome, totalExpense, balance, transactionCount, dateRange, confidence }';
+
+  async analyzeBankStatement(imageBase64: string): Promise<OcrBankStatementResult> {
+    this.ensureAnthropicReady();
+    const { mediaType, base64Data } = this.validateImageBase64(imageBase64);
+
+    try {
+      const result = await this.callClaudeOcrWithRetry(
+        mediaType,
+        base64Data,
+        OcrService.BANK_STATEMENT_PROMPT,
+        OcrService.BANK_STATEMENT_RETRY_PROMPT,
+      );
+
+      const totalIncome = result.totalIncome != null ? Number(result.totalIncome) : null;
+      const totalExpense = result.totalExpense != null ? Number(result.totalExpense) : null;
+      const balance = result.balance != null ? Number(result.balance) : null;
+      const transactionCount = result.transactionCount != null ? Math.round(Number(result.transactionCount)) : null;
+
+      return {
+        accountName: (result.accountName as string) || null,
+        bankName: (result.bankName as string) || null,
+        totalIncome: totalIncome != null && !isNaN(totalIncome) ? totalIncome : null,
+        totalExpense: totalExpense != null && !isNaN(totalExpense) ? totalExpense : null,
+        balance: balance != null && !isNaN(balance) ? balance : null,
+        transactionCount: transactionCount != null && !isNaN(transactionCount) ? transactionCount : null,
+        dateRange: (result.dateRange as string) || null,
+        confidence: Math.max(0, Math.min(1, Number(result.confidence) || 0.5)),
+      };
+    } catch (error) {
+      if (error instanceof BadRequestException) throw error;
+      if (error instanceof SyntaxError) {
+        this.logger.error('Failed to parse bank statement OCR response as JSON');
+        throw new BadRequestException('ไม่สามารถอ่านข้อมูลจาก Statement ธนาคารได้ กรุณาลองใช้รูปที่ชัดเจนกว่านี้');
+      }
+      this.logger.error('OCR bank statement extraction failed');
       throw new InternalServerErrorException('ระบบ OCR ขัดข้อง กรุณาลองใหม่อีกครั้ง');
     }
   }

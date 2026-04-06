@@ -120,6 +120,7 @@ export default function ContractCreatePage() {
         <PlanDetailsStep
           selectedProduct={data.selectedProduct}
           interestConfig={data.interestConfig}
+          selectedCustomer={data.selectedCustomer}
           sellingPrice={calculation.sellingPrice}
           downPayment={data.downPayment}
           setDownPayment={data.setDownPayment}

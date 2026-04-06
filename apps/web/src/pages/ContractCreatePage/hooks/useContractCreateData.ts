@@ -39,6 +39,13 @@ export function useContractCreateData() {
     if (custSameAddress) setCustAddrCurrent(custAddrIdCard);
   }, [custSameAddress, custAddrIdCard]);
 
+  // Auto-fill paymentDueDay from customer's salaryPayDay
+  useEffect(() => {
+    if (selectedCustomer?.salaryPayDay) {
+      setPaymentDueDay(selectedCustomer.salaryPayDay);
+    }
+  }, [selectedCustomer]);
+
   const resetCustForm = () => {
     setCustForm(emptyCustForm);
     setCustAddrIdCard(emptyAddress);

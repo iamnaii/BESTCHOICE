@@ -17,6 +17,7 @@ export interface Customer {
   nationalId: string;
   salary: string | null;
   occupation: string | null;
+  salaryPayDay: number | null;
 }
 
 export interface InterestConfig {

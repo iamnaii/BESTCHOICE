@@ -39,11 +39,47 @@ export class GlobalCreditCheckController {
     });
   }
 
+  @Get('customer-history/:customerId')
+  @ApiOperation({ summary: 'ดึงประวัติสัญญาและการชำระของลูกค้า' })
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
+  getCustomerHistory(@Param('customerId') customerId: string) {
+    return this.service.getCustomerHistory(customerId);
+  }
+
   @Get(':id/auto-score')
   @ApiOperation({ summary: 'คำนวณคะแนนความเสี่ยงอัตโนมัติ (0-100)' })
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   getAutoScore(@Param('id') id: string) {
     return this.service.getAutoScore(id);
+  }
+
+  @Post(':id/calculate-risk')
+  @ApiOperation({ summary: 'คำนวณ Risk Score จากสัดส่วนหนี้ต่อรายได้ (DTI)' })
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
+  calculateDtiRiskScore(
+    @Param('id') id: string,
+    @Body() body: { salaryVerified?: number; monthlyPayment?: number; addressCurrentType?: string },
+  ) {
+    return this.service.calculateDtiRiskScore(id, body);
+  }
+
+  @Post(':id/ai-fields')
+  @ApiOperation({ summary: 'อัปเดตข้อมูล AI fields (salary slip, bank statement)' })
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  updateAiFields(
+    @Param('id') id: string,
+    @Body() body: {
+      salaryVerified?: number;
+      employerName?: string;
+      salaryPayDay?: number;
+      salarySlipFiles?: string[];
+      statementBankName?: string;
+      statementAvgIncome?: number;
+      statementAvgExpense?: number;
+      statementAvgBalance?: number;
+    },
+  ) {
+    return this.service.updateWithAiFields(id, body);
   }
 }
 

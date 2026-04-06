@@ -374,6 +374,257 @@ export class CreditCheckService {
     });
   }
 
+  // === Customer History ===
+  async getCustomerHistory(customerId: string) {
+    const customer = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+      select: { id: true, name: true, addressCurrentType: true, salaryPayDay: true },
+    });
+    if (!customer || (customer as { deletedAt?: Date }).deletedAt) {
+      throw new NotFoundException('ไม่พบลูกค้า');
+    }
+
+    const contracts = await this.prisma.contract.findMany({
+      where: { customerId, deletedAt: null },
+      select: {
+        id: true,
+        contractNumber: true,
+        status: true,
+        totalMonths: true,
+        monthlyPayment: true,
+        payments: {
+          select: { status: true },
+        },
+      },
+    });
+
+    const totalContracts = contracts.length;
+    const completedContracts = contracts.filter(
+      (c) => c.status === 'COMPLETED' || c.status === 'EARLY_PAYOFF',
+    ).length;
+    const activeContracts = contracts.filter(
+      (c) => c.status === 'ACTIVE' || c.status === 'OVERDUE',
+    ).length;
+
+    // Calculate outstanding from active contracts
+    let currentOutstanding = 0;
+    for (const contract of contracts) {
+      if (contract.status === 'ACTIVE' || contract.status === 'OVERDUE') {
+        const paidCount = contract.payments.filter((p) => p.status === 'PAID').length;
+        const remaining = contract.totalMonths - paidCount;
+        currentOutstanding += remaining * Number(contract.monthlyPayment);
+      }
+    }
+
+    // Payment history across all contracts
+    let onTimePayments = 0;
+    let latePayments = 0;
+    for (const contract of contracts) {
+      for (const payment of contract.payments) {
+        if (payment.status === 'PAID') {
+          onTimePayments++;
+        } else if (payment.status === 'OVERDUE') {
+          latePayments++;
+        }
+      }
+    }
+
+    const totalPayments = onTimePayments + latePayments;
+    const onTimeRate = totalPayments > 0 ? Math.round((onTimePayments / totalPayments) * 100) / 100 : 0;
+    const isReturningCustomer = totalContracts > 0;
+
+    return {
+      customerId,
+      totalContracts,
+      completedContracts,
+      activeContracts,
+      currentOutstanding: Math.round(currentOutstanding * 100) / 100,
+      onTimePayments,
+      latePayments,
+      onTimeRate,
+      isReturningCustomer,
+      contracts: contracts.map((c) => ({
+        id: c.id,
+        contractNumber: c.contractNumber,
+        status: c.status,
+        totalMonths: c.totalMonths,
+        paidPayments: c.payments.filter((p) => p.status === 'PAID').length,
+        overduePayments: c.payments.filter((p) => p.status === 'OVERDUE').length,
+      })),
+    };
+  }
+
+  // === DTI Risk Score (salary-based) ===
+  async calculateDtiRiskScore(creditCheckId: string, data: {
+    salaryVerified?: number;
+    monthlyPayment?: number;
+    addressCurrentType?: string;
+  }) {
+    const creditCheck = await this.prisma.creditCheck.findUnique({
+      where: { id: creditCheckId },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            salary: true,
+            addressCurrentType: true,
+            salaryPayDay: true,
+          },
+        },
+        contract: {
+          select: { monthlyPayment: true },
+        },
+      },
+    });
+    if (!creditCheck || creditCheck.deletedAt) {
+      throw new NotFoundException('ไม่พบข้อมูลตรวจสอบเครดิต');
+    }
+
+    // Determine salary and monthly payment
+    const salary = data.salaryVerified
+      || (creditCheck.salaryVerified ? Number(creditCheck.salaryVerified) : 0)
+      || (creditCheck.customer.salary ? Number(creditCheck.customer.salary) : 0);
+    const monthlyPayment = data.monthlyPayment
+      || (creditCheck.contract ? Number(creditCheck.contract.monthlyPayment) : 0);
+    const addressType = data.addressCurrentType
+      || creditCheck.customer.addressCurrentType
+      || null;
+
+    if (salary <= 0) {
+      throw new BadRequestException('ไม่มีข้อมูลรายได้ ไม่สามารถคำนวณความเสี่ยงได้');
+    }
+
+    // Debt-to-income ratio
+    const debtToIncomeRatio = monthlyPayment > 0 ? Math.round((monthlyPayment / salary) * 10000) / 10000 : 0;
+
+    // Base risk from DTI
+    let riskPoints = 0;
+    if (debtToIncomeRatio < 0.3) {
+      riskPoints = 0; // LOW
+    } else if (debtToIncomeRatio <= 0.5) {
+      riskPoints = 1; // MEDIUM
+    } else {
+      riskPoints = 2; // HIGH
+    }
+
+    // Address factor
+    if (addressType === 'บ้านตัวเอง' || addressType === 'OWN') {
+      riskPoints -= 1;
+    } else if (addressType === 'เช่าอาศัย' || addressType === 'RENT') {
+      riskPoints += 1;
+    }
+
+    // Customer history factor
+    const history = await this.getCustomerHistory(creditCheck.customer.id);
+    if (history.isReturningCustomer) {
+      if (history.completedContracts > 0) {
+        riskPoints -= 1; // Good returning customer
+      }
+      if (history.onTimeRate > 0.8) {
+        riskPoints -= 1; // Excellent payment history
+      }
+      if (history.latePayments > history.onTimePayments) {
+        riskPoints += 1; // More late than on-time
+      }
+    }
+
+    // Map points to risk level
+    let riskScore: 'LOW' | 'MEDIUM' | 'HIGH';
+    let recommendation: string;
+    if (riskPoints <= 0) {
+      riskScore = 'LOW';
+      recommendation = 'แนะนำอนุมัติ — ความเสี่ยงต่ำ สัดส่วนหนี้ต่อรายได้ดี';
+    } else if (riskPoints <= 2) {
+      riskScore = 'MEDIUM';
+      recommendation = 'ควรพิจารณาเพิ่มเติม — ความเสี่ยงปานกลาง';
+    } else {
+      riskScore = 'HIGH';
+      recommendation = 'ไม่แนะนำอนุมัติ — ความเสี่ยงสูง สัดส่วนหนี้ต่อรายได้สูงเกินไป';
+    }
+
+    // Suggest due day based on salary pay day
+    const suggestedDueDay = creditCheck.customer.salaryPayDay
+      ? Math.min(28, creditCheck.customer.salaryPayDay + 5) // 5 days after payday
+      : null;
+
+    // Persist risk assessment to credit check
+    await this.prisma.creditCheck.update({
+      where: { id: creditCheckId },
+      data: {
+        riskScore,
+        debtToIncomeRatio,
+        riskNote: `DTI: ${(debtToIncomeRatio * 100).toFixed(1)}% | ${recommendation}`,
+      },
+    });
+
+    return {
+      riskScore,
+      debtToIncomeRatio,
+      recommendation,
+      suggestedDueDay,
+      details: {
+        salaryVerified: salary,
+        monthlyPayment,
+        addressCurrentType: addressType,
+        customerHistory: {
+          isReturningCustomer: history.isReturningCustomer,
+          completedContracts: history.completedContracts,
+          onTimeRate: history.onTimeRate,
+        },
+        riskPoints,
+      },
+    };
+  }
+
+  // === Update Credit Check with AI fields ===
+  async updateWithAiFields(creditCheckId: string, data: {
+    salaryVerified?: number;
+    employerName?: string;
+    salaryPayDay?: number;
+    salarySlipFiles?: string[];
+    statementBankName?: string;
+    statementAvgIncome?: number;
+    statementAvgExpense?: number;
+    statementAvgBalance?: number;
+  }) {
+    const creditCheck = await this.prisma.creditCheck.findUnique({
+      where: { id: creditCheckId },
+      select: { id: true, deletedAt: true, customerId: true },
+    });
+    if (!creditCheck || creditCheck.deletedAt) {
+      throw new NotFoundException('ไม่พบข้อมูลตรวจสอบเครดิต');
+    }
+
+    const updateData: Record<string, unknown> = {};
+    if (data.salaryVerified != null) updateData.salaryVerified = data.salaryVerified;
+    if (data.employerName != null) updateData.employerName = data.employerName;
+    if (data.salaryPayDay != null) updateData.salaryPayDay = data.salaryPayDay;
+    if (data.salarySlipFiles != null) updateData.salarySlipFiles = data.salarySlipFiles;
+    if (data.statementBankName != null) updateData.statementBankName = data.statementBankName;
+    if (data.statementAvgIncome != null) updateData.statementAvgIncome = data.statementAvgIncome;
+    if (data.statementAvgExpense != null) updateData.statementAvgExpense = data.statementAvgExpense;
+    if (data.statementAvgBalance != null) updateData.statementAvgBalance = data.statementAvgBalance;
+
+    const updated = await this.prisma.creditCheck.update({
+      where: { id: creditCheckId },
+      data: updateData,
+      include: {
+        customer: { select: { id: true, name: true, phone: true, salary: true, occupation: true } },
+        checkedBy: { select: { id: true, name: true } },
+      },
+    });
+
+    // Also update customer.salaryPayDay if provided
+    if (data.salaryPayDay != null) {
+      await this.prisma.customer.update({
+        where: { id: creditCheck.customerId },
+        data: { salaryPayDay: data.salaryPayDay },
+      });
+    }
+
+    return updated;
+  }
+
   // === Automated Risk Score (rule-based, no AI needed) ===
   async calculateRiskScore(creditCheckId: string) {
     const creditCheck = await this.prisma.creditCheck.findUnique({

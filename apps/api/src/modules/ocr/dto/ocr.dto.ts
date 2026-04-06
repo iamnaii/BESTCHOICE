@@ -28,6 +28,20 @@ export class OcrDrivingLicenseDto {
   imageBase64: string; // base64 data URL of the driving license image
 }
 
+export class OcrSalarySlipDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(5_000_000)
+  imageBase64: string; // base64 data URL of the salary slip image
+}
+
+export class OcrBankStatementDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(5_000_000)
+  imageBase64: string; // base64 data URL of the bank statement image
+}
+
 export class OcrGenerateTemplateDto {
   @IsString()
   @IsNotEmpty()
@@ -85,6 +99,26 @@ export interface OcrBookBankResult {
   accountType: string | null; // ออมทรัพย์, กระแสรายวัน, ฝากประจำ
   balance: number | null;
   lastTransactionDate: string | null;
+  confidence: number;
+}
+
+export interface OcrSalarySlipResult {
+  netSalary: number | null;
+  employerName: string | null;
+  slipDate: string | null; // YYYY-MM-DD
+  payDay: number | null; // 1-31
+  bankName: string | null;
+  confidence: number;
+}
+
+export interface OcrBankStatementResult {
+  accountName: string | null;
+  bankName: string | null;
+  totalIncome: number | null;
+  totalExpense: number | null;
+  balance: number | null;
+  transactionCount: number | null;
+  dateRange: string | null;
   confidence: number;
 }
 

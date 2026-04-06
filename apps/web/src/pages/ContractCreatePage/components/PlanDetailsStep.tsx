@@ -1,8 +1,9 @@
-import type { Product, InterestConfig } from '../types';
+import type { Product, InterestConfig, Customer } from '../types';
 
 export interface PlanDetailsStepProps {
   selectedProduct: Product | null;
   interestConfig: InterestConfig | null | undefined;
+  selectedCustomer: Customer | null;
   sellingPrice: number;
   downPayment: number;
   setDownPayment: (v: number) => void;
@@ -31,6 +32,7 @@ export interface PlanDetailsStepProps {
 export function PlanDetailsStep({
   selectedProduct,
   interestConfig,
+  selectedCustomer,
   sellingPrice,
   downPayment,
   setDownPayment,
@@ -106,7 +108,12 @@ export function PlanDetailsStep({
               <option key={d} value={d}>{d === 31 ? 'สิ้นเดือน (วันสุดท้ายของเดือน)' : `วันที่ ${d} ของทุกเดือน`}</option>
             ))}
           </select>
-          <div className="text-xs text-muted-foreground mt-1">ลูกค้าจะต้องชำระเงิน{paymentDueDay === 31 ? 'ทุกสิ้นเดือน' : `ทุกวันที่ ${paymentDueDay} ของเดือน`}</div>
+          <div className="text-xs text-muted-foreground mt-1">
+            {selectedCustomer?.salaryPayDay && paymentDueDay === selectedCustomer.salaryPayDay
+              ? `กำหนดชำระตามวันเงินเดือนออก (วันที่ ${selectedCustomer.salaryPayDay})`
+              : `ลูกค้าจะต้องชำระเงิน${paymentDueDay === 31 ? 'ทุกสิ้นเดือน' : `ทุกวันที่ ${paymentDueDay} ของเดือน`}`
+            }
+          </div>
         </div>
 
         <div>

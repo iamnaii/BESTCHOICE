@@ -7,6 +7,8 @@ import {
   OcrPaymentSlipDto,
   OcrBookBankDto,
   OcrDrivingLicenseDto,
+  OcrSalarySlipDto,
+  OcrBankStatementDto,
 } from './dto/ocr.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -45,5 +47,19 @@ export class OcrController {
   @Throttle({ short: { limit: 5, ttl: 60000 } })
   extractDrivingLicense(@Body() dto: OcrDrivingLicenseDto) {
     return this.ocrService.extractDrivingLicense(dto.imageBase64);
+  }
+
+  @Post('salary-slip')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  @Throttle({ short: { limit: 5, ttl: 60000 } })
+  analyzeSalarySlip(@Body() dto: OcrSalarySlipDto) {
+    return this.ocrService.analyzeSalarySlip(dto.imageBase64);
+  }
+
+  @Post('bank-statement')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  @Throttle({ short: { limit: 5, ttl: 60000 } })
+  analyzeBankStatement(@Body() dto: OcrBankStatementDto) {
+    return this.ocrService.analyzeBankStatement(dto.imageBase64);
   }
 }

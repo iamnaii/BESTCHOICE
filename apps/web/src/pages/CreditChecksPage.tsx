@@ -12,6 +12,7 @@ import Modal from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
+import { ArrowLeft, User, FileText, Clock, BarChart3 } from 'lucide-react';
 
 interface OcrBookBankResult {
   accountName: string | null;
@@ -31,7 +32,57 @@ interface Customer {
   nationalId: string;
   salary: string | null;
   occupation: string | null;
+  addressCurrentType: string | null;
+  salaryPayDay: number | null;
 }
+
+interface OcrSalarySlipResult {
+  netSalary: number | null;
+  employerName: string | null;
+  slipDate: string | null;
+  payDay: number | null;
+  bankName: string | null;
+  confidence: number;
+}
+
+interface OcrBankStatementResult {
+  accountName: string | null;
+  bankName: string | null;
+  totalIncome: number | null;
+  totalExpense: number | null;
+  balance: number | null;
+  transactionCount: number | null;
+  dateRange: string | null;
+  confidence: number;
+}
+
+interface CustomerHistory {
+  totalContracts: number;
+  closedContracts: number;
+  activeContracts: number;
+  onTimePaymentPct: number;
+  currentOutstanding: number;
+  isReturning: boolean;
+}
+
+interface RiskScoreResult {
+  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
+  score: number;
+  debtToIncome: number;
+  recommendedPayDay: number | null;
+  recommendation: string;
+}
+
+const BANK_OPTIONS = [
+  'กสิกรไทย',
+  'กรุงเทพ',
+  'กรุงไทย',
+  'ไทยพาณิชย์',
+  'ออมสิน',
+  'ธ.ก.ส.',
+  'กรุงศรี',
+  'ทหารไทยธนชาต',
+];
 
 interface AiAnalysisData {
   monthlyIncome?: number;
@@ -124,7 +175,7 @@ export default function CreditChecksPage() {
   // Expand row
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
-  // Create modal
+  // Create full-screen overlay
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [customerSearch, setCustomerSearch] = useState('');
   const debouncedCustomerSearch = useDebounce(customerSearch);
@@ -134,6 +185,28 @@ export default function CreditChecksPage() {
   const bookBankFileRef = useRef<HTMLInputElement>(null);
   const [bookBankLoading, setBookBankLoading] = useState(false);
   const [bookBankResult, setBookBankResult] = useState<OcrBookBankResult | null>(null);
+
+  // Section 2: Salary slip OCR
+  const salarySlipFileRef = useRef<HTMLInputElement>(null);
+  const [salarySlipFiles, setSalarySlipFiles] = useState<File[]>([]);
+  const [salarySlipLoading, setSalarySlipLoading] = useState(false);
+  const [salarySlipResult, setSalarySlipResult] = useState<OcrSalarySlipResult | null>(null);
+  const [salarySlipEditable, setSalarySlipEditable] = useState<{ netSalary: string; employerName: string; payDay: string; bankName: string }>({ netSalary: '', employerName: '', payDay: '', bankName: '' });
+
+  // Section 2: Bank statement OCR
+  const [statementBankName, setStatementBankName] = useState('');
+  const statementFileRef = useRef<HTMLInputElement>(null);
+  const [statementFiles, setStatementFiles] = useState<File[]>([]);
+  const [statementLoading, setStatementLoading] = useState(false);
+  const [statementResult, setStatementResult] = useState<OcrBankStatementResult | null>(null);
+
+  // Section 3: Customer history
+  const [customerHistory, setCustomerHistory] = useState<CustomerHistory | null>(null);
+
+  // Section 4: Risk score
+  const [riskScore, setRiskScore] = useState<RiskScoreResult | null>(null);
+  const [riskLoading, setRiskLoading] = useState(false);
+  const [reviewNotesDraft, setReviewNotesDraft] = useState('');
 
   // Override
   const canOverride = user && ['OWNER', 'BRANCH_MANAGER'].includes(user.role);
@@ -212,6 +285,79 @@ export default function CreditChecksPage() {
     enabled: showCreateModal,
   });
 
+  // Load customer history when customer selected
+  useEffect(() => {
+    if (!selectedCustomer) {
+      setCustomerHistory(null);
+      setRiskScore(null);
+      setSalarySlipResult(null);
+      setSalarySlipFiles([]);
+      setStatementResult(null);
+      setStatementFiles([]);
+      setStatementBankName('');
+      setReviewNotesDraft('');
+      setSalarySlipEditable({ netSalary: '', employerName: '', payDay: '', bankName: '' });
+      return;
+    }
+    api.get(`/credit-checks/customer-history/${selectedCustomer.id}`)
+      .then(({ data }) => setCustomerHistory(data))
+      .catch(() => setCustomerHistory(null));
+  }, [selectedCustomer?.id, selectedCustomer]);
+
+  // Salary slip OCR handler
+  const handleSalarySlipOcr = async () => {
+    if (salarySlipFiles.length === 0) { toast.error('กรุณาเลือกรูปสลิปเงินเดือน'); return; }
+    setSalarySlipLoading(true);
+    try {
+      const imageBase64 = await compressImageForOcr(salarySlipFiles[0]);
+      const { data } = await api.post<OcrSalarySlipResult>('/ocr/salary-slip', { imageBase64 }, { timeout: 90000 });
+      setSalarySlipResult(data);
+      setSalarySlipEditable({
+        netSalary: data.netSalary?.toString() || '',
+        employerName: data.employerName || '',
+        payDay: data.payDay?.toString() || '',
+        bankName: data.bankName || '',
+      });
+      const pct = (data.confidence * 100).toFixed(0);
+      toast.success(`วิเคราะห์สลิปเงินเดือนสำเร็จ (ความมั่นใจ ${pct}%)`);
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setSalarySlipLoading(false);
+    }
+  };
+
+  // Bank statement OCR handler
+  const handleStatementOcr = async () => {
+    if (statementFiles.length === 0) { toast.error('กรุณาเลือกรูป Statement'); return; }
+    setStatementLoading(true);
+    try {
+      const imageBase64 = await compressImageForOcr(statementFiles[0]);
+      const { data } = await api.post<OcrBankStatementResult>('/ocr/bank-statement', { imageBase64 }, { timeout: 90000 });
+      setStatementResult(data);
+      const pct = (data.confidence * 100).toFixed(0);
+      toast.success(`วิเคราะห์ Statement สำเร็จ (ความมั่นใจ ${pct}%)`);
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setStatementLoading(false);
+    }
+  };
+
+  // Risk score calculation
+  const handleCalculateRisk = async (creditCheckId: string) => {
+    setRiskLoading(true);
+    try {
+      const { data } = await api.post<RiskScoreResult>(`/credit-checks/${creditCheckId}/calculate-risk`);
+      setRiskScore(data);
+      toast.success('คำนวณ Risk Score สำเร็จ');
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setRiskLoading(false);
+    }
+  };
+
   const uploadMutation = useMutation({
     mutationFn: async (files: FileList) => {
       if (!selectedCustomer) throw new Error('เลือกลูกค้าก่อน');
@@ -240,6 +386,14 @@ export default function CreditChecksPage() {
       setBankName('');
       setCustomerSearch('');
       setBookBankResult(null);
+      setSalarySlipResult(null);
+      setSalarySlipFiles([]);
+      setStatementResult(null);
+      setStatementFiles([]);
+      setStatementBankName('');
+      setReviewNotesDraft('');
+      setRiskScore(null);
+      setSalarySlipEditable({ netSalary: '', employerName: '', payDay: '', bankName: '' });
       if (fileRef.current) fileRef.current.value = '';
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
@@ -720,127 +874,458 @@ export default function CreditChecksPage() {
         </>
       )}
 
-      {/* Create Modal */}
+      {/* Create Full-Screen Overlay */}
       {showCreateModal && (
-        <Modal isOpen title="ตรวจเครดิตใหม่" onClose={() => { setShowCreateModal(false); setSelectedCustomer(null); setBankName(''); setCustomerSearch(''); }}>
-          <div className="space-y-4">
-            {/* Customer selection */}
-            {!selectedCustomer ? (
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">เลือกลูกค้า</label>
-                <input
-                  type="text"
-                  placeholder="ค้นหาชื่อ, เบอร์โทร, เลขบัตร..."
-                  value={customerSearch}
-                  onChange={(e) => setCustomerSearch(e.target.value)}
-                  className="w-full px-3 py-2 border border-input rounded-lg text-sm mb-3"
-                />
-                <div className="max-h-60 overflow-y-auto space-y-2">
-                  {customers.map((c) => (
-                    <div
-                      key={c.id}
-                      onClick={() => setSelectedCustomer(c)}
-                      className="p-3 rounded-lg border cursor-pointer hover:border-primary/40 hover:bg-primary/5 dark:hover:bg-primary/10 transition-colors"
-                    >
-                      <div className="text-sm font-medium">{c.name}</div>
-                      <div className="text-xs text-muted-foreground">{c.phone} {c.salary ? `| เงินเดือน ${parseFloat(c.salary).toLocaleString()} ฿` : ''}</div>
-                    </div>
-                  ))}
-                  {customers.length === 0 && customerSearch && (
-                    <div className="text-center py-4 text-sm text-muted-foreground">ไม่พบลูกค้า</div>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div>
-                <div className="bg-primary/5 dark:bg-primary/10 rounded-xl p-3 flex items-center justify-between">
-                  <div>
-                    <div className="text-sm font-medium text-primary">{selectedCustomer.name}</div>
-                    <div className="text-xs text-primary">{selectedCustomer.phone} {selectedCustomer.salary ? `| เงินเดือน ${parseFloat(selectedCustomer.salary).toLocaleString()} ฿` : ''}</div>
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center pt-8 pb-8">
+          <div className="w-full max-w-4xl bg-background rounded-xl shadow-2xl overflow-y-auto max-h-[calc(100vh-4rem)]">
+            {/* Header */}
+            <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b px-6 py-4 flex items-center justify-between">
+              <button onClick={() => { setShowCreateModal(false); setSelectedCustomer(null); setBankName(''); setCustomerSearch(''); }} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                <ArrowLeft className="size-4" /> กลับ
+              </button>
+              <h2 className="text-lg font-semibold text-foreground">ตรวจเครดิตใหม่</h2>
+              <div className="w-16" />
+            </div>
+
+            <div className="p-6 space-y-5">
+
+              {/* ─── Section 1: ข้อมูลลูกค้า ─── */}
+              <div className="rounded-xl border border-border bg-card p-5">
+                <div className="flex items-center gap-2.5 mb-4">
+                  <div className="flex items-center justify-center size-8 rounded-lg bg-primary/10 text-primary">
+                    <User className="size-4" strokeWidth={1.5} />
                   </div>
-                  <button onClick={() => setSelectedCustomer(null)} className="text-xs text-primary hover:text-primary/80">เปลี่ยน</button>
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground">ข้อมูลลูกค้า</h3>
+                    <p className="text-xs text-muted-foreground">เลือกลูกค้าที่ต้องการตรวจเครดิต</p>
+                  </div>
                 </div>
 
-                <div className="mt-4 space-y-3">
-                  {/* Book Bank OCR */}
-                  <div className="bg-primary/5 dark:bg-primary/10 border border-primary/20 rounded-xl p-3">
-                    <div className="flex items-center justify-between mb-1">
-                      <h4 className="text-sm font-semibold text-primary">สแกนหน้าสมุดบัญชี (OCR)</h4>
-                    </div>
-                    <p className="text-xs text-primary mb-2">ถ่ายรูปหน้าสมุดบัญชีเพื่อกรอกชื่อธนาคารอัตโนมัติ</p>
+                {!selectedCustomer ? (
+                  <div>
                     <input
-                      ref={bookBankFileRef}
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={handleBookBankScan}
-                      className="hidden"
+                      type="text"
+                      placeholder="ค้นหาชื่อ, เบอร์โทร, เลขบัตร..."
+                      value={customerSearch}
+                      onChange={(e) => setCustomerSearch(e.target.value)}
+                      className="w-full px-3 py-2 border border-input rounded-lg text-sm mb-3"
                     />
-                    <button
-                      type="button"
-                      onClick={() => bookBankFileRef.current?.click()}
-                      disabled={bookBankLoading}
-                      className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
-                    >
-                      {bookBankLoading ? (
-                        <>
-                          <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white" />
-                          กำลังอ่านสมุดบัญชี...
-                        </>
-                      ) : (
-                        <>
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                          สแกนสมุดบัญชี
-                        </>
+                    <div className="max-h-60 overflow-y-auto space-y-2">
+                      {customers.map((c) => (
+                        <div
+                          key={c.id}
+                          onClick={() => setSelectedCustomer(c)}
+                          className="p-3 rounded-lg border cursor-pointer hover:border-primary/40 hover:bg-primary/5 dark:hover:bg-primary/10 transition-colors"
+                        >
+                          <div className="text-sm font-medium">{c.name}</div>
+                          <div className="text-xs text-muted-foreground">{c.phone} {c.salary ? `| เงินเดือน ${parseFloat(c.salary).toLocaleString()} ฿` : ''}</div>
+                        </div>
+                      ))}
+                      {customers.length === 0 && customerSearch && (
+                        <div className="text-center py-4 text-sm text-muted-foreground">ไม่พบลูกค้า</div>
                       )}
-                    </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="bg-primary/5 dark:bg-primary/10 rounded-xl p-4 flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-sm font-semibold text-primary">{selectedCustomer.name}</span>
+                          {customerHistory ? (
+                            customerHistory.isReturning
+                              ? <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-success/10 text-success">ลูกค้าเก่า</span>
+                              : <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">ลูกค้าใหม่</span>
+                          ) : null}
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-2">
+                          <div>
+                            <div className="text-2xs text-muted-foreground">เบอร์โทร</div>
+                            <div className="text-xs font-medium">{selectedCustomer.phone}</div>
+                          </div>
+                          <div>
+                            <div className="text-2xs text-muted-foreground">อาชีพ</div>
+                            <div className="text-xs font-medium">{selectedCustomer.occupation || '-'}</div>
+                          </div>
+                          <div>
+                            <div className="text-2xs text-muted-foreground">เงินเดือน</div>
+                            <div className="text-xs font-medium">{selectedCustomer.salary ? `${parseFloat(selectedCustomer.salary).toLocaleString()} ฿` : '-'}</div>
+                          </div>
+                          <div>
+                            <div className="text-2xs text-muted-foreground">ประเภทที่อยู่</div>
+                            <div className="text-xs font-medium">{selectedCustomer.addressCurrentType || '-'}</div>
+                          </div>
+                        </div>
+                      </div>
+                      <button onClick={() => setSelectedCustomer(null)} className="text-xs text-primary hover:text-primary/80 ml-4">เปลี่ยน</button>
+                    </div>
+                  </div>
+                )}
+              </div>
 
-                    {/* Book bank OCR result */}
-                    {bookBankResult && (
-                      <div className="mt-2 p-2 bg-card rounded border border-primary-200 space-y-1">
-                        <div className="text-xs text-muted-foreground">ผลการสแกน:</div>
-                        {bookBankResult.accountName && <div className="text-xs"><span className="text-muted-foreground">ชื่อบัญชี:</span> <span className="font-medium">{bookBankResult.accountName}</span></div>}
-                        {bookBankResult.accountNo && <div className="text-xs"><span className="text-muted-foreground">เลขที่บัญชี:</span> <span className="font-mono">{bookBankResult.accountNo}</span></div>}
-                        {bookBankResult.bankName && <div className="text-xs"><span className="text-muted-foreground">ธนาคาร:</span> {bookBankResult.bankName} {bookBankResult.branchName && `(${bookBankResult.branchName})`}</div>}
-                        {bookBankResult.accountType && <div className="text-xs"><span className="text-muted-foreground">ประเภท:</span> {bookBankResult.accountType}</div>}
-                        {bookBankResult.balance !== null && <div className="text-xs"><span className="text-muted-foreground">ยอดเงิน:</span> <span className="font-bold text-success">{bookBankResult.balance.toLocaleString()} ฿</span></div>}
+              {/* ─── Section 2: เอกสารประกอบ ─── */}
+              {selectedCustomer && (
+                <div className="rounded-xl border border-border bg-card p-5">
+                  <div className="flex items-center gap-2.5 mb-4">
+                    <div className="flex items-center justify-center size-8 rounded-lg bg-emerald-500/10 text-emerald-500">
+                      <FileText className="size-4" strokeWidth={1.5} />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-semibold text-foreground">เอกสารประกอบ</h3>
+                      <p className="text-xs text-muted-foreground">สลิปเงินเดือนและ Statement ธนาคาร</p>
+                    </div>
+                  </div>
+
+                  {/* Part A: สลิปเงินเดือน */}
+                  <div className="mb-5 p-4 bg-muted/30 rounded-lg border border-border">
+                    <h4 className="text-xs font-semibold text-foreground mb-3 uppercase tracking-wider">A. สลิปเงินเดือน</h4>
+                    <div className="flex items-center gap-3 mb-3">
+                      <input
+                        ref={salarySlipFileRef}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={(e) => {
+                          if (e.target.files) {
+                            const files = Array.from(e.target.files).slice(0, 3);
+                            setSalarySlipFiles(files);
+                          }
+                        }}
+                        className="flex-1 text-sm text-muted-foreground file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-emerald-500/10 file:text-emerald-600"
+                      />
+                      <button
+                        onClick={handleSalarySlipOcr}
+                        disabled={salarySlipLoading || salarySlipFiles.length === 0}
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-medium hover:bg-emerald-700 disabled:opacity-50"
+                      >
+                        {salarySlipLoading ? (
+                          <>
+                            <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white" />
+                            กำลังวิเคราะห์...
+                          </>
+                        ) : 'AI วิเคราะห์'}
+                      </button>
+                    </div>
+                    <div className="text-2xs text-muted-foreground mb-2">รองรับสูงสุด 3 รูป</div>
+
+                    {salarySlipResult && (
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+                        <div>
+                          <label className="block text-2xs text-muted-foreground mb-1">เงินเดือนสุทธิ</label>
+                          <input
+                            type="text"
+                            value={salarySlipEditable.netSalary}
+                            onChange={(e) => setSalarySlipEditable(prev => ({ ...prev, netSalary: e.target.value }))}
+                            className="w-full px-2 py-1.5 border border-input rounded-lg text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-2xs text-muted-foreground mb-1">ชื่อบริษัท</label>
+                          <input
+                            type="text"
+                            value={salarySlipEditable.employerName}
+                            onChange={(e) => setSalarySlipEditable(prev => ({ ...prev, employerName: e.target.value }))}
+                            className="w-full px-2 py-1.5 border border-input rounded-lg text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-2xs text-muted-foreground mb-1">วันเงินเดือนออก</label>
+                          <input
+                            type="text"
+                            value={salarySlipEditable.payDay}
+                            onChange={(e) => setSalarySlipEditable(prev => ({ ...prev, payDay: e.target.value }))}
+                            className="w-full px-2 py-1.5 border border-input rounded-lg text-sm"
+                            placeholder="เช่น 25"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-2xs text-muted-foreground mb-1">ธนาคาร</label>
+                          <input
+                            type="text"
+                            value={salarySlipEditable.bankName}
+                            onChange={(e) => setSalarySlipEditable(prev => ({ ...prev, bankName: e.target.value }))}
+                            className="w-full px-2 py-1.5 border border-input rounded-lg text-sm"
+                          />
+                        </div>
                       </div>
                     )}
                   </div>
 
-                  <div>
-                    <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ธนาคาร</label>
-                    <input
-                      type="text"
-                      value={bankName}
-                      onChange={(e) => setBankName(e.target.value)}
-                      placeholder="เช่น กสิกร, กรุงไทย..."
+                  {/* Part B: Statement ธนาคาร */}
+                  <div className="p-4 bg-muted/30 rounded-lg border border-border">
+                    <h4 className="text-xs font-semibold text-foreground mb-3 uppercase tracking-wider">B. Statement ธนาคาร</h4>
+                    <div className="mb-3">
+                      <label className="block text-2xs text-muted-foreground mb-1">เลือกธนาคาร</label>
+                      <select
+                        value={statementBankName}
+                        onChange={(e) => setStatementBankName(e.target.value)}
+                        className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                      >
+                        <option value="">-- เลือกธนาคาร --</option>
+                        {BANK_OPTIONS.map((b) => <option key={b} value={b}>{b}</option>)}
+                      </select>
+                    </div>
+                    <div className="flex items-center gap-3 mb-3">
+                      <input
+                        ref={statementFileRef}
+                        type="file"
+                        accept="image/*,.pdf"
+                        multiple
+                        onChange={(e) => {
+                          if (e.target.files) setStatementFiles(Array.from(e.target.files));
+                        }}
+                        className="flex-1 text-sm text-muted-foreground file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-emerald-500/10 file:text-emerald-600"
+                      />
+                      <button
+                        onClick={handleStatementOcr}
+                        disabled={statementLoading || statementFiles.length === 0}
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-medium hover:bg-emerald-700 disabled:opacity-50"
+                      >
+                        {statementLoading ? (
+                          <>
+                            <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white" />
+                            กำลังวิเคราะห์...
+                          </>
+                        ) : 'AI วิเคราะห์'}
+                      </button>
+                    </div>
+
+                    {statementResult && (
+                      <div className="grid grid-cols-3 gap-3 mt-3">
+                        <div className="bg-card rounded border p-3">
+                          <div className="text-2xs text-muted-foreground">ยอดเข้าเฉลี่ย</div>
+                          <div className="text-sm font-bold text-success">{statementResult.totalIncome != null ? `${statementResult.totalIncome.toLocaleString()} ฿` : '-'}</div>
+                        </div>
+                        <div className="bg-card rounded border p-3">
+                          <div className="text-2xs text-muted-foreground">ยอดออกเฉลี่ย</div>
+                          <div className="text-sm font-bold text-destructive">{statementResult.totalExpense != null ? `${statementResult.totalExpense.toLocaleString()} ฿` : '-'}</div>
+                        </div>
+                        <div className="bg-card rounded border p-3">
+                          <div className="text-2xs text-muted-foreground">ยอดคงเหลือ</div>
+                          <div className="text-sm font-bold">{statementResult.balance != null ? `${statementResult.balance.toLocaleString()} ฿` : '-'}</div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ─── Section 3: ประวัติในระบบ ─── */}
+              {selectedCustomer && (
+                <div className="rounded-xl border border-border bg-card p-5">
+                  <div className="flex items-center gap-2.5 mb-4">
+                    <div className="flex items-center justify-center size-8 rounded-lg bg-violet-500/10 text-violet-500">
+                      <Clock className="size-4" strokeWidth={1.5} />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-semibold text-foreground">ประวัติในระบบ</h3>
+                      <p className="text-xs text-muted-foreground">ข้อมูลสัญญาและประวัติชำระเงินจากระบบ</p>
+                    </div>
+                    {customerHistory && (
+                      <div className="ml-auto">
+                        {customerHistory.isReturning
+                          ? <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-success/10 text-success">ลูกค้าเก่า</span>
+                          : <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700">ลูกค้าใหม่</span>
+                        }
+                      </div>
+                    )}
+                  </div>
+
+                  {customerHistory ? (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <div className="bg-muted/50 rounded-lg border p-3">
+                        <div className="text-2xs text-muted-foreground">สัญญาทั้งหมด</div>
+                        <div className="text-lg font-bold">{customerHistory.totalContracts} <span className="text-xs font-normal text-muted-foreground">สัญญา</span></div>
+                      </div>
+                      <div className="bg-muted/50 rounded-lg border p-3">
+                        <div className="text-2xs text-muted-foreground">ปิดแล้ว / ค้างอยู่</div>
+                        <div className="text-lg font-bold">
+                          <span className="text-success">{customerHistory.closedContracts}</span>
+                          <span className="text-xs font-normal text-muted-foreground"> / </span>
+                          <span className="text-amber-600">{customerHistory.activeContracts}</span>
+                        </div>
+                      </div>
+                      <div className="bg-muted/50 rounded-lg border p-3">
+                        <div className="text-2xs text-muted-foreground">ชำระตรงเวลา</div>
+                        <div className={`text-lg font-bold ${customerHistory.onTimePaymentPct >= 80 ? 'text-success' : customerHistory.onTimePaymentPct >= 50 ? 'text-amber-600' : 'text-destructive'}`}>
+                          {customerHistory.onTimePaymentPct.toFixed(0)}%
+                        </div>
+                      </div>
+                      <div className="bg-muted/50 rounded-lg border p-3">
+                        <div className="text-2xs text-muted-foreground">ยอดค้างปัจจุบัน</div>
+                        <div className="text-lg font-bold">{customerHistory.currentOutstanding.toLocaleString()} <span className="text-xs font-normal text-muted-foreground">฿</span></div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-muted-foreground text-center py-4">กำลังโหลดข้อมูล...</div>
+                  )}
+                </div>
+              )}
+
+              {/* ─── Section 4: สรุปวิเคราะห์ ─── */}
+              {selectedCustomer && (
+                <div className="rounded-xl border border-border bg-card p-5">
+                  <div className="flex items-center gap-2.5 mb-4">
+                    <div className="flex items-center justify-center size-8 rounded-lg bg-orange-500/10 text-orange-500">
+                      <BarChart3 className="size-4" strokeWidth={1.5} />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-semibold text-foreground">สรุปวิเคราะห์</h3>
+                      <p className="text-xs text-muted-foreground">คำนวณ Risk Score และคำแนะนำ</p>
+                    </div>
+                  </div>
+
+                  {!riskScore ? (
+                    <div className="text-center py-4">
+                      <button
+                        onClick={() => handleCalculateRisk(selectedCustomer.id)}
+                        disabled={riskLoading}
+                        className="inline-flex items-center gap-2 px-5 py-2.5 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 disabled:opacity-50"
+                      >
+                        {riskLoading ? (
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                            กำลังคำนวณ...
+                          </>
+                        ) : 'คำนวณ Risk Score'}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                        <div className="bg-muted/50 rounded-lg border p-3">
+                          <div className="text-2xs text-muted-foreground mb-1">Risk Score</div>
+                          <span className={`px-3 py-1 rounded-full text-sm font-bold ${
+                            riskScore.riskLevel === 'LOW' ? 'bg-success/10 text-success' :
+                            riskScore.riskLevel === 'MEDIUM' ? 'bg-amber-100 text-amber-700' :
+                            'bg-destructive/10 text-destructive'
+                          }`}>
+                            {riskScore.riskLevel === 'LOW' ? 'ต่ำ' : riskScore.riskLevel === 'MEDIUM' ? 'ปานกลาง' : 'สูง'}
+                            {' '}({riskScore.score})
+                          </span>
+                        </div>
+                        <div className="bg-muted/50 rounded-lg border p-3">
+                          <div className="text-2xs text-muted-foreground mb-1">Debt-to-Income</div>
+                          <div className={`text-lg font-bold ${riskScore.debtToIncome <= 40 ? 'text-success' : riskScore.debtToIncome <= 60 ? 'text-amber-600' : 'text-destructive'}`}>
+                            {riskScore.debtToIncome.toFixed(1)}%
+                          </div>
+                          <div className="text-2xs text-muted-foreground">ค่างวด / เงินเดือน</div>
+                        </div>
+                        {riskScore.recommendedPayDay && (
+                          <div className="bg-muted/50 rounded-lg border p-3">
+                            <div className="text-2xs text-muted-foreground mb-1">แนะนำกำหนดชำระ</div>
+                            <div className="text-lg font-bold text-primary">วันที่ {riskScore.recommendedPayDay}</div>
+                            <div className="text-2xs text-muted-foreground">= วันเงินเดือนออก</div>
+                          </div>
+                        )}
+                      </div>
+
+                      {riskScore.recommendation && (
+                        <div className="bg-muted/30 rounded-lg border p-3">
+                          <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1">คำแนะนำ AI</div>
+                          <div className="text-sm">{riskScore.recommendation}</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="mt-4">
+                    <label className="block text-xs font-medium text-foreground mb-1.5">หมายเหตุ</label>
+                    <textarea
+                      value={reviewNotesDraft}
+                      onChange={(e) => setReviewNotesDraft(e.target.value)}
+                      rows={2}
+                      placeholder="ระบุหมายเหตุเพิ่มเติม (ถ้ามี)..."
                       className="w-full px-3 py-2 border border-input rounded-lg text-sm"
                     />
                   </div>
-                  <div>
-                    <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Statement ย้อนหลัง 3 เดือน (ภาพ/PDF)</label>
-                    <input
-                      ref={fileRef}
-                      type="file"
-                      accept="image/*,.pdf"
-                      multiple
-                      onChange={(e) => e.target.files && uploadMutation.mutate(e.target.files)}
-                      disabled={uploadMutation.isPending}
-                      className="w-full text-sm text-muted-foreground file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary/10 file:text-primary"
-                    />
-                  </div>
-                  {uploadMutation.isPending && (
-                    <div className="flex items-center gap-2 text-sm text-primary">
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600" />
-                      กำลังอัปโหลดและสร้างรายการ...
-                    </div>
-                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            {selectedCustomer && (
+              <div className="sticky bottom-0 z-10 bg-background/95 backdrop-blur-sm border-t px-6 py-4 flex items-center justify-between">
+                <button
+                  onClick={() => { setShowCreateModal(false); setSelectedCustomer(null); setBankName(''); setCustomerSearch(''); }}
+                  className="px-4 py-2 text-sm border border-input rounded-lg hover:bg-muted"
+                >
+                  ยกเลิก
+                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      if (!selectedCustomer) return;
+                      const fileUrls: string[] = [];
+                      // Simple save as draft: create with minimal data
+                      const files = fileRef.current?.files;
+                      if (files && files.length > 0) {
+                        uploadMutation.mutate(files);
+                      } else {
+                        // Create without statement files
+                        api.post(`/customers/${selectedCustomer.id}/credit-check`, {
+                          bankName: statementBankName || bankName || undefined,
+                          statementFiles: fileUrls,
+                          statementMonths: 3,
+                          reviewNotes: reviewNotesDraft || undefined,
+                        }).then(() => {
+                          toast.success('บันทึกร่างตรวจเครดิตสำเร็จ');
+                          queryClient.invalidateQueries({ queryKey: ['credit-checks'] });
+                          setShowCreateModal(false);
+                          setSelectedCustomer(null);
+                        }).catch((err: unknown) => toast.error(getErrorMessage(err)));
+                      }
+                    }}
+                    disabled={uploadMutation.isPending}
+                    className="px-4 py-2 text-sm border border-input rounded-lg hover:bg-muted"
+                  >
+                    บันทึก
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (!selectedCustomer) return;
+                      api.post(`/customers/${selectedCustomer.id}/credit-check`, {
+                        bankName: statementBankName || bankName || undefined,
+                        statementFiles: [],
+                        statementMonths: 3,
+                        reviewNotes: reviewNotesDraft || undefined,
+                        status: 'APPROVED',
+                      }).then(() => {
+                        toast.success('อนุมัติเครดิตสำเร็จ');
+                        queryClient.invalidateQueries({ queryKey: ['credit-checks'] });
+                        setShowCreateModal(false);
+                        setSelectedCustomer(null);
+                      }).catch((err: unknown) => toast.error(getErrorMessage(err)));
+                    }}
+                    className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700"
+                  >
+                    อนุมัติ
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (!selectedCustomer) return;
+                      api.post(`/customers/${selectedCustomer.id}/credit-check`, {
+                        bankName: statementBankName || bankName || undefined,
+                        statementFiles: [],
+                        statementMonths: 3,
+                        reviewNotes: reviewNotesDraft || undefined,
+                        status: 'REJECTED',
+                      }).then(() => {
+                        toast.success('ปฏิเสธเครดิตแล้ว');
+                        queryClient.invalidateQueries({ queryKey: ['credit-checks'] });
+                        setShowCreateModal(false);
+                        setSelectedCustomer(null);
+                      }).catch((err: unknown) => toast.error(getErrorMessage(err)));
+                    }}
+                    className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700"
+                  >
+                    ไม่อนุมัติ
+                  </button>
                 </div>
               </div>
             )}
           </div>
-        </Modal>
+        </div>
       )}
 
       {/* Override Modal */}

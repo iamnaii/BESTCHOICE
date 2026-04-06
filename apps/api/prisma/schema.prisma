@@ -394,6 +394,7 @@ model Customer {
   addressIdCard    String?   @map("address_id_card")
   addressCurrent     String?   @map("address_current")
   addressCurrentType String?   @map("address_current_type") // บ้านตัวเอง, บ้านญาติ, เช่าอาศัย
+  salaryPayDay       Int?      @map("salary_pay_day") // วันที่เงินเดือนออก (1-31)
   occupation         String?
   occupationDetail String?   @map("occupation_detail") // รายละเอียดอาชีพ
   salary           Decimal?  @db.Decimal(12, 2) // เงินเดือน
@@ -1322,6 +1323,24 @@ model CreditCheck {
   aiScore          Int?              @map("ai_score")
   aiSummary        String?           @map("ai_summary")
   aiRecommendation String?           @map("ai_recommendation")
+
+  // Salary slip analysis (AI)
+  salaryVerified     Decimal?        @map("salary_verified") @db.Decimal(12, 2)
+  employerName       String?         @map("employer_name")
+  salaryPayDay       Int?            @map("salary_pay_day") // วันที่เงินเดือนออก (1-31)
+  salarySlipFiles    String[]        @default([]) @map("salary_slip_files")
+
+  // Bank statement analysis (AI)
+  statementBankName    String?       @map("statement_bank_name")
+  statementAvgIncome   Decimal?      @map("statement_avg_income") @db.Decimal(12, 2)
+  statementAvgExpense  Decimal?      @map("statement_avg_expense") @db.Decimal(12, 2)
+  statementAvgBalance  Decimal?      @map("statement_avg_balance") @db.Decimal(12, 2)
+
+  // Risk assessment
+  riskScore            String?       @map("risk_score") // LOW, MEDIUM, HIGH
+  debtToIncomeRatio    Decimal?      @map("debt_to_income_ratio") @db.Decimal(5, 4)
+  riskNote             String?       @map("risk_note")
+
   checkedById      String?           @map("checked_by_id")
   checkedAt        DateTime?         @map("checked_at")
   reviewNotes      String?           @map("review_notes")

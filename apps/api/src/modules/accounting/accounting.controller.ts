@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { AccountingService } from './accounting.service';
+import { BadDebtService } from './bad-debt.service';
 import { CreateExpenseDto, UpdateExpenseDto, RejectExpenseDto } from './dto/expense.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -22,7 +23,10 @@ import { ExpenseAccountType, ExpenseCategory, ExpenseStatus } from '@prisma/clie
 @Controller('expenses')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class AccountingController {
-  constructor(private service: AccountingService) {}
+  constructor(
+    private service: AccountingService,
+    private badDebtService: BadDebtService,
+  ) {}
 
   @Post()
   @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
@@ -145,7 +149,87 @@ export class AccountingController {
 
   @Post(':id/void')
   @Roles('OWNER')
-  void(@Param('id') id: string) {
-    return this.service.voidExpense(id);
+  void(
+    @Param('id') id: string,
+    @Request() req: { user: { id: string } },
+    @Body('reason') reason: string,
+  ) {
+    return this.service.voidExpense(id, req.user.id, reason);
+  }
+
+  // ============================================================
+  // Balance Sheet & Cash Flow Statement
+  // ============================================================
+
+  @Get('balance-sheet')
+  @Roles('OWNER', 'ACCOUNTANT')
+  getBalanceSheet(
+    @Query('asOfDate') asOfDate?: string,
+    @Query('branchId') branchId?: string,
+  ) {
+    return this.service.getBalanceSheet(
+      asOfDate || new Date().toISOString().split('T')[0],
+      branchId,
+    );
+  }
+
+  @Get('cash-flow')
+  @Roles('OWNER', 'ACCOUNTANT')
+  getCashFlowStatement(
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string,
+    @Query('branchId') branchId?: string,
+  ) {
+    return this.service.getCashFlowStatement(startDate, endDate, branchId);
+  }
+
+  // ============================================================
+  // W-013: Period Closing Lock
+  // ============================================================
+
+  @Get('period-status')
+  @Roles('OWNER')
+  getPeriodStatus() {
+    return this.service.getAccountingPeriodStatus();
+  }
+
+  @Post('close-period')
+  @Roles('OWNER')
+  closePeriod(@Body('closedUntil') closedUntil: string) {
+    return this.service.closeAccountingPeriod(closedUntil);
+  }
+
+  // ============================================================
+  // Bad Debt Provisioning (ค่าเผื่อหนี้สงสัยจะสูญ)
+  // ============================================================
+
+  @Post('bad-debt/calculate')
+  @Roles('OWNER', 'ACCOUNTANT')
+  calculateProvisions(
+    @Request() req: { user: { id: string } },
+    @Query('branchId') branchId?: string,
+  ) {
+    return this.badDebtService.calculateProvisions(req.user.id, branchId);
+  }
+
+  @Get('bad-debt/summary')
+  @Roles('OWNER', 'ACCOUNTANT')
+  getProvisionSummary() {
+    return this.badDebtService.getProvisionSummary();
+  }
+
+  @Post('bad-debt/write-off/:contractId')
+  @Roles('OWNER')
+  writeOffBadDebt(
+    @Param('contractId') contractId: string,
+    @Body() body: { approvedById: string; notes?: string },
+    @Request() req: { user: { id: string } },
+  ) {
+    return this.badDebtService.writeOffBadDebt(
+      contractId,
+      req.user.id,
+      body.approvedById,
+      body.notes,
+    );
   }
 }

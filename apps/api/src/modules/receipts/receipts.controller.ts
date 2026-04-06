@@ -62,7 +62,7 @@ export class ReceiptsController {
     @Body() dto: VoidReceiptDto,
     @CurrentUser() user: { id: string },
   ) {
-    return this.receiptsService.voidReceipt(id, dto.reason, user.id);
+    return this.receiptsService.voidReceipt(id, dto.reason, user.id, dto.approvedById || user.id);
   }
 
   @Get(':id/pdf')

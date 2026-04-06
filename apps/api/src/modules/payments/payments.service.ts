@@ -57,16 +57,23 @@ export class PaymentsService {
     // Use serializable transaction to prevent concurrent duplicate payments
     const updated = await this.prisma.$transaction(async (tx) => {
       // Idempotency: reject duplicate transactionRef INSIDE transaction
-      // to prevent race condition where two concurrent requests both pass the check
+      // to prevent race condition where two concurrent requests both pass the check.
+      // R-012: Use exact ref: tag match to avoid false positives from substring matching.
+      // We search for the exact tag "ref:<value>" and verify it matches fully,
+      // preventing e.g. "ref:ABC" from matching "ref:ABC123".
       if (transactionRef) {
-        const existing = await tx.payment.findFirst({
+        const candidates = await tx.payment.findMany({
           where: {
             contractId,
             deletedAt: null,
             notes: { contains: `ref:${transactionRef}` },
             status: { in: ['PAID', 'PARTIALLY_PAID'] },
           },
+          select: { id: true, notes: true },
         });
+        // Verify exact match: the ref tag must be followed by end-of-string, ' |', or whitespace
+        const exactRefPattern = new RegExp(`ref:${transactionRef.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\s*\\||\\s*$)`);
+        const existing = candidates.find(c => c.notes && exactRefPattern.test(c.notes));
         if (existing) {
           throw new BadRequestException(`ธุรกรรมนี้ถูกบันทึกแล้ว (อ้างอิง: ${transactionRef})`);
         }

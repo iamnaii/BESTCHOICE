@@ -224,9 +224,17 @@ export class RepossessionsService {
       const newProductStatus = productStatusMap[dto.status];
       if (newProductStatus) {
         return this.prisma.$transaction(async (tx) => {
+          const productUpdateData: Record<string, unknown> = { status: newProductStatus };
+          // R-007: Adjust costPrice to appraised/fair value per TAS 2 when moving to REFURBISHED
+          if (dto.status === 'READY_FOR_SALE') {
+            const appraisalPrice = dto.resellPrice ?? Number(repo.appraisalPrice || 0);
+            if (appraisalPrice > 0) {
+              productUpdateData.costPrice = appraisalPrice;
+            }
+          }
           await tx.product.update({
             where: { id: repo.product.id },
-            data: { status: newProductStatus },
+            data: productUpdateData,
           });
           return tx.repossession.update({
             where: { id },
@@ -276,10 +284,13 @@ export class RepossessionsService {
         where: { isMainWarehouse: true, isActive: true },
       });
 
+      // R-007: Adjust costPrice to appraised/fair value per TAS 2 when refurbishing
+      const appraisalPrice = Number(repo.appraisalPrice || 0);
       await tx.product.update({
         where: { id: repo.product.id },
         data: {
           status: 'REFURBISHED',
+          costPrice: appraisalPrice || resellPrice, // Adjust cost to appraised/fair value per TAS 2
           stockInDate: new Date(),
           ...(mainWarehouse ? { branchId: mainWarehouse.id } : {}),
         },

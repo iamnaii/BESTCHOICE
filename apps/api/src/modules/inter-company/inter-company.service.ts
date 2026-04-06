@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateInterCompanyTransactionDto } from './dto/inter-company.dto';
 import { Prisma, InterCompanyTransactionStatus } from '@prisma/client';
@@ -60,6 +60,9 @@ export class InterCompanyService {
       financeProfit: number;
     },
   ) {
+    // W-009: Double-entry description for both entities
+    const note = `SHOP: Debit ลูกหนี้เช่าซื้อ ${data.principal}, Credit รายได้จากการขาย ${data.principal + data.commission}; FINANCE: Debit ลูกหนี้เช่าซื้อ ${data.principal + data.interestTotal}, Credit เจ้าหนี้ SHOP ${data.principal + data.commission}`;
+
     return tx.interCompanyTransaction.create({
       data: {
         saleId: data.saleId,
@@ -80,6 +83,7 @@ export class InterCompanyService {
         sellingPrice: data.sellingPrice,
         shopProfit: data.shopProfit,
         financeProfit: data.financeProfit,
+        note,
       },
     });
   }
@@ -154,13 +158,33 @@ export class InterCompanyService {
   }
 
   /**
-   * Reconcile a transaction (mark as confirmed after verification)
+   * W-010: Confirm a PENDING transaction (PENDING → CONFIRMED)
+   */
+  async confirmTransaction(id: string) {
+    const record = await this.prisma.interCompanyTransaction.findFirst({
+      where: { id, deletedAt: null },
+    });
+    if (!record) throw new NotFoundException('ไม่พบรายการ');
+    if (record.status !== 'PENDING') {
+      throw new BadRequestException('รายการต้องอยู่ในสถานะ PENDING เท่านั้น');
+    }
+    return this.prisma.interCompanyTransaction.update({
+      where: { id },
+      data: { status: 'CONFIRMED' as InterCompanyTransactionStatus },
+    });
+  }
+
+  /**
+   * Reconcile a transaction (CONFIRMED → RECONCILED)
    */
   async reconcile(id: string) {
     const record = await this.prisma.interCompanyTransaction.findFirst({
       where: { id, deletedAt: null },
     });
     if (!record) throw new NotFoundException('ไม่พบรายการ');
+    if (record.status !== 'CONFIRMED') {
+      throw new BadRequestException('รายการต้อง CONFIRMED ก่อนจึงจะ reconcile ได้');
+    }
 
     return this.prisma.interCompanyTransaction.update({
       where: { id },

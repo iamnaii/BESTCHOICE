@@ -85,14 +85,16 @@ export class AuditInterceptor implements NestInterceptor {
     const path = url.replace(/^\/api\//, '').split('?')[0];
     const parts = path.split('/').filter(Boolean);
 
-    // Find the last non-UUID segment for nested resources
-    // e.g. /contracts/uuid/payments → "payments"
-    // e.g. /products/uuid → "products"
-    // e.g. /auth/login → "auth"
+    // R-013: Extract the FIRST meaningful segment (primary entity) for nested URLs.
+    // For /contracts/uuid/payments/uuid → "contracts" (the primary resource)
+    // For /products/uuid → "products"
+    // For /auth/login → "auth"
+    // Previously walked backwards which returned "payments" for nested URLs,
+    // losing the primary resource context in audit logs.
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-    // Walk backwards to find the last meaningful entity name
-    for (let i = parts.length - 1; i >= 0; i--) {
+    // Walk forward to find the first non-UUID segment (the primary entity)
+    for (let i = 0; i < parts.length; i++) {
       if (!uuidRegex.test(parts[i])) {
         return parts[i];
       }

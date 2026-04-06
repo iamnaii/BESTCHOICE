@@ -51,6 +51,16 @@ export class CreateExpenseDto {
   @Min(0)
   withholdingTax?: number;
 
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(1)
+  whtRate?: number; // อัตราภาษีหัก ณ ที่จ่าย เช่น 0.01, 0.02, 0.03, 0.05
+
+  @IsOptional()
+  @IsString()
+  whtIncomeType?: string; // ประเภทเงินได้ เช่น '40(2)', '40(5)', '40(8)'
+
   @IsDateString()
   expenseDate: string;
 

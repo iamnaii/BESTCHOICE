@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import * as fs from 'fs';
 import * as path from 'path';
+import { seedChartOfAccounts } from './seeds/chart-of-accounts';
 
 const prisma = new PrismaClient();
 
@@ -58,6 +59,7 @@ async function main() {
   await prisma.systemConfig.deleteMany();
   await prisma.contractTemplate.deleteMany();
   await prisma.stickerTemplate.deleteMany();
+  await prisma.chartOfAccount.deleteMany();
   await prisma.companyInfo.deleteMany();
   console.log('All data deleted.');
 
@@ -110,6 +112,7 @@ async function main() {
     { key: 'line_oa_welcome_message', value: 'ยินดีต้อนรับสู่ BESTCHOICE Mobile! พิมพ์เลขสัญญาเพื่อตรวจสอบยอดชำระ', label: 'ข้อความต้อนรับ LINE OA' },
     { key: 'line_oa_payment_reminder_template', value: 'แจ้งเตือน: สัญญา {contractNo} ครบกำหนดชำระงวดที่ {installment} จำนวน {amount} บาท ภายในวันที่ {dueDate}', label: 'เทมเพลตแจ้งเตือนชำระเงิน LINE OA' },
     { key: 'line_oa_overdue_template', value: 'แจ้งเตือน: สัญญา {contractNo} เลยกำหนดชำระ {overdueDays} วัน กรุณาชำระโดยเร็ว', label: 'เทมเพลตแจ้งเตือนค้างชำระ LINE OA' },
+    { key: 'bad_debt_provision_rates', value: JSON.stringify({ '1-30': 0.02, '31-60': 0.10, '61-90': 0.25, '91-180': 0.50, '181-360': 0.75, '360+': 1.00 }), label: 'อัตราค่าเผื่อหนี้สงสัยจะสูญ ตามอายุหนี้' },
   ];
 
   for (const c of configs) {
@@ -1291,6 +1294,11 @@ async function main() {
   // SUMMARY
   // ============================================================
   console.log('\n========================================');
+  // ============================================================
+  // CHART OF ACCOUNTS (ผังบัญชี)
+  // ============================================================
+  await seedChartOfAccounts(prisma);
+
   console.log('=== SEED COMPLETED SUCCESSFULLY ===');
   console.log('========================================');
   console.log('CompanyInfo: 1');
@@ -1326,6 +1334,7 @@ async function main() {
   console.log('AuditLogs: 10');
   console.log('ContractTemplates: 1');
   console.log('StickerTemplates: 2');
+  console.log('ChartOfAccounts: 76 (full Thai SME chart)');
   console.log('========================================\n');
 }
 

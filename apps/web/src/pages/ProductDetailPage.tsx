@@ -313,7 +313,7 @@ export default function ProductDetailPage() {
 
       {/* Tabs */}
       {product.category === 'PHONE_USED' && (
-        <div className="flex gap-1 mb-4 border-b">
+        <div className="flex gap-0.5 mb-5 border-b border-border/60">
           {([
             { key: 'info' as Tab, label: 'ข้อมูลสินค้า' },
             { key: 'photos' as Tab, label: 'รูปถ่าย' },
@@ -368,7 +368,7 @@ export default function ProductDetailPage() {
       <Card className="mb-5 lg:mb-7.5">
         <CardHeader>
           <CardTitle>ข้อมูลสินค้า</CardTitle>
-          <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${s.className}`}>{s.label}</span>
+          <span className={`px-2.5 py-1 rounded-md text-xs font-medium ${s.className}`}>{s.label}</span>
         </CardHeader>
         <CardContent>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-5 lg:gap-7.5">
@@ -413,13 +413,13 @@ export default function ProductDetailPage() {
 
       {/* Price Summary */}
       <div className="grid grid-cols-3 gap-5 lg:gap-7.5 mb-5 lg:mb-7.5">
-        <Card>
+        <Card className="border-l-[3px] border-l-warning hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200">
           <CardContent>
             <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ราคาทุน</div>
             <div className="text-lg font-semibold text-foreground">{parseFloat(product.costPrice).toLocaleString()} ฿</div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-l-[3px] border-l-primary hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200">
           <CardContent>
             <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ราคาขาย (default)</div>
             <div className="text-lg font-semibold text-primary">
@@ -427,7 +427,7 @@ export default function ProductDetailPage() {
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-l-[3px] border-l-success hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200">
           <CardContent>
             <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">กำไร</div>
             <div className={`text-lg font-semibold ${profit === null ? 'text-muted-foreground' : profit > 0 ? 'text-success' : profit === 0 ? 'text-muted-foreground' : 'text-destructive'}`}>
@@ -497,7 +497,7 @@ export default function ProductDetailPage() {
           </CardHeader>
           <CardContent>
           <div className="flex items-center gap-4">
-            <span className={`px-2.5 py-1 rounded-full text-sm font-medium ${
+            <span className={`px-2.5 py-1 rounded-md text-sm font-medium ${
               product.inspection.isCompleted ? 'bg-success/10 text-success dark:bg-success/15' : 'bg-warning/10 text-warning dark:bg-warning/15'
             }`}>
               {product.inspection.isCompleted ? 'ตรวจเสร็จ' : 'กำลังตรวจ'}

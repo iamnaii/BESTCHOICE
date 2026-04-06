@@ -126,7 +126,7 @@ export default function DashboardPage() {
   if (kpisLoading && !kpis) return <DashboardSkeleton />;
 
   return (
-    <div className="flex flex-col gap-5 lg:gap-7.5.5">
+    <div className="flex flex-col gap-5 lg:gap-7.5">
       {/* Page Title */}
       <div>
         <h1 className="text-xl font-bold text-foreground">Dashboard</h1>

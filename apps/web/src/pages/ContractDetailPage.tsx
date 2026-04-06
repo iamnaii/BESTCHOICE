@@ -405,7 +405,7 @@ export default function ContractDetailPage() {
         const hint = currentStep >= 0 ? stepHints[currentStep] : null;
 
         return (
-          <div className="rounded-lg border p-4 mb-6">
+          <div className="rounded-xl border border-border/60 p-4 mb-6 shadow-sm">
             <div className="flex items-center justify-between mb-3">
               {steps.map((step, i) => (
                 <div key={i} className="flex items-center flex-1 last:flex-none">
@@ -442,7 +442,7 @@ export default function ContractDetailPage() {
         <Card className="border-l-[3px] border-l-primary">
           <CardContent className="p-4">
             <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สถานะสัญญา</div>
-            <span className={`px-3 py-1 rounded-full text-sm font-medium ${s.className}`}>{s.label}</span>
+            <span className={`px-3 py-1 rounded-md text-sm font-medium ${s.className}`}>{s.label}</span>
           </CardContent>
         </Card>
         <Card>
@@ -505,11 +505,11 @@ export default function ContractDetailPage() {
           </div>
         )}
         {contract.dunningStage && contract.dunningStage !== 'NONE' && (
-          <div className={`rounded-lg border p-4 ${
-            contract.dunningStage === 'LEGAL_ACTION' ? 'border-red-400 bg-red-50' :
-            contract.dunningStage === 'FINAL_WARNING' ? 'border-red-300 bg-red-50' :
-            contract.dunningStage === 'NOTICE' ? 'border-orange-300 bg-orange-50' :
-            'border-yellow-300 bg-yellow-50'
+          <div className={`rounded-xl border p-4 ${
+            contract.dunningStage === 'LEGAL_ACTION' ? 'border-destructive/30 bg-destructive/5 dark:bg-destructive/10' :
+            contract.dunningStage === 'FINAL_WARNING' ? 'border-destructive/20 bg-destructive/5 dark:bg-destructive/10' :
+            contract.dunningStage === 'NOTICE' ? 'border-warning/30 bg-warning/5 dark:bg-warning/10' :
+            'border-warning/20 bg-warning/5 dark:bg-warning/10'
           }`}>
             <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ระดับติดตามหนี้</div>
             <div className={`text-sm font-bold ${
@@ -526,13 +526,13 @@ export default function ContractDetailPage() {
 
       {/* Workflow Actions for Reviewer */}
       {contract.workflowStatus === 'PENDING_REVIEW' && isReviewer && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
-          <h3 className="text-sm font-semibold text-amber-800 mb-3">รอการตรวจสอบจากคุณ</h3>
+        <div className="bg-warning/5 dark:bg-warning/10 border border-warning/20 rounded-xl p-4 mb-6">
+          <h3 className="text-sm font-semibold text-warning mb-3">รอการตรวจสอบจากคุณ</h3>
           <div className="space-y-3">
             {/* Document checklist */}
             {docChecklist && (
               <div className="space-y-1">
-                <p className="text-xs font-medium text-amber-700">เอกสารที่ต้องมี:</p>
+                <p className="text-xs font-medium text-warning">เอกสารที่ต้องมี:</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
                   {docChecklist.checklist.map((item) => (
                     <div key={item.type} className={`flex items-center gap-1.5 text-xs ${item.present ? 'text-success' : 'text-destructive'}`}>
@@ -547,7 +547,7 @@ export default function ContractDetailPage() {
               </div>
             )}
             <div>
-              <label className="block text-xs text-amber-700 mb-1">หมายเหตุ (ไม่บังคับ)</label>
+              <label className="block text-xs text-warning mb-1">หมายเหตุ (ไม่บังคับ)</label>
               <input
                 type="text"
                 value={approveNotes}
@@ -590,12 +590,12 @@ export default function ContractDetailPage() {
       {/* Pending review & Approved banners removed — replaced by workflow stepper above */}
 
       {/* Contract Info */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-        <div className="rounded-lg border p-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 lg:gap-7.5 mb-6">
+        <div className="rounded-xl border border-border/60 p-6 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-foreground">ข้อมูลสัญญา</h2>
             {canEdit && !isEditing && (
-              <button onClick={startEditing} className="px-3 py-1 text-xs bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200">
+              <button onClick={startEditing} className="px-3 py-1 text-xs bg-warning/10 text-warning rounded-lg hover:bg-warning/20">
                 แก้ไข
               </button>
             )}
@@ -687,8 +687,8 @@ export default function ContractDetailPage() {
           )}
         </div>
 
-        <div className="space-y-6">
-          <div className="rounded-lg border p-6">
+        <div className="space-y-5 lg:space-y-7.5">
+          <div className="rounded-xl border border-border/60 p-6 shadow-sm">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-semibold text-foreground">ข้อมูลลูกค้า</h2>
@@ -697,7 +697,7 @@ export default function ContractDetailPage() {
                 )}
               </div>
               {canEditMaster && (
-                <button onClick={() => setIsEditingCustomer(true)} className="px-3 py-1 text-xs bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200">
+                <button onClick={() => setIsEditingCustomer(true)} className="px-3 py-1 text-xs bg-warning/10 text-warning rounded-lg hover:bg-warning/20">
                   แก้ไข
                 </button>
               )}
@@ -712,11 +712,11 @@ export default function ContractDetailPage() {
             <button onClick={() => navigate(`/customers/${contract.customer.id}`)} className="mt-3 text-xs text-primary hover:underline">ดูรายละเอียดลูกค้า (ข้อมูลปัจจุบัน)</button>
           </div>
 
-          <div className="rounded-lg border p-6">
+          <div className="rounded-xl border border-border/60 p-6 shadow-sm">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-foreground">ข้อมูลสินค้า</h2>
               {canEditMaster && (
-                <button onClick={() => setIsEditingProduct(true)} className="px-3 py-1 text-xs bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200">
+                <button onClick={() => setIsEditingProduct(true)} className="px-3 py-1 text-xs bg-warning/10 text-warning rounded-lg hover:bg-warning/20">
                   แก้ไข
                 </button>
               )}
@@ -734,7 +734,7 @@ export default function ContractDetailPage() {
 
           {/* QR Code Verification */}
           {contract.contractHash && (
-            <div className="rounded-lg border p-6">
+            <div className="rounded-xl border border-border/60 p-6 shadow-sm">
               <h2 className="text-sm font-semibold text-foreground mb-2">ตรวจสอบสัญญา (QR Verify)</h2>
               <div className="text-xs text-muted-foreground mb-2">Hash: <span className="font-mono">{contract.contractHash?.slice(0, 16)}...</span></div>
               <div className="flex items-center gap-2">
@@ -751,7 +751,7 @@ export default function ContractDetailPage() {
 
       {/* Early Payoff Quote */}
       {payoffQuote && ['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status) && (
-        <div className="bg-primary/5 rounded-lg border border-primary/30 p-6 mb-6">
+        <div className="bg-primary/5 rounded-xl border border-primary/20 p-6 mb-6 shadow-sm">
           <h2 className="text-lg font-semibold text-primary mb-3">ประเมินปิดก่อนกำหนด</h2>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <div><div className="text-xs text-primary">งวดคงเหลือ</div><div className="font-medium">{payoffQuote.remainingMonths} งวด</div></div>

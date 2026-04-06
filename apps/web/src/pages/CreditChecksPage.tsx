@@ -740,7 +740,7 @@ export default function CreditChecksPage() {
                     <div
                       key={c.id}
                       onClick={() => setSelectedCustomer(c)}
-                      className="p-3 rounded-lg border cursor-pointer hover:border-primary-400 hover:bg-primary-50 transition-colors"
+                      className="p-3 rounded-lg border cursor-pointer hover:border-primary/40 hover:bg-primary/5 dark:hover:bg-primary/10 transition-colors"
                     >
                       <div className="text-sm font-medium">{c.name}</div>
                       <div className="text-xs text-muted-foreground">{c.phone} {c.salary ? `| เงินเดือน ${parseFloat(c.salary).toLocaleString()} ฿` : ''}</div>
@@ -753,9 +753,9 @@ export default function CreditChecksPage() {
               </div>
             ) : (
               <div>
-                <div className="bg-primary-50 rounded-lg p-3 flex items-center justify-between">
+                <div className="bg-primary/5 dark:bg-primary/10 rounded-xl p-3 flex items-center justify-between">
                   <div>
-                    <div className="text-sm font-medium text-primary-800">{selectedCustomer.name}</div>
+                    <div className="text-sm font-medium text-primary">{selectedCustomer.name}</div>
                     <div className="text-xs text-primary">{selectedCustomer.phone} {selectedCustomer.salary ? `| เงินเดือน ${parseFloat(selectedCustomer.salary).toLocaleString()} ฿` : ''}</div>
                   </div>
                   <button onClick={() => setSelectedCustomer(null)} className="text-xs text-primary hover:text-primary/80">เปลี่ยน</button>
@@ -763,9 +763,9 @@ export default function CreditChecksPage() {
 
                 <div className="mt-4 space-y-3">
                   {/* Book Bank OCR */}
-                  <div className="bg-primary-50 border border-primary-200 rounded-lg p-3">
+                  <div className="bg-primary/5 dark:bg-primary/10 border border-primary/20 rounded-xl p-3">
                     <div className="flex items-center justify-between mb-1">
-                      <h4 className="text-sm font-semibold text-primary-800">สแกนหน้าสมุดบัญชี (OCR)</h4>
+                      <h4 className="text-sm font-semibold text-primary">สแกนหน้าสมุดบัญชี (OCR)</h4>
                     </div>
                     <p className="text-xs text-primary mb-2">ถ่ายรูปหน้าสมุดบัญชีเพื่อกรอกชื่อธนาคารอัตโนมัติ</p>
                     <input
@@ -827,7 +827,7 @@ export default function CreditChecksPage() {
                       multiple
                       onChange={(e) => e.target.files && uploadMutation.mutate(e.target.files)}
                       disabled={uploadMutation.isPending}
-                      className="w-full text-sm text-muted-foreground file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary-50 file:text-primary-700"
+                      className="w-full text-sm text-muted-foreground file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary/10 file:text-primary"
                     />
                   </div>
                   {uploadMutation.isPending && (

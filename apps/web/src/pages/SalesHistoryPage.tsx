@@ -58,8 +58,8 @@ interface SalesResponse {
 
 const saleTypeLabels: Record<string, { label: string; className: string }> = {
   CASH: { label: 'เงินสด', className: 'bg-success/10 text-success dark:bg-success/15' },
-  INSTALLMENT: { label: 'ผ่อนร้าน', className: 'bg-primary-100 text-primary-700' },
-  EXTERNAL_FINANCE: { label: 'ไฟแนนซ์', className: 'bg-primary-100 text-primary-700' },
+  INSTALLMENT: { label: 'ผ่อนร้าน', className: 'bg-primary/10 text-primary dark:bg-primary/15' },
+  EXTERNAL_FINANCE: { label: 'ไฟแนนซ์', className: 'bg-primary/10 text-primary dark:bg-primary/15' },
 };
 
 const paymentMethodLabels: Record<string, string> = {

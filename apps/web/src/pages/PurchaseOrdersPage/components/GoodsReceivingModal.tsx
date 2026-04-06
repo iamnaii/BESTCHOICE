@@ -195,8 +195,8 @@ export function GoodsReceivingModal({
                   </div>
                 )}
                 {unit.status === 'PASS' && (
-                  <div className="mt-2 border border-primary-200 bg-primary-50 rounded-lg p-3 space-y-2">
-                    <div className="text-xs font-medium text-primary-700 mb-1">ราคาขาย</div>
+                  <div className="mt-2 border border-primary/20 bg-primary/5 dark:bg-primary/10 rounded-xl p-3 space-y-2">
+                    <div className="text-xs font-medium text-primary mb-1">ราคาขาย</div>
                     <div>
                       <label className="block text-xs text-muted-foreground mb-0.5">ราคาขาย (บาท)</label>
                       <input

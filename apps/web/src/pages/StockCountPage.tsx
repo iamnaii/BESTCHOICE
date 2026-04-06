@@ -155,7 +155,7 @@ export default function StockCountPage() {
         <div className="flex gap-1 justify-center">
           <button
             onClick={(e) => { e.stopPropagation(); openCountModal(item); }}
-            className="px-2 py-1 text-xs bg-primary-100 text-primary-700 rounded hover:bg-primary-200"
+            className="px-2 py-1 text-xs bg-primary/10 text-primary dark:bg-primary/15 rounded hover:bg-primary/20"
           >
             {item.status === 'COMPLETED' ? 'ดูผล' : 'ตรวจนับ'}
           </button>
@@ -212,7 +212,7 @@ export default function StockCountPage() {
                 key={b.id}
                 onClick={() => createMutation.mutate(b.id)}
                 disabled={createMutation.isPending}
-                className="w-full p-3 border border-border rounded-lg text-left hover:bg-primary-50 hover:border-primary-300 transition-colors"
+                className="w-full p-3 border border-border rounded-lg text-left hover:bg-primary/5 hover:border-primary/30 dark:hover:bg-primary/10 transition-colors"
               >
                 <span className="font-medium">{b.name}</span>
               </button>
@@ -225,7 +225,7 @@ export default function StockCountPage() {
       <Modal isOpen={isCountModalOpen} onClose={() => setIsCountModalOpen(false)} title={`ตรวจนับ - ${selectedCount?.countNumber || ''}`} size="xl">
         {selectedCount && (
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="bg-primary-50 border border-primary-200 rounded-lg p-3 text-sm text-primary-700">
+            <div className="bg-primary/5 dark:bg-primary/10 border border-primary/20 rounded-xl p-3 text-sm text-primary">
               สาขา: <strong>{selectedCount.branch.name}</strong> | สินค้าที่ต้องนับ: <strong>{selectedCount.items?.length || 0}</strong> ชิ้น
             </div>
 

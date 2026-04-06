@@ -249,8 +249,8 @@ export default function SupplierDetailPage() {
                 disabled={toggleActiveMutation.isPending}
                 className={`px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${
                   supplier.isActive
-                    ? 'text-red-600 border-red-300 hover:bg-red-50'
-                    : 'text-green-600 border-green-300 hover:bg-green-50'
+                    ? 'text-destructive border-destructive/30 hover:bg-destructive/5 dark:hover:bg-destructive/10'
+                    : 'text-success border-success/30 hover:bg-success/5 dark:hover:bg-success/10'
                 }`}
               >
                 {supplier.isActive ? 'ซ่อนผู้ขาย' : 'เปิดใช้งาน'}
@@ -267,11 +267,11 @@ export default function SupplierDetailPage() {
       />
 
       {/* ข้อมูลผู้ขาย */}
-      <div className="rounded-lg border border-border/60 p-6 mb-6">
+      <div className="rounded-xl border border-border/60 p-6 mb-6 shadow-sm">
         <div className="flex items-start justify-between mb-4">
           <h2 className="text-lg font-semibold text-foreground">ข้อมูลผู้ขาย</h2>
           <span
-            className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+            className={`px-2 py-0.5 rounded-md text-xs font-medium ${
               supplier.isActive ? 'bg-success/10 text-success dark:bg-success/15' : 'bg-destructive/10 text-destructive dark:bg-destructive/15'
             }`}
           >
@@ -288,8 +288,8 @@ export default function SupplierDetailPage() {
           <div>
             <div className="text-xs text-muted-foreground mb-0.5">สถานะ VAT</div>
             <span
-              className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                supplier.hasVat ? 'bg-primary-100 text-primary-700' : 'bg-muted text-muted-foreground'
+              className={`px-2 py-0.5 rounded-md text-xs font-medium ${
+                supplier.hasVat ? 'bg-primary/10 text-primary dark:bg-primary/15' : 'bg-muted text-muted-foreground'
               }`}
             >
               {supplier.hasVat ? 'มี VAT (7%)' : 'ไม่มี VAT'}
@@ -305,18 +305,18 @@ export default function SupplierDetailPage() {
       </div>
 
       {/* Payment Methods Card */}
-      <div className="rounded-lg border border-border/60 p-6 mb-6">
+      <div className="rounded-xl border border-border/60 p-6 mb-6 shadow-sm">
         <h2 className="text-lg font-semibold text-foreground mb-4">ข้อมูลการชำระเงิน ({supplier.paymentMethods?.length || 0} วิธี)</h2>
         {supplier.paymentMethods?.length ? (
           <div className="space-y-3">
             {supplier.paymentMethods.map((pm) => (
-              <div key={pm.id} className="border border-border rounded-lg p-4 bg-muted">
+              <div key={pm.id} className="border border-border/60 rounded-xl p-4 bg-muted/40">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
+                  <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary dark:bg-primary/15">
                     {paymentMethodLabels[pm.paymentMethod] || pm.paymentMethod}
                   </span>
                   {pm.isDefault && (
-                    <span className="px-2 py-0.5 rounded-full text-2xs font-medium bg-warning/10 text-warning dark:bg-warning/15">
+                    <span className="px-2 py-0.5 rounded-md text-2xs font-medium bg-warning/10 text-warning dark:bg-warning/15">
                       ค่าเริ่มต้น
                     </span>
                   )}
@@ -385,7 +385,7 @@ function InfoField({ label, value }: { label: string; value: string | null | und
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-border p-4">
+    <div className="rounded-xl border border-border/60 border-l-[3px] border-l-primary p-4 shadow-sm hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200">
       <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">{label}</div>
       <div className="text-lg font-semibold text-foreground">{value}</div>
     </div>

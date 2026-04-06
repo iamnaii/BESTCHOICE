@@ -281,7 +281,7 @@ export default function SuppliersPage() {
       render: (s: Supplier) => (
         <span
           className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-            s.hasVat ? 'bg-primary-100 text-primary-700' : 'bg-muted text-muted-foreground'
+            s.hasVat ? 'bg-primary/10 text-primary dark:bg-primary/15' : 'bg-muted text-muted-foreground'
           }`}
         >
           {s.hasVat ? 'มี VAT' : 'ไม่มี VAT'}
@@ -573,7 +573,7 @@ export default function SuppliersPage() {
                 <button
                   type="button"
                   onClick={addPaymentMethod}
-                  className="px-3 py-1 text-xs bg-primary-50 text-primary rounded-lg hover:bg-primary-100 transition-colors font-medium"
+                  className="px-3 py-1 text-xs bg-primary/5 dark:bg-primary/10 text-primary rounded-lg hover:bg-primary/15 transition-colors font-medium"
                 >
                   + เพิ่มวิธีชำระเงิน
                 </button>

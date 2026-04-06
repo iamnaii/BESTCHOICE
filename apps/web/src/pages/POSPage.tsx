@@ -480,7 +480,7 @@ export default function POSPage() {
                         <button
                           key={p.id}
                           onClick={() => handleAddBundle(p)}
-                          className="w-full text-left px-3 py-2 hover:bg-green-50 border-b last:border-b-0"
+                          className="w-full text-left px-3 py-2 hover:bg-success/5 dark:hover:bg-success/10 border-b last:border-b-0"
                         >
                           <div className="text-sm font-medium">{p.brand} {p.model}</div>
                           <div className="text-xs text-muted-foreground">
@@ -679,7 +679,7 @@ export default function POSPage() {
 
         {/* Right Column - Summary (sticky) */}
         <div className="flex flex-col gap-5 lg:gap-7.5">
-          <Card className="sticky top-20 border-border/60 shadow-card">
+          <Card className="sticky top-20 border-border/60 shadow-card border-t-[3px] border-t-primary">
             <CardHeader>
               <div className="text-sm font-semibold text-foreground">สรุปรายการ</div>
             </CardHeader>

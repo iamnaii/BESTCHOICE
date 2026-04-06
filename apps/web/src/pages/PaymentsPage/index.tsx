@@ -420,14 +420,14 @@ export default function PaymentsPage() {
       />
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-4 bg-muted rounded-lg p-1 w-fit">
-        <button onClick={() => setTab('pending')} className={`px-4 py-2 text-sm rounded-md ${tab === 'pending' ? 'bg-card shadow-card font-medium' : 'text-muted-foreground'}`}>
+      <div className="flex gap-1 mb-5 bg-muted/60 rounded-xl p-1 w-fit border border-border/40">
+        <button onClick={() => setTab('pending')} className={`px-4 py-2 text-sm rounded-lg transition-all ${tab === 'pending' ? 'bg-card shadow-sm font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
           รายการรอชำระ
         </button>
-        <button onClick={() => setTab('summary')} className={`px-4 py-2 text-sm rounded-md ${tab === 'summary' ? 'bg-card shadow-card font-medium' : 'text-muted-foreground'}`}>
+        <button onClick={() => setTab('summary')} className={`px-4 py-2 text-sm rounded-lg transition-all ${tab === 'summary' ? 'bg-card shadow-sm font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
           สรุปรายวัน
         </button>
-        <button onClick={() => setTab('slip-review')} className={`px-4 py-2 text-sm rounded-md ${tab === 'slip-review' ? 'bg-card shadow-card font-medium' : 'text-muted-foreground'}`}>
+        <button onClick={() => setTab('slip-review')} className={`px-4 py-2 text-sm rounded-lg transition-all ${tab === 'slip-review' ? 'bg-card shadow-sm font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
           ตรวจสอบสลิป
         </button>
       </div>

@@ -100,7 +100,7 @@ export default function BranchesPage() {
         <div className="flex items-center gap-2">
           <span>{b.name}</span>
           {b.isMainWarehouse && (
-            <span className="px-1.5 py-0.5 bg-primary-100 text-primary-700 text-xs rounded font-medium">คลังกลาง</span>
+            <span className="px-1.5 py-0.5 bg-primary/10 text-primary dark:bg-primary/15 text-xs rounded-full font-medium">คลังกลาง</span>
           )}
         </div>
       ),

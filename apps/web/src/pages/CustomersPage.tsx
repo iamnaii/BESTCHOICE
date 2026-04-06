@@ -501,7 +501,7 @@ export default function CustomersPage() {
         const s = statusMap[c.latestCreditStatus] || { label: c.latestCreditStatus, cls: 'bg-muted text-foreground' };
         return (
           <div className="text-xs">
-            <span className={`px-1.5 py-0.5 rounded-full font-medium ${s.cls}`}>{s.label}</span>
+            <span className={`px-1.5 py-0.5 rounded-md font-medium ${s.cls}`}>{s.label}</span>
             {c.latestCreditScore != null && <div className="text-muted-foreground mt-0.5">{c.latestCreditScore}/100</div>}
           </div>
         );
@@ -540,35 +540,35 @@ export default function CustomersPage() {
       {/* Summary Cards */}
       {result?.summary && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 lg:gap-5 mb-6">
-          <Card className="hover:shadow-card-hover transition-shadow">
+          <Card className="hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 border-l-[3px] border-l-primary">
             <CardContent className="p-5">
               <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ลูกค้าทั้งหมด</div>
               <div className="text-2xl font-bold text-foreground">{result.summary.totalCustomers.toLocaleString()}</div>
             </CardContent>
           </Card>
-          <Card className="hover:shadow-card-hover transition-shadow">
+          <Card className="hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 border-l-[3px] border-l-success">
             <CardContent className="p-5">
               <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">มีสัญญา Active</div>
               <div className="text-2xl font-bold text-success">{result.summary.withActiveContract.toLocaleString()}</div>
             </CardContent>
           </Card>
-          <Card className="hover:shadow-card-hover transition-shadow">
+          <Card className="hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 border-l-[3px] border-l-destructive">
             <CardContent className="p-5">
               <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ค้างชำระ</div>
               <div className={`text-2xl font-bold ${result.summary.withOverdue > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>{result.summary.withOverdue.toLocaleString()}</div>
             </CardContent>
           </Card>
-          <Card className="hover:shadow-card-hover transition-shadow">
+          <Card className="hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 border-l-[3px] border-l-info">
             <CardContent className="p-5">
               <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เพิ่มเดือนนี้</div>
-              <div className="text-2xl font-bold text-success">{result.summary.newThisMonth.toLocaleString()}</div>
+              <div className="text-2xl font-bold text-info">{result.summary.newThisMonth.toLocaleString()}</div>
             </CardContent>
           </Card>
         </div>
       )}
 
       {/* Filters */}
-      <div className="bg-card rounded-lg border border-border/60 p-4 mb-6">
+      <div className="bg-card rounded-xl border border-border/60 p-4 mb-6 shadow-sm">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
           <input
             type="text"
@@ -624,7 +624,7 @@ export default function CustomersPage() {
       </div>
 
       {/* Sorting Controls */}
-      <div className="bg-card rounded-lg border p-3 mb-4 flex items-center gap-2 text-sm">
+      <div className="bg-card rounded-xl border border-border/60 p-3 mb-4 flex items-center gap-2 text-sm shadow-sm">
         <span className="text-muted-foreground">เรียงลำดับ:</span>
         <select
           value={sortBy}

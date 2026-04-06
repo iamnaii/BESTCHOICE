@@ -32,25 +32,25 @@ export default function PaymentSummary({
         <div>
           {/* Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 lg:gap-5 mb-6">
-            <Card className="hover:shadow-card-hover transition-shadow">
+            <Card className="hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 border-l-[3px] border-l-primary">
               <CardContent className="p-5">
                 <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">จำนวนรายการ</div>
                 <div className="text-2xl font-bold">{summary.totalPayments}</div>
               </CardContent>
             </Card>
-            <Card className="hover:shadow-card-hover transition-shadow">
+            <Card className="hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 border-l-[3px] border-l-success">
               <CardContent className="p-5">
                 <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ยอดรวม</div>
                 <div className="text-2xl font-bold text-success">{summary.totalAmount.toLocaleString()} ฿</div>
               </CardContent>
             </Card>
-            <Card className="hover:shadow-card-hover transition-shadow">
+            <Card className="hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 border-l-[3px] border-l-destructive">
               <CardContent className="p-5">
                 <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ค่าปรับรวม</div>
                 <div className="text-2xl font-bold text-destructive">{summary.totalLateFees.toLocaleString()} ฿</div>
               </CardContent>
             </Card>
-            <Card className="hover:shadow-card-hover transition-shadow">
+            <Card className="hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 border-l-[3px] border-l-info">
               <CardContent className="p-5">
                 <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">แยกตามวิธี</div>
                 {Object.entries(summary.byMethod).map(([method, amount]) => (

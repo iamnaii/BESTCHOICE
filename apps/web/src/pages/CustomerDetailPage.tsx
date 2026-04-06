@@ -76,10 +76,10 @@ const statusLabels: Record<string, { label: string; className: string }> = {
   ACTIVE: { label: 'ผ่อนอยู่', className: 'bg-success/10 text-success dark:bg-success/15' },
   OVERDUE: { label: 'ค้างชำระ', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
   DEFAULT: { label: 'ผิดนัด', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
-  EARLY_PAYOFF: { label: 'ปิดก่อน', className: 'bg-primary-100 text-primary-700' },
+  EARLY_PAYOFF: { label: 'ปิดก่อน', className: 'bg-primary/10 text-primary dark:bg-primary/15' },
   COMPLETED: { label: 'ครบ', className: 'bg-success/10 text-success dark:bg-success/15' },
-  EXCHANGED: { label: 'เปลี่ยนเครื่อง', className: 'bg-primary-100 text-primary-700' },
-  CLOSED_BAD_DEBT: { label: 'หนี้สูญ', className: 'bg-red-200 text-destructive' },
+  EXCHANGED: { label: 'เปลี่ยนเครื่อง', className: 'bg-info/10 text-info dark:bg-info/15' },
+  CLOSED_BAD_DEBT: { label: 'หนี้สูญ', className: 'bg-destructive/15 text-destructive dark:bg-destructive/20' },
 };
 
 interface CreditCheckItem {
@@ -349,7 +349,7 @@ export default function CustomerDetailPage() {
     { key: 'product', label: 'สินค้า', render: (c: CustomerDetail['contracts'][0]) => <span className="text-sm">{c.product.brand} {c.product.model}</span> },
     { key: 'status', label: 'สถานะ', render: (c: CustomerDetail['contracts'][0]) => {
       const s = statusLabels[c.status] || { label: c.status, className: 'bg-muted' };
-      return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.className}`}>{s.label}</span>;
+      return <span className={`px-2 py-0.5 rounded-md text-xs font-medium ${s.className}`}>{s.label}</span>;
     }},
     { key: 'monthlyPayment', label: 'ค่างวด', render: (c: CustomerDetail['contracts'][0]) => <span className="text-sm">{parseFloat(c.monthlyPayment).toLocaleString()} ฿/เดือน</span> },
     { key: 'branch', label: 'สาขา', render: (c: CustomerDetail['contracts'][0]) => <span className="text-xs">{c.branch.name}</span> },
@@ -515,7 +515,7 @@ export default function CustomerDetailPage() {
           <CardContent>
           <div className="flex flex-col gap-5 lg:gap-7.5">
             {refs.map((ref, idx) => (
-              <div key={idx} className="border border-border rounded-lg p-3">
+              <div key={idx} className="border border-border/60 rounded-xl p-4 bg-muted/30">
                 <div className="text-xs font-medium text-muted-foreground mb-2">บุคคลอ้างอิง {idx + 1}</div>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   <Info label="ชื่อ" value={[ref.prefix, ref.firstName, ref.lastName].filter(Boolean).join(' ')} />
@@ -601,7 +601,7 @@ export default function CustomerDetailPage() {
         <CardContent>
 
         {/* Upload new credit check */}
-        <div className="bg-muted rounded-lg p-4 mb-4 space-y-3">
+        <div className="bg-muted/60 rounded-xl p-4 mb-4 space-y-3 border border-border/40">
           <p className="text-xs text-muted-foreground">อัปโหลด Statement ธนาคารย้อนหลัง 3 เดือน เพื่อเช็คเครดิตก่อนทำสัญญา</p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
@@ -622,10 +622,10 @@ export default function CustomerDetailPage() {
             {creditChecks.map((cc) => {
               const cs = creditStatusLabels[cc.status] || { label: cc.status, className: 'bg-muted' };
               return (
-                <div key={cc.id} className="border rounded-lg p-4 space-y-2">
+                <div key={cc.id} className="border border-border/60 rounded-xl p-4 space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cs.className}`}>{cs.label}</span>
+                      <span className={`px-2 py-0.5 rounded-md text-xs font-medium ${cs.className}`}>{cs.label}</span>
                       {cc.bankName && <span className="text-xs text-muted-foreground">ธนาคาร: {cc.bankName}</span>}
                       <span className="text-xs text-muted-foreground">{formatDateShort(cc.createdAt)}</span>
                       {cc.contract && <span className="text-xs text-primary">สัญญา: {cc.contract.contractNumber}</span>}

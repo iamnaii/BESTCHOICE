@@ -380,12 +380,12 @@ export default function StockTransfersPage() {
           </div>
 
           {loadingTransfers ? (
-            <div className="rounded-lg border p-8 text-center text-muted-foreground">
+            <div className="rounded-xl border border-border/60 p-8 text-center text-muted-foreground">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-3"></div>
               กำลังโหลด...
             </div>
           ) : batchGroups.length === 0 ? (
-            <div className="rounded-lg border p-8 text-center text-muted-foreground">
+            <div className="rounded-xl border border-border/60 p-8 text-center text-muted-foreground">
               {statusFilter === 'PENDING' ? 'ไม่มีรายการรอจัดส่ง'
                 : statusFilter === 'IN_TRANSIT' ? 'ไม่มีรายการระหว่างโอนสินค้า'
                 : 'ไม่พบรายการโอน'}
@@ -396,7 +396,7 @@ export default function StockTransfersPage() {
                 const isExpanded = expandedBatches.has(batch.batchKey);
                 const s = transferStatusLabels[batch.status] || { label: batch.status, className: 'bg-muted text-foreground' };
                 return (
-                  <div key={batch.batchKey} className="rounded-lg border border-border overflow-hidden">
+                  <div key={batch.batchKey} className="rounded-xl border border-border/60 overflow-hidden shadow-card">
                     {/* Batch Header */}
                     <button
                       onClick={() => toggleBatch(batch.batchKey)}
@@ -544,11 +544,11 @@ export default function StockTransfersPage() {
               {incomingBatchGroups.map((batch) => {
                 const isExpanded = expandedIncoming.has(batch.batchKey);
                 return (
-                  <div key={batch.batchKey} className="rounded-lg border border-yellow-200 overflow-hidden">
+                  <div key={batch.batchKey} className="rounded-lg border border-warning/20 overflow-hidden">
                     {/* Batch Header */}
                     <button
                       onClick={() => toggleIncoming(batch.batchKey)}
-                      className="w-full px-4 py-3 flex items-center gap-4 hover:bg-yellow-50 transition-colors text-left"
+                      className="w-full px-4 py-3 flex items-center gap-4 hover:bg-warning/5 dark:bg-warning/10 transition-colors text-left"
                     >
                       <svg
                         className={`w-4 h-4 text-muted-foreground transition-transform flex-shrink-0 ${isExpanded ? 'rotate-90' : ''}`}
@@ -583,19 +583,19 @@ export default function StockTransfersPage() {
 
                     {/* Expanded Product List */}
                     {isExpanded && (
-                      <div className="border-t border-yellow-100">
+                      <div className="border-t border-warning/10">
                         <table className="w-full text-sm">
                           <thead>
-                            <tr className="bg-yellow-50">
+                            <tr className="bg-warning/5 dark:bg-warning/10">
                               <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground w-8">#</th>
                               <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">สินค้า</th>
                               <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">IMEI / S/N</th>
                               <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">สี / ความจุ</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-yellow-50">
+                          <tbody className="divide-y divide-warning/10">
                             {batch.items.map((t, idx) => (
-                              <tr key={t.id} className="hover:bg-yellow-50">
+                              <tr key={t.id} className="hover:bg-warning/5 dark:bg-warning/10">
                                 <td className="px-4 py-2 text-xs text-muted-foreground">{idx + 1}</td>
                                 <td className="px-4 py-2">
                                   <span className="font-medium text-foreground">
@@ -613,7 +613,7 @@ export default function StockTransfersPage() {
                           </tbody>
                         </table>
                         {batch.trackingNote && (
-                          <div className="px-4 py-2 bg-yellow-50 text-xs text-primary">
+                          <div className="px-4 py-2 bg-warning/5 dark:bg-warning/10 text-xs text-primary">
                             หมายเหตุจัดส่ง: {batch.trackingNote}
                           </div>
                         )}
@@ -646,7 +646,7 @@ export default function StockTransfersPage() {
           {historyList.length === 0 ? (
             <div className="text-center py-10 text-muted-foreground text-sm">ยังไม่มีประวัติการรับ</div>
           ) : (
-            <div className="rounded-lg border border-border overflow-hidden">
+            <div className="rounded-xl border border-border/60 overflow-hidden shadow-card">
               <table className="w-full text-sm">
                 <thead className="bg-muted">
                   <tr>
@@ -697,7 +697,7 @@ export default function StockTransfersPage() {
                   <h3 className="text-lg font-bold text-foreground">ใบโอนสินค้า</h3>
                   <p className="text-sm text-muted-foreground font-mono mt-0.5">{first.batchNumber || '-'}</p>
                 </div>
-                <span className="px-3 py-1 bg-primary-100 text-primary-700 rounded-full text-sm font-medium">
+                <span className="px-3 py-1 bg-primary/10 text-primary rounded-full text-sm font-medium">
                   {slipBatchItems.length} รายการ
                 </span>
               </div>
@@ -760,9 +760,9 @@ export default function StockTransfersPage() {
 
               {/* Notes */}
               {(first.notes || first.trackingNote) && (
-                <div className="bg-primary-50 rounded-lg p-3">
+                <div className="bg-primary/5 dark:bg-primary/10 rounded-xl p-3">
                   {first.notes && <div className="text-sm text-foreground">หมายเหตุ: {first.notes}</div>}
-                  {first.trackingNote && <div className="text-sm text-primary-700">หมายเหตุจัดส่ง: {first.trackingNote}</div>}
+                  {first.trackingNote && <div className="text-sm text-primary">หมายเหตุจัดส่ง: {first.trackingNote}</div>}
                 </div>
               )}
 

@@ -202,7 +202,7 @@ export default function ContractsPage() {
       render: (c: Contract) => (
         <div>
           <span className="text-sm">{c.product.brand} {c.product.model}</span>
-          <span className="ml-1 text-2xs px-1 py-0.5 bg-muted rounded">
+          <span className="ml-1 text-2xs px-1.5 py-0.5 bg-muted rounded-md">
             {c.product.category === 'PHONE_NEW' ? 'มือ1' : c.product.category === 'PHONE_USED' ? 'มือ2' : c.product.category}
           </span>
         </div>
@@ -233,7 +233,7 @@ export default function ContractsPage() {
       label: 'สถานะ',
       render: (c: Contract) => {
         const s = statusLabels[c.status] || { label: c.status, className: 'bg-muted' };
-        return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.className}`}>{s.label}</span>;
+        return <span className={`px-2 py-0.5 rounded-md text-xs font-medium ${s.className}`}>{s.label}</span>;
       },
     },
     {
@@ -305,25 +305,25 @@ export default function ContractsPage() {
       {/* Summary Cards — animated + dark mode friendly */}
       {summary && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 lg:gap-5 mb-6">
-          <Card className="hover:shadow-card-hover transition-shadow">
+          <Card className="hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 border-l-[3px] border-l-primary">
             <CardContent className="p-5">
               <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สัญญาทั้งหมด</div>
               <AnimatedCounter value={summary.totalContracts} className="text-2xl font-bold" />
             </CardContent>
           </Card>
-          <Card className="hover:shadow-card-hover transition-shadow">
+          <Card className="hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 border-l-[3px] border-l-success">
             <CardContent className="p-5">
               <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สัญญาอยู่</div>
               <AnimatedCounter value={summary.activeContracts} className="text-2xl font-bold text-success" />
             </CardContent>
           </Card>
-          <Card className="hover:shadow-card-hover transition-shadow">
+          <Card className="hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 border-l-[3px] border-l-destructive">
             <CardContent className="p-5">
               <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ค้างชำระ</div>
               <AnimatedCounter value={summary.overdueContracts} className="text-2xl font-bold text-destructive" />
             </CardContent>
           </Card>
-          <Card className="hover:shadow-card-hover transition-shadow">
+          <Card className="hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 border-l-[3px] border-l-warning">
             <CardContent className="p-5">
               <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">มูลค่าพอร์ตโฟลิโอ</div>
               <AnimatedCounter value={summary.portfolioValue} suffix=" ฿" className="text-2xl font-bold text-primary" />
@@ -403,7 +403,7 @@ export default function ContractsPage() {
 
       {/* Date Range Picker */}
       {showDatePicker && (
-        <div className="flex gap-3 mb-4 p-4 bg-muted rounded-lg">
+        <div className="flex gap-3 mb-4 p-4 bg-muted/60 rounded-xl border border-border/40">
           <div className="flex-1">
             <label className="text-xs text-muted-foreground block mb-1">วันเริ่มต้น</label>
             <ThaiDateInput

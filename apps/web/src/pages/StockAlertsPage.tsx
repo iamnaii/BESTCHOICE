@@ -348,7 +348,7 @@ export default function StockAlertsPage() {
       render: (a: StockAlert) => {
         const styles: Record<string, string> = {
           ACTIVE: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
-          PO_CREATED: 'bg-primary-100 text-primary-700',
+          PO_CREATED: 'bg-primary/10 text-primary dark:bg-primary/15',
           RESOLVED: 'bg-success/10 text-success dark:bg-success/15',
         };
         const labels: Record<string, string> = {

@@ -67,7 +67,7 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
           {/* Row 1: Action Required + Stock Turnover */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:gap-7.5">
             {/* Action Required */}
-            <div className="rounded-lg border p-5">
+            <div className="rounded-xl border border-border/60 p-5 shadow-card">
               <SectionTitle>รอดำเนินการ ({actionTotal})</SectionTitle>
               <div className="grid grid-cols-2 gap-3">
                 {dashboard.actionRequired.inspection > 0 && (
@@ -83,31 +83,31 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
                     <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary text-lg font-bold">
                       {dashboard.actionRequired.photoPending}
                     </div>
-                    <div className="text-sm text-primary-700">รอถ่ายรูป</div>
+                    <div className="text-sm text-primary">รอถ่ายรูป</div>
                   </div>
                 )}
                 {dashboard.actionRequired.pendingTransfers > 0 && (
-                  <div className="flex items-center gap-3 p-3 bg-primary-50 rounded-lg">
-                    <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center text-primary text-lg font-bold">
+                  <div className="flex items-center gap-3 p-3 bg-primary/5 dark:bg-primary/10 rounded-xl">
+                    <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary text-lg font-bold">
                       {dashboard.actionRequired.pendingTransfers}
                     </div>
-                    <div className="text-sm text-primary-700">รอยืนยันโอน</div>
+                    <div className="text-sm text-primary">รอยืนยันโอน</div>
                   </div>
                 )}
                 {dashboard.actionRequired.repossessed > 0 && (
-                  <div className="flex items-center gap-3 p-3 bg-destructive/5 dark:bg-destructive/10 rounded-lg">
-                    <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center text-red-600 text-lg font-bold">
+                  <div className="flex items-center gap-3 p-3 bg-destructive/5 dark:bg-destructive/10 rounded-xl">
+                    <div className="w-10 h-10 bg-destructive/10 rounded-xl flex items-center justify-center text-destructive text-lg font-bold">
                       {dashboard.actionRequired.repossessed}
                     </div>
                     <div className="text-sm text-destructive">ยึดคืน รอปรับสภาพ</div>
                   </div>
                 )}
                 {dashboard.actionRequired.agingOver90 > 0 && (
-                  <div className="flex items-center gap-3 p-3 bg-orange-50 rounded-lg">
-                    <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center text-orange-600 text-lg font-bold">
+                  <div className="flex items-center gap-3 p-3 bg-warning/5 dark:bg-warning/10 rounded-xl">
+                    <div className="w-10 h-10 bg-warning/10 rounded-xl flex items-center justify-center text-warning text-lg font-bold">
                       {dashboard.actionRequired.agingOver90}
                     </div>
-                    <div className="text-sm text-orange-700">ค้างสต๊อค 90+ วัน</div>
+                    <div className="text-sm text-warning">ค้างสต๊อค 90+ วัน</div>
                   </div>
                 )}
                 {actionTotal === 0 && (
@@ -117,7 +117,7 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
             </div>
 
             {/* Stock Turnover */}
-            <div className="rounded-lg border p-5">
+            <div className="rounded-xl border border-border/60 p-5 shadow-card">
               <SectionTitle>อัตราหมุนเวียนสต๊อค</SectionTitle>
               <div className="grid grid-cols-2 gap-4">
                 <StatCard label="อายุเฉลี่ยในสต๊อค" value={`${dashboard.stockTurnover.avgDaysInStock} วัน`} accent="border-l-primary-500" />
@@ -129,13 +129,13 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
           </div>
 
           {/* Row 2: Stock Aging */}
-          <div className="rounded-lg border p-5">
+          <div className="rounded-xl border border-border/60 p-5 shadow-card">
             <SectionTitle>อายุสต๊อค (Stock Aging)</SectionTitle>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {dashboard.stockAging.map((bucket, i) => {
                 const colors = ['border-l-green-500', 'border-l-yellow-500', 'border-l-orange-500', 'border-l-red-500'];
                 return (
-                  <div key={bucket.label} className={`bg-muted rounded-lg p-4 border-l-4 ${colors[i]}`}>
+                  <div key={bucket.label} className={`bg-muted rounded-xl p-4 border-l-4 ${colors[i]}`}>
                     <div className="text-sm font-medium text-foreground">{bucket.label}</div>
                     <div className="text-2xl font-bold text-foreground mt-1">{bucket.count} <span className="text-sm font-normal text-muted-foreground">ชิ้น</span></div>
                     <div className="text-xs text-muted-foreground mt-1">{bucket.value.toLocaleString()} ฿</div>
@@ -148,7 +148,7 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
           {/* Row 3: Value by Status + Stock Movement */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:gap-7.5">
             {/* Value by Status */}
-            <div className="rounded-lg border p-5">
+            <div className="rounded-xl border border-border/60 p-5 shadow-card">
               <SectionTitle>มูลค่าสต๊อคตามสถานะ</SectionTitle>
               <div className="space-y-2">
                 {dashboard.valueByStatus.map((item) => {
@@ -175,7 +175,7 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
             </div>
 
             {/* Stock Movement */}
-            <div className="rounded-lg border p-5">
+            <div className="rounded-xl border border-border/60 p-5 shadow-card">
               <SectionTitle>การเคลื่อนไหวสต๊อค (6 เดือน)</SectionTitle>
               <div className="space-y-3">
                 <div className="flex items-center gap-4 text-xs text-muted-foreground mb-2">
@@ -209,7 +209,7 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
           {/* Row 4: Category + Brand + Color + Storage Breakdown */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 lg:gap-7.5">
             {/* By Category */}
-            <div className="rounded-lg border p-5">
+            <div className="rounded-xl border border-border/60 p-5 shadow-card">
               <SectionTitle>ตามประเภท</SectionTitle>
               <div className="space-y-2">
                 {dashboard.byCategory.map((item) => (
@@ -218,7 +218,7 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
                     label={categoryLabels[item.name] || item.name}
                     count={item.count}
                     total={dashboard.stockTurnover.currentStock}
-                    color="bg-primary-400"
+                    color="bg-primary"
                   />
                 ))}
                 {dashboard.byCategory.length === 0 && <div className="text-sm text-muted-foreground text-center py-2">-</div>}
@@ -226,7 +226,7 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
             </div>
 
             {/* By Brand */}
-            <div className="rounded-lg border p-5">
+            <div className="rounded-xl border border-border/60 p-5 shadow-card">
               <SectionTitle>ตามแบรนด์</SectionTitle>
               <div className="space-y-2">
                 {dashboard.byBrand.slice(0, 8).map((item) => (
@@ -235,7 +235,7 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
                     label={item.name}
                     count={item.count}
                     total={dashboard.stockTurnover.currentStock}
-                    color="bg-primary-400"
+                    color="bg-primary"
                   />
                 ))}
                 {dashboard.byBrand.length === 0 && <div className="text-sm text-muted-foreground text-center py-2">-</div>}
@@ -243,7 +243,7 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
             </div>
 
             {/* By Color */}
-            <div className="rounded-lg border p-5">
+            <div className="rounded-xl border border-border/60 p-5 shadow-card">
               <SectionTitle>ตามสี</SectionTitle>
               <div className="space-y-2">
                 {dashboard.byColor.slice(0, 8).map((item) => (
@@ -260,7 +260,7 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
             </div>
 
             {/* By Storage */}
-            <div className="rounded-lg border p-5">
+            <div className="rounded-xl border border-border/60 p-5 shadow-card">
               <SectionTitle>ตามความจุ</SectionTitle>
               <div className="space-y-2">
                 {dashboard.byStorage.slice(0, 8).map((item) => (
@@ -279,7 +279,7 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
 
           {/* Row 5: Margin Overview -- Owner/Manager only */}
           {isManager && (
-            <div className="rounded-lg border p-5">
+            <div className="rounded-xl border border-border/60 p-5 shadow-card">
               <SectionTitle>กำไรเฉลี่ย (Margin Overview) - สินค้าพร้อมขาย</SectionTitle>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <StatCard
@@ -311,7 +311,7 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
           {/* Row 7: Top Sellers + Slow Movers */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:gap-7.5">
             {/* Top Sellers */}
-            <div className="rounded-lg border p-5">
+            <div className="rounded-xl border border-border/60 p-5 shadow-card">
               <SectionTitle>สินค้าขายดี (6 เดือนล่าสุด)</SectionTitle>
               {dashboard.topSellers.length > 0 ? (
                 <div className="space-y-2">
@@ -336,7 +336,7 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
             </div>
 
             {/* Slow Movers */}
-            <div className="rounded-lg border p-5">
+            <div className="rounded-xl border border-border/60 p-5 shadow-card">
               <SectionTitle>สินค้าค้างสต๊อคนานสุด</SectionTitle>
               {dashboard.slowMovers.length > 0 ? (
                 <div className="space-y-2">
@@ -366,7 +366,7 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
       )}
 
       {!dashboard && (
-        <div className="rounded-lg border p-8 text-center text-muted-foreground">
+        <div className="rounded-xl border border-border/60 p-8 text-center text-muted-foreground">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-3"></div>
           กำลังโหลด Dashboard...
         </div>

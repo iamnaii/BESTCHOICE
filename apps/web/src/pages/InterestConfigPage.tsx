@@ -262,7 +262,7 @@ export default function InterestConfigPage() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div>
                     <div className="text-xs text-muted-foreground">ดอกเบี้ย/เดือน</div>
-                    <div className="text-lg font-bold text-primary-700">{defaults['interest_rate'] || '-'}</div>
+                    <div className="text-lg font-bold text-primary">{defaults['interest_rate'] || '-'}</div>
                   </div>
                   <div>
                     <div className="text-xs text-muted-foreground">ดาวน์ขั้นต่ำ</div>
@@ -343,7 +343,7 @@ export default function InterestConfigPage() {
                     </div>
                     <div className="flex flex-wrap gap-1 mb-3">
                       {config.productCategories.map((cat) => (
-                        <span key={cat} className="px-2 py-0.5 bg-primary-100 text-primary-700 rounded-full text-xs font-medium">
+                        <span key={cat} className="px-2 py-0.5 bg-primary/10 text-primary dark:bg-primary/15 rounded-full text-xs font-medium">
                           {getCategoryLabel(cat)}
                         </span>
                       ))}
@@ -351,7 +351,7 @@ export default function InterestConfigPage() {
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                       <div>
                         <div className="text-xs text-muted-foreground">ดอกเบี้ย</div>
-                        <div className="text-lg font-bold text-primary-700">{(parseFloat(config.interestRate) * 100).toFixed(1)}%</div>
+                        <div className="text-lg font-bold text-primary">{(parseFloat(config.interestRate) * 100).toFixed(1)}%</div>
                       </div>
                       <div>
                         <div className="text-xs text-muted-foreground">ดาวน์ขั้นต่ำ</div>
@@ -385,7 +385,7 @@ export default function InterestConfigPage() {
                         <div><span className="text-muted-foreground">ค่าคอม:</span> <span className="font-medium">{sim.commission.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span></div>
                         <div><span className="text-muted-foreground">VAT:</span> <span className="font-medium">{sim.vatAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span></div>
                         <div><span className="text-muted-foreground">รวมจัดไฟแนนซ์:</span> <span className="font-medium">{sim.total.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span></div>
-                        <div className="col-span-2"><span className="text-muted-foreground">ค่างวด/เดือน:</span> <span className="font-bold text-primary-700">{sim.monthly.toLocaleString()} ฿</span></div>
+                        <div className="col-span-2"><span className="text-muted-foreground">ค่างวด/เดือน:</span> <span className="font-bold text-primary">{sim.monthly.toLocaleString()} ฿</span></div>
                       </div>
                     </div>
                   </div>
@@ -552,7 +552,7 @@ export default function InterestConfigPage() {
                       <div>VAT: <span className="font-medium">{vatAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span></div>
                       <div>รวมจัดไฟแนนซ์: <span className="font-medium">{total.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span></div>
                       <div className="col-span-2 pt-1 border-t border-border">
-                        <span className="text-muted-foreground">ค่างวด/เดือน:</span> <span className="font-bold text-primary-700">{monthly.toLocaleString()} ฿</span>
+                        <span className="text-muted-foreground">ค่างวด/เดือน:</span> <span className="font-bold text-primary">{monthly.toLocaleString()} ฿</span>
                       </div>
                     </div>
                   );

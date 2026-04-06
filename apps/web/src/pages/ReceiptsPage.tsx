@@ -108,7 +108,7 @@ function ReceiptsPage() {
       render: (r: Receipt) => {
         const isCredit = r.receiptType === 'CREDIT_NOTE';
         return (
-          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${isCredit ? 'bg-warning/10 text-warning dark:bg-warning/15' : 'bg-blue-50 text-blue-700'}`}>
+          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${isCredit ? 'bg-warning/10 text-warning dark:bg-warning/15' : 'bg-primary/10 text-primary dark:bg-primary/15'}`}>
             {receiptTypeLabels[r.receiptType] || r.receiptType}
           </span>
         );

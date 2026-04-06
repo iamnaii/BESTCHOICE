@@ -42,12 +42,12 @@ const statusColors: Record<string, string> = {
   REPOSSESSED: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
   UNDER_REPAIR: 'bg-warning/10 text-warning dark:bg-warning/15',
   READY_FOR_SALE: 'bg-success/10 text-success dark:bg-success/15',
-  SOLD: 'bg-primary-100 text-primary-700',
+  SOLD: 'bg-primary/10 text-primary dark:bg-primary/15',
 };
 
 const gradeColors: Record<string, string> = {
   A: 'bg-success/10 text-success dark:bg-success/15',
-  B: 'bg-primary-100 text-primary-700',
+  B: 'bg-primary/10 text-primary dark:bg-primary/15',
   C: 'bg-warning/10 text-warning dark:bg-warning/15',
   D: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
 };

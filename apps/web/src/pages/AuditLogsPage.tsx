@@ -33,13 +33,13 @@ interface AuditStats {
 
 const actionColors: Record<string, string> = {
   POST: 'bg-success/10 text-success dark:bg-success/15',
-  PUT: 'bg-primary-100 text-primary-700',
+  PUT: 'bg-primary/10 text-primary dark:bg-primary/15',
   PATCH: 'bg-warning/10 text-warning dark:bg-warning/15',
   DELETE: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
-  EXCHANGE: 'bg-primary-100 text-primary-700',
+  EXCHANGE: 'bg-primary/10 text-primary dark:bg-primary/15',
   REPOSSESSION: 'bg-warning/10 text-warning dark:bg-warning/15',
   CREATE_CALL_LOG: 'bg-success/10 text-success dark:bg-success/15',
-  STATUS_CHANGE: 'bg-indigo-100 text-indigo-700',
+  STATUS_CHANGE: 'bg-primary/10 text-primary dark:bg-primary/15',
 };
 
 const actionLabels: Record<string, string> = {

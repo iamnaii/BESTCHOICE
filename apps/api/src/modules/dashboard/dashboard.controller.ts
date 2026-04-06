@@ -10,7 +10,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 @ApiBearerAuth('JWT')
 @Controller('dashboard')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+@Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
 export class DashboardController {
   constructor(private dashboardService: DashboardService) {}
 
@@ -60,7 +60,7 @@ export class DashboardController {
   }
 
   @Get('branch-comparison')
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getBranchComparison() {
     return this.dashboardService.getBranchComparison();
   }

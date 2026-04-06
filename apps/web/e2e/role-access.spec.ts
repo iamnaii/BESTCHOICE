@@ -8,6 +8,7 @@ import { gotoWithRetry } from './helpers/navigation';
  * Uses real seeded accounts for each role:
  *   OWNER: admin@bestchoice.com
  *   BRANCH_MANAGER: manager.ladprao@bestchoice.com
+ *   FINANCE_MANAGER: finance@bestchoice.com
  *   SALES: sales1@bestchoice.com
  *   ACCOUNTANT: accountant@bestchoice.com
  *
@@ -150,6 +151,60 @@ test.describe('ACCOUNTANT role — finance access', () => {
 
   for (const { url, name } of deniedPages) {
     test(`ACCOUNTANT denied access to ${name} (${url})`, async ({ page }) => {
+      await gotoWithRetry(page, url);
+      const denied = await isAccessDenied(page, url);
+      expect(denied).toBeTruthy();
+    });
+  }
+});
+
+/* ================================================================
+   FINANCE_MANAGER role — finance + reports + debt tracking
+   ================================================================ */
+test.describe('FINANCE_MANAGER role — finance access', () => {
+  test.beforeEach(async ({ page }) => {
+    await loginAsRole(page, 'FINANCE_MANAGER');
+  });
+
+  // FINANCE_MANAGER CAN access:
+  const allowedPages = [
+    { url: '/', name: 'Dashboard' },
+    { url: '/customers', name: 'ลูกค้า' },
+    { url: '/contracts', name: 'สัญญา' },
+    { url: '/payments', name: 'การชำระเงิน' },
+    { url: '/expenses', name: 'รายจ่าย' },
+    { url: '/receipts', name: 'ใบเสร็จ' },
+    { url: '/reports', name: 'รายงาน' },
+    { url: '/profit-loss', name: 'งบกำไรขาดทุน' },
+    { url: '/finance-receivable', name: 'เงินรับจากไฟแนนซ์' },
+    { url: '/financial-audit', name: 'Financial Audit' },
+    { url: '/overdue', name: 'ติดตามหนี้' },
+    { url: '/exchange', name: 'เปลี่ยนเครื่อง' },
+    { url: '/repossessions', name: 'ยึดคืน' },
+    { url: '/document-dashboard', name: 'สถานะเอกสาร' },
+    { url: '/payments/import-csv', name: 'นำเข้าชำระเงิน (CSV)' },
+    { url: '/stock', name: 'คลังสินค้า (ดูอย่างเดียว)' },
+  ];
+
+  for (const { url, name } of allowedPages) {
+    test(`FINANCE_MANAGER can access ${name} (${url})`, async ({ page }) => {
+      await gotoWithRetry(page, url);
+      const denied = await isAccessDenied(page, url);
+      expect(denied).toBeFalsy();
+    });
+  }
+
+  // FINANCE_MANAGER CANNOT access:
+  const deniedPages = [
+    { url: '/settings', name: 'ตั้งค่าระบบ' },
+    { url: '/users', name: 'จัดการผู้ใช้' },
+    { url: '/branches', name: 'จัดการสาขา' },
+    { url: '/audit-logs', name: 'Audit Logs' },
+    { url: '/pos', name: 'POS ขายสินค้า' },
+  ];
+
+  for (const { url, name } of deniedPages) {
+    test(`FINANCE_MANAGER denied access to ${name} (${url})`, async ({ page }) => {
       await gotoWithRetry(page, url);
       const denied = await isAccessDenied(page, url);
       expect(denied).toBeTruthy();

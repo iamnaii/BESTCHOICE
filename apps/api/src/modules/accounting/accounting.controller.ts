@@ -29,7 +29,7 @@ export class AccountingController {
   ) {}
 
   @Post()
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   create(
     @Body() dto: CreateExpenseDto,
     @Request() req: { user: { id: string } },
@@ -38,7 +38,7 @@ export class AccountingController {
   }
 
   @Get()
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   findAll(
     @Query('branchId') branchId?: string,
     @Query('accountType') accountType?: ExpenseAccountType,
@@ -52,7 +52,7 @@ export class AccountingController {
     @Request() req?: { user: { role: string; branchId?: string } },
   ) {
     const effectiveBranchId =
-      req?.user?.role === 'OWNER' || req?.user?.role === 'ACCOUNTANT'
+      req?.user?.role === 'OWNER' || req?.user?.role === 'FINANCE_MANAGER' || req?.user?.role === 'ACCOUNTANT'
         ? branchId
         : req?.user?.branchId || branchId;
 
@@ -70,7 +70,7 @@ export class AccountingController {
   }
 
   @Get('summary')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getSummary(
     @Query('branchId') branchId?: string,
     @Query('startDate') startDate?: string,
@@ -78,7 +78,7 @@ export class AccountingController {
     @Request() req?: { user: { role: string; branchId?: string } },
   ) {
     const effectiveBranchId =
-      req?.user?.role === 'OWNER' || req?.user?.role === 'ACCOUNTANT'
+      req?.user?.role === 'OWNER' || req?.user?.role === 'FINANCE_MANAGER' || req?.user?.role === 'ACCOUNTANT'
         ? branchId
         : req?.user?.branchId || branchId;
 
@@ -86,7 +86,7 @@ export class AccountingController {
   }
 
   @Get('category-breakdown')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getCategoryBreakdown(
     @Query('branchId') branchId?: string,
     @Query('startDate') startDate?: string,
@@ -94,7 +94,7 @@ export class AccountingController {
     @Request() req?: { user: { role: string; branchId?: string } },
   ) {
     const effectiveBranchId =
-      req?.user?.role === 'OWNER' || req?.user?.role === 'ACCOUNTANT'
+      req?.user?.role === 'OWNER' || req?.user?.role === 'FINANCE_MANAGER' || req?.user?.role === 'ACCOUNTANT'
         ? branchId
         : req?.user?.branchId || branchId;
 
@@ -102,19 +102,19 @@ export class AccountingController {
   }
 
   @Get(':id')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   findOne(@Param('id') id: string) {
     return this.service.findOneExpense(id);
   }
 
   @Patch(':id')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   update(@Param('id') id: string, @Body() dto: UpdateExpenseDto) {
     return this.service.updateExpense(id, dto);
   }
 
   @Post(':id/submit')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   submitForApproval(@Param('id') id: string) {
     return this.service.submitExpenseForApproval(id);
   }
@@ -139,7 +139,7 @@ export class AccountingController {
   }
 
   @Post(':id/pay')
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   markPaid(
     @Param('id') id: string,
     @Body('paymentDate') paymentDate?: string,
@@ -181,7 +181,7 @@ export class AccountingController {
   // ============================================================
 
   @Post('bad-debt/calculate')
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   calculateProvisions(
     @Request() req: { user: { id: string } },
     @Query('branchId') branchId?: string,
@@ -190,7 +190,7 @@ export class AccountingController {
   }
 
   @Get('bad-debt/summary')
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getProvisionSummary() {
     return this.badDebtService.getProvisionSummary();
   }

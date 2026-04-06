@@ -15,7 +15,7 @@ export class ExchangeController {
   constructor(private exchangeService: ExchangeService) {}
 
   @Get('quote')
-  @Roles('OWNER', 'BRANCH_MANAGER')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
   getQuote(
     @Query('oldContractId') oldContractId: string,
     @Query('newProductId') newProductId: string,
@@ -25,7 +25,7 @@ export class ExchangeController {
   }
 
   @Post()
-  @Roles('OWNER', 'BRANCH_MANAGER')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
   executeExchange(
     @Body() dto: CreateExchangeDto,
     @CurrentUser() user: { id: string },

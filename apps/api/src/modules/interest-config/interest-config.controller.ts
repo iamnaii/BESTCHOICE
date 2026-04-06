@@ -14,19 +14,19 @@ export class InterestConfigController {
   constructor(private service: InterestConfigService) {}
 
   @Get()
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   findAll() {
     return this.service.findAll();
   }
 
   @Get('by-category/:category')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   findByCategory(@Param('category') category: string) {
     return this.service.findByCategory(category);
   }
 
   @Get(':id')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   findOne(@Param('id') id: string) {
     return this.service.findOne(id);
   }

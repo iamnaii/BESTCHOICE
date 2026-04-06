@@ -16,13 +16,13 @@ export class BranchesController {
   constructor(private branchesService: BranchesService) {}
 
   @Get()
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   findAll(@CurrentUser() user: { role: string; branchId: string | null }) {
     return this.branchesService.findAll(user);
   }
 
   @Get(':id')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   findOne(@Param('id') id: string) {
     return this.branchesService.findOne(id);
   }

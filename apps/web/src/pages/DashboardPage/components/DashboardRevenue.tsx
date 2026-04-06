@@ -67,7 +67,7 @@ export default function DashboardRevenue({
           {(userRole === 'OWNER' || userRole === 'BRANCH_MANAGER') && (
             <ShortcutCard icon={Warehouse} label="คลังสินค้า" path="/stock" color="bg-orange-500" />
           )}
-          {(userRole === 'OWNER' || userRole === 'BRANCH_MANAGER' || userRole === 'ACCOUNTANT') && (
+          {(userRole === 'OWNER' || userRole === 'BRANCH_MANAGER' || userRole === 'FINANCE_MANAGER' || userRole === 'ACCOUNTANT') && (
             <ShortcutCard icon={BarChart3} label="รายงาน" path="/reports" color="bg-cyan-500" />
           )}
         </div>
@@ -126,14 +126,14 @@ export default function DashboardRevenue({
         )}
 
         {/* Entity Profit: SHOP vs FINANCE */}
-        {entityProfitError && (userRole === 'OWNER' || userRole === 'ACCOUNTANT') && (
+        {entityProfitError && (userRole === 'OWNER' || userRole === 'FINANCE_MANAGER' || userRole === 'ACCOUNTANT') && (
           <Card>
             <CardContent className="py-6 text-center text-sm text-muted-foreground">
               ไม่สามารถโหลดข้อมูลกำไร Shop/Finance ได้
             </CardContent>
           </Card>
         )}
-        {entityProfit && !entityProfitError && (userRole === 'OWNER' || userRole === 'ACCOUNTANT') && (
+        {entityProfit && !entityProfitError && (userRole === 'OWNER' || userRole === 'FINANCE_MANAGER' || userRole === 'ACCOUNTANT') && (
           <Card>
             <CardHeader>
               <CardTitle>กำไร Shop / Finance เดือนนี้</CardTitle>

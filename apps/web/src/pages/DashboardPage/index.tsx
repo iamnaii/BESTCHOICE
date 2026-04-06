@@ -116,7 +116,7 @@ export default function DashboardPage() {
       const endDate = now.toISOString().slice(0, 10);
       return (await api.get(`/reports/entity-profit?startDate=${startDate}&endDate=${endDate}`)).data;
     },
-    enabled: user?.role === 'OWNER' || user?.role === 'ACCOUNTANT',
+    enabled: user?.role === 'OWNER' || user?.role === 'FINANCE_MANAGER' || user?.role === 'ACCOUNTANT',
     staleTime: dashboardStaleTime,
     retry: 1,
   });

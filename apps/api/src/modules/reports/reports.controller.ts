@@ -10,7 +10,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 @ApiBearerAuth('JWT')
 @Controller('reports')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+@Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
 export class ReportsController {
   constructor(private reportsService: ReportsService) {}
 
@@ -56,7 +56,7 @@ export class ReportsController {
   }
 
   @Get('comparative-pl')
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getComparativePL(
     @Query('year') year: string,
     @Query('month') month: string,
@@ -72,7 +72,7 @@ export class ReportsController {
   }
 
   @Get('balance-sheet')
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getBalanceSheet(
     @Query('asOfDate') asOfDate?: string,
     @Query('branchId') branchId?: string,
@@ -84,7 +84,7 @@ export class ReportsController {
   }
 
   @Get('cash-flow')
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getCashFlowStatement(
     @Query('startDate') startDate: string,
     @Query('endDate') endDate: string,
@@ -134,7 +134,7 @@ export class ReportsController {
   }
 
   @Get('branch-comparison')
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getBranchComparison(
     @Query('startDate') startDate: string,
     @Query('endDate') endDate: string,
@@ -171,7 +171,7 @@ export class ReportsController {
   }
 
   @Get('entity-profit')
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getEntityProfit(
     @Query('startDate') startDate: string,
     @Query('endDate') endDate: string,
@@ -182,7 +182,7 @@ export class ReportsController {
   }
 
   @Get('quarterly')
-  @Roles('OWNER', 'ACCOUNTANT', 'BRANCH_MANAGER')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'BRANCH_MANAGER')
   getQuarterly(
     @Query('year') year: string,
     @Query('quarter') quarter: string,

@@ -97,6 +97,7 @@ export class InviteService {
       BRANCH_MANAGER: 'ผู้จัดการสาขา',
       SALES: 'พนักงานขาย',
       ACCOUNTANT: 'ฝ่ายบัญชี',
+      FINANCE_MANAGER: 'ผู้จัดการการเงิน',
     };
 
     await this.emailService.sendInviteEmail(

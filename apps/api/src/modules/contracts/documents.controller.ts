@@ -23,7 +23,7 @@ export class DocumentsController {
 
   // ─── Contract Templates ──────────────────────────────
   @Get('contract-templates')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   findAllTemplates(
     @Query('type') type?: string,
     @Query('page') page?: string,
@@ -46,7 +46,7 @@ export class DocumentsController {
   }
 
   @Get('contract-templates/:id')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   findOneTemplate(@Param('id') id: string) {
     return this.documentsService.findOneTemplate(id);
   }
@@ -99,7 +99,7 @@ export class DocumentsController {
   }
 
   @Get('contracts/:id/signatures')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   getSignatures(
     @Param('id') id: string,
     @Query('page') page?: string,
@@ -126,7 +126,7 @@ export class DocumentsController {
   }
 
   @Get('contracts/:id/download-pdf')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   async downloadPdf(
     @Param('id') id: string,
     @CurrentUser() user: { id: string },
@@ -161,7 +161,7 @@ export class DocumentsController {
   }
 
   @Get('contracts/:id/documents')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   getDocuments(
     @Param('id') id: string,
     @Query('page') page?: string,
@@ -177,20 +177,20 @@ export class DocumentsController {
   }
 
   @Get('contracts/:id/preview')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   previewContract(@Param('id') id: string, @Query('templateId') templateId?: string) {
     return this.documentsService.previewContract(id, templateId);
   }
 
   @Get('documents/:id')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   getDocument(@Param('id') id: string) {
     return this.documentsService.getDocument(id);
   }
 
   // ─── Document Download ───────────────────────────────
   @Get('documents/:id/download')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   async downloadDocument(@Param('id') id: string, @Res() res: Response) {
     const { stream, filename, contentType } = await this.documentsService.getDocumentStream(id);
     res.set({
@@ -201,7 +201,7 @@ export class DocumentsController {
   }
 
   @Get('documents/:id/signed-url')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   getSignedUrl(@Param('id') id: string) {
     return this.documentsService.getDocumentSignedUrl(id);
   }

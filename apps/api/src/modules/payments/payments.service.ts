@@ -23,7 +23,7 @@ export class PaymentsService {
     contractId: string,
     user: { role: string; branchId: string | null },
   ) {
-    if (user.role === 'OWNER' || user.role === 'ACCOUNTANT') return;
+    if (user.role === 'OWNER' || user.role === 'FINANCE_MANAGER' || user.role === 'ACCOUNTANT') return;
 
     const contract = await this.prisma.contract.findUnique({
       where: { id: contractId },

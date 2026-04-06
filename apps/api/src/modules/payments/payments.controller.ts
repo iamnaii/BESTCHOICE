@@ -18,7 +18,7 @@ export class PaymentsController {
   constructor(private paymentsService: PaymentsService) {}
 
   @Get('pending')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   getPendingPayments(
     @Query('branchId') branchId?: string,
     @Query('date') date?: string,
@@ -45,7 +45,7 @@ export class PaymentsController {
   }
 
   @Get('daily-summary')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getDailySummary(
     @Query('date') date: string,
     @Query('branchId') branchId?: string,
@@ -65,7 +65,7 @@ export class PaymentsController {
   }
 
   @Get('contract/:contractId')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   @ApiOperation({ summary: 'ดูงวดชำระทั้งหมดของสัญญา' })
   async getContractPayments(
     @Param('contractId') contractId: string,
@@ -85,7 +85,7 @@ export class PaymentsController {
   }
 
   @Post('record')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT')
   @UseGuards(UserThrottlerGuard)
   @Throttle({ short: { ttl: 10000, limit: 5 } }) // Max 5 payment records per 10s per user
   @ApiOperation({ summary: 'บันทึกการชำระเงิน (งวดเดียว)' })
@@ -109,7 +109,7 @@ export class PaymentsController {
   }
 
   @Post('auto-allocate')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT')
   @UseGuards(UserThrottlerGuard)
   @Throttle({ short: { ttl: 10000, limit: 5 } }) // Max 5 auto-allocations per 10s per user
   async autoAllocatePayment(
@@ -128,13 +128,13 @@ export class PaymentsController {
   }
 
   @Get('credit-balance/:contractId')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getCreditBalance(@Param('contractId') contractId: string) {
     return this.paymentsService.getCreditBalance(contractId);
   }
 
   @Post('apply-credit/:contractId')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   async applyCreditBalance(
     @Param('contractId') contractId: string,
     @CurrentUser() user: { id: string; role: string; branchId: string | null },
@@ -144,7 +144,7 @@ export class PaymentsController {
   }
 
   @Post('import-csv')
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   @UseGuards(UserThrottlerGuard)
   @Throttle({ short: { ttl: 60000, limit: 5 } }) // Max 5 CSV imports per minute
   async importPaymentsCsv(
@@ -174,7 +174,7 @@ export class PaymentsController {
     user?: { role: string; branchId: string | null },
   ): string | undefined {
     if (!user) return requestedBranchId;
-    if (user.role === 'OWNER' || user.role === 'ACCOUNTANT') return requestedBranchId;
+    if (user.role === 'OWNER' || user.role === 'FINANCE_MANAGER' || user.role === 'ACCOUNTANT') return requestedBranchId;
     // SALES and BRANCH_MANAGER must see only their branch
     return user.branchId || requestedBranchId;
   }

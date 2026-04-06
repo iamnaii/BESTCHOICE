@@ -14,7 +14,7 @@ export class InterCompanyController {
   constructor(private interCompanyService: InterCompanyService) {}
 
   @Get()
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   findAll(
     @Query('branchId') branchId?: string,
     @Query('status') status?: string,
@@ -38,7 +38,7 @@ export class InterCompanyController {
   }
 
   @Get('profit-summary')
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getProfitSummary(
     @Query('branchId') branchId?: string,
     @Query('startDate') startDate?: string,
@@ -48,7 +48,7 @@ export class InterCompanyController {
   }
 
   @Get(':id')
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   findOne(@Param('id') id: string) {
     return this.interCompanyService.findOne(id);
   }
@@ -60,13 +60,13 @@ export class InterCompanyController {
   }
 
   @Patch(':id/confirm')
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   confirm(@Param('id') id: string) {
     return this.interCompanyService.confirmTransaction(id);
   }
 
   @Patch(':id/reconcile')
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   reconcile(@Param('id') id: string) {
     return this.interCompanyService.reconcile(id);
   }

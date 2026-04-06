@@ -26,8 +26,9 @@ import {
   Check,
   ChevronsLeft,
   ChevronsRight,
-  Inbox,
+  type LucideIcon,
 } from 'lucide-react';
+import EmptyState from '@/components/ui/EmptyState';
 import {
   Popover,
   PopoverContent,
@@ -61,6 +62,8 @@ interface DataTableProps<T> {
   data: T[];
   isLoading?: boolean;
   emptyMessage?: string;
+  emptyIcon?: LucideIcon;
+  emptyDescription?: string;
   onRowClick?: (item: T) => void;
   onRowDoubleClick?: (item: T) => void;
   pagination?: PaginationInfo;
@@ -89,6 +92,8 @@ function DataTable<T extends { id: string }>({
   data,
   isLoading,
   emptyMessage = 'ไม่พบข้อมูล',
+  emptyIcon,
+  emptyDescription,
   onRowClick,
   onRowDoubleClick,
   pagination,
@@ -356,13 +361,13 @@ function DataTable<T extends { id: string }>({
           <tbody className="divide-y divide-border/60">
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={table.getVisibleLeafColumns().length} className="px-5 py-16 text-center">
-                  <div className="flex flex-col items-center gap-3">
-                    <div className="size-12 rounded-2xl bg-muted flex items-center justify-center">
-                      <Inbox className="size-6 text-muted-foreground/50" />
-                    </div>
-                    <div className="text-sm font-medium text-muted-foreground">{emptyMessage}</div>
-                  </div>
+                <td colSpan={table.getVisibleLeafColumns().length}>
+                  <EmptyState
+                    icon={emptyIcon}
+                    title={emptyMessage}
+                    description={emptyDescription}
+                    className="py-16"
+                  />
                 </td>
               </tr>
             ) : (

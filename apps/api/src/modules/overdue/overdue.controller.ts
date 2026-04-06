@@ -15,7 +15,7 @@ export class OverdueController {
   constructor(private overdueService: OverdueService) {}
 
   @Get()
-  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT')
   findOverdue(
     @CurrentUser() user: { id: string; role: string; branchId: string | null },
     @Query('branchId') branchId?: string,
@@ -36,19 +36,19 @@ export class OverdueController {
   }
 
   @Get('summary')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getSummary(@CurrentUser() user: { role: string; branchId: string | null }) {
     return this.overdueService.getOverdueSummary(user.role, user.branchId || undefined);
   }
 
   @Get('pipeline')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getCollectionPipeline(@CurrentUser() user: { role: string; branchId: string | null }) {
     return this.overdueService.getCollectionPipelineStats(user.role, user.branchId || undefined);
   }
 
   @Get('contracts/:id/timeline')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getTimeline(@Param('id') id: string) {
     return this.overdueService.getContractTimeline(id);
   }

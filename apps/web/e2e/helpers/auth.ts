@@ -15,11 +15,12 @@ export const TEST_USER = {
  * Multi-role test accounts (all seeded with the same password).
  * Used for role-based access testing.
  */
-export type TestRole = 'OWNER' | 'BRANCH_MANAGER' | 'SALES' | 'ACCOUNTANT';
+export type TestRole = 'OWNER' | 'BRANCH_MANAGER' | 'FINANCE_MANAGER' | 'SALES' | 'ACCOUNTANT';
 
 export const ROLE_ACCOUNTS: Record<TestRole, { email: string; password: string; name: string }> = {
   OWNER: { email: 'admin@bestchoice.com', password: 'admin1234', name: 'สุรชัย เจ้าของร้าน' },
   BRANCH_MANAGER: { email: 'manager.ladprao@bestchoice.com', password: 'admin1234', name: 'วิภา ผู้จัดการลาดพร้าว' },
+  FINANCE_MANAGER: { email: 'finance@bestchoice.com', password: 'admin1234', name: 'นภา ผู้จัดการการเงิน' },
   SALES: { email: 'sales1@bestchoice.com', password: 'admin1234', name: 'สมศักดิ์ พนักงานขาย' },
   ACCOUNTANT: { email: 'accountant@bestchoice.com', password: 'admin1234', name: 'พิมพ์ใจ ฝ่ายบัญชี' },
 };

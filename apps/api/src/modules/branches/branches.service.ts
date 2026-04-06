@@ -8,7 +8,7 @@ export class BranchesService {
   constructor(private prisma: PrismaService) {}
 
   async findAll(user: { role: string; branchId: string | null }) {
-    if (user.role === 'OWNER' || user.role === 'ACCOUNTANT') {
+    if (user.role === 'OWNER' || user.role === 'FINANCE_MANAGER' || user.role === 'ACCOUNTANT') {
       return this.prisma.branch.findMany({
         orderBy: { name: 'asc' },
         include: { _count: { select: { users: true, products: true, contracts: true } } },

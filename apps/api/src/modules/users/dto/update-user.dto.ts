@@ -7,7 +7,7 @@ export class UpdateUserDto {
 
   @IsOptional()
   @IsString()
-  @IsIn(['SALES', 'BRANCH_MANAGER', 'ACCOUNTANT', 'OWNER'])
+  @IsIn(['SALES', 'BRANCH_MANAGER', 'ACCOUNTANT', 'FINANCE_MANAGER', 'OWNER'])
   role?: string;
 
   @IsOptional()

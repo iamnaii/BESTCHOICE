@@ -16,7 +16,7 @@ export class RepossessionsController {
   constructor(private repossessionsService: RepossessionsService) {}
 
   @Get()
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   findAll(
     @Query('status') status?: string,
     @Query('branchId') branchId?: string,
@@ -32,7 +32,7 @@ export class RepossessionsController {
   }
 
   @Get('profit-loss')
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getProfitLoss(
     @Query('page') page?: string,
     @Query('limit') limit?: string,
@@ -46,7 +46,7 @@ export class RepossessionsController {
   }
 
   @Get(':id')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   findOne(@Param('id') id: string) {
     return this.repossessionsService.findOne(id);
   }

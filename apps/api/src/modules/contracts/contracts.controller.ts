@@ -26,7 +26,7 @@ export class ContractsController {
   ) {}
 
   @Get()
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   findAll(
     @Query('status') status?: string,
     @Query('workflowStatus') workflowStatus?: string,
@@ -44,7 +44,7 @@ export class ContractsController {
     const parsedLimit = limit ? Math.min(parseInt(limit, 10), 200) : undefined;
 
     // BRANCH_MANAGER and below can only see contracts from their own branch
-    const effectiveBranchId = user?.role === 'OWNER'
+    const effectiveBranchId = user?.role === 'OWNER' || user?.role === 'FINANCE_MANAGER'
       ? branchId
       : (user?.branchId || branchId);
 
@@ -56,13 +56,13 @@ export class ContractsController {
   }
 
   @Get('document-dashboard')
-  @Roles('OWNER', 'BRANCH_MANAGER')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
   getDocumentDashboard(@Query('branchId') branchId?: string) {
     return this.documentService.getDocumentDashboard(branchId);
   }
 
   @Get(':id')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   findOne(
     @Param('id') id: string,
     @CurrentUser() user?: { id: string; role: string; branchId: string | null },
@@ -71,13 +71,13 @@ export class ContractsController {
   }
 
   @Get(':id/schedule')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   getSchedule(@Param('id') id: string) {
     return this.paymentService.getSchedule(id);
   }
 
   @Get(':id/early-payoff-quote')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   getEarlyPayoffQuote(@Param('id') id: string) {
     return this.paymentService.getEarlyPayoffQuote(id);
   }
@@ -113,7 +113,7 @@ export class ContractsController {
   }
 
   @Post(':id/approve')
-  @Roles('OWNER', 'BRANCH_MANAGER')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
   approve(
     @Param('id') id: string,
     @Body() dto: ReviewContractDto,
@@ -123,7 +123,7 @@ export class ContractsController {
   }
 
   @Post(':id/reject')
-  @Roles('OWNER', 'BRANCH_MANAGER')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
   reject(
     @Param('id') id: string,
     @Body() dto: RejectContractDto,
@@ -133,7 +133,7 @@ export class ContractsController {
   }
 
   @Post(':id/activate')
-  @Roles('OWNER', 'BRANCH_MANAGER')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
   async activate(
     @Param('id') id: string,
     @CurrentUser() user: { id: string; role: string; branchId: string | null },
@@ -171,7 +171,7 @@ export class ContractsController {
 
   // === QR CODE DATA: ข้อมูลสำหรับสร้าง QR Code ===
   @Get(':id/qr-data')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   getQrData(@Param('id') id: string) {
     return this.documentService.getQrData(id);
   }

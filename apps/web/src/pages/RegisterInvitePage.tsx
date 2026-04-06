@@ -7,6 +7,7 @@ import AuthLayout from '@/components/layout/AuthLayout';
 const roleLabels: Record<string, string> = {
   OWNER: 'เจ้าของร้าน',
   BRANCH_MANAGER: 'ผู้จัดการสาขา',
+  FINANCE_MANAGER: 'ผู้จัดการการเงิน',
   SALES: 'พนักงานขาย',
   ACCOUNTANT: 'ฝ่ายบัญชี',
 };

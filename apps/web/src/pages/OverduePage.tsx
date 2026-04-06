@@ -10,7 +10,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { formatDateShort } from '@/utils/formatters';
 import { exportToExcel } from '@/utils/excel.util';
-import { Download } from 'lucide-react';
+import { Download, Info } from 'lucide-react';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 
 interface OverduePayment {
   id: string;
@@ -291,17 +292,27 @@ export default function OverduePage() {
           <div className="text-xs font-medium text-muted-foreground mb-3">ขั้นตอนติดตามหนี้</div>
           <div className="flex items-center gap-2 overflow-x-auto">
             {[
-              { stage: 'REMINDER', label: 'แจ้งเตือน', color: 'bg-warning/10 text-warning border-warning/30', desc: '1-7 วัน' },
-              { stage: 'NOTICE', label: 'แจ้งค้างชำระ', color: 'bg-warning/10 text-warning border-warning/30', desc: '8-30 วัน' },
-              { stage: 'FINAL_WARNING', label: 'เตือนครั้งสุดท้าย', color: 'bg-destructive/10 text-destructive border-destructive/30', desc: '31-60 วัน' },
-              { stage: 'LEGAL_ACTION', label: 'ดำเนินคดี', color: 'bg-destructive/20 text-destructive border-destructive/50', desc: '>60 วัน' },
+              { stage: 'REMINDER', label: 'แจ้งเตือน', color: 'bg-warning/10 text-warning border-warning/30', desc: '1-7 วัน', tooltip: 'ส่ง SMS/LINE แจ้งเตือนลูกค้าว่าถึงกำหนดชำระแล้ว ยังไม่มีค่าปรับ' },
+              { stage: 'NOTICE', label: 'แจ้งค้างชำระ', color: 'bg-warning/10 text-warning border-warning/30', desc: '8-30 วัน', tooltip: 'แจ้งค้างชำระอย่างเป็นทางการ เริ่มคิดค่าปรับ 100 บาท/วัน สูงสุด 200 บาท/งวด' },
+              { stage: 'FINAL_WARNING', label: 'เตือนครั้งสุดท้าย', color: 'bg-destructive/10 text-destructive border-destructive/30', desc: '31-60 วัน', tooltip: 'เตือนครั้งสุดท้าย หากไม่ชำระจะดำเนินการยึดเครื่องและ/หรือดำเนินคดี' },
+              { stage: 'LEGAL_ACTION', label: 'ดำเนินคดี', color: 'bg-destructive/20 text-destructive border-destructive/50', desc: '>60 วัน', tooltip: 'ดำเนินการทางกฎหมาย ยึดเครื่อง หรือส่งเรื่องให้ทนายดำเนินคดี' },
             ].map((s, i) => (
               <div key={s.stage} className="flex items-center gap-2">
                 {i > 0 && <div className="text-muted-foreground">→</div>}
-                <div className={`px-3 py-1.5 rounded-lg border text-xs font-medium ${s.color}`}>
-                  <div>{s.label}</div>
-                  <div className="text-[10px] opacity-70">{s.desc}</div>
-                </div>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className={`px-3 py-1.5 rounded-lg border text-xs font-medium cursor-help ${s.color}`}>
+                      <div className="flex items-center gap-1">
+                        {s.label}
+                        <Info className="size-3 opacity-50" />
+                      </div>
+                      <div className="text-[10px] opacity-70">{s.desc}</div>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-[220px]">
+                    {s.tooltip}
+                  </TooltipContent>
+                </Tooltip>
               </div>
             ))}
           </div>

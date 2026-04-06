@@ -16,7 +16,7 @@ export class GlobalCreditCheckController {
   constructor(private service: CreditCheckService) {}
 
   @Get()
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   findAll(
     @Query('status') status?: string,
     @Query('search') search?: string,
@@ -41,7 +41,7 @@ export class GlobalCreditCheckController {
 
   @Get(':id/auto-score')
   @ApiOperation({ summary: 'คำนวณคะแนนความเสี่ยงอัตโนมัติ (0-100)' })
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   getAutoScore(@Param('id') id: string) {
     return this.service.getAutoScore(id);
   }
@@ -54,7 +54,7 @@ export class CreditCheckController {
   constructor(private service: CreditCheckService) {}
 
   @Get()
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   findByContract(@Param('contractId') contractId: string) {
     return this.service.findByContract(contractId);
   }
@@ -93,13 +93,13 @@ export class CustomerCreditCheckController {
   constructor(private service: CreditCheckService) {}
 
   @Get()
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   findByCustomer(@Param('customerId') customerId: string) {
     return this.service.findByCustomer(customerId);
   }
 
   @Get('latest')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   findLatest(@Param('customerId') customerId: string) {
     return this.service.findLatestByCustomer(customerId);
   }

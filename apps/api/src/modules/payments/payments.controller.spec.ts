@@ -25,7 +25,7 @@ describe('PaymentsController', () => {
 
     const mockPaymentsService = {
       validateBranchAccess: jest.fn().mockImplementation(async (contractId: string, user: { role: string; branchId: string | null }) => {
-        if (user.role === 'OWNER' || user.role === 'ACCOUNTANT') return;
+        if (user.role === 'OWNER' || user.role === 'FINANCE_MANAGER' || user.role === 'ACCOUNTANT') return;
         if (mockContract.branchId !== user.branchId) {
           throw new ForbiddenException('ไม่สามารถบันทึกชำระเงินข้ามสาขาได้');
         }

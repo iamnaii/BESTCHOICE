@@ -9,8 +9,8 @@ export class BranchGuard implements CanActivate {
     // Guard must be used after JwtAuthGuard
     if (!user) return false;
 
-    // OWNER and ACCOUNTANT can access all branches
-    if (user.role === 'OWNER' || user.role === 'ACCOUNTANT') {
+    // OWNER, FINANCE_MANAGER, and ACCOUNTANT can access all branches
+    if (user.role === 'OWNER' || user.role === 'FINANCE_MANAGER' || user.role === 'ACCOUNTANT') {
       return true;
     }
 

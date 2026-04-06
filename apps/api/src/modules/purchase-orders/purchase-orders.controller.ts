@@ -15,7 +15,7 @@ export class PurchaseOrdersController {
   constructor(private purchaseOrdersService: PurchaseOrdersService) {}
 
   @Get()
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   findAll(
     @Query('status') status?: string,
     @Query('supplierId') supplierId?: string,
@@ -31,7 +31,7 @@ export class PurchaseOrdersController {
   }
 
   @Get('accounts-payable')
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   accountsPayable(
     @Query('page') page?: string,
     @Query('limit') limit?: string,
@@ -70,13 +70,13 @@ export class PurchaseOrdersController {
   // === Parametric :id routes ===
 
   @Get(':id')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   findOne(@Param('id') id: string) {
     return this.purchaseOrdersService.findOne(id);
   }
 
   @Get(':id/goods-receivings')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getGoodsReceivings(
     @Param('id') id: string,
     @Query('status') status?: string,
@@ -95,7 +95,7 @@ export class PurchaseOrdersController {
   }
 
   @Get(':id/goods-receivings/summary')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getReceivingSummary(
     @Param('id') id: string,
     @Query('startDate') startDate?: string,
@@ -105,7 +105,7 @@ export class PurchaseOrdersController {
   }
 
   @Get(':id/goods-receivings/:receivingId')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getGoodsReceivingById(
     @Param('id') id: string,
     @Param('receivingId') receivingId: string,

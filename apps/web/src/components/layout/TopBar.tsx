@@ -10,6 +10,7 @@ import { useCommandPalette } from '@/components/CommandPalette';
 const roleLabels: Record<string, string> = {
   OWNER: 'เจ้าของ',
   BRANCH_MANAGER: 'ผู้จัดการสาขา',
+  FINANCE_MANAGER: 'ผู้จัดการการเงิน',
   SALES: 'พนักงานขาย',
   ACCOUNTANT: 'ฝ่ายบัญชี',
 };
@@ -17,6 +18,7 @@ const roleLabels: Record<string, string> = {
 const roleBadgeColors: Record<string, string> = {
   OWNER: 'bg-primary/10 text-primary',
   BRANCH_MANAGER: 'bg-primary/10 text-primary',
+  FINANCE_MANAGER: 'bg-info/10 text-info dark:bg-info/15',
   SALES: 'bg-success/10 text-success dark:bg-success/15',
   ACCOUNTANT: 'bg-warning/10 text-warning dark:bg-warning/15',
 };

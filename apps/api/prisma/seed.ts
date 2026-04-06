@@ -142,7 +142,7 @@ async function main() {
   console.log('Branches created: 4 (1 warehouse + 3 stores)');
 
   // ============================================================
-  // STEP 4: Users (8 - 1 OWNER, 3 BRANCH_MANAGER, 3 SALES, 1 ACCOUNTANT)
+  // STEP 4: Users (9 - 1 OWNER, 3 BRANCH_MANAGER, 1 FINANCE_MANAGER, 3 SALES, 1 ACCOUNTANT)
   // ============================================================
   console.log('STEP 4: Creating Users...');
 
@@ -172,8 +172,11 @@ async function main() {
   const mgr3 = await prisma.user.create({
     data: { id: 'user-008', email: 'manager.bangkhae@bestchoice.com', password: hashedPassword, name: 'ประภา ผู้จัดการบางแค', role: 'BRANCH_MANAGER', branchId: branch4.id },
   });
+  const finMgr = await prisma.user.create({
+    data: { id: 'user-009', email: 'finance@bestchoice.com', password: hashedPassword, name: 'นภา ผู้จัดการการเงิน', role: 'FINANCE_MANAGER', branchId: null },
+  });
 
-  console.log('Users created: 8');
+  console.log('Users created: 9');
 
   // ============================================================
   // STEP 5: Suppliers (10 - Apple + accessories only, NO Samsung)

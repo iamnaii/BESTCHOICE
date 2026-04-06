@@ -25,7 +25,7 @@ export class FinanceReceivableController {
   constructor(private service: FinanceReceivableService) {}
 
   @Get()
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   findAll(
     @Query('status') status?: FinanceReceivableStatus,
     @Query('financeCompany') financeCompany?: string,
@@ -38,7 +38,7 @@ export class FinanceReceivableController {
     @Request() req?: { user: { role: string; branchId?: string } },
   ) {
     const effectiveBranchId =
-      req?.user?.role === 'OWNER' || req?.user?.role === 'ACCOUNTANT'
+      req?.user?.role === 'OWNER' || req?.user?.role === 'FINANCE_MANAGER' || req?.user?.role === 'ACCOUNTANT'
         ? branchId
         : req?.user?.branchId || branchId;
 
@@ -55,32 +55,32 @@ export class FinanceReceivableController {
   }
 
   @Get('summary')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getSummary(
     @Query('branchId') branchId?: string,
     @Request() req?: { user: { role: string; branchId?: string } },
   ) {
     const effectiveBranchId =
-      req?.user?.role === 'OWNER' || req?.user?.role === 'ACCOUNTANT'
+      req?.user?.role === 'OWNER' || req?.user?.role === 'FINANCE_MANAGER' || req?.user?.role === 'ACCOUNTANT'
         ? branchId
         : req?.user?.branchId || branchId;
     return this.service.getSummary(effectiveBranchId);
   }
 
   @Get('companies')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getFinanceCompanies() {
     return this.service.getFinanceCompanies();
   }
 
   @Get(':id')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   findOne(@Param('id') id: string) {
     return this.service.findOne(id);
   }
 
   @Post(':id/receive')
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   recordReceive(
     @Param('id') id: string,
     @Body() dto: RecordReceiveDto,
@@ -90,7 +90,7 @@ export class FinanceReceivableController {
   }
 
   @Patch(':id')
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   update(
     @Param('id') id: string,
     @Body() dto: UpdateFinanceReceivableDto,

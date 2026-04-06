@@ -37,6 +37,7 @@ interface User {
 const roleLabels: Record<string, string> = {
   OWNER: 'เจ้าของร้าน',
   BRANCH_MANAGER: 'ผู้จัดการสาขา',
+  FINANCE_MANAGER: 'ผู้จัดการการเงิน',
   SALES: 'พนักงานขาย',
   ACCOUNTANT: 'ฝ่ายบัญชี',
 };
@@ -44,6 +45,7 @@ const roleLabels: Record<string, string> = {
 const roleColors: Record<string, string> = {
   OWNER: 'bg-primary-100 text-primary-700',
   BRANCH_MANAGER: 'bg-primary-100 text-primary-700',
+  FINANCE_MANAGER: 'bg-info/10 text-info dark:bg-info/15',
   SALES: 'bg-success/10 text-success dark:bg-success/15',
   ACCOUNTANT: 'bg-warning/10 text-warning dark:bg-warning/15',
 };

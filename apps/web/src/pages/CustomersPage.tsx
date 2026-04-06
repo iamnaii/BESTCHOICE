@@ -93,7 +93,7 @@ export default function CustomersPage() {
   const { user } = useAuth();
   const isOwner = user?.role === 'OWNER';
   const isOwnerOrManager = ['OWNER', 'BRANCH_MANAGER'].includes(user?.role ?? '');
-  const canViewSalary = ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'].includes(user?.role ?? '');
+  const canViewSalary = ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'].includes(user?.role ?? '');
 
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);

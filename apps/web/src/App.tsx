@@ -152,7 +152,7 @@ function App() {
           <Route
             path="/stock"
             element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES']}>
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES']}>
                 <StockPage />
               </ProtectedRoute>
             }
@@ -282,7 +282,7 @@ function App() {
           <Route
             path="/finance-receivable"
             element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT']}>
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <FinanceReceivablePage />
               </ProtectedRoute>
             }
@@ -290,7 +290,7 @@ function App() {
           <Route
             path="/expenses"
             element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT']}>
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <ExpensesPage />
               </ProtectedRoute>
             }
@@ -298,7 +298,7 @@ function App() {
           <Route
             path="/payments/import-csv"
             element={
-              <ProtectedRoute roles={['OWNER', 'ACCOUNTANT']}>
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <PaymentCsvImportPage />
               </ProtectedRoute>
             }
@@ -306,7 +306,7 @@ function App() {
           <Route
             path="/document-dashboard"
             element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}>
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER']}>
                 <DocumentDashboardPage />
               </ProtectedRoute>
             }
@@ -322,7 +322,7 @@ function App() {
           <Route
             path="/receipts"
             element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT']}>
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <ReceiptsPage />
               </ProtectedRoute>
             }
@@ -332,7 +332,7 @@ function App() {
           <Route
             path="/exchange"
             element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}>
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER']}>
                 <ExchangePage />
               </ProtectedRoute>
             }
@@ -340,7 +340,7 @@ function App() {
           <Route
             path="/repossessions"
             element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}>
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER']}>
                 <RepossessionsPage />
               </ProtectedRoute>
             }
@@ -357,7 +357,7 @@ function App() {
           <Route
             path="/reports"
             element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT']}>
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <ReportsPage />
               </ProtectedRoute>
             }
@@ -365,7 +365,7 @@ function App() {
           <Route
             path="/profit-loss"
             element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT']}>
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <ProfitLossPage />
               </ProtectedRoute>
             }
@@ -413,7 +413,7 @@ function App() {
           <Route
             path="/financial-audit"
             element={
-              <ProtectedRoute roles={['OWNER', 'ACCOUNTANT']}>
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <FinancialAuditPage />
               </ProtectedRoute>
             }

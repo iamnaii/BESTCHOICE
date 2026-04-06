@@ -105,6 +105,7 @@ export default function LoginPage() {
                     { label: 'ผจก.สาขา', email: 'manager1@bestchoice.com', pw: 'password123', role: 'MANAGER' },
                     { label: 'พนง.ขาย', email: 'sales1@bestchoice.com', pw: 'password123', role: 'SALES' },
                     { label: 'บัญชี', email: 'accountant@bestchoice.com', pw: 'password123', role: 'ACCOUNTANT' },
+                    { label: 'ผจก.การเงิน', email: 'finance@bestchoice.com', pw: 'admin1234', role: 'FINANCE_MANAGER' },
                   ].map((acc) => (
                     <button
                       key={acc.email}

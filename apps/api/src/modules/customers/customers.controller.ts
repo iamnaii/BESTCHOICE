@@ -16,7 +16,7 @@ export class CustomersController {
   constructor(private customersService: CustomersService) {}
 
   @Get()
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   findAll(
     @Query() pagination: PaginationDto,
     @Query('search') search?: string,
@@ -41,14 +41,14 @@ export class CustomersController {
   }
 
   @Get('referral-stats')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   @ApiOperation({ summary: 'Top referrers: ลูกค้าที่แนะนำมากที่สุด' })
   getReferralStats(@Query('limit') limit?: string) {
     return this.customersService.getReferralStats(limit ? parseInt(limit) : 10);
   }
 
   @Get('watch-list')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   @ApiOperation({ summary: 'Watch list: ลูกค้าเสี่ยงค้างชำระ (early warning)' })
   getWatchList(
     @Query('branchId') branchId?: string,
@@ -58,7 +58,7 @@ export class CustomersController {
   }
 
   @Get('upsell-candidates')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   @ApiOperation({ summary: 'ลูกค้าพร้อมอัพเกรด (ผ่อน >70% หรือปิดสัญญาแล้ว)' })
   getUpsellCandidates(
     @Query('branchId') branchId?: string,
@@ -68,31 +68,31 @@ export class CustomersController {
   }
 
   @Get('search')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   search(@Query('q') q: string) {
     return this.customersService.search(q || '');
   }
 
   @Get(':id')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   findOne(@Param('id') id: string) {
     return this.customersService.findOne(id);
   }
 
   @Get(':id/contracts')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   getContracts(@Param('id') id: string) {
     return this.customersService.getContracts(id);
   }
 
   @Get(':id/risk-flag')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   getRiskFlag(@Param('id') id: string) {
     return this.customersService.getRiskFlag(id);
   }
 
   @Get(':id/referrals')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   @ApiOperation({ summary: 'ลูกค้าที่ถูกแนะนำมาโดยลูกค้านี้' })
   getReferrals(@Param('id') id: string) {
     return this.customersService.getReferrals(id);

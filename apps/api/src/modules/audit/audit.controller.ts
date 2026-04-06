@@ -14,7 +14,7 @@ export class AuditController {
   constructor(private auditService: AuditService) {}
 
   @Get('financial/:contractId')
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getFinancialTrail(
     @Param('contractId') contractId: string,
     @Query('page') page?: string,

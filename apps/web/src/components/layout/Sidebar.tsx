@@ -92,11 +92,11 @@ const navSections: NavSection[] = [
     items: [
       { label: 'สัญญาผ่อน', path: '/contracts', icon: FileCheck },
       { label: 'ชำระเงิน', path: '/payments', icon: DollarSign },
-      { label: 'ใบเสร็จรับเงิน', path: '/receipts', icon: Receipt, roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
-      { label: 'ตรวจสอบสลิป', path: '/payments?tab=slip-review', icon: FileCheck, roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
-      { label: 'นำเข้าชำระเงิน (CSV)', path: '/payments/import-csv', icon: Upload, roles: ['OWNER', 'ACCOUNTANT'] },
-      { label: 'เงินรับจากไฟแนนซ์', path: '/finance-receivable', icon: Banknote, roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
-      { label: 'สถานะเอกสาร', path: '/document-dashboard', icon: FileText, roles: ['OWNER', 'BRANCH_MANAGER'] },
+      { label: 'ใบเสร็จรับเงิน', path: '/receipts', icon: Receipt, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
+      { label: 'ตรวจสอบสลิป', path: '/payments?tab=slip-review', icon: FileCheck, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
+      { label: 'นำเข้าชำระเงิน (CSV)', path: '/payments/import-csv', icon: Upload, roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
+      { label: 'เงินรับจากไฟแนนซ์', path: '/finance-receivable', icon: Banknote, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
+      { label: 'สถานะเอกสาร', path: '/document-dashboard', icon: FileText, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER'] },
     ],
   },
   {
@@ -104,8 +104,8 @@ const navSections: NavSection[] = [
     label: 'บัญชี & การเงิน',
     icon: Receipt,
     items: [
-      { label: 'บันทึกรายจ่าย', path: '/expenses', icon: Receipt, roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
-      { label: 'งบกำไรขาดทุน', path: '/profit-loss', icon: DollarSign, roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
+      { label: 'บันทึกรายจ่าย', path: '/expenses', icon: Receipt, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
+      { label: 'งบกำไรขาดทุน', path: '/profit-loss', icon: DollarSign, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
     ],
   },
   {
@@ -114,8 +114,8 @@ const navSections: NavSection[] = [
     icon: AlertTriangle,
     items: [
       { label: 'ติดตามหนี้', path: '/overdue', icon: AlertTriangle },
-      { label: 'เปลี่ยนเครื่อง', path: '/exchange', icon: RefreshCw, roles: ['OWNER', 'BRANCH_MANAGER'] },
-      { label: 'ยึดคืน & ขายต่อ', path: '/repossessions', icon: Undo2, roles: ['OWNER', 'BRANCH_MANAGER'] },
+      { label: 'เปลี่ยนเครื่อง', path: '/exchange', icon: RefreshCw, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER'] },
+      { label: 'ยึดคืน & ขายต่อ', path: '/repossessions', icon: Undo2, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER'] },
     ],
   },
   {
@@ -123,7 +123,7 @@ const navSections: NavSection[] = [
     label: 'คลังสินค้า & จัดซื้อ',
     icon: Warehouse,
     items: [
-      { label: 'คลังสินค้า', path: '/stock', icon: Warehouse, roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES'] },
+      { label: 'คลังสินค้า', path: '/stock', icon: Warehouse, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES'] },
       { label: 'สั่งซื้อ', path: '/purchase-orders', icon: ClipboardList, roles: ['OWNER', 'BRANCH_MANAGER'] },
       { label: 'โอนสาขา', path: '/stock/transfers', icon: ArrowRightLeft, roles: ['OWNER', 'BRANCH_MANAGER'] },
       { label: 'ปรับสต็อก', path: '/stock/adjustments', icon: Sliders, roles: ['OWNER', 'BRANCH_MANAGER'] },
@@ -138,7 +138,7 @@ const navSections: NavSection[] = [
     label: 'รายงาน & แจ้งเตือน',
     icon: BarChart3,
     items: [
-      { label: 'รายงาน', path: '/reports', icon: BarChart3, roles: ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] },
+      { label: 'รายงาน', path: '/reports', icon: BarChart3, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
       { label: 'แจ้งเตือน', path: '/notifications', icon: Bell, roles: ['OWNER', 'BRANCH_MANAGER'] },
     ],
   },
@@ -162,7 +162,7 @@ const navSections: NavSection[] = [
     items: [
       { label: 'PDPA', path: '/pdpa', icon: Shield, roles: ['OWNER', 'BRANCH_MANAGER'] },
       { label: 'Audit Logs', path: '/audit-logs', icon: ScrollText, roles: ['OWNER'] },
-      { label: 'Financial Audit', path: '/financial-audit', icon: FileText, roles: ['OWNER', 'ACCOUNTANT'] },
+      { label: 'Financial Audit', path: '/financial-audit', icon: FileText, roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
       { label: 'สถานะระบบ', path: '/system-status', icon: Activity, roles: ['OWNER'] },
       { label: 'นำเข้าข้อมูล', path: '/migration', icon: Database, roles: ['OWNER'] },
     ],

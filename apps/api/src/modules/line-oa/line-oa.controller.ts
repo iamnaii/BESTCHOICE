@@ -677,7 +677,7 @@ export class LineOaController {
 
   @Get('evidence/stats')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   async getEvidenceStats() {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
@@ -699,7 +699,7 @@ export class LineOaController {
 
   @Get('evidence')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   async getEvidenceList(
     @Query('status') status?: string,
     @Query('search') search?: string,
@@ -759,7 +759,7 @@ export class LineOaController {
 
   @Post('evidence/batch-approve')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   async batchApproveEvidence(
     @Body() body: { ids: string[]; paymentMethod: string },
     @Req() req: Request,
@@ -831,7 +831,7 @@ export class LineOaController {
 
   @Post('evidence/batch-reject')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   async batchRejectEvidence(
     @Body() body: { ids: string[]; reviewNote?: string },
     @Req() req: Request,
@@ -886,7 +886,7 @@ export class LineOaController {
 
   @Post('evidence/:id/approve')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   async approveEvidence(
     @Param('id') id: string,
     @Body() body: { installmentNo: number; amount: number; paymentMethod: string; reviewNote?: string },
@@ -967,7 +967,7 @@ export class LineOaController {
 
   @Post('evidence/:id/reject')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   async rejectEvidence(
     @Param('id') id: string,
     @Body() body: { reviewNote?: string },
@@ -1012,7 +1012,7 @@ export class LineOaController {
 
   @Get('evidence/:id/suggested-matches')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   async getSuggestedMatches(@Param('id') id: string) {
     const evidence = await this.prisma.paymentEvidence.findUnique({
       where: { id },
@@ -1277,7 +1277,7 @@ export class LineOaController {
 
   @Post('payment-link')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   async createPaymentLink(
     @Body() body: { contractId: string; installmentNo?: number },
   ) {

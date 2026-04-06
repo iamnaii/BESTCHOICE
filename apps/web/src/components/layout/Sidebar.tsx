@@ -175,13 +175,13 @@ const navSections: NavSection[] = [
   },
 ];
 
-/* Expanded sidebar menu classNames (dark bg, white text) — Metronic-inspired */
+/* Expanded sidebar menu classNames (dark bg, white text) — Metronic v9 pattern */
 const expandedMenuClassNames: AccordionMenuClassNames = {
-  root: 'space-y-0.5',
-  item: 'h-9 rounded-lg text-2sm text-white/70 hover:bg-white/[0.06] hover:text-white transition-colors data-[selected=true]:bg-primary/15 data-[selected=true]:text-primary-foreground data-[selected=true]:font-medium relative data-[selected=true]:before:absolute data-[selected=true]:before:left-0 data-[selected=true]:before:top-1.5 data-[selected=true]:before:bottom-1.5 data-[selected=true]:before:w-[3px] data-[selected=true]:before:bg-primary data-[selected=true]:before:rounded-r-full',
+  root: 'space-y-1',
+  item: 'h-[34px] rounded-md text-[13px] text-white/60 hover:bg-transparent hover:text-white transition-colors duration-150 data-[selected=true]:bg-white/[0.08] data-[selected=true]:text-white data-[selected=true]:font-medium relative data-[selected=true]:before:absolute data-[selected=true]:before:left-0 data-[selected=true]:before:top-1 data-[selected=true]:before:bottom-1 data-[selected=true]:before:w-[3px] data-[selected=true]:before:bg-primary data-[selected=true]:before:rounded-r-full',
   sub: '',
-  subTrigger: 'h-10 rounded-lg text-2sm font-medium text-white/50 hover:bg-white/[0.06] hover:text-white data-[state=open]:text-white transition-colors',
-  subContent: 'py-0 pl-3',
+  subTrigger: 'h-[38px] rounded-md text-[13px] font-semibold uppercase tracking-wide text-white/40 hover:bg-transparent hover:text-white/70 data-[state=open]:text-white/80 transition-colors duration-150',
+  subContent: 'py-0.5 pl-2.5',
 };
 
 /* ─── Collapsed Icon Rail (70px) — Demo 9 default ─── */
@@ -217,10 +217,10 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
   );
 
   return (
-    <div className="sidebar fixed top-0 bottom-0 left-0 z-20 w-[70px] flex flex-col items-center bg-sidebar-dark py-4 gap-0.5 transition-all duration-300">
+    <div className="sidebar fixed top-0 bottom-0 left-0 z-20 w-[70px] flex flex-col items-center bg-sidebar-dark py-4 gap-1 transition-all duration-300">
       {/* Logo */}
-      <Link to="/" className="flex items-center justify-center mb-1 shrink-0">
-        <div className="size-10 rounded-xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/20">
+      <Link to="/" className="flex items-center justify-center mb-0.5 shrink-0">
+        <div className="size-10 rounded-xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/25 ring-1 ring-white/[0.06]">
           <span className="text-white text-lg font-bold">B</span>
         </div>
       </Link>
@@ -228,14 +228,14 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
       {/* Expand toggle */}
       <button
         onClick={onToggle}
-        className="flex items-center justify-center size-8 rounded-lg text-white/25 hover:text-white/70 hover:bg-white/[0.06] transition-all mb-1"
+        className="flex items-center justify-center size-8 rounded-full text-white/20 hover:text-white/60 hover:bg-white/[0.06] transition-all duration-200 mb-0.5"
         aria-label="ขยายเมนู"
       >
         <ChevronsRight className="size-4" />
       </button>
 
       {/* Divider */}
-      <div className="w-8 h-px bg-white/[0.08] mb-1" />
+      <div className="w-7 h-px bg-white/[0.06] mb-0.5" />
 
       {/* Home icon */}
       <TooltipProvider delayDuration={0}>
@@ -244,23 +244,23 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
             <Link
               to="/"
               className={cn(
-                'flex items-center justify-center size-10 rounded-xl transition-all',
+                'flex items-center justify-center size-10 rounded-lg transition-all duration-200',
                 pathname === '/'
-                  ? 'bg-primary/15 text-white shadow-sm'
-                  : 'text-white/40 hover:text-white/80 hover:bg-white/[0.06]',
+                  ? 'bg-white/[0.08] text-white shadow-sm'
+                  : 'text-white/35 hover:text-white/75 hover:bg-white/[0.06]',
               )}
             >
               <Home className="size-[18px]" />
             </Link>
           </TooltipTrigger>
-          <TooltipContent side="right" sideOffset={8}>
+          <TooltipContent side="right" sideOffset={10} className="font-medium">
             หน้าหลัก
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
 
       {/* Section icons with popovers */}
-      <div className="flex-1 flex flex-col items-center gap-0.5 py-1.5 overflow-y-auto scrollbar-none">
+      <div className="flex-1 flex flex-col items-center gap-0.5 py-2 overflow-y-auto scrollbar-none">
         <TooltipProvider delayDuration={0}>
           {filteredSections.map((section) => (
             <Popover
@@ -273,32 +273,32 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
                   <PopoverTrigger asChild>
                     <button
                       className={cn(
-                        'flex items-center justify-center size-10 rounded-xl transition-all relative',
+                        'flex items-center justify-center size-10 rounded-lg transition-all duration-200 relative group',
                         isSectionActive(section)
-                          ? 'bg-primary/15 text-white'
-                          : 'text-white/40 hover:text-white/80 hover:bg-white/[0.06]',
+                          ? 'bg-white/[0.08] text-white'
+                          : 'text-white/35 hover:text-white/75 hover:bg-white/[0.06]',
                       )}
                     >
                       {isSectionActive(section) && (
-                        <span className="absolute left-0 top-2 bottom-2 w-[3px] bg-primary rounded-r-full" />
+                        <span className="absolute left-0 top-2.5 bottom-2.5 w-[3px] bg-primary rounded-r-full" />
                       )}
                       <section.icon className="size-[18px]" />
                     </button>
                   </PopoverTrigger>
                 </TooltipTrigger>
                 {openPopover !== section.key && (
-                  <TooltipContent side="right" sideOffset={8}>
+                  <TooltipContent side="right" sideOffset={10} className="font-medium">
                     {section.label}
                   </TooltipContent>
                 )}
               </Tooltip>
               <PopoverContent
                 side="right"
-                sideOffset={12}
+                sideOffset={14}
                 align="start"
-                className="w-56 p-1.5"
+                className="w-56 p-1.5 shadow-lg shadow-black/10 border-border/50"
               >
-                <div className="text-2xs font-semibold text-muted-foreground uppercase tracking-wider px-2.5 py-1.5 mb-0.5">
+                <div className="text-2xs font-semibold text-muted-foreground/70 uppercase tracking-wider px-2.5 py-2 mb-0.5">
                   {section.label}
                 </div>
                 {section.items.map((item) => (
@@ -307,13 +307,13 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
                     to={item.path}
                     onClick={() => setOpenPopover(null)}
                     className={cn(
-                      'flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-2sm transition-colors',
+                      'flex items-center gap-2.5 px-2.5 py-[7px] rounded-md text-[13px] transition-colors duration-150',
                       isItemActive(item.path)
                         ? 'bg-primary/10 text-primary font-medium'
-                        : 'text-foreground/80 hover:bg-muted hover:text-foreground',
+                        : 'text-foreground/80 hover:text-primary hover:bg-transparent',
                     )}
                   >
-                    {item.icon && <item.icon className="size-4 shrink-0 opacity-70" />}
+                    {item.icon && <item.icon className="size-4 shrink-0 opacity-60" />}
                     <span>{item.label}</span>
                   </Link>
                 ))}
@@ -324,17 +324,17 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
       </div>
 
       {/* Bottom: User avatar + logout */}
-      <div className="flex flex-col items-center gap-1.5 mt-auto pt-2">
-        <div className="w-8 h-px bg-white/[0.08] mb-0.5" />
+      <div className="flex flex-col items-center gap-1.5 mt-auto pt-3">
+        <div className="w-7 h-px bg-white/[0.06] mb-1" />
         {user && (
           <TooltipProvider delayDuration={0}>
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="size-9 rounded-full bg-gradient-to-br from-primary/40 to-primary/20 flex items-center justify-center cursor-default ring-2 ring-white/[0.08]">
-                  <span className="text-white text-sm font-semibold">{user.name?.charAt(0)}</span>
+                <div className="size-9 rounded-full bg-gradient-to-br from-primary/30 to-primary/15 flex items-center justify-center cursor-default ring-1 ring-white/[0.08]">
+                  <span className="text-white/90 text-sm font-semibold">{user.name?.charAt(0)}</span>
                 </div>
               </TooltipTrigger>
-              <TooltipContent side="right" sideOffset={8}>
+              <TooltipContent side="right" sideOffset={10}>
                 <div>
                   <p className="font-medium">{user.name}</p>
                   <p className="text-xs text-muted-foreground">{user.branchName}</p>
@@ -348,12 +348,12 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
             <TooltipTrigger asChild>
               <button
                 onClick={logout}
-                className="flex items-center justify-center size-9 rounded-xl text-white/30 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                className="flex items-center justify-center size-9 rounded-lg text-white/25 hover:text-red-400 hover:bg-red-500/10 transition-all duration-200"
               >
                 <LogOut className="size-4" />
               </button>
             </TooltipTrigger>
-            <TooltipContent side="right" sideOffset={8}>
+            <TooltipContent side="right" sideOffset={10}>
               ออกจากระบบ
             </TooltipContent>
           </Tooltip>
@@ -387,27 +387,27 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
 
   return (
     <div className="sidebar fixed top-0 bottom-0 left-0 z-20 w-[264px] flex flex-col bg-sidebar-dark transition-all duration-300">
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 h-[70px] shrink-0 border-b border-white/[0.06]">
+      {/* Header — Metronic sidebar-header pattern */}
+      <div className="flex items-center justify-between px-5 h-[70px] shrink-0 border-b border-white/[0.04]">
         <Link to="/" className="flex items-center gap-2.5">
-          <div className="size-9 rounded-lg bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/20">
+          <div className="size-9 rounded-lg bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/25 ring-1 ring-white/[0.06]">
             <span className="text-white text-base font-bold">B</span>
           </div>
-          <span className="text-base font-bold text-white leading-tight tracking-tight">
+          <span className="text-[15px] font-bold text-white leading-tight tracking-tight">
             BEST<span className="text-primary">CHOICE</span>
           </span>
         </Link>
         <button
           onClick={onToggle}
-          className="flex items-center justify-center size-8 rounded-lg text-white/25 hover:text-white/70 hover:bg-white/[0.06] transition-all"
+          className="flex items-center justify-center size-7 rounded-full text-white/20 hover:text-white/60 hover:bg-white/[0.06] transition-all duration-200"
           aria-label="ย่อเมนู"
         >
           <ChevronsLeft className="size-4" />
         </button>
       </div>
 
-      {/* Navigation */}
-      <ScrollArea className="flex-1 py-3 px-3">
+      {/* Navigation — Metronic ScrollArea pattern */}
+      <ScrollArea className="flex-1 py-5 px-4">
         <AccordionMenu
           selectedValue={pathname}
           matchPath={matchPath}
@@ -442,18 +442,18 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
         </AccordionMenu>
       </ScrollArea>
 
-      {/* User footer */}
+      {/* User footer — Metronic compact user section */}
       {user && (
-        <div className="px-4 py-3.5 border-t border-white/[0.06] shrink-0">
+        <div className="px-4 py-3.5 border-t border-white/[0.04] shrink-0">
           <div className="flex items-center gap-3">
-            <div className="size-9 rounded-full bg-gradient-to-br from-primary/40 to-primary/20 flex items-center justify-center shrink-0 ring-2 ring-white/[0.08]">
-              <span className="text-white text-sm font-semibold">{user.name?.charAt(0)}</span>
+            <div className="size-9 rounded-full bg-gradient-to-br from-primary/30 to-primary/15 flex items-center justify-center shrink-0 ring-1 ring-white/[0.08]">
+              <span className="text-white/90 text-sm font-semibold">{user.name?.charAt(0)}</span>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-2sm font-medium text-white truncate">{user.name}</p>
-              <p className="text-2xs text-white/40 truncate">{user.branchName}</p>
+              <p className="text-[13px] font-medium text-white truncate">{user.name}</p>
+              <p className="text-2xs text-white/35 truncate">{user.branchName}</p>
             </div>
-            <button onClick={logout} className="text-white/30 hover:text-red-400 hover:bg-red-500/10 p-1.5 rounded-lg transition-all">
+            <button onClick={logout} className="text-white/25 hover:text-red-400 hover:bg-red-500/10 p-1.5 rounded-lg transition-all duration-200">
               <LogOut className="size-4" />
             </button>
           </div>
@@ -488,17 +488,17 @@ function MobileSidebar() {
   return (
     <div className="w-full h-full flex flex-col bg-sidebar-dark">
       {/* Header */}
-      <div className="flex items-center gap-2.5 px-5 h-[70px] shrink-0 border-b border-white/[0.06]">
-        <div className="size-9 rounded-lg bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/20">
+      <div className="flex items-center gap-2.5 px-5 h-[70px] shrink-0 border-b border-white/[0.04]">
+        <div className="size-9 rounded-lg bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/25 ring-1 ring-white/[0.06]">
           <span className="text-white text-base font-bold">B</span>
         </div>
-        <span className="text-base font-bold text-white leading-tight tracking-tight">
+        <span className="text-[15px] font-bold text-white leading-tight tracking-tight">
           BEST<span className="text-primary">CHOICE</span>
         </span>
       </div>
 
       {/* Navigation */}
-      <ScrollArea className="flex-1 py-3 px-3">
+      <ScrollArea className="flex-1 py-5 px-4">
         <AccordionMenu
           selectedValue={pathname}
           matchPath={matchPath}
@@ -535,16 +535,16 @@ function MobileSidebar() {
 
       {/* User footer */}
       {user && (
-        <div className="px-4 py-3.5 border-t border-white/[0.06] shrink-0">
+        <div className="px-4 py-3.5 border-t border-white/[0.04] shrink-0">
           <div className="flex items-center gap-3">
-            <div className="size-9 rounded-full bg-gradient-to-br from-primary/40 to-primary/20 flex items-center justify-center shrink-0 ring-2 ring-white/[0.08]">
-              <span className="text-white text-sm font-semibold">{user.name?.charAt(0)}</span>
+            <div className="size-9 rounded-full bg-gradient-to-br from-primary/30 to-primary/15 flex items-center justify-center shrink-0 ring-1 ring-white/[0.08]">
+              <span className="text-white/90 text-sm font-semibold">{user.name?.charAt(0)}</span>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-2sm font-medium text-white truncate">{user.name}</p>
-              <p className="text-2xs text-white/40 truncate">{user.branchName}</p>
+              <p className="text-[13px] font-medium text-white truncate">{user.name}</p>
+              <p className="text-2xs text-white/35 truncate">{user.branchName}</p>
             </div>
-            <button onClick={logout} className="text-white/30 hover:text-red-400 hover:bg-red-500/10 p-1.5 rounded-lg transition-all">
+            <button onClick={logout} className="text-white/25 hover:text-red-400 hover:bg-red-500/10 p-1.5 rounded-lg transition-all duration-200">
               <LogOut className="size-4" />
             </button>
           </div>

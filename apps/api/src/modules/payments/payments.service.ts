@@ -354,7 +354,11 @@ export class PaymentsService {
     }
 
     // Build contract filter object to combine multiple conditions
-    const contractWhere: Record<string, unknown> = {};
+    // Only show payments for APPROVED contracts (not DRAFT/CREATING/PENDING_REVIEW)
+    const contractWhere: Record<string, unknown> = {
+      workflowStatus: 'APPROVED',
+      deletedAt: null,
+    };
 
     if (filters.branchId) {
       contractWhere.branchId = filters.branchId;
@@ -373,9 +377,8 @@ export class PaymentsService {
       ];
     }
 
-    if (Object.keys(contractWhere).length > 0) {
-      where.contract = contractWhere;
-    }
+    // Always apply contract filter (at minimum: workflowStatus + deletedAt)
+    where.contract = contractWhere;
 
     if (filters.date) {
       const d = new Date(filters.date);

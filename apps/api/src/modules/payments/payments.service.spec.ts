@@ -45,6 +45,9 @@ describe('PaymentsService', () => {
         count: jest.fn().mockResolvedValue(0),
         aggregate: jest.fn().mockResolvedValue({ _sum: { amountPaid: 0, lateFee: 0 } }),
       },
+      systemConfig: {
+        findUnique: jest.fn().mockResolvedValue(null), // CR-7: period lock check
+      },
       $transaction: jest.fn((cb) => cb(mockPrisma)),
     };
 

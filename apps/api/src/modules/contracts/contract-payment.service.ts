@@ -1,7 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PaymentMethod } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { BUSINESS_RULES } from '../../utils/config.util';
+import { EarlyPayoffDto } from './dto/contract.dto';
 
 @Injectable()
 export class ContractPaymentService {
@@ -18,80 +18,99 @@ export class ContractPaymentService {
     });
   }
 
-  async getEarlyPayoffQuote(id: string) {
+  /**
+   * คำนวณยอดปิดสัญญาก่อนกำหนด (FINANCE perspective)
+   *
+   * Logic:
+   *   (1) รวมค้างชำระ      = ค่างวด × งวดคงเหลือ (รวม VAT)
+   *   (2) ยอดชำระล่วงหน้า  = creditBalance + partialPayments
+   *   (3) คงเหลือยอดค้าง   = (1) - (2)
+   *   (4) ค่างวดไม่รวม VAT = (3) ÷ (1 + vatPct)
+   *   (5) ต้นทุนยอดค้าง    = (financedAmount + storeCommission) ÷ totalMonths × งวดคงเหลือ
+   *   (6) กำไรขั้นต้น      = (4) - (5)
+   *   (7) ส่วนลด           = (6) × discountPct
+   *   (8) ยอดชำระปิดยอด    = (3) - (7)
+   */
+  async getEarlyPayoffQuote(id: string, discountPctInput?: number) {
     const contract = await this.findOne(id);
     if (!['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status)) {
       throw new BadRequestException('สัญญาต้องอยู่ในสถานะ ACTIVE, OVERDUE หรือ DEFAULT');
     }
-
-    // Guard: totalMonths must be positive to prevent division by zero
     if (!contract.totalMonths || contract.totalMonths <= 0) {
       throw new BadRequestException('ข้อมูลสัญญาผิดพลาด: จำนวนงวดต้องมากกว่า 0');
     }
 
-    // Count fully paid AND partially paid installments
-    const paidPayments = contract.payments.filter((p) => p.status === 'PAID');
-    const partialPayments = contract.payments.filter((p) => p.status === 'PARTIALLY_PAID');
-    const fullyPaidCount = paidPayments.length;
+    const fullyPaidCount = contract.payments.filter(p => p.status === 'PAID').length;
     const remainingMonths = contract.totalMonths - fullyPaidCount;
-
     if (remainingMonths <= 0) {
       throw new BadRequestException('ไม่มีงวดค้างชำระ ไม่จำเป็นต้องปิดก่อนกำหนด');
     }
 
-    // Use stored payment breakdowns when available, fallback to calculation for legacy
-    const unpaidPayments = contract.payments.filter(p => p.status !== 'PAID');
-    const hasBreakdown = unpaidPayments.length > 0 && unpaidPayments[0].monthlyPrincipal !== null;
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+    const monthlyPayment = Number(contract.monthlyPayment);
 
-    let remainingPrincipal: number;
-    let remainingInterest: number;
+    // (1) รวมค้างชำระ (รวม VAT)
+    const totalRemaining = round2(monthlyPayment * remainingMonths);
 
-    if (hasBreakdown) {
-      remainingPrincipal = Math.round(
-        unpaidPayments.reduce((sum, p) => sum + Number(p.monthlyPrincipal), 0) * 100,
-      ) / 100;
-      remainingInterest = Math.round(
-        unpaidPayments.reduce((sum, p) => sum + Number(p.monthlyInterest), 0) * 100,
-      ) / 100;
-    } else {
-      // Legacy fallback: calculate from contract totals
-      // C-6 fix: truePrincipal = sellingPrice - downPayment (the actual loan principal)
-      const interestTotal = Number(contract.interestTotal);
-      const truePrincipal = Math.round((Number(contract.sellingPrice) - Number(contract.downPayment)) * 100) / 100;
-      const monthlyInterest = Math.round(interestTotal * 100 / contract.totalMonths) / 100;
-      const monthlyPrincipal = Math.round(truePrincipal * 100 / contract.totalMonths) / 100;
-      remainingPrincipal = Math.round(monthlyPrincipal * remainingMonths * 100) / 100;
-      remainingInterest = Math.round(monthlyInterest * remainingMonths * 100) / 100;
-    }
-    const discount = Math.round(remainingInterest * BUSINESS_RULES.EARLY_PAYOFF_DISCOUNT * 100) / 100;
+    // (2) ยอดชำระล่วงหน้า / partial credit
+    const creditBalance = Number(contract.creditBalance || 0);
+    const partialPaid = contract.payments
+      .filter(p => p.status === 'PARTIALLY_PAID')
+      .reduce((s, p) => s + Number(p.amountPaid || 0), 0);
+    const advancePayment = round2(creditBalance + partialPaid);
 
-    // Deduct amounts already partially paid
-    const partiallyPaidAmount = partialPayments.reduce(
-      (sum, p) => sum + Number(p.amountPaid || 0), 0,
-    );
-    const totalPayoff = Math.max(0, remainingPrincipal + (remainingInterest - discount) - partiallyPaidAmount);
+    // (3) คงเหลือยอดค้าง
+    const remainingBalance = round2(totalRemaining - advancePayment);
 
-    // Add any unpaid late fees (exclude waived)
+    // (4) ค่างวดไม่รวม VAT
+    const vatPct = Number(contract.vatPct || 0);
+    const remainingExVat = vatPct > 0 ? round2(remainingBalance / (1 + vatPct)) : remainingBalance;
+
+    // (5) ต้นทุนยอดค้าง = (financedAmount + storeCommission) / totalMonths × remainingMonths
+    const financeCost = Number(contract.financedAmount) + Number(contract.storeCommission || 0);
+    const remainingCost = round2((financeCost / contract.totalMonths) * remainingMonths);
+
+    // (6) กำไรขั้นต้น (อาจติดลบในเคสประหลาด → clamp 0)
+    const grossProfit = Math.max(0, round2(remainingExVat - remainingCost));
+
+    // (7) ส่วนลด (default 50%)
+    const discountPct = discountPctInput != null ? Math.max(0, Math.min(100, discountPctInput)) / 100 : 0.5;
+    const discountAmount = round2(grossProfit * discountPct);
+
+    // (8) ยอดชำระปิดยอด
+    const totalPayoff = Math.max(0, round2(remainingBalance - discountAmount));
+
+    // Late fees (ไม่ลด — ตามนโยบาย "ไม่คิด VAT ค่าปรับ")
     const unpaidLateFees = contract.payments
-      .filter((p) => p.status !== 'PAID' && !p.lateFeeWaived)
-      .reduce((sum, p) => sum + Number(p.lateFee), 0);
+      .filter(p => p.status !== 'PAID' && !p.lateFeeWaived)
+      .reduce((s, p) => s + Number(p.lateFee), 0);
 
     return {
+      monthlyPayment: round2(monthlyPayment),
       remainingMonths,
-      remainingPrincipal: Math.round(remainingPrincipal),
-      remainingInterest: Math.round(remainingInterest),
-      discount: Math.round(discount),
-      partiallyPaidCredit: Math.round(partiallyPaidAmount),
+      totalRemaining,
+      advancePayment,
+      remainingBalance,
+      remainingExVat,
+      remainingCost,
+      grossProfit,
+      discountPct: discountPct * 100, // return as percentage 0-100
+      discountAmount,
       unpaidLateFees,
-      totalPayoff: Math.round(totalPayoff + unpaidLateFees),
+      totalPayoff: round2(totalPayoff + unpaidLateFees),
     };
   }
 
-  async earlyPayoff(id: string, userId: string, paymentMethod: string) {
-    const quote = await this.getEarlyPayoffQuote(id);
+  async earlyPayoff(id: string, userId: string, dto: EarlyPayoffDto) {
+    const quote = await this.getEarlyPayoffQuote(id, dto.discountPct);
+    const paidDate = dto.paymentDate ? new Date(dto.paymentDate) : new Date();
+
+    // Require reference for non-cash methods
+    if (dto.paymentMethod !== 'CASH' && !dto.referenceNo && !dto.slipUrl) {
+      throw new BadRequestException('กรุณาระบุเลขที่อ้างอิงหรือแนบสลิปสำหรับการชำระแบบโอน/QR');
+    }
 
     await this.prisma.$transaction(async (tx) => {
-      // Re-verify contract status inside transaction to prevent race condition
       const freshContract = await tx.contract.findUnique({
         where: { id },
         select: { status: true },
@@ -105,32 +124,42 @@ export class ContractPaymentService {
         orderBy: { installmentNo: 'asc' },
       });
 
+      // Distribute totalPayoff across unpaid installments (FIFO)
       let remainingPayoff = quote.totalPayoff;
       for (const payment of unpaidPayments) {
         const lateFee = payment.lateFeeWaived ? 0 : Number(payment.lateFee);
         const owed = Number(payment.amountDue) + lateFee - Number(payment.amountPaid);
-        const payAmount = Math.min(remainingPayoff, owed);
+        const payAmount = Math.min(remainingPayoff, Math.max(0, owed));
         remainingPayoff -= payAmount;
 
         await tx.payment.update({
           where: { id: payment.id },
           data: {
             status: 'PAID',
-            paidDate: new Date(),
+            paidDate,
             amountPaid: Number(payment.amountPaid) + payAmount,
-            paymentMethod: paymentMethod as PaymentMethod,
+            paymentMethod: dto.paymentMethod as PaymentMethod,
             recordedById: userId,
+            evidenceUrl: dto.slipUrl ?? payment.evidenceUrl,
+            gatewayRef: dto.referenceNo ?? payment.gatewayRef,
+            notes: dto.notes
+              ? `[ปิดก่อนกำหนด] ${dto.notes}`
+              : '[ปิดก่อนกำหนด]',
           },
         });
       }
 
+      // Reset credit balance (used up by the early payoff)
       await tx.contract.update({
         where: { id },
-        data: { status: 'EARLY_PAYOFF' },
+        data: {
+          status: 'EARLY_PAYOFF',
+          creditBalance: 0,
+        },
       });
     });
 
-    return { ...quote, status: 'EARLY_PAYOFF' };
+    return { ...quote, status: 'EARLY_PAYOFF', paidDate };
   }
 
   /** Shared findOne - reuses Prisma query for contract with full includes */

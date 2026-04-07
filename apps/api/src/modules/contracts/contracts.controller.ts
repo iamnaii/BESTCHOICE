@@ -78,8 +78,12 @@ export class ContractsController {
 
   @Get(':id/early-payoff-quote')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  getEarlyPayoffQuote(@Param('id') id: string) {
-    return this.paymentService.getEarlyPayoffQuote(id);
+  getEarlyPayoffQuote(
+    @Param('id') id: string,
+    @Query('discountPct') discountPct?: string,
+  ) {
+    const pct = discountPct != null ? Number(discountPct) : undefined;
+    return this.paymentService.getEarlyPayoffQuote(id, Number.isFinite(pct as number) ? pct : undefined);
   }
 
   @Post()
@@ -152,7 +156,7 @@ export class ContractsController {
   ) {
     // Enforce branch-level access before early payoff
     await this.contractsService.findOne(id, user);
-    return this.paymentService.earlyPayoff(id, user.id, dto.paymentMethod);
+    return this.paymentService.earlyPayoff(id, user.id, dto);
   }
 
   // === VALIDATION: ตรวจสอบความครบถ้วนของสัญญา ===

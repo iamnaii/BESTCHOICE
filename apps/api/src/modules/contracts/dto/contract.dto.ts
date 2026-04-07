@@ -90,6 +90,25 @@ export class EarlyPayoffDto {
   @Matches(/^(CASH|BANK_TRANSFER|QR_EWALLET)$/, { message: 'paymentMethod ต้องเป็น CASH, BANK_TRANSFER หรือ QR_EWALLET' })
   paymentMethod: string;
 
+  /** ส่วนลดเปอร์เซ็นต์บนกำไรขั้นต้น (0-100) — default 50 */
+  @IsOptional()
+  discountPct?: number;
+
+  /** วันที่ชำระ (ISO date) — default = วันนี้ */
+  @IsString()
+  @IsOptional()
+  paymentDate?: string;
+
+  /** URL สลิปโอนเงิน (กรณี BANK_TRANSFER / QR_EWALLET) */
+  @IsString()
+  @IsOptional()
+  slipUrl?: string;
+
+  /** เลขที่อ้างอิงสลิป */
+  @IsString()
+  @IsOptional()
+  referenceNo?: string;
+
   @IsString()
   @IsOptional()
   notes?: string;

@@ -11,7 +11,7 @@ import ProductEditModal from '@/components/contract/ProductEditModal';
 import CustomerEditModal from '@/components/contract/CustomerEditModal';
 import ContractPaymentSchedule from '@/components/contract/ContractPaymentSchedule';
 import ContractDocuments from '@/components/contract/ContractDocuments';
-import { ContractEarlyPayoffQuote, ContractEarlyPayoffModal } from '@/components/contract/ContractEarlyPayoff';
+import { ContractEarlyPayoffQuote, EarlyPayoffOverlay } from '@/components/contract/ContractEarlyPayoff';
 import { toast } from 'sonner';
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -95,7 +95,6 @@ export default function ContractDetailPage() {
   const { user } = useAuth();
   const [showPayoffModal, setShowPayoffModal] = useState(false);
   const [customerLink, setCustomerLink] = useState<string | null>(null);
-  const [payoffMethod, setPayoffMethod] = useState('CASH');
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [rejectNotes, setRejectNotes] = useState('');
@@ -185,20 +184,7 @@ export default function ContractDetailPage() {
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
-  const earlyPayoffMutation = useMutation({
-    mutationFn: async () => {
-      const { data } = await api.post(`/contracts/${id}/early-payoff`, { paymentMethod: payoffMethod });
-      return data;
-    },
-    onSuccess: () => {
-      toast.success('ปิดสัญญาก่อนกำหนดสำเร็จ');
-      setShowPayoffModal(false);
-      invalidateContract();
-    },
-    onError: (err: unknown) => toast.error(getErrorMessage(err)),
-  });
-
-  const deleteMutation = useMutation({
+const deleteMutation = useMutation({
     mutationFn: async () => { const { data } = await api.delete(`/contracts/${id}`); return data; },
     onSuccess: () => { toast.success('ลบสัญญาแล้ว'); navigate('/contracts'); },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
@@ -800,15 +786,16 @@ export default function ContractDetailPage() {
       )}
 
 
-      {/* Early Payoff Modal */}
-      {showPayoffModal && payoffQuote && (
-        <ContractEarlyPayoffModal
-          payoffQuote={payoffQuote}
-          payoffMethod={payoffMethod}
-          onPayoffMethodChange={setPayoffMethod}
-          onConfirm={() => earlyPayoffMutation.mutate()}
+      {/* Early Payoff Overlay */}
+      {showPayoffModal && contract && (
+        <EarlyPayoffOverlay
+          contractId={contract.id}
+          contractNumber={contract.contractNumber}
+          customerName={contract.customer?.name || '-'}
+          productName={contract.product?.name}
+          branchName={contract.branch?.name}
           onClose={() => setShowPayoffModal(false)}
-          isPending={earlyPayoffMutation.isPending}
+          onSuccess={invalidateContract}
         />
       )}
 

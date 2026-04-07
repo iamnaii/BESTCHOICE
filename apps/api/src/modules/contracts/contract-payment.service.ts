@@ -74,7 +74,8 @@ export class ContractPaymentService {
     const grossProfit = Math.max(0, round2(remainingExVat - remainingCost));
 
     // (7) ส่วนลด (default 50%)
-    const discountPct = discountPctInput != null ? Math.max(0, Math.min(100, discountPctInput)) / 100 : 0.5;
+    // Cap ส่วนลดที่ 50% ตามนโยบาย
+    const discountPct = discountPctInput != null ? Math.max(0, Math.min(50, discountPctInput)) / 100 : 0.5;
     const discountAmount = round2(grossProfit * discountPct);
 
     // (8) ยอดชำระปิดยอด

@@ -30,7 +30,8 @@ interface Props {
   onSuccess: () => void;
 }
 
-const DISCOUNT_PRESETS = [0, 30, 50, 70, 100];
+const DISCOUNT_PRESETS = [0, 10, 20, 30, 40, 50];
+const MAX_DISCOUNT = 50;
 
 /* ─── Display-only summary card (kept for compatibility) ───────── */
 export function ContractEarlyPayoffQuote({
@@ -183,9 +184,9 @@ export function EarlyPayoffOverlay({
                 <input
                   type="number"
                   min={0}
-                  max={100}
+                  max={MAX_DISCOUNT}
                   value={discountPct}
-                  onChange={(e) => setDiscountPct(Math.max(0, Math.min(100, Number(e.target.value))))}
+                  onChange={(e) => setDiscountPct(Math.max(0, Math.min(MAX_DISCOUNT, Number(e.target.value))))}
                   className="w-20 px-2 py-1.5 border border-input rounded-lg text-sm"
                 />
                 <span className="text-sm text-muted-foreground self-center">%</span>

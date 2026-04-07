@@ -4,6 +4,7 @@ import { PaymentsService } from './payments.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ReceiptsService } from '../receipts/receipts.service';
 import { AuditService } from '../audit/audit.service';
+import { JournalAutoService } from '../journal/journal-auto.service';
 
 describe('PaymentsService', () => {
   let service: PaymentsService;
@@ -68,6 +69,7 @@ describe('PaymentsService', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: ReceiptsService, useValue: mockReceiptsService },
         { provide: AuditService, useValue: mockAuditService },
+        { provide: JournalAutoService, useValue: { recordPayment: jest.fn(), recordExpense: jest.fn(), recordContractActivation: jest.fn() } },
       ],
     }).compile();
 

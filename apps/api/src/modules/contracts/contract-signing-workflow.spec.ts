@@ -4,6 +4,7 @@ import { ContractsService } from './contracts.service';
 import { ContractWorkflowService } from './contract-workflow.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { JournalAutoService } from '../journal/journal-auto.service';
 import { DocumentsService } from './documents.service';
 
 // Mock utility modules
@@ -185,6 +186,7 @@ describe('Contract Signing & Workflow', () => {
         ContractWorkflowService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: NotificationsService, useValue: mockNotifications },
+        { provide: JournalAutoService, useValue: { recordContractActivation: jest.fn(), recordPayment: jest.fn(), recordExpense: jest.fn() } },
       ],
     }).compile();
 

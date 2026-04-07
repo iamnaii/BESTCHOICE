@@ -265,7 +265,7 @@ const deleteMutation = useMutation({
         subtitle="รายละเอียดสัญญาผ่อนชำระ"
         action={
           <div className="flex gap-2 flex-wrap">
-            <button onClick={() => navigate(`/contracts/${id}/sign`)} className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90">
+            <button onClick={() => navigate(`/contracts/${id}/sign`)} className="px-4 py-2 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700 shadow-sm">
               ลงนาม/เอกสาร
             </button>
             <button
@@ -284,7 +284,7 @@ const deleteMutation = useMutation({
                   toast.error(getErrorMessage(err) || 'ไม่สามารถสร้าง PDF ได้', { id: 'pdf-gen' });
                 }
               }}
-              className="px-4 py-2 text-sm border border-input text-foreground rounded-lg hover:bg-muted"
+              className="px-4 py-2 text-sm bg-sky-600 text-white rounded-lg hover:bg-sky-700 shadow-sm"
             >
               ดาวน์โหลด PDF
             </button>
@@ -297,7 +297,7 @@ const deleteMutation = useMutation({
             )}
 
             {['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status) && (
-              <button onClick={() => setShowPayoffModal(true)} className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90">
+              <button onClick={() => setShowPayoffModal(true)} className="px-4 py-2 text-sm bg-amber-600 text-white rounded-lg hover:bg-amber-700 shadow-sm">
                 ปิดก่อนกำหนด
               </button>
             )}
@@ -305,7 +305,7 @@ const deleteMutation = useMutation({
               <button
                 onClick={() => customerLinkMutation.mutate()}
                 disabled={customerLinkMutation.isPending}
-                className="px-4 py-2 text-sm border border-primary text-primary rounded-lg hover:bg-primary/10 disabled:opacity-50"
+                className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 shadow-sm"
               >
                 {customerLinkMutation.isPending ? 'กำลังสร้าง...' : 'ส่งลิงก์ลูกค้า'}
               </button>
@@ -319,7 +319,7 @@ const deleteMutation = useMutation({
                 {deleteMutation.isPending ? 'กำลังลบ...' : 'ลบสัญญา'}
               </button>
             )}
-            <button onClick={() => navigate('/contracts')} className="px-4 py-2 text-sm text-muted-foreground border border-input rounded-lg">
+            <button onClick={() => navigate('/contracts')} className="px-4 py-2 text-sm bg-slate-600 text-white rounded-lg hover:bg-slate-700 shadow-sm">
               กลับ
             </button>
           </div>

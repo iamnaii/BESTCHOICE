@@ -807,7 +807,7 @@ export default function CreditChecksPage() {
                     {ai.affordabilityRatio != null && (
                       <div className="bg-card rounded border p-3">
                         <div className="text-xs text-muted-foreground">อัตราภาระหนี้</div>
-                        <div className="text-sm font-bold">{(ai.affordabilityRatio * 100).toFixed(1)}%</div>
+                        <div className="text-sm font-bold">{((ai.affordabilityRatio ?? 0) * 100).toFixed(1)}%</div>
                       </div>
                     )}
                     {ai.incomeConsistency && (
@@ -1147,8 +1147,8 @@ export default function CreditChecksPage() {
                       </div>
                       <div className="bg-muted/50 rounded-lg border p-3">
                         <div className="text-2xs text-muted-foreground">ชำระตรงเวลา</div>
-                        <div className={`text-lg font-bold ${customerHistory.onTimePaymentPct >= 80 ? 'text-success' : customerHistory.onTimePaymentPct >= 50 ? 'text-amber-600' : 'text-destructive'}`}>
-                          {customerHistory.onTimePaymentPct.toFixed(0)}%
+                        <div className={`text-lg font-bold ${(customerHistory.onTimePaymentPct ?? 0) >= 80 ? 'text-success' : (customerHistory.onTimePaymentPct ?? 0) >= 50 ? 'text-amber-600' : 'text-destructive'}`}>
+                          {(customerHistory.onTimePaymentPct ?? 0).toFixed(0)}%
                         </div>
                       </div>
                       <div className="bg-muted/50 rounded-lg border p-3">
@@ -1206,8 +1206,8 @@ export default function CreditChecksPage() {
                         </div>
                         <div className="bg-muted/50 rounded-lg border p-3">
                           <div className="text-2xs text-muted-foreground mb-1">Debt-to-Income</div>
-                          <div className={`text-lg font-bold ${riskScore.debtToIncome <= 40 ? 'text-success' : riskScore.debtToIncome <= 60 ? 'text-amber-600' : 'text-destructive'}`}>
-                            {riskScore.debtToIncome.toFixed(1)}%
+                          <div className={`text-lg font-bold ${(riskScore.debtToIncome ?? 0) <= 40 ? 'text-success' : (riskScore.debtToIncome ?? 0) <= 60 ? 'text-amber-600' : 'text-destructive'}`}>
+                            {(riskScore.debtToIncome ?? 0).toFixed(1)}%
                           </div>
                           <div className="text-2xs text-muted-foreground">ค่างวด / เงินเดือน</div>
                         </div>

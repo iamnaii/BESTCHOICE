@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsDateString } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsDateString, IsBoolean } from 'class-validator';
 
 export class CreateRepossessionDto {
   @IsString({ message: 'กรุณาระบุสัญญา' })
@@ -24,6 +24,19 @@ export class CreateRepossessionDto {
   @IsString({ message: 'กรุณาระบุหมายเหตุเป็นข้อความ' })
   @IsOptional()
   notes?: string;
+
+  // ─── ราคากลาง + คำนวณกำไร/ขาดทุน (FINANCE perspective) ───
+  @IsNumber({}, { message: 'ราคากลางต้องเป็นตัวเลข' })
+  @IsOptional()
+  marketValue?: number;
+
+  @IsNumber({}, { message: 'ส่วนลดต้องเป็นตัวเลข' })
+  @IsOptional()
+  discountPct?: number;
+
+  @IsBoolean()
+  @IsOptional()
+  customerRefundEnabled?: boolean;
 }
 
 export class UpdateRepossessionDto {

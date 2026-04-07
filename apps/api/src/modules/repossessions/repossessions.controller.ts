@@ -45,6 +45,21 @@ export class RepossessionsController {
     );
   }
 
+  @Get('preview/:contractId')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
+  previewCalculation(
+    @Param('contractId') contractId: string,
+    @Query('marketValue') marketValue?: string,
+    @Query('discountPct') discountPct?: string,
+    @Query('customerRefundEnabled') customerRefundEnabled?: string,
+  ) {
+    return this.repossessionsService.previewCalculation(contractId, {
+      marketValue: marketValue ? parseFloat(marketValue) : undefined,
+      discountPct: discountPct ? parseFloat(discountPct) : undefined,
+      customerRefundEnabled: customerRefundEnabled === 'true',
+    });
+  }
+
   @Get(':id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   findOne(@Param('id') id: string) {

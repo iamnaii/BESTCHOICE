@@ -428,15 +428,24 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
             const prevGroup = i > 0 ? filteredSections[i - 1].group : null;
             const showGroupHeader = section.group && section.group !== prevGroup;
             const groupLabels: Record<string, string> = { shop: 'หน้าร้าน', finance: 'ไฟแนนซ์', general: 'ทั่วไป' };
-            const groupColors: Record<string, string> = { shop: 'text-blue-400', finance: 'text-violet-400', general: 'text-white/30' };
+            const groupColors: Record<string, { text: string; dot: string; line: string }> = {
+              shop: { text: 'text-sky-300/90', dot: 'bg-sky-400', line: 'bg-sky-400/20' },
+              finance: { text: 'text-violet-300/90', dot: 'bg-violet-400', line: 'bg-violet-400/20' },
+              general: { text: 'text-emerald-300/90', dot: 'bg-emerald-400', line: 'bg-emerald-400/20' },
+            };
+            const gc = groupColors[section.group!] || groupColors.general;
 
             return (
               <div key={section.key}>
                 {showGroupHeader && (
-                  <div className="px-3 pt-4 pb-1.5">
-                    <span className={`text-[10px] font-bold uppercase tracking-[0.15em] ${groupColors[section.group!] || 'text-white/30'}`}>
-                      {groupLabels[section.group!] || section.group}
-                    </span>
+                  <div className={`px-3 pb-2.5 ${i > 0 ? 'pt-6 mt-2' : 'pt-3'}`}>
+                    <div className="flex items-center gap-2.5">
+                      <div className={`size-2 rounded-full ${gc.dot} shadow-sm`} />
+                      <span className={`text-[13px] font-bold uppercase tracking-wider ${gc.text}`}>
+                        {groupLabels[section.group!] || section.group}
+                      </span>
+                      <div className={`flex-1 h-px ${gc.line}`} />
+                    </div>
                   </div>
                 )}
                 <AccordionMenuSub value={section.key} data-testid={`nav-${section.key}`}>
@@ -535,15 +544,24 @@ function MobileSidebar() {
             const prevGroup = i > 0 ? filteredSections[i - 1].group : null;
             const showGroupHeader = section.group && section.group !== prevGroup;
             const groupLabels: Record<string, string> = { shop: 'หน้าร้าน', finance: 'ไฟแนนซ์', general: 'ทั่วไป' };
-            const groupColors: Record<string, string> = { shop: 'text-blue-400', finance: 'text-violet-400', general: 'text-white/30' };
+            const groupColors: Record<string, { text: string; dot: string; line: string }> = {
+              shop: { text: 'text-sky-300/90', dot: 'bg-sky-400', line: 'bg-sky-400/20' },
+              finance: { text: 'text-violet-300/90', dot: 'bg-violet-400', line: 'bg-violet-400/20' },
+              general: { text: 'text-emerald-300/90', dot: 'bg-emerald-400', line: 'bg-emerald-400/20' },
+            };
+            const gc = groupColors[section.group!] || groupColors.general;
 
             return (
               <div key={section.key}>
                 {showGroupHeader && (
-                  <div className="px-3 pt-4 pb-1.5">
-                    <span className={`text-[10px] font-bold uppercase tracking-[0.15em] ${groupColors[section.group!] || 'text-white/30'}`}>
-                      {groupLabels[section.group!] || section.group}
-                    </span>
+                  <div className={`px-3 pb-2.5 ${i > 0 ? 'pt-6 mt-2' : 'pt-3'}`}>
+                    <div className="flex items-center gap-2.5">
+                      <div className={`size-2 rounded-full ${gc.dot} shadow-sm`} />
+                      <span className={`text-[13px] font-bold uppercase tracking-wider ${gc.text}`}>
+                        {groupLabels[section.group!] || section.group}
+                      </span>
+                      <div className={`flex-1 h-px ${gc.line}`} />
+                    </div>
                   </div>
                 )}
                 <AccordionMenuSub value={section.key} data-testid={`nav-${section.key}`}>

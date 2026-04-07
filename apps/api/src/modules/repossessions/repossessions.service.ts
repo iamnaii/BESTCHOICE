@@ -59,6 +59,76 @@ export class RepossessionsService {
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
+  /**
+   * Preview repossession P&L calculation for a contract.
+   * Used by frontend to show live breakdown before creating.
+   */
+  async previewCalculation(contractId: string, options: { marketValue?: number; discountPct?: number; customerRefundEnabled?: boolean }) {
+    const contract = await this.prisma.contract.findUnique({
+      where: { id: contractId },
+      include: {
+        product: { select: { id: true, name: true, brand: true, model: true, costPrice: true } },
+        customer: { select: { id: true, name: true, phone: true } },
+        payments: { where: { deletedAt: null }, orderBy: { installmentNo: 'asc' } },
+      },
+    });
+    if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
+
+    let outstandingBalance = 0;
+    let totalPaid = 0;
+    let remainingMonths = 0;
+    for (const p of contract.payments) {
+      if (['PENDING', 'OVERDUE', 'PARTIALLY_PAID'].includes(p.status)) {
+        const lateFee = p.lateFeeWaived ? 0 : Number(p.lateFee);
+        outstandingBalance += Number(p.amountDue) - Number(p.amountPaid) + lateFee;
+        remainingMonths += 1;
+      }
+      totalPaid += Number(p.amountPaid);
+    }
+
+    const financeCost = Number(contract.financedAmount) + Number(contract.storeCommission || 0);
+    const remainingCost = Math.round((financeCost / contract.totalMonths) * remainingMonths * 100) / 100;
+    const discountPct = options.discountPct ?? 50;
+    const principalExVat = Math.round((outstandingBalance / 1.07) * 100) / 100;
+    const discountAmount = Math.round(Math.max(0, principalExVat - remainingCost) * (discountPct / 100) * 100) / 100;
+    const closingAmount = Math.round((principalExVat - discountAmount) * 100) / 100;
+    // marketValue: ถ้าไม่ระบุให้ใช้ costPrice เป็น fallback
+    const marketValue = options.marketValue ?? Number(contract.product.costPrice || 0);
+    const customerRefund = options.customerRefundEnabled
+      ? Math.round(Math.max(0, marketValue - closingAmount) * 100) / 100
+      : 0;
+    const profitLoss = Math.round((marketValue - remainingCost - customerRefund) * 100) / 100;
+
+    return {
+      contract: {
+        id: contract.id,
+        contractNumber: contract.contractNumber,
+        customer: contract.customer,
+        product: { name: contract.product.name, brand: contract.product.brand, model: contract.product.model },
+        totalMonths: contract.totalMonths,
+        monthlyPayment: Number(contract.monthlyPayment),
+        sellingPrice: Number(contract.sellingPrice),
+        financedAmount: Number(contract.financedAmount),
+        storeCommission: Number(contract.storeCommission || 0),
+      },
+      calculation: {
+        remainingMonths,
+        totalPaid,
+        outstandingBalance: Math.round(outstandingBalance * 100) / 100,
+        principalExVat,
+        financeCost,
+        remainingCost,
+        discountPct,
+        discountAmount,
+        closingAmount,
+        marketValue,
+        customerRefundEnabled: options.customerRefundEnabled || false,
+        customerRefund,
+        profitLoss,
+      },
+    };
+  }
+
   async findOne(id: string) {
     const repo = await this.prisma.repossession.findUnique({
       where: { id },
@@ -107,13 +177,32 @@ export class RepossessionsService {
       // Calculate outstanding balance for profit/loss
       let outstandingBalance = 0;
       let totalPaid = 0;
+      let remainingMonths = 0;
       for (const p of contract.payments) {
         if (['PENDING', 'OVERDUE', 'PARTIALLY_PAID'].includes(p.status)) {
           const lateFee = p.lateFeeWaived ? 0 : Number(p.lateFee);
           outstandingBalance += Number(p.amountDue) - Number(p.amountPaid) + lateFee;
+          remainingMonths += 1;
         }
         totalPaid += Number(p.amountPaid);
       }
+
+      // ─── FINANCE P&L Calculation (ex-VAT, FINANCE perspective) ───
+      // ต้นทุน FINANCE = financedAmount + storeCommission (เงินที่ FINANCE จ่ายให้ SHOP)
+      const financeCost = Number(contract.financedAmount) + Number(contract.storeCommission || 0);
+      // ต้นทุนคงเหลือ = (ต้นทุน ÷ งวดทั้งหมด) × งวดคงค้าง
+      const remainingCost = Math.round((financeCost / contract.totalMonths) * remainingMonths * 100) / 100;
+      // ส่วนลดให้ลูกค้า (default 50%)
+      const discountPct = dto.discountPct ?? 50;
+      // ค่างวดไม่รวม VAT = outstanding ÷ 1.07 (สำหรับโปรไฟล์ลูกค้าปิดบัญชีเอง — ไม่ใช้ในสูตรกำไร FINANCE)
+      const principalExVat = Math.round((outstandingBalance / 1.07) * 100) / 100;
+      const discountAmount = Math.round((principalExVat - remainingCost) * (discountPct / 100) * 100) / 100;
+      const closingAmount = Math.round((principalExVat - discountAmount) * 100) / 100;
+      // ราคากลางจาก trade-in pricing (auto) หรือจาก dto
+      const marketValue = dto.marketValue ?? Number(dto.appraisalPrice);
+      // กำไร/ขาดทุน = ราคากลาง - ต้นทุนคงเหลือ - เงินคืนลูกค้า (ถ้าคืน)
+      const customerRefund = dto.customerRefundEnabled ? Math.max(0, marketValue - closingAmount) : 0;
+      const profitLoss = Math.round((marketValue - remainingCost - customerRefund) * 100) / 100;
 
       // Create repossession
       const repossession = await tx.repossession.create({
@@ -128,6 +217,16 @@ export class RepossessionsService {
           resellPrice: dto.resellPrice,
           notes: dto.notes,
           status: 'REPOSSESSED',
+          marketValue,
+          remainingMonths,
+          financeCost,
+          remainingCost,
+          discountPct,
+          discountAmount,
+          closingAmount,
+          customerRefundEnabled: dto.customerRefundEnabled || false,
+          customerRefund,
+          profitLoss,
         },
       });
 

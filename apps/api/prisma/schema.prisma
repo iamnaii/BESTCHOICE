@@ -1112,6 +1112,19 @@ model Repossession {
   status          RepossessionStatus @default(REPOSSESSED)
   soldContractId  String?            @map("sold_contract_id")
   notes           String?
+
+  // ─── ราคากลาง + Profit/Loss calculation (FINANCE perspective, ex-VAT) ───
+  marketValue           Decimal? @map("market_value") @db.Decimal(12, 2)           // ราคากลาง (auto from trade-in pricing, editable)
+  remainingMonths       Int?     @map("remaining_months")                          // จำนวนงวดคงค้าง
+  financeCost           Decimal? @map("finance_cost") @db.Decimal(12, 2)           // financedAmount + storeCommission (ต้นทุน FINANCE เต็ม)
+  remainingCost         Decimal? @map("remaining_cost") @db.Decimal(12, 2)         // (financeCost / totalMonths) × งวดคงค้าง
+  discountPct           Decimal? @map("discount_pct") @db.Decimal(5, 2)            // % ส่วนลดให้ลูกค้า (default 50)
+  discountAmount        Decimal? @map("discount_amount") @db.Decimal(12, 2)        // จำนวนส่วนลด
+  closingAmount         Decimal? @map("closing_amount") @db.Decimal(12, 2)         // ยอดปิดสัญญาที่ลูกค้าจ่าย
+  customerRefundEnabled Boolean  @default(false) @map("customer_refund_enabled")   // คืนเงินลูกค้าหรือไม่
+  customerRefund        Decimal? @map("customer_refund") @db.Decimal(12, 2)        // จำนวนเงินคืนลูกค้า
+  profitLoss            Decimal? @map("profit_loss") @db.Decimal(12, 2)            // กำไร/ขาดทุนสุทธิของบริษัท (+ = กำไร)
+
   createdAt       DateTime           @default(now()) @map("created_at")
   updatedAt       DateTime           @updatedAt @map("updated_at")
   deletedAt       DateTime?          @map("deleted_at")

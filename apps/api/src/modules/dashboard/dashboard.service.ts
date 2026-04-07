@@ -511,7 +511,7 @@ export class DashboardService {
       alerts.push({
         type: 'pending_contracts',
         severity: 'info',
-        message: `มี ${pendingContractsCount} สัญญารอ approval`,
+        message: `มี ${pendingContractsCount} สัญญารออนุมัติ`,
         link: '/contracts',
         count: pendingContractsCount,
       });

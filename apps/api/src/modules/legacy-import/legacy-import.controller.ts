@@ -43,10 +43,11 @@ export class LegacyImportController {
       return { error: 'Job already running', status: this.service.getStatus() };
     }
 
-    this.logger.warn('🔴 Legacy import job triggered');
-    // Fire and forget — runs in background
-    this.service.execute().catch((e) => this.logger.error('Job failed', e));
-
-    return { ok: true, message: 'Job started in background. Poll GET /api/legacy-import/status' };
+    this.logger.warn('🔴 Legacy import job triggered (blocking)');
+    // BLOCKING — Cloud Run kills instances after HTTP response, so we MUST
+    // wait for the job to finish before returning. Cloud Run timeout must be
+    // raised to ≥600s for this endpoint.
+    await this.service.execute();
+    return { ok: true, status: this.service.getStatus() };
   }
 }

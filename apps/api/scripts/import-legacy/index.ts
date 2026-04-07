@@ -383,20 +383,35 @@ async function importContractsProductsPayments() {
       }
 
       // ----- CONTRACT -----
-      const sellingPrice = parseMoney(detail.ref_product_price);
-      const downPayment = parseMoney(detail.deposit);
       const totalMonths = parseInt0(detail.installment_number);
       const monthlyPayment = parseMoney(detail.installment_amount);
+      // ⚠️ Legacy field semantics (ไม่ตรงกับชื่อ field):
+      //   - detail.finance        = ยอดจัดจริง (บาง row=0 เพราะ data quality เก่า → fallback)
+      //   - detail.finance_amount = installment_total (ยอดรวมที่ลูกค้าต้องผ่อน) ไม่ใช่ยอดจัด!
+      //   - detail.commission_admin = ค่าคอมร้าน (บาง row=0 → คำนวณ 10%)
+      //   - detail.sales_tax      = VAT (บาง row=0 = ไม่มี VAT)
+      //   - detail.installment_total = รวมผ่อนทั้งสัญญา (= monthly × months)
+      const sellingPrice = parseMoney(detail.ref_product_price);
+      const downPayment = parseMoney(detail.deposit);
       const installmentTotal = parseMoney(detail.installment_total);
-      const financedAmount = parseMoney(detail.finance_amount);
-      // ยอด markup ที่ลูกค้าจ่ายเกินจากยอดจัด = installment_total - financed_amount
-      // markup นี้ประกอบด้วย: ค่าคอมร้าน 10% ของยอดจัด + ดอกเบี้ย FINANCE ที่เหลือ
-      // (ข้อมูลเก่า commission_admin = 0 เสมอ เพราะระบบเก่ารวมทุกอย่างไว้ใน installment_total)
-      const totalMarkup = installmentTotal.minus(financedAmount);
-      const storeCommission = financedAmount.mul(new Prisma.Decimal('0.10'));
-      const interestTotalRaw = totalMarkup.minus(storeCommission);
+      const rawFinance = parseMoney(detail.finance);
+      const rawCommission = parseMoney(detail.commission_admin);
+      const rawVat = parseMoney(detail.sales_tax);
+
+      // financedAmount: ใช้ field finance ถ้ามีค่า, fallback = selling - down
+      const financedAmount = rawFinance.gt(0) ? rawFinance : sellingPrice.minus(downPayment);
+
+      // storeCommission: ใช้ค่า explicit ถ้ามี, fallback 10% ของยอดจัด
+      const storeCommission = rawCommission.gt(0) ? rawCommission : financedAmount.mul(new Prisma.Decimal('0.10'));
+
+      // VAT: ใช้ค่าจริงจาก data เก่า (row เก่าๆ = 0)
+      const vatAmount = rawVat;
+
+      // interestTotal = installment_total - ยอดจัด - คอม - VAT
+      const interestTotalRaw = installmentTotal.minus(financedAmount).minus(storeCommission).minus(vatAmount);
       const interestTotal = interestTotalRaw.gte(0) ? interestTotalRaw : new Prisma.Decimal(0);
-      // interestRate = ดอกเบี้ยจริง (หลังหักคอม) เทียบกับยอดจัด → effective rate ต่อสัญญา
+
+      // interestRate = ดอกเบี้ย / ยอดจัด (effective rate ต่อสัญญา)
       const interestRate = financedAmount.gt(0)
         ? new Prisma.Decimal(interestTotal.div(financedAmount).toFixed(4))
         : new Prisma.Decimal(0);
@@ -439,6 +454,8 @@ async function importContractsProductsPayments() {
         interestTotal,
         financedAmount,
         storeCommission,
+        vatAmount: vatAmount.gt(0) ? vatAmount : null,
+        vatPct: vatAmount.gt(0) ? new Prisma.Decimal('0.0700') : null,
         monthlyPayment,
         status,
         workflowStatus: ContractWorkflowStatus.CREATING,

@@ -57,6 +57,7 @@ import { TradeInModule } from './modules/trade-in/trade-in.module';
 import { PromotionsModule } from './modules/promotions/promotions.module';
 import { AssetModule } from './modules/asset/asset.module';
 import { TodosModule } from './modules/todos/todos.module';
+import { LegacyImportModule } from './modules/legacy-import/legacy-import.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
 import { CsrfGuard } from './guards/csrf.guard';
@@ -151,6 +152,8 @@ import { AppCacheModule } from './cache/cache.module';
     AssetModule,
     // Todos / Task management
     TodosModule,
+    // ⚠️ TEMPORARY: Legacy data migration from โปรแกรมเขียว — remove after migration
+    LegacyImportModule,
     // MASTER: Management
     UsersModule,
     SettingsModule,

@@ -425,8 +425,12 @@ async function importContractsProductsPayments() {
       let status: ContractStatus;
       if (baddebtAt) {
         status = ContractStatus.CLOSED_BAD_DEBT;
+      } else if (allPaid && canceledAt) {
+        // ผ่อนครบแล้ว + flag canceled = น่าจะเป็นเคสแลกเครื่อง (EXCHANGED) ในระบบเก่า
+        status = ContractStatus.EXCHANGED;
       } else if (canceledAt) {
-        status = ContractStatus.EXCHANGED; // ใช้แทน "ยกเลิก" ชั่วคราว (enum ไม่มี CANCELLED)
+        // ลูกค้ายกเลิก/คืนเครื่องก่อนผ่อนครบ → ปิดสัญญาแบบไม่จบ
+        status = ContractStatus.CLOSED_BAD_DEBT;
       } else if (allPaid) {
         status = ContractStatus.COMPLETED;
       } else {
@@ -458,8 +462,14 @@ async function importContractsProductsPayments() {
         vatPct: vatAmount.gt(0) ? new Prisma.Decimal('0.0700') : null,
         monthlyPayment,
         status,
-        workflowStatus: ContractWorkflowStatus.CREATING,
-        notes: [s(legacyContract.contract_remark), s(legacyContract.canceled_remark) && `[ยกเลิก] ${s(legacyContract.canceled_remark)}`, s(legacyContract.baddebt_remark) && `[หนี้สูญ] ${s(legacyContract.baddebt_remark)}`].filter(Boolean).join('\n') || null,
+        workflowStatus: ContractWorkflowStatus.APPROVED,
+        reviewedAt: parseDate(legacyContract.approved_at) || parseDate(order.created_at) || new Date(),
+        reviewedById: report.placeholders.salespersonId,
+        notes: [
+          s(legacyContract.contract_remark),
+          canceledAt && `[ยกเลิกจากระบบเก่า ${canceledAt.toISOString().slice(0, 10)}] ${s(legacyContract.canceled_remark) || ''}`.trim(),
+          s(legacyContract.baddebt_remark) && `[หนี้สูญ] ${s(legacyContract.baddebt_remark)}`,
+        ].filter(Boolean).join('\n') || null,
         createdAt: parseDate(order.created_at) || new Date(),
         legacyContractCode: contractCode,
       };

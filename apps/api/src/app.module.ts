@@ -56,6 +56,7 @@ import { CommissionModule } from './modules/commission/commission.module';
 import { TradeInModule } from './modules/trade-in/trade-in.module';
 import { PromotionsModule } from './modules/promotions/promotions.module';
 import { AssetModule } from './modules/asset/asset.module';
+import { TodosModule } from './modules/todos/todos.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
 import { CsrfGuard } from './guards/csrf.guard';
@@ -148,6 +149,8 @@ import { AppCacheModule } from './cache/cache.module';
     PromotionsModule,
     // Fixed Asset & Depreciation
     AssetModule,
+    // Todos / Task management
+    TodosModule,
     // MASTER: Management
     UsersModule,
     SettingsModule,

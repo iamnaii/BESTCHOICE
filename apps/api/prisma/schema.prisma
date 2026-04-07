@@ -35,6 +35,18 @@ enum ContractStatus {
 }
 
 // Dunning escalation stages for overdue debt collection
+enum TodoStatus {
+  TODO
+  DOING
+  DONE
+}
+
+enum TodoPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
 enum DunningStage {
   NONE // ปกติ ยังไม่ overdue
   REMINDER // แจ้งเตือน (1-7 วัน overdue)
@@ -370,6 +382,8 @@ model User {
   contractsAssigned      Contract[]           @relation("ContractAssignedTo")
   tradeInsAppraised      TradeIn[]            @relation("TradeInAppraisedBy")
   assetsCreated          FixedAsset[]         @relation("AssetCreatedBy")
+  todosCreated           Todo[]               @relation("TodoCreatedBy")
+  todosAssigned          Todo[]               @relation("TodoAssignedTo")
 
   @@index([branchId])
   @@map("users")
@@ -420,6 +434,9 @@ model Customer {
   deletedAt DateTime? @map("deleted_at")
 
   loyaltyBalance   Int       @default(0) @map("loyalty_balance") // cached point balance
+
+  // Legacy migration tracking (จากโปรแกรมเขียว)
+  legacyMemberCode String? @unique @map("legacy_member_code")
 
   contracts          Contract[]
   sales              Sale[]
@@ -515,6 +532,9 @@ model Contract {
   retentionExpiry DateTime?               @map("retention_expiry")
   legalHoldReason String?                 @map("legal_hold_reason")
 
+  // Legacy migration tracking (จากโปรแกรมเขียว)
+  legacyContractCode String? @unique @map("legacy_contract_code")
+
   payments                 Payment[]
   signatures               Signature[]
   eDocuments               EDocument[]
@@ -575,6 +595,9 @@ model Payment {
   monthlyInterest   Decimal?  @map("monthly_interest") @db.Decimal(12, 2)
   monthlyCommission Decimal?  @map("monthly_commission") @db.Decimal(12, 2)
   vatAmount         Decimal?  @map("vat_amount") @db.Decimal(12, 2)
+
+  // Legacy migration tracking (จากโปรแกรมเขียว)
+  legacyInstallmentCode String? @unique @map("legacy_installment_code")
 
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")
@@ -734,6 +757,10 @@ model Product {
   inspectionId       String?         @map("inspection_id")
   photos             String[]        @default([])
   stockInDate        DateTime?       @map("stock_in_date")
+
+  // Legacy migration tracking (จากโปรแกรมเขียว)
+  legacyProductCode  String?         @unique @map("legacy_product_code")
+
   createdAt          DateTime        @default(now()) @map("created_at")
   updatedAt          DateTime        @updatedAt @map("updated_at")
   deletedAt          DateTime?       @map("deleted_at")
@@ -2483,4 +2510,46 @@ model BadDebtProvision {
   @@index([provisionDate])
   @@index([status])
   @@map("bad_debt_provisions")
+}
+
+// ============================================================
+// TODO / TASK MANAGEMENT (\u0e07\u0e32\u0e19\u0e20\u0e32\u0e22\u0e43\u0e19\u0e17\u0e35\u0e21/\u0e2a\u0e32\u0e02\u0e32)
+// ============================================================
+
+model Todo {
+  id          String       @id @default(uuid())
+  title       String
+  description String?      @db.Text
+  status      TodoStatus   @default(TODO)
+  priority    TodoPriority @default(MEDIUM)
+  dueDate     DateTime?    @map("due_date")
+  completedAt DateTime?    @map("completed_at")
+
+  // Ownership / assignment
+  createdById  String  @map("created_by_id")
+  assigneeId   String? @map("assignee_id")
+  branchId     String? @map("branch_id") // optional scoping by branch
+
+  // Tags as Postgres text[]
+  tags        String[]     @default([])
+
+  // JSON: [{ id, text, done }]
+  checklist   Json?
+
+  // JSON: [{ url, name, size, mimeType, uploadedAt }]
+  attachments Json?
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  createdBy User  @relation("TodoCreatedBy", fields: [createdById], references: [id])
+  assignee  User? @relation("TodoAssignedTo", fields: [assigneeId], references: [id])
+
+  @@index([assigneeId])
+  @@index([createdById])
+  @@index([status])
+  @@index([dueDate])
+  @@index([branchId])
+  @@map("todos")
 }

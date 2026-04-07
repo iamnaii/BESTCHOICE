@@ -813,7 +813,7 @@ export default function CustomersPage() {
                 )}
               </div>
               <div>
-                <label className="block text-xs font-medium text-foreground mb-1.5">Link Google Map</label>
+                <label className="block text-xs font-medium text-foreground mb-1.5">ลิงก์ Google Map</label>
                 <input type="url" value={form.googleMapLink} onChange={(e) => setForm({ ...form, googleMapLink: e.target.value })} className={inputClass} placeholder="https://maps.google.com/..." />
               </div>
             </div>

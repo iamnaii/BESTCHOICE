@@ -242,7 +242,7 @@ export default function CustomerEditModal({ customerId, customerSnapshot, custom
                   <AddressForm value={addrCurrent} onChange={setAddrCurrent} />
                 )}
                 <div className="mt-3">
-                  <label className="block text-xs text-muted-foreground mb-1">Link Google Map</label>
+                  <label className="block text-xs text-muted-foreground mb-1">ลิงก์ Google Map</label>
                   <input type="url" value={form.googleMapLink} onChange={(e) => setForm({ ...form, googleMapLink: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" placeholder="https://maps.google.com/..." />
                 </div>
               </div>

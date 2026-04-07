@@ -179,7 +179,7 @@ export function CustomerCreateModal({
                 <AddressForm value={custAddrCurrent} onChange={setCustAddrCurrent} />
               )}
               <div className="mt-3">
-                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Link Google Map</label>
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ลิงก์ Google Map</label>
                 <input type="url" value={custForm.googleMapLink} onChange={(e) => setCustForm({ ...custForm, googleMapLink: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" placeholder="https://maps.google.com/..." />
               </div>
             </div>

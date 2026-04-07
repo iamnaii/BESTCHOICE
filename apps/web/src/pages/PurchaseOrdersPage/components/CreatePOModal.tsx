@@ -467,7 +467,7 @@ export function CreatePOModal({
 
               <div className="bg-muted rounded-lg p-3 space-y-1 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">ยอดรวมสินค้า (Subtotal)</span>
+                  <span className="text-muted-foreground">ยอดรวมสินค้า</span>
                   <span className="font-medium">{subtotal.toLocaleString()} บาท</span>
                 </div>
                 <div className="flex justify-between items-center">

@@ -119,7 +119,7 @@ export function GoodsReceivingModal({
                         />
                         <input
                           type="text"
-                          placeholder="Serial Number"
+                          placeholder="หมายเลขซีเรียล"
                           value={unit.serialNumber}
                           onChange={(e) => updateReceivingUnit(idx, 'serialNumber', e.target.value)}
                           className="px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none font-mono"

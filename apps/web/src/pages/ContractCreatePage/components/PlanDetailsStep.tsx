@@ -155,7 +155,7 @@ export function PlanDetailsStep({
             <span>-{downPayment.toLocaleString()} ฿</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">ยอดปล่อย (Loan) <InfoTip text="ราคาขาย - เงินดาวน์ = ยอดที่ FINANCE ปล่อยให้ลูกค้าผ่อน" /></span>
+            <span className="text-muted-foreground">ยอดปล่อย <InfoTip text="ราคาขาย - เงินดาวน์ = ยอดที่ FINANCE ปล่อยให้ลูกค้าผ่อน" /></span>
             <span>{principal.toLocaleString()} ฿</span>
           </div>
           <div className="flex justify-between text-sm">

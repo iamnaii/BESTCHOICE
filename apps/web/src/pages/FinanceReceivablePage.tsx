@@ -131,7 +131,7 @@ function BestchoiceFinanceTab() {
       render: (r: InterCompanyTransaction) => <div className="text-right font-medium">{fmt(r.commission)} ฿</div>,
     },
     {
-      key: 'totalAmount', label: 'ยอดจ่าย SHOP',
+      key: 'totalAmount', label: 'ยอดจ่ายหน้าร้าน',
       render: (r: InterCompanyTransaction) => <div className="text-right font-semibold text-primary">{fmt(r.totalAmount)} ฿</div>,
     },
     {
@@ -192,7 +192,7 @@ function BestchoiceFinanceTab() {
         </div>
       </div>
 
-      <DataTable columns={icColumns} data={icData?.data || []} isLoading={icLoading} emptyMessage="ไม่พบรายการ BESTCHOICE FINANCE" />
+      <DataTable columns={icColumns} data={icData?.data || []} isLoading={icLoading} emptyMessage="ไม่พบรายการ BESTCHOICE ไฟแนนซ์" />
 
       {/* Pagination */}
       {icTotalPages > 1 && (
@@ -371,7 +371,7 @@ export default function FinanceReceivablePage() {
       <Tabs defaultValue="external" className="mb-6">
         <TabsList variant="line" size="lg" className="mb-6">
           <TabsTrigger value="external">ไฟแนนซ์ภายนอก</TabsTrigger>
-          <TabsTrigger value="bestchoice">BESTCHOICE FINANCE</TabsTrigger>
+          <TabsTrigger value="bestchoice">BESTCHOICE ไฟแนนซ์</TabsTrigger>
         </TabsList>
 
         <TabsContent value="external">

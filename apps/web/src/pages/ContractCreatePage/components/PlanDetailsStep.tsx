@@ -93,7 +93,7 @@ export function PlanDetailsStep({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1">เงินดาวน์ <InfoTip text="เงินที่ลูกค้าจ่ายล่วงหน้า SHOP เก็บไว้ ไม่ผ่าน FINANCE — ขั้นต่ำกำหนดตามนโยบาย" /></label>
+          <label className="block text-sm font-medium text-foreground mb-1">เงินดาวน์ <InfoTip text="เงินที่ลูกค้าจ่ายล่วงหน้า หน้าร้านเก็บไว้ ไม่ผ่านไฟแนนซ์ — ขั้นต่ำกำหนดตามนโยบาย" /></label>
           <input
             type="number"
             value={downPayment}
@@ -155,11 +155,11 @@ export function PlanDetailsStep({
             <span>-{downPayment.toLocaleString()} ฿</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">ยอดปล่อย <InfoTip text="ราคาขาย - เงินดาวน์ = ยอดที่ FINANCE ปล่อยให้ลูกค้าผ่อน" /></span>
+            <span className="text-muted-foreground">ยอดปล่อย <InfoTip text="ราคาขาย - เงินดาวน์ = ยอดที่ไฟแนนซ์ปล่อยให้ลูกค้าผ่อน" /></span>
             <span>{principal.toLocaleString()} ฿</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">ค่าคอมหน้าร้าน ({(storeCommPct * 100).toFixed(0)}%) <InfoTip text="ค่าคอมที่ FINANCE จ่ายให้ SHOP เป็น % ของยอดปล่อย — รวมอยู่ในค่างวดลูกค้า" /></span>
+            <span className="text-muted-foreground">ค่าคอมหน้าร้าน ({(storeCommPct * 100).toFixed(0)}%) <InfoTip text="ค่าคอมที่ไฟแนนซ์จ่ายให้หน้าร้าน เป็น % ของยอดปล่อย — รวมอยู่ในค่างวดลูกค้า" /></span>
             <span>{storeCommission.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span>
           </div>
           <div className="flex justify-between text-sm">

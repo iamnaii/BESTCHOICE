@@ -628,7 +628,7 @@ export default function CreditChecksPage() {
               onClick={() => { setOverrideId(cc.id); setOverrideCustomerId(cc.customer.id); }}
               className="px-3 py-1 text-xs bg-primary-100 text-primary-700 rounded-lg hover:bg-primary-200"
             >
-              Override
+              ปรับแก้
             </button>
           )}
         </div>
@@ -1330,7 +1330,7 @@ export default function CreditChecksPage() {
 
       {/* Override Modal */}
       {overrideId && (
-        <Modal isOpen title="Override สถานะเครดิตเช็ค" onClose={() => { setOverrideId(null); setOverrideCustomerId(null); }}>
+        <Modal isOpen title="ปรับแก้สถานะเครดิตเช็ค" onClose={() => { setOverrideId(null); setOverrideCustomerId(null); }}>
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">สถานะใหม่</label>

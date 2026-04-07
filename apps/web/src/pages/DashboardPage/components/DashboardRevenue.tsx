@@ -153,14 +153,14 @@ export default function DashboardRevenue({
         {entityProfitError && (userRole === 'OWNER' || userRole === 'FINANCE_MANAGER' || userRole === 'ACCOUNTANT') && (
           <Card>
             <CardContent className="py-6 text-center text-sm text-muted-foreground">
-              ไม่สามารถโหลดข้อมูลกำไร Shop/Finance ได้
+              ไม่สามารถโหลดข้อมูลกำไร หน้าร้าน/ไฟแนนซ์ ได้
             </CardContent>
           </Card>
         )}
         {!entityProfitError && (userRole === 'OWNER' || userRole === 'FINANCE_MANAGER' || userRole === 'ACCOUNTANT') && (
           <Card>
             <CardHeader>
-              <CardTitle>กำไร Shop / Finance เดือนนี้</CardTitle>
+              <CardTitle>กำไร หน้าร้าน / ไฟแนนซ์ เดือนนี้</CardTitle>
               <CardToolbar>
                 <CompanyFilter
                   value={companyId}
@@ -180,7 +180,7 @@ export default function DashboardRevenue({
                   <div className="flex items-center gap-4 px-5 py-3.5">
                     <div className="w-1 h-8 rounded-full bg-blue-500" />
                     <div className="flex-1">
-                      <div className="text-sm font-medium text-foreground">BESTCHOICE SHOP</div>
+                      <div className="text-sm font-medium text-foreground">BESTCHOICE หน้าร้าน</div>
                       <div className="text-2xs text-muted-foreground">ดาวน์ + เงินต้น + คอมมิชชัน - ต้นทุน</div>
                     </div>
                     <div className="text-sm font-semibold text-success">
@@ -190,7 +190,7 @@ export default function DashboardRevenue({
                   <div className="flex items-center gap-4 px-5 py-3.5">
                     <div className="w-1 h-8 rounded-full bg-indigo-500" />
                     <div className="flex-1">
-                      <div className="text-sm font-medium text-foreground">BESTCHOICE FINANCE</div>
+                      <div className="text-sm font-medium text-foreground">BESTCHOICE ไฟแนนซ์</div>
                       <div className="text-2xs text-muted-foreground">ดอกเบี้ย - คอมมิชชัน + ค่าปรับ</div>
                     </div>
                     <div className="text-sm font-semibold text-success">
@@ -204,7 +204,7 @@ export default function DashboardRevenue({
                     <div className="w-1 h-8 rounded-full bg-green-500" />
                     <div className="flex-1">
                       <div className="text-sm font-medium text-foreground">กำไรรวม</div>
-                      <div className="text-2xs text-muted-foreground">SHOP + FINANCE (ไม่รวม VAT)</div>
+                      <div className="text-2xs text-muted-foreground">หน้าร้าน + ไฟแนนซ์ (ไม่รวม VAT)</div>
                     </div>
                     <div className="text-sm font-bold text-success">
                       {(entityProfit.combined?.totalProfit || 0).toLocaleString()} ฿

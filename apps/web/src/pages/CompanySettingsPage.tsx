@@ -358,7 +358,7 @@ export default function CompanySettingsPage() {
     <div>
       <PageHeader
         title="จัดการนิติบุคคล"
-        subtitle="ข้อมูลนิติบุคคล (SHOP / FINANCE) สำหรับใช้ในสัญญา ใบเสร็จ และรายงาน"
+        subtitle="ข้อมูลนิติบุคคล (หน้าร้าน / ไฟแนนซ์) สำหรับใช้ในสัญญา ใบเสร็จ และรายงาน"
         icon={<Building2 className="size-6" />}
       />
 

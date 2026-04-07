@@ -427,7 +427,7 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
           {filteredSections.map((section, i) => {
             const prevGroup = i > 0 ? filteredSections[i - 1].group : null;
             const showGroupHeader = section.group && section.group !== prevGroup;
-            const groupLabels: Record<string, string> = { shop: 'SHOP', finance: 'FINANCE', general: 'ทั่วไป' };
+            const groupLabels: Record<string, string> = { shop: 'หน้าร้าน', finance: 'ไฟแนนซ์', general: 'ทั่วไป' };
             const groupColors: Record<string, string> = { shop: 'text-blue-400', finance: 'text-violet-400', general: 'text-white/30' };
 
             return (
@@ -534,7 +534,7 @@ function MobileSidebar() {
           {filteredSections.map((section, i) => {
             const prevGroup = i > 0 ? filteredSections[i - 1].group : null;
             const showGroupHeader = section.group && section.group !== prevGroup;
-            const groupLabels: Record<string, string> = { shop: 'SHOP', finance: 'FINANCE', general: 'ทั่วไป' };
+            const groupLabels: Record<string, string> = { shop: 'หน้าร้าน', finance: 'ไฟแนนซ์', general: 'ทั่วไป' };
             const groupColors: Record<string, string> = { shop: 'text-blue-400', finance: 'text-violet-400', general: 'text-white/30' };
 
             return (

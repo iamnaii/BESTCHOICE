@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
-import Modal from '@/components/ui/Modal';
 import { toast } from 'sonner';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 
@@ -88,79 +87,116 @@ export default function ProductEditModal({ product, onClose, onSuccess }: Props)
     mutation.mutate(payload);
   };
 
+  const inputClass = 'w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20';
+  const labelClass = 'block text-xs font-medium text-foreground mb-1.5';
+
   return (
-    <Modal isOpen title="แก้ไขข้อมูลสินค้า" onClose={onClose} size="lg">
-      <form onSubmit={handleSubmit} className="space-y-5 max-h-[75vh] overflow-y-auto pr-1">
-        <div className="border border-border rounded-lg p-4">
-          <h3 className="text-sm font-semibold text-foreground mb-3">ข้อมูลสินค้า</h3>
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center pt-8 pb-8" role="dialog" aria-modal="true" aria-label="แก้ไขข้อมูลสินค้า">
+      <div className="w-full max-w-2xl bg-background rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-4rem)]">
+        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b px-6 py-4 flex items-center justify-between shrink-0">
+          <button type="button" onClick={onClose} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+            กลับ
+          </button>
+          <h2 className="text-lg font-semibold text-foreground">แก้ไขข้อมูลสินค้า</h2>
+          <div className="w-16" />
+        </div>
+      <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto flex flex-col">
+        <div className="p-6 space-y-5 flex-1">
+        <div className="rounded-xl border border-border bg-card p-5">
+          <div className="flex items-center gap-2.5 mb-4">
+            <div className="flex items-center justify-center size-8 rounded-lg bg-primary/10 text-primary">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.91 8.84 8.56 2.23a1.93 1.93 0 0 0-1.81 0L3.1 4.13a2.12 2.12 0 0 0-.05 3.69l12.22 6.93a2 2 0 0 0 1.94 0L21 12.51a2.12 2.12 0 0 0-.09-3.67Z"/><path d="m3.09 8.84 12.35-6.61"/><path d="M6 19v-4"/></svg>
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">ข้อมูลสินค้า</h3>
+              <p className="text-xs text-muted-foreground">รายละเอียดพื้นฐานของสินค้า</p>
+            </div>
+          </div>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             <div className="col-span-2 md:col-span-3">
-              <label className="block text-xs text-muted-foreground mb-1">ชื่อสินค้า *</label>
-              <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" required />
+              <label className={labelClass}>ชื่อสินค้า <span className="text-destructive">*</span></label>
+              <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputClass} required />
             </div>
             {product.category !== 'ACCESSORY' ? (
               <>
                 <div>
-                  <label className="block text-xs text-muted-foreground mb-1">ยี่ห้อ *</label>
-                  <input type="text" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" required />
+                  <label className={labelClass}>ยี่ห้อ <span className="text-destructive">*</span></label>
+                  <input type="text" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} className={inputClass} required />
                 </div>
                 <div>
-                  <label className="block text-xs text-muted-foreground mb-1">รุ่น *</label>
-                  <input type="text" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" required />
+                  <label className={labelClass}>รุ่น <span className="text-destructive">*</span></label>
+                  <input type="text" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} className={inputClass} required />
                 </div>
                 <div>
-                  <label className="block text-xs text-muted-foreground mb-1">สี</label>
-                  <input type="text" value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
+                  <label className={labelClass}>สี</label>
+                  <input type="text" value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} className={inputClass} />
                 </div>
                 <div>
-                  <label className="block text-xs text-muted-foreground mb-1">ความจุ</label>
-                  <input type="text" value={form.storage} onChange={(e) => setForm({ ...form, storage: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
+                  <label className={labelClass}>ความจุ</label>
+                  <input type="text" value={form.storage} onChange={(e) => setForm({ ...form, storage: e.target.value })} className={inputClass} />
                 </div>
               </>
             ) : (
               <>
                 <div>
-                  <label className="block text-xs text-muted-foreground mb-1">ประเภทอุปกรณ์</label>
-                  <input type="text" value={form.accessoryType} onChange={(e) => setForm({ ...form, accessoryType: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
+                  <label className={labelClass}>ประเภทอุปกรณ์</label>
+                  <input type="text" value={form.accessoryType} onChange={(e) => setForm({ ...form, accessoryType: e.target.value })} className={inputClass} />
                 </div>
                 <div>
-                  <label className="block text-xs text-muted-foreground mb-1">ยี่ห้ออุปกรณ์</label>
-                  <input type="text" value={form.accessoryBrand} onChange={(e) => setForm({ ...form, accessoryBrand: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
+                  <label className={labelClass}>ยี่ห้ออุปกรณ์</label>
+                  <input type="text" value={form.accessoryBrand} onChange={(e) => setForm({ ...form, accessoryBrand: e.target.value })} className={inputClass} />
                 </div>
               </>
             )}
           </div>
         </div>
 
-        <div className="border border-border rounded-lg p-4">
-          <h3 className="text-sm font-semibold text-foreground mb-3">หมายเลขเครื่อง & ราคา</h3>
+        <div className="rounded-xl border border-border bg-card p-5">
+          <div className="flex items-center gap-2.5 mb-4">
+            <div className="flex items-center justify-center size-8 rounded-lg bg-emerald-500/10 text-emerald-500">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">หมายเลขเครื่อง & ราคา</h3>
+              <p className="text-xs text-muted-foreground">IMEI, Serial Number, ราคาทุน</p>
+            </div>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">IMEI / Serial</label>
-              <input type="text" value={form.imeiSerial} onChange={(e) => setForm({ ...form, imeiSerial: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm font-mono" />
+              <label className={labelClass}>IMEI / Serial</label>
+              <input type="text" value={form.imeiSerial} onChange={(e) => setForm({ ...form, imeiSerial: e.target.value })} className={`${inputClass} font-mono`} />
             </div>
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">Serial Number</label>
-              <input type="text" value={form.serialNumber} onChange={(e) => setForm({ ...form, serialNumber: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm font-mono" />
+              <label className={labelClass}>Serial Number</label>
+              <input type="text" value={form.serialNumber} onChange={(e) => setForm({ ...form, serialNumber: e.target.value })} className={`${inputClass} font-mono`} />
             </div>
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">ราคาทุน (บาท)</label>
-              <input type="number" step="0.01" value={form.costPrice} onChange={(e) => setForm({ ...form, costPrice: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
+              <label className={labelClass}>ราคาทุน (บาท)</label>
+              <input type="number" step="0.01" value={form.costPrice} onChange={(e) => setForm({ ...form, costPrice: e.target.value })} className={inputClass} />
             </div>
           </div>
         </div>
 
         {product.category === 'PHONE_USED' && (
-          <div className="border border-border rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-foreground mb-3">ข้อมูลมือสอง</h3>
-            <div className="grid grid-cols-2 gap-3 mb-3">
-              <div>
-                <label className="block text-xs text-muted-foreground mb-1">แบตเตอรี่ (%)</label>
-                <input type="number" min="0" max="100" value={form.batteryHealth} onChange={(e) => setForm({ ...form, batteryHealth: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
+          <div className="rounded-xl border border-border bg-card p-5">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-amber-500/10 text-amber-500">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="16" height="20" x="4" y="2" rx="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/></svg>
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">วันหมดประกัน</label>
-                <ThaiDateInput value={form.warrantyExpireDate} onChange={(e) => setForm({ ...form, warrantyExpireDate: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" disabled={form.warrantyExpired} />
+                <h3 className="text-sm font-semibold text-foreground">ข้อมูลมือสอง</h3>
+                <p className="text-xs text-muted-foreground">แบตเตอรี่, ประกัน, กล่อง</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className={labelClass}>แบตเตอรี่ (%)</label>
+                <input type="number" min="0" max="100" value={form.batteryHealth} onChange={(e) => setForm({ ...form, batteryHealth: e.target.value })} className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>วันหมดประกัน</label>
+                <ThaiDateInput value={form.warrantyExpireDate} onChange={(e) => setForm({ ...form, warrantyExpireDate: e.target.value })} className={inputClass} disabled={form.warrantyExpired} />
               </div>
             </div>
             <div className="flex gap-6">
@@ -176,13 +212,15 @@ export default function ProductEditModal({ product, onClose, onSuccess }: Props)
           </div>
         )}
 
-        <div className="flex justify-end gap-3 pt-2 sticky bottom-0 bg-background py-3 border-t">
-          <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-muted-foreground border border-input rounded-lg">ยกเลิก</button>
-          <button type="submit" disabled={mutation.isPending} className="px-6 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50">
+        </div>
+        <div className="sticky bottom-0 bg-background/95 backdrop-blur-sm border-t px-6 py-4 flex justify-end gap-3 shrink-0">
+          <button type="button" onClick={onClose} className="px-6 py-2.5 text-sm border border-input rounded-lg hover:bg-muted transition-colors">ยกเลิก</button>
+          <button type="submit" disabled={mutation.isPending} className="px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm">
             {mutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
           </button>
         </div>
       </form>
-    </Modal>
+      </div>
+    </div>
   );
 }

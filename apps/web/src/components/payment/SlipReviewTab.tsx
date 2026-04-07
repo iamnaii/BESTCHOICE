@@ -467,17 +467,32 @@ export default function SlipReviewTab() {
 
       {/* Review Modal */}
       {selectedEvidence && (
-        <Modal
-          isOpen={true}
-          onClose={() => {
-            setSelectedEvidence(null);
-            setReviewNote('');
-            setApproveAmount('');
-            setSelectedInstallmentNo(1);
-          }}
-          title={`ตรวจสอบสลิป - ${selectedEvidence.contract.customer.name}`}
-          size="lg"
+        <div
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center pt-8 pb-8"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`ตรวจสอบสลิป - ${selectedEvidence.contract.customer.name}`}
         >
+          <div className="w-full max-w-5xl bg-background rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-4rem)]">
+            <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b px-6 py-4 flex items-center justify-between shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedEvidence(null);
+                  setReviewNote('');
+                  setApproveAmount('');
+                  setSelectedInstallmentNo(1);
+                }}
+                className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                กลับ
+              </button>
+              <h2 className="text-lg font-semibold text-foreground">ตรวจสอบสลิป - {selectedEvidence.contract.customer.name}</h2>
+              <div className="w-16" />
+            </div>
+            <div className="flex-1 overflow-y-auto flex flex-col">
+              <div className="p-6 flex-1">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Slip Image with Zoom/Rotate */}
             <div className="space-y-2">
@@ -640,22 +655,6 @@ export default function SlipReviewTab() {
                     />
                   </div>
 
-                  <div className="flex gap-3 pt-2">
-                    <button
-                      onClick={() => approveMutation.mutate(selectedEvidence.id)}
-                      disabled={!approveAmount || approveMutation.isPending}
-                      className="flex-1 bg-green-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-green-700 disabled:bg-muted disabled:cursor-not-allowed"
-                    >
-                      {approveMutation.isPending ? 'กำลังบันทึก...' : 'อนุมัติ'}
-                    </button>
-                    <button
-                      onClick={() => rejectMutation.mutate(selectedEvidence.id)}
-                      disabled={rejectMutation.isPending}
-                      className="flex-1 bg-red-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-red-700 disabled:bg-muted"
-                    >
-                      {rejectMutation.isPending ? 'กำลังบันทึก...' : 'ปฏิเสธ'}
-                    </button>
-                  </div>
                 </>
               )}
 
@@ -673,7 +672,44 @@ export default function SlipReviewTab() {
               )}
             </div>
           </div>
-        </Modal>
+              </div>
+              <div className="sticky bottom-0 bg-background/95 backdrop-blur-sm border-t px-6 py-4 flex justify-end gap-3 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedEvidence(null);
+                    setReviewNote('');
+                    setApproveAmount('');
+                    setSelectedInstallmentNo(1);
+                  }}
+                  className="px-6 py-2.5 text-sm border border-input rounded-lg hover:bg-muted transition-colors"
+                >
+                  ยกเลิก
+                </button>
+                {selectedEvidence.status === 'PENDING_REVIEW' && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => rejectMutation.mutate(selectedEvidence.id)}
+                      disabled={rejectMutation.isPending}
+                      className="px-6 py-2.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 font-semibold transition-colors shadow-sm"
+                    >
+                      {rejectMutation.isPending ? 'กำลังบันทึก...' : 'ปฏิเสธ'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => approveMutation.mutate(selectedEvidence.id)}
+                      disabled={!approveAmount || approveMutation.isPending}
+                      className="px-6 py-2.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 font-semibold transition-colors shadow-sm"
+                    >
+                      {approveMutation.isPending ? 'กำลังบันทึก...' : 'อนุมัติ'}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -5,7 +5,6 @@ import api, { getErrorMessage } from '@/lib/api';
 import { formatDateShort, formatDateMedium } from '@/utils/formatters';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
-import Modal from '@/components/ui/Modal';
 import { compressImageForOcr } from '@/lib/compressImage';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Camera, X, CreditCard, Mail, Copy, Link2, Clock, Users, UserCheck, Shield } from 'lucide-react';
@@ -50,7 +49,8 @@ const roleColors: Record<string, string> = {
   ACCOUNTANT: 'bg-warning/10 text-warning dark:bg-warning/15',
 };
 
-const inputClass = 'w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none';
+const inputClass = 'w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20';
+const labelClass = 'block text-xs font-medium text-foreground mb-1.5';
 
 interface InviteToken {
   id: string;
@@ -506,7 +506,18 @@ export default function UsersPage() {
       </div>
 
       {/* Invite Modal */}
-      <Modal isOpen={isInviteModalOpen} onClose={() => setIsInviteModalOpen(false)} title="เชิญผู้ใช้ใหม่">
+      {isInviteModalOpen && (
+      <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center pt-8 pb-8" role="dialog" aria-modal="true" aria-label="เชิญผู้ใช้ใหม่">
+        <div className="w-full max-w-2xl bg-background rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-4rem)]">
+          <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b px-6 py-4 flex items-center justify-between shrink-0">
+            <button type="button" onClick={() => setIsInviteModalOpen(false)} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+              กลับ
+            </button>
+            <h2 className="text-lg font-semibold text-foreground">เชิญผู้ใช้ใหม่</h2>
+            <div className="w-16" />
+          </div>
+          <div className="flex-1 overflow-y-auto p-6">
         {lastInviteUrl ? (
           <div className="space-y-4">
             <div className="p-3 bg-success/5 dark:bg-success/10 border border-success/20 rounded-lg">
@@ -532,16 +543,11 @@ export default function UsersPage() {
               <Clock className="size-3.5" />
               ลิงก์หมดอายุใน 72 ชั่วโมง
             </div>
-            <div className="flex justify-end pt-2">
-              <button onClick={() => setIsInviteModalOpen(false)} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90">
-                ปิด
-              </button>
-            </div>
           </div>
         ) : (
           <form onSubmit={handleInviteSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">อีเมล *</label>
+              <label className={labelClass}>อีเมล *</label>
               <input
                 type="email"
                 value={inviteForm.email}
@@ -553,7 +559,7 @@ export default function UsersPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">ตำแหน่ง *</label>
+                <label className={labelClass}>ตำแหน่ง *</label>
                 <select
                   value={inviteForm.role}
                   onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value })}
@@ -563,7 +569,7 @@ export default function UsersPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">สาขา</label>
+                <label className={labelClass}>สาขา</label>
                 <select
                   value={inviteForm.branchId}
                   onChange={(e) => setInviteForm({ ...inviteForm, branchId: e.target.value })}
@@ -574,21 +580,43 @@ export default function UsersPage() {
                 </select>
               </div>
             </div>
-            <div className="flex justify-end gap-3 pt-2">
-              <button type="button" onClick={() => setIsInviteModalOpen(false)} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground">ยกเลิก</button>
-              <button type="submit" disabled={createInviteMutation.isPending}
-                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50 flex items-center gap-1.5">
-                <Mail className="size-4" />
-                {createInviteMutation.isPending ? 'กำลังส่ง...' : 'ส่งคำเชิญ'}
-              </button>
-            </div>
           </form>
         )}
-      </Modal>
+          </div>
+          <div className="sticky bottom-0 bg-background/95 backdrop-blur-sm border-t px-6 py-4 flex justify-end gap-3 shrink-0">
+            {lastInviteUrl ? (
+              <button type="button" onClick={() => setIsInviteModalOpen(false)} className="px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 font-semibold transition-colors shadow-sm">
+                ปิด
+              </button>
+            ) : (
+              <>
+                <button type="button" onClick={() => setIsInviteModalOpen(false)} className="px-6 py-2.5 text-sm border border-input rounded-lg hover:bg-muted transition-colors">ยกเลิก</button>
+                <button type="button" disabled={createInviteMutation.isPending} onClick={handleInviteSubmit}
+                  className="px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm flex items-center gap-1.5">
+                  <Mail className="size-4" />
+                  {createInviteMutation.isPending ? 'กำลังส่ง...' : 'ส่งคำเชิญ'}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+      )}
 
       {/* User Create/Edit Modal */}
-      <Modal isOpen={isModalOpen} onClose={closeModal} title={editingUser ? 'แก้ไขผู้ใช้' : 'เพิ่มผู้ใช้ใหม่'}>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-5 lg:gap-7.5">
+      {isModalOpen && (
+      <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center pt-8 pb-8" role="dialog" aria-modal="true" aria-label={editingUser ? 'แก้ไขผู้ใช้' : 'เพิ่มผู้ใช้ใหม่'}>
+        <div className="w-full max-w-2xl bg-background rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-4rem)]">
+          <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b px-6 py-4 flex items-center justify-between shrink-0">
+            <button type="button" onClick={closeModal} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+              กลับ
+            </button>
+            <h2 className="text-lg font-semibold text-foreground">{editingUser ? 'แก้ไขผู้ใช้' : 'เพิ่มผู้ใช้ใหม่'}</h2>
+            <div className="w-16" />
+          </div>
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto flex flex-col">
+          <div className="p-6 space-y-5 flex-1">
           {/* Avatar upload + Card reader */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -623,7 +651,7 @@ export default function UsersPage() {
           {/* Email (create only) */}
           {!editingUser && (
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">อีเมล *</label>
+              <label className={labelClass}>อีเมล *</label>
               <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required className={inputClass} />
             </div>
           )}
@@ -631,11 +659,11 @@ export default function UsersPage() {
           {/* Name + Nickname */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">ชื่อ-นามสกุล *</label>
+              <label className={labelClass}>ชื่อ-นามสกุล *</label>
               <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className={inputClass} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">ชื่อเล่น</label>
+              <label className={labelClass}>ชื่อเล่น</label>
               <input type="text" value={form.nickname} onChange={(e) => setForm({ ...form, nickname: e.target.value })} placeholder="เช่น นุ๊ก, เอ" className={inputClass} />
             </div>
           </div>
@@ -643,11 +671,11 @@ export default function UsersPage() {
           {/* Employee ID + Start Date */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">รหัสพนักงาน</label>
+              <label className={labelClass}>รหัสพนักงาน</label>
               <input type="text" value={form.employeeId} onChange={(e) => setForm({ ...form, employeeId: e.target.value })} placeholder="EMP-001" className={inputClass} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">วันเริ่มงาน</label>
+              <label className={labelClass}>วันเริ่มงาน</label>
               <ThaiDateInput value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} className={inputClass} />
             </div>
           </div>
@@ -655,19 +683,19 @@ export default function UsersPage() {
           {/* National ID + Birth Date */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">เลขบัตรประชาชน</label>
+              <label className={labelClass}>เลขบัตรประชาชน</label>
               <input type="text" value={form.nationalId} onChange={(e) => setForm({ ...form, nationalId: e.target.value })}
                 placeholder="x-xxxx-xxxxx-xx-x" maxLength={13} pattern="\d{13}" className={inputClass} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">วันเกิด</label>
+              <label className={labelClass}>วันเกิด</label>
               <ThaiDateInput value={form.birthDate} onChange={(e) => setForm({ ...form, birthDate: e.target.value })} className={inputClass} />
             </div>
           </div>
 
           {/* Password */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
+            <label className={labelClass}>
               {editingUser ? 'รหัสผ่านใหม่ (เว้นว่างถ้าไม่เปลี่ยน)' : 'รหัสผ่าน *'}
             </label>
             <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })}
@@ -677,13 +705,13 @@ export default function UsersPage() {
           {/* Role + Branch */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">ตำแหน่ง *</label>
+              <label className={labelClass}>ตำแหน่ง *</label>
               <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className={inputClass}>
                 {Object.entries(roleLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">สาขา</label>
+              <label className={labelClass}>สาขา</label>
               <select value={form.branchId} onChange={(e) => setForm({ ...form, branchId: e.target.value })} className={inputClass}>
                 <option value="">ไม่ระบุ (ทุกสาขา)</option>
                 {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -696,30 +724,33 @@ export default function UsersPage() {
             <p className="text-sm font-medium text-muted-foreground mb-3">ข้อมูลติดต่อ</p>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">เบอร์โทรศัพท์</label>
+                <label className={labelClass}>เบอร์โทรศัพท์</label>
                 <input type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })}
                   placeholder="0xx-xxx-xxxx" pattern="0[0-9]{9}" className={inputClass} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">LINE ID</label>
+                <label className={labelClass}>LINE ID</label>
                 <input type="text" value={form.lineId} onChange={(e) => setForm({ ...form, lineId: e.target.value })} className={inputClass} />
               </div>
             </div>
             <div className="mt-4">
-              <label className="block text-sm font-medium text-foreground mb-1">ที่อยู่</label>
+              <label className={labelClass}>ที่อยู่</label>
               <textarea value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} rows={2} className={inputClass} />
             </div>
           </div>
 
-          <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={closeModal} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground">ยกเลิก</button>
+          </div>
+          <div className="sticky bottom-0 bg-background/95 backdrop-blur-sm border-t px-6 py-4 flex justify-end gap-3 shrink-0">
+            <button type="button" onClick={closeModal} className="px-6 py-2.5 text-sm border border-input rounded-lg hover:bg-muted transition-colors">ยกเลิก</button>
             <button type="submit" disabled={saveMutation.isPending}
-              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50">
+              className="px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm">
               {saveMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
             </button>
           </div>
         </form>
-      </Modal>
+        </div>
+      </div>
+      )}
 
       <ConfirmDialog
         open={confirmDialog.open}

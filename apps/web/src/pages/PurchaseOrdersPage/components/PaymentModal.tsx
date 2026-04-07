@@ -1,5 +1,4 @@
 import { UseMutationResult } from '@tanstack/react-query';
-import Modal from '@/components/ui/Modal';
 import { formatDateMedium } from '@/utils/formatters';
 import { PurchaseOrder } from '../types';
 
@@ -32,18 +31,35 @@ export function PaymentModal({
   paymentMutation,
   handlePaymentUpdate,
 }: PaymentModalProps) {
-  const selectClass = 'w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none';
+  const selectClass = 'w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20';
   const inputClass = selectClass;
 
+  if (!isOpen) return null;
+
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title={`อัปเดตการจ่ายเงิน - ${selectedPO?.poNumber || ''}`}
-      size="md"
-    >
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center pt-8 pb-8" role="dialog" aria-modal="true" aria-label={`อัปเดตการจ่ายเงิน - ${selectedPO?.poNumber || ''}`}>
+      <div className="w-full max-w-2xl bg-background rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-4rem)]">
+        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b px-6 py-4 flex items-center justify-between shrink-0">
+          <button type="button" onClick={onClose} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+            กลับ
+          </button>
+          <h2 className="text-lg font-semibold text-foreground">อัปเดตการจ่ายเงิน {selectedPO?.poNumber || ''}</h2>
+          <div className="w-16" />
+        </div>
       {selectedPO && (
-        <form onSubmit={handlePaymentUpdate} className="space-y-4">
+        <form onSubmit={handlePaymentUpdate} className="flex-1 overflow-y-auto flex flex-col">
+          <div className="p-6 space-y-5 flex-1">
+          <div className="rounded-xl border border-border bg-card p-5">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-primary/10 text-primary">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">สรุปใบสั่งซื้อ</h3>
+                <p className="text-xs text-muted-foreground">ยอดรวมและสถานะการชำระ</p>
+              </div>
+            </div>
           <div className="bg-muted rounded-lg p-3 text-sm space-y-1">
             <div className="flex justify-between">
               <span className="text-muted-foreground">ยอดรวมสินค้า:</span>
@@ -87,10 +103,21 @@ export function PaymentModal({
               </div>
             )}
           </div>
+          </div>
 
+          <div className="rounded-xl border border-border bg-card p-5">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-emerald-500/10 text-emerald-500">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">รายละเอียดการชำระ</h3>
+                <p className="text-xs text-muted-foreground">สถานะ วิธี และจำนวนเงิน</p>
+              </div>
+            </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">สถานะ *</label>
+              <label className="block text-xs font-medium text-foreground mb-1.5">สถานะ <span className="text-destructive">*</span></label>
               <select
                 value={paymentForm.paymentStatus}
                 onChange={(e) => {
@@ -112,7 +139,7 @@ export function PaymentModal({
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">วิธีจ่ายเงิน</label>
+              <label className="block text-xs font-medium text-foreground mb-1.5">วิธีจ่ายเงิน</label>
               {(() => {
                 const poSupplier = suppliers.find((s) => s.id === selectedPO?.supplier.id);
                 const pmList = poSupplier?.paymentMethods;
@@ -145,8 +172,8 @@ export function PaymentModal({
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">จำนวนเงินที่จ่ายแล้ว (บาท) *</label>
+          <div className="mt-4">
+            <label className="block text-xs font-medium text-foreground mb-1.5">จำนวนเงินที่จ่ายแล้ว (บาท) <span className="text-destructive">*</span></label>
             <input
               type="number"
               value={paymentForm.paidAmount}
@@ -187,20 +214,38 @@ export function PaymentModal({
             })()}
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">หมายเหตุ</label>
+          </div>
+
+          <div className="rounded-xl border border-border bg-card p-5">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-sky-500/10 text-sky-500">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">หมายเหตุ</h3>
+                <p className="text-xs text-muted-foreground">ข้อมูลเพิ่มเติมเกี่ยวกับการชำระ</p>
+              </div>
+            </div>
             <textarea
               value={paymentForm.paymentNotes}
               onChange={(e) => setPaymentForm({ ...paymentForm, paymentNotes: e.target.value })}
               rows={2}
-              className={inputClass}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
               placeholder="เช่น เลขอ้างอิง, ชื่อบัญชี"
             />
           </div>
 
           {/* Attachments - File upload + URL */}
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">แนบสลิป/เอกสาร</label>
+          <div className="rounded-xl border border-border bg-card p-5">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-rose-500/10 text-rose-500">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">แนบสลิป/เอกสาร</h3>
+                <p className="text-xs text-muted-foreground">รูปภาพหรือลิงก์เอกสาร</p>
+              </div>
+            </div>
             <div className="flex gap-2">
               <label className="flex items-center gap-1.5 px-3 py-2 bg-primary-50 text-primary-700 border border-primary-200 rounded-lg text-sm cursor-pointer hover:bg-primary-100 whitespace-nowrap">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
@@ -267,20 +312,22 @@ export function PaymentModal({
             )}
           </div>
 
-          <div className="flex justify-end gap-3 pt-2 border-t">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-muted-foreground">
+          </div>
+          <div className="sticky bottom-0 bg-background/95 backdrop-blur-sm border-t px-6 py-4 flex justify-end gap-3 shrink-0">
+            <button type="button" onClick={onClose} className="px-6 py-2.5 text-sm border border-input rounded-lg hover:bg-muted transition-colors">
               ยกเลิก
             </button>
             <button
               type="submit"
               disabled={paymentMutation.isPending}
-              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
+              className="px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm"
             >
               {paymentMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
             </button>
           </div>
         </form>
       )}
-    </Modal>
+      </div>
+    </div>
   );
 }

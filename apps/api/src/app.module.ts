@@ -58,6 +58,7 @@ import { PromotionsModule } from './modules/promotions/promotions.module';
 import { AssetModule } from './modules/asset/asset.module';
 import { TodosModule } from './modules/todos/todos.module';
 import { LegacyImportModule } from './modules/legacy-import/legacy-import.module';
+import { ChatbotFinanceModule } from './modules/chatbot-finance/chatbot-finance.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
 import { CsrfGuard } from './guards/csrf.guard';
@@ -154,6 +155,8 @@ import { AppCacheModule } from './cache/cache.module';
     TodosModule,
     // ⚠️ TEMPORARY: Legacy data migration from โปรแกรมเขียว — remove after migration
     LegacyImportModule,
+    // Chatbot Finance — น้องเบส (LINE OA "ชำระค่างวด BESTCHOICE")
+    ChatbotFinanceModule,
     // MASTER: Management
     UsersModule,
     SettingsModule,

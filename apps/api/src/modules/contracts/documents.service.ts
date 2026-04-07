@@ -925,9 +925,15 @@ ${(() => {
             </td>` : '<td></td>'}
           </tr>`);
         }
-        photosGridHtml = `<table style="width:100%;border-collapse:collapse">${photoRows.join('')}</table>`;
+        photosGridHtml = `<table style="width:100%;border-collapse:collapse;margin-top:10px">${photoRows.join('')}</table>`;
       } else {
-        photosGridHtml = '<div style="text-align:center;padding:40px;color:#999;border:2px dashed #ddd;border-radius:8px">ยังไม่มีรูปถ่ายโทรศัพท์</div>';
+        // Empty placeholder — 6 grid cells (2 cols × 3 rows) matching photo grid
+        const emptyCell = `<td style="width:50%;padding:8px;text-align:center;border:1px solid #e5e7eb;height:140px;color:#9ca3af;font-size:13px;background:#fafafa">รูปที่ {N}</td>`;
+        let cells = '';
+        for (let i = 1; i <= 3; i++) {
+          cells += `<tr>${emptyCell.replace('{N}', String(i * 2 - 1))}${emptyCell.replace('{N}', String(i * 2))}</tr>`;
+        }
+        photosGridHtml = `<table style="width:100%;border-collapse:collapse;margin-top:10px">${cells}</table>`;
       }
       replacements['{device_photos_grid}'] = photosGridHtml;
     }

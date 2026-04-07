@@ -1,6 +1,20 @@
 import { PrismaClient } from '@prisma/client';
 const p = new PrismaClient();
 (async () => {
+  // Sample customer
+  const cust = await p.customer.findUnique({ where: { legacyMemberCode: 'M00001' } });
+  console.log('=== Customer M00001 ===');
+  console.log('name:           ', cust?.name);
+  console.log('phone:          ', cust?.phone);
+  console.log('addressIdCard:  ', cust?.addressIdCard);
+  console.log('addressCurrent: ', cust?.addressCurrent);
+  console.log('addressWork:    ', cust?.addressWork);
+  console.log('workplace:      ', cust?.workplace);
+  console.log('occupation:     ', cust?.occupation);
+  console.log('salary:         ', cust?.salary?.toString());
+  console.log('references:     ', JSON.stringify(cust?.references, null, 2));
+  console.log();
+  console.log('=== Contract BCP2504-00001 ===');
   const c = await p.contract.findUnique({ where: { contractNumber: 'BCP2504-00001' } });
   if (!c) { console.log('not found'); return; }
   console.log('contractNumber:', c.contractNumber);

@@ -19,6 +19,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as bcrypt from 'bcrypt';
 import { parseCsv } from './csv';
+import { formatFullAddress } from './thai-address';
 
 // ============================================================
 // CLI ARGS
@@ -56,10 +57,10 @@ function s(val: string | null): string | null {
   return val.trim() || null;
 }
 
-function joinAddress(addr: string | null, district: string | null, amphure: string | null, province: string | null, zipcode: string | null): string | null {
-  // ของเก่าเก็บเป็นรหัสตัวเลข — เก็บเป็น string พร้อม prefix รอ Phase ถัดไปค่อย lookup
-  const parts = [s(addr), district && `ต.${district}`, amphure && `อ.${amphure}`, province && `จ.${province}`, s(zipcode)].filter(Boolean);
-  return parts.length > 0 ? parts.join(' ') : null;
+function joinAddress(addr: string | null, district: string | null, _amphure: string | null, _province: string | null, zipcode: string | null): string | null {
+  // ใช้ tambon code (district field) lookup ชื่อจริงจาก thai-tambon.json
+  // _amphure / _province ของเก่าเป็น PK ตัวเลขภายใน — ทิ้งไป ใช้ที่ derive จาก tambon code แทน
+  return formatFullAddress(s(addr), s(district), s(zipcode));
 }
 
 function loadCsv(name: string): Record<string, string | null>[] {

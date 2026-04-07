@@ -1185,16 +1185,19 @@ ${(() => {
 
   private getDefaultTemplate(documentType: string): string {
     if (documentType === 'CONTRACT') {
-      // Try to load the full hire-purchase contract template from file
-      try {
-        const templatePath = path.join(__dirname, 'templates', 'hire-purchase-contract.html');
-        if (fs.existsSync(templatePath)) {
-          return fs.readFileSync(templatePath, 'utf-8');
-        }
-      } catch {
-        this.logger.warn('Failed to read hire-purchase-contract.html, using inline fallback');
+      // Critical: must load full hire-purchase contract template from file
+      // No fallback — fail fast if missing (build verification should catch this)
+      const templatePath = path.join(__dirname, 'templates', 'hire-purchase-contract.html');
+      if (!fs.existsSync(templatePath)) {
+        throw new Error(
+          `Critical: hire-purchase-contract.html template missing at ${templatePath}. ` +
+          `Check nest-cli.json assets configuration.`
+        );
       }
-      // Fallback: inline default template (simplified version of hire-purchase-contract.html)
+      return fs.readFileSync(templatePath, 'utf-8');
+    }
+    // Legacy fallback for non-CONTRACT document types (kept for safety)
+    if (documentType === '__UNUSED__') {
       return `
 <div>
   <h1 style="text-align:center;margin:0 0 4px">สัญญาผ่อนชำระ</h1>
@@ -1294,6 +1297,7 @@ ${(() => {
   </div>
 </div>`;
     }
+    // End of dead-code branch (kept above as __UNUSED__ guard prevents execution)
     if (documentType === 'PDPA_CONSENT') {
       return `
 <div>

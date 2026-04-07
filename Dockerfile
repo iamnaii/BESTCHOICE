@@ -52,10 +52,6 @@ COPY --from=deps --chown=appuser:appgroup /app/apps/api/node_modules ./apps/api/
 COPY --from=builder --chown=appuser:appgroup /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder --chown=appuser:appgroup /app/apps/api/prisma ./apps/api/prisma
 
-# ⚠️ TEMPORARY: Legacy migration data — remove after migration done
-COPY --chown=appuser:appgroup apps/api/scripts/import-legacy/data ./apps/api/scripts/import-legacy/data
-COPY --chown=appuser:appgroup ["ข้อมูลโปรแกรมเขียว4-7-2026", "./ข้อมูลโปรแกรมเขียว4-7-2026"]
-
 # Copy entrypoint script
 COPY --chown=appuser:appgroup docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh

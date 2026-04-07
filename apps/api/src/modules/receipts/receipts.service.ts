@@ -387,8 +387,29 @@ export class ReceiptsService {
   /**
    * Generate PDF from receipt HTML
    */
+  /** Escape HTML special characters to prevent XSS in PDF templates */
+  private escapeHtml(text: string | null | undefined): string {
+    if (!text) return '';
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
   async generatePDF(id: string): Promise<Buffer> {
     const receipt = await this.getReceipt(id);
+
+    // Sanitize all user-provided data before HTML interpolation
+    const safe = {
+      companyName: this.escapeHtml(receipt.company?.nameTh) || 'BESTCHOICE',
+      taxId: this.escapeHtml(receipt.company?.taxId),
+      payerName: this.escapeHtml(receipt.payerName),
+      contractNumber: this.escapeHtml(receipt.contract?.contractNumber),
+      productName: this.escapeHtml(receipt.contract?.product?.name),
+      receiptNumber: this.escapeHtml(receipt.receiptNumber),
+    };
 
     const browser = await puppeteer.launch({
       headless: true,
@@ -421,25 +442,25 @@ export class ReceiptsService {
 <body>
   <div class="receipt">
     <div class="header">
-      <div class="company">${receipt.company?.nameTh || 'BESTCHOICE'}</div>
-      ${receipt.company?.taxId ? `<div>เลขประจำตัวผู้เสียภาษี: ${receipt.company.taxId}</div>` : ''}
+      <div class="company">${safe.companyName}</div>
+      ${safe.taxId ? `<div>เลขประจำตัวผู้เสียภาษี: ${safe.taxId}</div>` : ''}
       <div class="type">ใบเสร็จรับเงิน</div>
-      <div class="number">${receipt.receiptNumber}</div>
+      <div class="number">${safe.receiptNumber}</div>
     </div>
 
     <div class="section">
       <div class="row">
         <span class="label">ผู้ชำระเงิน:</span>
-        <span class="value">${receipt.payerName}</span>
+        <span class="value">${safe.payerName}</span>
       </div>
       <div class="row">
         <span class="label">เลขสัญญา:</span>
-        <span class="value">${receipt.contract?.contractNumber || '-'}</span>
+        <span class="value">${safe.contractNumber || '-'}</span>
       </div>
       ${receipt.contract?.product ? `
       <div class="row">
         <span class="label">สินค้า:</span>
-        <span class="value">${receipt.contract.product.name}</span>
+        <span class="value">${safe.productName}</span>
       </div>` : ''}
       <div class="row">
         <span class="label">วันที่ชำระ:</span>

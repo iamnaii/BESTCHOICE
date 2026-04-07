@@ -37,8 +37,8 @@ test.describe('Supply Chain Operations', () => {
     await page.waitForTimeout(3000);
     // Should be redirected or see access denied
     const url = page.url();
-    const denied = !url.includes('/purchase-orders') ||
-      await page.getByText(/ไม่มีสิทธิ์|access denied/i).isVisible({ timeout: 2000 }).catch(() => false);
+    const deniedHeading = await page.locator('h1:has-text("ไม่มีสิทธิ์")').isVisible({ timeout: 2000 }).catch(() => false);
+    const denied = !url.includes('/purchase-orders') || deniedHeading;
     expect(denied).toBeTruthy();
   });
 });

@@ -367,7 +367,7 @@ export class ContractWorkflowService {
         salesperson: { select: { id: true, name: true } },
         reviewedBy: { select: { id: true, name: true } },
         interestConfig: true,
-        payments: { orderBy: { installmentNo: 'asc' } },
+        payments: { where: { deletedAt: null }, orderBy: { installmentNo: 'asc' } },
         signatures: { where: { deletedAt: null } },
         eDocuments: true,
         contractDocuments: {

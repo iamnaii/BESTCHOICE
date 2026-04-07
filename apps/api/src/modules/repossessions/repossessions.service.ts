@@ -67,7 +67,7 @@ export class RepossessionsService {
           include: {
             customer: true,
             branch: { select: { id: true, name: true } },
-            payments: { orderBy: { installmentNo: 'asc' } },
+            payments: { where: { deletedAt: null }, orderBy: { installmentNo: 'asc' } },
           },
         },
         product: { include: { prices: true } },

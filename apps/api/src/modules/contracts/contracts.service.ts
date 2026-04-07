@@ -118,7 +118,7 @@ export class ContractsService {
         salesperson: { select: { id: true, name: true } },
         reviewedBy: { select: { id: true, name: true } },
         interestConfig: true,
-        payments: { orderBy: { installmentNo: 'asc' } },
+        payments: { where: { deletedAt: null }, orderBy: { installmentNo: 'asc' } },
         signatures: true,
         eDocuments: true,
         contractDocuments: {
@@ -135,7 +135,7 @@ export class ContractsService {
     if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
 
     // Enforce branch-level access when user context is provided
-    if (user && user.role !== 'OWNER' && user.role !== 'ACCOUNTANT') {
+    if (user && user.role !== 'OWNER' && user.role !== 'FINANCE_MANAGER' && user.role !== 'ACCOUNTANT') {
       if (user.branchId && contract.branchId !== user.branchId) {
         throw new ForbiddenException('ไม่สามารถเข้าถึงสัญญาข้ามสาขาได้');
       }

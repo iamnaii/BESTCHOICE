@@ -18,7 +18,7 @@ export class ExchangeService {
     const oldContract = await this.prisma.contract.findUnique({
       where: { id: oldContractId },
       include: {
-        payments: { orderBy: { installmentNo: 'asc' } },
+        payments: { where: { deletedAt: null }, orderBy: { installmentNo: 'asc' } },
         customer: { select: { id: true, name: true } },
         product: { select: { id: true, name: true, brand: true, model: true } },
       },

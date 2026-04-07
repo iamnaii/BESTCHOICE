@@ -239,10 +239,14 @@ export class SalesService {
       // by joining Sale → Product.costPrice, including bundle products.
       // TODO: Implement perpetual inventory journal for real-time COGS ledger entries.
 
-      // Auto-create sales commission
+      // Auto-create sales commission (read from CommissionRule, fallback to 3%)
       const now = new Date();
       const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-      const commissionRate = 0.03; // Default 3% — TODO: read from CommissionRule
+      const rule = await tx.commissionRule.findFirst({
+        where: { isActive: true, deletedAt: null },
+        orderBy: { createdAt: 'desc' },
+      });
+      const commissionRate = rule?.rate ? Number(rule.rate) : 0.03;
       await tx.salesCommission.create({
         data: {
           salespersonId,
@@ -405,10 +409,14 @@ export class SalesService {
         },
       });
 
-      // Auto-create sales commission
+      // Auto-create sales commission (read from CommissionRule, fallback to 3%)
       const now = new Date();
       const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-      const commissionRate = 0.03; // Default 3% — TODO: read from CommissionRule
+      const rule = await tx.commissionRule.findFirst({
+        where: { isActive: true, deletedAt: null },
+        orderBy: { createdAt: 'desc' },
+      });
+      const commissionRate = rule?.rate ? Number(rule.rate) : 0.03;
       await tx.salesCommission.create({
         data: {
           salespersonId,

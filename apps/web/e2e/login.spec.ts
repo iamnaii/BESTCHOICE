@@ -50,8 +50,8 @@ test.describe('Login Page', () => {
 
     // Admin (OWNER role) should see key section labels in expanded sidebar
     // These are accordion section headers (always visible when sidebar is expanded)
-    await expect(sidebar.getByText('สัญญา & ชำระเงิน').first()).toBeVisible({ timeout: 5000 });
-    await expect(sidebar.getByText('คลังสินค้า & จัดซื้อ').first()).toBeVisible();
+    await expect(sidebar.getByText('สัญญา', { exact: true }).first()).toBeVisible({ timeout: 5000 });
+    await expect(sidebar.getByText('คลัง', { exact: true }).first()).toBeVisible();
   });
 
   test('should redirect to dashboard when visiting /login while authenticated', async ({

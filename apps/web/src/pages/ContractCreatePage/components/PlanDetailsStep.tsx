@@ -1,4 +1,21 @@
 import type { Product, InterestConfig, Customer } from '../types';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+
+/** Info icon with tooltip for financial field explanations */
+function InfoTip({ text }: { text: string }) {
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="inline-block ml-1 text-muted-foreground/60 cursor-help hover:text-primary transition-colors"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-xs text-xs">
+          <p>{text}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
 
 export interface PlanDetailsStepProps {
   selectedProduct: Product | null;
@@ -76,7 +93,7 @@ export function PlanDetailsStep({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1">เงินดาวน์</label>
+          <label className="block text-sm font-medium text-foreground mb-1">เงินดาวน์ <InfoTip text="เงินที่ลูกค้าจ่ายล่วงหน้า SHOP เก็บไว้ ไม่ผ่าน FINANCE — ขั้นต่ำกำหนดตามนโยบาย" /></label>
           <input
             type="number"
             value={downPayment}
@@ -138,11 +155,11 @@ export function PlanDetailsStep({
             <span>-{downPayment.toLocaleString()} ฿</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">ยอดปล่อย (Loan)</span>
+            <span className="text-muted-foreground">ยอดปล่อย (Loan) <InfoTip text="ราคาขาย - เงินดาวน์ = ยอดที่ FINANCE ปล่อยให้ลูกค้าผ่อน" /></span>
             <span>{principal.toLocaleString()} ฿</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">ค่าคอมหน้าร้าน ({(storeCommPct * 100).toFixed(0)}%)</span>
+            <span className="text-muted-foreground">ค่าคอมหน้าร้าน ({(storeCommPct * 100).toFixed(0)}%) <InfoTip text="ค่าคอมที่ FINANCE จ่ายให้ SHOP เป็น % ของยอดปล่อย — รวมอยู่ในค่างวดลูกค้า" /></span>
             <span>{storeCommission.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span>
           </div>
           <div className="flex justify-between text-sm">
@@ -154,7 +171,7 @@ export function PlanDetailsStep({
             <span>{vatAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">รวมยอดจัดไฟแนนซ์</span>
+            <span className="text-muted-foreground">รวมยอดจัดไฟแนนซ์ <InfoTip text="ยอดปล่อย + ค่าคอม + ดอกเบี้ย + VAT = ยอดรวมที่ลูกค้าต้องผ่อนทั้งหมด" /></span>
             <span>{financedAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span>
           </div>
           <div className="border-t pt-2 flex justify-between text-base font-bold text-primary">

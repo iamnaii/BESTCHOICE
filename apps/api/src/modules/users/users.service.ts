@@ -33,14 +33,17 @@ export class UsersService {
       branch: { select: { id: true, name: true } },
     };
 
+    const where = { deletedAt: null };
+
     const [data, total] = await Promise.all([
       this.prisma.user.findMany({
+        where,
         select,
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
       }),
-      this.prisma.user.count(),
+      this.prisma.user.count({ where }),
     ]);
 
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
@@ -48,7 +51,7 @@ export class UsersService {
 
   async create(dto: CreateUserDto) {
     const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
-    if (existing) throw new ConflictException('อีเมลนี้ถูกใช้แล้ว');
+    if (existing && !existing.deletedAt) throw new ConflictException('อีเมลนี้ถูกใช้แล้ว');
 
     const hashedPassword = await bcrypt.hash(dto.password, 10);
     return this.prisma.user.create({

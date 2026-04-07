@@ -135,7 +135,7 @@ export class OverdueService {
         product: { select: { id: true, name: true, brand: true, model: true, imeiSerial: true } },
         branch: { select: { id: true, name: true } },
         salesperson: { select: { id: true, name: true } },
-        payments: { orderBy: { installmentNo: 'asc' } },
+        payments: { where: { deletedAt: null }, orderBy: { installmentNo: 'asc' } },
         callLogs: {
           orderBy: { calledAt: 'desc' },
           include: { caller: { select: { id: true, name: true } } },

@@ -31,7 +31,7 @@ export class PaySolutionsController {
   /**
    * POST /api/paysolutions/create-intent
    * สร้าง payment intent — ส่งไป Pay Solutions, ได้ payment URL กลับมา
-   * ใช้จาก LIFF (ไม่ต้อง JWT — ใช้ lineId verify แทน)
+   * ใช้จาก LIFF (ไม่ต้อง JWT — ใช้ lineId verify ตัวตนแทน)
    */
   @Post('create-intent')
   @SkipCsrf()
@@ -39,6 +39,9 @@ export class PaySolutionsController {
   async createPaymentIntent(@Body() dto: CreatePaymentIntentDto) {
     if (!dto.contractId || !dto.amount) {
       throw new BadRequestException('กรุณาระบุรหัสสัญญาและจำนวนเงิน');
+    }
+    if (!dto.lineId) {
+      throw new BadRequestException('กรุณาระบุ LINE ID เพื่อยืนยันตัวตน');
     }
 
     const result = await this.paySolutionsService.createPaymentIntent(

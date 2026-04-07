@@ -260,7 +260,7 @@ function App() {
           />
 
           <Route path="/stickers" element={<StickerPrintPage />} />
-          <Route path="/pos" element={<POSPage />} />
+          <Route path="/pos" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'SALES']}><POSPage /></ProtectedRoute>} />
           <Route path="/sales" element={<SalesHistoryPage />} />
           <Route path="/customers" element={<CustomersPage />} />
           <Route path="/customers/:id" element={<CustomerDetailPage />} />

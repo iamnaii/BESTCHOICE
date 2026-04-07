@@ -197,7 +197,7 @@ export class DocumentsService {
         product: true,
         branch: true,
         salesperson: true,
-        payments: { orderBy: { installmentNo: 'asc' } },
+        payments: { where: { deletedAt: null }, orderBy: { installmentNo: 'asc' } },
         signatures: { where: { deletedAt: null } },
       },
     });
@@ -258,7 +258,7 @@ export class DocumentsService {
       where: { id: contractId },
       include: {
         customer: true, product: true, branch: true, salesperson: true,
-        payments: { orderBy: { installmentNo: 'asc' } },
+        payments: { where: { deletedAt: null }, orderBy: { installmentNo: 'asc' } },
         signatures: { where: { deletedAt: null } },
       },
     });
@@ -436,7 +436,7 @@ export class DocumentsService {
         product: true,
         branch: true,
         salesperson: true,
-        payments: { orderBy: { installmentNo: 'asc' } },
+        payments: { where: { deletedAt: null }, orderBy: { installmentNo: 'asc' } },
         signatures: { where: { deletedAt: null } },
       },
     });

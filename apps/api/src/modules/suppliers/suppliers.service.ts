@@ -71,7 +71,7 @@ export class SuppliersService {
         paymentMethods: { orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }] },
       },
     });
-    if (!supplier) throw new NotFoundException('ไม่พบผู้จัดจำหน่าย');
+    if (!supplier || supplier.deletedAt) throw new NotFoundException('ไม่พบผู้จัดจำหน่าย');
     return supplier;
   }
 

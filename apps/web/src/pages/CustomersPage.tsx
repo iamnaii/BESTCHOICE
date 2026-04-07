@@ -14,7 +14,7 @@ import { THAI_NAME_PREFIXES, RELATIONSHIP_OPTIONS } from '@/lib/constants';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
-import Modal from '@/components/ui/Modal';
+
 import { Card, CardContent } from '@/components/ui/card';
 import AddressForm, { AddressData, emptyAddress, serializeAddress } from '@/components/ui/AddressForm';
 import { Download, ChevronUp, ChevronDown, CreditCard, Camera, User, MapPin, Phone, Briefcase, Users } from 'lucide-react';
@@ -673,8 +673,20 @@ export default function CustomersPage() {
         } : undefined}
       />
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="เพิ่มลูกค้าใหม่" size="lg">
-        <form onSubmit={(e) => { e.preventDefault(); createMutation.mutate(); }} className="flex flex-col gap-4 max-h-[75vh] overflow-y-auto pr-1">
+      {isModalOpen && (
+      <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center pt-8 pb-8" role="dialog" aria-modal="true" aria-label="เพิ่มลูกค้าใหม่">
+        <div className="w-full max-w-2xl bg-background rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-4rem)]">
+          {/* Sticky Header */}
+          <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b px-6 py-4 flex items-center justify-between shrink-0">
+            <button type="button" onClick={() => setIsModalOpen(false)} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+              กลับ
+            </button>
+            <h2 className="text-lg font-semibold text-foreground">เพิ่มลูกค้าใหม่</h2>
+            <div className="w-16" />
+          </div>
+        <form onSubmit={(e) => { e.preventDefault(); createMutation.mutate(); }} className="flex-1 overflow-y-auto flex flex-col">
+          <div className="flex flex-col gap-4 p-6">
 
           {/* ===== Smart Card + OCR (always visible) ===== */}
           <div className="grid grid-cols-2 gap-3">
@@ -955,17 +967,20 @@ export default function CustomersPage() {
             </div>
           </details>
 
-          {/* ===== Submit ===== */}
-          <div className="flex justify-end gap-3 pt-2 sticky bottom-0 bg-background py-3 border-t border-border">
-            <button type="button" onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 text-sm text-muted-foreground border border-input rounded-lg hover:bg-accent transition-colors">ยกเลิก</button>
-            <button type="submit" disabled={createMutation.isPending} className="px-5 py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-semibold shadow-sm hover:bg-primary/90 transition-colors disabled:opacity-50">
+          </div>
+          {/* Sticky Footer */}
+          <div className="sticky bottom-0 bg-background/95 backdrop-blur-sm border-t px-6 py-4 flex justify-end gap-3 shrink-0">
+            <button type="button" onClick={() => setIsModalOpen(false)} className="px-6 py-2.5 text-sm text-muted-foreground border border-input rounded-lg hover:bg-accent transition-colors">ยกเลิก</button>
+            <button type="submit" disabled={createMutation.isPending} className="px-6 py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-semibold shadow-sm hover:bg-primary/90 transition-colors disabled:opacity-50">
               {createMutation.isPending ? (
                 <span className="inline-flex items-center gap-2"><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-foreground" /> กำลังบันทึก...</span>
               ) : 'บันทึก'}
             </button>
           </div>
         </form>
-      </Modal>
+        </div>
+      </div>
+      )}
     </div>
   );
 }

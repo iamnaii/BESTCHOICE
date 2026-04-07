@@ -85,7 +85,7 @@ export class PaymentLinkService {
         contract: {
           include: {
             customer: { select: { name: true, phone: true, lineId: true } },
-            payments: { orderBy: { installmentNo: 'asc' } },
+            payments: { where: { deletedAt: null }, orderBy: { installmentNo: 'asc' } },
           },
         },
         payment: true,

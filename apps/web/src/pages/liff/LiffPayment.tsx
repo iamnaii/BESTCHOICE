@@ -247,7 +247,13 @@ export default function LiffPayment() {
           <CardContent className="text-center py-10">
             <AlertCircle className="size-16 text-destructive mx-auto mb-4" />
             <h2 className="text-lg font-bold mb-2">ไม่สามารถดำเนินการได้</h2>
-            <p className="text-muted-foreground text-sm">{errorMessage}</p>
+            <p className="text-muted-foreground text-sm mb-4">{errorMessage}</p>
+            <div className="bg-muted rounded-lg p-4 text-left text-xs text-muted-foreground space-y-1.5">
+              <p className="font-semibold text-foreground">สิ่งที่คุณทำได้:</p>
+              <p>1. ปิดหน้านี้แล้วเปิดลิงก์ใหม่อีกครั้ง</p>
+              <p>2. ตรวจสอบว่า LINE ของคุณผูกกับบัญชีลูกค้าแล้ว</p>
+              <p>3. หากยังไม่ได้ ติดต่อร้านค้าผ่าน LINE OA</p>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -280,9 +286,15 @@ export default function LiffPayment() {
           <CardContent className="text-center py-10">
             <AlertCircle className="size-16 text-destructive mx-auto mb-4" />
             <h2 className="text-lg font-bold mb-2">การชำระเงินไม่สำเร็จ</h2>
-            <p className="text-muted-foreground text-sm mb-6">
-              ระบบไม่สามารถดำเนินการชำระเงินได้ กรุณาลองอีกครั้ง
+            <p className="text-muted-foreground text-sm mb-3">
+              ระบบไม่สามารถดำเนินการชำระเงินได้
             </p>
+            <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-left text-xs text-amber-800 dark:text-amber-200 mb-4 space-y-1">
+              <p className="font-semibold">สาเหตุที่เป็นไปได้:</p>
+              <p>- ยอดเงินในบัญชีไม่เพียงพอ</p>
+              <p>- QR Code หมดอายุ (ใช้ได้ 30 นาที)</p>
+              <p>- การเชื่อมต่อขัดข้อง ลองอีกครั้ง</p>
+            </div>
             {gatewayRef && (
               <p className="text-xs text-muted-foreground mb-4">
                 เลขอ้างอิง: <span className="font-mono">{gatewayRef}</span>

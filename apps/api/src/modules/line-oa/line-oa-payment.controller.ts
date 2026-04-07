@@ -150,7 +150,7 @@ export class LineOaPaymentController {
             contract: {
               include: {
                 customer: true,
-                payments: { orderBy: { installmentNo: 'asc' } },
+                payments: { where: { deletedAt: null }, orderBy: { installmentNo: 'asc' } },
               },
             },
           },
@@ -273,7 +273,7 @@ export class LineOaPaymentController {
         contract: {
           include: {
             customer: true,
-            payments: { orderBy: { installmentNo: 'asc' } },
+            payments: { where: { deletedAt: null }, orderBy: { installmentNo: 'asc' } },
           },
         },
       },

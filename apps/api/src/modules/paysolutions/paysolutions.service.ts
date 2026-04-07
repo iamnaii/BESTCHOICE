@@ -82,11 +82,12 @@ export class PaySolutionsService {
       throw new NotFoundException('ไม่พบสัญญาที่ระบุ');
     }
 
-    // ถ้าระบุ lineId ตรวจสอบว่า contract เป็นของ customer ที่ผูก LINE
-    if (lineId) {
-      if (contract.customer.lineId !== lineId) {
-        throw new BadRequestException('สัญญานี้ไม่ตรงกับบัญชี LINE ของคุณ');
-      }
+    // ตรวจสอบว่า contract เป็นของ customer ที่ผูก LINE (บังคับ — ป้องกันสร้าง intent โดยไม่ยืนยันตัวตน)
+    if (!lineId) {
+      throw new BadRequestException('กรุณาระบุ LINE ID เพื่อยืนยันตัวตน');
+    }
+    if (contract.customer.lineId !== lineId) {
+      throw new BadRequestException('สัญญานี้ไม่ตรงกับบัญชี LINE ของคุณ');
     }
 
     // สร้าง unique reference (max 12 chars ตาม API spec)
@@ -219,8 +220,8 @@ export class PaySolutionsService {
    */
   verifyWebhookMerchant(merchantid: string): boolean {
     if (!this.merchantId) {
-      this.logger.warn('PAYSOLUTIONS_MERCHANT_ID not configured — skipping verification');
-      return true;
+      this.logger.error('PAYSOLUTIONS_MERCHANT_ID not configured — rejecting all webhooks for security');
+      return false;
     }
 
     const isValid = merchantid === this.merchantId;
@@ -322,7 +323,7 @@ export class PaySolutionsService {
         where: { id: contractId },
         include: {
           customer: { select: { name: true, lineId: true } },
-          payments: { orderBy: { installmentNo: 'asc' } },
+          payments: { where: { deletedAt: null }, orderBy: { installmentNo: 'asc' } },
         },
       });
 

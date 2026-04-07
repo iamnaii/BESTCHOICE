@@ -111,41 +111,47 @@ export class TradeInService {
   }
 
   async accept(id: string) {
-    const tradeIn = await this.findOne(id);
-    if (tradeIn.status !== 'APPRAISED') {
-      throw new BadRequestException('รายการนี้ยังไม่ได้ประเมินราคา');
-    }
-
-    return this.prisma.tradeIn.update({
-      where: { id },
-      data: {
-        status: 'ACCEPTED',
-        agreedPrice: tradeIn.offeredPrice, // agreedPrice = offeredPrice
-      },
+    return this.prisma.$transaction(async (tx) => {
+      const tradeIn = await tx.tradeIn.findUnique({ where: { id } });
+      if (!tradeIn || tradeIn.deletedAt) throw new NotFoundException('ไม่พบรายการเทรดอิน');
+      if (tradeIn.status !== 'APPRAISED') {
+        throw new BadRequestException('รายการนี้ยังไม่ได้ประเมินราคา');
+      }
+      return tx.tradeIn.update({
+        where: { id },
+        data: {
+          status: 'ACCEPTED',
+          agreedPrice: tradeIn.offeredPrice,
+        },
+      });
     });
   }
 
   async reject(id: string) {
-    const tradeIn = await this.findOne(id);
-    if (tradeIn.status !== 'APPRAISED') {
-      throw new BadRequestException('รายการนี้ยังไม่ได้ประเมินราคา');
-    }
-
-    return this.prisma.tradeIn.update({
-      where: { id },
-      data: { status: 'REJECTED' },
+    return this.prisma.$transaction(async (tx) => {
+      const tradeIn = await tx.tradeIn.findUnique({ where: { id } });
+      if (!tradeIn || tradeIn.deletedAt) throw new NotFoundException('ไม่พบรายการเทรดอิน');
+      if (tradeIn.status !== 'APPRAISED') {
+        throw new BadRequestException('รายการนี้ยังไม่ได้ประเมินราคา');
+      }
+      return tx.tradeIn.update({
+        where: { id },
+        data: { status: 'REJECTED' },
+      });
     });
   }
 
   async complete(id: string) {
-    const tradeIn = await this.findOne(id);
-    if (tradeIn.status !== 'ACCEPTED') {
-      throw new BadRequestException('รายการนี้ยังไม่ได้ตอบรับ');
-    }
-
-    return this.prisma.tradeIn.update({
-      where: { id },
-      data: { status: 'COMPLETED' },
+    return this.prisma.$transaction(async (tx) => {
+      const tradeIn = await tx.tradeIn.findUnique({ where: { id } });
+      if (!tradeIn || tradeIn.deletedAt) throw new NotFoundException('ไม่พบรายการเทรดอิน');
+      if (tradeIn.status !== 'ACCEPTED') {
+        throw new BadRequestException('รายการนี้ยังไม่ได้ตอบรับ');
+      }
+      return tx.tradeIn.update({
+        where: { id },
+        data: { status: 'COMPLETED' },
+      });
     });
   }
 }

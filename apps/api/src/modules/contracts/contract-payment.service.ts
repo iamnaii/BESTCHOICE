@@ -144,7 +144,7 @@ export class ContractPaymentService {
         salesperson: { select: { id: true, name: true } },
         reviewedBy: { select: { id: true, name: true } },
         interestConfig: true,
-        payments: { orderBy: { installmentNo: 'asc' } },
+        payments: { where: { deletedAt: null }, orderBy: { installmentNo: 'asc' } },
         signatures: true,
         eDocuments: true,
         contractDocuments: {

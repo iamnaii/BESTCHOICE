@@ -47,7 +47,10 @@ export default function SearchableSelect({
   const filtered = useMemo(() => {
     if (!query) return options;
     const q = query.toLowerCase();
-    return options.filter((o) => o.toLowerCase().includes(q));
+    // Prefix match first (ขึ้นต้นด้วย), then substring match
+    const starts = options.filter((o) => o.toLowerCase().startsWith(q));
+    const contains = options.filter((o) => !o.toLowerCase().startsWith(q) && o.toLowerCase().includes(q));
+    return [...starts, ...contains];
   }, [options, query]);
 
   function pick(opt: string) {

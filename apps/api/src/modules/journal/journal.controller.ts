@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JournalService } from './journal.service';
+import { JournalAutoService } from './journal-auto.service';
 import { CreateJournalEntryDto } from './dto/journal.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -23,7 +24,19 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @UsePipes(new ValidationPipe({ whitelist: true }))
 export class JournalController {
-  constructor(private journalService: JournalService) {}
+  constructor(
+    private journalService: JournalService,
+    private journalAutoService: JournalAutoService,
+  ) {}
+
+  @Get('trial-balance')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getTrialBalance(
+    @Query('asOfDate') asOfDate?: string,
+    @Query('companyId') companyId?: string,
+  ) {
+    return this.journalAutoService.getTrialBalance({ asOfDate, companyId });
+  }
 
   @Post()
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')

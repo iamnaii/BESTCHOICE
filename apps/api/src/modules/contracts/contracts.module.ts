@@ -11,9 +11,10 @@ import { DocumentsService } from './documents.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { OcrModule } from '../ocr/ocr.module';
 import { SettingsModule } from '../settings/settings.module';
+import { JournalModule } from '../journal/journal.module';
 
 @Module({
-  imports: [NotificationsModule, OcrModule, SettingsModule],
+  imports: [NotificationsModule, OcrModule, SettingsModule, JournalModule],
   controllers: [ContractsController, ContractDocumentsController, DocumentsController],
   providers: [ContractsService, ContractWorkflowService, ContractPaymentService, ContractDocumentService, ContractDocumentsService, DocumentsService],
   exports: [ContractsService, ContractWorkflowService, ContractPaymentService, ContractDocumentService, ContractDocumentsService, DocumentsService],

@@ -8,6 +8,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { ExpenseAccountType, ExpenseCategory, ExpenseStatus, Prisma, WhtIncomeType } from '@prisma/client';
 import { CreateExpenseDto, UpdateExpenseDto } from './dto/expense.dto';
 import { validatePeriodOpen as validatePeriodOpenUtil } from '../../utils/period-lock.util';
+import { JournalAutoService } from '../journal/journal-auto.service';
 
 /**
  * INVENTORY COSTING METHOD: Specific Identification
@@ -91,7 +92,10 @@ async function generateExpenseNumber(tx: Prisma.TransactionClient): Promise<stri
 @Injectable()
 export class AccountingService {
   private readonly logger = new Logger(AccountingService.name);
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private journalAutoService: JournalAutoService,
+  ) {}
 
   /**
    * Resolve companyId to an array of branchIds belonging to that company.
@@ -321,14 +325,38 @@ export class AccountingService {
   }
 
   async markExpensePaid(id: string, paymentDate?: string) {
-    const expense = await this.prisma.expense.findFirst({ where: { id, deletedAt: null } });
-    if (!expense) throw new NotFoundException('ไม่พบรายจ่าย');
-    if (expense.status !== 'APPROVED') {
-      throw new BadRequestException('ต้องอนุมัติก่อนถึงจะบันทึกจ่ายได้');
-    }
-    return this.prisma.expense.update({
-      where: { id },
-      data: { status: 'PAID', paymentDate: paymentDate ? new Date(paymentDate) : new Date() },
+    return this.prisma.$transaction(async (tx) => {
+      const expense = await tx.expense.findFirst({ where: { id, deletedAt: null } });
+      if (!expense) throw new NotFoundException('ไม่พบรายจ่าย');
+      if (expense.status !== 'APPROVED') {
+        throw new BadRequestException('ต้องอนุมัติก่อนถึงจะบันทึกจ่ายได้');
+      }
+      const updated = await tx.expense.update({
+        where: { id },
+        data: { status: 'PAID', paymentDate: paymentDate ? new Date(paymentDate) : new Date() },
+      });
+
+      // Auto journal entry — record expense payment
+      try {
+        await this.journalAutoService.createExpenseJournal(tx, {
+          expense: {
+            id: updated.id,
+            expenseNumber: updated.expenseNumber,
+            accountCode: updated.accountCode,
+            amount: updated.amount,
+            vatAmount: updated.vatAmount,
+            totalAmount: updated.totalAmount,
+            description: updated.description,
+            expenseDate: updated.expenseDate,
+            paymentDate: updated.paymentDate,
+          },
+          userId: expense.createdById,
+        });
+      } catch (err) {
+        this.logger.error(`Auto-journal failed for expense ${updated.id}: ${err}`);
+      }
+
+      return updated;
     });
   }
 

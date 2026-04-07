@@ -6,12 +6,14 @@ import * as crypto from 'crypto';
 import * as puppeteer from 'puppeteer';
 import { LineOaService } from '../line-oa/line-oa.service';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
+import { JournalAutoService } from '../journal/journal-auto.service';
 
 @Injectable()
 export class ReceiptsService {
   private readonly logger = new Logger(ReceiptsService.name);
   constructor(
     private prisma: PrismaService,
+    private journalAutoService: JournalAutoService,
     @Inject(forwardRef(() => LineOaService))
     private lineOaService?: LineOaService,
   ) {}
@@ -379,6 +381,30 @@ export class ReceiptsService {
           voidApprovedAt: new Date(),
         },
       });
+
+      // Auto journal — create reversal entry for the original payment
+      if (receipt.paymentId) {
+        try {
+          // Find the original journal entry by payment reference
+          const originalEntry = await tx.journalEntry.findFirst({
+            where: {
+              referenceType: 'PAYMENT',
+              referenceId: receipt.paymentId,
+              status: 'POSTED',
+              deletedAt: null,
+            },
+          });
+          if (originalEntry) {
+            await this.journalAutoService.createReversalJournal(tx, {
+              originalEntryId: originalEntry.id,
+              reason: reason.trim(),
+              userId: issuedById,
+            });
+          }
+        } catch (err) {
+          this.logger.error(`Auto-reversal failed for receipt ${id}: ${err}`);
+        }
+      }
 
       return { voidedReceipt: receipt, creditNote };
     });

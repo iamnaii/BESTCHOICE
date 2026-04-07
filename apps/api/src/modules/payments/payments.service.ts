@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { paginatedResponse } from '../../common/helpers/pagination.helper';
 import { ReceiptsService } from '../receipts/receipts.service';
 import { AuditService } from '../audit/audit.service';
+import { JournalAutoService } from '../journal/journal-auto.service';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { roundBaht } from '../../utils/installment.util';
 import { BUSINESS_RULES } from '../../utils/config.util';
@@ -16,6 +17,7 @@ export class PaymentsService {
     private prisma: PrismaService,
     private receiptsService: ReceiptsService,
     private auditService: AuditService,
+    private journalAutoService: JournalAutoService,
   ) {}
 
   /** Enforce branch-level access: SALES/BRANCH_MANAGER can only operate on their own branch */
@@ -153,6 +155,31 @@ export class PaymentsService {
       // Check if all payments are completed → update contract status
       if (isPaidInFull) {
         await this.checkContractCompletion(contractId, tx);
+      }
+
+      // Auto journal entry — only on full payment to avoid partial double-entries
+      if (isPaidInFull) {
+        try {
+          await this.journalAutoService.createPaymentJournal(tx, {
+            payment: {
+              id: result.id,
+              installmentNo: result.installmentNo,
+              amountPaid: result.amountPaid,
+              monthlyPrincipal: result.monthlyPrincipal,
+              monthlyInterest: result.monthlyInterest,
+              monthlyCommission: result.monthlyCommission,
+              vatAmount: result.vatAmount,
+              lateFee: result.lateFee,
+              lateFeeWaived: result.lateFeeWaived,
+              paidDate: result.paidDate,
+            },
+            contract: { contractNumber: contract.contractNumber, branchId: contract.branchId },
+            userId: recordedById,
+          });
+        } catch (err) {
+          // Don't fail payment if journal fails — log and continue
+          this.logger.error(`Auto-journal failed for payment ${result.id}: ${err}`);
+        }
       }
 
       return result;

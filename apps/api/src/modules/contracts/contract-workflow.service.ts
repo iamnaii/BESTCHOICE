@@ -10,6 +10,7 @@ import {
   checkRequiredSignatures,
 } from '../../utils/validation.util';
 import { generateSaleNumber } from '../../utils/sequence.util';
+import { JournalAutoService } from '../journal/journal-auto.service';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -18,6 +19,7 @@ export class ContractWorkflowService {
   constructor(
     private prisma: PrismaService,
     private notificationsService: NotificationsService,
+    private journalAutoService: JournalAutoService,
   ) {}
 
   // === WORKFLOW: ส่งตรวจสอบ (ตรวจ Validation ทั้งหมดก่อนส่ง) ===
@@ -301,6 +303,26 @@ export class ContractWorkflowService {
           notes: `สร้างอัตโนมัติจากสัญญา ${contract.contractNumber}`,
         },
       });
+
+      // Auto journal entry — record contract activation (sales + COGS)
+      try {
+        await this.journalAutoService.createContractActivationJournal(tx, {
+          contract: {
+            id: contract.id,
+            contractNumber: contract.contractNumber,
+            sellingPrice: contract.sellingPrice,
+            downPayment: contract.downPayment,
+            financedAmount: contract.financedAmount,
+            interestTotal: contract.interestTotal,
+            storeCommission: contract.storeCommission ?? 0,
+            vatAmount: contract.vatAmount ?? 0,
+          },
+          product: { costPrice: prod.costPrice, category: prod.category },
+          userId: contract.salespersonId,
+        });
+      } catch (err) {
+        this.logger.error(`Auto-journal failed for contract activation ${contract.id}: ${err}`);
+      }
     });
 
     // Send LINE notification to customer (non-blocking)

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { LegacyImportController } from './legacy-import.controller';
+import { LegacyImportService } from './legacy-import.service';
 import { PrismaModule } from '../../prisma/prisma.module';
 
 /**
@@ -9,5 +10,6 @@ import { PrismaModule } from '../../prisma/prisma.module';
 @Module({
   imports: [PrismaModule],
   controllers: [LegacyImportController],
+  providers: [LegacyImportService],
 })
 export class LegacyImportModule {}

@@ -45,6 +45,7 @@ import {
   CircleDollarSign,
   UserSearch,
   Coins,
+  CheckSquare,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import {
@@ -156,6 +157,7 @@ const navSections: NavSection[] = [
       { label: 'รายงาน', path: '/reports', icon: BarChart3, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
       { label: 'ภาษี', path: '/tax-reports', icon: Calculator, roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
       { label: 'แจ้งเตือน', path: '/notifications', icon: Bell, roles: ['OWNER', 'BRANCH_MANAGER'] },
+      { label: 'งาน / TODO', path: '/todos', icon: CheckSquare },
     ],
   },
   {

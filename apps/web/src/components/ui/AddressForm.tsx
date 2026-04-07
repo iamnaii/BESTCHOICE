@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
+import SearchableSelect from '@/components/ui/SearchableSelect';
 
 // Lazy-loaded address data (loaded only when AddressForm mounts, ~400KB separate chunk)
 let cachedData: [string, string, string, string][] | null = null;
@@ -228,50 +228,32 @@ export default function AddressForm({ value, onChange, label }: Props) {
         </div>
         <div>
           <label className="block text-xs text-muted-foreground mb-1">จังหวัด *</label>
-          <select
+          <SearchableSelect
             value={value.province}
-            onChange={(e) => handleProvinceChange(e.target.value)}
-            className={selectClass}
-          >
-            <option value="">-- เลือกจังหวัด --</option>
-            {provinces.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
+            onChange={handleProvinceChange}
+            options={provinces}
+            placeholder="-- เลือกจังหวัด --"
+          />
         </div>
         <div>
           <label className="block text-xs text-muted-foreground mb-1">อำเภอ/เขต *</label>
-          <select
+          <SearchableSelect
             value={value.district}
-            onChange={(e) => handleDistrictChange(e.target.value)}
-            className={cn(selectClass, !selectedProvince && 'opacity-50 cursor-not-allowed')}
+            onChange={handleDistrictChange}
+            options={districts}
+            placeholder="-- เลือกอำเภอ/เขต --"
             disabled={!selectedProvince}
-          >
-            <option value="">-- เลือกอำเภอ/เขต --</option>
-            {districts.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
+          />
         </div>
         <div>
           <label className="block text-xs text-muted-foreground mb-1">ตำบล/แขวง *</label>
-          <select
+          <SearchableSelect
             value={value.subdistrict}
-            onChange={(e) => handleSubdistrictChange(e.target.value)}
-            className={cn(selectClass, !selectedDistrict && 'opacity-50 cursor-not-allowed')}
+            onChange={handleSubdistrictChange}
+            options={subdistricts.map((s) => s.name)}
+            placeholder="-- เลือกตำบล/แขวง --"
             disabled={!selectedDistrict}
-          >
-            <option value="">-- เลือกตำบล/แขวง --</option>
-            {subdistricts.map((s) => (
-              <option key={s.name} value={s.name}>
-                {s.name}
-              </option>
-            ))}
-          </select>
+          />
         </div>
         <div>
           <label className="block text-xs text-muted-foreground mb-1">รหัสไปรษณีย์</label>

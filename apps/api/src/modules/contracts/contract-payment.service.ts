@@ -26,7 +26,8 @@ export class ContractPaymentService {
    *   (2) ยอดชำระล่วงหน้า  = creditBalance + partialPayments
    *   (3) คงเหลือยอดค้าง   = (1) - (2)
    *   (4) ค่างวดไม่รวม VAT = (3) ÷ (1 + vatPct)
-   *   (5) ต้นทุนยอดค้าง    = (financedAmount + storeCommission) ÷ totalMonths × งวดคงเหลือ
+   *   (5) ต้นทุนยอดค้าง    = ((sellingPrice - downPayment) + storeCommission) ÷ totalMonths × งวดคงเหลือ
+   *                          (ยอดจัดจริง + ค่าคอมที่ FINANCE จ่ายให้ SHOP, เฉลี่ยต่อง่วด)
    *   (6) กำไรขั้นต้น      = (4) - (5)
    *   (7) ส่วนลด           = (6) × discountPct
    *   (8) ยอดชำระปิดยอด    = (3) - (7)
@@ -66,8 +67,12 @@ export class ContractPaymentService {
     const vatPct = Number(contract.vatPct || 0);
     const remainingExVat = vatPct > 0 ? round2(remainingBalance / (1 + vatPct)) : remainingBalance;
 
-    // (5) ต้นทุนยอดค้าง = (financedAmount + storeCommission) / totalMonths × remainingMonths
-    const financeCost = Number(contract.financedAmount) + Number(contract.storeCommission || 0);
+    // (5) ต้นทุนยอดค้าง = ยอดจัดจริง + commission
+    // หมายเหตุ: contract.financedAmount ในระบบเก็บ "ยอดรวมที่ลูกค้าต้องจ่าย"
+    // (principal + commission + interest + VAT) ไม่ใช่ยอดจัดล้วน
+    // ดังนั้นต้องคำนวณ principal จาก sellingPrice - downPayment
+    const truePrincipal = Number(contract.sellingPrice) - Number(contract.downPayment);
+    const financeCost = truePrincipal + Number(contract.storeCommission || 0);
     const remainingCost = round2((financeCost / contract.totalMonths) * remainingMonths);
 
     // (6) กำไรขั้นต้น (อาจติดลบเคสขาดทุน — แสดงค่าจริง)

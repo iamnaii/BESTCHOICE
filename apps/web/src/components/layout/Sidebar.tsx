@@ -173,6 +173,7 @@ const navSections: NavSection[] = [
       { label: 'โปรโมชัน', path: '/promotions', icon: BadgePercent, roles: ['OWNER'] },
       { label: 'PDPA', path: '/pdpa', icon: Shield, roles: ['OWNER', 'BRANCH_MANAGER'] },
       { label: 'Audit Log', path: '/audit-logs', icon: ScrollText, roles: ['OWNER'] },
+      { label: 'ผังบัญชี', path: '/settings/chart-of-accounts', icon: ClipboardList, roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
       { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList, roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
     ],
   },

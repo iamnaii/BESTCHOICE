@@ -50,6 +50,7 @@ import { AccountingModule } from './modules/accounting/accounting.module';
 import { CompanyModule } from './modules/company/company.module';
 import { InterCompanyModule } from './modules/inter-company/inter-company.module';
 import { JournalModule } from './modules/journal/journal.module';
+import { ChartOfAccountsModule } from './modules/chart-of-accounts/chart-of-accounts.module';
 import { TaxModule } from './modules/tax/tax.module';
 import { CommissionModule } from './modules/commission/commission.module';
 import { TradeInModule } from './modules/trade-in/trade-in.module';
@@ -137,6 +138,7 @@ import { AppCacheModule } from './cache/cache.module';
     InterCompanyModule,
     // Journal Entries (double-entry accounting)
     JournalModule,
+    ChartOfAccountsModule,
     // Tax Reports (ภ.พ.30, ภ.ง.ด.3, ภ.ง.ด.53)
     TaxModule,
     // Sales Commission

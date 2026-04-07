@@ -421,6 +421,9 @@ model Customer {
 
   loyaltyBalance   Int       @default(0) @map("loyalty_balance") // cached point balance
 
+  // Legacy migration tracking (จากโปรแกรมเขียว)
+  legacyMemberCode String? @unique @map("legacy_member_code")
+
   contracts          Contract[]
   sales              Sale[]
   creditChecks       CreditCheck[]
@@ -515,6 +518,9 @@ model Contract {
   retentionExpiry DateTime?               @map("retention_expiry")
   legalHoldReason String?                 @map("legal_hold_reason")
 
+  // Legacy migration tracking (จากโปรแกรมเขียว)
+  legacyContractCode String? @unique @map("legacy_contract_code")
+
   payments                 Payment[]
   signatures               Signature[]
   eDocuments               EDocument[]
@@ -575,6 +581,9 @@ model Payment {
   monthlyInterest   Decimal?  @map("monthly_interest") @db.Decimal(12, 2)
   monthlyCommission Decimal?  @map("monthly_commission") @db.Decimal(12, 2)
   vatAmount         Decimal?  @map("vat_amount") @db.Decimal(12, 2)
+
+  // Legacy migration tracking (จากโปรแกรมเขียว)
+  legacyInstallmentCode String? @unique @map("legacy_installment_code")
 
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")
@@ -734,6 +743,10 @@ model Product {
   inspectionId       String?         @map("inspection_id")
   photos             String[]        @default([])
   stockInDate        DateTime?       @map("stock_in_date")
+
+  // Legacy migration tracking (จากโปรแกรมเขียว)
+  legacyProductCode  String?         @unique @map("legacy_product_code")
+
   createdAt          DateTime        @default(now()) @map("created_at")
   updatedAt          DateTime        @updatedAt @map("updated_at")
   deletedAt          DateTime?       @map("deleted_at")

@@ -97,7 +97,7 @@ export class TodosController {
     const uploadDir = path.resolve(process.cwd(), 'uploads', 'todos');
     fs.mkdirSync(uploadDir, { recursive: true });
 
-    const safeName = file.originalname.replace(/[^\w.\-]/g, '_');
+    const safeName = file.originalname.replace(/[^\w.-]/g, '_');
     const filename = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}-${safeName}`;
     const filePath = path.join(uploadDir, filename);
     fs.writeFileSync(filePath, file.buffer);

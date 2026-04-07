@@ -70,13 +70,13 @@ export class ContractPaymentService {
     const financeCost = Number(contract.financedAmount) + Number(contract.storeCommission || 0);
     const remainingCost = round2((financeCost / contract.totalMonths) * remainingMonths);
 
-    // (6) กำไรขั้นต้น (อาจติดลบในเคสประหลาด → clamp 0)
-    const grossProfit = Math.max(0, round2(remainingExVat - remainingCost));
+    // (6) กำไรขั้นต้น (อาจติดลบเคสขาดทุน — แสดงค่าจริง)
+    const grossProfit = round2(remainingExVat - remainingCost);
 
-    // (7) ส่วนลด (default 50%)
-    // Cap ส่วนลดที่ 50% ตามนโยบาย
+    // (7) ส่วนลด (default 50%, max 50% ตามนโยบาย)
+    // ถ้ากำไรติดลบ → ส่วนลด = 0 (ไม่ลดเพิ่ม ไม่บวกเพิ่ม)
     const discountPct = discountPctInput != null ? Math.max(0, Math.min(50, discountPctInput)) / 100 : 0.5;
-    const discountAmount = round2(grossProfit * discountPct);
+    const discountAmount = grossProfit > 0 ? round2(grossProfit * discountPct) : 0;
 
     // (8) ยอดชำระปิดยอด
     const totalPayoff = Math.max(0, round2(remainingBalance - discountAmount));

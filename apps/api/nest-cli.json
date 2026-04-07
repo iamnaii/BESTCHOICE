@@ -5,7 +5,8 @@
   "compilerOptions": {
     "deleteOutDir": true,
     "assets": [
-      { "include": "modules/documents/templates/**/*.html", "watchAssets": true }
+      { "include": "modules/documents/templates/**/*.html", "watchAssets": true },
+      { "include": "modules/contracts/templates/**/*.html", "watchAssets": true }
     ]
   }
 }

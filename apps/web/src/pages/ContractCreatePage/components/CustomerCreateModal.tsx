@@ -115,11 +115,11 @@ export function CustomerCreateModal({
                   </select>
                 </div>
                 <div>
-                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ชื่อ *</label>
+                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ชื่อ <span className="text-destructive">*</span></label>
                   <input type="text" value={custForm.firstName} onChange={(e) => setCustForm({ ...custForm, firstName: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" required />
                 </div>
                 <div>
-                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">นามสกุล *</label>
+                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">นามสกุล <span className="text-destructive">*</span></label>
                   <input type="text" value={custForm.lastName} onChange={(e) => setCustForm({ ...custForm, lastName: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" required />
                 </div>
                 <div>
@@ -127,7 +127,7 @@ export function CustomerCreateModal({
                   <input type="text" value={custForm.nickname} onChange={(e) => setCustForm({ ...custForm, nickname: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เลขบัตรประชาชน (13 หลัก) *</label>
+                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เลขบัตรประชาชน (13 หลัก) <span className="text-destructive">*</span></label>
                   <input type="text" maxLength={13} value={custForm.nationalId} onChange={(e) => setCustForm({ ...custForm, nationalId: e.target.value.replace(/\D/g, '') })} className="w-full px-3 py-2 border border-input rounded-lg text-sm font-mono" required />
                 </div>
                 <div>
@@ -197,7 +197,7 @@ export function CustomerCreateModal({
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เบอร์หลัก *</label>
+                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เบอร์หลัก <span className="text-destructive">*</span></label>
                   <input type="tel" value={custForm.phone} onChange={(e) => setCustForm({ ...custForm, phone: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" required />
                 </div>
                 <div>

@@ -108,7 +108,7 @@ export function CreatePOModal({
 
               <div className="space-y-3">
                 <div>
-                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ผู้ขาย *</label>
+                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ผู้ขาย <span className="text-destructive">*</span></label>
                   <select
                     value={form.supplierId}
                     onChange={(e) => {
@@ -151,7 +151,7 @@ export function CreatePOModal({
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">วันที่สั่ง *</label>
+                    <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">วันที่สั่ง <span className="text-destructive">*</span></label>
                     <ThaiDateInput
                       value={form.orderDate}
                       onChange={(e) => setForm({ ...form, orderDate: e.target.value })}
@@ -226,7 +226,7 @@ export function CreatePOModal({
                       {/* Row 1: Category FIRST, then Brand/Model or AccessoryType */}
                       <div className={`grid ${isAccessory ? 'grid-cols-3' : 'grid-cols-3'} gap-2`}>
                         <div>
-                          <label className="block text-xs text-muted-foreground mb-0.5">ประเภท *</label>
+                          <label className="block text-xs text-muted-foreground mb-0.5">ประเภท <span className="text-destructive">*</span></label>
                           <select
                             value={item.category}
                             onChange={(e) => updateItem(idx, 'category', e.target.value)}
@@ -243,7 +243,7 @@ export function CreatePOModal({
                         {isAccessory ? (
                           <>
                             <div>
-                              <label className="block text-xs text-muted-foreground mb-0.5">ประเภทอุปกรณ์ *</label>
+                              <label className="block text-xs text-muted-foreground mb-0.5">ประเภทอุปกรณ์ <span className="text-destructive">*</span></label>
                               <select
                                 value={item.accessoryType}
                                 onChange={(e) => updateItem(idx, 'accessoryType', e.target.value)}
@@ -259,7 +259,7 @@ export function CreatePOModal({
 
                             {isCharger ? (
                               <div>
-                                <label className="block text-xs text-muted-foreground mb-0.5">ชนิด *</label>
+                                <label className="block text-xs text-muted-foreground mb-0.5">ชนิด <span className="text-destructive">*</span></label>
                                 <select
                                   value={item.model}
                                   onChange={(e) => { const ni = [...items]; ni[idx] = { ...ni[idx], model: e.target.value }; setItems(ni); }}
@@ -291,7 +291,7 @@ export function CreatePOModal({
                         ) : (
                           <>
                             <div>
-                              <label className="block text-xs text-muted-foreground mb-0.5">ยี่ห้อ *</label>
+                              <label className="block text-xs text-muted-foreground mb-0.5">ยี่ห้อ <span className="text-destructive">*</span></label>
                               <select
                                 value={item.brand}
                                 onChange={(e) => updateItem(idx, 'brand', e.target.value)}
@@ -306,7 +306,7 @@ export function CreatePOModal({
                               </select>
                             </div>
                             <div>
-                              <label className="block text-xs text-muted-foreground mb-0.5">รุ่น *</label>
+                              <label className="block text-xs text-muted-foreground mb-0.5">รุ่น <span className="text-destructive">*</span></label>
                               <select
                                 value={item.model}
                                 onChange={(e) => updateItem(idx, 'model', e.target.value)}
@@ -367,7 +367,7 @@ export function CreatePOModal({
                               />
                             </div>
                             <div>
-                              <label className="block text-xs text-muted-foreground mb-0.5">จำนวน *</label>
+                              <label className="block text-xs text-muted-foreground mb-0.5">จำนวน <span className="text-destructive">*</span></label>
                               <input
                                 type="number"
                                 value={item.quantity}
@@ -378,7 +378,7 @@ export function CreatePOModal({
                               />
                             </div>
                             <div>
-                              <label className="block text-xs text-muted-foreground mb-0.5">ราคา/ชิ้น *</label>
+                              <label className="block text-xs text-muted-foreground mb-0.5">ราคา/ชิ้น <span className="text-destructive">*</span></label>
                               <input
                                 type="number"
                                 value={item.unitPrice}
@@ -425,7 +425,7 @@ export function CreatePOModal({
                             </select>
                           </div>
                           <div>
-                            <label className="block text-xs text-muted-foreground mb-0.5">จำนวน *</label>
+                            <label className="block text-xs text-muted-foreground mb-0.5">จำนวน <span className="text-destructive">*</span></label>
                             <input
                               type="number"
                               value={item.quantity}
@@ -436,7 +436,7 @@ export function CreatePOModal({
                             />
                           </div>
                           <div>
-                            <label className="block text-xs text-muted-foreground mb-0.5">ราคา/ชิ้น *</label>
+                            <label className="block text-xs text-muted-foreground mb-0.5">ราคา/ชิ้น <span className="text-destructive">*</span></label>
                             <input
                               type="number"
                               value={item.unitPrice}

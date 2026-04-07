@@ -188,7 +188,7 @@ export default function CustomerEditModal({ customerId, customerSnapshot, custom
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs text-muted-foreground mb-1">ชื่อ-นามสกุล *</label>
+                    <label className="block text-xs text-muted-foreground mb-1">ชื่อ-นามสกุล <span className="text-destructive">*</span></label>
                     <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" required />
                   </div>
                   <div>
@@ -260,7 +260,7 @@ export default function CustomerEditModal({ customerId, customerSnapshot, custom
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-muted-foreground mb-1">เบอร์หลัก *</label>
+                    <label className="block text-xs text-muted-foreground mb-1">เบอร์หลัก <span className="text-destructive">*</span></label>
                     <input type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" required />
                   </div>
                   <div>

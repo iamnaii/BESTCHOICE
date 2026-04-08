@@ -1,8 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { LATE_FEE_PER_DAY, FINANCE_BANK, BANK_INFO_BLOCK } from '../constants/finance-rules';
-
-const BANK_INFO = BANK_INFO_BLOCK;
+import { LATE_FEE_PER_DAY } from '../constants/finance-rules';
+import { FinanceConfigService } from './finance-config.service';
 
 /**
  * Finance Tools — wrap DB queries สำหรับ Claude tool use
@@ -17,7 +16,10 @@ const BANK_INFO = BANK_INFO_BLOCK;
 export class FinanceToolsService {
   private readonly logger = new Logger(FinanceToolsService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private financeConfig: FinanceConfigService,
+  ) {}
 
   // ─── Tool 1: get_current_balance ─────────────────────────
 
@@ -70,7 +72,7 @@ export class FinanceToolsService {
       totalAmount,
       daysOverdue,
       isOverdue: daysOverdue > 0,
-      bankInfo: BANK_INFO,
+      bankInfo: this.financeConfig.bankInfoBlock,
     };
   }
 
@@ -176,12 +178,14 @@ export class FinanceToolsService {
   // ─── Tool 5: get_bank_info ───────────────────────────────
 
   /**
-   * คืนข้อมูลบัญชีบริษัทสำหรับโอนเงิน
+   * คืนข้อมูลบัญชีบริษัทสำหรับโอนเงิน (จาก SystemConfig)
    */
   getBankInfo() {
     return {
-      ...FINANCE_BANK,
-      formatted: BANK_INFO,
+      bankName: this.financeConfig.bankName,
+      accountNumber: this.financeConfig.accountNumber,
+      accountName: this.financeConfig.accountName,
+      formatted: this.financeConfig.bankInfoBlock,
     };
   }
 

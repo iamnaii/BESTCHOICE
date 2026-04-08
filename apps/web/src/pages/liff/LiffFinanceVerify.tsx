@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useLiffInit } from '@/hooks/useLiffInit';
 import { liffApi } from '@/lib/api';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 type Step = 'loading' | 'phone' | 'otp' | 'success' | 'already_linked' | 'error';
@@ -35,31 +35,32 @@ export default function LiffFinanceVerify() {
   const [resendCooldown, setResendCooldown] = useState(0);
 
   // Check link status เมื่อ LIFF init เสร็จ
-  useEffect(() => {
-    if (loading || error || !lineId) return;
+  const statusQuery = useQuery<LinkStatus>({
+    queryKey: ['liff-finance-verify-status', lineId],
+    queryFn: async () => {
+      const { data } = await liffApi.get<LinkStatus>(
+        `/chatbot/finance/liff/status?lineUserId=${encodeURIComponent(lineId)}`,
+      );
+      return data;
+    },
+    enabled: !!lineId && !loading && !error,
+    retry: 1,
+    staleTime: Infinity, // status ไม่เปลี่ยนระหว่าง LIFF page lifecycle
+  });
 
-    let cancelled = false;
-    (async () => {
-      try {
-        const { data } = await liffApi.get<LinkStatus>(
-          `/chatbot/finance/liff/status?lineUserId=${encodeURIComponent(lineId)}`,
-        );
-        if (cancelled) return;
-        if (data.linked) {
-          setVerifiedName(data.customerName || '');
-          setStep('already_linked');
-        } else {
-          setStep('phone');
-        }
-      } catch (err) {
-        if (!cancelled) {
-          if (import.meta.env.DEV) console.error('Status check failed:', err);
-          setStep('phone'); // ไม่ block — ให้ลูกค้ากรอกเบอร์ได้
-        }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [lineId, loading, error]);
+  useEffect(() => {
+    if (!statusQuery.data && !statusQuery.error) return;
+    if (statusQuery.error) {
+      setStep('phone'); // ไม่ block — ให้ลูกค้ากรอกเบอร์ได้
+      return;
+    }
+    if (statusQuery.data?.linked) {
+      setVerifiedName(statusQuery.data.customerName || '');
+      setStep('already_linked');
+    } else {
+      setStep('phone');
+    }
+  }, [statusQuery.data, statusQuery.error]);
 
   // Cooldown countdown
   useEffect(() => {

@@ -90,16 +90,30 @@ export class VisionService {
 
       const textBlock = response.content.find((b) => b.type === 'text');
       const text = textBlock && textBlock.type === 'text' ? textBlock.text : '';
-      if (!text) return null;
+      if (!text) {
+        this.logger.warn('[Vision] Empty response from Claude');
+        return null;
+      }
 
       // Parse JSON (Claude บางครั้งห่อด้วย code fence)
       const jsonStr = text.replace(/```json\n?|```/g, '').trim();
-      const parsed = JSON.parse(jsonStr) as SlipExtraction;
-      this.logger.log(`[Vision] Extracted: amount=${parsed.amount} confidence=${parsed.confidence}`);
-      return parsed;
+      try {
+        const parsed = JSON.parse(jsonStr) as SlipExtraction;
+        this.logger.log(
+          `[Vision] Extracted: amount=${parsed.amount} confidence=${parsed.confidence}`,
+        );
+        return parsed;
+      } catch (parseErr) {
+        // Log raw text (truncated) เพื่อ debug ว่า Claude ตอบรูปแบบอะไรมา
+        this.logger.error(
+          `[Vision] JSON parse failed: ${parseErr instanceof Error ? parseErr.message : parseErr}\n` +
+            `Raw response: ${text.slice(0, 500)}`,
+        );
+        return null;
+      }
     } catch (err) {
       this.logger.error(
-        `[Vision] Extraction error: ${err instanceof Error ? err.message : err}`,
+        `[Vision] API error: ${err instanceof Error ? err.message : err}`,
       );
       return null;
     }

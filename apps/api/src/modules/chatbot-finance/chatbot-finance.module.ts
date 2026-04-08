@@ -15,6 +15,7 @@ import { AutoTriggerService } from './services/auto-trigger.service';
 import { LineStaffClientService } from './services/line-staff-client.service';
 import { StaffNotificationService } from './services/staff-notification.service';
 import { AdminAnalyticsService } from './services/admin-analytics.service';
+import { FinanceConfigService } from './services/finance-config.service';
 import { FinanceToolExecutor } from './tools/tool-executor';
 import { VerificationService } from './services/verification.service';
 import { LineFinanceWebhookGuard } from './guards/line-finance-webhook.guard';
@@ -54,10 +55,11 @@ import { NotificationsModule } from '../notifications/notifications.module';
     LineStaffClientService,
     StaffNotificationService,
     AdminAnalyticsService,
+    FinanceConfigService,
     FinanceToolExecutor,
     VerificationService,
     LineFinanceWebhookGuard,
   ],
-  exports: [LineFinanceClientService, ChatSessionService],
+  exports: [LineFinanceClientService, ChatSessionService, VerificationService],
 })
 export class ChatbotFinanceModule {}

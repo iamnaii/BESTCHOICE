@@ -35,6 +35,7 @@ export default function ChatbotFinanceKnowledgePage() {
   const [editing, setEditing] = useState<KbEntry | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [isCreating, setIsCreating] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState(false);
 
   const list = useQuery<KbEntry[]>({
     queryKey: ['chatbot-finance-kb'],
@@ -97,6 +98,12 @@ export default function ChatbotFinanceKnowledgePage() {
     setEditing(null);
     setIsCreating(false);
     setForm(EMPTY_FORM);
+    setPendingDelete(false);
+  }
+
+  function startEditWithReset(entry: KbEntry) {
+    setPendingDelete(false);
+    startEdit(entry);
   }
 
   return (
@@ -123,7 +130,7 @@ export default function ChatbotFinanceKnowledgePage() {
               <div
                 key={kb.id}
                 className={`p-3 border rounded-lg cursor-pointer hover:bg-gray-50 ${editing?.id === kb.id ? 'border-blue-400 bg-blue-50' : 'bg-white'}`}
-                onClick={() => startEdit(kb)}
+                onClick={() => startEditWithReset(kb)}
               >
                 <div className="flex justify-between items-start">
                   <div>
@@ -264,14 +271,33 @@ export default function ChatbotFinanceKnowledgePage() {
                 >
                   {saveMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
                 </button>
-                {editing && (
+                {editing && !pendingDelete && (
                   <button
                     type="button"
-                    onClick={() => { if (confirm('ลบ FAQ นี้?')) deleteMutation.mutate(editing.id); }}
+                    onClick={() => setPendingDelete(true)}
                     className="px-4 py-2 border border-red-300 text-red-600 rounded-lg text-sm hover:bg-red-50"
                   >
                     ลบ
                   </button>
+                )}
+                {editing && pendingDelete && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => { deleteMutation.mutate(editing.id); setPendingDelete(false); }}
+                      disabled={deleteMutation.isPending}
+                      className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700 disabled:opacity-50"
+                    >
+                      ยืนยันลบ
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPendingDelete(false)}
+                      className="px-4 py-2 border border-gray-300 text-gray-600 rounded-lg text-sm hover:bg-gray-50"
+                    >
+                      ไม่ลบ
+                    </button>
+                  </>
                 )}
                 <button
                   type="button"

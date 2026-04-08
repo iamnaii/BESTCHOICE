@@ -3,7 +3,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { StorageService } from '../../storage/storage.service';
 import { VisionService, SlipExtraction } from './vision.service';
 import { StaffNotificationService } from './staff-notification.service';
-import { FINANCE_BANK, isCompanyBankAccount } from '../constants/finance-rules';
+import { FinanceConfigService } from './finance-config.service';
 
 const AMOUNT_TOLERANCE = 0.5; // ±0.50 บาท
 
@@ -33,6 +33,7 @@ export class SlipProcessingService {
     private storage: StorageService,
     private vision: VisionService,
     private staffNotify: StaffNotificationService,
+    private financeConfig: FinanceConfigService,
   ) {}
 
   async processSlip(params: {
@@ -87,8 +88,9 @@ export class SlipProcessingService {
       };
     }
 
-    // 4. Match บัญชี (exact digits-only match)
-    const wrongAccount = extracted.toAccount && !isCompanyBankAccount(extracted.toAccount);
+    // 4. Match บัญชี (exact digits-only match against current SystemConfig)
+    const wrongAccount =
+      extracted.toAccount && !this.financeConfig.isCompanyBankAccount(extracted.toAccount);
     if (wrongAccount) {
       const evidence = await this.createEvidence({
         contractId: contract.id,
@@ -110,9 +112,9 @@ export class SlipProcessingService {
         ok: false,
         reply:
           '⚠️ สลิปนี้โอนเข้าบัญชีอื่นนะคะ\n\n' +
-          `🏦 บัญชีที่ถูกต้อง: ${FINANCE_BANK.bankName}\n` +
-          `🔢 ${FINANCE_BANK.accountNumber}\n` +
-          `👤 ${FINANCE_BANK.accountName}\n\n` +
+          `🏦 บัญชีที่ถูกต้อง: ${this.financeConfig.bankName}\n` +
+          `🔢 ${this.financeConfig.accountNumber}\n` +
+          `👤 ${this.financeConfig.accountName}\n\n` +
           'แอดมินจะตรวจสอบให้นะคะ',
         evidenceId: evidence.id,
         matched: false,

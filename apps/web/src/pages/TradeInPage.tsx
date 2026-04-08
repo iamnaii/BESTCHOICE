@@ -12,8 +12,9 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useAuth } from '@/contexts/AuthContext';
-import { RefreshCw, Plus, Search, CheckCircle, XCircle } from 'lucide-react';
+import { RefreshCw, Plus, Search, CheckCircle, XCircle, FileText, CreditCard, Upload, AlertTriangle } from 'lucide-react';
 import { brands, getModels } from '@/data/productCatalog';
+import SignaturePadFull from '@/components/signing/SignaturePadFull';
 
 /** Map color name (English/Thai) to a hex value for preview swatches */
 function colorNameToHex(name: string): string {
@@ -47,12 +48,18 @@ interface TradeIn {
   deviceBrand: string;
   deviceModel: string;
   deviceStorage: string | null;
+  deviceColor?: string | null;
   deviceCondition: string | null;
   imei: string | null;
   estimatedValue: number | null;
-  appraisedValue: number | null;
+  offeredPrice: number | null;
+  agreedPrice: number | null;
+  sellerName: string | null;
+  sellerPhone: string | null;
+  voucherNumber: string | null;
+  voucherPdfUrl: string | null;
   createdAt: string;
-  customer: { id: string; name: string };
+  customer: { id: string; name: string } | null;
 }
 
 interface TradeInsResponse {
@@ -71,10 +78,10 @@ const statusConfig: Record<string, { label: string; variant: 'primary' | 'second
 };
 
 const conditionOptions = [
-  { value: 'EXCELLENT', label: 'ดีเยี่ยม' },
-  { value: 'GOOD', label: 'ดี' },
-  { value: 'FAIR', label: 'พอใช้' },
-  { value: 'POOR', label: 'ไม่ดี' },
+  { value: 'A', label: 'A — ดีเยี่ยม' },
+  { value: 'B', label: 'B — ดี' },
+  { value: 'C', label: 'C — พอใช้' },
+  { value: 'D', label: 'D — ไม่ดี' },
 ];
 
 /* ─── Component ─── */
@@ -90,6 +97,22 @@ export default function TradeInPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [appraiseModal, setAppraiseModal] = useState<TradeIn | null>(null);
   const [appraiseValue, setAppraiseValue] = useState('');
+  const [appraiseCondition, setAppraiseCondition] = useState('B');
+  const [acceptModal, setAcceptModal] = useState<TradeIn | null>(null);
+  const [acceptForm, setAcceptForm] = useState({
+    idCardVerified: false,
+    sellerConsentSigned: false,
+    policeReportAcknowledged: false,
+    paymentMethod: 'CASH' as 'CASH' | 'TRANSFER',
+    transferBankName: '',
+    transferAccountNumber: '',
+    transferAccountName: '',
+    sellerSignatureBase64: '',
+  });
+  const [imeiCheckResult, setImeiCheckResult] = useState<{ result: 'clean' | 'duplicate'; count: number } | null>(null);
+
+  // Seller mode: existing customer หรือ walk-in
+  const [sellerMode, setSellerMode] = useState<'customer' | 'walkin'>('customer');
 
   // Form state
   const [form, setForm] = useState({
@@ -101,6 +124,13 @@ export default function TradeInPage() {
     deviceCondition: '',
     imei: '',
     estimatedValue: '',
+    // Walk-in seller
+    sellerName: '',
+    sellerPhone: '',
+    sellerIdCardNumber: '',
+    sellerAddress: '',
+    idCardPhotoBase64: '',
+    idCardSource: '' as '' | 'card_reader' | 'upload',
   });
 
   // Customer search for create form
@@ -110,7 +140,9 @@ export default function TradeInPage() {
     queryKey: ['trade-in-customers', debouncedCustomerSearch],
     queryFn: async () => {
       if (!debouncedCustomerSearch || debouncedCustomerSearch.length < 2) return [];
-      const res = await api.get(`/customers?search=${encodeURIComponent(debouncedCustomerSearch)}&limit=10`);
+      const res = await api.get('/customers', {
+        params: { search: debouncedCustomerSearch, limit: 10, page: 1 },
+      });
       return res.data.data || [];
     },
     enabled: debouncedCustomerSearch.length >= 2,
@@ -131,15 +163,26 @@ export default function TradeInPage() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      return api.post('/trade-ins', {
-        customerId: form.customerId,
+      const payload: Record<string, unknown> = {
         deviceBrand: form.deviceBrand,
-        deviceModel: form.deviceColor ? `${form.deviceModel} - ${form.deviceColor}` : form.deviceModel,
+        deviceModel: form.deviceModel,
         deviceStorage: form.deviceStorage || undefined,
+        deviceColor: form.deviceColor || undefined,
         deviceCondition: form.deviceCondition || undefined,
         imei: form.imei || undefined,
         estimatedValue: form.estimatedValue ? parseFloat(form.estimatedValue) : undefined,
-      });
+      };
+      if (sellerMode === 'customer') {
+        payload.customerId = form.customerId;
+      } else {
+        payload.sellerName = form.sellerName;
+        payload.sellerPhone = form.sellerPhone || undefined;
+        payload.sellerIdCardNumber = form.sellerIdCardNumber || undefined;
+        payload.sellerAddress = form.sellerAddress || undefined;
+        payload.idCardPhotoBase64 = form.idCardPhotoBase64 || undefined;
+        payload.idCardSource = form.idCardSource || undefined;
+      }
+      return api.post('/trade-ins', payload);
     },
     onSuccess: () => {
       toast.success('สร้างรายการรับซื้อเรียบร้อย');
@@ -151,23 +194,55 @@ export default function TradeInPage() {
   });
 
   const appraiseMutation = useMutation({
-    mutationFn: async ({ id, value }: { id: string; value: number }) => {
-      return api.post(`/trade-ins/${id}/appraise`, { appraisedValue: value });
+    mutationFn: async ({ id, value, condition }: { id: string; value: number; condition: string }) => {
+      // Backend uses PATCH /:id/appraise with { offeredPrice, deviceCondition }
+      return api.patch(`/trade-ins/${id}/appraise`, {
+        offeredPrice: value,
+        deviceCondition: condition,
+      });
     },
     onSuccess: () => {
       toast.success('ประเมินราคาเรียบร้อย');
       queryClient.invalidateQueries({ queryKey: ['trade-ins'] });
       setAppraiseModal(null);
       setAppraiseValue('');
+      setAppraiseCondition('B');
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
   const acceptMutation = useMutation({
-    mutationFn: async (id: string) => api.post(`/trade-ins/${id}/accept`),
+    mutationFn: async ({ id, body }: { id: string; body: typeof acceptForm }) =>
+      api.post(`/trade-ins/${id}/accept`, body),
     onSuccess: () => {
       toast.success('ยอมรับการรับซื้อเรียบร้อย');
       queryClient.invalidateQueries({ queryKey: ['trade-ins'] });
+      setAcceptModal(null);
+      setAcceptForm({ idCardVerified: false, sellerConsentSigned: false, policeReportAcknowledged: false, paymentMethod: 'CASH', transferBankName: '', transferAccountNumber: '', transferAccountName: '', sellerSignatureBase64: '' });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  // ดาวน์โหลด PDF เป็น blob (ผ่าน axios — ส่ง JWT แนบ) แล้วเปิดในแท็บใหม่
+  async function openVoucherPdf(id: string) {
+    try {
+      const res = await api.get(`/trade-ins/${id}/voucher.pdf`, { responseType: 'blob' });
+      const blob = new Blob([res.data], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      // revoke ภายหลัง 60 วิ ให้แท็บใหม่โหลดเสร็จก่อน
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    }
+  }
+
+  const generateVoucherMutation = useMutation({
+    mutationFn: async (id: string) => api.post(`/trade-ins/${id}/voucher`),
+    onSuccess: async (res, id) => {
+      toast.success(`ออกใบสำคัญเลขที่ ${res.data.voucherNumber}`);
+      queryClient.invalidateQueries({ queryKey: ['trade-ins'] });
+      await openVoucherPdf(id);
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
@@ -184,21 +259,107 @@ export default function TradeInPage() {
   /* ─── Helpers ─── */
 
   function resetForm() {
-    setForm({ customerId: '', deviceBrand: '', deviceModel: '', deviceStorage: '', deviceColor: '', deviceCondition: '', imei: '', estimatedValue: '' });
+    setForm({
+      customerId: '', deviceBrand: '', deviceModel: '', deviceStorage: '', deviceColor: '',
+      deviceCondition: '', imei: '', estimatedValue: '',
+      sellerName: '', sellerPhone: '', sellerIdCardNumber: '', sellerAddress: '',
+      idCardPhotoBase64: '', idCardSource: '',
+    });
     setCustomerSearch('');
+    setSellerMode('customer');
+    setImeiCheckResult(null);
   }
 
   function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.customerId) {
+    if (sellerMode === 'customer' && !form.customerId) {
       toast.error('กรุณาเลือกลูกค้า');
+      return;
+    }
+    if (sellerMode === 'walkin' && !form.sellerName.trim()) {
+      toast.error('กรุณาระบุชื่อผู้ขาย');
+      return;
+    }
+    if (sellerMode === 'walkin' && form.sellerIdCardNumber && form.sellerIdCardNumber.length !== 13) {
+      toast.error('เลขบัตรประชาชนต้อง 13 หลัก');
       return;
     }
     if (!form.deviceBrand || !form.deviceModel) {
       toast.error('กรุณาระบุยี่ห้อและรุ่น');
       return;
     }
+    if (form.imei && !/^\d{15}$/.test(form.imei)) {
+      toast.error('IMEI ต้องเป็นตัวเลข 15 หลัก');
+      return;
+    }
     createMutation.mutate();
+  }
+
+  // IMEI duplicate check (anti-stolen-goods)
+  async function checkImeiDuplicate() {
+    if (!form.imei || !/^\d{15}$/.test(form.imei)) {
+      setImeiCheckResult(null);
+      return;
+    }
+    try {
+      const res = await api.get(`/trade-ins/check-imei/${form.imei}`);
+      const cnt = res.data.occurrences?.length ?? 0;
+      setImeiCheckResult({ result: res.data.result, count: cnt });
+      if (res.data.result === 'duplicate') {
+        toast.error(`⚠️ IMEI นี้เคยถูกรับซื้อแล้ว ${cnt} ครั้ง — โปรดตรวจสอบที่มา`);
+      }
+    } catch {
+      // silent
+    }
+  }
+
+  // อ่านบัตรจากเครื่องอ่านบัตร (card-reader service @ port 3457)
+  async function readFromCardReader() {
+    try {
+      const res = await fetch('http://localhost:3457/api/read-card');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.message || 'อ่านบัตรไม่สำเร็จ — กรุณาลองอีกครั้ง');
+        return;
+      }
+      const json = await res.json();
+      if (!json.success || !json.data) {
+        toast.error('ไม่พบข้อมูลบัตร');
+        return;
+      }
+      const d = json.data;
+      const fullName = `${d.prefix || ''}${d.firstName || ''} ${d.lastName || ''}`.trim();
+      setForm((f) => ({
+        ...f,
+        sellerName: fullName,
+        sellerIdCardNumber: d.nationalId || '',
+        sellerAddress: d.address || '',
+        idCardSource: 'card_reader',
+      }));
+      toast.success('อ่านบัตรเรียบร้อย');
+    } catch {
+      toast.error('ไม่พบเครื่องอ่านบัตร — ตรวจสอบว่า card-reader service รันอยู่ที่ port 3457');
+    }
+  }
+
+  // อัปโหลดรูปบัตรประชาชน (fallback)
+  function handleIdCardUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('ไฟล์ต้องไม่เกิน 5MB');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setForm((f) => ({
+        ...f,
+        idCardPhotoBase64: reader.result as string,
+        idCardSource: 'upload',
+      }));
+      toast.success('อัปโหลดรูปบัตรเรียบร้อย');
+    };
+    reader.readAsDataURL(file);
   }
 
   /* ─── Columns ─── */
@@ -206,9 +367,21 @@ export default function TradeInPage() {
   const columns: Column<TradeIn>[] = [
     {
       key: 'customer',
-      label: 'ลูกค้า',
+      label: 'ผู้ขาย',
       sortable: true,
-      render: (item) => <span className="font-medium text-foreground">{item.customer.name}</span>,
+      render: (item) => (
+        <div>
+          <div className="font-medium text-foreground">
+            {item.customer?.name || item.sellerName || '-'}
+          </div>
+          {!item.customer && item.sellerPhone && (
+            <div className="text-xs text-muted-foreground">{item.sellerPhone}</div>
+          )}
+          {!item.customer && (
+            <Badge variant="outline" className="mt-0.5 text-[10px]">walk-in</Badge>
+          )}
+        </div>
+      ),
     },
     {
       key: 'device',
@@ -230,10 +403,10 @@ export default function TradeInPage() {
     },
     {
       key: 'estimatedValue',
-      label: 'ราคาประเมิน',
+      label: 'ราคา',
       sortable: true,
       render: (item) => {
-        const value = item.appraisedValue ?? item.estimatedValue;
+        const value = item.agreedPrice ?? item.offeredPrice ?? item.estimatedValue;
         return value != null ? (
           <span className="font-medium">฿{Number(value).toLocaleString()}</span>
         ) : (
@@ -266,8 +439,7 @@ export default function TradeInPage() {
               <Button
                 size="sm"
                 variant="primary"
-                onClick={(e) => { e.stopPropagation(); acceptMutation.mutate(item.id); }}
-                disabled={acceptMutation.isPending}
+                onClick={(e) => { e.stopPropagation(); setAcceptModal(item); }}
               >
                 <CheckCircle className="size-3.5 mr-1" />
                 ยอมรับ
@@ -282,6 +454,24 @@ export default function TradeInPage() {
                 ปฏิเสธ
               </Button>
             </>
+          )}
+          {(item.status === 'ACCEPTED' || item.status === 'COMPLETED') && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (item.voucherNumber) {
+                  openVoucherPdf(item.id);
+                } else {
+                  generateVoucherMutation.mutate(item.id);
+                }
+              }}
+              disabled={generateVoucherMutation.isPending}
+            >
+              <FileText className="size-3.5 mr-1" />
+              {item.voucherNumber ? 'พิมพ์ใบสำคัญ' : 'ออกใบสำคัญ'}
+            </Button>
           )}
         </div>
       ),
@@ -344,7 +534,108 @@ export default function TradeInPage() {
             <form onSubmit={handleCreate} className="flex-1 overflow-y-auto flex flex-col bg-slate-50/40 dark:bg-slate-900/40">
               <div className="p-6 space-y-4 flex-1">
 
-                {/* Section: ลูกค้า */}
+                {/* Section: ประเภทผู้ขาย */}
+                <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-950/60 p-4 shadow-sm">
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSellerMode('customer')}
+                      className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${sellerMode === 'customer' ? 'bg-sky-500 text-white shadow-sm' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'}`}
+                    >
+                      ลูกค้าในระบบ
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSellerMode('walkin')}
+                      className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${sellerMode === 'walkin' ? 'bg-amber-500 text-white shadow-sm' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'}`}
+                    >
+                      Walk-in (ผู้ขายรายใหม่)
+                    </button>
+                  </div>
+                </div>
+
+                {/* Section: ลูกค้า / ผู้ขาย walk-in */}
+                {sellerMode === 'walkin' ? (
+                  <div className="group rounded-2xl border border-amber-200/80 dark:border-amber-900/40 bg-amber-50/30 dark:bg-amber-950/20 p-5 shadow-sm">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="flex items-center justify-center size-10 rounded-xl bg-amber-100 dark:bg-amber-900/40 text-amber-600">
+                        <CreditCard className="size-5" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-sm font-semibold tracking-tight">ข้อมูลผู้ขาย (Walk-in)</h3>
+                        <p className="text-xs text-slate-500 mt-0.5">บันทึกข้อมูลผู้ขายและตรวจบัตรประชาชนเพื่อป้องกันการรับซื้อของโจร</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={readFromCardReader}
+                        className="px-3 py-2 rounded-lg bg-sky-500 text-white text-xs font-semibold hover:bg-sky-600 shadow-sm flex items-center gap-1.5"
+                      >
+                        <CreditCard className="size-3.5" />
+                        อ่านบัตร
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium mb-1.5">ชื่อ-นามสกุล <span className="text-destructive">*</span></label>
+                        <input
+                          type="text"
+                          className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm"
+                          placeholder="ชื่อ นามสกุล"
+                          value={form.sellerName}
+                          onChange={(e) => setForm((f) => ({ ...f, sellerName: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1.5">เบอร์โทร</label>
+                        <input
+                          type="tel"
+                          className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm"
+                          placeholder="0812345678"
+                          value={form.sellerPhone}
+                          onChange={(e) => setForm((f) => ({ ...f, sellerPhone: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1.5">เลขบัตรประชาชน</label>
+                        <input
+                          type="text"
+                          maxLength={13}
+                          className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm font-mono"
+                          placeholder="1234567890123"
+                          value={form.sellerIdCardNumber}
+                          onChange={(e) => setForm((f) => ({ ...f, sellerIdCardNumber: e.target.value.replace(/\D/g, '') }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1.5">รูปบัตรประชาชน</label>
+                        <label className="flex items-center justify-center gap-2 h-10 px-3 rounded-lg border border-dashed border-input bg-background text-sm cursor-pointer hover:border-sky-400 transition-colors">
+                          {form.idCardPhotoBase64 ? (
+                            <>
+                              <CheckCircle className="size-4 text-emerald-500" />
+                              <span className="text-emerald-600">อัปโหลดแล้ว</span>
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="size-4" />
+                              <span className="text-muted-foreground">เลือกไฟล์</span>
+                            </>
+                          )}
+                          <input type="file" accept="image/*" className="hidden" onChange={handleIdCardUpload} />
+                        </label>
+                      </div>
+                      <div className="col-span-2">
+                        <label className="block text-xs font-medium mb-1.5">ที่อยู่ตามบัตร</label>
+                        <textarea
+                          rows={2}
+                          className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
+                          placeholder="บ้านเลขที่ ตำบล อำเภอ จังหวัด"
+                          value={form.sellerAddress}
+                          onChange={(e) => setForm((f) => ({ ...f, sellerAddress: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
                 <div className="group rounded-2xl border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-950/60 p-5 shadow-sm shadow-slate-900/[0.02] hover:shadow-md hover:shadow-sky-500/5 hover:border-sky-200 dark:hover:border-sky-900/60 transition-all duration-300">
                   <div className="flex items-center gap-3.5 mb-5">
                     <div className="flex items-center justify-center size-10 rounded-xl bg-gradient-to-br from-sky-50 to-blue-100/80 dark:from-sky-950/60 dark:to-blue-900/40 text-sky-600 dark:text-sky-400 ring-1 ring-sky-100 dark:ring-sky-900/60 group-hover:scale-105 transition-transform">
@@ -376,8 +667,13 @@ export default function TradeInPage() {
                         value={customerSearch}
                         onChange={(e) => setCustomerSearch(e.target.value)}
                       />
+                      {customerSearch.length >= 2 && customers.length === 0 && (
+                        <div className="absolute z-50 mt-1 w-full bg-popover border border-border rounded-lg shadow-lg p-3 text-xs text-muted-foreground">
+                          ไม่พบลูกค้า — ลองค้นด้วยชื่อ/เบอร์/เลขบัตร
+                        </div>
+                      )}
                       {customers.length > 0 && (
-                        <div className="absolute z-10 mt-1 w-full bg-popover border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                        <div className="absolute z-50 mt-1 w-full bg-popover border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto">
                           {customers.map((c) => (
                             <button
                               key={c.id}
@@ -394,6 +690,7 @@ export default function TradeInPage() {
                     </div>
                   )}
                 </div>
+                )}
 
                 {/* Section: ข้อมูลเครื่อง */}
                 <div className="group rounded-2xl border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-950/60 p-5 shadow-sm shadow-slate-900/[0.02] hover:shadow-md hover:shadow-indigo-500/5 hover:border-indigo-200 dark:hover:border-indigo-900/60 transition-all duration-300">
@@ -510,11 +807,22 @@ export default function TradeInPage() {
                       <label className="block text-xs font-medium text-foreground mb-1.5">IMEI</label>
                       <input
                         type="text"
+                        maxLength={15}
                         className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm font-mono transition-colors hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                         placeholder="หมายเลข IMEI 15 หลัก"
                         value={form.imei}
-                        onChange={(e) => setForm((f) => ({ ...f, imei: e.target.value }))}
+                        onChange={(e) => { setForm((f) => ({ ...f, imei: e.target.value.replace(/\D/g, '') })); setImeiCheckResult(null); }}
+                        onBlur={checkImeiDuplicate}
                       />
+                      {imeiCheckResult && (
+                        <div className={`mt-1.5 flex items-center gap-1.5 text-xs ${imeiCheckResult.result === 'clean' ? 'text-emerald-600' : 'text-red-600'}`}>
+                          {imeiCheckResult.result === 'clean' ? (
+                            <><CheckCircle className="size-3" /> ไม่พบ IMEI ซ้ำในระบบ</>
+                          ) : (
+                            <><AlertTriangle className="size-3" /> พบ IMEI นี้ในระบบ {imeiCheckResult.count} ครั้ง</>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-foreground mb-1.5">ราคาประเมินเบื้องต้น (บาท)</label>
@@ -551,13 +859,26 @@ export default function TradeInPage() {
           <div className="space-y-4">
             <div className="text-sm text-muted-foreground">
               <p><strong>อุปกรณ์:</strong> {appraiseModal.deviceBrand} {appraiseModal.deviceModel}</p>
-              <p><strong>ลูกค้า:</strong> {appraiseModal.customer.name}</p>
+              <p><strong>ผู้ขาย:</strong> {appraiseModal.customer?.name || appraiseModal.sellerName || '-'}</p>
               {appraiseModal.estimatedValue != null && (
                 <p><strong>ราคาประเมินเบื้องต้น:</strong> ฿{Number(appraiseModal.estimatedValue).toLocaleString()}</p>
               )}
             </div>
             <div>
-              <Label>ราคาประเมิน (บาท) *</Label>
+              <Label>สภาพเครื่อง *</Label>
+              <select
+                className="mt-1 w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
+                value={appraiseCondition}
+                onChange={(e) => setAppraiseCondition(e.target.value)}
+              >
+                <option value="A">A — ดีเยี่ยม</option>
+                <option value="B">B — ดี</option>
+                <option value="C">C — พอใช้</option>
+                <option value="D">D — ไม่ดี</option>
+              </select>
+            </div>
+            <div>
+              <Label>ราคาที่เสนอ (บาท) *</Label>
               <Input
                 className="mt-1"
                 type="number"
@@ -577,11 +898,145 @@ export default function TradeInPage() {
                     toast.error('กรุณาระบุราคาประเมิน');
                     return;
                   }
-                  appraiseMutation.mutate({ id: appraiseModal.id, value: parseFloat(appraiseValue) });
+                  appraiseMutation.mutate({
+                    id: appraiseModal.id,
+                    value: parseFloat(appraiseValue),
+                    condition: appraiseCondition,
+                  });
                 }}
                 disabled={appraiseMutation.isPending}
               >
                 {appraiseMutation.isPending ? 'กำลังบันทึก...' : 'ยืนยันประเมิน'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Accept Modal — anti-stolen-goods gate */}
+      <Modal
+        isOpen={!!acceptModal}
+        onClose={() => { setAcceptModal(null); setAcceptForm({ idCardVerified: false, sellerConsentSigned: false, policeReportAcknowledged: false, paymentMethod: 'CASH', transferBankName: '', transferAccountNumber: '', transferAccountName: '', sellerSignatureBase64: '' }); }}
+        title="ยืนยันการรับซื้อเครื่อง"
+        size="md"
+      >
+        {acceptModal && (
+          <div className="space-y-4">
+            <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 p-3 text-xs text-amber-700 dark:text-amber-400 flex gap-2">
+              <AlertTriangle className="size-4 shrink-0 mt-0.5" />
+              <div>กรุณายืนยันตามขั้นตอนป้องกันการรับซื้อของโจรก่อนกดยอมรับ</div>
+            </div>
+            <div className="text-sm">
+              <p><strong>อุปกรณ์:</strong> {acceptModal.deviceBrand} {acceptModal.deviceModel}</p>
+              <p><strong>ผู้ขาย:</strong> {acceptModal.customer?.name || acceptModal.sellerName || '-'}</p>
+              <p><strong>ราคาตกลง:</strong> ฿{Number(acceptModal.offeredPrice ?? 0).toLocaleString()}</p>
+            </div>
+            <label className="flex items-start gap-2 cursor-pointer p-2 rounded-lg hover:bg-muted">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={acceptForm.idCardVerified}
+                onChange={(e) => setAcceptForm((f) => ({ ...f, idCardVerified: e.target.checked }))}
+              />
+              <span className="text-sm">ตรวจบัตรประชาชนผู้ขายแล้วและตรงกับใบหน้า</span>
+            </label>
+            <label className="flex items-start gap-2 cursor-pointer p-2 rounded-lg hover:bg-muted">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={acceptForm.sellerConsentSigned}
+                onChange={(e) => setAcceptForm((f) => ({ ...f, sellerConsentSigned: e.target.checked }))}
+              />
+              <span className="text-sm">ผู้ขายเซ็นยืนยันว่าเป็นเจ้าของเครื่องโดยชอบด้วยกฎหมาย</span>
+            </label>
+            <label className="flex items-start gap-2 cursor-pointer p-2 rounded-lg hover:bg-muted">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={acceptForm.policeReportAcknowledged}
+                onChange={(e) => setAcceptForm((f) => ({ ...f, policeReportAcknowledged: e.target.checked }))}
+              />
+              <span className="text-sm">แจ้งผู้ขายแล้วว่าหากเป็นของโจรจะถูกดำเนินคดีตามกฎหมาย</span>
+            </label>
+
+            {/* Payment method */}
+            <div className="border-t pt-3 mt-2">
+              <Label>วิธีชำระเงินให้ผู้ขาย *</Label>
+              <div className="flex gap-2 mt-1.5">
+                <button
+                  type="button"
+                  onClick={() => setAcceptForm((f) => ({ ...f, paymentMethod: 'CASH' }))}
+                  className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${acceptForm.paymentMethod === 'CASH' ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-white text-slate-700 border-slate-200 hover:border-emerald-300'}`}
+                >
+                  เงินสด
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAcceptForm((f) => ({ ...f, paymentMethod: 'TRANSFER' }))}
+                  className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${acceptForm.paymentMethod === 'TRANSFER' ? 'bg-sky-500 text-white border-sky-500' : 'bg-white text-slate-700 border-slate-200 hover:border-sky-300'}`}
+                >
+                  โอน
+                </button>
+              </div>
+              {acceptForm.paymentMethod === 'TRANSFER' && (
+                <div className="space-y-2 mt-3">
+                  <Input
+                    placeholder="ธนาคาร เช่น กสิกรไทย"
+                    value={acceptForm.transferBankName}
+                    onChange={(e) => setAcceptForm((f) => ({ ...f, transferBankName: e.target.value }))}
+                  />
+                  <Input
+                    placeholder="เลขบัญชีผู้รับโอน"
+                    value={acceptForm.transferAccountNumber}
+                    onChange={(e) => setAcceptForm((f) => ({ ...f, transferAccountNumber: e.target.value.replace(/[^\d-]/g, '') }))}
+                  />
+                  <Input
+                    placeholder="ชื่อบัญชี"
+                    value={acceptForm.transferAccountName}
+                    onChange={(e) => setAcceptForm((f) => ({ ...f, transferAccountName: e.target.value }))}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* ลายเซ็นผู้ขาย */}
+            <div className="border-t pt-3">
+              <Label>ลายเซ็นผู้ขาย *</Label>
+              <p className="text-xs text-muted-foreground mb-2">ผู้ขายลงนามยืนยันการขายและความเป็นเจ้าของ</p>
+              <SignaturePadFull
+                onSign={() => { /* handled by submit button */ }}
+                onDraftChange={(dataUrl) =>
+                  setAcceptForm((f) => ({ ...f, sellerSignatureBase64: dataUrl || '' }))
+                }
+                buttonText=""
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => { setAcceptModal(null); setAcceptForm({ idCardVerified: false, sellerConsentSigned: false, policeReportAcknowledged: false, paymentMethod: 'CASH', transferBankName: '', transferAccountNumber: '', transferAccountName: '', sellerSignatureBase64: '' }); }}>
+                ยกเลิก
+              </Button>
+              <Button
+                onClick={() => {
+                  if (!acceptForm.idCardVerified || !acceptForm.sellerConsentSigned) {
+                    toast.error('กรุณายืนยันการตรวจบัตรและความยินยอมก่อน');
+                    return;
+                  }
+                  if (acceptForm.paymentMethod === 'TRANSFER') {
+                    if (!acceptForm.transferBankName || !acceptForm.transferAccountNumber || !acceptForm.transferAccountName) {
+                      toast.error('กรุณากรอกข้อมูลการโอนให้ครบ');
+                      return;
+                    }
+                  }
+                  if (!acceptForm.sellerSignatureBase64) {
+                    toast.error('กรุณาให้ผู้ขายลงลายเซ็นก่อน');
+                    return;
+                  }
+                  acceptMutation.mutate({ id: acceptModal.id, body: acceptForm });
+                }}
+                disabled={acceptMutation.isPending}
+              >
+                {acceptMutation.isPending ? 'กำลังบันทึก...' : 'ยืนยันรับซื้อ'}
               </Button>
             </div>
           </div>

@@ -1,7 +1,23 @@
-import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Param,
+  Body,
+  Query,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { TradeInService } from './trade-in.service';
-import { CreateTradeInDto, AppraiseTradeInDto } from './dto/trade-in.dto';
+import {
+  CreateTradeInDto,
+  AppraiseTradeInDto,
+  AcceptTradeInDto,
+  UpdateTradeInDto,
+} from './dto/trade-in.dto';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -10,7 +26,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @ApiTags('Trade-In')
 @ApiBearerAuth('JWT')
-@Controller('trade-in')
+@Controller('trade-ins')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class TradeInController {
   constructor(private tradeInService: TradeInService) {}
@@ -26,20 +42,42 @@ export class TradeInController {
   findAll(
     @Query() pagination: PaginationDto,
     @Query('customerId') customerId?: string,
+    @Query('branchId') branchId?: string,
     @Query('status') status?: string,
   ) {
     return this.tradeInService.findAll({
       customerId,
+      branchId,
       status,
       page: pagination.page,
       limit: pagination.limit,
     });
   }
 
+  @Get('check-imei/:imei')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
+  checkImei(@Param('imei') imei: string) {
+    return this.tradeInService.checkImei(imei);
+  }
+
+  // Public verify endpoint (for QR scan) — bypass auth via SkipAuth-style: keep guarded ใน scope ปัจจุบัน
+  // (สามารถแยกเป็น public controller ภายหลัง)
+  @Get('verify/:voucherNumber')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'ACCOUNTANT', 'FINANCE_MANAGER')
+  verifyVoucher(@Param('voucherNumber') voucherNumber: string) {
+    return this.tradeInService.verifyByVoucherNumber(voucherNumber);
+  }
+
   @Get(':id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   findOne(@Param('id') id: string) {
     return this.tradeInService.findOne(id);
+  }
+
+  @Patch(':id')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  update(@Param('id') id: string, @Body() dto: UpdateTradeInDto) {
+    return this.tradeInService.update(id, dto);
   }
 
   @Patch(':id/appraise')
@@ -54,13 +92,49 @@ export class TradeInController {
 
   @Post(':id/accept')
   @Roles('OWNER', 'BRANCH_MANAGER')
-  accept(@Param('id') id: string) {
-    return this.tradeInService.accept(id);
+  accept(
+    @Param('id') id: string,
+    @Body() dto: AcceptTradeInDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.tradeInService.accept(id, dto, userId);
   }
 
   @Post(':id/reject')
   @Roles('OWNER', 'BRANCH_MANAGER')
   reject(@Param('id') id: string) {
     return this.tradeInService.reject(id);
+  }
+
+  @Post(':id/complete')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  complete(@Param('id') id: string) {
+    return this.tradeInService.complete(id);
+  }
+
+  // ─── ID card photo ──────────────────────────────────
+  @Post(':id/id-card-photo')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
+  uploadIdCardPhoto(
+    @Param('id') id: string,
+    @Body() body: { photoBase64: string; source: 'card_reader' | 'upload' },
+  ) {
+    return this.tradeInService.uploadIdCardPhoto(id, body.photoBase64, body.source);
+  }
+
+  // ─── Voucher ────────────────────────────────────────
+  @Post(':id/voucher')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  generateVoucher(@Param('id') id: string) {
+    return this.tradeInService.generateVoucher(id);
+  }
+
+  @Get(':id/voucher.pdf')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'ACCOUNTANT')
+  async downloadVoucher(@Param('id') id: string, @Res() res: Response) {
+    const { buffer, voucherNumber } = await this.tradeInService.getVoucherPdf(id);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="voucher-${voucherNumber}.pdf"`);
+    res.send(buffer);
   }
 }

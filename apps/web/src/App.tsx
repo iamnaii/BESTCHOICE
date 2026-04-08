@@ -65,6 +65,7 @@ const LiffRegister = lazy(() => import('@/pages/liff/LiffRegister'));
 const LiffHistory = lazy(() => import('@/pages/liff/LiffHistory'));
 const LiffProfile = lazy(() => import('@/pages/liff/LiffProfile'));
 const LiffEarlyPayoff = lazy(() => import('@/pages/liff/LiffEarlyPayoff'));
+const LiffFinanceVerify = lazy(() => import('@/pages/liff/LiffFinanceVerify'));
 const LineOaSettingsPage = lazy(() => import('@/pages/LineOaSettingsPage'));
 const SmsSettingsPage = lazy(() => import('@/pages/SmsSettingsPage'));
 const FinanceReceivablePage = lazy(() => import('@/pages/FinanceReceivablePage'));
@@ -78,6 +79,9 @@ const PromotionsPage = lazy(() => import('@/pages/PromotionsPage'));
 const AssetManagementPage = lazy(() => import('@/pages/AssetManagementPage'));
 const ChartOfAccountsPage = lazy(() => import('@/pages/ChartOfAccountsPage'));
 const TodosPage = lazy(() => import('@/pages/TodosPage'));
+const ChatbotFinanceAnalyticsPage = lazy(() => import('@/pages/ChatbotFinanceAnalyticsPage'));
+const ChatbotFinanceSessionsPage = lazy(() => import('@/pages/ChatbotFinanceSessionsPage'));
+const ChatbotFinanceKnowledgePage = lazy(() => import('@/pages/ChatbotFinanceKnowledgePage'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -126,6 +130,7 @@ function App() {
         <Route path="/liff/history" element={<LiffHistory />} />
         <Route path="/liff/profile" element={<LiffProfile />} />
             <Route path="/liff/early-payoff" element={<LiffEarlyPayoff />} />
+        <Route path="/liff/finance-verify" element={<LiffFinanceVerify />} />
 
         {/* Protected Admin Routes */}
         <Route
@@ -265,6 +270,9 @@ function App() {
           <Route path="/pos" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'SALES']}><POSPage /></ProtectedRoute>} />
           <Route path="/sales" element={<SalesHistoryPage />} />
           <Route path="/todos" element={<TodosPage />} />
+          <Route path="/chatbot-finance" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER']}><ChatbotFinanceAnalyticsPage /></ProtectedRoute>} />
+          <Route path="/chatbot-finance/sessions" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}><ChatbotFinanceSessionsPage /></ProtectedRoute>} />
+          <Route path="/chatbot-finance/knowledge" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER']}><ChatbotFinanceKnowledgePage /></ProtectedRoute>} />
           <Route path="/customers" element={<CustomersPage />} />
           <Route path="/customers/:id" element={<CustomerDetailPage />} />
           <Route path="/credit-checks" element={<CreditChecksPage />} />

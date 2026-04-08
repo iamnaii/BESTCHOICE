@@ -312,7 +312,8 @@ model Branch {
   financeReceivables       FinanceReceivable[]
   expenses                 Expense[]
   interCompanyTransactions InterCompanyTransaction[]
-  fixedAssets               FixedAsset[]
+  fixedAssets              FixedAsset[]
+  tradeIns                 TradeIn[]
 
   @@index([companyId])
   @@map("branches")
@@ -381,41 +382,43 @@ model User {
   commissionsApproved    SalesCommission[]    @relation("CommissionApprovedBy")
   contractsAssigned      Contract[]           @relation("ContractAssignedTo")
   tradeInsAppraised      TradeIn[]            @relation("TradeInAppraisedBy")
+  tradeInsIdVerified     TradeIn[]            @relation("TradeInIdCardVerifiedBy")
   assetsCreated          FixedAsset[]         @relation("AssetCreatedBy")
   todosCreated           Todo[]               @relation("TodoCreatedBy")
   todosAssigned          Todo[]               @relation("TodoAssignedTo")
+  handoffSessions        ChatSession[]        @relation("ChatHandoffStaff")
 
   @@index([branchId])
   @@map("users")
 }
 
 model Customer {
-  id               String    @id @default(uuid())
-  nationalId       String    @unique @map("national_id") // encrypted AES-256
-  prefix           String? // คำนำหน้า (นาย, นาง, นางสาว)
-  name             String
-  nickname         String? // ชื่อเล่น
-  isForeigner      Boolean   @default(false) @map("is_foreigner") // ต่างด้าว
-  birthDate        DateTime? @map("birth_date") // วันเกิด
-  phone            String
-  phoneSecondary   String?   @map("phone_secondary")
-  email            String? // อีเมล
-  lineId           String?   @map("line_id")
-  facebookLink     String?   @map("facebook_link") // ลิงก์ Facebook
-  facebookName     String?   @map("facebook_name") // ชื่อ Facebook
-  facebookFriends  String?   @map("facebook_friends") // จำนวนเพื่อน Facebook
-  googleMapLink    String?   @map("google_map_link") // Link Google Map
-  addressIdCard    String?   @map("address_id_card")
+  id                 String    @id @default(uuid())
+  nationalId         String    @unique @map("national_id") // encrypted AES-256
+  prefix             String? // คำนำหน้า (นาย, นาง, นางสาว)
+  name               String
+  nickname           String? // ชื่อเล่น
+  isForeigner        Boolean   @default(false) @map("is_foreigner") // ต่างด้าว
+  birthDate          DateTime? @map("birth_date") // วันเกิด
+  phone              String
+  phoneSecondary     String?   @map("phone_secondary")
+  email              String? // อีเมล
+  lineId             String?   @map("line_id")
+  facebookLink       String?   @map("facebook_link") // ลิงก์ Facebook
+  facebookName       String?   @map("facebook_name") // ชื่อ Facebook
+  facebookFriends    String?   @map("facebook_friends") // จำนวนเพื่อน Facebook
+  googleMapLink      String?   @map("google_map_link") // Link Google Map
+  addressIdCard      String?   @map("address_id_card")
   addressCurrent     String?   @map("address_current")
   addressCurrentType String?   @map("address_current_type") // บ้านตัวเอง, บ้านญาติ, เช่าอาศัย
   salaryPayDay       Int?      @map("salary_pay_day") // วันที่เงินเดือนออก (1-31)
   occupation         String?
-  occupationDetail String?   @map("occupation_detail") // รายละเอียดอาชีพ
-  salary           Decimal?  @db.Decimal(12, 2) // เงินเดือน
-  workplace        String?
-  addressWork      String?   @map("address_work") // ที่อยู่ที่ทำงาน
-  references       Json? // บุคคลอ้างอิง [{prefix, firstName, lastName, phone, relationship}]
-  documents        String[]  @default([]) // array of file URLs
+  occupationDetail   String?   @map("occupation_detail") // รายละเอียดอาชีพ
+  salary             Decimal?  @db.Decimal(12, 2) // เงินเดือน
+  workplace          String?
+  addressWork        String?   @map("address_work") // ที่อยู่ที่ทำงาน
+  references         Json? // บุคคลอ้างอิง [{prefix, firstName, lastName, phone, relationship}]
+  documents          String[]  @default([]) // array of file URLs
 
   // Guardian (ผู้ปกครอง) — สำหรับลูกค้าอายุ 17-19
   guardianName       String? @map("guardian_name")
@@ -433,7 +436,7 @@ model Customer {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  loyaltyBalance   Int       @default(0) @map("loyalty_balance") // cached point balance
+  loyaltyBalance Int @default(0) @map("loyalty_balance") // cached point balance
 
   // Legacy migration tracking (จากโปรแกรมเขียว)
   legacyMemberCode String? @unique @map("legacy_member_code")
@@ -448,6 +451,13 @@ model Customer {
   loyaltyRedemptions LoyaltyRedemption[]
   tradeIns           TradeIn[]
   promotionUsages    PromotionUsage[]
+
+  // Multi-channel LINE binding (chatbot-finance)
+  lineLinks        CustomerLineLink[]
+  chatSessions     ChatSession[]
+  chatAutoTriggers ChatAutoTrigger[]
+  chatConsent      Boolean            @default(false) @map("chat_consent")
+  chatConsentAt    DateTime?          @map("chat_consent_at")
 
   @@index([phone])
   @@index([name])
@@ -553,8 +563,8 @@ model Contract {
   provisions               BadDebtProvision[]
   commissions              SalesCommission[]
   loyaltyRedemptions       LoyaltyRedemption[]
-  assignedToId             String?          @map("assigned_to_id") // collections agent assignment
-  assignedTo               User?            @relation("ContractAssignedTo", fields: [assignedToId], references: [id])
+  assignedToId             String?                   @map("assigned_to_id") // collections agent assignment
+  assignedTo               User?                     @relation("ContractAssignedTo", fields: [assignedToId], references: [id])
 
   @@index([customerId])
   @@index([branchId])
@@ -591,17 +601,17 @@ model Payment {
   paidAt          DateTime?      @map("paid_at")
 
   // Payment breakdown (เงินต้น + ค่าคอม + ดอกเบี้ย + VAT = amountDue)
-  monthlyPrincipal  Decimal?  @map("monthly_principal") @db.Decimal(12, 2)
-  monthlyInterest   Decimal?  @map("monthly_interest") @db.Decimal(12, 2)
-  monthlyCommission Decimal?  @map("monthly_commission") @db.Decimal(12, 2)
-  vatAmount         Decimal?  @map("vat_amount") @db.Decimal(12, 2)
+  monthlyPrincipal  Decimal? @map("monthly_principal") @db.Decimal(12, 2)
+  monthlyInterest   Decimal? @map("monthly_interest") @db.Decimal(12, 2)
+  monthlyCommission Decimal? @map("monthly_commission") @db.Decimal(12, 2)
+  vatAmount         Decimal? @map("vat_amount") @db.Decimal(12, 2)
 
   // Legacy migration tracking (จากโปรแกรมเขียว)
   legacyInstallmentCode String? @unique @map("legacy_installment_code")
 
-  createdAt       DateTime       @default(now()) @map("created_at")
-  updatedAt       DateTime       @updatedAt @map("updated_at")
-  deletedAt       DateTime?      @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
 
   contract         Contract          @relation(fields: [contractId], references: [id], onDelete: Cascade)
   recordedBy       User?             @relation("RecordedBy", fields: [recordedById], references: [id])
@@ -759,11 +769,11 @@ model Product {
   stockInDate        DateTime?       @map("stock_in_date")
 
   // Legacy migration tracking (จากโปรแกรมเขียว)
-  legacyProductCode  String?         @unique @map("legacy_product_code")
+  legacyProductCode String? @unique @map("legacy_product_code")
 
-  createdAt          DateTime        @default(now()) @map("created_at")
-  updatedAt          DateTime        @updatedAt @map("updated_at")
-  deletedAt          DateTime?       @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
 
   supplier   Supplier?      @relation(fields: [supplierId], references: [id])
   po         PurchaseOrder? @relation(fields: [poId], references: [id])
@@ -1141,20 +1151,20 @@ model Repossession {
   notes           String?
 
   // ─── ราคากลาง + Profit/Loss calculation (FINANCE perspective, ex-VAT) ───
-  marketValue           Decimal? @map("market_value") @db.Decimal(12, 2)           // ราคากลาง (auto from trade-in pricing, editable)
-  remainingMonths       Int?     @map("remaining_months")                          // จำนวนงวดคงค้าง
-  financeCost           Decimal? @map("finance_cost") @db.Decimal(12, 2)           // financedAmount + storeCommission (ต้นทุน FINANCE เต็ม)
-  remainingCost         Decimal? @map("remaining_cost") @db.Decimal(12, 2)         // (financeCost / totalMonths) × งวดคงค้าง
-  discountPct           Decimal? @map("discount_pct") @db.Decimal(5, 2)            // % ส่วนลดให้ลูกค้า (default 50)
-  discountAmount        Decimal? @map("discount_amount") @db.Decimal(12, 2)        // จำนวนส่วนลด
-  closingAmount         Decimal? @map("closing_amount") @db.Decimal(12, 2)         // ยอดปิดสัญญาที่ลูกค้าจ่าย
-  customerRefundEnabled Boolean  @default(false) @map("customer_refund_enabled")   // คืนเงินลูกค้าหรือไม่
-  customerRefund        Decimal? @map("customer_refund") @db.Decimal(12, 2)        // จำนวนเงินคืนลูกค้า
-  profitLoss            Decimal? @map("profit_loss") @db.Decimal(12, 2)            // กำไร/ขาดทุนสุทธิของบริษัท (+ = กำไร)
+  marketValue           Decimal? @map("market_value") @db.Decimal(12, 2) // ราคากลาง (auto from trade-in pricing, editable)
+  remainingMonths       Int?     @map("remaining_months") // จำนวนงวดคงค้าง
+  financeCost           Decimal? @map("finance_cost") @db.Decimal(12, 2) // financedAmount + storeCommission (ต้นทุน FINANCE เต็ม)
+  remainingCost         Decimal? @map("remaining_cost") @db.Decimal(12, 2) // (financeCost / totalMonths) × งวดคงค้าง
+  discountPct           Decimal? @map("discount_pct") @db.Decimal(5, 2) // % ส่วนลดให้ลูกค้า (default 50)
+  discountAmount        Decimal? @map("discount_amount") @db.Decimal(12, 2) // จำนวนส่วนลด
+  closingAmount         Decimal? @map("closing_amount") @db.Decimal(12, 2) // ยอดปิดสัญญาที่ลูกค้าจ่าย
+  customerRefundEnabled Boolean  @default(false) @map("customer_refund_enabled") // คืนเงินลูกค้าหรือไม่
+  customerRefund        Decimal? @map("customer_refund") @db.Decimal(12, 2) // จำนวนเงินคืนลูกค้า
+  profitLoss            Decimal? @map("profit_loss") @db.Decimal(12, 2) // กำไร/ขาดทุนสุทธิของบริษัท (+ = กำไร)
 
-  createdAt       DateTime           @default(now()) @map("created_at")
-  updatedAt       DateTime           @updatedAt @map("updated_at")
-  deletedAt       DateTime?          @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
 
   contract    Contract @relation(fields: [contractId], references: [id])
   product     Product  @relation(fields: [productId], references: [id])
@@ -1365,28 +1375,28 @@ model CreditCheck {
   aiRecommendation String?           @map("ai_recommendation")
 
   // Salary slip analysis (AI)
-  salaryVerified     Decimal?        @map("salary_verified") @db.Decimal(12, 2)
-  employerName       String?         @map("employer_name")
-  salaryPayDay       Int?            @map("salary_pay_day") // วันที่เงินเดือนออก (1-31)
-  salarySlipFiles    String[]        @default([]) @map("salary_slip_files")
+  salaryVerified  Decimal? @map("salary_verified") @db.Decimal(12, 2)
+  employerName    String?  @map("employer_name")
+  salaryPayDay    Int?     @map("salary_pay_day") // วันที่เงินเดือนออก (1-31)
+  salarySlipFiles String[] @default([]) @map("salary_slip_files")
 
   // Bank statement analysis (AI)
-  statementBankName    String?       @map("statement_bank_name")
-  statementAvgIncome   Decimal?      @map("statement_avg_income") @db.Decimal(12, 2)
-  statementAvgExpense  Decimal?      @map("statement_avg_expense") @db.Decimal(12, 2)
-  statementAvgBalance  Decimal?      @map("statement_avg_balance") @db.Decimal(12, 2)
+  statementBankName   String?  @map("statement_bank_name")
+  statementAvgIncome  Decimal? @map("statement_avg_income") @db.Decimal(12, 2)
+  statementAvgExpense Decimal? @map("statement_avg_expense") @db.Decimal(12, 2)
+  statementAvgBalance Decimal? @map("statement_avg_balance") @db.Decimal(12, 2)
 
   // Risk assessment
-  riskScore            String?       @map("risk_score") // LOW, MEDIUM, HIGH
-  debtToIncomeRatio    Decimal?      @map("debt_to_income_ratio") @db.Decimal(5, 4)
-  riskNote             String?       @map("risk_note")
+  riskScore         String?  @map("risk_score") // LOW, MEDIUM, HIGH
+  debtToIncomeRatio Decimal? @map("debt_to_income_ratio") @db.Decimal(5, 4)
+  riskNote          String?  @map("risk_note")
 
-  checkedById      String?           @map("checked_by_id")
-  checkedAt        DateTime?         @map("checked_at")
-  reviewNotes      String?           @map("review_notes")
-  createdAt        DateTime          @default(now()) @map("created_at")
-  updatedAt        DateTime          @updatedAt @map("updated_at")
-  deletedAt        DateTime?         @map("deleted_at")
+  checkedById String?   @map("checked_by_id")
+  checkedAt   DateTime? @map("checked_at")
+  reviewNotes String?   @map("review_notes")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
 
   contract  Contract? @relation(fields: [contractId], references: [id])
   customer  Customer  @relation(fields: [customerId], references: [id])
@@ -1786,38 +1796,38 @@ model DocumentAuditLog {
 // ============================================================
 
 model CompanyInfo {
-  id                 String    @id @default(uuid())
-  nameTh             String    @map("name_th")
-  nameEn             String?   @map("name_en")
-  taxId              String    @map("tax_id") // เลขทะเบียนนิติบุคคล/ผู้เสียภาษี
-  companyCode        String?   @unique @map("company_code") // "SHOP" / "FINANCE"
+  id                 String  @id @default(uuid())
+  nameTh             String  @map("name_th")
+  nameEn             String? @map("name_en")
+  taxId              String  @map("tax_id") // เลขทะเบียนนิติบุคคล/ผู้เสียภาษี
+  companyCode        String? @unique @map("company_code") // "SHOP" / "FINANCE"
   address            String
   phone              String?
-  directorName       String    @map("director_name") // ชื่อผู้มีอำนาจลงนาม
-  directorPosition   String?   @map("director_position") // ตำแหน่ง
-  directorNationalId String?   @map("director_national_id")
-  directorAddress    String?   @map("director_address")
-  logoUrl            String?   @map("logo_url")
+  directorName       String  @map("director_name") // ชื่อผู้มีอำนาจลงนาม
+  directorPosition   String? @map("director_position") // ตำแหน่ง
+  directorNationalId String? @map("director_national_id")
+  directorAddress    String? @map("director_address")
+  logoUrl            String? @map("logo_url")
 
   // VAT & Banking
-  vatRegistered     Boolean   @default(false) @map("vat_registered")
-  vatRate           Decimal?  @map("vat_rate") @db.Decimal(5, 4) // e.g. 0.07 = 7%
-  bankName          String?   @map("bank_name")
-  bankAccountName   String?   @map("bank_account_name")
-  bankAccountNumber String?   @map("bank_account_number")
-  lineOaId          String?   @map("line_oa_id")
+  vatRegistered     Boolean  @default(false) @map("vat_registered")
+  vatRate           Decimal? @map("vat_rate") @db.Decimal(5, 4) // e.g. 0.07 = 7%
+  bankName          String?  @map("bank_name")
+  bankAccountName   String?  @map("bank_account_name")
+  bankAccountNumber String?  @map("bank_account_number")
+  lineOaId          String?  @map("line_oa_id")
 
-  isActive           Boolean   @default(true) @map("is_active")
-  createdAt          DateTime  @default(now()) @map("created_at")
-  updatedAt          DateTime  @updatedAt @map("updated_at")
-  deletedAt          DateTime? @map("deleted_at")
+  isActive  Boolean   @default(true) @map("is_active")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
 
   // Relations
-  branches                Branch[]
-  fromInterCompanyTx      InterCompanyTransaction[] @relation("ICFromCompany")
-  toInterCompanyTx        InterCompanyTransaction[] @relation("ICToCompany")
-  journalEntries          JournalEntry[]
-  taxReports              TaxReport[]
+  branches           Branch[]
+  fromInterCompanyTx InterCompanyTransaction[] @relation("ICFromCompany")
+  toInterCompanyTx   InterCompanyTransaction[] @relation("ICToCompany")
+  journalEntries     JournalEntry[]
+  taxReports         TaxReport[]
 
   @@map("company_info")
 }
@@ -1827,36 +1837,36 @@ model CompanyInfo {
 // ============================================================
 
 model TaxReport {
-  id               String          @id @default(uuid())
-  companyId        String          @map("company_id")
-  reportType       TaxReportType   @map("report_type") // PP30, PND3, PND53
-  reportYear       Int             @map("report_year")
-  reportMonth      Int             @map("report_month") // 1-12
+  id          String        @id @default(uuid())
+  companyId   String        @map("company_id")
+  reportType  TaxReportType @map("report_type") // PP30, PND3, PND53
+  reportYear  Int           @map("report_year")
+  reportMonth Int           @map("report_month") // 1-12
 
   // PP30 fields (VAT)
-  totalSales       Decimal?        @map("total_sales") @db.Decimal(12, 2)
-  totalVatOutput   Decimal?        @map("total_vat_output") @db.Decimal(12, 2)
-  totalPurchases   Decimal?        @map("total_purchases") @db.Decimal(12, 2)
-  totalVatInput    Decimal?        @map("total_vat_input") @db.Decimal(12, 2)
-  netVat           Decimal?        @map("net_vat") @db.Decimal(12, 2) // output - input
+  totalSales     Decimal? @map("total_sales") @db.Decimal(12, 2)
+  totalVatOutput Decimal? @map("total_vat_output") @db.Decimal(12, 2)
+  totalPurchases Decimal? @map("total_purchases") @db.Decimal(12, 2)
+  totalVatInput  Decimal? @map("total_vat_input") @db.Decimal(12, 2)
+  netVat         Decimal? @map("net_vat") @db.Decimal(12, 2) // output - input
 
   // PND fields (WHT)
-  totalWht         Decimal?        @map("total_wht") @db.Decimal(12, 2)
-  transactionCount Int?            @map("transaction_count")
+  totalWht         Decimal? @map("total_wht") @db.Decimal(12, 2)
+  transactionCount Int?     @map("transaction_count")
 
   // Common
-  status           TaxReportStatus @default(DRAFT)
-  generatedData    Json?           @map("generated_data") // snapshot of line items
-  notes            String?
-  filedAt          DateTime?       @map("filed_at")
-  filedById        String?         @map("filed_by_id")
+  status        TaxReportStatus @default(DRAFT)
+  generatedData Json?           @map("generated_data") // snapshot of line items
+  notes         String?
+  filedAt       DateTime?       @map("filed_at")
+  filedById     String?         @map("filed_by_id")
 
-  createdAt        DateTime        @default(now()) @map("created_at")
-  updatedAt        DateTime        @updatedAt @map("updated_at")
-  deletedAt        DateTime?       @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
 
-  company          CompanyInfo     @relation(fields: [companyId], references: [id])
-  filedBy          User?           @relation("TaxReportFiledBy", fields: [filedById], references: [id])
+  company CompanyInfo @relation(fields: [companyId], references: [id])
+  filedBy User?       @relation("TaxReportFiledBy", fields: [filedById], references: [id])
 
   @@unique([companyId, reportType, reportYear, reportMonth])
   @@index([companyId])
@@ -1877,29 +1887,29 @@ enum AssetStatus {
 }
 
 model FixedAsset {
-  id                String      @id @default(uuid())
-  assetCode         String      @unique @map("asset_code") // รหัสสินทรัพย์ e.g. "PA-20241200002"
-  name              String // ชื่อสินทรัพย์
-  description       String?
-  category          String? // หมวดหมู่ (อุปกรณ์สำนักงาน, ส่วนปรับปรุงอาคาร, เครื่องตกแต่ง, ยานพาหนะ)
-  branchId          String?     @map("branch_id")
-  costValue         Decimal     @map("cost_value") @db.Decimal(12, 2) // ราคาทุนที่ซื้อมา
-  salvageValue      Decimal     @default(0) @map("salvage_value") @db.Decimal(12, 2) // ราคาซาก (ปกติ 1 บาท หรือ 0)
-  usefulLife        Int         @map("useful_life") // อายุการใช้งาน (จำนวนปี เช่น 5 ปี)
-  purchaseDate      DateTime    @map("purchase_date") // วันที่ซื้อ/เริ่มใช้งาน
-  accumulatedDepre  Decimal     @default(0) @map("accumulated_depre") @db.Decimal(12, 2) // ค่าเสื่อมราคาสะสม
-  status            AssetStatus @default(ACTIVE)
-  disposedAt        DateTime?   @map("disposed_at")
-  disposalNote      String?     @map("disposal_note")
+  id               String      @id @default(uuid())
+  assetCode        String      @unique @map("asset_code") // รหัสสินทรัพย์ e.g. "PA-20241200002"
+  name             String // ชื่อสินทรัพย์
+  description      String?
+  category         String? // หมวดหมู่ (อุปกรณ์สำนักงาน, ส่วนปรับปรุงอาคาร, เครื่องตกแต่ง, ยานพาหนะ)
+  branchId         String?     @map("branch_id")
+  costValue        Decimal     @map("cost_value") @db.Decimal(12, 2) // ราคาทุนที่ซื้อมา
+  salvageValue     Decimal     @default(0) @map("salvage_value") @db.Decimal(12, 2) // ราคาซาก (ปกติ 1 บาท หรือ 0)
+  usefulLife       Int         @map("useful_life") // อายุการใช้งาน (จำนวนปี เช่น 5 ปี)
+  purchaseDate     DateTime    @map("purchase_date") // วันที่ซื้อ/เริ่มใช้งาน
+  accumulatedDepre Decimal     @default(0) @map("accumulated_depre") @db.Decimal(12, 2) // ค่าเสื่อมราคาสะสม
+  status           AssetStatus @default(ACTIVE)
+  disposedAt       DateTime?   @map("disposed_at")
+  disposalNote     String?     @map("disposal_note")
 
   // Account codes for journal entries
   depreciationAccountCode String @default("53-1601") @map("depreciation_account_code") // Dr: ค่าเสื่อมราคา (Expense)
   accumulatedAccountCode  String @default("12-2102") @map("accumulated_account_code") // Cr: ค่าเสื่อมราคาสะสม (Contra Asset)
 
-  createdById       String?     @map("created_by_id")
-  createdAt         DateTime    @default(now()) @map("created_at")
-  updatedAt         DateTime    @updatedAt @map("updated_at")
-  deletedAt         DateTime?   @map("deleted_at")
+  createdById String?   @map("created_by_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
 
   branch    Branch? @relation(fields: [branchId], references: [id])
   createdBy User?   @relation("AssetCreatedBy", fields: [createdById], references: [id])
@@ -2312,20 +2322,20 @@ enum CommissionRuleType {
 }
 
 model CommissionRule {
-  id             String             @id @default(uuid())
-  name           String
-  description    String?
-  ruleType       CommissionRuleType @map("rule_type")
-  rate           Decimal            @db.Decimal(5, 4) // e.g. 0.03 = 3%
-  fixedAmount    Decimal?           @map("fixed_amount") @db.Decimal(12, 2)
-  minSaleAmount  Decimal?           @map("min_sale_amount") @db.Decimal(12, 2)
-  maxSaleAmount  Decimal?           @map("max_sale_amount") @db.Decimal(12, 2)
-  isActive       Boolean            @default(true) @map("is_active")
-  createdAt      DateTime           @default(now()) @map("created_at")
-  updatedAt      DateTime           @updatedAt @map("updated_at")
-  deletedAt      DateTime?          @map("deleted_at")
+  id            String             @id @default(uuid())
+  name          String
+  description   String?
+  ruleType      CommissionRuleType @map("rule_type")
+  rate          Decimal            @db.Decimal(5, 4) // e.g. 0.03 = 3%
+  fixedAmount   Decimal?           @map("fixed_amount") @db.Decimal(12, 2)
+  minSaleAmount Decimal?           @map("min_sale_amount") @db.Decimal(12, 2)
+  maxSaleAmount Decimal?           @map("max_sale_amount") @db.Decimal(12, 2)
+  isActive      Boolean            @default(true) @map("is_active")
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+  deletedAt     DateTime?          @map("deleted_at")
 
-  commissions    SalesCommission[]
+  commissions SalesCommission[]
 
   @@map("commission_rules")
 }
@@ -2336,7 +2346,7 @@ model SalesCommission {
   contractId       String?          @map("contract_id")
   saleId           String?          @map("sale_id")
   commissionRuleId String?          @map("commission_rule_id")
-  period           String           // "YYYY-MM" for monthly grouping
+  period           String // "YYYY-MM" for monthly grouping
   saleAmount       Decimal          @map("sale_amount") @db.Decimal(12, 2)
   commissionRate   Decimal          @map("commission_rate") @db.Decimal(5, 4)
   commissionAmount Decimal          @map("commission_amount") @db.Decimal(12, 2)
@@ -2350,11 +2360,11 @@ model SalesCommission {
   updatedAt        DateTime         @updatedAt @map("updated_at")
   deletedAt        DateTime?        @map("deleted_at")
 
-  salesperson    User              @relation("CommissionSalesperson", fields: [salespersonId], references: [id])
-  contract       Contract?         @relation(fields: [contractId], references: [id])
-  sale           Sale?             @relation(fields: [saleId], references: [id])
-  commissionRule CommissionRule?   @relation(fields: [commissionRuleId], references: [id])
-  approvedBy     User?             @relation("CommissionApprovedBy", fields: [approvedById], references: [id])
+  salesperson    User            @relation("CommissionSalesperson", fields: [salespersonId], references: [id])
+  contract       Contract?       @relation(fields: [contractId], references: [id])
+  sale           Sale?           @relation(fields: [saleId], references: [id])
+  commissionRule CommissionRule? @relation(fields: [commissionRuleId], references: [id])
+  approvedBy     User?           @relation("CommissionApprovedBy", fields: [approvedById], references: [id])
 
   @@index([salespersonId])
   @@index([contractId])
@@ -2370,15 +2380,15 @@ model SalesCommission {
 // ============================================================
 
 model LoyaltyRedemption {
-  id              String    @id @default(uuid())
-  customerId      String    @map("customer_id")
-  points          Int // จำนวนแต้มที่ใช้ (ค่าบวก)
-  reason          String // เหตุผลการแลก
-  discountAmount  Decimal   @map("discount_amount") @db.Decimal(12, 2)
-  contractId      String?   @map("contract_id")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
-  deletedAt       DateTime? @map("deleted_at")
+  id             String    @id @default(uuid())
+  customerId     String    @map("customer_id")
+  points         Int // จำนวนแต้มที่ใช้ (ค่าบวก)
+  reason         String // เหตุผลการแลก
+  discountAmount Decimal   @map("discount_amount") @db.Decimal(12, 2)
+  contractId     String?   @map("contract_id")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
 
   customer Customer  @relation(fields: [customerId], references: [id])
   contract Contract? @relation(fields: [contractId], references: [id])
@@ -2401,11 +2411,13 @@ enum TradeInStatus {
 
 model TradeIn {
   id              String        @id @default(uuid())
-  customerId      String        @map("customer_id")
+  customerId      String?       @map("customer_id") // optional — walk-in seller may not be a customer
   productId       String?       @map("product_id") // new product being purchased (optional)
+  branchId        String?       @map("branch_id") // สาขาที่รับซื้อ
   deviceBrand     String        @map("device_brand")
   deviceModel     String        @map("device_model")
   deviceStorage   String?       @map("device_storage")
+  deviceColor     String?       @map("device_color")
   deviceCondition String?       @map("device_condition") // A/B/C/D
   imei            String?
   estimatedValue  Decimal?      @map("estimated_value") @db.Decimal(12, 2) // ราคาประเมินเบื้องต้น
@@ -2414,17 +2426,52 @@ model TradeIn {
   status          TradeInStatus @default(PENDING_APPRAISAL)
   appraisedById   String?       @map("appraised_by_id")
   notes           String?
-  createdAt       DateTime      @default(now()) @map("created_at")
-  updatedAt       DateTime      @updatedAt @map("updated_at")
-  deletedAt       DateTime?     @map("deleted_at")
 
-  customer    Customer @relation(fields: [customerId], references: [id])
-  product     Product? @relation(fields: [productId], references: [id])
-  appraisedBy User?    @relation("TradeInAppraisedBy", fields: [appraisedById], references: [id])
+  // ─── ข้อมูลผู้ขาย (กรณี walk-in หรือ override จาก customer) ────────
+  sellerName         String? @map("seller_name")
+  sellerPhone        String? @map("seller_phone")
+  sellerIdCardNumber String? @map("seller_id_card_number") // 13 หลัก, plaintext (consistent กับ Customer.nationalId — TODO encrypt ทั้งระบบทีหลัง)
+  sellerAddress      String? @map("seller_address") // ที่อยู่ตามบัตร ปชช.
+
+  // ─── หลักฐานบัตรประชาชน (anti-stolen-goods) ────────────────────────
+  idCardPhotoUrl     String?   @map("id_card_photo_url") // S3 URL: รูปบัตร ปชช.
+  idCardSource       String?   @map("id_card_source") // 'card_reader' | 'upload'
+  idCardVerifiedAt   DateTime? @map("id_card_verified_at") // ผู้รับซื้อยืนยันตรวจบัตรแล้ว
+  idCardVerifiedById String?   @map("id_card_verified_by_id")
+
+  // ─── การยินยอม + ตรวจสอบของโจร ────────────────────────────────────
+  sellerSignatureUrl       String?   @map("seller_signature_url") // ลายเซ็นผู้ขาย (ยืนยันเป็นเจ้าของจริง)
+  sellerConsentSigned      Boolean   @default(false) @map("seller_consent_signed")
+  policeReportAcknowledged Boolean   @default(false) @map("police_report_acknowledged")
+  imeiBlacklistCheckedAt   DateTime? @map("imei_blacklist_checked_at")
+  imeiBlacklistResult      String?   @map("imei_blacklist_result") // 'clean' | 'duplicate' | 'flagged'
+
+  // ─── วิธีชำระเงินให้ผู้ขาย ──────────────────────────────────────────
+  paymentMethod         String? @map("payment_method") // 'CASH' | 'TRANSFER'
+  transferBankName      String? @map("transfer_bank_name")
+  transferAccountNumber String? @map("transfer_account_number")
+  transferAccountName   String? @map("transfer_account_name")
+
+  // ─── ใบสำคัญจ่ายเงิน ───────────────────────────────────────────────
+  voucherNumber String?   @unique @map("voucher_number") // EXP-YYYYMMNNNNN
+  voucherDate   DateTime? @map("voucher_date")
+  voucherPdfUrl String?   @map("voucher_pdf_url")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  customer         Customer? @relation(fields: [customerId], references: [id])
+  product          Product?  @relation(fields: [productId], references: [id])
+  branch           Branch?   @relation(fields: [branchId], references: [id])
+  appraisedBy      User?     @relation("TradeInAppraisedBy", fields: [appraisedById], references: [id])
+  idCardVerifiedBy User?     @relation("TradeInIdCardVerifiedBy", fields: [idCardVerifiedById], references: [id])
 
   @@index([customerId])
   @@index([status])
   @@index([createdAt])
+  @@index([imei])
+  @@index([branchId])
   @@map("trade_ins")
 }
 
@@ -2526,15 +2573,15 @@ model Todo {
   completedAt DateTime?    @map("completed_at")
 
   // Ownership / assignment
-  createdById  String  @map("created_by_id")
-  assigneeId   String? @map("assignee_id")
-  branchId     String? @map("branch_id") // optional scoping by branch
+  createdById String  @map("created_by_id")
+  assigneeId  String? @map("assignee_id")
+  branchId    String? @map("branch_id") // optional scoping by branch
 
   // Tags as Postgres text[]
-  tags        String[]     @default([])
+  tags String[] @default([])
 
   // JSON: [{ id, text, done }]
-  checklist   Json?
+  checklist Json?
 
   // JSON: [{ url, name, size, mimeType, uploadedAt }]
   attachments Json?
@@ -2552,4 +2599,231 @@ model Todo {
   @@index([dueDate])
   @@index([branchId])
   @@map("todos")
+}
+
+// ============================================================
+// Chatbot (Finance Bot — น้องเบส)
+// ============================================================
+
+enum LineChannelType {
+  SHOP
+  FINANCE
+  STAFF
+}
+
+enum ChatChannel {
+  LINE_FINANCE
+  LINE_SHOP
+  FACEBOOK
+  TIKTOK
+}
+
+enum ChatStatus {
+  ACTIVE
+  ARCHIVED
+  BLOCKED
+}
+
+enum MessageRole {
+  CUSTOMER
+  BOT
+  STAFF
+  AUTO_TRIGGER
+  SYSTEM
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  AUDIO
+  VIDEO
+  FILE
+  STICKER
+  LOCATION
+  TEMPLATE
+}
+
+enum AutoTriggerType {
+  REMINDER_T_MINUS_5
+  REMINDER_T_MINUS_3
+  REMINDER_T_MINUS_1
+  REMINDER_T_DAY
+  ESCALATION_T_PLUS_1
+  ESCALATION_T_PLUS_3
+  HOLIDAY_WARNING
+  RECEIPT_DELIVERY
+  CUSTOM_BROADCAST
+}
+
+enum TriggerStatus {
+  PENDING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+/// Multi-channel LINE binding (1 customer สามารถ link หลาย channel ได้)
+model CustomerLineLink {
+  id         String          @id @default(uuid())
+  customerId String          @map("customer_id")
+  customer   Customer        @relation(fields: [customerId], references: [id])
+  lineUserId String          @map("line_user_id")
+  channel    LineChannelType
+  linkedAt   DateTime        @default(now()) @map("linked_at")
+  unlinkedAt DateTime?       @map("unlinked_at")
+
+  @@unique([lineUserId, channel])
+  @@unique([customerId, channel])
+  @@index([customerId])
+  @@index([lineUserId])
+  @@map("customer_line_links")
+}
+
+/// Chat session — ลูกค้า 1 คน 1 session ต่อ channel
+model ChatSession {
+  id         String    @id @default(uuid())
+  lineUserId String    @map("line_user_id")
+  customerId String?   @map("customer_id")
+  customer   Customer? @relation(fields: [customerId], references: [id])
+
+  channel ChatChannel @default(LINE_FINANCE)
+  status  ChatStatus  @default(ACTIVE)
+
+  // Verification
+  verifiedAt           DateTime? @map("verified_at")
+  verificationAttempts Int       @default(0) @map("verification_attempts")
+
+  // Handoff state
+  handoffMode     Boolean   @default(false) @map("handoff_mode")
+  handoffReason   String?   @map("handoff_reason")
+  handoffTaggedAt DateTime? @map("handoff_tagged_at")
+  handoffStaffId  String?   @map("handoff_staff_id")
+  handoffStaff    User?     @relation("ChatHandoffStaff", fields: [handoffStaffId], references: [id])
+
+  // Stats
+  totalMessages Int      @default(0) @map("total_messages")
+  lastMessageAt DateTime @default(now()) @map("last_message_at")
+
+  messages ChatMessage[]
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@unique([lineUserId, channel])
+  @@index([customerId])
+  @@index([handoffMode, status])
+  @@map("chat_sessions")
+}
+
+/// Chat message — ทุกข้อความใน session
+model ChatMessage {
+  id        String      @id @default(uuid())
+  sessionId String      @map("session_id")
+  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  role MessageRole
+  type MessageType @default(TEXT)
+
+  text      String? @db.Text
+  mediaUrl  String? @map("media_url")
+  mediaType String? @map("media_type")
+
+  // AI metadata
+  intent       String?
+  confidence   Float?
+  toolsUsed    String[] @default([]) @map("tools_used")
+  modelUsed    String?  @map("model_used")
+  inputTokens  Int?     @map("input_tokens")
+  outputTokens Int?     @map("output_tokens")
+  costUsd      Decimal? @map("cost_usd") @db.Decimal(10, 6)
+
+  // Vision metadata
+  visionExtracted Json? @map("vision_extracted")
+
+  // Linking
+  paymentId String? @map("payment_id")
+  receiptId String? @map("receipt_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([sessionId, createdAt])
+  @@index([intent])
+  @@index([role])
+  @@map("chat_messages")
+}
+
+/// Knowledge base entries (FAQ)
+model ChatKnowledgeBase {
+  id      String      @id @default(uuid())
+  channel ChatChannel @default(LINE_FINANCE)
+
+  category String
+  intent   String
+
+  triggerKeywords  String[] @default([]) @map("trigger_keywords")
+  exampleQuestions String[] @default([]) @map("example_questions")
+
+  responseTemplate String @map("response_template") @db.Text
+  responseType     String @map("response_type") // "auto" | "handoff" | "info"
+
+  requiresAuth  Boolean  @default(true) @map("requires_auth")
+  requiresTools String[] @default([]) @map("requires_tools")
+
+  active   Boolean @default(true)
+  priority Int     @default(0)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([channel, intent])
+  @@index([active, priority])
+  @@map("chat_knowledge_base")
+}
+
+/// Auto-trigger schedule (reminders)
+model ChatAutoTrigger {
+  id         String   @id @default(uuid())
+  customerId String   @map("customer_id")
+  customer   Customer @relation(fields: [customerId], references: [id])
+
+  triggerType  AutoTriggerType @map("trigger_type")
+  scheduledFor DateTime        @map("scheduled_for")
+  sentAt       DateTime?       @map("sent_at")
+  status       TriggerStatus   @default(PENDING)
+
+  /// Idempotency key (e.g. `${triggerType}:${paymentId}`).
+  /// Combined with customerId enforces "1 trigger per (customer, target)"
+  /// preventing duplicate sends from concurrent cron runs.
+  referenceKey String @map("reference_key")
+
+  payload Json
+
+  messageId    String? @map("message_id")
+  errorMessage String? @map("error_message")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([customerId, referenceKey])
+  @@index([scheduledFor, status])
+  @@index([customerId])
+  @@map("chat_auto_triggers")
+}
+
+/// OTP request store — DB-backed for multi-instance scaling.
+/// Replaces in-memory Map. Auto-cleaned by VerificationService.
+model ChatbotOtpRequest {
+  id            String   @id @default(uuid())
+  lineUserId    String   @unique @map("line_user_id")
+  customerId    String   @map("customer_id")
+  phone         String
+  hash          String
+  expiresAt     DateTime @map("expires_at")
+  attempts      Int      @default(0)
+  lastRequestAt DateTime @map("last_request_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([expiresAt])
+  @@map("chatbot_otp_requests")
 }

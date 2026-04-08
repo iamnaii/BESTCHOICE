@@ -1,5 +1,7 @@
-import { IsString, IsOptional, IsEnum, IsBoolean, IsInt, Matches, MaxLength, Min, Max } from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsBoolean, IsInt, Matches, MaxLength, Min, Max, IsArray, IsIn } from 'class-validator';
 import { AccountGroup } from '@prisma/client';
+
+const ALLOWED_COMPANY_CODES = ['SHOP', 'FINANCE'] as const;
 
 export class CreateChartOfAccountDto {
   @IsString()
@@ -31,6 +33,21 @@ export class CreateChartOfAccountDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+
+  @IsArray()
+  @IsOptional()
+  @IsIn(ALLOWED_COMPANY_CODES, { each: true, message: 'allowedCompanies ต้องเป็น SHOP หรือ FINANCE' })
+  allowedCompanies?: string[];
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(50)
+  peakAccountCode?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  peakAccountId?: string;
 }
 
 export class UpdateChartOfAccountDto {
@@ -61,4 +78,19 @@ export class UpdateChartOfAccountDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+
+  @IsArray()
+  @IsOptional()
+  @IsIn(ALLOWED_COMPANY_CODES, { each: true, message: 'allowedCompanies ต้องเป็น SHOP หรือ FINANCE' })
+  allowedCompanies?: string[];
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(50)
+  peakAccountCode?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  peakAccountId?: string;
 }

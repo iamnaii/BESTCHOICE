@@ -91,4 +91,16 @@ export class ChatSessionService {
     });
     return msgs.reverse();
   }
+
+  /** Sync session.customerId หลังจาก LIFF verify (CustomerLineLink ถูกสร้างแล้ว) */
+  async linkSessionToCustomer(sessionId: string, customerId: string): Promise<void> {
+    await this.prisma.chatSession.update({
+      where: { id: sessionId },
+      data: {
+        customerId,
+        verifiedAt: new Date(),
+        verificationAttempts: 0,
+      },
+    });
+  }
 }

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ChatbotFinanceController } from './chatbot-finance.controller';
+import { ChatbotFinanceLiffController } from './chatbot-finance-liff.controller';
 import { ChatbotFinanceService } from './services/chatbot-finance.service';
 import { LineFinanceClientService } from './services/line-finance-client.service';
 import { ChatSessionService } from './services/chat-session.service';
@@ -18,7 +19,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
  */
 @Module({
   imports: [NotificationsModule], // reuse SMS service for OTP
-  controllers: [ChatbotFinanceController],
+  controllers: [ChatbotFinanceController, ChatbotFinanceLiffController],
   providers: [
     ChatbotFinanceService,
     LineFinanceClientService,

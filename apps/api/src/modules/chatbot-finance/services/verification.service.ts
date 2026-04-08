@@ -1,144 +1,87 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { createHash, randomInt } from 'crypto';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { NotificationsService } from '../../notifications/notifications.service';
-import { LineChannelType, MessageRole, ChatSession } from '@prisma/client';
+import { LineChannelType } from '@prisma/client';
 
 const OTP_TTL_MS = 5 * 60 * 1000; // 5 นาที
 const OTP_MAX_ATTEMPTS = 3;
 const OTP_LENGTH = 6;
-const OTP_MARKER = '__OTP_HASH__:'; // marker ใน ChatMessage.text สำหรับ system records
+const OTP_REQUEST_COOLDOWN_MS = 60 * 1000; // 1 นาที — ขอใหม่ได้
 
-export type VerifyState =
-  | { kind: 'verified'; customerId: string; customerName: string }
-  | { kind: 'awaiting_phone' }
-  | { kind: 'awaiting_otp'; phone: string }
-  | { kind: 'blocked' };
-
-export interface VerifyResult {
-  reply: string;
-  newState: VerifyState;
-  customerId?: string;
+interface OtpRecord {
+  customerId: string;
+  phone: string;
+  hash: string;
+  expiresAt: number;
+  attempts: number;
+  lastRequestAt: number;
 }
 
 /**
- * Verification flow: phone → OTP → bind LINE userId กับ Customer
+ * Verification (stateless) — เรียกได้จาก LIFF endpoints
  *
- * State machine ใช้ DB เป็น source of truth (ไม่ใช่ in-memory)
- * เก็บใน ChatSession.verifiedAt + ChatMessage (role=SYSTEM) สำหรับ OTP records
+ * Storage: in-memory Map (single-instance OK; Phase E ค่อย migrate Redis)
+ * Key: lineUserId — รับประกันว่า 1 LINE user 1 OTP active
  */
 @Injectable()
 export class VerificationService {
   private readonly logger = new Logger(VerificationService.name);
+  private readonly otpStore = new Map<string, OtpRecord>();
 
   constructor(
     private prisma: PrismaService,
     private notifications: NotificationsService,
-  ) {}
-
-  /** ตรวจ state ปัจจุบันของ session */
-  async getState(session: ChatSession): Promise<VerifyState> {
-    if (session.verifiedAt && session.customerId) {
-      const customer = await this.prisma.customer.findUnique({
-        where: { id: session.customerId },
-        select: { id: true, name: true },
-      });
-      if (customer) {
-        return { kind: 'verified', customerId: customer.id, customerName: customer.name };
-      }
-    }
-
-    if (session.verificationAttempts >= OTP_MAX_ATTEMPTS) {
-      return { kind: 'blocked' };
-    }
-
-    // หา OTP record ที่ยัง active
-    const otpRecord = await this.prisma.chatMessage.findFirst({
-      where: {
-        sessionId: session.id,
-        role: MessageRole.SYSTEM,
-        text: { startsWith: OTP_MARKER },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    if (otpRecord && otpRecord.text) {
-      const parsed = this.parseOtpRecord(otpRecord.text);
-      if (parsed && parsed.expiresAt > Date.now()) {
-        return { kind: 'awaiting_otp', phone: parsed.phone };
-      }
-    }
-
-    return { kind: 'awaiting_phone' };
+  ) {
+    // Cleanup expired OTPs every minute
+    setInterval(() => this.cleanupExpired(), 60 * 1000).unref();
   }
 
   /**
-   * จัดการ message ตอน user ยังไม่ verified
-   * Returns: { reply, newState } — orchestrator ใช้ reply ส่งกลับลูกค้า
+   * Step 1: ค้นหา customer จากเบอร์ + ส่ง OTP ผ่าน SMS
+   * Throws: NotFoundException ถ้าไม่พบเบอร์ในระบบ
    */
-  async handleVerificationStep(
-    session: ChatSession,
-    state: VerifyState,
-    text: string,
-  ): Promise<VerifyResult> {
-    if (state.kind === 'verified') {
-      return { reply: '', newState: state, customerId: state.customerId };
-    }
-
-    if (state.kind === 'blocked') {
-      return {
-        reply:
-          '❌ คุณยืนยันตัวตนผิดเกินจำนวนครั้งที่กำหนดค่ะ\nรบกวนติดต่อเจ้าหน้าที่ที่ 063-134-6356 นะคะ 🙏',
-        newState: state,
-      };
-    }
-
-    if (state.kind === 'awaiting_phone') {
-      return this.handlePhoneInput(session, text);
-    }
-
-    // awaiting_otp
-    return this.handleOtpInput(session, state.phone, text);
-  }
-
-  // ─── private handlers ─────────────────────────────────────
-
-  private async handlePhoneInput(session: ChatSession, text: string): Promise<VerifyResult> {
-    const phone = this.normalizePhone(text);
+  async requestOtp(params: { lineUserId: string; phone: string }): Promise<{
+    maskedPhone: string;
+    expiresInSeconds: number;
+  }> {
+    const phone = this.normalizePhone(params.phone);
     if (!phone) {
-      return {
-        reply:
-          'รบกวนพิมพ์เบอร์โทรที่ลงทะเบียนไว้กับ BESTCHOICE นะคะ 📱\n(เช่น 0891234567)',
-        newState: { kind: 'awaiting_phone' },
-      };
+      throw new BadRequestException('เบอร์โทรไม่ถูกต้อง');
+    }
+
+    // Cooldown ป้องกัน spam
+    const existing = this.otpStore.get(params.lineUserId);
+    if (existing && Date.now() - existing.lastRequestAt < OTP_REQUEST_COOLDOWN_MS) {
+      const waitSeconds = Math.ceil(
+        (OTP_REQUEST_COOLDOWN_MS - (Date.now() - existing.lastRequestAt)) / 1000,
+      );
+      throw new BadRequestException(`รบกวนรอ ${waitSeconds} วินาทีก่อนขอ OTP ใหม่`);
     }
 
     const customer = await this.prisma.customer.findFirst({
       where: { phone, deletedAt: null },
       select: { id: true, name: true, phone: true },
     });
-
     if (!customer) {
-      return {
-        reply:
-          'ไม่พบเบอร์นี้ในระบบค่ะ 🙏\nรบกวนตรวจสอบเบอร์อีกครั้ง หรือติดต่อเจ้าหน้าที่ 063-134-6356',
-        newState: { kind: 'awaiting_phone' },
-      };
+      throw new NotFoundException('ไม่พบเบอร์นี้ในระบบ รบกวนติดต่อเจ้าหน้าที่');
     }
 
-    // สร้าง OTP + เก็บ hash + ส่ง SMS
+    // Generate OTP
     const otp = this.generateOtp();
     const hash = this.hashOtp(otp);
-    const expiresAt = Date.now() + OTP_TTL_MS;
+    const now = Date.now();
 
-    await this.prisma.chatMessage.create({
-      data: {
-        sessionId: session.id,
-        role: MessageRole.SYSTEM,
-        text: `${OTP_MARKER}${customer.phone}|${hash}|${expiresAt}`,
-      },
+    this.otpStore.set(params.lineUserId, {
+      customerId: customer.id,
+      phone: customer.phone,
+      hash,
+      expiresAt: now + OTP_TTL_MS,
+      attempts: 0,
+      lastRequestAt: now,
     });
 
+    // Send SMS (dev mode logs only)
     try {
       await this.notifications.sendSmsFromQueue(
         customer.phone,
@@ -149,127 +92,130 @@ export class VerificationService {
       this.logger.error(
         `[Verify] SMS send failed: ${err instanceof Error ? err.message : err}`,
       );
+      // ลบ OTP ออกถ้าส่งไม่ได้ — ลูกค้าจะ retry ได้ทันที
+      this.otpStore.delete(params.lineUserId);
+      throw new BadRequestException('ส่ง SMS ไม่สำเร็จ รบกวนลองใหม่');
     }
 
     return {
-      reply:
-        `ส่งรหัส OTP ไปที่เบอร์ ${this.maskPhone(customer.phone)} แล้วค่ะ ☎️\n` +
-        `รบกวนพิมพ์รหัส 6 หลักที่ได้รับนะคะ\n` +
-        `(หมดอายุภายใน 5 นาที)`,
-      newState: { kind: 'awaiting_otp', phone: customer.phone },
+      maskedPhone: this.maskPhone(customer.phone),
+      expiresInSeconds: Math.floor(OTP_TTL_MS / 1000),
     };
   }
 
-  private async handleOtpInput(
-    session: ChatSession,
-    phone: string,
-    text: string,
-  ): Promise<VerifyResult> {
-    const otpInput = text.replace(/\D/g, '');
+  /**
+   * Step 2: ยืนยัน OTP + bind LINE userId กับ customer
+   * Throws: BadRequestException หาก OTP ผิด/หมดอายุ/ลองเกิน
+   */
+  async verifyOtp(params: {
+    lineUserId: string;
+    otp: string;
+  }): Promise<{ customerId: string; customerName: string }> {
+    const otpInput = params.otp.replace(/\D/g, '');
     if (otpInput.length !== OTP_LENGTH) {
-      return {
-        reply: `รหัส OTP มี ${OTP_LENGTH} หลักนะคะ รบกวนพิมพ์ใหม่ค่ะ 🙏`,
-        newState: { kind: 'awaiting_otp', phone },
-      };
+      throw new BadRequestException(`รหัส OTP ต้องเป็นตัวเลข ${OTP_LENGTH} หลัก`);
     }
 
-    // หา OTP record ล่าสุด
-    const record = await this.prisma.chatMessage.findFirst({
-      where: {
-        sessionId: session.id,
-        role: MessageRole.SYSTEM,
-        text: { startsWith: OTP_MARKER },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    const parsed = record?.text ? this.parseOtpRecord(record.text) : null;
-    if (!parsed || parsed.expiresAt < Date.now()) {
-      return {
-        reply: 'OTP หมดอายุแล้วค่ะ 🙏 รบกวนพิมพ์เบอร์โทรอีกครั้งเพื่อขอใหม่นะคะ',
-        newState: { kind: 'awaiting_phone' },
-      };
+    const record = this.otpStore.get(params.lineUserId);
+    if (!record) {
+      throw new BadRequestException('กรุณาขอ OTP ใหม่');
     }
 
-    if (this.hashOtp(otpInput) !== parsed.hash) {
-      // เพิ่ม attempt count
-      const updated = await this.prisma.chatSession.update({
-        where: { id: session.id },
-        data: { verificationAttempts: { increment: 1 } },
-      });
-      const remaining = OTP_MAX_ATTEMPTS - updated.verificationAttempts;
+    if (record.expiresAt < Date.now()) {
+      this.otpStore.delete(params.lineUserId);
+      throw new BadRequestException('OTP หมดอายุ กรุณาขอใหม่');
+    }
 
-      if (remaining <= 0) {
-        return {
-          reply:
-            '❌ ใส่ OTP ผิดเกินจำนวนครั้งที่กำหนดค่ะ\nรบกวนติดต่อเจ้าหน้าที่ที่ 063-134-6356 นะคะ 🙏',
-          newState: { kind: 'blocked' },
-        };
-      }
-      return {
-        reply: `OTP ไม่ถูกต้องค่ะ 🙏 ลองอีกครั้งนะคะ (เหลือ ${remaining} ครั้ง)`,
-        newState: { kind: 'awaiting_otp', phone },
-      };
+    if (record.attempts >= OTP_MAX_ATTEMPTS) {
+      this.otpStore.delete(params.lineUserId);
+      throw new BadRequestException('ใส่ OTP ผิดเกินจำนวนครั้ง กรุณาขอใหม่');
+    }
+
+    if (this.hashOtp(otpInput) !== record.hash) {
+      record.attempts += 1;
+      const remaining = OTP_MAX_ATTEMPTS - record.attempts;
+      throw new BadRequestException(
+        remaining > 0 ? `OTP ไม่ถูกต้อง (เหลือ ${remaining} ครั้ง)` : 'ใส่ผิดเกินจำนวนครั้ง',
+      );
     }
 
     // ✅ OTP ถูก — bind!
-    const customer = await this.prisma.customer.findFirst({
-      where: { phone, deletedAt: null },
+    const customer = await this.prisma.customer.findUnique({
+      where: { id: record.customerId },
       select: { id: true, name: true },
     });
     if (!customer) {
-      // ไม่ควรเกิด แต่ defensive
-      return {
-        reply: 'เกิดข้อผิดพลาด รบกวนติดต่อเจ้าหน้าที่ 063-134-6356 นะคะ 🙏',
-        newState: { kind: 'awaiting_phone' },
-      };
+      this.otpStore.delete(params.lineUserId);
+      throw new NotFoundException('ไม่พบข้อมูลลูกค้า');
     }
 
-    await this.bind(session, customer.id);
+    await this.bind(params.lineUserId, customer.id);
+    this.otpStore.delete(params.lineUserId);
 
+    return { customerId: customer.id, customerName: customer.name };
+  }
+
+  /** เช็คว่า lineUserId นี้ verify แล้วหรือยัง (ใช้ใน LIFF เพื่อกัน duplicate) */
+  async isLinked(
+    lineUserId: string,
+  ): Promise<{ linked: boolean; customerId?: string; customerName?: string }> {
+    const link = await this.prisma.customerLineLink.findUnique({
+      where: {
+        lineUserId_channel: { lineUserId, channel: LineChannelType.FINANCE },
+      },
+      include: {
+        customer: { select: { id: true, name: true } },
+      },
+    });
+    if (!link || link.unlinkedAt) return { linked: false };
     return {
-      reply: `✅ ยืนยันสำเร็จค่ะ คุณ${customer.name} 😊\nครั้งต่อไปไม่ต้องยืนยันแล้วนะคะ\n\nมีอะไรให้น้องเบสช่วยไหมคะ?`,
-      newState: { kind: 'verified', customerId: customer.id, customerName: customer.name },
-      customerId: customer.id,
+      linked: true,
+      customerId: link.customer.id,
+      customerName: link.customer.name,
     };
   }
 
-  /** Bind LINE user → Customer (สร้าง CustomerLineLink + อัพเดต ChatSession) */
-  private async bind(session: ChatSession, customerId: string): Promise<void> {
-    await this.prisma.$transaction([
-      this.prisma.chatSession.update({
-        where: { id: session.id },
+  // ─── private ──────────────────────────────────────────────
+
+  /** สร้าง CustomerLineLink + อัพเดต ChatSession ที่อยู่ */
+  private async bind(lineUserId: string, customerId: string): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.customerLineLink.upsert({
+        where: {
+          lineUserId_channel: { lineUserId, channel: LineChannelType.FINANCE },
+        },
+        create: { customerId, lineUserId, channel: LineChannelType.FINANCE },
+        update: { customerId, unlinkedAt: null, linkedAt: new Date() },
+      });
+
+      // ถ้ามี ChatSession อยู่แล้ว → update verifiedAt + customerId
+      await tx.chatSession.updateMany({
+        where: { lineUserId, channel: 'LINE_FINANCE' },
         data: {
           customerId,
           verifiedAt: new Date(),
           verificationAttempts: 0,
         },
-      }),
-      this.prisma.customerLineLink.upsert({
-        where: {
-          lineUserId_channel: {
-            lineUserId: session.lineUserId,
-            channel: LineChannelType.FINANCE,
-          },
-        },
-        create: {
-          customerId,
-          lineUserId: session.lineUserId,
-          channel: LineChannelType.FINANCE,
-        },
-        update: {
-          customerId,
-          unlinkedAt: null,
-          linkedAt: new Date(),
-        },
-      }),
-    ]);
-    this.logger.log(`[Verify] Bound ${session.lineUserId} → customer ${customerId}`);
+      });
+    });
+    this.logger.log(`[Verify] Bound ${lineUserId} → customer ${customerId}`);
   }
 
-  // ─── helpers ──────────────────────────────────────────────
+  private cleanupExpired(): void {
+    const now = Date.now();
+    let removed = 0;
+    for (const [key, record] of this.otpStore.entries()) {
+      if (record.expiresAt < now) {
+        this.otpStore.delete(key);
+        removed += 1;
+      }
+    }
+    if (removed > 0) {
+      this.logger.debug(`[Verify] Cleaned ${removed} expired OTP(s)`);
+    }
+  }
 
-  /** Normalize เบอร์ไทย: ตัด ‐, space, country code 66 → 10 หลักขึ้นต้นด้วย 0 */
+  /** Normalize เบอร์ไทย: 089-xxx-xxxx, 0891234567, 66891234567 → 0891234567 */
   private normalizePhone(input: string): string | null {
     const digits = input.replace(/\D/g, '');
     if (digits.length === 10 && digits.startsWith('0')) return digits;
@@ -279,7 +225,6 @@ export class VerificationService {
   }
 
   private generateOtp(): string {
-    // สุ่ม 6 หลัก ไม่มี leading zero (อ่านง่ายกว่า)
     return String(randomInt(100000, 1000000));
   }
 
@@ -290,17 +235,5 @@ export class VerificationService {
   private maskPhone(phone: string): string {
     if (phone.length < 7) return phone;
     return `${phone.slice(0, 3)}-***-${phone.slice(-4)}`;
-  }
-
-  private parseOtpRecord(text: string): {
-    phone: string;
-    hash: string;
-    expiresAt: number;
-  } | null {
-    const payload = text.slice(OTP_MARKER.length);
-    const [phone, hash, expiresStr] = payload.split('|');
-    const expiresAt = Number(expiresStr);
-    if (!phone || !hash || !expiresAt) return null;
-    return { phone, hash, expiresAt };
   }
 }

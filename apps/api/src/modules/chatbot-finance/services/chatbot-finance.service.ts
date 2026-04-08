@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { MessageRole } from '@prisma/client';
 import {
   LineFinanceWebhookEvent,
@@ -16,28 +17,28 @@ const FALLBACK_REPLY =
 /**
  * Orchestration สำหรับ Finance Bot
  *
- * Flow:
- *   1. รับ event จาก LINE
- *   2. หา/สร้าง session
- *   3. บันทึก customer message
- *   4. Route:
- *      - not verified → VerificationService
- *      - verified     → FinanceAiService (Claude)
- *   5. ส่งคำตอบ + บันทึก bot message
+ * Verification: ใช้ LIFF (เปิด page ใน LINE) — chat แค่ส่ง link
+ * เมื่อลูกค้ายังไม่ verify → ตอบด้วย LIFF link
+ * เมื่อ verify แล้ว → ส่งให้ AI
  */
 @Injectable()
 export class ChatbotFinanceService {
   private readonly logger = new Logger(ChatbotFinanceService.name);
+  private readonly liffVerifyUrl: string;
 
   constructor(
+    private config: ConfigService,
     private lineClient: LineFinanceClientService,
     private sessions: ChatSessionService,
     private verification: VerificationService,
     private ai: FinanceAiService,
-  ) {}
+  ) {
+    this.liffVerifyUrl =
+      this.config.get<string>('LIFF_FINANCE_VERIFY_URL') ||
+      'https://liff.line.me/CONFIG_LIFF_ID_HERE';
+  }
 
   async handleEvent(event: LineFinanceWebhookEvent): Promise<void> {
-    // Log Group ID เพื่อใช้ตอนตั้งค่า staff notifications (ภายหลัง)
     if (event.source.type === 'group' && event.source.groupId) {
       this.logger.log(`📌 GROUP EVENT — groupId: ${event.source.groupId}`);
     }
@@ -76,7 +77,9 @@ export class ChatbotFinanceService {
 
     const greeting =
       'สวัสดีค่ะ น้องเบสยินดีให้บริการนะคะ 😊\n\n' +
-      'เพื่อความปลอดภัย รบกวนพิมพ์เบอร์โทรที่ลงทะเบียนไว้กับ BESTCHOICE ให้น้องด้วยนะคะ 📱';
+      'เพื่อความปลอดภัย รบกวนยืนยันตัวตนผ่านลิงก์ด้านล่างก่อนนะคะ\n' +
+      `👉 ${this.liffVerifyUrl}\n\n` +
+      'ใช้เวลาประมาณ 1 นาทีค่ะ';
 
     await this.replyAndSave(session.id, event.replyToken, greeting);
   }
@@ -86,17 +89,19 @@ export class ChatbotFinanceService {
   private async handleMessage(event: LineMessageEvent): Promise<void> {
     const userId = event.source.userId;
 
-    // Ignore group/room messages — Phase A2 รองรับเฉพาะ 1:1 chat
+    // Phase A2 รองรับเฉพาะ 1:1 chat
     if (!userId || event.source.type !== 'user') {
       this.logger.debug(`Skip non-user message (type=${event.source.type})`);
       return;
     }
 
-    let session = await this.sessions.getOrCreate(userId);
+    const session = await this.sessions.getOrCreate(userId);
 
-    // Phase A2: รองรับเฉพาะ text message — image/audio รอ Phase B
+    // Phase A2: text only
     if (event.message.type !== 'text') {
-      const msg = `น้องเบสยังรับเฉพาะข้อความตัวอักษรอยู่นะคะ 🙏\nถ้ามีสลิปหรือรูป รบกวนติดต่อ 063-134-6356 ค่ะ`;
+      const msg =
+        'น้องเบสยังรับเฉพาะข้อความตัวอักษรอยู่นะคะ 🙏\n' +
+        'ถ้ามีสลิปหรือรูป รบกวนติดต่อ 063-134-6356 ค่ะ';
       await this.sessions.saveMessage({
         sessionId: session.id,
         role: MessageRole.CUSTOMER,
@@ -115,48 +120,41 @@ export class ChatbotFinanceService {
       text: userText,
     });
 
-    // 2. ตรวจ verification state
-    const state = await this.verification.getState(session);
+    // 2. ตรวจ verification: ใช้ CustomerLineLink (DB) เท่านั้น
+    const linkStatus = await this.verification.isLinked(userId);
 
-    let reply: string;
-    let intent: string | undefined;
-    let modelMeta: { model: string; inputTokens: number; outputTokens: number } | undefined;
-
-    if (state.kind !== 'verified') {
-      // 3a. Verification flow
-      const result = await this.verification.handleVerificationStep(session, state, userText);
-      reply = result.reply;
-      intent = `verify:${state.kind}`;
-
-      // ถ้าเพิ่ง verify สำเร็จ → reload session เพื่อให้ AI เห็น customer
-      if (result.newState.kind === 'verified') {
-        session = await this.sessions.getOrCreate(userId);
-      }
-    } else {
-      // 3b. Verified → ส่งให้ AI
-      const history = await this.sessions.getRecentMessages(session.id);
-      const aiReply = await this.ai.generateReply({
-        userMessage: userText,
-        history: history.slice(0, -1), // exclude current message (เพิ่ง save)
-        customerName: state.customerName,
-      });
-
-      if (aiReply) {
-        reply = aiReply.text;
-        modelMeta = {
-          model: aiReply.model,
-          inputTokens: aiReply.inputTokens,
-          outputTokens: aiReply.outputTokens,
-        };
-        intent = 'ai_reply';
-      } else {
-        reply = FALLBACK_REPLY;
-        intent = 'fallback';
-      }
+    if (!linkStatus.linked) {
+      // ส่ง LIFF verification link
+      const reply =
+        'รบกวนยืนยันตัวตนก่อนนะคะ เพื่อความปลอดภัยของข้อมูลค่ะ 🔐\n\n' +
+        `👉 ${this.liffVerifyUrl}\n\n` +
+        'ใช้เวลาประมาณ 1 นาทีค่ะ';
+      await this.replyAndSave(session.id, event.replyToken, reply, 'verify_required');
+      return;
     }
 
-    // 4. ตอบกลับ + save
-    await this.replyAndSave(session.id, event.replyToken, reply, intent, modelMeta);
+    // 3. Verified → ส่งให้ AI (อัพเดต session.customerId ให้ตรง ถ้าจำเป็น)
+    if (!session.customerId && linkStatus.customerId) {
+      // CustomerLineLink มี link อยู่ แต่ session ยังไม่ sync (สำหรับ session เก่าก่อน verify)
+      await this.sessions.linkSessionToCustomer(session.id, linkStatus.customerId);
+    }
+
+    const history = await this.sessions.getRecentMessages(session.id);
+    const aiReply = await this.ai.generateReply({
+      userMessage: userText,
+      history: history.slice(0, -1),
+      customerName: linkStatus.customerName,
+    });
+
+    if (aiReply) {
+      await this.replyAndSave(session.id, event.replyToken, aiReply.text, 'ai_reply', {
+        model: aiReply.model,
+        inputTokens: aiReply.inputTokens,
+        outputTokens: aiReply.outputTokens,
+      });
+    } else {
+      await this.replyAndSave(session.id, event.replyToken, FALLBACK_REPLY, 'fallback');
+    }
   }
 
   // ─── helpers ─────────────────────────────────────────────
@@ -174,7 +172,6 @@ export class ChatbotFinanceService {
       this.logger.error(
         `[Finance] reply failed: ${err instanceof Error ? err.message : err}`,
       );
-      // ยัง save bot message ลง DB (ลูกค้าอาจไม่เห็น แต่เก็บประวัติไว้)
     }
 
     await this.sessions.saveMessage({

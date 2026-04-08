@@ -65,6 +65,7 @@ const LiffRegister = lazy(() => import('@/pages/liff/LiffRegister'));
 const LiffHistory = lazy(() => import('@/pages/liff/LiffHistory'));
 const LiffProfile = lazy(() => import('@/pages/liff/LiffProfile'));
 const LiffEarlyPayoff = lazy(() => import('@/pages/liff/LiffEarlyPayoff'));
+const LiffFinanceVerify = lazy(() => import('@/pages/liff/LiffFinanceVerify'));
 const LineOaSettingsPage = lazy(() => import('@/pages/LineOaSettingsPage'));
 const SmsSettingsPage = lazy(() => import('@/pages/SmsSettingsPage'));
 const FinanceReceivablePage = lazy(() => import('@/pages/FinanceReceivablePage'));
@@ -126,6 +127,7 @@ function App() {
         <Route path="/liff/history" element={<LiffHistory />} />
         <Route path="/liff/profile" element={<LiffProfile />} />
             <Route path="/liff/early-payoff" element={<LiffEarlyPayoff />} />
+        <Route path="/liff/finance-verify" element={<LiffFinanceVerify />} />
 
         {/* Protected Admin Routes */}
         <Route

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
+import { formatThaiDate } from '@/lib/date';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable, { type Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
@@ -203,9 +204,9 @@ export default function PromotionsPage() {
       label: 'วันที่เริ่ม-สิ้นสุด',
       render: (item) => (
         <span className="text-sm">
-          {item.startDate ? new Date(item.startDate).toLocaleDateString('th-TH') : '-'}
+          {item.startDate ? formatThaiDate(item.startDate) : '-'}
           {' — '}
-          {item.endDate ? new Date(item.endDate).toLocaleDateString('th-TH') : 'ไม่จำกัด'}
+          {item.endDate ? formatThaiDate(item.endDate) : 'ไม่จำกัด'}
         </span>
       ),
     },

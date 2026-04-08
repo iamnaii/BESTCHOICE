@@ -1,5 +1,6 @@
 import Modal from '@/components/ui/Modal';
 import { toast } from 'sonner';
+import { formatThaiDate } from '@/lib/date';
 import type { PendingPayment, OcrPaymentSlipResult } from '../types';
 import { slipTypeLabels, isSlipRequired } from '../types';
 
@@ -147,7 +148,7 @@ export function RecordPaymentModal({
               <div><span className="text-muted-foreground">สัญญา: </span><span className="font-mono font-semibold">{payment.contract.contractNumber}</span></div>
               <div><span className="text-muted-foreground">ลูกค้า: </span><span className="font-medium">{payment.contract.customer.name}</span></div>
               <div><span className="text-muted-foreground">งวดที่: </span><span className="font-medium">{payment.installmentNo}</span></div>
-              <div><span className="text-muted-foreground">ครบกำหนด: </span><span className="font-medium">{new Date(payment.dueDate).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span></div>
+              <div><span className="text-muted-foreground">ครบกำหนด: </span><span className="font-medium">{formatThaiDate(payment.dueDate)}</span></div>
               {payment.contract.branch && <div><span className="text-muted-foreground">สาขา: </span><span className="font-medium">{payment.contract.branch.name}</span></div>}
             </div>
           </div>

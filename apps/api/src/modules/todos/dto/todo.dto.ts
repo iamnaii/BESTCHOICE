@@ -6,9 +6,11 @@ import {
   IsDateString,
   IsUUID,
   IsInt,
+  IsNumber,
   Min,
   Max,
   MaxLength,
+  ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { TodoStatus, TodoPriority } from '@prisma/client';
@@ -63,6 +65,28 @@ export class ChecklistItemDto {
   done?: boolean;
 }
 
+export class AttachmentDto {
+  @IsString()
+  url!: string;
+
+  @IsOptional()
+  @IsString()
+  key?: string;
+
+  @IsString()
+  name!: string;
+
+  @IsNumber()
+  size!: number;
+
+  @IsString()
+  mimeType!: string;
+
+  @IsOptional()
+  @IsString()
+  uploadedAt?: string;
+}
+
 export class CreateTodoDto {
   @IsString({ message: 'กรุณาระบุชื่องาน' })
   @MaxLength(255)
@@ -101,7 +125,10 @@ export class CreateTodoDto {
   checklist?: ChecklistItemDto[];
 
   @IsOptional()
-  attachments?: unknown[];
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => AttachmentDto)
+  attachments?: AttachmentDto[];
 }
 
 export class UpdateTodoDto {
@@ -139,5 +166,8 @@ export class UpdateTodoDto {
   checklist?: ChecklistItemDto[];
 
   @IsOptional()
-  attachments?: unknown[];
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => AttachmentDto)
+  attachments?: AttachmentDto[];
 }

@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { MessageRole } from '@prisma/client';
+import { PrismaService } from '../../../prisma/prisma.service';
 import {
   LineFinanceWebhookEvent,
   LineMessageEvent,
@@ -14,28 +14,54 @@ import { FinanceAiService } from './finance-ai.service';
 const FALLBACK_REPLY =
   'ขออภัยค่ะ ระบบขัดข้องชั่วคราว 🙏\nรบกวนติดต่อเจ้าหน้าที่ 063-134-6356 ในเวลาทำการนะคะ';
 
+const VERIFY_PATH = '/liff/finance-verify';
+
 /**
  * Orchestration สำหรับ Finance Bot
  *
  * Verification: ใช้ LIFF (เปิด page ใน LINE) — chat แค่ส่ง link
- * เมื่อลูกค้ายังไม่ verify → ตอบด้วย LIFF link
- * เมื่อ verify แล้ว → ส่งให้ AI
+ * LIFF URL อ่านจาก SystemConfig.liff_id (เซ็ตผ่านหน้า /settings/line-oa)
  */
 @Injectable()
 export class ChatbotFinanceService {
   private readonly logger = new Logger(ChatbotFinanceService.name);
-  private readonly liffVerifyUrl: string;
 
   constructor(
-    private config: ConfigService,
+    private prisma: PrismaService,
     private lineClient: LineFinanceClientService,
     private sessions: ChatSessionService,
     private verification: VerificationService,
     private ai: FinanceAiService,
-  ) {
-    this.liffVerifyUrl =
-      this.config.get<string>('LIFF_FINANCE_VERIFY_URL') ||
-      'https://liff.line.me/CONFIG_LIFF_ID_HERE';
+  ) {}
+
+  /**
+   * อ่าน LIFF base URL จาก SystemConfig (pattern เดียวกับ line-oa.controller)
+   * Returns null ถ้ายังไม่ได้ตั้งค่า
+   */
+  private async getLiffVerifyUrl(): Promise<string | null> {
+    const liffConfig = await this.prisma.systemConfig.findUnique({
+      where: { key: 'liff_id' },
+    });
+    if (!liffConfig?.value) return null;
+    // LIFF รองรับ path-based routing: https://liff.line.me/{liffId}{path}
+    return `https://liff.line.me/${liffConfig.value}${VERIFY_PATH}`;
+  }
+
+  /** ข้อความให้ลูกค้าเปิด LIFF + fallback ถ้ายังไม่ได้ตั้งค่า */
+  private async buildVerifyPrompt(): Promise<string> {
+    const url = await this.getLiffVerifyUrl();
+    if (!url) {
+      this.logger.warn('[Finance] LIFF ID not configured in SystemConfig');
+      return (
+        'ระบบยืนยันตัวตนยังไม่พร้อมใช้งานค่ะ 🙏\n' +
+        'รบกวนติดต่อเจ้าหน้าที่ 063-134-6356 นะคะ'
+      );
+    }
+    return (
+      'รบกวนยืนยันตัวตนก่อนนะคะ เพื่อความปลอดภัยของข้อมูลค่ะ 🔐\n\n' +
+      `👉 ${url}\n\n` +
+      'ใช้เวลาประมาณ 1 นาทีค่ะ'
+    );
   }
 
   async handleEvent(event: LineFinanceWebhookEvent): Promise<void> {
@@ -77,9 +103,7 @@ export class ChatbotFinanceService {
 
     const greeting =
       'สวัสดีค่ะ น้องเบสยินดีให้บริการนะคะ 😊\n\n' +
-      'เพื่อความปลอดภัย รบกวนยืนยันตัวตนผ่านลิงก์ด้านล่างก่อนนะคะ\n' +
-      `👉 ${this.liffVerifyUrl}\n\n` +
-      'ใช้เวลาประมาณ 1 นาทีค่ะ';
+      (await this.buildVerifyPrompt());
 
     await this.replyAndSave(session.id, event.replyToken, greeting);
   }
@@ -124,11 +148,7 @@ export class ChatbotFinanceService {
     const linkStatus = await this.verification.isLinked(userId);
 
     if (!linkStatus.linked) {
-      // ส่ง LIFF verification link
-      const reply =
-        'รบกวนยืนยันตัวตนก่อนนะคะ เพื่อความปลอดภัยของข้อมูลค่ะ 🔐\n\n' +
-        `👉 ${this.liffVerifyUrl}\n\n` +
-        'ใช้เวลาประมาณ 1 นาทีค่ะ';
+      const reply = await this.buildVerifyPrompt();
       await this.replyAndSave(session.id, event.replyToken, reply, 'verify_required');
       return;
     }

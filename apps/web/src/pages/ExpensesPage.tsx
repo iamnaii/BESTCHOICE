@@ -6,6 +6,7 @@ import api, { getErrorMessage } from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
+import QueryBoundary from '@/components/QueryBoundary';
 import Modal from '@/components/ui/Modal';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -505,7 +506,13 @@ export default function ExpensesPage() {
     queryFn: async () => { const p = new URLSearchParams(); if (branchFilter) p.set('branchId', branchFilter); if (startDate) p.set('startDate', startDate); if (endDate) p.set('endDate', endDate); return (await api.get(`/expenses/summary?${p}`)).data; },
   });
 
-  const { data: expensesData, isLoading } = useQuery<{ data: Expense[]; total: number }>({
+  const {
+    data: expensesData,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery<{ data: Expense[]; total: number }>({
     queryKey: ['expenses', statusFilter, accountTypeFilter, categoryFilter, branchFilter, startDate, endDate, debouncedSearch, page],
     queryFn: async () => {
       const p = new URLSearchParams({ limit: '20', page: String(page) });
@@ -684,7 +691,15 @@ export default function ExpensesPage() {
         </div>
       </div>
 
-      <DataTable columns={columns} data={expensesData?.data || []} isLoading={isLoading} emptyMessage="ไม่พบรายจ่าย" />
+      <QueryBoundary
+        isLoading={isLoading && !expensesData}
+        isError={isError}
+        error={error}
+        onRetry={refetch}
+        errorTitle="ไม่สามารถโหลดรายการรายจ่ายได้"
+      >
+        <DataTable columns={columns} data={expensesData?.data || []} isLoading={isLoading} emptyMessage="ไม่พบรายจ่าย" />
+      </QueryBoundary>
 
       {/* Pagination */}
       {totalPages > 1 && (

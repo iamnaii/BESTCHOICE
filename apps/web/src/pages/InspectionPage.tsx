@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useDebounce } from '@/hooks/useDebounce';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable, { type Column } from '@/components/ui/DataTable';
+import QueryBoundary from '@/components/QueryBoundary';
 import { Search } from 'lucide-react';
 import { formatDateShort } from '@/utils/formatters';
 
@@ -39,7 +40,7 @@ export default function InspectionPage() {
   const debouncedSearch = useDebounce(search, 300);
   const limit = 50;
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['inspections', page, debouncedSearch, statusFilter, user?.branchId],
     queryFn: async () => {
       const res = await api.get('/products', {
@@ -145,19 +146,27 @@ export default function InspectionPage() {
       </div>
 
       {/* Table */}
-      <DataTable
-        columns={columns}
-        data={items}
-        isLoading={isLoading}
-        pagination={{
-          page,
-          totalPages: Math.ceil(total / limit),
-          total,
-          onPageChange: setPage,
-        }}
-        onRowClick={(row) => navigate(`/inspections/${row.id}`)}
-        emptyMessage="ไม่พบรายการตรวจสอบ"
-      />
+      <QueryBoundary
+        isLoading={isLoading && !data}
+        isError={isError}
+        error={error}
+        onRetry={refetch}
+        errorTitle="ไม่สามารถโหลดรายการตรวจสอบได้"
+      >
+        <DataTable
+          columns={columns}
+          data={items}
+          isLoading={isLoading}
+          pagination={{
+            page,
+            totalPages: Math.ceil(total / limit),
+            total,
+            onPageChange: setPage,
+          }}
+          onRowClick={(row) => navigate(`/inspections/${row.id}`)}
+          emptyMessage="ไม่พบรายการตรวจสอบ"
+        />
+      </QueryBoundary>
     </div>
   );
 }

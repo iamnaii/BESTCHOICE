@@ -5,6 +5,7 @@ import api, { getErrorMessage } from '@/lib/api';
 import { formatDateShort, formatDateMedium } from '@/utils/formatters';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
+import QueryBoundary from '@/components/QueryBoundary';
 import { compressImageForOcr } from '@/lib/compressImage';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Camera, X, CreditCard, Mail, Copy, Link2, Clock, Users, UserCheck, Shield } from 'lucide-react';
@@ -93,7 +94,13 @@ export default function UsersPage() {
   const [inviteForm, setInviteForm] = useState({ email: '', role: 'SALES', branchId: '' });
   const [lastInviteUrl, setLastInviteUrl] = useState<string | null>(null);
 
-  const { data: users = [], isLoading } = useQuery<User[]>({
+  const {
+    data: users = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery<User[]>({
     queryKey: ['users'],
     queryFn: async () => {
       const { data } = await api.get('/users');
@@ -499,7 +506,15 @@ export default function UsersPage() {
 
       <div className="rounded-xl border border-border/60 overflow-hidden">
         {activeTab === 'users' ? (
-          <DataTable columns={columns} data={users} isLoading={isLoading} />
+          <QueryBoundary
+            isLoading={isLoading && users.length === 0}
+            isError={isError}
+            error={error}
+            onRetry={refetch}
+            errorTitle="ไม่สามารถโหลดรายชื่อผู้ใช้ได้"
+          >
+            <DataTable columns={columns} data={users} isLoading={isLoading} />
+          </QueryBoundary>
         ) : (
           <DataTable columns={inviteColumns} data={invitesData?.data || []} isLoading={invitesLoading} />
         )}

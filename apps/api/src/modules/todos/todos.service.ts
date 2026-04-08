@@ -156,7 +156,7 @@ export class TodosService {
         branchId: dto.branchId,
         tags: dto.tags ?? [],
         checklist: (dto.checklist as unknown as Prisma.InputJsonValue) ?? Prisma.JsonNull,
-        attachments: (dto.attachments as Prisma.InputJsonValue) ?? Prisma.JsonNull,
+        attachments: (dto.attachments as unknown as Prisma.InputJsonValue) ?? Prisma.JsonNull,
         createdById: currentUserId,
       },
       include: {
@@ -186,7 +186,7 @@ export class TodosService {
       data.checklist = (dto.checklist as unknown as Prisma.InputJsonValue) ?? Prisma.JsonNull;
     }
     if (dto.attachments !== undefined) {
-      data.attachments = (dto.attachments as Prisma.InputJsonValue) ?? Prisma.JsonNull;
+      data.attachments = (dto.attachments as unknown as Prisma.InputJsonValue) ?? Prisma.JsonNull;
     }
     if (dto.status !== undefined) {
       data.status = dto.status;

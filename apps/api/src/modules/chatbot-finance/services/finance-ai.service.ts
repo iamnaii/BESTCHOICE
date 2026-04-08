@@ -1,34 +1,44 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Anthropic from '@anthropic-ai/sdk';
+import type { MessageParam, ToolUseBlock } from '@anthropic-ai/sdk/resources/messages';
 import { ChatMessage, MessageRole } from '@prisma/client';
 import { FINANCE_BOT_SYSTEM_PROMPT } from '../prompts/system-prompt';
+import { FINANCE_TOOLS } from '../tools/tool-definitions';
+import { FinanceToolExecutor } from '../tools/tool-executor';
 
 export interface AiReply {
   text: string;
   model: string;
   inputTokens: number;
   outputTokens: number;
+  toolsUsed: string[];
 }
+
+const MAX_TOOL_ITERATIONS = 5;
 
 /**
  * Wrapper รอบ Claude API สำหรับ Finance Bot
  *
- * Phase A2: text-only, conversation history, no tools yet
- * Phase B+:  จะเพิ่ม tool use (get_balance, process_slip, handoff) + vision
+ * Phase B: รองรับ tool use loop
+ *   - Sonnet 4.5 สำหรับ tool use (แม่นกว่า)
+ *   - Loop จนกว่า Claude จะตอบเป็น text (stop_reason !== 'tool_use')
+ *   - Max 5 iterations กัน infinite loop
  */
 @Injectable()
 export class FinanceAiService {
   private readonly logger = new Logger(FinanceAiService.name);
   private readonly anthropic: Anthropic | null;
 
-  // Phase A2 ใช้ Sonnet สำหรับคุณภาพ (ไม่มี tools ยังประหยัดได้พอ)
-  // Phase B จะ split: Sonnet สำหรับงานใช้ tools, Haiku สำหรับ FAQ ง่าย
-  private readonly model = 'claude-haiku-4-5-20251001';
-  private readonly maxTokens = 500;
+  // Sonnet สำหรับ tool use — Haiku ใช้ tools ห่วยกว่า
+  private readonly model = 'claude-sonnet-4-5-20250929';
+  private readonly maxTokens = 1024;
   private readonly historyLimit = 20;
 
-  constructor(private config: ConfigService) {
+  constructor(
+    private config: ConfigService,
+    private toolExecutor: FinanceToolExecutor,
+  ) {
     const apiKey = (
       this.config.get<string>('ANTHROPIC_API_KEY') ||
       process.env.ANTHROPIC_API_KEY ||
@@ -37,7 +47,7 @@ export class FinanceAiService {
 
     if (apiKey) {
       this.anthropic = new Anthropic({ apiKey });
-      this.logger.log('[FinanceAI] Initialized');
+      this.logger.log('[FinanceAI] Initialized (Sonnet + tools)');
     } else {
       this.anthropic = null;
       this.logger.warn('[FinanceAI] ANTHROPIC_API_KEY not set — AI disabled');
@@ -49,13 +59,14 @@ export class FinanceAiService {
   }
 
   /**
-   * สร้างคำตอบจาก Claude โดยใช้ history เป็น context
-   * @returns null ถ้า AI ไม่พร้อม → controller จะ fallback
+   * สร้างคำตอบจาก Claude พร้อม tool use loop
+   * @returns null ถ้า AI ไม่พร้อม
    */
   async generateReply(params: {
     userMessage: string;
     history: ChatMessage[];
-    customerName?: string;
+    customerId: string;
+    customerName: string;
   }): Promise<AiReply | null> {
     if (!this.anthropic) return null;
 
@@ -63,27 +74,72 @@ export class FinanceAiService {
       const systemPrompt = this.buildSystemPrompt(params.customerName);
       const messages = this.buildMessages(params.history, params.userMessage);
 
-      const response = await this.anthropic.messages.create({
-        model: this.model,
-        max_tokens: this.maxTokens,
-        system: systemPrompt,
-        messages,
-      });
+      let totalInput = 0;
+      let totalOutput = 0;
+      const toolsUsed: string[] = [];
 
-      const textBlock = response.content.find((b) => b.type === 'text');
-      const text = textBlock && textBlock.type === 'text' ? textBlock.text : '';
+      // Tool use loop
+      for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
+        const response = await this.anthropic.messages.create({
+          model: this.model,
+          max_tokens: this.maxTokens,
+          system: systemPrompt,
+          tools: FINANCE_TOOLS,
+          messages,
+        });
 
-      if (!text) {
-        this.logger.warn('[FinanceAI] Empty response from Claude');
-        return null;
+        totalInput += response.usage.input_tokens;
+        totalOutput += response.usage.output_tokens;
+
+        // หยุดเมื่อ Claude ตอบเป็น text
+        if (response.stop_reason !== 'tool_use') {
+          const textBlock = response.content.find((b) => b.type === 'text');
+          const text = textBlock && textBlock.type === 'text' ? textBlock.text : '';
+          if (!text) {
+            this.logger.warn('[FinanceAI] Empty text response');
+            return null;
+          }
+          return {
+            text,
+            model: this.model,
+            inputTokens: totalInput,
+            outputTokens: totalOutput,
+            toolsUsed,
+          };
+        }
+
+        // มี tool_use → execute แล้ว append result
+        const toolUseBlocks = response.content.filter(
+          (b): b is ToolUseBlock => b.type === 'tool_use',
+        );
+
+        // เก็บ assistant message ที่มี tool_use ไว้ใน history
+        messages.push({ role: 'assistant', content: response.content });
+
+        // Execute ทุก tool calls แบบ parallel
+        const toolResults = await Promise.all(
+          toolUseBlocks.map(async (block) => {
+            toolsUsed.push(block.name);
+            const result = await this.toolExecutor.execute(
+              { name: block.name, input: block.input as Record<string, unknown> },
+              params.customerId,
+            );
+            return {
+              type: 'tool_result' as const,
+              tool_use_id: block.id,
+              content: result.ok
+                ? JSON.stringify(result.data)
+                : `Error: ${result.error}`,
+              is_error: !result.ok,
+            };
+          }),
+        );
+
+        messages.push({ role: 'user', content: toolResults });
       }
 
-      return {
-        text,
-        model: this.model,
-        inputTokens: response.usage.input_tokens,
-        outputTokens: response.usage.output_tokens,
-      };
+      this.logger.warn(`[FinanceAI] Max tool iterations (${MAX_TOOL_ITERATIONS}) reached`);
+      return null;
     } catch (err) {
       this.logger.error(
         `[FinanceAI] Claude error: ${err instanceof Error ? err.message : String(err)}`,
@@ -92,24 +148,14 @@ export class FinanceAiService {
     }
   }
 
-  /** เพิ่มชื่อลูกค้าเข้า system prompt ถ้ามี (ทำให้ bot เรียกชื่อได้) */
   private buildSystemPrompt(customerName?: string): string {
     if (!customerName) return FINANCE_BOT_SYSTEM_PROMPT;
-    return `${FINANCE_BOT_SYSTEM_PROMPT}\n\n# ลูกค้าปัจจุบัน\nชื่อ: คุณ${customerName} (verify แล้ว)`;
+    return `${FINANCE_BOT_SYSTEM_PROMPT}\n\n# ลูกค้าปัจจุบัน\nชื่อ: คุณ${customerName} (verify แล้ว)\nคุณสามารถใช้ tools เพื่อดึงข้อมูลของลูกค้าคนนี้ได้เลย — ไม่ต้องถามเลขสัญญา`;
   }
 
-  /**
-   * แปลง ChatMessage[] เป็น Anthropic messages format
-   * - CUSTOMER → user
-   * - BOT/STAFF/AUTO_TRIGGER → assistant
-   * - SYSTEM → ข้าม (ไม่ส่งให้ Claude)
-   */
-  private buildMessages(
-    history: ChatMessage[],
-    currentUserMessage: string,
-  ): { role: 'user' | 'assistant'; content: string }[] {
+  private buildMessages(history: ChatMessage[], currentUserMessage: string): MessageParam[] {
     const recent = history.slice(-this.historyLimit);
-    const messages: { role: 'user' | 'assistant'; content: string }[] = [];
+    const messages: MessageParam[] = [];
 
     for (const msg of recent) {
       if (msg.role === MessageRole.SYSTEM) continue;
@@ -118,24 +164,22 @@ export class FinanceAiService {
       const role: 'user' | 'assistant' =
         msg.role === MessageRole.CUSTOMER ? 'user' : 'assistant';
 
-      // รวมข้อความ consecutive same-role (Anthropic ต้องการสลับ user/assistant)
       const last = messages[messages.length - 1];
-      if (last && last.role === role) {
+      if (last && last.role === role && typeof last.content === 'string') {
         last.content += '\n' + msg.text;
       } else {
         messages.push({ role, content: msg.text });
       }
     }
 
-    // ใส่ข้อความปัจจุบันเป็น user message สุดท้าย
+    // ใส่ข้อความปัจจุบัน
     const last = messages[messages.length - 1];
-    if (last && last.role === 'user') {
+    if (last && last.role === 'user' && typeof last.content === 'string') {
       last.content += '\n' + currentUserMessage;
     } else {
       messages.push({ role: 'user', content: currentUserMessage });
     }
 
-    // Anthropic ต้องการ message แรกเป็น user เสมอ
     while (messages.length > 0 && messages[0].role !== 'user') {
       messages.shift();
     }

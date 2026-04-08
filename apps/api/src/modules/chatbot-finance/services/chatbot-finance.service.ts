@@ -163,7 +163,8 @@ export class ChatbotFinanceService {
     const aiReply = await this.ai.generateReply({
       userMessage: userText,
       history: history.slice(0, -1),
-      customerName: linkStatus.customerName,
+      customerId: linkStatus.customerId!,
+      customerName: linkStatus.customerName!,
     });
 
     if (aiReply) {

@@ -5,6 +5,8 @@ import { ChatbotFinanceService } from './services/chatbot-finance.service';
 import { LineFinanceClientService } from './services/line-finance-client.service';
 import { ChatSessionService } from './services/chat-session.service';
 import { FinanceAiService } from './services/finance-ai.service';
+import { FinanceToolsService } from './services/finance-tools.service';
+import { FinanceToolExecutor } from './tools/tool-executor';
 import { VerificationService } from './services/verification.service';
 import { LineFinanceWebhookGuard } from './guards/line-finance-webhook.guard';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -25,6 +27,8 @@ import { NotificationsModule } from '../notifications/notifications.module';
     LineFinanceClientService,
     ChatSessionService,
     FinanceAiService,
+    FinanceToolsService,
+    FinanceToolExecutor,
     VerificationService,
     LineFinanceWebhookGuard,
   ],

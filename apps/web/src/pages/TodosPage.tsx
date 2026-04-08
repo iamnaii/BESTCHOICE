@@ -580,6 +580,15 @@ export default function TodosPage() {
                           {checkDone}/{checkTotal}
                         </span>
                       )}
+                      {t.createdBy && (
+                        <span
+                          className="inline-flex items-center gap-1 truncate"
+                          title={`สร้างโดย ${t.createdBy.nickname || t.createdBy.name}`}
+                        >
+                          <UserIcon className="size-3" />
+                          โดย {t.createdBy.nickname || t.createdBy.name}
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0">

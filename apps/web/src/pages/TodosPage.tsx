@@ -339,7 +339,9 @@ export default function TodosPage() {
     try {
       const fd = new FormData();
       fd.append('file', file);
-      const { data } = await api.post('/todos/upload-attachment', fd);
+      const { data } = await api.post('/todos/upload-attachment', fd, {
+        headers: { 'Content-Type': undefined },
+      });
       setForm((prev) => ({
         ...prev,
         attachments: [...(prev.attachments || []), data as Attachment],
@@ -651,9 +653,15 @@ export default function TodosPage() {
               <textarea
                 value={form.description || ''}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
+                ref={(el) => {
+                  if (el) {
+                    el.style.height = 'auto';
+                    el.style.height = `${Math.min(el.scrollHeight, 480)}px`;
+                  }
+                }}
                 rows={3}
                 placeholder="อธิบายรายละเอียดงาน..."
-                className="w-full px-4 py-2.5 border border-input rounded-xl text-sm bg-card focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-none transition-colors resize-none"
+                className="w-full px-4 py-2.5 border border-input rounded-xl text-sm bg-card focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-none transition-colors resize-none overflow-y-auto min-h-[88px]"
               />
             </div>
 

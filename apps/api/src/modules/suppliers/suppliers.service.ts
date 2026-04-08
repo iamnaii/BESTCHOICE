@@ -112,9 +112,10 @@ export class SuppliersService {
 
       // If paymentMethods is provided, replace all payment methods
       if (paymentMethods !== undefined) {
-        // Delete existing payment methods
-        await tx.supplierPaymentMethod.deleteMany({
-          where: { supplierId: id },
+        // Soft delete existing payment methods (preserve audit trail)
+        await tx.supplierPaymentMethod.updateMany({
+          where: { supplierId: id, deletedAt: null },
+          data: { deletedAt: new Date() },
         });
 
         // Create new payment methods

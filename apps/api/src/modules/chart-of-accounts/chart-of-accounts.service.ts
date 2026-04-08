@@ -10,6 +10,7 @@ export class ChartOfAccountsService {
   async findAll(filter?: { group?: AccountGroup; active?: boolean; q?: string }) {
     return this.prisma.chartOfAccount.findMany({
       where: {
+        deletedAt: null,
         ...(filter?.group && { accountGroup: filter.group }),
         ...(filter?.active != null && { isActive: filter.active }),
         ...(filter?.q && {
@@ -25,7 +26,7 @@ export class ChartOfAccountsService {
   }
 
   async findOne(id: string) {
-    const account = await this.prisma.chartOfAccount.findUnique({ where: { id } });
+    const account = await this.prisma.chartOfAccount.findUnique({ where: { id, deletedAt: null } });
     if (!account) throw new NotFoundException('ไม่พบบัญชี');
     return account;
   }
@@ -80,6 +81,9 @@ export class ChartOfAccountsService {
       throw new BadRequestException('มีบัญชีย่อยอยู่ ลบไม่ได้');
     }
 
-    return this.prisma.chartOfAccount.delete({ where: { id } });
+    return this.prisma.chartOfAccount.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
   }
 }

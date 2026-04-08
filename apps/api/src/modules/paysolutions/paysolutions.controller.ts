@@ -7,6 +7,7 @@ import {
   HttpCode,
   Logger,
   BadRequestException,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
@@ -92,12 +93,14 @@ export class PaySolutionsController {
 
   /**
    * GET /api/paysolutions/status/:paymentId
-   * ดึงสถานะ payment สำหรับ frontend polling
-   * ไม่ต้อง auth — LIFF เรียกใช้
+   * ดึงสถานะ payment สำหรับ LIFF polling (public endpoint — ไม่ต้อง JWT)
+   * ป้องกันด้วย: UUID validation + rate limit 30 req/min per IP
+   * ข้อมูลที่ return ไม่มี PII — มีเฉพาะ status/amount/paidAt
    */
   @Get('status/:paymentId')
   @SkipCsrf()
-  async getPaymentStatus(@Param('paymentId') paymentId: string) {
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
+  async getPaymentStatus(@Param('paymentId', new ParseUUIDPipe({ errorHttpStatusCode: 400 })) paymentId: string) {
     const status = await this.paySolutionsService.getPaymentStatus(paymentId);
     return status;
   }

@@ -535,8 +535,9 @@ export class ContractsService {
           );
         }
 
-        await tx.payment.deleteMany({
-          where: { contractId: id, status: 'PENDING' },
+        await tx.payment.updateMany({
+          where: { contractId: id, status: 'PENDING', deletedAt: null },
+          data: { deletedAt: new Date() },
         });
 
         const payments = generatePaymentSchedule(

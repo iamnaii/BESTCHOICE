@@ -10,6 +10,7 @@ import { KnowledgeService } from './services/knowledge.service';
 import { HandoffService } from './services/handoff.service';
 import { VisionService } from './services/vision.service';
 import { SlipProcessingService } from './services/slip-processing.service';
+import { AutoTriggerService } from './services/auto-trigger.service';
 import { FinanceToolExecutor } from './tools/tool-executor';
 import { VerificationService } from './services/verification.service';
 import { LineFinanceWebhookGuard } from './guards/line-finance-webhook.guard';
@@ -40,6 +41,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     HandoffService,
     VisionService,
     SlipProcessingService,
+    AutoTriggerService,
     FinanceToolExecutor,
     VerificationService,
     LineFinanceWebhookGuard,

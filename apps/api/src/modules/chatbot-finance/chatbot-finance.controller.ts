@@ -1,6 +1,7 @@
 import { Body, Controller, HttpCode, Logger, Post, UseGuards } from '@nestjs/common';
 import { ChatbotFinanceService } from './services/chatbot-finance.service';
 import { LineFinanceClientService } from './services/line-finance-client.service';
+import { AutoTriggerService } from './services/auto-trigger.service';
 import { LineFinanceWebhookGuard } from './guards/line-finance-webhook.guard';
 import { LineFinanceWebhookBody } from './dto/line-webhook.dto';
 
@@ -18,6 +19,7 @@ export class ChatbotFinanceController {
   constructor(
     private chatbotService: ChatbotFinanceService,
     private lineClient: LineFinanceClientService,
+    private autoTrigger: AutoTriggerService,
   ) {}
 
   @Post('webhook')
@@ -54,6 +56,26 @@ export class ChatbotFinanceController {
       return { ok: false };
     }
     await this.lineClient.pushText(body.to, body.text);
+    return { ok: true };
+  }
+
+  /**
+   * Dev-only: รัน auto-trigger ทันทีโดยไม่ต้องรอ cron 09:00/10:00
+   * TODO: ใส่ JwtAuthGuard + Roles(OWNER) ก่อน production
+   */
+  @Post('test/run-reminders')
+  @HttpCode(200)
+  async runReminders(): Promise<{ ok: true }> {
+    this.logger.log('[Test] Manual trigger: daily reminders');
+    await this.autoTrigger.runDailyReminders();
+    return { ok: true };
+  }
+
+  @Post('test/run-escalations')
+  @HttpCode(200)
+  async runEscalations(): Promise<{ ok: true }> {
+    this.logger.log('[Test] Manual trigger: daily escalations');
+    await this.autoTrigger.runDailyEscalations();
     return { ok: true };
   }
 }

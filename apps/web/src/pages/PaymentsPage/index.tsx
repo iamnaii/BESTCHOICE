@@ -7,6 +7,7 @@ import SlipReviewTab from '@/components/payment/SlipReviewTab';
 import { compressImageForOcr } from '@/lib/compressImage';
 import { useDebounce } from '@/hooks/useDebounce';
 import PageHeader from '@/components/ui/PageHeader';
+import QueryBoundary from '@/components/QueryBoundary';
 import PaymentHistorySheet from '@/components/payment/PaymentHistorySheet';
 import ReceiptModal from '@/components/payment/ReceiptModal';
 import { toast } from 'sonner';
@@ -80,7 +81,13 @@ export default function PaymentsPage() {
   });
 
   // Pending payments
-  const { data: pendingPayments = [], isLoading: loadingPending } = useQuery<PendingPayment[]>({
+  const {
+    data: pendingPayments = [],
+    isLoading: loadingPending,
+    isError: pendingError,
+    error: pendingErrorDetail,
+    refetch: refetchPending,
+  } = useQuery<PendingPayment[]>({
     queryKey: ['pending-payments', statusFilter, debouncedSearch, branchFilter],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -450,19 +457,27 @@ export default function PaymentsPage() {
             hasPendingPayments={pendingPayments.length > 0}
           />
 
-          <PaymentTable
-            pendingPayments={pendingPayments}
-            loadingPending={loadingPending}
-            selectedIds={selectedIds}
-            onToggleSelect={toggleSelect}
-            onToggleAll={toggleAll}
-            onOpenPayModal={openPayModal}
-            onOpenAdvanceModal={openAdvanceModal}
-            onViewHistory={(contractId) => setHistoryContractId(contractId)}
-            batchTotal={batchTotal}
-            onShowBatchModal={() => setShowBatchModal(true)}
-            onClearSelection={() => setSelectedIds(new Set())}
-          />
+          <QueryBoundary
+            isLoading={loadingPending && pendingPayments.length === 0}
+            isError={pendingError}
+            error={pendingErrorDetail}
+            onRetry={refetchPending}
+            errorTitle="ไม่สามารถโหลดรายการค้างชำระได้"
+          >
+            <PaymentTable
+              pendingPayments={pendingPayments}
+              loadingPending={loadingPending}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelect}
+              onToggleAll={toggleAll}
+              onOpenPayModal={openPayModal}
+              onOpenAdvanceModal={openAdvanceModal}
+              onViewHistory={(contractId) => setHistoryContractId(contractId)}
+              batchTotal={batchTotal}
+              onShowBatchModal={() => setShowBatchModal(true)}
+              onClearSelection={() => setSelectedIds(new Set())}
+            />
+          </QueryBoundary>
         </div>
       )}
 

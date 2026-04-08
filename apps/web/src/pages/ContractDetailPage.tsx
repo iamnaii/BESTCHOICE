@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/card';
 import PageHeader from '@/components/ui/PageHeader';
+import QueryBoundary from '@/components/QueryBoundary';
 import Modal from '@/components/ui/Modal';
 import WorkflowStatusBadge from '@/components/contract/WorkflowStatusBadge';
 import DocumentUpload from '@/components/contract/DocumentUpload';
@@ -103,7 +104,13 @@ export default function ContractDetailPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({ sellingPrice: 0, downPayment: 0, totalMonths: 0, interestRate: 0, paymentDueDay: 1, notes: '' });
 
-  const { data: contract, isLoading } = useQuery<ContractDetail>({
+  const {
+    data: contract,
+    isLoading,
+    isError: contractError,
+    error: contractErrorDetail,
+    refetch: refetchContract,
+  } = useQuery<ContractDetail>({
     queryKey: ['contract', id],
     queryFn: async () => { const { data } = await api.get(`/contracts/${id}`); return data; },
   });
@@ -235,6 +242,20 @@ const deleteMutation = useMutation({
     });
     setIsEditing(true);
   };
+
+  if (contractError) {
+    return (
+      <QueryBoundary
+        isLoading={false}
+        isError={true}
+        error={contractErrorDetail}
+        onRetry={refetchContract}
+        errorTitle="ไม่สามารถโหลดข้อมูลสัญญาได้"
+      >
+        <div />
+      </QueryBoundary>
+    );
+  }
 
   if (isLoading || !contract) {
     return <DetailPageSkeleton />;

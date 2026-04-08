@@ -4,13 +4,14 @@ import { PurchaseOrdersService } from './purchase-orders.service';
 import { CreatePODto, UpdatePODto, ReceivePODto, GoodsReceivingDto, UpdatePaymentDto, RejectPODto } from './dto/create-po.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @ApiTags('Purchase Orders')
 @ApiBearerAuth('JWT')
 @Controller('purchase-orders')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, BranchGuard)
 export class PurchaseOrdersController {
   constructor(private purchaseOrdersService: PurchaseOrdersService) {}
 

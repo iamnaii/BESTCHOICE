@@ -4,6 +4,7 @@ import { Response } from 'express';
 import { ReceiptsService } from './receipts.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { VoidReceiptDto } from './dto/void-receipt.dto';
@@ -11,7 +12,7 @@ import { VoidReceiptDto } from './dto/void-receipt.dto';
 @ApiTags('Receipts')
 @ApiBearerAuth('JWT')
 @Controller('receipts')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, BranchGuard)
 export class ReceiptsController {
   constructor(private receiptsService: ReceiptsService) {}
 

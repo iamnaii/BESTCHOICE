@@ -9,6 +9,7 @@ import { CreateContractDto, UpdateContractDto, EarlyPayoffDto, ReviewContractDto
 import { PdpaConsentDto } from './dto/pdpa-consent.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -16,7 +17,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 @ApiTags('Contracts')
 @ApiBearerAuth('JWT')
 @Controller('contracts')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, BranchGuard)
 export class ContractsController {
   constructor(
     private contractsService: ContractsService,

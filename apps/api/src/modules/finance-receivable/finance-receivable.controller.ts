@@ -14,13 +14,14 @@ import { FinanceReceivableService } from './finance-receivable.service';
 import { RecordReceiveDto, UpdateFinanceReceivableDto } from './dto/finance-receivable.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { FinanceReceivableStatus } from '@prisma/client';
 
 @ApiTags('Finance')
 @ApiBearerAuth('JWT')
 @Controller('finance-receivable')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, BranchGuard)
 export class FinanceReceivableController {
   constructor(private service: FinanceReceivableService) {}
 

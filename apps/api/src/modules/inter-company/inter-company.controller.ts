@@ -4,12 +4,13 @@ import { InterCompanyService } from './inter-company.service';
 import { CreateInterCompanyTransactionDto } from './dto/inter-company.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 
 @ApiTags('Inter-Company')
 @ApiBearerAuth('JWT')
 @Controller('inter-company')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, BranchGuard)
 export class InterCompanyController {
   constructor(private interCompanyService: InterCompanyService) {}
 

@@ -4,12 +4,13 @@ import { ReorderPointsService } from './reorder-points.service';
 import { CreateReorderPointDto, UpdateReorderPointDto } from './dto/reorder-point.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 
 @ApiTags('Products')
 @ApiBearerAuth('JWT')
 @Controller('reorder-points')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, BranchGuard)
 export class ReorderPointsController {
   constructor(private service: ReorderPointsService) {}
 

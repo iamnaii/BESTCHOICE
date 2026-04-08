@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { brands, getModels } from '@/data/productCatalog';
 import SignaturePadFull from '@/components/signing/SignaturePadFull';
+import AddressForm, { type AddressData, emptyAddress, composeAddress } from '@/components/ui/AddressForm';
 
 interface QuickBuyModalProps {
   open: boolean;
@@ -46,11 +47,10 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
   const [sellerHistory, setSellerHistory] = useState<SellerHistoryResponse | null>(null);
 
   const [form, setForm] = useState({
-    // Step 1: seller
+    // Step 1: seller (address ใช้ AddressForm แยก state)
     sellerName: '',
     sellerPhone: '',
     sellerIdCardNumber: '',
-    sellerAddress: '',
     idCardPhotoBase64: '',
     idCardSource: '' as '' | 'card_reader' | 'upload',
     // Step 2: device
@@ -70,13 +70,15 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
     idCardVerified: false,
     sellerConsentSigned: false,
   });
+  const [address, setAddress] = useState<AddressData>({ ...emptyAddress });
 
   function reset() {
     setStep(1);
     setImeiCheckResult(null);
     setSellerHistory(null);
+    setAddress({ ...emptyAddress });
     setForm({
-      sellerName: '', sellerPhone: '', sellerIdCardNumber: '', sellerAddress: '',
+      sellerName: '', sellerPhone: '', sellerIdCardNumber: '',
       idCardPhotoBase64: '', idCardSource: '',
       deviceBrand: '', deviceModel: '', deviceStorage: '', deviceColor: '',
       deviceCondition: 'B', imei: '', agreedPrice: '',
@@ -96,7 +98,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
         sellerName: form.sellerName,
         sellerPhone: form.sellerPhone || undefined,
         sellerIdCardNumber: form.sellerIdCardNumber || undefined,
-        sellerAddress: form.sellerAddress || undefined,
+        sellerAddress: composeAddress(address) || undefined,
         idCardPhotoBase64: form.idCardPhotoBase64 || undefined,
         idCardSource: form.idCardSource || undefined,
         deviceBrand: form.deviceBrand,
@@ -149,9 +151,24 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
         ...f,
         sellerName: fullName,
         sellerIdCardNumber: d.nationalId || '',
-        sellerAddress: d.address || '',
         idCardSource: 'card_reader',
       }));
+      // Card-reader คืน addressStructured (field map ตรงกับ AddressData) → fill ตรง ๆ
+      // postalCode จะถูก auto-complete โดย AddressForm effect เมื่อ province+district+subdistrict ครบ
+      if (d.addressStructured) {
+        setAddress({
+          houseNo: d.addressStructured.houseNo || '',
+          moo: d.addressStructured.moo || '',
+          village: d.addressStructured.village || '',
+          soi: d.addressStructured.soi || '',
+          road: d.addressStructured.road || '',
+          // Strip prefix ออกจาก subdistrict/district/province เพราะ dropdown ใช้ชื่อล้วน
+          subdistrict: (d.addressStructured.subdistrict || '').replace(/^(ตำบล|แขวง|ต\.)\s*/g, ''),
+          district: (d.addressStructured.district || '').replace(/^(อำเภอ|เขต|อ\.)\s*/g, ''),
+          province: (d.addressStructured.province || '').replace(/^(จังหวัด|จ\.)\s*/g, ''),
+          postalCode: '',
+        });
+      }
       // Auto-trigger seller history lookup
       if (d.nationalId) await fetchSellerHistory(d.nationalId);
       toast.success('อ่านบัตรเรียบร้อย');
@@ -184,12 +201,13 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
       const data = res.data as SellerHistoryResponse;
       setSellerHistory(data);
       if (data.found && data.lastSeller) {
-        // Auto-fill ถ้าฟิลด์ว่าง
+        // Auto-fill name + phone จากครั้งล่าสุด
+        // หมายเหตุ: address ของ legacy เก็บเป็น composed string จะไม่ auto-fill ลง AddressForm structured fields
+        // (พนักงานยังเห็นชื่อเดิม → กรอก address ใหม่ทับเองได้ หรืออ่านบัตรใหม่)
         setForm((f) => ({
           ...f,
           sellerName: f.sellerName || data.lastSeller!.sellerName || '',
           sellerPhone: f.sellerPhone || data.lastSeller!.sellerPhone || '',
-          sellerAddress: f.sellerAddress || data.lastSeller!.sellerAddress || '',
         }));
         if (data.warning) {
           toast.warning(
@@ -383,16 +401,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
                     onChange={(e) => setForm((f) => ({ ...f, sellerPhone: e.target.value }))}
                   />
                 </div>
-                <div>
-                  <Label>ที่อยู่ตามบัตร</Label>
-                  <textarea
-                    className="mt-1 w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
-                    rows={2}
-                    placeholder="บ้านเลขที่ ตำบล อำเภอ จังหวัด"
-                    value={form.sellerAddress}
-                    onChange={(e) => setForm((f) => ({ ...f, sellerAddress: e.target.value }))}
-                  />
-                </div>
+                <AddressForm value={address} onChange={setAddress} label="ที่อยู่ตามบัตร" />
                 <div>
                   <Label>แนบรูปบัตรประชาชน</Label>
                   <label className="mt-1 flex items-center justify-center gap-2 h-12 px-3 rounded-lg border border-dashed border-input bg-background text-sm cursor-pointer hover:border-sky-400 hover:bg-sky-50/50 transition-colors">

@@ -4,6 +4,9 @@ import { LineFinanceClientService } from './services/line-finance-client.service
 import { AutoTriggerService } from './services/auto-trigger.service';
 import { LineFinanceWebhookGuard } from './guards/line-finance-webhook.guard';
 import { LineFinanceWebhookBody } from './dto/line-webhook.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 
 /**
  * Webhook + admin endpoints สำหรับ Finance Bot ("น้องเบส")
@@ -46,11 +49,12 @@ export class ChatbotFinanceController {
   }
 
   /**
-   * Dev-only: ทดสอบ push message (ใช้กับ Group ID เพื่อทดสอบ staff notify ในอนาคต)
-   * TODO: ลบหรือใส่ JwtAuthGuard + RolesGuard ก่อน production
+   * Manual push message — requires OWNER (เพื่อทดสอบหรือส่ง broadcast พิเศษ)
    */
   @Post('test/push')
   @HttpCode(200)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER')
   async testPush(@Body() body: { to: string; text: string }): Promise<{ ok: boolean }> {
     if (!this.lineClient.isConfigured) {
       return { ok: false };
@@ -60,21 +64,24 @@ export class ChatbotFinanceController {
   }
 
   /**
-   * Dev-only: รัน auto-trigger ทันทีโดยไม่ต้องรอ cron 09:00/10:00
-   * TODO: ใส่ JwtAuthGuard + Roles(OWNER) ก่อน production
+   * Manual trigger reminders — รันได้นอก cron schedule (เช่น recovery หลัง outage)
    */
   @Post('test/run-reminders')
   @HttpCode(200)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER', 'FINANCE_MANAGER')
   async runReminders(): Promise<{ ok: true }> {
-    this.logger.log('[Test] Manual trigger: daily reminders');
+    this.logger.log('[Manual] Trigger: daily reminders');
     await this.autoTrigger.runDailyReminders();
     return { ok: true };
   }
 
   @Post('test/run-escalations')
   @HttpCode(200)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER', 'FINANCE_MANAGER')
   async runEscalations(): Promise<{ ok: true }> {
-    this.logger.log('[Test] Manual trigger: daily escalations');
+    this.logger.log('[Manual] Trigger: daily escalations');
     await this.autoTrigger.runDailyEscalations();
     return { ok: true };
   }

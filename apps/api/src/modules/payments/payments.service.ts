@@ -6,6 +6,7 @@ import { ReceiptsService } from '../receipts/receipts.service';
 import { AuditService } from '../audit/audit.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { ProductsService } from '../products/products.service';
+import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { roundBaht } from '../../utils/installment.util';
 import { BUSINESS_RULES } from '../../utils/config.util';
@@ -27,7 +28,7 @@ export class PaymentsService {
     contractId: string,
     user: { role: string; branchId: string | null },
   ) {
-    if (user.role === 'OWNER' || user.role === 'FINANCE_MANAGER' || user.role === 'ACCOUNTANT') return;
+    if (hasCrossBranchAccess(user)) return;
 
     const contract = await this.prisma.contract.findUnique({
       where: { id: contractId },

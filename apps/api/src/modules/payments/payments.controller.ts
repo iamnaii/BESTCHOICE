@@ -7,6 +7,7 @@ import { ImportPaymentsCsvDto } from './dto/csv-import.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
+import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { UserThrottlerGuard } from '../../guards/user-throttler.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -175,7 +176,7 @@ export class PaymentsController {
     user?: { role: string; branchId: string | null },
   ): string | undefined {
     if (!user) return requestedBranchId;
-    if (user.role === 'OWNER' || user.role === 'FINANCE_MANAGER' || user.role === 'ACCOUNTANT') return requestedBranchId;
+    if (hasCrossBranchAccess(user)) return requestedBranchId;
     // SALES and BRANCH_MANAGER must see only their branch
     return user.branchId || requestedBranchId;
   }

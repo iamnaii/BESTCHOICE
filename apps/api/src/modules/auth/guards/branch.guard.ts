@@ -4,6 +4,7 @@ import {
   ExecutionContext,
   ForbiddenException,
 } from '@nestjs/common';
+import { hasCrossBranchAccess } from '../branch-access.util';
 
 /**
  * Enforces branch-level access control.
@@ -22,12 +23,6 @@ import {
  */
 @Injectable()
 export class BranchGuard implements CanActivate {
-  private static readonly CROSS_BRANCH_ROLES = new Set([
-    'OWNER',
-    'FINANCE_MANAGER',
-    'ACCOUNTANT',
-  ]);
-
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest();
     const user = request.user;
@@ -38,7 +33,7 @@ export class BranchGuard implements CanActivate {
     }
 
     // Cross-branch roles see everything
-    if (BranchGuard.CROSS_BRANCH_ROLES.has(user.role)) {
+    if (hasCrossBranchAccess(user)) {
       return true;
     }
 

@@ -344,7 +344,7 @@ export class ContractWorkflowService {
     if (!customer) return;
 
     const firstPayment = await this.prisma.payment.findFirst({
-      where: { contractId: contract.id, installmentNo: 1 },
+      where: { contractId: contract.id, installmentNo: 1, deletedAt: null },
       select: { dueDate: true },
     });
     const firstDueDate = firstPayment

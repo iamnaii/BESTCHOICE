@@ -1,4 +1,4 @@
-import { Injectable, Logger, forwardRef, Inject } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { StaffNotificationService } from './staff-notification.service';
 
@@ -24,7 +24,6 @@ export class HandoffService {
 
   constructor(
     private prisma: PrismaService,
-    @Inject(forwardRef(() => StaffNotificationService))
     private staffNotify: StaffNotificationService,
   ) {}
 

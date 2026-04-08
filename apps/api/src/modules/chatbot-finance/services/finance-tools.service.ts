@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { LATE_FEE_PER_DAY, FINANCE_BANK, BANK_INFO_BLOCK } from '../constants/finance-rules';
 
-const LATE_FEE_PER_DAY = 50;
-const BANK_INFO = `🏦 ธนาคารกสิกรไทย\n🔢 เลขที่: 203-1-16520-5\n👤 บจก. เบสท์ช้อยส์โฟน`;
+const BANK_INFO = BANK_INFO_BLOCK;
 
 /**
  * Finance Tools — wrap DB queries สำหรับ Claude tool use
@@ -180,9 +180,7 @@ export class FinanceToolsService {
    */
   getBankInfo() {
     return {
-      bankName: 'ธนาคารกสิกรไทย',
-      accountNumber: '203-1-16520-5',
-      accountName: 'บจก. เบสท์ช้อยส์โฟน',
+      ...FINANCE_BANK,
       formatted: BANK_INFO,
     };
   }

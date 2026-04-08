@@ -24,13 +24,14 @@ import { NotificationsModule } from '../notifications/notifications.module';
  * Finance Bot Module ("น้องเบส")
  * Channel: LINE OA "ชำระค่างวด BESTCHOICE"
  *
- * Phases:
+ * Phases (all complete):
  *   A1 ✅ webhook + session/message persistence
- *   A2 ✅ verification (LIFF + OTP) + AI service (Sonnet)
- *   B  ✅ tools + knowledge base + handoff
- *   C  ✅ vision (slip processing)
- *   D     auto-trigger reminders (cron)
- *   E     analytics + KB admin UI
+ *   A2 ✅ verification (LIFF + SMS OTP, DB-backed) + AI service
+ *   A3 ✅ Staff LINE OA notifications (handoff + slip review)
+ *   B  ✅ Claude tools (5 data + KB search + handoff)
+ *   C  ✅ vision-based slip processing → PaymentEvidence
+ *   D  ✅ auto-trigger reminders cron (T-5/-3/-1/0, T+1/+3)
+ *   E  ✅ admin endpoints + analytics/sessions/KB UI
  */
 @Module({
   imports: [NotificationsModule], // SMS for OTP

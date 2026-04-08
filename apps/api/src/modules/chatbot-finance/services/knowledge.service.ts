@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ChatChannel } from '@prisma/client';
 
@@ -8,6 +8,19 @@ export interface KbMatch {
   responseTemplate: string;
   responseType: string; // 'auto' | 'handoff' | 'info'
   score: number;
+}
+
+export interface KbUpsertInput {
+  intent: string;
+  category: string;
+  triggerKeywords: string[];
+  exampleQuestions: string[];
+  responseTemplate: string;
+  responseType: string;
+  requiresAuth?: boolean;
+  requiresTools?: string[];
+  active?: boolean;
+  priority?: number;
 }
 
 /**
@@ -74,5 +87,70 @@ export class KnowledgeService {
       this.logger.log(`[KB] "${query.slice(0, 30)}..." → ${scored.length} match(es)`);
     }
     return scored;
+  }
+
+  // ─── Admin CRUD ──────────────────────────────────────────
+
+  async listAll() {
+    return this.prisma.chatKnowledgeBase.findMany({
+      where: { channel: ChatChannel.LINE_FINANCE, deletedAt: null },
+      orderBy: [{ priority: 'desc' }, { intent: 'asc' }],
+    });
+  }
+
+  async create(input: KbUpsertInput) {
+    return this.prisma.chatKnowledgeBase.create({
+      data: {
+        channel: ChatChannel.LINE_FINANCE,
+        intent: input.intent,
+        category: input.category,
+        triggerKeywords: input.triggerKeywords,
+        exampleQuestions: input.exampleQuestions,
+        responseTemplate: input.responseTemplate,
+        responseType: input.responseType,
+        requiresAuth: input.requiresAuth ?? true,
+        requiresTools: input.requiresTools ?? [],
+        active: input.active ?? true,
+        priority: input.priority ?? 0,
+      },
+    });
+  }
+
+  async update(id: string, input: Partial<KbUpsertInput>) {
+    const existing = await this.prisma.chatKnowledgeBase.findFirst({
+      where: { id, deletedAt: null },
+    });
+    if (!existing) {
+      throw new NotFoundException('ไม่พบ FAQ');
+    }
+    return this.prisma.chatKnowledgeBase.update({
+      where: { id },
+      data: {
+        ...(input.intent !== undefined && { intent: input.intent }),
+        ...(input.category !== undefined && { category: input.category }),
+        ...(input.triggerKeywords !== undefined && { triggerKeywords: input.triggerKeywords }),
+        ...(input.exampleQuestions !== undefined && { exampleQuestions: input.exampleQuestions }),
+        ...(input.responseTemplate !== undefined && { responseTemplate: input.responseTemplate }),
+        ...(input.responseType !== undefined && { responseType: input.responseType }),
+        ...(input.requiresAuth !== undefined && { requiresAuth: input.requiresAuth }),
+        ...(input.requiresTools !== undefined && { requiresTools: input.requiresTools }),
+        ...(input.active !== undefined && { active: input.active }),
+        ...(input.priority !== undefined && { priority: input.priority }),
+      },
+    });
+  }
+
+  /** Soft delete */
+  async remove(id: string) {
+    const existing = await this.prisma.chatKnowledgeBase.findFirst({
+      where: { id, deletedAt: null },
+    });
+    if (!existing) {
+      throw new NotFoundException('ไม่พบ FAQ');
+    }
+    return this.prisma.chatKnowledgeBase.update({
+      where: { id },
+      data: { deletedAt: new Date(), active: false },
+    });
   }
 }

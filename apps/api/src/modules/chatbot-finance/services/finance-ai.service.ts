@@ -143,7 +143,12 @@ export class FinanceAiService {
         messages.push({ role: 'user', content: toolResults });
       }
 
-      this.logger.warn(`[FinanceAI] Max tool iterations (${MAX_TOOL_ITERATIONS}) reached`);
+      this.logger.warn(
+        `[FinanceAI] Max tool iterations (${MAX_TOOL_ITERATIONS}) reached. ` +
+          `Tools called: [${toolsUsed.join(', ')}] | ` +
+          `Tokens: in=${totalInput} out=${totalOutput} | ` +
+          `Customer: ${params.customerId.slice(0, 8)}...`,
+      );
       return null;
     } catch (err) {
       this.logger.error(

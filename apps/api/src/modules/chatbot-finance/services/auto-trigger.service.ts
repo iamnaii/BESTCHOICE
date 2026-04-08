@@ -4,6 +4,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { LineFinanceClientService } from './line-finance-client.service';
 import { ChatSessionService } from './chat-session.service';
 import { TEMPLATES, ReminderPayload } from '../constants/reminder-templates';
+import { LATE_FEE_PER_DAY } from '../constants/finance-rules';
 import {
   AutoTriggerType,
   LineChannelType,
@@ -12,7 +13,6 @@ import {
   TriggerStatus,
 } from '@prisma/client';
 
-const LATE_FEE_PER_DAY = 50;
 const TIMEZONE = 'Asia/Bangkok';
 
 interface PaymentWithLink {
@@ -121,22 +121,6 @@ export class AutoTriggerService {
         continue;
       }
 
-      // Idempotency check
-      const existing = await this.prisma.chatAutoTrigger.findFirst({
-        where: {
-          customerId: payment.contract.customerId,
-          triggerType: type,
-          payload: {
-            path: ['paymentId'],
-            equals: payment.id,
-          },
-        },
-      });
-      if (existing) {
-        skipped++;
-        continue;
-      }
-
       const result = await this.sendReminder({
         payment,
         type,
@@ -148,6 +132,7 @@ export class AutoTriggerService {
       });
 
       if (result === 'sent') sent++;
+      else if (result === 'skipped') skipped++;
       else if (result === 'failed') failed++;
     }
 
@@ -162,7 +147,7 @@ export class AutoTriggerService {
     customerName: string;
     lineUserId: string;
     dayOffset: number;
-  }): Promise<'sent' | 'failed'> {
+  }): Promise<'sent' | 'skipped' | 'failed'> {
     const amount = Number(args.payment.amountDue) - Number(args.payment.amountPaid);
     const daysOverdue = args.dayOffset < 0 ? Math.abs(args.dayOffset) : 0;
     const fineAmount = daysOverdue * LATE_FEE_PER_DAY;
@@ -178,23 +163,35 @@ export class AutoTriggerService {
     };
 
     const text = args.template(payload);
+    const referenceKey = `${args.type}:${args.payment.id}`;
 
-    // สร้าง trigger record (PENDING ก่อน) — กัน duplicate concurrent runs
-    const trigger = await this.prisma.chatAutoTrigger.create({
-      data: {
-        customerId: args.customerId,
-        triggerType: args.type,
-        scheduledFor: new Date(),
-        status: TriggerStatus.PENDING,
-        payload: {
-          paymentId: args.payment.id,
-          contractId: args.payment.contractId,
-          installmentNo: args.payment.installmentNo,
-          amount,
-          dueDate: args.payment.dueDate.toISOString(),
+    // Atomic insert ผ่าน @@unique([customerId, referenceKey])
+    // ถ้า duplicate (concurrent run / re-run) → P2002 → skip ปลอดภัย
+    let trigger;
+    try {
+      trigger = await this.prisma.chatAutoTrigger.create({
+        data: {
+          customerId: args.customerId,
+          triggerType: args.type,
+          scheduledFor: new Date(),
+          status: TriggerStatus.PENDING,
+          referenceKey,
+          payload: {
+            paymentId: args.payment.id,
+            contractId: args.payment.contractId,
+            installmentNo: args.payment.installmentNo,
+            amount,
+            dueDate: args.payment.dueDate.toISOString(),
+          },
         },
-      },
-    });
+      });
+    } catch (err) {
+      // P2002 = unique constraint violation = already sent
+      if (err && typeof err === 'object' && 'code' in err && err.code === 'P2002') {
+        return 'skipped';
+      }
+      throw err;
+    }
 
     try {
       await this.lineClient.pushText(args.lineUserId, text);

@@ -313,6 +313,7 @@ model Branch {
   expenses                 Expense[]
   interCompanyTransactions InterCompanyTransaction[]
   fixedAssets              FixedAsset[]
+  tradeIns                 TradeIn[]
 
   @@index([companyId])
   @@map("branches")
@@ -381,6 +382,7 @@ model User {
   commissionsApproved    SalesCommission[]    @relation("CommissionApprovedBy")
   contractsAssigned      Contract[]           @relation("ContractAssignedTo")
   tradeInsAppraised      TradeIn[]            @relation("TradeInAppraisedBy")
+  tradeInsIdVerified     TradeIn[]            @relation("TradeInIdCardVerifiedBy")
   assetsCreated          FixedAsset[]         @relation("AssetCreatedBy")
   todosCreated           Todo[]               @relation("TodoCreatedBy")
   todosAssigned          Todo[]               @relation("TodoAssignedTo")
@@ -2409,11 +2411,13 @@ enum TradeInStatus {
 
 model TradeIn {
   id              String        @id @default(uuid())
-  customerId      String        @map("customer_id")
+  customerId      String?       @map("customer_id") // optional — walk-in seller may not be a customer
   productId       String?       @map("product_id") // new product being purchased (optional)
+  branchId        String?       @map("branch_id") // สาขาที่รับซื้อ
   deviceBrand     String        @map("device_brand")
   deviceModel     String        @map("device_model")
   deviceStorage   String?       @map("device_storage")
+  deviceColor     String?       @map("device_color")
   deviceCondition String?       @map("device_condition") // A/B/C/D
   imei            String?
   estimatedValue  Decimal?      @map("estimated_value") @db.Decimal(12, 2) // ราคาประเมินเบื้องต้น
@@ -2422,17 +2426,52 @@ model TradeIn {
   status          TradeInStatus @default(PENDING_APPRAISAL)
   appraisedById   String?       @map("appraised_by_id")
   notes           String?
-  createdAt       DateTime      @default(now()) @map("created_at")
-  updatedAt       DateTime      @updatedAt @map("updated_at")
-  deletedAt       DateTime?     @map("deleted_at")
 
-  customer    Customer @relation(fields: [customerId], references: [id])
-  product     Product? @relation(fields: [productId], references: [id])
-  appraisedBy User?    @relation("TradeInAppraisedBy", fields: [appraisedById], references: [id])
+  // ─── ข้อมูลผู้ขาย (กรณี walk-in หรือ override จาก customer) ────────
+  sellerName         String? @map("seller_name")
+  sellerPhone        String? @map("seller_phone")
+  sellerIdCardNumber String? @map("seller_id_card_number") // 13 หลัก, plaintext (consistent กับ Customer.nationalId — TODO encrypt ทั้งระบบทีหลัง)
+  sellerAddress      String? @map("seller_address") // ที่อยู่ตามบัตร ปชช.
+
+  // ─── หลักฐานบัตรประชาชน (anti-stolen-goods) ────────────────────────
+  idCardPhotoUrl     String?   @map("id_card_photo_url") // S3 URL: รูปบัตร ปชช.
+  idCardSource       String?   @map("id_card_source") // 'card_reader' | 'upload'
+  idCardVerifiedAt   DateTime? @map("id_card_verified_at") // ผู้รับซื้อยืนยันตรวจบัตรแล้ว
+  idCardVerifiedById String?   @map("id_card_verified_by_id")
+
+  // ─── การยินยอม + ตรวจสอบของโจร ────────────────────────────────────
+  sellerSignatureUrl       String?   @map("seller_signature_url") // ลายเซ็นผู้ขาย (ยืนยันเป็นเจ้าของจริง)
+  sellerConsentSigned      Boolean   @default(false) @map("seller_consent_signed")
+  policeReportAcknowledged Boolean   @default(false) @map("police_report_acknowledged")
+  imeiBlacklistCheckedAt   DateTime? @map("imei_blacklist_checked_at")
+  imeiBlacklistResult      String?   @map("imei_blacklist_result") // 'clean' | 'duplicate' | 'flagged'
+
+  // ─── วิธีชำระเงินให้ผู้ขาย ──────────────────────────────────────────
+  paymentMethod         String? @map("payment_method") // 'CASH' | 'TRANSFER'
+  transferBankName      String? @map("transfer_bank_name")
+  transferAccountNumber String? @map("transfer_account_number")
+  transferAccountName   String? @map("transfer_account_name")
+
+  // ─── ใบสำคัญจ่ายเงิน ───────────────────────────────────────────────
+  voucherNumber String?   @unique @map("voucher_number") // EXP-YYYYMMNNNNN
+  voucherDate   DateTime? @map("voucher_date")
+  voucherPdfUrl String?   @map("voucher_pdf_url")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  customer         Customer? @relation(fields: [customerId], references: [id])
+  product          Product?  @relation(fields: [productId], references: [id])
+  branch           Branch?   @relation(fields: [branchId], references: [id])
+  appraisedBy      User?     @relation("TradeInAppraisedBy", fields: [appraisedById], references: [id])
+  idCardVerifiedBy User?     @relation("TradeInIdCardVerifiedBy", fields: [idCardVerifiedById], references: [id])
 
   @@index([customerId])
   @@index([status])
   @@index([createdAt])
+  @@index([imei])
+  @@index([branchId])
   @@map("trade_ins")
 }
 
@@ -2754,6 +2793,11 @@ model ChatAutoTrigger {
   sentAt       DateTime?       @map("sent_at")
   status       TriggerStatus   @default(PENDING)
 
+  /// Idempotency key (e.g. `${triggerType}:${paymentId}`).
+  /// Combined with customerId enforces "1 trigger per (customer, target)"
+  /// preventing duplicate sends from concurrent cron runs.
+  referenceKey String @map("reference_key")
+
   payload Json
 
   messageId    String? @map("message_id")
@@ -2761,7 +2805,25 @@ model ChatAutoTrigger {
 
   createdAt DateTime @default(now()) @map("created_at")
 
+  @@unique([customerId, referenceKey])
   @@index([scheduledFor, status])
   @@index([customerId])
   @@map("chat_auto_triggers")
+}
+
+/// OTP request store — DB-backed for multi-instance scaling.
+/// Replaces in-memory Map. Auto-cleaned by VerificationService.
+model ChatbotOtpRequest {
+  id            String   @id @default(uuid())
+  lineUserId    String   @unique @map("line_user_id")
+  customerId    String   @map("customer_id")
+  phone         String
+  hash          String
+  expiresAt     DateTime @map("expires_at")
+  attempts      Int      @default(0)
+  lastRequestAt DateTime @map("last_request_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([expiresAt])
+  @@map("chatbot_otp_requests")
 }

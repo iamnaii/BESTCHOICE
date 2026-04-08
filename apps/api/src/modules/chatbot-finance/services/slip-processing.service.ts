@@ -3,8 +3,8 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { StorageService } from '../../storage/storage.service';
 import { VisionService, SlipExtraction } from './vision.service';
 import { StaffNotificationService } from './staff-notification.service';
+import { FINANCE_BANK, isCompanyBankAccount } from '../constants/finance-rules';
 
-const EXPECTED_BANK_ACCOUNT = '203-1-16520-5';
 const AMOUNT_TOLERANCE = 0.5; // ±0.50 บาท
 
 export interface SlipProcessResult {
@@ -87,8 +87,8 @@ export class SlipProcessingService {
       };
     }
 
-    // 4. Match บัญชี
-    const wrongAccount = extracted.toAccount && !this.matchesBankAccount(extracted.toAccount);
+    // 4. Match บัญชี (exact digits-only match)
+    const wrongAccount = extracted.toAccount && !isCompanyBankAccount(extracted.toAccount);
     if (wrongAccount) {
       const evidence = await this.createEvidence({
         contractId: contract.id,
@@ -110,9 +110,9 @@ export class SlipProcessingService {
         ok: false,
         reply:
           '⚠️ สลิปนี้โอนเข้าบัญชีอื่นนะคะ\n\n' +
-          '🏦 บัญชีที่ถูกต้อง: กสิกรไทย\n' +
-          '🔢 203-1-16520-5\n' +
-          '👤 บจก. เบสท์ช้อยส์โฟน\n\n' +
+          `🏦 บัญชีที่ถูกต้อง: ${FINANCE_BANK.bankName}\n` +
+          `🔢 ${FINANCE_BANK.accountNumber}\n` +
+          `👤 ${FINANCE_BANK.accountName}\n\n` +
           'แอดมินจะตรวจสอบให้นะคะ',
         evidenceId: evidence.id,
         matched: false,
@@ -198,12 +198,6 @@ export class SlipProcessingService {
   }
 
   // ─── helpers ─────────────────────────────────────────────
-
-  private matchesBankAccount(slipAccount: string): boolean {
-    const digits = slipAccount.replace(/\D/g, '');
-    const expected = EXPECTED_BANK_ACCOUNT.replace(/\D/g, '');
-    return digits.includes(expected) || expected.includes(digits);
-  }
 
   private buildExtractedNote(s: SlipExtraction): string {
     const parts: string[] = ['[chatbot-finance]'];

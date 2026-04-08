@@ -1,4 +1,5 @@
 import { Body, Controller, Get, HttpCode, Logger, Post, Query } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { IsString, Length, Matches } from 'class-validator';
 import { VerificationService } from './services/verification.service';
 
@@ -40,6 +41,7 @@ export class ChatbotFinanceLiffController {
   constructor(private verification: VerificationService) {}
 
   @Get('status')
+  @Throttle({ short: { ttl: 60000, limit: 30 } }) // 30/นาที — เผื่อ LIFF page mount หลายครั้ง
   async status(@Query('lineUserId') lineUserId: string) {
     if (!lineUserId) {
       return { linked: false };
@@ -49,8 +51,9 @@ export class ChatbotFinanceLiffController {
 
   @Post('request-otp')
   @HttpCode(200)
+  @Throttle({ short: { ttl: 60000, limit: 5 } }) // 5/นาที/IP — ป้องกัน OTP spam + phone enumeration
   async requestOtp(@Body() dto: RequestOtpDto) {
-    this.logger.log(`[LIFF] OTP requested for line user`);
+    this.logger.log(`[LIFF] OTP requested`);
     return this.verification.requestOtp({
       lineUserId: dto.lineUserId,
       phone: dto.phone,
@@ -59,6 +62,7 @@ export class ChatbotFinanceLiffController {
 
   @Post('verify-otp')
   @HttpCode(200)
+  @Throttle({ short: { ttl: 60000, limit: 10 } }) // 10/นาที/IP — เผื่อพิมพ์ผิด
   async verifyOtp(@Body() dto: VerifyOtpDto) {
     const result = await this.verification.verifyOtp({
       lineUserId: dto.lineUserId,

@@ -159,9 +159,20 @@ export class ChatbotFinanceService {
       return;
     }
 
-    // Image → slip processing
+    // Image → slip processing (require customerId — guard against edge case
+    // where link became dangling between isLinked() and now)
     if (event.message.type === 'image') {
-      await this.handleImage(event, session.id, linkStatus.customerId!, userId);
+      if (!linkStatus.customerId) {
+        this.logger.warn(`[Finance] linked but no customerId for ${userId.slice(0, 8)}...`);
+        await this.replyAndSave(
+          session.id,
+          event.replyToken,
+          'ระบบพบปัญหาชั่วคราวค่ะ 🙏 รบกวนติดต่อเจ้าหน้าที่นะคะ',
+          'verify_inconsistent',
+        );
+        return;
+      }
+      await this.handleImage(event, session.id, linkStatus.customerId, userId);
       return;
     }
 
@@ -187,12 +198,23 @@ export class ChatbotFinanceService {
       text: userText,
     });
 
+    if (!linkStatus.customerId || !linkStatus.customerName) {
+      this.logger.warn(`[Finance] linked but missing customer data for ${userId.slice(0, 8)}...`);
+      await this.replyAndSave(
+        session.id,
+        event.replyToken,
+        'ระบบพบปัญหาชั่วคราวค่ะ 🙏 รบกวนติดต่อเจ้าหน้าที่นะคะ',
+        'verify_inconsistent',
+      );
+      return;
+    }
+
     const history = await this.sessions.getRecentMessages(session.id);
     const aiReply = await this.ai.generateReply({
       userMessage: userText,
       history: history.slice(0, -1),
-      customerId: linkStatus.customerId!,
-      customerName: linkStatus.customerName!,
+      customerId: linkStatus.customerId,
+      customerName: linkStatus.customerName,
       sessionId: session.id,
     });
 

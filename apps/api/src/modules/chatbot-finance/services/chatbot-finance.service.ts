@@ -10,6 +10,8 @@ import { LineFinanceClientService } from './line-finance-client.service';
 import { ChatSessionService } from './chat-session.service';
 import { VerificationService } from './verification.service';
 import { FinanceAiService } from './finance-ai.service';
+import { HandoffService } from './handoff.service';
+import { SlipProcessingService } from './slip-processing.service';
 
 const FALLBACK_REPLY =
   'ขออภัยค่ะ ระบบขัดข้องชั่วคราว 🙏\nรบกวนติดต่อเจ้าหน้าที่ 063-134-6356 ในเวลาทำการนะคะ';
@@ -32,6 +34,8 @@ export class ChatbotFinanceService {
     private sessions: ChatSessionService,
     private verification: VerificationService,
     private ai: FinanceAiService,
+    private handoff: HandoffService,
+    private slipProcessing: SlipProcessingService,
   ) {}
 
   /**
@@ -113,7 +117,6 @@ export class ChatbotFinanceService {
   private async handleMessage(event: LineMessageEvent): Promise<void> {
     const userId = event.source.userId;
 
-    // Phase A2 รองรับเฉพาะ 1:1 chat
     if (!userId || event.source.type !== 'user') {
       this.logger.debug(`Skip non-user message (type=${event.source.type})`);
       return;
@@ -121,11 +124,52 @@ export class ChatbotFinanceService {
 
     const session = await this.sessions.getOrCreate(userId);
 
-    // Phase A2: text only
+    // Verification gate
+    const linkStatus = await this.verification.isLinked(userId);
+    if (!linkStatus.linked) {
+      // บันทึก customer message ก่อน
+      const msgText =
+        event.message.type === 'text' ? event.message.text : `[${event.message.type}]`;
+      await this.sessions.saveMessage({
+        sessionId: session.id,
+        role: MessageRole.CUSTOMER,
+        text: msgText,
+      });
+      const reply = await this.buildVerifyPrompt();
+      await this.replyAndSave(session.id, event.replyToken, reply, 'verify_required');
+      return;
+    }
+
+    // Sync session.customerId ถ้าจำเป็น
+    if (!session.customerId && linkStatus.customerId) {
+      await this.sessions.linkSessionToCustomer(session.id, linkStatus.customerId);
+    }
+
+    // Handoff gate — ถ้า session อยู่ใน handoff mode bot หยุดตอบ
+    if (await this.handoff.isInHandoffMode(session.id)) {
+      this.logger.log(`[Finance] Skip — session ${session.id} in handoff mode`);
+      // ยังบันทึกข้อความเพื่อ history แต่ไม่ตอบ
+      const msgText =
+        event.message.type === 'text' ? event.message.text : `[${event.message.type}]`;
+      await this.sessions.saveMessage({
+        sessionId: session.id,
+        role: MessageRole.CUSTOMER,
+        text: msgText,
+      });
+      return;
+    }
+
+    // Image → slip processing
+    if (event.message.type === 'image') {
+      await this.handleImage(event, session.id, linkStatus.customerId!, userId);
+      return;
+    }
+
+    // Other non-text → unsupported
     if (event.message.type !== 'text') {
       const msg =
-        'น้องเบสยังรับเฉพาะข้อความตัวอักษรอยู่นะคะ 🙏\n' +
-        'ถ้ามีสลิปหรือรูป รบกวนติดต่อ 063-134-6356 ค่ะ';
+        'น้องเบสยังรับเฉพาะข้อความและรูปภาพ (สลิป) นะคะ 🙏\n' +
+        'ถ้ามีอย่างอื่น รบกวนติดต่อ 063-134-6356 ค่ะ';
       await this.sessions.saveMessage({
         sessionId: session.id,
         role: MessageRole.CUSTOMER,
@@ -135,29 +179,13 @@ export class ChatbotFinanceService {
       return;
     }
 
+    // Text → AI
     const userText = event.message.text.trim();
-
-    // 1. บันทึก customer message ก่อนเสมอ
     await this.sessions.saveMessage({
       sessionId: session.id,
       role: MessageRole.CUSTOMER,
       text: userText,
     });
-
-    // 2. ตรวจ verification: ใช้ CustomerLineLink (DB) เท่านั้น
-    const linkStatus = await this.verification.isLinked(userId);
-
-    if (!linkStatus.linked) {
-      const reply = await this.buildVerifyPrompt();
-      await this.replyAndSave(session.id, event.replyToken, reply, 'verify_required');
-      return;
-    }
-
-    // 3. Verified → ส่งให้ AI (อัพเดต session.customerId ให้ตรง ถ้าจำเป็น)
-    if (!session.customerId && linkStatus.customerId) {
-      // CustomerLineLink มี link อยู่ แต่ session ยังไม่ sync (สำหรับ session เก่าก่อน verify)
-      await this.sessions.linkSessionToCustomer(session.id, linkStatus.customerId);
-    }
 
     const history = await this.sessions.getRecentMessages(session.id);
     const aiReply = await this.ai.generateReply({
@@ -165,10 +193,12 @@ export class ChatbotFinanceService {
       history: history.slice(0, -1),
       customerId: linkStatus.customerId!,
       customerName: linkStatus.customerName!,
+      sessionId: session.id,
     });
 
     if (aiReply) {
-      await this.replyAndSave(session.id, event.replyToken, aiReply.text, 'ai_reply', {
+      const intent = aiReply.handoffTriggered ? 'ai_handoff' : 'ai_reply';
+      await this.replyAndSave(session.id, event.replyToken, aiReply.text, intent, {
         model: aiReply.model,
         inputTokens: aiReply.inputTokens,
         outputTokens: aiReply.outputTokens,
@@ -176,6 +206,57 @@ export class ChatbotFinanceService {
     } else {
       await this.replyAndSave(session.id, event.replyToken, FALLBACK_REPLY, 'fallback');
     }
+  }
+
+  // ─── image handler (slip) ────────────────────────────────
+
+  private async handleImage(
+    event: LineMessageEvent,
+    sessionId: string,
+    customerId: string,
+    lineUserId: string,
+  ): Promise<void> {
+    if (event.message.type !== 'image') return;
+
+    // บันทึก customer message
+    await this.sessions.saveMessage({
+      sessionId,
+      role: MessageRole.CUSTOMER,
+      type: 'IMAGE',
+      text: '[image]',
+    });
+
+    // ดาวน์โหลด media จาก LINE
+    let imageBuffer: Buffer;
+    try {
+      imageBuffer = await this.lineClient.getMessageContent(event.message.id);
+    } catch (err) {
+      this.logger.error(
+        `[Finance] image download failed: ${err instanceof Error ? err.message : err}`,
+      );
+      await this.replyAndSave(
+        sessionId,
+        event.replyToken,
+        'อ่านรูปไม่สำเร็จค่ะ 🙏 รบกวนส่งใหม่อีกครั้งนะคะ',
+        'image_error',
+      );
+      return;
+    }
+
+    // Process slip
+    const result = await this.slipProcessing.processSlip({
+      imageBuffer,
+      mediaType: 'image/jpeg',
+      customerId,
+      lineUserId,
+    });
+
+    await this.replyAndSave(
+      sessionId,
+      event.replyToken,
+      result.reply,
+      result.matched ? 'slip_matched' : 'slip_review',
+    );
   }
 
   // ─── helpers ─────────────────────────────────────────────

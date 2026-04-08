@@ -6,6 +6,10 @@ import { LineFinanceClientService } from './services/line-finance-client.service
 import { ChatSessionService } from './services/chat-session.service';
 import { FinanceAiService } from './services/finance-ai.service';
 import { FinanceToolsService } from './services/finance-tools.service';
+import { KnowledgeService } from './services/knowledge.service';
+import { HandoffService } from './services/handoff.service';
+import { VisionService } from './services/vision.service';
+import { SlipProcessingService } from './services/slip-processing.service';
 import { FinanceToolExecutor } from './tools/tool-executor';
 import { VerificationService } from './services/verification.service';
 import { LineFinanceWebhookGuard } from './guards/line-finance-webhook.guard';
@@ -15,12 +19,16 @@ import { NotificationsModule } from '../notifications/notifications.module';
  * Finance Bot Module ("น้องเบส")
  * Channel: LINE OA "ชำระค่างวด BESTCHOICE"
  *
- * Phase A1: webhook skeleton + session/message persistence ✅
- * Phase A2: verification (phone + OTP) + AI service (Claude) ✅
- * Phase B+: tools, vision, auto-trigger, handoff
+ * Phases:
+ *   A1 ✅ webhook + session/message persistence
+ *   A2 ✅ verification (LIFF + OTP) + AI service (Sonnet)
+ *   B  ✅ tools + knowledge base + handoff
+ *   C  ✅ vision (slip processing)
+ *   D     auto-trigger reminders (cron)
+ *   E     analytics + KB admin UI
  */
 @Module({
-  imports: [NotificationsModule], // reuse SMS service for OTP
+  imports: [NotificationsModule], // SMS for OTP
   controllers: [ChatbotFinanceController, ChatbotFinanceLiffController],
   providers: [
     ChatbotFinanceService,
@@ -28,6 +36,10 @@ import { NotificationsModule } from '../notifications/notifications.module';
     ChatSessionService,
     FinanceAiService,
     FinanceToolsService,
+    KnowledgeService,
+    HandoffService,
+    VisionService,
+    SlipProcessingService,
     FinanceToolExecutor,
     VerificationService,
     LineFinanceWebhookGuard,

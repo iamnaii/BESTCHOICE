@@ -70,6 +70,48 @@ export const FINANCE_TOOLS: Tool[] = [
       required: [],
     },
   },
+  {
+    name: 'search_knowledge_base',
+    description:
+      'ค้นหา FAQ ที่เกี่ยวข้องกับคำถามลูกค้า ใช้เมื่อไม่แน่ใจคำตอบ — ' +
+      'จะคืน FAQ entries ที่ admin set ไว้ล่วงหน้า ใช้เป็น reference สำหรับตอบ',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'คำถามของลูกค้าหรือ keyword ที่ต้องการค้นหา',
+        },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'handoff_to_human',
+    description:
+      'ส่งต่อให้พนักงานเมื่อ: (1) ลูกค้าโกรธ/complaint (2) เรื่องที่ต้องคนตัดสินใจ ' +
+      'เช่น ขอเลื่อนชำระ ขอปลดล็อก ปิดยอด ขอผ่อนผัน (3) bot ตอบไม่มั่นใจ ' +
+      'ใช้ priority="critical" สำหรับ complaint, "high" สำหรับเรื่องเงินเร่งด่วน',
+    input_schema: {
+      type: 'object',
+      properties: {
+        reason: {
+          type: 'string',
+          description: 'เหตุผลสั้น ๆ เช่น "ขอเลื่อนชำระ", "complaint ค่าปรับ"',
+        },
+        priority: {
+          type: 'string',
+          enum: ['low', 'normal', 'high', 'critical'],
+          description: 'ระดับความเร่งด่วน',
+        },
+        summary: {
+          type: 'string',
+          description: 'สรุปสั้น ๆ เกี่ยวกับเรื่องที่ลูกค้ากำลังพูด เพื่อให้พนักงานเข้าใจ context',
+        },
+      },
+      required: ['reason', 'priority', 'summary'],
+    },
+  },
 ];
 
 export type ToolName =
@@ -77,4 +119,6 @@ export type ToolName =
   | 'get_payment_schedule'
   | 'calculate_fine'
   | 'list_recent_receipts'
-  | 'get_bank_info';
+  | 'get_bank_info'
+  | 'search_knowledge_base'
+  | 'handoff_to_human';

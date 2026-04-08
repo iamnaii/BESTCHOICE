@@ -13,6 +13,7 @@ export interface AiReply {
   inputTokens: number;
   outputTokens: number;
   toolsUsed: string[];
+  handoffTriggered: boolean;
 }
 
 const MAX_TOOL_ITERATIONS = 5;
@@ -67,6 +68,7 @@ export class FinanceAiService {
     history: ChatMessage[];
     customerId: string;
     customerName: string;
+    sessionId: string;
   }): Promise<AiReply | null> {
     if (!this.anthropic) return null;
 
@@ -76,6 +78,7 @@ export class FinanceAiService {
 
       let totalInput = 0;
       let totalOutput = 0;
+      let handoffTriggered = false;
       const toolsUsed: string[] = [];
 
       // Tool use loop
@@ -105,6 +108,7 @@ export class FinanceAiService {
             inputTokens: totalInput,
             outputTokens: totalOutput,
             toolsUsed,
+            handoffTriggered,
           };
         }
 
@@ -122,8 +126,9 @@ export class FinanceAiService {
             toolsUsed.push(block.name);
             const result = await this.toolExecutor.execute(
               { name: block.name, input: block.input as Record<string, unknown> },
-              params.customerId,
+              { customerId: params.customerId, sessionId: params.sessionId },
             );
+            if (result.triggeredHandoff) handoffTriggered = true;
             return {
               type: 'tool_result' as const,
               tool_use_id: block.id,

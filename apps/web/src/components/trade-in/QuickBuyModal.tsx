@@ -13,7 +13,7 @@ import {
   CreditCard,
   Upload,
   AlertTriangle,
-  Zap,
+  ShoppingBag,
 } from 'lucide-react';
 import { brands, getModels } from '@/data/productCatalog';
 import SignaturePadFull from '@/components/signing/SignaturePadFull';
@@ -266,14 +266,14 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
     >
       <div className="w-full max-w-3xl bg-white dark:bg-slate-950 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-3rem)] ring-1 ring-slate-200 dark:ring-slate-800">
         {/* Header — sticky */}
-        <div className="sticky top-0 z-10 bg-gradient-to-b from-amber-50 to-white dark:from-amber-950/30 dark:to-slate-950 border-b border-amber-200/60 dark:border-amber-900/40 px-6 py-4 flex items-center justify-between">
+        <div className="sticky top-0 z-10 bg-gradient-to-b from-emerald-50 to-white dark:from-emerald-950/30 dark:to-slate-950 border-b border-emerald-200/60 dark:border-emerald-900/40 px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="size-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-sm">
-              <Zap className="size-5" />
+            <div className="size-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-sm">
+              <ShoppingBag className="size-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900 dark:text-slate-50">รับซื้อด่วน (Quick Buy)</h2>
-              <p className="text-xs text-slate-600 dark:text-slate-400">ขั้นตอนเดียวจบ — สำหรับเคสที่ตัดสินใจรับซื้อทันที</p>
+              <h2 className="text-base font-bold text-slate-900 dark:text-slate-50">รับซื้อมือถือมือสอง</h2>
+              <p className="text-xs text-slate-600 dark:text-slate-400">กรอกข้อมูลผู้ขาย เครื่อง และยืนยันการรับซื้อ</p>
             </div>
           </div>
           <button
@@ -295,7 +295,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
                     s < step
                       ? 'bg-emerald-500 text-white'
                       : s === step
-                      ? 'bg-amber-500 text-white ring-4 ring-amber-200 dark:ring-amber-900/40'
+                      ? 'bg-emerald-600 text-white ring-4 ring-emerald-200 dark:ring-emerald-900/40'
                       : 'bg-slate-200 dark:bg-slate-800 text-slate-500'
                   }`}
                 >
@@ -606,7 +606,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
             <Button
               onClick={submit}
               disabled={quickBuyMutation.isPending}
-              className="bg-amber-500 hover:bg-amber-600 text-white font-bold"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
             >
               {quickBuyMutation.isPending ? 'กำลังบันทึก...' : '✓ บันทึก + ออกใบสำคัญ'}
             </Button>

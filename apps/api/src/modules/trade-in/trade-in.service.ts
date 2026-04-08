@@ -323,114 +323,84 @@ export class TradeInService {
     });
   }
 
-  // ─── Quick Buy: 1-shot create + appraise + accept + voucher allocate ──
+  // ─── Quick Buy: orchestrator ที่เรียก stages เดิมตามลำดับ ──
   /**
-   * สำหรับ POS counter — พนักงานตัดสินใจรับซื้อทันที ไม่ต้องผ่านขั้นตอนแยก
-   * - Validation เหมือน accept (ต้องมี idCardVerified + sellerConsentSigned + payment)
-   * - All-or-nothing transaction
-   * - คืน { tradeInId, voucherNumber } พร้อมเปิด PDF ทันที
+   * Orchestrator pattern — เรียก service methods ที่มีอยู่จริงตามลำดับ:
+   *   create() → appraise() → accept() → voucher.allocate()
+   *
+   * ข้อดี:
+   *  - "Full layer" — ทุก stage รัน validation + business logic ของตัวเอง (single source of truth)
+   *  - Audit trail ครบ: PENDING_APPRAISAL → APPRAISED → ACCEPTED → voucher allocated
+   *  - ไม่ duplicate logic — บั๊กแก้ที่เดียว fix ทุก flow
+   *  - User experience: คลิกครั้งเดียว แต่ backend run 4 stage
+   *
+   * Trade-off:
+   *  - ไม่ atomic ใน 1 transaction (แต่ละ stage มี tx ของตัวเอง)
+   *  - ถ้า fail กลางทาง → record ค้างใน intermediate state (PENDING/APPRAISED)
+   *    ซึ่งสามารถกู้คืนได้ผ่าน legacy modals (appraise/accept ทีละขั้น)
    */
   async quickBuy(dto: QuickBuyTradeInDto, userId: string) {
-    // Validation pre-flight (ก่อนเข้า transaction)
-    if (!dto.idCardVerified) {
-      throw new BadRequestException('ต้องยืนยันว่าตรวจบัตรประชาชนผู้ขายแล้ว');
-    }
-    if (!dto.sellerConsentSigned) {
-      throw new BadRequestException('ผู้ขายต้องเซ็นยืนยันความเป็นเจ้าของ');
-    }
-    if (dto.agreedPrice <= 0) {
-      throw new BadRequestException('ราคารับซื้อต้องมากกว่า 0');
-    }
-    if (dto.paymentMethod === 'TRANSFER') {
-      if (!dto.transferBankName || !dto.transferAccountNumber || !dto.transferAccountName) {
-        throw new BadRequestException('กรณีโอนต้องระบุธนาคาร, เลขบัญชี และชื่อบัญชี');
-      }
-    }
-    if (dto.sellerIdCardNumber && !this.validateThaiNationalId(dto.sellerIdCardNumber)) {
-      throw new BadRequestException('เลขบัตรประชาชนไม่ถูกต้อง');
-    }
-
-    // เช็ค IMEI ซ้ำ
-    let imeiBlacklistResult: 'clean' | 'duplicate' | null = null;
-    if (dto.imei) {
-      const check = await this.checkImei(dto.imei);
-      imeiBlacklistResult = check.result;
-    }
-
-    // อัปโหลดรูปบัตรถ้ามี (S3 ถ้าตั้งค่า, ไม่งั้น save key)
-    let idCardPhotoKey: string | undefined;
-    if (dto.idCardPhotoBase64) {
-      const { buffer, contentType } = this.decodeBase64Image(dto.idCardPhotoBase64);
-      const ext = contentType.split('/')[1] || 'jpg';
-      const key = `trade-ins/_pending/${Date.now()}-id-card.${ext}`;
-      await this.storage.upload(key, buffer, contentType);
-      idCardPhotoKey = key;
-    }
-
-    // ลายเซ็น base64 (ไม่ใช้ S3)
-    let sellerSigBase64: string | null = null;
-    if (dto.sellerSignatureBase64) {
-      if (dto.sellerSignatureBase64.length > 200_000) {
-        throw new BadRequestException('ลายเซ็นมีขนาดใหญ่เกินไป');
-      }
-      sellerSigBase64 = dto.sellerSignatureBase64;
-    }
-
-    // Atomic: create + skip ขั้นตอนกลาง → ACCEPTED ทันที + allocate voucher
-    const result = await this.prisma.$transaction(async (tx) => {
-      const tradeIn = await tx.tradeIn.create({
-        data: {
-          branchId: dto.branchId,
-          deviceBrand: dto.deviceBrand,
-          deviceModel: dto.deviceModel,
-          deviceStorage: dto.deviceStorage,
-          deviceColor: dto.deviceColor,
-          deviceCondition: dto.deviceCondition,
-          imei: dto.imei,
-          notes: dto.notes,
-          // Seller
-          sellerName: dto.sellerName,
-          sellerPhone: dto.sellerPhone,
-          sellerIdCardNumber: dto.sellerIdCardNumber,
-          sellerAddress: dto.sellerAddress,
-          idCardPhotoUrl: idCardPhotoKey,
-          idCardSource: dto.idCardSource,
-          // Anti-theft
-          sellerSignatureBase64: sellerSigBase64 ?? undefined,
-          sellerConsentSigned: true,
-          policeReportAcknowledged: true,
-          imeiBlacklistResult,
-          imeiBlacklistCheckedAt: dto.imei ? new Date() : null,
-          // Skip ขั้นตอนกลาง — ราคาเดียวกันทั้ง 3 field
-          estimatedValue: dto.agreedPrice,
-          offeredPrice: dto.agreedPrice,
-          agreedPrice: dto.agreedPrice,
-          appraisedById: userId,
-          // Accept
-          status: 'ACCEPTED',
-          idCardVerifiedAt: new Date(),
-          idCardVerifiedById: userId,
-          // Payment
-          paymentMethod: dto.paymentMethod,
-          transferBankName: dto.paymentMethod === 'TRANSFER' ? dto.transferBankName : null,
-          transferAccountNumber:
-            dto.paymentMethod === 'TRANSFER' ? dto.transferAccountNumber : null,
-          transferAccountName:
-            dto.paymentMethod === 'TRANSFER' ? dto.transferAccountName : null,
-        },
-      });
-      return tradeIn;
+    // ─── Stage 1: Create (PENDING_APPRAISAL) ───
+    // ใช้ create() เดิม — validation seller/IMEI dup/ID card upload เกิดที่นี่
+    const created = await this.create({
+      branchId: dto.branchId,
+      deviceBrand: dto.deviceBrand,
+      deviceModel: dto.deviceModel,
+      deviceStorage: dto.deviceStorage,
+      deviceColor: dto.deviceColor,
+      deviceCondition: dto.deviceCondition,
+      imei: dto.imei,
+      estimatedValue: dto.agreedPrice,
+      notes: dto.notes,
+      sellerName: dto.sellerName,
+      sellerPhone: dto.sellerPhone,
+      sellerIdCardNumber: dto.sellerIdCardNumber,
+      sellerAddress: dto.sellerAddress,
+      idCardPhotoBase64: dto.idCardPhotoBase64,
+      idCardSource: dto.idCardSource,
     });
 
-    // Allocate voucher number (ใช้ retry ใน voucher.service)
-    const voucher = await this.voucher.allocate(result.id);
+    // ─── Stage 2: Appraise (PENDING_APPRAISAL → APPRAISED) ───
+    await this.appraise(
+      created.id,
+      {
+        offeredPrice: dto.agreedPrice,
+        deviceCondition: dto.deviceCondition || 'B',
+      },
+      userId,
+    );
 
-    // (no logger — service ไม่มี logger; success คืน response แทน)
+    // ─── Stage 3: Accept (APPRAISED → ACCEPTED) ───
+    // Validation consent + payment + signature เกิดที่นี่
+    await this.accept(
+      created.id,
+      {
+        idCardVerified: dto.idCardVerified,
+        sellerConsentSigned: dto.sellerConsentSigned,
+        policeReportAcknowledged: true,
+        paymentMethod: dto.paymentMethod,
+        transferBankName: dto.transferBankName,
+        transferAccountNumber: dto.transferAccountNumber,
+        transferAccountName: dto.transferAccountName,
+        sellerSignatureBase64: dto.sellerSignatureBase64,
+      },
+      userId,
+    );
+
+    // ─── Stage 4: Allocate voucher number ───
+    const voucher = await this.voucher.allocate(created.id);
+
+    // Re-fetch เพื่อตอบ IMEI warning (create() บันทึก imeiBlacklistResult ให้แล้ว)
+    const final = await this.prisma.tradeIn.findUnique({
+      where: { id: created.id },
+      select: { imeiBlacklistResult: true },
+    });
+
     return {
-      id: result.id,
+      id: created.id,
       voucherNumber: voucher.voucherNumber,
       voucherDate: voucher.voucherDate,
-      imeiWarning: imeiBlacklistResult === 'duplicate',
+      imeiWarning: final?.imeiBlacklistResult === 'duplicate',
     };
   }
 

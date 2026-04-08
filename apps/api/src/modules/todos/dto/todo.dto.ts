@@ -6,7 +6,6 @@ import {
   IsDateString,
   IsUUID,
   IsInt,
-  IsNumber,
   Min,
   Max,
   MaxLength,
@@ -76,14 +75,15 @@ export class AttachmentDto {
   @IsString()
   name!: string;
 
-  @IsNumber()
+  @IsInt()
+  @Min(0)
   size!: number;
 
   @IsString()
   mimeType!: string;
 
   @IsOptional()
-  @IsString()
+  @IsDateString()
   uploadedAt?: string;
 }
 

@@ -43,11 +43,16 @@ async function bootstrap() {
   });
 
   // Global validation pipe with security options
+  // NOTE: `forbidNonWhitelisted` is intentionally OFF.
+  // เปิดแล้วจะพังกับ controllers ที่ใช้ `@Query() dto: PaginationDto` ร่วมกับ
+  // `@Query('search') search?: string` — Nest จะ validate query object ทั้งก้อน
+  // กับ PaginationDto แล้ว reject ทุก param ที่ไม่ใช่ page/limit
+  // (e.g. /customers?search=... → 400 "property search should not exist")
+  // `whitelist: true` ยังเอาฟิลด์ส่วนเกินออกจาก DTO อยู่แล้ว — ปลอดภัยเพียงพอ
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
       transform: true,
-      forbidNonWhitelisted: true,
       transformOptions: {
         enableImplicitConversion: true,
       },

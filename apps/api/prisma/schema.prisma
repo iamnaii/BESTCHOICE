@@ -2049,6 +2049,14 @@ model ChartOfAccount {
   parentCode   String?      @map("parent_code") // parent account code for hierarchy
   level        Int          @default(1) // 1=group, 2=sub-group, 3=detail
   isActive     Boolean      @default(true) @map("is_active")
+
+  // ── การใช้งานข้ามบริษัท (multi-entity) ──
+  allowedCompanies String[] @default([]) @map("allowed_companies") // [] = ใช้ได้ทุกบริษัท, ["FINANCE"] = เฉพาะ FINANCE, ["SHOP"] = เฉพาะ SHOP
+
+  // ── การ sync กับ PEAK (ระบบบัญชีภายนอก) ──
+  peakAccountCode String? @map("peak_account_code") // รหัสบัญชีฝั่ง PEAK (สำหรับ export journal)
+  peakAccountId   String? @map("peak_account_id")   // ID บัญชีบน PEAK API
+
   createdAt    DateTime     @default(now()) @map("created_at")
   updatedAt    DateTime     @updatedAt @map("updated_at")
 
@@ -2440,7 +2448,9 @@ model TradeIn {
   idCardVerifiedById String?   @map("id_card_verified_by_id")
 
   // ─── การยินยอม + ตรวจสอบของโจร ────────────────────────────────────
-  sellerSignatureUrl       String?   @map("seller_signature_url") // ลายเซ็นผู้ขาย (ยืนยันเป็นเจ้าของจริง)
+  sellerSignatureUrl       String?   @map("seller_signature_url") // ลายเซ็นผู้ขาย (S3 — legacy)
+  sellerSignatureBase64    String?   @map("seller_signature_base64") @db.Text // ลายเซ็นผู้ขาย base64 (เก็บใน DB ตรง ๆ)
+  voucherPrintedAt         DateTime? @map("voucher_printed_at") // ครั้งแรกที่พิมพ์ใบสำคัญ (ใช้ check "สำเนา")
   sellerConsentSigned      Boolean   @default(false) @map("seller_consent_signed")
   policeReportAcknowledged Boolean   @default(false) @map("police_report_acknowledged")
   imeiBlacklistCheckedAt   DateTime? @map("imei_blacklist_checked_at")

@@ -12,9 +12,10 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useAuth } from '@/contexts/AuthContext';
-import { RefreshCw, Plus, Search, CheckCircle, XCircle, FileText, CreditCard, Upload, AlertTriangle } from 'lucide-react';
+import { RefreshCw, Plus, Search, CheckCircle, XCircle, FileText, CreditCard, Upload, AlertTriangle, Zap } from 'lucide-react';
 import { brands, getModels } from '@/data/productCatalog';
 import SignaturePadFull from '@/components/signing/SignaturePadFull';
+import QuickBuyModal from '@/components/trade-in/QuickBuyModal';
 
 /** Map color name (English/Thai) to a hex value for preview swatches */
 function colorNameToHex(name: string): string {
@@ -95,6 +96,7 @@ export default function TradeInPage() {
   const [page, setPage] = useState(1);
   const debouncedSearch = useDebounce(search);
   const [showCreate, setShowCreate] = useState(false);
+  const [showQuickBuy, setShowQuickBuy] = useState(false);
   const [appraiseModal, setAppraiseModal] = useState<TradeIn | null>(null);
   const [appraiseValue, setAppraiseValue] = useState('');
   const [appraiseCondition, setAppraiseCondition] = useState('B');
@@ -153,9 +155,14 @@ export default function TradeInPage() {
   const { data, isLoading } = useQuery<TradeInsResponse>({
     queryKey: ['trade-ins', page, debouncedSearch],
     queryFn: async () => {
-      const params = new URLSearchParams({ page: String(page), limit: '50' });
-      if (debouncedSearch) params.set('search', debouncedSearch);
-      return (await api.get(`/trade-ins?${params}`)).data;
+      const res = await api.get('/trade-ins', {
+        params: {
+          page,
+          limit: 50,
+          ...(debouncedSearch ? { search: debouncedSearch } : {}),
+        },
+      });
+      return res.data;
     },
   });
 
@@ -487,11 +494,25 @@ export default function TradeInPage() {
         subtitle="จัดการรายการรับซื้อเครื่องมือถือ / อุปกรณ์"
         icon={<RefreshCw className="size-5" />}
         action={
-          <Button onClick={() => setShowCreate(true)}>
+          <Button
+            onClick={() => setShowQuickBuy(true)}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
             <Plus className="size-4 mr-1.5" />
-            สร้างรายการรับซื้อ
+            รับซื้อเครื่อง
           </Button>
         }
+      />
+
+      {/* Quick Buy Modal */}
+      <QuickBuyModal
+        open={showQuickBuy}
+        onClose={() => setShowQuickBuy(false)}
+        onSuccess={(id) => {
+          queryClient.invalidateQueries({ queryKey: ['trade-ins'] });
+          // เปิด PDF ทันที
+          openVoucherPdf(id);
+        }}
       />
 
       <Card>
@@ -514,344 +535,6 @@ export default function TradeInPage() {
         </CardContent>
       </Card>
 
-      {/* Create Modal — full-screen overlay */}
-      {showCreate && (
-        <div className="fixed inset-0 z-50 bg-slate-900/30 backdrop-blur-md flex items-start justify-center pt-8 pb-8" role="dialog" aria-modal="true" aria-label="สร้างรายการรับซื้อ">
-          <div className="w-full max-w-2xl bg-white dark:bg-slate-950 rounded-2xl shadow-2xl shadow-slate-900/10 overflow-hidden flex flex-col max-h-[calc(100vh-4rem)] ring-1 ring-slate-200/60 dark:ring-slate-800/60">
-            {/* Sticky Header — elegant gradient */}
-            <div className="sticky top-0 z-10 bg-gradient-to-b from-white to-slate-50/80 dark:from-slate-950 dark:to-slate-900/80 backdrop-blur-xl border-b border-slate-200/60 dark:border-slate-800/60 px-6 py-5 flex items-center justify-between shrink-0">
-              <button type="button" onClick={() => { setShowCreate(false); resetForm(); }} className="flex items-center gap-1.5 text-sm font-medium text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-                กลับ
-              </button>
-              <div className="text-center">
-                <h2 className="text-base font-semibold tracking-tight text-slate-900 dark:text-slate-50">สร้างรายการรับซื้อ</h2>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">กรอกข้อมูลเพื่อรับซื้อเครื่อง</p>
-              </div>
-              <div className="w-16" />
-            </div>
-
-            <form onSubmit={handleCreate} className="flex-1 overflow-y-auto flex flex-col bg-slate-50/40 dark:bg-slate-900/40">
-              <div className="p-6 space-y-4 flex-1">
-
-                {/* Section: ประเภทผู้ขาย */}
-                <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-950/60 p-4 shadow-sm">
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setSellerMode('customer')}
-                      className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${sellerMode === 'customer' ? 'bg-sky-500 text-white shadow-sm' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'}`}
-                    >
-                      ลูกค้าในระบบ
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSellerMode('walkin')}
-                      className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${sellerMode === 'walkin' ? 'bg-amber-500 text-white shadow-sm' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'}`}
-                    >
-                      Walk-in (ผู้ขายรายใหม่)
-                    </button>
-                  </div>
-                </div>
-
-                {/* Section: ลูกค้า / ผู้ขาย walk-in */}
-                {sellerMode === 'walkin' ? (
-                  <div className="group rounded-2xl border border-amber-200/80 dark:border-amber-900/40 bg-amber-50/30 dark:bg-amber-950/20 p-5 shadow-sm">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="flex items-center justify-center size-10 rounded-xl bg-amber-100 dark:bg-amber-900/40 text-amber-600">
-                        <CreditCard className="size-5" />
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="text-sm font-semibold tracking-tight">ข้อมูลผู้ขาย (Walk-in)</h3>
-                        <p className="text-xs text-slate-500 mt-0.5">บันทึกข้อมูลผู้ขายและตรวจบัตรประชาชนเพื่อป้องกันการรับซื้อของโจร</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={readFromCardReader}
-                        className="px-3 py-2 rounded-lg bg-sky-500 text-white text-xs font-semibold hover:bg-sky-600 shadow-sm flex items-center gap-1.5"
-                      >
-                        <CreditCard className="size-3.5" />
-                        อ่านบัตร
-                      </button>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-medium mb-1.5">ชื่อ-นามสกุล <span className="text-destructive">*</span></label>
-                        <input
-                          type="text"
-                          className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm"
-                          placeholder="ชื่อ นามสกุล"
-                          value={form.sellerName}
-                          onChange={(e) => setForm((f) => ({ ...f, sellerName: e.target.value }))}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium mb-1.5">เบอร์โทร</label>
-                        <input
-                          type="tel"
-                          className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm"
-                          placeholder="0812345678"
-                          value={form.sellerPhone}
-                          onChange={(e) => setForm((f) => ({ ...f, sellerPhone: e.target.value }))}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium mb-1.5">เลขบัตรประชาชน</label>
-                        <input
-                          type="text"
-                          maxLength={13}
-                          className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm font-mono"
-                          placeholder="1234567890123"
-                          value={form.sellerIdCardNumber}
-                          onChange={(e) => setForm((f) => ({ ...f, sellerIdCardNumber: e.target.value.replace(/\D/g, '') }))}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium mb-1.5">รูปบัตรประชาชน</label>
-                        <label className="flex items-center justify-center gap-2 h-10 px-3 rounded-lg border border-dashed border-input bg-background text-sm cursor-pointer hover:border-sky-400 transition-colors">
-                          {form.idCardPhotoBase64 ? (
-                            <>
-                              <CheckCircle className="size-4 text-emerald-500" />
-                              <span className="text-emerald-600">อัปโหลดแล้ว</span>
-                            </>
-                          ) : (
-                            <>
-                              <Upload className="size-4" />
-                              <span className="text-muted-foreground">เลือกไฟล์</span>
-                            </>
-                          )}
-                          <input type="file" accept="image/*" className="hidden" onChange={handleIdCardUpload} />
-                        </label>
-                      </div>
-                      <div className="col-span-2">
-                        <label className="block text-xs font-medium mb-1.5">ที่อยู่ตามบัตร</label>
-                        <textarea
-                          rows={2}
-                          className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
-                          placeholder="บ้านเลขที่ ตำบล อำเภอ จังหวัด"
-                          value={form.sellerAddress}
-                          onChange={(e) => setForm((f) => ({ ...f, sellerAddress: e.target.value }))}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                <div className="group rounded-2xl border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-950/60 p-5 shadow-sm shadow-slate-900/[0.02] hover:shadow-md hover:shadow-sky-500/5 hover:border-sky-200 dark:hover:border-sky-900/60 transition-all duration-300">
-                  <div className="flex items-center gap-3.5 mb-5">
-                    <div className="flex items-center justify-center size-10 rounded-xl bg-gradient-to-br from-sky-50 to-blue-100/80 dark:from-sky-950/60 dark:to-blue-900/40 text-sky-600 dark:text-sky-400 ring-1 ring-sky-100 dark:ring-sky-900/60 group-hover:scale-105 transition-transform">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="text-sm font-semibold tracking-tight text-slate-900 dark:text-slate-50">ลูกค้า</h3>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">เลือกลูกค้าที่จะรับซื้อเครื่อง</p>
-                    </div>
-                  </div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">ลูกค้า <span className="text-destructive">*</span></label>
-                  {form.customerId ? (
-                    <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-emerald-500/30 bg-emerald-500/5">
-                      <CheckCircle className="size-4 text-emerald-500 shrink-0" />
-                      <span className="flex-1 text-sm font-medium text-foreground">
-                        {customers.find((c) => c.id === form.customerId)?.name || 'เลือกแล้ว'}
-                      </span>
-                      <button type="button" onClick={() => setForm((f) => ({ ...f, customerId: '' }))} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                        เปลี่ยน
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                      <input
-                        type="text"
-                        className="w-full h-10 pl-9 pr-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                        placeholder="ค้นหาชื่อ / เบอร์โทร..."
-                        value={customerSearch}
-                        onChange={(e) => setCustomerSearch(e.target.value)}
-                      />
-                      {customerSearch.length >= 2 && customers.length === 0 && (
-                        <div className="absolute z-50 mt-1 w-full bg-popover border border-border rounded-lg shadow-lg p-3 text-xs text-muted-foreground">
-                          ไม่พบลูกค้า — ลองค้นด้วยชื่อ/เบอร์/เลขบัตร
-                        </div>
-                      )}
-                      {customers.length > 0 && (
-                        <div className="absolute z-50 mt-1 w-full bg-popover border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                          {customers.map((c) => (
-                            <button
-                              key={c.id}
-                              type="button"
-                              className="w-full px-3 py-2 text-left text-sm hover:bg-muted transition-colors"
-                              onClick={() => { setForm((f) => ({ ...f, customerId: c.id })); setCustomerSearch(''); }}
-                            >
-                              <span className="font-medium">{c.name}</span>
-                              <span className="text-muted-foreground ml-2">{c.phone}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-                )}
-
-                {/* Section: ข้อมูลเครื่อง */}
-                <div className="group rounded-2xl border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-950/60 p-5 shadow-sm shadow-slate-900/[0.02] hover:shadow-md hover:shadow-indigo-500/5 hover:border-indigo-200 dark:hover:border-indigo-900/60 transition-all duration-300">
-                  <div className="flex items-center gap-3.5 mb-5">
-                    <div className="flex items-center justify-center size-10 rounded-xl bg-gradient-to-br from-indigo-50 to-violet-100/80 dark:from-indigo-950/60 dark:to-violet-900/40 text-indigo-600 dark:text-indigo-400 ring-1 ring-indigo-100 dark:ring-indigo-900/60 group-hover:scale-105 transition-transform">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg>
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="text-sm font-semibold tracking-tight text-slate-900 dark:text-slate-50">ข้อมูลเครื่อง</h3>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">เลือกตามลำดับ: ยี่ห้อ → รุ่น → ความจุ → สี</p>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-medium text-foreground mb-1.5">ยี่ห้อ <span className="text-destructive">*</span></label>
-                      <select
-                        className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                        value={form.deviceBrand}
-                        onChange={(e) => setForm((f) => ({ ...f, deviceBrand: e.target.value, deviceModel: '', deviceStorage: '', deviceColor: '' }))}
-                      >
-                        <option value="">-- เลือกยี่ห้อ --</option>
-                        {brands.map((b) => (
-                          <option key={b} value={b}>{b}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-foreground mb-1.5">รุ่น <span className="text-destructive">*</span></label>
-                      <select
-                        className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                        value={form.deviceModel}
-                        onChange={(e) => setForm((f) => ({ ...f, deviceModel: e.target.value, deviceStorage: '', deviceColor: '' }))}
-                        disabled={!form.deviceBrand}
-                      >
-                        <option value="">-- เลือกรุ่น --</option>
-                        {form.deviceBrand && getModels(form.deviceBrand).map((m) => (
-                          <option key={m.name} value={m.name}>{m.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-foreground mb-1.5">ความจุ</label>
-                      <select
-                        className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                        value={form.deviceStorage}
-                        onChange={(e) => setForm((f) => ({ ...f, deviceStorage: e.target.value }))}
-                        disabled={!form.deviceModel}
-                      >
-                        <option value="">-- เลือกความจุ --</option>
-                        {form.deviceBrand && form.deviceModel &&
-                          (getModels(form.deviceBrand).find((m) => m.name === form.deviceModel)?.storage || []).map((s) => (
-                            <option key={s} value={s}>{s}</option>
-                          ))
-                        }
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-foreground mb-1.5">สี</label>
-                      <div className="relative">
-                        <select
-                          className="w-full h-10 rounded-lg border border-input bg-background pl-10 pr-3 text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                          value={form.deviceColor}
-                          onChange={(e) => setForm((f) => ({ ...f, deviceColor: e.target.value }))}
-                          disabled={!form.deviceModel}
-                        >
-                          <option value="">-- เลือกสี --</option>
-                          {form.deviceBrand && form.deviceModel &&
-                            (getModels(form.deviceBrand).find((m) => m.name === form.deviceModel)?.colors || []).map((c) => (
-                              <option key={c} value={c}>{c}</option>
-                            ))
-                          }
-                        </select>
-                        {form.deviceColor && (
-                          <span
-                            className="absolute left-3 top-1/2 -translate-y-1/2 size-5 rounded-full border border-border shadow-sm pointer-events-none"
-                            style={{ backgroundColor: colorNameToHex(form.deviceColor) }}
-                            title={form.deviceColor}
-                          />
-                        )}
-                        {!form.deviceColor && (
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 size-5 rounded-full border border-dashed border-border pointer-events-none" />
-                        )}
-                      </div>
-                    </div>
-                    <div className="col-span-2">
-                      <label className="block text-xs font-medium text-foreground mb-1.5">สภาพเครื่อง</label>
-                      <select
-                        className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                        value={form.deviceCondition}
-                        onChange={(e) => setForm((f) => ({ ...f, deviceCondition: e.target.value }))}
-                      >
-                        <option value="">-- เลือกสภาพ --</option>
-                        {conditionOptions.map((o) => (
-                          <option key={o.value} value={o.value}>{o.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Section: IMEI + ราคา */}
-                <div className="group rounded-2xl border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-950/60 p-5 shadow-sm shadow-slate-900/[0.02] hover:shadow-md hover:shadow-teal-500/5 hover:border-teal-200 dark:hover:border-teal-900/60 transition-all duration-300">
-                  <div className="flex items-center gap-3.5 mb-5">
-                    <div className="flex items-center justify-center size-10 rounded-xl bg-gradient-to-br from-teal-50 to-emerald-100/80 dark:from-teal-950/60 dark:to-emerald-900/40 text-teal-600 dark:text-teal-400 ring-1 ring-teal-100 dark:ring-teal-900/60 group-hover:scale-105 transition-transform">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="text-sm font-semibold tracking-tight text-slate-900 dark:text-slate-50">IMEI และราคาประเมิน</h3>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">หมายเลขเครื่อง + ราคารับซื้อเบื้องต้น</p>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-medium text-foreground mb-1.5">IMEI</label>
-                      <input
-                        type="text"
-                        maxLength={15}
-                        className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm font-mono transition-colors hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                        placeholder="หมายเลข IMEI 15 หลัก"
-                        value={form.imei}
-                        onChange={(e) => { setForm((f) => ({ ...f, imei: e.target.value.replace(/\D/g, '') })); setImeiCheckResult(null); }}
-                        onBlur={checkImeiDuplicate}
-                      />
-                      {imeiCheckResult && (
-                        <div className={`mt-1.5 flex items-center gap-1.5 text-xs ${imeiCheckResult.result === 'clean' ? 'text-emerald-600' : 'text-red-600'}`}>
-                          {imeiCheckResult.result === 'clean' ? (
-                            <><CheckCircle className="size-3" /> ไม่พบ IMEI ซ้ำในระบบ</>
-                          ) : (
-                            <><AlertTriangle className="size-3" /> พบ IMEI นี้ในระบบ {imeiCheckResult.count} ครั้ง</>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-foreground mb-1.5">ราคาประเมินเบื้องต้น (บาท)</label>
-                      <input
-                        type="number"
-                        className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                        placeholder="0"
-                        value={form.estimatedValue}
-                        onChange={(e) => setForm((f) => ({ ...f, estimatedValue: e.target.value }))}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-              </div>
-
-              {/* Sticky Footer */}
-              <div className="sticky bottom-0 bg-gradient-to-t from-white to-slate-50/80 dark:from-slate-950 dark:to-slate-900/80 backdrop-blur-xl border-t border-slate-200/60 dark:border-slate-800/60 px-6 py-4 flex justify-end gap-3 shrink-0">
-                <button type="button" onClick={() => { setShowCreate(false); resetForm(); }} className="px-5 py-2.5 text-sm border border-slate-200 dark:border-slate-700/80 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:border-slate-300 dark:hover:border-slate-600 transition-all font-medium text-slate-700 dark:text-slate-300">
-                  ยกเลิก
-                </button>
-                <button type="submit" disabled={createMutation.isPending} className="px-6 py-2.5 text-sm bg-gradient-to-b from-sky-500 to-sky-600 hover:from-sky-600 hover:to-sky-700 text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed font-semibold transition-all shadow-sm shadow-sky-600/20 hover:shadow-md hover:shadow-sky-600/30 ring-1 ring-sky-600/20">
-                  {createMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกรายการ'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* Appraise Modal */}
       <Modal isOpen={!!appraiseModal} onClose={() => { setAppraiseModal(null); setAppraiseValue(''); }} title="ประเมินราคาเครื่อง" size="sm">

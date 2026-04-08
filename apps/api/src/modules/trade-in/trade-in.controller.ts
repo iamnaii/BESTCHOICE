@@ -17,6 +17,7 @@ import {
   AppraiseTradeInDto,
   AcceptTradeInDto,
   UpdateTradeInDto,
+  QuickBuyTradeInDto,
 } from './dto/trade-in.dto';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -44,14 +45,30 @@ export class TradeInController {
     @Query('customerId') customerId?: string,
     @Query('branchId') branchId?: string,
     @Query('status') status?: string,
+    @Query('search') search?: string,
   ) {
     return this.tradeInService.findAll({
       customerId,
       branchId,
       status,
+      search,
       page: pagination.page,
       limit: pagination.limit,
     });
+  }
+
+  // Quick Buy — 1-shot create + appraise + accept + voucher allocate
+  @Post('quick-buy')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
+  quickBuy(@Body() dto: QuickBuyTradeInDto, @CurrentUser('id') userId: string) {
+    return this.tradeInService.quickBuy(dto, userId);
+  }
+
+  // Seller history (auto-fill + repeat warning)
+  @Get('seller-history/:idCard')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
+  sellerHistory(@Param('idCard') idCard: string) {
+    return this.tradeInService.sellerHistory(idCard);
   }
 
   @Get('check-imei/:imei')

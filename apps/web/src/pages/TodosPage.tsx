@@ -339,7 +339,9 @@ export default function TodosPage() {
     try {
       const fd = new FormData();
       fd.append('file', file);
-      const { data } = await api.post('/todos/upload-attachment', fd);
+      const { data } = await api.post('/todos/upload-attachment', fd, {
+        headers: { 'Content-Type': undefined },
+      });
       setForm((prev) => ({
         ...prev,
         attachments: [...(prev.attachments || []), data as Attachment],

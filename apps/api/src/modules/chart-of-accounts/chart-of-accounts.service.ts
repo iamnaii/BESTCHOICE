@@ -48,6 +48,9 @@ export class ChartOfAccountsService {
         parentCode: dto.parentCode,
         level: dto.level ?? 3,
         isActive: dto.isActive ?? true,
+        allowedCompanies: dto.allowedCompanies ?? [],
+        peakAccountCode: dto.peakAccountCode ?? dto.code,
+        peakAccountId: dto.peakAccountId,
       },
     });
   }

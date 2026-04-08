@@ -6,6 +6,8 @@ import PageHeader from '@/components/ui/PageHeader';
 
 type AccountGroup = 'ASSET' | 'LIABILITY' | 'EQUITY' | 'REVENUE' | 'EXPENSE';
 
+type CompanyCode = 'SHOP' | 'FINANCE';
+
 interface ChartOfAccount {
   id: string;
   code: string;
@@ -15,6 +17,9 @@ interface ChartOfAccount {
   parentCode?: string | null;
   level: number;
   isActive: boolean;
+  allowedCompanies: CompanyCode[];
+  peakAccountCode?: string | null;
+  peakAccountId?: string | null;
 }
 
 const GROUP_LABELS: Record<AccountGroup, string> = {
@@ -41,6 +46,9 @@ interface FormState {
   parentCode: string;
   level: number;
   isActive: boolean;
+  allowedCompanies: CompanyCode[];
+  peakAccountCode: string;
+  peakAccountId: string;
 }
 
 const emptyForm: FormState = {
@@ -51,6 +59,9 @@ const emptyForm: FormState = {
   parentCode: '',
   level: 3,
   isActive: true,
+  allowedCompanies: [],
+  peakAccountCode: '',
+  peakAccountId: '',
 };
 
 export default function ChartOfAccountsPage() {
@@ -99,6 +110,8 @@ export default function ChartOfAccountsPage() {
         ...form,
         nameEn: form.nameEn || undefined,
         parentCode: form.parentCode || undefined,
+        peakAccountCode: form.peakAccountCode || undefined,
+        peakAccountId: form.peakAccountId || undefined,
       };
       const { data } = await api.post('/chart-of-accounts', payload);
       return data;
@@ -121,6 +134,9 @@ export default function ChartOfAccountsPage() {
         parentCode: form.parentCode || undefined,
         level: form.level,
         isActive: form.isActive,
+        allowedCompanies: form.allowedCompanies,
+        peakAccountCode: form.peakAccountCode || undefined,
+        peakAccountId: form.peakAccountId || undefined,
       };
       const { data } = await api.patch(`/chart-of-accounts/${editing.id}`, payload);
       return data;
@@ -160,6 +176,9 @@ export default function ChartOfAccountsPage() {
       parentCode: a.parentCode || '',
       level: a.level,
       isActive: a.isActive,
+      allowedCompanies: a.allowedCompanies || [],
+      peakAccountCode: a.peakAccountCode || '',
+      peakAccountId: a.peakAccountId || '',
     });
     setShowForm(true);
   }
@@ -370,6 +389,60 @@ export default function ChartOfAccountsPage() {
                 />
                 ใช้งาน
               </label>
+
+              {/* ── การใช้งานข้ามบริษัท (Multi-Entity) ── */}
+              <div className="border-t pt-4 mt-2">
+                <label className="block text-xs font-medium mb-2">อนุญาตให้บริษัทใช้งาน</label>
+                <div className="flex gap-4">
+                  {(['SHOP', 'FINANCE'] as CompanyCode[]).map((c) => (
+                    <label key={c} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={form.allowedCompanies.includes(c)}
+                        onChange={(e) => {
+                          const next = e.target.checked
+                            ? [...form.allowedCompanies, c]
+                            : form.allowedCompanies.filter((x) => x !== c);
+                          setForm({ ...form, allowedCompanies: next });
+                        }}
+                      />
+                      {c === 'SHOP' ? 'BESTCHOICE SHOP' : 'BESTCHOICE FINANCE'}
+                    </label>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  ไม่เลือกเลย = ใช้ได้ทุกบริษัท
+                </p>
+              </div>
+
+              {/* ── การ sync กับ PEAK ── */}
+              <div className="border-t pt-4 mt-2">
+                <label className="block text-xs font-medium mb-2 text-muted-foreground">
+                  การเชื่อมต่อกับ PEAK (ระบบบัญชีภายนอก)
+                </label>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5">รหัสบัญชี PEAK</label>
+                    <input
+                      type="text"
+                      value={form.peakAccountCode}
+                      onChange={(e) => setForm({ ...form, peakAccountCode: e.target.value })}
+                      className={inputClass}
+                      placeholder="เช่น 11-1101"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5">PEAK Account ID</label>
+                    <input
+                      type="text"
+                      value={form.peakAccountId}
+                      onChange={(e) => setForm({ ...form, peakAccountId: e.target.value })}
+                      className={inputClass}
+                      placeholder="UUID จาก PEAK API"
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
             <div className="sticky bottom-0 bg-background/95 backdrop-blur-sm border-t px-6 py-4 flex justify-end gap-3">
               <button onClick={closeForm} className="px-6 py-2.5 text-sm border border-input rounded-lg hover:bg-muted">ยกเลิก</button>

@@ -3,7 +3,12 @@ import * as Sentry from '@sentry/react';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  QueryClient,
+  QueryClientProvider,
+  QueryCache,
+  MutationCache,
+} from '@tanstack/react-query';
 import { ThemeProvider } from 'next-themes';
 import { Toaster } from 'sonner';
 import { AuthProvider } from '@/contexts/AuthContext';
@@ -33,7 +38,44 @@ if (sentryDsn) {
   });
 }
 
+/**
+ * Report server errors (5xx) from react-query to Sentry. 4xx responses
+ * are intentional (validation, auth, permission) — we skip them so the
+ * Sentry signal isn't drowned out. Network errors have no `response` so
+ * they go through as well.
+ */
+function reportQueryErrorToSentry(
+  error: unknown,
+  meta: { kind: 'query' | 'mutation'; key?: unknown },
+) {
+  const status = (error as { response?: { status?: number } })?.response?.status;
+  if (typeof status === 'number' && status >= 400 && status < 500) {
+    return;
+  }
+  Sentry.withScope((scope) => {
+    scope.setTag('query.kind', meta.kind);
+    if (meta.key !== undefined) {
+      scope.setExtra('queryKey', meta.key);
+    }
+    if (typeof status === 'number') {
+      scope.setTag('http.status', String(status));
+    }
+    Sentry.captureException(error);
+  });
+}
+
 const queryClient = new QueryClient({
+  queryCache: new QueryCache({
+    onError: (error, query) =>
+      reportQueryErrorToSentry(error, { kind: 'query', key: query.queryKey }),
+  }),
+  mutationCache: new MutationCache({
+    onError: (error, _variables, _context, mutation) =>
+      reportQueryErrorToSentry(error, {
+        kind: 'mutation',
+        key: mutation.options.mutationKey,
+      }),
+  }),
   defaultOptions: {
     queries: {
       retry: (failureCount, error: unknown) => {

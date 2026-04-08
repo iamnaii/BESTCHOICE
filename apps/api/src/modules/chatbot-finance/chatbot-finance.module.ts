@@ -11,6 +11,8 @@ import { HandoffService } from './services/handoff.service';
 import { VisionService } from './services/vision.service';
 import { SlipProcessingService } from './services/slip-processing.service';
 import { AutoTriggerService } from './services/auto-trigger.service';
+import { LineStaffClientService } from './services/line-staff-client.service';
+import { StaffNotificationService } from './services/staff-notification.service';
 import { FinanceToolExecutor } from './tools/tool-executor';
 import { VerificationService } from './services/verification.service';
 import { LineFinanceWebhookGuard } from './guards/line-finance-webhook.guard';
@@ -42,6 +44,8 @@ import { NotificationsModule } from '../notifications/notifications.module';
     VisionService,
     SlipProcessingService,
     AutoTriggerService,
+    LineStaffClientService,
+    StaffNotificationService,
     FinanceToolExecutor,
     VerificationService,
     LineFinanceWebhookGuard,

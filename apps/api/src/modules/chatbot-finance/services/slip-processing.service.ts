@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { StorageService } from '../../storage/storage.service';
 import { VisionService, SlipExtraction } from './vision.service';
+import { StaffNotificationService } from './staff-notification.service';
 
 const EXPECTED_BANK_ACCOUNT = '203-1-16520-5';
 const AMOUNT_TOLERANCE = 0.5; // ±0.50 บาท
@@ -31,6 +32,7 @@ export class SlipProcessingService {
     private prisma: PrismaService,
     private storage: StorageService,
     private vision: VisionService,
+    private staffNotify: StaffNotificationService,
   ) {}
 
   async processSlip(params: {
@@ -65,7 +67,7 @@ export class SlipProcessingService {
       };
     }
 
-    // 3. หา active contract
+    // 3. หา active contract + customer
     const contract = await this.prisma.contract.findFirst({
       where: {
         customerId: params.customerId,
@@ -73,6 +75,9 @@ export class SlipProcessingService {
         status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] },
       },
       orderBy: { createdAt: 'desc' },
+      include: {
+        customer: { select: { name: true, phone: true } },
+      },
     });
 
     if (!contract) {
@@ -91,6 +96,15 @@ export class SlipProcessingService {
         imageUrl,
         amount: extracted.amount,
         note: `โอนผิดบัญชี: ${extracted.toAccount}`,
+      });
+      // Notify staff
+      void this.staffNotify.notifySlipReview({
+        customerName: contract.customer.name,
+        customerPhone: contract.customer.phone,
+        contractNumber: contract.contractNumber,
+        slipAmount: extracted.amount ?? 0,
+        reason: 'wrong_account',
+        evidenceId: evidence.id,
       });
       return {
         ok: false,
@@ -144,6 +158,14 @@ export class SlipProcessingService {
     }
 
     if (expectedAmount === null) {
+      void this.staffNotify.notifySlipReview({
+        customerName: contract.customer.name,
+        customerPhone: contract.customer.phone,
+        contractNumber: contract.contractNumber,
+        slipAmount,
+        reason: 'unmatched',
+        evidenceId: evidence.id,
+      });
       return {
         ok: true,
         evidenceId: evidence.id,
@@ -151,6 +173,17 @@ export class SlipProcessingService {
         reply: `รับสลิปแล้วค่ะ 🙏\n💰 ยอด ${slipAmount.toLocaleString()} บาท\nแอดมินจะตรวจสอบให้นะคะ`,
       };
     }
+
+    // ยอดไม่ตรง — notify staff
+    void this.staffNotify.notifySlipReview({
+      customerName: contract.customer.name,
+      customerPhone: contract.customer.phone,
+      contractNumber: contract.contractNumber,
+      slipAmount,
+      expectedAmount,
+      reason: 'amount_mismatch',
+      evidenceId: evidence.id,
+    });
 
     return {
       ok: true,

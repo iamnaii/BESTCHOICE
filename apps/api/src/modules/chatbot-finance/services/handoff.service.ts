@@ -1,5 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, forwardRef, Inject } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { StaffNotificationService } from './staff-notification.service';
 
 export type HandoffPriority = 'low' | 'normal' | 'high' | 'critical';
 
@@ -21,7 +22,11 @@ export interface HandoffParams {
 export class HandoffService {
   private readonly logger = new Logger(HandoffService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Inject(forwardRef(() => StaffNotificationService))
+    private staffNotify: StaffNotificationService,
+  ) {}
 
   async handoff(params: HandoffParams): Promise<{ handoffId: string; estimatedTime: string }> {
     await this.prisma.chatSession.update({
@@ -36,14 +41,20 @@ export class HandoffService {
     this.logger.warn(
       `🚨 [Handoff] sessionId=${params.sessionId} priority=${params.priority} reason="${params.reason}"`,
     );
-    this.logger.log(`   Summary: ${params.summary}`);
-    if (params.tags?.length) {
-      this.logger.log(`   Tags: ${params.tags.join(', ')}`);
-    }
 
-    // TODO Phase A3: notify Staff LINE Group/OA
-    // - findOnDutyStaff(role=FINANCE_MANAGER)
-    // - lineStaffClient.pushFlexMessage(handoffCard)
+    // ส่ง notification ไป Staff LINE OA (best-effort, ไม่ fail handoff)
+    try {
+      await this.staffNotify.notifyHandoff({
+        sessionId: params.sessionId,
+        reason: params.reason,
+        priority: params.priority,
+        summary: params.summary,
+      });
+    } catch (err) {
+      this.logger.error(
+        `[Handoff] staff notify failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
 
     const estimatedTime = params.priority === 'critical' ? '30 นาที' : '2 ชั่วโมง';
 

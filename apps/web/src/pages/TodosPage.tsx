@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
+import { formatThaiDateShort } from '@/lib/date';
 import { useAuth } from '@/contexts/AuthContext';
 import PageHeader from '@/components/ui/PageHeader';
 import { KanbanBoard, type KanbanColumn } from '@/components/ui/KanbanBoard';
@@ -140,8 +141,7 @@ const tabs: { value: TodoView; label: string; icon: typeof ListTodo }[] = [
 
 function formatDate(d?: string | null) {
   if (!d) return '';
-  const date = new Date(d);
-  return date.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
+  return formatThaiDateShort(d);
 }
 
 function isOverdue(d?: string | null) {
@@ -162,7 +162,8 @@ const emptyForm: Partial<Todo> & { tagsInput?: string } = {
   tagsInput: '',
 };
 
-function formatBytes(bytes: number) {
+function formatBytes(bytes?: number) {
+  if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes < 0) return '—';
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
@@ -935,7 +936,7 @@ export default function TodosPage() {
                             rel="noreferrer"
                             className="text-sm font-medium truncate block hover:text-primary transition-colors"
                           >
-                            {a.name}
+                            {a.name || 'ไฟล์แนบ'}
                           </a>
                           <p className="text-2xs text-muted-foreground">
                             {formatBytes(a.size)}

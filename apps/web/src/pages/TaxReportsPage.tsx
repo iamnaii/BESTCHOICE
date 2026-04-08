@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
+import { formatThaiDateShort } from '@/lib/date';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -230,11 +231,7 @@ function ReportsList({
               </td>
               <td className="py-2.5 text-muted-foreground">{r.generatedBy?.name ?? '-'}</td>
               <td className="py-2.5 text-muted-foreground tabular-nums">
-                {new Date(r.createdAt).toLocaleDateString('th-TH', {
-                  year: 'numeric',
-                  month: 'short',
-                  day: 'numeric',
-                })}
+                {formatThaiDateShort(r.createdAt)}
               </td>
               <td className="py-2.5 text-right">
                 {r.fileUrl && (

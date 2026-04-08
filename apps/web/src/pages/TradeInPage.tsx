@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
+import { formatThaiDate } from '@/lib/date';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable, { type Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
@@ -425,7 +426,7 @@ export default function TradeInPage() {
       key: 'createdAt',
       label: 'วันที่',
       sortable: true,
-      render: (item) => new Date(item.createdAt).toLocaleDateString('th-TH'),
+      render: (item) => formatThaiDate(item.createdAt),
     },
     {
       key: 'actions',

@@ -11,6 +11,7 @@ import {
   AppraiseTradeInDto,
   AcceptTradeInDto,
   UpdateTradeInDto,
+  QuickBuyTradeInDto,
 } from './dto/trade-in.dto';
 import { TradeInVoucherService } from './services/voucher.service';
 
@@ -188,14 +189,28 @@ export class TradeInService {
     customerId?: string;
     branchId?: string;
     status?: string;
+    search?: string;
     page?: number;
     limit?: number;
   }) {
-    const { customerId, branchId, status, page = 1, limit = 50 } = filters;
+    const { customerId, branchId, status, search, page = 1, limit = 50 } = filters;
     const where: Record<string, unknown> = { deletedAt: null };
     if (customerId) where.customerId = customerId;
     if (branchId) where.branchId = branchId;
     if (status) where.status = status;
+    // Search by device, IMEI, seller name/phone, voucher number, customer name
+    if (search && search.trim()) {
+      const q = search.trim();
+      where.OR = [
+        { deviceBrand: { contains: q, mode: 'insensitive' } },
+        { deviceModel: { contains: q, mode: 'insensitive' } },
+        { imei: { contains: q } },
+        { sellerName: { contains: q, mode: 'insensitive' } },
+        { sellerPhone: { contains: q } },
+        { voucherNumber: { contains: q, mode: 'insensitive' } },
+        { customer: { name: { contains: q, mode: 'insensitive' } } },
+      ];
+    }
 
     const [data, total] = await Promise.all([
       this.prisma.tradeIn.findMany({
@@ -306,6 +321,166 @@ export class TradeInService {
         },
       });
     });
+  }
+
+  // ─── Quick Buy: 1-shot create + appraise + accept + voucher allocate ──
+  /**
+   * สำหรับ POS counter — พนักงานตัดสินใจรับซื้อทันที ไม่ต้องผ่านขั้นตอนแยก
+   * - Validation เหมือน accept (ต้องมี idCardVerified + sellerConsentSigned + payment)
+   * - All-or-nothing transaction
+   * - คืน { tradeInId, voucherNumber } พร้อมเปิด PDF ทันที
+   */
+  async quickBuy(dto: QuickBuyTradeInDto, userId: string) {
+    // Validation pre-flight (ก่อนเข้า transaction)
+    if (!dto.idCardVerified) {
+      throw new BadRequestException('ต้องยืนยันว่าตรวจบัตรประชาชนผู้ขายแล้ว');
+    }
+    if (!dto.sellerConsentSigned) {
+      throw new BadRequestException('ผู้ขายต้องเซ็นยืนยันความเป็นเจ้าของ');
+    }
+    if (dto.agreedPrice <= 0) {
+      throw new BadRequestException('ราคารับซื้อต้องมากกว่า 0');
+    }
+    if (dto.paymentMethod === 'TRANSFER') {
+      if (!dto.transferBankName || !dto.transferAccountNumber || !dto.transferAccountName) {
+        throw new BadRequestException('กรณีโอนต้องระบุธนาคาร, เลขบัญชี และชื่อบัญชี');
+      }
+    }
+    if (dto.sellerIdCardNumber && !this.validateThaiNationalId(dto.sellerIdCardNumber)) {
+      throw new BadRequestException('เลขบัตรประชาชนไม่ถูกต้อง');
+    }
+
+    // เช็ค IMEI ซ้ำ
+    let imeiBlacklistResult: 'clean' | 'duplicate' | null = null;
+    if (dto.imei) {
+      const check = await this.checkImei(dto.imei);
+      imeiBlacklistResult = check.result;
+    }
+
+    // อัปโหลดรูปบัตรถ้ามี (S3 ถ้าตั้งค่า, ไม่งั้น save key)
+    let idCardPhotoKey: string | undefined;
+    if (dto.idCardPhotoBase64) {
+      const { buffer, contentType } = this.decodeBase64Image(dto.idCardPhotoBase64);
+      const ext = contentType.split('/')[1] || 'jpg';
+      const key = `trade-ins/_pending/${Date.now()}-id-card.${ext}`;
+      await this.storage.upload(key, buffer, contentType);
+      idCardPhotoKey = key;
+    }
+
+    // ลายเซ็น base64 (ไม่ใช้ S3)
+    let sellerSigBase64: string | null = null;
+    if (dto.sellerSignatureBase64) {
+      if (dto.sellerSignatureBase64.length > 200_000) {
+        throw new BadRequestException('ลายเซ็นมีขนาดใหญ่เกินไป');
+      }
+      sellerSigBase64 = dto.sellerSignatureBase64;
+    }
+
+    // Atomic: create + skip ขั้นตอนกลาง → ACCEPTED ทันที + allocate voucher
+    const result = await this.prisma.$transaction(async (tx) => {
+      const tradeIn = await tx.tradeIn.create({
+        data: {
+          branchId: dto.branchId,
+          deviceBrand: dto.deviceBrand,
+          deviceModel: dto.deviceModel,
+          deviceStorage: dto.deviceStorage,
+          deviceColor: dto.deviceColor,
+          deviceCondition: dto.deviceCondition,
+          imei: dto.imei,
+          notes: dto.notes,
+          // Seller
+          sellerName: dto.sellerName,
+          sellerPhone: dto.sellerPhone,
+          sellerIdCardNumber: dto.sellerIdCardNumber,
+          sellerAddress: dto.sellerAddress,
+          idCardPhotoUrl: idCardPhotoKey,
+          idCardSource: dto.idCardSource,
+          // Anti-theft
+          sellerSignatureBase64: sellerSigBase64 ?? undefined,
+          sellerConsentSigned: true,
+          policeReportAcknowledged: true,
+          imeiBlacklistResult,
+          imeiBlacklistCheckedAt: dto.imei ? new Date() : null,
+          // Skip ขั้นตอนกลาง — ราคาเดียวกันทั้ง 3 field
+          estimatedValue: dto.agreedPrice,
+          offeredPrice: dto.agreedPrice,
+          agreedPrice: dto.agreedPrice,
+          appraisedById: userId,
+          // Accept
+          status: 'ACCEPTED',
+          idCardVerifiedAt: new Date(),
+          idCardVerifiedById: userId,
+          // Payment
+          paymentMethod: dto.paymentMethod,
+          transferBankName: dto.paymentMethod === 'TRANSFER' ? dto.transferBankName : null,
+          transferAccountNumber:
+            dto.paymentMethod === 'TRANSFER' ? dto.transferAccountNumber : null,
+          transferAccountName:
+            dto.paymentMethod === 'TRANSFER' ? dto.transferAccountName : null,
+        },
+      });
+      return tradeIn;
+    });
+
+    // Allocate voucher number (ใช้ retry ใน voucher.service)
+    const voucher = await this.voucher.allocate(result.id);
+
+    // (no logger — service ไม่มี logger; success คืน response แทน)
+    return {
+      id: result.id,
+      voucherNumber: voucher.voucherNumber,
+      voucherDate: voucher.voucherDate,
+      imeiWarning: imeiBlacklistResult === 'duplicate',
+    };
+  }
+
+  // ─── Seller history (auto-fill + repeat warning) ─────────
+  async sellerHistory(idCardNumber: string) {
+    if (!/^\d{13}$/.test(idCardNumber)) {
+      throw new BadRequestException('เลขบัตรประชาชนต้อง 13 หลัก');
+    }
+    const records = await this.prisma.tradeIn.findMany({
+      where: { sellerIdCardNumber: idCardNumber, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        sellerName: true,
+        sellerPhone: true,
+        sellerAddress: true,
+        deviceBrand: true,
+        deviceModel: true,
+        agreedPrice: true,
+        createdAt: true,
+        status: true,
+      },
+      take: 20,
+    });
+
+    // นับจำนวนใน 30 วันล่าสุด
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const recentCount = records.filter((r) => r.createdAt >= thirtyDaysAgo).length;
+
+    const latest = records[0];
+    return {
+      found: records.length > 0,
+      totalCount: records.length,
+      recentCount,
+      warning: recentCount >= 3, // 3+ ครั้งใน 30 วัน → ผิดปกติ
+      lastSeller: latest
+        ? {
+            sellerName: latest.sellerName,
+            sellerPhone: latest.sellerPhone,
+            sellerAddress: latest.sellerAddress,
+          }
+        : null,
+      history: records.map((r) => ({
+        id: r.id,
+        device: `${r.deviceBrand} ${r.deviceModel}`,
+        amount: Number(r.agreedPrice ?? 0),
+        date: r.createdAt,
+        status: r.status,
+      })),
+    };
   }
 
   // ─── Reject / Complete ────────────────────────────────────

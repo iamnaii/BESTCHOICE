@@ -7,6 +7,8 @@ interface ChartOfAccountSeed {
   accountGroup: AccountGroup;
   parentCode?: string;
   level: number;
+  allowedCompanies?: string[]; // [] หรือไม่ระบุ = ใช้ได้ทุกบริษัท
+  peakAccountCode?: string;    // รหัสบัญชีฝั่ง PEAK (ถ้ามี)
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -33,7 +35,7 @@ const CHART_OF_ACCOUNTS: ChartOfAccountSeed[] = [
   // กลุ่มลูกหนี้การค้าและลูกหนี้อื่น
   { code: '11-21XX', nameTh: 'กลุ่มลูกหนี้การค้าและลูกหนี้อื่น', nameEn: 'Trade and Other Receivables', accountGroup: AccountGroup.ASSET, parentCode: '11-0000', level: 2 },
   { code: '11-2101', nameTh: 'ลูกหนี้การค้า', nameEn: 'Accounts Receivable', accountGroup: AccountGroup.ASSET, parentCode: '11-21XX', level: 3 },
-  { code: '11-2102', nameTh: 'ลูกหนี้เช่าซื้อ', nameEn: 'Hire-Purchase Receivable', accountGroup: AccountGroup.ASSET, parentCode: '11-21XX', level: 3 },
+  { code: '11-2102', nameTh: 'ลูกหนี้เช่าซื้อ', nameEn: 'Hire-Purchase Receivable', accountGroup: AccountGroup.ASSET, parentCode: '11-21XX', level: 3, allowedCompanies: ['FINANCE'] },
   { code: '11-2103', nameTh: 'หัก: ค่าเผื่อหนี้สงสัยจะสูญ', nameEn: 'Less: Allowance for Doubtful Accounts', accountGroup: AccountGroup.ASSET, parentCode: '11-21XX', level: 3 },
   { code: '11-2104', nameTh: 'ลูกหนี้ไฟแนนซ์ภายนอก', nameEn: 'External Finance Receivable', accountGroup: AccountGroup.ASSET, parentCode: '11-21XX', level: 3 },
 
@@ -45,8 +47,8 @@ const CHART_OF_ACCOUNTS: ChartOfAccountSeed[] = [
 
   // กลุ่มภาษีและสินทรัพย์หมุนเวียนอื่น
   { code: '11-41XX', nameTh: 'กลุ่มภาษีและสินทรัพย์หมุนเวียนอื่น', nameEn: 'Tax and Other Current Assets', accountGroup: AccountGroup.ASSET, parentCode: '11-0000', level: 2 },
-  { code: '11-4101', nameTh: 'ภาษีซื้อ', nameEn: 'Input VAT', accountGroup: AccountGroup.ASSET, parentCode: '11-41XX', level: 3 },
-  { code: '11-4102', nameTh: 'ภาษีซื้อยังไม่ถึงกำหนด', nameEn: 'Input VAT Pending', accountGroup: AccountGroup.ASSET, parentCode: '11-41XX', level: 3 },
+  { code: '11-4101', nameTh: 'ภาษีซื้อ', nameEn: 'Input VAT', accountGroup: AccountGroup.ASSET, parentCode: '11-41XX', level: 3, allowedCompanies: ['FINANCE'] },
+  { code: '11-4102', nameTh: 'ภาษีซื้อยังไม่ถึงกำหนด', nameEn: 'Input VAT Pending', accountGroup: AccountGroup.ASSET, parentCode: '11-41XX', level: 3, allowedCompanies: ['FINANCE'] },
 
   // ── สินทรัพย์ไม่หมุนเวียน ──
   { code: '12-0000', nameTh: 'สินทรัพย์ไม่หมุนเวียน', nameEn: 'Non-Current Assets', accountGroup: AccountGroup.ASSET, level: 1 },
@@ -75,8 +77,8 @@ const CHART_OF_ACCOUNTS: ChartOfAccountSeed[] = [
 
   // กลุ่มภาษีมูลค่าเพิ่ม (VAT)
   { code: '21-21XX', nameTh: 'กลุ่มภาษีมูลค่าเพิ่ม (VAT)', nameEn: 'Value Added Tax (VAT)', accountGroup: AccountGroup.LIABILITY, parentCode: '21-0000', level: 2 },
-  { code: '21-2101', nameTh: 'ภาษีขาย ภ.พ.30', nameEn: 'Output VAT (PP.30)', accountGroup: AccountGroup.LIABILITY, parentCode: '21-21XX', level: 3 },
-  { code: '21-2102', nameTh: 'ภ.พ.30 ค้างจ่าย', nameEn: 'VAT Payable (PP.30)', accountGroup: AccountGroup.LIABILITY, parentCode: '21-21XX', level: 3 },
+  { code: '21-2101', nameTh: 'ภาษีขาย ภ.พ.30', nameEn: 'Output VAT (PP.30)', accountGroup: AccountGroup.LIABILITY, parentCode: '21-21XX', level: 3, allowedCompanies: ['FINANCE'] },
+  { code: '21-2102', nameTh: 'ภ.พ.30 ค้างจ่าย', nameEn: 'VAT Payable (PP.30)', accountGroup: AccountGroup.LIABILITY, parentCode: '21-21XX', level: 3, allowedCompanies: ['FINANCE'] },
 
   // กลุ่มภาษีหัก ณ ที่จ่าย (WHT)
   { code: '21-31XX', nameTh: 'กลุ่มภาษีหัก ณ ที่จ่าย (WHT)', nameEn: 'Withholding Tax', accountGroup: AccountGroup.LIABILITY, parentCode: '21-0000', level: 2 },
@@ -128,11 +130,11 @@ const CHART_OF_ACCOUNTS: ChartOfAccountSeed[] = [
 
   // กลุ่มรายได้ดอกเบี้ย/เครดิต
   { code: '42-11XX', nameTh: 'กลุ่มรายได้ดอกเบี้ย/เครดิต', nameEn: 'Interest and Credit Income', accountGroup: AccountGroup.REVENUE, parentCode: '42-0000', level: 2 },
-  { code: '42-1101', nameTh: 'รายได้ส่วนเพิ่มจากการปิดสัญญา', nameEn: 'Early Payoff Surcharge Income', accountGroup: AccountGroup.REVENUE, parentCode: '42-11XX', level: 3 },
-  { code: '42-1102', nameTh: 'ค่างวดเบี้ยปรับล่าช้า', nameEn: 'Late Payment Penalty Income', accountGroup: AccountGroup.REVENUE, parentCode: '42-11XX', level: 3 },
-  { code: '42-1103', nameTh: 'ค่ามัดจำ/เงินประกันที่ริบ', nameEn: 'Forfeited Deposits/Guarantees', accountGroup: AccountGroup.REVENUE, parentCode: '42-11XX', level: 3 },
-  { code: '42-1104', nameTh: 'รายได้จากการยึดเครื่อง', nameEn: 'Repossession Income', accountGroup: AccountGroup.REVENUE, parentCode: '42-11XX', level: 3 },
-  { code: '42-1105', nameTh: 'รายได้ค่านายหน้า/คอมมิชชัน', nameEn: 'Commission Income', accountGroup: AccountGroup.REVENUE, parentCode: '42-11XX', level: 3 },
+  { code: '42-1101', nameTh: 'รายได้ส่วนเพิ่มจากการปิดสัญญา', nameEn: 'Early Payoff Surcharge Income', accountGroup: AccountGroup.REVENUE, parentCode: '42-11XX', level: 3, allowedCompanies: ['FINANCE'] },
+  { code: '42-1102', nameTh: 'ค่างวดเบี้ยปรับล่าช้า', nameEn: 'Late Payment Penalty Income', accountGroup: AccountGroup.REVENUE, parentCode: '42-11XX', level: 3, allowedCompanies: ['FINANCE'] },
+  { code: '42-1103', nameTh: 'ค่ามัดจำ/เงินประกันที่ริบ', nameEn: 'Forfeited Deposits/Guarantees', accountGroup: AccountGroup.REVENUE, parentCode: '42-11XX', level: 3, allowedCompanies: ['FINANCE'] },
+  { code: '42-1104', nameTh: 'รายได้จากการยึดเครื่อง', nameEn: 'Repossession Income', accountGroup: AccountGroup.REVENUE, parentCode: '42-11XX', level: 3, allowedCompanies: ['FINANCE'] },
+  { code: '42-1105', nameTh: 'รายได้ค่านายหน้า/คอมมิชชัน', nameEn: 'Commission Income', accountGroup: AccountGroup.REVENUE, parentCode: '42-11XX', level: 3, allowedCompanies: ['SHOP'] },
 
   // ════════════════════════════════════════════════════════════
   // หมวด 5: ค่าใช้จ่าย (EXPENSE)
@@ -218,6 +220,8 @@ export async function seedChartOfAccounts(prisma: PrismaClient): Promise<void> {
         parentCode: account.parentCode,
         level: account.level,
         isActive: true,
+        allowedCompanies: account.allowedCompanies ?? [],
+        peakAccountCode: account.peakAccountCode ?? account.code,
       },
       create: {
         code: account.code,
@@ -227,6 +231,8 @@ export async function seedChartOfAccounts(prisma: PrismaClient): Promise<void> {
         parentCode: account.parentCode ?? undefined,
         level: account.level,
         isActive: true,
+        allowedCompanies: account.allowedCompanies ?? [],
+        peakAccountCode: account.peakAccountCode ?? account.code,
       },
     });
   }

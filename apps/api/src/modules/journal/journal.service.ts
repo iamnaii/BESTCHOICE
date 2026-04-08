@@ -46,14 +46,23 @@ export class JournalService {
       }
     }
 
-    // 3. Validate accountCodes exist in ChartOfAccount
+    // 3. Validate companyId exists and not deleted (ดึงก่อนเพื่อเอา companyCode ไปเช็ค allowedCompanies)
+    const company = await this.prisma.companyInfo.findFirst({
+      where: { id: dto.companyId, deletedAt: null },
+    });
+
+    if (!company) {
+      throw new NotFoundException('ไม่พบบริษัท');
+    }
+
+    // 4. Validate accountCodes exist in ChartOfAccount + allowed for this company
     const accountCodes = dto.lines.map((line) => line.accountCode);
     const accounts = await this.prisma.chartOfAccount.findMany({
       where: {
         code: { in: accountCodes },
         isActive: true,
       },
-      select: { code: true },
+      select: { code: true, allowedCompanies: true },
     });
 
     const foundCodes = new Set(accounts.map((a) => a.code));
@@ -63,13 +72,21 @@ export class JournalService {
       throw new BadRequestException(`รหัสบัญชีไม่ถูกต้อง: ${missingCodes.join(', ')}`);
     }
 
-    // 4. Validate companyId exists and not deleted
-    const company = await this.prisma.companyInfo.findFirst({
-      where: { id: dto.companyId, deletedAt: null },
-    });
+    // เช็คว่าบัญชีนี้อนุญาตให้บริษัทนี้ใช้หรือไม่
+    // allowedCompanies เป็น array ว่าง = ใช้ได้ทุกบริษัท
+    if (company.companyCode) {
+      const blocked = accounts.filter(
+        (a) =>
+          a.allowedCompanies.length > 0 &&
+          !a.allowedCompanies.includes(company.companyCode as string),
+      );
 
-    if (!company) {
-      throw new NotFoundException('ไม่พบบริษัท');
+      if (blocked.length > 0) {
+        const codes = blocked.map((a) => a.code).join(', ');
+        throw new BadRequestException(
+          `บัญชี ${codes} ใช้กับบริษัท ${company.companyCode} ไม่ได้`,
+        );
+      }
     }
 
     // 5. Generate entry number + create in transaction to avoid race condition

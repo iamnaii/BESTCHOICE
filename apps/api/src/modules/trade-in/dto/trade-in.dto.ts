@@ -146,3 +146,102 @@ export class AcceptTradeInDto {
   @IsOptional()
   sellerSignatureBase64?: string;
 }
+
+/**
+ * Quick Buy DTO — รวม create + appraise + accept + voucher allocate ใน step เดียว
+ * สำหรับเคส POS counter ที่พนักงานตัดสินใจรับซื้อทันทีโดยไม่ต้องส่งผู้จัดการอนุมัติ
+ */
+export class QuickBuyTradeInDto {
+  // Seller (walk-in)
+  @IsString({ message: 'กรุณาระบุชื่อผู้ขาย' })
+  sellerName: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^\d{9,10}$/, { message: 'เบอร์โทรไม่ถูกต้อง' })
+  sellerPhone?: string;
+
+  @IsString()
+  @IsOptional()
+  @Length(13, 13, { message: 'เลขบัตรประชาชนต้อง 13 หลัก' })
+  sellerIdCardNumber?: string;
+
+  @IsString()
+  @IsOptional()
+  sellerAddress?: string;
+
+  @IsString()
+  @IsOptional()
+  idCardPhotoBase64?: string;
+
+  @IsString()
+  @IsOptional()
+  @IsIn(['card_reader', 'upload'])
+  idCardSource?: 'card_reader' | 'upload';
+
+  // Branch
+  @IsString()
+  @IsOptional()
+  branchId?: string;
+
+  // Device
+  @IsString({ message: 'กรุณาระบุยี่ห้อ' })
+  deviceBrand: string;
+
+  @IsString({ message: 'กรุณาระบุรุ่น' })
+  deviceModel: string;
+
+  @IsString()
+  @IsOptional()
+  deviceStorage?: string;
+
+  @IsString()
+  @IsOptional()
+  deviceColor?: string;
+
+  @IsString()
+  @IsOptional()
+  @IsIn(['A', 'B', 'C', 'D'], { message: 'สภาพต้องเป็น A/B/C/D' })
+  deviceCondition?: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^\d{15}$/, { message: 'IMEI ต้องเป็นตัวเลข 15 หลัก' })
+  imei?: string;
+
+  // Price (ราคาที่ตกลงเลย — ไม่แยก estimate/offer)
+  @IsNumber({}, { message: 'กรุณาระบุราคารับซื้อ' })
+  agreedPrice: number;
+
+  // Anti-theft consent
+  @IsBoolean({ message: 'ต้องยืนยันว่าตรวจบัตรประชาชนแล้ว' })
+  idCardVerified: boolean;
+
+  @IsBoolean({ message: 'ผู้ขายต้องเซ็นยืนยันความเป็นเจ้าของ' })
+  sellerConsentSigned: boolean;
+
+  @IsString()
+  @IsOptional()
+  sellerSignatureBase64?: string;
+
+  // Payment
+  @IsString()
+  @IsIn(['CASH', 'TRANSFER'], { message: "วิธีชำระต้องเป็น 'CASH' หรือ 'TRANSFER'" })
+  paymentMethod: 'CASH' | 'TRANSFER';
+
+  @IsString()
+  @IsOptional()
+  transferBankName?: string;
+
+  @IsString()
+  @IsOptional()
+  transferAccountNumber?: string;
+
+  @IsString()
+  @IsOptional()
+  transferAccountName?: string;
+
+  @IsString()
+  @IsOptional()
+  notes?: string;
+}

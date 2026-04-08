@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ChatbotFinanceController } from './chatbot-finance.controller';
 import { ChatbotFinanceLiffController } from './chatbot-finance-liff.controller';
+import { ChatbotFinanceAdminController } from './chatbot-finance-admin.controller';
 import { ChatbotFinanceService } from './services/chatbot-finance.service';
 import { LineFinanceClientService } from './services/line-finance-client.service';
 import { ChatSessionService } from './services/chat-session.service';
@@ -13,6 +14,7 @@ import { SlipProcessingService } from './services/slip-processing.service';
 import { AutoTriggerService } from './services/auto-trigger.service';
 import { LineStaffClientService } from './services/line-staff-client.service';
 import { StaffNotificationService } from './services/staff-notification.service';
+import { AdminAnalyticsService } from './services/admin-analytics.service';
 import { FinanceToolExecutor } from './tools/tool-executor';
 import { VerificationService } from './services/verification.service';
 import { LineFinanceWebhookGuard } from './guards/line-finance-webhook.guard';
@@ -32,7 +34,11 @@ import { NotificationsModule } from '../notifications/notifications.module';
  */
 @Module({
   imports: [NotificationsModule], // SMS for OTP
-  controllers: [ChatbotFinanceController, ChatbotFinanceLiffController],
+  controllers: [
+    ChatbotFinanceController,
+    ChatbotFinanceLiffController,
+    ChatbotFinanceAdminController,
+  ],
   providers: [
     ChatbotFinanceService,
     LineFinanceClientService,
@@ -46,6 +52,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     AutoTriggerService,
     LineStaffClientService,
     StaffNotificationService,
+    AdminAnalyticsService,
     FinanceToolExecutor,
     VerificationService,
     LineFinanceWebhookGuard,

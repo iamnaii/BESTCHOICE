@@ -347,7 +347,17 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-4">
+              {/* ลำดับเหมือนฟอร์มข้อมูลลูกค้า: ชื่อ → เลขบัตร → เบอร์ → ที่อยู่ → แนบบัตร */}
+              <div className="space-y-4">
+                <div>
+                  <Label>ชื่อ-นามสกุล *</Label>
+                  <Input
+                    className="mt-1"
+                    placeholder="ชื่อ นามสกุล"
+                    value={form.sellerName}
+                    onChange={(e) => setForm((f) => ({ ...f, sellerName: e.target.value }))}
+                  />
+                </div>
                 <div>
                   <Label>เลขบัตรประชาชน</Label>
                   <Input
@@ -364,15 +374,6 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
                   />
                 </div>
                 <div>
-                  <Label>ชื่อ-นามสกุล *</Label>
-                  <Input
-                    className="mt-1"
-                    placeholder="ชื่อ นามสกุล"
-                    value={form.sellerName}
-                    onChange={(e) => setForm((f) => ({ ...f, sellerName: e.target.value }))}
-                  />
-                </div>
-                <div>
                   <Label>เบอร์โทร</Label>
                   <Input
                     className="mt-1"
@@ -383,17 +384,6 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
                   />
                 </div>
                 <div>
-                  <Label>รูปบัตรประชาชน</Label>
-                  <label className="mt-1 flex items-center justify-center gap-2 h-10 px-3 rounded-lg border border-dashed border-input bg-background text-sm cursor-pointer hover:border-sky-400">
-                    {form.idCardPhotoBase64 ? (
-                      <><CheckCircle className="size-4 text-emerald-500" /><span className="text-emerald-600">อัปโหลดแล้ว</span></>
-                    ) : (
-                      <><Upload className="size-4" /><span className="text-muted-foreground">เลือกไฟล์</span></>
-                    )}
-                    <input type="file" accept="image/*" className="hidden" onChange={handleIdCardUpload} />
-                  </label>
-                </div>
-                <div className="col-span-2">
                   <Label>ที่อยู่ตามบัตร</Label>
                   <textarea
                     className="mt-1 w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
@@ -402,6 +392,23 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
                     value={form.sellerAddress}
                     onChange={(e) => setForm((f) => ({ ...f, sellerAddress: e.target.value }))}
                   />
+                </div>
+                <div>
+                  <Label>แนบรูปบัตรประชาชน</Label>
+                  <label className="mt-1 flex items-center justify-center gap-2 h-12 px-3 rounded-lg border border-dashed border-input bg-background text-sm cursor-pointer hover:border-sky-400 hover:bg-sky-50/50 transition-colors">
+                    {form.idCardPhotoBase64 ? (
+                      <>
+                        <CheckCircle className="size-5 text-emerald-500" />
+                        <span className="text-emerald-600 font-medium">อัปโหลดแล้ว — คลิกเพื่อเปลี่ยน</span>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="size-5 text-muted-foreground" />
+                        <span className="text-muted-foreground">คลิกเพื่อเลือกไฟล์รูปบัตรประชาชน</span>
+                      </>
+                    )}
+                    <input type="file" accept="image/*" className="hidden" onChange={handleIdCardUpload} />
+                  </label>
                 </div>
               </div>
             </div>

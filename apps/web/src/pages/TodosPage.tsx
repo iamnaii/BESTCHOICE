@@ -653,9 +653,15 @@ export default function TodosPage() {
               <textarea
                 value={form.description || ''}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
+                ref={(el) => {
+                  if (el) {
+                    el.style.height = 'auto';
+                    el.style.height = `${Math.min(el.scrollHeight, 480)}px`;
+                  }
+                }}
                 rows={3}
                 placeholder="อธิบายรายละเอียดงาน..."
-                className="w-full px-4 py-2.5 border border-input rounded-xl text-sm bg-card focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-none transition-colors resize-none"
+                className="w-full px-4 py-2.5 border border-input rounded-xl text-sm bg-card focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-none transition-colors resize-none overflow-y-auto min-h-[88px]"
               />
             </div>
 

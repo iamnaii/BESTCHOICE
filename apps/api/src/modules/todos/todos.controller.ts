@@ -12,8 +12,11 @@ import {
   UploadedFile,
   ParseFilePipe,
   MaxFileSizeValidator,
+  FileTypeValidator,
+  ForbiddenException,
 } from '@nestjs/common';
 import { Res } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Response } from 'express';
@@ -66,6 +69,9 @@ export class TodosController {
             maxSize: 10 * 1024 * 1024,
             message: 'ไฟล์มีขนาดเกิน 10MB',
           }),
+          new FileTypeValidator({
+            fileType: /^(image\/(jpeg|png|gif|webp)|application\/(pdf|msword|vnd\.openxmlformats-officedocument\.wordprocessingml\.document)|video\/(mp4|quicktime))$/,
+          }),
         ],
         fileIsRequired: true,
         errorHttpStatusCode: 400,
@@ -74,7 +80,7 @@ export class TodosController {
     file: Express.Multer.File,
   ) {
     const safeName = file.originalname.replace(/[^\w.-]/g, '_');
-    const key = `todos/${Date.now()}-${Math.random().toString(36).substring(2, 8)}-${safeName}`;
+    const key = `todos/${Date.now()}-${randomUUID()}-${safeName}`;
     await this.storage.upload(key, file.buffer, file.mimetype);
 
     return {
@@ -90,7 +96,12 @@ export class TodosController {
   @Get('attachments/*')
   async downloadAttachment(@Param() params: Record<string, string>, @Res() res: Response) {
     const key = decodeURIComponent(params['0']);
+    if (!key.startsWith('todos/')) {
+      throw new ForbiddenException('ไม่มีสิทธิ์เข้าถึงไฟล์นี้');
+    }
     const stream = await this.storage.getStream(key);
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(key.split('/').pop() ?? 'file')}"`);
+    res.setHeader('Content-Type', 'application/octet-stream');
     stream.pipe(res);
   }
 

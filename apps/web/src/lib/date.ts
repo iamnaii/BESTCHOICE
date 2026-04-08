@@ -8,7 +8,7 @@
  * directly in components — use these helpers instead so พ.ศ. is consistent.
  */
 
-const THAI_MONTHS_FULL = [
+export const THAI_MONTHS_FULL = [
   'มกราคม',
   'กุมภาพันธ์',
   'มีนาคม',

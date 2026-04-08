@@ -89,6 +89,7 @@ describe('ContractsService', () => {
       },
       payment: {
         count: jest.fn().mockResolvedValue(0),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
         deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         createMany: jest.fn().mockResolvedValue({ count: 12 }),
       },

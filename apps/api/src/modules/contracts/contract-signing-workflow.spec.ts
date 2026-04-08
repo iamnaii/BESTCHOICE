@@ -5,6 +5,7 @@ import { ContractWorkflowService } from './contract-workflow.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
+import { ProductsService } from '../products/products.service';
 import { DocumentsService } from './documents.service';
 
 // Mock utility modules
@@ -134,12 +135,16 @@ describe('Contract Signing & Workflow', () => {
       },
       payment: {
         count: jest.fn().mockResolvedValue(0),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
         deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         createMany: jest.fn().mockResolvedValue({ count: 12 }),
         findFirst: jest.fn().mockResolvedValue(null),
       },
       sale: {
         create: jest.fn().mockResolvedValue({ id: 'sale-1' }),
+      },
+      companyInfo: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'finance-1' }),
       },
     };
 
@@ -186,7 +191,8 @@ describe('Contract Signing & Workflow', () => {
         ContractWorkflowService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: NotificationsService, useValue: mockNotifications },
-        { provide: JournalAutoService, useValue: { recordContractActivation: jest.fn(), recordPayment: jest.fn(), recordExpense: jest.fn() } },
+        { provide: JournalAutoService, useValue: { recordContractActivation: jest.fn(), recordPayment: jest.fn(), recordExpense: jest.fn(), createContractActivationJournal: jest.fn() } },
+        { provide: ProductsService, useValue: { transferOwnership: jest.fn() } },
       ],
     }).compile();
 

@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PaymentMethod } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ProductsService } from '../products/products.service';
 import { EarlyPayoffDto } from './dto/contract.dto';
 
 @Injectable()
@@ -8,6 +9,7 @@ export class ContractPaymentService {
   private readonly logger = new Logger(ContractPaymentService.name);
   constructor(
     private prisma: PrismaService,
+    private productsService: ProductsService,
   ) {}
 
   async getSchedule(id: string) {
@@ -156,13 +158,26 @@ export class ContractPaymentService {
       }
 
       // Reset credit balance (used up by the early payoff)
-      await tx.contract.update({
+      const updated = await tx.contract.update({
         where: { id },
         data: {
           status: 'EARLY_PAYOFF',
           creditBalance: 0,
         },
+        select: { productId: true },
       });
+
+      // Ownership release: FINANCE → null. Customer owns the device once
+      // the contract is closed via payoff, same semantics as COMPLETED.
+      if (updated?.productId) {
+        try {
+          await this.productsService.transferOwnership(updated.productId, null, tx);
+        } catch (err) {
+          this.logger.error(
+            `Failed to release product ownership on early payoff for contract ${id}: ${err instanceof Error ? err.message : err}`,
+          );
+        }
+      }
     });
 
     return { ...quote, status: 'EARLY_PAYOFF', paidDate };

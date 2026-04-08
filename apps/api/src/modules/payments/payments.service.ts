@@ -5,6 +5,7 @@ import { paginatedResponse } from '../../common/helpers/pagination.helper';
 import { ReceiptsService } from '../receipts/receipts.service';
 import { AuditService } from '../audit/audit.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
+import { ProductsService } from '../products/products.service';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { roundBaht } from '../../utils/installment.util';
 import { BUSINESS_RULES } from '../../utils/config.util';
@@ -18,6 +19,7 @@ export class PaymentsService {
     private receiptsService: ReceiptsService,
     private auditService: AuditService,
     private journalAutoService: JournalAutoService,
+    private productsService: ProductsService,
   ) {}
 
   /** Enforce branch-level access: SALES/BRANCH_MANAGER can only operate on their own branch */
@@ -528,18 +530,41 @@ export class PaymentsService {
   }
 
   // ─── Check if contract is fully paid ──────────────────
-  private async checkContractCompletion(contractId: string, tx?: { payment: { count: (...args: unknown[]) => Promise<number> }; contract: { update: (...args: unknown[]) => Promise<unknown> } }) {
-    const db = tx || this.prisma;
+  private async checkContractCompletion(
+    contractId: string,
+    tx?: Prisma.TransactionClient,
+  ) {
+    const db: Prisma.TransactionClient | PrismaService = tx ?? this.prisma;
     const unpaid = await db.payment.count({
       where: { contractId, status: { not: 'PAID' }, deletedAt: null },
     });
 
-    if (unpaid === 0) {
-      // All installments paid → mark contract as COMPLETED
-      await db.contract.update({
-        where: { id: contractId },
-        data: { status: 'COMPLETED' },
-      });
+    if (unpaid !== 0) return;
+
+    // All installments paid → mark contract as COMPLETED
+    const completed = await db.contract.update({
+      where: { id: contractId },
+      data: { status: 'COMPLETED' },
+      select: { productId: true },
+    });
+
+    // Ownership release: FINANCE → null (customer now owns the device).
+    // Uses the same tx so the ownership flip cannot diverge from the
+    // COMPLETED status. `tx` is a proper Prisma.TransactionClient when
+    // called from recordPayment; when called without tx we fall through
+    // to this.prisma which the helper also accepts.
+    if (completed?.productId) {
+      try {
+        await this.productsService.transferOwnership(
+          completed.productId,
+          null,
+          tx,
+        );
+      } catch (err) {
+        this.logger.error(
+          `Failed to release product ownership for completed contract ${contractId}: ${err instanceof Error ? err.message : err}`,
+        );
+      }
     }
   }
 

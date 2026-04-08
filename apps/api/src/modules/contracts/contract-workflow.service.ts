@@ -11,6 +11,7 @@ import {
 } from '../../utils/validation.util';
 import { generateSaleNumber } from '../../utils/sequence.util';
 import { JournalAutoService } from '../journal/journal-auto.service';
+import { ProductsService } from '../products/products.service';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -20,6 +21,7 @@ export class ContractWorkflowService {
     private prisma: PrismaService,
     private notificationsService: NotificationsService,
     private journalAutoService: JournalAutoService,
+    private productsService: ProductsService,
   ) {}
 
   // === WORKFLOW: ส่งตรวจสอบ (ตรวจ Validation ทั้งหมดก่อนส่ง) ===
@@ -281,6 +283,28 @@ export class ContractWorkflowService {
       // Step 8: สถานะเปลี่ยนเป็น ACTIVE → เริ่มนับงวด
       await tx.contract.update({ where: { id }, data: { status: 'ACTIVE' } });
       await tx.product.update({ where: { id: contract.productId }, data: { status: 'SOLD_INSTALLMENT' } });
+
+      // Ownership transfer: SHOP → FINANCE.
+      // Per CLAUDE.md business rule: "กรรมสิทธิ์สินค้าย้ายจาก SHOP → FINANCE
+      // (จนลูกค้าผ่อนครบ)". Runs inside the activation transaction so
+      // ownership can never drift from contract status.
+      const financeCompany = await tx.companyInfo.findFirst({
+        where: { companyCode: 'FINANCE', deletedAt: null },
+        select: { id: true },
+      });
+      if (financeCompany) {
+        await this.productsService.transferOwnership(
+          contract.productId,
+          financeCompany.id,
+          tx,
+        );
+      } else {
+        // If FINANCE entity is missing we still activate, but the ops team
+        // needs to know — ownership will fall back to the branch's company.
+        this.logger.warn(
+          `FINANCE company not found while activating contract ${contract.contractNumber} — product ownership NOT transferred`,
+        );
+      }
 
       // Auto-create Sale record for this contract activation
       const saleNumber = await generateSaleNumber(tx);

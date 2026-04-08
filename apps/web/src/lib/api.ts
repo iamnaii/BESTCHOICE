@@ -139,6 +139,12 @@ api.interceptors.response.use(
 export const liffApi = axios.create(sharedConfig);
 
 export function getErrorMessage(error: unknown): string {
+  // Guard against null / undefined / primitive errors before treating
+  // it like an axios-shaped object — otherwise a stray `throw undefined`
+  // or rejection with no payload crashes this helper with a TypeError.
+  if (!error || typeof error !== 'object') {
+    return 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้';
+  }
   const err = error as { response?: { status?: number; data?: { message?: string | string[] } }; code?: string };
   if (err.code === 'ECONNABORTED') return 'เซิร์ฟเวอร์ไม่ตอบสนอง กรุณาลองใหม่';
   if (!err.response) return 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้';

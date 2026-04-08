@@ -13,11 +13,12 @@ import {
   ParseFilePipe,
   MaxFileSizeValidator,
 } from '@nestjs/common';
+import { Res } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
-import * as fs from 'fs';
-import * as path from 'path';
+import { Response } from 'express';
 import { TodosService } from './todos.service';
+import { StorageService } from '../storage/storage.service';
 import { CreateTodoDto, UpdateTodoDto, TodosQueryDto } from './dto/todo.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -35,7 +36,10 @@ interface AuthUser {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
 export class TodosController {
-  constructor(private todosService: TodosService) {}
+  constructor(
+    private todosService: TodosService,
+    private storage: StorageService,
+  ) {}
 
   @Get()
   findAll(@CurrentUser() user: AuthUser, @Query() query: TodosQueryDto) {
@@ -50,6 +54,44 @@ export class TodosController {
       limit: query.limit,
       currentUserId: user.id,
     });
+  }
+
+  @Post('upload-attachment')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadAttachment(
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({
+            maxSize: 10 * 1024 * 1024,
+            message: 'ไฟล์มีขนาดเกิน 10MB',
+          }),
+        ],
+        fileIsRequired: true,
+        errorHttpStatusCode: 400,
+      }),
+    )
+    file: Express.Multer.File,
+  ) {
+    const safeName = file.originalname.replace(/[^\w.-]/g, '_');
+    const key = `todos/${Date.now()}-${Math.random().toString(36).substring(2, 8)}-${safeName}`;
+    await this.storage.upload(key, file.buffer, file.mimetype);
+
+    return {
+      url: `/api/todos/attachments/${encodeURIComponent(key)}`,
+      key,
+      name: file.originalname,
+      size: file.size,
+      mimeType: file.mimetype,
+      uploadedAt: new Date().toISOString(),
+    };
+  }
+
+  @Get('attachments/*')
+  async downloadAttachment(@Param() params: Record<string, string>, @Res() res: Response) {
+    const key = decodeURIComponent(params['0']);
+    const stream = await this.storage.getStream(key);
+    stream.pipe(res);
   }
 
   @Get(':id')
@@ -75,39 +117,5 @@ export class TodosController {
   @Delete(':id')
   remove(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.todosService.remove(id, user.id, user.role);
-  }
-
-  @Post('upload-attachment')
-  @UseInterceptors(FileInterceptor('file'))
-  uploadAttachment(
-    @UploadedFile(
-      new ParseFilePipe({
-        validators: [
-          new MaxFileSizeValidator({
-            maxSize: 10 * 1024 * 1024,
-            message: 'ไฟล์มีขนาดเกิน 10MB',
-          }),
-        ],
-        fileIsRequired: true,
-        errorHttpStatusCode: 400,
-      }),
-    )
-    file: Express.Multer.File,
-  ) {
-    const uploadDir = path.resolve(process.cwd(), 'uploads', 'todos');
-    fs.mkdirSync(uploadDir, { recursive: true });
-
-    const safeName = file.originalname.replace(/[^\w.-]/g, '_');
-    const filename = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}-${safeName}`;
-    const filePath = path.join(uploadDir, filename);
-    fs.writeFileSync(filePath, file.buffer);
-
-    return {
-      url: `/uploads/todos/${filename}`,
-      name: file.originalname,
-      size: file.size,
-      mimeType: file.mimetype,
-      uploadedAt: new Date().toISOString(),
-    };
   }
 }

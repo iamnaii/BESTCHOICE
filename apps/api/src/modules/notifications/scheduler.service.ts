@@ -14,6 +14,7 @@ import { buildOverdueNoticeFlex } from '../line-oa/flex-messages/overdue-notice.
 import { buildPaymentReminderFlex } from '../line-oa/flex-messages/payment-reminder.flex';
 import { buildDailyReportFlex } from '../line-oa/flex-messages/daily-report.flex';
 import { DashboardService } from '../dashboard/dashboard.service';
+import { PDPAService } from '../pdpa/pdpa.service';
 
 @Injectable()
 export class SchedulerService {
@@ -29,6 +30,7 @@ export class SchedulerService {
     private lineOaService: LineOaService,
     private paymentLinkService: PaymentLinkService,
     private dashboardService: DashboardService,
+    private pdpaService: PDPAService,
   ) {}
 
   /**
@@ -85,7 +87,7 @@ export class SchedulerService {
     const contracts = await this.prisma.contract.findMany({
       where: { id: { in: contractIds } },
       include: {
-        customer: { select: { name: true, lineId: true, phone: true } },
+        customer: { select: { id: true, name: true, lineId: true, phone: true } },
         payments: {
           where: { status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] }, dueDate: { lt: new Date() } },
           orderBy: { installmentNo: 'asc' },
@@ -97,6 +99,15 @@ export class SchedulerService {
     for (const contract of contracts) {
       const lineId = contract.customer?.lineId;
       if (!lineId) continue;
+
+      // Check PDPA consent before sending
+      if (contract.customer?.id) {
+        const hasConsent = await this.pdpaService.hasActiveConsent(contract.customer.id);
+        if (!hasConsent) {
+          this.logger.debug(`PDPA: skipping status notification for customer ${contract.customer.id}`);
+          continue;
+        }
+      }
 
       try {
         const totalOverdue = contract.payments.reduce(

@@ -107,6 +107,15 @@ export class PDPAService {
     });
   }
 
+  /** Check whether a customer currently has an active (GRANTED) PDPA consent */
+  async hasActiveConsent(customerId: string): Promise<boolean> {
+    const consent = await this.prisma.pDPAConsent.findFirst({
+      where: { customerId, status: 'GRANTED', deletedAt: null },
+      select: { id: true },
+    });
+    return !!consent;
+  }
+
   /** Get all consents for a customer */
   async getCustomerConsents(customerId: string) {
     return this.prisma.pDPAConsent.findMany({

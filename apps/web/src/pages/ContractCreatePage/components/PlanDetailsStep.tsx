@@ -1,5 +1,17 @@
+import { useEffect } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import type { Product, InterestConfig, Customer } from '../types';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  Form,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormControl,
+  FormMessage,
+} from '@/components/ui/form';
+import { contractPlanSchema, type ContractPlanFormData } from '@/lib/schemas';
 
 /** Info icon with tooltip for financial field explanations */
 function InfoTip({ text }: { text: string }) {
@@ -74,7 +86,52 @@ export function PlanDetailsStep({
   monthlyPayment,
   monthOptions,
 }: PlanDetailsStepProps) {
+  const form = useForm<ContractPlanFormData>({
+    resolver: zodResolver(contractPlanSchema),
+    defaultValues: {
+      downPayment,
+      totalMonths,
+      paymentDueDay,
+      notes: notes ?? '',
+    },
+    mode: 'onChange',
+  });
+
+  // Sync form values → parent state whenever the user edits
+  useEffect(() => {
+    const subscription = form.watch((values) => {
+      if (values.downPayment !== undefined && values.downPayment !== downPayment) {
+        setDownPaymentTouched(true);
+        setDownPayment(values.downPayment);
+      }
+      if (values.totalMonths !== undefined && values.totalMonths !== totalMonths) {
+        setTotalMonths(values.totalMonths);
+      }
+      if (values.paymentDueDay !== undefined && values.paymentDueDay !== paymentDueDay) {
+        setPaymentDueDay(values.paymentDueDay);
+      }
+      if (values.notes !== undefined && values.notes !== notes) {
+        setNotes(values.notes ?? '');
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [form, downPayment, totalMonths, paymentDueDay, notes, setDownPayment, setDownPaymentTouched, setTotalMonths, setPaymentDueDay, setNotes]);
+
+  // Sync parent state → form when parent drives a value change (e.g., product change resets downPayment)
+  useEffect(() => {
+    form.setValue('downPayment', downPayment, { shouldValidate: true });
+  }, [downPayment, form]);
+
+  useEffect(() => {
+    form.setValue('totalMonths', totalMonths, { shouldValidate: true });
+  }, [totalMonths, form]);
+
+  useEffect(() => {
+    form.setValue('paymentDueDay', paymentDueDay, { shouldValidate: true });
+  }, [paymentDueDay, form]);
+
   return (
+    <Form {...form}>
     <div className="max-w-xl">
       <div className="rounded-xl border border-border/60 p-6 space-y-4">
         {/* Interest Config Badge */}
@@ -92,56 +149,114 @@ export function PlanDetailsStep({
           <div className="text-lg font-bold text-primary">{sellingPrice.toLocaleString()} ฿</div>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-foreground mb-1">เงินดาวน์ <InfoTip text="เงินที่ลูกค้าจ่ายล่วงหน้า หน้าร้านเก็บไว้ ไม่ผ่านไฟแนนซ์ — ขั้นต่ำกำหนดตามนโยบาย" /></label>
-          <input
-            type="number"
-            value={downPayment}
-            onChange={(e) => { setDownPaymentTouched(true); setDownPayment(Number(e.target.value)); }}
-            className="w-full px-3 py-2 border border-input rounded-lg text-sm"
-            min={0}
-          />
-          <div className="text-xs text-muted-foreground mt-1">ขั้นต่ำ {(minDownPct * 100).toFixed(0)}% = {(sellingPrice * minDownPct).toLocaleString()} ฿</div>
-        </div>
+        <FormField
+          control={form.control}
+          name="downPayment"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel className="text-sm font-medium text-foreground">
+                เงินดาวน์ <InfoTip text="เงินที่ลูกค้าจ่ายล่วงหน้า หน้าร้านเก็บไว้ ไม่ผ่านไฟแนนซ์ — ขั้นต่ำกำหนดตามนโยบาย" />
+              </FormLabel>
+              <FormControl>
+                <input
+                  type="number"
+                  {...field}
+                  onChange={(e) => {
+                    const val = Number(e.target.value);
+                    field.onChange(val);
+                    setDownPaymentTouched(true);
+                    setDownPayment(val);
+                  }}
+                  className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                  min={0}
+                />
+              </FormControl>
+              <div className="text-xs text-muted-foreground">ขั้นต่ำ {(minDownPct * 100).toFixed(0)}% = {(sellingPrice * minDownPct).toLocaleString()} ฿</div>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
-        <div>
-          <label className="block text-sm font-medium text-foreground mb-1">จำนวนงวด (เดือน)</label>
-          <select value={totalMonths} onChange={(e) => setTotalMonths(Number(e.target.value))} className="w-full px-3 py-2 border border-input rounded-lg text-sm">
-            {monthOptions.map((m) => (
-              <option key={m} value={m}>{m} เดือน</option>
-            ))}
-          </select>
-        </div>
+        <FormField
+          control={form.control}
+          name="totalMonths"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel className="text-sm font-medium text-foreground">จำนวนงวด (เดือน)</FormLabel>
+              <FormControl>
+                <select
+                  value={field.value}
+                  onChange={(e) => {
+                    const val = Number(e.target.value);
+                    field.onChange(val);
+                    setTotalMonths(val);
+                  }}
+                  className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                >
+                  {monthOptions.map((m) => (
+                    <option key={m} value={m}>{m} เดือน</option>
+                  ))}
+                </select>
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
         {/* Payment Due Day */}
-        <div>
-          <label className="block text-sm font-medium text-foreground mb-1">วันที่ครบกำหนดชำระ (ตามวันเงินเดือนออก)</label>
-          <select
-            value={paymentDueDay}
-            onChange={(e) => setPaymentDueDay(Number(e.target.value))}
-            className="w-full px-3 py-2 border border-input rounded-lg text-sm"
-          >
-            {[...Array.from({ length: 28 }, (_, i) => i + 1), 31].map((d) => (
-              <option key={d} value={d}>{d === 31 ? 'สิ้นเดือน (วันสุดท้ายของเดือน)' : `วันที่ ${d} ของทุกเดือน`}</option>
-            ))}
-          </select>
-          <div className="text-xs text-muted-foreground mt-1">
-            {selectedCustomer?.salaryPayDay && paymentDueDay === selectedCustomer.salaryPayDay
-              ? `กำหนดชำระตามวันเงินเดือนออก (วันที่ ${selectedCustomer.salaryPayDay})`
-              : `ลูกค้าจะต้องชำระเงิน${paymentDueDay === 31 ? 'ทุกสิ้นเดือน' : `ทุกวันที่ ${paymentDueDay} ของเดือน`}`
-            }
-          </div>
-        </div>
+        <FormField
+          control={form.control}
+          name="paymentDueDay"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel className="text-sm font-medium text-foreground">วันที่ครบกำหนดชำระ (ตามวันเงินเดือนออก)</FormLabel>
+              <FormControl>
+                <select
+                  value={field.value}
+                  onChange={(e) => {
+                    const val = Number(e.target.value);
+                    field.onChange(val);
+                    setPaymentDueDay(val);
+                  }}
+                  className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                >
+                  {[...Array.from({ length: 28 }, (_, i) => i + 1), 31].map((d) => (
+                    <option key={d} value={d}>{d === 31 ? 'สิ้นเดือน (วันสุดท้ายของเดือน)' : `วันที่ ${d} ของทุกเดือน`}</option>
+                  ))}
+                </select>
+              </FormControl>
+              <div className="text-xs text-muted-foreground">
+                {selectedCustomer?.salaryPayDay && field.value === selectedCustomer.salaryPayDay
+                  ? `กำหนดชำระตามวันเงินเดือนออก (วันที่ ${selectedCustomer.salaryPayDay})`
+                  : `ลูกค้าจะต้องชำระเงิน${field.value === 31 ? 'ทุกสิ้นเดือน' : `ทุกวันที่ ${field.value} ของเดือน`}`
+                }
+              </div>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
-        <div>
-          <label className="block text-sm font-medium text-foreground mb-1">หมายเหตุ</label>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={2}
-            className="w-full px-3 py-2 border border-input rounded-lg text-sm"
-          />
-        </div>
+        <FormField
+          control={form.control}
+          name="notes"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel className="text-sm font-medium text-foreground">หมายเหตุ</FormLabel>
+              <FormControl>
+                <textarea
+                  {...field}
+                  onChange={(e) => {
+                    field.onChange(e.target.value);
+                    setNotes(e.target.value);
+                  }}
+                  rows={2}
+                  className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
         {/* Calculation Summary */}
         <div className="bg-primary/5 rounded-lg p-4 space-y-2">
@@ -182,5 +297,6 @@ export function PlanDetailsStep({
         </div>
       </div>
     </div>
+    </Form>
   );
 }

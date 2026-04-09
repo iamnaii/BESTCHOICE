@@ -16,6 +16,7 @@ import ContractDocuments from '@/components/contract/ContractDocuments';
 import { ContractEarlyPayoffQuote, EarlyPayoffOverlay } from '@/components/contract/ContractEarlyPayoff';
 import { toast } from 'sonner';
 import { useState, useRef, useEffect } from 'react';
+import { Copy } from 'lucide-react';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { useAuth } from '@/contexts/AuthContext';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -575,7 +576,17 @@ const deleteMutation = useMutation({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5 lg:gap-7.5 mb-6">
         <div className="rounded-xl border border-border/60 p-6 shadow-sm">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-foreground">ข้อมูลสัญญา</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-semibold text-foreground">ข้อมูลสัญญา</h2>
+              <button
+                onClick={() => { copyToClipboard(contract.contractNumber); toast.success('คัดลอกเลขที่สัญญาแล้ว'); }}
+                className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                aria-label="คัดลอกเลขที่สัญญา"
+                title={contract.contractNumber}
+              >
+                <Copy className="size-3.5" />
+              </button>
+            </div>
             {canEdit && !isEditing && (
               <button onClick={startEditing} className="px-3 py-1 text-xs bg-warning/10 text-warning rounded-lg hover:bg-warning/20">
                 แก้ไข

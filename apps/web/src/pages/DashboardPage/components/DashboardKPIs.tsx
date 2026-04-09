@@ -10,10 +10,11 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import AnimatedCounter from '@/components/ui/animated-counter';
-import type { KPIs } from '../types';
+import type { KPIs, ComparativePL } from '../types';
 
 interface DashboardKPIsProps {
   kpis: KPIs;
+  comparativePL?: ComparativePL;
 }
 
 /**
@@ -38,16 +39,19 @@ function MoMIndicator({ value }: { value?: number | null }) {
   );
 }
 
-export default function DashboardKPIs({ kpis }: DashboardKPIsProps) {
+export default function DashboardKPIs({ kpis, comparativePL }: DashboardKPIsProps) {
   const navigate = useNavigate();
 
-  // MoM data — will be populated when the API provides previousMonth comparison
-  // Example: kpis.contracts.totalMoM, kpis.financial.todayPaymentsMoM, etc.
+  // MoM data from /reports/comparative-pl
+  const revenueMoM = comparativePL?.momChange.revenue ?? null;
+  const netProfitMoM = comparativePL?.momChange.netProfit ?? null;
+
+  // KPI-level MoM fallback (if kpis API returns them in future)
   const kpisAny = kpis as unknown as Record<string, unknown>;
-  const contractsMoM = kpisAny.contractsMoM as number | undefined;
-  const overdueMoM = kpisAny.overdueMoM as number | undefined;
-  const paymentsMoM = kpisAny.paymentsMoM as number | undefined;
-  const stockMoM = kpisAny.stockMoM as number | undefined;
+  const contractsMoM = (kpisAny.contractsMoM as number | undefined) ?? null;
+  const overdueMoM = (kpisAny.overdueMoM as number | undefined) ?? null;
+  const paymentsMoM = revenueMoM;  // revenue MoM is the best proxy for payments
+  const stockMoM = (kpisAny.stockMoM as number | undefined) ?? null;
 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-5">
@@ -88,6 +92,14 @@ export default function DashboardKPIs({ kpis }: DashboardKPIsProps) {
           <AnimatedCounter value={kpis.financial.todayPayments} prefix="฿" className="text-2xl lg:text-3xl font-bold text-foreground" />
           <div className="text-2xs font-medium text-muted-foreground mt-1.5 uppercase tracking-wider">ยอดรับวันนี้</div>
           <MoMIndicator value={paymentsMoM} />
+          <MoMIndicator value={netProfitMoM} />
+          {comparativePL?.yoyChange.revenue != null && (
+            <div className={cn(
+              'flex items-center gap-0.5 text-2xs font-medium mt-0.5 text-muted-foreground',
+            )}>
+              <span>{comparativePL.yoyChange.revenue >= 0 ? '↑' : '↓'}{Math.abs(comparativePL.yoyChange.revenue).toFixed(1)}% vs ปีก่อน</span>
+            </div>
+          )}
         </CardContent>
       </Card>
       <Card className="cursor-pointer group hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 border-l-[3px] border-l-warning" onClick={() => navigate('/stock')}>

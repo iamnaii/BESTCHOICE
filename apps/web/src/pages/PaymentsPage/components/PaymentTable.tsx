@@ -1,6 +1,9 @@
 import { useMemo } from 'react';
+import { toast } from 'sonner';
+import { Copy } from 'lucide-react';
 import DataTable from '@/components/ui/DataTable';
 import { formatDateShort } from '@/utils/formatters';
+import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import type { PendingPayment } from '../types';
 import { paymentStatusLabels } from '../types';
 
@@ -30,6 +33,7 @@ export default function PaymentTable({
   onShowBatchModal,
   onClearSelection,
 }: PaymentTableProps) {
+  const { copy } = useCopyToClipboard();
   const pendingColumns = useMemo(() => [
     {
       key: 'select',
@@ -49,7 +53,16 @@ export default function PaymentTable({
       label: 'สัญญา',
       render: (p: PendingPayment) => (
         <div>
-          <div className="font-mono text-sm text-primary">{p.contract.contractNumber}</div>
+          <div className="flex items-center gap-1">
+            <span className="font-mono text-sm text-primary">{p.contract.contractNumber}</span>
+            <button
+              onClick={(e) => { e.stopPropagation(); copy(p.contract.contractNumber); toast.success('คัดลอกแล้ว'); }}
+              className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+              aria-label={`คัดลอกเลขที่สัญญา ${p.contract.contractNumber}`}
+            >
+              <Copy className="size-3" />
+            </button>
+          </div>
           <div className="text-xs text-muted-foreground">{p.contract.customer.name}</div>
         </div>
       ),
@@ -97,7 +110,7 @@ export default function PaymentTable({
         </div>
       ),
     },
-  ], [onOpenPayModal, onOpenAdvanceModal, onViewHistory, selectedIds, onToggleSelect]);
+  ], [onOpenPayModal, onOpenAdvanceModal, onViewHistory, selectedIds, onToggleSelect, copy]);
 
   return (
     <>

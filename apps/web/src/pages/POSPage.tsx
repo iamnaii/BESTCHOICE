@@ -1,13 +1,25 @@
 import { useState, useMemo } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { Copy } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
+import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { useDebounce } from '@/hooks/useDebounce';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
 import { saleTypeConfig, paymentMethods, type SaleType } from '@/lib/constants';
+import {
+  Form,
+  FormField,
+  FormItem,
+  FormControl,
+  FormMessage,
+} from '@/components/ui/form';
+import { posSaleSchema, type PosSaleFormData } from '@/lib/schemas';
 
 // Only show CASH and EXTERNAL_FINANCE in POS (INSTALLMENT requires formal contract via /contracts/create)
 const posSaleTypes = Object.entries(saleTypeConfig).filter(([type]) => type !== 'INSTALLMENT') as [SaleType, typeof saleTypeConfig[SaleType]][];
@@ -52,11 +64,12 @@ export default function POSPage() {
   useAuth(); // ensure user is authenticated
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { copy } = useCopyToClipboard();
 
-  // Sale type
+  // Sale type (kept as separate state — drives conditional UI sections)
   const [saleType, setSaleType] = useState<SaleType>('CASH');
 
-  // Product search
+  // Product search (search-selection state — not part of sale form)
   const [productSearch, setProductSearch] = useState('');
   const debouncedProductSearch = useDebounce(productSearch);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -66,29 +79,45 @@ export default function POSPage() {
   const debouncedBundleSearch = useDebounce(bundleSearch);
   const [bundleProducts, setBundleProducts] = useState<Product[]>([]);
 
-  // Customer search
+  // Customer search (search-selection state — not part of sale form)
   const [customerSearch, setCustomerSearch] = useState('');
   const debouncedCustomerSearch = useDebounce(customerSearch);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
 
-  // Sale details
+  // Price selection UI state (not submitted directly — maps to sellingPrice via form)
   const [selectedPriceId, setSelectedPriceId] = useState('');
-  const [sellingPrice, setSellingPrice] = useState('');
-  const [discount, setDiscount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('CASH');
-  const [amountReceived, setAmountReceived] = useState('');
-  const [notes, setNotes] = useState('');
 
-  // Common fields for INSTALLMENT and EXTERNAL_FINANCE
-  const [downPayment, setDownPayment] = useState('');
-  const [contractNumber, setContractNumber] = useState('');
+  // Sale form — replaces individual useState for sale detail fields
+  const saleForm = useForm<PosSaleFormData>({
+    resolver: zodResolver(posSaleSchema),
+    defaultValues: {
+      saleType: 'CASH',
+      sellingPrice: 0,
+      discount: 0,
+      paymentMethod: 'CASH',
+      amountReceived: undefined,
+      downPayment: 0,
+      financeCompany: '',
+      contractNumber: '',
+      totalMonths: '6',
+      notes: '',
+    },
+    mode: 'onChange',
+  });
+
+  // Convenient watched values for derived calculations and summary display
+  const sellingPrice = String(saleForm.watch('sellingPrice') || 0);
+  const discount = String(saleForm.watch('discount') || 0);
+  const paymentMethod = saleForm.watch('paymentMethod');
+  const amountReceived = String(saleForm.watch('amountReceived') || '');
+  const notes = saleForm.watch('notes') ?? '';
+  const downPayment = String(saleForm.watch('downPayment') || 0);
+  const contractNumber = saleForm.watch('contractNumber') ?? '';
+  const totalMonths = saleForm.watch('totalMonths') ?? '6';
+  const financeCompany = saleForm.watch('financeCompany') ?? '';
 
   // Installment fields
   const planType = 'STORE_DIRECT';
-  const [totalMonths, setTotalMonths] = useState('6');
-
-  // External finance fields
-  const [financeCompany, setFinanceCompany] = useState('');
 
   // Product search query
   const { data: products, isFetching: productsFetching, isError: productsError } = useQuery<Product[]>({
@@ -180,13 +209,13 @@ export default function POSPage() {
     const defaultPrice = product.prices.find(p => p.isDefault);
     if (defaultPrice) {
       setSelectedPriceId(defaultPrice.id);
-      setSellingPrice(String(parseFloat(defaultPrice.amount)));
+      saleForm.setValue('sellingPrice', parseFloat(defaultPrice.amount), { shouldValidate: true });
     } else if (product.prices.length > 0) {
       setSelectedPriceId(product.prices[0].id);
-      setSellingPrice(String(parseFloat(product.prices[0].amount)));
+      saleForm.setValue('sellingPrice', parseFloat(product.prices[0].amount), { shouldValidate: true });
     } else {
       setSelectedPriceId('');
-      setSellingPrice('');
+      saleForm.setValue('sellingPrice', 0);
     }
   };
 
@@ -195,7 +224,7 @@ export default function POSPage() {
     const price = selectedProduct?.prices.find(p => p.id === priceId);
     if (price) {
       setSelectedPriceId(priceId);
-      setSellingPrice(String(parseFloat(price.amount)));
+      saleForm.setValue('sellingPrice', parseFloat(price.amount), { shouldValidate: true });
     }
   };
 
@@ -215,24 +244,29 @@ export default function POSPage() {
     mutationFn: async () => {
       if (!selectedProduct) throw new Error('กรุณาเลือกสินค้า');
       if (!selectedCustomer) throw new Error('กรุณาเลือกลูกค้า');
-      if (!sellingPrice || parseFloat(sellingPrice) <= 0) throw new Error('กรุณาใส่ราคาขาย');
+
+      // Validate the form before submitting
+      const valid = await saleForm.trigger();
+      if (!valid) throw new Error('กรุณาตรวจสอบข้อมูลในฟอร์ม');
+
+      const formValues = saleForm.getValues();
 
       const payload: Record<string, unknown> = {
         saleType,
         customerId: selectedCustomer.id,
         productId: selectedProduct.id,
         branchId: selectedProduct.branchId,
-        sellingPrice: parseFloat(sellingPrice),
-        discount: parseFloat(discount) || 0,
-        notes: notes || undefined,
+        sellingPrice: formValues.sellingPrice,
+        discount: formValues.discount ?? 0,
+        notes: formValues.notes || undefined,
         bundleProductIds: bundleProducts.map(p => p.id),
       };
 
       if (saleType === 'CASH') {
-        payload.paymentMethod = paymentMethod;
-        payload.amountReceived = parseFloat(amountReceived) || netAmount;
+        payload.paymentMethod = formValues.paymentMethod;
+        payload.amountReceived = formValues.amountReceived ?? netAmount;
       } else if (saleType === 'INSTALLMENT') {
-        const down = parseFloat(downPayment) || 0;
+        const down = formValues.downPayment ?? 0;
         const minDownPct = posConfig?.minDownPaymentPct ?? 0.15;
         const minDown = netAmount * minDownPct;
         if (down < minDown) {
@@ -240,17 +274,16 @@ export default function POSPage() {
         }
         payload.planType = planType;
         payload.downPayment = down;
-        payload.totalMonths = parseInt(totalMonths);
-        payload.paymentMethod = paymentMethod;
-        payload.contractNumber = contractNumber || undefined;
+        payload.totalMonths = parseInt(formValues.totalMonths ?? '6');
+        payload.paymentMethod = formValues.paymentMethod;
+        payload.contractNumber = formValues.contractNumber || undefined;
       } else if (saleType === 'EXTERNAL_FINANCE') {
-        if (!financeCompany?.trim()) throw new Error('กรุณาใส่ชื่อบริษัทไฟแนนซ์');
-        const down = parseFloat(downPayment) || 0;
-        payload.financeCompany = financeCompany.trim();
-        payload.contractNumber = contractNumber || undefined;
+        const down = formValues.downPayment ?? 0;
+        payload.financeCompany = (formValues.financeCompany ?? '').trim();
+        payload.contractNumber = formValues.contractNumber || undefined;
         payload.downPayment = down;
         payload.financeAmount = netAmount - down;
-        payload.paymentMethod = paymentMethod;
+        payload.paymentMethod = formValues.paymentMethod;
       }
 
       const { data } = await api.post('/sales', payload);
@@ -274,18 +307,21 @@ export default function POSPage() {
     setSelectedCustomer(null);
     setBundleProducts([]);
     setSelectedPriceId('');
-    setSellingPrice('');
-    setDiscount('');
-    setPaymentMethod('CASH');
-    setAmountReceived('');
-    setNotes('');
-    setDownPayment('');
-    setContractNumber('');
-    setTotalMonths('6');
-    setFinanceCompany('');
     setProductSearch('');
     setCustomerSearch('');
     setBundleSearch('');
+    saleForm.reset({
+      saleType: 'CASH',
+      sellingPrice: 0,
+      discount: 0,
+      paymentMethod: 'CASH',
+      amountReceived: undefined,
+      downPayment: 0,
+      financeCompany: '',
+      contractNumber: '',
+      totalMonths: '6',
+      notes: '',
+    });
   };
 
   const inputClass = 'w-full px-3 py-2 border border-input rounded-lg text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background';
@@ -309,7 +345,7 @@ export default function POSPage() {
                 {posSaleTypes.map(([type, config]) => (
                   <button
                     key={type}
-                    onClick={() => setSaleType(type)}
+                    onClick={() => { setSaleType(type); saleForm.setValue('saleType', type as 'CASH' | 'EXTERNAL_FINANCE'); }}
                     className={`p-4 rounded-xl border-2 text-center transition-all ${
                       saleType === type
                         ? `${config.bg} ring-2 shadow-sm`
@@ -564,6 +600,7 @@ export default function POSPage() {
               <div className="text-sm font-semibold text-foreground">รายละเอียดการขาย</div>
             </CardHeader>
             <CardContent>
+            <Form {...saleForm}>
 
             {/* Price picker from product system */}
             {selectedProduct && selectedProduct.prices.length > 0 && (
@@ -590,73 +627,184 @@ export default function POSPage() {
             )}
 
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                  ราคาขาย *
-                  <span className="ml-1 text-primary">(จากระบบ)</span>
-                </label>
-                <input
-                  type="number"
-                  value={sellingPrice}
-                  className={`${inputClass} bg-muted`}
-                  placeholder="0"
-                  readOnly
-                />
-              </div>
-              <div>
-                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ส่วนลด</label>
-                <input type="number" value={discount} onChange={(e) => setDiscount(e.target.value)} className={inputClass} placeholder="0" />
-                {parseFloat(sellingPrice) > 0 && (
-                  <div className="flex gap-1 mt-1">
-                    {[0, 5, 10].map(pct => (
-                      <button key={pct} type="button" onClick={() => setDiscount(pct === 0 ? '' : String(Math.round(parseFloat(sellingPrice) * pct / 100)))} className={`px-2 py-0.5 text-[10px] rounded border ${parseFloat(discount) === Math.round(parseFloat(sellingPrice) * pct / 100) && pct > 0 ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-input'}`}>
-                        {pct}%
-                      </button>
-                    ))}
-                  </div>
+              <FormField
+                control={saleForm.control as any}
+                name="sellingPrice"
+                render={({ field }) => (
+                  <FormItem>
+                    <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                      ราคาขาย *
+                      <span className="ml-1 text-primary">(จากระบบ)</span>
+                    </label>
+                    <FormControl>
+                      <input
+                        type="number"
+                        {...field}
+                        value={field.value || 0}
+                        className={`${inputClass} bg-muted`}
+                        placeholder="0"
+                        readOnly
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
                 )}
-              </div>
+              />
+              <FormField
+                control={saleForm.control as any}
+                name="discount"
+                render={({ field }) => (
+                  <FormItem>
+                    <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ส่วนลด</label>
+                    <FormControl>
+                      <input
+                        type="number"
+                        {...field}
+                        value={field.value ?? 0}
+                        onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                        className={inputClass}
+                        placeholder="0"
+                      />
+                    </FormControl>
+                    {parseFloat(sellingPrice) > 0 && (
+                      <div className="flex gap-1 mt-1">
+                        {[0, 5, 10].map(pct => (
+                          <button
+                            key={pct}
+                            type="button"
+                            onClick={() => saleForm.setValue('discount', pct === 0 ? 0 : Math.round(parseFloat(sellingPrice) * pct / 100), { shouldValidate: true })}
+                            className={`px-2 py-0.5 text-[10px] rounded border ${parseFloat(discount) === Math.round(parseFloat(sellingPrice) * pct / 100) && pct > 0 ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-input'}`}
+                          >
+                            {pct}%
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             </div>
 
             {/* Conditional fields by sale type */}
             {saleType === 'CASH' && (
               <div className="grid grid-cols-2 gap-3 mt-3">
-                <div>
-                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">วิธีชำระเงิน</label>
-                  <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className={selectClass}>
-                    {paymentMethods.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เงินที่รับ</label>
-                  <input type="number" value={amountReceived} onChange={(e) => setAmountReceived(e.target.value)} className={inputClass} placeholder={String(netAmount)} />
-                </div>
+                <FormField
+                  control={saleForm.control as any}
+                  name="paymentMethod"
+                  render={({ field }) => (
+                    <FormItem>
+                      <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">วิธีชำระเงิน</label>
+                      <FormControl>
+                        <select {...field} className={selectClass}>
+                          {paymentMethods.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                        </select>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={saleForm.control as any}
+                  name="amountReceived"
+                  render={({ field }) => (
+                    <FormItem>
+                      <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เงินที่รับ</label>
+                      <FormControl>
+                        <input
+                          type="number"
+                          {...field}
+                          value={field.value ?? ''}
+                          onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                          className={inputClass}
+                          placeholder={String(netAmount)}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </div>
             )}
 
             {saleType === 'EXTERNAL_FINANCE' && (
               <div className="space-y-3 mt-3">
                 <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">บริษัทไฟแนนซ์ *</label>
-                    <input type="text" value={financeCompany} onChange={(e) => setFinanceCompany(e.target.value)} className={inputClass} placeholder="ชื่อบริษัทไฟแนนซ์" />
-                  </div>
-                  <div>
-                    <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เลขที่สัญญา</label>
-                    <input type="text" value={contractNumber} onChange={(e) => setContractNumber(e.target.value)} className={inputClass} placeholder="เลขที่สัญญาไฟแนนซ์" />
-                  </div>
+                  <FormField
+                    control={saleForm.control as any}
+                    name="financeCompany"
+                    render={({ field }) => (
+                      <FormItem>
+                        <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">บริษัทไฟแนนซ์ *</label>
+                        <FormControl>
+                          <input
+                            type="text"
+                            {...field}
+                            value={field.value ?? ''}
+                            className={inputClass}
+                            placeholder="ชื่อบริษัทไฟแนนซ์"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={saleForm.control as any}
+                    name="contractNumber"
+                    render={({ field }) => (
+                      <FormItem>
+                        <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เลขที่สัญญา</label>
+                        <FormControl>
+                          <input
+                            type="text"
+                            {...field}
+                            value={field.value ?? ''}
+                            className={inputClass}
+                            placeholder="เลขที่สัญญาไฟแนนซ์"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เงินดาวน์</label>
-                    <input type="number" value={downPayment} onChange={(e) => setDownPayment(e.target.value)} className={inputClass} placeholder="0" />
-                  </div>
-                  <div>
-                    <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">รับเงินดาวน์โดย</label>
-                    <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className={selectClass}>
-                      {paymentMethods.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                    </select>
-                  </div>
+                  <FormField
+                    control={saleForm.control as any}
+                    name="downPayment"
+                    render={({ field }) => (
+                      <FormItem>
+                        <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เงินดาวน์</label>
+                        <FormControl>
+                          <input
+                            type="number"
+                            {...field}
+                            value={field.value ?? 0}
+                            onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                            className={inputClass}
+                            placeholder="0"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={saleForm.control as any}
+                    name="paymentMethod"
+                    render={({ field }) => (
+                      <FormItem>
+                        <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">รับเงินดาวน์โดย</label>
+                        <FormControl>
+                          <select {...field} className={selectClass}>
+                            {paymentMethods.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                          </select>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </div>
                 {/* Finance transfer amount highlight */}
                 {transferAmount > 0 && (
@@ -669,10 +817,27 @@ export default function POSPage() {
             )}
 
             {/* Notes */}
-            <div className="mt-3">
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หมายเหตุ</label>
-              <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} className={inputClass} placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)" />
-            </div>
+            <FormField
+              control={saleForm.control as any}
+              name="notes"
+              render={({ field }) => (
+                <FormItem className="mt-3">
+                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หมายเหตุ</label>
+                  <FormControl>
+                    <input
+                      type="text"
+                      {...field}
+                      value={field.value ?? ''}
+                      className={inputClass}
+                      placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            </Form>
             </CardContent>
           </Card>
         </div>
@@ -695,7 +860,18 @@ export default function POSPage() {
               <div className="mb-3">
                 <div className="text-xs text-muted-foreground">สินค้าหลัก</div>
                 <div className="text-sm font-medium">{selectedProduct.brand} {selectedProduct.model}</div>
-                {selectedProduct.imeiSerial && <div className="text-xs text-muted-foreground font-mono">{selectedProduct.imeiSerial}</div>}
+                {selectedProduct.imeiSerial && (
+                  <div className="flex items-center gap-1">
+                    <div className="text-xs text-muted-foreground font-mono">{selectedProduct.imeiSerial}</div>
+                    <button
+                      onClick={() => { copy(selectedProduct.imeiSerial!); toast.success('คัดลอกแล้ว'); }}
+                      className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                      aria-label="คัดลอก IMEI"
+                    >
+                      <Copy className="size-3.5" />
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -717,7 +893,16 @@ export default function POSPage() {
               <div className="mb-4">
                 <div className="text-xs text-muted-foreground">ลูกค้า</div>
                 <div className="text-sm font-medium">{selectedCustomer.name}</div>
-                <div className="text-xs text-muted-foreground">{selectedCustomer.phone}</div>
+                <div className="flex items-center gap-1">
+                  <div className="text-xs text-muted-foreground">{selectedCustomer.phone}</div>
+                  <button
+                    onClick={() => { copy(selectedCustomer.phone); toast.success('คัดลอกแล้ว'); }}
+                    className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                    aria-label="คัดลอกเบอร์โทร"
+                  >
+                    <Copy className="size-3.5" />
+                  </button>
+                </div>
               </div>
             )}
 

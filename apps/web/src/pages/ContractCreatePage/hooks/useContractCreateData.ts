@@ -6,11 +6,13 @@ import { serializeAddress, AddressData, emptyAddress } from '@/components/ui/Add
 import { toast } from 'sonner';
 import type { Product, Customer, InterestConfig, CustReferenceData, PendingDoc } from '../types';
 import { emptyCustForm, emptyCustReference } from '../constants';
+import { useDraftStorage } from '@/hooks/useDraftStorage';
 
 export function useContractCreateData() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [step, setStep] = useState(0);
+  const draft = useDraftStorage();
 
   // Form state
   const [productSearch, setProductSearch] = useState('');
@@ -45,6 +47,41 @@ export function useContractCreateData() {
       setPaymentDueDay(selectedCustomer.salaryPayDay);
     }
   }, [selectedCustomer]);
+
+  // Restore draft on mount
+  useEffect(() => {
+    const saved = draft.load();
+    if (!saved) return;
+    toast('พบข้อมูลร่างที่บันทึกไว้ — กู้คืนอัตโนมัติแล้ว', {
+      description: `บันทึกเมื่อ ${new Date(saved.savedAt).toLocaleString('th-TH')}`,
+      duration: 5000,
+    });
+    setStep(saved.step);
+    setDownPayment(saved.downPayment);
+    setTotalMonths(saved.totalMonths);
+    setPaymentDueDay(saved.paymentDueDay);
+    setNotes(saved.notes);
+    // productId / customerId are IDs only — the actual objects will be found via query data after load
+    if (saved.productId) setProductSearch(saved.productId);
+    if (saved.customerId) setCustomerSearch(saved.customerId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Auto-save draft every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      draft.save({
+        step,
+        productId: selectedProduct?.id,
+        customerId: selectedCustomer?.id,
+        downPayment,
+        totalMonths,
+        paymentDueDay,
+        notes,
+      });
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [draft, step, selectedProduct, selectedCustomer, downPayment, totalMonths, paymentDueDay, notes]);
 
   const resetCustForm = () => {
     setCustForm(emptyCustForm);
@@ -217,6 +254,9 @@ export function useContractCreateData() {
           toast.error(`อัปโหลดเอกสาร ${doc.file.name} ไม่สำเร็จ`);
         }
       }
+
+      // Clear draft on successful submission
+      draft.clear();
 
       if (submitForReviewRef.current) {
         try {

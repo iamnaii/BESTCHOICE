@@ -304,9 +304,12 @@ export class PaySolutionsService {
       `Webhook received: refno=${refno}, result_code=${result_code}, order_no=${order_no}`,
     );
 
-    // หา payment จาก gatewayRef หรือ PaymentLink token
+    // หา payment ด้วย token — ไม่ filter status เพราะ PaySolutions retry
+    // policy คือถ้า webhook ของเราตอบช้า/ผิด เขาจะ retry (max 3 ครั้ง).
+    // ครั้งที่ 2/3 link.status จะเป็น USED แล้ว — ถ้า filter ACTIVE จะเข้าใจผิด
+    // ว่า "unknown refno" และส่ง Sentry fatal alarm
     const paymentLink = await this.prisma.paymentLink.findFirst({
-      where: { token: refno, status: 'ACTIVE' },
+      where: { token: refno },
       include: { payment: true },
     });
 
@@ -329,6 +332,26 @@ export class PaySolutionsService {
         );
       }
       return; // ไม่ throw — return 200 OK ให้ Pay Solutions
+    }
+
+    // IDEMPOTENCY: ถ้า link ถูกใช้ไปแล้ว (link.status === 'USED') แสดงว่า
+    // เป็น duplicate webhook — log แล้ว return 200 ทันที ไม่ทำอะไร.
+    // ถ้าไม่เช็คตรงนี้ Payment.amountPaid จะถูก double-count ทุกครั้งที่
+    // PaySolutions retry webhook
+    if (paymentLink.status === 'USED') {
+      this.logger.log(
+        `Duplicate webhook for refno=${refno} (link already USED, idempotent skip)`,
+      );
+      return;
+    }
+
+    // ถ้า link ถูก expire ไปแล้วแต่มี webhook callback มา — log warn
+    // และ skip (ไม่ใช่ orphan, ลูกค้าอาจปล่อย session ค้างก่อนชำระ)
+    if (paymentLink.status === 'EXPIRED') {
+      this.logger.warn(
+        `Webhook for EXPIRED link refno=${refno} result_code=${result_code} — ignoring`,
+      );
+      return;
     }
 
     const isSuccess = result_code === '00';

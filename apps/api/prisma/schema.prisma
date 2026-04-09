@@ -2262,6 +2262,12 @@ model Expense {
   @@index([expenseDate])
   @@index([createdById])
   @@index([deletedAt])
+  // Compound index for "expenses by branch in date range" — the most
+  // common dashboard query. Single-column branchId + expenseDate scans
+  // can't be combined as efficiently as a compound index.
+  @@index([branchId, expenseDate])
+  // Index for the approver dropdown filter on the expenses list
+  @@index([approvedById])
   @@map("expenses")
 }
 
@@ -2518,6 +2524,9 @@ model TradeIn {
   @@index([createdAt])
   @@index([imei])
   @@index([branchId])
+  // FK indexes for "appraisals by staff" and "id card verifications by staff" reports
+  @@index([appraisedById])
+  @@index([idCardVerifiedById])
   @@map("trade_ins")
 }
 
@@ -2604,6 +2613,9 @@ model BadDebtProvision {
   @@index([contractId])
   @@index([provisionDate])
   @@index([status])
+  // FK indexes for the "writeoffs by approver" + "pending approvals" reports
+  @@index([writtenOffById])
+  @@index([approvedById])
   @@map("bad_debt_provisions")
 }
 

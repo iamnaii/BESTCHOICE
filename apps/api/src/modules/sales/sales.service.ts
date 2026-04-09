@@ -3,7 +3,7 @@ import { PaymentMethod, PlanType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateSaleDto } from './dto/sale.dto';
 import { calculateInstallment, generatePaymentSchedule } from '../../utils/installment.util';
-import { loadInstallmentConfig, resolveInstallmentParams } from '../../utils/config.util';
+import { loadInstallmentConfig, resolveInstallmentParams, resolveVatPctForBranch } from '../../utils/config.util';
 import { generateContractNumber, generateSaleNumber } from '../../utils/sequence.util';
 import { InterCompanyService } from '../inter-company/inter-company.service';
 
@@ -281,7 +281,11 @@ export class SalesService {
       : null;
 
     const systemConfig = await loadInstallmentConfig(this.prisma);
-    const params = resolveInstallmentParams(interestConfig, systemConfig, dto.interestRate);
+    const baseParams = resolveInstallmentParams(interestConfig, systemConfig, dto.interestRate);
+    // Override vatPct based on the selling branch's VAT registration status
+    // BESTCHOICE SHOP (vatRegistered=false) → 0%, BESTCHOICE FINANCE → 7%
+    const effectiveVatPct = await resolveVatPctForBranch(this.prisma, dto.branchId, baseParams.vatPct);
+    const params = { ...baseParams, vatPct: effectiveVatPct };
 
     if (dto.downPayment < netAmount * params.minDownPaymentPct) {
       throw new BadRequestException(`เงินดาวน์ขั้นต่ำ ${(params.minDownPaymentPct * 100).toFixed(0)}%`);

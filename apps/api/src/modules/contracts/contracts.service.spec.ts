@@ -52,6 +52,7 @@ jest.mock('../../utils/config.util', () => ({
     storeCommissionPct: 0.10,
     vatPct: 0.07,
   }),
+  resolveVatPctForBranch: jest.fn().mockResolvedValue(0.07),
 }));
 
 jest.mock('../../utils/sequence.util', () => ({

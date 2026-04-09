@@ -112,15 +112,15 @@ export class OverdueService {
       }),
     ]);
 
-    const amountDue = Number(totalOverdueAmount._sum.amountDue || 0);
-    const amountPaid = Number(totalOverdueAmount._sum.amountPaid || 0);
-    const lateFees = Number(totalOverdueAmount._sum.lateFee || 0);
+    const amountDue = new Prisma.Decimal(totalOverdueAmount._sum.amountDue ?? 0);
+    const amountPaid = new Prisma.Decimal(totalOverdueAmount._sum.amountPaid ?? 0);
+    const lateFees = new Prisma.Decimal(totalOverdueAmount._sum.lateFee ?? 0);
 
     return {
       overdueCount,
       defaultCount,
-      totalOverdueAmount: amountDue - amountPaid,
-      totalLateFees: lateFees,
+      totalOverdueAmount: amountDue.sub(amountPaid).toNumber(),
+      totalLateFees: lateFees.toNumber(),
     };
   }
 
@@ -544,7 +544,7 @@ export class OverdueService {
         stage,
         label: stageLabels[stage],
         count: found?._count._all ?? 0,
-        totalAmount: Number(found?._sum?.financedAmount ?? 0),
+        totalAmount: new Prisma.Decimal(found?._sum?.financedAmount ?? 0).toNumber(),
       };
     });
 

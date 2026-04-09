@@ -488,14 +488,18 @@ export class PaymentsService {
     const byMethod: Record<string, number> = {};
     payments.forEach((p) => {
       const method = p.paymentMethod || 'UNKNOWN';
-      byMethod[method] = roundBaht((byMethod[method] || 0) + Number(p.amountPaid));
+      byMethod[method] = roundBaht(
+        new Prisma.Decimal(byMethod[method] ?? 0)
+          .add(new Prisma.Decimal(p.amountPaid ?? 0))
+          .toNumber(),
+      );
     });
 
     return {
       date,
       totalPayments: total,
-      totalAmount: Math.round(Number(aggregation._sum.amountPaid || 0)),
-      totalLateFees: Math.round(Number(aggregation._sum.lateFee || 0)),
+      totalAmount: Math.round(new Prisma.Decimal(aggregation._sum.amountPaid ?? 0).toNumber()),
+      totalLateFees: Math.round(new Prisma.Decimal(aggregation._sum.lateFee ?? 0).toNumber()),
       byMethod,
       data: payments,
       total,

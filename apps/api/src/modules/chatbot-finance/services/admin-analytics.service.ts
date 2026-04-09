@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { ChatChannel, MessageRole } from '@prisma/client';
+import { ChatChannel, MessageRole, Prisma } from '@prisma/client';
 
 export interface AnalyticsOverview {
   today: {
@@ -118,7 +118,7 @@ export class AdminAnalyticsService {
         messages: messagesToday,
         handoffs: handoffsToday,
         autoTriggers: autoTriggersToday,
-        totalCostUsd: Number(todayCostAgg._sum.costUsd ?? 0),
+        totalCostUsd: new Prisma.Decimal(todayCostAgg._sum.costUsd ?? 0).toNumber(),
       },
       total: {
         sessions: totalSessions,

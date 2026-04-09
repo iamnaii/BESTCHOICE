@@ -470,10 +470,10 @@ export class RepossessionsService {
     ]);
 
     const data = repos.map((r) => {
-      const appraisal = Number(r.appraisalPrice);
-      const repair = Number(r.repairCost);
-      const resell = Number(r.resellPrice || 0);
-      const profit = resell - appraisal - repair;
+      const appraisal = new Prisma.Decimal(r.appraisalPrice ?? 0);
+      const repair = new Prisma.Decimal(r.repairCost ?? 0);
+      const resell = new Prisma.Decimal(r.resellPrice ?? 0);
+      const profit = resell.sub(appraisal).sub(repair);
 
       return {
         id: r.id,
@@ -481,25 +481,27 @@ export class RepossessionsService {
         customer: r.contract.customer.name,
         product: `${r.product.brand} ${r.product.model}`,
         conditionGrade: r.conditionGrade,
-        appraisalPrice: appraisal,
-        repairCost: repair,
-        resellPrice: resell,
-        profit,
-        marginPct: resell > 0 ? ((profit / resell) * 100).toFixed(1) : '0',
+        appraisalPrice: appraisal.toNumber(),
+        repairCost: repair.toNumber(),
+        resellPrice: resell.toNumber(),
+        profit: profit.toNumber(),
+        marginPct: resell.greaterThan(0)
+          ? profit.div(resell).mul(100).toDecimalPlaces(1).toString()
+          : '0',
       };
     });
 
-    const totalAppraisal = Number(aggregation._sum.appraisalPrice || 0);
-    const totalRepairCost = Number(aggregation._sum.repairCost || 0);
-    const totalResellPrice = Number(aggregation._sum.resellPrice || 0);
+    const totalAppraisal = new Prisma.Decimal(aggregation._sum.appraisalPrice ?? 0);
+    const totalRepairCost = new Prisma.Decimal(aggregation._sum.repairCost ?? 0);
+    const totalResellPrice = new Prisma.Decimal(aggregation._sum.resellPrice ?? 0);
 
     return {
       summary: {
         count: total,
-        totalAppraisal,
-        totalRepairCost,
-        totalResellPrice,
-        totalProfit: totalResellPrice - totalAppraisal - totalRepairCost,
+        totalAppraisal: totalAppraisal.toNumber(),
+        totalRepairCost: totalRepairCost.toNumber(),
+        totalResellPrice: totalResellPrice.toNumber(),
+        totalProfit: totalResellPrice.sub(totalAppraisal).sub(totalRepairCost).toNumber(),
       },
       data,
       total,

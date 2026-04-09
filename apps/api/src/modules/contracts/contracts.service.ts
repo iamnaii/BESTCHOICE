@@ -99,7 +99,7 @@ export class ContractsService {
         totalContracts: total,
         activeContracts: totalActive,
         overdueContracts: totalOverdue,
-        portfolioValue: Number(portfolioValue._sum.sellingPrice || 0),
+        portfolioValue: new Prisma.Decimal(portfolioValue._sum.sellingPrice ?? 0).toNumber(),
       },
     };
   }

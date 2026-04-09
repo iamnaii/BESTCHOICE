@@ -76,8 +76,9 @@ export class DashboardService {
       }),
     ]);
 
-    const totalReceivable = Number(receivables._sum.amountDue || 0) - Number(receivables._sum.amountPaid || 0);
-    const totalLateFees = Number(receivables._sum.lateFee || 0);
+    const totalReceivable = new Prisma.Decimal(receivables._sum.amountDue ?? 0)
+      .sub(new Prisma.Decimal(receivables._sum.amountPaid ?? 0)).toNumber();
+    const totalLateFees = new Prisma.Decimal(receivables._sum.lateFee ?? 0).toNumber();
     const overdueRate = totalContracts > 0
       ? ((overdueContracts + defaultContracts) / totalContracts * 100).toFixed(1)
       : '0.0';
@@ -88,7 +89,7 @@ export class DashboardService {
       financial: {
         totalReceivable,
         totalLateFees,
-        todayPayments: Number(todayPayments._sum.amountPaid || 0),
+        todayPayments: new Prisma.Decimal(todayPayments._sum.amountPaid ?? 0).toNumber(),
         todayPaymentCount: todayPayments._count || 0,
       },
       overdueRate: Number(overdueRate),
@@ -133,7 +134,8 @@ export class DashboardService {
 
       const paymentsReceived = payments
         .filter((p) => p.paidDate && p.paidDate >= start && p.paidDate < end)
-        .reduce((sum, p) => sum + Number(p.amountPaid), 0);
+        .reduce((sum, p) => sum.add(new Prisma.Decimal(p.amountPaid ?? 0)), new Prisma.Decimal(0))
+        .toNumber();
 
       months.push({ month: monthLabel, newContracts, paymentsReceived });
     }
@@ -162,8 +164,12 @@ export class DashboardService {
 
     const results = contracts.map((c) => {
       const totalOutstanding = c.payments.reduce(
-        (sum, p) => sum + Number(p.amountDue) - Number(p.amountPaid) + Number(p.lateFee), 0,
-      );
+        (sum, p) => sum
+          .add(new Prisma.Decimal(p.amountDue ?? 0))
+          .sub(new Prisma.Decimal(p.amountPaid ?? 0))
+          .add(new Prisma.Decimal(p.lateFee ?? 0)),
+        new Prisma.Decimal(0),
+      ).toNumber();
       const oldestDue = c.payments.length > 0
         ? c.payments.reduce((oldest, p) => {
             const d = new Date(p.dueDate);
@@ -259,7 +265,12 @@ export class DashboardService {
     const paymentTotalByBranch = new Map<string, number>();
     for (const p of paidPayments) {
       const bid = p.contract.branchId;
-      paymentTotalByBranch.set(bid, (paymentTotalByBranch.get(bid) || 0) + Number(p.amountPaid));
+      paymentTotalByBranch.set(
+        bid,
+        new Prisma.Decimal(paymentTotalByBranch.get(bid) ?? 0)
+          .add(new Prisma.Decimal(p.amountPaid ?? 0))
+          .toNumber(),
+      );
     }
 
     const overdueMap = new Map(overdueByBranch.map((o) => [o.branchId, o._count]));
@@ -305,16 +316,20 @@ export class DashboardService {
       }),
     ]);
 
-    const totalPayments = paidPayments.reduce((sum, p) => sum + Number(p.amountPaid), 0);
+    const totalPayments = paidPayments.reduce(
+      (sum, p) => sum.add(new Prisma.Decimal(p.amountPaid ?? 0)),
+      new Prisma.Decimal(0),
+    ).toNumber();
     const interestIncome = paidPayments.reduce((sum, p) => {
-      const monthlyInterest = Number(p.contract.interestTotal) / p.contract.totalMonths;
-      return sum + monthlyInterest;
-    }, 0);
+      const monthlyInterest = new Prisma.Decimal(p.contract.interestTotal ?? 0)
+        .div(p.contract.totalMonths);
+      return sum.add(monthlyInterest);
+    }, new Prisma.Decimal(0));
 
     return {
       totalPayments,
-      interestIncome: Math.round(interestIncome),
-      lateFeeIncome: Number(lateFeeAgg._sum.lateFee || 0),
+      interestIncome: Math.round(interestIncome.toNumber()),
+      lateFeeIncome: new Prisma.Decimal(lateFeeAgg._sum.lateFee ?? 0).toNumber(),
       paymentCount: paidPayments.length,
     };
   }
@@ -349,7 +364,10 @@ export class DashboardService {
         const days = calculateDaysElapsed(p.dueDate, now);
         return days >= def.min && days <= def.max;
       });
-      const amount = items.reduce((s, p) => s + Number(p.amountDue) - Number(p.amountPaid), 0);
+      const amount = items.reduce(
+        (s, p) => s.add(new Prisma.Decimal(p.amountDue ?? 0)).sub(new Prisma.Decimal(p.amountPaid ?? 0)),
+        new Prisma.Decimal(0),
+      ).toNumber();
       return { range: def.range, count: items.length, amount, color: def.color };
     });
 
@@ -561,7 +579,8 @@ export class DashboardService {
         totalContracts: 0, totalSales: 0, overdueCount: 0,
       };
       existing.totalContracts++;
-      existing.totalSales += Number(c.sellingPrice);
+      existing.totalSales = new Prisma.Decimal(existing.totalSales)
+        .add(new Prisma.Decimal(c.sellingPrice ?? 0)).toNumber();
       if (['OVERDUE', 'DEFAULT'].includes(c.status)) existing.overdueCount++;
       staffMap.set(key, existing);
     }
@@ -613,7 +632,7 @@ export class DashboardService {
         type: 'contract_created' as const,
         userName: c.salesperson.name,
         description: `สร้างสัญญา ${c.contractNumber} — ${c.customer.name}`,
-        amount: Number(c.sellingPrice),
+        amount: new Prisma.Decimal(c.sellingPrice ?? 0).toNumber(),
         createdAt: c.createdAt.toISOString(),
       })),
       ...recentPayments.map((p) => ({
@@ -621,7 +640,7 @@ export class DashboardService {
         type: 'payment_recorded' as const,
         userName: p.recordedBy?.name || '-',
         description: `บันทึกชำระ ${p.contract.contractNumber} — ${p.contract.customer.name}`,
-        amount: Number(p.amountPaid),
+        amount: new Prisma.Decimal(p.amountPaid ?? 0).toNumber(),
         createdAt: p.paidDate?.toISOString() || new Date().toISOString(),
       })),
     ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
@@ -712,7 +731,7 @@ export class DashboardService {
         riskLevel,
         reasons,
         nextDueDate: r.nextDueDate,
-        nextAmountDue: r.nextAmountDue ? Number(r.nextAmountDue) : null,
+        nextAmountDue: r.nextAmountDue ? new Prisma.Decimal(r.nextAmountDue).toNumber() : null,
       };
     });
 

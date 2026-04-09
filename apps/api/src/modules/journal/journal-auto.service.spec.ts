@@ -54,6 +54,20 @@ describe('JournalAutoService', () => {
     service = module.get<JournalAutoService>(JournalAutoService);
   });
 
+  // Helper: capture the lines array passed to journalEntry.create
+  function capturedLines(): Array<{ accountCode: string; debit: number; credit: number }> {
+    const call = prisma.journalEntry.create.mock.calls[0][0];
+    return call.data.lines.create as Array<{ accountCode: string; debit: number; credit: number }>;
+  }
+
+  function sumDebits(lines: Array<{ debit: number; credit: number }>) {
+    return lines.reduce((s, l) => s + (Number(l.debit) || 0), 0);
+  }
+
+  function sumCredits(lines: Array<{ debit: number; credit: number }>) {
+    return lines.reduce((s, l) => s + (Number(l.credit) || 0), 0);
+  }
+
   describe('createAndPost — balance validation', () => {
     it('should throw InternalServerErrorException when Dr != Cr', async () => {
       const tx = prisma;
@@ -123,6 +137,459 @@ describe('JournalAutoService', () => {
       });
       expect(result).toBe('je-1');
       expect(prisma.journalEntry.create).toHaveBeenCalled();
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // createExpenseJournal
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('createExpenseJournal', () => {
+    const baseExpense = {
+      id: 'exp-1',
+      expenseNumber: 'EX-202601-0001',
+      accountCode: '52-1101',
+      amount: 1000,
+      vatAmount: 70,
+      totalAmount: 1070,
+      description: 'ค่าน้ำมัน',
+      expenseDate: new Date('2026-01-15'),
+    };
+
+    it('returns null when no active company found', async () => {
+      prisma.companyInfo.findFirst.mockResolvedValue(null);
+
+      const result = await service.createExpenseJournal(prisma, {
+        expense: baseExpense,
+        userId: 'user-1',
+      });
+
+      expect(result).toBeNull();
+      expect(prisma.journalEntry.create).not.toHaveBeenCalled();
+    });
+
+    it('returns null and logs warning when accountCode is missing', async () => {
+      const result = await service.createExpenseJournal(prisma, {
+        expense: { ...baseExpense, accountCode: undefined },
+        userId: 'user-1',
+      });
+
+      expect(result).toBeNull();
+      expect(prisma.journalEntry.create).not.toHaveBeenCalled();
+    });
+
+    it('creates balanced journal: Dr Expense + Dr VAT Input = Cr Cash', async () => {
+      await service.createExpenseJournal(prisma, {
+        expense: baseExpense,
+        userId: 'user-1',
+        companyId: 'company-1',
+      });
+
+      const lines = capturedLines();
+      expect(sumDebits(lines)).toBeCloseTo(sumCredits(lines), 2);
+    });
+
+    it('uses VAT_INPUT account code on the VAT debit line', async () => {
+      await service.createExpenseJournal(prisma, {
+        expense: baseExpense,
+        userId: 'user-1',
+        companyId: 'company-1',
+      });
+
+      const lines = capturedLines();
+      const vatLine = lines.find(
+        (l) => l.accountCode === JournalAutoService.ACC.VAT_INPUT,
+      );
+      expect(vatLine).toBeDefined();
+      expect(Number(vatLine!.debit)).toBeCloseTo(70, 2);
+    });
+
+    it('credits the CASH account for the totalAmount (amount + VAT)', async () => {
+      await service.createExpenseJournal(prisma, {
+        expense: baseExpense,
+        userId: 'user-1',
+        companyId: 'company-1',
+      });
+
+      const lines = capturedLines();
+      const cashLine = lines.find(
+        (l) => l.accountCode === JournalAutoService.ACC.CASH,
+      );
+      expect(cashLine).toBeDefined();
+      expect(Number(cashLine!.credit)).toBeCloseTo(1070, 2);
+    });
+
+    it('uses paymentDate as entryDate when provided', async () => {
+      const paymentDate = new Date('2026-02-01');
+      await service.createExpenseJournal(prisma, {
+        expense: { ...baseExpense, paymentDate },
+        userId: 'user-1',
+        companyId: 'company-1',
+      });
+
+      const createArg = prisma.journalEntry.create.mock.calls[0][0];
+      expect(createArg.data.entryDate).toEqual(paymentDate);
+    });
+
+    it('falls back to expenseDate when paymentDate is null', async () => {
+      await service.createExpenseJournal(prisma, {
+        expense: { ...baseExpense, paymentDate: null },
+        userId: 'user-1',
+        companyId: 'company-1',
+      });
+
+      const createArg = prisma.journalEntry.create.mock.calls[0][0];
+      expect(createArg.data.entryDate).toEqual(baseExpense.expenseDate);
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // createContractActivationJournal
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('createContractActivationJournal', () => {
+    // Balance rule: Dr(downPayment + financedAmount) = Cr(revenue + vatAmount)
+    // revenue = sellingPrice + interestTotal + storeCommission
+    // 3000 + 9300 = (10000 + 800 + 500) + 1000  →  12300 = 12300  ✓
+    const baseContract = {
+      id: 'contract-1',
+      contractNumber: 'BC-202601-0001',
+      sellingPrice: 10000,
+      downPayment: 3000,
+      financedAmount: 9300,
+      interestTotal: 800,
+      storeCommission: 500,
+      vatAmount: 1000,
+    };
+    const baseProduct = { costPrice: 8000, category: 'NEW_PHONE' };
+
+    it('returns null when no active company found', async () => {
+      prisma.companyInfo.findFirst.mockResolvedValue(null);
+
+      const result = await service.createContractActivationJournal(prisma, {
+        contract: baseContract,
+        product: baseProduct,
+        userId: 'user-1',
+      });
+
+      expect(result).toBeNull();
+    });
+
+    it('creates sales entry with balanced Dr = Cr', async () => {
+      await service.createContractActivationJournal(prisma, {
+        contract: baseContract,
+        product: baseProduct,
+        userId: 'user-1',
+        companyId: 'company-1',
+      });
+
+      // First call = sales entry
+      const salesEntry = prisma.journalEntry.create.mock.calls[0][0];
+      const lines = salesEntry.data.lines.create as Array<{ debit: number; credit: number }>;
+      expect(sumDebits(lines)).toBeCloseTo(sumCredits(lines), 2);
+    });
+
+    it('debits downPayment to CASH and financedAmount to HP_RECEIVABLE', async () => {
+      await service.createContractActivationJournal(prisma, {
+        contract: baseContract,
+        product: baseProduct,
+        userId: 'user-1',
+        companyId: 'company-1',
+      });
+
+      const lines = prisma.journalEntry.create.mock.calls[0][0].data.lines.create as Array<{
+        accountCode: string;
+        debit: number;
+        credit: number;
+      }>;
+
+      const cashLine = lines.find((l) => l.accountCode === JournalAutoService.ACC.CASH);
+      const hpLine = lines.find((l) => l.accountCode === JournalAutoService.ACC.HP_RECEIVABLE);
+
+      expect(Number(cashLine?.debit)).toBeCloseTo(3000, 2);
+      expect(Number(hpLine?.debit)).toBeCloseTo(9300, 2);
+    });
+
+    it('credits VAT_OUTPUT with vatAmount', async () => {
+      await service.createContractActivationJournal(prisma, {
+        contract: baseContract,
+        product: baseProduct,
+        userId: 'user-1',
+        companyId: 'company-1',
+      });
+
+      const lines = prisma.journalEntry.create.mock.calls[0][0].data.lines.create as Array<{
+        accountCode: string;
+        debit: number;
+        credit: number;
+      }>;
+
+      const vatLine = lines.find((l) => l.accountCode === JournalAutoService.ACC.VAT_OUTPUT);
+      expect(Number(vatLine?.credit)).toBeCloseTo(1000, 2);
+    });
+
+    it('creates a second COGS journal entry when costPrice > 0', async () => {
+      prisma.journalEntry.create
+        .mockResolvedValueOnce({ id: 'je-sales' })
+        .mockResolvedValueOnce({ id: 'je-cogs' });
+
+      await service.createContractActivationJournal(prisma, {
+        contract: baseContract,
+        product: baseProduct,
+        userId: 'user-1',
+        companyId: 'company-1',
+      });
+
+      // Two journal entries: sales + COGS
+      expect(prisma.journalEntry.create).toHaveBeenCalledTimes(2);
+    });
+
+    it('does NOT create COGS journal entry when costPrice is 0', async () => {
+      await service.createContractActivationJournal(prisma, {
+        contract: baseContract,
+        product: { costPrice: 0, category: 'NEW_PHONE' },
+        userId: 'user-1',
+        companyId: 'company-1',
+      });
+
+      expect(prisma.journalEntry.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('uses REVENUE_USED and COGS_USED accounts for used-phone category', async () => {
+      prisma.journalEntry.create
+        .mockResolvedValueOnce({ id: 'je-sales' })
+        .mockResolvedValueOnce({ id: 'je-cogs' });
+
+      await service.createContractActivationJournal(prisma, {
+        contract: baseContract,
+        product: { costPrice: 6000, category: 'USED_PHONE' },
+        userId: 'user-1',
+        companyId: 'company-1',
+      });
+
+      const salesLines = prisma.journalEntry.create.mock.calls[0][0].data.lines
+        .create as Array<{ accountCode: string; credit: number }>;
+      const revLine = salesLines.find((l) => l.credit > 0 && l.accountCode.startsWith('41'));
+      expect(revLine?.accountCode).toBe(JournalAutoService.ACC.REVENUE_USED);
+
+      const cogsLines = prisma.journalEntry.create.mock.calls[1][0].data.lines
+        .create as Array<{ accountCode: string; debit: number }>;
+      const cogsLine = cogsLines.find((l) => l.debit > 0);
+      expect(cogsLine?.accountCode).toBe(JournalAutoService.ACC.COGS_USED);
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // createBadDebtWriteOffJournal
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('createBadDebtWriteOffJournal', () => {
+    it('returns null when no active company found', async () => {
+      prisma.companyInfo.findFirst.mockResolvedValue(null);
+
+      const result = await service.createBadDebtWriteOffJournal(prisma, {
+        contractId: 'contract-1',
+        contractNumber: 'BC-202601-0001',
+        writeOffAmount: 5000,
+        createdById: 'user-1',
+      });
+
+      expect(result).toBeNull();
+    });
+
+    it('creates balanced write-off entry: Dr Bad Debt Expense / Cr HP Receivable (no provision)', async () => {
+      await service.createBadDebtWriteOffJournal(prisma, {
+        contractId: 'contract-1',
+        contractNumber: 'BC-202601-0001',
+        writeOffAmount: 5000,
+        createdById: 'user-1',
+        companyId: 'company-1',
+      });
+
+      const lines = capturedLines();
+      expect(sumDebits(lines)).toBeCloseTo(sumCredits(lines), 2);
+    });
+
+    it('debits BAD_DEBT_EXPENSE for the full amount when no provision', async () => {
+      await service.createBadDebtWriteOffJournal(prisma, {
+        contractId: 'contract-1',
+        contractNumber: 'BC-202601-0001',
+        writeOffAmount: 5000,
+        createdById: 'user-1',
+        companyId: 'company-1',
+      });
+
+      const lines = capturedLines();
+      const badDebtLine = lines.find(
+        (l) => l.accountCode === JournalAutoService.ACC.BAD_DEBT_EXPENSE,
+      );
+      expect(Number(badDebtLine?.debit)).toBeCloseTo(5000, 2);
+    });
+
+    it('credits HP_RECEIVABLE for the full writeOffAmount', async () => {
+      await service.createBadDebtWriteOffJournal(prisma, {
+        contractId: 'contract-1',
+        contractNumber: 'BC-202601-0001',
+        writeOffAmount: 5000,
+        createdById: 'user-1',
+        companyId: 'company-1',
+      });
+
+      const lines = capturedLines();
+      const hpLine = lines.find(
+        (l) => l.accountCode === JournalAutoService.ACC.HP_RECEIVABLE,
+      );
+      expect(Number(hpLine?.credit)).toBeCloseTo(5000, 2);
+    });
+
+    it('utilises ALLOWANCE_DOUBTFUL for the provision portion (partial provision)', async () => {
+      // writeOff = 5000, provision = 2000 → Bad Debt Expense = 3000, Allowance Dr = 2000
+      await service.createBadDebtWriteOffJournal(prisma, {
+        contractId: 'contract-1',
+        contractNumber: 'BC-202601-0001',
+        writeOffAmount: 5000,
+        provisionAmount: 2000,
+        createdById: 'user-1',
+        companyId: 'company-1',
+      });
+
+      const lines = capturedLines();
+      const badDebtLine = lines.find(
+        (l) => l.accountCode === JournalAutoService.ACC.BAD_DEBT_EXPENSE,
+      );
+      const allowanceLine = lines.find(
+        (l) => l.accountCode === JournalAutoService.ACC.ALLOWANCE_DOUBTFUL,
+      );
+      expect(Number(badDebtLine?.debit)).toBeCloseTo(3000, 2);
+      expect(Number(allowanceLine?.debit)).toBeCloseTo(2000, 2);
+    });
+
+    it('drops BAD_DEBT_EXPENSE line when provision fully covers writeOff (no extra expense)', async () => {
+      // provision = writeOff → incremental expense = 0 → line should be dropped
+      await service.createBadDebtWriteOffJournal(prisma, {
+        contractId: 'contract-1',
+        contractNumber: 'BC-202601-0001',
+        writeOffAmount: 5000,
+        provisionAmount: 5000,
+        createdById: 'user-1',
+        companyId: 'company-1',
+      });
+
+      const lines = capturedLines();
+      // zero-line filter removes it
+      const badDebtLine = lines.find(
+        (l) => l.accountCode === JournalAutoService.ACC.BAD_DEBT_EXPENSE,
+      );
+      expect(badDebtLine).toBeUndefined();
+    });
+
+    it('entry is still balanced when provision fully covers writeOff', async () => {
+      await service.createBadDebtWriteOffJournal(prisma, {
+        contractId: 'contract-1',
+        contractNumber: 'BC-202601-0001',
+        writeOffAmount: 5000,
+        provisionAmount: 5000,
+        createdById: 'user-1',
+        companyId: 'company-1',
+      });
+
+      const lines = capturedLines();
+      expect(sumDebits(lines)).toBeCloseTo(sumCredits(lines), 2);
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Regression: Phase 4.6 — late fee MUST NOT go to VAT_OUTPUT
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('Phase 4.6 regression — late fee not in VAT Output', () => {
+    it('routes lateFee to LATE_FEE_INCOME, not VAT_OUTPUT', async () => {
+      const tx = prisma;
+      // Dr: amountPaid = 1200 (principal 1000 + lateFee 200)
+      // Cr: HP receivable 1000 + late fee income 200
+      // No VAT involved (lateFeeWaived = false, vatAmount = 0)
+      await service.createPaymentJournal(tx, {
+        payment: {
+          id: 'pay-late',
+          installmentNo: 3,
+          amountPaid: 1200,
+          monthlyPrincipal: 1000,
+          monthlyInterest: 0,
+          monthlyCommission: 0,
+          vatAmount: 0,
+          lateFee: 200,
+          lateFeeWaived: false,
+        },
+        contract: { contractNumber: 'BC-202601-0005', branchId: 'branch-1' },
+        userId: 'user-1',
+        companyId: 'company-1',
+      });
+
+      const lines = capturedLines();
+
+      // Late fee should appear on LATE_FEE_INCOME as a credit
+      const lateFeeIncomeLine = lines.find(
+        (l) => l.accountCode === JournalAutoService.ACC.LATE_FEE_INCOME,
+      );
+      expect(lateFeeIncomeLine).toBeDefined();
+      expect(Number(lateFeeIncomeLine!.credit)).toBeCloseTo(200, 2);
+
+      // VAT_OUTPUT must be zero (or absent) — late fee is VAT-exempt
+      const vatOutputLine = lines.find(
+        (l) => l.accountCode === JournalAutoService.ACC.VAT_OUTPUT,
+      );
+      const vatOutputCredit = vatOutputLine ? Number(vatOutputLine.credit) : 0;
+      expect(vatOutputCredit).toBe(0);
+    });
+
+    it('skips lateFee completely when lateFeeWaived = true', async () => {
+      const tx = prisma;
+      // amountPaid = principal + interest = 5500, no late fee
+      await service.createPaymentJournal(tx, {
+        payment: {
+          id: 'pay-waived',
+          installmentNo: 4,
+          amountPaid: 5500,
+          monthlyPrincipal: 5000,
+          monthlyInterest: 500,
+          monthlyCommission: 0,
+          vatAmount: 0,
+          lateFee: 300, // waived
+          lateFeeWaived: true,
+        },
+        contract: { contractNumber: 'BC-202601-0006', branchId: 'branch-1' },
+        userId: 'user-1',
+        companyId: 'company-1',
+      });
+
+      const lines = capturedLines();
+
+      const lateFeeIncomeLine = lines.find(
+        (l) => l.accountCode === JournalAutoService.ACC.LATE_FEE_INCOME,
+      );
+      // Should be absent (zero-line filter removes it)
+      expect(lateFeeIncomeLine).toBeUndefined();
+    });
+
+    it('entry remains balanced when both lateFee and VAT are present in a single payment', async () => {
+      const tx = prisma;
+      // Dr: amountPaid = 5900 + 200 = 6100
+      // Cr: HP (5000+500) + commission(100) + vat(300) + lateFee(200) = 6100
+      await service.createPaymentJournal(tx, {
+        payment: {
+          id: 'pay-mixed',
+          installmentNo: 5,
+          amountPaid: 6100,
+          monthlyPrincipal: 5000,
+          monthlyInterest: 500,
+          monthlyCommission: 100,
+          vatAmount: 300,
+          lateFee: 200,
+          lateFeeWaived: false,
+        },
+        contract: { contractNumber: 'BC-202601-0007', branchId: 'branch-1' },
+        userId: 'user-1',
+        companyId: 'company-1',
+      });
+
+      const lines = capturedLines();
+      expect(sumDebits(lines)).toBeCloseTo(sumCredits(lines), 2);
     });
   });
 });

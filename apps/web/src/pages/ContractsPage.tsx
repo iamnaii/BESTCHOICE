@@ -233,8 +233,8 @@ export default function ContractsPage() {
       key: 'status',
       label: 'สถานะ',
       render: (c: Contract) => {
-        const s = statusLabels[c.status] || { label: c.status, className: 'bg-muted' };
-        return <span className={`px-2 py-0.5 rounded-md text-xs font-medium ${s.className}`}>{s.label}</span>;
+        const s = statusLabels[c.status] || { label: c.status, className: 'bg-muted text-foreground' };
+        return <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${s.className}`}>{s.label}</span>;
       },
     },
     {
@@ -303,103 +303,126 @@ export default function ContractsPage() {
         }
       />
 
-      {/* Summary Cards — animated + dark mode friendly */}
+      {/* Summary Cards — Metronic KPI style */}
       {summary && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 lg:gap-5 mb-6">
-          <Card className="hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 border-l-[3px] border-l-primary">
-            <CardContent className="p-5">
-              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สัญญาทั้งหมด</div>
-              <AnimatedCounter value={summary.totalContracts} className="text-2xl font-bold" />
+          <Card className="hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 overflow-hidden">
+            <CardContent className="p-5 relative">
+              <div className="absolute inset-y-0 left-0 w-1 bg-primary rounded-l-xl" />
+              <div className="pl-2">
+                <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สัญญาทั้งหมด</div>
+                <AnimatedCounter value={summary.totalContracts} className="text-2xl font-bold text-foreground" />
+              </div>
             </CardContent>
           </Card>
-          <Card className="hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 border-l-[3px] border-l-success">
-            <CardContent className="p-5">
-              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สัญญาอยู่</div>
-              <AnimatedCounter value={summary.activeContracts} className="text-2xl font-bold text-success" />
+          <Card className="hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 overflow-hidden">
+            <CardContent className="p-5 relative">
+              <div className="absolute inset-y-0 left-0 w-1 bg-success rounded-l-xl" />
+              <div className="pl-2">
+                <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">กำลังผ่อน</div>
+                <AnimatedCounter value={summary.activeContracts} className="text-2xl font-bold text-success" />
+              </div>
             </CardContent>
           </Card>
-          <Card className="hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 border-l-[3px] border-l-destructive">
-            <CardContent className="p-5">
-              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ค้างชำระ</div>
-              <AnimatedCounter value={summary.overdueContracts} className="text-2xl font-bold text-destructive" />
+          <Card className="hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 overflow-hidden">
+            <CardContent className="p-5 relative">
+              <div className="absolute inset-y-0 left-0 w-1 bg-destructive rounded-l-xl" />
+              <div className="pl-2">
+                <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ค้างชำระ</div>
+                <AnimatedCounter value={summary.overdueContracts} className="text-2xl font-bold text-destructive" />
+              </div>
             </CardContent>
           </Card>
-          <Card className="hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 border-l-[3px] border-l-warning">
-            <CardContent className="p-5">
-              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">มูลค่าพอร์ตโฟลิโอ</div>
-              <AnimatedCounter value={summary.portfolioValue} suffix=" ฿" className="text-2xl font-bold text-primary" />
+          <Card className="hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 overflow-hidden">
+            <CardContent className="p-5 relative">
+              <div className="absolute inset-y-0 left-0 w-1 bg-primary rounded-l-xl" />
+              <div className="pl-2">
+                <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">มูลค่าพอร์ตโฟลิโอ</div>
+                <AnimatedCounter value={summary.portfolioValue} suffix=" ฿" className="text-2xl font-bold text-primary" />
+              </div>
             </CardContent>
           </Card>
         </div>
       )}
 
-      {/* View Tabs */}
-      <div className="flex gap-0.5 mb-4 border-b border-border/60">
+      {/* View Tabs — Metronic line tabs style */}
+      <div className="flex gap-0 mb-5 border-b border-border/60">
         <button
           onClick={() => updateParams({ tab: '', status: '', workflow: '', q: '', page: '' })}
-          className={`px-4 py-2.5 text-2sm font-medium border-b-2 transition-colors ${viewTab === 'all' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'}`}
+          className={`px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-all ${viewTab === 'all' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           ทั้งหมด
+          {result && <span className={`ml-2 text-xs px-1.5 py-0.5 rounded-full ${viewTab === 'all' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>{result.total}</span>}
         </button>
         <button
           onClick={() => updateParams({ tab: 'my', status: '', workflow: '', q: '', page: '' })}
-          className={`px-4 py-2.5 text-2sm font-medium border-b-2 transition-colors ${viewTab === 'my' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'}`}
+          className={`px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-all ${viewTab === 'my' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           สัญญาของฉัน
         </button>
         {isManager && (
           <button
             onClick={() => updateParams({ tab: 'pending_review', status: '', workflow: '', q: '', page: '' })}
-            className={`px-4 py-2.5 text-2sm font-medium border-b-2 transition-colors ${viewTab === 'pending_review' ? 'border-amber-500 text-amber-600 dark:text-amber-400' : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'}`}
+            className={`px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-all ${viewTab === 'pending_review' ? 'border-amber-500 text-amber-600 dark:text-amber-400' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
           >
             รอตรวจสอบ
           </button>
         )}
       </div>
 
-      {/* Filters */}
-      <div className="flex gap-3 mb-4 flex-wrap">
-        <input
-          type="text"
-          placeholder="ค้นหาเลขสัญญา, ชื่อลูกค้า..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 min-w-[200px] px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background focus:border-transparent"
-        />
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm">
-          <option value="">ทุกสถานะ</option>
-          <option value="DRAFT">ร่าง</option>
-          <option value="ACTIVE">ผ่อนอยู่</option>
-          <option value="OVERDUE">ค้างชำระ</option>
-          <option value="DEFAULT">ผิดนัด</option>
-          <option value="EARLY_PAYOFF">ปิดก่อน</option>
-          <option value="COMPLETED">ครบ</option>
-          <option value="EXCHANGED">เปลี่ยนเครื่อง</option>
-          <option value="CLOSED_BAD_DEBT">หนี้สูญ</option>
-        </select>
-        {isOwner && (
-          <select value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm">
-            <option value="">ทุกสาขา</option>
-            {branches.map((b) => (
-              <option key={b.id} value={b.id}>{b.name}</option>
-            ))}
+      {/* Filters — single clean bar */}
+      <div className="bg-card rounded-xl border border-border/50 p-4 mb-5 shadow-sm">
+        <div className="flex flex-wrap gap-3">
+          <div className="relative flex-1 min-w-[200px]">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <input
+              type="text"
+              placeholder="ค้นหาเลขสัญญา, ชื่อลูกค้า..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 border border-input rounded-lg text-sm bg-background outline-none focus:ring-2 focus:ring-ring/30"
+            />
+          </div>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-none focus:ring-2 focus:ring-ring/30">
+            <option value="">ทุกสถานะ</option>
+            <option value="DRAFT">ร่าง</option>
+            <option value="ACTIVE">ผ่อนอยู่</option>
+            <option value="OVERDUE">ค้างชำระ</option>
+            <option value="DEFAULT">ผิดนัด</option>
+            <option value="EARLY_PAYOFF">ปิดก่อน</option>
+            <option value="COMPLETED">ครบ</option>
+            <option value="EXCHANGED">เปลี่ยนเครื่อง</option>
+            <option value="CLOSED_BAD_DEBT">หนี้สูญ</option>
           </select>
-        )}
-        <button
-          onClick={() => setShowDatePicker(!showDatePicker)}
-          className="px-3 py-2 border border-input rounded-lg text-sm hover:bg-muted"
-        >
-          {startDateFilter || endDateFilter ? '📅 กำหนดเวลา' : '📅 ช่วงเวลา'}
-        </button>
-        {viewTab === 'all' && (
-          <select value={workflowFilter} onChange={(e) => setWorkflowFilter(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm">
-            <option value="">ทุก Workflow</option>
-            <option value="CREATING">กำลังสร้าง</option>
-            <option value="PENDING_REVIEW">รอตรวจสอบ</option>
-            <option value="APPROVED">อนุมัติแล้ว</option>
-            <option value="REJECTED">ปฏิเสธ</option>
-          </select>
-        )}
+          {isOwner && (
+            <select value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-none focus:ring-2 focus:ring-ring/30">
+              <option value="">ทุกสาขา</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+          )}
+          <button
+            onClick={() => setShowDatePicker(!showDatePicker)}
+            className={`inline-flex items-center gap-2 px-3 py-2 border rounded-lg text-sm transition-colors ${
+              startDateFilter || endDateFilter
+                ? 'border-primary/40 bg-primary/5 text-primary font-medium'
+                : 'border-input hover:bg-accent text-muted-foreground'
+            }`}
+          >
+            <Calendar className="size-4" />
+            {startDateFilter || endDateFilter ? 'กำหนดเวลาไว้' : 'ช่วงเวลา'}
+          </button>
+          {viewTab === 'all' && (
+            <select value={workflowFilter} onChange={(e) => setWorkflowFilter(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-none focus:ring-2 focus:ring-ring/30">
+              <option value="">ทุก Workflow</option>
+              <option value="CREATING">กำลังสร้าง</option>
+              <option value="PENDING_REVIEW">รอตรวจสอบ</option>
+              <option value="APPROVED">อนุมัติแล้ว</option>
+              <option value="REJECTED">ปฏิเสธ</option>
+            </select>
+          )}
+        </div>
       </div>
 
       {/* Date Range Picker */}

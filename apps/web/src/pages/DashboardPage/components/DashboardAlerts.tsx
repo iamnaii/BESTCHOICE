@@ -25,20 +25,23 @@ export default function DashboardAlerts({ alerts }: DashboardAlertsProps) {
             onClick={() => navigate(alert.link)}
             aria-label={`${alert.message} (${alert.count} รายการ) — คลิกเพื่อดูรายละเอียด`}
             className={cn(
-              'flex items-center gap-3 px-4 py-3 rounded-xl border cursor-pointer text-left w-full',
+              'flex items-center gap-3 px-4 py-3.5 rounded-xl border cursor-pointer text-left w-full',
               'hover:-translate-y-0.5 hover:shadow-md transition-all duration-200',
               'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
               styles.container,
             )}
           >
-            <div className={cn('size-9 rounded-lg flex items-center justify-center shrink-0', styles.icon)}>
-              <Icon className="size-4" />
+            <div className={cn('size-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm', styles.icon)}>
+              <Icon className="size-4.5" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-foreground leading-tight truncate">{alert.message}</p>
-              <p className="text-2xs text-muted-foreground mt-0.5">คลิกเพื่อดูรายละเอียด</p>
+              <p className="text-sm font-semibold text-foreground leading-tight truncate">{alert.message}</p>
+              <p className="text-2xs text-muted-foreground mt-0.5 flex items-center gap-1">
+                <span>ดูรายละเอียด</span>
+                <svg className="size-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="m9 18 6-6-6-6" /></svg>
+              </p>
             </div>
-            <span className={cn('text-xs font-bold shrink-0', styles.count)}>{alert.count}</span>
+            <span className={cn('text-sm font-bold shrink-0 tabular-nums', styles.count)}>{alert.count}</span>
           </button>
         );
       })}

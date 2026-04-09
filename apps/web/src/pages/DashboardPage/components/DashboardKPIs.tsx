@@ -55,64 +55,100 @@ export default function DashboardKPIs({ kpis, comparativePL }: DashboardKPIsProp
 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-5">
-      <Card className="cursor-pointer group hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 border-l-[3px] border-l-primary" onClick={() => navigate('/contracts')}>
-        <CardContent className="p-5">
-          <div className="flex items-center justify-between mb-3">
-            <div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/15 transition-colors">
-              <FileCheck className="size-5 text-primary" />
+      {/* KPI: สัญญาทั้งหมด */}
+      <Card
+        className="cursor-pointer group hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 overflow-hidden"
+        onClick={() => navigate('/contracts')}
+      >
+        <CardContent className="p-5 relative">
+          <div className="absolute inset-y-0 left-0 w-1 bg-primary rounded-l-xl" />
+          <div className="pl-2">
+            <div className="flex items-center justify-between mb-4">
+              <div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                <FileCheck className="size-5 text-primary" />
+              </div>
+              <span className="text-2xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                ใช้งาน {kpis.contracts.active}
+              </span>
             </div>
+            <AnimatedCounter value={kpis.contracts.total} className="text-2xl lg:text-3xl font-bold text-foreground" />
+            <div className="text-xs font-medium text-muted-foreground mt-1.5 uppercase tracking-wider">สัญญาทั้งหมด</div>
+            <MoMIndicator value={contractsMoM} />
           </div>
-          <AnimatedCounter value={kpis.contracts.total} className="text-2xl lg:text-3xl font-bold text-foreground" />
-          <div className="text-2xs font-medium text-muted-foreground mt-1.5 uppercase tracking-wider">สัญญาทั้งหมด</div>
-          <div className="text-xs text-muted-foreground mt-1">ปกติ <AnimatedCounter value={kpis.contracts.active} className="text-success font-semibold" /></div>
-          <MoMIndicator value={contractsMoM} />
         </CardContent>
       </Card>
-      <Card className="cursor-pointer group hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 border-l-[3px] border-l-destructive" onClick={() => navigate('/overdue')}>
-        <CardContent className="p-5">
-          <div className="flex items-center justify-between mb-3">
-            <div className="size-10 rounded-xl bg-destructive/10 flex items-center justify-center group-hover:bg-destructive/15 transition-colors">
-              <AlertTriangle className="size-5 text-destructive" />
+
+      {/* KPI: ค้าง/ผิดนัด */}
+      <Card
+        className="cursor-pointer group hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 overflow-hidden"
+        onClick={() => navigate('/overdue')}
+      >
+        <CardContent className="p-5 relative">
+          <div className="absolute inset-y-0 left-0 w-1 bg-destructive rounded-l-xl" />
+          <div className="pl-2">
+            <div className="flex items-center justify-between mb-4">
+              <div className="size-10 rounded-xl bg-destructive/10 flex items-center justify-center group-hover:bg-destructive/20 transition-colors">
+                <AlertTriangle className="size-5 text-destructive" />
+              </div>
+              <span className="text-2xs font-semibold text-destructive bg-destructive/10 px-2 py-0.5 rounded-full">
+                {(kpis.overdueRate ?? 0).toFixed(1)}%
+              </span>
             </div>
-            <span className="text-2xs font-semibold text-destructive bg-destructive/10 px-2 py-0.5 rounded-md">{(kpis.overdueRate ?? 0).toFixed(1)}%</span>
+            <AnimatedCounter value={(kpis.contracts.overdue ?? 0) + (kpis.contracts.default ?? 0)} className="text-2xl lg:text-3xl font-bold text-foreground" />
+            <div className="text-xs font-medium text-muted-foreground mt-1.5 uppercase tracking-wider">ค้าง/ผิดนัด</div>
+            <MoMIndicator value={overdueMoM} />
           </div>
-          <AnimatedCounter value={(kpis.contracts.overdue ?? 0) + (kpis.contracts.default ?? 0)} className="text-2xl lg:text-3xl font-bold text-foreground" />
-          <div className="text-2xs font-medium text-muted-foreground mt-1.5 uppercase tracking-wider">ค้าง/ผิดนัด</div>
-          <MoMIndicator value={overdueMoM} />
         </CardContent>
       </Card>
-      <Card className="cursor-pointer group hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 border-l-[3px] border-l-success" onClick={() => navigate('/payments')}>
-        <CardContent className="p-5">
-          <div className="flex items-center justify-between mb-3">
-            <div className="size-10 rounded-xl bg-success/10 flex items-center justify-center group-hover:bg-success/15 transition-colors">
-              <TrendingUp className="size-5 text-success" />
+
+      {/* KPI: ยอดรับวันนี้ */}
+      <Card
+        className="cursor-pointer group hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 overflow-hidden"
+        onClick={() => navigate('/payments')}
+      >
+        <CardContent className="p-5 relative">
+          <div className="absolute inset-y-0 left-0 w-1 bg-success rounded-l-xl" />
+          <div className="pl-2">
+            <div className="flex items-center justify-between mb-4">
+              <div className="size-10 rounded-xl bg-success/10 flex items-center justify-center group-hover:bg-success/20 transition-colors">
+                <TrendingUp className="size-5 text-success" />
+              </div>
+              <span className="text-2xs font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                <AnimatedCounter value={kpis.financial.todayPaymentCount} /> รายการ
+              </span>
             </div>
-            <span className="text-2xs font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded-md"><AnimatedCounter value={kpis.financial.todayPaymentCount} /> รายการ</span>
+            <AnimatedCounter value={kpis.financial.todayPayments} prefix="฿" className="text-2xl lg:text-3xl font-bold text-foreground" />
+            <div className="text-xs font-medium text-muted-foreground mt-1.5 uppercase tracking-wider">ยอดรับวันนี้</div>
+            <MoMIndicator value={paymentsMoM} />
+            {comparativePL?.yoyChange.revenue != null && (
+              <div className="flex items-center gap-0.5 text-2xs font-medium mt-0.5 text-muted-foreground">
+                <span>{comparativePL.yoyChange.revenue >= 0 ? '↑' : '↓'}{Math.abs(comparativePL.yoyChange.revenue).toFixed(1)}% vs ปีก่อน</span>
+              </div>
+            )}
           </div>
-          <AnimatedCounter value={kpis.financial.todayPayments} prefix="฿" className="text-2xl lg:text-3xl font-bold text-foreground" />
-          <div className="text-2xs font-medium text-muted-foreground mt-1.5 uppercase tracking-wider">ยอดรับวันนี้</div>
-          <MoMIndicator value={paymentsMoM} />
-          <MoMIndicator value={netProfitMoM} />
-          {comparativePL?.yoyChange.revenue != null && (
-            <div className={cn(
-              'flex items-center gap-0.5 text-2xs font-medium mt-0.5 text-muted-foreground',
-            )}>
-              <span>{comparativePL.yoyChange.revenue >= 0 ? '↑' : '↓'}{Math.abs(comparativePL.yoyChange.revenue).toFixed(1)}% vs ปีก่อน</span>
-            </div>
-          )}
         </CardContent>
       </Card>
-      <Card className="cursor-pointer group hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 border-l-[3px] border-l-warning" onClick={() => navigate('/stock')}>
-        <CardContent className="p-5">
-          <div className="flex items-center justify-between mb-3">
-            <div className="size-10 rounded-xl bg-warning/10 flex items-center justify-center group-hover:bg-warning/15 transition-colors">
-              <Warehouse className="size-5 text-warning" />
+
+      {/* KPI: สินค้าในสต็อก */}
+      <Card
+        className="cursor-pointer group hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 overflow-hidden"
+        onClick={() => navigate('/stock')}
+      >
+        <CardContent className="p-5 relative">
+          <div className="absolute inset-y-0 left-0 w-1 bg-warning rounded-l-xl" />
+          <div className="pl-2">
+            <div className="flex items-center justify-between mb-4">
+              <div className="size-10 rounded-xl bg-warning/10 flex items-center justify-center group-hover:bg-warning/20 transition-colors">
+                <Warehouse className="size-5 text-warning" />
+              </div>
+              <span className="text-2xs font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                รวม <AnimatedCounter value={kpis.products.total} />
+              </span>
             </div>
+            <AnimatedCounter value={kpis.products.inStock} className="text-2xl lg:text-3xl font-bold text-foreground" />
+            <div className="text-xs font-medium text-muted-foreground mt-1.5 uppercase tracking-wider">สินค้าในสต็อก</div>
+            <MoMIndicator value={stockMoM} />
           </div>
-          <AnimatedCounter value={kpis.products.inStock} className="text-2xl lg:text-3xl font-bold text-foreground" />
-          <div className="text-2xs font-medium text-muted-foreground mt-1.5 uppercase tracking-wider">สินค้าในสต็อก</div>
-          <div className="text-xs text-muted-foreground mt-1">จาก <AnimatedCounter value={kpis.products.total} className="font-semibold" /></div>
-          <MoMIndicator value={stockMoM} />
         </CardContent>
       </Card>
     </div>

@@ -457,45 +457,65 @@ export default function CustomersPage() {
       key: 'index',
       label: '#',
       render: (_c: Customer, _col: unknown, idx?: number) => (
-        <span className="text-xs text-muted-foreground">{((result?.page || 1) - 1) * (result?.limit || 50) + (idx ?? 0) + 1}</span>
+        <span className="text-xs text-muted-foreground tabular-nums">{((result?.page || 1) - 1) * (result?.limit || 50) + (idx ?? 0) + 1}</span>
       ),
     },
     {
       key: 'name',
-      label: 'ชื่อ',
+      label: 'ลูกค้า',
       render: (c: Customer) => (
-        <button onClick={() => navigateToCustomer(c.id)} className="text-left hover:underline">
-          <div className="text-primary font-medium">{c.name}</div>
-          {c.nickname && <div className="text-xs text-muted-foreground">({c.nickname})</div>}
-        </button>
+        <div className="flex items-center gap-3">
+          {/* Avatar circle — Metronic contact list style */}
+          <div className="size-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0 text-primary font-semibold text-sm select-none">
+            {c.name.charAt(0).toUpperCase()}
+          </div>
+          <div className="min-w-0">
+            <button onClick={() => navigateToCustomer(c.id)} className="text-left group">
+              <div className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors truncate">{c.name}</div>
+              {c.nickname && <div className="text-xs text-muted-foreground">({c.nickname})</div>}
+            </button>
+          </div>
+        </div>
       ),
     },
-    { key: 'phone', label: 'เบอร์โทร' },
+    {
+      key: 'phone',
+      label: 'เบอร์โทร',
+      render: (c: Customer) => (
+        <span className="text-sm text-foreground tabular-nums">{c.phone}</span>
+      ),
+    },
     {
       key: 'nationalId',
-      label: 'เลขบัตร ปชช.',
-      render: (c: Customer) => <span className="font-mono text-xs">{maskNationalId(c.nationalId)}</span>,
+      label: 'เลขบัตร',
+      render: (c: Customer) => <span className="font-mono text-xs text-muted-foreground">{maskNationalId(c.nationalId)}</span>,
     },
     {
       key: 'occupation',
       label: 'อาชีพ',
-      render: (c: Customer) => <span className="text-sm">{c.occupation || '-'}</span>,
+      render: (c: Customer) => <span className="text-sm text-muted-foreground">{c.occupation || '—'}</span>,
     },
     ...(canViewSalary ? [{
       key: 'salary',
       label: 'เงินเดือน',
       render: (c: Customer) => (
-        <span className="text-sm">{c.salary ? Number(c.salary).toLocaleString('th-TH') : '-'}</span>
+        <span className="text-sm tabular-nums">{c.salary ? Number(c.salary).toLocaleString('th-TH') + ' ฿' : '—'}</span>
       ),
     }] : []),
     {
       key: 'contracts',
       label: 'สัญญา',
       render: (c: Customer) => (
-        <div className="text-xs">
-          <span className="text-sm">{c._count.contracts} สัญญา</span>
-          {c.activeContracts > 0 && <div className="text-success">{c.activeContracts} ใช้งาน</div>}
-          {c.overdueContracts > 0 && <div className="text-destructive">{c.overdueContracts} ค้างชำระ</div>}
+        <div className="flex flex-col gap-0.5">
+          <span className="text-sm font-medium text-foreground tabular-nums">{c._count.contracts} รายการ</span>
+          <div className="flex items-center gap-2">
+            {c.activeContracts > 0 && (
+              <span className="text-xs text-success font-medium">{c.activeContracts} ใช้งาน</span>
+            )}
+            {c.overdueContracts > 0 && (
+              <span className="text-xs text-destructive font-semibold">{c.overdueContracts} ค้างชำระ</span>
+            )}
+          </div>
         </div>
       ),
     },
@@ -503,7 +523,7 @@ export default function CustomersPage() {
       key: 'credit',
       label: 'เครดิต',
       render: (c: Customer) => {
-        if (!c.latestCreditStatus) return <span className="text-xs text-muted-foreground">-</span>;
+        if (!c.latestCreditStatus) return <span className="text-xs text-muted-foreground">—</span>;
         const statusMap: Record<string, { label: string; cls: string }> = {
           APPROVED: { label: 'ผ่าน', cls: 'bg-success/10 text-success dark:bg-success/15' },
           REJECTED: { label: 'ไม่ผ่าน', cls: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
@@ -512,9 +532,11 @@ export default function CustomersPage() {
         };
         const s = statusMap[c.latestCreditStatus] || { label: c.latestCreditStatus, cls: 'bg-muted text-foreground' };
         return (
-          <div className="text-xs">
-            <span className={`px-1.5 py-0.5 rounded-md font-medium ${s.cls}`}>{s.label}</span>
-            {c.latestCreditScore != null && <div className="text-muted-foreground mt-0.5">{c.latestCreditScore}/100</div>}
+          <div className="flex flex-col gap-0.5">
+            <span className={`inline-flex w-fit items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${s.cls}`}>{s.label}</span>
+            {c.latestCreditScore != null && (
+              <span className="text-2xs text-muted-foreground">{c.latestCreditScore}/100</span>
+            )}
           </div>
         );
       },
@@ -522,7 +544,7 @@ export default function CustomersPage() {
     {
       key: 'createdAt',
       label: 'วันที่เพิ่ม',
-      render: (c: Customer) => <span className="text-xs">{formatDateShort(c.createdAt)}</span>,
+      render: (c: Customer) => <span className="text-xs text-muted-foreground">{formatDateShort(c.createdAt)}</span>,
     },
   ], [navigateToCustomer, result?.page]);
 
@@ -549,50 +571,65 @@ export default function CustomersPage() {
         }
       />
 
-      {/* Summary Cards */}
+      {/* Summary Cards — Metronic KPI style */}
       {result?.summary && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 lg:gap-5 mb-6">
-          <Card className="hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 border-l-[3px] border-l-primary">
-            <CardContent className="p-5">
-              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ลูกค้าทั้งหมด</div>
-              <div className="text-2xl font-bold text-foreground">{result.summary.totalCustomers.toLocaleString()}</div>
+          <Card className="hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 overflow-hidden">
+            <CardContent className="p-5 relative">
+              <div className="absolute inset-y-0 left-0 w-1 bg-primary rounded-l-xl" />
+              <div className="pl-2">
+                <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ลูกค้าทั้งหมด</div>
+                <div className="text-2xl font-bold text-foreground">{result.summary.totalCustomers.toLocaleString()}</div>
+              </div>
             </CardContent>
           </Card>
-          <Card className="hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 border-l-[3px] border-l-success">
-            <CardContent className="p-5">
-              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">มีสัญญา Active</div>
-              <div className="text-2xl font-bold text-success">{result.summary.withActiveContract.toLocaleString()}</div>
+          <Card className="hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 overflow-hidden">
+            <CardContent className="p-5 relative">
+              <div className="absolute inset-y-0 left-0 w-1 bg-success rounded-l-xl" />
+              <div className="pl-2">
+                <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">มีสัญญา Active</div>
+                <div className="text-2xl font-bold text-success">{result.summary.withActiveContract.toLocaleString()}</div>
+              </div>
             </CardContent>
           </Card>
-          <Card className="hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 border-l-[3px] border-l-destructive">
-            <CardContent className="p-5">
-              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ค้างชำระ</div>
-              <div className={`text-2xl font-bold ${result.summary.withOverdue > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>{result.summary.withOverdue.toLocaleString()}</div>
+          <Card className="hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 overflow-hidden">
+            <CardContent className="p-5 relative">
+              <div className="absolute inset-y-0 left-0 w-1 bg-destructive rounded-l-xl" />
+              <div className="pl-2">
+                <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ค้างชำระ</div>
+                <div className={`text-2xl font-bold ${result.summary.withOverdue > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>{result.summary.withOverdue.toLocaleString()}</div>
+              </div>
             </CardContent>
           </Card>
-          <Card className="hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 border-l-[3px] border-l-info">
-            <CardContent className="p-5">
-              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เพิ่มเดือนนี้</div>
-              <div className="text-2xl font-bold text-info">{result.summary.newThisMonth.toLocaleString()}</div>
+          <Card className="hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 overflow-hidden">
+            <CardContent className="p-5 relative">
+              <div className="absolute inset-y-0 left-0 w-1 bg-info rounded-l-xl" />
+              <div className="pl-2">
+                <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เพิ่มเดือนนี้</div>
+                <div className="text-2xl font-bold text-info">{result.summary.newThisMonth.toLocaleString()}</div>
+              </div>
             </CardContent>
           </Card>
         </div>
       )}
 
-      {/* Filters */}
-      <div className="bg-card rounded-xl border border-border/60 p-4 mb-6 shadow-sm">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
-          <input
-            type="text"
-            placeholder="ค้นหาชื่อ, เบอร์โทร, เลขบัตร ปชช..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="px-3 py-2 border border-input rounded-lg text-sm outline-none focus:ring-2 focus:ring-ring/30 focus:border-ring transition-colors"
-          />
+      {/* Filters + Sorting — merged in one card */}
+      <div className="bg-card rounded-xl border border-border/50 p-4 mb-5 shadow-sm">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+          <div className="lg:col-span-2 relative">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <input
+              type="text"
+              placeholder="ค้นหาชื่อ, เบอร์โทร, เลขบัตร ปชช..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 border border-input rounded-lg text-sm outline-none focus:ring-2 focus:ring-ring/30 focus:border-ring transition-colors bg-background"
+            />
+          </div>
           <select
             value={contractStatusFilter}
             onChange={(e) => setContractStatusFilter(e.target.value)}
-            className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-none"
+            className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-none focus:ring-2 focus:ring-ring/30"
           >
             <option value="">ทุกสถานะสัญญา</option>
             <option value="ACTIVE">มีสัญญา Active</option>
@@ -602,7 +639,7 @@ export default function CustomersPage() {
           <select
             value={creditStatusFilter}
             onChange={(e) => setCreditStatusFilter(e.target.value)}
-            className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-none"
+            className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-none focus:ring-2 focus:ring-ring/30"
           >
             <option value="">ทุกสถานะเครดิต</option>
             <option value="APPROVED">ผ่าน</option>
@@ -610,63 +647,61 @@ export default function CustomersPage() {
             <option value="PENDING">รอตรวจ</option>
             <option value="MANUAL_REVIEW">รอตรวจสอบด้วยตนเอง</option>
           </select>
+        </div>
+
+        <div className="flex items-center gap-3 flex-wrap">
           <button
             onClick={() => setHasOverdueFilter(!hasOverdueFilter)}
-            className={`px-3 py-2 text-sm font-medium rounded-lg border transition-colors ${
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full border transition-all ${
               hasOverdueFilter
-                ? 'bg-destructive/10 text-destructive border-destructive/30'
-                : 'border-input hover:bg-accent'
+                ? 'bg-destructive/10 text-destructive border-destructive/40 shadow-sm'
+                : 'border-input text-muted-foreground hover:bg-accent hover:text-foreground'
             }`}
           >
+            <span className={`size-1.5 rounded-full ${hasOverdueFilter ? 'bg-destructive' : 'bg-muted-foreground'}`} />
             ค้างชำระ
           </button>
-        </div>
-        {isOwner && (
-          <select
-            value={branchFilter}
-            onChange={(e) => setBranchFilter(e.target.value)}
-            className="w-full md:w-64 px-3 py-2 border border-input rounded-lg text-sm bg-background outline-none"
-          >
-            <option value="">ทุกสาขา</option>
-            {branches.map((b) => (
-              <option key={b.id} value={b.id}>{b.name}</option>
-            ))}
-          </select>
-        )}
-      </div>
+          {isOwner && (
+            <select
+              value={branchFilter}
+              onChange={(e) => setBranchFilter(e.target.value)}
+              className="px-3 py-1.5 border border-input rounded-lg text-xs bg-background outline-none focus:ring-2 focus:ring-ring/30"
+            >
+              <option value="">ทุกสาขา</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+          )}
 
-      {/* Sorting Controls */}
-      <div className="bg-card rounded-xl border border-border/60 p-3 mb-4 flex items-center gap-2 text-sm shadow-sm">
-        <span className="text-muted-foreground">เรียงลำดับ:</span>
-        <select
-          value={sortBy}
-          onChange={(e) => setSortBy(e.target.value)}
-          className="px-2 py-1 border border-input rounded text-sm bg-background"
-        >
-          <option value="">เริ่มต้น (วันที่เพิ่มล่าสุด)</option>
-          <option value="name">ชื่อ</option>
-          <option value="createdAt">วันที่เพิ่ม</option>
-          <option value="contractCount">จำนวนสัญญา</option>
-          <option value="creditScore">เครดิตสกอร์</option>
-        </select>
-        {sortBy && (
-          <button
-            onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-            className="px-2 py-1 border border-input rounded text-xs font-medium hover:bg-accent flex items-center gap-1"
-          >
-            {sortOrder === 'asc' ? (
-              <>
-                <ChevronUp className="w-3.5 h-3.5" />
-                น้อยไปมาก
-              </>
-            ) : (
-              <>
-                <ChevronDown className="w-3.5 h-3.5" />
-                มากไปน้อย
-              </>
+          {/* Sorting inline */}
+          <div className="flex items-center gap-2 ml-auto text-xs">
+            <span className="text-muted-foreground hidden sm:inline">เรียงโดย:</span>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="px-2 py-1.5 border border-input rounded-lg text-xs bg-background outline-none focus:ring-2 focus:ring-ring/30"
+            >
+              <option value="">ค่าเริ่มต้น</option>
+              <option value="name">ชื่อ</option>
+              <option value="createdAt">วันที่เพิ่ม</option>
+              <option value="contractCount">จำนวนสัญญา</option>
+              <option value="creditScore">เครดิตสกอร์</option>
+            </select>
+            {sortBy && (
+              <button
+                onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 border border-input rounded-lg text-xs font-medium hover:bg-accent transition-colors"
+              >
+                {sortOrder === 'asc' ? (
+                  <><ChevronUp className="w-3.5 h-3.5" /> น้อยไปมาก</>
+                ) : (
+                  <><ChevronDown className="w-3.5 h-3.5" /> มากไปน้อย</>
+                )}
+              </button>
             )}
-          </button>
-        )}
+          </div>
+        </div>
       </div>
 
       <QueryBoundary

@@ -143,15 +143,20 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-5 lg:gap-7.5">
-      {/* Page Title */}
-      <div>
-        <h1 className="text-xl font-bold text-foreground">Dashboard</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          สวัสดี {user?.name} — ภาพรวมธุรกิจและการกำกับพนักงาน
-        </p>
+      {/* Page Header — Metronic style */}
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground tracking-tight">แดชบอร์ด</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            สวัสดี <span className="font-medium text-foreground">{user?.name}</span> — ภาพรวมธุรกิจและการกำกับพนักงาน
+          </p>
+        </div>
+        <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground bg-muted/60 border border-border/50 rounded-lg px-3 py-2">
+          <span className="size-2 rounded-full bg-success animate-pulse inline-block" />
+          <span>อัปเดตอัตโนมัติทุก 5 นาที</span>
+        </div>
       </div>
 
-      {/* Error State */}
       {/* Smart Alerts */}
       <DashboardAlerts alerts={alerts} />
 

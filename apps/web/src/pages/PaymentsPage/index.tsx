@@ -428,15 +428,29 @@ export default function PaymentsPage() {
         }
       />
 
-      {/* Tabs */}
-      <div className="flex gap-1 mb-5 bg-muted/60 rounded-xl p-1 w-fit border border-border/40">
-        <button onClick={() => setTab('pending')} className={`px-4 py-2 text-sm rounded-lg transition-all ${tab === 'pending' ? 'bg-card shadow-sm font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+      {/* Tabs — Metronic segment tabs */}
+      <div className="flex gap-0 mb-5 border-b border-border/60">
+        <button
+          onClick={() => setTab('pending')}
+          className={`px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-all ${tab === 'pending' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+        >
           รายการรอชำระ
+          {pendingSummary.count > 0 && (
+            <span className={`ml-2 text-xs px-1.5 py-0.5 rounded-full ${tab === 'pending' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
+              {pendingSummary.count}
+            </span>
+          )}
         </button>
-        <button onClick={() => setTab('summary')} className={`px-4 py-2 text-sm rounded-lg transition-all ${tab === 'summary' ? 'bg-card shadow-sm font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+        <button
+          onClick={() => setTab('summary')}
+          className={`px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-all ${tab === 'summary' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+        >
           สรุปรายวัน
         </button>
-        <button onClick={() => setTab('slip-review')} className={`px-4 py-2 text-sm rounded-lg transition-all ${tab === 'slip-review' ? 'bg-card shadow-sm font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+        <button
+          onClick={() => setTab('slip-review')}
+          className={`px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-all ${tab === 'slip-review' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+        >
           ตรวจสอบสลิป
         </button>
       </div>

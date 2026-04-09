@@ -49,11 +49,11 @@ export default function DashboardWatchList({ watchListData, upsell }: DashboardW
           <CardTable>
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border/60">
-                  <th className="text-left px-5 py-3 text-2xs font-semibold text-muted-foreground uppercase tracking-wider bg-muted/40">ลูกค้า</th>
-                  <th className="text-left px-5 py-3 text-2xs font-semibold text-muted-foreground uppercase tracking-wider bg-muted/40 hidden sm:table-cell">สัญญา</th>
-                  <th className="text-left px-5 py-3 text-2xs font-semibold text-muted-foreground uppercase tracking-wider bg-muted/40">ความเสี่ยง</th>
-                  <th className="text-left px-5 py-3 text-2xs font-semibold text-muted-foreground uppercase tracking-wider bg-muted/40 hidden md:table-cell">สาเหตุ</th>
+                <tr className="bg-muted/40 border-b border-border/60">
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">ลูกค้า</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider hidden sm:table-cell">สัญญา</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">ความเสี่ยง</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider hidden md:table-cell">สาเหตุ</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/40">
@@ -125,11 +125,11 @@ export default function DashboardWatchList({ watchListData, upsell }: DashboardW
           <CardTable>
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border/60">
-                  <th className="text-left px-5 py-3 text-2xs font-semibold text-muted-foreground uppercase tracking-wider bg-muted/40">ลูกค้า</th>
-                  <th className="text-left px-5 py-3 text-2xs font-semibold text-muted-foreground uppercase tracking-wider bg-muted/40 hidden sm:table-cell">เครื่อง</th>
-                  <th className="text-left px-5 py-3 text-2xs font-semibold text-muted-foreground uppercase tracking-wider bg-muted/40">ความคืบหน้า</th>
-                  <th className="text-left px-5 py-3 text-2xs font-semibold text-muted-foreground uppercase tracking-wider bg-muted/40 hidden md:table-cell">เหตุผล</th>
+                <tr className="bg-muted/40 border-b border-border/60">
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">ลูกค้า</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider hidden sm:table-cell">เครื่อง</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">ความคืบหน้า</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider hidden md:table-cell">เหตุผล</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/40">

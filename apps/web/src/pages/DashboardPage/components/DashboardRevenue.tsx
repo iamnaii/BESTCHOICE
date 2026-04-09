@@ -23,14 +23,14 @@ function ShortcutCard({ icon: Icon, label, path, color }: { icon: LucideIcon; la
   const navigate = useNavigate();
   return (
     <Card
-      className="cursor-pointer hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 group"
+      className="cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 group border-border/60"
       onClick={() => navigate(path)}
     >
-      <CardContent className="p-5 flex flex-col items-center justify-center gap-3 text-center min-h-[120px]">
-        <div className={cn('size-11 rounded-xl flex items-center justify-center transition-transform group-hover:scale-105', color)}>
+      <CardContent className="p-4 flex flex-col items-center justify-center gap-2.5 text-center min-h-[100px]">
+        <div className={cn('size-12 rounded-2xl flex items-center justify-center transition-all group-hover:scale-110 group-hover:shadow-md shadow-sm', color)}>
           <Icon className="size-5 text-white" />
         </div>
-        <span className="text-2sm font-medium text-foreground leading-tight">{label}</span>
+        <span className="text-xs font-semibold text-foreground leading-tight">{label}</span>
       </CardContent>
     </Card>
   );
@@ -98,7 +98,7 @@ export default function DashboardRevenue({
       </div>
 
       {/* Monthly Revenue + Financial Summary */}
-      <div className="lg:col-span-7 flex flex-col gap-5 lg:gap-7.5">
+      <div className="lg:col-span-7 flex flex-col gap-5">
         {/* Monthly Revenue */}
         {userRole !== 'SALES' && (
           <Card>

@@ -137,6 +137,28 @@
   font-display: swap;
 }
 
+/* ── Smooth Scroll ──────────────────────────────── */
+html {
+  scroll-behavior: smooth;
+}
+
+/* ── Custom Scrollbar ───────────────────────────── */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--input));
+  border-radius: 5px;
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--input)) transparent;
+}
+
 /* ── Base Styles (Metronic v9.4.6) ───────────────── */
 body {
   font-family: 'Inter', 'Noto Sans Thai', system-ui, -apple-system, sans-serif;

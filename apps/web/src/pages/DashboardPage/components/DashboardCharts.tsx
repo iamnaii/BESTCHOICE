@@ -37,7 +37,7 @@ export default function DashboardCharts({
   const totalStatusCount = useMemo(() => statusDist.reduce((sum, s) => sum + s.count, 0), [statusDist]);
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-7.5">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
       {/* Monthly Trend -- Recharts AreaChart */}
       <div className="lg:col-span-7">
         <Card>

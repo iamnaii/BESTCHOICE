@@ -22,17 +22,25 @@ const COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 function setRefreshCookie(res: Response, token: string) {
   const isProduction = process.env.NODE_ENV === 'production';
+  // Cookie domain: .bestchoicephone.app — shared between
+  // bestchoicephone.app (frontend) and api.bestchoicephone.app (API)
+  const cookieDomain = process.env.COOKIE_DOMAIN || undefined; // e.g. '.bestchoicephone.app'
   res.cookie(REFRESH_COOKIE, token, {
     httpOnly: true,
     secure: isProduction,
-    sameSite: 'lax', // same-origin via Firebase Hosting rewrite — no need for 'none'
+    sameSite: 'lax',
     maxAge: COOKIE_MAX_AGE,
     path: '/api/auth',
+    ...(cookieDomain ? { domain: cookieDomain } : {}),
   });
 }
 
 function clearRefreshCookie(res: Response) {
-  res.clearCookie(REFRESH_COOKIE, { path: '/api/auth' });
+  const cookieDomain = process.env.COOKIE_DOMAIN || undefined;
+  res.clearCookie(REFRESH_COOKIE, {
+    path: '/api/auth',
+    ...(cookieDomain ? { domain: cookieDomain } : {}),
+  });
 }
 
 @ApiTags('Auth')

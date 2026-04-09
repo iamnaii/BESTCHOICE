@@ -234,7 +234,7 @@ jobs:
           SMTP_FROM=BESTCHOICE <noreply@bestchoicephone.app>,\
           SKIP_MIGRATION=true,\
           FRONTEND_URL=${{ secrets.FRONTEND_URL || 'https://bestchoice-prod.web.app' }},\
-          COOKIE_CROSS_DOMAIN=true,\
+          COOKIE_DOMAIN=.bestchoicephone.app,\
           JWT_EXPIRATION=15m,\
           JWT_REFRESH_EXPIRATION=7d,\
           DATABASE_CONNECTION_LIMIT=10,\
@@ -280,7 +280,7 @@ jobs:
       - name: Build frontend
         run: npm run build --workspace=apps/web
         env:
-          VITE_API_URL: /api
+          VITE_API_URL: https://api.bestchoicephone.app/api
 
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0

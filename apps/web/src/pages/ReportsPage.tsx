@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import api from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -38,6 +39,7 @@ const reportTabs: { key: ReportType; label: string }[] = [
 ];
 
 export default function ReportsPage() {
+  useDocumentTitle('รายงาน');
   const [activeTab, setActiveTab] = useState<ReportType>('aging');
   const [dateFilter, setDateFilter] = useState(new Date().toISOString().slice(0, 10));
 

@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -106,6 +107,7 @@ export default function ProductDetailPage() {
       return data;
     },
   });
+  useDocumentTitle(product?.name);
 
   const { data: branches = [] } = useQuery<{ id: string; name: string }[]>({
     queryKey: ['branches'],

@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
@@ -28,6 +29,7 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 };
 
 export default function CommissionsPage() {
+  useDocumentTitle('คอมมิชชัน');
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const isSales = user?.role === 'SALES';

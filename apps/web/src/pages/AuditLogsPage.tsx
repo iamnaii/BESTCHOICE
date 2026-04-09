@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
@@ -75,6 +76,7 @@ const entityLabels: Record<string, string> = {
 };
 
 export default function AuditLogsPage() {
+  useDocumentTitle('ประวัติการใช้งาน');
   const [entity, setEntity] = useState('');
   const [action, setAction] = useState('');
   const [dateFrom, setDateFrom] = useState('');

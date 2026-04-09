@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -94,6 +95,7 @@ const emptyForm: CustomerFormData & { facebookFriends: string; googleMapLink: st
 
 
 export default function CustomersPage() {
+  useDocumentTitle('ลูกค้า');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -772,7 +774,7 @@ export default function CustomersPage() {
                     <FormItem>
                       <FormLabel className="text-xs font-medium">ชื่อ <span className="text-destructive">*</span></FormLabel>
                       <FormControl>
-                        <input type="text" {...field} className={inputClass} placeholder="กรอกชื่อ" />
+                        <input type="text" {...field} className={inputClass} placeholder="กรอกชื่อ" autoComplete="given-name" />
                       </FormControl>
                       <FormMessage className="text-xs" />
                     </FormItem>
@@ -787,7 +789,7 @@ export default function CustomersPage() {
                     <FormItem>
                       <FormLabel className="text-xs font-medium">นามสกุล <span className="text-destructive">*</span></FormLabel>
                       <FormControl>
-                        <input type="text" {...field} className={inputClass} placeholder="กรอกนามสกุล" />
+                        <input type="text" {...field} className={inputClass} placeholder="กรอกนามสกุล" autoComplete="family-name" />
                       </FormControl>
                       <FormMessage className="text-xs" />
                     </FormItem>
@@ -824,7 +826,7 @@ export default function CustomersPage() {
                     <FormItem>
                       <FormLabel className="text-xs font-medium">เบอร์โทร <span className="text-destructive">*</span></FormLabel>
                       <FormControl>
-                        <input type="tel" {...field} className={inputClass} placeholder="0XX-XXX-XXXX" />
+                        <input type="tel" {...field} className={inputClass} placeholder="0XX-XXX-XXXX" autoComplete="tel" />
                       </FormControl>
                       <FormMessage className="text-xs" />
                     </FormItem>
@@ -957,7 +959,7 @@ export default function CustomersPage() {
                       <FormItem>
                         <FormLabel className="text-xs font-medium">อีเมล</FormLabel>
                         <FormControl>
-                          <input type="email" {...field} className={inputClass} placeholder="email@example.com" />
+                          <input type="email" {...field} className={inputClass} placeholder="email@example.com" autoComplete="email" />
                         </FormControl>
                         <FormMessage className="text-xs" />
                       </FormItem>

@@ -1,5 +1,6 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import api from '@/lib/api';
 import { DashboardSkeleton } from '@/components/ui/page-skeletons';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -30,6 +31,7 @@ import type {
 } from './types';
 
 export default function DashboardPage() {
+  useDocumentTitle('แดชบอร์ด');
   const { user } = useAuth();
 
   const dashboardStaleTime = 5 * 60 * 1000;

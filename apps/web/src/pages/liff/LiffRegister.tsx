@@ -207,6 +207,7 @@ export default function LiffRegister() {
               setPhone(e.target.value.replace(/\D/g, '').slice(0, 10));
               setPhoneError('');
             }}
+            autoComplete="tel"
             className={`w-full px-4 py-3 rounded-xl border text-center text-lg tracking-widest ${
               phoneError ? 'border-red-400 bg-red-50' : 'border-gray-300'
             } focus:outline-none focus:ring-2 focus:ring-green-500`}

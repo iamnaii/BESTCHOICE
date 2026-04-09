@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { toast } from 'sonner';
+import QueryBoundary from '@/components/QueryBoundary';
 
 interface SessionItem {
   id: string;
@@ -112,9 +113,14 @@ export default function ChatbotFinanceSessionsPage() {
       <div className="grid grid-cols-12 gap-4">
         {/* List */}
         <div className="col-span-5 border rounded-xl bg-white">
-          {list.isLoading ? (
-            <div className="p-4 text-gray-500 text-sm">กำลังโหลด...</div>
-          ) : list.data?.items.length === 0 ? (
+          <QueryBoundary
+            isLoading={list.isLoading && !list.data}
+            isError={list.isError}
+            error={list.error}
+            onRetry={list.refetch}
+            errorTitle="ไม่สามารถโหลด Sessions ได้"
+          >
+          {list.data?.items.length === 0 ? (
             <div className="p-4 text-gray-400 text-sm">ไม่พบ session</div>
           ) : (
             <ul className="divide-y">
@@ -166,6 +172,7 @@ export default function ChatbotFinanceSessionsPage() {
               </button>
             </div>
           )}
+          </QueryBoundary>
         </div>
 
         {/* Detail */}

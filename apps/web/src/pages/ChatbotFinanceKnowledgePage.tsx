@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { toast } from 'sonner';
+import QueryBoundary from '@/components/QueryBoundary';
 
 interface KbEntry {
   id: string;
@@ -121,9 +122,14 @@ export default function ChatbotFinanceKnowledgePage() {
       <div className="grid grid-cols-12 gap-4">
         {/* List */}
         <div className="col-span-5 space-y-2">
-          {list.isLoading ? (
-            <p className="text-sm text-gray-500">กำลังโหลด...</p>
-          ) : list.data?.length === 0 ? (
+          <QueryBoundary
+            isLoading={list.isLoading && !list.data}
+            isError={list.isError}
+            error={list.error}
+            onRetry={list.refetch}
+            errorTitle="ไม่สามารถโหลด Knowledge Base ได้"
+          >
+          {list.data?.length === 0 ? (
             <p className="text-sm text-gray-400">ยังไม่มี FAQ</p>
           ) : (
             list.data?.map((kb) => (
@@ -150,6 +156,7 @@ export default function ChatbotFinanceKnowledgePage() {
               </div>
             ))
           )}
+          </QueryBoundary>
         </div>
 
         {/* Form */}

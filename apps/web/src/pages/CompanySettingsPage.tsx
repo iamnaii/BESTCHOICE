@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
+import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -349,7 +350,7 @@ function CompanyCard({ company }: { company: Company }) {
 }
 
 export default function CompanySettingsPage() {
-  const { data: companies = [], isLoading } = useQuery<Company[]>({
+  const { data: companies = [], isLoading, isError, error, refetch } = useQuery<Company[]>({
     queryKey: ['companies'],
     queryFn: async () => (await api.get('/companies')).data,
   });
@@ -362,11 +363,14 @@ export default function CompanySettingsPage() {
         icon={<Building2 className="size-6" />}
       />
 
-      {isLoading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-        </div>
-      ) : companies.length === 0 ? (
+      <QueryBoundary
+        isLoading={isLoading && companies.length === 0}
+        isError={isError}
+        error={error}
+        onRetry={refetch}
+        errorTitle="ไม่สามารถโหลดข้อมูลนิติบุคคลได้"
+      >
+      {companies.length === 0 ? (
         <div className="text-center text-muted-foreground py-20">
           ยังไม่มีข้อมูลนิติบุคคล
         </div>
@@ -377,6 +381,7 @@ export default function CompanySettingsPage() {
           ))}
         </div>
       )}
+      </QueryBoundary>
     </div>
   );
 }

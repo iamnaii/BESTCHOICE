@@ -130,7 +130,7 @@ const CHART_OF_ACCOUNTS: ChartOfAccountSeed[] = [
 
   // กลุ่มรายได้ดอกเบี้ย/เครดิต
   { code: '42-11XX', nameTh: 'กลุ่มรายได้ดอกเบี้ย/เครดิต', nameEn: 'Interest and Credit Income', accountGroup: AccountGroup.REVENUE, parentCode: '42-0000', level: 2 },
-  { code: '42-1101', nameTh: 'รายได้ส่วนเพิ่มจากการปิดสัญญา', nameEn: 'Early Payoff Surcharge Income', accountGroup: AccountGroup.REVENUE, parentCode: '42-11XX', level: 3, allowedCompanies: ['FINANCE'] },
+  { code: '42-1101', nameTh: 'รายได้ดอกเบี้ยเช่าซื้อ', nameEn: 'Interest Income on Hire Purchase', accountGroup: AccountGroup.REVENUE, parentCode: '42-11XX', level: 3, allowedCompanies: ['FINANCE'] },
   { code: '42-1102', nameTh: 'ค่างวดเบี้ยปรับล่าช้า', nameEn: 'Late Payment Penalty Income', accountGroup: AccountGroup.REVENUE, parentCode: '42-11XX', level: 3, allowedCompanies: ['FINANCE'] },
   { code: '42-1103', nameTh: 'ค่ามัดจำ/เงินประกันที่ริบ', nameEn: 'Forfeited Deposits/Guarantees', accountGroup: AccountGroup.REVENUE, parentCode: '42-11XX', level: 3, allowedCompanies: ['FINANCE'] },
   { code: '42-1104', nameTh: 'รายได้จากการยึดเครื่อง', nameEn: 'Repossession Income', accountGroup: AccountGroup.REVENUE, parentCode: '42-11XX', level: 3, allowedCompanies: ['FINANCE'] },

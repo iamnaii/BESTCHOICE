@@ -29,6 +29,7 @@ jest.mock('../../utils/config.util', () => ({
     vatPct: 0,
   }),
   BUSINESS_RULES: { EARLY_PAYOFF_DISCOUNT: 0.5 },
+  resolveVatPctForBranch: jest.fn().mockResolvedValue(0),
 }));
 
 const mockCheckRequiredContractFields = jest.fn().mockReturnValue([]);

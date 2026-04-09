@@ -13,7 +13,7 @@ export interface BranchAccessUser {
 }
 import { CreateContractDto, UpdateContractDto } from './dto/contract.dto';
 import { calculateInstallment, generatePaymentSchedule } from '../../utils/installment.util';
-import { loadInstallmentConfig, resolveInstallmentParams } from '../../utils/config.util';
+import { loadInstallmentConfig, resolveInstallmentParams, resolveVatPctForBranch } from '../../utils/config.util';
 import { generateContractNumber } from '../../utils/sequence.util';
 import {
   validateIMEI,
@@ -268,7 +268,11 @@ export class ContractsService {
 
     // Load configs with shared utility
     const systemConfig = await loadInstallmentConfig(this.prisma);
-    const params = resolveInstallmentParams(interestConfig, systemConfig, dto.interestRate);
+    const baseParams = resolveInstallmentParams(interestConfig, systemConfig, dto.interestRate);
+    // Override vatPct based on the selling branch's VAT registration status
+    // BESTCHOICE SHOP (vatRegistered=false) → 0%, BESTCHOICE FINANCE → 7%
+    const effectiveVatPct = await resolveVatPctForBranch(this.prisma, dto.branchId, baseParams.vatPct);
+    const params = { ...baseParams, vatPct: effectiveVatPct };
 
     // Validations
     if (dto.downPayment < 0) {
@@ -478,7 +482,10 @@ export class ContractsService {
       : null;
 
     const systemConfig = await loadInstallmentConfig(this.prisma);
-    const params = resolveInstallmentParams(interestConfig, systemConfig, dto.interestRate ?? Number(contract.interestRate));
+    const baseParams = resolveInstallmentParams(interestConfig, systemConfig, dto.interestRate ?? Number(contract.interestRate));
+    // Override vatPct based on the contract's branch VAT registration status
+    const effectiveVatPct = await resolveVatPctForBranch(this.prisma, contract.branchId, baseParams.vatPct);
+    const params = { ...baseParams, vatPct: effectiveVatPct };
     const { minDownPaymentPct, minInstallmentMonths, maxInstallmentMonths } = params;
 
     // Validations

@@ -35,6 +35,7 @@ export class JournalAutoService {
     CUSTOMER_CREDIT: '21-5101',
     REVENUE_NEW: '41-1101',
     REVENUE_USED: '41-1102',
+    INTEREST_INCOME: '42-1101',     // รายได้ดอกเบี้ยเช่าซื้อ (HP interest revenue)
     LATE_FEE_INCOME: '42-1102',
     COMMISSION_INCOME: '42-1105',
     COGS_NEW: '51-1101',
@@ -129,13 +130,13 @@ export class JournalAutoService {
    * Auto journal — Payment received from customer.
    *
    * Dr. Cash/Bank                    [amountPaid]
-   *   Cr. Hire-Purchase Receivable   [monthlyPrincipal]
+   *   Cr. Hire-Purchase Receivable   [monthlyPrincipal only — NOT principal+interest]
+   *   Cr. Interest Income            [monthlyInterest]
    *   Cr. Commission Income          [monthlyCommission]
    *   Cr. VAT Output                 [vatAmount]
    *   Cr. Late Fee Income            [lateFee — if any]
    *
-   * Note: monthlyInterest is treated as part of HP receivable settlement
-   * under cash basis — already booked when contract was activated.
+   * Interest is recognised as a separate revenue line (cash basis).
    * Late fees are NOT charged VAT (owner policy).
    */
   async createPaymentJournal(
@@ -173,10 +174,10 @@ export class JournalAutoService {
       ? new Prisma.Decimal(0)
       : new Prisma.Decimal(params.payment.lateFee ?? 0);
 
-    // Settle HP receivable = principal + interest (both reduce the receivable)
-    const hpSettled = principal.add(interest);
-    // If breakdown is missing, settle whole amount against receivable as fallback
-    const isZeroBreakdown = hpSettled.isZero() && commission.isZero() && vat.isZero() && lateFee.isZero();
+    // HP receivable is reduced by principal only — interest is recognised as separate revenue
+    const hpSettled = principal;
+    // If breakdown is missing (legacy/manual payment), settle whole amount against receivable as fallback
+    const isZeroBreakdown = principal.isZero() && interest.isZero() && commission.isZero() && vat.isZero() && lateFee.isZero();
     const fallbackHp = isZeroBreakdown ? amountPaid.sub(lateFee) : hpSettled;
 
     return this.createAndPost(tx, {
@@ -189,6 +190,7 @@ export class JournalAutoService {
       lines: [
         { accountCode: JournalAutoService.ACC.CASH, description: 'รับชำระเงิน', debit: amountPaid.toNumber(), credit: 0 },
         { accountCode: JournalAutoService.ACC.HP_RECEIVABLE, description: 'ตัดลูกหนี้เช่าซื้อ', debit: 0, credit: fallbackHp.toNumber() },
+        { accountCode: JournalAutoService.ACC.INTEREST_INCOME, description: 'รายได้ดอกเบี้ยเช่าซื้อ', debit: 0, credit: interest.toNumber() },
         { accountCode: JournalAutoService.ACC.COMMISSION_INCOME, description: 'รายได้ค่าคอมมิชชัน', debit: 0, credit: commission.toNumber() },
         { accountCode: JournalAutoService.ACC.VAT_OUTPUT, description: 'ภาษีขาย', debit: 0, credit: vat.toNumber() },
         { accountCode: JournalAutoService.ACC.LATE_FEE_INCOME, description: 'ค่าปรับล่าช้า', debit: 0, credit: lateFee.toNumber() },
@@ -252,7 +254,8 @@ export class JournalAutoService {
    *
    * Dr. Cash/Bank                       [downPayment]
    * Dr. Hire-Purchase Receivable        [financedAmount]
-   *   Cr. Sales Revenue                 [sellingPrice + commission + interest]
+   *   Cr. Sales Revenue                 [sellingPrice + commission]  (excl. interest)
+   *   Cr. Interest Income               [interestTotal]
    *   Cr. VAT Output                    [vatAmount]
    *
    * Plus COGS:
@@ -288,8 +291,8 @@ export class JournalAutoService {
     const vat = new Prisma.Decimal(params.contract.vatAmount ?? 0);
     const cost = new Prisma.Decimal(params.product.costPrice ?? 0);
 
-    // Sales revenue = sellingPrice + interest + commission (full deal value, excl. VAT)
-    const revenue = sellingPrice.add(interest).add(commission);
+    // Sales revenue = sellingPrice + commission only — interest is a separate revenue line
+    const revenue = sellingPrice.add(commission);
     const isUsed = (params.product.category || '').toLowerCase().includes('used') ||
       (params.product.category || '').includes('มือสอง');
     const revenueAcc = isUsed ? JournalAutoService.ACC.REVENUE_USED : JournalAutoService.ACC.REVENUE_NEW;
@@ -308,6 +311,7 @@ export class JournalAutoService {
         { accountCode: JournalAutoService.ACC.CASH, description: 'รับเงินดาวน์', debit: downPayment.toNumber(), credit: 0 },
         { accountCode: JournalAutoService.ACC.HP_RECEIVABLE, description: 'ลูกหนี้เช่าซื้อ', debit: financedAmount.toNumber(), credit: 0 },
         { accountCode: revenueAcc, description: 'รายได้จากการขาย', debit: 0, credit: revenue.toNumber() },
+        { accountCode: JournalAutoService.ACC.INTEREST_INCOME, description: 'รายได้ดอกเบี้ยเช่าซื้อ', debit: 0, credit: interest.toNumber() },
         { accountCode: JournalAutoService.ACC.VAT_OUTPUT, description: 'ภาษีขาย', debit: 0, credit: vat.toNumber() },
       ],
     });

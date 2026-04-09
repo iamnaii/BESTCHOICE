@@ -96,3 +96,31 @@ export function resolveInstallmentParams(
     maxInstallmentMonths: interestConfig ? interestConfig.maxInstallmentMonths : systemConfig.maxInstallmentMonths,
   };
 }
+
+/**
+ * Resolve the effective VAT rate for a branch.
+ *
+ * Business rule:
+ *   - BESTCHOICE SHOP  (vatRegistered=false) → 0% VAT
+ *   - BESTCHOICE FINANCE (vatRegistered=true)  → company.vatRate (default 7%)
+ *
+ * Falls back to `defaultVatPct` when no branchId is supplied or the branch
+ * record cannot be found (e.g. during seeding or unit tests).
+ */
+export async function resolveVatPctForBranch(
+  prisma: PrismaService | { branch: { findUnique: (...args: unknown[]) => Promise<unknown> } },
+  branchId: string | null | undefined,
+  defaultVatPct: number,
+): Promise<number> {
+  if (!branchId) return defaultVatPct;
+
+  const branch = await (prisma as PrismaService).branch.findUnique({
+    where: { id: branchId },
+    include: { company: { select: { vatRegistered: true, vatRate: true } } },
+  });
+
+  if (!branch?.company) return defaultVatPct;
+  if (!branch.company.vatRegistered) return 0;
+  if (branch.company.vatRate != null) return Number(branch.company.vatRate);
+  return defaultVatPct;
+}

@@ -27,8 +27,8 @@ function setRefreshCookie(res: Response, token: string) {
   const cookieDomain = process.env.COOKIE_DOMAIN || undefined; // e.g. '.bestchoicephone.app'
   res.cookie(REFRESH_COOKIE, token, {
     httpOnly: true,
-    secure: isProduction,
-    sameSite: 'lax',
+    secure: isProduction || !!cookieDomain,
+    sameSite: cookieDomain ? 'none' : 'lax', // 'none' needed for subdomain cookie sharing
     maxAge: COOKIE_MAX_AGE,
     path: '/api/auth',
     ...(cookieDomain ? { domain: cookieDomain } : {}),

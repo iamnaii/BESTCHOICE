@@ -99,9 +99,24 @@ export class TodosController {
     if (!key.startsWith('todos/')) {
       throw new ForbiddenException('ไม่มีสิทธิ์เข้าถึงไฟล์นี้');
     }
+    const filename = key.split('/').pop() ?? 'file';
+    // Infer content type from extension so the browser can render
+    // images/PDFs inline. Without this everything was sent as
+    // octet-stream + attachment, forcing a download dialog for every
+    // preview click.
+    const ext = filename.split('.').pop()?.toLowerCase() ?? '';
+    const mimeMap: Record<string, string> = {
+      jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+      gif: 'image/gif', webp: 'image/webp', heic: 'image/heic',
+      pdf: 'application/pdf',
+    };
+    const contentType = mimeMap[ext] || 'application/octet-stream';
+    const isInlineable = contentType.startsWith('image/') || contentType === 'application/pdf';
+    const disposition = isInlineable ? 'inline' : 'attachment';
+
     const stream = await this.storage.getStream(key);
-    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(key.split('/').pop() ?? 'file')}"`);
-    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `${disposition}; filename="${encodeURIComponent(filename)}"`);
     stream.pipe(res);
   }
 

@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
 type AccountGroup = 'ASSET' | 'LIABILITY' | 'EQUITY' | 'REVENUE' | 'EXPENSE';
 
@@ -72,6 +73,7 @@ export default function ChartOfAccountsPage() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<ChartOfAccount | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; id: string; label: string }>({ open: false, id: '', label: '' });
 
   const { data: accounts = [], isLoading, isError, error, refetch } = useQuery<ChartOfAccount[]>({
     queryKey: ['chart-of-accounts'],
@@ -290,9 +292,7 @@ export default function ChartOfAccountsPage() {
                             แก้ไข
                           </button>
                           <button
-                            onClick={() => {
-                              if (confirm(`ลบบัญชี ${a.code} ${a.nameTh}?`)) deleteMutation.mutate(a.id);
-                            }}
+                            onClick={() => setDeleteConfirm({ open: true, id: a.id, label: `${a.code} ${a.nameTh}` })}
                             className="text-xs px-2 py-1 text-destructive hover:underline"
                           >
                             ลบ
@@ -464,6 +464,14 @@ export default function ChartOfAccountsPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={deleteConfirm.open}
+        onOpenChange={(open) => setDeleteConfirm((prev) => ({ ...prev, open }))}
+        description={`ลบบัญชี ${deleteConfirm.label}?`}
+        variant="destructive"
+        onConfirm={() => deleteMutation.mutate(deleteConfirm.id)}
+      />
     </div>
   );
 }

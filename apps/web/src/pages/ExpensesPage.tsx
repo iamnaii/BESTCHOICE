@@ -607,7 +607,7 @@ export default function ExpensesPage() {
   ];
 
   return (
-    <div onClick={() => setOpenMenuId(null)}>
+    <div onClick={() => setOpenMenuId(null)} onKeyDown={(e) => { if (e.key === 'Escape') setOpenMenuId(null); }}>
       <PageHeader title="บันทึกรายจ่าย" subtitle={`ทั้งหมด ${expensesData?.total || 0} รายการ`}
         action={
           <Button variant="primary" size="md" onClick={openCreate}>

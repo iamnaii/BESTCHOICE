@@ -13,6 +13,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import {
   CheckSquare,
   Plus,
@@ -176,6 +177,7 @@ export default function TodosPage() {
   const [view, setView] = useState<TodoView>('all');
   const [search, setSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; id: string }>({ open: false, id: '' });
   const [editing, setEditing] = useState<Todo | null>(null);
   const [form, setForm] = useState<typeof emptyForm>(emptyForm);
   // Map of attachment.url → blob object URL for inline image previews.
@@ -721,7 +723,7 @@ export default function TodosPage() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (confirm('ลบรายการนี้?')) deleteMutation.mutate(t.id);
+                            setDeleteConfirm({ open: true, id: t.id });
                           }}
                           className="size-6 rounded-md text-muted-foreground hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 inline-flex items-center justify-center transition-colors opacity-0 group-hover:opacity-100"
                           aria-label="delete"
@@ -1131,6 +1133,13 @@ export default function TodosPage() {
         </div>
       )}
 
+      <ConfirmDialog
+        open={deleteConfirm.open}
+        onOpenChange={(open) => setDeleteConfirm((prev) => ({ ...prev, open }))}
+        description="ต้องการลบรายการนี้?"
+        variant="destructive"
+        onConfirm={() => deleteMutation.mutate(deleteConfirm.id)}
+      />
     </div>
   );
 }

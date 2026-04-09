@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { Copy, Check } from 'lucide-react';
 import { SYNTAX_REFERENCE } from '@/constants/syntaxReference';
+import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 
 export default function CheatSheet() {
   const [copied, setCopied] = useState<string | null>(null);
+  const { copy } = useCopyToClipboard(1500);
 
   const handleCopy = (syntax: string) => {
-    navigator.clipboard.writeText(syntax);
+    copy(syntax);
     setCopied(syntax);
     setTimeout(() => setCopied(null), 1500);
   };

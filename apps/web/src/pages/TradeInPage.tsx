@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
+import { readSmartCard } from '@/lib/cardReader';
 import { formatThaiDate } from '@/lib/date';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable, { type Column } from '@/components/ui/DataTable';
@@ -325,18 +326,7 @@ export default function TradeInPage() {
   // อ่านบัตรจากเครื่องอ่านบัตร (card-reader service @ port 3457)
   async function readFromCardReader() {
     try {
-      const res = await fetch('http://localhost:3457/api/read-card');
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        toast.error(err.message || 'อ่านบัตรไม่สำเร็จ — กรุณาลองอีกครั้ง');
-        return;
-      }
-      const json = await res.json();
-      if (!json.success || !json.data) {
-        toast.error('ไม่พบข้อมูลบัตร');
-        return;
-      }
-      const d = json.data;
+      const d = await readSmartCard();
       const fullName = `${d.prefix || ''}${d.firstName || ''} ${d.lastName || ''}`.trim();
       setForm((f) => ({
         ...f,
@@ -346,8 +336,8 @@ export default function TradeInPage() {
         idCardSource: 'card_reader',
       }));
       toast.success('อ่านบัตรเรียบร้อย');
-    } catch {
-      toast.error('ไม่พบเครื่องอ่านบัตร — ตรวจสอบว่า card-reader service รันอยู่ที่ port 3457');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'ไม่พบเครื่องอ่านบัตร — ตรวจสอบว่า card-reader service รันอยู่ที่ port 3457');
     }
   }
 

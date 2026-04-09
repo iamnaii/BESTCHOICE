@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import * as Sentry from '@sentry/nestjs';
 import { AuthService } from './auth.service';
 
 @Injectable()
@@ -22,6 +23,9 @@ export class AuthTokenCleanupService {
       }
     } catch (error) {
       this.logger.error('ล้มเหลวในการลบ refresh token ที่หมดอายุ', error);
+      Sentry.captureException(error, {
+        tags: { kind: 'cron-job', cron: 'token-cleanup' },
+      });
     }
   }
 }

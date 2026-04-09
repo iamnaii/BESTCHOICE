@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
+import QueryBoundary from '@/components/QueryBoundary';
 
 interface MigrationStatus {
   customers: number;
@@ -27,7 +28,7 @@ export default function MigrationPage() {
   const [jsonInput, setJsonInput] = useState('');
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
 
-  const { data: status } = useQuery<MigrationStatus>({
+  const { data: status, isLoading: statusLoading, isError: statusError, error: statusQueryError, refetch: refetchStatus } = useQuery<MigrationStatus>({
     queryKey: ['migration-status'],
     queryFn: async () => (await api.get('/migration/status')).data,
   });
@@ -126,23 +127,31 @@ export default function MigrationPage() {
       <PageHeader title="นำเข้าข้อมูล" subtitle="ย้ายข้อมูลจากระบบเดิม" />
 
       {/* Status Cards */}
-      {status && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
-          {[
-            { label: 'ลูกค้า', count: status.customers },
-            { label: 'สัญญา', count: status.contracts },
-            { label: 'ชำระ', count: status.payments },
-            { label: 'สินค้า', count: status.products },
-            { label: 'สาขา', count: status.branches },
-            { label: 'ผู้ใช้', count: status.users },
-          ].map((item) => (
-            <div key={item.label} className="bg-card rounded-lg border border-border p-4 text-center">
-              <div className="text-2xl font-bold text-foreground">{item.count}</div>
-              <div className="text-xs text-muted-foreground">{item.label}</div>
-            </div>
-          ))}
-        </div>
-      )}
+      <QueryBoundary
+        isLoading={statusLoading}
+        isError={statusError}
+        error={statusQueryError}
+        onRetry={() => refetchStatus()}
+        errorTitle="ไม่สามารถโหลดสถานะข้อมูลได้"
+      >
+        {status && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+            {[
+              { label: 'ลูกค้า', count: status.customers },
+              { label: 'สัญญา', count: status.contracts },
+              { label: 'ชำระ', count: status.payments },
+              { label: 'สินค้า', count: status.products },
+              { label: 'สาขา', count: status.branches },
+              { label: 'ผู้ใช้', count: status.users },
+            ].map((item) => (
+              <div key={item.label} className="bg-card rounded-lg border border-border p-4 text-center">
+                <div className="text-2xl font-bold text-foreground">{item.count}</div>
+                <div className="text-xs text-muted-foreground">{item.label}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </QueryBoundary>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:gap-7.5">
         {/* Import Form */}

@@ -502,7 +502,13 @@ export default function OverduePage() {
 
       {/* Assign Collector Modal */}
       {assignContractId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setAssignContractId(null)}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          role="button"
+          tabIndex={0}
+          onClick={() => setAssignContractId(null)}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setAssignContractId(null); } }}
+        >
           <div className="absolute inset-0 bg-black/30" />
           <div className="relative bg-background rounded-xl shadow-xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-base font-semibold mb-4">มอบหมายผู้ติดตาม</h3>
@@ -542,7 +548,13 @@ export default function OverduePage() {
 
       {/* Record Settlement Modal */}
       {settlementContractId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setSettlementContractId(null)}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          role="button"
+          tabIndex={0}
+          onClick={() => setSettlementContractId(null)}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSettlementContractId(null); } }}
+        >
           <div className="absolute inset-0 bg-black/30" />
           <div className="relative bg-background rounded-xl shadow-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-base font-semibold mb-4">บันทึกนัดชำระ</h3>
@@ -609,7 +621,13 @@ export default function OverduePage() {
 
       {/* Timeline & Call Logs Drawer */}
       {timelineContractId && (
-        <div className="fixed inset-0 z-50 flex justify-end" onClick={() => setTimelineContractId(null)}>
+        <div
+          className="fixed inset-0 z-50 flex justify-end"
+          role="button"
+          tabIndex={0}
+          onClick={() => setTimelineContractId(null)}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setTimelineContractId(null); } }}
+        >
           <div className="absolute inset-0 bg-black/30" />
           <div className="relative w-full max-w-md bg-background shadow-xl overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="sticky top-0 bg-background border-b px-4 py-3 flex items-center justify-between">

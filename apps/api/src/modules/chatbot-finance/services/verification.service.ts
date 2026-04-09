@@ -1,5 +1,6 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import * as Sentry from '@sentry/nestjs';
 import { createHash, randomInt } from 'crypto';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { NotificationsService } from '../../notifications/notifications.service';
@@ -205,11 +206,18 @@ export class VerificationService {
 
   @Cron(CronExpression.EVERY_10_MINUTES)
   async cleanupExpiredOtps(): Promise<void> {
-    const result = await this.prisma.chatbotOtpRequest.deleteMany({
-      where: { expiresAt: { lt: new Date() } },
-    });
-    if (result.count > 0) {
-      this.logger.debug(`[Verify] Cleaned ${result.count} expired OTP(s)`);
+    try {
+      const result = await this.prisma.chatbotOtpRequest.deleteMany({
+        where: { expiresAt: { lt: new Date() } },
+      });
+      if (result.count > 0) {
+        this.logger.debug(`[Verify] Cleaned ${result.count} expired OTP(s)`);
+      }
+    } catch (error) {
+      this.logger.error(`OTP cleanup failed: ${error instanceof Error ? error.message : error}`);
+      Sentry.captureException(error, {
+        tags: { kind: 'cron-job', cron: 'otp-cleanup' },
+      });
     }
   }
 

@@ -24,6 +24,14 @@
 - **ห้ามเชื่อ client input** — validate ทุกอย่างฝั่ง server
 - Error messages เป็นภาษาไทย เช่น `{ message: 'กรุณาระบุชื่อ' }`
 
+## Intentionally Public Endpoints (ไม่มี JwtAuthGuard)
+- `chatbot-finance-liff` — LINE LIFF endpoints สำหรับลูกค้าเข้าถึงผ่าน LINE (ใช้ LIFF token แทน JWT)
+- `sms-webhook` — รับ SMS delivery callback จาก provider
+- `paysolutions` — รับ payment webhook จาก PaySolutions gateway (verify ด้วย merchantId)
+- `address` — ข้อมูล static จังหวัด/อำเภอ/ตำบล (read-only, ไม่มี sensitive data)
+
+**หมายเหตุ**: ถ้าพบ controller ที่ไม่มี guard ที่ไม่อยู่ในรายการนี้ → ถือว่าเป็น security bug
+
 ## Sensitive Data
 - **ห้าม commit** `.env` files
 - **ห้าม log** tokens, passwords, หรือ PII (ข้อมูลส่วนบุคคล)

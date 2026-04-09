@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LineFinanceClientService } from './line-finance-client.service';
 import { ChatSessionService } from './chat-session.service';
@@ -48,10 +49,17 @@ export class AutoTriggerService {
   @Cron('0 9 * * *', { timeZone: TIMEZONE })
   async runDailyReminders(): Promise<void> {
     this.logger.log('[AutoTrigger] === Daily reminders 09:00 ===');
-    await this.processOffset(5, AutoTriggerType.REMINDER_T_MINUS_5, TEMPLATES.T_MINUS_5);
-    await this.processOffset(3, AutoTriggerType.REMINDER_T_MINUS_3, TEMPLATES.T_MINUS_3);
-    await this.processOffset(1, AutoTriggerType.REMINDER_T_MINUS_1, TEMPLATES.T_MINUS_1);
-    await this.processOffset(0, AutoTriggerType.REMINDER_T_DAY, TEMPLATES.T_DAY);
+    try {
+      await this.processOffset(5, AutoTriggerType.REMINDER_T_MINUS_5, TEMPLATES.T_MINUS_5);
+      await this.processOffset(3, AutoTriggerType.REMINDER_T_MINUS_3, TEMPLATES.T_MINUS_3);
+      await this.processOffset(1, AutoTriggerType.REMINDER_T_MINUS_1, TEMPLATES.T_MINUS_1);
+      await this.processOffset(0, AutoTriggerType.REMINDER_T_DAY, TEMPLATES.T_DAY);
+    } catch (error) {
+      this.logger.error(`Daily reminders failed: ${error instanceof Error ? error.message : error}`);
+      Sentry.captureException(error, {
+        tags: { kind: 'cron-job', cron: 'daily-reminders' },
+      });
+    }
   }
 
   // ─── Daily escalations 10:00 ───────────────────────────────
@@ -59,8 +67,15 @@ export class AutoTriggerService {
   @Cron('0 10 * * *', { timeZone: TIMEZONE })
   async runDailyEscalations(): Promise<void> {
     this.logger.log('[AutoTrigger] === Daily escalations 10:00 ===');
-    await this.processOffset(-1, AutoTriggerType.ESCALATION_T_PLUS_1, TEMPLATES.T_PLUS_1);
-    await this.processOffset(-3, AutoTriggerType.ESCALATION_T_PLUS_3, TEMPLATES.T_PLUS_3);
+    try {
+      await this.processOffset(-1, AutoTriggerType.ESCALATION_T_PLUS_1, TEMPLATES.T_PLUS_1);
+      await this.processOffset(-3, AutoTriggerType.ESCALATION_T_PLUS_3, TEMPLATES.T_PLUS_3);
+    } catch (error) {
+      this.logger.error(`Daily escalations failed: ${error instanceof Error ? error.message : error}`);
+      Sentry.captureException(error, {
+        tags: { kind: 'cron-job', cron: 'daily-escalations' },
+      });
+    }
   }
 
   // ─── Core logic ───────────────────────────────────────────

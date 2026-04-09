@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import api from '@/lib/api';
+import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/button';
 import AnimatedCounter from '@/components/ui/animated-counter';
@@ -97,13 +98,10 @@ export default function ReportsPage() {
 }
 
 function AgingReport() {
-  const { data, isLoading, isError, refetch } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['report-aging'],
     queryFn: async () => (await api.get('/reports/aging')).data,
   });
-
-  if (isLoading) return <LoadingState />;
-  if (isError) return <ErrorState onRetry={() => refetch()} />;
 
   const buckets = data?.buckets || [];
   const total = data?.total || { count: 0, amount: 0 };
@@ -111,6 +109,7 @@ function AgingReport() {
   const agingColors = ['#22c55e', '#eab308', '#f97316', '#ef4444', '#dc2626'];
 
   return (
+    <QueryBoundary isLoading={isLoading} isError={isError} error={error} onRetry={() => refetch()} errorTitle="ไม่สามารถโหลดรายงานอายุหนี้ได้">
     <div className="space-y-5">
       {/* Aging Bar Chart */}
       {buckets.length > 0 && (
@@ -170,41 +169,39 @@ function AgingReport() {
         </div>
       </div>
     </div>
+    </QueryBoundary>
   );
 }
 
 function RevenueReport() {
-  const { data, isLoading, isError, refetch } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['report-revenue'],
     queryFn: async () => (await api.get('/reports/revenue-pl')).data,
   });
-  if (isError) return <ErrorState onRetry={() => refetch()} />;
-
-  if (isLoading) return <LoadingState />;
 
   return (
-    <div className="bg-card rounded-xl border border-border p-5">
-      <h3 className="text-sm font-semibold text-foreground mb-4">รายงานรายได้ / กำไร-ขาดทุน</h3>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <SummaryCard label="รายได้ดอกเบี้ย" value={data?.interestIncome || 0} color="text-success" />
-        <SummaryCard label="ค่าปรับ" value={data?.lateFeeIncome || 0} color="text-warning" />
-        <SummaryCard label="ยอดชำระรับ" value={data?.paymentsReceived || 0} color="text-primary" />
-        <SummaryCard label="ยอดค้างชำระ" value={data?.outstandingTotal || 0} color="text-destructive" />
+    <QueryBoundary isLoading={isLoading} isError={isError} error={error} onRetry={() => refetch()} errorTitle="ไม่สามารถโหลดรายงานรายได้ได้">
+      <div className="bg-card rounded-xl border border-border p-5">
+        <h3 className="text-sm font-semibold text-foreground mb-4">รายงานรายได้ / กำไร-ขาดทุน</h3>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <SummaryCard label="รายได้ดอกเบี้ย" value={data?.interestIncome || 0} color="text-success" />
+          <SummaryCard label="ค่าปรับ" value={data?.lateFeeIncome || 0} color="text-warning" />
+          <SummaryCard label="ยอดชำระรับ" value={data?.paymentsReceived || 0} color="text-primary" />
+          <SummaryCard label="ยอดค้างชำระ" value={data?.outstandingTotal || 0} color="text-destructive" />
+        </div>
       </div>
-    </div>
+    </QueryBoundary>
   );
 }
 
 function HighRiskReport() {
-  const { data = [], isLoading, isError, refetch } = useQuery({
+  const { data = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['report-high-risk'],
     queryFn: async () => (await api.get('/reports/high-risk')).data,
   });
-  if (isError) return <ErrorState onRetry={() => refetch()} />;
-
-  if (isLoading) return <LoadingState />;
 
   return (
+    <QueryBoundary isLoading={isLoading} isError={isError} error={error} onRetry={() => refetch()} errorTitle="ไม่สามารถโหลดรายงานลูกค้าเสี่ยงสูงได้">
     <div className="bg-card rounded-lg border border-border p-5">
       <h3 className="text-sm font-semibold text-foreground mb-4">ลูกค้าเสี่ยงสูง</h3>
       <div className="overflow-x-auto">
@@ -237,19 +234,18 @@ function HighRiskReport() {
         </table>
       </div>
     </div>
+    </QueryBoundary>
   );
 }
 
 function SalesReport() {
-  const { data = [], isLoading, isError, refetch } = useQuery({
+  const { data = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['report-sales'],
     queryFn: async () => (await api.get('/reports/sales-comparison')).data,
   });
-  if (isError) return <ErrorState onRetry={() => refetch()} />;
-
-  if (isLoading) return <LoadingState />;
 
   return (
+    <QueryBoundary isLoading={isLoading} isError={isError} error={error} onRetry={() => refetch()} errorTitle="ไม่สามารถโหลดรายงานพนักงานขายได้">
     <div className="bg-card rounded-lg border border-border p-5">
       <h3 className="text-sm font-semibold text-foreground mb-4">เปรียบเทียบพนักงานขาย</h3>
       <div className="overflow-x-auto">
@@ -293,19 +289,18 @@ function SalesReport() {
         </table>
       </div>
     </div>
+    </QueryBoundary>
   );
 }
 
 function BranchReport() {
-  const { data = [], isLoading, isError, refetch } = useQuery({
+  const { data = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['report-branch'],
     queryFn: async () => (await api.get('/reports/branch-comparison')).data,
   });
-  if (isError) return <ErrorState onRetry={() => refetch()} />;
-
-  if (isLoading) return <LoadingState />;
 
   return (
+    <QueryBoundary isLoading={isLoading} isError={isError} error={error} onRetry={() => refetch()} errorTitle="ไม่สามารถโหลดรายงานเปรียบเทียบสาขาได้">
     <div className="bg-card rounded-lg border border-border p-5">
       <h3 className="text-sm font-semibold text-foreground mb-4">เปรียบเทียบสาขา</h3>
       <div className="overflow-x-auto">
@@ -335,19 +330,18 @@ function BranchReport() {
         </table>
       </div>
     </div>
+    </QueryBoundary>
   );
 }
 
 function DailyPaymentReport({ date, onDateChange }: { date: string; onDateChange: (d: string) => void }) {
-  const { data, isLoading, isError, refetch } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['report-daily-payment', date],
     queryFn: async () => (await api.get(`/reports/daily-payments?date=${date}`)).data,
   });
-  if (isError) return <ErrorState onRetry={() => refetch()} />;
-
-  if (isLoading) return <LoadingState />;
 
   return (
+    <QueryBoundary isLoading={isLoading} isError={isError} error={error} onRetry={() => refetch()} errorTitle="ไม่สามารถโหลดรายงานชำระรายวันได้">
     <div className="bg-card rounded-lg border border-border p-5">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-foreground">สรุปชำระรายวัน</h3>
@@ -386,22 +380,21 @@ function DailyPaymentReport({ date, onDateChange }: { date: string; onDateChange
         </div>
       )}
     </div>
+    </QueryBoundary>
   );
 }
 
 function StockReport() {
-  const { data, isLoading, isError, refetch } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['report-stock'],
     queryFn: async () => (await api.get('/reports/stock')).data,
   });
-
-  if (isLoading) return <LoadingState />;
-  if (isError) return <ErrorState onRetry={() => refetch()} />;
 
   const byStatus = data?.byStatus || [];
   const byBranch = data?.byBranch || [];
 
   return (
+    <QueryBoundary isLoading={isLoading} isError={isError} error={error} onRetry={() => refetch()} errorTitle="ไม่สามารถโหลดรายงานสต็อกสินค้าได้">
     <div className="flex flex-col gap-5 lg:gap-7.5">
       <div className="bg-card rounded-lg border border-border p-5">
         <h3 className="text-sm font-semibold text-foreground mb-4">สต็อกตามสถานะ</h3>
@@ -457,6 +450,7 @@ function StockReport() {
         </div>
       )}
     </div>
+    </QueryBoundary>
   );
 }
 
@@ -468,7 +462,7 @@ function EntityProfitReport() {
   const [endDate, setEndDate] = useState(lastDay);
   const [entity, setEntity] = useState<string>('ALL');
 
-  const { data, isLoading, isError, refetch } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['report-entity-profit', startDate, endDate, entity],
     queryFn: async () => {
       const params = new URLSearchParams({ startDate, endDate });
@@ -476,9 +470,6 @@ function EntityProfitReport() {
       return (await api.get(`/reports/entity-profit?${params}`)).data;
     },
   });
-
-  if (isLoading) return <LoadingState />;
-  if (isError) return <ErrorState onRetry={() => refetch()} />;
 
   const shop = data?.shop || { revenue: 0, costOfGoods: 0, commission: 0, profit: 0, transactionCount: 0 };
   const finance = data?.finance || { interestIncome: 0, commissionExpense: 0, lateFeeIncome: 0, profit: 0, transactionCount: 0 };
@@ -512,6 +503,8 @@ function EntityProfitReport() {
           </div>
         </div>
       </div>
+
+      <QueryBoundary isLoading={isLoading} isError={isError} error={error} onRetry={() => refetch()} errorTitle="ไม่สามารถโหลดรายงานกำไร Shop/Finance ได้">
 
       {/* Summary Cards */}
       {(entity === 'ALL' || entity === 'SHOP') && (
@@ -604,6 +597,8 @@ function EntityProfitReport() {
           ไม่พบข้อมูล Inter-Company Transaction ในช่วงเวลาที่เลือก
         </div>
       )}
+
+      </QueryBoundary>
     </div>
   );
 }

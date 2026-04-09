@@ -1,7 +1,8 @@
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
 import QueryBoundary from '@/components/QueryBoundary';
 import DataTable from '@/components/ui/DataTable';
 import AddressForm, { AddressData, emptyAddress, displayAddress, serializeAddress, deserializeAddress } from '@/components/ui/AddressForm';
@@ -380,7 +381,15 @@ export default function CustomerDetailPage() {
 
   return (
     <div>
-      <PageHeader title={displayName} subtitle="รายละเอียดลูกค้า" action={
+      <PageHeader title={displayName} subtitle="รายละเอียดลูกค้า" breadcrumb={
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem><BreadcrumbLink asChild><Link to="/customers">ลูกค้า</Link></BreadcrumbLink></BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem><BreadcrumbPage>{displayName}</BreadcrumbPage></BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+      } action={
         <div className="flex gap-2">
           {canEdit && (
             <Button variant="outline" size="md" onClick={startEdit}>

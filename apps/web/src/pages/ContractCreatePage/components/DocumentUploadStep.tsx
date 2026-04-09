@@ -62,7 +62,7 @@ function DocTypeSection({
             {docs.map((doc) => (
               <div key={doc.id} className="flex items-center gap-2 bg-muted rounded px-3 py-1.5">
                 {doc.file.type.startsWith('image/') ? (
-                  <img src={doc.preview} alt="" className="w-8 h-8 rounded object-cover flex-shrink-0" />
+                  <img src={doc.preview} alt="ตัวอย่างเอกสาร" className="w-8 h-8 rounded object-cover flex-shrink-0" />
                 ) : (
                   <div className="w-8 h-8 rounded bg-red-100 flex items-center justify-center text-2xs font-bold text-destructive flex-shrink-0">PDF</div>
                 )}

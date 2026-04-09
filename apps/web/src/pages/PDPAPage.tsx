@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
+import QueryBoundary from '@/components/QueryBoundary';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { toast } from 'sonner';
@@ -61,7 +62,7 @@ function PDPAPage() {
   const [dsarForm, setDsarForm] = useState({ customerId: '', requestType: 'ACCESS', description: '' });
 
   // DSAR requests list
-  const { data: dsarData, isLoading: dsarLoading } = useQuery({
+  const { data: dsarData, isLoading: dsarLoading, isError: dsarError, error: dsarQueryError, refetch: refetchDsar } = useQuery({
     queryKey: ['dsar-requests'],
     queryFn: async () => {
       const { data } = await api.get('/pdpa/dsar');
@@ -160,6 +161,13 @@ function PDPAPage() {
       </div>
 
       {tab === 'dsar' && (
+        <QueryBoundary
+          isLoading={dsarLoading}
+          isError={dsarError}
+          error={dsarQueryError}
+          onRetry={() => refetchDsar()}
+          errorTitle="ไม่สามารถโหลดรายการ DSAR ได้"
+        >
         <div className="bg-card rounded-lg border border-border">
           <DataTable
             data={dsarRequests}
@@ -224,6 +232,7 @@ function PDPAPage() {
             emptyMessage="ไม่มีคำร้อง DSAR"
           />
         </div>
+        </QueryBoundary>
       )}
 
       {tab === 'consent-lookup' && (

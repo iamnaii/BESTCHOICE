@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
+import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { formatDateShort, formatDateMedium } from '@/utils/formatters';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
@@ -80,6 +81,7 @@ const emptyForm = {
 export default function UsersPage() {
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
+  const { copy } = useCopyToClipboard();
   const isOwner = currentUser?.role === 'OWNER';
   const [activeTab, setActiveTab] = useState<'users' | 'invites'>('users');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -187,7 +189,7 @@ export default function UsersPage() {
   };
 
   const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
+    copy(text);
     toast.success('คัดลอกลิงก์แล้ว');
   };
 
@@ -299,7 +301,7 @@ export default function UsersPage() {
       render: (u: User) => (
         <div className="flex items-center gap-3">
           {u.avatarUrl ? (
-            <img src={u.avatarUrl} alt="" className="size-8 rounded-full object-cover shrink-0" />
+            <img src={u.avatarUrl} alt={u.name || 'รูปโปรไฟล์'} className="size-8 rounded-full object-cover shrink-0" />
           ) : (
             <div className="size-8 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-muted-foreground shrink-0">
               {u.name.charAt(0)}
@@ -637,7 +639,7 @@ export default function UsersPage() {
             <div className="flex items-center gap-4">
               <div className="relative">
                 {form.avatarUrl ? (
-                  <img src={form.avatarUrl} alt="" className="size-16 rounded-full object-cover" />
+                  <img src={form.avatarUrl} alt="รูปโปรไฟล์" className="size-16 rounded-full object-cover" />
                 ) : (
                   <div className="size-16 rounded-full bg-muted flex items-center justify-center">
                     <Camera className="size-6 text-muted-foreground" />

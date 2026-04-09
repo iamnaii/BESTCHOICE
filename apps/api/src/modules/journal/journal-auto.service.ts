@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 
 /**
@@ -66,7 +67,7 @@ export class JournalAutoService {
 
   /**
    * Create + auto-post a journal entry. Validates debit = credit.
-   * Returns the entry id, or null if validation fails (logs warning).
+   * Returns the entry id, or null if no lines. Throws if unbalanced.
    */
   private async createAndPost(
     tx: Prisma.TransactionClient,
@@ -87,10 +88,13 @@ export class JournalAutoService {
     const totalDebit = lines.reduce((s, l) => s + l.debit, 0);
     const totalCredit = lines.reduce((s, l) => s + l.credit, 0);
     if (Math.abs(totalDebit - totalCredit) > 0.001) {
-      this.logger.warn(
-        `Journal not balanced for ${params.referenceType} ${params.referenceId}: Dr ${totalDebit} ≠ Cr ${totalCredit}`,
-      );
-      return null;
+      const msg = `Journal not balanced for ${params.referenceType} ${params.referenceId}: Dr ${totalDebit} ≠ Cr ${totalCredit}`;
+      this.logger.error(msg);
+      Sentry.captureException(new Error(msg), {
+        tags: { kind: 'journal', referenceType: params.referenceType },
+        extra: { referenceId: params.referenceId, totalDebit, totalCredit },
+      });
+      throw new InternalServerErrorException(msg);
     }
 
     const entryNumber = await this.generateEntryNumber(tx);

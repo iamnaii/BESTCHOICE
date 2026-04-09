@@ -496,6 +496,101 @@ describe('JournalAutoService', () => {
   });
 
   // ──────────────────────────────────────────────────────────────────────────
+  // Phase 4.12 — End-to-End Trial Balance
+  // Verifies: sum of ALL debit lines = sum of ALL credit lines across a full
+  // set of journal entries (activation + payment + expense + bad-debt write-off)
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('Phase 4.12 — trial balance end-to-end', () => {
+    it('total Dr = total Cr across all journal types', async () => {
+      // Each journalEntry.create call captures one set of lines.
+      // We collect all captured lines across all calls and sum globally.
+      const capturedAllLines: Array<{ accountCode: string; debit: number; credit: number }> = [];
+
+      prisma.journalEntry.create.mockImplementation((args: { data: { lines: { create: Array<{ accountCode: string; debit: number; credit: number }> } } }) => {
+        const lines = args.data.lines.create as Array<{ accountCode: string; debit: number; credit: number }>;
+        capturedAllLines.push(...lines);
+        return Promise.resolve({ id: `je-${capturedAllLines.length}` });
+      });
+
+      // ── 1. Contract Activation journal ──────────────────────────────────
+      // Dr HP Receivable (9 300) + Dr Cash/Down (3 000) / Cr Revenue (10 000) + Cr VAT (800) + Cr Commission (500)
+      // Dr COGS (8 000) / Cr Inventory (8 000)
+      // Balance: Dr = 3000+9300+8000 = 20300  |  Cr = 10000+800+500+8000+1000 = ...
+      // We use the same numbers as the existing tests so we know they balance.
+      await service.createContractActivationJournal(prisma, {
+        contract: {
+          id: 'contract-tb',
+          contractNumber: 'BC-TB-0001',
+          sellingPrice: 10000,
+          downPayment: 3000,
+          financedAmount: 9300,
+          interestTotal: 800,
+          storeCommission: 500,
+          vatAmount: 1000,
+        },
+        product: { costPrice: 8000, category: 'NEW_PHONE' },
+        userId: 'user-1',
+        companyId: 'company-1',
+      });
+
+      // ── 2. Payment journal ───────────────────────────────────────────────
+      // Dr Cash (5 900) / Cr HP Receivable (5 500) + Cr Commission (100) + Cr VAT (300)
+      await service.createPaymentJournal(prisma, {
+        payment: {
+          id: 'pay-tb-1',
+          installmentNo: 1,
+          amountPaid: 5900,
+          monthlyPrincipal: 5000,
+          monthlyInterest: 500,
+          monthlyCommission: 100,
+          vatAmount: 300,
+          lateFee: 0,
+          lateFeeWaived: false,
+        },
+        contract: { contractNumber: 'BC-TB-0001', branchId: 'branch-1' },
+        userId: 'user-1',
+        companyId: 'company-1',
+      });
+
+      // ── 3. Expense journal ───────────────────────────────────────────────
+      // Dr Expense (1 000) + Dr VAT Input (70) / Cr Cash (1 070)
+      await service.createExpenseJournal(prisma, {
+        expense: {
+          id: 'exp-tb',
+          expenseNumber: 'EX-TB-0001',
+          accountCode: '52-1101',
+          amount: 1000,
+          vatAmount: 70,
+          totalAmount: 1070,
+          description: 'ค่าใช้จ่ายทดสอบ',
+          expenseDate: new Date('2026-04-01'),
+        },
+        userId: 'user-1',
+        companyId: 'company-1',
+      });
+
+      // ── 4. Bad debt write-off journal ────────────────────────────────────
+      // Dr Bad Debt Expense (3 000) + Dr Allowance (2 000) / Cr HP Receivable (5 000)
+      await service.createBadDebtWriteOffJournal(prisma, {
+        contractId: 'contract-tb',
+        contractNumber: 'BC-TB-0001',
+        writeOffAmount: 5000,
+        provisionAmount: 2000,
+        createdById: 'user-1',
+        companyId: 'company-1',
+      });
+
+      // ── Assert: global trial balance ──────────────────────────────────────
+      const totalDr = capturedAllLines.reduce((s, l) => s + (Number(l.debit) || 0), 0);
+      const totalCr = capturedAllLines.reduce((s, l) => s + (Number(l.credit) || 0), 0);
+
+      expect(totalDr).toBeGreaterThan(0);
+      expect(totalCr).toBeGreaterThan(0);
+      expect(totalDr).toBeCloseTo(totalCr, 2);
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
   // Regression: Phase 4.6 — late fee MUST NOT go to VAT_OUTPUT
   // ──────────────────────────────────────────────────────────────────────────
   describe('Phase 4.6 regression — late fee not in VAT Output', () => {

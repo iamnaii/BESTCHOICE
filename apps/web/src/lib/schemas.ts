@@ -91,6 +91,30 @@ export const contractPlanSchema = z.object({
 
 export type ContractPlanFormData = z.infer<typeof contractPlanSchema>;
 
+/* ─── POS Sale schema ─── */
+export const posSaleSchema = z.object({
+  saleType: z.enum(['CASH', 'EXTERNAL_FINANCE']),
+  sellingPrice: z.number().positive('กรุณาใส่ราคาขาย'),
+  discount: z.number().min(0, 'ส่วนลดต้องไม่ติดลบ').optional(),
+  paymentMethod: z.string().min(1, 'กรุณาเลือกวิธีชำระเงิน'),
+  amountReceived: z.number().optional(),
+  downPayment: z.number().min(0).optional(),
+  financeCompany: z.string().optional(),
+  contractNumber: z.string().optional(),
+  totalMonths: z.string().optional(),
+  notes: z.string().optional(),
+}).superRefine((data, ctx) => {
+  if (data.saleType === 'EXTERNAL_FINANCE' && !data.financeCompany?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'กรุณาใส่ชื่อบริษัทไฟแนนซ์',
+      path: ['financeCompany'],
+    });
+  }
+});
+
+export type PosSaleFormData = z.infer<typeof posSaleSchema>;
+
 /* ─── Payment schema ─── */
 export const paymentSchema = z.object({
   amount: z.number().positive('จำนวนเงินต้องมากกว่า 0'),

@@ -26,6 +26,7 @@ import type {
   UpsellCandidates,
   WatchList,
   EntityProfit,
+  ComparativePL,
 } from './types';
 
 export default function DashboardPage() {
@@ -124,6 +125,17 @@ export default function DashboardPage() {
     retry: 1,
   });
 
+  const { data: comparativePL } = useQuery<ComparativePL>({
+    queryKey: ['dashboard-comparative-pl'],
+    queryFn: async () => {
+      const now = new Date();
+      return (await api.get(`/reports/comparative-pl?year=${now.getFullYear()}&month=${now.getMonth() + 1}`)).data;
+    },
+    enabled: user?.role === 'OWNER' || user?.role === 'FINANCE_MANAGER' || user?.role === 'ACCOUNTANT',
+    staleTime: dashboardStaleTime,
+    retry: 1,
+  });
+
   if (kpisLoading && !kpis) return <DashboardSkeleton />;
   if (kpisError) return <QueryBoundary isLoading={false} isError={true} error={null} onRetry={refetchKpis} errorTitle="ไม่สามารถโหลด Dashboard ได้">{null}</QueryBoundary>;
 
@@ -148,7 +160,7 @@ export default function DashboardPage() {
       {user?.role === 'FINANCE_MANAGER' && <DashboardFinanceOverview />}
 
       {/* KPI Stats */}
-      {kpis && <DashboardKPIs kpis={kpis} />}
+      {kpis && <DashboardKPIs kpis={kpis} comparativePL={comparativePL} />}
 
       {/* Watch List + Upsell */}
       <DashboardWatchList watchListData={watchListData} upsell={upsell} />

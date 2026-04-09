@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { exportToExcel, type ExcelColumn } from '@/utils/excel.util';
@@ -11,10 +13,12 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { useAuth } from '@/contexts/AuthContext';
 import { maskNationalId } from '@/utils/mask.util';
 import { THAI_NAME_PREFIXES, RELATIONSHIP_OPTIONS } from '@/lib/constants';
+import { customerSchema, type CustomerFormData } from '@/lib/schemas';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import QueryBoundary from '@/components/QueryBoundary';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
+import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 
 import { Card, CardContent } from '@/components/ui/card';
 import AddressForm, { AddressData, emptyAddress, serializeAddress } from '@/components/ui/AddressForm';
@@ -65,7 +69,7 @@ interface ReferenceData {
 
 const emptyReference: ReferenceData = { prefix: '', firstName: '', lastName: '', phone: '', relationship: '' };
 
-const emptyForm = {
+const emptyForm: CustomerFormData & { facebookFriends: string; googleMapLink: string; addressCurrentType: string } = {
   prefix: '',
   firstName: '',
   lastName: '',
@@ -107,7 +111,13 @@ export default function CustomersPage() {
   const [sortBy, setSortBy] = useState('');
   const [sortOrder, setSortOrder] = useState('asc');
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [form, setForm] = useState(emptyForm);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const form = useForm<CustomerFormData>({
+    resolver: zodResolver(customerSchema) as any,
+    defaultValues: emptyForm,
+  });
+  // Extra fields not in customerSchema (managed as separate state)
+  const [formExtra, setFormExtra] = useState({ facebookFriends: '', googleMapLink: '', addressCurrentType: '' });
   const [addressIdCard, setAddressIdCard] = useState<AddressData>(emptyAddress);
   const [addressCurrent, setAddressCurrent] = useState<AddressData>(emptyAddress);
   const [sameAddress, setSameAddress] = useState(false);
@@ -157,29 +167,29 @@ export default function CustomersPage() {
   const customers = result?.data ?? [];
 
   const createMutation = useMutation({
-    mutationFn: async () => {
-      const name = `${form.firstName} ${form.lastName}`.trim();
+    mutationFn: async (data: CustomerFormData) => {
+      const name = `${data.firstName} ${data.lastName}`.trim();
       const payload: Record<string, unknown> = {
-        nationalId: form.nationalId,
+        nationalId: data.nationalId,
         name,
-        phone: form.phone,
+        phone: data.phone,
       };
-      if (form.prefix) payload.prefix = form.prefix;
-      if (form.nickname) payload.nickname = form.nickname;
-      if (form.isForeigner) payload.isForeigner = true;
-      if (form.birthDate) payload.birthDate = new Date(form.birthDate).toISOString();
-      if (form.phoneSecondary) payload.phoneSecondary = form.phoneSecondary;
-      if (form.email) payload.email = form.email;
-      if (form.lineId) payload.lineId = form.lineId;
-      if (form.facebookLink) payload.facebookLink = form.facebookLink;
-      if (form.facebookName) payload.facebookName = form.facebookName;
-      if (form.facebookFriends) payload.facebookFriends = form.facebookFriends;
-      if (form.googleMapLink) payload.googleMapLink = form.googleMapLink;
-      if (form.occupation) payload.occupation = form.occupation;
-      if (form.occupationDetail) payload.occupationDetail = form.occupationDetail;
-      if (form.salary && !isNaN(parseFloat(form.salary))) payload.salary = parseFloat(form.salary);
-      if (form.workplace) payload.workplace = form.workplace;
-      if (form.addressCurrentType) payload.addressCurrentType = form.addressCurrentType;
+      if (data.prefix) payload.prefix = data.prefix;
+      if (data.nickname) payload.nickname = data.nickname;
+      if (data.isForeigner) payload.isForeigner = true;
+      if (data.birthDate) payload.birthDate = new Date(data.birthDate).toISOString();
+      if (data.phoneSecondary) payload.phoneSecondary = data.phoneSecondary;
+      if (data.email) payload.email = data.email;
+      if (data.lineId) payload.lineId = data.lineId;
+      if (data.facebookLink) payload.facebookLink = data.facebookLink;
+      if (data.facebookName) payload.facebookName = data.facebookName;
+      if (formExtra.facebookFriends) payload.facebookFriends = formExtra.facebookFriends;
+      if (formExtra.googleMapLink) payload.googleMapLink = formExtra.googleMapLink;
+      if (data.occupation) payload.occupation = data.occupation;
+      if (data.occupationDetail) payload.occupationDetail = data.occupationDetail;
+      if (data.salary && !isNaN(parseFloat(data.salary))) payload.salary = parseFloat(data.salary);
+      if (data.workplace) payload.workplace = data.workplace;
+      if (formExtra.addressCurrentType) payload.addressCurrentType = formExtra.addressCurrentType;
 
       const addrIdCard = serializeAddress(addressIdCard);
       const addrCurrent = serializeAddress(addressCurrent);
@@ -206,7 +216,8 @@ export default function CustomersPage() {
   });
 
   const resetForm = () => {
-    setForm(emptyForm);
+    form.reset(emptyForm);
+    setFormExtra({ facebookFriends: '', googleMapLink: '', addressCurrentType: '' });
     setAddressIdCard(emptyAddress);
     setAddressCurrent(emptyAddress);
     setAddressWork(emptyAddress);
@@ -232,23 +243,22 @@ export default function CustomersPage() {
       const imageBase64 = await compressImageForOcr(file);
       const { data } = await api.post<OcrResult>('/ocr/id-card', { imageBase64 }, { timeout: 90000 });
 
-      // Auto-fill form fields
-      const updates: Partial<typeof emptyForm> = {};
+      // Auto-fill form fields via react-hook-form setValue
       if (data.nationalId) {
         if (/^\d{13}$/.test(data.nationalId)) {
-          updates.nationalId = data.nationalId;
+          form.setValue('nationalId', data.nationalId, { shouldValidate: true });
         }
         if (!data.nationalIdValid) {
           toast.error('เลขบัตรประชาชนที่อ่านได้ไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง');
         }
       }
-      if (data.prefix) updates.prefix = data.prefix;
-      if (data.firstName) updates.firstName = data.firstName.trim();
-      if (data.lastName) updates.lastName = data.lastName.trim();
+      if (data.prefix) form.setValue('prefix', data.prefix);
+      if (data.firstName) form.setValue('firstName', data.firstName.trim());
+      if (data.lastName) form.setValue('lastName', data.lastName.trim());
       if (!data.firstName && !data.lastName && data.fullName) {
         const parts = data.fullName.trim().split(/\s+/);
-        updates.firstName = parts[0] || '';
-        updates.lastName = parts.slice(1).join(' ') || '';
+        form.setValue('firstName', parts[0] || '');
+        form.setValue('lastName', parts.slice(1).join(' ') || '');
       }
       if (data.birthDate) {
         const match = data.birthDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -256,11 +266,10 @@ export default function CustomersPage() {
           const [, y, m, d] = match.map(Number);
           const dateObj = new Date(y, m - 1, d);
           if (dateObj.getFullYear() === y && dateObj.getMonth() === m - 1 && dateObj.getDate() === d) {
-            updates.birthDate = data.birthDate;
+            form.setValue('birthDate', data.birthDate);
           }
         }
       }
-      setForm(prev => ({ ...prev, ...updates }));
 
       // Use structured address from backend if available, fallback to regex parsing
       if (data.addressStructured) {
@@ -339,14 +348,12 @@ export default function CustomersPage() {
       }
       const data: SmartCardData = await readSmartCard();
 
-      // Auto-fill form fields from Smart Card data
-      const updates: Partial<typeof emptyForm> = {};
-      if (data.nationalId) updates.nationalId = data.nationalId;
-      if (data.prefix) updates.prefix = data.prefix;
-      if (data.firstName) updates.firstName = data.firstName;
-      if (data.lastName) updates.lastName = data.lastName;
-      if (data.birthDate) updates.birthDate = data.birthDate;
-      setForm(prev => ({ ...prev, ...updates }));
+      // Auto-fill form fields from Smart Card data via react-hook-form setValue
+      if (data.nationalId) form.setValue('nationalId', data.nationalId, { shouldValidate: true });
+      if (data.prefix) form.setValue('prefix', data.prefix);
+      if (data.firstName) form.setValue('firstName', data.firstName);
+      if (data.lastName) form.setValue('lastName', data.lastName);
+      if (data.birthDate) form.setValue('birthDate', data.birthDate);
 
       // Fill address from Smart Card
       if (data.addressStructured) {
@@ -694,7 +701,8 @@ export default function CustomersPage() {
             <h2 className="text-lg font-semibold text-foreground">เพิ่มลูกค้าใหม่</h2>
             <div className="w-16" />
           </div>
-        <form onSubmit={(e) => { e.preventDefault(); createMutation.mutate(); }} className="flex-1 overflow-y-auto flex flex-col">
+        <Form {...form}>
+        <form onSubmit={form.handleSubmit((data) => createMutation.mutate(data))} className="flex-1 overflow-y-auto flex flex-col">
           <div className="flex flex-col gap-4 p-6">
 
           {/* ===== Smart Card + OCR (always visible) ===== */}
@@ -739,39 +747,123 @@ export default function CustomersPage() {
             </div>
             <div className="grid grid-cols-6 gap-3">
               <div className="col-span-2">
-                <label className="block text-xs font-medium text-foreground mb-1.5">คำนำหน้า</label>
-                <select value={form.prefix} onChange={(e) => setForm({ ...form, prefix: e.target.value })} className={selectClass}>
-                  <option value="">-- เลือก --</option>
-                  {THAI_NAME_PREFIXES.map(p => <option key={p} value={p}>{p}</option>)}
-                </select>
+                <FormField
+                  control={form.control}
+                  name="prefix"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-medium">คำนำหน้า</FormLabel>
+                      <FormControl>
+                        <select {...field} className={selectClass}>
+                          <option value="">-- เลือก --</option>
+                          {THAI_NAME_PREFIXES.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
+                      </FormControl>
+                      <FormMessage className="text-xs" />
+                    </FormItem>
+                  )}
+                />
               </div>
               <div className="col-span-2">
-                <label className="block text-xs font-medium text-foreground mb-1.5">ชื่อ <span className="text-destructive">*</span></label>
-                <input type="text" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} className={inputClass} placeholder="กรอกชื่อ" required />
+                <FormField
+                  control={form.control}
+                  name="firstName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-medium">ชื่อ <span className="text-destructive">*</span></FormLabel>
+                      <FormControl>
+                        <input type="text" {...field} className={inputClass} placeholder="กรอกชื่อ" />
+                      </FormControl>
+                      <FormMessage className="text-xs" />
+                    </FormItem>
+                  )}
+                />
               </div>
               <div className="col-span-2">
-                <label className="block text-xs font-medium text-foreground mb-1.5">นามสกุล <span className="text-destructive">*</span></label>
-                <input type="text" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} className={inputClass} placeholder="กรอกนามสกุล" required />
+                <FormField
+                  control={form.control}
+                  name="lastName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-medium">นามสกุล <span className="text-destructive">*</span></FormLabel>
+                      <FormControl>
+                        <input type="text" {...field} className={inputClass} placeholder="กรอกนามสกุล" />
+                      </FormControl>
+                      <FormMessage className="text-xs" />
+                    </FormItem>
+                  )}
+                />
               </div>
               <div className="col-span-3">
-                <label className="block text-xs font-medium text-foreground mb-1.5">เลขบัตรประชาชน (13 หลัก) <span className="text-destructive">*</span></label>
-                <input type="text" maxLength={13} value={form.nationalId} onChange={(e) => setForm({ ...form, nationalId: e.target.value.replace(/\D/g, '') })} className={`${inputClass} font-mono`} placeholder="X-XXXX-XXXXX-XX-X" required />
+                <FormField
+                  control={form.control}
+                  name="nationalId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-medium">เลขบัตรประชาชน (13 หลัก) <span className="text-destructive">*</span></FormLabel>
+                      <FormControl>
+                        <input
+                          type="text"
+                          maxLength={13}
+                          {...field}
+                          onChange={(e) => field.onChange(e.target.value.replace(/\D/g, ''))}
+                          className={`${inputClass} font-mono`}
+                          placeholder="X-XXXX-XXXXX-XX-X"
+                        />
+                      </FormControl>
+                      <FormMessage className="text-xs" />
+                    </FormItem>
+                  )}
+                />
               </div>
               <div className="col-span-2">
-                <label className="block text-xs font-medium text-foreground mb-1.5">เบอร์โทร <span className="text-destructive">*</span></label>
-                <input type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className={inputClass} placeholder="0XX-XXX-XXXX" required />
+                <FormField
+                  control={form.control}
+                  name="phone"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-medium">เบอร์โทร <span className="text-destructive">*</span></FormLabel>
+                      <FormControl>
+                        <input type="tel" {...field} className={inputClass} placeholder="0XX-XXX-XXXX" />
+                      </FormControl>
+                      <FormMessage className="text-xs" />
+                    </FormItem>
+                  )}
+                />
               </div>
               <div className="col-span-1">
-                <label className="block text-xs font-medium text-foreground mb-1.5">ชื่อเล่น</label>
-                <input type="text" value={form.nickname} onChange={(e) => setForm({ ...form, nickname: e.target.value })} className={inputClass} placeholder="ชื่อเล่น" />
+                <FormField
+                  control={form.control}
+                  name="nickname"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-medium">ชื่อเล่น</FormLabel>
+                      <FormControl>
+                        <input type="text" {...field} className={inputClass} placeholder="ชื่อเล่น" />
+                      </FormControl>
+                      <FormMessage className="text-xs" />
+                    </FormItem>
+                  )}
+                />
               </div>
               <div className="col-span-2">
-                <label className="block text-xs font-medium text-foreground mb-1.5">วันเกิด</label>
-                <ThaiDateInput value={form.birthDate} onChange={(e) => setForm({ ...form, birthDate: e.target.value })} className={inputClass} />
+                <FormField
+                  control={form.control}
+                  name="birthDate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-medium">วันเกิด</FormLabel>
+                      <FormControl>
+                        <ThaiDateInput value={field.value ?? ''} onChange={(e) => field.onChange(e.target.value)} className={inputClass} />
+                      </FormControl>
+                      <FormMessage className="text-xs" />
+                    </FormItem>
+                  )}
+                />
               </div>
               <div className="col-span-1 flex items-end pb-1">
-                {form.birthDate && (() => {
-                  const bd = new Date(form.birthDate);
+                {form.watch('birthDate') && (() => {
+                  const bd = new Date(form.watch('birthDate') as string);
                   const today = new Date();
                   let age = today.getFullYear() - bd.getFullYear();
                   if (today.getMonth() < bd.getMonth() || (today.getMonth() === bd.getMonth() && today.getDate() < bd.getDate())) age--;
@@ -808,7 +900,7 @@ export default function CustomersPage() {
                 </div>
                 <div className="mb-3">
                   <label className="block text-xs font-medium text-foreground mb-1.5">ประเภทที่อยู่</label>
-                  <select value={form.addressCurrentType || ''} onChange={(e) => setForm({ ...form, addressCurrentType: e.target.value })} className={inputClass}>
+                  <select value={formExtra.addressCurrentType} onChange={(e) => setFormExtra(prev => ({ ...prev, addressCurrentType: e.target.value }))} className={inputClass}>
                     <option value="">-- เลือก --</option>
                     <option value="OWN">บ้านตัวเอง</option>
                     <option value="RELATIVE">บ้านญาติ</option>
@@ -823,7 +915,7 @@ export default function CustomersPage() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-foreground mb-1.5">ลิงก์ Google Map</label>
-                <input type="url" value={form.googleMapLink} onChange={(e) => setForm({ ...form, googleMapLink: e.target.value })} className={inputClass} placeholder="https://maps.google.com/..." />
+                <input type="url" value={formExtra.googleMapLink} onChange={(e) => setFormExtra(prev => ({ ...prev, googleMapLink: e.target.value }))} className={inputClass} placeholder="https://maps.google.com/..." />
               </div>
             </div>
           </details>
@@ -843,28 +935,83 @@ export default function CustomersPage() {
             <div className="px-5 pb-5 border-t border-border pt-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">เบอร์สำรอง</label>
-                  <input type="tel" value={form.phoneSecondary} onChange={(e) => setForm({ ...form, phoneSecondary: e.target.value })} className={inputClass} placeholder="0XX-XXX-XXXX" />
+                  <FormField
+                    control={form.control}
+                    name="phoneSecondary"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs font-medium">เบอร์สำรอง</FormLabel>
+                        <FormControl>
+                          <input type="tel" {...field} className={inputClass} placeholder="0XX-XXX-XXXX" />
+                        </FormControl>
+                        <FormMessage className="text-xs" />
+                      </FormItem>
+                    )}
+                  />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">อีเมล</label>
-                  <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={inputClass} placeholder="email@example.com" />
+                  <FormField
+                    control={form.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs font-medium">อีเมล</FormLabel>
+                        <FormControl>
+                          <input type="email" {...field} className={inputClass} placeholder="email@example.com" />
+                        </FormControl>
+                        <FormMessage className="text-xs" />
+                      </FormItem>
+                    )}
+                  />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">LINE ID</label>
-                  <input type="text" value={form.lineId} onChange={(e) => setForm({ ...form, lineId: e.target.value })} className={inputClass} placeholder="@line-id" />
+                  <FormField
+                    control={form.control}
+                    name="lineId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs font-medium">LINE ID</FormLabel>
+                        <FormControl>
+                          <input type="text" {...field} className={inputClass} placeholder="@line-id" />
+                        </FormControl>
+                        <FormMessage className="text-xs" />
+                      </FormItem>
+                    )}
+                  />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">ลิงก์ Facebook</label>
-                  <input type="url" value={form.facebookLink} onChange={(e) => setForm({ ...form, facebookLink: e.target.value })} className={inputClass} placeholder="https://facebook.com/..." />
+                  <FormField
+                    control={form.control}
+                    name="facebookLink"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs font-medium">ลิงก์ Facebook</FormLabel>
+                        <FormControl>
+                          <input type="url" {...field} className={inputClass} placeholder="https://facebook.com/..." />
+                        </FormControl>
+                        <FormMessage className="text-xs" />
+                      </FormItem>
+                    )}
+                  />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">ชื่อ Facebook</label>
-                  <input type="text" value={form.facebookName} onChange={(e) => setForm({ ...form, facebookName: e.target.value })} className={inputClass} placeholder="ชื่อบน Facebook" />
+                  <FormField
+                    control={form.control}
+                    name="facebookName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs font-medium">ชื่อ Facebook</FormLabel>
+                        <FormControl>
+                          <input type="text" {...field} className={inputClass} placeholder="ชื่อบน Facebook" />
+                        </FormControl>
+                        <FormMessage className="text-xs" />
+                      </FormItem>
+                    )}
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-foreground mb-1.5">จำนวนเพื่อน Facebook</label>
-                  <input type="text" value={form.facebookFriends} onChange={(e) => setForm({ ...form, facebookFriends: e.target.value })} className={inputClass} placeholder="จำนวนเพื่อน" />
+                  <input type="text" value={formExtra.facebookFriends} onChange={(e) => setFormExtra(prev => ({ ...prev, facebookFriends: e.target.value }))} className={inputClass} placeholder="จำนวนเพื่อน" />
                 </div>
               </div>
             </div>
@@ -885,36 +1032,80 @@ export default function CustomersPage() {
             <div className="px-5 pb-5 border-t border-border pt-4">
               <div className="grid grid-cols-2 gap-3 mb-3">
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">ชื่อที่ทำงาน</label>
-                  <input type="text" value={form.workplace} onChange={(e) => setForm({ ...form, workplace: e.target.value })} className={inputClass} placeholder="ชื่อบริษัท/สถานที่ทำงาน" />
+                  <FormField
+                    control={form.control}
+                    name="workplace"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs font-medium">ชื่อที่ทำงาน</FormLabel>
+                        <FormControl>
+                          <input type="text" {...field} className={inputClass} placeholder="ชื่อบริษัท/สถานที่ทำงาน" />
+                        </FormControl>
+                        <FormMessage className="text-xs" />
+                      </FormItem>
+                    )}
+                  />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">อาชีพ</label>
-                  <select value={form.occupation} onChange={(e) => setForm({ ...form, occupation: e.target.value })} className={inputClass}>
-                    <option value="">-- เลือก --</option>
-                    <option value="พนักงานบริษัท">พนักงานบริษัท</option>
-                    <option value="รับจ้างทั่วไป">รับจ้างทั่วไป</option>
-                    <option value="ค้าขาย/ธุรกิจส่วนตัว">ค้าขาย/ธุรกิจส่วนตัว</option>
-                    <option value="พนักงานโรงงาน">พนักงานโรงงาน</option>
-                    <option value="เกษตรกร">เกษตรกร</option>
-                    <option value="ข้าราชการ/รัฐวิสาหกิจ">ข้าราชการ/รัฐวิสาหกิจ</option>
-                    <option value="ขับรถ/ส่งของ">ขับรถ/ส่งของ</option>
-                    <option value="ช่างซ่อม/ช่างเทคนิค">ช่างซ่อม/ช่างเทคนิค</option>
-                    <option value="ก่อสร้าง">ก่อสร้าง</option>
-                    <option value="ร้านอาหาร/บริการ">ร้านอาหาร/บริการ</option>
-                    <option value="Freelance/อิสระ">Freelance/อิสระ</option>
-                    <option value="นักศึกษา">นักศึกษา</option>
-                    <option value="แม่บ้าน/ไม่ได้ทำงาน">แม่บ้าน/ไม่ได้ทำงาน</option>
-                    <option value="อื่นๆ">อื่นๆ</option>
-                  </select>
+                  <FormField
+                    control={form.control}
+                    name="occupation"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs font-medium">อาชีพ</FormLabel>
+                        <FormControl>
+                          <select {...field} className={inputClass}>
+                            <option value="">-- เลือก --</option>
+                            <option value="พนักงานบริษัท">พนักงานบริษัท</option>
+                            <option value="รับจ้างทั่วไป">รับจ้างทั่วไป</option>
+                            <option value="ค้าขาย/ธุรกิจส่วนตัว">ค้าขาย/ธุรกิจส่วนตัว</option>
+                            <option value="พนักงานโรงงาน">พนักงานโรงงาน</option>
+                            <option value="เกษตรกร">เกษตรกร</option>
+                            <option value="ข้าราชการ/รัฐวิสาหกิจ">ข้าราชการ/รัฐวิสาหกิจ</option>
+                            <option value="ขับรถ/ส่งของ">ขับรถ/ส่งของ</option>
+                            <option value="ช่างซ่อม/ช่างเทคนิค">ช่างซ่อม/ช่างเทคนิค</option>
+                            <option value="ก่อสร้าง">ก่อสร้าง</option>
+                            <option value="ร้านอาหาร/บริการ">ร้านอาหาร/บริการ</option>
+                            <option value="Freelance/อิสระ">Freelance/อิสระ</option>
+                            <option value="นักศึกษา">นักศึกษา</option>
+                            <option value="แม่บ้าน/ไม่ได้ทำงาน">แม่บ้าน/ไม่ได้ทำงาน</option>
+                            <option value="อื่นๆ">อื่นๆ</option>
+                          </select>
+                        </FormControl>
+                        <FormMessage className="text-xs" />
+                      </FormItem>
+                    )}
+                  />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">รายละเอียดอาชีพ</label>
-                  <input type="text" value={form.occupationDetail} onChange={(e) => setForm({ ...form, occupationDetail: e.target.value })} className={inputClass} placeholder="รายละเอียดเพิ่มเติม" />
+                  <FormField
+                    control={form.control}
+                    name="occupationDetail"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs font-medium">รายละเอียดอาชีพ</FormLabel>
+                        <FormControl>
+                          <input type="text" {...field} className={inputClass} placeholder="รายละเอียดเพิ่มเติม" />
+                        </FormControl>
+                        <FormMessage className="text-xs" />
+                      </FormItem>
+                    )}
+                  />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">เงินเดือน</label>
-                  <input type="number" value={form.salary} onChange={(e) => setForm({ ...form, salary: e.target.value })} className={inputClass} placeholder="0.00" />
+                  <FormField
+                    control={form.control}
+                    name="salary"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs font-medium">เงินเดือน</FormLabel>
+                        <FormControl>
+                          <input type="number" {...field} className={inputClass} placeholder="0.00" />
+                        </FormControl>
+                        <FormMessage className="text-xs" />
+                      </FormItem>
+                    )}
+                  />
                 </div>
               </div>
               <div className="mt-2">
@@ -987,6 +1178,7 @@ export default function CustomersPage() {
             </button>
           </div>
         </form>
+        </Form>
         </div>
       </div>
       )}

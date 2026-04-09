@@ -150,6 +150,14 @@ export interface EntityProfit {
   combined: { totalProfit: number; totalVat: number };
 }
 
+export interface ComparativePL {
+  current: { revenue: { totalRevenue: number }; grossProfit: number; netProfit: number };
+  previousMonth: { revenue: { totalRevenue: number }; grossProfit: number; netProfit: number };
+  lastYear: { revenue: { totalRevenue: number }; grossProfit: number; netProfit: number };
+  momChange: { revenue: number; grossProfit: number; netProfit: number };
+  yoyChange: { revenue: number; grossProfit: number; netProfit: number };
+}
+
 /* ─── Constants ─── */
 
 export const statusLabels: Record<string, string> = {

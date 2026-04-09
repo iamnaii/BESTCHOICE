@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
+import QueryBoundary from '@/components/QueryBoundary';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import PageHeader from '@/components/ui/PageHeader';
 import Modal from '@/components/ui/Modal';
@@ -97,7 +98,7 @@ export default function ProductDetailPage() {
   const [transferForm, setTransferForm] = useState({ toBranchId: '', notes: '' });
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
 
-  const { data: product, isLoading } = useQuery<Product>({
+  const { data: product, isLoading, isError, error, refetch } = useQuery<Product>({
     queryKey: ['product', id],
     queryFn: async () => {
       const { data } = await api.get(`/products/${id}`);
@@ -262,11 +263,11 @@ export default function ProductDetailPage() {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
+    return <QueryBoundary isLoading={true} isError={false}>{null}</QueryBoundary>;
+  }
+
+  if (isError) {
+    return <QueryBoundary isLoading={false} isError={true} error={error} onRetry={refetch} errorTitle="ไม่สามารถโหลดข้อมูลสินค้าได้">{null}</QueryBoundary>;
   }
 
   if (!product) {

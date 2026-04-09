@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
+import QueryBoundary from '@/components/QueryBoundary';
 import { formatThaiDateShort, THAI_MONTHS_FULL } from '@/lib/date';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
@@ -174,7 +175,7 @@ function ReportsList({
   companyId: string;
   reportType: string;
 }) {
-  const { data, isLoading } = useQuery<TaxReportsResponse>({
+  const { data, isLoading, isError, error, refetch } = useQuery<TaxReportsResponse>({
     queryKey: ['tax-reports', companyId, reportType],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -185,23 +186,19 @@ function ReportsList({
     },
   });
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-8">
-        <Loader2 className="size-5 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
   const reports = data?.data ?? [];
 
-  if (reports.length === 0) {
-    return (
-      <p className="text-center text-muted-foreground py-6 text-sm">ยังไม่มีรายงานที่สร้างแล้ว</p>
-    );
-  }
-
   return (
+    <QueryBoundary
+      isLoading={isLoading && !data}
+      isError={isError}
+      error={error}
+      onRetry={refetch}
+      errorTitle="ไม่สามารถโหลดรายงานภาษีได้"
+    >
+    {reports.length === 0 ? (
+      <p className="text-center text-muted-foreground py-6 text-sm">ยังไม่มีรายงานที่สร้างแล้ว</p>
+    ) : (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
@@ -248,6 +245,8 @@ function ReportsList({
         </tbody>
       </table>
     </div>
+    )}
+    </QueryBoundary>
   );
 }
 

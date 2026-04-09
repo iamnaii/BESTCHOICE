@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import api, { getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';
 import {
   Package,
@@ -39,7 +40,7 @@ export default function InventoryWorkflowPage() {
   const navigate = useNavigate();
   const [selectedStep, setSelectedStep] = useState<string | null>(null);
 
-  const { data: products, isLoading } = useQuery<WorkflowProduct[]>({
+  const { data: products, isLoading, isError, error, refetch } = useQuery<WorkflowProduct[]>({
     queryKey: ['inventory-workflow', user?.branchId],
     queryFn: async () => {
       const res = await api.get('/products', {
@@ -116,11 +117,14 @@ export default function InventoryWorkflowPage() {
           </h3>
         </div>
 
-        {isLoading ? (
-          <div className="flex items-center justify-center py-16">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-          </div>
-        ) : filtered.length === 0 ? (
+        <QueryBoundary
+          isLoading={isLoading && !products}
+          isError={isError}
+          error={error}
+          onRetry={refetch}
+          errorTitle="ไม่สามารถโหลดข้อมูลสินค้าได้"
+        >
+        {filtered.length === 0 ? (
           <div className="text-center py-16 text-muted-foreground">
             <Package className="size-10 mx-auto mb-3 opacity-40" />
             <p className="text-sm">ไม่พบสินค้าในขั้นตอนนี้</p>
@@ -154,6 +158,7 @@ export default function InventoryWorkflowPage() {
             })}
           </div>
         )}
+        </QueryBoundary>
       </div>
     </div>
   );

@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
+import QueryBoundary from '@/components/QueryBoundary';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { formatDateShort } from '@/utils/formatters';
 import { useAuth } from '@/contexts/AuthContext';
@@ -112,7 +113,7 @@ export default function SupplierDetailPage() {
   const isManager = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
 
-  const { data: supplier, isLoading: supplierLoading } = useQuery<Supplier>({
+  const { data: supplier, isLoading: supplierLoading, isError: supplierError, error: supplierErrorObj, refetch: supplierRefetch } = useQuery<Supplier>({
     queryKey: ['supplier', id],
     queryFn: async () => {
       const { data } = await api.get(`/suppliers/${id}`);
@@ -146,11 +147,11 @@ export default function SupplierDetailPage() {
   });
 
   if (supplierLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
+    return <QueryBoundary isLoading={true} isError={false}>{null}</QueryBoundary>;
+  }
+
+  if (supplierError) {
+    return <QueryBoundary isLoading={false} isError={true} error={supplierErrorObj} onRetry={supplierRefetch} errorTitle="ไม่สามารถโหลดข้อมูลผู้ขายได้">{null}</QueryBoundary>;
   }
 
   if (!supplier) {

@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
+import QueryBoundary from '@/components/QueryBoundary';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { formatDateTime } from '@/utils/formatters';
@@ -322,7 +323,7 @@ export default function NotificationsPage() {
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
 
   // Logs
-  const { data: logs = [], isLoading: logsLoading } = useQuery<NotificationLog[]>({
+  const { data: logs = [], isLoading: logsLoading, isError: logsError, error: logsErrorObj, refetch: logsRefetch } = useQuery<NotificationLog[]>({
     queryKey: ['notification-logs', channelFilter, statusFilter],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -681,7 +682,15 @@ export default function NotificationsPage() {
               <option value="PENDING">รอส่ง</option>
             </select>
           </div>
-          <DataTable columns={logColumns} data={logs} isLoading={logsLoading} emptyMessage="ยังไม่มีประวัติ" />
+          <QueryBoundary
+            isLoading={logsLoading && logs.length === 0}
+            isError={logsError}
+            error={logsErrorObj}
+            onRetry={logsRefetch}
+            errorTitle="ไม่สามารถโหลดประวัติการแจ้งเตือนได้"
+          >
+            <DataTable columns={logColumns} data={logs} isLoading={logsLoading} emptyMessage="ยังไม่มีประวัติ" />
+          </QueryBoundary>
         </>
       )}
 

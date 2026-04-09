@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
+import QueryBoundary from '@/components/QueryBoundary';
 import { useAuth } from '@/contexts/AuthContext';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
@@ -130,7 +131,7 @@ export default function AssetManagementPage() {
   const [disposeTarget, setDisposeTarget] = useState<Asset | null>(null);
 
   // ─── Queries ───
-  const { data: assetsData, isLoading } = useQuery({
+  const { data: assetsData, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['assets', page, debouncedSearch, statusFilter, categoryFilter],
     queryFn: () =>
       api
@@ -517,20 +518,28 @@ export default function AssetManagementPage() {
       </div>
 
       {/* Data Table */}
-      <DataTable
-        columns={columns}
-        data={assets}
-        isLoading={isLoading}
-        emptyMessage="ไม่พบสินทรัพย์"
-        emptyIcon={Building2}
-        emptyDescription="ยังไม่มีข้อมูลสินทรัพย์ถาวร"
-        pagination={{
-          page,
-          totalPages,
-          total,
-          onPageChange: setPage,
-        }}
-      />
+      <QueryBoundary
+        isLoading={isLoading && !assetsData}
+        isError={isError}
+        error={error}
+        onRetry={refetch}
+        errorTitle="ไม่สามารถโหลดข้อมูลสินทรัพย์ได้"
+      >
+        <DataTable
+          columns={columns}
+          data={assets}
+          isLoading={isLoading}
+          emptyMessage="ไม่พบสินทรัพย์"
+          emptyIcon={Building2}
+          emptyDescription="ยังไม่มีข้อมูลสินทรัพย์ถาวร"
+          pagination={{
+            page,
+            totalPages,
+            total,
+            onPageChange: setPage,
+          }}
+        />
+      </QueryBoundary>
 
       {/* Create / Edit Full-Screen Form */}
       {showModal && (

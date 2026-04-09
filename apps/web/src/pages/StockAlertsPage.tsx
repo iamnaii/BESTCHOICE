@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
+import QueryBoundary from '@/components/QueryBoundary';
 import { useAuth } from '@/contexts/AuthContext';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import PageHeader from '@/components/ui/PageHeader';
@@ -111,7 +112,7 @@ export default function StockAlertsPage() {
     },
   });
 
-  const { data: reorderPoints, isLoading: loadingRP } = useQuery<ReorderPoint[]>({
+  const { data: reorderPoints, isLoading: loadingRP, isError: rpError, error: rpErrorObj, refetch: rpRefetch } = useQuery<ReorderPoint[]>({
     queryKey: ['reorder-points', filterBranch],
     queryFn: async () => {
       const params: Record<string, string> = {};
@@ -540,7 +541,9 @@ export default function StockAlertsPage() {
 
       {/* Reorder Points Tab */}
       {activeTab === 'reorder-points' && (
-        <DataTable columns={rpColumns} data={reorderPoints || []} isLoading={loadingRP} emptyMessage="ยังไม่มี Reorder Point" />
+        <QueryBoundary isLoading={loadingRP && !reorderPoints} isError={rpError} error={rpErrorObj} onRetry={rpRefetch} errorTitle="ไม่สามารถโหลด Reorder Points ได้">
+          <DataTable columns={rpColumns} data={reorderPoints || []} isLoading={loadingRP} emptyMessage="ยังไม่มี Reorder Point" />
+        </QueryBoundary>
       )}
 
       {/* Alerts Tab */}

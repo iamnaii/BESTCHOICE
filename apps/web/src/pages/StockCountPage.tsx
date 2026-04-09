@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable, { type Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
+import QueryBoundary from '@/components/QueryBoundary';
 
 const getErrorMessage = (err: unknown) => {
   const error = err as { response?: { data?: { message?: string } } };
@@ -58,7 +59,7 @@ export default function StockCountPage() {
     queryFn: () => api.get('/branches').then((r) => r.data),
   });
 
-  const { data: stockCounts, isLoading } = useQuery({
+  const { data: stockCounts, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['stock-counts', selectedBranch],
     queryFn: () => api.get('/stock-counts', { params: { branchId: selectedBranch || undefined } }).then((r) => r.data),
   });
@@ -195,12 +196,20 @@ export default function StockCountPage() {
         </button>
       </div>
 
-      <DataTable
-        columns={stockCountColumns}
-        data={counts}
-        isLoading={isLoading}
-        emptyMessage="ยังไม่มีการนับสต็อก"
-      />
+      <QueryBoundary
+        isLoading={isLoading && !stockCounts}
+        isError={isError}
+        error={error}
+        onRetry={refetch}
+        errorTitle="ไม่สามารถโหลดการตรวจนับสต็อกได้"
+      >
+        <DataTable
+          columns={stockCountColumns}
+          data={counts}
+          isLoading={isLoading}
+          emptyMessage="ยังไม่มีการนับสต็อก"
+        />
+      </QueryBoundary>
 
       {/* Create Modal */}
       <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="สร้างรายการตรวจนับ">

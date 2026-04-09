@@ -16,6 +16,7 @@ import { KanbanBoard, type KanbanColumn } from '@/components/ui/KanbanBoard';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { exportToExcel } from '@/utils/excel.util';
 import { formatDateShort, formatDateShortThai } from '@/utils/formatters';
+import QueryBoundary from '@/components/QueryBoundary';
 
 interface Contract {
   id: string;
@@ -102,7 +103,7 @@ export default function ContractsPage() {
 
   const debouncedSearch = useDebounce(search);
 
-  const { data: result, isLoading, isError, refetch } = useQuery<PaginatedResponse<Contract>>({
+  const { data: result, isLoading, isError, error, refetch } = useQuery<PaginatedResponse<Contract>>({
     queryKey: ['contracts', debouncedSearch, statusFilter, workflowFilter, viewTab, page, branchFilter, startDateFilter, endDateFilter],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -454,15 +455,15 @@ export default function ContractsPage() {
         </div>
       </div>
 
-      {isError && (
-        <div className="text-center py-10 rounded-xl border border-destructive/20">
-          <div className="text-destructive mb-2">เกิดข้อผิดพลาดในการโหลดข้อมูล</div>
-          <Button variant="primary" size="md" onClick={() => refetch()}>ลองใหม่</Button>
-        </div>
-      )}
-
+      <QueryBoundary
+        isLoading={isLoading && !result}
+        isError={isError}
+        error={error}
+        onRetry={refetch}
+        errorTitle="ไม่สามารถโหลดสัญญาได้"
+      >
       {/* Table View */}
-      {!isError && viewMode === 'table' && (
+      {viewMode === 'table' && (
         <DataTable
           columns={columns}
           data={contracts}
@@ -478,7 +479,7 @@ export default function ContractsPage() {
       )}
 
       {/* Kanban View */}
-      {!isError && viewMode === 'kanban' && !isLoading && (
+      {viewMode === 'kanban' && !isLoading && (
         <KanbanBoard<Contract>
           columns={kanbanColumns}
           onCardClick={(c) => navigate(`/contracts/${c.id}`)}
@@ -511,6 +512,7 @@ export default function ContractsPage() {
           )}
         />
       )}
+      </QueryBoundary>
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
+import QueryBoundary from '@/components/QueryBoundary';
 
 type AccountGroup = 'ASSET' | 'LIABILITY' | 'EQUITY' | 'REVENUE' | 'EXPENSE';
 
@@ -72,7 +73,7 @@ export default function ChartOfAccountsPage() {
   const [editing, setEditing] = useState<ChartOfAccount | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
 
-  const { data: accounts = [], isLoading } = useQuery<ChartOfAccount[]>({
+  const { data: accounts = [], isLoading, isError, error, refetch } = useQuery<ChartOfAccount[]>({
     queryKey: ['chart-of-accounts'],
     queryFn: async () => {
       const { data } = await api.get('/chart-of-accounts');
@@ -235,9 +236,14 @@ export default function ChartOfAccountsPage() {
       </div>
 
       {/* List */}
-      {isLoading ? (
-        <div className="text-center py-12 text-muted-foreground">กำลังโหลด...</div>
-      ) : filtered.length === 0 ? (
+      <QueryBoundary
+        isLoading={isLoading && accounts.length === 0}
+        isError={isError}
+        error={error}
+        onRetry={refetch}
+        errorTitle="ไม่สามารถโหลดผังบัญชีได้"
+      >
+      {filtered.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">ไม่พบบัญชี</div>
       ) : (
         <div className="space-y-6">
@@ -301,6 +307,7 @@ export default function ChartOfAccountsPage() {
           })}
         </div>
       )}
+      </QueryBoundary>
 
       {/* Form overlay */}
       {showForm && (

@@ -10,6 +10,7 @@ import { ArrowRightLeft, Download, Plus } from 'lucide-react';
 import { StockProduct } from './types';
 import { useStockData, useEditingProductSync } from './hooks/useStockData';
 import { useStockFilters } from './hooks/useStockFilters';
+import QueryBoundary from '@/components/QueryBoundary';
 import { BranchSummaryCards } from './components/BranchSummaryCards';
 import { StockDashboardTab } from './components/StockDashboardTab';
 import { StockListTab } from './components/StockListTab';
@@ -73,7 +74,7 @@ export default function StockPage() {
   } = stockData;
 
   // Paginated product list for the list tab (uses /products API)
-  const { data: listResult, isLoading: listLoading } = useQuery<{ data: StockProduct[]; total: number; page: number; totalPages: number }>({
+  const { data: listResult, isLoading: listLoading, isError: listError, error: listErrorObj, refetch: listRefetch } = useQuery<{ data: StockProduct[]; total: number; page: number; totalPages: number }>({
     queryKey: ['stock-list', debouncedSearch, filterStatus, filterCategory, filterBranch, page],
     queryFn: async () => {
       const params: Record<string, string> = {};
@@ -267,23 +268,31 @@ export default function StockPage() {
       )}
 
       {activeTab === 'list' && (
-        <StockListTab
-          search={search}
-          setSearch={setSearch}
-          filterStatus={filterStatus}
-          setFilterStatus={setFilterStatus}
-          filterCategory={filterCategory}
-          setFilterCategory={setFilterCategory}
-          filterBranch={filterBranch}
-          setFilterBranch={setFilterBranch}
-          branches={branches}
-          columns={columns}
-          listProducts={listProducts}
-          listLoading={listLoading}
-          listResult={listResult}
-          page={page}
-          setPage={setPage}
-        />
+        <QueryBoundary
+          isLoading={listLoading && !listResult}
+          isError={listError}
+          error={listErrorObj}
+          onRetry={listRefetch}
+          errorTitle="ไม่สามารถโหลดคลังสินค้าได้"
+        >
+          <StockListTab
+            search={search}
+            setSearch={setSearch}
+            filterStatus={filterStatus}
+            setFilterStatus={setFilterStatus}
+            filterCategory={filterCategory}
+            setFilterCategory={setFilterCategory}
+            filterBranch={filterBranch}
+            setFilterBranch={setFilterBranch}
+            branches={branches}
+            columns={columns}
+            listProducts={listProducts}
+            listLoading={listLoading}
+            listResult={listResult}
+            page={page}
+            setPage={setPage}
+          />
+        </QueryBoundary>
       )}
 
       <BulkTransferModal

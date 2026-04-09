@@ -10,6 +10,7 @@ import Modal from '@/components/ui/Modal';
 import { transferStatusLabels } from '@/lib/constants';
 import { exportToExcel } from '@/utils/excel.util';
 import { Download } from 'lucide-react';
+import QueryBoundary from '@/components/QueryBoundary';
 
 interface TransferProduct {
   id: string;
@@ -72,7 +73,7 @@ export default function StockTransfersPage() {
   const goToTab = (key: TabKey) => setSearchParams({ view: key });
 
   // ============ OUTGOING TAB QUERIES ============
-  const { data: transfers = [], isLoading: loadingTransfers } = useQuery<StockTransfer[]>({
+  const { data: transfers = [], isLoading: loadingTransfers, isError: transfersError, error: transfersErrorObj, refetch: transfersRefetch } = useQuery<StockTransfer[]>({
     queryKey: ['stock-transfers', statusFilter],
     queryFn: async () => {
       if (statusFilter === 'PENDING') {
@@ -379,12 +380,14 @@ export default function StockTransfersPage() {
             </select>
           </div>
 
-          {loadingTransfers ? (
-            <div className="rounded-xl border border-border/60 p-8 text-center text-muted-foreground">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-3"></div>
-              กำลังโหลด...
-            </div>
-          ) : batchGroups.length === 0 ? (
+          <QueryBoundary
+            isLoading={loadingTransfers && transfers.length === 0}
+            isError={transfersError}
+            error={transfersErrorObj}
+            onRetry={transfersRefetch}
+            errorTitle="ไม่สามารถโหลดการโอนสินค้าได้"
+          >
+          {batchGroups.length === 0 ? (
             <div className="rounded-xl border border-border/60 p-8 text-center text-muted-foreground">
               {statusFilter === 'PENDING' ? 'ไม่มีรายการรอจัดส่ง'
                 : statusFilter === 'IN_TRANSIT' ? 'ไม่มีรายการระหว่างโอนสินค้า'
@@ -514,6 +517,7 @@ export default function StockTransfersPage() {
               })}
             </div>
           )}
+          </QueryBoundary>
         </div>
       )}
 

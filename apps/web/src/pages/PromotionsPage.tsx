@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Zap, Plus, Pencil, Trash2 } from 'lucide-react';
+import QueryBoundary from '@/components/QueryBoundary';
 
 /* ─── Types ─── */
 
@@ -78,7 +79,7 @@ export default function PromotionsPage() {
 
   /* ─── Queries ─── */
 
-  const { data, isLoading } = useQuery<PromotionsResponse>({
+  const { data, isLoading, isError, error, refetch } = useQuery<PromotionsResponse>({
     queryKey: ['promotions', page, debouncedSearch],
     queryFn: async () => {
       const params = new URLSearchParams({ page: String(page), limit: '50' });
@@ -281,21 +282,29 @@ export default function PromotionsPage() {
 
       <Card>
         <CardContent className="p-0">
-          <DataTable
-            columns={columns}
-            data={data?.data || []}
-            isLoading={isLoading}
-            emptyMessage="ไม่พบโปรโมชัน"
-            emptyIcon={Zap}
-            searchable
-            searchPlaceholder="ค้นหาโปรโมชัน..."
-            pagination={data ? {
-              page: data.page,
-              totalPages: Math.ceil(data.total / 50),
-              total: data.total,
-              onPageChange: setPage,
-            } : undefined}
-          />
+          <QueryBoundary
+            isLoading={isLoading && !data}
+            isError={isError}
+            error={error}
+            onRetry={refetch}
+            errorTitle="ไม่สามารถโหลดโปรโมชันได้"
+          >
+            <DataTable
+              columns={columns}
+              data={data?.data || []}
+              isLoading={isLoading}
+              emptyMessage="ไม่พบโปรโมชัน"
+              emptyIcon={Zap}
+              searchable
+              searchPlaceholder="ค้นหาโปรโมชัน..."
+              pagination={data ? {
+                page: data.page,
+                totalPages: Math.ceil(data.total / 50),
+                total: data.total,
+                onPageChange: setPage,
+              } : undefined}
+            />
+          </QueryBoundary>
         </CardContent>
       </Card>
 

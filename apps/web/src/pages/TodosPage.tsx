@@ -36,6 +36,7 @@ import {
   AlignLeft,
   Type as TypeIcon,
 } from 'lucide-react';
+import QueryBoundary from '@/components/QueryBoundary';
 
 type TodoStatus = 'TODO' | 'DOING' | 'DONE';
 type TodoPriority = 'LOW' | 'MEDIUM' | 'HIGH';
@@ -187,7 +188,7 @@ export default function TodosPage() {
     },
   });
 
-  const { data, isLoading } = useQuery<TodosResponse>({
+  const { data, isLoading, isError, error, refetch } = useQuery<TodosResponse>({
     queryKey: ['todos', view, search],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -467,11 +468,13 @@ export default function TodosPage() {
       </div>
 
       {/* Kanban Board */}
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-        </div>
-      ) : (
+      <QueryBoundary
+        isLoading={isLoading && !data}
+        isError={isError}
+        error={error}
+        onRetry={refetch}
+        errorTitle="ไม่สามารถโหลดงานได้"
+      >
         <KanbanBoard
           columns={columns}
           onCardClick={openEdit}
@@ -622,7 +625,7 @@ export default function TodosPage() {
             );
           }}
         />
-      )}
+      </QueryBoundary>
 
       {/* Create / Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

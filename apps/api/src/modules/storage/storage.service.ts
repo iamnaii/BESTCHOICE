@@ -1,5 +1,13 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  DeleteObjectCommand,
+} from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { Storage as GcsStorage } from '@google-cloud/storage';
 import { Readable } from 'stream';
 
 /**
@@ -20,10 +28,8 @@ export class StorageService {
   private readonly logger = new Logger(StorageService.name);
   private readonly backend: 'gcs' | 's3' | 'none';
   private readonly bucket: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private gcs: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private s3: any;
+  private gcs: GcsStorage | null = null;
+  private s3: S3Client | null = null;
 
   constructor(private configService: ConfigService) {
     const s3Endpoint = this.configService.get<string>('S3_ENDPOINT');
@@ -32,15 +38,20 @@ export class StorageService {
     const gcsBucket = this.configService.get<string>('GCS_BUCKET');
 
     if (s3Endpoint && s3AccessKey && s3SecretKey) {
-      // S3-compatible (MinIO, R2, etc.)
       this.backend = 's3';
       this.bucket = this.configService.get<string>('S3_BUCKET') || 'bestchoice-documents';
-      this.initS3(s3Endpoint, s3AccessKey, s3SecretKey);
+      this.s3 = new S3Client({
+        endpoint: s3Endpoint,
+        region: this.configService.get<string>('S3_REGION') || 'ap-southeast-1',
+        credentials: { accessKeyId: s3AccessKey, secretAccessKey: s3SecretKey },
+        forcePathStyle: true,
+      });
+      this.logger.log(`S3 storage configured: ${s3Endpoint}/${this.bucket}`);
     } else if (gcsBucket || this.configService.get('NODE_ENV') === 'production') {
-      // GCS with Application Default Credentials (auto on Cloud Run)
       this.backend = 'gcs';
       this.bucket = gcsBucket || 'bestchoice-documents';
-      this.initGcs();
+      this.gcs = new GcsStorage();
+      this.logger.log(`GCS storage configured: gs://${this.bucket}`);
     } else {
       this.backend = 'none';
       this.bucket = '';
@@ -48,38 +59,19 @@ export class StorageService {
     }
   }
 
-  private initS3(endpoint: string, accessKeyId: string, secretAccessKey: string) {
-    // Dynamic import to avoid bundling S3 SDK when using GCS
-    const { S3Client } = require('@aws-sdk/client-s3');
-    this.s3 = new S3Client({
-      endpoint,
-      region: this.configService.get<string>('S3_REGION') || 'ap-southeast-1',
-      credentials: { accessKeyId, secretAccessKey },
-      forcePathStyle: true,
-    });
-    this.logger.log(`S3 storage configured: ${endpoint}/${this.bucket}`);
-  }
-
-  private initGcs() {
-    const { Storage } = require('@google-cloud/storage');
-    this.gcs = new Storage();
-    this.logger.log(`GCS storage configured: gs://${this.bucket}`);
-  }
-
   get configured(): boolean {
     return this.backend !== 'none';
   }
 
   async upload(key: string, body: Buffer, contentType: string): Promise<string> {
-    if (this.backend === 'gcs') {
+    if (this.backend === 'gcs' && this.gcs) {
       const file = this.gcs.bucket(this.bucket).file(key);
       await file.save(body, { contentType, resumable: false });
       this.logger.log(`GCS uploaded: ${key} (${body.length} bytes)`);
       return key;
     }
 
-    if (this.backend === 's3') {
-      const { PutObjectCommand } = require('@aws-sdk/client-s3');
+    if (this.backend === 's3' && this.s3) {
       await this.s3.send(new PutObjectCommand({
         Bucket: this.bucket, Key: key, Body: body, ContentType: contentType,
       }));
@@ -92,15 +84,14 @@ export class StorageService {
   }
 
   async getStream(key: string): Promise<Readable> {
-    if (this.backend === 'gcs') {
+    if (this.backend === 'gcs' && this.gcs) {
       const file = this.gcs.bucket(this.bucket).file(key);
       const [exists] = await file.exists();
       if (!exists) throw new BadRequestException(`ไม่พบไฟล์: ${key}`);
       return file.createReadStream();
     }
 
-    if (this.backend === 's3') {
-      const { GetObjectCommand } = require('@aws-sdk/client-s3');
+    if (this.backend === 's3' && this.s3) {
       const response = await this.s3.send(new GetObjectCommand({
         Bucket: this.bucket, Key: key,
       }));
@@ -111,7 +102,7 @@ export class StorageService {
   }
 
   async getSignedDownloadUrl(key: string, expiresIn = 3600): Promise<string> {
-    if (this.backend === 'gcs') {
+    if (this.backend === 'gcs' && this.gcs) {
       const file = this.gcs.bucket(this.bucket).file(key);
       const [url] = await file.getSignedUrl({
         action: 'read',
@@ -120,9 +111,7 @@ export class StorageService {
       return url;
     }
 
-    if (this.backend === 's3') {
-      const { GetObjectCommand } = require('@aws-sdk/client-s3');
-      const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+    if (this.backend === 's3' && this.s3) {
       const command = new GetObjectCommand({ Bucket: this.bucket, Key: key });
       return getSignedUrl(this.s3, command, { expiresIn });
     }
@@ -131,14 +120,13 @@ export class StorageService {
   }
 
   async delete(key: string): Promise<void> {
-    if (this.backend === 'gcs') {
+    if (this.backend === 'gcs' && this.gcs) {
       await this.gcs.bucket(this.bucket).file(key).delete({ ignoreNotFound: true });
       this.logger.log(`GCS deleted: ${key}`);
       return;
     }
 
-    if (this.backend === 's3') {
-      const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
+    if (this.backend === 's3' && this.s3) {
       await this.s3.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
       this.logger.log(`S3 deleted: ${key}`);
       return;

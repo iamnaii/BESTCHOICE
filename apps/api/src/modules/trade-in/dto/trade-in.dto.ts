@@ -7,6 +7,7 @@ import {
   Length,
   Matches,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class CreateTradeInDto {
   // ─── Customer / Branch ──────────────────────────────
@@ -245,3 +246,44 @@ export class QuickBuyTradeInDto {
   @IsOptional()
   notes?: string;
 }
+
+// ─── Valuation lookup ─────────────────────────────────────────────────────────
+
+export class ValuationQueryDto {
+  @IsString({ message: 'กรุณาระบุยี่ห้อ' })
+  brand: string;
+
+  @IsString({ message: 'กรุณาระบุรุ่น' })
+  model: string;
+
+  @IsString({ message: 'กรุณาระบุความจุ' })
+  storage: string;
+
+  @IsString()
+  @IsIn(['A', 'B', 'C', 'D'], { message: 'สภาพต้องเป็น A, B, C หรือ D' })
+  condition: string;
+}
+
+export class UpsertValuationDto {
+  @IsString({ message: 'กรุณาระบุยี่ห้อ' })
+  brand: string;
+
+  @IsString({ message: 'กรุณาระบุรุ่น' })
+  model: string;
+
+  @IsString({ message: 'กรุณาระบุความจุ' })
+  storage: string;
+
+  @IsString()
+  @IsIn(['A', 'B', 'C', 'D'], { message: 'สภาพต้องเป็น A, B, C หรือ D' })
+  condition: string;
+
+  @Transform(({ value }) => Number(value))
+  @IsNumber({}, { message: 'ราคาต้องเป็นตัวเลข' })
+  basePrice: number;
+
+  @IsString()
+  @IsOptional()
+  note?: string;
+}
+

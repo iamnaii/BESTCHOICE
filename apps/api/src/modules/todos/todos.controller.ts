@@ -79,14 +79,17 @@ export class TodosController {
     )
     file: Express.Multer.File,
   ) {
-    const safeName = file.originalname.replace(/[^\w.-]/g, '_');
+    // Decode originalname: browsers send UTF-8 but Multer may read as latin1
+    const decodedName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+    // Keep Thai/Unicode chars, only strip control chars and path separators
+    const safeName = decodedName.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_');
     const key = `todos/${Date.now()}-${randomUUID()}-${safeName}`;
     await this.storage.upload(key, file.buffer, file.mimetype);
 
     return {
       url: `/todos/attachments/${encodeURIComponent(key)}`,
       key,
-      name: file.originalname,
+      name: decodedName,
       size: file.size,
       mimeType: file.mimetype,
       uploadedAt: new Date().toISOString(),

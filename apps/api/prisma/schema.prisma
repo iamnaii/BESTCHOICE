@@ -397,6 +397,7 @@ model User {
   todosCreated           Todo[]               @relation("TodoCreatedBy")
   todosAssigned          Todo[]               @relation("TodoAssignedTo")
   handoffSessions        ChatSession[]        @relation("ChatHandoffStaff")
+  webhookSubscriptions   WebhookSubscription[]
 
   @@index([branchId])
   @@map("users")
@@ -2582,6 +2583,31 @@ model TradeIn {
 }
 
 // ============================================================
+// TRADE-IN VALUATION TABLE (ตารางราคารับซื้อมาตรฐาน)
+// ============================================================
+
+model TradeInValuation {
+  id        String   @id @default(uuid())
+  brand     String   // ยี่ห้อ เช่น Apple, Samsung
+  model     String   // รุ่น เช่น iPhone 15 Pro
+  storage   String   // ความจุ เช่น 128GB, 256GB
+  condition String   // A, B, C, D
+  basePrice Decimal  @map("base_price") @db.Decimal(12, 2) // ราคารับซื้ออ้างอิง
+  note      String?  // หมายเหตุพิเศษ
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@unique([brand, model, storage, condition])
+  @@index([brand])
+  @@index([model])
+  @@index([condition])
+  @@index([deletedAt])
+  @@map("trade_in_valuations")
+}
+
+// ============================================================
 // PROMOTIONAL CAMPAIGNS (โปรโมชัน)
 // ============================================================
 
@@ -2943,4 +2969,45 @@ model ChatbotOtpRequest {
 
   @@index([expiresAt])
   @@map("chatbot_otp_requests")
+}
+
+/// Outbound webhook subscriptions for external partners
+model WebhookSubscription {
+  id          String   @id @default(uuid())
+  name        String
+  url         String
+  secret      String
+  events      String[]
+  isActive    Boolean  @default(true) @map("is_active")
+  createdById String   @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  createdBy User @relation(fields: [createdById], references: [id])
+
+  deliveries WebhookDelivery[]
+
+  @@index([isActive, deletedAt])
+  @@map("webhook_subscriptions")
+}
+
+/// Log of each webhook delivery attempt
+model WebhookDelivery {
+  id             String   @id @default(uuid())
+  subscriptionId String   @map("subscription_id")
+  eventType      String   @map("event_type")
+  payload        Json
+  statusCode     Int?     @map("status_code")
+  success        Boolean  @default(false)
+  errorMessage   String?  @map("error_message") @db.Text
+  attemptCount   Int      @default(1) @map("attempt_count")
+  deliveredAt    DateTime? @map("delivered_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  subscription WebhookSubscription @relation(fields: [subscriptionId], references: [id])
+
+  @@index([subscriptionId, createdAt])
+  @@index([eventType])
+  @@map("webhook_deliveries")
 }

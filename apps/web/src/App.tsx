@@ -83,6 +83,8 @@ const TodosPage = lazy(() => import('@/pages/TodosPage'));
 const ChatbotFinanceAnalyticsPage = lazy(() => import('@/pages/ChatbotFinanceAnalyticsPage'));
 const ChatbotFinanceSessionsPage = lazy(() => import('@/pages/ChatbotFinanceSessionsPage'));
 const ChatbotFinanceKnowledgePage = lazy(() => import('@/pages/ChatbotFinanceKnowledgePage'));
+const AnalyticsPage = lazy(() => import('@/pages/AnalyticsPage'));
+const WebhooksPage = lazy(() => import('@/pages/WebhooksPage'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -529,6 +531,22 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <ChartOfAccountsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/analytics"
+            element={
+              <ProtectedRoute roles={['OWNER']}>
+                <AnalyticsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/webhooks"
+            element={
+              <ProtectedRoute roles={['OWNER']}>
+                <WebhooksPage />
               </ProtectedRoute>
             }
           />

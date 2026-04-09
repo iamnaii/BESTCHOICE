@@ -18,6 +18,8 @@ import {
   AcceptTradeInDto,
   UpdateTradeInDto,
   QuickBuyTradeInDto,
+  ValuationQueryDto,
+  UpsertValuationDto,
 } from './dto/trade-in.dto';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -154,5 +156,57 @@ export class TradeInController {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="voucher-${voucherNumber}.pdf"`);
     res.send(buffer);
+  }
+
+  // ─── Valuation table ────────────────────────────────
+
+  /** GET /trade-ins/valuation?brand=&model=&storage=&condition= — ราคาอ้างอิง */
+  @Get('valuation')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
+  lookupValuation(@Query() query: ValuationQueryDto) {
+    return this.tradeInService.lookupValuation(
+      query.brand,
+      query.model,
+      query.storage,
+      query.condition,
+    );
+  }
+
+  /** GET /trade-ins/valuations — รายการตารางราคาทั้งหมด */
+  @Get('valuations')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
+  listValuations(
+    @Query('brand') brand?: string,
+    @Query('model') model?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.tradeInService.listValuations({
+      brand,
+      model,
+      page: page ? Number(page) : 1,
+      limit: limit ? Number(limit) : 50,
+    });
+  }
+
+  /** GET /trade-ins/valuation-brands — ยี่ห้อทั้งหมดในตาราง */
+  @Get('valuation-brands')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
+  getValuationBrands() {
+    return this.tradeInService.getValuationBrands();
+  }
+
+  /** GET /trade-ins/valuation-models?brand= — รุ่นทั้งหมดของยี่ห้อ */
+  @Get('valuation-models')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
+  getValuationModels(@Query('brand') brand: string) {
+    return this.tradeInService.getValuationModels(brand);
+  }
+
+  /** POST /trade-ins/valuations — เพิ่ม/อัปเดตราคาอ้างอิง (admin) */
+  @Post('valuations')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  upsertValuation(@Body() dto: UpsertValuationDto) {
+    return this.tradeInService.upsertValuation(dto);
   }
 }

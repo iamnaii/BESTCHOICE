@@ -3,6 +3,7 @@ import * as bcrypt from 'bcrypt';
 import * as fs from 'fs';
 import * as path from 'path';
 import { seedChartOfAccounts } from './seeds/chart-of-accounts';
+import { seedTradeInValuations } from './seeds/trade-in-valuations';
 
 const prisma = new PrismaClient();
 
@@ -1387,6 +1388,11 @@ async function main() {
   // CHART OF ACCOUNTS (ผังบัญชี)
   // ============================================================
   await seedChartOfAccounts(prisma);
+
+  // ============================================================
+  // TRADE-IN VALUATION TABLE (ตารางราคารับซื้ออ้างอิง)
+  // ============================================================
+  await seedTradeInValuations(prisma);
 
   console.log('=== SEED COMPLETED SUCCESSFULLY ===');
   console.log('========================================');

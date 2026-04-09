@@ -329,3 +329,54 @@ scripts/                      # Existing project scripts
 - `BranchReceivingPage.tsx` is superseded — `/stock/branch-receiving` redirects to `/stock/transfers?view=incoming`.
 - **Environment variables**: see `.env.example` for full list
 - **CI/CD**: `.github/workflows/deploy.yml` — auto-deploy on push to `main`
+- **`BACKUP_ENCRYPTION_KEY`** — REQUIRED ใน prod env. backup.sh refuses to run without it. ใช้ `openssl rand -hex 32` generate.
+
+## Hardening History (ultraplan v1, v2, v3)
+
+โปรเจคผ่าน hardening sprints 3 รอบ — สิ่งที่ทำเสร็จแล้วและไม่ต้องทำซ้ำ:
+
+### v1 (PR #430, #431)
+- Soft-delete + `ownedByCompanyId` บน Product (SHOP↔FINANCE transfer)
+- BranchGuard บน 22 controllers
+- `branch-access.util.ts` — `CROSS_BRANCH_ROLES` source of truth
+- Company CRUD + ownership-aware delete guard
+- **QueryBoundary บน ~44 หน้า** — ทุกหน้า data list มี error+retry UI
+- Sentry: ErrorBoundary, AuthContext user tagging, QueryClient 5xx forwarding
+- 332 API + 104 web tests baseline
+
+### v2 (PR #432, #435, #436)
+- Sentry capture บน 17 cron jobs + BullMQ worker exhausted retries
+- PaySolutions atomicity (gateway+DB ใน `$transaction`, orphan-intent Sentry alarm)
+- Commission Decimal precision (`Prisma.Decimal` แทน `Number()`)
+- Repossessions previewCalculation: full Decimal arithmetic
+- 66 new tests: useContractCalculation (16), commission (20), finance-receivable (21), excel.util (9)
+- a11y: PaymentTable checkbox aria-label, DashboardAlerts native button
+- FinanceReceivable `(status, branchId)` compound index
+
+### v3 (PR #437, #438, #439)
+- **Account lockout**: 5 failed → 15 min lock (`User.failedLoginAttempts` + `lockedUntil`)
+- **Cascade → Restrict** บน Payment + 4 doc tables (Payment, EDocument, Signature, CallLog, ContractDocument) — ป้องกัน accidental hard-delete erasing legal evidence
+- **PaySolutions fetch timeout** 15s + AbortController + Sentry on timeout
+- **PII webhook log allow-list** (refno, result_code, etc. เท่านั้น)
+- **Bundle split**: exceljs/jspdf/recharts แยก chunks — initial bundle saving ~525KB gzip
+- **bad-debt.service.spec.ts** — 22 tests (aging buckets, idempotency, segregation of duties)
+- **Webhook hardening**: LINE Finance prod-strict, SMS webhook throttle 60/min
+- **PaySolutions webhook idempotency**: retry ไม่ double-credit ไม่ false orphan alarm
+- **6 missing FK indexes** (bad-debt, trade-in, expense compound)
+- **Log retention cron**: AuditLog 1yr + NotificationLog 6mo
+- **Backup AES-256 encryption** (refuse to run ถ้าไม่มี `BACKUP_ENCRYPTION_KEY`)
+
+### Test counts after v3
+- API: **400 tests** (20 suites)
+- Web: **129 tests** (11 files)
+- TypeScript: 0 errors
+
+### Things deferred (out of scope of v1-v3)
+- VAT-on-interest (CR-001) — owner skip
+- GFIN integration — รอ business flow
+- E2E expansion — มี 35 specs แต่ส่วนใหญ่เป็น smoke tests
+- accounting.service.ts spec (1115 lines, dedicated PR)
+- trade-in / contract-documents specs (deferred)
+- Off-site backup replication (GCS sync)
+- PII column-level encryption (PDPA strict mode)
+- ChatMessage / DocumentAuditLog retention

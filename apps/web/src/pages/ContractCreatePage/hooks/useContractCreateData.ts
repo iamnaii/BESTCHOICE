@@ -64,7 +64,6 @@ export function useContractCreateData() {
     // productId / customerId are IDs only — the actual objects will be found via query data after load
     if (saved.productId) setProductSearch(saved.productId);
     if (saved.customerId) setCustomerSearch(saved.customerId);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Auto-save draft every 30 seconds

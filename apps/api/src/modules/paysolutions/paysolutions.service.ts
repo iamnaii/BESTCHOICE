@@ -5,6 +5,7 @@ import {
   NotFoundException,
   InternalServerErrorException,
 } from '@nestjs/common';
+import * as Sentry from '@sentry/nestjs';
 import { formatDateLong } from '../../utils/thai-date.util';
 import { ConfigService } from '@nestjs/config';
 import { PaymentMethod } from '@prisma/client';
@@ -178,30 +179,58 @@ export class PaySolutionsService {
       throw new InternalServerErrorException('ไม่สามารถเชื่อมต่อระบบชำระเงินได้ กรุณาลองใหม่');
     }
 
-    // อัปเดต payment record ใน DB (ถ้ามี installmentNo)
-    if (paymentRecord) {
-      await this.prisma.payment.update({
-        where: { id: paymentRecord.id },
-        data: {
+    // CRITICAL: gateway intent ได้สร้างไปแล้ว — ถ้า DB write fail ตรงนี้
+    // เราจะมี orphaned gateway intent (ลูกค้า redirect ไปจ่ายได้แต่ webhook
+    // จะหา PaymentLink ไม่เจอ → ลูกค้าจ่ายเงินแต่ระบบไม่บันทึก)
+    // → wrap ใน $transaction ให้ payment.update + paymentLink.create เป็น atomic
+    // → ถ้า fail ส่ง Sentry ทันทีพร้อม gatewayRef เพื่อให้ ops reconcile ได้
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        if (paymentRecord) {
+          await tx.payment.update({
+            where: { id: paymentRecord.id },
+            data: {
+              gatewayRef,
+              gatewayStatus: 'PENDING',
+              gatewayResponse: gatewayResponse as object,
+              paymentMethod: PaymentMethod.ONLINE_GATEWAY,
+            },
+          });
+        }
+
+        await tx.paymentLink.create({
+          data: {
+            token: orderRef,
+            contractId,
+            paymentId: paymentRecord?.id || null,
+            amount,
+            status: 'ACTIVE',
+            expiresAt: new Date(Date.now() + 30 * 60 * 1000), // 30 min expiry
+          },
+        });
+      });
+    } catch (dbError) {
+      // Gateway intent created but DB tracking failed → ORPHAN risk
+      this.logger.error(
+        `CRITICAL: PaySolutions intent created but DB tracking failed. orderRef=${orderRef} gatewayRef=${gatewayRef} contractId=${contractId}`,
+      );
+      Sentry.captureException(dbError, {
+        level: 'fatal',
+        tags: {
+          critical: 'paysolutions-orphan-intent',
+          orderRef,
           gatewayRef,
-          gatewayStatus: 'PENDING',
-          gatewayResponse: gatewayResponse as object,
-          paymentMethod: PaymentMethod.ONLINE_GATEWAY,
+        },
+        extra: {
+          contractId,
+          paymentRecordId: paymentRecord?.id,
+          amount,
         },
       });
+      throw new InternalServerErrorException(
+        'ระบบบันทึกข้อมูลชำระเงินไม่สำเร็จ กรุณาติดต่อแอดมิน',
+      );
     }
-
-    // สร้าง PaymentLink record สำหรับ tracking
-    await this.prisma.paymentLink.create({
-      data: {
-        token: orderRef,
-        contractId,
-        paymentId: paymentRecord?.id || null,
-        amount,
-        status: 'ACTIVE',
-        expiresAt: new Date(Date.now() + 30 * 60 * 1000), // 30 min expiry
-      },
-    });
 
     this.logger.log(
       `Payment intent created: ${orderRef} for contract ${contractId}, amount ${amount}`,
@@ -252,6 +281,22 @@ export class PaySolutionsService {
 
     if (!paymentLink) {
       this.logger.warn(`Webhook for unknown refno: ${refno}`);
+      // ถ้า webhook เป็น SUCCESS แต่หา PaymentLink ไม่เจอ — ลูกค้าจ่ายเงินจริง
+      // แต่ระบบไม่มี record → ต้องให้ ops รู้ทันทีเพื่อ reconcile manual
+      if (result_code === '00') {
+        Sentry.captureMessage(
+          `PaySolutions SUCCESS webhook for unknown refno: ${refno}`,
+          {
+            level: 'fatal',
+            tags: {
+              critical: 'paysolutions-orphan-payment',
+              refno,
+              transactionId: transaction_id || 'unknown',
+            },
+            extra: { webhookData },
+          },
+        );
+      }
       return; // ไม่ throw — return 200 OK ให้ Pay Solutions
     }
 

@@ -360,6 +360,27 @@ export default function TodosPage() {
       attachments: (form.attachments || []).filter((a) => a.url !== url),
     });
 
+  /**
+   * Open an attachment in a new tab. The download endpoint requires JWT
+   * auth, but a plain <a href> click doesn't send the Authorization
+   * header (token lives in memory, not cookies). Fetch as a blob via
+   * the api client (which DOES send the token) and open the resulting
+   * object URL. The blob URL is revoked after a short delay so the
+   * new tab has time to render before we free the memory.
+   */
+  const openAttachment = async (att: Attachment) => {
+    try {
+      const response = await api.get(att.url, { responseType: 'blob' });
+      const blob = response.data as Blob;
+      const objectUrl = URL.createObjectURL(blob);
+      window.open(objectUrl, '_blank', 'noopener,noreferrer');
+      // Free the blob after the new tab has had time to load it
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    }
+  };
+
 
   const addTag = () => {
     const v = (form.tagsInput || '').trim();
@@ -933,14 +954,13 @@ export default function TodosPage() {
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <a
-                            href={a.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-sm font-medium truncate block hover:text-primary transition-colors"
+                          <button
+                            type="button"
+                            onClick={() => openAttachment(a)}
+                            className="text-sm font-medium truncate block hover:text-primary transition-colors text-left w-full"
                           >
                             {a.name || 'ไฟล์แนบ'}
-                          </a>
+                          </button>
                           <p className="text-2xs text-muted-foreground">
                             {formatBytes(a.size)}
                           </p>

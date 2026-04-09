@@ -26,8 +26,16 @@ export class LineFinanceWebhookGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<Request>();
 
     if (!this.channelSecret) {
-      this.logger.warn('LINE_FINANCE_CHANNEL_SECRET not configured — skipping verification (DEV ONLY)');
-      return true;
+      // SECURITY: dev-only bypass. In production, missing secret = hard
+      // refusal — otherwise an attacker could replay any "LINE webhook"
+      // and we would accept it.
+      const isDev = process.env.NODE_ENV !== 'production';
+      if (isDev) {
+        this.logger.warn('LINE_FINANCE_CHANNEL_SECRET not configured — skipping verification (DEV ONLY)');
+        return true;
+      }
+      this.logger.error('LINE_FINANCE_CHANNEL_SECRET missing in production — refusing webhook');
+      throw new UnauthorizedException('Webhook signature verification not configured');
     }
 
     const signature = request.headers['x-line-signature'] as string | undefined;

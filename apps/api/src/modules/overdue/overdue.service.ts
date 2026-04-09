@@ -609,4 +609,129 @@ export class OverdueService {
       },
     });
   }
+
+  /**
+   * Log a contact attempt — creates a CallLog and updates lastContactDate
+   * on the Contract. Optionally updates collectionNotes.
+   */
+  async logContact(
+    contractId: string,
+    callerId: string,
+    dto: { result: string; notes?: string; collectionNotes?: string },
+  ) {
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: contractId, deletedAt: null },
+    });
+    if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+
+    const now = new Date();
+
+    // Create call log entry and update lastContactDate in a transaction
+    const [callLog] = await this.prisma.$transaction([
+      this.prisma.callLog.create({
+        data: {
+          contractId,
+          callerId,
+          calledAt: now,
+          result: dto.result,
+          notes: dto.notes || null,
+        },
+        include: {
+          caller: { select: { id: true, name: true } },
+        },
+      }),
+      this.prisma.contract.update({
+        where: { id: contractId },
+        data: {
+          lastContactDate: now,
+          dunningLastActionAt: now,
+          ...(dto.collectionNotes !== undefined && { collectionNotes: dto.collectionNotes }),
+        },
+      }),
+    ]);
+
+    return callLog;
+  }
+
+  /**
+   * Kanban board data — groups overdue/default contracts by dunning stage.
+   * Each lane contains a list of contract cards with key info.
+   */
+  async getBoardData(userRole?: string, userBranchId?: string) {
+    const branchFilter: Prisma.ContractWhereInput =
+      (userRole === 'SALES' || userRole === 'BRANCH_MANAGER') && userBranchId
+        ? { branchId: userBranchId }
+        : {};
+
+    const contracts = await this.prisma.contract.findMany({
+      where: {
+        status: { in: ['OVERDUE', 'DEFAULT'] },
+        deletedAt: null,
+        ...branchFilter,
+      },
+      select: {
+        id: true,
+        contractNumber: true,
+        status: true,
+        dunningStage: true,
+        dunningEscalatedAt: true,
+        lastContactDate: true,
+        collectionNotes: true,
+        financedAmount: true,
+        customer: { select: { id: true, name: true, phone: true } },
+        branch: { select: { id: true, name: true } },
+        assignedTo: { select: { id: true, name: true } },
+        payments: {
+          where: { status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] }, dueDate: { lt: new Date() } },
+          select: { amountDue: true, amountPaid: true, lateFee: true, dueDate: true },
+          orderBy: { dueDate: 'asc' },
+          take: 1,
+        },
+      },
+      orderBy: { dunningEscalatedAt: 'asc' },
+    });
+
+    const stages = ['NONE', 'REMINDER', 'NOTICE', 'FINAL_WARNING', 'LEGAL_ACTION'] as const;
+    const stageLabels: Record<string, string> = {
+      NONE: 'เพิ่งค้างชำระ',
+      REMINDER: 'แจ้งเตือน (1-7 วัน)',
+      NOTICE: 'แจ้งค้างชำระ (8-30 วัน)',
+      FINAL_WARNING: 'เตือนครั้งสุดท้าย (31-60 วัน)',
+      LEGAL_ACTION: 'ดำเนินคดี (>60 วัน)',
+    };
+
+    const lanes = stages.map((stage) => ({
+      stage,
+      label: stageLabels[stage],
+      contracts: contracts
+        .filter((c) => c.dunningStage === stage)
+        .map((c) => {
+          const overduePayment = c.payments[0];
+          const outstanding = overduePayment
+            ? new Prisma.Decimal(overduePayment.amountDue)
+                .sub(overduePayment.amountPaid)
+                .add(overduePayment.lateFee)
+                .toNumber()
+            : 0;
+          return {
+            id: c.id,
+            contractNumber: c.contractNumber,
+            status: c.status,
+            customer: c.customer,
+            branch: c.branch,
+            assignedTo: c.assignedTo,
+            lastContactDate: c.lastContactDate,
+            collectionNotes: c.collectionNotes,
+            dunningEscalatedAt: c.dunningEscalatedAt,
+            outstanding,
+            oldestDueDate: overduePayment?.dueDate ?? null,
+          };
+        }),
+    }));
+
+    return {
+      lanes,
+      totalContracts: contracts.length,
+    };
+  }
 }

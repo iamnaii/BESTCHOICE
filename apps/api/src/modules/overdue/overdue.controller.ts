@@ -1,9 +1,10 @@
-import { Controller, Get, Post, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { OverdueService } from './overdue.service';
 import { CreateCallLogDto } from './dto/create-call-log.dto';
 import { AssignCollectorDto } from './dto/assign-collector.dto';
 import { RecordSettlementDto } from './dto/record-settlement.dto';
+import { LogContactDto } from './dto/log-contact.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
@@ -98,6 +99,22 @@ export class OverdueController {
     @CurrentUser() user: { id: string },
   ) {
     return this.overdueService.recordSettlement(contractId, user.id, dto);
+  }
+
+  @Get('board')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getBoard(@CurrentUser() user: { role: string; branchId: string | null }) {
+    return this.overdueService.getBoardData(user.role, user.branchId || undefined);
+  }
+
+  @Patch(':contractId/contact-log')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER')
+  logContact(
+    @Param('contractId') contractId: string,
+    @Body() dto: LogContactDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.overdueService.logContact(contractId, user.id, dto);
   }
 
   @Post('cron/calculate-late-fees')

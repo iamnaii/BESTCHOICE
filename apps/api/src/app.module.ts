@@ -59,6 +59,8 @@ import { AssetModule } from './modules/asset/asset.module';
 import { TodosModule } from './modules/todos/todos.module';
 import { ChatbotFinanceModule } from './modules/chatbot-finance/chatbot-finance.module';
 import { HealthModule } from './modules/health/health.module';
+import { PeakModule } from './modules/peak/peak.module';
+import { MdmModule } from './modules/mdm/mdm.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
@@ -158,6 +160,9 @@ import { AppCacheModule } from './cache/cache.module';
     ChatbotFinanceModule,
     // Health check — liveness probe for Cloud Run / load balancers
     HealthModule,
+    // External integrations (scaffold — activate when credentials are available)
+    PeakModule,
+    MdmModule,
     // MASTER: Management
     UsersModule,
     SettingsModule,

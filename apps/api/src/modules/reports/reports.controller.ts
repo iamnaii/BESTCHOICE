@@ -42,10 +42,16 @@ export class ReportsController {
     @Query('branchId') branchId?: string,
     @Query('companyId') companyId?: string,
   ) {
-    const effectiveBranch = user.role === 'BRANCH_MANAGER'
-      ? user.branchId || undefined
-      : await this.reportsService.resolveCompanyBranch(companyId, branchId);
-    return this.reportsService.getMonthlyPLSummary(parseInt(year) || new Date().getFullYear(), effectiveBranch);
+    if (user.role === 'BRANCH_MANAGER') {
+      const effectiveBranch = user.branchId || undefined;
+      return this.reportsService.getMonthlyPLSummary(parseInt(year) || new Date().getFullYear(), effectiveBranch);
+    }
+    const resolvedBranchIds = await this.reportsService.resolveCompanyBranches(companyId, branchId);
+    return this.reportsService.getMonthlyPLSummary(
+      parseInt(year) || new Date().getFullYear(),
+      undefined,
+      resolvedBranchIds,
+    );
   }
 
   @Get('profit-loss')
@@ -56,10 +62,12 @@ export class ReportsController {
     @Query('branchId') branchId?: string,
     @Query('companyId') companyId?: string,
   ) {
-    const effectiveBranch = user.role === 'BRANCH_MANAGER'
-      ? user.branchId || undefined
-      : await this.reportsService.resolveCompanyBranch(companyId, branchId);
-    return this.reportsService.getProfitLossReport(startDate, endDate, effectiveBranch);
+    if (user.role === 'BRANCH_MANAGER') {
+      const effectiveBranch = user.branchId || undefined;
+      return this.reportsService.getProfitLossReport(startDate, endDate, effectiveBranch);
+    }
+    const resolvedBranchIds = await this.reportsService.resolveCompanyBranches(companyId, branchId);
+    return this.reportsService.getProfitLossReport(startDate, endDate, undefined, resolvedBranchIds);
   }
 
   @Get('comparative-pl')
@@ -85,10 +93,11 @@ export class ReportsController {
     @Query('branchId') branchId?: string,
     @Query('companyId') companyId?: string,
   ) {
-    const effectiveBranch = await this.reportsService.resolveCompanyBranch(companyId, branchId);
+    const resolvedBranchIds = await this.reportsService.resolveCompanyBranches(companyId, branchId);
     return this.reportsService.getBalanceSheet(
       asOfDate || new Date().toISOString().split('T')[0],
-      effectiveBranch,
+      undefined,
+      resolvedBranchIds,
     );
   }
 
@@ -188,7 +197,12 @@ export class ReportsController {
     @Query('entity') entity?: string,
     @Query('companyId') companyId?: string,
   ) {
-    const effectiveBranch = await this.reportsService.resolveCompanyBranch(companyId, branchId);
+    // entity-profit uses a single branchId filter on InterCompanyTransaction — resolve to first branch
+    // when company is given without a specific branch (multi-branch aggregation is done within the method)
+    const resolvedBranchIds = await this.reportsService.resolveCompanyBranches(companyId, branchId);
+    const effectiveBranch = resolvedBranchIds && resolvedBranchIds.length === 1
+      ? resolvedBranchIds[0]
+      : undefined;
     return this.reportsService.getEntityProfitReport(startDate, endDate, effectiveBranch, entity);
   }
 
@@ -205,6 +219,22 @@ export class ReportsController {
       parseInt(year) || new Date().getFullYear(),
       parseInt(quarter) || 1,
       effectiveBranch,
+    );
+  }
+
+  @Get('finance-portfolio')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getFinancePortfolio(
+    @Query('status') status?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const parsedPage = page ? parseInt(page, 10) : undefined;
+    const parsedLimit = limit ? Math.min(parseInt(limit, 10), 100) : undefined;
+    return this.reportsService.getFinancePortfolio(
+      status,
+      parsedPage && !isNaN(parsedPage) ? parsedPage : 1,
+      parsedLimit && !isNaN(parsedLimit) ? parsedLimit : 50,
     );
   }
 

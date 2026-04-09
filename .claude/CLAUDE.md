@@ -366,17 +366,34 @@ scripts/                      # Existing project scripts
 - **Log retention cron**: AuditLog 1yr + NotificationLog 6mo
 - **Backup AES-256 encryption** (refuse to run ถ้าไม่มี `BACKUP_ENCRYPTION_KEY`)
 
-### Test counts after v3
-- API: **400 tests** (20 suites)
+### v4 (PR #444, #445, #446, #447, #448)
+- **Journal unbalanced → throw + Sentry** (was silent `return null` — P0 bug)
+- **Sentry capture** บน 5 cron jobs ที่เหลือ + 2 retention crons
+- **Decimal precision**: 53 `Number()` → `Prisma.Decimal` ใน 12 services (0 `Number(_sum` remaining)
+- **Bad debt write-off journal**: `Dr. Bad Debt Expense / Cr. HP Receivable` auto-created
+- **+177 API tests**: accounting (47), contracts (42), sales (27), journal-auto (+25), repossessions (15), trade-in (18), trial balance e2e (1)
+- **Form modernization**: 3 forms → react-hook-form + zod (POS, PlanDetailsStep, Customers) with inline validation
+- **ContractCreate auto-save**: localStorage draft, 30s interval, 24hr expiry, recovery prompt
+- **A11y**: 0 `alt=""` + ESLint rule, SkipLink, prefers-reduced-motion, div→button fixes
+- **Breadcrumb** wired into 5 detail pages via PageHeader `breadcrumb` prop
+- **useCopyToClipboard** hook + copy buttons (contract#, IMEI, phone)
+- **Dashboard KPI** consumes `getComparativePL` → MoM/YoY badges
+- **QueryBoundary** on 6 remaining pages, **confirm()→ConfirmDialog** 3 pages
+- **DevOps**: `/health` endpoint (DB+S3 probes), `x-request-id` tracing, structured logging 5 services
+- **Retention crons**: ChatMessage 6mo + DocumentAuditLog 2yr
+- **Backup runbook** + restore drill checklist
+- **`.claude/rules/accounting.md`** — TFRS for NPAEs policy, chart of accounts, journal templates
+
+### Test counts after v4
+- API: **577 tests** (26 suites)
 - Web: **129 tests** (11 files)
 - TypeScript: 0 errors
 
-### Things deferred (out of scope of v1-v3)
-- VAT-on-interest (CR-001) — owner skip
+### Things deferred (out of scope of v1-v4)
+- VAT-on-interest (CR-001) — owner skip, ต้องปรึกษานักบัญชี
 - GFIN integration — รอ business flow
 - E2E expansion — มี 35 specs แต่ส่วนใหญ่เป็น smoke tests
-- accounting.service.ts spec (1115 lines, dedicated PR)
-- trade-in / contract-documents specs (deferred)
-- Off-site backup replication (GCS sync)
+- Off-site backup replication (GCS sync — runbook documented, implementation pending)
 - PII column-level encryption (PDPA strict mode)
-- ChatMessage / DocumentAuditLog retention
+- Interest recognized upfront vs accrual (N-005 — ต้อง CPA review)
+- Unearned interest field (W-003 — ต้อง business decision)

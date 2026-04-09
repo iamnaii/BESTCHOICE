@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, InternalServerErrorException } from '@nestjs/common';
 import { PlanType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { paginatedResponse } from '../../common/helpers/pagination.helper';
 
 /** User context for branch-level access control */
@@ -135,7 +136,7 @@ export class ContractsService {
     if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
 
     // Enforce branch-level access when user context is provided
-    if (user && user.role !== 'OWNER' && user.role !== 'FINANCE_MANAGER' && user.role !== 'ACCOUNTANT') {
+    if (user && !hasCrossBranchAccess(user)) {
       if (user.branchId && contract.branchId !== user.branchId) {
         throw new ForbiddenException('ไม่สามารถเข้าถึงสัญญาข้ามสาขาได้');
       }

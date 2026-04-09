@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import ExcelJS from 'exceljs';
 import { downloadExcelBuffer, importFromExcel } from '@/utils/excel.util';
 import api, { getErrorMessage } from '@/lib/api';
+import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';
 import Modal from '@/components/ui/Modal';
 import { toast } from 'sonner';
@@ -47,7 +48,7 @@ export default function PricingTemplatesPage() {
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { data: templates = [], isLoading } = useQuery<PricingTemplate[]>({
+  const { data: templates = [], isLoading, isError, error, refetch } = useQuery<PricingTemplate[]>({
     queryKey: ['pricing-templates', filterCategory, filterBrand],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -288,11 +289,14 @@ export default function PricingTemplatesPage() {
         />
       </div>
 
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-        </div>
-      ) : templates.length === 0 ? (
+      <QueryBoundary
+        isLoading={isLoading && templates.length === 0}
+        isError={isError}
+        error={error}
+        onRetry={refetch}
+        errorTitle="ไม่สามารถโหลดราคาตั้งต้นได้"
+      >
+      {templates.length === 0 ? (
         <div className="text-center py-12 bg-card rounded-lg border">
           <div className="text-muted-foreground text-sm mb-3">ยังไม่มีราคาตั้งต้น</div>
           <button onClick={openCreate} className="text-sm text-primary hover:underline">เพิ่มราคาตั้งต้นรายการแรก</button>
@@ -352,6 +356,7 @@ export default function PricingTemplatesPage() {
           </div>
         </div>
       )}
+      </QueryBoundary>
 
       {/* Create/Edit Modal */}
       {showModal && (

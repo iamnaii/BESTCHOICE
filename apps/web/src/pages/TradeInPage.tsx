@@ -5,6 +5,7 @@ import api, { getErrorMessage } from '@/lib/api';
 import { formatThaiDate } from '@/lib/date';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable, { type Column } from '@/components/ui/DataTable';
+import QueryBoundary from '@/components/QueryBoundary';
 import Modal from '@/components/ui/Modal';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -153,7 +154,7 @@ export default function TradeInPage() {
 
   /* ─── Queries ─── */
 
-  const { data, isLoading } = useQuery<TradeInsResponse>({
+  const { data, isLoading, isError, error, refetch } = useQuery<TradeInsResponse>({
     queryKey: ['trade-ins', page, debouncedSearch],
     queryFn: async () => {
       const res = await api.get('/trade-ins', {
@@ -518,21 +519,29 @@ export default function TradeInPage() {
 
       <Card>
         <CardContent className="p-0">
-          <DataTable
-            columns={columns}
-            data={data?.data || []}
-            isLoading={isLoading}
-            emptyMessage="ไม่พบรายการรับซื้อ"
-            emptyIcon={RefreshCw}
-            searchable
-            searchPlaceholder="ค้นหาลูกค้า, ยี่ห้อ, รุ่น..."
-            pagination={data ? {
-              page: data.page,
-              totalPages: Math.ceil(data.total / 50),
-              total: data.total,
-              onPageChange: setPage,
-            } : undefined}
-          />
+          <QueryBoundary
+            isLoading={isLoading && !data}
+            isError={isError}
+            error={error}
+            onRetry={refetch}
+            errorTitle="ไม่สามารถโหลดรายการรับซื้อได้"
+          >
+            <DataTable
+              columns={columns}
+              data={data?.data || []}
+              isLoading={isLoading}
+              emptyMessage="ไม่พบรายการรับซื้อ"
+              emptyIcon={RefreshCw}
+              searchable
+              searchPlaceholder="ค้นหาลูกค้า, ยี่ห้อ, รุ่น..."
+              pagination={data ? {
+                page: data.page,
+                totalPages: Math.ceil(data.total / 50),
+                total: data.total,
+                onPageChange: setPage,
+              } : undefined}
+            />
+          </QueryBoundary>
         </CardContent>
       </Card>
 

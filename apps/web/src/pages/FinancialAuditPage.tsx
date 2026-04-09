@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
+import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardContent } from '@/components/ui/card';
 import { formatDateShort } from '@/utils/formatters';
 
@@ -48,7 +49,7 @@ export default function FinancialAuditPage() {
   const [contractId, setContractId] = useState('');
   const [searchInput, setSearchInput] = useState('');
 
-  const { data, isLoading } = useQuery<{ data: AuditEntry[]; total: number }>({
+  const { data, isLoading, isError, error, refetch } = useQuery<{ data: AuditEntry[]; total: number }>({
     queryKey: ['financial-audit', contractId],
     queryFn: async () => {
       if (!contractId) return { data: [], total: 0 };
@@ -155,17 +156,21 @@ export default function FinancialAuditPage() {
         </Card>
       )}
 
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-        </div>
-      ) : data?.data && data.data.length > 0 ? (
-        <DataTable columns={columns} data={data.data} emptyMessage="ไม่พบรายการ" />
-      ) : contractId ? (
-        <div className="text-center py-12 text-muted-foreground text-sm">ไม่พบรายการธุรกรรมสำหรับสัญญานี้</div>
-      ) : (
-        <div className="text-center py-12 text-muted-foreground text-sm">กรอก Contract ID เพื่อดูประวัติธุรกรรมการเงิน</div>
-      )}
+      <QueryBoundary
+        isLoading={isLoading && !data}
+        isError={isError}
+        error={error}
+        onRetry={refetch}
+        errorTitle="ไม่สามารถโหลดบันทึกการเงินได้"
+      >
+        {data?.data && data.data.length > 0 ? (
+          <DataTable columns={columns} data={data.data} emptyMessage="ไม่พบรายการ" />
+        ) : contractId ? (
+          <div className="text-center py-12 text-muted-foreground text-sm">ไม่พบรายการธุรกรรมสำหรับสัญญานี้</div>
+        ) : (
+          <div className="text-center py-12 text-muted-foreground text-sm">กรอก Contract ID เพื่อดูประวัติธุรกรรมการเงิน</div>
+        )}
+      </QueryBoundary>
     </div>
   );
 }

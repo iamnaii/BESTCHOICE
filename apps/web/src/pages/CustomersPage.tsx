@@ -13,6 +13,7 @@ import { maskNationalId } from '@/utils/mask.util';
 import { THAI_NAME_PREFIXES, RELATIONSHIP_OPTIONS } from '@/lib/constants';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
+import QueryBoundary from '@/components/QueryBoundary';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 
 import { Card, CardContent } from '@/components/ui/card';
@@ -129,7 +130,7 @@ export default function CustomersPage() {
     }
   }, [sameAddress, addressIdCard]);
 
-  const { data: result, isLoading } = useQuery<CustomersResponse>({
+  const { data: result, isLoading, isError, error, refetch } = useQuery<CustomersResponse>({
     queryKey: ['customers', debouncedSearch, page, contractStatusFilter, hasOverdueFilter, creditStatusFilter, branchFilter, sortBy, sortOrder],
     queryFn: async () => {
       const params: Record<string, string> = {};
@@ -659,19 +660,27 @@ export default function CustomersPage() {
         )}
       </div>
 
-      <DataTable
-        columns={columns}
-        data={customers}
-        isLoading={isLoading}
-        emptyMessage="ไม่พบลูกค้า"
-        onRowDoubleClick={(c) => navigate(`/customers/${c.id}`)}
-        pagination={result ? {
-          page: result.page,
-          totalPages: result.totalPages,
-          total: result.total,
-          onPageChange: setPage,
-        } : undefined}
-      />
+      <QueryBoundary
+        isLoading={isLoading && !result}
+        isError={isError}
+        error={error}
+        onRetry={refetch}
+        errorTitle="ไม่สามารถโหลดรายชื่อลูกค้าได้"
+      >
+        <DataTable
+          columns={columns}
+          data={customers}
+          isLoading={isLoading}
+          emptyMessage="ไม่พบลูกค้า"
+          onRowDoubleClick={(c) => navigate(`/customers/${c.id}`)}
+          pagination={result ? {
+            page: result.page,
+            totalPages: result.totalPages,
+            total: result.total,
+            onPageChange: setPage,
+          } : undefined}
+        />
+      </QueryBoundary>
 
       {isModalOpen && (
       <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center pt-8 pb-8" role="dialog" aria-modal="true" aria-label="เพิ่มลูกค้าใหม่">

@@ -2,6 +2,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
+import QueryBoundary from '@/components/QueryBoundary';
 import { useAuth } from '@/contexts/AuthContext';
 import PageHeader from '@/components/ui/PageHeader';
 import {
@@ -47,7 +48,7 @@ export default function InspectionDetailPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
 
-  const { data: product, isLoading } = useQuery<ProductDetail>({
+  const { data: product, isLoading, isError, error, refetch } = useQuery<ProductDetail>({
     queryKey: ['inspection-detail', id],
     queryFn: async () => {
       const res = await api.get(`/products/${id}`);
@@ -72,11 +73,11 @@ export default function InspectionDetailPage() {
   });
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-      </div>
-    );
+    return <QueryBoundary isLoading={true} isError={false}>{null}</QueryBoundary>;
+  }
+
+  if (isError) {
+    return <QueryBoundary isLoading={false} isError={true} error={error} onRetry={refetch} errorTitle="ไม่สามารถโหลดข้อมูลสินค้าได้">{null}</QueryBoundary>;
   }
 
   if (!product) {

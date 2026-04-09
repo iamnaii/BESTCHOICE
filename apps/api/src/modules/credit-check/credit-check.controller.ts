@@ -4,6 +4,7 @@ import { CreditCheckService } from './credit-check.service';
 import { CreateCreditCheckDto, OverrideCreditCheckDto } from './dto/credit-check.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
@@ -11,7 +12,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 @ApiTags('Credit Check')
 @ApiBearerAuth('JWT')
 @Controller('credit-checks')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, BranchGuard)
 export class GlobalCreditCheckController {
   constructor(private service: CreditCheckService) {}
 

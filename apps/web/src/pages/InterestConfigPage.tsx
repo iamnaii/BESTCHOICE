@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import Modal from '@/components/ui/Modal';
+import QueryBoundary from '@/components/QueryBoundary';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
@@ -122,7 +123,7 @@ export default function InterestConfigPage() {
     saveDefaultsMutation.mutate(items);
   };
 
-  const { data: configs = [], isLoading } = useQuery<InterestConfig[]>({
+  const { data: configs = [], isLoading, isError, error, refetch } = useQuery<InterestConfig[]>({
     queryKey: ['interest-configs'],
     queryFn: async () => { const { data } = await api.get('/interest-configs'); return data; },
   });
@@ -320,11 +321,14 @@ export default function InterestConfigPage() {
 
       <h3 className="text-lg font-semibold text-foreground mb-4">ตามประเภทสินค้า</h3>
 
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-        </div>
-      ) : configs.length === 0 ? (
+      <QueryBoundary
+        isLoading={isLoading && configs.length === 0}
+        isError={isError}
+        error={error}
+        onRetry={refetch}
+        errorTitle="ไม่สามารถโหลดการตั้งค่าดอกเบี้ยได้"
+      >
+      {configs.length === 0 ? (
         <div className="text-center py-12 bg-card rounded-lg border">
           <div className="text-muted-foreground text-sm mb-3">ยังไม่มีการตั้งค่าดอกเบี้ย</div>
           <button onClick={openCreate} className="text-sm text-primary hover:underline">สร้างตั้งค่าแรก</button>
@@ -404,6 +408,7 @@ export default function InterestConfigPage() {
           })}
         </div>
       )}
+      </QueryBoundary>
 
       {/* Create/Edit Modal */}
       {showModal && (

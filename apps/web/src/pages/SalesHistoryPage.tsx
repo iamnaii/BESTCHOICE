@@ -8,6 +8,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { useAuth } from '@/contexts/AuthContext';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
+import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardContent } from '@/components/ui/card';
 import { Download, RotateCcw } from 'lucide-react';
 import { formatDateShort } from '@/utils/formatters';
@@ -121,7 +122,13 @@ export default function SalesHistoryPage() {
     return params;
   };
 
-  const { data: salesData, isLoading } = useQuery<SalesResponse>({
+  const {
+    data: salesData,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery<SalesResponse>({
     queryKey: ['sales-history', saleTypeFilter, search, startDate, endDate, paymentMethodFilter, salespersonFilter, branchFilter, contractStatusFilter, page],
     queryFn: async () => {
       const { data } = await api.get(`/sales?${buildParams()}`);
@@ -555,19 +562,27 @@ export default function SalesHistoryPage() {
       </div>
 
       {/* Sales Table */}
-      <DataTable
-        columns={columns}
-        data={salesData?.data || []}
-        isLoading={isLoading}
-        emptyMessage="ยังไม่มีรายการขาย"
-        onRowClick={(sale) => sale.contract ? navigate(`/contracts/${sale.contract.id}`) : undefined}
-        pagination={salesData ? {
-          page: salesData.page,
-          totalPages: salesData.totalPages,
-          total: salesData.total,
-          onPageChange: setPage,
-        } : undefined}
-      />
+      <QueryBoundary
+        isLoading={isLoading && !salesData}
+        isError={isError}
+        error={error}
+        onRetry={refetch}
+        errorTitle="ไม่สามารถโหลดประวัติการขายได้"
+      >
+        <DataTable
+          columns={columns}
+          data={salesData?.data || []}
+          isLoading={isLoading}
+          emptyMessage="ยังไม่มีรายการขาย"
+          onRowClick={(sale) => sale.contract ? navigate(`/contracts/${sale.contract.id}`) : undefined}
+          pagination={salesData ? {
+            page: salesData.page,
+            totalPages: salesData.totalPages,
+            total: salesData.total,
+            onPageChange: setPage,
+          } : undefined}
+        />
+      </QueryBoundary>
     </div>
   );
 }

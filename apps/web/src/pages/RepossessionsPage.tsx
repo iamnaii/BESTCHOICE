@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
+import QueryBoundary from '@/components/QueryBoundary';
 import Modal from '@/components/ui/Modal';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -89,7 +90,13 @@ export default function RepossessionsPage() {
     },
   });
 
-  const { data: repos = [], isLoading } = useQuery<Repossession[]>({
+  const {
+    data: repos = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery<Repossession[]>({
     queryKey: ['repossessions', statusFilter],
     queryFn: async () => {
       const params = statusFilter ? `?status=${statusFilter}` : '';
@@ -394,7 +401,15 @@ export default function RepossessionsPage() {
         </select>
       </div>
 
-      <DataTable columns={columns} data={repos} isLoading={isLoading} emptyMessage="ยังไม่มีการยึดคืน" />
+      <QueryBoundary
+        isLoading={isLoading && repos.length === 0}
+        isError={isError}
+        error={error}
+        onRetry={refetch}
+        errorTitle="ไม่สามารถโหลดรายการยึดคืนได้"
+      >
+        <DataTable columns={columns} data={repos} isLoading={isLoading} emptyMessage="ยังไม่มีการยึดคืน" />
+      </QueryBoundary>
 
       {/* Create Modal — full-screen overlay with live P&L breakdown */}
       {isCreateModalOpen && (

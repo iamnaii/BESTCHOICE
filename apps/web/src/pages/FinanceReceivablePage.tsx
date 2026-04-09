@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
+import QueryBoundary from '@/components/QueryBoundary';
 import { useDebounce } from '@/hooks/useDebounce';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
@@ -95,7 +96,7 @@ function BestchoiceFinanceTab() {
     queryFn: async () => (await api.get('/inter-company/profit-summary')).data,
   });
 
-  const { data: icData, isLoading: icLoading } = useQuery<{ data: InterCompanyTransaction[]; total: number }>({
+  const { data: icData, isLoading: icLoading, isError: icError, error: icErrorObj, refetch: icRefetch } = useQuery<{ data: InterCompanyTransaction[]; total: number }>({
     queryKey: ['inter-company', icPage, icStatus],
     queryFn: async () => {
       const p = new URLSearchParams({ limit: '20', page: String(icPage) });
@@ -192,7 +193,15 @@ function BestchoiceFinanceTab() {
         </div>
       </div>
 
-      <DataTable columns={icColumns} data={icData?.data || []} isLoading={icLoading} emptyMessage="ไม่พบรายการ BESTCHOICE ไฟแนนซ์" />
+      <QueryBoundary
+        isLoading={icLoading && !icData}
+        isError={icError}
+        error={icErrorObj}
+        onRetry={icRefetch}
+        errorTitle="ไม่สามารถโหลดรายการ Inter-Company ได้"
+      >
+        <DataTable columns={icColumns} data={icData?.data || []} isLoading={icLoading} emptyMessage="ไม่พบรายการ BESTCHOICE ไฟแนนซ์" />
+      </QueryBoundary>
 
       {/* Pagination */}
       {icTotalPages > 1 && (

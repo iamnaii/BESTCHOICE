@@ -127,6 +127,46 @@ export class ProductsService {
     });
   }
 
+  // === Ownership Tracking (SHOP ↔ FINANCE) ===
+
+  /**
+   * Transfer legal ownership of a product to another company entity.
+   *
+   * Use cases:
+   *  - Installment contract activated → SHOP → FINANCE
+   *  - Customer completes payoff  → FINANCE → customer (ownership cleared)
+   *  - Repossession / early termination → stays with FINANCE
+   *
+   * Must run inside a Prisma transaction together with the triggering
+   * contract/inter-company record so ownership cannot drift from the
+   * journal. Pass `tx` when calling from a larger transaction.
+   */
+  async transferOwnership(
+    productId: string,
+    toCompanyId: string | null,
+    tx?: Prisma.TransactionClient,
+  ) {
+    const client = tx ?? this.prisma;
+    const product = await client.product.findFirst({
+      where: { id: productId, deletedAt: null },
+      select: { id: true, ownedByCompanyId: true },
+    });
+    if (!product) {
+      throw new NotFoundException('ไม่พบสินค้า');
+    }
+    if (product.ownedByCompanyId === toCompanyId) {
+      return product;
+    }
+    this.logger.log(
+      `Product ${productId} ownership: ${product.ownedByCompanyId ?? 'null'} → ${toCompanyId ?? 'null'}`,
+    );
+    return client.product.update({
+      where: { id: productId },
+      data: { ownedByCompanyId: toCompanyId },
+      select: { id: true, ownedByCompanyId: true },
+    });
+  }
+
   // === Workflow Tracker ===
 
   /**

@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDebounce } from '@/hooks/useDebounce';
+import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
@@ -85,7 +86,7 @@ export default function StockAdjustmentsPage() {
     },
   });
 
-  const { data: adjustmentsData, isLoading } = useQuery<{
+  const { data: adjustmentsData, isLoading, isError, error, refetch } = useQuery<{
     data: StockAdjustment[];
     total: number;
     page: number;
@@ -325,6 +326,13 @@ export default function StockAdjustmentsPage() {
 
       {/* List Tab */}
       {activeTab === 'list' && (
+        <QueryBoundary
+          isLoading={isLoading && !adjustmentsData}
+          isError={isError}
+          error={error}
+          onRetry={refetch}
+          errorTitle="ไม่สามารถโหลดรายการปรับสต็อกได้"
+        >
         <>
           <DataTable columns={columns} data={adjustments} isLoading={isLoading} emptyMessage="ไม่มีรายการปรับสต็อก" />
           {adjustmentsData && adjustmentsData.totalPages > 1 && (
@@ -349,6 +357,7 @@ export default function StockAdjustmentsPage() {
             </div>
           )}
         </>
+        </QueryBoundary>
       )}
 
       {/* Summary Tab */}

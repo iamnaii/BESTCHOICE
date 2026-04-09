@@ -8,6 +8,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { formatDateShort } from '@/utils/formatters';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
+import QueryBoundary from '@/components/QueryBoundary';
 import Modal from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
@@ -253,7 +254,13 @@ export default function CreditChecksPage() {
   };
 
   // Main data query
-  const { data: creditChecksData, isLoading } = useQuery<CreditChecksResponse>({
+  const {
+    data: creditChecksData,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery<CreditChecksResponse>({
     queryKey: ['credit-checks', debouncedSearch, statusFilter, startDate, endDate, branchFilter, page],
     queryFn: async () => {
       const { data } = await api.get(`/credit-checks?${buildParams()}`);
@@ -760,11 +767,13 @@ export default function CreditChecksPage() {
         </div>
       </div>
 
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600" />
-        </div>
-      ) : (
+      <QueryBoundary
+        isLoading={isLoading}
+        isError={isError}
+        error={error}
+        onRetry={refetch}
+        errorTitle="ไม่สามารถโหลดรายการตรวจเครดิตได้"
+      >
         <>
           <DataTable
             columns={columns}
@@ -872,7 +881,7 @@ export default function CreditChecksPage() {
             );
           })()}
         </>
-      )}
+      </QueryBoundary>
 
       {/* Create Full-Screen Overlay */}
       {showCreateModal && (

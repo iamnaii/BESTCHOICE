@@ -1,4 +1,5 @@
-import { Component, ReactNode } from 'react';
+import { Component, ErrorInfo, ReactNode } from 'react';
+import * as Sentry from '@sentry/react';
 
 interface Props {
   children: ReactNode;
@@ -14,6 +15,19 @@ export default class ErrorBoundary extends Component<Props, State> {
 
   static getDerivedStateFromError(error: Error) {
     return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    // Forward the crash to Sentry so we learn about it in production.
+    // Sentry.init() is a no-op when VITE_SENTRY_DSN is not configured,
+    // so this is also safe in dev.
+    Sentry.withScope((scope) => {
+      scope.setTag('error.boundary', 'root');
+      scope.setExtras({
+        componentStack: errorInfo.componentStack,
+      });
+      Sentry.captureException(error);
+    });
   }
 
   componentDidUpdate(prevProps: Props) {

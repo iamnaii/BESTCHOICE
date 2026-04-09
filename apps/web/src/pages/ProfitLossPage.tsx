@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
+import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { TrendingUp, TrendingDown, DollarSign, ArrowDown, ArrowUp, Minus } from 'lucide-react';
@@ -107,7 +108,7 @@ export default function ProfitLossPage() {
     queryFn: async () => (await api.get('/branches')).data,
   });
 
-  const { data: pl, isLoading } = useQuery<PLData>({
+  const { data: pl, isLoading, isError, error, refetch } = useQuery<PLData>({
     queryKey: ['profit-loss', startDate, endDate, branchId, companyId],
     queryFn: async () => {
       const params = new URLSearchParams({ startDate, endDate });
@@ -172,11 +173,14 @@ export default function ProfitLossPage() {
         </div>
       </div>
 
-      {isLoading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-        </div>
-      ) : pl ? (
+      <QueryBoundary
+        isLoading={isLoading && !pl}
+        isError={isError}
+        error={error}
+        onRetry={refetch}
+        errorTitle="ไม่สามารถโหลดงบกำไรขาดทุนได้"
+      >
+      {pl ? (
         <>
           {/* Summary Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -328,6 +332,7 @@ export default function ProfitLossPage() {
           </Card>
         </>
       ) : null}
+      </QueryBoundary>
     </div>
   );
 }

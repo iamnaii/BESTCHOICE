@@ -6,6 +6,7 @@ import api, { getErrorMessage } from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
+import QueryBoundary from '@/components/QueryBoundary';
 import { useAuth } from '@/contexts/AuthContext';
 import AddressForm, { AddressData, emptyAddress, serializeAddress, deserializeAddress } from '@/components/ui/AddressForm';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -103,7 +104,13 @@ export default function SuppliersPage() {
 
   useEffect(() => { setPage(1); }, [debouncedSearch, filterActive]);
 
-  const { data: result, isLoading } = useQuery<{ data: Supplier[]; total: number; page: number; totalPages: number }>({
+  const {
+    data: result,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery<{ data: Supplier[]; total: number; page: number; totalPages: number }>({
     queryKey: ['suppliers', debouncedSearch, filterActive, page],
     queryFn: async () => {
       const params: Record<string, string> = {};
@@ -449,18 +456,26 @@ export default function SuppliersPage() {
         </select>
       </div>
 
-      <DataTable
-        columns={columns}
-        data={suppliers}
-        isLoading={isLoading}
-        emptyMessage="ไม่พบผู้ขาย"
-        pagination={result ? {
-          page: result.page,
-          totalPages: result.totalPages,
-          total: result.total,
-          onPageChange: setPage,
-        } : undefined}
-      />
+      <QueryBoundary
+        isLoading={isLoading && !result}
+        isError={isError}
+        error={error}
+        onRetry={refetch}
+        errorTitle="ไม่สามารถโหลดรายชื่อผู้ขายได้"
+      >
+        <DataTable
+          columns={columns}
+          data={suppliers}
+          isLoading={isLoading}
+          emptyMessage="ไม่พบผู้ขาย"
+          pagination={result ? {
+            page: result.page,
+            totalPages: result.totalPages,
+            total: result.total,
+            onPageChange: setPage,
+          } : undefined}
+        />
+      </QueryBoundary>
 
       {/* Create/Edit Modal */}
       {isModalOpen && (

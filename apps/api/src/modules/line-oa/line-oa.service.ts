@@ -394,7 +394,7 @@ export class LineOaService {
 
     // Fallback to main warehouse branch
     return this.prisma.branch.findFirst({
-      where: { isMainWarehouse: true, isActive: true },
+      where: { isMainWarehouse: true, isActive: true, deletedAt: null },
       select: { name: true, phone: true, location: true },
     });
   }

@@ -4,6 +4,7 @@ import { ReceiptsService } from '../receipts/receipts.service';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
+import { ProductsService } from '../products/products.service';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 
 /**
@@ -75,6 +76,7 @@ describe('PaymentsService — Financial Integration', () => {
         { provide: ReceiptsService, useValue: { generateReceipt: jest.fn().mockResolvedValue({}) } },
         { provide: AuditService, useValue: { logPaymentEvent: jest.fn().mockResolvedValue(undefined) } },
         { provide: JournalAutoService, useValue: { recordPayment: jest.fn(), recordExpense: jest.fn(), recordContractActivation: jest.fn() } },
+        { provide: ProductsService, useValue: { transferOwnership: jest.fn() } },
       ],
     }).compile();
 

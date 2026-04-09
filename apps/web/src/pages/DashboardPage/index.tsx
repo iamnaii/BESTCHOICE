@@ -2,6 +2,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { DashboardSkeleton } from '@/components/ui/page-skeletons';
+import QueryBoundary from '@/components/QueryBoundary';
 import DashboardAlerts from './components/DashboardAlerts';
 import DashboardKPIs from './components/DashboardKPIs';
 import DashboardWatchList from './components/DashboardWatchList';
@@ -124,6 +125,7 @@ export default function DashboardPage() {
   });
 
   if (kpisLoading && !kpis) return <DashboardSkeleton />;
+  if (kpisError) return <QueryBoundary isLoading={false} isError={true} error={null} onRetry={refetchKpis} errorTitle="ไม่สามารถโหลด Dashboard ได้">{null}</QueryBoundary>;
 
   return (
     <div className="flex flex-col gap-5 lg:gap-7.5">

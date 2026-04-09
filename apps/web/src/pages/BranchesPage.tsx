@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
+import QueryBoundary from '@/components/QueryBoundary';
 import { useAuth } from '@/contexts/AuthContext';
 import AddressForm, { AddressData, emptyAddress, composeAddress, deserializeAddress } from '@/components/ui/AddressForm';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -27,7 +28,13 @@ export default function BranchesPage() {
   const [address, setAddress] = useState<AddressData>(emptyAddress);
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
 
-  const { data: branches = [], isLoading } = useQuery<Branch[]>({
+  const {
+    data: branches = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery<Branch[]>({
     queryKey: ['branches'],
     queryFn: async () => {
       const { data } = await api.get('/branches');
@@ -171,7 +178,15 @@ export default function BranchesPage() {
       />
 
       <div className="rounded-xl border border-border/60 overflow-hidden">
-        <DataTable columns={columns} data={branches} isLoading={isLoading} />
+        <QueryBoundary
+          isLoading={isLoading && branches.length === 0}
+          isError={isError}
+          error={error}
+          onRetry={refetch}
+          errorTitle="ไม่สามารถโหลดรายชื่อสาขาได้"
+        >
+          <DataTable columns={columns} data={branches} isLoading={isLoading} />
+        </QueryBoundary>
       </div>
 
       {isModalOpen && (

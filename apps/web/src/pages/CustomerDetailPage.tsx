@@ -2,6 +2,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
+import QueryBoundary from '@/components/QueryBoundary';
 import DataTable from '@/components/ui/DataTable';
 import AddressForm, { AddressData, emptyAddress, displayAddress, serializeAddress, deserializeAddress } from '@/components/ui/AddressForm';
 import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card';
@@ -155,7 +156,13 @@ export default function CustomerDetailPage() {
 
   const canEdit = user && ['OWNER', 'BRANCH_MANAGER'].includes(user.role);
 
-  const { data: customer, isLoading } = useQuery<CustomerDetail>({
+  const {
+    data: customer,
+    isLoading,
+    isError: customerError,
+    error: customerErrorDetail,
+    refetch: refetchCustomer,
+  } = useQuery<CustomerDetail>({
     queryKey: ['customer', id],
     queryFn: async () => { const { data } = await api.get(`/customers/${id}`); return data; },
   });
@@ -338,6 +345,20 @@ export default function CustomerDetailPage() {
     },
     enabled: user?.role === 'OWNER',
   });
+
+  if (customerError) {
+    return (
+      <QueryBoundary
+        isLoading={false}
+        isError={true}
+        error={customerErrorDetail}
+        onRetry={refetchCustomer}
+        errorTitle="ไม่สามารถโหลดข้อมูลลูกค้าได้"
+      >
+        <div />
+      </QueryBoundary>
+    );
+  }
 
   if (isLoading || !customer) {
     return <DetailPageSkeleton />;

@@ -34,7 +34,7 @@ export class ReportGeneratorService {
 
     const [payments, newContracts, newCustomers, overdueCount] = await Promise.all([
       this.prisma.payment.aggregate({
-        where: { paidDate: { gte: startOfDay, lt: endOfDay }, status: 'PAID' },
+        where: { paidDate: { gte: startOfDay, lt: endOfDay }, status: 'PAID', deletedAt: null },
         _sum: { amountPaid: true },
         _count: true,
       }),
@@ -45,7 +45,11 @@ export class ReportGeneratorService {
         where: { createdAt: { gte: startOfDay, lt: endOfDay }, deletedAt: null },
       }),
       this.prisma.payment.count({
-        where: { status: { in: ['OVERDUE', 'PENDING'] }, dueDate: { lt: startOfDay } },
+        where: {
+          status: { in: ['OVERDUE', 'PENDING'] },
+          dueDate: { lt: startOfDay },
+          deletedAt: null,
+        },
       }),
     ]);
 

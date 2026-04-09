@@ -14,13 +14,15 @@ import { FinanceReceivableService } from './finance-receivable.service';
 import { RecordReceiveDto, UpdateFinanceReceivableDto } from './dto/finance-receivable.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { BranchGuard } from '../auth/guards/branch.guard';
+import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { FinanceReceivableStatus } from '@prisma/client';
 
 @ApiTags('Finance')
 @ApiBearerAuth('JWT')
 @Controller('finance-receivable')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, BranchGuard)
 export class FinanceReceivableController {
   constructor(private service: FinanceReceivableService) {}
 
@@ -37,10 +39,9 @@ export class FinanceReceivableController {
     @Query('limit') limit?: string,
     @Request() req?: { user: { role: string; branchId?: string } },
   ) {
-    const effectiveBranchId =
-      req?.user?.role === 'OWNER' || req?.user?.role === 'FINANCE_MANAGER' || req?.user?.role === 'ACCOUNTANT'
-        ? branchId
-        : req?.user?.branchId || branchId;
+    const effectiveBranchId = hasCrossBranchAccess(req?.user)
+      ? branchId
+      : req?.user?.branchId || branchId;
 
     return this.service.findAll({
       status,
@@ -60,10 +61,9 @@ export class FinanceReceivableController {
     @Query('branchId') branchId?: string,
     @Request() req?: { user: { role: string; branchId?: string } },
   ) {
-    const effectiveBranchId =
-      req?.user?.role === 'OWNER' || req?.user?.role === 'FINANCE_MANAGER' || req?.user?.role === 'ACCOUNTANT'
-        ? branchId
-        : req?.user?.branchId || branchId;
+    const effectiveBranchId = hasCrossBranchAccess(req?.user)
+      ? branchId
+      : req?.user?.branchId || branchId;
     return this.service.getSummary(effectiveBranchId);
   }
 

@@ -827,7 +827,7 @@ export class ProductsStockService {
    */
   async getSupplierPerformance() {
     const suppliers = await this.prisma.supplier.findMany({
-      where: { isActive: true },
+      where: { isActive: true, deletedAt: null },
       select: { id: true, name: true },
     });
 

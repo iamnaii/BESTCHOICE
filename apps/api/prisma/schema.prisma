@@ -731,14 +731,16 @@ model POItem {
   accessoryBrand String?  @map("accessory_brand")
   quantity       Int
   unitPrice      Decimal  @map("unit_price") @db.Decimal(12, 2)
-  receivedQty    Int      @default(0) @map("received_qty")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  receivedQty    Int       @default(0) @map("received_qty")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
 
   purchaseOrder  PurchaseOrder        @relation(fields: [poId], references: [id], onDelete: Cascade)
   receivingItems GoodsReceivingItem[]
 
   @@index([poId])
+  @@index([deletedAt])
   @@map("po_items")
 }
 
@@ -756,6 +758,10 @@ model Product {
   supplierId         String?         @map("supplier_id")
   poId               String?         @map("po_id")
   branchId           String          @map("branch_id")
+  // Ownership tracking: which legal entity owns this product right now.
+  // Default = branch's company (SHOP). When an installment contract becomes
+  // ACTIVE, ownership transfers to FINANCE until payoff/repossession.
+  ownedByCompanyId   String?         @map("owned_by_company_id")
   status             ProductStatus   @default(IN_STOCK)
   batteryHealth      Int?            @map("battery_health")
   warrantyExpired    Boolean?        @map("warranty_expired")
@@ -778,6 +784,7 @@ model Product {
   supplier   Supplier?      @relation(fields: [supplierId], references: [id])
   po         PurchaseOrder? @relation(fields: [poId], references: [id])
   branch     Branch         @relation(fields: [branchId], references: [id])
+  ownedBy    CompanyInfo?   @relation("ProductOwnership", fields: [ownedByCompanyId], references: [id])
   inspection Inspection?    @relation(fields: [inspectionId], references: [id])
 
   prices               ProductPrice[]
@@ -800,6 +807,7 @@ model Product {
   @@index([deletedAt])
   @@index([createdAt])
   @@index([branchId, status])
+  @@index([ownedByCompanyId])
   @@map("products")
 }
 
@@ -1045,11 +1053,13 @@ model InspectionResult {
   notes          String?
   createdAt      DateTime        @default(now()) @map("created_at")
   updatedAt      DateTime        @updatedAt @map("updated_at")
+  deletedAt      DateTime?       @map("deleted_at")
 
   inspection   Inspection             @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
   templateItem InspectionTemplateItem @relation(fields: [templateItemId], references: [id])
 
   @@index([inspectionId])
+  @@index([deletedAt])
   @@map("inspection_results")
 }
 
@@ -1828,6 +1838,7 @@ model CompanyInfo {
   toInterCompanyTx   InterCompanyTransaction[] @relation("ICToCompany")
   journalEntries     JournalEntry[]
   taxReports         TaxReport[]
+  ownedProducts      Product[]                 @relation("ProductOwnership")
 
   @@map("company_info")
 }
@@ -1947,6 +1958,7 @@ model PaymentLink {
   expiresAt  DateTime          @map("expires_at")
   usedAt     DateTime?         @map("used_at")
   createdAt  DateTime          @default(now()) @map("created_at")
+  deletedAt  DateTime?         @map("deleted_at")
 
   contract Contract @relation(fields: [contractId], references: [id])
   payment  Payment? @relation(fields: [paymentId], references: [id])
@@ -1954,6 +1966,7 @@ model PaymentLink {
   @@index([token])
   @@index([contractId])
   @@index([status])
+  @@index([deletedAt])
   @@map("payment_links")
 }
 
@@ -2522,12 +2535,13 @@ model Promotion {
 }
 
 model PromotionUsage {
-  id              String   @id @default(uuid())
-  promotionId     String   @map("promotion_id")
-  saleId          String?  @map("sale_id")
-  customerId      String   @map("customer_id")
-  discountApplied Decimal  @map("discount_applied") @db.Decimal(12, 2)
-  createdAt       DateTime @default(now()) @map("created_at")
+  id              String    @id @default(uuid())
+  promotionId     String    @map("promotion_id")
+  saleId          String?   @map("sale_id")
+  customerId      String    @map("customer_id")
+  discountApplied Decimal   @map("discount_applied") @db.Decimal(12, 2)
+  createdAt       DateTime  @default(now()) @map("created_at")
+  deletedAt       DateTime? @map("deleted_at")
 
   promotion Promotion @relation(fields: [promotionId], references: [id])
   sale      Sale?     @relation(fields: [saleId], references: [id])
@@ -2536,6 +2550,7 @@ model PromotionUsage {
   @@index([promotionId])
   @@index([saleId])
   @@index([customerId])
+  @@index([deletedAt])
   @@map("promotion_usages")
 }
 
@@ -2682,11 +2697,13 @@ model CustomerLineLink {
   channel    LineChannelType
   linkedAt   DateTime        @default(now()) @map("linked_at")
   unlinkedAt DateTime?       @map("unlinked_at")
+  deletedAt  DateTime?       @map("deleted_at")
 
   @@unique([lineUserId, channel])
   @@unique([customerId, channel])
   @@index([customerId])
   @@index([lineUserId])
+  @@index([deletedAt])
   @@map("customer_line_links")
 }
 
@@ -2756,11 +2773,13 @@ model ChatMessage {
   paymentId String? @map("payment_id")
   receiptId String? @map("receipt_id")
 
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  deletedAt DateTime? @map("deleted_at")
 
   @@index([sessionId, createdAt])
   @@index([intent])
   @@index([role])
+  @@index([deletedAt])
   @@map("chat_messages")
 }
 
@@ -2814,11 +2833,13 @@ model ChatAutoTrigger {
   messageId    String? @map("message_id")
   errorMessage String? @map("error_message")
 
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  deletedAt DateTime? @map("deleted_at")
 
   @@unique([customerId, referenceKey])
   @@index([scheduledFor, status])
   @@index([customerId])
+  @@index([deletedAt])
   @@map("chat_auto_triggers")
 }
 

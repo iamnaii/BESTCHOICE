@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
+import * as Sentry from '@sentry/react';
 import api, { setAccessToken, getAccessToken } from '@/lib/api';
 
 interface User {
@@ -8,6 +9,23 @@ interface User {
   role: string;
   branchId: string | null;
   branchName?: string | null;
+}
+
+/**
+ * Tag Sentry events with the logged-in user so we know WHO hit an error.
+ * We only pass id + role + branchId — no PII (email/name) per our
+ * Sentry `beforeSend` redaction policy.
+ */
+function setSentryUser(user: User | null) {
+  if (user) {
+    Sentry.setUser({
+      id: user.id,
+      role: user.role,
+      branchId: user.branchId ?? undefined,
+    } as Sentry.User);
+  } else {
+    Sentry.setUser(null);
+  }
 }
 
 interface AuthContextType {
@@ -32,6 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setAccessToken(null);
     setUser(null);
+    setSentryUser(null);
   }, []);
 
   const fetchMe = useCallback(async () => {
@@ -42,14 +61,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
       const { data } = await api.get('/auth/me', { timeout: 10000 });
-      setUser({
+      const nextUser: User = {
         id: data.id,
         email: data.email,
         name: data.name,
         role: data.role,
         branchId: data.branchId,
         branchName: data.branch?.name || null,
-      });
+      };
+      setUser(nextUser);
+      setSentryUser(nextUser);
     } catch (error: unknown) {
       const axiosError = error as { response?: { status?: number }; code?: string };
       // Only logout on explicit 401 (unauthorized) - token refresh is handled by api.ts interceptor
@@ -87,14 +108,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data } = res;
     setAccessToken(data.accessToken);
     // refresh token is stored in httpOnly cookie by the server
-    setUser({
+    const nextUser: User = {
       id: data.user.id,
       email: data.user.email,
       name: data.user.name,
       role: data.user.role,
       branchId: data.user.branchId,
       branchName: data.user.branchName ?? data.user.branch?.name ?? null,
-    });
+    };
+    setUser(nextUser);
+    setSentryUser(nextUser);
   }, []);
 
   const value = useMemo(() => ({

@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import { useDebounce } from '@/hooks/useDebounce';
+import QueryBoundary from '@/components/QueryBoundary';
 import { formatDateTimeSeconds } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { toast } from 'sonner';
@@ -89,7 +90,7 @@ export default function AuditLogsPage() {
     queryFn: async () => (await api.get('/audit/stats')).data,
   });
 
-  const { data: result, isLoading } = useQuery<{
+  const { data: result, isLoading, isError, error, refetch } = useQuery<{
     data: AuditLog[];
     total: number;
     page: number;
@@ -230,11 +231,14 @@ export default function AuditLogsPage() {
 
       {/* Logs Table */}
       <div className="bg-card rounded-lg border border-border overflow-hidden">
-        {isLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-          </div>
-        ) : logs.length === 0 ? (
+        <QueryBoundary
+          isLoading={isLoading && !result}
+          isError={isError}
+          error={error}
+          onRetry={refetch}
+          errorTitle="ไม่สามารถโหลดบันทึกการตรวจสอบได้"
+        >
+        {logs.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">ไม่พบข้อมูล</div>
         ) : (
           <div className="overflow-x-auto">
@@ -355,6 +359,7 @@ export default function AuditLogsPage() {
             </div>
           </div>
         )}
+        </QueryBoundary>
       </div>
     </div>
   );

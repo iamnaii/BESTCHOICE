@@ -4,6 +4,7 @@ import api, { getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
+import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { DollarSign, CheckCircle, Clock, Banknote } from 'lucide-react';
@@ -38,7 +39,13 @@ export default function CommissionsPage() {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
 
-  const { data: commissions = [], isLoading } = useQuery<Commission[]>({
+  const {
+    data: commissions = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery<Commission[]>({
     queryKey: ['commissions', statusFilter, periodMonth, isSales],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -263,17 +270,19 @@ export default function CommissionsPage() {
       </div>
 
       {/* Table */}
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-        </div>
-      ) : (
+      <QueryBoundary
+        isLoading={isLoading}
+        isError={isError}
+        error={error}
+        onRetry={refetch}
+        errorTitle="ไม่สามารถโหลดข้อมูลคอมมิชชันได้"
+      >
         <DataTable
           columns={columns}
           data={Array.isArray(commissions) ? commissions : []}
           emptyMessage="ไม่พบข้อมูลคอมมิชชัน"
         />
-      )}
+      </QueryBoundary>
     </div>
   );
 }

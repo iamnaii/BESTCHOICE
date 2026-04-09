@@ -9,6 +9,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { exportToExcel } from '@/utils/excel.util';
 import { toast } from 'sonner';
 import { formatDateShort } from '@/utils/formatters';
+import QueryBoundary from '@/components/QueryBoundary';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 
 interface Receipt {
@@ -78,7 +79,7 @@ function ReceiptsPage() {
     return params;
   };
 
-  const { data: result, isLoading } = useQuery<ReceiptsResponse>({
+  const { data: result, isLoading, isError, error, refetch } = useQuery<ReceiptsResponse>({
     queryKey: ['receipts', debouncedSearch, receiptType, dateFrom, dateTo, page],
     queryFn: async () => {
       const { data } = await api.get(`/receipts?${buildParams()}`);
@@ -289,18 +290,26 @@ function ReceiptsPage() {
       </div>
 
       {/* Table */}
-      <DataTable
-        columns={columns}
-        data={receipts}
-        isLoading={isLoading}
-        emptyMessage="ไม่พบใบเสร็จ"
-        pagination={result ? {
-          page: result.page,
-          totalPages: result.totalPages,
-          total: result.total,
-          onPageChange: setPage,
-        } : undefined}
-      />
+      <QueryBoundary
+        isLoading={isLoading && !result}
+        isError={isError}
+        error={error}
+        onRetry={refetch}
+        errorTitle="ไม่สามารถโหลดใบเสร็จได้"
+      >
+        <DataTable
+          columns={columns}
+          data={receipts}
+          isLoading={isLoading}
+          emptyMessage="ไม่พบใบเสร็จ"
+          pagination={result ? {
+            page: result.page,
+            totalPages: result.totalPages,
+            total: result.total,
+            onPageChange: setPage,
+          } : undefined}
+        />
+      </QueryBoundary>
 
       {/* Receipt Detail Modal (with print + void) */}
       <ReceiptModal

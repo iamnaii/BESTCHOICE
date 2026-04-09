@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useDebounce } from '@/hooks/useDebounce';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
+import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { formatDateShort } from '@/utils/formatters';
@@ -86,7 +87,13 @@ export default function OverduePage() {
     enabled: isOwnerOrManager,
   });
 
-  const { data: overduePayments = [], isLoading } = useQuery<OverduePayment[]>({
+  const {
+    data: overduePayments = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery<OverduePayment[]>({
     queryKey: ['overdue-payments', filter, debouncedSearch, branchFilter, dunningFilter],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -483,11 +490,15 @@ export default function OverduePage() {
         </select>
       </div>
 
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>
-      ) : (
+      <QueryBoundary
+        isLoading={isLoading}
+        isError={isError}
+        error={error}
+        onRetry={refetch}
+        errorTitle="ไม่สามารถโหลดรายการค้างชำระได้"
+      >
         <DataTable columns={columns} data={overduePayments} emptyMessage="ไม่มีรายการค้างชำระ" />
-      )}
+      </QueryBoundary>
 
       {/* Assign Collector Modal */}
       {assignContractId && (

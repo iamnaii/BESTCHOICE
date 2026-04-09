@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
+import QueryBoundary from '@/components/QueryBoundary';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatDateTime } from '@/utils/formatters';
 
@@ -62,7 +63,7 @@ function DocumentDashboardPage() {
   const { user } = useAuth();
   const [selectedBranch, setSelectedBranch] = useState<string>('');
 
-  const { data: stats, isLoading } = useQuery<DocumentStats>({
+  const { data: stats, isLoading, isError, error, refetch } = useQuery<DocumentStats>({
     queryKey: ['document-dashboard', selectedBranch],
     queryFn: async () => {
       const params = selectedBranch ? { branchId: selectedBranch } : {};
@@ -80,14 +81,6 @@ function DocumentDashboardPage() {
     },
   });
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-      </div>
-    );
-  }
-
   const s = stats || {
     totalContracts: 0, fullyDocumented: 0, pendingDocuments: 0,
     pendingSignatures: 0, pendingApproval: 0, overdueContracts: 0,
@@ -95,6 +88,13 @@ function DocumentDashboardPage() {
   };
 
   return (
+    <QueryBoundary
+      isLoading={isLoading && !stats}
+      isError={isError}
+      error={error}
+      onRetry={refetch}
+      errorTitle="ไม่สามารถโหลดสถานะเอกสารได้"
+    >
     <div className="animate-fade-in">
       <PageHeader title="สถานะเอกสารสัญญา" subtitle="ภาพรวมสถานะเอกสาร ลายเซ็น และการอนุมัติ" />
 
@@ -211,6 +211,7 @@ function DocumentDashboardPage() {
         </div>
       </div>
     </div>
+    </QueryBoundary>
   );
 }
 

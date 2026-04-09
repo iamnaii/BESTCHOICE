@@ -8,12 +8,15 @@ export class InterestConfigService {
 
   async findAll() {
     return this.prisma.interestConfig.findMany({
+      where: { deletedAt: null },
       orderBy: { createdAt: 'asc' },
     });
   }
 
   async findOne(id: string) {
-    const config = await this.prisma.interestConfig.findUnique({ where: { id } });
+    const config = await this.prisma.interestConfig.findFirst({
+      where: { id, deletedAt: null },
+    });
     if (!config) throw new NotFoundException('ไม่พบการตั้งค่าดอกเบี้ย');
     return config;
   }
@@ -22,6 +25,7 @@ export class InterestConfigService {
     const config = await this.prisma.interestConfig.findFirst({
       where: {
         isActive: true,
+        deletedAt: null,
         productCategories: { has: category },
       },
     });
@@ -56,10 +60,11 @@ export class InterestConfigService {
 
   async remove(id: string) {
     await this.findOne(id);
-    // Soft-delete to avoid breaking FK references from existing contracts
+    // Soft-delete to avoid breaking FK references from existing contracts.
+    // Also mark inactive so dropdowns/finders hide it.
     return this.prisma.interestConfig.update({
       where: { id },
-      data: { isActive: false },
+      data: { isActive: false, deletedAt: new Date() },
     });
   }
 }

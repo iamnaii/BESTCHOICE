@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
@@ -91,6 +92,7 @@ const conditionOptions = [
 /* ─── Component ─── */
 
 export default function TradeInPage() {
+  useDocumentTitle('รับซื้อเครื่อง');
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const canManage = ['OWNER', 'BRANCH_MANAGER'].includes(user?.role ?? '');

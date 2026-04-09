@@ -148,7 +148,7 @@ export default function RegisterInvitePage() {
             <label htmlFor="name" className="block text-2sm font-medium text-foreground mb-1.5">
               ชื่อ-นามสกุล *
             </label>
-            <input id="name" type="text" value={name} onChange={(e) => setName(e.target.value)} className={inputClass} placeholder="ชื่อ-นามสกุล" required />
+            <input id="name" type="text" value={name} onChange={(e) => setName(e.target.value)} className={inputClass} placeholder="ชื่อ-นามสกุล" autoComplete="name" required />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -162,7 +162,7 @@ export default function RegisterInvitePage() {
               <label htmlFor="phone" className="block text-2sm font-medium text-foreground mb-1.5">
                 เบอร์โทรศัพท์
               </label>
-              <input id="phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className={inputClass} placeholder="0xx-xxx-xxxx" />
+              <input id="phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className={inputClass} placeholder="0xx-xxx-xxxx" autoComplete="tel" />
             </div>
           </div>
 
@@ -170,14 +170,14 @@ export default function RegisterInvitePage() {
             <label htmlFor="password" className="block text-2sm font-medium text-foreground mb-1.5">
               รหัสผ่าน *
             </label>
-            <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} className={inputClass} placeholder="อย่างน้อย 8 ตัวอักษร" required minLength={8} />
+            <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} className={inputClass} placeholder="อย่างน้อย 8 ตัวอักษร" autoComplete="new-password" required minLength={8} />
           </div>
 
           <div>
             <label htmlFor="confirmPassword" className="block text-2sm font-medium text-foreground mb-1.5">
               ยืนยันรหัสผ่าน *
             </label>
-            <input id="confirmPassword" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className={inputClass} placeholder="ยืนยันรหัสผ่าน" required minLength={8} />
+            <input id="confirmPassword" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className={inputClass} placeholder="ยืนยันรหัสผ่าน" autoComplete="new-password" required minLength={8} />
           </div>
 
           <button

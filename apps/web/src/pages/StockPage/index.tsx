@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
@@ -18,6 +19,7 @@ import { BulkTransferModal } from './components/BulkTransferModal';
 import { PriceManagementModal } from './components/PriceManagementModal';
 
 export default function StockPage() {
+  useDocumentTitle('สต็อกสินค้า');
   const navigate = useNavigate();
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
 

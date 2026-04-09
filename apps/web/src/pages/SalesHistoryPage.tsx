@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { exportToExcel, type ExcelColumn } from '@/utils/excel.util';
@@ -78,6 +79,7 @@ const contractStatusLabels: Record<string, string> = {
 };
 
 export default function SalesHistoryPage() {
+  useDocumentTitle('รายการขาย');
   const navigate = useNavigate();
   const { user } = useAuth();
   const isOwner = user?.role === 'OWNER';

@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
@@ -45,6 +46,7 @@ interface TimelineEvent {
 }
 
 export default function OverduePage() {
+  useDocumentTitle('ค้างชำระ');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();

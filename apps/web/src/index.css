@@ -53,6 +53,21 @@
     --chart-3: 48 96% 53%;
     --chart-4: 0 84% 60%;
     --chart-5: 271 91% 65%;
+    /* Hero gradient colors */
+    --color-hero-1: #1b2559;
+    --color-hero-2: #1b3a8a;
+    --color-hero-3: #1b84ff;
+    --color-hero-4: #3699ff;
+    --color-hero-5: #69b3ff;
+    /* Tiptap editor colors */
+    --color-editor-text: #1a1a1a;
+    --color-editor-heading: #111;
+    --color-editor-subheading: #222;
+    --color-editor-blockquote-border: #d1d5db;
+    --color-editor-blockquote-text: #4b5563;
+    --color-editor-variable-bg: #d1fae5;
+    --color-editor-variable-text: #047857;
+    --color-editor-placeholder: #9ca3af;
   }
 
   .dark {
@@ -143,7 +158,7 @@ body {
     @apply bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-indigo-500;
   }
   .bg-hero-gradient {
-    background: linear-gradient(135deg, #1b2559 0%, #1b3a8a 25%, #1b84ff 50%, #3699ff 75%, #69b3ff 100%);
+    background: linear-gradient(135deg, var(--color-hero-1) 0%, var(--color-hero-2) 25%, var(--color-hero-3) 50%, var(--color-hero-4) 75%, var(--color-hero-5) 100%);
   }
   .glass-card {
     @apply bg-white/80 backdrop-blur-sm border border-white/20;
@@ -174,7 +189,7 @@ body {
   font-family: 'Noto Sans Thai', sans-serif;
   font-size: 18px;
   line-height: 1.8;
-  color: #1a1a1a;
+  color: var(--color-editor-text);
 }
 
 .tiptap.ProseMirror p {
@@ -185,21 +200,21 @@ body {
   font-size: 1.5em;
   font-weight: 700;
   margin: 0.5em 0 0.3em;
-  color: #111;
+  color: var(--color-editor-heading);
 }
 
 .tiptap.ProseMirror h2 {
   font-size: 1.25em;
   font-weight: 700;
   margin: 0.4em 0 0.25em;
-  color: #111;
+  color: var(--color-editor-heading);
 }
 
 .tiptap.ProseMirror h3 {
   font-size: 1.1em;
   font-weight: 700;
   margin: 0.3em 0 0.2em;
-  color: #222;
+  color: var(--color-editor-subheading);
 }
 
 .tiptap.ProseMirror ul,
@@ -213,10 +228,10 @@ body {
 }
 
 .tiptap.ProseMirror blockquote {
-  border-left: 3px solid #d1d5db;
+  border-left: 3px solid var(--color-editor-blockquote-border);
   padding-left: 1em;
   margin: 0.4em 0;
-  color: #4b5563;
+  color: var(--color-editor-blockquote-text);
 }
 
 .tiptap.ProseMirror mark {
@@ -226,8 +241,8 @@ body {
 
 /* Variable tag styling inside editor */
 .tiptap.ProseMirror .variable-tag {
-  background-color: #d1fae5;
-  color: #047857;
+  background-color: var(--color-editor-variable-bg);
+  color: var(--color-editor-variable-text);
   padding: 2px 6px;
   border-radius: 4px;
   font-family: 'SF Mono', 'Fira Code', monospace;
@@ -239,7 +254,7 @@ body {
 .tiptap.ProseMirror p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   float: left;
-  color: #9ca3af;
+  color: var(--color-editor-placeholder);
   pointer-events: none;
   height: 0;
 }

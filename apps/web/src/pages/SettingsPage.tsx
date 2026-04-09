@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -455,6 +456,7 @@ function SignatureEditor({
 // ── Main Page ──
 
 export default function SettingsPage() {
+  useDocumentTitle('ตั้งค่า');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [values, setValues] = useState<Record<string, string>>({});

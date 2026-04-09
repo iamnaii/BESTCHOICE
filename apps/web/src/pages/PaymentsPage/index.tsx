@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useRef } from 'react';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
@@ -21,6 +22,7 @@ import type { PendingPayment, DailySummary, OcrPaymentSlipResult } from './types
 import { paymentStatusLabels, isSlipRequired } from './types';
 
 export default function PaymentsPage() {
+  useDocumentTitle('ชำระเงิน');
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const isOwner = user?.role === 'OWNER';

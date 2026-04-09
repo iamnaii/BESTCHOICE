@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
@@ -69,6 +70,7 @@ const emptyForm = {
 /* ─── Component ─── */
 
 export default function PromotionsPage() {
+  useDocumentTitle('โปรโมชัน');
   const queryClient = useQueryClient();
 
   const [search, setSearch] = useState('');

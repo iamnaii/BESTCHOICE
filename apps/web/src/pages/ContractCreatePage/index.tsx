@@ -1,4 +1,5 @@
 import React, { useRef } from 'react';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import PageHeader from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, ArrowRight, Save, Send } from 'lucide-react';
@@ -19,6 +20,7 @@ import { EditProductModal } from './components/EditProductModal';
 import { EditCustomerModal } from './components/EditCustomerModal';
 
 export default function ContractCreatePage() {
+  useDocumentTitle('สร้างสัญญา');
   const data = useContractCreateData();
 
   const calculation = useContractCalculation({

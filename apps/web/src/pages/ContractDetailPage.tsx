@@ -1,5 +1,6 @@
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import api, { getErrorMessage } from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/card';
 import PageHeader from '@/components/ui/PageHeader';
@@ -118,6 +119,7 @@ export default function ContractDetailPage() {
     queryKey: ['contract', id],
     queryFn: async () => { const { data } = await api.get(`/contracts/${id}`); return data; },
   });
+  useDocumentTitle(contract?.contractNumber);
 
   const { data: payoffQuote } = useQuery<EarlyPayoffQuote>({
     queryKey: ['contract-payoff', id],

@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
@@ -79,6 +80,7 @@ const emptyForm = {
 };
 
 export default function UsersPage() {
+  useDocumentTitle('ผู้ใช้งาน');
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
   const { copy } = useCopyToClipboard();

@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -61,6 +62,7 @@ interface PosConfig {
 }
 
 export default function POSPage() {
+  useDocumentTitle('ขายสินค้า');
   useAuth(); // ensure user is authenticated
   const queryClient = useQueryClient();
   const navigate = useNavigate();

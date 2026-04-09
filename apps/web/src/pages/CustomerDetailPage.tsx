@@ -1,5 +1,6 @@
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
@@ -167,6 +168,7 @@ export default function CustomerDetailPage() {
     queryKey: ['customer', id],
     queryFn: async () => { const { data } = await api.get(`/customers/${id}`); return data; },
   });
+  useDocumentTitle(customer?.name);
 
   const { data: risk } = useQuery<RiskFlag>({
     queryKey: ['customer-risk', id],

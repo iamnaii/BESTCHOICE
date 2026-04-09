@@ -71,7 +71,18 @@ export class PaySolutionsController {
   @SkipCsrf()
   @HttpCode(200)
   async handleWebhook(@Body() body: Record<string, string>) {
-    this.logger.log(`Webhook received: ${JSON.stringify(body)}`);
+    // PII-safe log: only fields needed to trace a webhook in support
+    // tickets. Customer email/phone/name are NOT in the v2 webhook
+    // payload but we still want a positive allow-list to prevent
+    // future PaySolutions API changes from leaking data into our logs.
+    const safeFields = {
+      refno: body.refno,
+      result_code: body.result_code,
+      order_no: body.order_no,
+      transaction_id: body.transaction_id,
+      total: body.total,
+    };
+    this.logger.log(`Webhook received: ${JSON.stringify(safeFields)}`);
 
     // Verify merchantid ตรงกับ config
     const isValid = this.paySolutionsService.verifyWebhookMerchant(body.merchantid || '');

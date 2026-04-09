@@ -218,6 +218,7 @@ jobs:
           ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,\
           S3_ACCESS_KEY=S3_ACCESS_KEY:latest,\
           S3_SECRET_KEY=S3_SECRET_KEY:latest,\
+          S3_ENDPOINT=S3_ENDPOINT:latest,\
           LINE_CHANNEL_ACCESS_TOKEN=LINE_CHANNEL_ACCESS_TOKEN:latest,\
           LINE_CHANNEL_SECRET=LINE_CHANNEL_SECRET:latest,\
           SMS_API_KEY=SMS_API_KEY:latest,\
@@ -243,6 +244,8 @@ jobs:
           PAYSOLUTIONS_API_URL=https://apis.paysolutions.asia,\
           PAYSOLUTIONS_RETURN_URL=https://liff.line.me/2009442540-d9XnzWwl/contract,\
           PAYSOLUTIONS_TERMINAL_ID=TID00001,\
+          S3_BUCKET=bestchoice-documents,\
+          S3_REGION=asia-southeast1,\
           API_BASE_URL=https://api.bestchoicephone.app" \
             --set-cloudsql-instances=${{ secrets.CLOUD_SQL_CONNECTION_NAME }} \
             --allow-unauthenticated

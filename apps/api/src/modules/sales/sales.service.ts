@@ -1,5 +1,5 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
-import { PaymentMethod, PlanType } from '@prisma/client';
+import { PaymentMethod, PlanType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateSaleDto } from './dto/sale.dto';
 import { calculateInstallment, generatePaymentSchedule } from '../../utils/installment.util';
@@ -96,20 +96,23 @@ export class SalesService {
     if (userRole === 'OWNER') {
       // Calculate profit from already-fetched data to avoid duplicate query
       totalProfit = data.reduce(
-        (sum, s) => sum + Number(s.netAmount) - Number(s.product?.costPrice || 0), 0,
-      );
+        (sum, s) => sum
+          .add(new Prisma.Decimal(s.netAmount ?? 0))
+          .sub(new Prisma.Decimal(s.product?.costPrice ?? 0)),
+        new Prisma.Decimal(0),
+      ).toNumber();
     }
 
     const summary = {
-      totalAmount: Number(agg._sum.netAmount || 0),
-      totalDiscount: Number(agg._sum.discount || 0),
+      totalAmount: new Prisma.Decimal(agg._sum.netAmount ?? 0).toNumber(),
+      totalDiscount: new Prisma.Decimal(agg._sum.discount ?? 0).toNumber(),
       totalProfit,
       cashCount: getGroup('CASH')?._count || 0,
-      cashAmount: Number(getGroup('CASH')?._sum.netAmount || 0),
+      cashAmount: new Prisma.Decimal(getGroup('CASH')?._sum.netAmount ?? 0).toNumber(),
       installmentCount: getGroup('INSTALLMENT')?._count || 0,
-      installmentAmount: Number(getGroup('INSTALLMENT')?._sum.netAmount || 0),
+      installmentAmount: new Prisma.Decimal(getGroup('INSTALLMENT')?._sum.netAmount ?? 0).toNumber(),
       financeCount: getGroup('EXTERNAL_FINANCE')?._count || 0,
-      financeAmount: Number(getGroup('EXTERNAL_FINANCE')?._sum.netAmount || 0),
+      financeAmount: new Prisma.Decimal(getGroup('EXTERNAL_FINANCE')?._sum.netAmount ?? 0).toNumber(),
     };
 
     // Strip costPrice from response for non-OWNER roles
@@ -553,7 +556,10 @@ export class SalesService {
       cashSales: sales.filter(s => s.saleType === 'CASH').length,
       installmentSales: sales.filter(s => s.saleType === 'INSTALLMENT').length,
       externalFinanceSales: sales.filter(s => s.saleType === 'EXTERNAL_FINANCE').length,
-      totalRevenue: sales.reduce((sum, s) => sum + Number(s.netAmount), 0),
+      totalRevenue: sales.reduce(
+        (sum, s) => sum.add(new Prisma.Decimal(s.netAmount ?? 0)),
+        new Prisma.Decimal(0),
+      ).toNumber(),
       sales,
     };
 

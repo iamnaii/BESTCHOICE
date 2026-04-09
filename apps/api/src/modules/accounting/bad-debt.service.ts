@@ -4,6 +4,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { JournalAutoService } from '../journal/journal-auto.service';
 
 const DEFAULT_PROVISION_RATES: Record<string, number> = {
   '1-30': 0.02,
@@ -16,7 +17,10 @@ const DEFAULT_PROVISION_RATES: Record<string, number> = {
 
 @Injectable()
 export class BadDebtService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private journalAutoService: JournalAutoService,
+  ) {}
 
   /** Load provision rates from system config or use defaults */
   private async getProvisionRates(): Promise<Record<string, number>> {
@@ -227,6 +231,30 @@ export class BadDebtService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      // Calculate outstanding amount from unpaid/partial payments
+      const unpaidPayments = await tx.payment.findMany({
+        where: {
+          contractId,
+          status: { in: ['PENDING', 'PARTIALLY_PAID'] },
+          deletedAt: null,
+        },
+        select: { amountDue: true, amountPaid: true, lateFee: true, lateFeeWaived: true },
+      });
+      const outstandingAmount = unpaidPayments.reduce((sum, p) => {
+        const unpaidLateFee = !p.lateFeeWaived ? Number(p.lateFee) : 0;
+        return sum + Number(p.amountDue) - Number(p.amountPaid) + unpaidLateFee;
+      }, 0);
+
+      // Capture total active provision amount before updating status
+      const activeProvisions = await tx.badDebtProvision.findMany({
+        where: { contractId, status: 'ACTIVE', deletedAt: null },
+        select: { provisionAmount: true },
+      });
+      const existingProvisionAmount = activeProvisions.reduce(
+        (sum, p) => sum + Number(p.provisionAmount),
+        0,
+      );
+
       // Update contract status to CLOSED_BAD_DEBT
       await tx.contract.update({
         where: { id: contractId },
@@ -244,6 +272,15 @@ export class BadDebtService {
           approvedAt: new Date(),
           notes,
         },
+      });
+
+      // Create double-entry journal for the write-off
+      await this.journalAutoService.createBadDebtWriteOffJournal(tx, {
+        contractId: contract.id,
+        contractNumber: contract.contractNumber,
+        writeOffAmount: outstandingAmount,
+        provisionAmount: existingProvisionAmount,
+        createdById: approvedById,
       });
 
       return { contractId, status: 'CLOSED_BAD_DEBT', writtenOffAt: new Date() };

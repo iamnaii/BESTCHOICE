@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ReportsService } from './reports.service';
 
@@ -55,7 +56,7 @@ export class ReportGeneratorService {
 
     const summary = {
       date: dateStr,
-      revenue: Math.round(Number(payments._sum.amountPaid || 0)),
+      revenue: new Prisma.Decimal(payments._sum.amountPaid ?? 0).toDecimalPlaces(0).toNumber(),
       paymentsCount: payments._count,
       overdueCount,
       newContracts,

@@ -3,6 +3,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { BadDebtService } from './bad-debt.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { JournalAutoService } from '../journal/journal-auto.service';
 
 /**
  * BadDebtService is the financial provisioning engine. It maps overdue
@@ -51,6 +52,10 @@ describe('BadDebtService', () => {
       providers: [
         BadDebtService,
         { provide: PrismaService, useValue: prisma },
+        {
+          provide: JournalAutoService,
+          useValue: { createBadDebtWriteOffJournal: jest.fn().mockResolvedValue('je-mock') },
+        },
       ],
     }).compile();
 

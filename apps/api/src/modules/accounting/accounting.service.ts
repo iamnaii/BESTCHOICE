@@ -405,10 +405,10 @@ export class AccountingService {
     let pendingCount = 0;
 
     for (const e of expenses) {
-      const amt = Number(e.totalAmount);
-      totalAmount += amt;
-      byAccountType[e.accountType] = (byAccountType[e.accountType] || 0) + amt;
-      byCategory[e.category] = (byCategory[e.category] || 0) + amt;
+      const amt = new Prisma.Decimal(e.totalAmount);
+      totalAmount = new Prisma.Decimal(totalAmount).add(amt).toNumber();
+      byAccountType[e.accountType] = new Prisma.Decimal(byAccountType[e.accountType] ?? 0).add(amt).toNumber();
+      byCategory[e.category] = new Prisma.Decimal(byCategory[e.category] ?? 0).add(amt).toNumber();
       if (e.status === 'PENDING_APPROVAL' || e.status === 'DRAFT') pendingCount++;
     }
 
@@ -438,7 +438,7 @@ export class AccountingService {
       if (!breakdown[e.category]) {
         breakdown[e.category] = { accountType: e.accountType, accountCode: e.accountCode, total: 0, count: 0 };
       }
-      breakdown[e.category].total += Number(e.totalAmount);
+      breakdown[e.category].total = new Prisma.Decimal(breakdown[e.category].total).add(new Prisma.Decimal(e.totalAmount)).toNumber();
       breakdown[e.category].count++;
     }
 
@@ -513,54 +513,58 @@ export class AccountingService {
       }),
     ]);
 
-    const cashSales = Number(cashSalesAgg._sum.netAmount || 0);
-    const installmentDownPayments = Number(installmentSales._sum.downPaymentAmount || 0);
-    const financeDownPayments = Number(externalFinanceSales._sum.downPaymentAmount || 0);
-    const financeReceivedAmount = Number(financeReceived._sum.receivedAmount || 0);
+    const cashSales = new Prisma.Decimal(cashSalesAgg._sum.netAmount ?? 0);
+    const installmentDownPayments = new Prisma.Decimal(installmentSales._sum.downPaymentAmount ?? 0);
+    const financeDownPayments = new Prisma.Decimal(externalFinanceSales._sum.downPaymentAmount ?? 0);
+    const financeReceivedAmount = new Prisma.Decimal(financeReceived._sum.receivedAmount ?? 0);
 
     // Payment breakdown: use stored breakdowns when available, fallback for legacy payments
-    let installmentPaymentsTotal = 0; // ยอดรับชำระจากค่างวดรวม (amountPaid)
-    let interestIncome = 0;           // ดอกเบี้ย (4210) — breakdown info
-    let commissionIncome = 0;         // ค่าคอม (4400) — breakdown info
-    let principalIncome = 0;          // เงินต้น — breakdown info
-    let lateFeeIncome = 0;            // ค่าปรับ (4300)
-    let vatCollected = 0;             // VAT ที่เก็บ (2210 - liability not revenue)
+    let installmentPaymentsTotal = new Prisma.Decimal(0); // ยอดรับชำระจากค่างวดรวม (amountPaid)
+    let interestIncome = new Prisma.Decimal(0);           // ดอกเบี้ย (4210) — breakdown info
+    let commissionIncome = new Prisma.Decimal(0);         // ค่าคอม (4400) — breakdown info
+    let principalIncome = new Prisma.Decimal(0);          // เงินต้น — breakdown info
+    let lateFeeIncome = new Prisma.Decimal(0);            // ค่าปรับ (4300)
+    let vatCollected = new Prisma.Decimal(0);             // VAT ที่เก็บ (2210 - liability not revenue)
 
     for (const p of paidPayments) {
-      const paid = Number(p.amountPaid);
-      installmentPaymentsTotal += paid;
+      const paid = new Prisma.Decimal(p.amountPaid);
+      installmentPaymentsTotal = installmentPaymentsTotal.add(paid);
 
       if (p.monthlyPrincipal !== null) {
         // New: use stored breakdowns for detailed reporting
-        principalIncome += Number(p.monthlyPrincipal);
-        interestIncome += Number(p.monthlyInterest);
-        commissionIncome += Number(p.monthlyCommission);
-        vatCollected += Number(p.vatAmount ?? 0);
+        principalIncome = principalIncome.add(new Prisma.Decimal(p.monthlyPrincipal));
+        interestIncome = interestIncome.add(new Prisma.Decimal(p.monthlyInterest ?? 0));
+        commissionIncome = commissionIncome.add(new Prisma.Decimal(p.monthlyCommission ?? 0));
+        vatCollected = vatCollected.add(new Prisma.Decimal(p.vatAmount ?? 0));
       } else {
         // Legacy fallback: estimate interest from contract data
-        principalIncome += paid;
-        interestIncome += Math.round(Number(p.contract.interestTotal) / p.contract.totalMonths * 100) / 100;
+        principalIncome = principalIncome.add(paid);
+        interestIncome = interestIncome.add(
+          new Prisma.Decimal(p.contract.interestTotal).div(p.contract.totalMonths),
+        );
       }
-      if (!p.lateFeeWaived) lateFeeIncome += Number(p.lateFee);
+      if (!p.lateFeeWaived) lateFeeIncome = lateFeeIncome.add(new Prisma.Decimal(p.lateFee));
     }
 
     // installmentPayments = total amountPaid from installment contracts (includes principal+interest+commission+VAT)
     // Interest/commission/VAT breakdowns are informational, NOT additive on top of installmentPayments
     const installmentPayments = installmentPaymentsTotal;
 
-    const operatingRevenue = cashSales + installmentDownPayments + installmentPayments
-      + financeDownPayments + financeReceivedAmount;
+    const operatingRevenue = cashSales.add(installmentDownPayments).add(installmentPayments)
+      .add(financeDownPayments).add(financeReceivedAmount);
     // Late fee income is additive (it's separate from amountPaid — stored in lateFee field)
-    const totalRevenue = operatingRevenue + lateFeeIncome;
+    const totalRevenue = operatingRevenue.add(lateFeeIncome);
 
-    const expMap: Record<string, number> = {};
+    const expMap: Record<string, Prisma.Decimal> = {};
     for (const e of expensesByCategory) {
-      expMap[e.category] = (expMap[e.category] || 0) + Number(e.totalAmount);
+      expMap[e.category] = (expMap[e.category] ?? new Prisma.Decimal(0)).add(new Prisma.Decimal(e.totalAmount));
     }
+
+    const getExp = (key: string) => expMap[key] ?? new Prisma.Decimal(0);
 
     // COGS: main product cost + bundle product costs
     const allBundleIds = productCosts.flatMap((s) => s.bundleProductIds || []);
-    let bundleCost = 0;
+    let bundleCost = new Prisma.Decimal(0);
     if (allBundleIds.length > 0) {
       const bundleProducts = await this.prisma.product.findMany({
         where: { id: { in: allBundleIds } },
@@ -572,105 +576,139 @@ export class AccountingService {
           `COGS bundle mismatch: expected ${allBundleIds.length} products, found ${bundleProducts.length}`,
         );
       }
-      bundleCost = bundleProducts.reduce((sum, p) => sum + Number(p.costPrice || 0), 0);
+      bundleCost = bundleProducts.reduce(
+        (sum, p) => sum.add(new Prisma.Decimal(p.costPrice ?? 0)),
+        new Prisma.Decimal(0),
+      );
     }
-    const purchaseOrderCost = productCosts.reduce((sum, s) => sum + Number(s.product.costPrice || 0), 0)
-      + bundleCost;
+    const purchaseOrderCost = productCosts
+      .reduce(
+        (sum, s) => sum.add(new Prisma.Decimal(s.product.costPrice ?? 0)),
+        new Prisma.Decimal(0),
+      )
+      .add(bundleCost);
+
+    const cogsProduct = getExp('COGS_PRODUCT');
+    const cogsRepairParts = getExp('COGS_REPAIR_PARTS');
+    const totalCOGS = cogsProduct.add(cogsRepairParts).add(purchaseOrderCost);
 
     const costOfSales = {
-      cogsProduct: expMap['COGS_PRODUCT'] || 0,
-      cogsRepairParts: expMap['COGS_REPAIR_PARTS'] || 0,
-      purchaseOrderCost,
-      totalCOGS: (expMap['COGS_PRODUCT'] || 0) + (expMap['COGS_REPAIR_PARTS'] || 0) + purchaseOrderCost,
+      cogsProduct: cogsProduct.toNumber(),
+      cogsRepairParts: cogsRepairParts.toNumber(),
+      purchaseOrderCost: purchaseOrderCost.toNumber(),
+      totalCOGS: totalCOGS.toNumber(),
     };
 
     // Gross profit from operating revenue only (excludes interest/late fees)
-    const grossProfit = operatingRevenue - costOfSales.totalCOGS;
+    const grossProfit = operatingRevenue.sub(totalCOGS);
+
+    const sellCommission = getExp('SELL_COMMISSION');
+    const sellAdvertising = getExp('SELL_ADVERTISING');
+    const sellTransport = getExp('SELL_TRANSPORT');
+    const sellPackaging = getExp('SELL_PACKAGING');
+    const totalSelling = sellCommission.add(sellAdvertising).add(sellTransport).add(sellPackaging);
 
     const sellingExpenses = {
-      commission: expMap['SELL_COMMISSION'] || 0,
-      advertising: expMap['SELL_ADVERTISING'] || 0,
-      transport: expMap['SELL_TRANSPORT'] || 0,
-      packaging: expMap['SELL_PACKAGING'] || 0,
-      totalSelling: (expMap['SELL_COMMISSION'] || 0) + (expMap['SELL_ADVERTISING'] || 0)
-        + (expMap['SELL_TRANSPORT'] || 0) + (expMap['SELL_PACKAGING'] || 0),
+      commission: sellCommission.toNumber(),
+      advertising: sellAdvertising.toNumber(),
+      transport: sellTransport.toNumber(),
+      packaging: sellPackaging.toNumber(),
+      totalSelling: totalSelling.toNumber(),
     };
+
+    const adminSalary = getExp('ADMIN_SALARY');
+    const adminSocialSecurity = getExp('ADMIN_SOCIAL_SECURITY');
+    const adminRent = getExp('ADMIN_RENT');
+    const adminUtilities = getExp('ADMIN_UTILITIES');
+    const adminOfficeSupplies = getExp('ADMIN_OFFICE_SUPPLIES');
+    const adminDepreciation = getExp('ADMIN_DEPRECIATION');
+    const adminInsurance = getExp('ADMIN_INSURANCE');
+    const adminTaxFee = getExp('ADMIN_TAX_FEE');
+    const adminMaintenance = getExp('ADMIN_MAINTENANCE');
+    const adminTravel = getExp('ADMIN_TRAVEL');
+    const adminTelephone = getExp('ADMIN_TELEPHONE');
+    const totalAdmin = adminSalary.add(adminSocialSecurity).add(adminRent).add(adminUtilities)
+      .add(adminOfficeSupplies).add(adminDepreciation).add(adminInsurance).add(adminTaxFee)
+      .add(adminMaintenance).add(adminTravel).add(adminTelephone);
 
     const adminExpenses = {
-      salary: expMap['ADMIN_SALARY'] || 0,
-      socialSecurity: expMap['ADMIN_SOCIAL_SECURITY'] || 0,
-      rent: expMap['ADMIN_RENT'] || 0,
-      utilities: expMap['ADMIN_UTILITIES'] || 0,
-      officeSupplies: expMap['ADMIN_OFFICE_SUPPLIES'] || 0,
-      depreciation: expMap['ADMIN_DEPRECIATION'] || 0,
-      insurance: expMap['ADMIN_INSURANCE'] || 0,
-      taxFee: expMap['ADMIN_TAX_FEE'] || 0,
-      maintenance: expMap['ADMIN_MAINTENANCE'] || 0,
-      travel: expMap['ADMIN_TRAVEL'] || 0,
-      telephone: expMap['ADMIN_TELEPHONE'] || 0,
-      totalAdmin: 0,
+      salary: adminSalary.toNumber(),
+      socialSecurity: adminSocialSecurity.toNumber(),
+      rent: adminRent.toNumber(),
+      utilities: adminUtilities.toNumber(),
+      officeSupplies: adminOfficeSupplies.toNumber(),
+      depreciation: adminDepreciation.toNumber(),
+      insurance: adminInsurance.toNumber(),
+      taxFee: adminTaxFee.toNumber(),
+      maintenance: adminMaintenance.toNumber(),
+      travel: adminTravel.toNumber(),
+      telephone: adminTelephone.toNumber(),
+      totalAdmin: totalAdmin.toNumber(),
     };
-    adminExpenses.totalAdmin = adminExpenses.salary + adminExpenses.socialSecurity
-      + adminExpenses.rent + adminExpenses.utilities + adminExpenses.officeSupplies
-      + adminExpenses.depreciation + adminExpenses.insurance + adminExpenses.taxFee
-      + adminExpenses.maintenance + adminExpenses.travel + adminExpenses.telephone;
 
     // C-1 fix: TAS 1 structure — operatingProfit excludes other income/expenses
-    const operatingProfit = grossProfit - sellingExpenses.totalSelling - adminExpenses.totalAdmin;
+    const operatingProfit = grossProfit.sub(totalSelling).sub(totalAdmin);
+
+    const otherInterest = getExp('OTHER_INTEREST');
+    const otherLoss = getExp('OTHER_LOSS');
+    const otherFine = getExp('OTHER_FINE');
+    const otherMisc = getExp('OTHER_MISC');
+    const totalOther = otherInterest.add(otherLoss).add(otherFine).add(otherMisc);
 
     const otherExpenses = {
-      interest: expMap['OTHER_INTEREST'] || 0,
-      loss: expMap['OTHER_LOSS'] || 0,
-      fine: expMap['OTHER_FINE'] || 0,
-      misc: expMap['OTHER_MISC'] || 0,
-      totalOther: (expMap['OTHER_INTEREST'] || 0) + (expMap['OTHER_LOSS'] || 0)
-        + (expMap['OTHER_FINE'] || 0) + (expMap['OTHER_MISC'] || 0),
+      interest: otherInterest.toNumber(),
+      loss: otherLoss.toNumber(),
+      fine: otherFine.toNumber(),
+      misc: otherMisc.toNumber(),
+      totalOther: totalOther.toNumber(),
     };
 
     // C-1 fix: netProfit = operatingProfit + lateFeeIncome - otherExpenses (TAS 1)
     // Interest/commission/VAT are already inside installmentPayments (amountPaid).
     // Only lateFee is truly additive (stored separately in lateFee field).
-    const netProfit = operatingProfit + lateFeeIncome - otherExpenses.totalOther;
-    const totalExpenses = costOfSales.totalCOGS + sellingExpenses.totalSelling
-      + adminExpenses.totalAdmin + otherExpenses.totalOther;
+    const netProfit = operatingProfit.add(lateFeeIncome).sub(totalOther);
+    const totalExpenses = totalCOGS.add(totalSelling).add(totalAdmin).add(totalOther);
+
+    const totalRevenueNum = totalRevenue.toNumber();
+    const netProfitNum = netProfit.toNumber();
 
     return {
       period: { start: startDate, end: endDate },
       revenue: {
-        cashSales,
-        installmentDownPayments,
-        installmentPayments,
-        financeDownPayments,
-        financeReceived: financeReceivedAmount,
-        operatingRevenue,
-        lateFeeIncome: Math.round(lateFeeIncome * 100) / 100,
-        totalRevenue,
+        cashSales: cashSales.toNumber(),
+        installmentDownPayments: installmentDownPayments.toNumber(),
+        installmentPayments: installmentPayments.toNumber(),
+        financeDownPayments: financeDownPayments.toNumber(),
+        financeReceived: financeReceivedAmount.toNumber(),
+        operatingRevenue: operatingRevenue.toNumber(),
+        lateFeeIncome: lateFeeIncome.toNumber(),
+        totalRevenue: totalRevenueNum,
       },
       // Breakdown of installmentPayments (informational — already included in installmentPayments)
       paymentBreakdown: {
-        principalIncome: Math.round(principalIncome * 100) / 100,
-        interestIncome: Math.round(interestIncome * 100) / 100,
-        commissionIncome: Math.round(commissionIncome * 100) / 100,
+        principalIncome: principalIncome.toNumber(),
+        interestIncome: interestIncome.toNumber(),
+        commissionIncome: commissionIncome.toNumber(),
         note: 'เงินต้น/ดอกเบี้ย/ค่าคอม รวมอยู่ใน installmentPayments แล้ว — แสดงเพื่อแยกรายได้ตามหมวดบัญชี',
       },
       vatOutput: {
         accountCode: '21-2101',
         label: 'ภาษีขาย (Output VAT)',
-        amount: Math.round(vatCollected * 100) / 100,
+        amount: vatCollected.toNumber(),
         note: 'เก็บจากค่างวดผ่อนชำระ — เป็นหนี้สินไม่ใช่รายได้',
       },
       costOfSales,
-      grossProfit,
+      grossProfit: grossProfit.toNumber(),
       sellingExpenses,
       adminExpenses,
-      operatingProfit,
+      operatingProfit: operatingProfit.toNumber(),
       otherExpenses,
-      netProfit,
+      netProfit: netProfitNum,
       summary: {
-        totalRevenue,
-        totalExpenses,
-        netProfit,
-        profitMargin: totalRevenue > 0 ? Math.round((netProfit / totalRevenue) * 10000) / 100 : 0,
+        totalRevenue: totalRevenueNum,
+        totalExpenses: totalExpenses.toNumber(),
+        netProfit: netProfitNum,
+        profitMargin: totalRevenueNum > 0 ? Math.round((netProfitNum / totalRevenueNum) * 10000) / 100 : 0,
       },
     };
   }
@@ -712,15 +750,15 @@ export class AccountingService {
     ]);
 
     const months = Array.from({ length: 12 }, (_, i) => {
-      let revenue = 0;
-      let cogs = 0;
-      let expenseTotal = 0;
+      let revenue = new Prisma.Decimal(0);
+      let cogs = new Prisma.Decimal(0);
+      let expenseTotal = new Prisma.Decimal(0);
 
       for (const s of sales) {
         if (getMonth(s.createdAt) !== i) continue;
-        if (s.saleType === 'CASH') revenue += Number(s.netAmount);
+        if (s.saleType === 'CASH') revenue = revenue.add(new Prisma.Decimal(s.netAmount ?? 0));
         if (s.saleType === 'INSTALLMENT' || s.saleType === 'EXTERNAL_FINANCE') {
-          revenue += Number(s.downPaymentAmount || 0);
+          revenue = revenue.add(new Prisma.Decimal(s.downPaymentAmount ?? 0));
         }
       }
 
@@ -728,32 +766,36 @@ export class AccountingService {
         if (getMonth(p.paidDate) !== i) continue;
         if (p.monthlyPrincipal !== null) {
           // New: use stored breakdowns — principal + commission + interest + lateFee
-          revenue += Number(p.monthlyPrincipal) + Number(p.monthlyCommission)
-            + Number(p.monthlyInterest);
-          if (!p.lateFeeWaived) revenue += Number(p.lateFee);
+          revenue = revenue
+            .add(new Prisma.Decimal(p.monthlyPrincipal))
+            .add(new Prisma.Decimal(p.monthlyCommission ?? 0))
+            .add(new Prisma.Decimal(p.monthlyInterest ?? 0));
+          if (!p.lateFeeWaived) revenue = revenue.add(new Prisma.Decimal(p.lateFee));
         } else {
           // Legacy fallback: amountPaid already includes everything
-          revenue += Number(p.amountPaid);
+          revenue = revenue.add(new Prisma.Decimal(p.amountPaid));
         }
       }
 
       for (const f of financeRecs) {
         if (getMonth(f.receivedDate) !== i) continue;
-        revenue += Number(f.receivedAmount || 0);
+        revenue = revenue.add(new Prisma.Decimal(f.receivedAmount ?? 0));
       }
 
       for (const s of productSales) {
         if (getMonth(s.createdAt) !== i) continue;
-        cogs += Number(s.product.costPrice || 0);
+        cogs = cogs.add(new Prisma.Decimal(s.product.costPrice ?? 0));
       }
 
       for (const e of expenses) {
         if (getMonth(e.expenseDate) !== i) continue;
-        expenseTotal += Number(e.totalAmount);
+        expenseTotal = expenseTotal.add(new Prisma.Decimal(e.totalAmount));
       }
 
-      const totalExpenses = cogs + expenseTotal;
-      return { month: i + 1, label: thaiMonths[i], revenue, expenses: totalExpenses, netProfit: revenue - totalExpenses };
+      const totalExpenses = cogs.add(expenseTotal);
+      const revenueNum = revenue.toNumber();
+      const expensesNum = totalExpenses.toNumber();
+      return { month: i + 1, label: thaiMonths[i], revenue: revenueNum, expenses: expensesNum, netProfit: revenueNum - expensesNum };
     });
 
     return { year, months };
@@ -894,15 +936,13 @@ export class AccountingService {
       _sum: { paidAmount: true },
     });
 
-    const totalCashInflows =
-      Number(paymentsReceived._sum.amountPaid || 0) +
-      Number(cashSalesTotal._sum.netAmount || 0) +
-      Number(downPaymentsTotal._sum.downPaymentAmount || 0) +
-      Number(financeReceivedTotal._sum.receivedAmount || 0);
-    const totalCashOutflows =
-      Number(expensesPaid._sum.totalAmount || 0) +
-      Number(purchaseOrdersPaid._sum.paidAmount || 0);
-    const cashAndBank = totalCashInflows - totalCashOutflows;
+    const totalCashInflows = new Prisma.Decimal(paymentsReceived._sum.amountPaid ?? 0)
+      .add(new Prisma.Decimal(cashSalesTotal._sum.netAmount ?? 0))
+      .add(new Prisma.Decimal(downPaymentsTotal._sum.downPaymentAmount ?? 0))
+      .add(new Prisma.Decimal(financeReceivedTotal._sum.receivedAmount ?? 0));
+    const totalCashOutflows = new Prisma.Decimal(expensesPaid._sum.totalAmount ?? 0)
+      .add(new Prisma.Decimal(purchaseOrdersPaid._sum.paidAmount ?? 0));
+    const cashAndBank = totalCashInflows.sub(totalCashOutflows);
 
     // 1220 Hire-purchase receivables: Outstanding installments on active contracts
     const [hpReceivables, provisions, pendingFinance, inventory, creditBalances, whtPayable, accruedExpenses] =
@@ -958,60 +998,78 @@ export class AccountingService {
         }),
       ]);
 
-    const grossReceivables = Number(hpReceivables._sum.amountDue || 0);
-    const paidOnReceivables = Number(hpReceivables._sum.amountPaid || 0);
-    const netReceivables = grossReceivables - paidOnReceivables;
-    const allowanceForDoubtful = Number(provisions._sum.provisionAmount || 0);
-    const financeReceivables = Number(pendingFinance._sum.expectedAmount || 0);
-    const inventoryValue = Number(inventory._sum.costPrice || 0);
+    const grossReceivables = new Prisma.Decimal(hpReceivables._sum.amountDue ?? 0);
+    const paidOnReceivables = new Prisma.Decimal(hpReceivables._sum.amountPaid ?? 0);
+    const netReceivables = grossReceivables.sub(paidOnReceivables);
+    const allowanceForDoubtful = new Prisma.Decimal(provisions._sum.provisionAmount ?? 0);
+    const financeReceivables = new Prisma.Decimal(pendingFinance._sum.expectedAmount ?? 0);
+    const inventoryValue = new Prisma.Decimal(inventory._sum.costPrice ?? 0);
     const inventoryCount = inventory._count || 0;
 
-    const totalCurrentAssets =
-      cashAndBank + netReceivables - allowanceForDoubtful + financeReceivables + inventoryValue;
+    const totalCurrentAssets = cashAndBank
+      .add(netReceivables)
+      .sub(allowanceForDoubtful)
+      .add(financeReceivables)
+      .add(inventoryValue);
     const totalAssets = totalCurrentAssets; // No fixed assets tracked in system
 
     // ── LIABILITIES ──
 
-    const customerCreditBalances = Number(creditBalances._sum.creditBalance || 0);
-    const totalWhtPayable = Number(whtPayable._sum.withholdingTax || 0);
-    const totalAccrued = Number(accruedExpenses._sum.totalAmount || 0);
+    const customerCreditBalances = new Prisma.Decimal(creditBalances._sum.creditBalance ?? 0);
+    const totalWhtPayable = new Prisma.Decimal(whtPayable._sum.withholdingTax ?? 0);
+    const totalAccrued = new Prisma.Decimal(accruedExpenses._sum.totalAmount ?? 0);
 
-    const totalLiabilities = customerCreditBalances + totalWhtPayable + totalAccrued;
+    const totalLiabilities = customerCreditBalances.add(totalWhtPayable).add(totalAccrued);
 
     // ── EQUITY ──
     // Retained earnings = Total Assets - Total Liabilities (balancing figure)
     // In a full accounting system this would come from accumulated P&L; here we derive it.
-    const retainedEarnings = totalAssets - totalLiabilities;
+    const retainedEarnings = totalAssets.sub(totalLiabilities);
+
+    const grossReceivablesNum = grossReceivables.toNumber();
+    const paidOnReceivablesNum = paidOnReceivables.toNumber();
+    const netReceivablesNum = netReceivables.toNumber();
+    const allowanceForDoubtfulNum = allowanceForDoubtful.toNumber();
+    const financeReceivablesNum = financeReceivables.toNumber();
+    const inventoryValueNum = inventoryValue.toNumber();
+    const cashAndBankNum = cashAndBank.toNumber();
+    const totalCurrentAssetsNum = totalCurrentAssets.toNumber();
+    const totalAssetsNum = totalAssets.toNumber();
+    const customerCreditBalancesNum = customerCreditBalances.toNumber();
+    const totalWhtPayableNum = totalWhtPayable.toNumber();
+    const totalAccruedNum = totalAccrued.toNumber();
+    const totalLiabilitiesNum = totalLiabilities.toNumber();
+    const retainedEarningsNum = retainedEarnings.toNumber();
 
     return {
       asOfDate,
       assets: {
         currentAssets: {
-          cashAndBank,
+          cashAndBank: cashAndBankNum,
           hirePurchaseReceivables: {
-            gross: grossReceivables,
-            paid: paidOnReceivables,
-            net: netReceivables,
-            allowanceForDoubtful: -allowanceForDoubtful,
-            netAfterAllowance: netReceivables - allowanceForDoubtful,
+            gross: grossReceivablesNum,
+            paid: paidOnReceivablesNum,
+            net: netReceivablesNum,
+            allowanceForDoubtful: -allowanceForDoubtfulNum,
+            netAfterAllowance: netReceivablesNum - allowanceForDoubtfulNum,
           },
-          financeReceivables,
-          inventory: { value: inventoryValue, count: inventoryCount },
-          totalCurrentAssets,
+          financeReceivables: financeReceivablesNum,
+          inventory: { value: inventoryValueNum, count: inventoryCount },
+          totalCurrentAssets: totalCurrentAssetsNum,
         },
-        totalAssets,
+        totalAssets: totalAssetsNum,
       },
       liabilities: {
         currentLiabilities: {
-          customerCreditBalances,
-          withholdingTaxPayable: totalWhtPayable,
-          accruedExpenses: totalAccrued,
+          customerCreditBalances: customerCreditBalancesNum,
+          withholdingTaxPayable: totalWhtPayableNum,
+          accruedExpenses: totalAccruedNum,
         },
-        totalLiabilities,
+        totalLiabilities: totalLiabilitiesNum,
       },
       equity: {
-        retainedEarnings,
-        totalEquity: retainedEarnings,
+        retainedEarnings: retainedEarningsNum,
+        totalEquity: retainedEarningsNum,
       },
       // Note: Balance Sheet is derived (not from general ledger). Retained earnings is
       // calculated as Assets - Liabilities, so it always balances by definition.
@@ -1079,37 +1137,48 @@ export class AccountingService {
       _sum: { paidAmount: true },
     });
 
-    const cashFromSales = Number(cashSales._sum.netAmount || 0);
-    const cashFromDownPayments = Number(downPayments._sum.downPaymentAmount || 0);
+    const cashFromSales = new Prisma.Decimal(cashSales._sum.netAmount ?? 0);
+    const cashFromDownPayments = new Prisma.Decimal(downPayments._sum.downPaymentAmount ?? 0);
     // C-3 fix: amountPaid already includes lateFee portion (customer pays amountDue + lateFee as one sum)
     // so we don't add lateFee separately to avoid double-counting
-    const cashFromInstallments = Number(installmentPayments._sum.amountPaid || 0);
-    const cashFromFinanceCompanies = Number(financeReceived._sum.receivedAmount || 0);
+    const cashFromInstallments = new Prisma.Decimal(installmentPayments._sum.amountPaid ?? 0);
+    const cashFromFinanceCompanies = new Prisma.Decimal(financeReceived._sum.receivedAmount ?? 0);
 
-    const cashFromCustomers =
-      cashFromSales + cashFromDownPayments + cashFromInstallments + cashFromFinanceCompanies;
+    const cashFromCustomers = cashFromSales
+      .add(cashFromDownPayments)
+      .add(cashFromInstallments)
+      .add(cashFromFinanceCompanies);
 
-    const cashPaidForExpenses = Number(expensesPaid._sum.totalAmount || 0);
-    const cashPaidForInventory = Number(purchaseOrdersPaid._sum.paidAmount || 0);
+    const cashPaidForExpenses = new Prisma.Decimal(expensesPaid._sum.totalAmount ?? 0);
+    const cashPaidForInventory = new Prisma.Decimal(purchaseOrdersPaid._sum.paidAmount ?? 0);
 
-    const netOperating = cashFromCustomers - cashPaidForExpenses - cashPaidForInventory;
+    const netOperating = cashFromCustomers.sub(cashPaidForExpenses).sub(cashPaidForInventory);
 
     // No investing or financing activities are tracked separately in this system
     const netCashChange = netOperating;
 
+    const cashFromCustomersNum = cashFromCustomers.toNumber();
+    const cashFromSalesNum = cashFromSales.toNumber();
+    const cashFromDownPaymentsNum = cashFromDownPayments.toNumber();
+    const cashFromInstallmentsNum = cashFromInstallments.toNumber();
+    const cashFromFinanceCompaniesNum = cashFromFinanceCompanies.toNumber();
+    const cashPaidForExpensesNum = cashPaidForExpenses.toNumber();
+    const cashPaidForInventoryNum = cashPaidForInventory.toNumber();
+    const netOperatingNum = netOperating.toNumber();
+
     return {
       period: { start: startDate, end: endDate },
       operatingActivities: {
-        cashFromCustomers,
-        cashFromSales,
-        cashFromDownPayments,
-        cashFromInstallments, // includes lateFee portion (amountPaid = principal + interest + lateFee)
-        cashFromFinanceCompanies,
-        cashPaidForExpenses: -cashPaidForExpenses,
-        cashPaidForInventory: -cashPaidForInventory,
-        netOperatingCashFlow: netOperating,
+        cashFromCustomers: cashFromCustomersNum,
+        cashFromSales: cashFromSalesNum,
+        cashFromDownPayments: cashFromDownPaymentsNum,
+        cashFromInstallments: cashFromInstallmentsNum, // includes lateFee portion (amountPaid = principal + interest + lateFee)
+        cashFromFinanceCompanies: cashFromFinanceCompaniesNum,
+        cashPaidForExpenses: -cashPaidForExpensesNum,
+        cashPaidForInventory: -cashPaidForInventoryNum,
+        netOperatingCashFlow: netOperatingNum,
       },
-      netCashChange,
+      netCashChange: netCashChange.toNumber(),
     };
   }
 }

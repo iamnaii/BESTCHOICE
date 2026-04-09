@@ -31,6 +31,7 @@ export class JournalAutoService {
     INVENTORY_USED: '11-3102',
     VAT_INPUT: '11-4101',
     VAT_OUTPUT: '21-2101',
+    ALLOWANCE_DOUBTFUL: '11-2901',  // ค่าเผื่อหนี้สงสัยจะสูญ (contra asset)
     CUSTOMER_CREDIT: '21-5101',
     REVENUE_NEW: '41-1101',
     REVENUE_USED: '41-1102',
@@ -38,6 +39,7 @@ export class JournalAutoService {
     COMMISSION_INCOME: '42-1105',
     COGS_NEW: '51-1101',
     COGS_USED: '51-1102',
+    BAD_DEBT_EXPENSE: '53-1101',    // หนี้สูญ
   } as const;
 
   constructor(private prisma: PrismaService) {}
@@ -162,19 +164,20 @@ export class JournalAutoService {
       return null;
     }
 
-    const amountPaid = Number(params.payment.amountPaid);
-    const principal = Number(params.payment.monthlyPrincipal || 0);
-    const interest = Number(params.payment.monthlyInterest || 0);
-    const commission = Number(params.payment.monthlyCommission || 0);
-    const vat = Number(params.payment.vatAmount || 0);
-    const lateFee = params.payment.lateFeeWaived ? 0 : Number(params.payment.lateFee || 0);
+    const amountPaid = new Prisma.Decimal(params.payment.amountPaid ?? 0);
+    const principal = new Prisma.Decimal(params.payment.monthlyPrincipal ?? 0);
+    const interest = new Prisma.Decimal(params.payment.monthlyInterest ?? 0);
+    const commission = new Prisma.Decimal(params.payment.monthlyCommission ?? 0);
+    const vat = new Prisma.Decimal(params.payment.vatAmount ?? 0);
+    const lateFee = params.payment.lateFeeWaived
+      ? new Prisma.Decimal(0)
+      : new Prisma.Decimal(params.payment.lateFee ?? 0);
 
     // Settle HP receivable = principal + interest (both reduce the receivable)
-    const hpSettled = principal + interest;
+    const hpSettled = principal.add(interest);
     // If breakdown is missing, settle whole amount against receivable as fallback
-    const fallbackHp = hpSettled === 0 && commission === 0 && vat === 0 && lateFee === 0
-      ? amountPaid - lateFee
-      : hpSettled;
+    const isZeroBreakdown = hpSettled.isZero() && commission.isZero() && vat.isZero() && lateFee.isZero();
+    const fallbackHp = isZeroBreakdown ? amountPaid.sub(lateFee) : hpSettled;
 
     return this.createAndPost(tx, {
       companyId,
@@ -184,11 +187,11 @@ export class JournalAutoService {
       referenceId: params.payment.id,
       createdById: params.userId,
       lines: [
-        { accountCode: JournalAutoService.ACC.CASH, description: 'รับชำระเงิน', debit: amountPaid, credit: 0 },
-        { accountCode: JournalAutoService.ACC.HP_RECEIVABLE, description: 'ตัดลูกหนี้เช่าซื้อ', debit: 0, credit: fallbackHp },
-        { accountCode: JournalAutoService.ACC.COMMISSION_INCOME, description: 'รายได้ค่าคอมมิชชัน', debit: 0, credit: commission },
-        { accountCode: JournalAutoService.ACC.VAT_OUTPUT, description: 'ภาษีขาย', debit: 0, credit: vat },
-        { accountCode: JournalAutoService.ACC.LATE_FEE_INCOME, description: 'ค่าปรับล่าช้า', debit: 0, credit: lateFee },
+        { accountCode: JournalAutoService.ACC.CASH, description: 'รับชำระเงิน', debit: amountPaid.toNumber(), credit: 0 },
+        { accountCode: JournalAutoService.ACC.HP_RECEIVABLE, description: 'ตัดลูกหนี้เช่าซื้อ', debit: 0, credit: fallbackHp.toNumber() },
+        { accountCode: JournalAutoService.ACC.COMMISSION_INCOME, description: 'รายได้ค่าคอมมิชชัน', debit: 0, credit: commission.toNumber() },
+        { accountCode: JournalAutoService.ACC.VAT_OUTPUT, description: 'ภาษีขาย', debit: 0, credit: vat.toNumber() },
+        { accountCode: JournalAutoService.ACC.LATE_FEE_INCOME, description: 'ค่าปรับล่าช้า', debit: 0, credit: lateFee.toNumber() },
       ],
     });
   }
@@ -225,9 +228,9 @@ export class JournalAutoService {
       return null;
     }
 
-    const amount = Number(params.expense.amount);
-    const vat = Number(params.expense.vatAmount || 0);
-    const total = Number(params.expense.totalAmount);
+    const amount = new Prisma.Decimal(params.expense.amount ?? 0);
+    const vat = new Prisma.Decimal(params.expense.vatAmount ?? 0);
+    const total = new Prisma.Decimal(params.expense.totalAmount ?? 0);
 
     return this.createAndPost(tx, {
       companyId,
@@ -237,9 +240,9 @@ export class JournalAutoService {
       referenceId: params.expense.id,
       createdById: params.userId,
       lines: [
-        { accountCode: params.expense.accountCode, description: params.expense.description, debit: amount, credit: 0 },
-        { accountCode: JournalAutoService.ACC.VAT_INPUT, description: 'ภาษีซื้อ', debit: vat, credit: 0 },
-        { accountCode: JournalAutoService.ACC.CASH, description: 'จ่ายเงิน', debit: 0, credit: total },
+        { accountCode: params.expense.accountCode, description: params.expense.description, debit: amount.toNumber(), credit: 0 },
+        { accountCode: JournalAutoService.ACC.VAT_INPUT, description: 'ภาษีซื้อ', debit: vat.toNumber(), credit: 0 },
+        { accountCode: JournalAutoService.ACC.CASH, description: 'จ่ายเงิน', debit: 0, credit: total.toNumber() },
       ],
     });
   }
@@ -277,16 +280,16 @@ export class JournalAutoService {
     const companyId = await this.resolveCompanyId(tx, params.companyId);
     if (!companyId) return null;
 
-    const sellingPrice = Number(params.contract.sellingPrice);
-    const downPayment = Number(params.contract.downPayment);
-    const financedAmount = Number(params.contract.financedAmount);
-    const interest = Number(params.contract.interestTotal);
-    const commission = Number(params.contract.storeCommission);
-    const vat = Number(params.contract.vatAmount);
-    const cost = Number(params.product.costPrice || 0);
+    const sellingPrice = new Prisma.Decimal(params.contract.sellingPrice ?? 0);
+    const downPayment = new Prisma.Decimal(params.contract.downPayment ?? 0);
+    const financedAmount = new Prisma.Decimal(params.contract.financedAmount ?? 0);
+    const interest = new Prisma.Decimal(params.contract.interestTotal ?? 0);
+    const commission = new Prisma.Decimal(params.contract.storeCommission ?? 0);
+    const vat = new Prisma.Decimal(params.contract.vatAmount ?? 0);
+    const cost = new Prisma.Decimal(params.product.costPrice ?? 0);
 
     // Sales revenue = sellingPrice + interest + commission (full deal value, excl. VAT)
-    const revenue = sellingPrice + interest + commission;
+    const revenue = sellingPrice.add(interest).add(commission);
     const isUsed = (params.product.category || '').toLowerCase().includes('used') ||
       (params.product.category || '').includes('มือสอง');
     const revenueAcc = isUsed ? JournalAutoService.ACC.REVENUE_USED : JournalAutoService.ACC.REVENUE_NEW;
@@ -302,15 +305,15 @@ export class JournalAutoService {
       referenceId: params.contract.id,
       createdById: params.userId,
       lines: [
-        { accountCode: JournalAutoService.ACC.CASH, description: 'รับเงินดาวน์', debit: downPayment, credit: 0 },
-        { accountCode: JournalAutoService.ACC.HP_RECEIVABLE, description: 'ลูกหนี้เช่าซื้อ', debit: financedAmount, credit: 0 },
-        { accountCode: revenueAcc, description: 'รายได้จากการขาย', debit: 0, credit: revenue },
-        { accountCode: JournalAutoService.ACC.VAT_OUTPUT, description: 'ภาษีขาย', debit: 0, credit: vat },
+        { accountCode: JournalAutoService.ACC.CASH, description: 'รับเงินดาวน์', debit: downPayment.toNumber(), credit: 0 },
+        { accountCode: JournalAutoService.ACC.HP_RECEIVABLE, description: 'ลูกหนี้เช่าซื้อ', debit: financedAmount.toNumber(), credit: 0 },
+        { accountCode: revenueAcc, description: 'รายได้จากการขาย', debit: 0, credit: revenue.toNumber() },
+        { accountCode: JournalAutoService.ACC.VAT_OUTPUT, description: 'ภาษีขาย', debit: 0, credit: vat.toNumber() },
       ],
     });
 
     // COGS entry (if cost available)
-    if (cost > 0) {
+    if (cost.greaterThan(0)) {
       await this.createAndPost(tx, {
         companyId,
         entryDate: new Date(),
@@ -319,8 +322,8 @@ export class JournalAutoService {
         referenceId: params.contract.id,
         createdById: params.userId,
         lines: [
-          { accountCode: cogsAcc, description: 'ต้นทุนขาย', debit: cost, credit: 0 },
-          { accountCode: inventoryAcc, description: 'ตัดสินค้าคงเหลือ', debit: 0, credit: cost },
+          { accountCode: cogsAcc, description: 'ต้นทุนขาย', debit: cost.toNumber(), credit: 0 },
+          { accountCode: inventoryAcc, description: 'ตัดสินค้าคงเหลือ', debit: 0, credit: cost.toNumber() },
         ],
       });
     }
@@ -356,9 +359,82 @@ export class JournalAutoService {
       lines: original.lines.map((l) => ({
         accountCode: l.accountCode,
         description: `กลับรายการ: ${l.description || ''}`,
-        debit: Number(l.credit), // swap
-        credit: Number(l.debit),
+        debit: new Prisma.Decimal(l.credit ?? 0).toNumber(), // swap
+        credit: new Prisma.Decimal(l.debit ?? 0).toNumber(),
       })),
+    });
+  }
+
+  /**
+   * Auto journal — Bad debt write-off (ตัดหนี้สูญ).
+   *
+   * When no prior provision exists:
+   *   Dr. Bad Debt Expense             [writeOffAmount]
+   *     Cr. HP Receivable              [writeOffAmount]
+   *
+   * When a provision exists (partial or full):
+   *   Dr. Bad Debt Expense             [writeOffAmount - provisionAmount]  (incremental charge)
+   *   Dr. Allowance for Doubtful Accts [provisionAmount]                   (utilise reserve)
+   *     Cr. HP Receivable              [writeOffAmount]
+   *
+   * The zero-line filter in createAndPost ensures lines with amount = 0 are dropped
+   * automatically, so partial-provision and full-provision cases both produce
+   * correctly balanced entries.
+   */
+  async createBadDebtWriteOffJournal(
+    tx: Prisma.TransactionClient,
+    params: {
+      contractId: string;
+      contractNumber: string;
+      writeOffAmount: Decimal | number;
+      provisionAmount?: Decimal | number;
+      createdById: string;
+      companyId?: string | null;
+    },
+  ): Promise<string | null> {
+    const companyId = await this.resolveCompanyId(tx, params.companyId);
+    if (!companyId) {
+      this.logger.warn(
+        `No active company found — skipping bad-debt write-off journal for contract ${params.contractId}`,
+      );
+      return null;
+    }
+
+    const writeOff = new Prisma.Decimal(params.writeOffAmount ?? 0);
+    const provision = new Prisma.Decimal(params.provisionAmount ?? 0);
+
+    // Incremental expense = amount not already provisioned (may be 0 if fully provisioned)
+    const incrementalExpense = writeOff.sub(provision).greaterThan(0)
+      ? writeOff.sub(provision)
+      : new Prisma.Decimal(0);
+
+    return this.createAndPost(tx, {
+      companyId,
+      entryDate: new Date(),
+      description: `ตัดหนี้สูญ สัญญา ${params.contractNumber}`,
+      referenceType: 'BAD_DEBT_WRITE_OFF',
+      referenceId: params.contractId,
+      createdById: params.createdById,
+      lines: [
+        {
+          accountCode: JournalAutoService.ACC.BAD_DEBT_EXPENSE,
+          description: 'ค่าใช้จ่ายหนี้สูญ',
+          debit: incrementalExpense.toNumber(),
+          credit: 0,
+        },
+        {
+          accountCode: JournalAutoService.ACC.ALLOWANCE_DOUBTFUL,
+          description: 'ใช้ค่าเผื่อหนี้สงสัยจะสูญ',
+          debit: provision.toNumber(),
+          credit: 0,
+        },
+        {
+          accountCode: JournalAutoService.ACC.HP_RECEIVABLE,
+          description: 'ตัดลูกหนี้เช่าซื้อ',
+          debit: 0,
+          credit: writeOff.toNumber(),
+        },
+      ],
     });
   }
 
@@ -400,11 +476,14 @@ export class JournalAutoService {
       select: { accountCode: true, debit: true, credit: true },
     });
 
-    const accountMap = new Map<string, { totalDebit: number; totalCredit: number }>();
+    const accountMap = new Map<string, { totalDebit: Prisma.Decimal; totalCredit: Prisma.Decimal }>();
     for (const line of lines) {
-      const acc = accountMap.get(line.accountCode) || { totalDebit: 0, totalCredit: 0 };
-      acc.totalDebit += Number(line.debit);
-      acc.totalCredit += Number(line.credit);
+      const acc = accountMap.get(line.accountCode) || {
+        totalDebit: new Prisma.Decimal(0),
+        totalCredit: new Prisma.Decimal(0),
+      };
+      acc.totalDebit = acc.totalDebit.add(new Prisma.Decimal(line.debit ?? 0));
+      acc.totalCredit = acc.totalCredit.add(new Prisma.Decimal(line.credit ?? 0));
       accountMap.set(line.accountCode, acc);
     }
 
@@ -426,9 +505,9 @@ export class JournalAutoService {
           code,
           nameTh: chart?.nameTh || '(ไม่พบในผังบัญชี)',
           accountGroup: chart?.accountGroup || 'UNKNOWN',
-          totalDebit: Math.round(sums.totalDebit * 100) / 100,
-          totalCredit: Math.round(sums.totalCredit * 100) / 100,
-          balance: Math.round((sums.totalDebit - sums.totalCredit) * 100) / 100,
+          totalDebit: sums.totalDebit.toDecimalPlaces(2).toNumber(),
+          totalCredit: sums.totalCredit.toDecimalPlaces(2).toNumber(),
+          balance: sums.totalDebit.sub(sums.totalCredit).toDecimalPlaces(2).toNumber(),
         };
       })
       .sort((a, b) => a.code.localeCompare(b.code));

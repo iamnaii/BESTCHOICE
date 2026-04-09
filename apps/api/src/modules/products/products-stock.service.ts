@@ -495,7 +495,7 @@ export class ProductsStockService {
       const totalCount = branchRows.reduce((sum, r) => sum + r._count, 0);
       const inStockRow = branchRows.find((r) => r.status === 'IN_STOCK');
       const inStock = inStockRow?._count || 0;
-      const totalValue = Number(inStockRow?._sum?.costPrice || 0);
+      const totalValue = new Prisma.Decimal(inStockRow?._sum?.costPrice ?? 0).toNumber();
       return { branch, total: totalCount, inStock, totalValue };
     });
 

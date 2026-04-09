@@ -329,7 +329,7 @@ scripts/                      # Existing project scripts
 - `BranchReceivingPage.tsx` is superseded — `/stock/branch-receiving` redirects to `/stock/transfers?view=incoming`.
 - **Environment variables**: see `.env.example` for full list
 - **CI/CD**: `.github/workflows/deploy.yml` — auto-deploy on push to `main`
-- **`BACKUP_ENCRYPTION_KEY`** — REQUIRED ใน prod env. backup.sh refuses to run without it. ใช้ `openssl rand -hex 32` generate.
+- **Database backups**: ใช้ Cloud SQL automated backups + PITR ของ GCP (managed, encrypted at rest). ไม่มี script-based backup แล้ว — `scripts/backup.sh` ลบไปใน 2026-04-09 เพราะเป็น legacy จากตอน self-hosted
 
 ## Hardening History (ultraplan v1, v2, v3)
 

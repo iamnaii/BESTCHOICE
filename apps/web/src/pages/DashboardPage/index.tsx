@@ -138,15 +138,6 @@ export default function DashboardPage() {
       </div>
 
       {/* Error State */}
-      {kpisError && (
-        <div className="bg-destructive/5 border border-destructive/20 rounded-xl p-4 flex items-center justify-between">
-          <div className="text-sm text-destructive">ไม่สามารถโหลดข้อมูลได้ กรุณาลองใหม่</div>
-          <button onClick={() => refetchKpis()} className="px-3 py-1.5 bg-destructive/10 text-destructive rounded-lg text-xs font-medium hover:bg-destructive/20 transition-colors">
-            ลองใหม่
-          </button>
-        </div>
-      )}
-
       {/* Smart Alerts */}
       <DashboardAlerts alerts={alerts} />
 

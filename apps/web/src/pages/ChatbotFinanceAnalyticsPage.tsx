@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { Link } from 'react-router-dom';
+import QueryBoundary from '@/components/QueryBoundary';
 
 interface AnalyticsOverview {
   today: {
@@ -38,7 +39,7 @@ function StatCard({ label, value, hint, accent }: { label: string; value: string
 }
 
 export default function ChatbotFinanceAnalyticsPage() {
-  const { data, isLoading, error } = useQuery<AnalyticsOverview>({
+  const { data, isLoading, isError, error, refetch } = useQuery<AnalyticsOverview>({
     queryKey: ['chatbot-finance-analytics'],
     queryFn: async () => {
       const { data } = await api.get<AnalyticsOverview>('/chatbot/finance/admin/analytics');
@@ -47,11 +48,20 @@ export default function ChatbotFinanceAnalyticsPage() {
     refetchInterval: 30_000,
   });
 
-  if (isLoading) {
-    return <div className="p-6 text-gray-500">กำลังโหลด...</div>;
-  }
-  if (error) {
-    return <div className="p-6 text-red-600">เกิดข้อผิดพลาด: {getErrorMessage(error)}</div>;
+  if (isLoading || isError) {
+    return (
+      <div className="p-6">
+        <QueryBoundary
+          isLoading={isLoading}
+          isError={isError}
+          error={error}
+          onRetry={refetch}
+          errorTitle="ไม่สามารถโหลด Analytics ได้"
+        >
+          {null}
+        </QueryBoundary>
+      </div>
+    );
   }
   if (!data) return null;
 

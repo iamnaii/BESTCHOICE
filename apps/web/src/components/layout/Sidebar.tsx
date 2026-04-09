@@ -121,6 +121,7 @@ const navSections: NavSection[] = [
       { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
       { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
       { label: 'เงินรับจาก FINANCE', path: '/finance-receivable', icon: Banknote, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
+      { label: 'พอร์ตสัญญา FINANCE', path: '/finance-portfolio', icon: CircleDollarSign, roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
     ],
   },
   {

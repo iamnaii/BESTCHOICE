@@ -470,11 +470,16 @@ export class AccountingService {
 
   // ─── P&L Calculation ─────────────────────────────────────────────────────────
 
-  async getProfitLossReport(startDate: string, endDate: string, branchId?: string) {
+  async getProfitLossReport(startDate: string, endDate: string, branchId?: string, branchIds?: string[]) {
     const start = new Date(startDate);
     const end = new Date(endDate);
     end.setHours(23, 59, 59, 999);
-    const branchFilter = branchId ? { branchId } : {};
+    const branchFilter =
+      branchIds !== undefined
+        ? { branchId: { in: branchIds } }
+        : branchId
+          ? { branchId }
+          : {};
     const dateRange = { gte: start, lte: end };
 
     const [
@@ -734,11 +739,16 @@ export class AccountingService {
     };
   }
 
-  async getMonthlyPLSummary(year: number, branchId?: string) {
+  async getMonthlyPLSummary(year: number, branchId?: string, branchIds?: string[]) {
     const thaiMonths = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
     const yearStart = new Date(year, 0, 1);
     const yearEnd = new Date(year, 11, 31, 23, 59, 59, 999);
-    const branchFilter = branchId ? { branchId } : {};
+    const branchFilter =
+      branchIds !== undefined
+        ? { branchId: { in: branchIds } }
+        : branchId
+          ? { branchId }
+          : {};
     const dateRange = { gte: yearStart, lte: yearEnd };
 
     const getMonth = (d: Date | string | null) => (d ? new Date(d).getMonth() : -1);
@@ -824,7 +834,7 @@ export class AccountingService {
 
   // ─── W-012: Comparative P&L (MoM / YoY) ──────────────────────────────────────
 
-  async getComparativePL(year: number, month: number, branchId?: string) {
+  async getComparativePL(year: number, month: number, branchId?: string, branchIds?: string[]) {
     // Helper: get last day of month as YYYY-MM-DD string (local time, no UTC shift)
     const lastDayOf = (y: number, m: number) => {
       const d = new Date(y, m, 0); // day 0 of next month = last day of m
@@ -845,9 +855,9 @@ export class AccountingService {
     const endYoY = lastDayOf(year - 1, month);
 
     const [current, prevPeriod, lastYear] = await Promise.all([
-      this.getProfitLossReport(startCurrent, endCurrent, branchId),
-      this.getProfitLossReport(startPrev, endPrev, branchId),
-      this.getProfitLossReport(startYoY, endYoY, branchId),
+      this.getProfitLossReport(startCurrent, endCurrent, branchId, branchIds),
+      this.getProfitLossReport(startPrev, endPrev, branchId, branchIds),
+      this.getProfitLossReport(startYoY, endYoY, branchId, branchIds),
     ]);
 
     const pctChange = (curr: number, prev: number) =>
@@ -900,10 +910,15 @@ export class AccountingService {
 
   // ─── Balance Sheet (derived from existing data, no general ledger) ────────────
 
-  async getBalanceSheet(asOfDate: string, branchId?: string) {
+  async getBalanceSheet(asOfDate: string, branchId?: string, branchIds?: string[]) {
     const endDate = new Date(asOfDate);
     endDate.setHours(23, 59, 59, 999);
-    const branchFilter = branchId ? { branchId } : {};
+    const branchFilter =
+      branchIds !== undefined
+        ? { branchId: { in: branchIds } }
+        : branchId
+          ? { branchId }
+          : {};
 
     // ── ASSETS ──
 
@@ -1101,12 +1116,17 @@ export class AccountingService {
 
   // ─── Cash Flow Statement (derived from existing data, no general ledger) ──────
 
-  async getCashFlowStatement(startDate: string, endDate: string, branchId?: string) {
+  async getCashFlowStatement(startDate: string, endDate: string, branchId?: string, branchIds?: string[]) {
     const start = new Date(startDate);
     const end = new Date(endDate);
     end.setHours(23, 59, 59, 999);
     const dateRange = { gte: start, lte: end };
-    const branchFilter = branchId ? { branchId } : {};
+    const branchFilter =
+      branchIds !== undefined
+        ? { branchId: { in: branchIds } }
+        : branchId
+          ? { branchId }
+          : {};
 
     // ── OPERATING ACTIVITIES ──
 

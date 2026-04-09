@@ -1,5 +1,5 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, ContractStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AccountingService } from '../accounting/accounting.service';
 import { calculateDaysOverdue, calculateDaysElapsed } from '../../utils/date.util';
@@ -12,22 +12,22 @@ export class ReportsService {
   ) {}
 
   /**
-   * Resolve companyId + branchId → effective branchId for report filtering.
-   * When companyId is set without branchId, picks the first branch of that company
-   * (FINANCE has 0 branches → returns '__none__' to ensure empty result, not all-data leak).
+   * Resolve companyId + branchId → effective branch ID list for report filtering.
+   * Returns:
+   * - [branchId]   — specific branch requested
+   * - string[]     — all branches under the given company (SHOP multi-branch)
+   * - []           — company exists but has no branches (FINANCE) → callers should return empty data
+   * - undefined    — no filter at all (all branches across all companies)
    */
-  async resolveCompanyBranch(companyId?: string, branchId?: string): Promise<string | undefined> {
-    if (!companyId) return branchId;
-    const branchIds = await this.accounting.getBranchIdsForCompany(companyId);
-    if (branchId) {
-      return branchIds.includes(branchId) ? branchId : '__none__';
-    }
-    // Company with no branches (e.g. FINANCE) → return sentinel to produce empty result
-    if (branchIds.length === 0) return '__none__';
-    // Company with 1 branch → return that branch
-    if (branchIds.length === 1) return branchIds[0];
-    // Company with multiple branches → return first (TODO: support multi-branch filter in accounting)
-    return branchIds[0];
+  async resolveCompanyBranches(companyId?: string, branchId?: string): Promise<string[] | undefined> {
+    if (branchId) return [branchId]; // specific branch requested
+    if (!companyId) return undefined; // no filter = all branches
+    const branches = await this.prisma.branch.findMany({
+      where: { companyId, deletedAt: null },
+      select: { id: true },
+    });
+    // FINANCE has no branches → empty array signals "no data for this company"
+    return branches.map((b) => b.id);
   }
 
   /**
@@ -152,25 +152,25 @@ export class ReportsService {
   }
 
   // P&L calculation delegated to AccountingService
-  getProfitLossReport(startDate: string, endDate: string, branchId?: string) {
-    return this.accounting.getProfitLossReport(startDate, endDate, branchId);
+  getProfitLossReport(startDate: string, endDate: string, branchId?: string, branchIds?: string[]) {
+    return this.accounting.getProfitLossReport(startDate, endDate, branchId, branchIds);
   }
 
-  getMonthlyPLSummary(year: number, branchId?: string) {
-    return this.accounting.getMonthlyPLSummary(year, branchId);
+  getMonthlyPLSummary(year: number, branchId?: string, branchIds?: string[]) {
+    return this.accounting.getMonthlyPLSummary(year, branchId, branchIds);
   }
 
-  getComparativePL(year: number, month: number, branchId?: string) {
-    return this.accounting.getComparativePL(year, month, branchId);
+  getComparativePL(year: number, month: number, branchId?: string, branchIds?: string[]) {
+    return this.accounting.getComparativePL(year, month, branchId, branchIds);
   }
 
   // Balance Sheet & Cash Flow delegated to AccountingService
-  getBalanceSheet(asOfDate: string, branchId?: string) {
-    return this.accounting.getBalanceSheet(asOfDate, branchId);
+  getBalanceSheet(asOfDate: string, branchId?: string, branchIds?: string[]) {
+    return this.accounting.getBalanceSheet(asOfDate, branchId, branchIds);
   }
 
-  getCashFlowStatement(startDate: string, endDate: string, branchId?: string) {
-    return this.accounting.getCashFlowStatement(startDate, endDate, branchId);
+  getCashFlowStatement(startDate: string, endDate: string, branchId?: string, branchIds?: string[]) {
+    return this.accounting.getCashFlowStatement(startDate, endDate, branchId, branchIds);
   }
 
   /**
@@ -667,10 +667,207 @@ export class ReportsService {
   }
 
   /**
+   * FINANCE Portfolio: all contracts owned by BESTCHOICE FINANCE
+   * Returns per-contract receivable calculations + portfolio summary + aging.
+   */
+  async getFinancePortfolio(status?: string, page = 1, limit = 50) {
+    const safeLimit = Math.min(limit, 100);
+
+    const financeCompany = await this.prisma.companyInfo.findFirst({
+      where: { companyCode: 'FINANCE', deletedAt: null },
+    });
+    if (!financeCompany) {
+      return {
+        data: [],
+        summary: { totalContracts: 0, totalReceivable: 0, totalCollected: 0, totalOutstanding: 0, collectionRate: 0 },
+        aging: {
+          current: { count: 0, amount: 0 },
+          days1to30: { count: 0, amount: 0 },
+          days31to60: { count: 0, amount: 0 },
+          days61to90: { count: 0, amount: 0 },
+          over90: { count: 0, amount: 0 },
+        },
+        total: 0,
+        page,
+        limit: safeLimit,
+      };
+    }
+
+    const defaultStatuses = [
+      ContractStatus.ACTIVE,
+      ContractStatus.OVERDUE,
+      ContractStatus.DEFAULT,
+      ContractStatus.COMPLETED,
+      ContractStatus.EARLY_PAYOFF,
+      ContractStatus.EXCHANGED,
+    ] as const;
+
+    const statusFilter =
+      status && status !== 'ALL' && Object.values(ContractStatus).includes(status as ContractStatus)
+        ? [status as ContractStatus]
+        : [...defaultStatuses];
+
+    const where = {
+      deletedAt: null,
+      status: { in: statusFilter },
+      product: { ownedByCompanyId: financeCompany.id, deletedAt: null },
+    };
+
+    const [contracts, total] = await Promise.all([
+      this.prisma.contract.findMany({
+        where,
+        include: {
+          customer: { select: { id: true, name: true, phone: true } },
+          product: { select: { brand: true, model: true, imeiSerial: true } },
+          branch: { select: { name: true } },
+          payments: {
+            where: { deletedAt: null },
+            select: {
+              id: true,
+              installmentNo: true,
+              amountDue: true,
+              amountPaid: true,
+              lateFee: true,
+              dueDate: true,
+              status: true,
+            },
+            orderBy: { installmentNo: 'asc' },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * safeLimit,
+        take: safeLimit,
+      }),
+      this.prisma.contract.count({ where }),
+    ]);
+
+    const now = new Date();
+
+    const data = contracts.map((c) => {
+      const totalReceivable = c.payments.reduce(
+        (s, p) => s.add(new Prisma.Decimal(p.amountDue ?? 0)),
+        new Prisma.Decimal(0),
+      );
+      const totalPaid = c.payments.reduce(
+        (s, p) => s.add(new Prisma.Decimal(p.amountPaid ?? 0)),
+        new Prisma.Decimal(0),
+      );
+      const outstanding = totalReceivable.sub(totalPaid);
+      const paidInstallments = c.payments.filter((p) => p.status === 'PAID').length;
+      const remainingInstallments = c.totalMonths - paidInstallments;
+
+      const pendingPayments = c.payments
+        .filter((p) => p.status === 'PENDING' || p.status === 'OVERDUE' || p.status === 'PARTIALLY_PAID')
+        .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+      const nextDueDate = pendingPayments.length > 0 ? pendingPayments[0].dueDate : null;
+
+      return {
+        id: c.id,
+        contractNumber: c.contractNumber,
+        status: c.status,
+        customer: c.customer,
+        product: c.product,
+        branch: c.branch.name,
+        sellingPrice: new Prisma.Decimal(c.sellingPrice ?? 0).toNumber(),
+        financedAmount: new Prisma.Decimal(c.financedAmount ?? 0).toNumber(),
+        monthlyPayment: new Prisma.Decimal(c.monthlyPayment ?? 0).toNumber(),
+        totalMonths: c.totalMonths,
+        paidInstallments,
+        remainingInstallments,
+        totalReceivable: totalReceivable.toNumber(),
+        totalPaid: totalPaid.toNumber(),
+        outstanding: outstanding.toNumber(),
+        nextDueDate,
+        createdAt: c.createdAt,
+      };
+    });
+
+    // Summary and aging computed over ALL matching contracts (not just current page)
+    const allContracts = await this.prisma.contract.findMany({
+      where,
+      include: {
+        payments: {
+          where: { deletedAt: null },
+          select: { amountDue: true, amountPaid: true, dueDate: true, status: true },
+        },
+      },
+    });
+
+    let sumReceivable = new Prisma.Decimal(0);
+    let sumCollected = new Prisma.Decimal(0);
+
+    const aging = {
+      current: { count: 0, amount: new Prisma.Decimal(0) },
+      days1to30: { count: 0, amount: new Prisma.Decimal(0) },
+      days31to60: { count: 0, amount: new Prisma.Decimal(0) },
+      days61to90: { count: 0, amount: new Prisma.Decimal(0) },
+      over90: { count: 0, amount: new Prisma.Decimal(0) },
+    };
+
+    for (const c of allContracts) {
+      for (const p of c.payments) {
+        const due = new Prisma.Decimal(p.amountDue ?? 0);
+        const paid = new Prisma.Decimal(p.amountPaid ?? 0);
+        sumReceivable = sumReceivable.add(due);
+        sumCollected = sumCollected.add(paid);
+        const pOutstanding = due.sub(paid);
+
+        if (p.status === 'PAID') continue;
+
+        const dueDate = new Date(p.dueDate);
+        const diffDays = Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+
+        if (diffDays <= 0) {
+          aging.current.count++;
+          aging.current.amount = aging.current.amount.add(pOutstanding);
+        } else if (diffDays <= 30) {
+          aging.days1to30.count++;
+          aging.days1to30.amount = aging.days1to30.amount.add(pOutstanding);
+        } else if (diffDays <= 60) {
+          aging.days31to60.count++;
+          aging.days31to60.amount = aging.days31to60.amount.add(pOutstanding);
+        } else if (diffDays <= 90) {
+          aging.days61to90.count++;
+          aging.days61to90.amount = aging.days61to90.amount.add(pOutstanding);
+        } else {
+          aging.over90.count++;
+          aging.over90.amount = aging.over90.amount.add(pOutstanding);
+        }
+      }
+    }
+
+    const sumReceivableNum = sumReceivable.toNumber();
+    const sumCollectedNum = sumCollected.toNumber();
+
+    return {
+      data,
+      summary: {
+        totalContracts: allContracts.length,
+        totalReceivable: sumReceivableNum,
+        totalCollected: sumCollectedNum,
+        totalOutstanding: new Prisma.Decimal(sumReceivableNum).sub(new Prisma.Decimal(sumCollectedNum)).toNumber(),
+        collectionRate: sumReceivableNum > 0
+          ? Math.round((sumCollectedNum / sumReceivableNum) * 10000) / 100
+          : 0,
+      },
+      aging: {
+        current: { count: aging.current.count, amount: aging.current.amount.toNumber() },
+        days1to30: { count: aging.days1to30.count, amount: aging.days1to30.amount.toNumber() },
+        days31to60: { count: aging.days31to60.count, amount: aging.days31to60.amount.toNumber() },
+        days61to90: { count: aging.days61to90.count, amount: aging.days61to90.amount.toNumber() },
+        over90: { count: aging.over90.count, amount: aging.over90.amount.toNumber() },
+      },
+      total,
+      page,
+      limit: safeLimit,
+    };
+  }
+
+  /**
    * R-015: Quarterly P&L report aggregation
    * Calculates start/end dates for the given quarter and delegates to AccountingService.
    */
-  async getQuarterlyReport(year: number, quarter: number, branchId?: string) {
+  async getQuarterlyReport(year: number, quarter: number, branchId?: string, branchIds?: string[]) {
     if (quarter < 1 || quarter > 4) {
       throw new BadRequestException('ไตรมาสต้องอยู่ระหว่าง 1-4');
     }
@@ -678,6 +875,6 @@ export class ReportsService {
     const endMonth = startMonth + 2;
     const startDate = `${year}-${String(startMonth).padStart(2, '0')}-01`;
     const endDate = new Date(year, endMonth, 0).toISOString().split('T')[0];
-    return this.accounting.getProfitLossReport(startDate, endDate, branchId);
+    return this.accounting.getProfitLossReport(startDate, endDate, branchId, branchIds);
   }
 }

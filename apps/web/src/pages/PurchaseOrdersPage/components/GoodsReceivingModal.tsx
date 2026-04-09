@@ -49,7 +49,7 @@ export function GoodsReceivingModal({
             {/* Scrollable content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-5">
               {/* คำแนะนำ */}
-              <div className="rounded-xl border border-border bg-card p-5">
+              <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm">
                 <div className="flex items-center gap-2.5 mb-4">
                   <div className="flex items-center justify-center size-8 rounded-lg bg-primary/10 text-primary">
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
@@ -67,7 +67,7 @@ export function GoodsReceivingModal({
               </div>
 
               {/* รายการตรวจรับ */}
-              <div className="rounded-xl border border-border bg-card p-5">
+              <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm">
                 <div className="flex items-center gap-2.5 mb-4">
                   <div className="flex items-center justify-center size-8 rounded-lg bg-orange-500/10 text-orange-500">
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
@@ -265,7 +265,7 @@ export function GoodsReceivingModal({
 
               {/* สรุปผลตรวจรับ */}
               {receivingUnits.length > 0 && (
-                <div className="rounded-xl border border-border bg-card p-5">
+                <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm">
                   <div className="flex items-center gap-2.5 mb-4">
                     <div className="flex items-center justify-center size-8 rounded-lg bg-emerald-500/10 text-emerald-500">
                       <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>
@@ -286,7 +286,7 @@ export function GoodsReceivingModal({
               )}
 
               {/* หมายเหตุ */}
-              <div className="rounded-xl border border-border bg-card p-5">
+              <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm">
                 <div className="flex items-center gap-2.5 mb-4">
                   <div className="flex items-center justify-center size-8 rounded-lg bg-violet-500/10 text-violet-500">
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.855z"/></svg>

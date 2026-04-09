@@ -240,7 +240,7 @@ export default function SlipReviewTab() {
       REJECTED: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
     };
     return (
-      <span className={`px-2 py-1 rounded-full text-xs font-medium ${styles[status] || 'bg-muted'}`}>
+      <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${styles[status] || 'bg-muted'}`}>
         {statusLabels[status] || status}
       </span>
     );
@@ -279,16 +279,16 @@ export default function SlipReviewTab() {
       </div>
 
       {/* Status Filter + Export */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex gap-2">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+        <div className="flex gap-1 bg-muted rounded-xl p-1">
           {['PENDING_REVIEW', 'APPROVED', 'REJECTED'].map((status) => (
             <button
               key={status}
               onClick={() => setStatusFilter(status)}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 statusFilter === status
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                  ? 'bg-card text-primary shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               {{ PENDING_REVIEW: 'รอตรวจ', APPROVED: 'อนุมัติแล้ว', REJECTED: 'ปฏิเสธแล้ว' }[status]}
@@ -304,7 +304,7 @@ export default function SlipReviewTab() {
       </div>
 
       {/* Search/Filter Bar */}
-      <div className="bg-card rounded-lg border border-border/60 p-4 mb-6">
+      <div className="bg-card rounded-xl border border-border/50 shadow-sm p-4 mb-6">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <input
             type="text"

@@ -45,7 +45,7 @@ function StatusDot({ ok }: { ok: boolean }) {
 function A4Page({ pageNum, totalPages, children }: { pageNum: number; totalPages: number; children: React.ReactNode }) {
   return (
     <div
-      className="bg-card border border-border shadow-card mx-auto mb-6 relative"
+      className="rounded-xl border border-border/50 bg-card shadow-sm mx-auto mb-6 relative"
       style={{ width: '210mm', minHeight: '297mm', maxWidth: '100%', padding: '20mm 18mm 25mm 18mm' }}
     >
       {children}
@@ -405,7 +405,7 @@ export default function SystemStatusPage() {
 /* ─── Integration Service Card ─── */
 function IntegrationCard({ name, configured, details }: { name: string; configured: boolean; details: { label: string; value: string }[] }) {
   return (
-    <div className={`rounded-lg border p-4 ${configured ? 'border-green-200 bg-green-50/50 dark:bg-green-950/20 dark:border-green-900' : 'border-border bg-muted/30'}`}>
+    <div className={`rounded-xl border p-4 shadow-sm ${configured ? 'border-green-200 bg-green-50/50 dark:bg-green-950/20 dark:border-green-900' : 'border-border/50 bg-muted/30'}`}>
       <div className="flex items-center gap-2 mb-2">
         <StatusDot ok={configured} />
         <span className="text-sm font-medium text-foreground">{name}</span>
@@ -419,7 +419,7 @@ function IntegrationCard({ name, configured, details }: { name: string; configur
         ))}
       </div>
       <div className="mt-2 text-right">
-        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${configured ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' : 'bg-red-100 text-red-600 dark:bg-red-900 dark:text-red-300'}`}>
+        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${configured ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' : 'bg-red-100 text-red-600 dark:bg-red-900 dark:text-red-300'}`}>
           {configured ? 'ตั้งค่าแล้ว' : 'ยังไม่ได้ตั้งค่า'}
         </span>
       </div>
@@ -439,7 +439,7 @@ function VerticalLine({ ok }: { ok: boolean }) {
 
 function MemoryCard({ label, value, total, pct }: { label: string; value: string; total?: string; pct?: number }) {
   return (
-    <div className="border border-border rounded-lg p-3">
+    <div className="rounded-xl border border-border/50 bg-card shadow-sm p-3">
       <p className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">{label}</p>
       <p className="text-lg font-bold text-foreground">{value}</p>
       {total && pct !== undefined && (
@@ -466,7 +466,7 @@ function ServiceCard({
   full?: boolean;
 }) {
   const bgColors: Record<string, string> = {
-    blue: 'bg-primary-50 border-primary-200',
+    blue: 'bg-primary/5 border-primary/20',
     indigo: 'bg-indigo-50 border-indigo-200',
     emerald: 'bg-emerald-50 border-emerald-200',
   };
@@ -482,7 +482,7 @@ function ServiceCard({
   };
 
   return (
-    <div className={`rounded-lg border p-4 ${bgColors[color] || 'bg-muted border-border'} ${full ? 'w-full' : 'w-72'}`}>
+    <div className={`rounded-xl border shadow-sm p-4 ${bgColors[color] || 'bg-muted border-border/50'} ${full ? 'w-full' : 'w-72'}`}>
       <div className="flex items-center gap-2 mb-2">
         <div className={iconColors[color] || 'text-muted-foreground'}>{icon}</div>
         <h3 className="text-sm font-semibold text-foreground">{title}</h3>

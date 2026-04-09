@@ -428,13 +428,13 @@ export default function CustomerDetailPage() {
   }
 
   const contractColumns = [
-    { key: 'contractNumber', label: 'เลขสัญญา', render: (c: CustomerDetail['contracts'][0]) => <span className="font-mono text-sm">{c.contractNumber}</span> },
+    { key: 'contractNumber', label: 'เลขสัญญา', render: (c: CustomerDetail['contracts'][0]) => <span className="font-mono text-sm tabular-nums">{c.contractNumber}</span> },
     { key: 'product', label: 'สินค้า', render: (c: CustomerDetail['contracts'][0]) => <span className="text-sm">{c.product.brand} {c.product.model}</span> },
     { key: 'status', label: 'สถานะ', render: (c: CustomerDetail['contracts'][0]) => {
       const s = statusLabels[c.status] || { label: c.status, className: 'bg-muted' };
-      return <span className={`px-2 py-0.5 rounded-md text-xs font-medium ${s.className}`}>{s.label}</span>;
+      return <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${s.className}`}>{s.label}</span>;
     }},
-    { key: 'monthlyPayment', label: 'ค่างวด', render: (c: CustomerDetail['contracts'][0]) => <span className="text-sm">{parseFloat(c.monthlyPayment).toLocaleString()} ฿/เดือน</span> },
+    { key: 'monthlyPayment', label: 'ค่างวด', render: (c: CustomerDetail['contracts'][0]) => <span className="text-sm tabular-nums font-mono">{parseFloat(c.monthlyPayment).toLocaleString()} ฿/เดือน</span> },
     { key: 'branch', label: 'สาขา', render: (c: CustomerDetail['contracts'][0]) => <span className="text-xs">{c.branch.name}</span> },
   ];
 
@@ -466,20 +466,25 @@ export default function CustomerDetailPage() {
         </div>
       } />
 
-      {/* Profile Header Card — Metronic style */}
-      <Card className="mb-6">
-        <CardContent className="p-5 lg:p-6">
+      {/* Profile Header Card — Metronic v9.4.8 style */}
+      <Card className="mb-6 rounded-xl border border-border/50 bg-card shadow-sm">
+        <CardContent className="p-5">
           <div className="flex items-center gap-4">
-            <div className="size-14 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center shrink-0 ring-2 ring-primary/10">
-              <span className="text-xl font-bold text-primary">{customer?.name?.charAt(0) || 'C'}</span>
+            <div className="size-16 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center shrink-0 ring-2 ring-primary/10">
+              <span className="text-2xl font-bold text-primary">{customer?.name?.charAt(0) || 'C'}</span>
             </div>
             <div className="flex-1 min-w-0">
-              <h2 className="text-lg font-bold text-foreground truncate">{displayName}</h2>
-              <div className="flex flex-wrap items-center gap-2 mt-1">
+              <h2 className="text-lg font-semibold text-foreground truncate">{displayName}</h2>
+              <div className="flex flex-wrap items-center gap-2 mt-1.5">
                 {customer?.phone && <span className="text-sm text-muted-foreground">{customer.phone}</span>}
                 {customer?.contracts?.length > 0 && (
-                  <span className="text-2xs font-medium px-2 py-0.5 rounded-md bg-primary/10 text-primary">
+                  <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold bg-primary/10 text-primary">
                     {customer.contracts.length} สัญญา
+                  </span>
+                )}
+                {customer.isForeigner && (
+                  <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold bg-warning/10 text-warning">
+                    ชาวต่างชาติ
                   </span>
                 )}
               </div>
@@ -488,9 +493,10 @@ export default function CustomerDetailPage() {
         </CardContent>
       </Card>
 
-      {/* Risk Warning — dark mode friendly */}
+      {/* Risk Warning */}
       {risk?.hasRisk && (
-        <div className={`rounded-xl p-4 mb-6 ${risk.riskLevel === 'HIGH' ? 'bg-destructive/5 dark:bg-destructive/10 border border-destructive/20' : 'bg-warning/5 dark:bg-warning/10 border border-warning/20'}`}>
+        <div className={`relative rounded-xl p-4 mb-6 overflow-hidden ${risk.riskLevel === 'HIGH' ? 'bg-destructive/5 dark:bg-destructive/10 border border-destructive/20' : 'bg-warning/5 dark:bg-warning/10 border border-warning/20'}`}>
+          <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-r-full ${risk.riskLevel === 'HIGH' ? 'bg-destructive' : 'bg-warning'}`} />
           <div className={`font-semibold text-sm ${risk.riskLevel === 'HIGH' ? 'text-destructive' : 'text-warning'}`}>
             {risk.riskLevel === 'HIGH' ? 'ลูกค้ามีสัญญาผิดนัด (DEFAULT)' : 'ลูกค้ามีสัญญาค้างชำระ (OVERDUE)'}
           </div>
@@ -724,7 +730,7 @@ export default function CustomerDetailPage() {
                 <div key={cc.id} className="border border-border/60 rounded-xl p-4 space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <span className={`px-2 py-0.5 rounded-md text-xs font-medium ${cs.className}`}>{cs.label}</span>
+                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${cs.className}`}>{cs.label}</span>
                       {cc.bankName && <span className="text-xs text-muted-foreground">ธนาคาร: {cc.bankName}</span>}
                       <span className="text-xs text-muted-foreground">{formatDateShort(cc.createdAt)}</span>
                       {cc.contract && <span className="text-xs text-primary">สัญญา: {cc.contract.contractNumber}</span>}
@@ -805,33 +811,37 @@ export default function CustomerDetailPage() {
         <TabsContent value="loyalty">
           {/* Points Balance */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <Card>
-              <CardContent className="p-4 text-center">
-                <div className="text-3xl font-bold text-primary">
+            <Card className="rounded-xl border border-border/50 bg-card shadow-sm relative overflow-hidden">
+              <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-primary" />
+              <CardContent className="p-5 text-center">
+                <div className="text-3xl font-bold text-primary tabular-nums">
                   {loyaltyPoints?.balance?.toLocaleString() ?? 0}
                 </div>
                 <div className="text-xs text-muted-foreground mt-1">แต้มคงเหลือ</div>
               </CardContent>
             </Card>
-            <Card>
-              <CardContent className="p-4 text-center">
-                <div className="text-2xl font-bold text-success">
+            <Card className="rounded-xl border border-border/50 bg-card shadow-sm relative overflow-hidden">
+              <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-success" />
+              <CardContent className="p-5 text-center">
+                <div className="text-2xl font-bold text-success tabular-nums">
                   {loyaltyPoints?.lifetimeEarned?.toLocaleString() ?? 0}
                 </div>
                 <div className="text-xs text-muted-foreground mt-1">แต้มสะสมทั้งหมด</div>
               </CardContent>
             </Card>
-            <Card>
-              <CardContent className="p-4 text-center">
-                <div className="text-2xl font-bold text-warning">
+            <Card className="rounded-xl border border-border/50 bg-card shadow-sm relative overflow-hidden">
+              <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-warning" />
+              <CardContent className="p-5 text-center">
+                <div className="text-2xl font-bold text-warning tabular-nums">
                   {loyaltyPoints?.lifetimeRedeemed?.toLocaleString() ?? 0}
                 </div>
                 <div className="text-xs text-muted-foreground mt-1">แต้มที่ใช้ไป</div>
               </CardContent>
             </Card>
-            <Card>
-              <CardContent className="p-4 text-center">
-                <div className="text-2xl font-bold text-info">
+            <Card className="rounded-xl border border-border/50 bg-card shadow-sm relative overflow-hidden">
+              <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-info" />
+              <CardContent className="p-5 text-center">
+                <div className="text-2xl font-bold text-info tabular-nums">
                   {loyaltyPoints?.referralCount?.toLocaleString() ?? 0}
                 </div>
                 <div className="text-xs text-muted-foreground mt-1">คนที่แนะนำ</div>

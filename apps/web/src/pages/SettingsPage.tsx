@@ -169,7 +169,10 @@ function SettingsCard({
   };
 
   return (
-    <div className="bg-card rounded-xl border border-border/60 border-l-[3px] border-l-primary shadow-card p-5">
+    <div className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden">
+      <div className="flex">
+        <div className="w-1 shrink-0 bg-primary" />
+      <div className="p-5 flex-1">
       <div className="flex items-start justify-between">
         <div>
           <h3 className="text-lg font-bold text-foreground">{group.title}</h3>
@@ -222,6 +225,8 @@ function SettingsCard({
           </div>
         </div>
       )}
+      </div>
+      </div>
     </div>
   );
 }
@@ -258,7 +263,7 @@ function CardReaderSetup() {
   const textColor = { green: 'text-success', yellow: 'text-warning', red: 'text-destructive', blue: 'text-primary-700', gray: 'text-muted-foreground' }[statusInfo.color] || 'text-muted-foreground';
 
   return (
-    <div className="bg-card rounded-lg border border-border/60 p-6">
+    <div className="rounded-xl border border-border/50 bg-card shadow-sm p-6">
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1">
           <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">

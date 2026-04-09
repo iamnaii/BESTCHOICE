@@ -270,10 +270,10 @@ export default function StockAdjustmentsPage() {
       />
 
       {/* Sub-tabs */}
-      <div className="flex gap-1 mb-6 bg-muted rounded-lg p-1 w-fit">
+      <div className="flex gap-1 mb-6 bg-muted rounded-xl p-1 w-fit">
         <button
           onClick={() => setActiveTab('list')}
-          className={`px-4 py-2 text-sm rounded-md font-medium transition-colors ${
+          className={`px-4 py-2 text-sm rounded-lg font-medium transition-colors ${
             activeTab === 'list' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
           }`}
         >
@@ -281,7 +281,7 @@ export default function StockAdjustmentsPage() {
         </button>
         <button
           onClick={() => setActiveTab('summary')}
-          className={`px-4 py-2 text-sm rounded-md font-medium transition-colors ${
+          className={`px-4 py-2 text-sm rounded-lg font-medium transition-colors ${
             activeTab === 'summary' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
           }`}
         >
@@ -364,17 +364,19 @@ export default function StockAdjustmentsPage() {
       {activeTab === 'summary' && summary && (
         <div className="flex flex-col gap-5 lg:gap-7.5">
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            <div className="rounded-lg border p-4 border-l-4 border-l-gray-400">
+            <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm relative overflow-hidden">
+              <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-muted-foreground" />
               <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">รายการทั้งหมด</div>
-              <div className="text-2xl font-bold text-foreground">{summary.totalCount}</div>
+              <div className="text-2xl font-bold text-foreground tabular-nums">{summary.totalCount}</div>
             </div>
-            <div className="rounded-lg border p-4 border-l-4 border-l-red-500">
+            <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm relative overflow-hidden">
+              <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-destructive" />
               <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">มูลค่ารวมที่ปรับ</div>
-              <div className="text-2xl font-bold text-destructive">{summary.totalValue.toLocaleString()} ฿</div>
+              <div className="text-2xl font-bold text-destructive tabular-nums font-mono">{summary.totalValue.toLocaleString()} ฿</div>
             </div>
           </div>
 
-          <div className="rounded-lg border p-5">
+          <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm">
             <h2 className="text-sm font-semibold text-foreground mb-4">สรุปตามสาเหตุ</h2>
             <div className="space-y-3">
               {Object.entries(summary.byReason).map(([reason, data]) => {

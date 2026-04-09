@@ -24,7 +24,7 @@ interface InspectionItem {
 }
 
 const statusBadge: Record<string, { label: string; class: string }> = {
-  RECEIVED: { label: 'รอตรวจ', class: 'bg-blue-100 text-blue-700' },
+  RECEIVED: { label: 'รอตรวจ', class: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
   INSPECTING: { label: 'กำลังตรวจ', class: 'bg-warning/10 text-warning dark:bg-warning/15' },
   QC_PASSED: { label: 'ผ่าน QC', class: 'bg-success/10 text-success dark:bg-success/15' },
   QC_FAILED: { label: 'ไม่ผ่าน QC', class: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
@@ -86,7 +86,7 @@ export default function InspectionPage() {
       render: (row) => {
         const badge = statusBadge[row.status] ?? { label: row.status, class: 'bg-gray-100 text-gray-700' };
         return (
-          <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${badge.class}`}>
+          <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${badge.class}`}>
             {badge.label}
           </span>
         );
@@ -128,13 +128,13 @@ export default function InspectionPage() {
             placeholder="ค้นหาสินค้า, IMEI, ยี่ห้อ..."
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+            className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-input bg-background text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background"
           />
         </div>
         <select
           value={statusFilter}
           onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-          className="px-4 py-2.5 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+          className="px-4 py-2.5 rounded-lg border border-input bg-background text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
         >
           <option value="">ทุกสถานะ</option>
           <option value="RECEIVED">รอตรวจ</option>

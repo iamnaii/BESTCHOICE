@@ -147,7 +147,7 @@ export default function LineOaSettingsPage() {
       />
 
       {/* Connection Status Card */}
-      <div className={`mb-8 p-5 rounded-2xl border-2 ${
+      <div className={`mb-8 p-5 rounded-xl border-2 ${
         data?.isConfigured && testResult?.success
           ? 'bg-success/5 dark:bg-success/10 border-success/30'
           : data?.isConfigured
@@ -219,7 +219,7 @@ export default function LineOaSettingsPage() {
             </div>
           </div>
 
-          <div className="bg-card rounded-xl shadow-card border p-5 ml-4 border-l-4 border-l-blue-400">
+          <div className="rounded-xl border border-border/50 bg-card shadow-sm p-5 ml-4 border-l-4 border-l-blue-400">
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-5">
               <p className="text-sm text-blue-800 font-medium mb-2">วิธีหา Token:</p>
               <ol className="text-sm text-blue-700 space-y-1.5 list-decimal list-inside">
@@ -293,7 +293,7 @@ export default function LineOaSettingsPage() {
             </div>
           </div>
 
-          <div className="bg-card rounded-xl shadow-card border p-5 ml-4 border-l-4 border-l-green-400">
+          <div className="rounded-xl border border-border/50 bg-card shadow-sm p-5 ml-4 border-l-4 border-l-green-400">
             <div className="bg-success/5 dark:bg-success/10 border border-success/20 rounded-lg p-4 mb-4">
               <p className="text-sm text-success font-medium mb-2">คัดลอก URL ด้านล่าง แล้วไปวางใน LINE Developers Console:</p>
               <ol className="text-sm text-green-700 space-y-1 list-decimal list-inside">
@@ -336,7 +336,7 @@ export default function LineOaSettingsPage() {
             </div>
           </div>
 
-          <div className="bg-card rounded-xl shadow-card border p-5 ml-4 border-l-4 border-l-orange-400">
+          <div className="rounded-xl border border-border/50 bg-card shadow-sm p-5 ml-4 border-l-4 border-l-orange-400">
             <div className="bg-warning/5 dark:bg-warning/10 border border-warning/20 rounded-lg p-4 mb-4">
               <p className="text-sm text-warning font-medium mb-2">วิธีสร้าง LIFF App:</p>
               <ol className="text-sm text-orange-700 space-y-1.5 list-decimal list-inside">
@@ -423,17 +423,17 @@ export default function LineOaSettingsPage() {
         <div className="mt-10 mb-6">
           <h3 className="font-semibold text-foreground mb-4 ml-4">สถิติ LINE OA</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 ml-4">
-            <div className="bg-card rounded-xl shadow-card border p-5 text-center">
+            <div className="rounded-xl border border-border/50 bg-card shadow-sm p-5 text-center">
               <div className="text-3xl font-bold text-primary">{stats.linkedCustomers}</div>
               <div className="text-sm text-muted-foreground mt-1">ลูกค้าเชื่อมต่อ LINE</div>
             </div>
-            <div className="bg-card rounded-xl shadow-card border p-5 text-center">
+            <div className="rounded-xl border border-border/50 bg-card shadow-sm p-5 text-center">
               <div className={`text-3xl font-bold ${stats.pendingSlips > 0 ? 'text-orange-500' : 'text-green-500'}`}>
                 {stats.pendingSlips}
               </div>
               <div className="text-sm text-muted-foreground mt-1">สลิปรอตรวจสอบ</div>
             </div>
-            <div className="bg-card rounded-xl shadow-card border p-5 text-center">
+            <div className="rounded-xl border border-border/50 bg-card shadow-sm p-5 text-center">
               <div className="text-3xl font-bold text-blue-500">{stats.todayNotifications}</div>
               <div className="text-sm text-muted-foreground mt-1">ข้อความวันนี้</div>
             </div>
@@ -445,7 +445,7 @@ export default function LineOaSettingsPage() {
       {data?.isConfigured && (
         <div className="mt-10 mb-6">
           <h3 className="font-semibold text-foreground mb-4 ml-4">ทดสอบส่งข้อความ</h3>
-          <div className="bg-card rounded-xl shadow-card border p-5 ml-4 border-l-4 border-l-yellow-400">
+          <div className="rounded-xl border border-border/50 bg-card shadow-sm p-5 ml-4 border-l-4 border-l-yellow-400">
             <p className="text-sm text-muted-foreground mb-4">
               ส่งตัวอย่าง Flex Message ให้ตัวเองดูก่อน เพื่อตรวจสอบว่าข้อความแสดงผลถูกต้อง
             </p>
@@ -527,7 +527,7 @@ export default function LineOaSettingsPage() {
       )}
 
       {/* Features Info */}
-      <div className="mt-10 bg-gradient-to-br from-green-50 to-blue-50 rounded-2xl border border-green-200 p-6">
+      <div className="mt-10 rounded-xl border border-border/50 bg-card shadow-sm p-6">
         <h3 className="font-semibold text-foreground mb-4">เมื่อเชื่อมต่อแล้ว ระบบจะทำสิ่งนี้ได้อัตโนมัติ</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {[

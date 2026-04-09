@@ -183,8 +183,8 @@ export default function ContractCreatePage() {
         />
       )}
 
-      {/* Navigation buttons — polished */}
-      <div className="flex justify-between mt-8 pt-6 border-t border-border">
+      {/* Navigation buttons */}
+      <div className="flex justify-between mt-8 pt-6 border-t border-border/60">
         <Button
           variant="outline"
           size="lg"

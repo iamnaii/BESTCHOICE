@@ -510,7 +510,7 @@ export default function NotificationsPage() {
       key: 'status',
       label: 'สถานะ',
       render: (l: NotificationLog) => (
-        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[l.status]}`}>
+        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusColors[l.status]}`}>
           {statusLabels[l.status]}
         </span>
       ),
@@ -546,7 +546,7 @@ export default function NotificationsPage() {
       key: 'format',
       label: 'รูปแบบ',
       render: (t: NotificationTemplate) => (
-        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
           t.format === 'flex' ? 'bg-info/10 text-info dark:bg-info/15' : 'bg-blue-100 text-blue-700'
         }`}>
           {t.format === 'flex' ? 'Flex JSON' : 'Text'}
@@ -564,7 +564,7 @@ export default function NotificationsPage() {
       key: 'isActive',
       label: 'สถานะ',
       render: (t: NotificationTemplate) => (
-        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${t.isActive ? 'bg-success/10 text-success dark:bg-success/15' : 'bg-muted text-muted-foreground'}`}>
+        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${t.isActive ? 'bg-success/10 text-success dark:bg-success/15' : 'bg-muted text-muted-foreground'}`}>
           {t.isActive ? 'เปิดใช้งาน' : 'ปิด'}
         </span>
       ),
@@ -598,22 +598,30 @@ export default function NotificationsPage() {
 
       {/* Stats */}
       {stats && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-          <div className="bg-card rounded-lg border border-border border-l-[3px] border-l-foreground p-4 hover:shadow-card-hover transition-all">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-5 mb-6">
+          <div className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
+            <div className="flex h-full"><div className="w-1 shrink-0 bg-foreground/40" /><div className="p-4 flex-1">
             <div className="text-sm text-muted-foreground">ทั้งหมด</div>
-            <div className="text-2xl font-bold">{stats.total}</div>
+            <div className="text-2xl font-bold tabular-nums">{stats.total}</div>
+            </div></div>
           </div>
-          <div className="bg-card rounded-lg border border-border border-l-[3px] border-l-success p-4 hover:shadow-card-hover transition-all">
+          <div className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
+            <div className="flex h-full"><div className="w-1 shrink-0 bg-success" /><div className="p-4 flex-1">
             <div className="text-sm text-muted-foreground">ส่งสำเร็จ</div>
-            <div className="text-2xl font-bold text-success">{stats.sent}</div>
+            <div className="text-2xl font-bold tabular-nums text-success">{stats.sent}</div>
+            </div></div>
           </div>
-          <div className="bg-card rounded-lg border border-border border-l-[3px] border-l-destructive p-4 hover:shadow-card-hover transition-all">
+          <div className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
+            <div className="flex h-full"><div className="w-1 shrink-0 bg-destructive" /><div className="p-4 flex-1">
             <div className="text-sm text-muted-foreground">ล้มเหลว</div>
-            <div className="text-2xl font-bold text-destructive">{stats.failed}</div>
+            <div className="text-2xl font-bold tabular-nums text-destructive">{stats.failed}</div>
+            </div></div>
           </div>
-          <div className="bg-card rounded-lg border border-border border-l-[3px] border-l-warning p-4 hover:shadow-card-hover transition-all">
+          <div className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
+            <div className="flex h-full"><div className="w-1 shrink-0 bg-warning" /><div className="p-4 flex-1">
             <div className="text-sm text-muted-foreground">รอส่ง</div>
-            <div className="text-2xl font-bold text-warning">{stats.pending}</div>
+            <div className="text-2xl font-bold tabular-nums text-warning">{stats.pending}</div>
+            </div></div>
           </div>
         </div>
       )}
@@ -709,7 +717,7 @@ export default function NotificationsPage() {
       )}
 
       {activeTab === 'send' && (
-        <div className="bg-card rounded-lg border border-border/60 p-6 max-w-lg">
+        <div className="rounded-xl border border-border/50 bg-card shadow-sm p-6 max-w-lg">
           <h3 className="text-lg font-semibold mb-4">ส่งการแจ้งเตือนด้วยตนเอง</h3>
           <form
             onSubmit={(e) => {

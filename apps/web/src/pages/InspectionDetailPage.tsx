@@ -164,10 +164,10 @@ export default function InspectionDetailPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Product Info */}
-        <div className="lg:col-span-2 bg-card rounded-xl border border-border">
-          <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+        <div className="lg:col-span-2 bg-card rounded-xl border border-border/50 shadow-sm">
+          <div className="px-5 py-4 border-b border-border/50 flex items-center justify-between">
             <h3 className="text-sm font-semibold">ข้อมูลสินค้า</h3>
-            <span className={`text-xs px-3 py-1.5 rounded-full font-medium inline-flex items-center gap-1.5 ${currentStatus.class}`}>
+            <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold inline-flex items-center gap-1.5 ${currentStatus.class}`}>
               <StatusIcon className="size-3.5" />
               {currentStatus.label}
             </span>
@@ -175,7 +175,7 @@ export default function InspectionDetailPage() {
           <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
             {infoItems.map((item) => (
               <div key={item.label}>
-                <p className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">{item.label}</p>
+                <p className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">{item.label}</p>
                 <p className="text-sm font-medium text-foreground">{item.value}</p>
               </div>
             ))}
@@ -189,8 +189,8 @@ export default function InspectionDetailPage() {
         </div>
 
         {/* Actions Panel */}
-        <div className="bg-card rounded-xl border border-border">
-          <div className="px-5 py-4 border-b border-border">
+        <div className="bg-card rounded-xl border border-border/50 shadow-sm">
+          <div className="px-5 py-4 border-b border-border/50">
             <h3 className="text-sm font-semibold">ดำเนินการ</h3>
           </div>
           <div className="p-5 space-y-3">

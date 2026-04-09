@@ -278,11 +278,12 @@ export default function SupplierDetailPage() {
       />
 
       {/* ข้อมูลผู้ขาย */}
-      <div className="rounded-xl border border-border/60 p-6 mb-6 shadow-sm">
+      <div className="rounded-xl border border-border/50 bg-card p-5 mb-6 shadow-sm relative overflow-hidden">
+        <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-primary" />
         <div className="flex items-start justify-between mb-4">
           <h2 className="text-lg font-semibold text-foreground">ข้อมูลผู้ขาย</h2>
           <span
-            className={`px-2 py-0.5 rounded-md text-xs font-medium ${
+            className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
               supplier.isActive ? 'bg-success/10 text-success dark:bg-success/15' : 'bg-destructive/10 text-destructive dark:bg-destructive/15'
             }`}
           >
@@ -299,7 +300,7 @@ export default function SupplierDetailPage() {
           <div>
             <div className="text-xs text-muted-foreground mb-0.5">สถานะ VAT</div>
             <span
-              className={`px-2 py-0.5 rounded-md text-xs font-medium ${
+              className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
                 supplier.hasVat ? 'bg-primary/10 text-primary dark:bg-primary/15' : 'bg-muted text-muted-foreground'
               }`}
             >
@@ -316,18 +317,18 @@ export default function SupplierDetailPage() {
       </div>
 
       {/* Payment Methods Card */}
-      <div className="rounded-xl border border-border/60 p-6 mb-6 shadow-sm">
+      <div className="rounded-xl border border-border/50 bg-card p-5 mb-6 shadow-sm">
         <h2 className="text-lg font-semibold text-foreground mb-4">ข้อมูลการชำระเงิน ({supplier.paymentMethods?.length || 0} วิธี)</h2>
         {supplier.paymentMethods?.length ? (
           <div className="space-y-3">
             {supplier.paymentMethods.map((pm) => (
               <div key={pm.id} className="border border-border/60 rounded-xl p-4 bg-muted/40">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary dark:bg-primary/15">
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-primary/10 text-primary dark:bg-primary/15">
                     {paymentMethodLabels[pm.paymentMethod] || pm.paymentMethod}
                   </span>
                   {pm.isDefault && (
-                    <span className="px-2 py-0.5 rounded-md text-2xs font-medium bg-warning/10 text-warning dark:bg-warning/15">
+                    <span className="px-2.5 py-0.5 rounded-full text-2xs font-semibold bg-warning/10 text-warning dark:bg-warning/15">
                       ค่าเริ่มต้น
                     </span>
                   )}
@@ -350,9 +351,9 @@ export default function SupplierDetailPage() {
 
       {/* Summary Stats */}
       <div className="grid grid-cols-3 gap-4 mb-6">
-        <StatCard label="สินค้าทั้งหมด" value={`${supplier._count.products} ชิ้น`} />
-        <StatCard label="PO ทั้งหมด" value={`${supplier._count.purchaseOrders} รายการ`} />
-        <StatCard label="มูลค่าสินค้ารวม" value={`${totalCost.toLocaleString()} ฿`} />
+        <StatCard label="สินค้าทั้งหมด" value={`${supplier._count.products} ชิ้น`} accent="border-l-primary" />
+        <StatCard label="PO ทั้งหมด" value={`${supplier._count.purchaseOrders} รายการ`} accent="border-l-info" />
+        <StatCard label="มูลค่าสินค้ารวม" value={`${totalCost.toLocaleString()} ฿`} accent="border-l-success" />
       </div>
 
       {/* Purchase Orders */}
@@ -394,11 +395,12 @@ function InfoField({ label, value }: { label: string; value: string | null | und
   );
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
+function StatCard({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
-    <div className="rounded-xl border border-border/60 border-l-[3px] border-l-primary p-4 shadow-sm hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200">
+    <div className={`rounded-xl border border-border/50 bg-card p-5 shadow-sm relative overflow-hidden hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200`}>
+      <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-r-full ${accent ? accent.replace('border-l-', 'bg-') : 'bg-primary'}`} />
       <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">{label}</div>
-      <div className="text-lg font-semibold text-foreground">{value}</div>
+      <div className="text-lg font-semibold text-foreground tabular-nums">{value}</div>
     </div>
   );
 }

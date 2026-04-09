@@ -339,14 +339,14 @@ export default function StockTransfersPage() {
       />
 
       {/* Tab Bar */}
-      <div className="mb-4 border-b border-border">
+      <div className="mb-5 border-b border-border/60">
         <nav className="-mb-px flex gap-1">
           {tabs.map((tab) => (
             <button
               key={tab.key}
               onClick={() => goToTab(tab.key)}
               className={clsx(
-                'whitespace-nowrap px-4 py-3 text-sm font-medium border-b-2 transition-colors cursor-pointer',
+                'whitespace-nowrap px-4 py-2.5 text-sm font-medium border-b-2 transition-colors cursor-pointer',
                 activeTab === tab.key
                   ? 'border-primary text-primary'
                   : 'border-transparent text-muted-foreground hover:text-foreground hover:border-input',
@@ -354,7 +354,7 @@ export default function StockTransfersPage() {
             >
               {tab.label}
               {tab.key === 'incoming' && pendingList.length > 0 && (
-                <span className="ml-1.5 px-1.5 py-0.5 text-xs rounded-full bg-warning/10 text-warning dark:bg-warning/15">
+                <span className="ml-1.5 px-1.5 py-0.5 text-xs rounded-full font-semibold bg-warning/10 text-warning dark:bg-warning/15">
                   {pendingList.length}
                 </span>
               )}
@@ -388,7 +388,7 @@ export default function StockTransfersPage() {
             errorTitle="ไม่สามารถโหลดการโอนสินค้าได้"
           >
           {batchGroups.length === 0 ? (
-            <div className="rounded-xl border border-border/60 p-8 text-center text-muted-foreground">
+            <div className="rounded-xl border border-border/50 bg-card p-8 shadow-sm text-center text-muted-foreground">
               {statusFilter === 'PENDING' ? 'ไม่มีรายการรอจัดส่ง'
                 : statusFilter === 'IN_TRANSIT' ? 'ไม่มีรายการระหว่างโอนสินค้า'
                 : 'ไม่พบรายการโอน'}
@@ -399,7 +399,7 @@ export default function StockTransfersPage() {
                 const isExpanded = expandedBatches.has(batch.batchKey);
                 const s = transferStatusLabels[batch.status] || { label: batch.status, className: 'bg-muted text-foreground' };
                 return (
-                  <div key={batch.batchKey} className="rounded-xl border border-border/60 overflow-hidden shadow-card">
+                  <div key={batch.batchKey} className="rounded-xl border border-border/50 bg-card overflow-hidden shadow-sm hover:shadow-card-hover transition-shadow">
                     {/* Batch Header */}
                     <button
                       onClick={() => toggleBatch(batch.batchKey)}
@@ -459,16 +459,16 @@ export default function StockTransfersPage() {
                       <div className="border-t border-border">
                         <table className="w-full text-sm">
                           <thead>
-                            <tr className="bg-muted">
-                              <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground w-8">#</th>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">สินค้า</th>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">IMEI / S/N</th>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">สี / ความจุ</th>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">สถานะ</th>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">หมายเหตุ</th>
+                            <tr className="bg-muted/40">
+                              <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground w-8">#</th>
+                              <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground">สินค้า</th>
+                              <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground">IMEI / S/N</th>
+                              <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground">สี / ความจุ</th>
+                              <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground">สถานะ</th>
+                              <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground">หมายเหตุ</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-border">
+                          <tbody className="divide-y divide-border/50">
                             {batch.items.map((t, idx) => {
                               const itemStatus = transferStatusLabels[t.status] || { label: t.status, className: 'bg-muted text-foreground' };
                               return (

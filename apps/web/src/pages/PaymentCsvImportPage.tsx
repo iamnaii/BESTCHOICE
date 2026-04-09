@@ -119,7 +119,7 @@ export default function PaymentCsvImportPage() {
         title="นำเข้าชำระเงิน (CSV)"
         subtitle="นำเข้าข้อมูลการชำระเงินจากไฟล์ CSV"
         action={
-          <button onClick={downloadSample} className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200">
+          <button onClick={downloadSample} className="px-4 py-2 bg-muted text-muted-foreground text-sm font-medium rounded-lg hover:bg-muted/80 border border-input transition-colors">
             ดาวน์โหลดเทมเพลต CSV
           </button>
         }
@@ -142,8 +142,8 @@ export default function PaymentCsvImportPage() {
       <Card className="shadow-card mb-6">
         <CardContent className="p-4">
           <div
-            className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
-              isDragOver ? 'border-primary bg-primary/5' : 'border-gray-300 hover:border-gray-400'
+            className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${
+              isDragOver ? 'border-primary bg-primary/5' : 'border-border hover:border-border/80 hover:bg-muted/30'
             }`}
             onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
             onDragLeave={() => setIsDragOver(false)}
@@ -215,7 +215,7 @@ export default function PaymentCsvImportPage() {
         {csvText && (
           <button
             onClick={() => { setCsvText(''); setResult(null); }}
-            className="px-4 py-2.5 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200"
+            className="px-4 py-2.5 bg-muted text-muted-foreground text-sm font-medium rounded-lg hover:bg-muted/80 border border-input transition-colors"
           >
             ล้างข้อมูล
           </button>

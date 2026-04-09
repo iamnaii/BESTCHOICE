@@ -50,7 +50,7 @@ export default function ContractVerifyPage() {
           </span>
         </div>
 
-        <div className="bg-card rounded-xl shadow-card border border-border/60 p-6">
+        <div className="bg-card rounded-xl shadow-sm border border-border/50 p-6">
           {loading && (
             <div className="flex flex-col items-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600" />

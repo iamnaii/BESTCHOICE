@@ -108,7 +108,7 @@ export default function BranchesPage() {
         <div className="flex items-center gap-2">
           <span>{b.name}</span>
           {b.isMainWarehouse && (
-            <span className="px-1.5 py-0.5 bg-primary/10 text-primary dark:bg-primary/15 text-xs rounded-full font-medium">คลังกลาง</span>
+            <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold bg-primary/10 text-primary dark:bg-primary/15">คลังกลาง</span>
           )}
         </div>
       ),
@@ -120,7 +120,7 @@ export default function BranchesPage() {
       label: 'สถานะ',
       render: (b: Branch) => (
         <span
-          className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+          className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
             b.isActive ? 'bg-success/10 text-success dark:bg-success/15' : 'bg-destructive/10 text-destructive dark:bg-destructive/15'
           }`}
         >
@@ -179,7 +179,7 @@ export default function BranchesPage() {
         }
       />
 
-      <div className="rounded-xl border border-border/60 overflow-hidden">
+      <div className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden">
         <QueryBoundary
           isLoading={isLoading && branches.length === 0}
           isError={isError}

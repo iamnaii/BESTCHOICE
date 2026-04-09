@@ -85,14 +85,14 @@ export default function InventoryWorkflowPage() {
             <button
               key={step.key}
               onClick={() => setSelectedStep(isActive ? null : step.key)}
-              className={`relative p-4 rounded-xl border transition-all text-left ${
+              className={`relative p-5 rounded-xl border shadow-sm transition-all text-left hover:shadow-card-hover ${
                 isActive
                   ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
-                  : 'border-border bg-card hover:border-primary/30'
+                  : 'border-border/50 bg-card hover:border-primary/30'
               }`}
             >
-              <div className="flex items-center gap-3 mb-2">
-                <div className={`size-9 rounded-lg ${step.color} flex items-center justify-center`}>
+              <div className="flex items-center gap-3 mb-3">
+                <div className={`size-9 rounded-lg ${step.color} flex items-center justify-center shadow-sm`}>
                   <step.icon className="size-4 text-white" />
                 </div>
                 {i < workflowSteps.length - 1 && (
@@ -108,8 +108,8 @@ export default function InventoryWorkflowPage() {
       </div>
 
       {/* Product List */}
-      <div className="bg-card rounded-xl border border-border">
-        <div className="px-5 py-4 border-b border-border">
+      <div className="bg-card rounded-xl border border-border/50 shadow-sm">
+        <div className="px-5 py-4 border-b border-border/50">
           <h3 className="text-sm font-semibold text-foreground">
             {selectedStep
               ? `${workflowSteps.find((s) => s.key === selectedStep)?.label ?? ''} — ${filtered.length} รายการ`
@@ -150,7 +150,7 @@ export default function InventoryWorkflowPage() {
                       {product.imeiSerial ?? product.name} · {product.branch.name}
                     </p>
                   </div>
-                  <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${step?.color ?? 'bg-gray-400'} text-white`}>
+                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${step?.color ?? 'bg-gray-400'} text-white`}>
                     {step?.label ?? product.status}
                   </span>
                 </div>

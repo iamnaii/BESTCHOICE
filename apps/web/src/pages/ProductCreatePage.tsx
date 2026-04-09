@@ -308,7 +308,7 @@ export default function ProductCreatePage() {
       <PageHeader
         title="เพิ่มสินค้าใหม่"
         action={
-          <button onClick={() => navigate('/products')} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground border border-input rounded-lg">
+          <button onClick={() => navigate('/products')} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground border border-input rounded-lg hover:bg-muted transition-colors">
             กลับ
           </button>
         }

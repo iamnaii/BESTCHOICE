@@ -87,7 +87,7 @@ export function POListTab({
       key: 'status',
       label: 'สถานะ',
       render: (po: PurchaseOrder) => (
-        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[po.status] || 'bg-muted text-foreground'}`}>
+        <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${statusColors[po.status] || 'bg-muted text-foreground'}`}>
           {statusLabels[po.status] || po.status}
         </span>
       ),
@@ -98,7 +98,7 @@ export function POListTab({
       render: (po: PurchaseOrder) => (
         <button
           onClick={() => openPaymentModal(po)}
-          className={`px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer hover:opacity-80 ${paymentStatusColors[po.paymentStatus] || 'bg-muted text-foreground'}`}
+          className={`px-2.5 py-0.5 rounded-full text-xs font-semibold cursor-pointer hover:opacity-80 ${paymentStatusColors[po.paymentStatus] || 'bg-muted text-foreground'}`}
         >
           {paymentStatusLabels[po.paymentStatus] || po.paymentStatus || 'ยังไม่จ่าย'}
         </button>
@@ -179,11 +179,11 @@ export function POListTab({
   return (
     <>
       {/* Filter */}
-      <div className="mb-4">
+      <div className="mb-5">
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-3 py-2 border border-input rounded-lg text-sm bg-background focus:ring-2 focus:ring-ring/30 focus:border-ring transition-colors outline-none"
+          className="px-3 py-2 border border-input rounded-lg text-sm bg-background focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background transition-colors outline-none"
         >
           <option value="">ทุกสถานะ</option>
           <option value="DRAFT">รออนุมัติ</option>

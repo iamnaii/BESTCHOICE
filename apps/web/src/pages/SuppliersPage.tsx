@@ -439,7 +439,7 @@ export default function SuppliersPage() {
       />
 
       {/* Search & Filter */}
-      <div className="flex gap-3 mb-4">
+      <div className="flex gap-3 mb-5">
         <input
           type="text"
           placeholder="ค้นหาชื่อ, ผู้ติดต่อ, ชื่อเล่น, เบอร์โทร, Tax ID..."

@@ -144,7 +144,7 @@ export default function MigrationPage() {
               { label: 'สาขา', count: status.branches },
               { label: 'ผู้ใช้', count: status.users },
             ].map((item) => (
-              <div key={item.label} className="bg-card rounded-lg border border-border p-4 text-center">
+              <div key={item.label} className="bg-card rounded-xl border border-border/50 shadow-sm p-4 text-center hover:shadow-card-hover transition-all">
                 <div className="text-2xl font-bold text-foreground">{item.count}</div>
                 <div className="text-xs text-muted-foreground">{item.label}</div>
               </div>
@@ -155,7 +155,7 @@ export default function MigrationPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:gap-7.5">
         {/* Import Form */}
-        <div className="bg-card rounded-lg border border-border p-5">
+        <div className="bg-card rounded-xl border border-border/50 shadow-sm p-5">
           <h3 className="text-sm font-semibold text-foreground mb-4">นำเข้าข้อมูล</h3>
 
           {/* Mode Selection */}
@@ -210,19 +210,19 @@ export default function MigrationPage() {
         </div>
 
         {/* Import Result */}
-        <div className="bg-card rounded-lg border border-border p-5">
+        <div className="bg-card rounded-xl border border-border/50 shadow-sm p-5">
           <h3 className="text-sm font-semibold text-foreground mb-4">ผลลัพธ์การนำเข้า</h3>
 
           {importResult ? (
             <div>
               <div className="grid grid-cols-2 gap-4 mb-4">
-                <div className="bg-success/5 dark:bg-success/10 rounded-lg p-4 text-center">
+                <div className="bg-success/5 dark:bg-success/10 rounded-xl border border-success/20 p-4 text-center">
                   <div className="text-2xl font-bold text-success">{importResult.success}</div>
-                  <div className="text-xs text-success">สำเร็จ</div>
+                  <div className="text-xs text-success mt-1">สำเร็จ</div>
                 </div>
-                <div className="bg-destructive/5 dark:bg-destructive/10 rounded-lg p-4 text-center">
+                <div className="bg-destructive/5 dark:bg-destructive/10 rounded-xl border border-destructive/20 p-4 text-center">
                   <div className="text-2xl font-bold text-destructive">{importResult.failed}</div>
-                  <div className="text-xs text-destructive">ผิดพลาด</div>
+                  <div className="text-xs text-destructive mt-1">ผิดพลาด</div>
                 </div>
               </div>
 

@@ -43,8 +43,8 @@ function DocTypeSection({
   handleRemoveDoc: (id: string) => void;
 }) {
   return (
-    <div className="rounded-lg border overflow-hidden">
-      <div className="flex items-center gap-2 px-4 py-2 border-b bg-muted">
+    <div className="rounded-xl border border-border/50 overflow-hidden bg-card shadow-sm">
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border/50 bg-muted/40">
         {docs.length > 0 ? (
           <span className="text-green-500 text-sm font-bold">&#10003;</span>
         ) : (
@@ -123,7 +123,7 @@ export function DocumentUploadStep({
 }: DocumentUploadStepProps) {
   return (
     <div className="max-w-3xl space-y-4">
-      <div className="rounded-lg border p-6 space-y-2">
+      <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm space-y-2">
         <h3 className="text-sm font-semibold text-foreground">แนบเอกสาร</h3>
         <p className="text-xs text-muted-foreground">ลากไฟล์มาวางในช่องของเอกสารแต่ละประเภท หรือคลิกเพื่อเลือกไฟล์ (สามารถแนบภายหลังได้)</p>
       </div>

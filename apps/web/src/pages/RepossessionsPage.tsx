@@ -223,7 +223,7 @@ export default function RepossessionsPage() {
       key: 'grade',
       label: 'สภาพ',
       render: (r: Repossession) => (
-        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${gradeColors[r.conditionGrade]}`}>
+        <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${gradeColors[r.conditionGrade]}`}>
           เกรด {r.conditionGrade}
         </span>
       ),
@@ -249,7 +249,7 @@ export default function RepossessionsPage() {
       key: 'status',
       label: 'สถานะ',
       render: (r: Repossession) => (
-        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[r.status]}`}>
+        <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${statusColors[r.status]}`}>
           {statusLabels[r.status]}
         </span>
       ),
@@ -387,11 +387,11 @@ export default function RepossessionsPage() {
       )}
 
       {/* Filter */}
-      <div className="mb-4">
+      <div className="mb-5">
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+          className="px-3 py-2 border border-input rounded-lg text-sm bg-background focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
         >
           <option value="">ทุกสถานะ</option>
           <option value="REPOSSESSED">ยึดคืนแล้ว</option>

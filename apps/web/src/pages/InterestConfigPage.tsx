@@ -251,12 +251,12 @@ export default function InterestConfigPage() {
       />
 
       {/* Default fallback config — card style */}
-      <div className="bg-card rounded-lg border border-amber-200 p-5 mb-5 lg:mb-7.5">
+      <div className="rounded-xl border border-amber-200 bg-card shadow-sm p-5 mb-5 lg:mb-7.5">
         <div className="flex items-start justify-between">
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-2">
               <h3 className="text-lg font-semibold text-foreground">ค่า Default</h3>
-              <span className="text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full">ใช้เมื่อไม่มี config ตามประเภท</span>
+              <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold bg-amber-100 text-amber-700">ใช้เมื่อไม่มี config ตามประเภท</span>
             </div>
             {!editingDefaults ? (
               <>
@@ -329,7 +329,7 @@ export default function InterestConfigPage() {
         errorTitle="ไม่สามารถโหลดการตั้งค่าดอกเบี้ยได้"
       >
       {configs.length === 0 ? (
-        <div className="text-center py-12 bg-card rounded-lg border">
+        <div className="text-center py-12 rounded-xl border border-border/50 bg-card shadow-sm">
           <div className="text-muted-foreground text-sm mb-3">ยังไม่มีการตั้งค่าดอกเบี้ย</div>
           <button onClick={openCreate} className="text-sm text-primary hover:underline">สร้างตั้งค่าแรก</button>
         </div>
@@ -338,16 +338,16 @@ export default function InterestConfigPage() {
           {configs.map((config) => {
             const sim = simulateCalc(config);
             return (
-              <div key={config.id} className={`bg-card rounded-lg border p-5 ${!config.isActive ? 'opacity-50' : ''}`}>
+              <div key={config.id} className={`rounded-xl border border-border/50 bg-card shadow-sm p-5 ${!config.isActive ? 'opacity-50' : ''}`}>
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
                       <h3 className="text-lg font-semibold text-foreground">{config.name}</h3>
-                      {!config.isActive && <span className="text-xs px-2 py-0.5 bg-muted rounded-full">ปิดใช้งาน</span>}
+                      {!config.isActive && <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold bg-muted text-muted-foreground">ปิดใช้งาน</span>}
                     </div>
                     <div className="flex flex-wrap gap-1 mb-3">
                       {config.productCategories.map((cat) => (
-                        <span key={cat} className="px-2 py-0.5 bg-primary/10 text-primary dark:bg-primary/15 rounded-full text-xs font-medium">
+                        <span key={cat} className="rounded-full px-2.5 py-0.5 text-xs font-semibold bg-primary/10 text-primary dark:bg-primary/15">
                           {getCategoryLabel(cat)}
                         </span>
                       ))}

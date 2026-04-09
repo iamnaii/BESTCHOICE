@@ -20,29 +20,29 @@ export default function ReceiptVerifyPage() {
   });
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-gray-50 py-8 px-4">
+    <div className="min-h-screen bg-muted/30 py-8 px-4">
       <div className="max-w-2xl mx-auto">
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">ตรวจสอบใบเสร็จ</h1>
-          <p className="text-sm text-gray-600">Receipt Verification</p>
+          <h1 className="text-2xl font-bold text-foreground mb-1">ตรวจสอบใบเสร็จ</h1>
+          <p className="text-sm text-muted-foreground">Receipt Verification</p>
         </div>
 
         {isLoading && (
           <div className="flex flex-col items-center justify-center py-16">
-            <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-primary mb-4" />
-            <p className="text-gray-600">กำลังตรวจสอบใบเสร็จ...</p>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4" />
+            <p className="text-muted-foreground text-sm">กำลังตรวจสอบใบเสร็จ...</p>
           </div>
         )}
 
         {error && (
-          <div className="bg-destructive/5 dark:bg-destructive/10 border-2 border-destructive/30 rounded-xl p-8 text-center">
-            <XCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-            <h2 className="text-xl font-bold text-destructive mb-2">ไม่พบใบเสร็จ</h2>
-            <p className="text-red-600 text-sm">
-              ไม่พบใบเสร็จเลขที่ <span className="font-mono">{receiptNumber}</span>
+          <div className="rounded-xl border border-border/50 bg-card shadow-sm p-8 text-center">
+            <XCircle className="w-14 h-14 text-destructive mx-auto mb-4" />
+            <h2 className="text-xl font-bold text-foreground mb-2">ไม่พบใบเสร็จ</h2>
+            <p className="text-muted-foreground text-sm">
+              ไม่พบใบเสร็จเลขที่ <span className="font-mono text-foreground">{receiptNumber}</span>
             </p>
-            <p className="text-red-500 text-xs mt-2">กรุณาตรวจสอบเลขใบเสร็จและลองอีกครั้ง</p>
+            <p className="text-muted-foreground text-xs mt-2">กรุณาตรวจสอบเลขใบเสร็จและลองอีกครั้ง</p>
           </div>
         )}
 
@@ -50,18 +50,18 @@ export default function ReceiptVerifyPage() {
           <div>
             {/* Verification Status */}
             {!receipt.isVoided ? (
-              <div className="bg-success/5 dark:bg-success/10 border-2 border-success/30 rounded-xl p-6 mb-6 text-center">
-                <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto mb-3" />
+              <div className="rounded-xl border border-success/30 bg-success/5 dark:bg-success/10 shadow-sm p-6 mb-6 text-center">
+                <CheckCircle2 className="w-12 h-12 text-success mx-auto mb-3" />
                 <h2 className="text-lg font-bold text-success mb-1">ใบเสร็จถูกต้อง</h2>
-                <p className="text-green-600 text-sm">ใบเสร็จนี้ออกโดย {receipt.company?.nameTh || 'BESTCHOICE'}</p>
+                <p className="text-success/80 text-sm">ใบเสร็จนี้ออกโดย {receipt.company?.nameTh || 'BESTCHOICE'}</p>
               </div>
             ) : (
-              <div className="bg-warning/5 dark:bg-warning/10 border-2 border-warning/30 rounded-xl p-6 mb-6 text-center">
-                <AlertCircle className="w-12 h-12 text-yellow-500 mx-auto mb-3" />
-                <h2 className="text-lg font-bold text-yellow-700 mb-1">ใบเสร็จถูกยกเลิก</h2>
-                <p className="text-yellow-600 text-sm">ใบเสร็จนี้ถูกยกเลิกแล้ว</p>
+              <div className="rounded-xl border border-warning/30 bg-warning/5 dark:bg-warning/10 shadow-sm p-6 mb-6 text-center">
+                <AlertCircle className="w-12 h-12 text-warning mx-auto mb-3" />
+                <h2 className="text-lg font-bold text-warning mb-1">ใบเสร็จถูกยกเลิก</h2>
+                <p className="text-warning/80 text-sm">ใบเสร็จนี้ถูกยกเลิกแล้ว</p>
                 {receipt.voidReason && (
-                  <p className="text-yellow-700 text-xs mt-2">
+                  <p className="text-warning/70 text-xs mt-2">
                     เหตุผล: {receipt.voidReason}
                   </p>
                 )}
@@ -72,16 +72,16 @@ export default function ReceiptVerifyPage() {
             <MobileReceipt receipt={receipt} />
 
             {/* Footer Info */}
-            <div className="mt-6 bg-gray-50 rounded-lg p-4 text-center">
-              <p className="text-xs text-gray-500">
+            <div className="mt-6 rounded-xl border border-border/50 bg-card shadow-sm p-5 text-center">
+              <p className="text-xs text-muted-foreground">
                 หากพบความผิดปกติ กรุณาติดต่อ
                 {receipt.company?.phone && (
-                  <span className="block font-medium text-gray-700 mt-1">
+                  <span className="block font-medium text-foreground mt-1">
                     โทร: {receipt.company.phone}
                   </span>
                 )}
               </p>
-              <p className="text-xs text-gray-400 mt-2">
+              <p className="text-xs text-muted-foreground/60 mt-2">
                 ตรวจสอบเมื่อ: {formatDateTime(new Date())}
               </p>
             </div>

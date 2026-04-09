@@ -270,7 +270,7 @@ export default function PricingTemplatesPage() {
       />
 
       {/* Filters */}
-      <div className="flex gap-3 mb-4">
+      <div className="flex gap-3 mb-5">
         <select
           value={filterCategory}
           onChange={(e) => setFilterCategory(e.target.value)}
@@ -298,16 +298,16 @@ export default function PricingTemplatesPage() {
         errorTitle="ไม่สามารถโหลดราคาตั้งต้นได้"
       >
       {templates.length === 0 ? (
-        <div className="text-center py-12 bg-card rounded-lg border">
+        <div className="text-center py-12 rounded-xl border border-border/50 bg-card shadow-sm">
           <div className="text-muted-foreground text-sm mb-3">ยังไม่มีราคาตั้งต้น</div>
           <button onClick={openCreate} className="text-sm text-primary hover:underline">เพิ่มราคาตั้งต้นรายการแรก</button>
         </div>
       ) : (
-        <div className="bg-card rounded-lg border overflow-hidden">
+        <div className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-muted border-b">
+                <tr className="bg-muted/40 border-b border-border/50">
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">ยี่ห้อ / รุ่น</th>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">ความจุ</th>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">ประเภท</th>
@@ -319,28 +319,28 @@ export default function PricingTemplatesPage() {
               </thead>
               <tbody>
                 {templates.map((t) => (
-                  <tr key={t.id} className="border-b last:border-b-0 hover:bg-muted/50">
+                  <tr key={t.id} className="border-b border-border/50 last:border-b-0 hover:bg-muted/40 transition-colors">
                     <td className="px-4 py-3">
                       <div className="font-medium text-foreground">{t.brand} {t.model}</div>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{t.storage || '-'}</td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                      <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                         t.category === 'PHONE_NEW' ? 'bg-primary/10 text-primary dark:bg-primary/15' : 'bg-warning/10 text-warning dark:bg-warning/15'
                       }`}>
                         {t.category === 'PHONE_NEW' ? 'มือ 1' : 'มือ 2'}
                       </span>
                       {t.category === 'PHONE_USED' && warrantyLabel(t.hasWarranty) && (
-                        <span className={`ml-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                        <span className={`ml-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                           t.hasWarranty ? 'bg-success/10 text-success dark:bg-success/15' : 'bg-muted text-muted-foreground'
                         }`}>
                           {warrantyLabel(t.hasWarranty)}
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right font-medium">{fmt(t.cashPrice)} ฿</td>
-                    <td className="px-4 py-3 text-right font-medium">{fmt(t.installmentBestchoicePrice)} ฿</td>
-                    <td className="px-4 py-3 text-right font-medium">{fmt(t.installmentFinancePrice)} ฿</td>
+                    <td className="px-4 py-3 text-right font-medium tabular-nums">{fmt(t.cashPrice)} ฿</td>
+                    <td className="px-4 py-3 text-right font-medium tabular-nums">{fmt(t.installmentBestchoicePrice)} ฿</td>
+                    <td className="px-4 py-3 text-right font-medium tabular-nums">{fmt(t.installmentFinancePrice)} ฿</td>
                     <td className="px-4 py-3 text-right">
                       <button onClick={() => openEdit(t)} className="text-xs text-primary hover:underline mr-2">แก้ไข</button>
                       <button

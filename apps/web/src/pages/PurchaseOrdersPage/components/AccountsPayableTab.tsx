@@ -34,35 +34,35 @@ export function AccountsPayableTab({ payableData, onOpenDetail }: AccountsPayabl
 
       {/* Per-supplier Breakdown */}
       {payableData?.suppliers.map((entry) => (
-        <div key={entry.supplier.id} className="border border-border rounded-xl overflow-hidden">
+        <div key={entry.supplier.id} className="border border-border/50 rounded-xl overflow-hidden bg-card shadow-sm">
           {/* Supplier Header */}
-          <div className="px-4 py-3 bg-muted border-b flex items-center justify-between">
+          <div className="px-4 py-3 bg-muted/40 border-b border-border/50 flex items-center justify-between">
             <div>
               <div className="font-medium text-foreground">{entry.supplier.name}</div>
               <div className="text-xs text-muted-foreground">{entry.supplier.contactName} | {entry.supplier.phone}</div>
             </div>
             <div className="text-right">
-              <div className="text-lg font-bold text-destructive">{(Number(entry.totalRemaining) || 0).toLocaleString()} บาท</div>
-              <div className="text-xs text-muted-foreground">จาก {(Number(entry.totalNet) || 0).toLocaleString()} (จ่ายแล้ว {(Number(entry.totalPaid) || 0).toLocaleString()})</div>
+              <div className="text-lg font-bold text-destructive tabular-nums font-mono">{(Number(entry.totalRemaining) || 0).toLocaleString()} บาท</div>
+              <div className="text-xs text-muted-foreground tabular-nums">จาก {(Number(entry.totalNet) || 0).toLocaleString()} (จ่ายแล้ว {(Number(entry.totalPaid) || 0).toLocaleString()})</div>
             </div>
           </div>
           {/* PO List */}
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-xs text-muted-foreground border-b">
-                <th className="px-4 py-2 text-left">เลข PO</th>
-                <th className="px-4 py-2 text-left">วันที่สั่ง</th>
-                <th className="px-4 py-2 text-left">ครบกำหนด</th>
-                <th className="px-4 py-2 text-left">รายการ</th>
-                <th className="px-4 py-2 text-right">ยอดสุทธิ</th>
-                <th className="px-4 py-2 text-right">จ่ายแล้ว</th>
-                <th className="px-4 py-2 text-right">คงค้าง</th>
-                <th className="px-4 py-2 text-center">สถานะจ่าย</th>
+              <tr className="text-xs text-muted-foreground bg-muted/40 border-b border-border/50">
+                <th className="px-4 py-2.5 text-left font-semibold">เลข PO</th>
+                <th className="px-4 py-2.5 text-left font-semibold">วันที่สั่ง</th>
+                <th className="px-4 py-2.5 text-left font-semibold">ครบกำหนด</th>
+                <th className="px-4 py-2.5 text-left font-semibold">รายการ</th>
+                <th className="px-4 py-2.5 text-right font-semibold">ยอดสุทธิ</th>
+                <th className="px-4 py-2.5 text-right font-semibold">จ่ายแล้ว</th>
+                <th className="px-4 py-2.5 text-right font-semibold">คงค้าง</th>
+                <th className="px-4 py-2.5 text-center font-semibold">สถานะจ่าย</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-border/50">
               {entry.pos.map((po) => (
-                <tr key={po.id} className="border-b last:border-0 hover:bg-muted">
+                <tr key={po.id} className="hover:bg-muted/30">
                   <td className="px-4 py-2">
                     <button onClick={async () => { try { const { data } = await api.get(`/purchase-orders/${po.id}`); onOpenDetail(data, data); } catch {} }} className="text-primary hover:underline font-medium">
                       {po.poNumber}
@@ -80,11 +80,11 @@ export function AccountsPayableTab({ payableData, onOpenDetail }: AccountsPayabl
                     )}
                   </td>
                   <td className="px-4 py-2 text-muted-foreground truncate max-w-[200px]" title={po.itemsSummary}>{po.itemsSummary}</td>
-                  <td className="px-4 py-2 text-right">{(Number(po.netAmount) || 0).toLocaleString()}</td>
-                  <td className="px-4 py-2 text-right text-success">{(Number(po.paidAmount) || 0).toLocaleString()}</td>
-                  <td className="px-4 py-2 text-right font-medium text-destructive">{(Number(po.remaining) || 0).toLocaleString()}</td>
-                  <td className="px-4 py-2 text-center">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${paymentStatusColors[po.paymentStatus] || 'bg-muted text-foreground'}`}>
+                  <td className="px-4 py-2.5 text-right tabular-nums font-mono">{(Number(po.netAmount) || 0).toLocaleString()}</td>
+                  <td className="px-4 py-2.5 text-right text-success tabular-nums font-mono">{(Number(po.paidAmount) || 0).toLocaleString()}</td>
+                  <td className="px-4 py-2.5 text-right font-semibold text-destructive tabular-nums font-mono">{(Number(po.remaining) || 0).toLocaleString()}</td>
+                  <td className="px-4 py-2.5 text-center">
+                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${paymentStatusColors[po.paymentStatus] || 'bg-muted text-foreground'}`}>
                       {paymentStatusLabels[po.paymentStatus] || po.paymentStatus}
                     </span>
                   </td>

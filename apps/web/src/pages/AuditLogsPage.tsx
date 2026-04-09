@@ -159,30 +159,38 @@ export default function AuditLogsPage() {
 
       {/* Stats Cards */}
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-card rounded-lg border border-border border-l-[3px] border-l-primary p-4 hover:shadow-card-hover transition-all">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6">
+          <div className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
+            <div className="flex h-full"><div className="w-1 shrink-0 bg-primary" /><div className="p-4 flex-1">
             <p className="text-xs text-muted-foreground">วันนี้</p>
-            <p className="text-2xl font-bold text-foreground">{stats.todayCount.toLocaleString()}</p>
+            <p className="text-2xl font-bold tabular-nums text-foreground">{stats.todayCount.toLocaleString()}</p>
+            </div></div>
           </div>
-          <div className="bg-card rounded-lg border border-border border-l-[3px] border-l-success p-4 hover:shadow-card-hover transition-all">
+          <div className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
+            <div className="flex h-full"><div className="w-1 shrink-0 bg-success" /><div className="p-4 flex-1">
             <p className="text-xs text-muted-foreground">7 วันล่าสุด</p>
-            <p className="text-2xl font-bold text-foreground">{stats.weekCount.toLocaleString()}</p>
+            <p className="text-2xl font-bold tabular-nums text-foreground">{stats.weekCount.toLocaleString()}</p>
+            </div></div>
           </div>
-          <div className="bg-card rounded-lg border border-border border-l-[3px] border-l-foreground p-4 hover:shadow-card-hover transition-all">
+          <div className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
+            <div className="flex h-full"><div className="w-1 shrink-0 bg-foreground/40" /><div className="p-4 flex-1">
             <p className="text-xs text-muted-foreground">ทั้งหมด</p>
-            <p className="text-2xl font-bold text-foreground">{stats.totalCount.toLocaleString()}</p>
+            <p className="text-2xl font-bold tabular-nums text-foreground">{stats.totalCount.toLocaleString()}</p>
+            </div></div>
           </div>
-          <div className="bg-card rounded-lg border border-border border-l-[3px] border-l-destructive p-4 hover:shadow-card-hover transition-all">
+          <div className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
+            <div className="flex h-full"><div className="w-1 shrink-0 bg-destructive" /><div className="p-4 flex-1">
             <p className="text-xs text-muted-foreground">Error (7 วัน)</p>
-            <p className={`text-2xl font-bold ${stats.recentErrors > 0 ? 'text-destructive' : 'text-success'}`}>
+            <p className={`text-2xl font-bold tabular-nums ${stats.recentErrors > 0 ? 'text-destructive' : 'text-success'}`}>
               {stats.recentErrors}
             </p>
+            </div></div>
           </div>
         </div>
       )}
 
       {/* Filters */}
-      <div className="bg-card rounded-lg border border-border/60 p-4 mb-6">
+      <div className="rounded-xl border border-border/50 bg-card shadow-sm p-5 mb-6">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1">Entity</label>
@@ -232,7 +240,7 @@ export default function AuditLogsPage() {
       </div>
 
       {/* Logs Table */}
-      <div className="bg-card rounded-lg border border-border overflow-hidden">
+      <div className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden">
         <QueryBoundary
           isLoading={isLoading && !result}
           isError={isError}
@@ -272,7 +280,7 @@ export default function AuditLogsPage() {
                             {log.user?.name || '-'}
                           </div>
                           <div className="px-4 py-3 w-32 shrink-0">
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                            <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                               actionColors[log.action] ||
                               (log.action.endsWith('_ERROR') ? 'bg-destructive/10 text-destructive dark:bg-destructive/15' : 'bg-muted text-foreground')
                             }`}>

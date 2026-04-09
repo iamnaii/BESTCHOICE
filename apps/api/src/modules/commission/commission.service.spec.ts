@@ -1,0 +1,302 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { Prisma } from '@prisma/client';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { CommissionService } from './commission.service';
+import { PrismaService } from '../../prisma/prisma.service';
+
+describe('CommissionService', () => {
+  let service: CommissionService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+
+  beforeEach(async () => {
+    prisma = {
+      salesCommission: {
+        create: jest.fn(),
+        findMany: jest.fn(),
+        findFirst: jest.fn(),
+        update: jest.fn(),
+        count: jest.fn(),
+      },
+      commissionRule: {
+        create: jest.fn(),
+        findMany: jest.fn(),
+        findFirst: jest.fn(),
+        update: jest.fn(),
+      },
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        CommissionService,
+        { provide: PrismaService, useValue: prisma },
+      ],
+    }).compile();
+
+    service = module.get<CommissionService>(CommissionService);
+  });
+
+  describe('createCommissionForSale', () => {
+    it('uses Decimal arithmetic so 2.5% of 19999.99 lands exactly', async () => {
+      prisma.salesCommission.create.mockImplementation(({ data }: { data: { commissionAmount: Prisma.Decimal } }) => ({
+        id: 'c1',
+        ...data,
+      }));
+
+      await service.createCommissionForSale('s1', 'sp1', 19999.99, 0.025);
+
+      const arg = prisma.salesCommission.create.mock.calls[0][0];
+      // 19999.99 * 0.025 = 499.99975 → ROUND_HALF_UP at 2dp = 500.00
+      expect(arg.data.commissionAmount).toBeInstanceOf(Prisma.Decimal);
+      expect((arg.data.commissionAmount as Prisma.Decimal).toString()).toBe('500');
+    });
+
+    it('handles a tiny rate × small amount without float drift', async () => {
+      prisma.salesCommission.create.mockImplementation(
+        ({ data }: { data: Record<string, unknown> }) => ({ id: 'c1', ...data }),
+      );
+
+      // Classic float problem: 0.1 * 0.1 in JS = 0.010000000000000002
+      await service.createCommissionForSale('s1', 'sp1', 0.1, 0.1);
+
+      const arg = prisma.salesCommission.create.mock.calls[0][0];
+      // 0.1 * 0.1 = 0.01 → at 2dp = 0.01
+      expect((arg.data.commissionAmount as Prisma.Decimal).toString()).toBe('0.01');
+    });
+
+    it('rounds half-up at 2 decimal places (not banker\'s rounding)', async () => {
+      prisma.salesCommission.create.mockImplementation(
+        ({ data }: { data: Record<string, unknown> }) => ({ id: 'c1', ...data }),
+      );
+
+      // 100 * 0.045 = 4.5 → ROUND_HALF_UP gives 4.5 (no rounding needed)
+      // 100 * 0.0455 = 4.55 → exact, no rounding
+      // 100 * 0.04555 = 4.555 → ROUND_HALF_UP gives 4.56
+      await service.createCommissionForSale('s1', 'sp1', 100, 0.04555);
+
+      const arg = prisma.salesCommission.create.mock.calls[0][0];
+      expect((arg.data.commissionAmount as Prisma.Decimal).toString()).toBe('4.56');
+    });
+
+    it('persists period as YYYY-MM of the current month', async () => {
+      jest.useFakeTimers().setSystemTime(new Date(2026, 3, 9)); // April 2026
+      prisma.salesCommission.create.mockImplementation(
+        ({ data }: { data: Record<string, unknown> }) => ({ id: 'c1', ...data }),
+      );
+
+      await service.createCommissionForSale('s1', 'sp1', 1000, 0.05);
+
+      const arg = prisma.salesCommission.create.mock.calls[0][0];
+      expect(arg.data.period).toBe('2026-04');
+      jest.useRealTimers();
+    });
+
+    it('starts every commission as PENDING', async () => {
+      prisma.salesCommission.create.mockImplementation(
+        ({ data }: { data: Record<string, unknown> }) => ({ id: 'c1', ...data }),
+      );
+
+      await service.createCommissionForSale('s1', 'sp1', 1000, 0.05);
+      const arg = prisma.salesCommission.create.mock.calls[0][0];
+      expect(arg.data.status).toBe('PENDING');
+    });
+  });
+
+  describe('getSummary', () => {
+    it('filters out soft-deleted commissions', async () => {
+      prisma.salesCommission.findMany.mockResolvedValue([]);
+      await service.getSummary();
+      expect(prisma.salesCommission.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ deletedAt: null }) }),
+      );
+    });
+
+    it('groups by salesperson with Decimal-precise totals (no float drift)', async () => {
+      // 1000 satang-level commissions of 0.999 baht each.
+      // Number() accumulation would drift; Decimal must land at exactly 999.
+      const rows = Array.from({ length: 1000 }, (_, i) => ({
+        id: `c${i}`,
+        salespersonId: 'sp1',
+        salesperson: { id: 'sp1', name: 'Test Sales' },
+        saleAmount: new Prisma.Decimal('100'),
+        commissionAmount: new Prisma.Decimal('0.999'),
+        status: 'APPROVED',
+      }));
+      prisma.salesCommission.findMany.mockResolvedValue(rows);
+
+      const summary = await service.getSummary();
+
+      expect(summary).toHaveLength(1);
+      // 100 × 1000 = 100000 (totalSales)
+      expect(summary[0].totalSales).toBe('100000');
+      // 0.999 × 1000 = 999 — exact, no drift
+      expect(summary[0].totalCommission).toBe('999');
+      expect(summary[0].count).toBe(1000);
+      expect(summary[0].approved).toBe(1000);
+      expect(summary[0].pending).toBe(0);
+    });
+
+    it('counts APPROVED and PAID together as approved', async () => {
+      const rows = [
+        {
+          id: 'c1',
+          salespersonId: 'sp1',
+          salesperson: { id: 'sp1', name: 'A' },
+          saleAmount: new Prisma.Decimal('100'),
+          commissionAmount: new Prisma.Decimal('5'),
+          status: 'APPROVED',
+        },
+        {
+          id: 'c2',
+          salespersonId: 'sp1',
+          salesperson: { id: 'sp1', name: 'A' },
+          saleAmount: new Prisma.Decimal('200'),
+          commissionAmount: new Prisma.Decimal('10'),
+          status: 'PAID',
+        },
+        {
+          id: 'c3',
+          salespersonId: 'sp1',
+          salesperson: { id: 'sp1', name: 'A' },
+          saleAmount: new Prisma.Decimal('50'),
+          commissionAmount: new Prisma.Decimal('2.5'),
+          status: 'PENDING',
+        },
+      ];
+      prisma.salesCommission.findMany.mockResolvedValue(rows);
+      const summary = await service.getSummary();
+
+      expect(summary[0].approved).toBe(2);
+      expect(summary[0].pending).toBe(1);
+      expect(summary[0].count).toBe(3);
+      expect(summary[0].totalSales).toBe('350');
+      expect(summary[0].totalCommission).toBe('17.5');
+    });
+
+    it('groups separately when there are multiple salespeople', async () => {
+      const rows = [
+        { id: 'c1', salespersonId: 'sp1', salesperson: { id: 'sp1', name: 'A' }, saleAmount: new Prisma.Decimal('100'), commissionAmount: new Prisma.Decimal('5'), status: 'APPROVED' },
+        { id: 'c2', salespersonId: 'sp2', salesperson: { id: 'sp2', name: 'B' }, saleAmount: new Prisma.Decimal('200'), commissionAmount: new Prisma.Decimal('10'), status: 'APPROVED' },
+      ];
+      prisma.salesCommission.findMany.mockResolvedValue(rows);
+      const summary = await service.getSummary();
+
+      expect(summary).toHaveLength(2);
+      const a = summary.find((s) => s.salesperson.id === 'sp1')!;
+      const b = summary.find((s) => s.salesperson.id === 'sp2')!;
+      expect(a.totalCommission).toBe('5');
+      expect(b.totalCommission).toBe('10');
+    });
+
+    it('serializes Decimal totals as strings (frontend uses parseFloat)', async () => {
+      prisma.salesCommission.findMany.mockResolvedValue([
+        { id: 'c1', salespersonId: 'sp1', salesperson: { id: 'sp1', name: 'A' }, saleAmount: new Prisma.Decimal('123.45'), commissionAmount: new Prisma.Decimal('6.17'), status: 'APPROVED' },
+      ]);
+      const summary = await service.getSummary();
+      expect(typeof summary[0].totalSales).toBe('string');
+      expect(typeof summary[0].totalCommission).toBe('string');
+    });
+  });
+
+  describe('approve', () => {
+    it('throws NotFoundException when commission missing', async () => {
+      prisma.salesCommission.findFirst.mockResolvedValue(null);
+      await expect(service.approve('missing', 'u1')).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('refuses to approve a non-PENDING commission', async () => {
+      prisma.salesCommission.findFirst.mockResolvedValue({ id: 'c1', status: 'APPROVED' });
+      await expect(service.approve('c1', 'u1')).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('flips PENDING to APPROVED with approver and timestamp', async () => {
+      prisma.salesCommission.findFirst.mockResolvedValue({ id: 'c1', status: 'PENDING' });
+      prisma.salesCommission.update.mockImplementation(
+        ({ data }: { data: Record<string, unknown> }) => ({ id: 'c1', ...data }),
+      );
+
+      const result = await service.approve('c1', 'manager1');
+
+      expect(prisma.salesCommission.update).toHaveBeenCalledWith({
+        where: { id: 'c1' },
+        data: expect.objectContaining({
+          status: 'APPROVED',
+          approvedById: 'manager1',
+          approvedAt: expect.any(Date),
+        }),
+      });
+      expect(result.status).toBe('APPROVED');
+    });
+
+    it('does NOT filter soft-deleted in update (only in lookup)', async () => {
+      prisma.salesCommission.findFirst.mockResolvedValue({ id: 'c1', status: 'PENDING' });
+      prisma.salesCommission.update.mockResolvedValue({ id: 'c1', status: 'APPROVED' });
+
+      await service.approve('c1', 'manager1');
+
+      // Lookup must filter
+      expect(prisma.salesCommission.findFirst).toHaveBeenCalledWith({
+        where: { id: 'c1', deletedAt: null },
+      });
+    });
+  });
+
+  describe('markPaid', () => {
+    it('throws NotFoundException when commission missing', async () => {
+      prisma.salesCommission.findFirst.mockResolvedValue(null);
+      await expect(service.markPaid('missing')).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('refuses to pay a non-APPROVED commission', async () => {
+      prisma.salesCommission.findFirst.mockResolvedValue({ id: 'c1', status: 'PENDING' });
+      await expect(service.markPaid('c1')).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('uses the original commissionAmount for paidAmount', async () => {
+      const original = new Prisma.Decimal('123.45');
+      prisma.salesCommission.findFirst.mockResolvedValue({
+        id: 'c1',
+        status: 'APPROVED',
+        commissionAmount: original,
+      });
+      prisma.salesCommission.update.mockImplementation(
+        ({ data }: { data: Record<string, unknown> }) => ({ id: 'c1', ...data }),
+      );
+
+      await service.markPaid('c1');
+
+      const callArg = prisma.salesCommission.update.mock.calls[0][0];
+      expect(callArg.data.status).toBe('PAID');
+      expect(callArg.data.paidAmount).toBe(original);
+    });
+  });
+
+  describe('findAll', () => {
+    it('filters out soft-deleted commissions', async () => {
+      prisma.salesCommission.findMany.mockResolvedValue([]);
+      prisma.salesCommission.count.mockResolvedValue(0);
+
+      await service.findAll({});
+
+      expect(prisma.salesCommission.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ deletedAt: null }) }),
+      );
+    });
+
+    it('caps page size to 100 even when caller asks for more', async () => {
+      prisma.salesCommission.findMany.mockResolvedValue([]);
+      prisma.salesCommission.count.mockResolvedValue(0);
+
+      const result = await service.findAll({ limit: 1000 });
+      expect(result.limit).toBe(100);
+    });
+
+    it('returns shape { data, total, page, limit, totalPages }', async () => {
+      prisma.salesCommission.findMany.mockResolvedValue([]);
+      prisma.salesCommission.count.mockResolvedValue(0);
+
+      const result = await service.findAll({ page: 1, limit: 50 });
+      expect(result).toEqual({ data: [], total: 0, page: 1, limit: 50, totalPages: 0 });
+    });
+  });
+});

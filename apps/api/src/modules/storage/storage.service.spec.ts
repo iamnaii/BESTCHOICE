@@ -2,6 +2,21 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { StorageService } from './storage.service';
 
+// Mock GCS SDK
+jest.mock('@google-cloud/storage', () => ({
+  Storage: jest.fn().mockImplementation(() => ({
+    bucket: jest.fn().mockReturnValue({
+      file: jest.fn().mockReturnValue({
+        save: jest.fn().mockResolvedValue(undefined),
+        exists: jest.fn().mockResolvedValue([true]),
+        createReadStream: jest.fn().mockReturnValue('mock-gcs-stream'),
+        delete: jest.fn().mockResolvedValue(undefined),
+        getSignedUrl: jest.fn().mockResolvedValue(['https://signed-url.example.com']),
+      }),
+    }),
+  })),
+}));
+
 // Mock AWS SDK
 jest.mock('@aws-sdk/client-s3', () => {
   const mockSend = jest.fn().mockResolvedValue({ Body: 'mock-stream' });
@@ -111,11 +126,11 @@ describe('StorageService', () => {
     });
 
     it('should throw error on getStream', async () => {
-      await expect(service.getStream('test/file.pdf')).rejects.toThrow('S3 storage not configured');
+      await expect(service.getStream('test/file.pdf')).rejects.toThrow('Storage not configured');
     });
 
     it('should throw error on getSignedDownloadUrl', async () => {
-      await expect(service.getSignedDownloadUrl('test/file.pdf')).rejects.toThrow('S3 storage not configured');
+      await expect(service.getSignedDownloadUrl('test/file.pdf')).rejects.toThrow('Storage not configured');
     });
 
     it('should not throw on delete (noop)', async () => {

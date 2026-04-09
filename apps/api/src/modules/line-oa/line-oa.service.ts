@@ -2,6 +2,7 @@ import { Injectable, Logger, BadRequestException, InternalServerErrorException }
 import { CHATBOT_RESPONSES } from './chatbot-system-prompt.constants';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PDPAService } from '../pdpa/pdpa.service';
 import { LineMessagePayload } from './dto/webhook-event.dto';
 import { FlexMessagePayload } from './flex-messages/base-template';
 import { buildPaymentSuccessFlex, PaymentSuccessData } from './flex-messages/payment-success.flex';
@@ -32,6 +33,7 @@ export class LineOaService {
   constructor(
     private configService: ConfigService,
     private prisma: PrismaService,
+    private pdpaService: PDPAService,
   ) {
     this.lineChannelAccessToken = this.configService.get<string>('LINE_CHANNEL_ACCESS_TOKEN');
     // Load from DB on startup (async)
@@ -321,6 +323,13 @@ export class LineOaService {
 
       if (!customer?.lineId) {
         this.logger.log('[LINE] Customer not linked to LINE, skipping receipt send');
+        return false;
+      }
+
+      // Check PDPA consent before sending
+      const hasConsent = await this.pdpaService.hasActiveConsent(customerId);
+      if (!hasConsent) {
+        this.logger.debug(`[LINE] PDPA consent not granted for customer ${customerId} — skipping payment receipt`);
         return false;
       }
 
@@ -811,7 +820,7 @@ export class LineOaService {
     switch (targetGroup) {
       case CampaignTargetGroup.ALL: {
         const customers = await this.prisma.customer.findMany({
-          where: { lineId: { not: null }, deletedAt: null },
+          where: { lineId: { not: null }, deletedAt: null, pdpaConsents: { some: { status: 'GRANTED', deletedAt: null } } },
           select: { lineId: true, name: true },
         });
         return customers.filter((c): c is { lineId: string; name: string } => c.lineId !== null);
@@ -822,6 +831,7 @@ export class LineOaService {
           where: {
             lineId: { not: null },
             deletedAt: null,
+            pdpaConsents: { some: { status: 'GRANTED', deletedAt: null } },
             contracts: {
               some: { status: 'ACTIVE', deletedAt: null },
             },
@@ -836,6 +846,7 @@ export class LineOaService {
           where: {
             lineId: { not: null },
             deletedAt: null,
+            pdpaConsents: { some: { status: 'GRANTED', deletedAt: null } },
             contracts: {
               some: { status: { in: ['OVERDUE', 'DEFAULT'] }, deletedAt: null },
             },
@@ -851,6 +862,7 @@ export class LineOaService {
           where: {
             lineId: { not: null },
             deletedAt: null,
+            pdpaConsents: { some: { status: 'GRANTED', deletedAt: null } },
             contracts: {
               some: { deletedAt: null },
             },

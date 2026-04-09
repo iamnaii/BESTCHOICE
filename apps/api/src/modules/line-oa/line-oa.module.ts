@@ -9,9 +9,10 @@ import { PaymentLinkService } from './payment-links/payment-link.service';
 import { RichMenuService } from './rich-menu/rich-menu.service';
 import { ChatbotService } from './chatbot.service';
 import { ContractsModule } from '../contracts/contracts.module';
+import { PDPAModule } from '../pdpa/pdpa.module';
 
 @Module({
-  imports: [ContractsModule],
+  imports: [ContractsModule, PDPAModule],
   controllers: [LineOaController, LineOaPaymentController, LineOaCampaignController],
   providers: [
     LineOaService,

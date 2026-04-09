@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import * as Sentry from '@sentry/nestjs';
 import { formatDateShort } from '../../utils/thai-date.util';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { NotificationsService } from './notifications.service';
@@ -31,6 +32,19 @@ export class SchedulerService {
   ) {}
 
   /**
+   * Centralized error reporter for cron jobs.
+   * Logs locally AND captures to Sentry so silent cron failures get noticed.
+   * Tagged with the job name for grouping in Sentry.
+   */
+  private reportCronFailure(jobName: string, error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    this.logger.error(`${jobName} failed: ${message}`);
+    Sentry.captureException(error, {
+      tags: { kind: 'cron-job', cron: jobName },
+    });
+  }
+
+  /**
    * Run daily at midnight: calculate late fees for all overdue payments
    */
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
@@ -40,7 +54,7 @@ export class SchedulerService {
       const result = await this.overdueService.calculateLateFees();
       this.logger.log(`Late fee calculation complete: ${result.updated} payments updated`);
     } catch (error) {
-      this.logger.error(`Late fee calculation failed: ${error instanceof Error ? error.message : error}`);
+      this.reportCronFailure('late-fee-calculation', error);
     }
   }
 
@@ -60,7 +74,7 @@ export class SchedulerService {
         await this.notifyStatusChangedCustomers(changedIds);
       }
     } catch (error) {
-      this.logger.error(`Contract status update failed: ${error instanceof Error ? error.message : error}`);
+      this.reportCronFailure('contract-status-update', error);
     }
   }
 
@@ -127,7 +141,7 @@ export class SchedulerService {
       const result = await this.notificationsService.sendPaymentReminders();
       this.logger.log(`Payment reminders complete: ${result.sent} sent`);
     } catch (error) {
-      this.logger.error(`Payment reminders failed: ${error instanceof Error ? error.message : error}`);
+      this.reportCronFailure('payment-reminders', error);
     }
   }
 
@@ -141,7 +155,7 @@ export class SchedulerService {
       const result = await this.notificationsService.sendOverdueNotices();
       this.logger.log(`Overdue notices complete: ${result.sent} sent`);
     } catch (error) {
-      this.logger.error(`Overdue notices failed: ${error instanceof Error ? error.message : error}`);
+      this.reportCronFailure('overdue-notices', error);
     }
   }
 
@@ -155,7 +169,7 @@ export class SchedulerService {
       const result = await this.notificationsService.notifyManagersOverdue();
       this.logger.log(`Manager notifications complete: ${result.sent} sent for ${result.contracts} contracts`);
     } catch (error) {
-      this.logger.error(`Manager notifications failed: ${error instanceof Error ? error.message : error}`);
+      this.reportCronFailure('manager-notifications', error);
     }
   }
 
@@ -169,7 +183,7 @@ export class SchedulerService {
       const result = await this.notificationsService.notifyOwnerDefault();
       this.logger.log(`Owner notifications complete: ${result.sent} sent for ${result.contracts} contracts`);
     } catch (error) {
-      this.logger.error(`Owner notifications failed: ${error instanceof Error ? error.message : error}`);
+      this.reportCronFailure('owner-default-notifications', error);
     }
   }
 
@@ -230,7 +244,7 @@ export class SchedulerService {
 
       this.logger.log(`Dunning escalation complete: ${result.escalated.length} escalated, ${notified} notified`);
     } catch (error) {
-      this.logger.error(`Dunning escalation failed: ${error instanceof Error ? error.message : error}`);
+      this.reportCronFailure('dunning-escalation', error);
     }
   }
 
@@ -244,7 +258,7 @@ export class SchedulerService {
       const result = await this.reorderPointsService.checkStockLevels();
       this.logger.log(`Stock check complete: ${result.alertsCreated} alerts, ${result.notificationsSent} notifications`);
     } catch (error) {
-      this.logger.error(`Stock level check failed: ${error instanceof Error ? error.message : error}`);
+      this.reportCronFailure('stock-level-check', error);
     }
   }
 
@@ -300,7 +314,7 @@ export class SchedulerService {
 
       this.logger.log(`SLA check complete: ${pendingContracts.length} contracts pending, ${sent} notifications sent`);
     } catch (error) {
-      this.logger.error(`SLA notification check failed: ${error instanceof Error ? error.message : error}`);
+      this.reportCronFailure('sla-notification-check', error);
     }
   }
 
@@ -372,7 +386,7 @@ export class SchedulerService {
 
       this.logger.log(`Auto payment links complete: ${sent} sent out of ${payments.length} payments`);
     } catch (error) {
-      this.logger.error(`Auto payment links failed: ${error instanceof Error ? error.message : error}`);
+      this.reportCronFailure('auto-payment-links', error);
     }
   }
 
@@ -388,7 +402,7 @@ export class SchedulerService {
         this.logger.log(`Notification retry queue: ${result.succeeded} succeeded, ${result.failed} failed out of ${result.retried}`);
       }
     } catch (error) {
-      this.logger.error(`Notification retry queue failed: ${error instanceof Error ? error.message : error}`);
+      this.reportCronFailure('notification-retry-queue', error);
     }
   }
 
@@ -455,7 +469,7 @@ export class SchedulerService {
         `${tokensCleared} expired tokens, ${consentsCleared} withdrawn consents cleaned`,
       );
     } catch (error) {
-      this.logger.error(`Data retention cleanup failed: ${error instanceof Error ? error.message : error}`);
+      this.reportCronFailure('data-retention', error);
     }
   }
 
@@ -469,7 +483,7 @@ export class SchedulerService {
       const report = await this.reportGeneratorService.generateDailySummary();
       this.logger.log(`Daily report: ฿${report.revenue.toLocaleString()}, ${report.paymentsCount} payments`);
     } catch (error) {
-      this.logger.error(`Daily report generation failed: ${error instanceof Error ? error.message : error}`);
+      this.reportCronFailure('daily-report', error);
     }
   }
 
@@ -482,7 +496,7 @@ export class SchedulerService {
       const report = await this.reportGeneratorService.generateWeeklySummary();
       this.logger.log(`Weekly report: ฿${report.totalRevenue.toLocaleString()} total revenue`);
     } catch (error) {
-      this.logger.error(`Weekly report generation failed: ${error instanceof Error ? error.message : error}`);
+      this.reportCronFailure('weekly-report', error);
     }
   }
 
@@ -498,7 +512,7 @@ export class SchedulerService {
         this.logger.log(`Warranty check: ${count} products marked as warranty expired`);
       }
     } catch (error) {
-      this.logger.error(`Warranty expiry check failed: ${error instanceof Error ? error.message : error}`);
+      this.reportCronFailure('warranty-expiry', error);
     }
   }
 
@@ -575,7 +589,7 @@ export class SchedulerService {
 
       this.logger.log(`Daily LINE report sent: ${sent}/${owners.length} OWNER users`);
     } catch (error) {
-      this.logger.error(`Daily LINE report failed: ${error instanceof Error ? error.message : error}`);
+      this.reportCronFailure('daily-line-report', error);
     }
   }
 }

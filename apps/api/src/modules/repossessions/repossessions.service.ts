@@ -1,7 +1,12 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateRepossessionDto, UpdateRepossessionDto } from './dto/create-repossession.dto';
 import { ConditionGrade, RepossessionStatus, ProductStatus } from '@prisma/client';
+
+// VAT rate used to back out principal from VAT-inclusive amounts
+const VAT_RATE = new Prisma.Decimal('1.07');
+const TWO_DP = (d: Prisma.Decimal) => d.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
 
 // Valid status transitions for repossession workflow
 const VALID_TRANSITIONS: Record<string, string[]> = {
@@ -74,31 +79,44 @@ export class RepossessionsService {
     });
     if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
 
-    let outstandingBalance = 0;
-    let totalPaid = 0;
+    // Use Prisma.Decimal throughout — chained Math.round on JS numbers
+    // accumulates float drift on long installment plans (24+ months) and
+    // can show users the wrong refund/profit by a few baht.
+    let outstandingBalance = new Prisma.Decimal(0);
+    let totalPaid = new Prisma.Decimal(0);
     let remainingMonths = 0;
     for (const p of contract.payments) {
       if (['PENDING', 'OVERDUE', 'PARTIALLY_PAID'].includes(p.status)) {
-        const lateFee = p.lateFeeWaived ? 0 : Number(p.lateFee);
-        outstandingBalance += Number(p.amountDue) - Number(p.amountPaid) + lateFee;
+        const lateFee = p.lateFeeWaived ? new Prisma.Decimal(0) : new Prisma.Decimal(p.lateFee);
+        outstandingBalance = outstandingBalance
+          .add(p.amountDue)
+          .sub(p.amountPaid)
+          .add(lateFee);
         remainingMonths += 1;
       }
-      totalPaid += Number(p.amountPaid);
+      totalPaid = totalPaid.add(p.amountPaid);
     }
 
-    const financeCost = Number(contract.financedAmount) + Number(contract.storeCommission || 0);
-    const remainingCost = Math.round((financeCost / contract.totalMonths) * remainingMonths * 100) / 100;
-    const discountPct = options.discountPct ?? 50;
-    const principalExVat = Math.round((outstandingBalance / 1.07) * 100) / 100;
-    const discountAmount = Math.round(Math.max(0, principalExVat - remainingCost) * (discountPct / 100) * 100) / 100;
-    const closingAmount = Math.round((principalExVat - discountAmount) * 100) / 100;
+    const financeCost = new Prisma.Decimal(contract.financedAmount).add(contract.storeCommission || 0);
+    const remainingCost = TWO_DP(
+      financeCost.div(contract.totalMonths).mul(remainingMonths),
+    );
+    const discountPct = new Prisma.Decimal(options.discountPct ?? 50);
+    const principalExVat = TWO_DP(outstandingBalance.div(VAT_RATE));
+    const discountableBase = Prisma.Decimal.max(0, principalExVat.sub(remainingCost));
+    const discountAmount = TWO_DP(discountableBase.mul(discountPct).div(100));
+    const closingAmount = TWO_DP(principalExVat.sub(discountAmount));
     // marketValue: ถ้าไม่ระบุให้ใช้ costPrice เป็น fallback
-    const marketValue = options.marketValue ?? Number(contract.product.costPrice || 0);
+    const marketValue = new Prisma.Decimal(options.marketValue ?? contract.product.costPrice ?? 0);
     const customerRefund = options.customerRefundEnabled
-      ? Math.round(Math.max(0, marketValue - closingAmount) * 100) / 100
-      : 0;
-    const profitLoss = Math.round((marketValue - remainingCost - customerRefund) * 100) / 100;
+      ? TWO_DP(Prisma.Decimal.max(0, marketValue.sub(closingAmount)))
+      : new Prisma.Decimal(0);
+    const profitLoss = TWO_DP(marketValue.sub(remainingCost).sub(customerRefund));
 
+    // Internally calculated with Decimal for precision; return as numbers
+    // since frontend uses .toLocaleString() and numeric comparisons.
+    // The Decimal accumulators above guarantee no float drift; the .toNumber()
+    // at the end is safe because each value is already rounded to 2 decimals.
     return {
       contract: {
         id: contract.id,
@@ -113,18 +131,18 @@ export class RepossessionsService {
       },
       calculation: {
         remainingMonths,
-        totalPaid,
-        outstandingBalance: Math.round(outstandingBalance * 100) / 100,
-        principalExVat,
-        financeCost,
-        remainingCost,
-        discountPct,
-        discountAmount,
-        closingAmount,
-        marketValue,
+        totalPaid: TWO_DP(totalPaid).toNumber(),
+        outstandingBalance: TWO_DP(outstandingBalance).toNumber(),
+        principalExVat: principalExVat.toNumber(),
+        financeCost: TWO_DP(financeCost).toNumber(),
+        remainingCost: remainingCost.toNumber(),
+        discountPct: discountPct.toNumber(),
+        discountAmount: discountAmount.toNumber(),
+        closingAmount: closingAmount.toNumber(),
+        marketValue: TWO_DP(marketValue).toNumber(),
         customerRefundEnabled: options.customerRefundEnabled || false,
-        customerRefund,
-        profitLoss,
+        customerRefund: customerRefund.toNumber(),
+        profitLoss: profitLoss.toNumber(),
       },
     };
   }

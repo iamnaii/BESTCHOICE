@@ -1,5 +1,6 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { BadRequestException, Logger } from '@nestjs/common';
+import * as Sentry from '@sentry/nestjs';
 import { Job } from 'bullmq';
 import { NOTIFICATION_QUEUE } from './notification-queue.module';
 import { NotificationsService } from './notifications.service';
@@ -54,6 +55,33 @@ export class NotificationWorker extends WorkerHost {
       );
       throw err; // BullMQ will retry based on backoff config
     }
+  }
+
+  /**
+   * Capture jobs that exhaust all retries to Sentry.
+   * BullMQ retries internally — only escalate after the last attempt fails,
+   * otherwise we'd flood Sentry with transient errors that would have
+   * recovered on retry.
+   */
+  @OnWorkerEvent('failed')
+  onFailed(job: Job<NotificationJobData> | undefined, err: Error) {
+    if (!job) return;
+    const maxAttempts = job.opts.attempts ?? 1;
+    if (job.attemptsMade < maxAttempts) return; // will retry
+    Sentry.captureException(err, {
+      tags: {
+        kind: 'queue-job-exhausted',
+        queue: NOTIFICATION_QUEUE,
+        type: job.data?.type,
+        templateKey: job.data?.templateKey,
+      },
+      extra: {
+        jobId: job.id,
+        contractId: job.data?.contractId,
+        attemptsMade: job.attemptsMade,
+        maxAttempts,
+      },
+    });
   }
 
   /** Simple template renderer (replaces {{key}} with values) */

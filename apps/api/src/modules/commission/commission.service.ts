@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCommissionRuleDto, UpdateCommissionRuleDto } from './dto/commission.dto';
 
@@ -18,7 +19,11 @@ export class CommissionService {
   ) {
     const now = new Date();
     const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const commissionAmount = Math.round(saleAmount * commissionRate * 100) / 100;
+    // Use Prisma.Decimal to avoid float rounding bugs (e.g. 0.1 * 0.1 !== 0.01).
+    // Result is a Decimal so the database stores exact baht/satang values.
+    const commissionAmount = new Prisma.Decimal(saleAmount)
+      .mul(commissionRate)
+      .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
 
     return this.prisma.salesCommission.create({
       data: {
@@ -87,13 +92,15 @@ export class CommissionService {
       },
     });
 
-    // Group by salesperson
+    // Group by salesperson — use Prisma.Decimal for accumulators so adding
+    // many records doesn't lose baht-level precision (Number() + Number()
+    // would silently drift on portfolios with thousands of commissions).
     const grouped = new Map<
       string,
       {
         salesperson: { id: string; name: string };
-        totalSales: number;
-        totalCommission: number;
+        totalSales: Prisma.Decimal;
+        totalCommission: Prisma.Decimal;
         count: number;
         approved: number;
         pending: number;
@@ -105,22 +112,27 @@ export class CommissionService {
       if (!grouped.has(key)) {
         grouped.set(key, {
           salesperson: c.salesperson,
-          totalSales: 0,
-          totalCommission: 0,
+          totalSales: new Prisma.Decimal(0),
+          totalCommission: new Prisma.Decimal(0),
           count: 0,
           approved: 0,
           pending: 0,
         });
       }
       const entry = grouped.get(key)!;
-      entry.totalSales += Number(c.saleAmount);
-      entry.totalCommission += Number(c.commissionAmount);
+      entry.totalSales = entry.totalSales.add(c.saleAmount);
+      entry.totalCommission = entry.totalCommission.add(c.commissionAmount);
       entry.count += 1;
       if (c.status === 'APPROVED' || c.status === 'PAID') entry.approved += 1;
       if (c.status === 'PENDING') entry.pending += 1;
     }
 
-    return Array.from(grouped.values());
+    // Serialize Decimal to string for JSON response (frontend uses parseFloat)
+    return Array.from(grouped.values()).map((entry) => ({
+      ...entry,
+      totalSales: entry.totalSales.toString(),
+      totalCommission: entry.totalCommission.toString(),
+    }));
   }
 
   /**

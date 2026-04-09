@@ -374,7 +374,7 @@ export default function FinanceReceivablePage() {
   ];
 
   return (
-    <div onClick={() => setOpenMenuId(null)}>
+    <div onClick={() => setOpenMenuId(null)} onKeyDown={(e) => { if (e.key === 'Escape') setOpenMenuId(null); }}>
       <PageHeader title="เงินรับจากไฟแนนซ์" subtitle={`ทั้งหมด ${receivables?.total || 0} รายการ`} />
 
       <Tabs defaultValue="external" className="mb-6">

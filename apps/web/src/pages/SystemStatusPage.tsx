@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
+import QueryBoundary from '@/components/QueryBoundary';
 import { formatDateMedium } from '@/utils/formatters';
 
 interface SystemStatus {
@@ -71,35 +72,8 @@ export default function SystemStatusPage() {
     setIsRefreshing(false);
   };
 
-  if (isLoading) {
-    return (
-      <div>
-        <PageHeader title="สถานะระบบ" subtitle="ตรวจสอบการเชื่อมต่อ API, ฐานข้อมูล และ AI" />
-        <div className="flex items-center justify-center py-20">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-        </div>
-      </div>
-    );
-  }
-
-  if (isError) {
-    return (
-      <div>
-        <PageHeader title="สถานะระบบ" subtitle="ตรวจสอบการเชื่อมต่อ API, ฐานข้อมูล และ AI" />
-        <div className="bg-destructive/5 dark:bg-destructive/10 border border-destructive/20 rounded-xl p-8 text-center max-w-lg mx-auto mt-8">
-          <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-3">
-            <svg className="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
-          </div>
-          <p className="text-destructive font-medium mb-1">ไม่สามารถเชื่อมต่อ API ได้</p>
-          <p className="text-destructive text-sm mb-4">{getErrorMessage(error)}</p>
-          <button onClick={() => refetch()} className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700">ลองใหม่</button>
-        </div>
-      </div>
-    );
-  }
-
-  const allOk = data!.api.status === 'ok' && data!.database.connected;
-  const svcs = data!.services;
+  const allOk = data?.api.status === 'ok' && data?.database.connected;
+  const svcs = data?.services;
   const totalPages = 3;
 
   return (
@@ -118,6 +92,14 @@ export default function SystemStatusPage() {
           </button>
         }
       />
+
+      <QueryBoundary
+        isLoading={isLoading}
+        isError={isError}
+        error={error}
+        onRetry={() => refetch()}
+        errorTitle="ไม่สามารถโหลดสถานะระบบได้"
+      >
 
       {/* ═══════════════════ Page 1: Connection Diagram ═══════════════════ */}
       <A4Page pageNum={1} totalPages={totalPages}>
@@ -414,6 +396,8 @@ export default function SystemStatusPage() {
           </div>
         </div>
       </A4Page>
+
+      </QueryBoundary>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateFixedAssetDto, UpdateFixedAssetDto, DisposeAssetDto } from './dto/asset.dto';
 
@@ -387,6 +388,9 @@ export class AssetService {
       this.logger.error(
         `Scheduled depreciation failed: ${error instanceof Error ? error.message : error}`,
       );
+      Sentry.captureException(error, {
+        tags: { kind: 'cron-job', cron: 'monthly-depreciation' },
+      });
     }
   }
 }

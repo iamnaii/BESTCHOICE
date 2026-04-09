@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
+import { readSmartCard } from '@/lib/cardReader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -134,18 +135,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
   // ─── Card reader ─────────────────────────────────────
   async function readFromCardReader() {
     try {
-      const res = await fetch('http://localhost:3457/api/read-card');
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        toast.error(err.message || 'อ่านบัตรไม่สำเร็จ');
-        return;
-      }
-      const json = await res.json();
-      if (!json.success || !json.data) {
-        toast.error('ไม่พบข้อมูลบัตร');
-        return;
-      }
-      const d = json.data;
+      const d = await readSmartCard();
       const fullName = `${d.prefix || ''}${d.firstName || ''} ${d.lastName || ''}`.trim();
       setForm((f) => ({
         ...f,
@@ -172,8 +162,8 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
       // Auto-trigger seller history lookup
       if (d.nationalId) await fetchSellerHistory(d.nationalId);
       toast.success('อ่านบัตรเรียบร้อย');
-    } catch {
-      toast.error('ไม่พบเครื่องอ่านบัตร — ตรวจสอบว่า service รันอยู่');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'ไม่พบเครื่องอ่านบัตร — ตรวจสอบว่า service รันอยู่');
     }
   }
 

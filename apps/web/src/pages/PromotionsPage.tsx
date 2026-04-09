@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Zap, Plus, Pencil, Trash2 } from 'lucide-react';
 import QueryBoundary from '@/components/QueryBoundary';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
 /* ─── Types ─── */
 
@@ -76,6 +77,7 @@ export default function PromotionsPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; id: string }>({ open: false, id: '' });
 
   /* ─── Queries ─── */
 
@@ -251,9 +253,7 @@ export default function PromotionsPage() {
             className="text-destructive hover:text-destructive"
             onClick={(e) => {
               e.stopPropagation();
-              if (window.confirm('ต้องการลบโปรโมชันนี้?')) {
-                deleteMutation.mutate(item.id);
-              }
+              setDeleteConfirm({ open: true, id: item.id });
             }}
             disabled={deleteMutation.isPending}
           >
@@ -416,6 +416,14 @@ export default function PromotionsPage() {
           </div>
         </form>
       </Modal>
+
+      <ConfirmDialog
+        open={deleteConfirm.open}
+        onOpenChange={(open) => setDeleteConfirm((prev) => ({ ...prev, open }))}
+        description="ต้องการลบโปรโมชันนี้?"
+        variant="destructive"
+        onConfirm={() => deleteMutation.mutate(deleteConfirm.id)}
+      />
     </div>
   );
 }

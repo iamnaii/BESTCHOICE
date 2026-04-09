@@ -206,7 +206,7 @@ export default function LiffFinanceVerify() {
         {profile && (
           <div className="bg-white rounded-2xl shadow-sm p-5 mb-4 flex items-center gap-4">
             {profile.pictureUrl ? (
-              <img src={profile.pictureUrl} alt="" className="w-12 h-12 rounded-full" />
+              <img src={profile.pictureUrl} alt="รูปโปรไฟล์ LINE" className="w-12 h-12 rounded-full" />
             ) : (
               <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-lg">
                 {profile.displayName.charAt(0)}

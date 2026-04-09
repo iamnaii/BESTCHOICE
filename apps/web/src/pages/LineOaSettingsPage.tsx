@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
+import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import PageHeader from '@/components/ui/PageHeader';
 
 interface BotInfo {
@@ -25,6 +26,7 @@ const TEST_MESSAGE_TYPES = [
 
 export default function LineOaSettingsPage() {
   const queryClient = useQueryClient();
+  const { copy } = useCopyToClipboard();
   const [form, setForm] = useState<Record<string, string>>({});
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
   const [testResult, setTestResult] = useState<{ success: boolean; botInfo?: BotInfo; error?: string } | null>(null);
@@ -119,7 +121,7 @@ export default function LineOaSettingsPage() {
   };
 
   const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
+    copy(text);
     toast.success('คัดลอกแล้ว');
   };
 

@@ -1,8 +1,9 @@
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/card';
 import PageHeader from '@/components/ui/PageHeader';
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
 import QueryBoundary from '@/components/QueryBoundary';
 import Modal from '@/components/ui/Modal';
 import WorkflowStatusBadge from '@/components/contract/WorkflowStatusBadge';
@@ -15,6 +16,7 @@ import ContractDocuments from '@/components/contract/ContractDocuments';
 import { ContractEarlyPayoffQuote, EarlyPayoffOverlay } from '@/components/contract/ContractEarlyPayoff';
 import { toast } from 'sonner';
 import { useState, useRef, useEffect } from 'react';
+import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { useAuth } from '@/contexts/AuthContext';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { DetailPageSkeleton } from '@/components/ui/page-skeletons';
@@ -94,6 +96,7 @@ export default function ContractDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const { copy: copyToClipboard } = useCopyToClipboard();
   const [showPayoffModal, setShowPayoffModal] = useState(false);
   const [customerLink, setCustomerLink] = useState<string | null>(null);
   const [showRejectModal, setShowRejectModal] = useState(false);
@@ -284,6 +287,15 @@ const deleteMutation = useMutation({
       <PageHeader
         title={contract.contractNumber}
         subtitle="รายละเอียดสัญญาผ่อนชำระ"
+        breadcrumb={
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem><BreadcrumbLink asChild><Link to="/contracts">สัญญา</Link></BreadcrumbLink></BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem><BreadcrumbPage>{contract.contractNumber}</BreadcrumbPage></BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
+        }
         action={
           <div className="flex gap-2 flex-wrap">
             <button onClick={() => navigate(`/contracts/${id}/sign`)} className="px-4 py-2 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700 shadow-sm">
@@ -881,7 +893,7 @@ const deleteMutation = useMutation({
                 className="flex-1 px-3 py-2 border rounded-lg text-sm bg-muted"
               />
               <button
-                onClick={() => { navigator.clipboard.writeText(customerLink); toast.success('คัดลอกลิงก์แล้ว'); }}
+                onClick={() => { copyToClipboard(customerLink); toast.success('คัดลอกลิงก์แล้ว'); }}
                 className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
               >
                 คัดลอก

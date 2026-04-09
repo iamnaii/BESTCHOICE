@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
+import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardContent } from '@/components/ui/card';
 
 interface Contract {
@@ -62,7 +63,7 @@ export default function ExchangePage() {
   } | null>(null);
 
   // Fetch eligible contracts (ACTIVE or OVERDUE)
-  const { data: contracts = [] } = useQuery<Contract[]>({
+  const { data: contracts = [], isLoading: contractsLoading, isError: contractsError, refetch: refetchContracts } = useQuery<Contract[]>({
     queryKey: ['exchange-contracts'],
     queryFn: async () => {
       const [active, overdue] = await Promise.all([
@@ -74,7 +75,7 @@ export default function ExchangePage() {
   });
 
   // Fetch available products (IN_STOCK)
-  const { data: products = [] } = useQuery<Product[]>({
+  const { data: products = [], isLoading: productsLoading, isError: productsError, refetch: refetchProducts } = useQuery<Product[]>({
     queryKey: ['exchange-products'],
     queryFn: async () => (await api.get('/products?status=IN_STOCK&limit=999')).data.data || [],
   });
@@ -161,6 +162,13 @@ export default function ExchangePage() {
   return (
     <div>
       <PageHeader title="เปลี่ยนเครื่อง" subtitle="เปลี่ยนเครื่องจากสัญญาเดิมเป็นเครื่องใหม่" />
+
+      <QueryBoundary
+        isLoading={contractsLoading || productsLoading}
+        isError={contractsError || productsError}
+        onRetry={() => { void refetchContracts(); void refetchProducts(); }}
+        errorTitle="ไม่สามารถโหลดข้อมูลการเปลี่ยนเครื่องได้"
+      >
 
       {/* Step Indicator */}
       <div className="flex items-center gap-2 mb-6">
@@ -473,6 +481,8 @@ export default function ExchangePage() {
           </CardContent>
         </Card>
       )}
+
+      </QueryBoundary>
     </div>
   );
 }

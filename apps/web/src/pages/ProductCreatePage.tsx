@@ -4,6 +4,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
+import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card';
 import { brands, getModels, getModelInfo } from '@/data/productCatalog';
 import { categoryOptions, createProductStatusOptions } from '@/lib/constants';
@@ -61,7 +62,7 @@ export default function ProductCreatePage() {
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
 
-  const { data: branchList = [] } = useQuery<{ id: string; name: string }[]>({
+  const { data: branchList = [], isLoading: branchesLoading, isError: branchesError, error: branchesQueryError, refetch: refetchBranches } = useQuery<{ id: string; name: string }[]>({
     queryKey: ['branches'],
     queryFn: async () => {
       const { data } = await api.get('/branches');
@@ -312,6 +313,14 @@ export default function ProductCreatePage() {
           </button>
         }
       />
+
+      <QueryBoundary
+        isLoading={branchesLoading}
+        isError={branchesError}
+        error={branchesQueryError}
+        onRetry={() => refetchBranches()}
+        errorTitle="ไม่สามารถโหลดข้อมูลสาขาได้"
+      >
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-5 lg:gap-7.5">
         {/* Product Info */}
@@ -743,6 +752,8 @@ export default function ProductCreatePage() {
           </button>
         </div>
       </form>
+
+      </QueryBoundary>
     </div>
   );
 }

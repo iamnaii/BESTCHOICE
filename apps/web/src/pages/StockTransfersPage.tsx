@@ -426,7 +426,7 @@ export default function StockTransfersPage() {
                         <span>{batch.fromBranch.name} → {batch.toBranch.name}</span>
                         <span>{formatDateShort(batch.createdAt)}</span>
                       </div>
-                      <div className="flex gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex gap-2 flex-shrink-0" role="presentation" onClick={(e) => e.stopPropagation()}>
                         {batch.status === 'PENDING' && (
                           <button
                             onClick={() => {
@@ -575,7 +575,7 @@ export default function StockTransfersPage() {
                         <span>จาก: {batch.fromBranch.name}</span>
                         {batch.dispatchedAt && <span>ส่ง: {formatDateShort(batch.dispatchedAt)}</span>}
                       </div>
-                      <div className="flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex-shrink-0" role="presentation" onClick={(e) => e.stopPropagation()}>
                         <button
                           onClick={() => openBatchReceiveModal(batch.items)}
                           className="px-3 py-1.5 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700"
@@ -726,7 +726,7 @@ export default function StockTransfersPage() {
                     <div key={t.id} className="flex items-start gap-3">
                       <span className="text-xs text-muted-foreground mt-1 w-5">{idx + 1}.</span>
                       {t.product.photos?.[0] && (
-                        <img src={t.product.photos[0]} alt="" className="w-12 h-12 object-cover rounded-lg border" />
+                        <img src={t.product.photos[0]} alt={`${t.product.brand} ${t.product.model}` || 'รูปสินค้า'} className="w-12 h-12 object-cover rounded-lg border" />
                       )}
                       <div className="flex-1">
                         <div className="font-semibold text-foreground text-sm">{t.product.brand} {t.product.model}</div>

@@ -9,6 +9,7 @@ import { Sheet, SheetContent, SheetBody } from '@/components/ui/sheet';
 import CommandPalette from '@/components/CommandPalette';
 import ShortcutsHelpOverlay from '@/components/ShortcutsHelpOverlay';
 import MobileBottomNav from './MobileBottomNav';
+import { SkipLink } from './SkipLink';
 
 function MobileSidebar() {
   const { mobileSidebarOpen, setMobileSidebarOpen } = useLayout();
@@ -38,6 +39,7 @@ function MainContent() {
 
   return (
     <div className="flex min-h-screen bg-background">
+      <SkipLink />
       {/* Desktop Sidebar */}
       {!isMobile && <Sidebar />}
 
@@ -52,7 +54,7 @@ function MainContent() {
         }}
       >
         <TopBar />
-        <main className="flex-1 grow pt-5 pb-20 lg:pb-7 bg-background" key={pathname}>
+        <main id="main" className="flex-1 grow pt-5 pb-20 lg:pb-7 bg-background" key={pathname}>
           <div className="container-fluid px-5 lg:px-7 animate-fadeIn">
             <Outlet />
           </div>

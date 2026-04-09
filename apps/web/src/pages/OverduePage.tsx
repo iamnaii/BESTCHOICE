@@ -12,7 +12,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { formatDateShort } from '@/utils/formatters';
 import { exportToExcel } from '@/utils/excel.util';
-import { Download, Info, UserPlus, CalendarCheck } from 'lucide-react';
+import { Download, Info, UserPlus, CalendarCheck, LayoutList, Columns3, PhoneCall } from 'lucide-react';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 
 interface OverduePayment {
@@ -45,6 +45,28 @@ interface TimelineEvent {
   description: string;
 }
 
+interface BoardContract {
+  id: string;
+  contractNumber: string;
+  status: string;
+  customer: { id: string; name: string; phone: string };
+  branch: { id: string; name: string };
+  assignedTo?: { id: string; name: string } | null;
+  lastContactDate?: string | null;
+  collectionNotes?: string | null;
+  dunningEscalatedAt?: string | null;
+  outstanding: number;
+  oldestDueDate?: string | null;
+}
+
+interface BoardLane {
+  stage: string;
+  label: string;
+  contracts: BoardContract[];
+}
+
+type ViewMode = 'table' | 'kanban';
+
 export default function OverduePage() {
   useDocumentTitle('ค้างชำระ');
   const navigate = useNavigate();
@@ -67,6 +89,13 @@ export default function OverduePage() {
   // Settlement state
   const [settlementContractId, setSettlementContractId] = useState<string | null>(null);
   const [settlementForm, setSettlementForm] = useState({ settlementDate: '', settlementNotes: '', notes: '' });
+
+  // View mode toggle
+  const [viewMode, setViewMode] = useState<ViewMode>('table');
+
+  // Log contact quick action state
+  const [logContactContractId, setLogContactContractId] = useState<string | null>(null);
+  const [logContactForm, setLogContactForm] = useState({ result: 'NO_ANSWER', notes: '', collectionNotes: '' });
 
   // Branches list for filter (OWNER only)
   const { data: branches = [] } = useQuery<{ id: string; name: string }[]>({
@@ -190,6 +219,38 @@ export default function OverduePage() {
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
+  // Log contact mutation (quick action)
+  const logContactMutation = useMutation({
+    mutationFn: async ({ contractId, body }: { contractId: string; body: { result: string; notes?: string; collectionNotes?: string } }) => {
+      const { data } = await api.patch(`/overdue/${contractId}/contact-log`, body);
+      return data;
+    },
+    onSuccess: () => {
+      toast.success('บันทึกการติดต่อสำเร็จ');
+      setLogContactContractId(null);
+      setLogContactForm({ result: 'NO_ANSWER', notes: '', collectionNotes: '' });
+      queryClient.invalidateQueries({ queryKey: ['overdue-payments'] });
+      queryClient.invalidateQueries({ queryKey: ['overdue-board'] });
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  // Board data (kanban view)
+  const {
+    data: boardData,
+    isLoading: boardLoading,
+    isError: boardError,
+    error: boardErr,
+    refetch: refetchBoard,
+  } = useQuery<{ lanes: BoardLane[]; totalContracts: number }>({
+    queryKey: ['overdue-board'],
+    queryFn: async () => {
+      const { data } = await api.get('/overdue/board');
+      return data;
+    },
+    enabled: viewMode === 'kanban',
+  });
+
   // Calculate summary stats (memoized to avoid recomputing on every render)
   const { totalLateFees, totalOutstanding, uniqueContracts } = useMemo(() => ({
     totalLateFees: overduePayments.reduce((sum, p) => { const v = parseFloat(p.lateFee); return sum + (isNaN(v) ? 0 : v); }, 0),
@@ -279,6 +340,13 @@ export default function OverduePage() {
           >
             ติดตาม
           </button>
+          <button
+            onClick={() => { setLogContactContractId(p.contract.id); setLogContactForm({ result: 'NO_ANSWER', notes: '', collectionNotes: '' }); }}
+            className="text-muted-foreground hover:text-warning text-xs font-medium flex items-center gap-0.5"
+            title="บันทึกการติดต่อ"
+          >
+            <PhoneCall className="size-3.5" />
+          </button>
           {isOwnerOrManager && (
             <>
               <button
@@ -308,31 +376,54 @@ export default function OverduePage() {
         title="ค่าปรับ & ค้างชำระ"
         subtitle="ระบบคำนวณค่าปรับล่าช้าและติดตามการค้างชำระ"
         action={
-          isOwnerOrManager && (
-            <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            {/* View toggle */}
+            <div className="flex border border-input rounded-lg overflow-hidden">
               <button
-                onClick={() => calcLateFeeMutation.mutate()}
-                disabled={calcLateFeeMutation.isPending}
-                className="px-3 py-2 text-sm border border-input rounded-lg hover:bg-muted disabled:opacity-50"
+                onClick={() => setViewMode('table')}
+                className={`px-2.5 py-2 text-sm flex items-center gap-1.5 transition-colors ${
+                  viewMode === 'table' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground'
+                }`}
+                title="มุมมองตาราง"
               >
-                {calcLateFeeMutation.isPending ? 'กำลัง...' : 'คำนวณค่าปรับ'}
+                <LayoutList className="size-4" />
               </button>
               <button
-                onClick={() => updateStatusMutation.mutate()}
-                disabled={updateStatusMutation.isPending}
-                className="px-3 py-2 text-sm border border-input rounded-lg hover:bg-muted disabled:opacity-50"
+                onClick={() => setViewMode('kanban')}
+                className={`px-2.5 py-2 text-sm flex items-center gap-1.5 transition-colors ${
+                  viewMode === 'kanban' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground'
+                }`}
+                title="มุมมอง Kanban"
               >
-                {updateStatusMutation.isPending ? 'กำลัง...' : 'อัปเดตสถานะ'}
-              </button>
-              <button
-                onClick={() => runCronMutation.mutate()}
-                disabled={runCronMutation.isPending}
-                className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 disabled:opacity-50"
-              >
-                {runCronMutation.isPending ? 'กำลังคำนวณ...' : 'คำนวณค่าปรับ'}
+                <Columns3 className="size-4" />
               </button>
             </div>
-          )
+            {isOwnerOrManager && (
+              <>
+                <button
+                  onClick={() => calcLateFeeMutation.mutate()}
+                  disabled={calcLateFeeMutation.isPending}
+                  className="px-3 py-2 text-sm border border-input rounded-lg hover:bg-muted disabled:opacity-50"
+                >
+                  {calcLateFeeMutation.isPending ? 'กำลัง...' : 'คำนวณค่าปรับ'}
+                </button>
+                <button
+                  onClick={() => updateStatusMutation.mutate()}
+                  disabled={updateStatusMutation.isPending}
+                  className="px-3 py-2 text-sm border border-input rounded-lg hover:bg-muted disabled:opacity-50"
+                >
+                  {updateStatusMutation.isPending ? 'กำลัง...' : 'อัปเดตสถานะ'}
+                </button>
+                <button
+                  onClick={() => runCronMutation.mutate()}
+                  disabled={runCronMutation.isPending}
+                  className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 disabled:opacity-50"
+                >
+                  {runCronMutation.isPending ? 'กำลังคำนวณ...' : 'คำนวณค่าปรับ'}
+                </button>
+              </>
+            )}
+          </div>
         }
       />
 
@@ -492,15 +583,197 @@ export default function OverduePage() {
         </select>
       </div>
 
-      <QueryBoundary
-        isLoading={isLoading}
-        isError={isError}
-        error={error}
-        onRetry={refetch}
-        errorTitle="ไม่สามารถโหลดรายการค้างชำระได้"
-      >
-        <DataTable columns={columns} data={overduePayments} emptyMessage="ไม่มีรายการค้างชำระ" />
-      </QueryBoundary>
+      {/* Table view */}
+      {viewMode === 'table' && (
+        <QueryBoundary
+          isLoading={isLoading}
+          isError={isError}
+          error={error}
+          onRetry={refetch}
+          errorTitle="ไม่สามารถโหลดรายการค้างชำระได้"
+        >
+          <DataTable columns={columns} data={overduePayments} emptyMessage="ไม่มีรายการค้างชำระ" />
+        </QueryBoundary>
+      )}
+
+      {/* Kanban board view */}
+      {viewMode === 'kanban' && (
+        <QueryBoundary
+          isLoading={boardLoading}
+          isError={boardError}
+          error={boardErr}
+          onRetry={refetchBoard}
+          errorTitle="ไม่สามารถโหลด Kanban board ได้"
+        >
+          {boardData && (
+            <div className="flex gap-4 overflow-x-auto pb-4">
+              {boardData.lanes.map((lane) => (
+                <div key={lane.stage} className="flex-shrink-0 w-72">
+                  <div className="flex items-center justify-between mb-2 px-1">
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                      {lane.label}
+                    </span>
+                    <span className="text-xs bg-muted text-muted-foreground rounded-full px-2 py-0.5 font-medium">
+                      {lane.contracts.length}
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    {lane.contracts.length === 0 ? (
+                      <div className="border-2 border-dashed border-border rounded-xl p-4 text-center text-xs text-muted-foreground">
+                        ไม่มีรายการ
+                      </div>
+                    ) : (
+                      lane.contracts.map((c) => (
+                        <div key={c.id} className="bg-card border border-border rounded-xl p-3 shadow-sm hover:shadow-md transition-shadow">
+                          <div className="flex items-start justify-between mb-1.5">
+                            <button
+                              onClick={() => navigate(`/contracts/${c.id}`)}
+                              className="text-xs font-mono text-primary hover:underline font-medium"
+                            >
+                              {c.contractNumber}
+                            </button>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-medium ${
+                              c.status === 'DEFAULT'
+                                ? 'bg-destructive/10 text-destructive'
+                                : 'bg-warning/10 text-warning'
+                            }`}>
+                              {c.status}
+                            </span>
+                          </div>
+                          <div className="text-sm font-medium truncate">{c.customer.name}</div>
+                          <div className="text-xs text-muted-foreground">{c.customer.phone}</div>
+                          {c.outstanding > 0 && (
+                            <div className="mt-1.5 text-xs font-semibold text-destructive">
+                              ค้าง {c.outstanding.toLocaleString()} ฿
+                            </div>
+                          )}
+                          <div className="mt-2 flex items-center justify-between">
+                            <div className="text-[10px] text-muted-foreground">
+                              {c.assignedTo ? (
+                                <span className="flex items-center gap-0.5">
+                                  <UserPlus className="size-2.5" />
+                                  {c.assignedTo.name}
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground/50">ยังไม่มอบหมาย</span>
+                              )}
+                            </div>
+                            <div className="flex gap-1">
+                              <button
+                                onClick={() => { setLogContactContractId(c.id); setLogContactForm({ result: 'NO_ANSWER', notes: '', collectionNotes: c.collectionNotes || '' }); }}
+                                className="text-muted-foreground hover:text-warning p-0.5 rounded"
+                                title="บันทึกการติดต่อ"
+                              >
+                                <PhoneCall className="size-3.5" />
+                              </button>
+                              {isOwnerOrManager && (
+                                <button
+                                  onClick={() => { setAssignContractId(c.id); setAssignUserId(''); }}
+                                  className="text-muted-foreground hover:text-primary p-0.5 rounded"
+                                  title="มอบหมายผู้ติดตาม"
+                                >
+                                  <UserPlus className="size-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          {c.lastContactDate && (
+                            <div className="mt-1 text-[10px] text-muted-foreground">
+                              ติดต่อล่าสุด: {formatDateShort(new Date(c.lastContactDate))}
+                            </div>
+                          )}
+                          {c.collectionNotes && (
+                            <div className="mt-1 text-[10px] text-muted-foreground/70 truncate" title={c.collectionNotes}>
+                              {c.collectionNotes}
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </QueryBoundary>
+      )}
+
+      {/* Log Contact Modal */}
+      {logContactContractId && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          role="button"
+          tabIndex={0}
+          onClick={() => setLogContactContractId(null)}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setLogContactContractId(null); } }}
+        >
+          <div className="absolute inset-0 bg-black/30" />
+          <div className="relative bg-background rounded-xl shadow-xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base font-semibold mb-4">บันทึกการติดต่อ</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">ผลการติดต่อ</label>
+                <select
+                  value={logContactForm.result}
+                  onChange={(e) => setLogContactForm({ ...logContactForm, result: e.target.value })}
+                  className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                >
+                  <option value="NO_ANSWER">ไม่รับสาย</option>
+                  <option value="ANSWERED">รับสาย</option>
+                  <option value="PROMISED_TO_PAY">สัญญาจะชำระ</option>
+                  <option value="REFUSED">ปฏิเสธ</option>
+                  <option value="WRONG_NUMBER">เบอร์ผิด</option>
+                  <option value="OTHER">อื่นๆ</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">หมายเหตุ (ถ้ามี)</label>
+                <textarea
+                  value={logContactForm.notes}
+                  onChange={(e) => setLogContactForm({ ...logContactForm, notes: e.target.value })}
+                  placeholder="รายละเอียดการโทร..."
+                  rows={2}
+                  className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">บันทึกผู้ติดตาม (อัปเดตบนสัญญา)</label>
+                <textarea
+                  value={logContactForm.collectionNotes}
+                  onChange={(e) => setLogContactForm({ ...logContactForm, collectionNotes: e.target.value })}
+                  placeholder="บันทึกสถานะการติดตาม..."
+                  rows={2}
+                  className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end mt-4">
+              <button
+                onClick={() => setLogContactContractId(null)}
+                className="px-4 py-2 text-sm border border-input rounded-lg hover:bg-muted"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={() => {
+                  logContactMutation.mutate({
+                    contractId: logContactContractId,
+                    body: {
+                      result: logContactForm.result,
+                      notes: logContactForm.notes || undefined,
+                      collectionNotes: logContactForm.collectionNotes || undefined,
+                    },
+                  });
+                }}
+                disabled={logContactMutation.isPending}
+                className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 disabled:opacity-50"
+              >
+                {logContactMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Assign Collector Modal */}
       {assignContractId && (

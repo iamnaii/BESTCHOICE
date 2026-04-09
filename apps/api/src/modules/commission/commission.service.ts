@@ -1,7 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCommissionRuleDto, UpdateCommissionRuleDto } from './dto/commission.dto';
+import { GeneratePayoutDto, ApprovePayoutDto } from './dto/commission-payout.dto';
 
 @Injectable()
 export class CommissionService {
@@ -225,6 +226,215 @@ export class CommissionService {
         ...(dto.fixedAmount !== undefined && { fixedAmount: dto.fixedAmount }),
         ...(dto.minSaleAmount !== undefined && { minSaleAmount: dto.minSaleAmount }),
         ...(dto.maxSaleAmount !== undefined && { maxSaleAmount: dto.maxSaleAmount }),
+      },
+    });
+  }
+
+  // ============================================================
+  // COMMISSION PAYOUTS (monthly aggregate per salesperson)
+  // ============================================================
+
+  /**
+   * List payout records with optional filters
+   */
+  async findPayouts(filters: {
+    userId?: string;
+    status?: string;
+    period?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const page = filters.page || 1;
+    const limit = Math.min(filters.limit || 50, 100);
+    const skip = (page - 1) * limit;
+
+    const where: Record<string, unknown> = { deletedAt: null };
+    if (filters.userId) where.salespersonId = filters.userId;
+    if (filters.status) where.status = filters.status;
+    if (filters.period) where.period = filters.period;
+
+    const [data, total] = await Promise.all([
+      this.prisma.commissionPayout.findMany({
+        where,
+        orderBy: [{ period: 'desc' }, { createdAt: 'desc' }],
+        skip,
+        take: limit,
+        include: {
+          salesperson: { select: { id: true, name: true } },
+          approvedBy: { select: { id: true, name: true } },
+          paidBy: { select: { id: true, name: true } },
+        },
+      }),
+      this.prisma.commissionPayout.count({ where }),
+    ]);
+
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
+
+  /**
+   * Payout summary for a given month — grouped by salesperson
+   */
+  async getPayoutSummary(period: string) {
+    const payouts = await this.prisma.commissionPayout.findMany({
+      where: { period, deletedAt: null },
+      include: {
+        salesperson: { select: { id: true, name: true } },
+      },
+      orderBy: { totalCommission: 'desc' },
+    });
+
+    const totalAmount = payouts.reduce(
+      (sum, p) => sum.add(p.totalCommission),
+      new Prisma.Decimal(0),
+    );
+
+    return {
+      period,
+      payouts,
+      totalPayouts: payouts.length,
+      totalAmount: totalAmount.toString(),
+      approved: payouts.filter((p) => p.status === 'APPROVED' || p.status === 'PAID').length,
+      paid: payouts.filter((p) => p.status === 'PAID').length,
+    };
+  }
+
+  /**
+   * Generate payout records for a given month.
+   * Aggregates all PENDING/APPROVED/PAID SalesCommissions for the period.
+   * Idempotent: skips salespersons who already have a payout record for that period.
+   */
+  async generatePayouts(dto: GeneratePayoutDto) {
+    const { period, notes } = dto;
+
+    // Validate period format YYYY-MM
+    if (!/^\d{4}-\d{2}$/.test(period)) {
+      throw new BadRequestException('รูปแบบเดือนต้องเป็น YYYY-MM');
+    }
+
+    // Get all commissions for the period
+    const commissions = await this.prisma.salesCommission.findMany({
+      where: { period, deletedAt: null },
+      include: { salesperson: { select: { id: true, name: true } } },
+    });
+
+    if (commissions.length === 0) {
+      return { created: 0, skipped: 0, message: 'ไม่พบคอมมิชชันในเดือนนี้' };
+    }
+
+    // Group by salesperson using Decimal for precision
+    const grouped = new Map<
+      string,
+      { salespersonId: string; totalSales: Prisma.Decimal; totalCommission: Prisma.Decimal; count: number }
+    >();
+
+    for (const c of commissions) {
+      if (!grouped.has(c.salespersonId)) {
+        grouped.set(c.salespersonId, {
+          salespersonId: c.salespersonId,
+          totalSales: new Prisma.Decimal(0),
+          totalCommission: new Prisma.Decimal(0),
+          count: 0,
+        });
+      }
+      const entry = grouped.get(c.salespersonId)!;
+      entry.totalSales = entry.totalSales.add(c.saleAmount);
+      entry.totalCommission = entry.totalCommission.add(c.commissionAmount);
+      entry.count += 1;
+    }
+
+    let created = 0;
+    let skipped = 0;
+
+    for (const entry of grouped.values()) {
+      // Upsert: if payout already exists for this salesperson+period, skip
+      const existing = await this.prisma.commissionPayout.findUnique({
+        where: {
+          salespersonId_period: { salespersonId: entry.salespersonId, period },
+        },
+      });
+
+      if (existing && existing.deletedAt === null) {
+        skipped += 1;
+        continue;
+      }
+
+      await this.prisma.commissionPayout.upsert({
+        where: {
+          salespersonId_period: { salespersonId: entry.salespersonId, period },
+        },
+        create: {
+          salespersonId: entry.salespersonId,
+          period,
+          totalSales: entry.totalSales,
+          totalCommission: entry.totalCommission,
+          commissionCount: entry.count,
+          status: 'DRAFT',
+          notes: notes || null,
+        },
+        update: {
+          // restore if soft-deleted
+          deletedAt: null,
+          totalSales: entry.totalSales,
+          totalCommission: entry.totalCommission,
+          commissionCount: entry.count,
+          notes: notes || null,
+        },
+      });
+      created += 1;
+    }
+
+    return { created, skipped, period, message: `สร้าง ${created} รายการ, ข้าม ${skipped} รายการ (มีอยู่แล้ว)` };
+  }
+
+  /**
+   * Approve a payout (OWNER only)
+   */
+  async approvePayout(id: string, userId: string, dto: ApprovePayoutDto) {
+    const payout = await this.prisma.commissionPayout.findFirst({
+      where: { id, deletedAt: null },
+    });
+    if (!payout) throw new NotFoundException('ไม่พบใบจ่ายคอมมิชชัน');
+    if (payout.status !== 'DRAFT') {
+      throw new BadRequestException('สามารถอนุมัติได้เฉพาะรายการที่อยู่ในสถานะ DRAFT เท่านั้น');
+    }
+
+    return this.prisma.commissionPayout.update({
+      where: { id },
+      data: {
+        status: 'APPROVED',
+        approvedById: userId,
+        approvedAt: new Date(),
+        ...(dto.notes !== undefined && { notes: dto.notes }),
+      },
+      include: {
+        salesperson: { select: { id: true, name: true } },
+        approvedBy: { select: { id: true, name: true } },
+      },
+    });
+  }
+
+  /**
+   * Mark a payout as paid (OWNER only)
+   */
+  async markPayoutPaid(id: string, userId: string) {
+    const payout = await this.prisma.commissionPayout.findFirst({
+      where: { id, deletedAt: null },
+    });
+    if (!payout) throw new NotFoundException('ไม่พบใบจ่ายคอมมิชชัน');
+    if (payout.status !== 'APPROVED') {
+      throw new BadRequestException('สามารถบันทึกการจ่ายได้เฉพาะรายการที่อนุมัติแล้วเท่านั้น');
+    }
+
+    return this.prisma.commissionPayout.update({
+      where: { id },
+      data: {
+        status: 'PAID',
+        paidById: userId,
+        paidAt: new Date(),
+      },
+      include: {
+        salesperson: { select: { id: true, name: true } },
+        paidBy: { select: { id: true, name: true } },
       },
     });
   }

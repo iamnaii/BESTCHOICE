@@ -22,13 +22,10 @@ const COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 function setRefreshCookie(res: Response, token: string) {
   const isProduction = process.env.NODE_ENV === 'production';
-  // Cross-domain (Cloud Run API + Firebase Hosting) requires sameSite: 'none' + secure: true
-  // Same-domain or localhost uses 'lax' for better security
-  const isCrossDomain = process.env.COOKIE_CROSS_DOMAIN === 'true';
   res.cookie(REFRESH_COOKIE, token, {
     httpOnly: true,
-    secure: isProduction || isCrossDomain,
-    sameSite: isCrossDomain ? 'none' : 'lax',
+    secure: isProduction,
+    sameSite: 'lax', // same-origin via Firebase Hosting rewrite — no need for 'none'
     maxAge: COOKIE_MAX_AGE,
     path: '/api/auth',
   });

@@ -280,7 +280,7 @@ jobs:
       - name: Build frontend
         run: npm run build --workspace=apps/web
         env:
-          VITE_API_URL: ${{ secrets.API_URL || 'https://bestchoice-api-run.app' }}/api
+          VITE_API_URL: /api
 
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0

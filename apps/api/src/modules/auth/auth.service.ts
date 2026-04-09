@@ -13,6 +13,10 @@ import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto, ResetPasswordDto } from './dto/password-reset.dto';
 import { EmailService } from '../email/email.service';
 
+// Account lockout configuration. Tunable via env if needed later.
+const LOCKOUT_THRESHOLD = 5; // failures before lock
+const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -43,9 +47,45 @@ export class AuthService {
       throw new UnauthorizedException('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
     }
 
+    // Reject if currently locked. Use a generic message so attackers can't
+    // distinguish "wrong password" from "locked" — both surface the same error.
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      this.logger.warn(`Login attempt on locked account ${user.id}`);
+      throw new UnauthorizedException(
+        'บัญชีถูกล็อคชั่วคราว กรุณาลองใหม่ในอีกสักครู่',
+      );
+    }
+
     const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
     if (!isPasswordValid) {
+      // Increment counter; lock if threshold reached.
+      // We use updateMany so the result tells us how many rows changed but
+      // doesn't throw if the row was concurrently deleted.
+      const nextAttempts = user.failedLoginAttempts + 1;
+      const shouldLock = nextAttempts >= LOCKOUT_THRESHOLD;
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          failedLoginAttempts: nextAttempts,
+          lockedUntil: shouldLock
+            ? new Date(Date.now() + LOCKOUT_DURATION_MS)
+            : null,
+        },
+      });
+      if (shouldLock) {
+        this.logger.warn(
+          `Account ${user.id} locked after ${nextAttempts} failed attempts`,
+        );
+      }
       throw new UnauthorizedException('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
+    }
+
+    // Successful login → reset counters if they were non-zero.
+    if (user.failedLoginAttempts > 0 || user.lockedUntil) {
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { failedLoginAttempts: 0, lockedUntil: null },
+      });
     }
 
     const payload = {

@@ -342,6 +342,13 @@ model User {
   twoFactorSecret  String?   @map("two_factor_secret") // encrypted TOTP secret
   twoFactorBackup  String?   @map("two_factor_backup") // encrypted recovery codes (JSON)
 
+  // Brute-force protection: incremented on failed login, reset on success.
+  // When failedLoginAttempts >= LOCKOUT_THRESHOLD the account is locked
+  // until lockedUntil. The lock auto-expires so admin doesn't have to
+  // manually reset (admin can also clear by setting both to null).
+  failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
+  lockedUntil         DateTime? @map("locked_until")
+
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
@@ -613,7 +620,11 @@ model Payment {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  contract         Contract          @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  // onDelete: Restrict — payments are financial records. Refuse to delete
+  // a contract while it still has payments. Use soft-delete on the contract
+  // instead. Cascade was the original default but it would erase audit
+  // trail in one accidental hard-delete (see ultraplan v3 audit).
+  contract         Contract          @relation(fields: [contractId], references: [id], onDelete: Restrict)
   recordedBy       User?             @relation("RecordedBy", fields: [recordedById], references: [id])
   paymentLinks     PaymentLink[]
   paymentEvidences PaymentEvidence[]
@@ -1094,7 +1105,9 @@ model EDocument {
   updatedAt    DateTime  @updatedAt @map("updated_at")
   deletedAt    DateTime? @map("deleted_at")
 
-  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  // Restrict: legal/compliance documents (eIDAS proof). Cascade would
+  // erase signed PDFs in one accidental hard-delete.
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Restrict)
 
   @@index([contractId])
   @@index([createdById])
@@ -1120,7 +1133,8 @@ model Signature {
   updatedAt      DateTime   @updatedAt @map("updated_at")
   deletedAt      DateTime?  @map("deleted_at")
 
-  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  // Restrict: e-signatures are eIDAS evidence and cannot be erased.
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Restrict)
 
   @@index([contractId])
   @@map("signatures")
@@ -1230,7 +1244,9 @@ model CallLog {
   updatedAt       DateTime  @updatedAt @map("updated_at")
   deletedAt       DateTime? @map("deleted_at")
 
-  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  // Restrict: collections call history (promises, refusals) is the
+  // primary evidence trail for the dunning workflow.
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Restrict)
   caller   User     @relation(fields: [callerId], references: [id])
 
   @@index([contractId])
@@ -1362,7 +1378,8 @@ model ContractDocument {
   updatedAt    DateTime             @updatedAt @map("updated_at")
   deletedAt    DateTime?            @map("deleted_at")
 
-  contract   Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  // Restrict: contract documents (signed PDFs, KYC docs) are legal evidence.
+  contract   Contract @relation(fields: [contractId], references: [id], onDelete: Restrict)
   uploadedBy User     @relation("DocumentUploadedBy", fields: [uploadedById], references: [id])
 
   @@index([contractId])

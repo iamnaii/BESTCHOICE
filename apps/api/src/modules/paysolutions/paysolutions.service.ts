@@ -7,6 +7,11 @@ import {
 } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
 import { formatDateLong } from '../../utils/thai-date.util';
+
+// Pay Solutions external API timeout. Their published SLA is "instant"
+// but real-world we've seen 5-10s on busy hours. 15s leaves headroom
+// without holding our request thread forever.
+const PAYSOLUTIONS_TIMEOUT_MS = 15_000;
 import { ConfigService } from '@nestjs/config';
 import { PaymentMethod } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -139,6 +144,12 @@ export class PaySolutionsService {
     let paymentUrl: string;
     let gatewayRef: string;
 
+    // AbortController-based timeout. Without this a hung gateway would
+    // keep our request thread alive indefinitely and the customer would
+    // see an infinite spinner.
+    const abortController = new AbortController();
+    const timeoutHandle = setTimeout(() => abortController.abort(), PAYSOLUTIONS_TIMEOUT_MS);
+
     try {
       const response = await fetch(
         `${this.apiUrl}/payment/gateway/v2/ui-payments`,
@@ -150,6 +161,7 @@ export class PaySolutionsService {
             'secretKey': this.secretKey,
           },
           body: JSON.stringify(paymentPayload),
+          signal: abortController.signal,
         },
       );
 
@@ -175,8 +187,27 @@ export class PaySolutionsService {
       }
     } catch (error) {
       if (error instanceof InternalServerErrorException) throw error;
+      // AbortError fires when the timeout trips. Surface a clear Thai
+      // message to the user and tag the Sentry event so we can spot a
+      // gateway slowdown.
+      const isTimeout = error instanceof Error && error.name === 'AbortError';
+      if (isTimeout) {
+        this.logger.error(
+          `Pay Solutions timeout after ${PAYSOLUTIONS_TIMEOUT_MS}ms for orderRef=${orderRef}`,
+        );
+        Sentry.captureMessage('paysolutions-timeout', {
+          level: 'warning',
+          tags: { critical: 'paysolutions-timeout', orderRef },
+          extra: { contractId, amount, timeoutMs: PAYSOLUTIONS_TIMEOUT_MS },
+        });
+        throw new InternalServerErrorException(
+          'ระบบชำระเงินใช้เวลานานเกินไป กรุณาลองใหม่อีกครั้ง',
+        );
+      }
       this.logger.error(`Pay Solutions API call failed: ${error}`);
       throw new InternalServerErrorException('ไม่สามารถเชื่อมต่อระบบชำระเงินได้ กรุณาลองใหม่');
+    } finally {
+      clearTimeout(timeoutHandle);
     }
 
     // CRITICAL: gateway intent ได้สร้างไปแล้ว — ถ้า DB write fail ตรงนี้

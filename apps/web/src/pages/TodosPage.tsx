@@ -436,7 +436,8 @@ export default function TodosPage() {
       // for the rest of the dialog session.
       created.forEach((u) => URL.revokeObjectURL(u));
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // thumbUrls is intentionally read but not in deps — adding it would
+    // cause an infinite loop because we setState on it inside the effect.
   }, [dialogOpen, form.attachments]);
 
   // When the dialog closes, drop all thumbnails and revoke their URLs.

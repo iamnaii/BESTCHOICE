@@ -35,7 +35,13 @@ export default function PaymentTable({
       key: 'select',
       label: '',
       render: (p: PendingPayment) => (
-        <input type="checkbox" checked={selectedIds.has(p.id)} onChange={() => onToggleSelect(p.id)} className="rounded border-input" />
+        <input
+          type="checkbox"
+          checked={selectedIds.has(p.id)}
+          onChange={() => onToggleSelect(p.id)}
+          className="rounded border-input"
+          aria-label={`เลือกงวดที่ ${p.installmentNo} ของสัญญา ${p.contract.contractNumber}`}
+        />
       ),
     },
     {

@@ -2038,6 +2038,11 @@ model FinanceReceivable {
   @@index([branchId])
   @@index([expectedDate])
   @@index([deletedAt])
+  // Compound index for the dashboard's "outstanding by branch" query
+  // (status + branchId is the most common WHERE combination — single
+  // -column indexes can't be combined efficiently for high-cardinality
+  // status filtering inside a branch).
+  @@index([status, branchId])
   @@map("finance_receivables")
 }
 

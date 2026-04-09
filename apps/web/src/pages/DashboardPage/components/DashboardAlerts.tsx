@@ -19,15 +19,15 @@ export default function DashboardAlerts({ alerts }: DashboardAlertsProps) {
         const Icon = alertIconMap[alert.type] ?? AlertTriangle;
         const styles = alertSeverityStyles[alert.severity];
         return (
-          <div
+          <button
             key={alert.type}
-            role="button"
-            tabIndex={0}
+            type="button"
             onClick={() => navigate(alert.link)}
-            onKeyDown={(e) => e.key === 'Enter' && navigate(alert.link)}
+            aria-label={`${alert.message} (${alert.count} รายการ) — คลิกเพื่อดูรายละเอียด`}
             className={cn(
-              'flex items-center gap-3 px-4 py-3 rounded-xl border cursor-pointer',
+              'flex items-center gap-3 px-4 py-3 rounded-xl border cursor-pointer text-left w-full',
               'hover:-translate-y-0.5 hover:shadow-md transition-all duration-200',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
               styles.container,
             )}
           >
@@ -39,7 +39,7 @@ export default function DashboardAlerts({ alerts }: DashboardAlertsProps) {
               <p className="text-2xs text-muted-foreground mt-0.5">คลิกเพื่อดูรายละเอียด</p>
             </div>
             <span className={cn('text-xs font-bold shrink-0', styles.count)}>{alert.count}</span>
-          </div>
+          </button>
         );
       })}
     </div>

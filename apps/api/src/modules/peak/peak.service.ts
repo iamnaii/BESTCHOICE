@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import * as Sentry from '@sentry/nestjs';
+import { createHmac } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 
 export interface PeakExportResult {
@@ -8,9 +10,33 @@ export interface PeakExportResult {
   errors: string[];
 }
 
+interface PeakConfig {
+  baseUrl: string;
+  userToken: string;
+  connectId: string;
+  secretKey: string;
+}
+
+/**
+ * PEAK Accounting Sync Service
+ *
+ * API Docs: https://developers.peakaccount.com/reference/peak-open-api
+ * Base URL: https://api.peakaccount.com/api/v1
+ *
+ * Authentication flow:
+ * 1. Create Time-Stamp (yyyyMMddHHmmss)
+ * 2. HMAC-SHA1(Time-Stamp, connectId) using secretKey → Time-Signature
+ * 3. POST /ClientToken → get Client-Token
+ * 4. Include all 4 headers on every request
+ *
+ * Key endpoint: POST /DailyJournals — create journal entries
+ * Account codes already match PEAK XX-XXXX format.
+ */
 @Injectable()
 export class PeakService {
   private readonly logger = new Logger(PeakService.name);
+  private clientToken: string | null = null;
+  private clientTokenExpiresAt: number = 0;
 
   constructor(
     private prisma: PrismaService,
@@ -19,54 +45,227 @@ export class PeakService {
 
   /** Check if PEAK integration is configured */
   isConfigured(): boolean {
-    return !!(
-      this.configService.get('PEAK_API_KEY') &&
-      this.configService.get('PEAK_API_SECRET')
-    );
+    const config = this.getConfig();
+    return !!(config.userToken && config.connectId && config.secretKey);
+  }
+
+  getStatus(): { configured: boolean; baseUrl: string; message: string } {
+    const config = this.getConfig();
+    return {
+      configured: this.isConfigured(),
+      baseUrl: config.baseUrl,
+      message: this.isConfigured()
+        ? 'PEAK เชื่อมต่อแล้ว'
+        : 'ยังไม่ได้ตั้งค่า — ต้องการ PEAK_USER_TOKEN, PEAK_CONNECT_ID, PEAK_SECRET_KEY',
+    };
   }
 
   /**
    * Export journal entries to PEAK for a given period.
-   * Currently a scaffold — returns skipped until API credentials are provided.
+   * Maps JournalEntry → POST /DailyJournals
    */
   async exportJournalEntries(startDate: Date, endDate: Date): Promise<PeakExportResult> {
     if (!this.isConfigured()) {
-      this.logger.warn('PEAK integration not configured — set PEAK_API_KEY and PEAK_API_SECRET');
-      return { exported: 0, skipped: 0, errors: ['PEAK not configured'] };
+      return { exported: 0, skipped: 0, errors: ['PEAK ยังไม่ได้ตั้งค่า'] };
     }
-
-    // TODO: Implement when PEAK API credentials are available
-    // 1. Query posted journal entries in date range
-    // 2. Map to PEAK API format (account codes already follow PEAK XX-XXXX format)
-    // 3. POST to PEAK API endpoint
-    // 4. Mark entries as synced (peakSyncedAt timestamp)
-    //    — requires adding `peakSyncedAt DateTime?` field to JournalEntry model
 
     const entries = await this.prisma.journalEntry.findMany({
       where: {
         status: 'POSTED',
         entryDate: { gte: startDate, lte: endDate },
         deletedAt: null,
-        // peakSyncedAt: null, // uncomment when field is added to schema
+        peakSyncedAt: null,
       },
-      include: { lines: true },
+      include: {
+        lines: true,
+        company: { select: { nameTh: true } },
+      },
+      orderBy: { entryDate: 'asc' },
     });
 
-    this.logger.log(`Found ${entries.length} journal entries to export to PEAK (export pending)`);
+    if (entries.length === 0) {
+      return { exported: 0, skipped: 0, errors: [] };
+    }
 
+    let exported = 0;
+    const errors: string[] = [];
+
+    for (const entry of entries) {
+      try {
+        const peakPayload = this.mapJournalToPeak(entry);
+        const result = await this.postToPeak('/DailyJournals', peakPayload);
+
+        if (result.resCode === '200') {
+          await this.prisma.journalEntry.update({
+            where: { id: entry.id },
+            data: { peakSyncedAt: new Date() },
+          });
+          exported++;
+        } else {
+          errors.push(`${entry.entryNumber}: ${result.resDesc || 'Unknown PEAK error'}`);
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        errors.push(`${entry.entryNumber}: ${msg}`);
+        Sentry.captureException(err, {
+          tags: { kind: 'peak-sync', entryNumber: entry.entryNumber },
+        });
+      }
+    }
+
+    this.logger.log(`PEAK export: ${exported} exported, ${errors.length} errors out of ${entries.length}`);
+    return { exported, skipped: entries.length - exported - errors.length, errors };
+  }
+
+  /** Fetch chart of accounts from PEAK */
+  async getAccountCodes(): Promise<unknown> {
+    if (!this.isConfigured()) return { error: 'PEAK ยังไม่ได้ตั้งค่า' };
+    return this.getFromPeak('/DailyJournals/AccountCode');
+  }
+
+  // ─── PEAK API Communication ──────────────────────────────
+
+  private getConfig(): PeakConfig {
     return {
-      exported: 0,
-      skipped: entries.length,
-      errors: ['PEAK API integration pending — awaiting credentials'],
+      baseUrl: this.configService.get('PEAK_BASE_URL') || 'https://api.peakaccount.com/api/v1',
+      userToken: this.configService.get('PEAK_USER_TOKEN') || '',
+      connectId: this.configService.get('PEAK_CONNECT_ID') || '',
+      secretKey: this.configService.get('PEAK_SECRET_KEY') || '',
     };
   }
 
-  /**
-   * Map a BESTCHOICE account code to PEAK format.
-   * Account codes already follow PEAK XX-XXXX convention, so no transformation is needed.
-   */
-  mapAccountCode(code: string): string {
-    // Account codes already follow PEAK XX-XXXX format (e.g. 11-1101, 41-1101)
-    return code;
+  /** Generate Time-Stamp in yyyyMMddHHmmss format */
+  private generateTimeStamp(): string {
+    const now = new Date();
+    const y = now.getFullYear();
+    const M = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    const h = String(now.getHours()).padStart(2, '0');
+    const m = String(now.getMinutes()).padStart(2, '0');
+    const s = String(now.getSeconds()).padStart(2, '0');
+    return `${y}${M}${d}${h}${m}${s}`;
+  }
+
+  /** HMAC-SHA1(timeStamp, connectId) using secretKey → Time-Signature */
+  private generateTimeSignature(timeStamp: string): string {
+    const config = this.getConfig();
+    return createHmac('sha1', config.connectId)
+      .update(timeStamp)
+      .digest('hex');
+  }
+
+  /** Build auth headers for PEAK API */
+  private async buildHeaders(): Promise<Record<string, string>> {
+    const config = this.getConfig();
+    const timeStamp = this.generateTimeStamp();
+    const timeSignature = this.generateTimeSignature(timeStamp);
+
+    // Get or refresh Client-Token
+    const clientToken = await this.ensureClientToken(timeStamp, timeSignature, config);
+
+    return {
+      'Content-Type': 'application/json',
+      'Time-Stamp': timeStamp,
+      'Time-Signature': timeSignature,
+      'User-Token': config.userToken,
+      'Client-Token': clientToken,
+    };
+  }
+
+  /** Ensure Client-Token is valid, refresh if expired */
+  private async ensureClientToken(
+    timeStamp: string,
+    timeSignature: string,
+    config: PeakConfig,
+  ): Promise<string> {
+    if (this.clientToken && Date.now() < this.clientTokenExpiresAt) {
+      return this.clientToken;
+    }
+
+    const res = await fetch(`${config.baseUrl}/ClientToken`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Time-Stamp': timeStamp,
+        'Time-Signature': timeSignature,
+        'User-Token': config.userToken,
+      },
+    });
+
+    if (!res.ok) {
+      throw new Error(`PEAK ClientToken failed: ${res.status} ${res.statusText}`);
+    }
+
+    const body = await res.json();
+    this.clientToken = body.clientToken || body.ClientToken || '';
+    // Cache for 50 minutes (PEAK tokens typically last 1 hour)
+    this.clientTokenExpiresAt = Date.now() + 50 * 60 * 1000;
+
+    return this.clientToken!;
+  }
+
+  /** POST to PEAK API */
+  private async postToPeak(path: string, body: unknown): Promise<{ resCode: string; resDesc: string; [key: string]: unknown }> {
+    const config = this.getConfig();
+    const headers = await this.buildHeaders();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+
+    try {
+      const res = await fetch(`${config.baseUrl}${path}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      const data = await res.json();
+      return data as { resCode: string; resDesc: string };
+    } catch (err) {
+      clearTimeout(timeout);
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw new Error('PEAK API timeout (15s)');
+      }
+      throw err;
+    }
+  }
+
+  /** GET from PEAK API */
+  private async getFromPeak(path: string): Promise<unknown> {
+    const config = this.getConfig();
+    const headers = await this.buildHeaders();
+
+    const res = await fetch(`${config.baseUrl}${path}`, {
+      method: 'GET',
+      headers,
+    });
+
+    return res.json();
+  }
+
+  // ─── Mapping ─────────────────────────────────────────────
+
+  /** Map BESTCHOICE JournalEntry → PEAK DailyJournal payload */
+  private mapJournalToPeak(entry: {
+    entryNumber: string;
+    entryDate: Date;
+    description: string;
+    lines: Array<{ accountCode: string; description: string | null; debit: { toString(): string }; credit: { toString(): string } }>;
+  }): Record<string, unknown> {
+    const issuedDate = entry.entryDate.toISOString().split('T')[0]; // YYYY-MM-DD
+
+    return {
+      code: entry.entryNumber,
+      issuedDate,
+      reference: entry.entryNumber,
+      remarks: entry.description,
+      items: entry.lines.map((line) => ({
+        accountCode: line.accountCode, // Already XX-XXXX format
+        description: line.description || entry.description,
+        debitAmount: parseFloat(line.debit.toString()),
+        creditAmount: parseFloat(line.credit.toString()),
+      })),
+    };
   }
 }

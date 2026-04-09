@@ -2133,6 +2133,7 @@ model JournalEntry {
   createdAt     DateTime           @default(now()) @map("created_at")
   updatedAt     DateTime           @updatedAt @map("updated_at")
   deletedAt     DateTime?          @map("deleted_at")
+  peakSyncedAt  DateTime?          @map("peak_synced_at") // When synced to PEAK accounting
 
   company   CompanyInfo   @relation(fields: [companyId], references: [id])
   lines     JournalLine[]

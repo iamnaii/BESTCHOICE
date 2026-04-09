@@ -84,7 +84,7 @@ export class TodosController {
     await this.storage.upload(key, file.buffer, file.mimetype);
 
     return {
-      url: `/api/todos/attachments/${encodeURIComponent(key)}`,
+      url: `/todos/attachments/${encodeURIComponent(key)}`,
       key,
       name: file.originalname,
       size: file.size,

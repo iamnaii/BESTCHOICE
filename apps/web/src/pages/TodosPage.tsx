@@ -377,7 +377,10 @@ export default function TodosPage() {
    */
   const fetchAttachmentBlob = async (att: Attachment): Promise<string | null> => {
     try {
-      const response = await api.get(att.url, { responseType: 'blob' });
+      // att.url may be stored as "/api/todos/attachments/..." but api client
+      // already has baseURL ending in /api, so strip the leading /api prefix
+      const url = att.url.startsWith('/api/') ? att.url.slice(4) : att.url;
+      const response = await api.get(url, { responseType: 'blob' });
       return URL.createObjectURL(response.data as Blob);
     } catch (err) {
       console.warn('Failed to fetch attachment', att.url, err);

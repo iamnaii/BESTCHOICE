@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { formatThaiDateShort } from '@/lib/date';
@@ -178,6 +178,12 @@ export default function TodosPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Todo | null>(null);
   const [form, setForm] = useState<typeof emptyForm>(emptyForm);
+  // Map of attachment.url → blob object URL for inline image previews.
+  // Populated lazily when the dialog opens; entries are revoked on close
+  // so we don't leak Blob URLs across edit sessions.
+  const [thumbUrls, setThumbUrls] = useState<Record<string, string>>({});
+  // Lightbox state — blob URL of the image currently being viewed full-size
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   const { data: staffUsers = [] } = useQuery<AssigneeRef[]>({
     queryKey: ['staff-users-todo'],
@@ -361,18 +367,33 @@ export default function TodosPage() {
     });
 
   /**
-   * Open an attachment in a new tab. The download endpoint requires JWT
-   * auth, but a plain <a href> click doesn't send the Authorization
-   * header (token lives in memory, not cookies). Fetch as a blob via
-   * the api client (which DOES send the token) and open the resulting
-   * object URL. The blob URL is revoked after a short delay so the
-   * new tab has time to render before we free the memory.
+   * Fetch a single attachment as a blob and return an object URL.
+   * The /todos/attachments/* endpoint requires JWT auth and our
+   * token lives in memory (not cookies), so plain <img src> or
+   * <a href> wouldn't work — we have to go through the api client
+   * which attaches the Authorization header.
+   */
+  const fetchAttachmentBlob = async (att: Attachment): Promise<string | null> => {
+    try {
+      const response = await api.get(att.url, { responseType: 'blob' });
+      return URL.createObjectURL(response.data as Blob);
+    } catch (err) {
+      console.warn('Failed to fetch attachment', att.url, err);
+      return null;
+    }
+  };
+
+  /**
+   * Open a non-image attachment in a new tab (PDFs, docs, etc).
+   * For images we use the lightbox instead — see openLightbox below.
    */
   const openAttachment = async (att: Attachment) => {
     try {
-      const response = await api.get(att.url, { responseType: 'blob' });
-      const blob = response.data as Blob;
-      const objectUrl = URL.createObjectURL(blob);
+      const objectUrl = await fetchAttachmentBlob(att);
+      if (!objectUrl) {
+        toast.error('ไม่สามารถเปิดไฟล์ได้');
+        return;
+      }
       window.open(objectUrl, '_blank', 'noopener,noreferrer');
       // Free the blob after the new tab has had time to load it
       setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
@@ -380,6 +401,74 @@ export default function TodosPage() {
       toast.error(getErrorMessage(err));
     }
   };
+
+  // When the dialog opens, prefetch a blob URL for every image
+  // attachment so we can show inline thumbnails. When the dialog
+  // closes (or attachment list changes), revoke them to free memory.
+  useEffect(() => {
+    if (!dialogOpen) return;
+    const images = (form.attachments || []).filter((a) =>
+      a.mimeType?.startsWith('image/'),
+    );
+    if (images.length === 0) return;
+
+    let cancelled = false;
+    const created: string[] = [];
+
+    (async () => {
+      for (const img of images) {
+        // Skip if we already loaded this one (form mutation re-runs effect)
+        if (thumbUrls[img.url]) continue;
+        const objectUrl = await fetchAttachmentBlob(img);
+        if (cancelled || !objectUrl) {
+          if (objectUrl) URL.revokeObjectURL(objectUrl);
+          continue;
+        }
+        created.push(objectUrl);
+        setThumbUrls((prev) => ({ ...prev, [img.url]: objectUrl }));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      // Revoke any blob URLs created in THIS run only — entries that
+      // were already in thumbUrls before the effect started stay alive
+      // for the rest of the dialog session.
+      created.forEach((u) => URL.revokeObjectURL(u));
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dialogOpen, form.attachments]);
+
+  // When the dialog closes, drop all thumbnails and revoke their URLs.
+  useEffect(() => {
+    if (dialogOpen) return;
+    setThumbUrls((prev) => {
+      Object.values(prev).forEach((u) => URL.revokeObjectURL(u));
+      return {};
+    });
+  }, [dialogOpen]);
+
+  // Open the full-size lightbox for an image attachment.
+  // Reuses the already-loaded thumbnail blob URL when available.
+  const openLightbox = async (att: Attachment) => {
+    const cached = thumbUrls[att.url];
+    if (cached) {
+      setLightboxUrl(cached);
+      return;
+    }
+    const objectUrl = await fetchAttachmentBlob(att);
+    if (objectUrl) setLightboxUrl(objectUrl);
+  };
+
+  // Close lightbox on Escape key
+  useEffect(() => {
+    if (!lightboxUrl) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLightboxUrl(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [lightboxUrl]);
 
 
   const addTag = () => {
@@ -935,28 +1024,39 @@ export default function TodosPage() {
                 <div className="mt-2 space-y-1.5">
                   {(form.attachments || []).map((a) => {
                     const isImage = a.mimeType?.startsWith('image/');
+                    const thumb = isImage ? thumbUrls[a.url] : undefined;
                     return (
                       <div
                         key={a.url}
                         className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-muted/40 hover:bg-muted/60 transition-colors group"
                       >
-                        <div
-                          className={`size-8 rounded-md flex items-center justify-center shrink-0 ${
-                            isImage
-                              ? 'bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400'
-                              : 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
-                          }`}
-                        >
-                          {isImage ? (
-                            <ImageIcon className="size-4" />
-                          ) : (
-                            <FileText className="size-4" />
-                          )}
-                        </div>
+                        {isImage ? (
+                          <button
+                            type="button"
+                            onClick={() => openLightbox(a)}
+                            disabled={!thumb}
+                            aria-label={`ดูรูป ${a.name}`}
+                            className="size-12 rounded-md overflow-hidden shrink-0 border border-border bg-muted flex items-center justify-center hover:ring-2 hover:ring-primary/40 transition-all disabled:cursor-wait"
+                          >
+                            {thumb ? (
+                              <img
+                                src={thumb}
+                                alt={a.name}
+                                className="size-full object-cover"
+                              />
+                            ) : (
+                              <ImageIcon className="size-4 text-muted-foreground animate-pulse" />
+                            )}
+                          </button>
+                        ) : (
+                          <div className="size-12 rounded-md flex items-center justify-center shrink-0 bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
+                            <FileText className="size-5" />
+                          </div>
+                        )}
                         <div className="flex-1 min-w-0">
                           <button
                             type="button"
-                            onClick={() => openAttachment(a)}
+                            onClick={() => (isImage ? openLightbox(a) : openAttachment(a))}
                             className="text-sm font-medium truncate block hover:text-primary transition-colors text-left w-full"
                           >
                             {a.name || 'ไฟล์แนบ'}
@@ -999,6 +1099,36 @@ export default function TodosPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Lightbox: full-size image preview. Click backdrop or press Escape
+          to close. Sits at z-[60] to appear above the edit Dialog (z-50). */}
+      {lightboxUrl && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="ภาพขยาย"
+          onClick={() => setLightboxUrl(null)}
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85 backdrop-blur-sm p-4 cursor-zoom-out animate-in fade-in"
+        >
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setLightboxUrl(null);
+            }}
+            className="absolute top-4 right-4 size-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors"
+            aria-label="ปิด"
+          >
+            <X className="size-5" />
+          </button>
+          <img
+            src={lightboxUrl}
+            alt="ภาพแนบ"
+            className="max-w-full max-h-full object-contain rounded-lg shadow-2xl cursor-default"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
 
     </div>
   );

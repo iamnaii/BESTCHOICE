@@ -58,8 +58,10 @@ import { PromotionsModule } from './modules/promotions/promotions.module';
 import { AssetModule } from './modules/asset/asset.module';
 import { TodosModule } from './modules/todos/todos.module';
 import { ChatbotFinanceModule } from './modules/chatbot-finance/chatbot-finance.module';
+import { HealthModule } from './modules/health/health.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
+import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 import { CsrfGuard } from './guards/csrf.guard';
 import { AppCacheModule } from './cache/cache.module';
 
@@ -154,6 +156,8 @@ import { AppCacheModule } from './cache/cache.module';
     TodosModule,
     // Chatbot Finance — น้องเบส (LINE OA "ชำระค่างวด BESTCHOICE")
     ChatbotFinanceModule,
+    // Health check — liveness probe for Cloud Run / load balancers
+    HealthModule,
     // MASTER: Management
     UsersModule,
     SettingsModule,
@@ -176,6 +180,8 @@ import { AppCacheModule } from './cache/cache.module';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
+    // RequestIdMiddleware must run first so Sentry scope is tagged before SecurityMiddleware
+    consumer.apply(RequestIdMiddleware).forRoutes('*');
     consumer.apply(SecurityMiddleware).forRoutes('*');
   }
 }

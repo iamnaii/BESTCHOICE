@@ -145,16 +145,16 @@ function PDPAPage() {
       />
 
       {/* Tabs */}
-      <div className="flex gap-2 mb-6">
+      <div className="flex gap-1 mb-6 bg-muted rounded-lg p-1 w-fit">
         <button
           onClick={() => setTab('dsar')}
-          className={`px-4 py-2 text-sm rounded-lg ${tab === 'dsar' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
+          className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${tab === 'dsar' ? 'bg-card text-primary shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
         >
           คำร้อง DSAR
         </button>
         <button
           onClick={() => setTab('consent-lookup')}
-          className={`px-4 py-2 text-sm rounded-lg ${tab === 'consent-lookup' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
+          className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${tab === 'consent-lookup' ? 'bg-card text-primary shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
         >
           ค้นหา Consent
         </button>
@@ -168,7 +168,7 @@ function PDPAPage() {
           onRetry={() => refetchDsar()}
           errorTitle="ไม่สามารถโหลดรายการ DSAR ได้"
         >
-        <div className="bg-card rounded-lg border border-border">
+        <div className="bg-card rounded-xl border border-border/50 shadow-sm">
           <DataTable
             data={dsarRequests}
             isLoading={dsarLoading}
@@ -209,7 +209,7 @@ function PDPAPage() {
                 label: 'สถานะ',
                 render: (r: DSARRequest) => {
                   const s = dsarStatusLabels[r.status] || { label: r.status, className: 'bg-muted text-foreground' };
-                  return <span className={`px-2 py-1 rounded-full text-xs font-medium ${s.className}`}>{s.label}</span>;
+                  return <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${s.className}`}>{s.label}</span>;
                 },
               },
               {
@@ -236,18 +236,18 @@ function PDPAPage() {
       )}
 
       {tab === 'consent-lookup' && (
-        <div className="bg-card rounded-lg border border-border/60 p-6">
+        <div className="bg-card rounded-xl border border-border/50 shadow-sm p-6">
           <div className="flex gap-3 mb-6">
             <input
               type="text"
               placeholder="ใส่ Customer ID เพื่อค้นหา consent..."
               value={customerIdSearch}
               onChange={(e) => setCustomerIdSearch(e.target.value)}
-              className="flex-1 px-3 py-2 border rounded-lg text-sm"
+              className="flex-1 px-3 py-2 border border-input rounded-lg text-sm bg-background focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
             />
             <button
               onClick={() => refetchConsents()}
-              className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
+              className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
             >
               ค้นหา
             </button>
@@ -258,7 +258,7 @@ function PDPAPage() {
           {consents && consents.length > 0 && (
             <div className="space-y-3">
               {consents.map((c) => (
-                <div key={c.id} className={`p-4 rounded-lg border ${c.isActive ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
+                <div key={c.id} className={`p-4 rounded-xl border shadow-sm ${c.isActive ? 'border-success/20 bg-success/5 dark:bg-success/10' : 'border-destructive/20 bg-destructive/5 dark:bg-destructive/10'}`}>
                   <div className="flex justify-between items-center">
                     <div>
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${c.isActive ? 'bg-success/10 text-success dark:bg-success/15' : 'bg-destructive/10 text-destructive dark:bg-destructive/15'}`}>

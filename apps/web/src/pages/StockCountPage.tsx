@@ -143,7 +143,7 @@ export default function StockCountPage() {
       key: 'status',
       label: 'สถานะ',
       render: (item) => (
-        <span className={`px-2 py-0.5 rounded-full text-xs ${statusColors[item.status] || 'bg-muted'}`}>
+        <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${statusColors[item.status] || 'bg-muted'}`}>
           {item.status}
         </span>
       ),
@@ -177,11 +177,11 @@ export default function StockCountPage() {
     <div>
       <PageHeader title="ตรวจนับสต๊อก" subtitle="ตรวจนับสินค้าจริงเทียบกับในระบบ" />
 
-      <div className="flex items-center gap-3 mb-4">
+      <div className="flex items-center gap-3 mb-5">
         <select
           value={selectedBranch}
           onChange={(e) => setSelectedBranch(e.target.value)}
-          className="px-3 py-2 border border-input rounded-lg text-sm"
+          className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
         >
           <option value="">ทุกสาขา</option>
           {(branches || []).map((b: { id: string; name: string }) => (
@@ -190,7 +190,7 @@ export default function StockCountPage() {
         </select>
         <button
           onClick={() => setIsCreateModalOpen(true)}
-          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm hover:bg-primary/90"
+          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
         >
           + สร้างรายการตรวจนับ
         </button>

@@ -52,13 +52,13 @@ export function CustomerSelectStep({
             key={c.id}
             onClick={() => setSelectedCustomer(c)}
             onDoubleClick={() => { setSelectedCustomer(c); onNext(); }}
-            className={`p-4 rounded-lg border cursor-pointer transition-colors ${selectedCustomer?.id === c.id ? 'border-primary bg-primary/5' : 'border-border hover:border-border'}`}
+            className={`p-4 rounded-xl border cursor-pointer transition-all hover:shadow-sm ${selectedCustomer?.id === c.id ? 'border-primary bg-primary/5 shadow-sm' : 'border-border/60 hover:border-border bg-card'}`}
           >
             <div className="flex justify-between items-center">
               <div>
                 <div className="font-medium text-sm">{c.name}</div>
                 <div className="text-xs text-muted-foreground mt-1">{c.phone}</div>
-                {c.salary && <div className="text-xs text-muted-foreground mt-1">เงินเดือน: {parseFloat(c.salary).toLocaleString()} ฿</div>}
+                {c.salary && <div className="text-xs text-muted-foreground mt-1">เงินเดือน: <span className="tabular-nums font-mono">{parseFloat(c.salary).toLocaleString()}</span> ฿</div>}
               </div>
               <div className="text-xs text-muted-foreground font-mono">
                 {maskNationalId(c.nationalId)}
@@ -74,7 +74,7 @@ export function CustomerSelectStep({
 
       {/* Credit check status for selected customer */}
       {selectedCustomer && (
-        <div className={`mt-4 rounded-lg border p-4 ${customerCreditApproved ? 'bg-success/5 dark:bg-success/10 border-success/20' : 'bg-destructive/5 dark:bg-destructive/10 border-destructive/20'}`}>
+        <div className={`mt-4 rounded-xl border p-4 ${customerCreditApproved ? 'bg-success/5 dark:bg-success/10 border-success/20' : 'bg-destructive/5 dark:bg-destructive/10 border-destructive/20'}`}>
           <div className="flex items-center justify-between">
             <div>
               <div className={`text-sm font-semibold ${customerCreditApproved ? 'text-success' : 'text-destructive'}`}>

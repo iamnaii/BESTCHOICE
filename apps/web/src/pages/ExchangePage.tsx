@@ -171,17 +171,26 @@ export default function ExchangePage() {
       >
 
       {/* Step Indicator */}
-      <div className="flex items-center gap-2 mb-6">
+      <div className="flex items-center gap-2 mb-6 flex-wrap">
         {['เลือกข้อมูล', 'ใบเสนอราคา', 'ยืนยัน', 'เสร็จสิ้น'].map((label, idx) => {
           const stepIdx = ['select', 'quote', 'confirm', 'done'].indexOf(step);
           const isActive = idx <= stepIdx;
+          const isDone = idx < stepIdx;
           return (
             <div key={label} className="flex items-center gap-2">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${isActive ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
-                {idx + 1}
+              <div className={`size-8 rounded-full flex items-center justify-center text-sm font-semibold transition-colors ${
+                isDone ? 'bg-success text-white' :
+                isActive ? 'bg-primary text-primary-foreground' :
+                'bg-muted text-muted-foreground'
+              }`}>
+                {isDone ? (
+                  <svg className="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                ) : idx + 1}
               </div>
-              <span className={`text-sm ${isActive ? 'text-primary font-medium' : 'text-muted-foreground'}`}>{label}</span>
-              {idx < 3 && <div className={`w-8 h-0.5 ${isActive ? 'bg-primary/30' : 'bg-muted'}`} />}
+              <span className={`text-sm font-medium ${isActive ? 'text-foreground' : 'text-muted-foreground'}`}>{label}</span>
+              {idx < 3 && <div className={`w-8 h-0.5 rounded-full ${isActive ? 'bg-primary/40' : 'bg-muted'}`} />}
             </div>
           );
         })}

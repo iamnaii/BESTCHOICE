@@ -95,20 +95,20 @@ export default function PurchaseOrdersPage() {
       />
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-4 border-b">
+      <div className="flex gap-1 mb-5 border-b border-border/60">
         <button
           onClick={() => data.setActiveTab('list')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${data.activeTab === 'list' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${data.activeTab === 'list' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           รายการ PO
         </button>
         <button
           onClick={() => data.setActiveTab('payable')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${data.activeTab === 'payable' ? 'border-red-600 text-red-600' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${data.activeTab === 'payable' ? 'border-destructive text-destructive' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           ยอดค้างจ่ายผู้ขาย
           {data.payableData && data.payableData.grandTotal > 0 && (
-            <span className="ml-1.5 px-1.5 py-0.5 bg-destructive/10 text-destructive dark:bg-destructive/15 rounded-full text-xs">{(Number(data.payableData.grandTotal) || 0).toLocaleString()}</span>
+            <span className="ml-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-destructive/10 text-destructive dark:bg-destructive/15">{(Number(data.payableData.grandTotal) || 0).toLocaleString()}</span>
           )}
         </button>
       </div>

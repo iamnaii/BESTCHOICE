@@ -50,7 +50,7 @@ export function PaymentModal({
       {selectedPO && (
         <form onSubmit={handlePaymentUpdate} className="flex-1 overflow-y-auto flex flex-col">
           <div className="p-6 space-y-5 flex-1">
-          <div className="rounded-xl border border-border bg-card p-5">
+          <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm">
             <div className="flex items-center gap-2.5 mb-4">
               <div className="flex items-center justify-center size-8 rounded-lg bg-primary/10 text-primary">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
@@ -63,7 +63,7 @@ export function PaymentModal({
           <div className="bg-muted rounded-lg p-3 text-sm space-y-1">
             <div className="flex justify-between">
               <span className="text-muted-foreground">ยอดรวมสินค้า:</span>
-              <span>{Number(selectedPO.totalAmount).toLocaleString()} บาท</span>
+              <span className="tabular-nums font-mono">{Number(selectedPO.totalAmount).toLocaleString()} บาท</span>
             </div>
             {Number(selectedPO.discount) > 0 && (
               <div className="flex justify-between">
@@ -105,7 +105,7 @@ export function PaymentModal({
           </div>
           </div>
 
-          <div className="rounded-xl border border-border bg-card p-5">
+          <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm">
             <div className="flex items-center gap-2.5 mb-4">
               <div className="flex items-center justify-center size-8 rounded-lg bg-emerald-500/10 text-emerald-500">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
@@ -216,7 +216,7 @@ export function PaymentModal({
 
           </div>
 
-          <div className="rounded-xl border border-border bg-card p-5">
+          <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm">
             <div className="flex items-center gap-2.5 mb-4">
               <div className="flex items-center justify-center size-8 rounded-lg bg-sky-500/10 text-sky-500">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
@@ -236,7 +236,7 @@ export function PaymentModal({
           </div>
 
           {/* Attachments - File upload + URL */}
-          <div className="rounded-xl border border-border bg-card p-5">
+          <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm">
             <div className="flex items-center gap-2.5 mb-4">
               <div className="flex items-center justify-center size-8 rounded-lg bg-rose-500/10 text-rose-500">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>

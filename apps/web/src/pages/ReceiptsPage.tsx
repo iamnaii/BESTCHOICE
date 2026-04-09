@@ -109,7 +109,7 @@ function ReceiptsPage() {
       render: (r: Receipt) => {
         const isCredit = r.receiptType === 'CREDIT_NOTE';
         return (
-          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${isCredit ? 'bg-warning/10 text-warning dark:bg-warning/15' : 'bg-primary/10 text-primary dark:bg-primary/15'}`}>
+          <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${isCredit ? 'bg-warning/10 text-warning dark:bg-warning/15' : 'bg-primary/10 text-primary dark:bg-primary/15'}`}>
             {receiptTypeLabels[r.receiptType] || r.receiptType}
           </span>
         );
@@ -150,8 +150,8 @@ function ReceiptsPage() {
       key: 'status',
       label: 'สถานะ',
       render: (r: Receipt) => r.isVoided
-        ? <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-destructive/10 text-destructive dark:bg-destructive/15">ยกเลิก</span>
-        : <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-success/10 text-success dark:bg-success/15">ปกติ</span>,
+        ? <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold bg-destructive/10 text-destructive dark:bg-destructive/15">ยกเลิก</span>
+        : <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold bg-success/10 text-success dark:bg-success/15">ปกติ</span>,
     },
     {
       key: 'actions',
@@ -221,23 +221,29 @@ function ReceiptsPage() {
       />
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <Card className="border-l-[3px] border-l-primary hover:shadow-card-hover transition-all">
-          <CardContent className="pt-4">
-            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">จำนวนใบเสร็จ</div>
-            <div className="text-2xl font-bold">{summary?.totalCount?.toLocaleString() || 0}</div>
-          </CardContent>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
+        <Card className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
+          <div className="flex h-full">
+            <div className="w-1 shrink-0 rounded-r-full bg-primary" />
+            <CardContent className="p-5 flex-1">
+              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">จำนวนใบเสร็จ</div>
+              <div className="text-2xl font-bold tabular-nums">{summary?.totalCount?.toLocaleString() || 0}</div>
+            </CardContent>
+          </div>
         </Card>
-        <Card className="border-l-[3px] border-l-success hover:shadow-card-hover transition-all">
-          <CardContent className="pt-4">
-            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ยอดรวม</div>
-            <div className="text-2xl font-bold text-success">
-              {Number(summary?.totalAmount || 0).toLocaleString()} ฿
-            </div>
-          </CardContent>
+        <Card className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
+          <div className="flex h-full">
+            <div className="w-1 shrink-0 rounded-r-full bg-success" />
+            <CardContent className="p-5 flex-1">
+              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ยอดรวม</div>
+              <div className="text-2xl font-bold tabular-nums text-success">
+                {Number(summary?.totalAmount || 0).toLocaleString()} ฿
+              </div>
+            </CardContent>
+          </div>
         </Card>
-        <Card className="hover:shadow-card-hover transition-all">
-          <CardContent className="pt-4 flex items-center justify-between">
+        <Card className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
+          <CardContent className="p-5 flex items-center justify-between">
             <div>
               <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Export</div>
               <div className="text-sm text-muted-foreground">ดาวน์โหลดข้อมูลตามตัวกรอง</div>
@@ -254,7 +260,7 @@ function ReceiptsPage() {
       </div>
 
       {/* Filter Bar */}
-      <div className="bg-card rounded-lg border border-border/60 p-4 mb-6">
+      <div className="bg-card rounded-xl border border-border/50 shadow-sm p-5 mb-6">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <input
             type="text"

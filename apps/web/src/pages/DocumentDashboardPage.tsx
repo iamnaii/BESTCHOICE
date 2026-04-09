@@ -49,8 +49,8 @@ function StatCard({ label, value, color = 'blue', icon }: { label: string; value
     orange: 'bg-warning/5 dark:bg-warning/10 text-orange-700 border-orange-200 border-l-warning',
   };
   return (
-    <div className={`rounded-lg border border-l-[3px] p-4 hover:shadow-card-hover transition-all ${colors[color] || colors.blue}`}>
-      <div className="flex items-center gap-2 mb-1">
+    <div className={`rounded-xl border border-l-[3px] shadow-sm p-4 hover:shadow-card-hover transition-all ${colors[color] || colors.blue}`}>
+      <div className="flex items-center gap-2 mb-1.5">
         <span className="text-lg">{icon}</span>
         <span className="text-sm font-medium">{label}</span>
       </div>
@@ -100,11 +100,11 @@ function DocumentDashboardPage() {
 
       {/* Branch filter */}
       {(user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER') && branches && branches.length > 1 && (
-        <div className="mb-4">
+        <div className="mb-5">
           <select
             value={selectedBranch}
             onChange={(e) => setSelectedBranch(e.target.value)}
-            className="border rounded-lg px-3 py-2 text-sm"
+            className="border border-input rounded-lg px-3 py-2 text-sm bg-background focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
           >
             <option value="">ทุกสาขา</option>
             {branches.map((b) => (
@@ -126,23 +126,23 @@ function DocumentDashboardPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:gap-7.5">
         {/* SLA Alerts */}
-        <div className="bg-card rounded-lg border p-4">
-          <h3 className="text-sm font-semibold text-destructive mb-3">
-            แจ้งเตือน SLA - สัญญารออนุมัตินาน
+        <div className="bg-card rounded-xl border border-border/50 shadow-sm p-5">
+          <h3 className="text-sm font-semibold text-destructive mb-4">
+            แจ้งเตือน SLA — สัญญารออนุมัตินาน
           </h3>
           {s.slaAlerts.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">ไม่มีรายการ</p>
+            <p className="text-sm text-muted-foreground text-center py-6">ไม่มีรายการ</p>
           ) : (
             <div className="space-y-2 max-h-80 overflow-y-auto">
               {s.slaAlerts.map((alert) => (
-                <div key={alert.id} className="flex items-center justify-between p-2 bg-destructive/5 dark:bg-destructive/10 rounded text-sm">
+                <div key={alert.id} className="flex items-center justify-between p-3 bg-destructive/5 dark:bg-destructive/10 rounded-lg text-sm">
                   <div>
                     <span className="font-medium">{alert.contractNumber}</span>
                     <span className="text-muted-foreground ml-2">{alert.customerName}</span>
                     {alert.branchName && <span className="text-xs text-muted-foreground ml-2">({alert.branchName})</span>}
                   </div>
                   <div className="text-right">
-                    <span className={`font-medium ${alert.hoursWaiting >= 48 ? 'text-destructive' : 'text-yellow-600'}`}>
+                    <span className={`font-medium text-sm ${alert.hoursWaiting >= 48 ? 'text-destructive' : 'text-yellow-600'}`}>
                       {alert.hoursWaiting >= 24 ? `${Math.floor(alert.hoursWaiting / 24)} วัน` : `${alert.hoursWaiting} ชม.`}
                     </span>
                     <div className="text-xs text-muted-foreground">{alert.workflowStatus}</div>
@@ -154,23 +154,23 @@ function DocumentDashboardPage() {
         </div>
 
         {/* By Branch */}
-        <div className="bg-card rounded-lg border p-4">
-          <h3 className="text-sm font-semibold text-foreground mb-3">สถานะตามสาขา</h3>
+        <div className="bg-card rounded-xl border border-border/50 shadow-sm p-5">
+          <h3 className="text-sm font-semibold text-foreground mb-4">สถานะตามสาขา</h3>
           {s.byBranch.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">ไม่มีข้อมูล</p>
+            <p className="text-sm text-muted-foreground text-center py-6">ไม่มีข้อมูล</p>
           ) : (
-            <div className="space-y-2 max-h-80 overflow-y-auto">
+            <div className="space-y-3 max-h-80 overflow-y-auto">
               {s.byBranch.map((branch) => {
                 const pct = branch.total > 0 ? Math.round((branch.documented / branch.total) * 100) : 0;
                 return (
-                  <div key={branch.branchId} className="p-2 border rounded text-sm">
-                    <div className="flex justify-between mb-1">
+                  <div key={branch.branchId} className="p-3 border border-border/50 rounded-lg text-sm">
+                    <div className="flex justify-between mb-2">
                       <span className="font-medium">{branch.branchName}</span>
-                      <span className="text-muted-foreground">{pct}% สมบูรณ์</span>
+                      <span className="text-muted-foreground text-xs">{pct}% สมบูรณ์</span>
                     </div>
-                    <div className="w-full bg-muted rounded-full h-2 mb-1">
+                    <div className="w-full bg-muted rounded-full h-1.5 mb-2">
                       <div
-                        className="bg-green-500 h-2 rounded-full transition-all"
+                        className="bg-success h-1.5 rounded-full transition-all"
                         style={{ width: `${pct}%` }}
                       />
                     </div>
@@ -187,21 +187,21 @@ function DocumentDashboardPage() {
         </div>
 
         {/* Recent Activity */}
-        <div className="bg-card rounded-lg border p-4 lg:col-span-2">
-          <h3 className="text-sm font-semibold text-foreground mb-3">กิจกรรมล่าสุด</h3>
+        <div className="bg-card rounded-xl border border-border/50 shadow-sm p-5 lg:col-span-2">
+          <h3 className="text-sm font-semibold text-foreground mb-4">กิจกรรมล่าสุด</h3>
           {s.recentActivity.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">ไม่มีกิจกรรม</p>
+            <p className="text-sm text-muted-foreground text-center py-6">ไม่มีกิจกรรม</p>
           ) : (
-            <div className="space-y-2 max-h-60 overflow-y-auto">
+            <div className="space-y-2 max-h-60 overflow-y-auto divide-y divide-border/50">
               {s.recentActivity.map((act) => (
-                <div key={act.id} className="flex items-center justify-between p-2 bg-muted rounded text-sm">
-                  <div>
+                <div key={act.id} className="flex items-center justify-between py-2.5 text-sm">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-medium">{act.contractNumber}</span>
-                    <span className="text-muted-foreground ml-2">{act.customerName}</span>
-                    <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">{act.action}</span>
-                    {act.branchName && <span className="text-xs text-muted-foreground ml-2">({act.branchName})</span>}
+                    <span className="text-muted-foreground">{act.customerName}</span>
+                    <span className="px-2.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-full text-xs font-semibold">{act.action}</span>
+                    {act.branchName && <span className="text-xs text-muted-foreground">({act.branchName})</span>}
                   </div>
-                  <span className="text-xs text-muted-foreground whitespace-nowrap">
+                  <span className="text-xs text-muted-foreground whitespace-nowrap ml-2">
                     {formatDateTime(act.createdAt)}
                   </span>
                 </div>

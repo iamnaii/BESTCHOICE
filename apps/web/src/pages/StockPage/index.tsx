@@ -240,7 +240,7 @@ export default function StockPage() {
         setFilterBranch={setFilterBranch}
       />
 
-      {/* Tabs: Dashboard / List — dark mode friendly */}
+      {/* Tabs: Dashboard / List */}
       <div className="flex gap-1 mb-6 bg-muted rounded-xl p-1 w-fit">
         <button
           onClick={() => handleTabChange('dashboard')}

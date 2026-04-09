@@ -32,15 +32,16 @@ export function ProductSelectStep({
             key={p.id}
             onClick={() => setSelectedProduct(p)}
             onDoubleClick={() => { setSelectedProduct(p); onNext(); }}
-            className={`p-4 rounded-xl border cursor-pointer transition-all hover:shadow-card-hover ${selectedProduct?.id === p.id ? 'border-primary bg-primary/5 border-l-[3px] border-l-primary' : 'border-border/60 hover:border-border'}`}
+            className={`p-4 rounded-xl border cursor-pointer transition-all relative overflow-hidden hover:shadow-sm ${selectedProduct?.id === p.id ? 'border-primary bg-primary/5 shadow-sm' : 'border-border/60 hover:border-border bg-card'}`}
           >
+            {selectedProduct?.id === p.id && <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-primary" />}
             <div className="flex justify-between items-start">
               <div>
                 <div className="font-medium text-sm">{p.brand} {p.model}</div>
                 <div className="text-xs text-muted-foreground mt-1">{p.name}</div>
                 <div className="text-xs text-muted-foreground mt-1">
                   สาขา: {p.branch?.name}
-                  <span className="ml-2 px-1.5 py-0.5 bg-secondary rounded text-2xs">{p.category === 'PHONE_NEW' ? 'มือ 1' : p.category === 'PHONE_USED' ? 'มือ 2' : p.category}</span>
+                  <span className="ml-2 px-2 py-0.5 bg-secondary rounded-full text-2xs font-semibold">{p.category === 'PHONE_NEW' ? 'มือ 1' : p.category === 'PHONE_USED' ? 'มือ 2' : p.category}</span>
                 </div>
               </div>
               <div className="text-right">

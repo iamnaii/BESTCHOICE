@@ -323,7 +323,7 @@ export default function UsersPage() {
     {
       key: 'role', label: 'ตำแหน่ง',
       render: (u: User) => (
-        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${roleColors[u.role] || 'bg-muted text-foreground'}`}>
+        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${roleColors[u.role] || 'bg-muted text-foreground'}`}>
           {roleLabels[u.role] || u.role}
         </span>
       ),
@@ -340,7 +340,7 @@ export default function UsersPage() {
       render: (u: User) => (
         <button
           onClick={() => setConfirmDialog({ open: true, message: `ต้องการ${u.isActive ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}ผู้ใช้ "${u.name}" หรือไม่?`, action: () => toggleActiveMutation.mutate({ id: u.id, isActive: !u.isActive }) })}
-          className={`px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer ${u.isActive ? 'bg-success/10 text-success dark:bg-success/15' : 'bg-destructive/10 text-destructive dark:bg-destructive/15'}`}
+          className={`rounded-full px-2.5 py-0.5 text-xs font-semibold cursor-pointer ${u.isActive ? 'bg-success/10 text-success dark:bg-success/15' : 'bg-destructive/10 text-destructive dark:bg-destructive/15'}`}
         >
           {u.isActive ? 'ใช้งาน' : 'ปิดใช้งาน'}
         </button>
@@ -361,7 +361,7 @@ export default function UsersPage() {
     {
       key: 'role', label: 'ตำแหน่ง',
       render: (i: InviteToken) => (
-        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${roleColors[i.role] || 'bg-muted text-foreground'}`}>
+        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${roleColors[i.role] || 'bg-muted text-foreground'}`}>
           {roleLabels[i.role] || i.role}
         </span>
       ),
@@ -372,7 +372,7 @@ export default function UsersPage() {
       key: 'status', label: 'สถานะ',
       render: (i: InviteToken) => {
         const s = getInviteStatus(i);
-        return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.className}`}>{s.label}</span>;
+        return <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${s.className}`}>{s.label}</span>;
       },
     },
     {
@@ -460,34 +460,42 @@ export default function UsersPage() {
       {/* User Stats Summary */}
       {activeTab === 'users' && users.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-          <Card className="hover:shadow-card-hover transition-all border-l-[3px] border-l-primary">
-            <CardContent className="p-5">
+          <Card className="rounded-xl border border-border/50 shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
+            <div className="flex h-full">
+              <div className="w-1 shrink-0 bg-primary" />
+            <CardContent className="p-5 flex-1">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-lg bg-primary/10">
                   <Users className="size-5 text-primary" />
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-foreground">{users.length}</div>
+                  <div className="text-2xl font-bold tabular-nums text-foreground">{users.length}</div>
                   <div className="text-xs text-muted-foreground">ผู้ใช้ทั้งหมด</div>
                 </div>
               </div>
             </CardContent>
+            </div>
           </Card>
-          <Card className="hover:shadow-card-hover transition-all border-l-[3px] border-l-success">
-            <CardContent className="p-5">
+          <Card className="rounded-xl border border-border/50 shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
+            <div className="flex h-full">
+              <div className="w-1 shrink-0 bg-success" />
+            <CardContent className="p-5 flex-1">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-lg bg-success/10">
                   <UserCheck className="size-5 text-success" />
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-foreground">{users.filter(u => u.isActive).length}</div>
+                  <div className="text-2xl font-bold tabular-nums text-foreground">{users.filter(u => u.isActive).length}</div>
                   <div className="text-xs text-muted-foreground">ใช้งานอยู่</div>
                 </div>
               </div>
             </CardContent>
+            </div>
           </Card>
-          <Card className="hover:shadow-card-hover transition-all border-l-[3px] border-l-warning">
-            <CardContent className="p-5">
+          <Card className="rounded-xl border border-border/50 shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
+            <div className="flex h-full">
+              <div className="w-1 shrink-0 bg-warning" />
+            <CardContent className="p-5 flex-1">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-lg bg-warning/10">
                   <Shield className="size-5 text-warning" />
@@ -504,11 +512,12 @@ export default function UsersPage() {
                 </div>
               </div>
             </CardContent>
+            </div>
           </Card>
         </div>
       )}
 
-      <div className="rounded-xl border border-border/60 overflow-hidden">
+      <div className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden">
         {activeTab === 'users' ? (
           <QueryBoundary
             isLoading={isLoading && users.length === 0}

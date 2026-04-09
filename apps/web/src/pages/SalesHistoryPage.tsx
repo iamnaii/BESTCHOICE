@@ -294,7 +294,7 @@ export default function SalesHistoryPage() {
       label: 'ประเภท',
       render: (s: Sale) => {
         const st = saleTypeLabels[s.saleType] || { label: s.saleType, className: 'bg-muted text-foreground' };
-        return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${st.className}`}>{st.label}</span>;
+        return <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${st.className}`}>{st.label}</span>;
       },
     },
     {
@@ -415,50 +415,65 @@ export default function SalesHistoryPage() {
 
       {/* Summary Cards */}
       {summary && salesData && (
-        <div className={`grid grid-cols-2 ${isOwner ? 'md:grid-cols-5' : 'md:grid-cols-4'} gap-5 lg:gap-7.5 mb-6`}>
-          <Card className="border-l-[3px] border-l-foreground hover:shadow-card-hover transition-all">
-            <CardContent className="p-5">
-              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ทั้งหมด {salesData.total.toLocaleString()} รายการ</div>
-              <div className="text-xl font-bold">{summary.totalAmount.toLocaleString()} <span className="text-sm font-normal text-muted-foreground">฿</span></div>
-              {summary.totalDiscount > 0 && <div className="text-xs text-red-500">ส่วนลดรวม {summary.totalDiscount.toLocaleString()} ฿</div>}
-            </CardContent>
+        <div className={`grid grid-cols-2 ${isOwner ? 'md:grid-cols-5' : 'md:grid-cols-4'} gap-5 mb-6`}>
+          <Card className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
+            <div className="flex h-full">
+              <div className="w-1 shrink-0 rounded-r-full bg-foreground/30" />
+              <CardContent className="p-5 flex-1">
+                <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ทั้งหมด {salesData.total.toLocaleString()} รายการ</div>
+                <div className="text-xl font-bold tabular-nums">{summary.totalAmount.toLocaleString()} <span className="text-sm font-normal text-muted-foreground">฿</span></div>
+                {summary.totalDiscount > 0 && <div className="text-xs text-destructive mt-1">ส่วนลดรวม {summary.totalDiscount.toLocaleString()} ฿</div>}
+              </CardContent>
+            </div>
           </Card>
-          <Card className="border-l-[3px] border-l-success hover:shadow-card-hover transition-all">
-            <CardContent className="p-5">
-              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เงินสด</div>
-              <div className="text-xl font-bold text-success">{summary.cashCount}</div>
-              <div className="text-sm text-success mt-1">{summary.cashAmount.toLocaleString()} ฿</div>
-            </CardContent>
+          <Card className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
+            <div className="flex h-full">
+              <div className="w-1 shrink-0 rounded-r-full bg-success" />
+              <CardContent className="p-5 flex-1">
+                <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เงินสด</div>
+                <div className="text-xl font-bold tabular-nums text-success">{summary.cashCount}</div>
+                <div className="text-sm text-success mt-1 tabular-nums">{summary.cashAmount.toLocaleString()} ฿</div>
+              </CardContent>
+            </div>
           </Card>
-          <Card className="border-l-[3px] border-l-primary hover:shadow-card-hover transition-all">
-            <CardContent className="p-5">
-              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ผ่อนร้าน</div>
-              <div className="text-xl font-bold text-primary">{summary.installmentCount}</div>
-              <div className="text-sm text-primary mt-1">{summary.installmentAmount.toLocaleString()} ฿</div>
-            </CardContent>
+          <Card className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
+            <div className="flex h-full">
+              <div className="w-1 shrink-0 rounded-r-full bg-primary" />
+              <CardContent className="p-5 flex-1">
+                <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ผ่อนร้าน</div>
+                <div className="text-xl font-bold tabular-nums text-primary">{summary.installmentCount}</div>
+                <div className="text-sm text-primary mt-1 tabular-nums">{summary.installmentAmount.toLocaleString()} ฿</div>
+              </CardContent>
+            </div>
           </Card>
-          <Card className="border-l-[3px] border-l-primary hover:shadow-card-hover transition-all">
-            <CardContent className="p-5">
-              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ไฟแนนซ์</div>
-              <div className="text-xl font-bold text-primary">{summary.financeCount}</div>
-              <div className="text-sm text-primary mt-1">{summary.financeAmount.toLocaleString()} ฿</div>
-            </CardContent>
+          <Card className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
+            <div className="flex h-full">
+              <div className="w-1 shrink-0 rounded-r-full bg-blue-500" />
+              <CardContent className="p-5 flex-1">
+                <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ไฟแนนซ์</div>
+                <div className="text-xl font-bold tabular-nums text-blue-600">{summary.financeCount}</div>
+                <div className="text-sm text-blue-600 mt-1 tabular-nums">{summary.financeAmount.toLocaleString()} ฿</div>
+              </CardContent>
+            </div>
           </Card>
           {isOwner && (
-            <Card className="border-l-[3px] border-l-warning hover:shadow-card-hover transition-all">
-              <CardContent className="p-5">
-                <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">กำไรรวม</div>
-                <div className={`text-xl font-bold ${summary.totalProfit >= 0 ? 'text-success' : 'text-destructive'}`}>
-                  {summary.totalProfit >= 0 ? '+' : ''}{summary.totalProfit.toLocaleString()} <span className="text-sm font-normal">฿</span>
-                </div>
-              </CardContent>
+            <Card className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
+              <div className="flex h-full">
+                <div className="w-1 shrink-0 rounded-r-full bg-warning" />
+                <CardContent className="p-5 flex-1">
+                  <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">กำไรรวม</div>
+                  <div className={`text-xl font-bold tabular-nums ${summary.totalProfit >= 0 ? 'text-success' : 'text-destructive'}`}>
+                    {summary.totalProfit >= 0 ? '+' : ''}{summary.totalProfit.toLocaleString()} <span className="text-sm font-normal">฿</span>
+                  </div>
+                </CardContent>
+              </div>
             </Card>
           )}
         </div>
       )}
 
       {/* Filters */}
-      <div className="bg-card rounded-lg border border-border/60 p-4 mb-6">
+      <div className="bg-card rounded-xl border border-border/50 shadow-sm p-5 mb-6">
         {/* Row 1: Search + Type + Payment Method + Contract Status */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
           <input

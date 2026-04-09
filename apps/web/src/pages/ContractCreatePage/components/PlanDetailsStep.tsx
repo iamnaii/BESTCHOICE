@@ -133,7 +133,7 @@ export function PlanDetailsStep({
   return (
     <Form {...form}>
     <div className="max-w-xl">
-      <div className="rounded-xl border border-border/60 p-6 space-y-4">
+      <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm space-y-4">
         {/* Interest Config Badge */}
         {interestConfig && (
           <div className="bg-primary/5 border border-primary/30 rounded-lg p-3 flex items-center gap-2">
@@ -144,9 +144,9 @@ export function PlanDetailsStep({
         )}
 
 
-        <div className="bg-muted rounded-lg p-4">
+        <div className="bg-muted/60 rounded-xl p-4">
           <div className="text-sm font-medium text-foreground mb-2">สินค้า: {selectedProduct?.brand} {selectedProduct?.model}</div>
-          <div className="text-lg font-bold text-primary">{sellingPrice.toLocaleString()} ฿</div>
+          <div className="text-lg font-bold text-primary tabular-nums font-mono">{sellingPrice.toLocaleString()} ฿</div>
         </div>
 
         <FormField
@@ -259,39 +259,39 @@ export function PlanDetailsStep({
         />
 
         {/* Calculation Summary */}
-        <div className="bg-primary/5 rounded-lg p-4 space-y-2">
+        <div className="bg-primary/5 dark:bg-primary/10 border border-primary/20 rounded-xl p-4 space-y-2">
           <h3 className="text-sm font-semibold text-primary">สรุปการคำนวณ</h3>
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">ราคาขาย</span>
-            <span>{sellingPrice.toLocaleString()} ฿</span>
+            <span className="tabular-nums font-mono">{sellingPrice.toLocaleString()} ฿</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">เงินดาวน์</span>
-            <span>-{downPayment.toLocaleString()} ฿</span>
+            <span className="tabular-nums font-mono">-{downPayment.toLocaleString()} ฿</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">ยอดปล่อย <InfoTip text="ราคาขาย - เงินดาวน์ = ยอดที่ไฟแนนซ์ปล่อยให้ลูกค้าผ่อน" /></span>
-            <span>{principal.toLocaleString()} ฿</span>
+            <span className="tabular-nums font-mono">{principal.toLocaleString()} ฿</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">ค่าคอมหน้าร้าน ({(storeCommPct * 100).toFixed(0)}%) <InfoTip text="ค่าคอมที่ไฟแนนซ์จ่ายให้หน้าร้าน เป็น % ของยอดปล่อย — รวมอยู่ในค่างวดลูกค้า" /></span>
-            <span>{storeCommission.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span>
+            <span className="tabular-nums font-mono">{storeCommission.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">ดอกเบี้ยรวม ({(interestRate * 100).toFixed(1)}% x {totalMonths} เดือน)</span>
-            <span>{interestTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span>
+            <span className="tabular-nums font-mono">{interestTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">VAT ({(vatPct * 100).toFixed(0)}%)</span>
-            <span>{vatAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span>
+            <span className="tabular-nums font-mono">{vatAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">รวมยอดจัดไฟแนนซ์ <InfoTip text="ยอดปล่อย + ค่าคอม + ดอกเบี้ย + VAT = ยอดรวมที่ลูกค้าต้องผ่อนทั้งหมด" /></span>
-            <span>{financedAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span>
+            <span className="tabular-nums font-mono">{financedAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span>
           </div>
-          <div className="border-t pt-2 flex justify-between text-base font-bold text-primary">
+          <div className="border-t border-primary/20 pt-2 flex justify-between text-base font-bold text-primary">
             <span>ค่างวด/เดือน</span>
-            <span>{monthlyPayment.toLocaleString()} ฿</span>
+            <span className="tabular-nums font-mono">{monthlyPayment.toLocaleString()} ฿</span>
           </div>
           <div className="text-xs text-muted-foreground text-right">ชำระ{paymentDueDay === 31 ? 'ทุกสิ้นเดือน' : `ทุกวันที่ ${paymentDueDay}`}</div>
         </div>

@@ -390,7 +390,7 @@ const deleteMutation = useMutation({
         const hint = currentStep >= 0 ? stepHints[currentStep] : null;
 
         return (
-          <div className="rounded-xl border border-border/60 p-4 mb-6 shadow-sm">
+          <div className="rounded-xl border border-border/50 bg-card p-5 mb-6 shadow-sm">
             <div className="flex items-center justify-between mb-3">
               {steps.map((step, i) => (
                 <div key={i} className="flex items-center flex-1 last:flex-none">
@@ -424,41 +424,45 @@ const deleteMutation = useMutation({
 
       {/* Status + Workflow + Summary */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-        <Card className="border-l-[3px] border-l-primary">
-          <CardContent className="p-4">
+        <Card className="rounded-xl border border-border/50 bg-card shadow-sm relative overflow-hidden">
+          <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-primary" />
+          <CardContent className="p-5">
             <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สถานะสัญญา</div>
-            <span className={`px-3 py-1 rounded-md text-sm font-medium ${s.className}`}>{s.label}</span>
+            <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${s.className}`}>{s.label}</span>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-4">
+        <Card className="rounded-xl border border-border/50 bg-card shadow-sm">
+          <CardContent className="p-5">
             <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Workflow</div>
             <WorkflowStatusBadge status={contract.workflowStatus} />
           </CardContent>
         </Card>
-        <Card className="border-l-[3px] border-l-primary">
-          <CardContent className="p-4">
+        <Card className="rounded-xl border border-border/50 bg-card shadow-sm relative overflow-hidden">
+          <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-primary" />
+          <CardContent className="p-5">
             <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ค่างวด/เดือน</div>
-            <div className="text-xl font-bold text-primary">{formatNumber(contract.monthlyPayment)} บาท</div>
+            <div className="text-xl font-bold text-primary tabular-nums font-mono">{formatNumber(contract.monthlyPayment)} บาท</div>
           </CardContent>
         </Card>
-        <Card className="border-l-[3px] border-l-success">
-          <CardContent className="p-4">
+        <Card className="rounded-xl border border-border/50 bg-card shadow-sm relative overflow-hidden">
+          <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-success" />
+          <CardContent className="p-5">
             <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ชำระแล้ว</div>
-            <div className="text-xl font-bold text-success">{paidCount}/{contract.totalMonths} งวด</div>
+            <div className="text-xl font-bold text-success tabular-nums">{paidCount}/{contract.totalMonths} งวด</div>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-4">
+        <Card className="rounded-xl border border-border/50 bg-card shadow-sm">
+          <CardContent className="p-5">
             <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ยอดผ่อนรวม</div>
-            <div className="text-xl font-bold">{formatNumber(contract.financedAmount)} บาท</div>
+            <div className="text-xl font-bold tabular-nums font-mono">{formatNumber(contract.financedAmount)} บาท</div>
           </CardContent>
         </Card>
         {['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status) && totalOutstanding > 0 && (
-          <Card className="border-l-[3px] border-l-destructive">
-            <CardContent className="p-4">
+          <Card className="rounded-xl border border-border/50 bg-card shadow-sm relative overflow-hidden">
+            <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-destructive" />
+            <CardContent className="p-5">
               <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ยอดค้างรวม</div>
-              <div className="text-xl font-bold text-destructive">{formatNumber(totalOutstanding)} บาท</div>
+              <div className="text-xl font-bold text-destructive tabular-nums font-mono">{formatNumber(totalOutstanding)} บาท</div>
             </CardContent>
           </Card>
         )}
@@ -511,7 +515,8 @@ const deleteMutation = useMutation({
 
       {/* Workflow Actions for Reviewer */}
       {contract.workflowStatus === 'PENDING_REVIEW' && isReviewer && (
-        <div className="bg-warning/5 dark:bg-warning/10 border border-warning/20 rounded-xl p-4 mb-6">
+        <div className="bg-warning/5 dark:bg-warning/10 border border-warning/20 rounded-xl p-5 mb-6 relative overflow-hidden">
+          <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-warning" />
           <h3 className="text-sm font-semibold text-warning mb-3">รอการตรวจสอบจากคุณ</h3>
           <div className="space-y-3">
             {/* Document checklist */}
@@ -576,7 +581,8 @@ const deleteMutation = useMutation({
 
       {/* Contract Info */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5 lg:gap-7.5 mb-6">
-        <div className="rounded-xl border border-border/60 p-6 shadow-sm">
+        <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm relative overflow-hidden">
+          <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-primary" />
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-semibold text-foreground">ข้อมูลสัญญา</h2>
@@ -683,7 +689,7 @@ const deleteMutation = useMutation({
         </div>
 
         <div className="space-y-5 lg:space-y-7.5">
-          <div className="rounded-xl border border-border/60 p-6 shadow-sm">
+          <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-semibold text-foreground">ข้อมูลลูกค้า</h2>
@@ -707,7 +713,7 @@ const deleteMutation = useMutation({
             <button onClick={() => navigate(`/customers/${contract.customer.id}`)} className="mt-3 text-xs text-primary hover:underline">ดูรายละเอียดลูกค้า (ข้อมูลปัจจุบัน)</button>
           </div>
 
-          <div className="rounded-xl border border-border/60 p-6 shadow-sm">
+          <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-foreground">ข้อมูลสินค้า</h2>
               {canEditMaster && (
@@ -729,7 +735,7 @@ const deleteMutation = useMutation({
 
           {/* QR Code Verification */}
           {contract.contractHash && (
-            <div className="rounded-xl border border-border/60 p-6 shadow-sm">
+            <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm">
               <h2 className="text-sm font-semibold text-foreground mb-2">ตรวจสอบสัญญา (QR Verify)</h2>
               <div className="text-xs text-muted-foreground mb-2">Hash: <span className="font-mono">{contract.contractHash?.slice(0, 16)}...</span></div>
               <div className="flex items-center gap-2">
@@ -757,28 +763,32 @@ const deleteMutation = useMutation({
       />
 
       {/* Tabs: Schedule / Documents / Credit Check / Preview */}
-      <div className="flex gap-1 mb-4 border-b">
+      <div className="flex gap-1 mb-4 border-b border-border/60">
         <button
           onClick={() => setActiveTab('schedule')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'schedule' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === 'schedule' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
-          ตารางผ่อน ({paidCount}/{contract.totalMonths})
+          ตารางผ่อน
+          <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-2xs bg-muted text-muted-foreground">{paidCount}/{contract.totalMonths}</span>
         </button>
         <button
           onClick={() => setActiveTab('preview')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'preview' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === 'preview' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           ดูสัญญา
         </button>
         <button
           onClick={() => setActiveTab('documents')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'documents' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === 'documents' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
-          เอกสาร ({contract.contractDocuments.length})
+          เอกสาร
+          {contract.contractDocuments.length > 0 && (
+            <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-2xs bg-primary/10 text-primary">{contract.contractDocuments.length}</span>
+          )}
         </button>
         <button
           onClick={() => setActiveTab('credit')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'credit' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === 'credit' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           ตรวจเครดิต
         </button>

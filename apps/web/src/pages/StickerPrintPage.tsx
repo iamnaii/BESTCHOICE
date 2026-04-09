@@ -59,7 +59,7 @@ export default function StickerPrintPage() {
       <div className="print:hidden">
         <PageHeader title="พิมพ์สติกเกอร์" subtitle="สร้างสติกเกอร์ QR code สำหรับสินค้า" />
 
-        <div className="bg-card rounded-xl border border-border/60 shadow-card p-6 mb-6">
+        <div className="bg-card rounded-xl border border-border/50 shadow-sm p-6 mb-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5 lg:gap-7.5">
             <div>
               <label className="block text-2sm font-medium text-foreground mb-1.5">Product ID</label>

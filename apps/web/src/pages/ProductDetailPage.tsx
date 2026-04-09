@@ -334,7 +334,7 @@ export default function ProductDetailPage() {
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === tab.key
                   ? 'border-primary text-primary'
                   : 'border-transparent text-muted-foreground hover:text-foreground'
@@ -378,10 +378,10 @@ export default function ProductDetailPage() {
       {(activeTab === 'info' || product.category !== 'PHONE_USED') && (
       <>
       {/* Product Info */}
-      <Card className="mb-5 lg:mb-7.5">
+      <Card className="mb-5 lg:mb-7.5 rounded-xl border border-border/50 bg-card shadow-sm">
         <CardHeader>
           <CardTitle>ข้อมูลสินค้า</CardTitle>
-          <span className={`px-2.5 py-1 rounded-md text-xs font-medium ${s.className}`}>{s.label}</span>
+          <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${s.className}`}>{s.label}</span>
         </CardHeader>
         <CardContent>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-5 lg:gap-7.5">
@@ -426,24 +426,27 @@ export default function ProductDetailPage() {
 
       {/* Price Summary */}
       <div className="grid grid-cols-3 gap-5 lg:gap-7.5 mb-5 lg:mb-7.5">
-        <Card className="border-l-[3px] border-l-warning hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200">
-          <CardContent>
+        <Card className="rounded-xl border border-border/50 bg-card shadow-sm relative overflow-hidden hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200">
+          <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-warning" />
+          <CardContent className="p-5">
             <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ราคาทุน</div>
-            <div className="text-lg font-semibold text-foreground">{parseFloat(product.costPrice).toLocaleString()} ฿</div>
+            <div className="text-lg font-semibold text-foreground tabular-nums font-mono">{parseFloat(product.costPrice).toLocaleString()} ฿</div>
           </CardContent>
         </Card>
-        <Card className="border-l-[3px] border-l-primary hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200">
-          <CardContent>
+        <Card className="rounded-xl border border-border/50 bg-card shadow-sm relative overflow-hidden hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200">
+          <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-primary" />
+          <CardContent className="p-5">
             <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ราคาขาย (default)</div>
-            <div className="text-lg font-semibold text-primary">
+            <div className="text-lg font-semibold text-primary tabular-nums font-mono">
               {defaultPrice ? `${parseFloat(defaultPrice.amount).toLocaleString()} ฿` : '-'}
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-[3px] border-l-success hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200">
-          <CardContent>
+        <Card className="rounded-xl border border-border/50 bg-card shadow-sm relative overflow-hidden hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200">
+          <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-success" />
+          <CardContent className="p-5">
             <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">กำไร</div>
-            <div className={`text-lg font-semibold ${profit === null ? 'text-muted-foreground' : profit > 0 ? 'text-success' : profit === 0 ? 'text-muted-foreground' : 'text-destructive'}`}>
+            <div className={`text-lg font-semibold tabular-nums font-mono ${profit === null ? 'text-muted-foreground' : profit > 0 ? 'text-success' : profit === 0 ? 'text-muted-foreground' : 'text-destructive'}`}>
               {profit !== null ? `${profit.toLocaleString()} ฿` : '-'}
             </div>
           </CardContent>
@@ -451,7 +454,7 @@ export default function ProductDetailPage() {
       </div>
 
       {/* Prices Table */}
-      <Card className="mb-5 lg:mb-7.5">
+      <Card className="mb-5 lg:mb-7.5 rounded-xl border border-border/50 bg-card shadow-sm">
         <CardHeader>
           <CardTitle>ราคาขาย ({product.prices.length})</CardTitle>
           {isManager && (
@@ -504,13 +507,13 @@ export default function ProductDetailPage() {
 
       {/* Inspection Result (if applicable) */}
       {product.inspection && (
-        <Card className="mb-5 lg:mb-7.5">
+        <Card className="mb-5 lg:mb-7.5 rounded-xl border border-border/50 bg-card shadow-sm">
           <CardHeader>
             <CardTitle>ผลตรวจเช็ค</CardTitle>
           </CardHeader>
           <CardContent>
           <div className="flex items-center gap-4">
-            <span className={`px-2.5 py-1 rounded-md text-sm font-medium ${
+            <span className={`px-2.5 py-0.5 rounded-full text-sm font-semibold ${
               product.inspection.isCompleted ? 'bg-success/10 text-success dark:bg-success/15' : 'bg-warning/10 text-warning dark:bg-warning/15'
             }`}>
               {product.inspection.isCompleted ? 'ตรวจเสร็จ' : 'กำลังตรวจ'}

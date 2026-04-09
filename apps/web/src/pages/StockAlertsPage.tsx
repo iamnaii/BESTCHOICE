@@ -422,20 +422,20 @@ export default function StockAlertsPage() {
       />
 
       {/* Sub-tabs */}
-      <div className="flex gap-1 mb-6 bg-muted rounded-lg p-1 w-fit">
+      <div className="flex gap-1 mb-6 bg-muted rounded-xl p-1 w-fit">
         {(['dashboard', 'reorder-points', 'alerts'] as const).map((tab) => {
           const labels = { dashboard: 'ภาพรวม', 'reorder-points': 'Reorder Points', alerts: 'แจ้งเตือน' };
           return (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 text-sm rounded-md font-medium transition-colors ${
+              className={`px-4 py-2 text-sm rounded-lg font-medium transition-colors ${
                 activeTab === tab ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               {labels[tab]}
               {tab === 'alerts' && activeAlerts > 0 && (
-                <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-xs bg-red-500 text-white">{activeAlerts}</span>
+                <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-xs font-semibold bg-destructive/10 text-destructive">{activeAlerts}</span>
               )}
             </button>
           );
@@ -473,21 +473,25 @@ export default function StockAlertsPage() {
         <div className="flex flex-col gap-5 lg:gap-7.5">
           {/* Summary Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="rounded-lg border p-4 border-l-4 border-l-red-500 hover:shadow-card-hover transition-all">
+            <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm relative overflow-hidden hover:shadow-card-hover transition-all">
+              <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-destructive" />
               <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สินค้าต่ำกว่าเกณฑ์</div>
-              <div className="text-2xl font-bold text-destructive">{dashboard?.totalLowStock || 0}</div>
+              <div className="text-2xl font-bold text-destructive tabular-nums">{dashboard?.totalLowStock || 0}</div>
             </div>
-            <div className="rounded-lg border p-4 border-l-4 border-l-orange-500 hover:shadow-card-hover transition-all">
+            <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm relative overflow-hidden hover:shadow-card-hover transition-all">
+              <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-warning" />
               <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">แจ้งเตือนรอดำเนินการ</div>
-              <div className="text-2xl font-bold text-warning">{activeAlerts}</div>
+              <div className="text-2xl font-bold text-warning tabular-nums">{activeAlerts}</div>
             </div>
-            <div className="rounded-lg border p-4 border-l-4 border-l-primary-500 hover:shadow-card-hover transition-all">
+            <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm relative overflow-hidden hover:shadow-card-hover transition-all">
+              <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-primary" />
               <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Reorder Points ทั้งหมด</div>
-              <div className="text-2xl font-bold text-primary">{reorderPoints?.length || 0}</div>
+              <div className="text-2xl font-bold text-primary tabular-nums">{reorderPoints?.length || 0}</div>
             </div>
-            <div className="rounded-lg border p-4 border-l-4 border-l-green-500 hover:shadow-card-hover transition-all">
+            <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm relative overflow-hidden hover:shadow-card-hover transition-all">
+              <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-success" />
               <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สินค้าปกติ</div>
-              <div className="text-2xl font-bold text-success">
+              <div className="text-2xl font-bold text-success tabular-nums">
                 {(reorderPoints?.filter((r) => !r.isLow).length) || 0}
               </div>
             </div>
@@ -495,7 +499,7 @@ export default function StockAlertsPage() {
 
           {/* Low Stock Items */}
           {dashboard && dashboard.items.length > 0 && (
-            <div className="rounded-lg border p-5">
+            <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm">
               <h2 className="text-sm font-semibold text-foreground mb-3">สินค้าที่ต้องสั่งซื้อเพิ่ม</h2>
               <div className="space-y-2">
                 {dashboard.items.map((item) => {
@@ -522,7 +526,7 @@ export default function StockAlertsPage() {
                         ควรสั่ง <span className="font-bold text-primary">{item.reorderQuantity}</span>
                       </div>
                       {item.hasActiveAlert && (
-                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-destructive/10 text-destructive dark:bg-destructive/15">แจ้งเตือนแล้ว</span>
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-destructive/10 text-destructive dark:bg-destructive/15">แจ้งเตือนแล้ว</span>
                       )}
                     </div>
                   );
@@ -532,7 +536,7 @@ export default function StockAlertsPage() {
           )}
 
           {dashboard && dashboard.items.length === 0 && (
-            <div className="rounded-lg border p-8 text-center text-muted-foreground">
+            <div className="rounded-xl border border-border/50 bg-card p-8 shadow-sm text-center text-muted-foreground">
               สต็อกทุกรายการอยู่ในเกณฑ์ปกติ
             </div>
           )}

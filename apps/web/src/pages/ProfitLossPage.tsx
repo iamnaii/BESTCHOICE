@@ -183,60 +183,64 @@ export default function ProfitLossPage() {
       {pl ? (
         <>
           {/* Summary Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <Card className="border-l-[3px] border-l-success hover:shadow-card-hover transition-all">
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">รายได้รวม</span>
-                  <ArrowUp className="size-4 text-green-500" />
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
+            <Card className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
+              <div className="flex h-full">
+                <div className="w-1 shrink-0 rounded-r-full bg-success" />
+                <div className="p-5 flex-1">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">รายได้รวม</span>
+                    <ArrowUp className="size-4 text-success" />
+                  </div>
+                  <div className="text-2xl font-bold tabular-nums text-success">{fmt(pl.summary.totalRevenue)}</div>
                 </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-success">{fmt(pl.summary.totalRevenue)}</div>
-              </CardContent>
+              </div>
             </Card>
-            <Card className="border-l-[3px] border-l-destructive hover:shadow-card-hover transition-all">
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">ค่าใช้จ่ายรวม</span>
-                  <ArrowDown className="size-4 text-red-500" />
+            <Card className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
+              <div className="flex h-full">
+                <div className="w-1 shrink-0 rounded-r-full bg-destructive" />
+                <div className="p-5 flex-1">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">ค่าใช้จ่ายรวม</span>
+                    <ArrowDown className="size-4 text-destructive" />
+                  </div>
+                  <div className="text-2xl font-bold tabular-nums text-destructive">{fmt(pl.summary.totalExpenses)}</div>
                 </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-destructive">{fmt(pl.summary.totalExpenses)}</div>
-              </CardContent>
+              </div>
             </Card>
-            <Card className="border-l-[3px] border-l-primary hover:shadow-card-hover transition-all">
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">กำไรสุทธิ</span>
-                  {isProfit ? <TrendingUp className="size-4 text-green-500" /> : <TrendingDown className="size-4 text-red-500" />}
+            <Card className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
+              <div className="flex h-full">
+                <div className={`w-1 shrink-0 rounded-r-full ${isProfit ? 'bg-primary' : 'bg-destructive'}`} />
+                <div className="p-5 flex-1">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">กำไรสุทธิ</span>
+                    {isProfit ? <TrendingUp className="size-4 text-success" /> : <TrendingDown className="size-4 text-destructive" />}
+                  </div>
+                  <div className={`text-2xl font-bold tabular-nums ${isProfit ? 'text-success' : 'text-destructive'}`}>
+                    {fmt(pl.netProfit)}
+                  </div>
                 </div>
-              </CardHeader>
-              <CardContent>
-                <div className={`text-2xl font-bold ${isProfit ? 'text-success' : 'text-destructive'}`}>
-                  {fmt(pl.netProfit)}
-                </div>
-              </CardContent>
+              </div>
             </Card>
-            <Card className="border-l-[3px] border-l-warning hover:shadow-card-hover transition-all">
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">อัตรากำไร</span>
-                  <Minus className="size-4 text-muted-foreground" />
+            <Card className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
+              <div className="flex h-full">
+                <div className="w-1 shrink-0 rounded-r-full bg-warning" />
+                <div className="p-5 flex-1">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">อัตรากำไร</span>
+                    <Minus className="size-4 text-muted-foreground" />
+                  </div>
+                  <div className={`text-2xl font-bold tabular-nums ${margin >= 0 ? 'text-success' : 'text-destructive'}`}>
+                    {margin.toFixed(1)}%
+                  </div>
                 </div>
-              </CardHeader>
-              <CardContent>
-                <div className={`text-2xl font-bold ${margin >= 0 ? 'text-success' : 'text-destructive'}`}>
-                  {margin.toFixed(1)}%
-                </div>
-              </CardContent>
+              </div>
             </Card>
           </div>
 
           {/* Monthly Chart */}
           {monthlyData?.months && (
-            <Card className="mb-6">
+            <Card className="rounded-xl border border-border/50 bg-card shadow-sm mb-6">
               <CardHeader>
                 <h2 className="text-lg font-bold">เปรียบเทียบรายเดือน {monthlyData.year}</h2>
               </CardHeader>
@@ -258,7 +262,7 @@ export default function ProfitLossPage() {
           )}
 
           {/* P&L Statement */}
-          <Card>
+          <Card className="rounded-xl border border-border/50 bg-card shadow-sm">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-bold">งบกำไรขาดทุน</h2>

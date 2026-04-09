@@ -576,7 +576,7 @@ export default function ExpensesPage() {
     },
     {
       key: 'status', label: 'สถานะ',
-      render: (e: Expense) => (<div><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[e.status] || 'bg-muted'}`}>{statusLabels[e.status] || e.status}</span>
+      render: (e: Expense) => (<div><span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusColors[e.status] || 'bg-muted'}`}>{statusLabels[e.status] || e.status}</span>
         {e.rejectReason && <div className="text-xs text-red-500 mt-0.5 truncate max-w-[100px]">{e.rejectReason}</div>}</div>),
     },
     {
@@ -617,9 +617,9 @@ export default function ExpensesPage() {
       />
 
       {/* Summary Cards — color stripe left border */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-5 mb-6">
         {summaryCards.map((card) => (
-          <Card key={card.label} className="h-full overflow-hidden hover:shadow-card-hover transition-all">
+          <Card key={card.label} className="rounded-xl border border-border/50 bg-card shadow-sm h-full overflow-hidden hover:shadow-card-hover transition-all">
             <div className="flex h-full">
               {/* Color stripe */}
               <div className={`w-1 shrink-0 ${card.stripe}`} />
@@ -643,7 +643,7 @@ export default function ExpensesPage() {
       </div>
 
       {/* Filters — grouped in card */}
-      <div className="flex flex-wrap gap-4 mb-5 bg-card rounded-xl border border-border p-4">
+      <div className="flex flex-wrap gap-4 mb-5 bg-card rounded-xl border border-border/50 shadow-sm p-5">
         <div>
           <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สถานะ</label>
           <select value={statusFilter} onChange={(e) => setFilter('status', e.target.value)} className={`${inputClass} w-auto min-w-[120px]`}>

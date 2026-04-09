@@ -428,36 +428,48 @@ export default function OverduePage() {
       />
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 lg:gap-5 mb-6">
-        <Card className="hover:shadow-card-hover transition-all border-l-[3px] border-l-destructive">
-          <CardContent className="p-5">
-            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สัญญาค้างชำระ</div>
-            <div className="text-2xl font-bold text-destructive">{uniqueContracts}</div>
-          </CardContent>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-5 mb-6">
+        <Card className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
+          <div className="flex h-full">
+            <div className="w-1 shrink-0 rounded-r-full bg-destructive" />
+            <CardContent className="p-5 flex-1">
+              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สัญญาค้างชำระ</div>
+              <div className="text-2xl font-bold tabular-nums text-destructive">{uniqueContracts}</div>
+            </CardContent>
+          </div>
         </Card>
-        <Card className="hover:shadow-card-hover transition-all border-l-[3px] border-l-warning">
-          <CardContent className="p-5">
-            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">รายการค้างชำระ</div>
-            <div className="text-2xl font-bold">{overduePayments.length}</div>
-          </CardContent>
+        <Card className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
+          <div className="flex h-full">
+            <div className="w-1 shrink-0 rounded-r-full bg-warning" />
+            <CardContent className="p-5 flex-1">
+              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">รายการค้างชำระ</div>
+              <div className="text-2xl font-bold tabular-nums">{overduePayments.length}</div>
+            </CardContent>
+          </div>
         </Card>
-        <Card className="hover:shadow-card-hover transition-all border-l-[3px] border-l-primary">
-          <CardContent className="p-5">
-            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ยอดค้างรวม</div>
-            <div className="text-2xl font-bold">{totalOutstanding.toLocaleString()} ฿</div>
-          </CardContent>
+        <Card className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
+          <div className="flex h-full">
+            <div className="w-1 shrink-0 rounded-r-full bg-primary" />
+            <CardContent className="p-5 flex-1">
+              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ยอดค้างรวม</div>
+              <div className="text-2xl font-bold tabular-nums">{totalOutstanding.toLocaleString()} ฿</div>
+            </CardContent>
+          </div>
         </Card>
-        <Card className="hover:shadow-card-hover transition-all border-l-[3px] border-l-destructive">
-          <CardContent className="p-5">
-            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ค่าปรับรวม</div>
-            <div className="text-2xl font-bold text-destructive">{totalLateFees.toLocaleString()} ฿</div>
-          </CardContent>
+        <Card className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
+          <div className="flex h-full">
+            <div className="w-1 shrink-0 rounded-r-full bg-destructive" />
+            <CardContent className="p-5 flex-1">
+              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ค่าปรับรวม</div>
+              <div className="text-2xl font-bold tabular-nums text-destructive">{totalLateFees.toLocaleString()} ฿</div>
+            </CardContent>
+          </div>
         </Card>
       </div>
 
       {/* Dunning Workflow Pipeline */}
-      <Card className="shadow-card mb-6">
-        <CardContent className="p-4">
+      <Card className="rounded-xl border border-border/50 bg-card shadow-sm mb-6">
+        <CardContent className="p-5">
           <div className="text-xs font-medium text-muted-foreground mb-3">ขั้นตอนติดตามหนี้</div>
           <div className="flex items-center gap-2 overflow-x-auto">
             {[
@@ -489,7 +501,7 @@ export default function OverduePage() {
       </Card>
 
       {/* Info box */}
-      <div className="bg-warning/5 dark:bg-warning/10 border border-warning/20 rounded-lg p-4 mb-4">
+      <div className="bg-warning/5 dark:bg-warning/10 border border-warning/20 rounded-xl p-4 mb-4">
         <div className="text-sm text-warning">
           <strong>กฎค่าปรับ:</strong> 100 บาท/วัน สูงสุด 200 บาท/งวด |
           ค้าง &gt; 7 วัน → สถานะ OVERDUE |
@@ -497,7 +509,7 @@ export default function OverduePage() {
         </div>
       </div>
 
-      <div className="flex gap-3 mb-4 flex-wrap">
+      <div className="flex gap-3 mb-5 flex-wrap bg-card rounded-xl border border-border/50 shadow-sm p-4">
         <input
           type="text"
           placeholder="ค้นหาเลขสัญญา, ชื่อลูกค้า..."

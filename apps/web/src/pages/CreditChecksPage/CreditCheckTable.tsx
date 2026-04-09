@@ -62,7 +62,7 @@ export default function CreditCheckTable({
       render: (cc: CreditCheckItem) => {
         const s = statusLabels[cc.status] || { label: cc.status, className: 'bg-muted' };
         return (
-          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.className}`}>
+          <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${s.className}`}>
             {s.label}
           </span>
         );

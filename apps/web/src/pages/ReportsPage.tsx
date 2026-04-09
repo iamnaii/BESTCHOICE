@@ -71,14 +71,14 @@ export default function ReportsPage() {
       />
 
       {/* Tabs */}
-      <div className="flex flex-wrap gap-1 mb-6 bg-muted rounded-lg p-1">
+      <div className="flex flex-wrap gap-1 mb-6 bg-muted rounded-xl p-1">
         {reportTabs.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`px-3 py-2 text-xs font-medium rounded-md transition-colors ${
+            className={`px-3 py-2 text-xs font-medium rounded-lg transition-colors ${
               activeTab === tab.key
-                ? 'bg-card text-primary shadow-card'
+                ? 'bg-card text-primary shadow-sm'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >

@@ -138,7 +138,7 @@ function BestchoiceFinanceTab() {
     {
       key: 'status', label: 'สถานะ',
       render: (r: InterCompanyTransaction) => (
-        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${icStatusColors[r.status] || 'bg-muted'}`}>
+        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${icStatusColors[r.status] || 'bg-muted'}`}>
           {icStatusLabels[r.status] || r.status}
         </span>
       ),
@@ -347,7 +347,7 @@ export default function FinanceReceivablePage() {
     {
       key: 'status', label: 'สถานะ',
       render: (r: FinanceReceivable) => (
-        <div><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[r.status] || 'bg-muted'}`}>{statusLabels[r.status] || r.status}</span>
+        <div><span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusColors[r.status] || 'bg-muted'}`}>{statusLabels[r.status] || r.status}</span>
           {r.note && r.status === 'DISPUTED' && <div className="text-xs text-red-500 mt-0.5 truncate max-w-[100px]">{r.note}</div>}</div>
       ),
     },
@@ -386,9 +386,9 @@ export default function FinanceReceivablePage() {
         <TabsContent value="external">
 
       {/* Summary Cards — color stripe */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
         {summaryCards.map((card) => (
-          <Card key={card.label} className="h-full overflow-hidden hover:shadow-card-hover transition-all">
+          <Card key={card.label} className="rounded-xl border border-border/50 bg-card shadow-sm h-full overflow-hidden hover:shadow-card-hover transition-all">
             <div className="flex h-full">
               <div className={`w-1 shrink-0 ${card.stripe}`} />
               <CardContent className="p-4 flex flex-col justify-between flex-1">

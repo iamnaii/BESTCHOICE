@@ -89,7 +89,7 @@ function CustomerPortalPage() {
   if (error || !data) {
     return (
       <div className="min-h-screen bg-muted flex items-center justify-center">
-        <div className="bg-card rounded-lg border border-border p-8 max-w-md text-center shadow-card">
+        <div className="bg-card rounded-xl border border-border/50 p-8 max-w-md text-center shadow-sm">
           <div className="text-4xl mb-4">🔒</div>
           <h1 className="text-lg font-semibold text-foreground mb-2">ไม่สามารถเข้าถึงได้</h1>
           <p className="text-sm text-muted-foreground">{error || 'ลิงก์ไม่ถูกต้องหรือหมดอายุ'}</p>
@@ -123,13 +123,13 @@ function CustomerPortalPage() {
 
       <div className="max-w-3xl mx-auto px-4 py-6 flex flex-col gap-5 lg:gap-7.5">
         {/* Contract Summary */}
-        <div className="bg-card rounded-lg border border-border p-4 shadow-card">
+        <div className="bg-card rounded-xl border border-border/50 p-4 shadow-sm">
           <div className="flex justify-between items-start mb-3">
             <div>
               <div className="text-xs text-muted-foreground">สัญญาเลขที่</div>
               <div className="font-bold text-lg">{c.contractNumber}</div>
             </div>
-            <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+            <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
               c.status === 'ACTIVE' ? 'bg-success/10 text-success dark:bg-success/15' :
               c.status === 'COMPLETED' ? 'bg-blue-100 text-blue-700' :
               'bg-warning/10 text-warning dark:bg-warning/15'
@@ -146,7 +146,7 @@ function CustomerPortalPage() {
         </div>
 
         {/* Progress */}
-        <div className="bg-card rounded-lg border border-border p-4 shadow-card">
+        <div className="bg-card rounded-xl border border-border/50 p-4 shadow-sm">
           <div className="flex justify-between items-center mb-2">
             <span className="text-sm font-medium">ความคืบหน้า</span>
             <span className="text-sm text-muted-foreground">{paidCount}/{c.totalMonths} งวด</span>
@@ -182,7 +182,7 @@ function CustomerPortalPage() {
                   {Number(p.lateFee) > 0 && (
                     <div className="text-xs text-red-500">+ค่าปรับ {Number(p.lateFee).toLocaleString()} ฿</div>
                   )}
-                  <span className={`px-2 py-0.5 rounded-full text-xs ${paymentStatusColors[p.status] || 'bg-muted text-muted-foreground'}`}>
+                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${paymentStatusColors[p.status] || 'bg-muted text-muted-foreground'}`}>
                     {statusLabels[p.status] || p.status}
                   </span>
                 </div>
@@ -193,7 +193,7 @@ function CustomerPortalPage() {
 
         {/* Receipts */}
         {data.receipts.length > 0 && (
-          <div className="bg-card rounded-lg border border-border shadow-card">
+          <div className="bg-card rounded-xl border border-border/50 shadow-sm">
             <div className="px-4 py-3 border-b border-border">
               <h3 className="text-sm font-semibold">ใบเสร็จรับเงิน</h3>
             </div>
@@ -213,7 +213,7 @@ function CustomerPortalPage() {
 
         {/* Signatures */}
         {(data.signatures?.length ?? 0) > 0 && (
-          <div className="bg-card rounded-lg border border-border p-4 shadow-card">
+          <div className="bg-card rounded-xl border border-border/50 p-4 shadow-sm">
             <h3 className="text-sm font-semibold mb-2">การลงนาม</h3>
             <div className="grid grid-cols-2 gap-2">
               {(data.signatures || []).map((s, i) => (

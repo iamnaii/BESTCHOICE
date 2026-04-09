@@ -40,7 +40,7 @@ export function StockListTab({
   return (
     <>
       {/* Filters */}
-      <div className="flex flex-wrap gap-3 mb-4">
+      <div className="flex flex-wrap gap-3 mb-5">
         <input
           type="text"
           placeholder="ค้นหาชื่อ, ยี่ห้อ, รุ่น, IMEI..."

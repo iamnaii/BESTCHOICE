@@ -78,7 +78,7 @@ export default function FinancialAuditPage() {
       key: 'action',
       label: 'เหตุการณ์',
       render: (e: AuditEntry) => (
-        <span className={`px-2 py-0.5 rounded text-xs font-medium ${ACTION_COLORS[e.action] || 'bg-gray-100 text-gray-800'}`}>
+        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${ACTION_COLORS[e.action] || 'bg-muted text-muted-foreground'}`}>
           {ACTION_LABELS[e.action] || e.action}
         </span>
       ),
@@ -120,8 +120,8 @@ export default function FinancialAuditPage() {
         subtitle="ประวัติธุรกรรมการเงินของสัญญา"
       />
 
-      <Card className="shadow-card mb-6">
-        <CardContent className="p-4">
+      <Card className="rounded-xl border border-border/50 bg-card shadow-sm mb-6">
+        <CardContent className="p-5">
           <div className="flex gap-3">
             <input
               type="text"
@@ -142,8 +142,8 @@ export default function FinancialAuditPage() {
       </Card>
 
       {contractId && (
-        <Card className="shadow-card mb-4">
-          <CardContent className="p-4">
+        <Card className="rounded-xl border border-border/50 bg-card shadow-sm mb-4">
+          <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <div className="text-sm text-muted-foreground">
                 สัญญา: <span className="font-mono text-foreground">{contractId}</span>

@@ -1,6 +1,5 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import ExcelJS from 'exceljs';
 import { downloadExcelBuffer, importFromExcel } from '@/utils/excel.util';
 import api, { getErrorMessage } from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -114,6 +113,8 @@ export default function PricingTemplatesPage() {
   });
 
   const downloadTemplate = async () => {
+    // Dynamic import — keeps exceljs out of the page's initial chunk
+    const ExcelJS = (await import('exceljs')).default;
     const wb = new ExcelJS.Workbook();
 
     // Data sheet

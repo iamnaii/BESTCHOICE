@@ -1,13 +1,24 @@
 import { Controller, Post, Get, Body, Query, Logger } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
+import { SkipCsrf } from '../../guards/skip-csrf.decorator';
 import { NotificationsService } from './notifications.service';
 
 /**
  * Public webhook endpoint for ThaiBulkSMS delivery reports (DLR).
- * No authentication — ThaiBulkSMS calls this URL with delivery status updates.
  *
- * Supports both GET (ThaiBulkSMS default) and POST methods.
- * Example: https://your-domain.com/api/notifications/sms-webhook
+ * SECURITY: ThaiBulkSMS does not currently provide HMAC signing on
+ * delivery reports, so we have no way to authenticate the caller.
+ * Mitigations:
+ *   1. Strict per-IP rate limit (60/min) to prevent log flooding by
+ *      arbitrary attackers crafting fake DLRs.
+ *   2. handleSmsDeliveryReport upstream is idempotent: it looks up
+ *      a real notification log row by externalId and only updates
+ *      its status. Unknown IDs are ignored, so a fake DLR cannot
+ *      create new state — only modify a row that already exists.
+ *
+ * If ThaiBulkSMS adds HMAC support in the future, replace the
+ * Throttle with an HMAC verification guard.
  */
 @ApiTags('Notifications')
 @Controller('notifications')
@@ -17,12 +28,16 @@ export class SmsWebhookController {
   constructor(private notificationsService: NotificationsService) {}
 
   @Get('sms-webhook')
+  @SkipCsrf()
+  @Throttle({ default: { limit: 60, ttl: 60000 } })
   async handleDeliveryReportGet(@Query() query: Record<string, unknown>) {
     this.logger.log(`[SMS-Webhook] Delivery report received (GET)`);
     return this.notificationsService.handleSmsDeliveryReport(query);
   }
 
   @Post('sms-webhook')
+  @SkipCsrf()
+  @Throttle({ default: { limit: 60, ttl: 60000 } })
   async handleDeliveryReportPost(@Body() body: Record<string, unknown>) {
     this.logger.log(`[SMS-Webhook] Delivery report received (POST)`);
     return this.notificationsService.handleSmsDeliveryReport(body);

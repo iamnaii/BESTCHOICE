@@ -17,6 +17,12 @@ export default defineConfig({
           vendor: ['react', 'react-dom', 'react-router-dom'],
           query: ['@tanstack/react-query'],
           liff: ['@line/liff'],
+          // Heavy libs split into separate chunks so the initial JS bundle
+          // doesn't pay for them on every page load. Each chunk only
+          // downloads when a page that uses it is navigated to.
+          excel: ['exceljs'],
+          pdf: ['jspdf', 'jspdf-autotable'],
+          charts: ['recharts'],
         },
       },
     },

@@ -1,4 +1,9 @@
-import ExcelJS from 'exceljs';
+// Dynamic import: ExcelJS is ~600KB. We only load it when the user
+// actually clicks "Export" or "Import" — keeps the initial bundle slim
+// for the 90% of pages that never touch xlsx.
+//
+// Vite's manualChunks splits exceljs into its own chunk, and the
+// `import('exceljs')` calls below trigger the chunk download lazily.
 
 export interface ExcelColumn {
   header: string;
@@ -6,7 +11,10 @@ export interface ExcelColumn {
   width: number;
 }
 
-export function downloadExcelBuffer(buffer: ExcelJS.Buffer, filename: string): void {
+// Reuse the type without forcing the runtime import.
+type ExcelBuffer = ArrayBuffer;
+
+export function downloadExcelBuffer(buffer: ExcelBuffer, filename: string): void {
   const blob = new Blob([buffer], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   });
@@ -26,6 +34,7 @@ export async function exportToExcel(options: {
 }): Promise<void> {
   const { data, columns, sheetName, filename } = options;
 
+  const ExcelJS = (await import('exceljs')).default;
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet(sheetName);
   ws.columns = columns;
@@ -37,10 +46,11 @@ export async function exportToExcel(options: {
   ws.addRows(data);
 
   const buffer = await wb.xlsx.writeBuffer();
-  downloadExcelBuffer(buffer, filename);
+  downloadExcelBuffer(buffer as ArrayBuffer, filename);
 }
 
 export async function importFromExcel(file: File): Promise<Record<string, unknown>[]> {
+  const ExcelJS = (await import('exceljs')).default;
   const arrayBuffer = await file.arrayBuffer();
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(arrayBuffer);

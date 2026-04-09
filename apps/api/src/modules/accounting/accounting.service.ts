@@ -5,6 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { StructuredLoggerService } from '../../common/logger';
 import { ExpenseAccountType, ExpenseCategory, ExpenseStatus, Prisma, WhtIncomeType } from '@prisma/client';
 import { CreateExpenseDto, UpdateExpenseDto } from './dto/expense.dto';
 import { validatePeriodOpen as validatePeriodOpenUtil } from '../../utils/period-lock.util';
@@ -92,6 +93,7 @@ async function generateExpenseNumber(tx: Prisma.TransactionClient): Promise<stri
 @Injectable()
 export class AccountingService {
   private readonly logger = new Logger(AccountingService.name);
+  private readonly structuredLogger = new StructuredLoggerService(AccountingService.name);
   constructor(
     private prisma: PrismaService,
     private journalAutoService: JournalAutoService,
@@ -135,7 +137,7 @@ export class AccountingService {
     const netPayment = Math.round((totalAmount - withholdingTax) * 100) / 100;
     const accountCode = dto.accountCode || CATEGORY_CODE_MAP[dto.category] || null;
 
-    return this.prisma.$transaction(async (tx) => {
+    const expense = await this.prisma.$transaction(async (tx) => {
       const expenseNumber = await generateExpenseNumber(tx);
 
       return tx.expense.create({
@@ -172,6 +174,16 @@ export class AccountingService {
         },
       });
     });
+    this.structuredLogger.log('expense.created', {
+      expenseId: expense.id,
+      expenseNumber: expense.expenseNumber,
+      branchId: expense.branchId,
+      accountType: expense.accountType,
+      category: expense.category,
+      totalAmount: Number(expense.totalAmount),
+      createdById,
+    });
+    return expense;
   }
 
   async findAllExpenses(filters: {
@@ -375,10 +387,19 @@ export class AccountingService {
         throw new BadRequestException('เฉพาะ OWNER เท่านั้นที่สามารถยกเลิกรายจ่ายที่จ่ายแล้ว');
       }
     }
-    return this.prisma.expense.update({
+    const voided = await this.prisma.expense.update({
       where: { id },
       data: { status: 'VOIDED', voidReason: voidReason.trim(), voidedById, voidedAt: new Date() },
     });
+    this.structuredLogger.log('expense.voided', {
+      expenseId: voided.id,
+      expenseNumber: voided.expenseNumber,
+      branchId: voided.branchId,
+      totalAmount: Number(voided.totalAmount),
+      voidedById,
+      voidReason: voidReason.trim(),
+    });
+    return voided;
   }
 
   async getExpenseSummary(filters: { branchId?: string; startDate?: string; endDate?: string }) {
@@ -866,6 +887,7 @@ export class AccountingService {
       update: { value: closedUntil },
       create: { key: 'accounting_period_closed_until', value: closedUntil },
     });
+    this.structuredLogger.log('accounting.period.closed', { closedUntil });
     return { closedUntil };
   }
 

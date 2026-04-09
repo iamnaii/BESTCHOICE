@@ -547,6 +547,54 @@ export class SchedulerService {
   }
 
   /**
+   * Monthly on the 1st at 02:00: ChatMessage retention — soft-delete messages older than 6 months.
+   * ChatMessage has a deletedAt field so we use soft-delete to preserve referential integrity.
+   * DocumentAuditLog (no deletedAt) uses hard-delete in the companion cron below.
+   */
+  @Cron('0 2 1 * *')
+  async handleChatMessageRetention() {
+    this.logger.log('Starting monthly ChatMessage retention cleanup...');
+    try {
+      const now = new Date();
+      const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
+
+      const result = await this.prisma.chatMessage.updateMany({
+        where: {
+          createdAt: { lt: sixMonthsAgo },
+          deletedAt: null,
+        },
+        data: { deletedAt: now },
+      });
+
+      this.logger.log(`ChatMessage retention complete: ${result.count} messages soft-deleted (older than 6 months)`);
+    } catch (error) {
+      this.reportCronFailure('chat-message-retention', error);
+    }
+  }
+
+  /**
+   * Monthly on the 1st at 02:15: DocumentAuditLog retention — hard-delete entries older than 2 years.
+   * DocumentAuditLog has no deletedAt column (append-only audit trail) so we hard-delete.
+   * 2-year retention satisfies Thai e-commerce / PDPA audit trail requirements.
+   */
+  @Cron('15 2 1 * *')
+  async handleDocumentAuditLogRetention() {
+    this.logger.log('Starting monthly DocumentAuditLog retention cleanup...');
+    try {
+      const now = new Date();
+      const twoYearsAgo = new Date(now.getFullYear() - 2, now.getMonth(), now.getDate());
+
+      const result = await this.prisma.documentAuditLog.deleteMany({
+        where: { createdAt: { lt: twoYearsAgo } },
+      });
+
+      this.logger.log(`DocumentAuditLog retention complete: ${result.count} entries hard-deleted (older than 2 years)`);
+    } catch (error) {
+      this.reportCronFailure('document-audit-log-retention', error);
+    }
+  }
+
+  /**
    * Daily at 20:00 ICT (13:00 UTC): Send daily summary report via LINE to all OWNER users
    */
   @Cron('0 13 * * *') // 20:00 ICT

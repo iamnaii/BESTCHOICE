@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
+import { StructuredLoggerService } from '../../common/logger';
 import { Prisma, PaymentMethod } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { paginatedResponse } from '../../common/helpers/pagination.helper';
@@ -14,6 +15,7 @@ import { BUSINESS_RULES } from '../../utils/config.util';
 @Injectable()
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
+  private readonly structuredLogger = new StructuredLoggerService(PaymentsService.name);
 
   constructor(
     private prisma: PrismaService,
@@ -186,6 +188,19 @@ export class PaymentsService {
       }
 
       return result;
+    });
+
+    // Structured log for financial audit / observability
+    this.structuredLogger.log('payment.recorded', {
+      paymentId: updated.id,
+      contractId,
+      installmentNo,
+      amount,
+      totalPaid: Number(updated.amountPaid),
+      status: updated.status,
+      paymentMethod,
+      transactionRef: transactionRef ?? null,
+      recordedById,
     });
 
     // Financial audit trail
@@ -755,6 +770,17 @@ export class PaymentsService {
       }
 
       return { updated, originalLateFee, isNowFullyPaid, contractId: payment.contractId, installmentNo: payment.installmentNo };
+    });
+
+    // Structured log for late fee waiver observability
+    this.structuredLogger.log('payment.lateFeeWaived', {
+      paymentId,
+      contractId: result.contractId,
+      installmentNo: result.installmentNo,
+      originalLateFee: result.originalLateFee,
+      becameFullyPaid: result.isNowFullyPaid,
+      reason,
+      userId,
     });
 
     // Financial audit trail (outside transaction — audit failure shouldn't roll back waiver)

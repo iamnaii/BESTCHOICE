@@ -4,11 +4,13 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { StructuredLoggerService } from '../../common/logger';
 import { FinanceReceivableStatus, Prisma } from '@prisma/client';
 import { RecordReceiveDto, UpdateFinanceReceivableDto } from './dto/finance-receivable.dto';
 
 @Injectable()
 export class FinanceReceivableService {
+  private readonly structuredLogger = new StructuredLoggerService(FinanceReceivableService.name);
   constructor(private prisma: PrismaService) {}
 
   async findAll(filters: {
@@ -105,7 +107,7 @@ export class FinanceReceivableService {
 
     const status: FinanceReceivableStatus = receivedAmount.gte(netExpected) ? 'RECEIVED' : 'PARTIALLY_RECEIVED';
 
-    return this.prisma.financeReceivable.update({
+    const updated = await this.prisma.financeReceivable.update({
       where: { id },
       data: {
         receivedAmount,
@@ -120,6 +122,17 @@ export class FinanceReceivableService {
         branch: { select: { name: true } },
       },
     });
+    this.structuredLogger.log('financeReceivable.received', {
+      financeReceivableId: id,
+      financeCompany: record.financeCompany,
+      branchId: record.branchId,
+      expectedAmount: Number(record.netExpectedAmount),
+      receivedAmount: dto.receivedAmount,
+      status,
+      bankRef: dto.bankRef ?? null,
+      recordedById,
+    });
+    return updated;
   }
 
   async update(id: string, dto: UpdateFinanceReceivableDto) {

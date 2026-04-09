@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, InternalServerErrorException } from '@nestjs/common';
+import { StructuredLoggerService } from '../../common/logger';
 import { PlanType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
@@ -27,6 +28,7 @@ import {
 @Injectable()
 export class ContractsService {
   private readonly logger = new Logger(ContractsService.name);
+  private readonly structuredLogger = new StructuredLoggerService(ContractsService.name);
   constructor(
     private prisma: PrismaService,
   ) {}
@@ -432,7 +434,21 @@ export class ContractsService {
       }
     }
 
-    return this.findOne(contract!.id);
+    const created = await this.findOne(contract!.id);
+    this.structuredLogger.log('contract.created', {
+      contractId: created.id,
+      contractNumber: created.contractNumber,
+      customerId: created.customerId,
+      productId: created.productId,
+      branchId: created.branchId,
+      sellingPrice: Number(created.sellingPrice),
+      downPayment: Number(created.downPayment),
+      financedAmount: Number(created.financedAmount),
+      totalMonths: created.totalMonths,
+      monthlyPayment: Number(created.monthlyPayment),
+      salespersonId,
+    });
+    return created;
   }
 
   // === UPDATE: แก้ไขรายละเอียดสัญญา (เฉพาะ CREATING/REJECTED) ===

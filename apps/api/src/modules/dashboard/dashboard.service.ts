@@ -4,9 +4,11 @@ import { Cache } from 'cache-manager';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { calculateDaysOverdue, calculateDaysElapsed } from '../../utils/date.util';
+import { StructuredLoggerService } from '../../common/logger';
 
 @Injectable()
 export class DashboardService {
+  private readonly structuredLogger = new StructuredLoggerService(DashboardService.name);
   constructor(
     private prisma: PrismaService,
     @Inject(CACHE_MANAGER) private cache: Cache,
@@ -16,8 +18,10 @@ export class DashboardService {
   private async cached<T>(key: string, ttl: number, compute: () => Promise<T>): Promise<T> {
     const cached = await this.cache.get<T>(key);
     if (cached !== undefined && cached !== null) return cached;
+    const start = Date.now();
     const result = await compute();
     await this.cache.set(key, result, ttl);
+    this.structuredLogger.debug('dashboard.cache.miss', { key, computeMs: Date.now() - start });
     return result;
   }
 

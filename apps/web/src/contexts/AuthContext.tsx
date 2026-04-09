@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import * as Sentry from '@sentry/react';
-import api, { setAccessToken, getAccessToken } from '@/lib/api';
+import api, { setAccessToken } from '@/lib/api';
 
 interface User {
   id: string;
@@ -55,11 +55,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchMe = useCallback(async () => {
     try {
-      const token = getAccessToken();
-      if (!token) {
-        setIsLoading(false);
-        return;
-      }
+      // Always try /auth/me — even without an in-memory token.
+      // On page refresh the token is lost (in-memory), but the refresh
+      // token cookie is still there. The 401 interceptor in api.ts will
+      // auto-call /auth/refresh to get a new access token.
       const { data } = await api.get('/auth/me', { timeout: 10000 });
       const nextUser: User = {
         id: data.id,

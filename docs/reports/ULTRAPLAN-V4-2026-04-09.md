@@ -18,8 +18,14 @@
 6. **Accounting — 2 silent bugs ⚠️** (จากการตรวจเจาะลึก 2026-04-09, ดู Phase 4):
    - **N-002**: Journal entry ไม่ balance → `logger.warn()` + `return null` (ไม่ throw, ไม่ Sentry) → transaction สำเร็จแต่ไม่มี journal → งบการเงินผิด เงียบ
    - **N-003**: `writeOffBadDebt` ไม่สร้าง journal entry → Balance Sheet ยังแสดง HP Receivable หลังตัดหนี้สูญ
+7. **UX/UI debt — 5 Critical 0/5 fully fixed** (จาก audit 2026-04-06, ดู Phase 5):
+   - `components/ui/breadcrumb.tsx` มี แต่ **0 pages import ใช้**
+   - react-hook-form + zod + form wrapper ติดตั้ง แต่ **0 pages ใช้ `useForm`** → ไม่มี inline validation
+   - ContractCreatePage ไม่มี auto-save → browser crash = ข้อมูลหาย
+   - 6 จุด `alt=""` ยังอยู่ (+1 จาก 2026-04-06 เพราะไม่มี ESLint rule กัน)
+   - ไม่มี `useCopyToClipboard` hook — copy inline 4 จุดแบบซ้ำ ๆ
 
-**Target**: 4 PRs (เพิ่ม PR 4 สำหรับ accounting), ~50-65 tasks รวม. **Phase 4.1-4.2 เป็น P0 — ต้องรวมใน PR v4.1**
+**Target**: 4 PRs (v4.1-v4.4), ~95-110 tasks รวมทั้ง 5 phases. **Phase 4.1-4.2 + Phase 5A เป็น P0 — ต้องรวมใน PR v4.1**
 
 ---
 
@@ -296,6 +302,130 @@ Replace `Number(aggregate._sum.field || 0)` → `Prisma.Decimal` arithmetic, เ
 
 ---
 
+## Phase 5 — UX/UI Debt (NEW — Medium value, Low risk)
+
+**Theme**: ปิด UX/UI backlog จาก audit 2026-04-06 — หลัก ๆ คือ **accessibility** และ **form validation** (infrastructure มีครบแล้วแต่ไม่ได้เปิดใช้)
+
+### 5.0 สถานะ UX Critical 5 จาก audit 2026-04-06 (verified 2026-04-09)
+
+| # | Item | สถานะ | หลักฐาน |
+|---|------|------|--------|
+| **UX-C001** ไม่ใช้ Breadcrumb ในหน้า detail | ❌ **OPEN** — `components/ui/breadcrumb.tsx` ยัง import ใช้ **0 pages** | grep Breadcrumb in pages → 0 |
+| **UX-C002** ไม่มี inline form validation | ❌ **OPEN** — react-hook-form + zod + @hookform/resolvers + lib/schemas.ts ติดตั้ง **แต่ 0 pages ใช้ `useForm`** | grep useForm → เฉพาะใน `lib/schemas.ts` doc comment |
+| **UX-C003** ไม่มี auto-save ใน ContractCreatePage | ❌ **OPEN** | grep localStorage+draft/autosave → 0 |
+| **UX-C004** Alt text ว่าง (5 จุด) | ⚠️ **Partial** — ลดจาก 5 → **6 จุด** (เพิ่มจาก LiffFinanceVerify แทน): UsersPage × 2, StockTransfersPage × 1, LiffRegister × 1, LiffFinanceVerify × 1, DocumentUploadStep × 1 | grep `alt=""` |
+| **UX-C005** ไม่มี copy-to-clipboard | ⚠️ **Partial** — ContractDetailPage มี copy customer link แล้ว, UsersPage มี, LineOaSettingsPage มี **แต่ PaymentTable + POS + IMEI/contract number ยังไม่มี** | grep navigator.clipboard |
+
+**สรุป Critical**: 0/5 fully fixed — 2 partial, 3 ยังเต็ม ๆ
+
+### 5.1 สถานะ UX Warnings (highlights)
+
+| # | Item | สถานะ |
+|---|------|------|
+| UX-W001 Dynamic browser tab titles | ❌ OPEN — 0 pages ใช้ `document.title` / Helmet / useDocumentTitle |
+| UX-W002 Hardcoded colors in index.css | ❌ OPEN — ยังมี 10 hex codes ที่ `index.css:146,177,188,195,202,216,219,229,230,242` |
+| UX-W003 POS Flow ยาว | ❌ OPEN — POSPage.tsx 797 lines, ยัง 6 sections |
+| **UX-W004** YoY/MoM comparison on KPI cards | ⚠️ Partial — **API มี `getComparativePL` แล้ว** (ultraplan v3 W-012) **แต่ frontend ยังไม่ consume** |
+| UX-W005 PDF/Excel export for P&L | ❌ OPEN — 5 pages ใช้ exceljs/jspdf แต่ไม่รวม ProfitLossPage / FinancialAuditPage / FinanceReceivablePage |
+| UX-W006 Optimistic updates | ❌ OPEN — มีเฉพาะ `TodosPage.tsx` ที่ใช้ `onMutate` (1 ใน ~60 pages) |
+| UX-W007 Heading hierarchy | ⚠️ Partial — CustomersPage ใช้ h2→h3→h4 ถูก, POSPage ใช้ PageHeader (h1) แต่ body ไม่มี h2/h3 tags |
+| UX-W008 Form label htmlFor | ❌ OPEN — `htmlFor=` ปรากฏเฉพาะ 4 pages (Login, Register, Forgot, Reset) จาก ~40 form pages |
+| UX-W009 `<section>` semantic wrappers | ❌ OPEN — `<section>` ปรากฏเฉพาะ LandingPage (5) + ChatbotFinanceAnalyticsPage (4) จาก ~60 pages |
+
+**สรุป Warnings**: 0/9 fully fixed, 2 partial (W-004, W-007), 7 ยังเต็ม ๆ
+
+### 5.2 New UX findings จาก audit pass 2026-04-09
+
+#### [UX-N001] ไม่มี `<SkipLink>` (skip-to-main-content) — WCAG 2.1 A
+- **ปัญหา**: Keyboard/screen-reader users ต้อง Tab ผ่านทุก menu item ทุกครั้งที่เปลี่ยนหน้า
+- **แก้**: เพิ่ม `<a href="#main" className="sr-only focus:not-sr-only">ข้ามไปเนื้อหาหลัก</a>` ใน MainLayout + `<main id="main">`
+
+#### [UX-N002] ไม่มี `@media (prefers-reduced-motion)` handling
+- **ปัญหา**: มี animation ทั่วระบบ (skeleton, transitions, AnimatedCounter) แต่ไม่ respect OS setting
+- **แก้**: เพิ่ม CSS `@media (prefers-reduced-motion: reduce) { animation: none; transition: none; }` ใน index.css
+
+#### [UX-N003] Form inputs ส่วนใหญ่ไม่มี `autoComplete` attribute
+- **ปัญหา**: Browser autofill ใช้งานไม่ได้ — เฉพาะ 2 LIFF pages มี (จาก ~34 form pages)
+- **ผลกระทบ**: พนักงานต้องพิมพ์ชื่อ/ที่อยู่/เบอร์โทรซ้ำ ๆ ทุกครั้งที่สร้างลูกค้าใหม่
+- **แก้**: เพิ่ม `autoComplete="tel"` / `"email"` / `"name"` / `"postal-code"` / `"off"` (สำหรับ OTP) ในทุก form input
+
+#### [UX-N004] มี infra พร้อมแต่ **ไม่ migrate** forms ไปใช้ react-hook-form + zod
+- **ไฟล์**: `apps/web/src/lib/schemas.ts`, `apps/web/src/components/ui/form.tsx`
+- **ปัญหา**: Form component wrapper + zodResolver + schemas พร้อมใช้ แต่ **ไม่มี page ไหน adopt** → UX-C002 ไม่แก้ + effort ใหญ่ขึ้นทุกวัน
+- **แก้**: Migrate **3 forms สำคัญที่สุดก่อน** เป็น reference: POSPage (Sale form), ContractCreatePage (PlanDetailsStep), CustomersPage (Create/Edit customer)
+
+#### [UX-N005] Consistency check — navigator.clipboard ใช้ inline 4 จุด (ไม่มี hook)
+- **ปัญหา**: ซ้ำ code pattern — ควรมี `useCopyToClipboard` hook ใน `hooks/`
+- **แก้**: สร้าง `apps/web/src/hooks/useCopyToClipboard.ts` → `{ copy, copied, error }` + replace 4 call sites + ใช้สำหรับ UX-C005 (contract number, IMEI, phone)
+
+#### [UX-N006] 6 `alt=""` จุด (เพิ่มจาก report 2026-04-06 ที่บอก 5 จุด)
+- `StockTransfersPage.tsx:729`, `UsersPage.tsx:302,640`, `LiffRegister.tsx:183`, `LiffFinanceVerify.tsx:209` (ใหม่), `DocumentUploadStep.tsx:65`
+- Note: LiffFinanceVerify เป็น page ใหม่ที่เพิ่มเข้ามาหลัง 2026-04-06 → แสดงว่าไม่มี lint rule กัน ซึ่งเป็นเหตุให้ issue นี้กลับมาเรื่อย ๆ
+- **แก้ root cause**: เพิ่ม ESLint rule `jsx-a11y/alt-text` หรือ `@typescript-eslint/no-empty-strings` เพื่อ lint `alt=""`
+
+### 5.3 Phase 5 Tasks
+
+#### 5A: Quick A11y wins (Week 1)
+
+| # | Task | File(s) | Effort | Priority |
+|---|------|---------|--------|:--------:|
+| 5.1 | แก้ `alt=""` ทุกจุด (6 files) ให้ใส่ meaningful alt | UsersPage, StockTransfersPage, LiffRegister, LiffFinanceVerify, DocumentUploadStep × 6 locations | S | **P0** |
+| 5.2 | เพิ่ม ESLint rule `jsx-a11y/alt-text` เป็น error (กัน regression) | `apps/web/.eslintrc.cjs` หรือ `eslint.config.js` | S | P0 |
+| 5.3 | สร้าง `<SkipLink>` component + wire เข้า `MainLayout.tsx` + `<main id="main">` | `apps/web/src/components/layout/MainLayout.tsx`, `SkipLink.tsx` (new) | S | P1 |
+| 5.4 | เพิ่ม `@media (prefers-reduced-motion: reduce)` ใน index.css | `apps/web/src/index.css` | S | P1 |
+| 5.5 | สร้าง `useCopyToClipboard` hook + migrate 4 existing call sites | `apps/web/src/hooks/useCopyToClipboard.ts` (new) | S | P1 |
+| 5.6 | เพิ่ม copy button ข้างเลขสัญญาใน `ContractDetailPage` + `PaymentTable` + `POSPage` (IMEI + phone) | 3 pages | S | P1 |
+| 5.7 | **[UX-C001]** Wire Breadcrumb เข้า 5 หน้า detail: Contract, Customer, Product, Supplier, Inspection | 5 detail pages + `PageHeader.tsx` | M | P1 |
+
+#### 5B: Form modernization (Week 2-3)
+
+| # | Task | File(s) | Effort | Priority |
+|---|------|---------|--------|:--------:|
+| 5.8 | **[UX-C002 reference 1]** Migrate `POSPage` sale form → `react-hook-form` + zodResolver + inline errors | `apps/web/src/pages/POSPage.tsx` | M | P1 |
+| 5.9 | **[UX-C002 reference 2]** Migrate `PlanDetailsStep` ใน ContractCreate → react-hook-form + zod | `apps/web/src/pages/ContractCreatePage/components/PlanDetailsStep.tsx` | M | P1 |
+| 5.10 | **[UX-C002 reference 3]** Migrate `CustomersPage` create/edit modal → react-hook-form + zod (schema มีอยู่แล้วใน `lib/schemas.ts`) | `apps/web/src/pages/CustomersPage.tsx` | M | P1 |
+| 5.11 | **[UX-C003]** Auto-save draft ใน ContractCreatePage (localStorage, 30s interval) + "กู้คืนข้อมูล?" prompt | `apps/web/src/pages/ContractCreatePage/index.tsx` + `useDraftStorage` hook (new) | M | P1 |
+| 5.12 | Document form migration guide ใน `.claude/rules/frontend.md` (react-hook-form + zod pattern) | `.claude/rules/frontend.md` | S | P2 |
+| 5.13 | Migrate PaymentModals, BranchesPage, UsersPage create/edit forms (incremental) | 3 pages | M | P2 |
+
+#### 5C: Accessibility sweep (Week 3)
+
+| # | Task | File(s) | Effort | Priority |
+|---|------|---------|--------|:--------:|
+| 5.14 | **[UX-W008]** Add `htmlFor=` / `id=` associations ใน 30+ form pages (ตาม pattern ของ react-hook-form wrapper) | ทุก form page | M | P1 |
+| 5.15 | **[UX-W009]** Wrap content regions ใน `<section aria-labelledby="...">` สำหรับ top 10 pages | Top pages with multiple regions | M | P2 |
+| 5.16 | **[UX-N003]** Add `autoComplete` attribute ใน CustomersPage (name, tel, email, postal-code, bday) + UsersPage + expense forms | `CustomersPage`, `UsersPage`, `ExpensesPage` ฯลฯ | S | P2 |
+| 5.17 | Run `axe-core` or `@axe-core/react` automated audit + fix top violations (target ≥ 95/100 lighthouse a11y) | Whole app | M | P2 |
+| 5.18 | Add `@axe-core/playwright` scan ใน 5 most-critical E2E tests (login, POS, contract-create, payment, dashboard) | `apps/web/e2e/*.spec.ts` | M | P2 |
+
+#### 5D: Medium UX improvements (Week 4)
+
+| # | Task | File(s) | Effort | Priority |
+|---|------|---------|--------|:--------:|
+| 5.19 | **[UX-W001]** Dynamic tab titles via `useDocumentTitle` hook (20 important pages) | `hooks/useDocumentTitle.ts` (new) + 20 pages | M | P2 |
+| 5.20 | **[UX-W002]** แทน 10 hardcoded hex colors ใน `index.css` → CSS variables | `apps/web/src/index.css:146,177,188,...` | S | P2 |
+| 5.21 | **[UX-W004]** Wire frontend ของ DashboardKPIs + ProfitLossPage เข้า `getComparativePL` API → แสดง badge "↑12% vs เดือนก่อน" | `DashboardKPIs.tsx`, `ProfitLossPage.tsx`, `api.ts` | M | P2 |
+| 5.22 | **[UX-W005]** PDF export สำหรับ ProfitLossPage (ใช้ jspdf ที่มีอยู่แล้วใน bundle chunk) | `ProfitLossPage.tsx` | M | P2 |
+| 5.23 | **[UX-W005]** Excel export สำหรับ FinanceReceivablePage (ใช้ exceljs) | `FinanceReceivablePage.tsx` | S | P2 |
+| 5.24 | **[UX-W006]** Optimistic update pattern ใน PaymentsPage (delete, void) + CustomersPage (delete) | 2 pages | M | P3 |
+| 5.25 | **[UX-W007]** Audit + fix heading hierarchy ใน POSPage (เพิ่ม h2 ก่อน section labels) | `POSPage.tsx` | S | P3 |
+
+**Effort รวม Phase 5**: L (~3-4 สัปดาห์)
+**Risk**: Low-Med — form migration เสี่ยงต้องการ regression testing แต่ไม่กระทบ business logic
+
+### 5.4 Out of scope จาก Phase 5
+
+| # | Item | เหตุผล |
+|---|------|------|
+| UX-W003 POS flow redesign | ต้อง UX research + business review — อย่า redesign ก่อน user testing |
+| UX-S001 Form keyboard shortcuts | Nice-to-have — รอทดสอบ base form migration ก่อน |
+| UX-S003 Accordion calculations | Nice-to-have — UX improvement only |
+| UX-S005 YoY chart overlay | ต้อง design review — chart ปัจจุบันใช้งานได้ |
+| UX-S007 Sidebar search | Nice-to-have, คน search ผ่าน Ctrl+K อยู่แล้ว |
+| Full Metronic redesign | อยู่ใน Phase 8 ของ master plan — ทำหลังสุด |
+
+---
+
 ## Success Criteria for v4
 
 - [ ] 0 TypeScript errors
@@ -312,24 +442,35 @@ Replace `Number(aggregate._sum.field || 0)` → `Prisma.Decimal` arithmetic, เ
 - [ ] **[Accounting] writeOffBadDebt สร้าง journal entry + test coverage**
 - [ ] **[Accounting] Trial Balance end-to-end test: contract + payment + expense + write-off → Dr = Cr**
 - [ ] **[Accounting] `.claude/rules/accounting.md` documenting straight-line interest policy**
+- [ ] **[UX] 0 `alt=""` ใน `apps/web/src/` + ESLint `jsx-a11y/alt-text` enforced**
+- [ ] **[UX] 3 reference forms migrated to react-hook-form + zod (POSPage, ContractCreate/PlanDetails, CustomersPage)**
+- [ ] **[UX] Breadcrumb wired into 5+ detail pages**
+- [ ] **[UX] ContractCreatePage auto-save draft (localStorage + recovery prompt)**
+- [ ] **[UX] `useCopyToClipboard` hook + applied to contract number / IMEI / phone in POS + PaymentTable + ContractDetail**
+- [ ] **[UX] SkipLink + `prefers-reduced-motion` + Lighthouse a11y ≥ 95**
+- [ ] **[UX] Frontend consumes `getComparativePL` → KPI cards แสดง "vs เดือนก่อน"**
 
 ---
 
 ## Timeline
 
 ```
-Phase 1 (Silent Bleeders)              │ Week 1           → PR v4.1
+Phase 1 (Silent Bleeders)               │ Week 1           → PR v4.1
 Phase 4.1-4.2 (P0: Journal silent skip) │ Week 1 (ด่วน)   │ (merge with v4.1)
-Phase 2A (Decimal cleanup)             │ Week 2           │
+Phase 5A (Quick a11y + copy hook)       │ Week 1-2         │ (merge with v4.1)
+Phase 2A (Decimal cleanup)              │ Week 2           │
 Phase 4.3-4.6 (Bad debt journal, tests) │ Week 2-3         │
-Phase 2B (Accounting/payments spec)    │ Week 3-4         │ → PR v4.2
-Phase 4.7-4.12 (Policy doc, unearned interest) │ Week 4   │
-Phase 3A (Retention + Backup)          │ Week 5           │
-Phase 3B (Observability)               │ Week 5-6         │ → PR v4.3
-Phase 3C (Refactoring, optional)       │ Week 7+          │ → separate PR(s)
+Phase 2B (Accounting/payments spec)     │ Week 3-4         │ → PR v4.2
+Phase 5B (Form modernization)           │ Week 3-5         │
+Phase 4.7-4.12 (Policy, unearned int.)  │ Week 4           │
+Phase 5C (A11y sweep)                   │ Week 5           │ → PR v4.3
+Phase 3A (Retention + Backup)           │ Week 6           │
+Phase 3B (Observability)                │ Week 6-7         │ → PR v4.4
+Phase 5D (Medium UX)                    │ Week 6-7         │
+Phase 3C (Refactoring, optional)        │ Week 8+          │ → separate PR(s)
 ```
 
-**IMPORTANT**: Phase 4.1-4.2 (journal unbalanced → throw + Sentry) ควรรวมใน **PR v4.1** เพราะเป็น P0 — ช่องโหว่เงียบที่มีอยู่ในระบบแล้ว
+**IMPORTANT**: Phase 4.1-4.2 (journal unbalanced) + Phase 5A (a11y quick wins) ควรรวมใน **PR v4.1** เพราะเป็น P0 — ช่องโหว่เงียบและ a11y regression ที่มีอยู่ในระบบแล้ว
 
 ---
 

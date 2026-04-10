@@ -109,7 +109,9 @@ api.interceptors.response.use(
       // Don't try to refresh if the failing request IS the refresh or login
       if (originalRequest.url?.includes('/auth/refresh') || originalRequest.url?.includes('/auth/login')) {
         setAccessToken(null);
-        if (window.location.pathname !== '/login') {
+        const path = window.location.pathname;
+        const isPublicPage = path === '/login' || path === '/landing' || path.startsWith('/liff/') || path.startsWith('/pay/') || path.startsWith('/customer-access/') || path.startsWith('/verify/');
+        if (!isPublicPage) {
           window.location.href = '/login';
         }
         return Promise.reject(error);

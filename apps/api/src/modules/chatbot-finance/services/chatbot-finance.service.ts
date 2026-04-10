@@ -229,7 +229,7 @@ export class ChatbotFinanceService {
     if (aiReply) {
       const intent = aiReply.handoffTriggered ? INTENTS.AI_HANDOFF : INTENTS.AI_REPLY;
       // Approximate cost: Sonnet 4.5 input $3/M, output $15/M (checked 2026-04-10)
-      // Does not account for cache hits — treat as upper-bound estimate
+      // With prompt caching enabled, actual input cost is lower (~$0.30/M for cache hits)
       const costUsd =
         (aiReply.inputTokens * 3 + aiReply.outputTokens * 15) / 1_000_000;
       await this.replyAndSave(session.id, event.replyToken, aiReply.text, intent, {

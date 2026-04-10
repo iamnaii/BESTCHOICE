@@ -32,8 +32,8 @@ export class FinanceAiService {
   private readonly logger = new Logger(FinanceAiService.name);
   private readonly anthropic: Anthropic | null;
 
-  // Sonnet สำหรับ tool use — Haiku ใช้ tools ห่วยกว่า
-  private readonly model = 'claude-sonnet-4-5-20250929';
+  // Sonnet for tool use — accurate for multi-step conversations
+  private readonly modelSonnet = 'claude-sonnet-4-5-20250929';
   private readonly maxTokens = 1024;
   private readonly historyLimit = 20;
 
@@ -81,13 +81,20 @@ export class FinanceAiService {
       let totalOutput = 0;
       let handoffTriggered = false;
       const toolsUsed: string[] = [];
+      let activeModel = this.modelSonnet; // Start with Sonnet (tool-capable)
 
       // Tool use loop
       for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
         const response = await this.anthropic.messages.create({
-          model: this.model,
+          model: activeModel,
           max_tokens: this.maxTokens,
-          system: systemPrompt,
+          system: [
+            {
+              type: 'text',
+              text: systemPrompt,
+              cache_control: { type: 'ephemeral' },
+            },
+          ],
           tools: FINANCE_TOOLS,
           messages,
         });
@@ -105,7 +112,7 @@ export class FinanceAiService {
           }
           return {
             text,
-            model: this.model,
+            model: activeModel,
             inputTokens: totalInput,
             outputTokens: totalOutput,
             toolsUsed,

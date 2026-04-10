@@ -192,17 +192,38 @@ export class FinanceToolsService {
 
   // ─── private helpers ─────────────────────────────────────
 
+  /**
+   * Find active contract for customer.
+   * If multiple contracts exist, returns the most recent one
+   * and includes a `hasMultipleContracts` flag for disambiguation.
+   */
   private async findActiveContract(customerId: string) {
-    return this.prisma.contract.findFirst({
+    const contracts = await this.prisma.contract.findMany({
       where: {
         customerId,
         deletedAt: null,
         status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] },
       },
       orderBy: { createdAt: 'desc' },
+      take: 5,
       include: {
         product: { select: { model: true, color: true } },
       },
+    });
+
+    if (contracts.length === 0) return null;
+
+    const primary = contracts[0];
+    // Attach disambiguation info when multiple contracts exist
+    return Object.assign(primary, {
+      hasMultipleContracts: contracts.length > 1,
+      ...(contracts.length > 1 && {
+        contractSummaries: contracts.map((c) => ({
+          contractNumber: c.contractNumber,
+          product: c.product?.model ?? 'ไม่ระบุ',
+          status: c.status,
+        })),
+      }),
     });
   }
 

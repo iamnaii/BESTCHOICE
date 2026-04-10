@@ -1,4 +1,5 @@
 import { Body, Controller, HttpCode, Logger, Post, UseGuards } from '@nestjs/common';
+import { SkipCsrf } from '../../guards/skip-csrf.decorator';
 import { ChatbotFinanceService } from './services/chatbot-finance.service';
 import { LineFinanceClientService } from './services/line-finance-client.service';
 import { AutoTriggerService } from './services/auto-trigger.service';
@@ -50,6 +51,7 @@ export class ChatbotFinanceController {
   ) {}
 
   @Post('webhook')
+  @SkipCsrf()
   @HttpCode(200)
   @UseGuards(LineFinanceWebhookGuard)
   async webhook(@Body() body: LineFinanceWebhookBody): Promise<{ ok: true }> {

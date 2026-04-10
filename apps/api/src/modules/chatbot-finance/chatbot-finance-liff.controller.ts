@@ -1,5 +1,6 @@
 import { Body, Controller, Get, HttpCode, Logger, Post, Query } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
+import { SkipCsrf } from '../../guards/skip-csrf.decorator';
 import { IsNumber, IsOptional, IsString, Length, Matches, Max, Min } from 'class-validator';
 import { VerificationService } from './services/verification.service';
 import { FeedbackService } from './services/feedback.service';
@@ -57,6 +58,7 @@ class SubmitFeedbackDto {
  *   POST /api/chatbot/finance/liff/verify-otp              ← verify + bind
  */
 @Controller('chatbot/finance/liff')
+@SkipCsrf()
 export class ChatbotFinanceLiffController {
   private readonly logger = new Logger(ChatbotFinanceLiffController.name);
 

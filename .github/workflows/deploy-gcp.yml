@@ -232,7 +232,9 @@ jobs:
           SMS_API_SECRET=SMS_API_SECRET:latest,\
           SMTP_PASS=SMTP_PASS:latest,\
           PAYSOLUTIONS_SECRET_KEY=PAYSOLUTIONS_SECRET_KEY:latest,\
-          PAYSOLUTIONS_API_KEY=PAYSOLUTIONS_API_KEY:latest" \
+          PAYSOLUTIONS_API_KEY=PAYSOLUTIONS_API_KEY:latest,\
+          LINE_FINANCE_CHANNEL_SECRET=LINE_FINANCE_CHANNEL_SECRET:latest,\
+          LINE_FINANCE_CHANNEL_ACCESS_TOKEN=LINE_FINANCE_CHANNEL_ACCESS_TOKEN:latest" \
             --set-env-vars="\
           TZ=Asia/Bangkok,\
           NODE_ENV=production,\

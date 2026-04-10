@@ -83,6 +83,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [logout]);
 
   useEffect(() => {
+    // Skip auth check entirely on public LIFF/payment pages — they don't need auth
+    // and attempting refresh without cookies triggers redirect loops
+    const path = window.location.pathname;
+    const isPublicPage = path.startsWith('/liff/') || path.startsWith('/pay/') || path.startsWith('/customer-access/') || path.startsWith('/verify/');
+    if (isPublicPage) {
+      setIsLoading(false);
+      return;
+    }
+
     let cancelled = false;
     fetchMe().finally(() => {
       if (cancelled) return;

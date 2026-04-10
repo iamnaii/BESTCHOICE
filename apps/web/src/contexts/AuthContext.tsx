@@ -89,7 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const path = window.location.pathname;
     const search = window.location.search;
     const isLiffRedirect = search.includes('liff.state');
-    const isPublicPage = isLiffSubdomain || isLiffRedirect || path.startsWith('/liff/') || path.startsWith('/pay/') || path.startsWith('/customer-access/') || path.startsWith('/verify/');
+    const isPublicPage = isCustomerSubdomain || isLiffRedirect || path.startsWith('/liff/') || path.startsWith('/pay/') || path.startsWith('/customer-access/') || path.startsWith('/verify/');
     if (isPublicPage) {
       setIsLoading(false);
       return;

@@ -31,7 +31,14 @@ describe('VerificationService', () => {
       chatSession: {
         updateMany: jest.fn().mockResolvedValue({}),
       },
-      $transaction: jest.fn().mockImplementation((cb) => cb(prisma)),
+      // Separate tx mock to verify service uses tx inside transaction, not this.prisma
+      $transaction: jest.fn().mockImplementation((cb) => {
+        const tx = {
+          customerLineLink: { upsert: jest.fn().mockResolvedValue({}) },
+          chatSession: { updateMany: jest.fn().mockResolvedValue({}) },
+        };
+        return cb(tx);
+      }),
     };
     notifications = {
       sendSmsFromQueue: jest.fn().mockResolvedValue(undefined),
@@ -106,14 +113,24 @@ describe('VerificationService', () => {
     });
 
     it('verifies correct OTP and binds customer', async () => {
-      // We need to match the hash — use the service's internal hash logic
-      // SHA-256 of '123456'
-      const crypto = require('crypto');
-      const hash = crypto.createHash('sha256').update('123456').digest('hex');
-      prisma.chatbotOtpRequest.findUnique.mockResolvedValue(makeRecord(hash));
+      // Request OTP first to get the real hash stored by the service
+      prisma.customer.findFirst.mockResolvedValue({ id: 'c1', name: 'สมชาย', phone: '0891234567' });
+      await service.requestOtp({ lineUserId: 'U123', phone: '0891234567' });
+
+      // Extract the hash that was actually stored by the service
+      const upsertCall = prisma.chatbotOtpRequest.upsert.mock.calls[0][0];
+      const storedHash = upsertCall.create.hash;
+
+      // Now mock findUnique to return that hash
+      prisma.chatbotOtpRequest.findUnique.mockResolvedValue(makeRecord(storedHash));
       prisma.customer.findUnique.mockResolvedValue({ id: 'c1', name: 'สมชาย' });
 
-      const result = await service.verifyOtp({ lineUserId: 'U123', otp: '123456' });
+      // Extract the OTP that was sent via SMS
+      const smsCall = notifications.sendSmsFromQueue.mock.calls[0][1] as string;
+      const otpMatch = smsCall.match(/(\d{6})/);
+      const otp = otpMatch![1];
+
+      const result = await service.verifyOtp({ lineUserId: 'U123', otp });
 
       expect(result.customerId).toBe('c1');
       expect(result.customerName).toBe('สมชาย');

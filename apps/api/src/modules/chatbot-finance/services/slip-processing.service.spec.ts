@@ -130,13 +130,15 @@ describe('SlipProcessingService', () => {
     expect(result.reply).toContain('ไม่ใช่สลิป');
   });
 
-  it('handles S3 upload failure', async () => {
+  it('handles S3 upload failure and skips vision', async () => {
     storage.upload.mockRejectedValue(new Error('S3 error'));
 
     const result = await service.processSlip(defaultParams);
 
     expect(result.ok).toBe(false);
     expect(result.reply).toContain('อัปโหลดสลิปไม่สำเร็จ');
+    // Vision should NOT be called if upload fails (early return)
+    expect(vision.extractSlip).not.toHaveBeenCalled();
   });
 
   it('handles no active contract', async () => {

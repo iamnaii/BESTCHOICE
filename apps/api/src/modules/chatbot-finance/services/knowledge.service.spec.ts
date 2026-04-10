@@ -138,7 +138,7 @@ describe('KnowledgeService', () => {
       expect(result.intent).toBe('new_faq');
     });
 
-    it('soft deletes KB entry', async () => {
+    it('soft deletes KB entry (sets deletedAt + active=false)', async () => {
       prisma.chatKnowledgeBase.findFirst.mockResolvedValue({ id: 'kb-1' });
 
       await service.remove('kb-1');
@@ -146,7 +146,10 @@ describe('KnowledgeService', () => {
       expect(prisma.chatKnowledgeBase.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'kb-1' },
-          data: expect.objectContaining({ active: false }),
+          data: expect.objectContaining({
+            active: false,
+            deletedAt: expect.any(Date),
+          }),
         }),
       );
     });

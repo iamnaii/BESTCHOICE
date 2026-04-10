@@ -123,7 +123,9 @@ api.interceptors.response.use(
         return api(originalRequest);
       } catch (refreshError) {
         setAccessToken(null);
-        if (window.location.pathname !== '/login' && window.location.pathname !== '/landing') {
+        const path = window.location.pathname;
+        const isPublicPage = path === '/login' || path === '/landing' || path.startsWith('/liff/') || path.startsWith('/pay/') || path.startsWith('/customer-access/') || path.startsWith('/verify/');
+        if (!isPublicPage) {
           window.location.href = '/login';
         }
         return Promise.reject(refreshError);

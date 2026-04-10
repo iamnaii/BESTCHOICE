@@ -6,8 +6,9 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createHmac } from 'crypto';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { Request } from 'express';
+import { RawBodyRequest } from '../../../common/types/raw-body-request';
 
 /**
  * Verify LINE webhook signature สำหรับ Finance OA
@@ -44,10 +45,14 @@ export class LineFinanceWebhookGuard implements CanActivate {
       throw new UnauthorizedException('Missing LINE signature');
     }
 
-    const body = JSON.stringify(request.body);
+    // Use raw body bytes for HMAC — JSON.stringify may differ from LINE's original payload
+    const rawBody = (request as unknown as RawBodyRequest).rawBody;
+    const body = rawBody ?? Buffer.from(JSON.stringify(request.body));
     const expected = createHmac('SHA256', this.channelSecret).update(body).digest('base64');
 
-    if (signature !== expected) {
+    const sigBuf = Buffer.from(signature, 'base64');
+    const expBuf = Buffer.from(expected, 'base64');
+    if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) {
       this.logger.warn('Invalid LINE Finance webhook signature');
       throw new UnauthorizedException('Invalid LINE signature');
     }

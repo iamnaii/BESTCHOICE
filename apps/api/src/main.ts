@@ -8,6 +8,8 @@ if (process.env.SENTRY_DSN) require('./sentry');
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger, VersioningType } from '@nestjs/common';
 import { json, urlencoded } from 'express';
+import { IncomingMessage } from 'http';
+import { RawBodyRequest } from './common/types/raw-body-request';
 import cookieParser from 'cookie-parser';
 import { HttpAdapterHost } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -25,7 +27,17 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   // Increase body size limit for base64 image uploads
-  app.use(json({ limit: '20mb' }));
+  // `verify` callback captures raw body bytes for LINE webhook HMAC verification
+  app.use(
+    json({
+      limit: '20mb',
+      verify: (req: IncomingMessage, _res, buf) => {
+        if (buf?.length) {
+          (req as RawBodyRequest).rawBody = buf;
+        }
+      },
+    }),
+  );
   app.use(urlencoded({ extended: true, limit: '20mb' }));
   app.use(cookieParser());
 

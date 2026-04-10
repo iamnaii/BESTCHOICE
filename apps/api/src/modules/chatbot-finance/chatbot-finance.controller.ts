@@ -9,6 +9,29 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 
 /**
+ * In-memory dedup for LINE webhook redeliveries.
+ * TTL: 5 minutes — LINE retries within seconds, so 5min is very safe.
+ */
+class WebhookDedup {
+  private seen = new Map<string, number>();
+  private readonly ttlMs = 5 * 60 * 1000;
+
+  isDuplicate(eventId: string): boolean {
+    this.cleanup();
+    if (this.seen.has(eventId)) return true;
+    this.seen.set(eventId, Date.now());
+    return false;
+  }
+
+  private cleanup(): void {
+    const cutoff = Date.now() - this.ttlMs;
+    for (const [key, ts] of this.seen) {
+      if (ts < cutoff) this.seen.delete(key);
+    }
+  }
+}
+
+/**
  * Webhook + admin endpoints สำหรับ Finance Bot ("น้องเบส")
  *
  * Routes:
@@ -18,6 +41,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 @Controller('chatbot/finance')
 export class ChatbotFinanceController {
   private readonly logger = new Logger(ChatbotFinanceController.name);
+  private readonly dedup = new WebhookDedup();
 
   constructor(
     private chatbotService: ChatbotFinanceService,
@@ -35,6 +59,18 @@ export class ChatbotFinanceController {
 
     // Process events sequentially (LINE allows up to ~5 events per call)
     for (const event of body.events) {
+      // Dedup: skip redelivered or already-processed events
+      // Note: in-memory dedup only works within a single process. For multi-instance
+      // deployments (Cloud Run scale-out), consider Redis-based dedup.
+      if (event.deliveryContext?.isRedelivery) {
+        this.logger.log(`[Finance webhook] Skip redelivery: ${event.webhookEventId}`);
+        continue;
+      }
+      if (event.webhookEventId && this.dedup.isDuplicate(event.webhookEventId)) {
+        this.logger.log(`[Finance webhook] Skip duplicate event: ${event.webhookEventId}`);
+        continue;
+      }
+
       try {
         await this.chatbotService.handleEvent(event);
       } catch (err) {

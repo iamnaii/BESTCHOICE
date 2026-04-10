@@ -18,6 +18,9 @@ const FALLBACK_REPLY =
 
 const VERIFY_PATH = '/liff/finance-verify';
 
+/** Max chars sent to Claude — prevents token bomb from oversized messages */
+const MAX_USER_TEXT_LENGTH = 2000;
+
 /**
  * Orchestration สำหรับ Finance Bot
  *
@@ -190,13 +193,17 @@ export class ChatbotFinanceService {
       return;
     }
 
-    // Text → AI
-    const userText = event.message.text.trim();
+    // Text → AI (save full text, truncate for AI to prevent token bomb)
+    const fullText = event.message.text.trim();
     await this.sessions.saveMessage({
       sessionId: session.id,
       role: MessageRole.CUSTOMER,
-      text: userText,
+      text: fullText,
     });
+    const userText =
+      fullText.length > MAX_USER_TEXT_LENGTH
+        ? fullText.slice(0, MAX_USER_TEXT_LENGTH) + '…'
+        : fullText;
 
     if (!linkStatus.customerId || !linkStatus.customerName) {
       this.logger.warn(`[Finance] linked but missing customer data for ${userId.slice(0, 8)}...`);
@@ -220,10 +227,16 @@ export class ChatbotFinanceService {
 
     if (aiReply) {
       const intent = aiReply.handoffTriggered ? 'ai_handoff' : 'ai_reply';
+      // Approximate cost: Sonnet 4.5 input $3/M, output $15/M (checked 2026-04-10)
+      // Does not account for cache hits — treat as upper-bound estimate
+      const costUsd =
+        (aiReply.inputTokens * 3 + aiReply.outputTokens * 15) / 1_000_000;
       await this.replyAndSave(session.id, event.replyToken, aiReply.text, intent, {
         model: aiReply.model,
         inputTokens: aiReply.inputTokens,
         outputTokens: aiReply.outputTokens,
+        toolsUsed: aiReply.toolsUsed,
+        costUsd,
       });
     } else {
       await this.replyAndSave(session.id, event.replyToken, FALLBACK_REPLY, 'fallback');
@@ -288,7 +301,13 @@ export class ChatbotFinanceService {
     replyToken: string,
     text: string,
     intent?: string,
-    modelMeta?: { model: string; inputTokens: number; outputTokens: number },
+    modelMeta?: {
+      model: string;
+      inputTokens: number;
+      outputTokens: number;
+      toolsUsed?: string[];
+      costUsd?: number;
+    },
   ): Promise<void> {
     try {
       await this.lineClient.replyText(replyToken, text);
@@ -306,6 +325,8 @@ export class ChatbotFinanceService {
       modelUsed: modelMeta?.model,
       inputTokens: modelMeta?.inputTokens,
       outputTokens: modelMeta?.outputTokens,
+      toolsUsed: modelMeta?.toolsUsed,
+      costUsd: modelMeta?.costUsd,
     });
   }
 }

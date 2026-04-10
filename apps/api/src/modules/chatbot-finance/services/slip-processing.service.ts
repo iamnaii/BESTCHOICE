@@ -1,4 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { StorageService } from '../../storage/storage.service';
 import { VisionService, SlipExtraction } from './vision.service';
@@ -99,14 +101,17 @@ export class SlipProcessingService {
         amount: extracted.amount,
         note: `โอนผิดบัญชี: ${extracted.toAccount}`,
       });
-      // Notify staff
-      void this.staffNotify.notifySlipReview({
+      // Notify staff (fire-and-forget with error capture)
+      this.staffNotify.notifySlipReview({
         customerName: contract.customer.name,
         customerPhone: contract.customer.phone,
         contractNumber: contract.contractNumber,
         slipAmount: extracted.amount ?? 0,
         reason: 'wrong_account',
         evidenceId: evidence.id,
+      }).catch((err) => {
+        this.logger.error(`[Slip] Staff notify failed: ${err instanceof Error ? err.message : err}`);
+        Sentry.captureException(err, { tags: { module: 'chatbot-finance', action: 'slip_notify' } });
       });
       return {
         ok: false,
@@ -133,8 +138,13 @@ export class SlipProcessingService {
     const expectedAmount = nextPayment ? Number(nextPayment.amountDue) : null;
     const slipAmount = extracted.amount ?? 0;
 
+    // Compare using Decimal to avoid floating-point precision errors on money
     const matched =
-      expectedAmount !== null && Math.abs(slipAmount - expectedAmount) <= AMOUNT_TOLERANCE;
+      expectedAmount !== null &&
+      new Prisma.Decimal(slipAmount)
+        .sub(new Prisma.Decimal(expectedAmount))
+        .abs()
+        .lte(new Prisma.Decimal(AMOUNT_TOLERANCE));
 
     // 6. สร้าง PaymentEvidence (status: PENDING_REVIEW เสมอ — admin อนุมัติ manual)
     const evidence = await this.createEvidence({
@@ -160,13 +170,16 @@ export class SlipProcessingService {
     }
 
     if (expectedAmount === null) {
-      void this.staffNotify.notifySlipReview({
+      this.staffNotify.notifySlipReview({
         customerName: contract.customer.name,
         customerPhone: contract.customer.phone,
         contractNumber: contract.contractNumber,
         slipAmount,
         reason: 'unmatched',
         evidenceId: evidence.id,
+      }).catch((err) => {
+        this.logger.error(`[Slip] Staff notify failed: ${err instanceof Error ? err.message : err}`);
+        Sentry.captureException(err, { tags: { module: 'chatbot-finance', action: 'slip_notify' } });
       });
       return {
         ok: true,
@@ -177,7 +190,7 @@ export class SlipProcessingService {
     }
 
     // ยอดไม่ตรง — notify staff
-    void this.staffNotify.notifySlipReview({
+    this.staffNotify.notifySlipReview({
       customerName: contract.customer.name,
       customerPhone: contract.customer.phone,
       contractNumber: contract.contractNumber,
@@ -185,6 +198,9 @@ export class SlipProcessingService {
       expectedAmount,
       reason: 'amount_mismatch',
       evidenceId: evidence.id,
+    }).catch((err) => {
+      this.logger.error(`[Slip] Staff notify failed: ${err instanceof Error ? err.message : err}`);
+      Sentry.captureException(err, { tags: { module: 'chatbot-finance', action: 'slip_notify' } });
     });
 
     return {

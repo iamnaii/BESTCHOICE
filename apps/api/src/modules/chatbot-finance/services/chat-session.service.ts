@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { ChatChannel, ChatSession, MessageRole, MessageType } from '@prisma/client';
+import { ChatChannel, ChatSession, MessageRole, MessageType, Prisma } from '@prisma/client';
 
 /**
  * จัดการ ChatSession + ChatMessage สำหรับ Finance Bot
@@ -55,6 +55,9 @@ export class ChatSessionService {
     modelUsed?: string;
     inputTokens?: number;
     outputTokens?: number;
+    toolsUsed?: string[];
+    costUsd?: number;
+    visionExtracted?: Prisma.InputJsonValue;
   }) {
     const msg = await this.prisma.chatMessage.create({
       data: {
@@ -68,6 +71,9 @@ export class ChatSessionService {
         modelUsed: params.modelUsed,
         inputTokens: params.inputTokens,
         outputTokens: params.outputTokens,
+        toolsUsed: params.toolsUsed ?? [],
+        costUsd: params.costUsd,
+        visionExtracted: params.visionExtracted,
       },
     });
 

@@ -1,7 +1,8 @@
 import { CanActivate, ExecutionContext, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createHmac } from 'crypto';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { Request } from 'express';
+import { RawBodyRequest } from '../../common/types/raw-body-request';
 import { PrismaService } from '../../prisma/prisma.service';
 
 /**
@@ -38,10 +39,14 @@ export class LineWebhookGuard implements CanActivate {
       }
     }
 
-    // Skip verification if no secret configured anywhere
     if (!this.channelSecret) {
-      this.logger.warn('LINE_CHANNEL_SECRET not configured, skipping webhook verification');
-      return true;
+      const isDev = process.env.NODE_ENV !== 'production';
+      if (isDev) {
+        this.logger.warn('LINE_CHANNEL_SECRET not configured — skipping verification (DEV ONLY)');
+        return true;
+      }
+      this.logger.error('LINE_CHANNEL_SECRET missing in production — refusing webhook');
+      throw new UnauthorizedException('Webhook signature verification not configured');
     }
 
     const signature = request.headers['x-line-signature'] as string;
@@ -51,13 +56,16 @@ export class LineWebhookGuard implements CanActivate {
       throw new UnauthorizedException('Missing LINE signature');
     }
 
-    // The body must be the raw body string for signature verification
-    const body = JSON.stringify(request.body);
+    // Use raw body bytes for HMAC — JSON.stringify may differ from LINE's original payload
+    const rawBody = (request as unknown as RawBodyRequest).rawBody;
+    const body = rawBody ?? Buffer.from(JSON.stringify(request.body));
     const expectedSignature = createHmac('SHA256', this.channelSecret)
       .update(body)
       .digest('base64');
 
-    if (signature !== expectedSignature) {
+    const sigBuf = Buffer.from(signature, 'base64');
+    const expBuf = Buffer.from(expectedSignature, 'base64');
+    if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) {
       this.logger.warn('Invalid LINE webhook signature');
       throw new UnauthorizedException('Invalid LINE signature');
     }

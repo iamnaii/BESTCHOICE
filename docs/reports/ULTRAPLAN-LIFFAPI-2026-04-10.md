@@ -17,7 +17,38 @@
 5. **Error response ไม่สม่ำเสมอ** — บาง endpoint return `{ error: '...' }` (200), บาง endpoint throw exception (4xx) → frontend ต้อง handle 2 แบบ
 6. **0 unit tests** สำหรับ LIFF endpoints — ไม่มี safety net
 
-**Target**: 4 phases, ~45 tasks. Phase 1 เป็น **P0** — ต้องทำก่อน go-live กับลูกค้าจริง
+**Target**: 5 phases, ~55 tasks. Phase 1 เป็น **P0** — ต้องทำก่อน go-live กับลูกค้าจริง
+
+---
+
+## New Findings (2026-04-10 update)
+
+จาก deep-dive รอบ 2 พบปัญหาเพิ่มเติมที่ไม่อยู่ใน draft แรก:
+
+### [L-001] Decimal Precision Leak — 27 จุดใน 4 ไฟล์ LIFF
+- **ไฟล์**: `line-oa.controller.ts` (14 จุด), `line-oa-payment.controller.ts` (9 จุด), `line-oa.service.ts` (3 จุด), `payment-link.service.ts` (1 จุด)
+- **ปัญหา**: ใช้ `Number(p.amountDue)`, `Number(c.sellingPrice)`, etc. แปลง `Prisma.Decimal` → `Number` ก่อนส่ง LIFF response
+- **ผลกระทบ**: precision loss ที่ satang → ลูกค้าเห็นยอดผิดเล็กน้อย + running total ผิดสะสม
+- **ตัวอย่าง**: `line-oa.controller.ts:684` — `reduce((sum, p) => sum + Number(p.amountDue) + Number(p.lateFee) - Number(p.amountPaid), 0)` ใช้ float arithmetic
+- **แก้**: ใช้ `Prisma.Decimal` arithmetic ทั้ง chain แล้ว `.toNumber()` เฉพาะตอนส่ง response; หรือส่ง string แล้ว format ที่ frontend
+
+### [L-002] Slip Upload ใช้ Local Filesystem — ❌ Cloud Run Incompatible
+- **ไฟล์**: `line-oa-payment.controller.ts:565-569`, `line-oa.controller.ts:227-231`
+- **ปัญหา**: `fs.mkdirSync('uploads/slips/')` + `fs.writeFileSync(filePath, file.buffer)` — ใช้ local disk
+- **ผลกระทบ**: Cloud Run ใช้ ephemeral filesystem → ไฟล์หายหลัง container recycle → สลิปที่ upload หาย
+- **แก้**: เปลี่ยนเป็น S3-compatible storage (MinIO dev / GCS prod) ที่โปรเจคมี config อยู่แล้ว (`S3_ENDPOINT`, `S3_BUCKET`)
+
+### [L-003] Webhook Dedup ใช้ In-Memory Map — ❌ Multi-Instance Unsafe
+- **ไฟล์**: `chatbot-finance.controller.ts:13-66`
+- **ปัญหา**: `new WebhookDedup()` ใช้ `Map<eventId, timestamp>` — comment ในโค้ดเขียนไว้เลยว่า "in-memory dedup only works within a single process. For multi-instance deployments (Cloud Run scale-out), consider Redis-based dedup."
+- **ผลกระทบ**: Cloud Run auto-scale → duplicate events processed ข้ามอินสแตนซ์ → ข้อความซ้ำ
+- **แก้**: Redis-based dedup (ถ้ามี Redis) หรือ database-based idempotency key
+
+### [L-004] PDPA Consent — Field มี Endpoint ไม่มี
+- **ไฟล์**: `schema.prisma:471-472` — `chatConsent Boolean @default(false)`, `chatConsentAt DateTime?`
+- **ปัญหา**: Prisma model มี field สำหรับ consent แต่ไม่มี LIFF endpoint ให้ลูกค้ากดยินยอม/ถอนยินยอม
+- **ผลกระทบ**: PDPA compliance gap — เก็บข้อมูลแชทโดยยังไม่มีกลไกขอ consent อย่างเป็นทางการ
+- **แก้**: เพิ่ม `POST /line-oa/liff/consent` + UI ใน LIFF page (modal ก่อนใช้งานครั้งแรก)
 
 ---
 
@@ -71,6 +102,31 @@
 | `useLiffInit.ts` (58 lines) | LIFF SDK init + LINE profile | Returns `lineId` but no ID token |
 | `api.ts:143` — `liffApi` | Separate axios instance | No response envelope unwrap |
 | `useMockPayment.ts` (144 lines) | Mock payment for prototyping | Unused — dead code |
+
+### Database Models (LIFF-related)
+
+| Model | Purpose | Issues |
+|-------|---------|--------|
+| `Customer` (lineId field) | เชื่อม LINE userId กับลูกค้า (Shop OA) | Legacy single-field; ใช้ `CustomerLineLink` สำหรับ multi-channel |
+| `CustomerLineLink` | Multi-channel binding (SHOP/FINANCE/STAFF) | ✅ Well-designed |
+| `ChatSession` | Finance bot session per customer per channel | ✅ Includes verification state |
+| `ChatMessage` | ข้อความในแชท | ✅ Includes AI metadata (tokens, cost) |
+| `ChatbotOtpRequest` | OTP storage (SHA256 hashed) | ✅ DB-backed, multi-instance safe |
+| `ChatAutoTrigger` | Scheduled reminders (T-5, T-3, T-1, T+1...) | ✅ Idempotency key |
+| `ChatFeedback` | User 👍/👎 rating | ✅ |
+| `ChatKnowledgeBase` | FAQ templates for bot | ✅ Priority-ranked |
+| `PaymentEvidence` | สลิปที่ลูกค้า upload | ⚠️ `imageUrl` is local path — needs S3 migration |
+| `PaymentLink` | Short-lived payment tokens | ✅ Status lifecycle (ACTIVE → USED/EXPIRED) |
+
+### Decimal Precision Issues
+
+| File | Occurrences | Location |
+|------|:-----------:|----------|
+| `line-oa.controller.ts` | 14 | LIFF contract/payment response builders + chatbot handlers |
+| `line-oa-payment.controller.ts` | 9 | Evidence amount, payment link resolution, slip upload |
+| `line-oa.service.ts` | 3 | Receipt/history helpers |
+| `payment-link.service.ts` | 1 | Amount calculation |
+| **Total** | **27** | — |
 
 ---
 
@@ -208,6 +264,50 @@
 
 ---
 
+## Phase 5 — Infrastructure & Compliance (Priority: P1)
+
+**Theme**: แก้ปัญหา production-readiness — filesystem, decimal, dedup, PDPA
+
+### 5A: Decimal Precision Cleanup (27 occurrences)
+
+| # | Task | File | Occurrences | Effort |
+|---|------|------|-------------|--------|
+| 5.1 | **[L-001]** `line-oa.controller.ts` — LIFF response builders: `Number(c.sellingPrice)` → `new Prisma.Decimal(c.sellingPrice).toNumber()` (หรือ string) | `apps/api/src/modules/line-oa/line-oa.controller.ts:298,308,347,365,400,420,494,684,691-693,701-703` | 14 | M |
+| 5.2 | **[L-001]** `line-oa-payment.controller.ts` — evidence + payment amount calculations | `apps/api/src/modules/line-oa/line-oa-payment.controller.ts:188,294,409,413,495,518-519,591,627` | 9 | S |
+| 5.3 | **[L-001]** `line-oa.service.ts` — receipt + history helpers | `apps/api/src/modules/line-oa/line-oa.service.ts:352,604,607` | 3 | S |
+| 5.4 | **[L-001]** `payment-link.service.ts` — amount calculation | `apps/api/src/modules/line-oa/payment-links/payment-link.service.ts:50` | 1 | S |
+
+### 5B: S3 Storage Migration
+
+| # | Task | File(s) | Effort | Risk |
+|---|------|---------|--------|------|
+| 5.5 | **[L-002]** สร้าง `LiffStorageService` — wrap S3 upload logic (reuse existing S3 config จาก `S3_ENDPOINT`, `S3_BUCKET`) | `apps/api/src/modules/line-oa/liff-storage.service.ts` (NEW) | M | Med |
+| 5.6 | **[L-002]** เปลี่ยน slip upload ใน `line-oa-payment.controller.ts:564-571` — `fs.writeFileSync` → `liffStorageService.uploadSlip(file)` | `line-oa-payment.controller.ts` | S | Med |
+| 5.7 | **[L-002]** เปลี่ยน image upload ใน `line-oa.controller.ts:225-232` — `fs.writeFileSync` → S3 | `line-oa.controller.ts` | S | Med |
+| 5.8 | Return signed URL แทน local path (`/uploads/slips/...` → S3 presigned URL) | `line-oa-payment.controller.ts` | S | Low |
+
+### 5C: Webhook Dedup
+
+| # | Task | File(s) | Effort | Risk |
+|---|------|---------|--------|------|
+| 5.9 | **[L-003]** เปลี่ยน `WebhookDedup` จาก in-memory Map → database-based idempotency (ใช้ `processedWebhookEvents` table with TTL) | `apps/api/src/modules/chatbot-finance/chatbot-finance.controller.ts` | M | Med |
+| 5.10 | Migration: สร้าง `ProcessedWebhookEvent` model (id, eventId unique, processedAt, expiresAt) + cleanup cron | `schema.prisma` + new migration | S | Low |
+| 5.11 | ลบ `WebhookDedup` in-memory class | `chatbot-finance.controller.ts` | S | Low |
+
+### 5D: PDPA Consent
+
+| # | Task | File(s) | Effort | Risk |
+|---|------|---------|--------|------|
+| 5.12 | **[L-004]** สร้าง `POST /line-oa/liff/consent` endpoint — รับ `{ lineId, consent: boolean }` → update `Customer.chatConsent` + `chatConsentAt` | `liff-api.controller.ts` (หรือ `line-oa.controller.ts`) | S | Low |
+| 5.13 | สร้าง `GET /line-oa/liff/consent` — เช็คสถานะ consent ปัจจุบัน | Same | S | Low |
+| 5.14 | Frontend: เพิ่ม consent modal ใน `LiffContract.tsx` — แสดงครั้งแรกที่ user เข้าใช้, กดยินยอมแล้วจำ | `apps/web/src/pages/liff/LiffContract.tsx` | M | Low |
+| 5.15 | DTO: `LiffConsentDto` with `@IsBoolean() consent` + Thai error messages | DTO file | S | Low |
+
+**Effort รวม Phase 5**: M-L (~1-2 สัปดาห์)
+**Rationale**: L-002 (filesystem) เป็น **blocker สำหรับ production Cloud Run** — สลิปจะหายหลัง container restart; L-001 (Decimal) สอดคล้องกับ v4 Decimal cleanup strategy; L-004 (PDPA) คือ legal compliance
+
+---
+
 ## Out of Scope
 
 | # | Item | เหตุผล |
@@ -233,6 +333,10 @@
 - [ ] **Types**: ≥ 5 shared LIFF types ใน `packages/shared/`
 - [ ] **Tests**: ≥ 40 LIFF-specific tests (unit + E2E)
 - [ ] **Dead code**: `useMockPayment.ts` ถูกลบ
+- [ ] **Decimal**: 0 `Number(decimal)` ในไฟล์ LIFF (จาก 27 จุดใน 4 ไฟล์)
+- [ ] **Storage**: 0 `fs.writeFileSync` ในไฟล์ LIFF — ใช้ S3 ทั้งหมด
+- [ ] **Dedup**: Webhook dedup ใช้ persistent storage (DB/Redis) — ไม่ใช่ in-memory Map
+- [ ] **PDPA**: LIFF มี consent endpoint + UI modal — `chatConsent` field ถูกใช้งานจริง
 - [ ] TypeScript 0 errors หลังทุก phase
 
 ---
@@ -247,12 +351,20 @@ Phase 1D (Error Format) ─┘    Phase 2B (Shared Types) ──→ Phase 3A (us
                                Phase 2C (liffApi Infra) ──→ Phase 3B (UX Fixes)
                                                                    │
                                                               Phase 4B (E2E Tests)
+
+Phase 5A (Decimal) ── standalone (ทำเมื่อไหร่ก็ได้)
+Phase 5B (S3 Storage) ── standalone, **P0 สำหรับ production**
+Phase 5C (Webhook Dedup) ── standalone (ทำก่อน multi-instance scale)
+Phase 5D (PDPA Consent) ── ต้องรอ Phase 1A (Token Guard) + Phase 2A (Controller Split)
 ```
 
 - Phase 1 ทำได้อิสระทั้ง 4 sub-phases
 - Phase 2A ต้องรอ Phase 1 เสร็จ (controller split หลัง DTOs + guard เข้าที่แล้ว)
 - Phase 3 ต้องรอ Phase 2B + 2C (shared types + liffApi infra)
 - Phase 4 ทำได้หลัง Phase 2A เสร็จ (test ต่อ new controller structure)
+- Phase 5A-C ทำได้อิสระจาก Phase 1-4 (ไม่ depend กัน)
+- Phase 5B (S3) ควรทำคู่กับ Phase 1 เพราะเป็น **production blocker** เหมือนกัน
+- Phase 5D ต้องรอ controller structure เข้าที่
 
 ---
 
@@ -265,6 +377,9 @@ Phase 1D (Error Format) ─┘    Phase 2B (Shared Types) ──→ Phase 3A (us
 | LINE API verify endpoint rate limit / downtime | LIFF ใช้งานไม่ได้ | Fallback: cache + graceful degradation |
 | Error format change (200 → 4xx) break existing LIFF pages | Pages แสดง error ผิด | ทำ task 1.14 + 1.15 ด้วยกัน ใน PR เดียว |
 | `useQuery` migration เปลี่ยน loading/error behavior | UI flash/flicker | Test ทุก page manually + E2E |
+| S3 migration ทำให้ slip images เดิม (local) เข้าถึงไม่ได้ | สลิปเก่าหาย | Migrate existing files ก่อน switch + fallback read local → S3 |
+| Decimal `.toNumber()` ส่งกลับ customer → ยังเป็น float | ทศนิยมยังผิดเล็กน้อย | ส่งเป็น string + format ที่ frontend ด้วย `formatNumber` |
+| DB-based dedup เพิ่ม write latency ทุก webhook | Webhook response ช้าลง 5-10ms | ใช้ `INSERT ... ON CONFLICT DO NOTHING` — single query, minimal overhead |
 
 ---
 

@@ -92,6 +92,14 @@ const queryClient = new QueryClient({
   },
 });
 
+// LIFF consent redirect: LINE redirects to /?liff.state={encodedPath}
+// Must handle BEFORE React renders to prevent ProtectedRoute catching "/"
+const liffState = new URLSearchParams(window.location.search).get('liff.state');
+if (liffState && window.location.pathname === '/') {
+  // Replace URL to the actual LIFF path so React Router matches correctly
+  window.history.replaceState(null, '', liffState + window.location.search);
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ErrorBoundary>

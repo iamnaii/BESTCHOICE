@@ -98,6 +98,15 @@ api.interceptors.response.use(
   },
 );
 
+/** Check if current page is public (LIFF, payment, etc.) — don't redirect to login */
+function isPublicOrLiffPage(): boolean {
+  const path = window.location.pathname;
+  const search = window.location.search;
+  // After LINE consent, LIFF redirects to /?liff.state={path}
+  if (search.includes('liff.state')) return true;
+  return path === '/login' || path === '/landing' || path.startsWith('/liff/') || path.startsWith('/pay/') || path.startsWith('/customer-access/') || path.startsWith('/verify/');
+}
+
 // Response interceptor: handle 401 with token refresh
 api.interceptors.response.use(
   (response) => response,
@@ -109,9 +118,7 @@ api.interceptors.response.use(
       // Don't try to refresh if the failing request IS the refresh or login
       if (originalRequest.url?.includes('/auth/refresh') || originalRequest.url?.includes('/auth/login')) {
         setAccessToken(null);
-        const path = window.location.pathname;
-        const isPublicPage = path === '/login' || path === '/landing' || path.startsWith('/liff/') || path.startsWith('/pay/') || path.startsWith('/customer-access/') || path.startsWith('/verify/');
-        if (!isPublicPage) {
+        if (!isPublicOrLiffPage()) {
           window.location.href = '/login';
         }
         return Promise.reject(error);
@@ -125,9 +132,7 @@ api.interceptors.response.use(
         return api(originalRequest);
       } catch (refreshError) {
         setAccessToken(null);
-        const path = window.location.pathname;
-        const isPublicPage = path === '/login' || path === '/landing' || path.startsWith('/liff/') || path.startsWith('/pay/') || path.startsWith('/customer-access/') || path.startsWith('/verify/');
-        if (!isPublicPage) {
+        if (!isPublicOrLiffPage()) {
           window.location.href = '/login';
         }
         return Promise.reject(refreshError);

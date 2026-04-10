@@ -84,6 +84,12 @@ export default function ChatbotFinanceAnalyticsPage() {
           >
             จัดการ Knowledge Base
           </Link>
+          <Link
+            to="/chatbot-finance/learning"
+            className="px-4 py-2 rounded-lg border border-purple-300 text-purple-600 text-sm hover:bg-purple-50"
+          >
+            Learning Hub
+          </Link>
         </div>
       </div>
 

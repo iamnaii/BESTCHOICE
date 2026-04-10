@@ -83,6 +83,7 @@ const TodosPage = lazy(() => import('@/pages/TodosPage'));
 const ChatbotFinanceAnalyticsPage = lazy(() => import('@/pages/ChatbotFinanceAnalyticsPage'));
 const ChatbotFinanceSessionsPage = lazy(() => import('@/pages/ChatbotFinanceSessionsPage'));
 const ChatbotFinanceKnowledgePage = lazy(() => import('@/pages/ChatbotFinanceKnowledgePage'));
+const ChatbotFinanceLearningPage = lazy(() => import('@/pages/ChatbotFinanceLearningPage'));
 const AnalyticsPage = lazy(() => import('@/pages/AnalyticsPage'));
 const WebhooksPage = lazy(() => import('@/pages/WebhooksPage'));
 
@@ -276,6 +277,7 @@ function App() {
           <Route path="/chatbot-finance" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER']}><ChatbotFinanceAnalyticsPage /></ProtectedRoute>} />
           <Route path="/chatbot-finance/sessions" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}><ChatbotFinanceSessionsPage /></ProtectedRoute>} />
           <Route path="/chatbot-finance/knowledge" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER']}><ChatbotFinanceKnowledgePage /></ProtectedRoute>} />
+          <Route path="/chatbot-finance/learning" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER']}><ChatbotFinanceLearningPage /></ProtectedRoute>} />
           <Route path="/customers" element={<CustomersPage />} />
           <Route path="/customers/:id" element={<CustomerDetailPage />} />
           <Route path="/credit-checks" element={<CreditChecksPage />} />

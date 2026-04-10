@@ -36,6 +36,7 @@ import { PaymentLinkService } from './payment-links/payment-link.service';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
 import { LiffTokenGuard, LiffRequest } from './guards/liff-token.guard';
 import { Throttle } from '@nestjs/throttler';
+import { LiffRegisterLookupDto, LiffRegisterConfirmDto } from './dto/liff.dto';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -715,22 +716,15 @@ export class LineOaController {
   @SkipCsrf()
   @UseGuards(LiffTokenGuard)
   @Throttle({ short: { ttl: 60000, limit: 5 } })
-  async liffRegisterLookup(@Req() req: Request, @Body() body: { phone: string }) {
+  async liffRegisterLookup(@Req() req: Request, @Body() dto: LiffRegisterLookupDto) {
     const lineId = (req as unknown as LiffRequest).liffUserId;
-
-    if (!body.phone) {
-      throw new BadRequestException('กรุณาระบุเบอร์โทร');
-    }
-    if (!/^0\d{8,9}$/.test(body.phone)) {
-      throw new BadRequestException('รูปแบบเบอร์โทรไม่ถูกต้อง');
-    }
 
     const isLinked = await this.lineOaService.isLineIdLinked(lineId);
     if (isLinked) {
       throw new BadRequestException('บัญชี LINE นี้เชื่อมต่อกับลูกค้าแล้ว');
     }
 
-    const result = await this.lineOaService.lookupCustomerByPhone(body.phone, lineId);
+    const result = await this.lineOaService.lookupCustomerByPhone(dto.phone, lineId);
     if (!result) {
       throw new NotFoundException('ไม่พบเบอร์โทรนี้ในระบบ กรุณาตรวจสอบเบอร์โทร หรือติดต่อสาขา');
     }
@@ -742,14 +736,10 @@ export class LineOaController {
   @SkipCsrf()
   @UseGuards(LiffTokenGuard)
   @Throttle({ short: { ttl: 60000, limit: 3 } })
-  async liffRegisterConfirm(@Req() req: Request, @Body() body: { customerId: string }) {
+  async liffRegisterConfirm(@Req() req: Request, @Body() dto: LiffRegisterConfirmDto) {
     const lineId = (req as unknown as LiffRequest).liffUserId;
 
-    if (!body.customerId) {
-      throw new BadRequestException('กรุณาระบุ customerId');
-    }
-
-    const result = await this.lineOaService.confirmLinkLine(body.customerId, lineId);
+    const result = await this.lineOaService.confirmLinkLine(dto.customerId, lineId);
     if (!result.success) {
       throw new BadRequestException(result.error || 'ลงทะเบียนไม่สำเร็จ');
     }

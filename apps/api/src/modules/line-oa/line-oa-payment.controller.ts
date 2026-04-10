@@ -30,6 +30,9 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PromptPayQrService } from './promptpay/promptpay-qr.service';
 import { PaymentLinkService } from './payment-links/payment-link.service';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
+import { LiffTokenGuard, LiffRequest } from './guards/liff-token.guard';
+import { Throttle } from '@nestjs/throttler';
+import { LiffCreatePaymentLinkDto, LiffEarlyPayoffDto } from './dto/liff.dto';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -670,57 +673,56 @@ export class LineOaPaymentController {
 
   @Post('liff/create-payment-link')
   @SkipCsrf()
-  async liffCreatePaymentLink(@Body() body: { lineId: string; contractId: string }) {
-    if (!body.lineId || !body.contractId) {
-      return { error: 'lineId and contractId are required' };
-    }
+  @UseGuards(LiffTokenGuard)
+  @Throttle({ short: { ttl: 60000, limit: 5 } })
+  async liffCreatePaymentLink(@Req() req: Request, @Body() dto: LiffCreatePaymentLinkDto) {
+    const lineId = (req as unknown as LiffRequest).liffUserId;
 
     // Verify the lineId owns this contract
     const customer = await this.prisma.customer.findFirst({
-      where: { lineId: body.lineId, deletedAt: null },
+      where: { lineId, deletedAt: null },
       select: { id: true },
     });
     if (!customer) {
-      return { error: 'ไม่พบข้อมูลลูกค้า' };
+      throw new NotFoundException('ไม่พบข้อมูลลูกค้า');
     }
 
     const contract = await this.prisma.contract.findFirst({
-      where: { id: body.contractId, customerId: customer.id, deletedAt: null },
+      where: { id: dto.contractId, customerId: customer.id, deletedAt: null },
     });
     if (!contract) {
-      return { error: 'ไม่พบสัญญา' };
+      throw new NotFoundException('ไม่พบสัญญา');
     }
 
-    // Rate limit: max 5 active payment links per lineId in 24 hours
+    // Rate limit: max 5 active payment links per contract in 24 hours
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const recentLinks = await this.prisma.paymentLink.count({
       where: {
-        contractId: body.contractId,
+        contractId: dto.contractId,
         createdAt: { gte: twentyFourHoursAgo },
       },
     });
     if (recentLinks >= 5) {
-      return { error: 'สร้างลิงก์ชำระเงินได้สูงสุด 5 ครั้งต่อ 24 ชั่วโมง กรุณาลองใหม่ภายหลัง' };
+      throw new BadRequestException('สร้างลิงก์ชำระเงินได้สูงสุด 5 ครั้งต่อ 24 ชั่วโมง');
     }
 
-    try {
-      const result = await this.paymentLinkService.createPaymentLink(body.contractId);
-      return { url: result.url, token: result.token };
-    } catch (err) {
-      return { error: err instanceof Error ? err.message : 'ไม่สามารถสร้างลิงก์ชำระเงินได้' };
-    }
+    const result = await this.paymentLinkService.createPaymentLink(dto.contractId);
+    return { url: result.url, token: result.token };
   }
 
   // ─── LIFF Early Payoff (ปิดยอดก่อนกำหนด) ────────────
 
   @Get('liff/early-payoff-quote')
   @SkipCsrf()
+  @UseGuards(LiffTokenGuard)
   async getLiffEarlyPayoffQuote(
-    @Query('lineId') lineId: string,
+    @Req() req: Request,
     @Query('contractId') contractId: string,
   ) {
-    if (!lineId || !contractId) {
-      return { error: 'lineId and contractId are required' };
+    const lineId = (req as unknown as LiffRequest).liffUserId;
+
+    if (!contractId) {
+      throw new BadRequestException('กรุณาระบุ contractId');
     }
 
     const customer = await this.prisma.customer.findFirst({
@@ -728,7 +730,7 @@ export class LineOaPaymentController {
       select: { id: true, name: true },
     });
     if (!customer) {
-      return { error: 'ไม่พบข้อมูลลูกค้า' };
+      throw new NotFoundException('ไม่พบข้อมูลลูกค้า');
     }
 
     const contract = await this.prisma.contract.findFirst({
@@ -736,57 +738,48 @@ export class LineOaPaymentController {
       select: { id: true, contractNumber: true, status: true },
     });
     if (!contract) {
-      return { error: 'ไม่พบสัญญา' };
+      throw new NotFoundException('ไม่พบสัญญา');
     }
 
     if (!['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status)) {
-      return { error: 'สัญญานี้ไม่สามารถปิดยอดก่อนกำหนดได้' };
+      throw new BadRequestException('สัญญานี้ไม่สามารถปิดยอดก่อนกำหนดได้');
     }
 
-    try {
-      const quote = await this.contractPaymentService.getEarlyPayoffQuote(contractId);
-      return {
-        ...quote,
-        contractNumber: contract.contractNumber,
-        customerName: customer.name,
-      };
-    } catch (err) {
-      return { error: err instanceof Error ? err.message : 'ไม่สามารถคำนวณยอดปิดได้' };
-    }
+    const quote = await this.contractPaymentService.getEarlyPayoffQuote(contractId);
+    return {
+      ...quote,
+      contractNumber: contract.contractNumber,
+      customerName: customer.name,
+    };
   }
 
   @Post('liff/early-payoff')
   @SkipCsrf()
-  async liffEarlyPayoff(@Body() body: { lineId: string; contractId: string }) {
-    if (!body.lineId || !body.contractId) {
-      return { error: 'lineId and contractId are required' };
-    }
+  @UseGuards(LiffTokenGuard)
+  async liffEarlyPayoff(@Req() req: Request, @Body() dto: LiffEarlyPayoffDto) {
+    const lineId = (req as unknown as LiffRequest).liffUserId;
 
     const customer = await this.prisma.customer.findFirst({
-      where: { lineId: body.lineId, deletedAt: null },
+      where: { lineId, deletedAt: null },
       select: { id: true },
     });
     if (!customer) {
-      return { error: 'ไม่พบข้อมูลลูกค้า' };
+      throw new NotFoundException('ไม่พบข้อมูลลูกค้า');
     }
 
     const contract = await this.prisma.contract.findFirst({
-      where: { id: body.contractId, customerId: customer.id, deletedAt: null },
+      where: { id: dto.contractId, customerId: customer.id, deletedAt: null },
     });
     if (!contract) {
-      return { error: 'ไม่พบสัญญา' };
+      throw new NotFoundException('ไม่พบสัญญา');
     }
 
-    try {
-      const quote = await this.contractPaymentService.getEarlyPayoffQuote(body.contractId);
-      const result = await this.paymentLinkService.createPaymentLink(
-        body.contractId,
-        undefined,
-        quote.totalPayoff,
-      );
-      return { url: result.url, token: result.token, totalPayoff: quote.totalPayoff };
-    } catch (err) {
-      return { error: err instanceof Error ? err.message : 'ไม่สามารถสร้างลิงก์ปิดยอดได้' };
-    }
+    const quote = await this.contractPaymentService.getEarlyPayoffQuote(dto.contractId);
+    const result = await this.paymentLinkService.createPaymentLink(
+      dto.contractId,
+      undefined,
+      quote.totalPayoff,
+    );
+    return { url: result.url, token: result.token, totalPayoff: quote.totalPayoff };
   }
 }

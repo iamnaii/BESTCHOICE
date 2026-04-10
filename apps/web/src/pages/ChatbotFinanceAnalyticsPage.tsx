@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import api, { getErrorMessage } from '@/lib/api';
+import api from '@/lib/api';
 import { Link } from 'react-router-dom';
 import QueryBoundary from '@/components/QueryBoundary';
 
@@ -21,6 +22,13 @@ interface AnalyticsOverview {
   recentDays: { date: string; messages: number }[];
 }
 
+interface DateRangeStats {
+  dailyStats: { date: string; messages: number; cost: number }[];
+  totalCost: number;
+  totalMessages: number;
+  handoffs: number;
+}
+
 function StatCard({ label, value, hint, accent }: { label: string; value: string | number; hint?: string; accent?: 'blue' | 'orange' | 'green' | 'red' }) {
   const colors = {
     blue: 'border-blue-200 bg-blue-50',
@@ -39,6 +47,11 @@ function StatCard({ label, value, hint, accent }: { label: string; value: string
 }
 
 export default function ChatbotFinanceAnalyticsPage() {
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const [startDate, setStartDate] = useState(thirtyDaysAgo);
+  const [endDate, setEndDate] = useState(todayStr);
+
   const { data, isLoading, isError, error, refetch } = useQuery<AnalyticsOverview>({
     queryKey: ['chatbot-finance-analytics'],
     queryFn: async () => {
@@ -46,6 +59,16 @@ export default function ChatbotFinanceAnalyticsPage() {
       return data;
     },
     refetchInterval: 30_000,
+  });
+
+  const dateRange = useQuery<DateRangeStats>({
+    queryKey: ['chatbot-finance-date-range', startDate, endDate],
+    queryFn: async () => {
+      const { data } = await api.get<DateRangeStats>('/chatbot/finance/admin/analytics/date-range', {
+        params: { startDate, endDate },
+      });
+      return data;
+    },
   });
 
   if (isLoading || isError) {
@@ -163,6 +186,71 @@ export default function ChatbotFinanceAnalyticsPage() {
             ))}
           </div>
         )}
+      </section>
+
+      {/* Date range analytics + cost */}
+      <section className="bg-white border rounded-xl p-4">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-semibold text-gray-700">ข้อความ + Cost ตามช่วงเวลา</h2>
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="px-2 py-1 border rounded text-xs"
+            />
+            <span className="text-xs text-gray-400">ถึง</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="px-2 py-1 border rounded text-xs"
+            />
+          </div>
+        </div>
+
+        <QueryBoundary
+          isLoading={dateRange.isLoading && !dateRange.data}
+          isError={dateRange.isError}
+          error={dateRange.error}
+          onRetry={dateRange.refetch}
+          errorTitle="ไม่สามารถโหลดข้อมูลได้"
+        >
+          {dateRange.data && (
+            <>
+              <div className="grid grid-cols-3 gap-3 mb-4">
+                <StatCard label="ข้อความรวม" value={dateRange.data.totalMessages} accent="blue" />
+                <StatCard label="API Cost รวม" value={`$${dateRange.data.totalCost.toFixed(4)}`} accent="orange" />
+                <StatCard label="Handoff" value={dateRange.data.handoffs} accent="red" />
+              </div>
+
+              <div className="space-y-1">
+                {dateRange.data.dailyStats.length === 0 ? (
+                  <p className="text-sm text-gray-400">ไม่มีข้อมูลในช่วงนี้</p>
+                ) : (
+                  dateRange.data.dailyStats.map((d) => {
+                    const maxMsg = Math.max(...dateRange.data!.dailyStats.map((x) => x.messages), 1);
+                    return (
+                      <div key={d.date} className="flex items-center gap-3">
+                        <div className="w-20 text-[10px] text-gray-500">{d.date}</div>
+                        <div className="flex-1 h-5 bg-gray-100 rounded relative overflow-hidden">
+                          <div
+                            className="h-full bg-blue-400"
+                            style={{ width: `${(d.messages / maxMsg) * 100}%` }}
+                          />
+                        </div>
+                        <div className="w-10 text-right text-[10px] text-gray-700">{d.messages}</div>
+                        <div className="w-16 text-right text-[10px] text-gray-400">
+                          ${d.cost.toFixed(4)}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </>
+          )}
+        </QueryBoundary>
       </section>
     </div>
   );

@@ -43,7 +43,8 @@ export class KnowledgeService {
     const normalized = query.trim().toLowerCase();
     if (!normalized) return [];
 
-    // ดึง active entries ทั้งหมด (จำนวนน้อย — แค่หลักสิบ)
+    const queryTokens = this.tokenize(normalized);
+
     const entries = await this.prisma.chatKnowledgeBase.findMany({
       where: {
         channel: ChatChannel.LINE_FINANCE,
@@ -53,30 +54,55 @@ export class KnowledgeService {
       orderBy: { priority: 'desc' },
     });
 
-    // Score แต่ละ entry
     const scored = entries
       .map((e) => {
         let score = 0;
-        // Keyword overlap
+        let keywordMatches = 0;
+
+        // Exact keyword containment (highest weight: 3 pts)
         for (const kw of e.triggerKeywords) {
           if (normalized.includes(kw.toLowerCase())) {
-            score += 2;
+            score += 3;
+            keywordMatches++;
           }
         }
-        // Example question similarity (simple substring)
+
+        // Token-level fuzzy matching (2 pts per token match)
+        for (const kw of e.triggerKeywords) {
+          const kwLower = kw.toLowerCase();
+          for (const token of queryTokens) {
+            if (token.length >= 2 && kwLower.includes(token) && !normalized.includes(kwLower)) {
+              score += 2;
+              break;
+            }
+          }
+        }
+
+        // Example question similarity (1 pt per match)
         for (const ex of e.exampleQuestions) {
-          if (normalized.includes(ex.toLowerCase()) || ex.toLowerCase().includes(normalized)) {
+          const exLower = ex.toLowerCase();
+          if (normalized.includes(exLower) || exLower.includes(normalized)) {
             score += 1;
+          } else {
+            // Token overlap between query and example
+            const exTokens = this.tokenize(exLower);
+            const overlap = queryTokens.filter((t) => t.length >= 2 && exTokens.some((et) => et.includes(t) || t.includes(et)));
+            if (overlap.length >= 2) score += 0.5;
           }
         }
-        score += e.priority * 0.1;
+
+        // Priority weight (lower than keyword matches)
+        score += e.priority * 0.05;
+
+        // Only return entries with actual keyword/example matches
+        const hasRealMatch = keywordMatches > 0 || score > e.priority * 0.05;
 
         return {
           intent: e.intent,
           category: e.category,
           responseTemplate: e.responseTemplate,
           responseType: e.responseType,
-          score,
+          score: hasRealMatch ? score : 0,
         };
       })
       .filter((m) => m.score > 0)
@@ -87,6 +113,32 @@ export class KnowledgeService {
       this.logger.log(`[KB] "${query.slice(0, 30)}..." → ${scored.length} match(es)`);
     }
     return scored;
+  }
+
+  /**
+   * Simple Thai tokenizer — splits on spaces, punctuation, and common Thai particles.
+   * Not a full NLP tokenizer, but sufficient for keyword matching.
+   */
+  private tokenize(text: string): string[] {
+    // Split on whitespace, punctuation, emoji
+    const tokens = text
+      .split(/[\s,.\-!?:;()[\]{}\/\\|@#$%^&*+=<>~`'"]+/)
+      .filter((t) => t.length >= 2);
+
+    // Also split long Thai text on common particles/boundaries
+    const thaiParticles = ['ครับ', 'ค่ะ', 'คะ', 'นะ', 'จ้า', 'ไหม', 'หรือ', 'แล้ว', 'ได้', 'ที่', 'ของ', 'ให้', 'กับ', 'จะ', 'อยาก', 'ต้องการ'];
+    const extraTokens: string[] = [];
+    for (const token of tokens) {
+      for (const particle of thaiParticles) {
+        const idx = token.indexOf(particle);
+        if (idx > 1) {
+          extraTokens.push(token.slice(0, idx));
+          extraTokens.push(token.slice(idx));
+        }
+      }
+    }
+
+    return [...new Set([...tokens, ...extraTokens])].filter((t) => t.length >= 2);
   }
 
   // ─── Admin CRUD ──────────────────────────────────────────

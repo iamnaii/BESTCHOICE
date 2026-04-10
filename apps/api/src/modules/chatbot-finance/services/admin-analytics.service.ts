@@ -137,6 +137,51 @@ export class AdminAnalyticsService {
     };
   }
 
+  // ─── Date-range analytics with cost breakdown ────────────
+
+  async getDateRangeStats(startDate: Date, endDate: Date) {
+    const [dailyStats, totalCostAgg, handoffCount] = await Promise.all([
+      this.prisma.$queryRaw<{ date: Date; messages: bigint; cost: number }[]>`
+        SELECT
+          date_trunc('day', cm.created_at) AS date,
+          COUNT(*)::bigint AS messages,
+          COALESCE(SUM(cm.cost_usd), 0)::float AS cost
+        FROM chat_messages cm
+        JOIN chat_sessions cs ON cs.id = cm.session_id
+        WHERE cs.channel = 'LINE_FINANCE'
+          AND cm.created_at >= ${startDate}
+          AND cm.created_at <= ${endDate}
+        GROUP BY date_trunc('day', cm.created_at)
+        ORDER BY date ASC
+      `,
+      this.prisma.chatMessage.aggregate({
+        where: {
+          createdAt: { gte: startDate, lte: endDate },
+          session: { channel: ChatChannel.LINE_FINANCE },
+        },
+        _sum: { costUsd: true },
+      }),
+      this.prisma.chatSession.count({
+        where: {
+          channel: ChatChannel.LINE_FINANCE,
+          handoffMode: true,
+          handoffTaggedAt: { gte: startDate, lte: endDate },
+        },
+      }),
+    ]);
+
+    return {
+      dailyStats: dailyStats.map((d) => ({
+        date: d.date.toISOString().slice(0, 10),
+        messages: Number(d.messages),
+        cost: Number(d.cost),
+      })),
+      totalCost: new Prisma.Decimal(totalCostAgg._sum.costUsd ?? 0).toNumber(),
+      totalMessages: dailyStats.reduce((s, d) => s + Number(d.messages), 0),
+      handoffs: handoffCount,
+    };
+  }
+
   // ─── Sessions list with filters ──────────────────────────
 
   async listSessions(params: {

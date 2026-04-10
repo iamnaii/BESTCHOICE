@@ -55,6 +55,17 @@ export class ChatbotFinanceAdminController {
     return this.analytics.getOverview();
   }
 
+  @Get('analytics/date-range')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  async getDateRangeStats(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const start = startDate ? new Date(startDate) : new Date(Date.now() - 30 * 86400_000);
+    const end = endDate ? new Date(endDate) : new Date();
+    return this.analytics.getDateRangeStats(start, end);
+  }
+
   // ─── Sessions ────────────────────────────────────────────
 
   @Get('sessions')

@@ -2982,7 +2982,9 @@ model ChatFeedback {
   rating       Int      // 0=👎, 1=👍
   feedbackText String?  @map("feedback_text") @db.Text
 
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
 
   @@index([sessionId])
   @@index([rating])

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 
 /**
@@ -93,31 +93,40 @@ export class LearningService {
     });
     if (!suggestion) return;
 
-    // Create or update KB entry
-    const kbEntry = await this.prisma.chatKnowledgeBase.create({
-      data: {
-        channel: 'LINE_FINANCE',
-        intent: suggestion.suggestedIntent,
-        category: 'learned',
-        triggerKeywords: suggestion.suggestedKeywords,
-        exampleQuestions: [suggestion.customerQuestion],
-        responseTemplate: suggestion.suggestedTemplate || suggestion.staffAnswer || '',
-        responseType: 'auto',
-        priority: 5,
-      },
-    });
+    // C3: Validate that we have a response template
+    const template = suggestion.suggestedTemplate || suggestion.staffAnswer || '';
+    if (!template.trim()) {
+      throw new BadRequestException('ต้องระบุ template ก่อน approve — suggestion นี้ไม่มี template หรือ staff answer');
+    }
 
-    await this.prisma.chatKbSuggestion.update({
-      where: { id },
-      data: {
-        status: 'APPROVED',
-        reviewedById: reviewerId,
-        reviewedAt: new Date(),
-        kbEntryId: kbEntry.id,
-      },
-    });
+    // C2: Atomic create KB + update suggestion
+    await this.prisma.$transaction(async (tx) => {
+      const kbEntry = await tx.chatKnowledgeBase.create({
+        data: {
+          channel: 'LINE_FINANCE',
+          intent: suggestion.suggestedIntent,
+          category: 'learned',
+          triggerKeywords: suggestion.suggestedKeywords,
+          exampleQuestions: [suggestion.customerQuestion],
+          responseTemplate: template,
+          responseType: 'auto',
+          requiresAuth: false, // W5: learned entries don't require auth by default
+          priority: 5,
+        },
+      });
 
-    this.logger.log(`[Learning] Suggestion ${id} approved → KB entry ${kbEntry.id}`);
+      await tx.chatKbSuggestion.update({
+        where: { id },
+        data: {
+          status: 'APPROVED',
+          reviewedById: reviewerId,
+          reviewedAt: new Date(),
+          kbEntryId: kbEntry.id,
+        },
+      });
+
+      this.logger.log(`[Learning] Suggestion ${id} approved → KB entry ${kbEntry.id}`);
+    });
   }
 
   async rejectSuggestion(id: string, reviewerId: string): Promise<void> {

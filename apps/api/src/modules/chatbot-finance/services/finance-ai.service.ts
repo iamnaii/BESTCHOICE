@@ -81,7 +81,7 @@ export class FinanceAiService {
       let totalOutput = 0;
       let handoffTriggered = false;
       const toolsUsed: string[] = [];
-      let activeModel = this.modelSonnet; // Start with Sonnet (tool-capable)
+      const activeModel = this.modelSonnet;
 
       // Tool use loop
       for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {

@@ -214,8 +214,9 @@ export class FinanceToolsService {
     if (contracts.length === 0) return null;
 
     const primary = contracts[0];
-    // Attach disambiguation info when multiple contracts exist
-    return Object.assign(primary, {
+    // Spread instead of Object.assign to avoid mutating Prisma result
+    return {
+      ...primary,
       hasMultipleContracts: contracts.length > 1,
       ...(contracts.length > 1 && {
         contractSummaries: contracts.map((c) => ({
@@ -224,7 +225,7 @@ export class FinanceToolsService {
           status: c.status,
         })),
       }),
-    });
+    };
   }
 
 }

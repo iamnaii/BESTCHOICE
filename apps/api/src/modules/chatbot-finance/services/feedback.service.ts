@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 
 /**
@@ -19,11 +19,20 @@ export class FeedbackService {
   constructor(private prisma: PrismaService) {}
 
   async saveFeedback(params: {
+    lineUserId: string;
     sessionId: string;
     messageId?: string;
     rating: number; // 0=👎, 1=👍
     feedbackText?: string;
   }) {
+    // Verify session belongs to this LINE user
+    const session = await this.prisma.chatSession.findFirst({
+      where: { id: params.sessionId, lineUserId: params.lineUserId },
+    });
+    if (!session) {
+      throw new ForbiddenException('ไม่พบ session');
+    }
+
     const feedback = await this.prisma.chatFeedback.create({
       data: {
         sessionId: params.sessionId,
@@ -112,31 +121,36 @@ export class FeedbackService {
     }
   }
 
-  /** 👍 → KB entry priority +1, 👎 → priority -2 */
+  /** 👍 → KB entry priority +1, 👎 → priority -2 (atomic, no race condition) */
   private async adjustKbPriority(sessionId: string, rating: number): Promise<void> {
     try {
-      // Find the last bot message with an intent in this session
       const lastBotMsg = await this.prisma.chatMessage.findFirst({
         where: { sessionId, role: 'BOT', intent: { not: null } },
         orderBy: { createdAt: 'desc' },
       });
       if (!lastBotMsg?.intent) return;
 
-      // Find matching KB entry by intent
       const kbEntry = await this.prisma.chatKnowledgeBase.findFirst({
         where: { intent: lastBotMsg.intent, active: true, deletedAt: null },
       });
       if (!kbEntry) return;
 
-      const delta = rating === 1 ? 1 : -2;
-      await this.prisma.chatKnowledgeBase.update({
-        where: { id: kbEntry.id },
-        data: { priority: Math.max(0, kbEntry.priority + delta) },
-      });
+      // Atomic increment/decrement — no read-then-write race
+      if (rating === 1) {
+        await this.prisma.chatKnowledgeBase.update({
+          where: { id: kbEntry.id },
+          data: { priority: { increment: 1 } },
+        });
+      } else {
+        // Ensure priority doesn't go below 0 using raw SQL
+        await this.prisma.$executeRaw`
+          UPDATE chat_knowledge_base
+          SET priority = GREATEST(0, priority - 2)
+          WHERE id = ${kbEntry.id}
+        `;
+      }
 
-      this.logger.debug(
-        `[Feedback] KB "${kbEntry.intent}" priority ${delta > 0 ? '+' : ''}${delta} → ${kbEntry.priority + delta}`,
-      );
+      this.logger.debug(`[Feedback] KB "${kbEntry.intent}" priority adjusted (rating=${rating})`);
     } catch {
       // Non-critical — don't fail the feedback save
     }

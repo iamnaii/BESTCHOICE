@@ -24,6 +24,9 @@ class VerifyOtpDto {
 
 class SubmitFeedbackDto {
   @IsString()
+  lineUserId!: string;
+
+  @IsString()
   sessionId!: string;
 
   @IsOptional()
@@ -99,6 +102,7 @@ export class ChatbotFinanceLiffController {
   @Throttle({ short: { ttl: 60000, limit: 10 } })
   async submitFeedback(@Body() dto: SubmitFeedbackDto) {
     return this.feedback.saveFeedback({
+      lineUserId: dto.lineUserId,
       sessionId: dto.sessionId,
       messageId: dto.messageId,
       rating: dto.rating,

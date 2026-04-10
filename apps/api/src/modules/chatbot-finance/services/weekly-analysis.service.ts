@@ -56,26 +56,42 @@ export class WeeklyAnalysisService {
         return;
       }
 
-      // 2. For each session, check if we already have a suggestion
+      const sessionIdArray = [...sessionIds];
+
+      // 2. Batch: find existing suggestions to skip
+      const existingSuggestions = await this.prisma.chatKbSuggestion.findMany({
+        where: { sessionId: { in: sessionIdArray }, source: 'auto_analysis' },
+        select: { sessionId: true },
+      });
+      const alreadyAnalyzed = new Set(existingSuggestions.map((s) => s.sessionId));
+
+      // 3. Batch: get first customer message per session
+      const newSessionIds = sessionIdArray.filter((id) => !alreadyAnalyzed.has(id));
+      if (newSessionIds.length === 0) {
+        this.logger.log(`[WeeklyAnalysis] All ${sessionIds.size} sessions already analyzed`);
+        return;
+      }
+
+      const customerMessages = await this.prisma.chatMessage.findMany({
+        where: {
+          sessionId: { in: newSessionIds },
+          role: 'CUSTOMER',
+          text: { not: null },
+        },
+        orderBy: { createdAt: 'asc' },
+        distinct: ['sessionId'],
+      });
+
+      // Group by sessionId
+      const msgBySession = new Map(customerMessages.map((m) => [m.sessionId, m]));
+
+      // 4. Create suggestions
       let created = 0;
-      let skipped = 0;
+      let skipped = alreadyAnalyzed.size;
 
-      for (const sessionId of sessionIds) {
-        const existing = await this.prisma.chatKbSuggestion.findFirst({
-          where: { sessionId, source: 'auto_analysis' },
-        });
-        if (existing) {
-          skipped++;
-          continue;
-        }
-
-        // Get the first customer message (usually the core question)
-        const firstCustomerMsg = await this.prisma.chatMessage.findFirst({
-          where: { sessionId, role: 'CUSTOMER', text: { not: null } },
-          orderBy: { createdAt: 'asc' },
-        });
-
-        if (!firstCustomerMsg?.text) {
+      for (const sessionId of newSessionIds) {
+        const msg = msgBySession.get(sessionId);
+        if (!msg?.text) {
           skipped++;
           continue;
         }
@@ -83,8 +99,8 @@ export class WeeklyAnalysisService {
         await this.prisma.chatKbSuggestion.create({
           data: {
             sessionId,
-            customerQuestion: firstCustomerMsg.text,
-            suggestedIntent: firstCustomerMsg.intent ?? 'auto_analyzed',
+            customerQuestion: msg.text,
+            suggestedIntent: msg.intent ?? 'auto_analyzed',
             source: 'auto_analysis',
             status: 'PENDING',
           },

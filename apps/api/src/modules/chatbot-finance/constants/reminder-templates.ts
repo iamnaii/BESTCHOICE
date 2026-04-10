@@ -6,8 +6,8 @@
  * to avoid hardcoding bank details in constants.
  */
 
-/** @deprecated Use payload.bankBlock instead — kept as fallback */
-const DEFAULT_BANK_BLOCK = `▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n🏦 ธนาคารกสิกรไทย\n🔢 เลขที่: 203-1-16520-5\n👤 บจก. เบสท์ช้อยส์โฟน\n▬▬▬▬▬▬▬▬▬▬▬▬▬▬`;
+/** Fallback bank block when FinanceConfigService is not injected */
+const FALLBACK_BANK_BLOCK = `▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n🏦 ธนาคารกสิกรไทย\n🔢 เลขที่: 203-1-16520-5\n👤 บจก. เบสท์ช้อยส์โฟน\n▬▬▬▬▬▬▬▬▬▬▬▬▬▬`;
 
 const SUFFIX = `📞 สอบถาม: 063-134-6356`;
 
@@ -31,7 +31,7 @@ export const TEMPLATES = {
     `🔔 แจ้งเตือน: อีก 5 วัน ครบกำหนดชำระ\n\n` +
     `📅 ครบกำหนด: ${p.dueDate}\n` +
     `💰 ยอดชำระ: ${fmt(p.amount)} บาท\n\n` +
-    `${p.bankBlock || DEFAULT_BANK_BLOCK}\n\n` +
+    `${p.bankBlock || FALLBACK_BANK_BLOCK}\n\n` +
     `✅ โอนแล้วฝากสลิปไว้ในไลน์นี้ได้เลยค่ะ 😊\n\n` +
     `${SUFFIX}`,
 
@@ -39,7 +39,7 @@ export const TEMPLATES = {
     `😊 อีก 3 วัน ครบกำหนดนะคะ\n\n` +
     `📅 ครบกำหนด: ${p.dueDate}\n` +
     `💰 ยอดชำระ: ${fmt(p.amount)} บาท\n\n` +
-    `${p.bankBlock || DEFAULT_BANK_BLOCK}\n\n` +
+    `${p.bankBlock || FALLBACK_BANK_BLOCK}\n\n` +
     `📝 โอนเสร็จแล้ว ฝากแปะสลิปในนี้ได้เลยนะคะ`,
 
   T_MINUS_1: (p: ReminderPayload): string =>
@@ -47,7 +47,7 @@ export const TEMPLATES = {
     `📅 ครบกำหนด: ${p.dueDate}\n` +
     `💰 ยอดชำระ: ${fmt(p.amount)} บาท\n\n` +
     `📌 ชำระล่วงหน้าได้เลย เพื่อการใช้งานที่ต่อเนื่อง 100%\n\n` +
-    `${p.bankBlock || DEFAULT_BANK_BLOCK}`,
+    `${p.bankBlock || FALLBACK_BANK_BLOCK}`,
 
   T_DAY: (p: ReminderPayload): string =>
     `🔔 แจ้งเตือนวันครบกำหนดชำระค่ะ\n\n` +
@@ -56,14 +56,14 @@ export const TEMPLATES = {
     `✅ รบกวนโอนชำระภายในวันนี้\n` +
     `พร้อมแจ้งสลิปในไลน์นี้ทันทีหลังโอน\n\n` +
     `⚠️ หากชำระเกินกำหนด จะมีค่าปรับวันละ 50 บาท\n\n` +
-    `${p.bankBlock || DEFAULT_BANK_BLOCK}`,
+    `${p.bankBlock || FALLBACK_BANK_BLOCK}`,
 
   T_PLUS_1: (p: ReminderPayload): string =>
     `⚠️ แจ้งเตือน: ค่างวดเลยกำหนดชำระแล้ว 1 วัน\nระบบยังไม่ได้รับยอดค่ะ\n\n` +
     `📅 กำหนดชำระ: ${p.dueDate}\n` +
     `💰 ยอดงวด + ค่าปรับ (${fmt(p.fineAmount ?? 50)})\n` +
     `   = ยอดรวม: ${fmt(p.totalAmount ?? p.amount + 50)} บาท\n\n` +
-    `${p.bankBlock || DEFAULT_BANK_BLOCK}\n\n` +
+    `${p.bankBlock || FALLBACK_BANK_BLOCK}\n\n` +
     `✅ โอนแล้วฝากสลิปไว้ได้เลยค่ะ`,
 
   T_PLUS_3: (p: ReminderPayload): string =>
@@ -72,6 +72,6 @@ export const TEMPLATES = {
     `💰 ยอดงวด + ค่าปรับ ${fmt(p.fineAmount ?? 150)} บาท\n` +
     `   = ยอดรวม: ${fmt(p.totalAmount ?? p.amount + 150)} บาท\n\n` +
     `📌 หากยังต้องการใช้งานต่อ กรุณาชำระและแจ้งสลิปก่อน 16:00 น.\n\n` +
-    `${p.bankBlock || DEFAULT_BANK_BLOCK}\n\n` +
+    `${p.bankBlock || FALLBACK_BANK_BLOCK}\n\n` +
     `${SUFFIX}`,
 };

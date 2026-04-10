@@ -6,6 +6,8 @@ CREATE TABLE "chat_feedbacks" (
     "rating" INTEGER NOT NULL,
     "feedback_text" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+    "deleted_at" TIMESTAMP(3),
 
     CONSTRAINT "chat_feedbacks_pkey" PRIMARY KEY ("id")
 );

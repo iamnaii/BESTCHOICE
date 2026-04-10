@@ -17,7 +17,9 @@ import { INTENTS } from '../constants/intents';
 const FALLBACK_REPLY =
   'ขออภัยค่ะ ระบบขัดข้องชั่วคราว 🙏\nรบกวนติดต่อเจ้าหน้าที่ 063-134-6356 ในเวลาทำการนะคะ';
 
-const VERIFY_PATH = '/liff/finance-verify';
+// Path removed — Endpoint URL in LINE Developers is set to full path
+// https://bestchoicephone.app/liff/finance-verify
+const VERIFY_PATH = '';
 
 /** Max chars sent to Claude — prevents token bomb from oversized messages */
 const MAX_USER_TEXT_LENGTH = 2000;

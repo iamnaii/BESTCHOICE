@@ -1005,7 +1005,19 @@ export default function TodosPage() {
               </div>
 
               {/* Upload zone */}
-              <label className="flex flex-col items-center justify-center gap-2 px-4 py-6 border-2 border-dashed border-border rounded-xl cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors">
+              <label
+                className="flex flex-col items-center justify-center gap-2 px-4 py-6 border-2 border-dashed border-border rounded-xl cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors"
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const file = e.dataTransfer.files?.[0];
+                  if (file) uploadAttachment(file);
+                }}
+              >
                 <Upload className="size-6 text-muted-foreground" />
                 <div className="text-xs text-center">
                   <span className="font-semibold text-primary">คลิกเพื่ออัปโหลด</span>{' '}

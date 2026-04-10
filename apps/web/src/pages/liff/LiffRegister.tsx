@@ -3,6 +3,9 @@ import { useLiffInit } from '@/hooks/useLiffInit';
 import { liffApi } from '@/lib/api';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 
 type Step = 'loading' | 'phone' | 'confirm' | 'success' | 'already_linked' | 'error';
 
@@ -99,11 +102,10 @@ export default function LiffRegister() {
   // Loading
   if (step === 'loading') {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto" />
-          <p className="mt-4 text-gray-600">กำลังเชื่อมต่อ LINE...</p>
-        </div>
+      <div className="min-h-screen bg-background p-4 space-y-4">
+        <Skeleton className="h-24 w-full rounded-xl" />
+        <Skeleton className="h-20 w-full rounded-xl" />
+        <Skeleton className="h-48 w-full rounded-xl" />
       </div>
     );
   }
@@ -111,12 +113,14 @@ export default function LiffRegister() {
   // Error
   if (step === 'error') {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full text-center">
-          <div className="text-red-500 text-5xl mb-4">!</div>
-          <h2 className="text-xl font-bold text-gray-800 mb-2">เกิดข้อผิดพลาด</h2>
-          <p className="text-gray-600">{errorMessage}</p>
-        </div>
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <Card className="max-w-md w-full">
+          <CardContent className="text-center py-10">
+            <div className="text-destructive text-5xl mb-4">!</div>
+            <h2 className="text-lg font-bold mb-2">เกิดข้อผิดพลาด</h2>
+            <p className="text-muted-foreground text-sm">{errorMessage}</p>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -124,18 +128,19 @@ export default function LiffRegister() {
   // Already linked
   if (step === 'already_linked') {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full text-center">
-          <div className="text-green-500 text-5xl mb-4">&#10003;</div>
-          <h2 className="text-xl font-bold text-gray-800 mb-2">ลงทะเบียนแล้ว</h2>
-          <p className="text-gray-600 mb-6">บัญชี LINE ของคุณเชื่อมต่อกับระบบแล้ว</p>
-          <a
-            href={`/liff/contract?lineId=${encodeURIComponent(profile?.userId || '')}`}
-            className="inline-block bg-green-600 text-white px-6 py-3 rounded-xl font-medium hover:bg-green-700 transition-colors"
-          >
-            ดูสัญญาของฉัน
-          </a>
-        </div>
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <Card className="max-w-md w-full">
+          <CardContent className="text-center py-10">
+            <div className="text-success text-5xl mb-4">&#10003;</div>
+            <h2 className="text-lg font-bold mb-2">ลงทะเบียนแล้ว</h2>
+            <p className="text-muted-foreground text-sm mb-6">บัญชี LINE ของคุณเชื่อมต่อกับระบบแล้ว</p>
+            <Button variant="primary" size="lg" asChild>
+              <a href={`/liff/contract?lineId=${encodeURIComponent(profile?.userId || '')}`}>
+                ดูสัญญาของฉัน
+              </a>
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -143,19 +148,20 @@ export default function LiffRegister() {
   // Success
   if (step === 'success') {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full text-center">
-          <div className="text-green-500 text-5xl mb-4">&#10003;</div>
-          <h2 className="text-xl font-bold text-gray-800 mb-2">ลงทะเบียนสำเร็จ</h2>
-          <p className="text-gray-600 mb-2">เชื่อมบัญชี LINE กับระบบเรียบร้อยแล้ว</p>
-          <p className="text-gray-500 text-sm mb-6">ตอนนี้คุณสามารถใช้คำสั่งต่างๆ ผ่าน LINE ได้แล้ว</p>
-          <a
-            href={`/liff/contract?lineId=${encodeURIComponent(profile?.userId || '')}`}
-            className="inline-block bg-green-600 text-white px-6 py-3 rounded-xl font-medium hover:bg-green-700 transition-colors"
-          >
-            ดูสัญญาของฉัน
-          </a>
-        </div>
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <Card className="max-w-md w-full">
+          <CardContent className="text-center py-10">
+            <div className="text-success text-5xl mb-4">&#10003;</div>
+            <h2 className="text-lg font-bold mb-2">ลงทะเบียนสำเร็จ</h2>
+            <p className="text-muted-foreground text-sm mb-2">เชื่อมบัญชี LINE กับระบบเรียบร้อยแล้ว</p>
+            <p className="text-muted-foreground text-xs mb-6">ตอนนี้คุณสามารถใช้คำสั่งต่างๆ ผ่าน LINE ได้แล้ว</p>
+            <Button variant="primary" size="lg" asChild>
+              <a href={`/liff/contract?lineId=${encodeURIComponent(profile?.userId || '')}`}>
+                ดูสัญญาของฉัน
+              </a>
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -163,65 +169,69 @@ export default function LiffRegister() {
   // Phone input step
   if (step === 'phone') {
     return (
-      <div className="min-h-screen bg-gray-50 p-4">
+      <div className="min-h-screen bg-background p-4">
         {/* Header */}
-        <div className="bg-green-600 rounded-2xl p-6 text-white mb-6">
+        <div className="bg-primary rounded-xl p-5 text-primary-foreground mb-4">
           <p className="text-xs opacity-80">BEST CHOICE</p>
-          <h1 className="text-lg font-bold mt-1">ลงทะเบียนผูก LINE</h1>
+          <h1 className="text-base font-bold mt-1">ลงทะเบียนผูก LINE</h1>
         </div>
 
         {/* Profile */}
         {profile && (
-          <div className="bg-white rounded-2xl shadow-sm p-5 mb-4 flex items-center gap-4">
-            {profile.pictureUrl ? (
-              <img src={profile.pictureUrl} alt="รูปโปรไฟล์ LINE" className="w-12 h-12 rounded-full" />
-            ) : (
-              <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center text-green-600 font-bold text-lg">
-                {profile.displayName.charAt(0)}
+          <Card className="mb-4">
+            <CardContent className="py-4">
+              <div className="flex items-center gap-4">
+                {profile.pictureUrl ? (
+                  <img src={profile.pictureUrl} alt="รูปโปรไฟล์ LINE" className="w-12 h-12 rounded-full" />
+                ) : (
+                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-lg">
+                    {profile.displayName.charAt(0)}
+                  </div>
+                )}
+                <div>
+                  <p className="font-medium">{profile.displayName}</p>
+                  <p className="text-xs text-muted-foreground">บัญชี LINE ของคุณ</p>
+                </div>
               </div>
-            )}
-            <div>
-              <p className="font-medium text-gray-800">{profile.displayName}</p>
-              <p className="text-xs text-gray-400">บัญชี LINE ของคุณ</p>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
         )}
 
         {/* Phone Input */}
-        <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
-          <h2 className="text-sm font-bold text-gray-800 mb-2">กรอกเบอร์โทรศัพท์</h2>
-          <p className="text-xs text-gray-400 mb-4">กรอกเบอร์โทรที่ลงทะเบียนกับ BEST CHOICE</p>
+        <Card className="mb-4">
+          <CardContent>
+            <h2 className="text-sm font-bold mb-2">กรอกเบอร์โทรศัพท์</h2>
+            <p className="text-xs text-muted-foreground mb-4">กรอกเบอร์โทรที่ลงทะเบียนกับ BEST CHOICE</p>
 
-          <input
-            type="tel"
-            inputMode="numeric"
-            placeholder="0812345678"
-            value={phone}
-            onChange={(e) => {
-              setPhone(e.target.value.replace(/\D/g, '').slice(0, 10));
-              setPhoneError('');
-            }}
-            autoComplete="tel"
-            className={`w-full px-4 py-3 rounded-xl border text-center text-lg tracking-widest ${
-              phoneError ? 'border-red-400 bg-red-50' : 'border-gray-300'
-            } focus:outline-none focus:ring-2 focus:ring-green-500`}
-          />
-          {phoneError && <p className="text-red-500 text-xs mt-2 text-center">{phoneError}</p>}
+            <input
+              type="tel"
+              inputMode="numeric"
+              placeholder="0812345678"
+              value={phone}
+              onChange={(e) => {
+                setPhone(e.target.value.replace(/\D/g, '').slice(0, 10));
+                setPhoneError('');
+              }}
+              autoComplete="tel"
+              className={`w-full px-4 py-3 rounded-lg border text-center text-lg tracking-widest bg-background ${
+                phoneError ? 'border-destructive bg-destructive/5' : 'border-input'
+              } focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary`}
+            />
+            {phoneError && <p className="text-destructive text-xs mt-2 text-center">{phoneError}</p>}
 
-          <button
-            onClick={handlePhoneLookup}
-            disabled={phone.length < 10 || submitting}
-            className={`w-full mt-4 py-3 rounded-xl font-medium text-white transition-colors ${
-              phone.length >= 10 && !submitting
-                ? 'bg-green-600 hover:bg-green-700'
-                : 'bg-gray-300 cursor-not-allowed'
-            }`}
-          >
-            {submitting ? 'กำลังค้นหา...' : 'ค้นหาบัญชี'}
-          </button>
-        </div>
+            <Button
+              variant="primary"
+              size="lg"
+              className="w-full mt-4"
+              onClick={handlePhoneLookup}
+              disabled={phone.length < 10 || submitting}
+            >
+              {submitting ? 'กำลังค้นหา...' : 'ค้นหาบัญชี'}
+            </Button>
+          </CardContent>
+        </Card>
 
-        <p className="text-center text-xs text-gray-400">
+        <p className="text-center text-xs text-muted-foreground">
           BEST CHOICE - ระบบผ่อนชำระมือถือ
         </p>
       </div>
@@ -231,43 +241,47 @@ export default function LiffRegister() {
   // Confirm step
   if (step === 'confirm' && lookupResult) {
     return (
-      <div className="min-h-screen bg-gray-50 p-4">
+      <div className="min-h-screen bg-background p-4">
         {/* Header */}
-        <div className="bg-green-600 rounded-2xl p-6 text-white mb-6">
+        <div className="bg-primary rounded-xl p-5 text-primary-foreground mb-4">
           <p className="text-xs opacity-80">BEST CHOICE</p>
-          <h1 className="text-lg font-bold mt-1">ยืนยันตัวตน</h1>
+          <h1 className="text-base font-bold mt-1">ยืนยันตัวตน</h1>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm p-5 mb-4 text-center">
-          <p className="text-sm text-gray-500 mb-2">พบบัญชีในระบบ:</p>
-          <p className="text-2xl font-bold text-gray-800 mb-1">{lookupResult.maskedName}</p>
-          <p className="text-xs text-gray-400 mb-6">เบอร์โทร: {phone}</p>
+        <Card className="mb-4">
+          <CardContent className="text-center">
+            <p className="text-sm text-muted-foreground mb-2">พบบัญชีในระบบ:</p>
+            <p className="text-2xl font-bold mb-1">{lookupResult.maskedName}</p>
+            <p className="text-xs text-muted-foreground mb-6">เบอร์โทร: {phone}</p>
 
-          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-6">
-            <p className="text-sm text-yellow-800">
-              หากชื่อนี้คือคุณ กดยืนยันเพื่อผูกบัญชี LINE กับระบบ
-            </p>
-          </div>
+            <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-4 mb-6">
+              <p className="text-sm text-amber-800 dark:text-amber-200">
+                หากชื่อนี้คือคุณ กดยืนยันเพื่อผูกบัญชี LINE กับระบบ
+              </p>
+            </div>
 
-          <button
-            onClick={() => confirmMutation.mutate()}
-            disabled={submitting}
-            className={`w-full py-3 rounded-xl font-medium text-white transition-colors ${
-              !submitting ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-300 cursor-not-allowed'
-            }`}
-          >
-            {submitting ? 'กำลังดำเนินการ...' : 'ยืนยัน ใช่ฉันเอง'}
-          </button>
+            <Button
+              variant="primary"
+              size="lg"
+              className="w-full"
+              onClick={() => confirmMutation.mutate()}
+              disabled={submitting}
+            >
+              {submitting ? 'กำลังดำเนินการ...' : 'ยืนยัน ใช่ฉันเอง'}
+            </Button>
 
-          <button
-            onClick={() => { setStep('phone'); setPhone(''); setLookupResult(null); }}
-            className="w-full mt-2 py-3 rounded-xl font-medium text-gray-600 hover:bg-gray-100 transition-colors"
-          >
-            ไม่ใช่ ลองใหม่
-          </button>
-        </div>
+            <Button
+              variant="ghost"
+              size="lg"
+              className="w-full mt-2 text-muted-foreground"
+              onClick={() => { setStep('phone'); setPhone(''); setLookupResult(null); }}
+            >
+              ไม่ใช่ ลองใหม่
+            </Button>
+          </CardContent>
+        </Card>
 
-        <p className="text-center text-xs text-gray-400">
+        <p className="text-center text-xs text-muted-foreground">
           BEST CHOICE - ระบบผ่อนชำระมือถือ
         </p>
       </div>

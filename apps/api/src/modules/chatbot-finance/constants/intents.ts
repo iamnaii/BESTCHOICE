@@ -23,6 +23,11 @@ export const INTENTS = {
   // Events
   FOLLOW_GREETING: 'follow_greeting',
   UNSUPPORTED_TYPE: 'unsupported_type',
+
+  // Product (v5 — from improvement proposal)
+  PRODUCT_INQUIRY: 'product_inquiry',
+  ANDROID_REDIRECT: 'android_redirect',
+  ONBOARDING: 'onboarding',
 } as const;
 
 export type Intent = (typeof INTENTS)[keyof typeof INTENTS];

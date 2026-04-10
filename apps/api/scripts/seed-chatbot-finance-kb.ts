@@ -154,6 +154,131 @@ const ENTRIES: KbEntry[] = [
     requiresAuth: false,
     priority: 40,
   },
+
+  // ─── v5 Scenarios จาก chatbot-improvement-proposal.md ───
+
+  {
+    intent: 'product_iphone',
+    category: 'product',
+    triggerKeywords: ['iPhone', 'ไอโฟน', 'มือถือ', 'รุ่นไหน', 'ราคา', 'สนใจ', 'ผ่อนมือถือ'],
+    exampleQuestions: [
+      'มี iPhone รุ่นไหนบ้าง',
+      'iPhone 16 ราคาเท่าไหร่',
+      'สนใจผ่อนมือถือ',
+    ],
+    responseTemplate:
+      'เรามี iPhone หลายรุ่นทั้งมือ1 และมือ2 ที่ผ่านการคัดเกรดแล้วค่ะ 😊\n\n' +
+      'เงื่อนไขผ่อน:\n' +
+      '✅ ใช้เพียงบัตรประชาชน\n' +
+      '✅ ไม่เช็คเครดิตบูโร\n' +
+      '✅ อนุมัติภายใน 15 นาที\n\n' +
+      'สนใจรุ่นไหนเป็นพิเศษไหมคะ? ทีมงานจะช่วยแนะนำรุ่นที่เหมาะกับงบประมาณค่ะ',
+    responseType: 'auto',
+    requiresAuth: false,
+    priority: 70,
+  },
+  {
+    intent: 'product_ipad',
+    category: 'product',
+    triggerKeywords: ['iPad', 'ไอแพด', 'แท็บเล็ต'],
+    exampleQuestions: [
+      'มี iPad ไหม',
+      'iPad ผ่อนได้ไหม',
+      'สนใจ iPad',
+    ],
+    responseTemplate:
+      'เรามี iPad มือ1 (ใหม่จาก Apple) ค่ะ 😊\n\n' +
+      'เงื่อนไขผ่อนเหมือนกันเลย:\n' +
+      '✅ บัตรประชาชนใบเดียว\n' +
+      '✅ ไม่เช็คเครดิตบูโร\n' +
+      '✅ อนุมัติใน 15 นาที\n\n' +
+      'สนใจรุ่นไหนคะ? หรือจะให้ทีม SALES ติดต่อกลับเพื่อแนะนำรุ่นที่เหมาะสมก็ได้ค่ะ',
+    responseType: 'auto',
+    requiresAuth: false,
+    priority: 65,
+  },
+  {
+    intent: 'android_redirect',
+    category: 'product',
+    triggerKeywords: ['Samsung', 'ซัมซุง', 'OPPO', 'Vivo', 'Xiaomi', 'Android', 'แอนดรอยด์', 'Google Pixel'],
+    exampleQuestions: [
+      'มี Samsung ไหม',
+      'ผ่อน OPPO ได้ไหม',
+      'สนใจ Android',
+    ],
+    responseTemplate:
+      'ขอบคุณที่สนใจสินค้าของเรานะคะ 🙏\n\n' +
+      'BESTCHOICE เชี่ยวชาญด้าน iPhone และ iPad โดยเฉพาะค่ะ\n' +
+      'ขณะนี้ยังไม่มีบริการสำหรับ Android\n\n' +
+      'แต่ถ้าสนใจ iPhone มีตัวเลือกที่ดีไม่แพ้กันนะคะ\n' +
+      'ผ่อนง่าย บัตรประชาชนใบเดียว ไม่เช็คเครดิตบูโร อนุมัติ 15 นาที ✨\n\n' +
+      'สนใจดูรุ่น iPhone ที่ราคาใกล้เคียงกันไหมคะ?',
+    responseType: 'auto',
+    requiresAuth: false,
+    priority: 85,
+  },
+  {
+    intent: 'ipad_used_redirect',
+    category: 'product',
+    triggerKeywords: ['iPad มือสอง', 'iPad มือ2', 'ไอแพดมือสอง', 'ไอแพดมือ2'],
+    exampleQuestions: [
+      'มี iPad มือ2 ไหม',
+      'iPad มือสอง ผ่อนได้ไหม',
+    ],
+    responseTemplate:
+      'ขอบคุณที่สนใจค่ะ 🙏\n\n' +
+      'ขณะนี้เรามีเฉพาะ iPad มือ1 (ใหม่จาก Apple) ค่ะ\n' +
+      'ยังไม่มี iPad มือ2 ในสต็อก\n\n' +
+      'iPad มือ1 ของเราผ่อนได้ง่ายๆ ด้วยบัตรประชาชน ไม่เช็คเครดิตบูโร\n' +
+      'สนใจดูสเปคและราคาไหมคะ? 😊',
+    responseType: 'auto',
+    requiresAuth: false,
+    priority: 65,
+  },
+  {
+    intent: 'installment_documents',
+    category: 'onboarding',
+    triggerKeywords: ['เอกสาร', 'ใช้อะไรบ้าง', 'ผ่อนยังไง', 'เงื่อนไข', 'ขั้นตอน', 'สมัคร'],
+    exampleQuestions: [
+      'ผ่อนต้องใช้เอกสารอะไร',
+      'เงื่อนไขการผ่อน',
+      'ขั้นตอนผ่อนเป็นยังไง',
+    ],
+    responseTemplate:
+      'เงื่อนไขการผ่อนของ BESTCHOICE ง่ายมากค่ะ 😊\n\n' +
+      '📄 เอกสารที่ใช้:\n' +
+      '- บัตรประชาชน (ไม่หมดอายุ)\n' +
+      '- ทะเบียนบ้าน\n' +
+      '- Slip เงินเดือน หรือ Statement ย้อนหลัง 3 เดือน\n\n' +
+      '🚀 ขั้นตอน:\n' +
+      '1. ส่งเอกสาร\n' +
+      '2. รอผล 15 นาที\n' +
+      '3. เซ็นสัญญา รับเครื่องได้เลย\n\n' +
+      'ไม่เช็คเครดิตบูโรค่ะ ✅\n' +
+      'สนใจยื่นขอเลยไหมคะ?',
+    responseType: 'auto',
+    requiresAuth: false,
+    priority: 80,
+  },
+  {
+    intent: 'complaint',
+    category: 'escalation',
+    triggerKeywords: ['ร้องเรียน', 'ไม่พอใจ', 'complaint', 'ผิดหวัง', 'โกง', 'หลอก'],
+    exampleQuestions: [
+      'ขอร้องเรียน',
+      'ไม่พอใจบริการ',
+      'จะร้องเรียนได้ยังไง',
+    ],
+    responseTemplate:
+      'ขอโทษที่ทำให้ไม่สะดวกนะคะ 🙏\n' +
+      'รับทราบเรื่องที่แจ้งแล้วค่ะ\n\n' +
+      'กำลังส่งเรื่องให้ผู้จัดการดูแลโดยตรงเลยค่ะ\n' +
+      'จะได้รับการติดต่อกลับภายใน 24 ชั่วโมงค่ะ\n\n' +
+      'หากเร่งด่วน ติดต่อสาขาโดยตรงได้เลยนะคะ 📞 063-134-6356',
+    responseType: 'handoff',
+    requiresAuth: false,
+    priority: 95,
+  },
 ];
 
 async function main() {

@@ -4,6 +4,8 @@ import { LiffApiController } from './liff-api.controller';
 import { LiffApiService } from './liff-api.service';
 import { PaymentLinkService } from './payment-links/payment-link.service';
 import { ContractPaymentService } from '../contracts/contract-payment.service';
+import { DocumentsService } from '../contracts/documents.service';
+import { PrismaService } from '../../prisma/prisma.service';
 import { LiffTokenGuard, LiffRequest } from './guards/liff-token.guard';
 import { Request } from 'express';
 
@@ -50,6 +52,8 @@ describe('LiffApiController', () => {
         { provide: LiffApiService, useValue: liffService },
         { provide: PaymentLinkService, useValue: paymentLinkService },
         { provide: ContractPaymentService, useValue: contractPaymentService },
+        { provide: DocumentsService, useValue: {} },
+        { provide: PrismaService, useValue: {} },
       ],
     })
       .overrideGuard(LiffTokenGuard)

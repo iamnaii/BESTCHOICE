@@ -330,6 +330,47 @@ export class LiffApiService {
     return { success: true };
   }
 
+  // ─── Notification Preferences ────────────────────────
+
+  async getNotificationPreferences(lineId: string) {
+    const customer = await this.prisma.customer.findFirst({
+      where: { lineId, deletedAt: null },
+      select: {
+        notifPaymentReminder: true,
+        notifOverdueNotice: true,
+        notifReceipt: true,
+      },
+    });
+    if (!customer) return null;
+    return {
+      paymentReminder: customer.notifPaymentReminder,
+      overdueNotice: customer.notifOverdueNotice,
+      receiptNotification: customer.notifReceipt,
+    };
+  }
+
+  async updateNotificationPreferences(
+    lineId: string,
+    prefs: { paymentReminder: boolean; overdueNotice: boolean; receiptNotification: boolean },
+  ) {
+    const customer = await this.prisma.customer.findFirst({
+      where: { lineId, deletedAt: null },
+    });
+    if (!customer) return { success: false, error: 'ไม่พบข้อมูลลูกค้า' };
+
+    await this.prisma.customer.update({
+      where: { id: customer.id },
+      data: {
+        notifPaymentReminder: prefs.paymentReminder,
+        notifOverdueNotice: prefs.overdueNotice,
+        notifReceipt: prefs.receiptNotification,
+      },
+    });
+
+    this.logger.log(`[LIFF] Notification prefs updated for LINE ${lineId}`);
+    return { success: true };
+  }
+
   // ─── Utilities ──────────────────────────────────────
 
   private maskThaiName(name: string): string {

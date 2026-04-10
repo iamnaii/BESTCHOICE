@@ -300,12 +300,22 @@ export default function LiffContract() {
         </CardContent>
       </Card>
 
-      {/* Contract Document Info */}
+      {/* Contract Document Download */}
       <Card className="mb-4">
         <CardContent className="py-3">
-          <p className="text-xs text-muted-foreground text-center">
-            ต้องการเอกสารสัญญา? กรุณาติดต่อพนักงานร้านเพื่อขอลิงก์ดาวน์โหลด
-          </p>
+          <Button
+            variant="outline"
+            className="w-full"
+            asChild
+          >
+            <a
+              href={`/api/line-oa/liff/contracts/${contract.id}/document`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              ดาวน์โหลดสัญญา PDF
+            </a>
+          </Button>
         </CardContent>
       </Card>
 

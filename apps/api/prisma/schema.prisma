@@ -471,6 +471,11 @@ model Customer {
   chatConsent      Boolean            @default(false) @map("chat_consent")
   chatConsentAt    DateTime?          @map("chat_consent_at")
 
+  // LINE notification preferences
+  notifPaymentReminder Boolean @default(true) @map("notif_payment_reminder")
+  notifOverdueNotice   Boolean @default(true) @map("notif_overdue_notice")
+  notifReceipt         Boolean @default(true) @map("notif_receipt")
+
   @@index([phone])
   @@index([name])
   @@index([createdAt])

@@ -11,6 +11,8 @@ import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { roundBaht } from '../../utils/installment.util';
 import { BUSINESS_RULES } from '../../utils/config.util';
+import { LineOaService } from '../line-oa/line-oa.service';
+import { formatDateShort } from '../../utils/thai-date.util';
 
 @Injectable()
 export class PaymentsService {
@@ -23,6 +25,7 @@ export class PaymentsService {
     private auditService: AuditService,
     private journalAutoService: JournalAutoService,
     private productsService: ProductsService,
+    private lineOaService: LineOaService,
   ) {}
 
   /** Enforce branch-level access: SALES/BRANCH_MANAGER can only operate on their own branch */
@@ -246,6 +249,9 @@ export class PaymentsService {
           capturedDueDate,
         );
       }
+
+      // LINE push notification (non-blocking)
+      await this.sendPaymentSuccessLine(contractId, installmentNo, amount, paymentMethod);
     }
 
     return updated;
@@ -824,6 +830,49 @@ export class PaymentsService {
         `Failed to award loyalty points for payment ${paymentId}`,
         error instanceof Error ? error.stack : String(error),
       );
+    }
+  }
+
+  /**
+   * Send LINE push notification after successful payment.
+   * Respects customer notification preferences.
+   */
+  private async sendPaymentSuccessLine(
+    contractId: string,
+    installmentNo: number,
+    amount: number,
+    paymentMethod: string,
+  ): Promise<void> {
+    try {
+      const contract = await this.prisma.contract.findUnique({
+        where: { id: contractId },
+        select: {
+          contractNumber: true,
+          totalMonths: true,
+          customer: { select: { lineId: true, name: true, notifReceipt: true } },
+        },
+      });
+      if (!contract?.customer?.lineId || !contract.customer.notifReceipt) return;
+
+      const paidCount = await this.prisma.payment.count({
+        where: { contractId, status: 'PAID' },
+      });
+      const remaining = contract.totalMonths - paidCount;
+
+      const flex = this.lineOaService.buildPaymentSuccess({
+        customerName: contract.customer.name,
+        contractNumber: contract.contractNumber,
+        installmentNo,
+        totalInstallments: contract.totalMonths,
+        amountPaid: amount,
+        paymentMethod,
+        paidDate: formatDateShort(new Date()),
+        remainingInstallments: Math.max(0, remaining),
+      });
+
+      await this.lineOaService.sendFlexMessage(contract.customer.lineId, flex);
+    } catch (err) {
+      this.logger.warn(`LINE push failed for contract ${contractId}: ${err instanceof Error ? err.message : err}`);
     }
   }
 }

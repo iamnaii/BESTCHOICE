@@ -66,6 +66,9 @@ const LiffHistory = lazy(() => import('@/pages/liff/LiffHistory'));
 const LiffProfile = lazy(() => import('@/pages/liff/LiffProfile'));
 const LiffEarlyPayoff = lazy(() => import('@/pages/liff/LiffEarlyPayoff'));
 const LiffFinanceVerify = lazy(() => import('@/pages/liff/LiffFinanceVerify'));
+const LiffBranches = lazy(() => import('@/pages/liff/LiffBranches'));
+const LiffReceipts = lazy(() => import('@/pages/liff/LiffReceipts'));
+const LiffNotificationSettings = lazy(() => import('@/pages/liff/LiffNotificationSettings'));
 const LineOaSettingsPage = lazy(() => import('@/pages/LineOaSettingsPage'));
 const SmsSettingsPage = lazy(() => import('@/pages/SmsSettingsPage'));
 const FinanceReceivablePage = lazy(() => import('@/pages/FinanceReceivablePage'));
@@ -135,6 +138,9 @@ function App() {
         <Route path="/liff/profile" element={<LiffProfile />} />
             <Route path="/liff/early-payoff" element={<LiffEarlyPayoff />} />
         <Route path="/liff/finance-verify" element={<LiffFinanceVerify />} />
+        <Route path="/liff/branches" element={<LiffBranches />} />
+        <Route path="/liff/receipts" element={<LiffReceipts />} />
+        <Route path="/liff/notifications" element={<LiffNotificationSettings />} />
         <Route path="/liff/debug" element={<div style={{padding:20,fontFamily:'monospace'}}>
           <h2>LIFF Debug</h2>
           <p>pathname: {window.location.pathname}</p>

@@ -6,6 +6,7 @@ import { ReceiptsService } from '../receipts/receipts.service';
 import { AuditService } from '../audit/audit.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { ProductsService } from '../products/products.service';
+import { LineOaService } from '../line-oa/line-oa.service';
 
 describe('PaymentsService', () => {
   let service: PaymentsService;
@@ -72,6 +73,7 @@ describe('PaymentsService', () => {
         { provide: AuditService, useValue: mockAuditService },
         { provide: JournalAutoService, useValue: { recordPayment: jest.fn(), recordExpense: jest.fn(), recordContractActivation: jest.fn() } },
         { provide: ProductsService, useValue: { transferOwnership: jest.fn() } },
+        { provide: LineOaService, useValue: { buildPaymentSuccess: jest.fn().mockReturnValue({}), sendFlexMessage: jest.fn() } },
       ],
     }).compile();
 

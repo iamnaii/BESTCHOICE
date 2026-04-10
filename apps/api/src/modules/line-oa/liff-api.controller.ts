@@ -3,18 +3,22 @@ import {
   Post,
   Get,
   Body,
+  Param,
   Query,
   Req,
+  Res,
   UseGuards,
   Logger,
   BadRequestException,
   NotFoundException,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { Request } from 'express';
+import { Request, Response } from 'express';
 import { LiffApiService } from './liff-api.service';
 import { PaymentLinkService } from './payment-links/payment-link.service';
 import { ContractPaymentService } from '../contracts/contract-payment.service';
+import { DocumentsService } from '../contracts/documents.service';
+import { PrismaService } from '../../prisma/prisma.service';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
 import { LiffTokenGuard, LiffRequest } from './guards/liff-token.guard';
 import { Throttle } from '@nestjs/throttler';
@@ -43,6 +47,8 @@ export class LiffApiController {
     private liffApiService: LiffApiService,
     private paymentLinkService: PaymentLinkService,
     private contractPaymentService: ContractPaymentService,
+    private documentsService: DocumentsService,
+    private prisma: PrismaService,
   ) {}
 
   // ─── LIFF Contracts ─────────────────────────────────
@@ -263,5 +269,186 @@ export class LiffApiController {
     }
 
     return { success: true, consent: dto.consent };
+  }
+
+  // ─── LIFF Contract Document Download ────────────────
+
+  @Get('liff/contracts/:contractId/document')
+  async getLiffContractDocument(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Param('contractId') contractId: string,
+  ) {
+    const lineId = (req as unknown as LiffRequest).liffUserId;
+
+    const customer = await this.liffApiService.findCustomerByLineId(lineId);
+    if (!customer) throw new NotFoundException('ไม่พบข้อมูลลูกค้า');
+
+    const contract = await this.liffApiService.findContractForCustomer(contractId, customer.id);
+    if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+
+    // Find the CONTRACT type document
+    const doc = await this.prisma.eDocument.findFirst({
+      where: { contractId, documentType: 'CONTRACT' },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!doc) throw new NotFoundException('ยังไม่มีเอกสารสัญญา กรุณาติดต่อพนักงาน');
+
+    const { stream, filename, contentType } = await this.documentsService.getDocumentStream(doc.id);
+    res.set({
+      'Content-Type': contentType,
+      'Content-Disposition': `inline; filename="${encodeURIComponent(filename)}"`,
+    });
+    stream.pipe(res);
+  }
+
+  // ─── LIFF Receipts ──────────────────────────────────
+
+  @Get('liff/receipts')
+  async getLiffReceipts(@Req() req: Request) {
+    const lineId = (req as unknown as LiffRequest).liffUserId;
+
+    const customer = await this.liffApiService.findCustomerByLineId(lineId);
+    if (!customer) throw new NotFoundException('ไม่พบข้อมูลลูกค้า');
+
+    const receipts = await this.prisma.receipt.findMany({
+      where: {
+        contract: { customerId: customer.id, deletedAt: null },
+        isVoided: false,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      select: {
+        id: true,
+        receiptNumber: true,
+        receiptType: true,
+        amount: true,
+        paidDate: true,
+        paymentMethod: true,
+        installmentNo: true,
+        fileUrl: true,
+        contractId: true,
+      },
+    });
+
+    // Resolve contract numbers
+    const contractIds = [...new Set(receipts.map((r) => r.contractId))];
+    const contracts = await this.prisma.contract.findMany({
+      where: { id: { in: contractIds } },
+      select: { id: true, contractNumber: true },
+    });
+    const contractMap = new Map(contracts.map((c) => [c.id, c.contractNumber]));
+
+    return receipts.map((r) => ({
+      id: r.id,
+      receiptNumber: r.receiptNumber,
+      receiptType: r.receiptType,
+      amount: Number(r.amount),
+      paidDate: r.paidDate.toISOString(),
+      paymentMethod: r.paymentMethod,
+      installmentNo: r.installmentNo,
+      contractNumber: contractMap.get(r.contractId) || '-',
+      hasFile: !!r.fileUrl,
+    }));
+  }
+
+  @Get('liff/receipts/:receiptId/download')
+  async downloadLiffReceipt(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Param('receiptId') receiptId: string,
+  ) {
+    const lineId = (req as unknown as LiffRequest).liffUserId;
+
+    const customer = await this.liffApiService.findCustomerByLineId(lineId);
+    if (!customer) throw new NotFoundException('ไม่พบข้อมูลลูกค้า');
+
+    // Verify receipt belongs to this customer
+    const receipt = await this.prisma.receipt.findFirst({
+      where: {
+        id: receiptId,
+        contract: { customerId: customer.id, deletedAt: null },
+        isVoided: false,
+      },
+      select: { id: true, fileUrl: true, receiptNumber: true },
+    });
+    if (!receipt) throw new NotFoundException('ไม่พบใบเสร็จ');
+
+    // Find matching eDocument
+    const doc = await this.prisma.eDocument.findFirst({
+      where: { contractId: { not: undefined }, documentType: 'RECEIPT' },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Fallback: try to serve fileUrl directly if it's a storage key
+    if (!doc && !receipt.fileUrl) {
+      throw new NotFoundException('ใบเสร็จนี้ยังไม่มีไฟล์ PDF');
+    }
+
+    const docId = doc?.id;
+    if (!docId) throw new NotFoundException('ไม่พบไฟล์ใบเสร็จ');
+
+    const { stream, filename, contentType } = await this.documentsService.getDocumentStream(docId);
+    res.set({
+      'Content-Type': contentType,
+      'Content-Disposition': `inline; filename="${encodeURIComponent(filename)}"`,
+    });
+    stream.pipe(res);
+  }
+
+  // ─── LIFF Branch Contact Info ───────────────────────
+
+  @Get('liff/branches')
+  async getLiffBranches(@Req() req: Request) {
+    const lineId = (req as unknown as LiffRequest).liffUserId;
+
+    const customer = await this.liffApiService.findCustomerByLineId(lineId);
+
+    // Get branches — if customer has contracts, prioritize their branch
+    const branches = await this.prisma.branch.findMany({
+      where: { isActive: true, deletedAt: null },
+      select: {
+        id: true,
+        name: true,
+        location: true,
+        phone: true,
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    // Find customer's primary branch
+    let primaryBranchId: string | null = null;
+    if (customer) {
+      const contract = await this.prisma.contract.findFirst({
+        where: { customerId: customer.id, deletedAt: null },
+        select: { branchId: true },
+        orderBy: { createdAt: 'desc' },
+      });
+      primaryBranchId = contract?.branchId || null;
+    }
+
+    return {
+      branches: branches.map((b) => ({
+        ...b,
+        isPrimary: b.id === primaryBranchId,
+      })),
+    };
+  }
+
+  // ─── LIFF Notification Preferences ──────────────────
+
+  @Get('liff/notification-preferences')
+  async getNotificationPreferences(@Req() req: Request) {
+    const lineId = (req as unknown as LiffRequest).liffUserId;
+    return this.liffApiService.getNotificationPreferences(lineId);
+  }
+
+  @Post('liff/notification-preferences')
+  async updateNotificationPreferences(
+    @Req() req: Request,
+    @Body() body: { paymentReminder: boolean; overdueNotice: boolean; receiptNotification: boolean },
+  ) {
+    const lineId = (req as unknown as LiffRequest).liffUserId;
+    return this.liffApiService.updateNotificationPreferences(lineId, body);
   }
 }

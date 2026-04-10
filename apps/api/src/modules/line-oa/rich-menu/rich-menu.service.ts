@@ -29,57 +29,118 @@ export class RichMenuService {
   }
 
   /**
-   * Create the BESTCHOICE Rich Menu (New Brand — 2026)
-   * Layout: 2 rows x 3 columns
+   * BESTCHOICE SHOP Rich Menu (2026 Brand — v3)
+   * Layout: 2 rows x 3 columns (2500x1686)
    *
-   * ┌────────────────┬────────────────┬──────────────────┐
-   * │ 📱 ดูรุ่นที่มี │ 💰 คำนวณค่างวด │ 📋 เช็คสัญญา    │
-   * ├────────────────┼────────────────┼──────────────────┤
-   * │ 💳 จ่ายค่างวด │ 📍 แผนที่ร้าน  │ 💬 แชทกับเรา    │
-   * └────────────────┴────────────────┴──────────────────┘
+   * ┌─────────────────┬─────────────────┬─────────────────┐
+   * │ 📱 ดูรุ่นที่มี  │ 💰 คำนวณค่างวด │ 📋 เช็คสัญญา   │
+   * ├─────────────────┼─────────────────┼─────────────────┤
+   * │ 💳 จ่ายค่างวด  │ 📍 แผนที่ร้าน  │ 💬 แชทกับเรา   │
+   * └─────────────────┴─────────────────┴─────────────────┘
+   *
+   * Image: ใช้รูป 2500x1686 สีเขียว BESTCHOICE brand
+   * แต่ละช่องมี icon + label สีขาวบนพื้นเขียว
    */
-  async createRichMenu(urls: RichMenuUrls): Promise<string> {
+  async createShopRichMenu(urls: RichMenuUrls): Promise<string> {
     const richMenu = {
       size: { width: 2500, height: 1686 },
       selected: true,
-      name: 'BESTCHOICE Menu v2',
-      chatBarText: 'เมนู',
+      name: 'BESTCHOICE SHOP Menu v3',
+      chatBarText: '📱 เมนูร้าน',
       areas: [
         // Row 1
         {
           bounds: { x: 0, y: 0, width: 833, height: 843 },
-          action: { type: 'uri', label: 'ดูรุ่นที่มี', uri: urls.websiteUrl },
+          action: { type: 'uri', label: '📱 ดูรุ่นที่มี', uri: urls.websiteUrl },
         },
         {
           bounds: { x: 833, y: 0, width: 834, height: 843 },
-          action: { type: 'uri', label: 'คำนวณค่างวด', uri: urls.calculatorUrl },
+          action: { type: 'uri', label: '💰 คำนวณค่างวด', uri: urls.calculatorUrl },
         },
         {
           bounds: { x: 1667, y: 0, width: 833, height: 843 },
-          action: { type: 'uri', label: 'เช็คสัญญา', uri: urls.liffContractUrl },
+          action: { type: 'uri', label: '📋 เช็คสัญญา', uri: urls.liffContractUrl },
         },
         // Row 2
         {
           bounds: { x: 0, y: 843, width: 833, height: 843 },
-          action: { type: 'uri', label: 'จ่ายค่างวด', uri: urls.liffPayUrl },
+          action: { type: 'uri', label: '💳 จ่ายค่างวด', uri: urls.liffPayUrl },
         },
         {
           bounds: { x: 833, y: 843, width: 834, height: 843 },
-          action: { type: 'uri', label: 'แผนที่ร้าน', uri: urls.mapsUrl },
+          action: { type: 'uri', label: '📍 แผนที่ร้าน', uri: urls.mapsUrl },
         },
         {
           bounds: { x: 1667, y: 843, width: 833, height: 843 },
-          action: { type: 'message', label: 'แชทกับเรา', text: 'ติดต่อ' },
+          action: { type: 'message', label: '💬 แชทกับเรา', text: 'สวัสดีค่ะ' },
         },
       ],
     };
 
     const response = await this.callLineApi(`${this.lineApiBaseUrl}/richmenu`, richMenu);
     const data = await response.json();
-    const richMenuId = data.richMenuId;
+    this.logger.log(`SHOP Rich Menu created: ${data.richMenuId}`);
+    return data.richMenuId;
+  }
 
-    this.logger.log(`Rich Menu created: ${richMenuId}`);
-    return richMenuId;
+  /**
+   * BESTCHOICE FINANCE Rich Menu (2026 — v1)
+   * Layout: 2 rows x 3 columns (2500x1686)
+   *
+   * ┌─────────────────┬─────────────────┬─────────────────┐
+   * │ 💰 เช็คยอด     │ 📊 ดูตารางงวด  │ 💳 ชำระเงิน    │
+   * ├─────────────────┼─────────────────┼─────────────────┤
+   * │ 🧾 ประวัติชำระ │ 📋 เช็คสัญญา   │ 💬 ถามน้องเบส  │
+   * └─────────────────┴─────────────────┴─────────────────┘
+   *
+   * Image: ใช้รูป 2500x1686 สีน้ำเงิน FINANCE brand
+   * แต่ละช่องมี icon + label สีขาวบนพื้นน้ำเงิน
+   */
+  async createFinanceRichMenu(liffBaseUrl: string): Promise<string> {
+    const richMenu = {
+      size: { width: 2500, height: 1686 },
+      selected: true,
+      name: 'BESTCHOICE FINANCE Menu v1',
+      chatBarText: '💰 เมนูการเงิน',
+      areas: [
+        // Row 1
+        {
+          bounds: { x: 0, y: 0, width: 833, height: 843 },
+          action: { type: 'message', label: '💰 เช็คยอด', text: 'เช็คยอด' },
+        },
+        {
+          bounds: { x: 833, y: 0, width: 834, height: 843 },
+          action: { type: 'message', label: '📊 ดูตารางงวด', text: 'งวด' },
+        },
+        {
+          bounds: { x: 1667, y: 0, width: 833, height: 843 },
+          action: { type: 'message', label: '💳 ชำระเงิน', text: 'ชำระ' },
+        },
+        // Row 2
+        {
+          bounds: { x: 0, y: 843, width: 833, height: 843 },
+          action: { type: 'uri', label: '🧾 ประวัติชำระ', uri: `${liffBaseUrl}/liff/history` },
+        },
+        {
+          bounds: { x: 833, y: 843, width: 834, height: 843 },
+          action: { type: 'uri', label: '📋 เช็คสัญญา', uri: `${liffBaseUrl}/liff/contract` },
+        },
+        {
+          bounds: { x: 1667, y: 843, width: 833, height: 843 },
+          action: { type: 'message', label: '💬 ถามน้องเบส', text: 'ช่วยเหลือ' },
+        },
+      ],
+    };
+
+    const response = await this.callLineApi(`${this.lineApiBaseUrl}/richmenu`, richMenu);
+    const data = await response.json();
+    this.logger.log(`FINANCE Rich Menu created: ${data.richMenuId}`);
+    return data.richMenuId;
+  }
+
+  /** @deprecated Use createShopRichMenu instead */
+  async createRichMenu(urls: RichMenuUrls): Promise<string> {
+    return this.createShopRichMenu(urls);
   }
 
   /**

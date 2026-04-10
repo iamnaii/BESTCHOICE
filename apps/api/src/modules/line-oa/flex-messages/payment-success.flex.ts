@@ -2,9 +2,10 @@ import {
   FlexBubble,
   FlexMessagePayload,
   COLORS,
+  GRADIENTS,
   createHeader,
   createDetailRow,
-  createAmountRow,
+  createProgressBar,
   wrapFlexMessage,
 } from './base-template';
 
@@ -23,24 +24,26 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   CASH: 'เงินสด',
   BANK_TRANSFER: 'โอนเงิน',
   QR_EWALLET: 'QR/E-Wallet',
+  PROMPTPAY: 'พร้อมเพย์',
 };
 
 export function buildPaymentSuccessFlex(data: PaymentSuccessData): FlexMessagePayload {
   const methodLabel = PAYMENT_METHOD_LABELS[data.paymentMethod] || data.paymentMethod;
+  const isComplete = data.remainingInstallments === 0;
 
   const bubble: FlexBubble = {
     type: 'bubble',
     size: 'mega',
     header: createHeader(
-      'ชำระเงินสำเร็จ',
+      isComplete ? '🎉 ชำระครบแล้ว!' : '✅ ชำระเงินสำเร็จ',
       `สัญญา ${data.contractNumber}`,
-      COLORS.PRIMARY,
+      GRADIENTS.GREEN,
     ),
     body: {
       type: 'box',
       layout: 'vertical',
       contents: [
-        // Checkmark icon area
+        // Amount display
         {
           type: 'box',
           layout: 'vertical',
@@ -55,48 +58,60 @@ export function buildPaymentSuccessFlex(data: PaymentSuccessData): FlexMessagePa
             },
             {
               type: 'text',
-              text: 'ชำระเงินเรียบร้อยแล้ว',
-              size: 'md',
+              text: `฿${data.amountPaid.toLocaleString()}`,
+              size: 'xxl',
               color: COLORS.PRIMARY,
               align: 'center',
               weight: 'bold',
               margin: 'sm',
             },
+            {
+              type: 'text',
+              text: 'ชำระเรียบร้อยแล้ว',
+              size: 'xs',
+              color: COLORS.MUTED,
+              align: 'center',
+              margin: 'sm',
+            },
           ],
-          paddingAll: '10px',
+          backgroundColor: COLORS.SUCCESS_LIGHT,
+          cornerRadius: '12px',
+          paddingAll: '16px',
         },
+        // Progress
+        createProgressBar(data.installmentNo, data.totalInstallments, COLORS.PRIMARY),
         {
           type: 'separator',
           margin: 'lg',
-          color: '#EEEEEE',
+          color: COLORS.BORDER,
         },
         createDetailRow('ลูกค้า', `คุณ${data.customerName}`),
-        createAmountRow('จำนวนเงิน', data.amountPaid, COLORS.PRIMARY),
         createDetailRow('งวดที่', `${data.installmentNo}/${data.totalInstallments}`),
         createDetailRow('ช่องทาง', methodLabel),
         createDetailRow('วันที่ชำระ', data.paidDate),
-        ...(data.remainingInstallments > 0
-          ? [createDetailRow('งวดคงเหลือ', `${data.remainingInstallments} งวด`)]
-          : [
+        ...(isComplete
+          ? [
               {
                 type: 'box' as const,
                 layout: 'vertical' as const,
                 contents: [
                   {
                     type: 'text' as const,
-                    text: 'ชำระครบทุกงวดแล้ว ขอบคุณค่ะ',
+                    text: '🎊 ชำระครบทุกงวดแล้ว ขอบคุณค่ะ',
                     size: 'sm',
                     color: COLORS.PRIMARY,
                     weight: 'bold',
                     align: 'center',
+                    wrap: true,
                   },
                 ],
-                backgroundColor: '#E8F5E9',
+                backgroundColor: COLORS.SUCCESS_LIGHT,
                 cornerRadius: '8px',
                 paddingAll: '12px',
                 margin: 'xl',
               },
-            ]),
+            ]
+          : [createDetailRow('งวดคงเหลือ', `${data.remainingInstallments} งวด`)]),
       ],
       paddingAll: '20px',
       spacing: 'sm',
@@ -107,10 +122,13 @@ export function buildPaymentSuccessFlex(data: PaymentSuccessData): FlexMessagePa
       contents: [
         {
           type: 'text',
-          text: 'ขอบคุณที่ชำระตรงเวลาค่ะ',
+          text: isComplete
+            ? '🌟 ขอบคุณที่ไว้วางใจ BEST CHOICE'
+            : '💡 ชำระตรงเวลาทุกงวด สะสมแต้มแลกส่วนลด',
           size: 'xs',
           color: COLORS.MUTED,
           align: 'center',
+          wrap: true,
         },
       ],
       paddingAll: '15px',

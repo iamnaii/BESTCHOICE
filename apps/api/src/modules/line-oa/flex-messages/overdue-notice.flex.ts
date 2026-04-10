@@ -2,6 +2,7 @@ import {
   FlexBubble,
   FlexMessagePayload,
   COLORS,
+  GRADIENTS,
   createHeader,
   createDetailRow,
   createAmountRow,
@@ -25,11 +26,7 @@ export function buildOverdueNoticeFlex(data: OverdueNoticeData): FlexMessagePayl
   const bubble: FlexBubble = {
     type: 'bubble',
     size: 'mega',
-    header: createHeader(
-      'แจ้งค้างชำระ',
-      `สัญญา ${data.contractNumber}`,
-      COLORS.DANGER,
-    ),
+    header: createHeader('⚠️ แจ้งค้างชำระ', `สัญญา ${data.contractNumber}`, GRADIENTS.RED),
     body: {
       type: 'box',
       layout: 'vertical',
@@ -41,39 +38,51 @@ export function buildOverdueNoticeFlex(data: OverdueNoticeData): FlexMessagePayl
           color: COLORS.DARK,
           weight: 'bold',
         },
+        // Overdue badge
         {
-          type: 'text',
-          text: `เลยกำหนดชำระ ${data.daysOverdue} วัน`,
-          size: 'sm',
-          color: COLORS.DANGER,
-          weight: 'bold',
-          margin: 'sm',
+          type: 'box',
+          layout: 'horizontal',
+          contents: [
+            {
+              type: 'text',
+              text: `❗ เลยกำหนด ${data.daysOverdue} วัน`,
+              size: 'sm',
+              color: COLORS.WHITE,
+              weight: 'bold',
+              align: 'center',
+            },
+          ],
+          backgroundColor: COLORS.DANGER,
+          cornerRadius: '20px',
+          paddingAll: '8px',
+          margin: 'md',
         },
         createAmountRow('ยอดค้างชำระ', data.totalOutstanding, COLORS.DANGER),
         {
           type: 'separator',
           margin: 'lg',
-          color: '#EEEEEE',
+          color: COLORS.BORDER,
         },
         createDetailRow('งวดที่', `${data.installmentNo}/${data.totalInstallments}`),
-        createDetailRow('ค่างวด', `${data.amountDue.toLocaleString()} บาท`),
+        createDetailRow('ค่างวด', `฿${data.amountDue.toLocaleString()}`),
         ...(data.lateFee > 0
-          ? [createDetailRow('ค่าปรับ', `${data.lateFee.toLocaleString()} บาท`)]
+          ? [createDetailRow('ค่าปรับ', `+฿${data.lateFee.toLocaleString()}`, COLORS.DANGER)]
           : []),
         createDetailRow('ครบกำหนด', data.dueDate),
+        // Warning box
         {
           type: 'box',
           layout: 'vertical',
           contents: [
             {
               type: 'text',
-              text: 'กรุณาชำระโดยเร็ว เพื่อป้องกันค่าปรับเพิ่มเติม',
+              text: '⚠️ กรุณาชำระโดยเร็ว เพื่อหลีกเลี่ยงค่าปรับเพิ่มเติม',
               size: 'xs',
               color: COLORS.DANGER,
               wrap: true,
             },
           ],
-          backgroundColor: '#FFF3F0',
+          backgroundColor: COLORS.DANGER_LIGHT,
           cornerRadius: '8px',
           paddingAll: '12px',
           margin: 'xl',
@@ -86,8 +95,8 @@ export function buildOverdueNoticeFlex(data: OverdueNoticeData): FlexMessagePayl
       type: 'box',
       layout: 'vertical',
       contents: [
-        createPostbackButton('ชำระเงินทันที', `action=pay&contract=${data.contractNumber}`, COLORS.DANGER),
-        createPostbackButton('ดูรายละเอียด', `action=check_balance&contract=${data.contractNumber}`, '#AAAAAA'),
+        createPostbackButton('💳 ชำระเงินทันที', `action=pay&contract=${data.contractNumber}`, COLORS.DANGER),
+        createPostbackButton('📋 ดูรายละเอียด', `action=check_balance&contract=${data.contractNumber}`, '#AAAAAA'),
       ],
       paddingAll: '15px',
       spacing: 'sm',

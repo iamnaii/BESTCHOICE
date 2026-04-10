@@ -2,6 +2,7 @@ import {
   FlexBubble,
   FlexMessagePayload,
   COLORS,
+  GRADIENTS,
   createHeader,
   createDetailRow,
   wrapFlexMessage,
@@ -21,16 +22,12 @@ export function buildContractSignedFlex(data: ContractSignedData): FlexMessagePa
   const bubble: FlexBubble = {
     type: 'bubble',
     size: 'mega',
-    header: createHeader(
-      'เซ็นสัญญาเรียบร้อย',
-      `สัญญา ${data.contractNumber}`,
-      COLORS.PRIMARY,
-    ),
+    header: createHeader('📝 เซ็นสัญญาเรียบร้อย', `สัญญา ${data.contractNumber}`, GRADIENTS.GREEN),
     body: {
       type: 'box',
       layout: 'vertical',
       contents: [
-        // Checkmark
+        // Success icon
         {
           type: 'box',
           layout: 'vertical',
@@ -38,7 +35,7 @@ export function buildContractSignedFlex(data: ContractSignedData): FlexMessagePa
             {
               type: 'text',
               text: '✓',
-              size: 'xxl',
+              size: '3xl',
               color: COLORS.PRIMARY,
               align: 'center',
               weight: 'bold',
@@ -53,25 +50,35 @@ export function buildContractSignedFlex(data: ContractSignedData): FlexMessagePa
               margin: 'sm',
             },
           ],
-          paddingBottom: 'lg',
+          backgroundColor: COLORS.SUCCESS_LIGHT,
+          cornerRadius: '12px',
+          paddingAll: '16px',
         },
-        // Separator
-        { type: 'separator', color: COLORS.LIGHT_BG },
-        // Details
+        { type: 'separator', margin: 'lg', color: COLORS.BORDER },
+        createDetailRow('ลูกค้า', data.customerName),
+        createDetailRow('สินค้า', data.productName),
+        createDetailRow('ผ่อนชำระ', `${data.totalMonths} งวด x ฿${data.monthlyPayment.toLocaleString()}`),
+        createDetailRow('วันที่เซ็น', data.signedAt),
         {
           type: 'box',
           layout: 'vertical',
           contents: [
-            createDetailRow('ลูกค้า', data.customerName),
-            createDetailRow('สินค้า', data.productName),
-            createDetailRow('ผ่อนชำระ', `${data.totalMonths} งวด x ${data.monthlyPayment.toLocaleString()} บาท`),
-            createDetailRow('วันที่เซ็น', data.signedAt),
+            {
+              type: 'text',
+              text: '💡 ชำระค่างวดตรงเวลาทุกเดือน สะสมแต้มแลกส่วนลดดาวน์เครื่องใหม่',
+              size: 'xs',
+              color: COLORS.PRIMARY,
+              wrap: true,
+            },
           ],
-          paddingTop: 'lg',
-          spacing: 'sm',
+          backgroundColor: COLORS.SUCCESS_LIGHT,
+          cornerRadius: '8px',
+          paddingAll: '12px',
+          margin: 'xl',
         },
       ],
-      paddingAll: 'lg',
+      paddingAll: '20px',
+      spacing: 'sm',
     },
     footer: data.downloadUrl
       ? {
@@ -80,16 +87,12 @@ export function buildContractSignedFlex(data: ContractSignedData): FlexMessagePa
           contents: [
             {
               type: 'button',
-              action: {
-                type: 'uri',
-                label: 'ดาวน์โหลดสัญญา PDF',
-                uri: data.downloadUrl,
-              },
+              action: { type: 'uri', label: '📄 ดาวน์โหลดสัญญา PDF', uri: data.downloadUrl },
               style: 'primary',
               color: COLORS.PRIMARY,
             },
           ],
-          paddingAll: 'md',
+          paddingAll: '12px',
         }
       : undefined,
   };

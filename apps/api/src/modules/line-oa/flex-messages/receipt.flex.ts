@@ -4,6 +4,7 @@ import {
   FlexBubble,
   FlexComponent,
   COLORS,
+  GRADIENTS,
   createHeader,
   createDetailRow,
 } from './base-template';
@@ -23,20 +24,24 @@ export interface ReceiptData {
   verifyUrl: string;
 }
 
-const typeLabels: Record<string, string> = {
-  PAYMENT: 'ใบเสร็จรับเงิน',
-  DOWN_PAYMENT: 'ใบเสร็จเงินดาวน์',
-  EARLY_PAYOFF: 'ใบเสร็จปิดยอด',
-  CREDIT_NOTE: 'ใบลดหนี้',
+const typeLabels: Record<string, { text: string; emoji: string }> = {
+  PAYMENT: { text: 'ใบเสร็จรับเงิน', emoji: '🧾' },
+  DOWN_PAYMENT: { text: 'ใบเสร็จเงินดาวน์', emoji: '💰' },
+  EARLY_PAYOFF: { text: 'ใบเสร็จปิดยอด', emoji: '⚡' },
+  CREDIT_NOTE: { text: 'ใบลดหนี้', emoji: '📋' },
 };
 
 const methodLabels: Record<string, string> = {
   CASH: 'เงินสด',
   BANK_TRANSFER: 'โอนเงิน',
   QR_EWALLET: 'QR/E-Wallet',
+  PROMPTPAY: 'พร้อมเพย์',
 };
 
 export function buildReceiptMessage(data: ReceiptData): FlexMessagePayload {
+  const typeInfo = typeLabels[data.receiptType] || { text: 'ใบเสร็จ', emoji: '🧾' };
+  const gradient = data.receiptType === 'CREDIT_NOTE' ? GRADIENTS.ORANGE : GRADIENTS.GREEN;
+
   const bodyContents: FlexComponent[] = [
     // Receipt Number
     {
@@ -58,22 +63,18 @@ export function buildReceiptMessage(data: ReceiptData): FlexMessagePayload {
         },
       ],
     },
-
     // Product & Contract
     ...(data.productName || data.contractNumber ? [
-      { type: 'separator' as const, margin: 'md' },
+      { type: 'separator' as const, margin: 'md', color: COLORS.BORDER },
       ...(data.productName ? [createDetailRow('สินค้า', data.productName)] : []),
       ...(data.contractNumber ? [createDetailRow('เลขสัญญา', data.contractNumber)] : []),
     ] : []),
-
-    { type: 'separator' as const, margin: 'md' },
-
+    { type: 'separator' as const, margin: 'md', color: COLORS.BORDER },
     // Payment Details
     createDetailRow('ผู้ชำระ', data.payerName),
     createDetailRow('วันที่', formatDateShort(data.paidDate)),
     ...(data.paymentMethod ? [createDetailRow('วิธีชำระ', methodLabels[data.paymentMethod] || data.paymentMethod)] : []),
     ...(data.installmentNo ? [createDetailRow('งวดที่', data.installmentNo.toString())] : []),
-
     // Amount Box
     {
       type: 'box' as const,
@@ -82,25 +83,25 @@ export function buildReceiptMessage(data: ReceiptData): FlexMessagePayload {
         {
           type: 'text' as const,
           text: 'จำนวนเงินที่ชำระ',
-          size: 'sm',
+          size: 'xs',
           color: COLORS.MUTED,
           align: 'center' as const,
         },
         {
           type: 'text' as const,
-          text: `${data.amount.toLocaleString()} ฿`,
+          text: `฿${data.amount.toLocaleString()}`,
           size: 'xxl',
           weight: 'bold',
           color: COLORS.PRIMARY,
           align: 'center' as const,
+          margin: 'sm',
         },
       ],
-      backgroundColor: '#f0fdf4',
-      paddingAll: '15px',
-      cornerRadius: '8px',
+      backgroundColor: COLORS.SUCCESS_LIGHT,
+      paddingAll: '16px',
+      cornerRadius: '12px',
       margin: 'lg',
     },
-
     // Remaining Balance
     ...(data.remainingBalance != null && data.remainingBalance > 0 ? [
       {
@@ -110,16 +111,16 @@ export function buildReceiptMessage(data: ReceiptData): FlexMessagePayload {
           {
             type: 'text' as const,
             text: 'ยอดคงเหลือ',
-            size: 'sm',
+            size: 'xs',
             color: COLORS.MUTED,
             align: 'center' as const,
           },
           {
             type: 'text' as const,
-            text: `${data.remainingBalance.toLocaleString()} ฿`,
+            text: `฿${data.remainingBalance.toLocaleString()}`,
             size: 'xl',
             weight: 'bold',
-            color: '#ea580c',
+            color: COLORS.WARNING,
             align: 'center' as const,
           },
           ...(data.remainingMonths != null ? [{
@@ -131,9 +132,9 @@ export function buildReceiptMessage(data: ReceiptData): FlexMessagePayload {
             margin: 'sm',
           }] : []),
         ],
-        backgroundColor: '#fef3c7',
+        backgroundColor: COLORS.WARNING_LIGHT,
         paddingAll: '12px',
-        cornerRadius: '8px',
+        cornerRadius: '12px',
         margin: 'md',
       },
     ] : []),
@@ -141,11 +142,8 @@ export function buildReceiptMessage(data: ReceiptData): FlexMessagePayload {
 
   const bubble: FlexBubble = {
     type: 'bubble',
-    header: createHeader(
-      typeLabels[data.receiptType] || 'ใบเสร็จ',
-      'BESTCHOICE',
-      data.receiptType === 'CREDIT_NOTE' ? COLORS.WARNING : COLORS.PRIMARY
-    ),
+    size: 'mega',
+    header: createHeader(`${typeInfo.emoji} ${typeInfo.text}`, 'BESTCHOICE', gradient),
     body: {
       type: 'box',
       layout: 'vertical',
@@ -159,22 +157,19 @@ export function buildReceiptMessage(data: ReceiptData): FlexMessagePayload {
       contents: [
         {
           type: 'button',
-          action: {
-            type: 'uri',
-            label: 'ตรวจสอบใบเสร็จ',
-            uri: data.verifyUrl,
-          },
+          action: { type: 'uri', label: '🔍 ตรวจสอบใบเสร็จ', uri: data.verifyUrl },
           style: 'primary',
+          color: COLORS.PRIMARY,
           height: 'sm',
         },
       ],
-      paddingAll: '10px',
+      paddingAll: '12px',
     },
   };
 
   return {
     type: 'flex',
-    altText: `${typeLabels[data.receiptType] || 'ใบเสร็จ'} #${data.receiptNumber}`,
+    altText: `${typeInfo.text} #${data.receiptNumber}`,
     contents: bubble,
   };
 }

@@ -2,6 +2,7 @@ import {
   FlexMessagePayload,
   FlexBubble,
   COLORS,
+  GRADIENTS,
   createHeader,
   createDetailRow,
   createUriButton,
@@ -24,11 +25,7 @@ export function buildPromptPayQrFlex(data: PromptPayQrData): FlexMessagePayload 
   const bubble: FlexBubble = {
     type: 'bubble',
     size: 'mega',
-    header: createHeader(
-      'ชำระเงิน',
-      `สัญญา ${data.contractNumber}`,
-      COLORS.INFO,
-    ),
+    header: createHeader('💳 ชำระเงิน', `สัญญา ${data.contractNumber}`, GRADIENTS.BLUE),
     hero: {
       type: 'image',
       url: data.qrImageUrl,
@@ -47,34 +44,66 @@ export function buildPromptPayQrFlex(data: PromptPayQrData): FlexMessagePayload 
           weight: 'bold',
           color: COLORS.DARK,
         },
+        // Amount card
+        {
+          type: 'box',
+          layout: 'vertical',
+          contents: [
+            {
+              type: 'text',
+              text: 'ยอดชำระ',
+              size: 'xs',
+              color: COLORS.MUTED,
+              align: 'center',
+            },
+            {
+              type: 'text',
+              text: `฿${data.amount.toLocaleString()}`,
+              size: 'xxl',
+              color: COLORS.INFO,
+              weight: 'bold',
+              align: 'center',
+              margin: 'sm',
+            },
+          ],
+          backgroundColor: COLORS.INFO_LIGHT,
+          cornerRadius: '12px',
+          paddingAll: '14px',
+          margin: 'lg',
+        },
         createDetailRow('งวดที่', `${data.installmentNo}/${data.totalInstallments}`),
-        createDetailRow('ยอดชำระ', `${data.amount.toLocaleString()} บาท`),
         {
           type: 'separator',
           margin: 'lg',
-          color: '#EEEEEE',
+          color: COLORS.BORDER,
         },
         {
-          type: 'text',
-          text: `PromptPay: ${data.maskedPromptPayId}`,
-          size: 'xs',
-          color: COLORS.MUTED,
+          type: 'box',
+          layout: 'vertical',
+          contents: [
+            {
+              type: 'text',
+              text: `PromptPay: ${data.maskedPromptPayId}`,
+              size: 'xs',
+              color: COLORS.MUTED,
+              align: 'center',
+            },
+            {
+              type: 'text',
+              text: `ชื่อ: ${data.accountName}`,
+              size: 'xs',
+              color: COLORS.MUTED,
+              margin: 'sm',
+              align: 'center',
+            },
+          ],
           margin: 'lg',
-          align: 'center',
         },
         {
           type: 'text',
-          text: `ชื่อ: ${data.accountName}`,
+          text: '📱 สแกน QR หรือกดปุ่มด้านล่าง',
           size: 'xs',
-          color: COLORS.MUTED,
-          margin: 'sm',
-          align: 'center',
-        },
-        {
-          type: 'text',
-          text: 'สแกน QR หรือกดปุ่มด้านล่าง',
-          size: 'xs',
-          color: COLORS.MUTED,
+          color: COLORS.SUBTLE,
           margin: 'md',
           align: 'center',
         },
@@ -86,7 +115,7 @@ export function buildPromptPayQrFlex(data: PromptPayQrData): FlexMessagePayload 
           type: 'box',
           layout: 'vertical',
           contents: [
-            createUriButton('ส่งสลิปชำระเงิน', data.paymentLinkUrl, COLORS.PRIMARY),
+            createUriButton('📸 ส่งสลิปชำระเงิน', data.paymentLinkUrl, COLORS.PRIMARY),
           ],
           paddingAll: '12px',
         }
@@ -94,7 +123,7 @@ export function buildPromptPayQrFlex(data: PromptPayQrData): FlexMessagePayload 
   };
 
   return wrapFlexMessage(
-    `ชำระเงิน สัญญา ${data.contractNumber} งวด ${data.installmentNo} จำนวน ${data.amount.toLocaleString()} บาท`,
+    `ชำระเงิน สัญญา ${data.contractNumber} งวด ${data.installmentNo} จำนวน ฿${data.amount.toLocaleString()}`,
     bubble,
   );
 }

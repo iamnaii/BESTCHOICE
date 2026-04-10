@@ -26,7 +26,7 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
 
   const { data: suppliersRes, isLoading: suppliersLoading, isError: suppliersError } = useQuery<{ data: { id: string; name: string; contactName: string; hasVat: boolean; paymentMethods: { paymentMethod: string; bankName?: string; bankAccountName?: string; bankAccountNumber?: string; creditTermDays?: number; isDefault: boolean }[] }[] }>({
     queryKey: ['suppliers-for-po'],
-    queryFn: async () => (await api.get('/suppliers?limit=999&isActive=true')).data,
+    queryFn: async () => (await api.get('/suppliers?limit=200&isActive=true')).data,
     retry: 2,
   });
   const suppliers = suppliersRes?.data || [];

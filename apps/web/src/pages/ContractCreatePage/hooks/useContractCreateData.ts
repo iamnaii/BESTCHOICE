@@ -128,7 +128,7 @@ export function useContractCreateData() {
     queryFn: async () => {
       const params = new URLSearchParams({ status: 'IN_STOCK' });
       if (productSearch) params.set('search', productSearch);
-      const { data } = await api.get(`/products?${params}&limit=999`);
+      const { data } = await api.get(`/products?${params}&limit=200`);
       return data.data || [];
     },
     staleTime: 0,

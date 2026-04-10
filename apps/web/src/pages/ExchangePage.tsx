@@ -77,7 +77,7 @@ export default function ExchangePage() {
   // Fetch available products (IN_STOCK)
   const { data: products = [], isLoading: productsLoading, isError: productsError, refetch: refetchProducts } = useQuery<Product[]>({
     queryKey: ['exchange-products'],
-    queryFn: async () => (await api.get('/products?status=IN_STOCK&limit=999')).data.data || [],
+    queryFn: async () => (await api.get('/products?status=IN_STOCK&limit=200')).data.data || [],
   });
 
   const selectedProduct = products.find((p) => p.id === selectedProductId);

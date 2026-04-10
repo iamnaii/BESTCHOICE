@@ -47,7 +47,7 @@ export class ProductsService {
         { name: { contains: filters.search, mode: 'insensitive' } },
         { brand: { contains: filters.search, mode: 'insensitive' } },
         { model: { contains: filters.search, mode: 'insensitive' } },
-        { imeiSerial: { contains: filters.search } },
+        { imeiSerial: { contains: filters.search, mode: 'insensitive' } },
       ];
     }
 

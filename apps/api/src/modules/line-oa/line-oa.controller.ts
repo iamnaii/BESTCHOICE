@@ -12,8 +12,6 @@ import {
   UseGuards,
   Logger,
   HttpCode,
-  BadRequestException,
-  NotFoundException,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Request } from 'express';
@@ -34,9 +32,6 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PromptPayQrService } from './promptpay/promptpay-qr.service';
 import { PaymentLinkService } from './payment-links/payment-link.service';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
-import { LiffTokenGuard, LiffRequest } from './guards/liff-token.guard';
-import { Throttle } from '@nestjs/throttler';
-import { LiffRegisterLookupDto, LiffRegisterConfirmDto } from './dto/liff.dto';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -662,138 +657,6 @@ export class LineOaController {
         text: '📋 คำสั่งที่ใช้ได้:\n\n💰 "เช็คยอด" - ดูยอดค้างชำระ\n📊 "งวด" - ดูตารางค่างวดทั้งหมด\n💳 "ชำระ" - ข้อมูลการชำระเงิน\n📋 "สัญญา" - ดูข้อมูลสัญญา\n🧾 "ใบเสร็จ" - ดูประวัติการชำระ\n📞 "ติดต่อ" - ข้อมูลติดต่อสาขา\n🔗 "ลงทะเบียน" - ผูกบัญชี LINE\n📷 ส่งรูปสลิป - แจ้งชำระเงิน\n❓ "ช่วยเหลือ" - แสดงเมนูนี้\n\nหรือกดเมนูด้านล่างได้เลยค่ะ',
       },
     ]);
-  }
-
-  // ─── LIFF API (Public) ─────────────────────────────
-
-  @Get('liff/contracts')
-  @SkipCsrf()
-  @UseGuards(LiffTokenGuard)
-  async getLiffContracts(@Req() req: Request) {
-    const lineId = (req as unknown as LiffRequest).liffUserId;
-
-    const customer = await this.lineOaService.findCustomerContractsFull(lineId);
-    if (!customer) {
-      throw new NotFoundException('ไม่พบข้อมูลลูกค้า กรุณาลงทะเบียนก่อน');
-    }
-
-    return {
-      customer: { name: customer.name },
-      contracts: customer.contracts.map((c) => {
-        const totalPaid = c.payments.filter((p) => p.status === 'PAID').length;
-        const totalOutstanding = c.payments
-          .filter((p) => p.status !== 'PAID')
-          .reduce((sum, p) => sum + Number(p.amountDue) + Number(p.lateFee) - Number(p.amountPaid), 0);
-
-        return {
-          id: c.id,
-          contractNumber: c.contractNumber,
-          status: c.status,
-          product: c.product ? `${c.product.brand || ''} ${c.product.model || c.product.name}`.trim() : '-',
-          sellingPrice: Number(c.sellingPrice),
-          downPayment: Number(c.downPayment),
-          monthlyPayment: Number(c.monthlyPayment),
-          totalMonths: c.totalMonths,
-          paidInstallments: totalPaid,
-          totalOutstanding: Math.round(totalOutstanding * 100) / 100,
-          createdAt: c.createdAt,
-          payments: c.payments.map((p) => ({
-            installmentNo: p.installmentNo,
-            dueDate: p.dueDate,
-            amountDue: Number(p.amountDue),
-            amountPaid: Number(p.amountPaid),
-            lateFee: Number(p.lateFee),
-            status: p.status,
-            paidDate: p.paidDate,
-            paymentMethod: p.paymentMethod,
-          })),
-        };
-      }),
-    };
-  }
-
-  @Post('liff/register/lookup')
-  @SkipCsrf()
-  @UseGuards(LiffTokenGuard)
-  @Throttle({ short: { ttl: 60000, limit: 5 } })
-  async liffRegisterLookup(@Req() req: Request, @Body() dto: LiffRegisterLookupDto) {
-    const lineId = (req as unknown as LiffRequest).liffUserId;
-
-    const isLinked = await this.lineOaService.isLineIdLinked(lineId);
-    if (isLinked) {
-      throw new BadRequestException('บัญชี LINE นี้เชื่อมต่อกับลูกค้าแล้ว');
-    }
-
-    const result = await this.lineOaService.lookupCustomerByPhone(dto.phone, lineId);
-    if (!result) {
-      throw new NotFoundException('ไม่พบเบอร์โทรนี้ในระบบ กรุณาตรวจสอบเบอร์โทร หรือติดต่อสาขา');
-    }
-
-    return result;
-  }
-
-  @Post('liff/register/confirm')
-  @SkipCsrf()
-  @UseGuards(LiffTokenGuard)
-  @Throttle({ short: { ttl: 60000, limit: 3 } })
-  async liffRegisterConfirm(@Req() req: Request, @Body() dto: LiffRegisterConfirmDto) {
-    const lineId = (req as unknown as LiffRequest).liffUserId;
-
-    const result = await this.lineOaService.confirmLinkLine(dto.customerId, lineId);
-    if (!result.success) {
-      throw new BadRequestException(result.error || 'ลงทะเบียนไม่สำเร็จ');
-    }
-
-    return { success: true, message: 'ลงทะเบียนสำเร็จ' };
-  }
-
-  // ─── LIFF History & Profile ─────────────────────────
-
-  @Get('liff/history')
-  @SkipCsrf()
-  @UseGuards(LiffTokenGuard)
-  async getLiffPaymentHistory(@Req() req: Request) {
-    const lineId = (req as unknown as LiffRequest).liffUserId;
-
-    const result = await this.lineOaService.findCustomerPaymentHistory(lineId);
-    if (!result) {
-      throw new NotFoundException('ไม่พบข้อมูลลูกค้า กรุณาลงทะเบียนก่อน');
-    }
-
-    return result;
-  }
-
-  @Get('liff/profile')
-  @SkipCsrf()
-  @UseGuards(LiffTokenGuard)
-  async getLiffProfile(@Req() req: Request) {
-    const lineId = (req as unknown as LiffRequest).liffUserId;
-
-    const customer = await this.lineOaService.findCustomerProfile(lineId);
-    if (!customer) {
-      throw new NotFoundException('ไม่พบข้อมูลลูกค้า กรุณาลงทะเบียนก่อน');
-    }
-
-    // Try to get LINE display name from profile query param (sent by frontend)
-    return {
-      ...customer,
-      lineDisplayName: '-', // Frontend will overlay with LIFF profile displayName
-    };
-  }
-
-  @Post('liff/unlink')
-  @SkipCsrf()
-  @UseGuards(LiffTokenGuard)
-  @Throttle({ short: { ttl: 60000, limit: 3 } })
-  async unlinkLine(@Req() req: Request) {
-    const lineId = (req as unknown as LiffRequest).liffUserId;
-
-    const result = await this.lineOaService.unlinkLineAccount(lineId);
-    if (!result.success) {
-      throw new BadRequestException(result.error || 'ยกเลิกไม่สำเร็จ');
-    }
-
-    return { success: true, message: 'ยกเลิกผูก LINE เรียบร้อย' };
   }
 
   // ─── LINE OA Settings (Owner) ───────────────────────

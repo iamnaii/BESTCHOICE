@@ -10,36 +10,11 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 
-interface Payment {
-  installmentNo: number;
-  dueDate: string;
-  amountDue: number;
-  amountPaid: number;
-  lateFee: number;
-  status: string;
-  paidDate: string | null;
-  paymentMethod: string | null;
-}
-
-interface Contract {
-  id: string;
-  contractNumber: string;
-  status: string;
-  product: string;
-  sellingPrice: number;
-  downPayment: number;
-  monthlyPayment: number;
-  totalMonths: number;
-  paidInstallments: number;
-  totalOutstanding: number;
-  createdAt: string;
-  payments: Payment[];
-}
-
-interface ContractData {
-  customer: { name: string };
-  contracts: Contract[];
-}
+import type {
+  LiffPayment as Payment,
+  LiffContract as Contract,
+  LiffContractResponse as ContractData,
+} from '@installment/shared';
 
 const statusConfig: Record<string, { label: string; variant: 'success' | 'destructive' | 'secondary' | 'info' }> = {
   ACTIVE: { label: 'ปกติ', variant: 'success' },
@@ -271,41 +246,12 @@ export default function LiffContract() {
         </CardContent>
       </Card>
 
-      {/* Download Contract PDF */}
+      {/* Contract Document Info */}
       <Card className="mb-4">
         <CardContent className="py-3">
-          <Button
-            variant="outline"
-            className="w-full"
-            onClick={async () => {
-              try {
-                const docsRes = await liffApi
-                  .get(`/contracts/${contract.id}/documents`)
-                  .catch(() => null);
-                if (!docsRes) {
-                  // Document endpoint requires staff auth — inform user to use customer portal link
-                  toast.error('กรุณาขอลิงก์ดูเอกสารจากพนักงานร้าน');
-                  return;
-                }
-                const docs = docsRes.data;
-                const contractDoc = docs.find((d: { documentType: string }) => d.documentType === 'CONTRACT');
-                if (contractDoc) {
-                  const urlRes = await liffApi
-                    .get(`/documents/${contractDoc.id}/signed-url`)
-                    .catch(() => null);
-                  if (urlRes) {
-                    window.open(urlRes.data.url, '_blank');
-                  } else {
-                    toast.error('ไม่สามารถดาวน์โหลดเอกสารได้ กรุณาติดต่อพนักงาน');
-                  }
-                }
-              } catch {
-                toast.error('เกิดข้อผิดพลาด กรุณาลองใหม่');
-              }
-            }}
-          >
-            ดาวน์โหลดสัญญา PDF
-          </Button>
+          <p className="text-xs text-muted-foreground text-center">
+            ต้องการเอกสารสัญญา? กรุณาติดต่อพนักงานร้านเพื่อขอลิงก์ดาวน์โหลด
+          </p>
         </CardContent>
       </Card>
 

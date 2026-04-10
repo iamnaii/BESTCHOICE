@@ -2,7 +2,9 @@ import { Module } from '@nestjs/common';
 import { LineOaController } from './line-oa.controller';
 import { LineOaPaymentController } from './line-oa-payment.controller';
 import { LineOaCampaignController } from './line-oa-campaign.controller';
+import { LiffApiController } from './liff-api.controller';
 import { LineOaService } from './line-oa.service';
+import { LiffApiService } from './liff-api.service';
 import { LineWebhookGuard } from './line-webhook.guard';
 import { LiffTokenGuard } from './guards/liff-token.guard';
 import { PromptPayQrService } from './promptpay/promptpay-qr.service';
@@ -14,9 +16,10 @@ import { PDPAModule } from '../pdpa/pdpa.module';
 
 @Module({
   imports: [ContractsModule, PDPAModule],
-  controllers: [LineOaController, LineOaPaymentController, LineOaCampaignController],
+  controllers: [LineOaController, LineOaPaymentController, LineOaCampaignController, LiffApiController],
   providers: [
     LineOaService,
+    LiffApiService,
     LineWebhookGuard,
     LiffTokenGuard,
     PromptPayQrService,
@@ -24,6 +27,6 @@ import { PDPAModule } from '../pdpa/pdpa.module';
     RichMenuService,
     ChatbotService,
   ],
-  exports: [LineOaService, PromptPayQrService, PaymentLinkService, RichMenuService],
+  exports: [LineOaService, LiffApiService, PromptPayQrService, PaymentLinkService, RichMenuService],
 })
 export class LineOaModule {}

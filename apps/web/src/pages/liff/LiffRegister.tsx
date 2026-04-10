@@ -46,24 +46,19 @@ export default function LiffRegister() {
         phone: cleaned,
         lineId: profile!.userId,
       });
-      if (result.alreadyLinked) {
-        return { alreadyLinked: true as const };
-      }
-      if (result.error) {
-        throw new Error(result.error);
-      }
       return result as { customerId: string; maskedName: string };
     },
     onSuccess: (result) => {
-      if ('alreadyLinked' in result && result.alreadyLinked) {
+      setLookupResult(result);
+      setStep('confirm');
+    },
+    onError: (err: unknown) => {
+      const axiosErr = err as { response?: { status?: number; data?: { message?: string } } };
+      if (axiosErr.response?.status === 400) {
         setStep('already_linked');
       } else {
-        setLookupResult(result as { customerId: string; maskedName: string });
-        setStep('confirm');
+        setPhoneError(axiosErr.response?.data?.message || (err instanceof Error ? err.message : 'เกิดข้อผิดพลาด'));
       }
-    },
-    onError: (err: Error) => {
-      setPhoneError(err.message);
     },
   });
 
@@ -75,7 +70,6 @@ export default function LiffRegister() {
         lineId: profile.userId,
         displayName: profile.displayName,
       });
-      if (result.error) throw new Error(result.error);
       return result;
     },
     onSuccess: () => {

@@ -6,18 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 
-interface EarlyPayoffQuote {
-  remainingMonths: number;
-  remainingPrincipal: number;
-  remainingInterest: number;
-  discount: number;
-  partiallyPaidCredit: number;
-  unpaidLateFees: number;
-  totalPayoff: number;
-  contractNumber: string;
-  customerName: string;
-  error?: string;
-}
+import type { LiffEarlyPayoffQuote as EarlyPayoffQuote } from '@installment/shared';
 
 export default function LiffEarlyPayoff() {
   const { lineId, loading, error } = useLiffInit();
@@ -36,7 +25,6 @@ export default function LiffEarlyPayoff() {
       const { data: result } = await liffApi.get(
         `/line-oa/liff/early-payoff-quote?lineId=${encodeURIComponent(lineId!)}&contractId=${encodeURIComponent(contractId)}`,
       );
-      if (result.error) throw new Error(result.error);
       return result;
     },
     enabled: !!lineId,
@@ -45,8 +33,7 @@ export default function LiffEarlyPayoff() {
   const payoffMutation = useMutation({
     mutationFn: async () => {
       const { data: result } = await liffApi.post('/line-oa/liff/early-payoff', { lineId, contractId });
-      if (result.url) return result;
-      throw new Error(result.error || 'ไม่สามารถสร้างลิงก์ชำระเงินได้');
+      return result as { url: string; token: string; totalPayoff: number };
     },
     onSuccess: (result) => {
       window.location.href = result.url;

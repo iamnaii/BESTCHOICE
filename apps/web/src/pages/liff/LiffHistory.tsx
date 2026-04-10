@@ -6,19 +6,10 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 
-interface HistoryPayment {
-  contractNumber: string;
-  installmentNo: number;
-  amountPaid: number;
-  paidDate: string;
-  paymentMethod: string | null;
-  lateFee: number;
-}
-
-interface HistoryData {
-  customer: { name: string };
-  payments: HistoryPayment[];
-}
+import type {
+  LiffHistoryPayment as HistoryPayment,
+  LiffHistoryResponse as HistoryData,
+} from '@installment/shared';
 
 const methodLabels: Record<string, string> = {
   CASH: 'เงินสด',
@@ -132,7 +123,7 @@ export default function LiffHistory() {
                   </p>
                   <p className="text-xs text-muted-foreground">{p.contractNumber}</p>
                   <p className="text-xs text-muted-foreground">
-                    {formatDateMedium(p.paidDate)}
+                    {p.paidDate ? formatDateMedium(p.paidDate) : '-'}
                     {p.paymentMethod && ` · ${methodLabels[p.paymentMethod] || p.paymentMethod}`}
                   </p>
                 </div>

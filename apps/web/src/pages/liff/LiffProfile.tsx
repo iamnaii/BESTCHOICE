@@ -8,13 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
-interface ProfileData {
-  name: string;
-  phone: string;
-  lineDisplayName: string;
-  contractCount: number;
-  totalPoints: number;
-}
+import type { LiffProfileResponse as ProfileData } from '@installment/shared';
 
 export default function LiffProfile() {
   const { lineId, profile, loading, error } = useLiffInit();
@@ -38,7 +32,6 @@ export default function LiffProfile() {
   const unlinkMutation = useMutation({
     mutationFn: async () => {
       const { data: result } = await liffApi.post('/line-oa/liff/unlink', { lineId });
-      if (result.error) throw new Error(result.error);
       return result;
     },
     onSuccess: () => {

@@ -162,13 +162,31 @@ liffApi.interceptors.request.use((config) => {
   return config;
 });
 
-// Unwrap API envelope for liffApi too
-liffApi.interceptors.response.use((response) => {
-  if (response.data && typeof response.data === 'object' && 'success' in response.data && 'data' in response.data) {
-    response.data = response.data.data;
-  }
-  return response;
-});
+// Unwrap API envelope for liffApi too + capture 5xx errors to Sentry
+liffApi.interceptors.response.use(
+  (response) => {
+    if (response.data && typeof response.data === 'object' && 'success' in response.data && 'data' in response.data) {
+      response.data = response.data.data;
+    }
+    return response;
+  },
+  (error) => {
+    const status = error?.response?.status;
+    if (status && status >= 500) {
+      // Dynamically import Sentry to avoid bundling it if not configured
+      import('@sentry/react').then((Sentry) => {
+        Sentry.captureException(error, {
+          tags: { source: 'liffApi', status },
+          extra: {
+            url: error?.config?.url,
+            method: error?.config?.method,
+          },
+        });
+      }).catch(() => { /* Sentry not available — ignore */ });
+    }
+    return Promise.reject(error);
+  },
+);
 
 export function getErrorMessage(error: unknown): string {
   // Guard against null / undefined / primitive errors before treating

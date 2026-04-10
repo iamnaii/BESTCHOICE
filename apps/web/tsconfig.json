@@ -20,7 +20,8 @@
     "resolveJsonModule": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@installment/shared": ["../../packages/shared/src"]
     }
   },
   "include": ["src"]

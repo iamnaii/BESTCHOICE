@@ -20,29 +20,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { liffApi } from '@/lib/api';
 
-interface PaymentLinkData {
-  valid: boolean;
-  token: string;
-  amount: number;
-  status: string;
-  expiresAt: string;
-  contract: {
-    id: string;
-    contractNumber: string;
-    customer: { name: string };
-  };
-  payment: {
-    installmentNo: number;
-    amountDue: number;
-    lateFee: number;
-    dueDate: string;
-  } | null;
-  promptPay?: {
-    qrDataUrl: string | null;
-    accountName: string;
-    maskedId: string;
-  };
-}
+import type { LiffPaymentLinkData as PaymentLinkData } from '@installment/shared';
 
 interface PaymentIntentResult {
   success: boolean;
@@ -78,6 +56,8 @@ export default function LiffPayment() {
   const [qrUrl, setQrUrl] = useState<string | null>(null);
   const [activePaymentId, setActivePaymentId] = useState<string | null>(null);
   const [gatewayRef, setGatewayRef] = useState<string | null>(null);
+  const [pollCount, setPollCount] = useState(0);
+  const [expirySeconds, setExpirySeconds] = useState<number | null>(null);
 
   const queryLineId = new URLSearchParams(window.location.search).get('lineId') || '';
 
@@ -101,7 +81,7 @@ export default function LiffPayment() {
         setView('select-method');
         return result;
       } else {
-        setErrorMessage(result.error || 'ลิงก์ไม่ถูกต้อง');
+        setErrorMessage('ลิงก์ไม่ถูกต้อง');
         setView('error');
         return null;
       }
@@ -109,17 +89,43 @@ export default function LiffPayment() {
     enabled: !!token,
   });
 
-  // ─── Poll payment status (every 3s while PENDING) ───
+  // ─── QR/Payment link expiry countdown ───
+  useEffect(() => {
+    if (!data?.expiresAt || view !== 'select-method') {
+      setExpirySeconds(null);
+      return;
+    }
+    const expiresMs = new Date(data.expiresAt).getTime();
+    const tick = () => {
+      const remaining = Math.max(0, Math.floor((expiresMs - Date.now()) / 1000));
+      setExpirySeconds(remaining);
+      if (remaining <= 0) {
+        setErrorMessage('ลิงก์ชำระเงินหมดอายุแล้ว กรุณาขอลิงก์ใหม่');
+        setView('error');
+      }
+    };
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [data?.expiresAt, view]);
+
+  // ─── Poll payment status with exponential backoff ───
+  // Backoff: 3s (0-9) → 5s (10-29) → 10s (30-59) → stop at 60 attempts (~5 min)
+  const MAX_POLL_ATTEMPTS = 60;
+  const pollInterval = pollCount < 10 ? 3000 : pollCount < 30 ? 5000 : 10000;
+  const isPolling = !!activePaymentId && view === 'gateway-pending' && pollCount < MAX_POLL_ATTEMPTS;
+
   const { data: paymentStatus } = useQuery<PaymentStatusResult>({
     queryKey: ['payment-status', activePaymentId],
     queryFn: async () => {
+      setPollCount((c) => c + 1);
       const { data: result } = await liffApi.get(
         `/paysolutions/status/${activePaymentId}`,
       );
       return result;
     },
-    enabled: !!activePaymentId && view === 'gateway-pending',
-    refetchInterval: 3000,
+    enabled: isPolling,
+    refetchInterval: isPolling ? pollInterval : false,
     refetchIntervalInBackground: false,
   });
 
@@ -133,6 +139,9 @@ export default function LiffPayment() {
       setView('failed');
     }
   }, [paymentStatus]);
+
+  // Polling timeout — stop and show timeout UI
+  const pollTimedOut = !!activePaymentId && view === 'gateway-pending' && pollCount >= MAX_POLL_ATTEMPTS;
 
   // ─── Create payment intent mutation ───
   const createIntentMutation = useMutation({
@@ -221,6 +230,7 @@ export default function LiffPayment() {
   const handleRetry = () => {
     setActivePaymentId(null);
     setGatewayRef(null);
+    setPollCount(0);
     setView('select-method');
   };
 
@@ -419,14 +429,34 @@ export default function LiffPayment() {
             )}
 
             {/* Polling indicator */}
-            <div className="flex items-center justify-center gap-2 text-muted-foreground text-sm mt-4">
-              <div className="size-2 rounded-full bg-primary animate-pulse" />
-              <span>กำลังตรวจสอบสถานะอัตโนมัติ...</span>
-            </div>
+            {!pollTimedOut ? (
+              <div className="flex items-center justify-center gap-2 text-muted-foreground text-sm mt-4">
+                <div className="size-2 rounded-full bg-primary animate-pulse" />
+                <span>กำลังตรวจสอบสถานะอัตโนมัติ...</span>
+              </div>
+            ) : (
+              <div className="mt-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-sm text-amber-800 dark:text-amber-200">
+                <p className="font-medium mb-1">หมดเวลาตรวจสอบอัตโนมัติ</p>
+                <p className="text-xs">
+                  หากชำระเงินแล้ว ระบบจะอัปเดตสถานะภายหลัง
+                  หรือกด &quot;ลองใหม่&quot; เพื่อตรวจสอบอีกครั้ง
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
 
-        <div className="text-center">
+        <div className="text-center space-y-2">
+          {pollTimedOut && (
+            <Button
+              variant="outline"
+              className="w-full max-w-xs"
+              onClick={() => setPollCount(0)}
+            >
+              <RefreshCw className="size-4 mr-2" />
+              ตรวจสอบอีกครั้ง
+            </Button>
+          )}
           <Button
             variant="ghost"
             className="text-muted-foreground"
@@ -448,9 +478,22 @@ export default function LiffPayment() {
     <div className="min-h-screen bg-background p-4 pb-8">
       {/* Header */}
       <div className="bg-primary rounded-xl p-5 text-primary-foreground mb-4">
-        <p className="text-xs opacity-80">BEST CHOICE</p>
-        <h1 className="text-base font-bold mt-1">ชำระเงินค่างวด</h1>
-        <p className="text-xs opacity-80 mt-1">สัญญา {data.contract.contractNumber}</p>
+        <div className="flex justify-between items-start">
+          <div>
+            <p className="text-xs opacity-80">BEST CHOICE</p>
+            <h1 className="text-base font-bold mt-1">ชำระเงินค่างวด</h1>
+            <p className="text-xs opacity-80 mt-1">สัญญา {data.contract.contractNumber}</p>
+          </div>
+          {expirySeconds !== null && expirySeconds > 0 && (
+            <div className="text-right">
+              <p className="text-[10px] opacity-70">หมดอายุใน</p>
+              <p className={`text-sm font-mono font-bold ${expirySeconds < 300 ? 'text-amber-200' : ''}`}>
+                {Math.floor(expirySeconds / 60).toString().padStart(2, '0')}:
+                {(expirySeconds % 60).toString().padStart(2, '0')}
+              </p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Payment Details Card */}
@@ -549,6 +592,12 @@ export default function LiffPayment() {
             {/* -- Tab: Manual Transfer + Slip -- */}
             <TabsContent value="transfer">
               <div className="py-2">
+                {/* Expiry warning */}
+                {expirySeconds !== null && expirySeconds > 0 && expirySeconds < 300 && (
+                  <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-2 mb-3 text-center text-xs text-amber-800 dark:text-amber-200">
+                    QR หมดอายุใน {Math.floor(expirySeconds / 60)}:{(expirySeconds % 60).toString().padStart(2, '0')} นาที
+                  </div>
+                )}
                 {/* PromptPay QR + Account Info */}
                 {qrUrl && (
                   <div className="text-center mb-4">

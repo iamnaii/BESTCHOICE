@@ -34,18 +34,8 @@ import { PromptPayQrService } from './promptpay/promptpay-qr.service';
 import { PaymentLinkService } from './payment-links/payment-link.service';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
 import { StorageService } from '../storage/storage.service';
-
-/** Convert Prisma Decimal to number safely (avoid float arithmetic on raw Number()) */
-const d = (v: unknown) => new Prisma.Decimal(v as string).toNumber();
-/** Sum outstanding: amountDue + lateFee - amountPaid using Decimal arithmetic */
-const sumOutstanding = (payments: Array<{ amountDue: unknown; lateFee: unknown; amountPaid: unknown }>) =>
-  payments.reduce(
-    (sum, p) => sum
-      .add(new Prisma.Decimal(p.amountDue as string))
-      .add(new Prisma.Decimal(p.lateFee as string))
-      .sub(new Prisma.Decimal(p.amountPaid as string)),
-    new Prisma.Decimal(0),
-  ).toNumber();
+import { WebhookDedupService } from '../chatbot-finance/services/webhook-dedup.service';
+import { toNum as d, calcOutstanding as sumOutstanding } from '../../utils/decimal.util';
 
 @ApiTags('LINE OA')
 @ApiBearerAuth('JWT')
@@ -60,6 +50,7 @@ export class LineOaController {
     private promptPayQrService: PromptPayQrService,
     private paymentLinkService: PaymentLinkService,
     private storageService: StorageService,
+    private webhookDedupService: WebhookDedupService,
   ) {}
 
   // ─── LINE Webhook ─────────────────────────────────────
@@ -75,8 +66,19 @@ export class LineOaController {
       return 'OK'; // LINE sends empty events for webhook verification
     }
 
-    // Process events asynchronously (don't block webhook response)
+    // Process events with DB-based dedup (safe for multi-instance Cloud Run)
     for (const event of body.events) {
+      // Skip redelivered events
+      if ((event as { deliveryContext?: { isRedelivery?: boolean } }).deliveryContext?.isRedelivery) {
+        continue;
+      }
+      // Dedup by webhookEventId
+      const eventId = (event as { webhookEventId?: string }).webhookEventId;
+      if (eventId && await this.webhookDedupService.isDuplicate(eventId)) {
+        this.logger.log(`[SHOP webhook] Skip duplicate event: ${eventId}`);
+        continue;
+      }
+
       try {
         await this.processEvent(event);
       } catch (err) {

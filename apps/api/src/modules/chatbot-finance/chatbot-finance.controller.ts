@@ -8,7 +8,7 @@ import { LineFinanceWebhookBody } from './dto/line-webhook.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { PrismaService } from '../../prisma/prisma.service';
+import { WebhookDedupService } from './services/webhook-dedup.service';
 
 /**
  * Webhook + admin endpoints สำหรับ Finance Bot ("น้องเบส")
@@ -25,7 +25,7 @@ export class ChatbotFinanceController {
     private chatbotService: ChatbotFinanceService,
     private lineClient: LineFinanceClientService,
     private autoTrigger: AutoTriggerService,
-    private prisma: PrismaService,
+    private dedupService: WebhookDedupService,
   ) {}
 
   @Post('webhook')
@@ -44,16 +44,9 @@ export class ChatbotFinanceController {
         this.logger.log(`[Finance webhook] Skip redelivery: ${event.webhookEventId}`);
         continue;
       }
-      if (event.webhookEventId) {
-        try {
-          await this.prisma.processedWebhookEvent.create({
-            data: { eventId: event.webhookEventId },
-          });
-        } catch {
-          // Unique constraint violation → already processed
-          this.logger.log(`[Finance webhook] Skip duplicate event: ${event.webhookEventId}`);
-          continue;
-        }
+      if (event.webhookEventId && await this.dedupService.isDuplicate(event.webhookEventId)) {
+        this.logger.log(`[Finance webhook] Skip duplicate event: ${event.webhookEventId}`);
+        continue;
       }
 
       try {

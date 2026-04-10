@@ -27,13 +27,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-
-const d = (v: unknown) => new Prisma.Decimal(v as string).toNumber();
-const sumOutstanding = (p: { amountDue: unknown; lateFee: unknown; amountPaid: unknown }) =>
-  new Prisma.Decimal(p.amountDue as string)
-    .add(new Prisma.Decimal(p.lateFee as string))
-    .sub(new Prisma.Decimal(p.amountPaid as string))
-    .toNumber();
+import { toNum as d, calcOutstanding as sumOutstanding } from '../../utils/decimal.util';
 import { PromptPayQrService } from './promptpay/promptpay-qr.service';
 import { PaymentLinkService } from './payment-links/payment-link.service';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
@@ -52,6 +46,11 @@ export class LineOaPaymentController {
     private paymentLinkService: PaymentLinkService,
     private storageService: StorageService,
   ) {}
+
+  /** Mask name for public endpoints: "สมชาย จันทร์ดี" → "สม*** จั***" */
+  private maskName(name: string): string {
+    return name.split(' ').map((p) => (p.length <= 2 ? p + '***' : p.substring(0, 2) + '***')).join(' ');
+  }
 
   // ─── Slip Review API (Staff) ──────────────────────────
 
@@ -121,7 +120,7 @@ export class LineOaPaymentController {
 
     const take = limit ? Math.min(Number(limit), 10000) : 50;
 
-    return this.prisma.paymentEvidence.findMany({
+    const evidences = await this.prisma.paymentEvidence.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       take,
@@ -135,6 +134,22 @@ export class LineOaPaymentController {
         reviewedBy: { select: { name: true } },
       },
     });
+
+    // Resolve S3 keys to signed download URLs for slip images
+    if (this.storageService.configured) {
+      await Promise.all(
+        evidences.map(async (ev) => {
+          if (ev.imageUrl && !ev.imageUrl.startsWith('http') && !ev.imageUrl.startsWith('/')) {
+            try {
+              (ev as { imageUrl: string }).imageUrl =
+                await this.storageService.getSignedDownloadUrl(ev.imageUrl, 3600);
+            } catch { /* keep original key if signing fails */ }
+          }
+        }),
+      );
+    }
+
+    return evidences;
   }
 
   @Post('evidence/batch-approve')
@@ -517,7 +532,7 @@ export class LineOaPaymentController {
       contract: {
         id: contract.id,
         contractNumber: contract.contractNumber,
-        customer: { name: contract.customer.name },
+        customer: { name: this.maskName(contract.customer.name) },
       },
       payment: {
         installmentNo: payment.installmentNo,
@@ -589,7 +604,7 @@ export class LineOaPaymentController {
           paymentId: link.payment!.id,
           lineUserId: link.contract.customer.lineId || null,
           imageUrl,
-          amount: body.amount ? Number(body.amount) : null,
+          amount: body.amount ? new Prisma.Decimal(body.amount) : null,
           status: 'PENDING_REVIEW',
         },
       });
@@ -625,7 +640,7 @@ export class LineOaPaymentController {
           where: { contractId: link.contract.id, status: 'PAID' },
         });
         const totalInstallments = link.contract.totalMonths;
-        const amount = body.amount ? Number(body.amount) : sumOutstanding(payment);
+        const amount = body.amount ? d(body.amount) : sumOutstanding(payment);
 
         const flex = this.lineOaService.buildPaymentSuccess({
           customerName: link.contract.customer.name,

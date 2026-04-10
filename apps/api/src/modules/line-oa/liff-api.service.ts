@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { toNum, calcOutstanding } from '../../utils/decimal.util';
 import type {
   LiffContractResponse,
   LiffHistoryResponse,
@@ -65,15 +66,9 @@ export class LiffApiService {
       customer: { name: customer.name },
       contracts: customer.contracts.map((c) => {
         const totalPaid = c.payments.filter((p) => p.status === 'PAID').length;
-        const totalOutstanding = c.payments
-          .filter((p) => p.status !== 'PAID')
-          .reduce(
-            (sum, p) => sum
-              .add(new Prisma.Decimal(p.amountDue as unknown as string))
-              .add(new Prisma.Decimal(p.lateFee as unknown as string))
-              .sub(new Prisma.Decimal(p.amountPaid as unknown as string)),
-            new Prisma.Decimal(0),
-          );
+        const totalOutstanding = calcOutstanding(
+          c.payments.filter((p) => p.status !== 'PAID'),
+        );
 
         return {
           id: c.id,
@@ -82,19 +77,19 @@ export class LiffApiService {
           product: c.product
             ? `${c.product.brand || ''} ${c.product.model || c.product.name}`.trim()
             : '-',
-          sellingPrice: new Prisma.Decimal(c.sellingPrice as unknown as string).toNumber(),
-          downPayment: new Prisma.Decimal(c.downPayment as unknown as string).toNumber(),
-          monthlyPayment: new Prisma.Decimal(c.monthlyPayment as unknown as string).toNumber(),
+          sellingPrice: toNum(c.sellingPrice),
+          downPayment: toNum(c.downPayment),
+          monthlyPayment: toNum(c.monthlyPayment),
           totalMonths: c.totalMonths,
           paidInstallments: totalPaid,
-          totalOutstanding: totalOutstanding.toDecimalPlaces(2).toNumber(),
+          totalOutstanding: Math.round(totalOutstanding * 100) / 100,
           createdAt: c.createdAt.toISOString(),
           payments: c.payments.map((p) => ({
             installmentNo: p.installmentNo,
             dueDate: p.dueDate.toISOString(),
-            amountDue: new Prisma.Decimal(p.amountDue as unknown as string).toNumber(),
-            amountPaid: new Prisma.Decimal(p.amountPaid as unknown as string).toNumber(),
-            lateFee: new Prisma.Decimal(p.lateFee as unknown as string).toNumber(),
+            amountDue: toNum(p.amountDue),
+            amountPaid: toNum(p.amountPaid),
+            lateFee: toNum(p.lateFee),
             status: p.status,
             paidDate: p.paidDate ? p.paidDate.toISOString() : null,
             paymentMethod: p.paymentMethod,
@@ -212,10 +207,10 @@ export class LiffApiService {
       c.payments.map((p) => ({
         contractNumber: c.contractNumber,
         installmentNo: p.installmentNo,
-        amountPaid: new Prisma.Decimal(p.amountPaid as unknown as string).toNumber(),
+        amountPaid: toNum(p.amountPaid),
         paidDate: p.paidDate ? p.paidDate.toISOString() : null,
         paymentMethod: p.paymentMethod,
-        lateFee: new Prisma.Decimal(p.lateFee as unknown as string).toNumber(),
+        lateFee: toNum(p.lateFee),
       })),
     );
 
@@ -321,11 +316,13 @@ export class LiffApiService {
       return { success: false, error: 'ไม่พบข้อมูลลูกค้า' };
     }
 
+    // Always set chatConsentAt to track when the last consent action happened (grant or revoke).
+    // PDPA requires audit trail — never null out the timestamp.
     await this.prisma.customer.update({
       where: { id: customer.id },
       data: {
         chatConsent: consent,
-        chatConsentAt: consent ? new Date() : null,
+        chatConsentAt: new Date(),
       },
     });
 
@@ -335,7 +332,7 @@ export class LiffApiService {
 
   // ─── Utilities ──────────────────────────────────────
 
-  maskThaiName(name: string): string {
+  private maskThaiName(name: string): string {
     return name
       .split(' ')
       .map((part) => {

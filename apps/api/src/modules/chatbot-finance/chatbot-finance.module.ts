@@ -22,6 +22,7 @@ import { FeedbackService } from './services/feedback.service';
 import { LearningService } from './services/learning.service';
 import { WeeklyAnalysisService } from './services/weekly-analysis.service';
 import { LineFinanceWebhookGuard } from './guards/line-finance-webhook.guard';
+import { WebhookDedupService } from './services/webhook-dedup.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 
 /**
@@ -65,7 +66,8 @@ import { NotificationsModule } from '../notifications/notifications.module';
     LearningService,
     WeeklyAnalysisService,
     LineFinanceWebhookGuard,
+    WebhookDedupService,
   ],
-  exports: [LineFinanceClientService, ChatSessionService, VerificationService],
+  exports: [LineFinanceClientService, ChatSessionService, VerificationService, WebhookDedupService],
 })
 export class ChatbotFinanceModule {}

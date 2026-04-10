@@ -34,6 +34,8 @@ import type {
 
 @ApiTags('LIFF API')
 @Controller('line-oa')
+@SkipCsrf()
+@UseGuards(LiffTokenGuard)
 export class LiffApiController {
   private readonly logger = new Logger(LiffApiController.name);
 
@@ -46,8 +48,6 @@ export class LiffApiController {
   // ─── LIFF Contracts ─────────────────────────────────
 
   @Get('liff/contracts')
-  @SkipCsrf()
-  @UseGuards(LiffTokenGuard)
   async getLiffContracts(@Req() req: Request): Promise<LiffContractResponse> {
     const lineId = (req as unknown as LiffRequest).liffUserId;
 
@@ -101,8 +101,6 @@ export class LiffApiController {
   // ─── LIFF History & Profile ─────────────────────────
 
   @Get('liff/history')
-  @SkipCsrf()
-  @UseGuards(LiffTokenGuard)
   async getLiffPaymentHistory(@Req() req: Request): Promise<LiffHistoryResponse> {
     const lineId = (req as unknown as LiffRequest).liffUserId;
 
@@ -115,8 +113,6 @@ export class LiffApiController {
   }
 
   @Get('liff/profile')
-  @SkipCsrf()
-  @UseGuards(LiffTokenGuard)
   async getLiffProfile(@Req() req: Request): Promise<LiffProfileResponse> {
     const lineId = (req as unknown as LiffRequest).liffUserId;
 
@@ -181,8 +177,6 @@ export class LiffApiController {
   // ─── LIFF Early Payoff ──────────────────────────────
 
   @Get('liff/early-payoff-quote')
-  @SkipCsrf()
-  @UseGuards(LiffTokenGuard)
   async getLiffEarlyPayoffQuote(@Req() req: Request, @Query('contractId') contractId: string) {
     const lineId = (req as unknown as LiffRequest).liffUserId;
 
@@ -213,8 +207,6 @@ export class LiffApiController {
   }
 
   @Post('liff/early-payoff')
-  @SkipCsrf()
-  @UseGuards(LiffTokenGuard)
   async liffEarlyPayoff(
     @Req() req: Request,
     @Body() dto: LiffEarlyPayoffDto,
@@ -234,6 +226,10 @@ export class LiffApiController {
       throw new NotFoundException('ไม่พบสัญญา');
     }
 
+    if (!['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status)) {
+      throw new BadRequestException('สัญญานี้ไม่สามารถปิดยอดก่อนกำหนดได้');
+    }
+
     const quote = await this.contractPaymentService.getEarlyPayoffQuote(dto.contractId);
     const result = await this.paymentLinkService.createPaymentLink(
       dto.contractId,
@@ -246,8 +242,6 @@ export class LiffApiController {
   // ─── LIFF PDPA Consent ──────────────────────────────
 
   @Get('liff/consent')
-  @SkipCsrf()
-  @UseGuards(LiffTokenGuard)
   async getConsentStatus(@Req() req: Request) {
     const lineId = (req as unknown as LiffRequest).liffUserId;
 
@@ -260,8 +254,6 @@ export class LiffApiController {
   }
 
   @Post('liff/consent')
-  @SkipCsrf()
-  @UseGuards(LiffTokenGuard)
   async updateConsent(@Req() req: Request, @Body() dto: LiffConsentDto) {
     const lineId = (req as unknown as LiffRequest).liffUserId;
 

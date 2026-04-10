@@ -359,19 +359,55 @@ describe('LiffApiService', () => {
     });
   });
 
-  // ─── maskThaiName ───────────────────────────────────
+  // ─── getConsentStatus ────────────────────────────────
 
-  describe('maskThaiName', () => {
-    it('masks names longer than 2 chars', () => {
-      expect(service.maskThaiName('สมชาย จันทร์ดี')).toBe('สม*** จั***');
+  describe('getConsentStatus', () => {
+    it('returns null when customer not found', async () => {
+      prisma.customer.findFirst.mockResolvedValue(null);
+      expect(await service.getConsentStatus('U_line')).toBeNull();
     });
 
-    it('handles short name parts (≤2 chars)', () => {
-      expect(service.maskThaiName('อ้อ')).toBe('อ้***');
+    it('returns consent status', async () => {
+      prisma.customer.findFirst.mockResolvedValue({
+        chatConsent: true,
+        chatConsentAt: new Date('2026-04-10'),
+      });
+      const result = await service.getConsentStatus('U_line');
+      expect(result!.consent).toBe(true);
+      expect(result!.consentAt).toBeTruthy();
+    });
+  });
+
+  // ─── updateConsent ──────────────────────────────────
+
+  describe('updateConsent', () => {
+    it('returns error if customer not found', async () => {
+      prisma.customer.findFirst.mockResolvedValue(null);
+      const result = await service.updateConsent('U_line', true);
+      expect(result.success).toBe(false);
     });
 
-    it('handles single name', () => {
-      expect(service.maskThaiName('สมชาย')).toBe('สม***');
+    it('grants consent with timestamp', async () => {
+      prisma.customer.findFirst.mockResolvedValue({ id: 'cust1' });
+      prisma.customer.update.mockResolvedValue({});
+
+      const result = await service.updateConsent('U_line', true);
+      expect(result.success).toBe(true);
+      const updateArg = prisma.customer.update.mock.calls[0][0];
+      expect(updateArg.data.chatConsent).toBe(true);
+      expect(updateArg.data.chatConsentAt).toBeInstanceOf(Date);
+    });
+
+    it('revokes consent but preserves timestamp (PDPA audit trail)', async () => {
+      prisma.customer.findFirst.mockResolvedValue({ id: 'cust1' });
+      prisma.customer.update.mockResolvedValue({});
+
+      const result = await service.updateConsent('U_line', false);
+      expect(result.success).toBe(true);
+      const updateArg = prisma.customer.update.mock.calls[0][0];
+      expect(updateArg.data.chatConsent).toBe(false);
+      // chatConsentAt should be a Date, NOT null — preserves audit trail
+      expect(updateArg.data.chatConsentAt).toBeInstanceOf(Date);
     });
   });
 

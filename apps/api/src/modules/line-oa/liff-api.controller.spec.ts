@@ -11,10 +11,6 @@ function mockReq(lineId: string): Request {
   return { liffUserId: lineId } as unknown as Request;
 }
 
-function liffUserId(req: Request): string {
-  return (req as unknown as LiffRequest).liffUserId;
-}
-
 describe('LiffApiController', () => {
   let controller: LiffApiController;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -36,6 +32,8 @@ describe('LiffApiController', () => {
       findCustomerByLineId: jest.fn(),
       findContractForCustomer: jest.fn(),
       countRecentPaymentLinks: jest.fn(),
+      getConsentStatus: jest.fn(),
+      updateConsent: jest.fn(),
     };
 
     paymentLinkService = {
@@ -273,7 +271,7 @@ describe('LiffApiController', () => {
   describe('liffEarlyPayoff', () => {
     it('creates payoff payment link', async () => {
       liffService.findCustomerByLineId.mockResolvedValue({ id: 'cust1' });
-      liffService.findContractForCustomer.mockResolvedValue({ id: 'con1' });
+      liffService.findContractForCustomer.mockResolvedValue({ id: 'con1', status: 'ACTIVE' });
       contractPaymentService.getEarlyPayoffQuote.mockResolvedValue({ totalPayoff: 8500 });
       paymentLinkService.createPaymentLink.mockResolvedValue({ url: 'https://pay/tok', token: 'tok' });
 
@@ -297,6 +295,48 @@ describe('LiffApiController', () => {
       await expect(
         controller.liffEarlyPayoff(mockReq('U_line'), { contractId: 'con_other' }),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws BadRequestException for non-active contract status', async () => {
+      liffService.findCustomerByLineId.mockResolvedValue({ id: 'cust1' });
+      liffService.findContractForCustomer.mockResolvedValue({ id: 'con1', status: 'COMPLETED' });
+      await expect(
+        controller.liffEarlyPayoff(mockReq('U_line'), { contractId: 'con1' }),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  // ─── getConsentStatus ───────────────────────────────
+
+  describe('getConsentStatus', () => {
+    it('returns consent status for valid customer', async () => {
+      liffService.getConsentStatus.mockResolvedValue({ consent: true, consentAt: '2026-04-10' });
+      const result = await controller.getConsentStatus(mockReq('U_line'));
+      expect(result.consent).toBe(true);
+    });
+
+    it('throws NotFoundException when customer not found', async () => {
+      liffService.getConsentStatus.mockResolvedValue(null);
+      await expect(controller.getConsentStatus(mockReq('U_line')))
+        .rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ─── updateConsent ──────────────────────────────────
+
+  describe('updateConsent', () => {
+    it('returns success on valid consent grant', async () => {
+      liffService.updateConsent.mockResolvedValue({ success: true });
+      const result = await controller.updateConsent(mockReq('U_line'), { consent: true });
+      expect(result.success).toBe(true);
+      expect(result.consent).toBe(true);
+    });
+
+    it('throws BadRequestException when update fails', async () => {
+      liffService.updateConsent.mockResolvedValue({ success: false, error: 'ไม่พบ' });
+      await expect(
+        controller.updateConsent(mockReq('U_line'), { consent: true }),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 });

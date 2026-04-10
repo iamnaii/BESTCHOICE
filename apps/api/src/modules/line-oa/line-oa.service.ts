@@ -1,8 +1,8 @@
 import { Injectable, Logger, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { CHATBOT_RESPONSES } from './chatbot-system-prompt.constants';
 import { ConfigService } from '@nestjs/config';
-import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { toNum } from '../../utils/decimal.util';
 import { PDPAService } from '../pdpa/pdpa.service';
 import { LineMessagePayload } from './dto/webhook-event.dto';
 import { FlexMessagePayload } from './flex-messages/base-template';
@@ -350,9 +350,9 @@ export class LineOaService {
         receiptNumber: receipt.receiptNumber,
         receiptType: receipt.receiptType,
         payerName: receipt.payerName,
-        amount: new Prisma.Decimal(receipt.amount as unknown as string).toNumber(),
+        amount: toNum(receipt.amount),
         installmentNo: receipt.installmentNo ?? undefined,
-        remainingBalance: receipt.remainingBalance ? new Prisma.Decimal(receipt.remainingBalance as unknown as string).toNumber() : undefined,
+        remainingBalance: receipt.remainingBalance ? toNum(receipt.remainingBalance) : undefined,
         remainingMonths: receipt.remainingMonths ?? undefined,
         paymentMethod: receipt.paymentMethod || 'CASH',
         paidDate: receipt.paidDate.toISOString(),

@@ -13,9 +13,10 @@ import { RichMenuService } from './rich-menu/rich-menu.service';
 import { ChatbotService } from './chatbot.service';
 import { ContractsModule } from '../contracts/contracts.module';
 import { PDPAModule } from '../pdpa/pdpa.module';
+import { ChatbotFinanceModule } from '../chatbot-finance/chatbot-finance.module';
 
 @Module({
-  imports: [ContractsModule, PDPAModule],
+  imports: [ContractsModule, PDPAModule, ChatbotFinanceModule],
   controllers: [LineOaController, LineOaPaymentController, LineOaCampaignController, LiffApiController],
   providers: [
     LineOaService,

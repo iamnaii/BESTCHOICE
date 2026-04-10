@@ -15,6 +15,9 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AdminAnalyticsService } from './services/admin-analytics.service';
 import { KnowledgeService } from './services/knowledge.service';
+import { LearningService } from './services/learning.service';
+import { FeedbackService } from './services/feedback.service';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import {
   ListSessionsQueryDto,
   CreateKbDto,
@@ -40,6 +43,8 @@ export class ChatbotFinanceAdminController {
   constructor(
     private analytics: AdminAnalyticsService,
     private knowledge: KnowledgeService,
+    private learning: LearningService,
+    private feedbackService: FeedbackService,
   ) {}
 
   // ─── Analytics ───────────────────────────────────────────
@@ -73,6 +78,8 @@ export class ChatbotFinanceAdminController {
   @HttpCode(200)
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   async returnToBot(@Param('id') id: string) {
+    // Extract learning from handoff before returning to bot
+    await this.learning.extractFromHandoff(id);
     return this.analytics.returnToBot(id);
   }
 
@@ -101,5 +108,57 @@ export class ChatbotFinanceAdminController {
   @Roles('OWNER', 'FINANCE_MANAGER')
   async deleteKnowledge(@Param('id') id: string) {
     return this.knowledge.remove(id);
+  }
+
+  // ─── Learning Hub ───────────────────────────────────────
+
+  @Get('learning/stats')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  async getLearningStats() {
+    return this.learning.getStats();
+  }
+
+  @Get('learning/suggestions')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  async listSuggestions(
+    @Query('status') status?: string,
+    @Query('source') source?: string,
+    @Query('page') page = 1,
+    @Query('limit') limit = 20,
+  ) {
+    return this.learning.listSuggestions({ status, source, page: +page, limit: +limit });
+  }
+
+  @Post('learning/suggestions/:id/approve')
+  @HttpCode(200)
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  async approveSuggestion(
+    @Param('id') id: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    await this.learning.approveSuggestion(id, userId);
+    return { ok: true };
+  }
+
+  @Post('learning/suggestions/:id/reject')
+  @HttpCode(200)
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  async rejectSuggestion(
+    @Param('id') id: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    await this.learning.rejectSuggestion(id, userId);
+    return { ok: true };
+  }
+
+  @Get('learning/feedback-stats')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  async getFeedbackStats(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const start = startDate ? new Date(startDate) : new Date(Date.now() - 30 * 86400_000);
+    const end = endDate ? new Date(endDate) : new Date();
+    return this.feedbackService.getStats(start, end);
   }
 }

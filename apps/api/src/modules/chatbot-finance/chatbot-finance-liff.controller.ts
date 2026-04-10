@@ -1,7 +1,8 @@
 import { Body, Controller, Get, HttpCode, Logger, Post, Query } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { IsString, Length, Matches } from 'class-validator';
+import { IsNumber, IsOptional, IsString, Length, Matches, Max, Min } from 'class-validator';
 import { VerificationService } from './services/verification.service';
+import { FeedbackService } from './services/feedback.service';
 
 class RequestOtpDto {
   @IsString()
@@ -21,6 +22,24 @@ class VerifyOtpDto {
   otp!: string;
 }
 
+class SubmitFeedbackDto {
+  @IsString()
+  sessionId!: string;
+
+  @IsOptional()
+  @IsString()
+  messageId?: string;
+
+  @IsNumber()
+  @Min(0)
+  @Max(1)
+  rating!: number; // 0=👎, 1=👍
+
+  @IsOptional()
+  @IsString()
+  feedbackText?: string;
+}
+
 /**
  * LIFF endpoints สำหรับ Finance Bot verification
  *
@@ -38,7 +57,10 @@ class VerifyOtpDto {
 export class ChatbotFinanceLiffController {
   private readonly logger = new Logger(ChatbotFinanceLiffController.name);
 
-  constructor(private verification: VerificationService) {}
+  constructor(
+    private verification: VerificationService,
+    private feedback: FeedbackService,
+  ) {}
 
   @Get('status')
   @Throttle({ short: { ttl: 60000, limit: 30 } }) // 30/นาที — เผื่อ LIFF page mount หลายครั้ง
@@ -70,5 +92,17 @@ export class ChatbotFinanceLiffController {
     });
     this.logger.log(`[LIFF] Verified successfully`);
     return result;
+  }
+
+  @Post('feedback')
+  @HttpCode(200)
+  @Throttle({ short: { ttl: 60000, limit: 10 } })
+  async submitFeedback(@Body() dto: SubmitFeedbackDto) {
+    return this.feedback.saveFeedback({
+      sessionId: dto.sessionId,
+      messageId: dto.messageId,
+      rating: dto.rating,
+      feedbackText: dto.feedbackText,
+    });
   }
 }

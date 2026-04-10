@@ -18,6 +18,9 @@ import { AdminAnalyticsService } from './services/admin-analytics.service';
 import { FinanceConfigService } from './services/finance-config.service';
 import { FinanceToolExecutor } from './tools/tool-executor';
 import { VerificationService } from './services/verification.service';
+import { FeedbackService } from './services/feedback.service';
+import { LearningService } from './services/learning.service';
+import { WeeklyAnalysisService } from './services/weekly-analysis.service';
 import { LineFinanceWebhookGuard } from './guards/line-finance-webhook.guard';
 import { NotificationsModule } from '../notifications/notifications.module';
 
@@ -58,6 +61,9 @@ import { NotificationsModule } from '../notifications/notifications.module';
     FinanceConfigService,
     FinanceToolExecutor,
     VerificationService,
+    FeedbackService,
+    LearningService,
+    WeeklyAnalysisService,
     LineFinanceWebhookGuard,
   ],
   exports: [LineFinanceClientService, ChatSessionService, VerificationService],

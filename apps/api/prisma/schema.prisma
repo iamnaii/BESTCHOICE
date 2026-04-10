@@ -397,6 +397,7 @@ model User {
   todosCreated           Todo[]               @relation("TodoCreatedBy")
   todosAssigned          Todo[]               @relation("TodoAssignedTo")
   handoffSessions        ChatSession[]        @relation("ChatHandoffStaff")
+  kbSuggestionsReviewed  ChatKbSuggestion[]   @relation("KbSuggestionReviewer")
   webhookSubscriptions   WebhookSubscription[]
 
   @@index([branchId])
@@ -2843,7 +2844,8 @@ model ChatSession {
   totalMessages Int      @default(0) @map("total_messages")
   lastMessageAt DateTime @default(now()) @map("last_message_at")
 
-  messages ChatMessage[]
+  messages  ChatMessage[]
+  feedbacks ChatFeedback[]
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -2969,6 +2971,47 @@ model ChatbotOtpRequest {
 
   @@index([expiresAt])
   @@map("chatbot_otp_requests")
+}
+
+/// Customer feedback on bot responses (👍/👎)
+model ChatFeedback {
+  id           String   @id @default(uuid())
+  sessionId    String   @map("session_id")
+  session      ChatSession @relation(fields: [sessionId], references: [id])
+  messageId    String?  @map("message_id")
+  rating       Int      // 0=👎, 1=👍
+  feedbackText String?  @map("feedback_text") @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([sessionId])
+  @@index([rating])
+  @@map("chat_feedbacks")
+}
+
+/// KB improvement suggestions from handoff/feedback/auto-analysis
+model ChatKbSuggestion {
+  id                String   @id @default(uuid())
+  sessionId         String   @map("session_id")
+  customerQuestion  String   @map("customer_question") @db.Text
+  staffAnswer       String?  @map("staff_answer") @db.Text
+  suggestedIntent   String   @map("suggested_intent")
+  suggestedKeywords String[] @default([]) @map("suggested_keywords")
+  suggestedTemplate String?  @map("suggested_template") @db.Text
+  source            String   // 'handoff' | 'low_rating' | 'auto_analysis'
+  status            String   @default("PENDING") // PENDING | APPROVED | REJECTED
+  reviewedById      String?  @map("reviewed_by_id")
+  reviewedBy        User?    @relation("KbSuggestionReviewer", fields: [reviewedById], references: [id])
+  reviewedAt        DateTime? @map("reviewed_at")
+  kbEntryId         String?  @map("kb_entry_id")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@index([source])
+  @@index([sessionId])
+  @@map("chat_kb_suggestions")
 }
 
 /// Outbound webhook subscriptions for external partners

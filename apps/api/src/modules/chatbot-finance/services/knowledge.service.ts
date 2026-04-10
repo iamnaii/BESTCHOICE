@@ -122,7 +122,7 @@ export class KnowledgeService {
   private tokenize(text: string): string[] {
     // Split on whitespace, punctuation, emoji
     const tokens = text
-      .split(/[\s,.\-!?:;()[\]{}\/\\|@#$%^&*+=<>~`'"]+/)
+      .split(/[\s,.\-!?:;()[\]{}/\\|@#$%^&*+=<>~`'"]+/)
       .filter((t) => t.length >= 2);
 
     // Also split long Thai text on common particles/boundaries

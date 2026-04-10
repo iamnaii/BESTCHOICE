@@ -35,6 +35,7 @@ import { PromptPayQrService } from './promptpay/promptpay-qr.service';
 import { PaymentLinkService } from './payment-links/payment-link.service';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
 import { LiffTokenGuard, LiffRequest } from './guards/liff-token.guard';
+import { Throttle } from '@nestjs/throttler';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -713,6 +714,7 @@ export class LineOaController {
   @Post('liff/register/lookup')
   @SkipCsrf()
   @UseGuards(LiffTokenGuard)
+  @Throttle({ short: { ttl: 60000, limit: 5 } })
   async liffRegisterLookup(@Req() req: Request, @Body() body: { phone: string }) {
     const lineId = (req as unknown as LiffRequest).liffUserId;
 
@@ -739,6 +741,7 @@ export class LineOaController {
   @Post('liff/register/confirm')
   @SkipCsrf()
   @UseGuards(LiffTokenGuard)
+  @Throttle({ short: { ttl: 60000, limit: 3 } })
   async liffRegisterConfirm(@Req() req: Request, @Body() body: { customerId: string }) {
     const lineId = (req as unknown as LiffRequest).liffUserId;
 
@@ -791,6 +794,7 @@ export class LineOaController {
   @Post('liff/unlink')
   @SkipCsrf()
   @UseGuards(LiffTokenGuard)
+  @Throttle({ short: { ttl: 60000, limit: 3 } })
   async unlinkLine(@Req() req: Request) {
     const lineId = (req as unknown as LiffRequest).liffUserId;
 

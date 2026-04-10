@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import liff from '@line/liff';
 import { LIFF_ID } from '@/lib/env';
+import { setLiffIdToken } from '@/lib/api';
 
 interface LiffProfile {
   userId: string;
@@ -10,6 +11,7 @@ interface LiffProfile {
 
 interface UseLiffInitResult {
   lineId: string;
+  idToken: string | null;
   profile: LiffProfile | null;
   loading: boolean;
   error: string | null;
@@ -17,6 +19,7 @@ interface UseLiffInitResult {
 
 export function useLiffInit(): UseLiffInitResult {
   const [lineId, setLineId] = useState('');
+  const [idToken, setIdToken] = useState<string | null>(null);
   const [profile, setProfile] = useState<LiffProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -35,8 +38,11 @@ export function useLiffInit(): UseLiffInitResult {
           }
 
           const p = await liff.getProfile();
+          const token = liff.getIDToken();
           if (!cancelled) {
             setLineId(p.userId);
+            setIdToken(token);
+            setLiffIdToken(token); // Set for liffApi interceptor
             setProfile({ userId: p.userId, displayName: p.displayName, pictureUrl: p.pictureUrl });
           }
         } else {
@@ -54,5 +60,5 @@ export function useLiffInit(): UseLiffInitResult {
     return () => { cancelled = true; };
   }, []);
 
-  return { lineId, profile, loading, error };
+  return { lineId, idToken, profile, loading, error };
 }

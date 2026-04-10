@@ -148,6 +148,28 @@ api.interceptors.response.use(
 // Intentionally omits withCredentials: LIFF endpoints use LINE tokens, not session cookies.
 export const liffApi = axios.create(sharedConfig);
 
+// LIFF ID token for server-side verification (set by useLiffInit)
+let liffIdToken: string | null = null;
+export function setLiffIdToken(token: string | null) {
+  liffIdToken = token;
+}
+
+// Attach X-Liff-Id-Token header on all liffApi requests
+liffApi.interceptors.request.use((config) => {
+  if (liffIdToken) {
+    config.headers['X-Liff-Id-Token'] = liffIdToken;
+  }
+  return config;
+});
+
+// Unwrap API envelope for liffApi too
+liffApi.interceptors.response.use((response) => {
+  if (response.data && typeof response.data === 'object' && 'success' in response.data && 'data' in response.data) {
+    response.data = response.data.data;
+  }
+  return response;
+});
+
 export function getErrorMessage(error: unknown): string {
   // Guard against null / undefined / primitive errors before treating
   // it like an axios-shaped object — otherwise a stray `throw undefined`

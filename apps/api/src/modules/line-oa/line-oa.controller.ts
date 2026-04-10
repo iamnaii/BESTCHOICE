@@ -34,6 +34,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PromptPayQrService } from './promptpay/promptpay-qr.service';
 import { PaymentLinkService } from './payment-links/payment-link.service';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
+import { LiffTokenGuard, LiffRequest } from './guards/liff-token.guard';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -665,10 +666,9 @@ export class LineOaController {
 
   @Get('liff/contracts')
   @SkipCsrf()
-  async getLiffContracts(@Query('lineId') lineId: string) {
-    if (!lineId) {
-      throw new BadRequestException('lineId is required');
-    }
+  @UseGuards(LiffTokenGuard)
+  async getLiffContracts(@Req() req: Request) {
+    const lineId = (req as unknown as LiffRequest).liffUserId;
 
     const customer = await this.lineOaService.findCustomerContractsFull(lineId);
     if (!customer) {
@@ -712,25 +712,25 @@ export class LineOaController {
 
   @Post('liff/register/lookup')
   @SkipCsrf()
-  async liffRegisterLookup(@Body() body: { phone: string; lineId: string }) {
-    if (!body.phone || !body.lineId) {
-      return { error: 'phone and lineId are required' };
-    }
+  @UseGuards(LiffTokenGuard)
+  async liffRegisterLookup(@Req() req: Request, @Body() body: { phone: string }) {
+    const lineId = (req as unknown as LiffRequest).liffUserId;
 
-    // Validate phone format
+    if (!body.phone) {
+      throw new BadRequestException('กรุณาระบุเบอร์โทร');
+    }
     if (!/^0\d{8,9}$/.test(body.phone)) {
-      return { error: 'รูปแบบเบอร์โทรไม่ถูกต้อง' };
+      throw new BadRequestException('รูปแบบเบอร์โทรไม่ถูกต้อง');
     }
 
-    // Check if already linked
-    const isLinked = await this.lineOaService.isLineIdLinked(body.lineId);
+    const isLinked = await this.lineOaService.isLineIdLinked(lineId);
     if (isLinked) {
-      return { error: 'บัญชี LINE นี้เชื่อมต่อกับลูกค้าแล้ว', alreadyLinked: true };
+      throw new BadRequestException('บัญชี LINE นี้เชื่อมต่อกับลูกค้าแล้ว');
     }
 
-    const result = await this.lineOaService.lookupCustomerByPhone(body.phone, body.lineId);
+    const result = await this.lineOaService.lookupCustomerByPhone(body.phone, lineId);
     if (!result) {
-      return { error: 'ไม่พบเบอร์โทรนี้ในระบบ กรุณาตรวจสอบเบอร์โทร หรือติดต่อสาขา' };
+      throw new NotFoundException('ไม่พบเบอร์โทรนี้ในระบบ กรุณาตรวจสอบเบอร์โทร หรือติดต่อสาขา');
     }
 
     return result;
@@ -738,14 +738,17 @@ export class LineOaController {
 
   @Post('liff/register/confirm')
   @SkipCsrf()
-  async liffRegisterConfirm(@Body() body: { customerId: string; lineId: string; displayName?: string }) {
-    if (!body.customerId || !body.lineId) {
-      return { error: 'customerId and lineId are required' };
+  @UseGuards(LiffTokenGuard)
+  async liffRegisterConfirm(@Req() req: Request, @Body() body: { customerId: string }) {
+    const lineId = (req as unknown as LiffRequest).liffUserId;
+
+    if (!body.customerId) {
+      throw new BadRequestException('กรุณาระบุ customerId');
     }
 
-    const result = await this.lineOaService.confirmLinkLine(body.customerId, body.lineId);
+    const result = await this.lineOaService.confirmLinkLine(body.customerId, lineId);
     if (!result.success) {
-      return { error: result.error };
+      throw new BadRequestException(result.error || 'ลงทะเบียนไม่สำเร็จ');
     }
 
     return { success: true, message: 'ลงทะเบียนสำเร็จ' };
@@ -755,10 +758,9 @@ export class LineOaController {
 
   @Get('liff/history')
   @SkipCsrf()
-  async getLiffPaymentHistory(@Query('lineId') lineId: string) {
-    if (!lineId) {
-      throw new BadRequestException('lineId is required');
-    }
+  @UseGuards(LiffTokenGuard)
+  async getLiffPaymentHistory(@Req() req: Request) {
+    const lineId = (req as unknown as LiffRequest).liffUserId;
 
     const result = await this.lineOaService.findCustomerPaymentHistory(lineId);
     if (!result) {
@@ -770,10 +772,9 @@ export class LineOaController {
 
   @Get('liff/profile')
   @SkipCsrf()
-  async getLiffProfile(@Query('lineId') lineId: string) {
-    if (!lineId) {
-      throw new BadRequestException('lineId is required');
-    }
+  @UseGuards(LiffTokenGuard)
+  async getLiffProfile(@Req() req: Request) {
+    const lineId = (req as unknown as LiffRequest).liffUserId;
 
     const customer = await this.lineOaService.findCustomerProfile(lineId);
     if (!customer) {
@@ -789,14 +790,13 @@ export class LineOaController {
 
   @Post('liff/unlink')
   @SkipCsrf()
-  async unlinkLine(@Body() body: { lineId: string }) {
-    if (!body.lineId) {
-      return { error: 'lineId is required' };
-    }
+  @UseGuards(LiffTokenGuard)
+  async unlinkLine(@Req() req: Request) {
+    const lineId = (req as unknown as LiffRequest).liffUserId;
 
-    const result = await this.lineOaService.unlinkLineAccount(body.lineId);
+    const result = await this.lineOaService.unlinkLineAccount(lineId);
     if (!result.success) {
-      return { error: result.error };
+      throw new BadRequestException(result.error || 'ยกเลิกไม่สำเร็จ');
     }
 
     return { success: true, message: 'ยกเลิกผูก LINE เรียบร้อย' };

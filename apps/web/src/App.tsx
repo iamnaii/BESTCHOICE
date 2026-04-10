@@ -135,6 +135,13 @@ function App() {
         <Route path="/liff/profile" element={<LiffProfile />} />
             <Route path="/liff/early-payoff" element={<LiffEarlyPayoff />} />
         <Route path="/liff/finance-verify" element={<LiffFinanceVerify />} />
+        <Route path="/liff/debug" element={<div style={{padding:20,fontFamily:'monospace'}}>
+          <h2>LIFF Debug</h2>
+          <p>pathname: {window.location.pathname}</p>
+          <p>search: {window.location.search}</p>
+          <p>href: {window.location.href}</p>
+          <p>time: {new Date().toISOString()}</p>
+        </div>} />
 
         {/* Protected Admin Routes */}
         <Route

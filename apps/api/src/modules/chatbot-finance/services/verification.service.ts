@@ -5,6 +5,7 @@ import { createHash, randomInt } from 'crypto';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { LineChannelType } from '@prisma/client';
+import { maskPhone } from '../utils/mask-phone';
 
 const OTP_TTL_MS = 5 * 60 * 1000; // 5 นาที
 const OTP_MAX_ATTEMPTS = 3;
@@ -65,7 +66,7 @@ export class VerificationService {
     });
 
     const responseShape = {
-      maskedPhone: this.maskPhone(phone),
+      maskedPhone: maskPhone(phone),
       expiresInSeconds: Math.floor(OTP_TTL_MS / 1000),
     };
 
@@ -107,7 +108,7 @@ export class VerificationService {
         customer.phone,
         `BESTCHOICE: รหัส OTP ของคุณคือ ${otp} (ใช้ได้ใน 5 นาที)`,
       );
-      this.logger.log(`[Verify] OTP sent to ${this.maskPhone(customer.phone)}`);
+      this.logger.log(`[Verify] OTP sent to ${maskPhone(customer.phone)}`);
     } catch (err) {
       this.logger.error(
         `[Verify] SMS send failed: ${err instanceof Error ? err.message : err}`,
@@ -120,7 +121,7 @@ export class VerificationService {
     }
 
     return {
-      maskedPhone: this.maskPhone(customer.phone),
+      maskedPhone: maskPhone(customer.phone),
       expiresInSeconds: Math.floor(OTP_TTL_MS / 1000),
     };
   }
@@ -262,8 +263,4 @@ export class VerificationService {
     return createHash('sha256').update(otp).digest('hex');
   }
 
-  private maskPhone(phone: string): string {
-    if (phone.length < 7) return phone;
-    return `${phone.slice(0, 3)}-***-${phone.slice(-4)}`;
-  }
 }

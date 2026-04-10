@@ -6,6 +6,8 @@ import { LineFinanceClientService } from './line-finance-client.service';
 import { ChatSessionService } from './chat-session.service';
 import { TEMPLATES, ReminderPayload } from '../constants/reminder-templates';
 import { LATE_FEE_PER_DAY } from '../constants/finance-rules';
+import { formatThaiDate } from '../utils/thai-date';
+import { FinanceConfigService } from './finance-config.service';
 import {
   AutoTriggerType,
   LineChannelType,
@@ -42,6 +44,7 @@ export class AutoTriggerService {
     private prisma: PrismaService,
     private lineClient: LineFinanceClientService,
     private sessions: ChatSessionService,
+    private financeConfig: FinanceConfigService,
   ) {}
 
   // ─── Daily reminders 09:00 ─────────────────────────────────
@@ -170,11 +173,12 @@ export class AutoTriggerService {
     const payload: ReminderPayload = {
       customerName: args.customerName,
       amount,
-      dueDate: this.formatThaiDate(args.payment.dueDate),
+      dueDate: formatThaiDate(args.payment.dueDate),
       installmentNumber: args.payment.installmentNo,
       daysOverdue,
       fineAmount,
       totalAmount: amount + fineAmount,
+      bankBlock: this.financeConfig.bankInfoBlock,
     };
 
     const text = args.template(payload);
@@ -241,16 +245,4 @@ export class AutoTriggerService {
     }
   }
 
-  // ─── helpers ─────────────────────────────────────────────
-
-  private formatThaiDate(date: Date): string {
-    const months = [
-      'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
-      'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.',
-    ];
-    const day = date.getDate();
-    const month = months[date.getMonth()];
-    const year = date.getFullYear() + 543;
-    return `${day} ${month} ${year}`;
-  }
 }

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LATE_FEE_PER_DAY } from '../constants/finance-rules';
 import { FinanceConfigService } from './finance-config.service';
+import { formatThaiDate } from '../utils/thai-date';
 
 /**
  * Finance Tools — wrap DB queries สำหรับ Claude tool use
@@ -66,7 +67,7 @@ export class FinanceToolsService {
       found: true,
       contractNumber: contract.contractNumber,
       installmentNumber: nextPayment.installmentNo,
-      dueDate: this.formatThaiDate(nextPayment.dueDate),
+      dueDate: formatThaiDate(nextPayment.dueDate),
       amountDue: remainingBase,
       lateFee,
       totalAmount,
@@ -122,7 +123,7 @@ export class FinanceToolsService {
       totalAmount: Math.round(totalAmount * 100) / 100,
       paidAmount: Math.round(paidAmount * 100) / 100,
       remainingAmount: Math.round(remainingAmount * 100) / 100,
-      nextDueDate: nextUnpaid ? this.formatThaiDate(nextUnpaid.dueDate) : null,
+      nextDueDate: nextUnpaid ? formatThaiDate(nextUnpaid.dueDate) : null,
       nextAmount: nextUnpaid ? Number(nextUnpaid.amountDue) : null,
     };
   }
@@ -170,7 +171,7 @@ export class FinanceToolsService {
       receipts: paid.map((p) => ({
         installmentNumber: p.installmentNo,
         amount: Number(p.amountPaid),
-        paidDate: p.paidDate ? this.formatThaiDate(p.paidDate) : null,
+        paidDate: p.paidDate ? formatThaiDate(p.paidDate) : null,
       })),
     };
   }
@@ -205,15 +206,4 @@ export class FinanceToolsService {
     });
   }
 
-  private formatThaiDate(date: Date): string {
-    // Format: 15 เม.ย. 2569 (พ.ศ.)
-    const months = [
-      'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
-      'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.',
-    ];
-    const day = date.getDate();
-    const month = months[date.getMonth()];
-    const year = date.getFullYear() + 543; // พ.ศ.
-    return `${day} ${month} ${year}`;
-  }
 }

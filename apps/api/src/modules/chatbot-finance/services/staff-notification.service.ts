@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LineStaffClientService } from './line-staff-client.service';
 import { HandoffPriority } from './handoff.service';
+import { maskPhone } from '../utils/mask-phone';
 
 const PRIORITY_EMOJI: Record<HandoffPriority, string> = {
   low: '📩',
@@ -63,7 +64,7 @@ export class StaffNotificationService {
     }
 
     const customerName = session.customer?.name ?? '(ลูกค้าใหม่)';
-    const phone = session.customer?.phone ? this.maskPhone(session.customer.phone) : '-';
+    const phone = session.customer?.phone ? maskPhone(session.customer.phone) : '-';
 
     const recentMessages = session.messages
       .reverse()
@@ -119,7 +120,7 @@ export class StaffNotificationService {
       unmatched: '❓ จับคู่งวดไม่ได้',
     }[params.reason];
 
-    const phone = params.customerPhone ? this.maskPhone(params.customerPhone) : '-';
+    const phone = params.customerPhone ? maskPhone(params.customerPhone) : '-';
 
     const text =
       `🧾 สลิปรอตรวจสอบ\n\n` +
@@ -144,8 +145,4 @@ export class StaffNotificationService {
 
   // ─── helpers ─────────────────────────────────────────────
 
-  private maskPhone(phone: string): string {
-    if (phone.length < 7) return phone;
-    return `${phone.slice(0, 3)}-***-${phone.slice(-4)}`;
-  }
 }

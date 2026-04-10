@@ -3,6 +3,7 @@ import { AutoTriggerService } from './auto-trigger.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LineFinanceClientService } from './line-finance-client.service';
 import { ChatSessionService } from './chat-session.service';
+import { FinanceConfigService } from './finance-config.service';
 
 describe('AutoTriggerService', () => {
   let service: AutoTriggerService;
@@ -53,6 +54,10 @@ describe('AutoTriggerService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: LineFinanceClientService, useValue: lineClient },
         { provide: ChatSessionService, useValue: sessions },
+        {
+          provide: FinanceConfigService,
+          useValue: { bankInfoBlock: '🏦 Test Bank\n🔢 123-456' },
+        },
       ],
     }).compile();
 

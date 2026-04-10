@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import * as Sentry from '@sentry/nestjs';
 import Anthropic from '@anthropic-ai/sdk';
 
 export interface SlipExtraction {
@@ -115,6 +116,9 @@ export class VisionService {
       this.logger.error(
         `[Vision] API error: ${err instanceof Error ? err.message : err}`,
       );
+      Sentry.captureException(err, {
+        tags: { module: 'chatbot-finance', action: 'vision_extract' },
+      });
       return null;
     }
   }

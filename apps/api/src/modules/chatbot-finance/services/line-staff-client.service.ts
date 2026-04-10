@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import * as Sentry from '@sentry/nestjs';
 
 interface LineTextMessage {
   type: 'text';
@@ -77,7 +78,12 @@ export class LineStaffClientService {
     if (!res.ok) {
       const errBody = await res.text();
       this.logger.error(`[LINE Staff] API error ${res.status}: ${errBody}`);
-      throw new Error(`LINE Staff API ${res.status}: ${errBody}`);
+      const err = new Error(`LINE Staff API ${res.status}: ${errBody}`);
+      Sentry.captureException(err, {
+        tags: { module: 'chatbot-finance', action: 'line_staff_api' },
+        extra: { url, status: res.status },
+      });
+      throw err;
     }
   }
 }

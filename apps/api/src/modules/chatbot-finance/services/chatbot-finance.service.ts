@@ -12,6 +12,7 @@ import { VerificationService } from './verification.service';
 import { FinanceAiService } from './finance-ai.service';
 import { HandoffService } from './handoff.service';
 import { SlipProcessingService } from './slip-processing.service';
+import { INTENTS } from '../constants/intents';
 
 const FALLBACK_REPLY =
   'ขออภัยค่ะ ระบบขัดข้องชั่วคราว 🙏\nรบกวนติดต่อเจ้าหน้าที่ 063-134-6356 ในเวลาทำการนะคะ';
@@ -139,7 +140,7 @@ export class ChatbotFinanceService {
         text: msgText,
       });
       const reply = await this.buildVerifyPrompt();
-      await this.replyAndSave(session.id, event.replyToken, reply, 'verify_required');
+      await this.replyAndSave(session.id, event.replyToken, reply, INTENTS.VERIFY_REQUIRED);
       return;
     }
 
@@ -171,7 +172,7 @@ export class ChatbotFinanceService {
           session.id,
           event.replyToken,
           'ระบบพบปัญหาชั่วคราวค่ะ 🙏 รบกวนติดต่อเจ้าหน้าที่นะคะ',
-          'verify_inconsistent',
+          INTENTS.VERIFY_INCONSISTENT,
         );
         return;
       }
@@ -211,7 +212,7 @@ export class ChatbotFinanceService {
         session.id,
         event.replyToken,
         'ระบบพบปัญหาชั่วคราวค่ะ 🙏 รบกวนติดต่อเจ้าหน้าที่นะคะ',
-        'verify_inconsistent',
+        INTENTS.VERIFY_INCONSISTENT,
       );
       return;
     }
@@ -226,7 +227,7 @@ export class ChatbotFinanceService {
     });
 
     if (aiReply) {
-      const intent = aiReply.handoffTriggered ? 'ai_handoff' : 'ai_reply';
+      const intent = aiReply.handoffTriggered ? INTENTS.AI_HANDOFF : INTENTS.AI_REPLY;
       // Approximate cost: Sonnet 4.5 input $3/M, output $15/M (checked 2026-04-10)
       // Does not account for cache hits — treat as upper-bound estimate
       const costUsd =
@@ -239,7 +240,7 @@ export class ChatbotFinanceService {
         costUsd,
       });
     } else {
-      await this.replyAndSave(session.id, event.replyToken, FALLBACK_REPLY, 'fallback');
+      await this.replyAndSave(session.id, event.replyToken, FALLBACK_REPLY, INTENTS.FALLBACK);
     }
   }
 
@@ -273,7 +274,7 @@ export class ChatbotFinanceService {
         sessionId,
         event.replyToken,
         'อ่านรูปไม่สำเร็จค่ะ 🙏 รบกวนส่งใหม่อีกครั้งนะคะ',
-        'image_error',
+        INTENTS.IMAGE_ERROR,
       );
       return;
     }
@@ -290,7 +291,7 @@ export class ChatbotFinanceService {
       sessionId,
       event.replyToken,
       result.reply,
-      result.matched ? 'slip_matched' : 'slip_review',
+      result.matched ? INTENTS.SLIP_MATCHED : INTENTS.SLIP_REVIEW,
     );
   }
 

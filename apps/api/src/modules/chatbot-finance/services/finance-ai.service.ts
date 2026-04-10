@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import * as Sentry from '@sentry/nestjs';
 import Anthropic from '@anthropic-ai/sdk';
 import type { MessageParam, ToolUseBlock } from '@anthropic-ai/sdk/resources/messages';
 import { ChatMessage, MessageRole } from '@prisma/client';
@@ -149,11 +150,19 @@ export class FinanceAiService {
           `Tokens: in=${totalInput} out=${totalOutput} | ` +
           `Customer: ${params.customerId.slice(0, 8)}...`,
       );
+      Sentry.captureMessage('FinanceAI max tool iterations reached', {
+        level: 'warning',
+        tags: { module: 'chatbot-finance', action: 'ai_max_iterations' },
+        extra: { toolsUsed, totalInput, totalOutput },
+      });
       return null;
     } catch (err) {
       this.logger.error(
         `[FinanceAI] Claude error: ${err instanceof Error ? err.message : String(err)}`,
       );
+      Sentry.captureException(err, {
+        tags: { module: 'chatbot-finance', action: 'ai_generate_reply' },
+      });
       return null;
     }
   }

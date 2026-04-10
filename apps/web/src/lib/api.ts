@@ -98,11 +98,12 @@ api.interceptors.response.use(
   },
 );
 
-/** Check if current page is public (LIFF, payment, etc.) — don't redirect to login */
+/** Check if current page is public (LIFF, payment, customer subdomain) — don't redirect to login */
 function isPublicOrLiffPage(): boolean {
+  const host = window.location.hostname;
+  if (host.startsWith('customer.') || host.startsWith('liff.')) return true;
   const path = window.location.pathname;
   const search = window.location.search;
-  // After LINE consent, LIFF redirects to /?liff.state={path}
   if (search.includes('liff.state')) return true;
   return path === '/login' || path === '/landing' || path.startsWith('/liff/') || path.startsWith('/pay/') || path.startsWith('/customer-access/') || path.startsWith('/verify/');
 }

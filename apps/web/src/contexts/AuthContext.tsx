@@ -83,13 +83,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [logout]);
 
   useEffect(() => {
-    // Skip auth check entirely on public LIFF/payment pages — they don't need auth
-    // and attempting refresh without cookies triggers redirect loops.
-    // After LINE consent, LIFF redirects to root with ?liff.state={path} — must detect this too.
+    // Skip auth on customer subdomain entirely — no cookies, no auth needed
+    const host = window.location.hostname;
+    const isCustomerSubdomain = host.startsWith('customer.') || host.startsWith('liff.');
     const path = window.location.pathname;
     const search = window.location.search;
     const isLiffRedirect = search.includes('liff.state');
-    const isPublicPage = isLiffRedirect || path.startsWith('/liff/') || path.startsWith('/pay/') || path.startsWith('/customer-access/') || path.startsWith('/verify/');
+    const isPublicPage = isLiffSubdomain || isLiffRedirect || path.startsWith('/liff/') || path.startsWith('/pay/') || path.startsWith('/customer-access/') || path.startsWith('/verify/');
     if (isPublicPage) {
       setIsLoading(false);
       return;

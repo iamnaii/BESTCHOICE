@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import type {
   LiffContractResponse,
@@ -67,8 +68,11 @@ export class LiffApiService {
         const totalOutstanding = c.payments
           .filter((p) => p.status !== 'PAID')
           .reduce(
-            (sum, p) => sum + Number(p.amountDue) + Number(p.lateFee) - Number(p.amountPaid),
-            0,
+            (sum, p) => sum
+              .add(new Prisma.Decimal(p.amountDue as unknown as string))
+              .add(new Prisma.Decimal(p.lateFee as unknown as string))
+              .sub(new Prisma.Decimal(p.amountPaid as unknown as string)),
+            new Prisma.Decimal(0),
           );
 
         return {
@@ -78,19 +82,19 @@ export class LiffApiService {
           product: c.product
             ? `${c.product.brand || ''} ${c.product.model || c.product.name}`.trim()
             : '-',
-          sellingPrice: Number(c.sellingPrice),
-          downPayment: Number(c.downPayment),
-          monthlyPayment: Number(c.monthlyPayment),
+          sellingPrice: new Prisma.Decimal(c.sellingPrice as unknown as string).toNumber(),
+          downPayment: new Prisma.Decimal(c.downPayment as unknown as string).toNumber(),
+          monthlyPayment: new Prisma.Decimal(c.monthlyPayment as unknown as string).toNumber(),
           totalMonths: c.totalMonths,
           paidInstallments: totalPaid,
-          totalOutstanding: Math.round(totalOutstanding * 100) / 100,
+          totalOutstanding: totalOutstanding.toDecimalPlaces(2).toNumber(),
           createdAt: c.createdAt.toISOString(),
           payments: c.payments.map((p) => ({
             installmentNo: p.installmentNo,
             dueDate: p.dueDate.toISOString(),
-            amountDue: Number(p.amountDue),
-            amountPaid: Number(p.amountPaid),
-            lateFee: Number(p.lateFee),
+            amountDue: new Prisma.Decimal(p.amountDue as unknown as string).toNumber(),
+            amountPaid: new Prisma.Decimal(p.amountPaid as unknown as string).toNumber(),
+            lateFee: new Prisma.Decimal(p.lateFee as unknown as string).toNumber(),
             status: p.status,
             paidDate: p.paidDate ? p.paidDate.toISOString() : null,
             paymentMethod: p.paymentMethod,
@@ -208,10 +212,10 @@ export class LiffApiService {
       c.payments.map((p) => ({
         contractNumber: c.contractNumber,
         installmentNo: p.installmentNo,
-        amountPaid: Number(p.amountPaid),
+        amountPaid: new Prisma.Decimal(p.amountPaid as unknown as string).toNumber(),
         paidDate: p.paidDate ? p.paidDate.toISOString() : null,
         paymentMethod: p.paymentMethod,
-        lateFee: Number(p.lateFee),
+        lateFee: new Prisma.Decimal(p.lateFee as unknown as string).toNumber(),
       })),
     );
 
@@ -293,6 +297,40 @@ export class LiffApiService {
         createdAt: { gte: twentyFourHoursAgo },
       },
     });
+  }
+
+  // ─── PDPA Consent ───────────────────────────────────
+
+  async getConsentStatus(lineId: string): Promise<{ consent: boolean; consentAt: string | null } | null> {
+    const customer = await this.prisma.customer.findFirst({
+      where: { lineId, deletedAt: null },
+      select: { chatConsent: true, chatConsentAt: true },
+    });
+    if (!customer) return null;
+    return {
+      consent: customer.chatConsent,
+      consentAt: customer.chatConsentAt ? customer.chatConsentAt.toISOString() : null,
+    };
+  }
+
+  async updateConsent(lineId: string, consent: boolean): Promise<{ success: boolean; error?: string }> {
+    const customer = await this.prisma.customer.findFirst({
+      where: { lineId, deletedAt: null },
+    });
+    if (!customer) {
+      return { success: false, error: 'ไม่พบข้อมูลลูกค้า' };
+    }
+
+    await this.prisma.customer.update({
+      where: { id: customer.id },
+      data: {
+        chatConsent: consent,
+        chatConsentAt: consent ? new Date() : null,
+      },
+    });
+
+    this.logger.log(`[LIFF] Consent ${consent ? 'granted' : 'revoked'} for LINE ${lineId}`);
+    return { success: true };
   }
 
   // ─── Utilities ──────────────────────────────────────

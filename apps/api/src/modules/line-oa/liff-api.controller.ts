@@ -23,6 +23,7 @@ import {
   LiffRegisterConfirmDto,
   LiffCreatePaymentLinkDto,
   LiffEarlyPayoffDto,
+  LiffConsentDto,
 } from './dto/liff.dto';
 import type {
   LiffContractResponse,
@@ -240,5 +241,35 @@ export class LiffApiController {
       quote.totalPayoff,
     );
     return { url: result.url, token: result.token, totalPayoff: quote.totalPayoff };
+  }
+
+  // ─── LIFF PDPA Consent ──────────────────────────────
+
+  @Get('liff/consent')
+  @SkipCsrf()
+  @UseGuards(LiffTokenGuard)
+  async getConsentStatus(@Req() req: Request) {
+    const lineId = (req as unknown as LiffRequest).liffUserId;
+
+    const result = await this.liffApiService.getConsentStatus(lineId);
+    if (!result) {
+      throw new NotFoundException('ไม่พบข้อมูลลูกค้า กรุณาลงทะเบียนก่อน');
+    }
+
+    return result;
+  }
+
+  @Post('liff/consent')
+  @SkipCsrf()
+  @UseGuards(LiffTokenGuard)
+  async updateConsent(@Req() req: Request, @Body() dto: LiffConsentDto) {
+    const lineId = (req as unknown as LiffRequest).liffUserId;
+
+    const result = await this.liffApiService.updateConsent(lineId, dto.consent);
+    if (!result.success) {
+      throw new BadRequestException(result.error || 'ไม่สามารถอัปเดตการยินยอมได้');
+    }
+
+    return { success: true, consent: dto.consent };
   }
 }

@@ -3056,3 +3056,14 @@ model WebhookDelivery {
   @@index([eventType])
   @@map("webhook_deliveries")
 }
+
+/// Idempotency table for LINE webhook dedup (replaces in-memory Map).
+/// Prevents duplicate event processing across multi-instance Cloud Run.
+model ProcessedWebhookEvent {
+  id          String   @id @default(uuid())
+  eventId     String   @unique @map("event_id")
+  processedAt DateTime @default(now()) @map("processed_at")
+
+  @@index([processedAt])
+  @@map("processed_webhook_events")
+}

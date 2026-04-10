@@ -68,6 +68,33 @@ export default function LiffContract() {
     return () => clearInterval(pollId);
   }, []);
 
+  // ─── PDPA Consent ───
+  const [showConsent, setShowConsent] = useState(false);
+
+  const { data: consentData } = useQuery<{ consent: boolean; consentAt: string | null }>({
+    queryKey: ['liff-consent', lineId],
+    queryFn: async () => {
+      const { data } = await liffApi.get(`/line-oa/liff/consent?lineId=${encodeURIComponent(lineId!)}`);
+      return data;
+    },
+    enabled: !!lineId,
+  });
+
+  useEffect(() => {
+    if (consentData && !consentData.consent) {
+      setShowConsent(true);
+    }
+  }, [consentData]);
+
+  const consentMutation = useMutation({
+    mutationFn: async () => {
+      await liffApi.post('/line-oa/liff/consent', { consent: true });
+    },
+    onSuccess: () => {
+      setShowConsent(false);
+    },
+  });
+
   const { data, isLoading: dataLoading, error: dataError } = useQuery<ContractData>({
     queryKey: ['liff-contracts', lineId],
     queryFn: async () => {
@@ -175,6 +202,33 @@ export default function LiffContract() {
 
   return (
     <div className="min-h-screen bg-background p-4 pb-8">
+      {/* PDPA Consent Modal */}
+      {showConsent && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-4">
+          <Card className="max-w-md w-full animate-in slide-in-from-bottom-4">
+            <CardContent className="py-6">
+              <h2 className="text-base font-bold mb-3">ข้อตกลงการใช้งาน</h2>
+              <div className="text-xs text-muted-foreground space-y-2 mb-4 max-h-40 overflow-y-auto">
+                <p>BEST CHOICE ขอความยินยอมในการเก็บรวบรวม ใช้ และเปิดเผยข้อมูลส่วนบุคคลของท่าน เพื่อวัตถุประสงค์ดังนี้:</p>
+                <p>1. การจัดการสัญญาเช่าซื้อและการชำระเงิน</p>
+                <p>2. การแจ้งเตือนค่างวดและข้อมูลสัญญาผ่าน LINE</p>
+                <p>3. การให้บริการลูกค้าผ่านระบบแชทอัตโนมัติ</p>
+                <p>ท่านสามารถถอนความยินยอมได้ตลอดเวลาผ่านหน้าโปรไฟล์</p>
+              </div>
+              <Button
+                variant="primary"
+                size="lg"
+                className="w-full"
+                onClick={() => consentMutation.mutate()}
+                disabled={consentMutation.isPending}
+              >
+                {consentMutation.isPending ? 'กำลังบันทึก...' : 'ยินยอม'}
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {/* Header */}
       <div className="bg-primary rounded-xl p-5 text-primary-foreground mb-4">
         <p className="text-xs opacity-80">BEST CHOICE</p>

@@ -25,12 +25,19 @@ import { LineOaService } from './line-oa.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+
+const d = (v: unknown) => new Prisma.Decimal(v as string).toNumber();
+const sumOutstanding = (p: { amountDue: unknown; lateFee: unknown; amountPaid: unknown }) =>
+  new Prisma.Decimal(p.amountDue as string)
+    .add(new Prisma.Decimal(p.lateFee as string))
+    .sub(new Prisma.Decimal(p.amountPaid as string))
+    .toNumber();
 import { PromptPayQrService } from './promptpay/promptpay-qr.service';
 import { PaymentLinkService } from './payment-links/payment-link.service';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
-import * as fs from 'fs';
-import * as path from 'path';
+import { StorageService } from '../storage/storage.service';
 
 @ApiTags('LINE OA - Payments')
 @ApiBearerAuth('JWT')
@@ -43,6 +50,7 @@ export class LineOaPaymentController {
     private prisma: PrismaService,
     private promptPayQrService: PromptPayQrService,
     private paymentLinkService: PaymentLinkService,
+    private storageService: StorageService,
   ) {}
 
   // ─── Slip Review API (Staff) ──────────────────────────
@@ -183,7 +191,7 @@ export class LineOaPaymentController {
               contractNumber: contract.contractNumber,
               installmentNo: 1,
               totalInstallments,
-              amountPaid: Number(evidence.amount) || 0,
+              amountPaid: evidence.amount ? d(evidence.amount) : 0,
               paymentMethod: body.paymentMethod,
               paidDate: formatDateShort(new Date()),
               remainingInstallments: totalInstallments - paidCount - 1,
@@ -289,7 +297,7 @@ export class LineOaPaymentController {
       (p) => p.installmentNo === body.installmentNo,
     );
     if (targetPayment) {
-      const expectedAmount = Number(targetPayment.amountDue) + Number(targetPayment.lateFee) - Number(targetPayment.amountPaid);
+      const expectedAmount = sumOutstanding(targetPayment);
       if (Math.abs(body.amount - expectedAmount) > 100) {
         this.logger.warn(
           `[SlipReview] Amount mismatch: approved=${body.amount}, expected=${expectedAmount} for evidence ${id}`,
@@ -404,11 +412,11 @@ export class LineOaPaymentController {
       throw new NotFoundException('ไม่พบหลักฐานการชำระ');
     }
 
-    const slipAmount = evidence.amount ? Number(evidence.amount) : null;
+    const slipAmount = evidence.amount ? d(evidence.amount) : null;
     const today = new Date();
 
     const suggestions = evidence.contract.payments.map((payment) => {
-      const amountDue = Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid);
+      const amountDue = sumOutstanding(payment);
       let score = 0;
 
       if (slipAmount !== null) {
@@ -490,7 +498,7 @@ export class LineOaPaymentController {
 
     const payment = link.payment!;
     const contract = link.contract;
-    const amount = Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid);
+    const amount = sumOutstanding(payment);
 
     // Generate PromptPay QR as data URL for the LIFF page
     let qrDataUrl: string | null = null;
@@ -513,8 +521,8 @@ export class LineOaPaymentController {
       },
       payment: {
         installmentNo: payment.installmentNo,
-        amountDue: Number(payment.amountDue),
-        lateFee: Number(payment.lateFee),
+        amountDue: d(payment.amountDue),
+        lateFee: d(payment.lateFee),
         dueDate: payment.dueDate,
       },
       promptPay: {
@@ -558,15 +566,10 @@ export class LineOaPaymentController {
     };
     const ext = extMap[file.mimetype] || '.jpg';
 
-    // Save uploaded file (outside transaction - file I/O)
-    const uploadDir = path.resolve(process.cwd(), 'uploads', 'slips');
-    fs.mkdirSync(uploadDir, { recursive: true });
-
-    const filename = `slip-liff-${Date.now()}-${Math.random().toString(36).substring(2, 8)}${ext}`;
-    const filePath = path.join(uploadDir, filename);
-    fs.writeFileSync(filePath, file.buffer);
-
-    const imageUrl = `/uploads/slips/${filename}`;
+    // Upload to S3/GCS storage (ephemeral filesystem on Cloud Run)
+    const filename = `slips/slip-liff-${Date.now()}-${Math.random().toString(36).substring(2, 8)}${ext}`;
+    await this.storageService.upload(filename, file.buffer, file.mimetype);
+    const imageUrl = filename;
 
     // Atomic: create evidence + notification + mark link used in single transaction
     await this.prisma.$transaction(async (tx) => {
@@ -622,7 +625,7 @@ export class LineOaPaymentController {
           where: { contractId: link.contract.id, status: 'PAID' },
         });
         const totalInstallments = link.contract.totalMonths;
-        const amount = body.amount ? Number(body.amount) : (Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid));
+        const amount = body.amount ? Number(body.amount) : sumOutstanding(payment);
 
         const flex = this.lineOaService.buildPaymentSuccess({
           customerName: link.contract.customer.name,

@@ -1,4 +1,4 @@
-import { IsString, IsOptional, Matches, IsNotEmpty } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, Matches, IsNotEmpty } from 'class-validator';
 
 // ─── LIFF Shop OA DTOs ───────────────────────────────
 
@@ -67,4 +67,11 @@ export class LiffEarlyPayoffDto {
   @IsString({ message: 'กรุณาระบุ contractId' })
   @IsNotEmpty({ message: 'กรุณาระบุ contractId' })
   contractId!: string;
+}
+
+// ─── LIFF Consent DTOs ───────────────────────────────
+
+export class LiffConsentDto {
+  @IsBoolean({ message: 'กรุณาระบุสถานะการยินยอม' })
+  consent!: boolean;
 }

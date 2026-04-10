@@ -28,12 +28,24 @@ import {
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptPayQrService } from './promptpay/promptpay-qr.service';
 import { PaymentLinkService } from './payment-links/payment-link.service';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
-import * as fs from 'fs';
-import * as path from 'path';
+import { StorageService } from '../storage/storage.service';
+
+/** Convert Prisma Decimal to number safely (avoid float arithmetic on raw Number()) */
+const d = (v: unknown) => new Prisma.Decimal(v as string).toNumber();
+/** Sum outstanding: amountDue + lateFee - amountPaid using Decimal arithmetic */
+const sumOutstanding = (payments: Array<{ amountDue: unknown; lateFee: unknown; amountPaid: unknown }>) =>
+  payments.reduce(
+    (sum, p) => sum
+      .add(new Prisma.Decimal(p.amountDue as string))
+      .add(new Prisma.Decimal(p.lateFee as string))
+      .sub(new Prisma.Decimal(p.amountPaid as string)),
+    new Prisma.Decimal(0),
+  ).toNumber();
 
 @ApiTags('LINE OA')
 @ApiBearerAuth('JWT')
@@ -47,6 +59,7 @@ export class LineOaController {
     private prisma: PrismaService,
     private promptPayQrService: PromptPayQrService,
     private paymentLinkService: PaymentLinkService,
+    private storageService: StorageService,
   ) {}
 
   // ─── LINE Webhook ─────────────────────────────────────
@@ -220,15 +233,10 @@ export class LineOaController {
       // Download image from LINE Content API
       const imageBuffer = await this.lineOaService.downloadContent(event.message.id);
 
-      // Save to uploads directory
-      const uploadDir = path.resolve(process.cwd(), 'uploads', 'slips');
-      fs.mkdirSync(uploadDir, { recursive: true });
-
-      const filename = `slip-${userId}-${Date.now()}.jpg`;
-      const filePath = path.join(uploadDir, filename);
-      fs.writeFileSync(filePath, imageBuffer);
-
-      const imageUrl = `/uploads/slips/${filename}`;
+      // Upload to S3/GCS storage (ephemeral filesystem on Cloud Run)
+      const filename = `slips/slip-${userId}-${Date.now()}.jpg`;
+      await this.storageService.upload(filename, imageBuffer, 'image/jpeg');
+      const imageUrl = filename;
 
       // Create PaymentEvidence record
       const evidence = await this.prisma.paymentEvidence.create({
@@ -291,9 +299,7 @@ export class LineOaController {
     const contractsData = customer.contracts.map((c) => {
       const paidPayments = c.payments.filter((p) => p.status === 'PAID');
       const nextPending = c.payments.find((p) => p.status !== 'PAID');
-      const totalOutstanding = c.payments
-        .filter((p) => p.status !== 'PAID')
-        .reduce((sum, p) => sum + Number(p.amountDue) + Number(p.lateFee) - Number(p.amountPaid), 0);
+      const unpaid = c.payments.filter((p) => p.status !== 'PAID');
 
       return {
         contractNumber: c.contractNumber,
@@ -303,9 +309,9 @@ export class LineOaController {
           ? formatDateShort(nextPending.dueDate)
           : null,
         nextAmountDue: nextPending
-          ? Number(nextPending.amountDue) + Number(nextPending.lateFee) - Number(nextPending.amountPaid)
+          ? sumOutstanding([nextPending])
           : 0,
-        totalOutstanding: Math.round(totalOutstanding),
+        totalOutstanding: Math.round(sumOutstanding(unpaid)),
         status: c.status,
       };
     });
@@ -340,9 +346,7 @@ export class LineOaController {
       const options = customer.contracts.map((c) => ({
         contractNumber: c.contractNumber,
         status: c.status,
-        totalOutstanding: c.payments
-          .filter((p) => p.status !== 'PAID')
-          .reduce((sum, p) => sum + Number(p.amountDue) + Number(p.lateFee) - Number(p.amountPaid), 0),
+        totalOutstanding: sumOutstanding(c.payments.filter((p) => p.status !== 'PAID')),
       }));
       const flex = this.lineOaService.buildContractSelector(customer.name, options, 'check_installments');
       await this.lineOaService.replyMessage(replyToken, [flex]);
@@ -360,7 +364,7 @@ export class LineOaController {
         : p.status === 'PARTIALLY_PAID' ? '⏳'
         : '⬜';
       const date = formatDateShortThai(p.dueDate);
-      return `${status} งวด ${p.installmentNo} | ${date} | ${Number(p.amountDue).toLocaleString()} บาท`;
+      return `${status} งวด ${p.installmentNo} | ${date} | ${d(p.amountDue).toLocaleString()} บาท`;
     });
 
     await this.lineOaService.replyMessage(replyToken, [
@@ -393,9 +397,7 @@ export class LineOaController {
       const options = customer.contracts.map((c) => ({
         contractNumber: c.contractNumber,
         status: c.status,
-        totalOutstanding: c.payments
-          .filter((p) => p.status !== 'PAID')
-          .reduce((sum, p) => sum + Number(p.amountDue) + Number(p.lateFee) - Number(p.amountPaid), 0),
+        totalOutstanding: sumOutstanding(c.payments.filter((p) => p.status !== 'PAID')),
       }));
       const flex = this.lineOaService.buildContractSelector(customer.name, options, 'pay');
       await this.lineOaService.replyMessage(replyToken, [flex]);
@@ -415,7 +417,7 @@ export class LineOaController {
       return;
     }
 
-    const amount = Number(nextPayment.amountDue) + Number(nextPayment.lateFee) - Number(nextPayment.amountPaid);
+    const amount = sumOutstanding([nextPayment]);
 
     // Generate PromptPay QR and payment link
     try {
@@ -489,7 +491,7 @@ export class LineOaController {
         contractNumber: c.contractNumber,
         payments: paidPayments.map((p) => ({
           installmentNo: p.installmentNo,
-          amountPaid: Number(p.amountPaid),
+          amountPaid: d(p.amountPaid),
           paidDate: p.paidDate
             ? formatDateShort(p.paidDate)
             : '-',

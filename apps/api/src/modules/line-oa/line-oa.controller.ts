@@ -36,6 +36,7 @@ import { SkipCsrf } from '../../guards/skip-csrf.decorator';
 import { StorageService } from '../storage/storage.service';
 import { WebhookDedupService } from '../chatbot-finance/services/webhook-dedup.service';
 import { toNum as d, calcOutstanding as sumOutstanding } from '../../utils/decimal.util';
+import { buildBrowserUrl } from '../../utils/line-login.util';
 
 @ApiTags('LINE OA')
 @ApiBearerAuth('JWT')
@@ -559,20 +560,12 @@ export class LineOaController {
     }
   }
 
-  /**
-   * Get browser-friendly URL that works outside LINE.
-   * Uses LINE Login OAuth → redirects back to LIFF page.
-   */
-  private getBrowserUrl(path: string): string {
-    const apiBase = process.env.API_BASE_URL || 'http://localhost:3000';
-    return `${apiBase}/api/line-oa/line-login/authorize?returnPath=${encodeURIComponent(path)}`;
-  }
 
   private async handleContractLink(userId: string, replyToken: string): Promise<void> {
     const customer = await this.lineOaService.findCustomerByLineId(userId);
 
     if (!customer) {
-      const registerUrl = this.getBrowserUrl('/liff/register');
+      const registerUrl = buildBrowserUrl('/liff/register');
       await this.lineOaService.replyMessage(replyToken, [
         {
           type: 'text',
@@ -582,7 +575,7 @@ export class LineOaController {
       return;
     }
 
-    const contractUrl = this.getBrowserUrl('/liff/contract');
+    const contractUrl = buildBrowserUrl('/liff/contract');
     await this.lineOaService.replyMessage(replyToken, [
       {
         type: 'text',
@@ -595,7 +588,7 @@ export class LineOaController {
     const customer = await this.lineOaService.findCustomerByLineId(userId);
 
     if (customer) {
-      const contractUrl = this.getBrowserUrl('/liff/contract');
+      const contractUrl = buildBrowserUrl('/liff/contract');
       await this.lineOaService.replyMessage(replyToken, [
         {
           type: 'text',
@@ -605,7 +598,7 @@ export class LineOaController {
       return;
     }
 
-    const registerUrl = this.getBrowserUrl('/liff/register');
+    const registerUrl = buildBrowserUrl('/liff/register');
     await this.lineOaService.replyMessage(replyToken, [
       {
         type: 'text',

@@ -28,6 +28,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { toNum as d, calcOutstanding as sumOutstanding } from '../../utils/decimal.util';
+import { maskThaiName } from '../../utils/mask-name.util';
 import { PromptPayQrService } from './promptpay/promptpay-qr.service';
 import { PaymentLinkService } from './payment-links/payment-link.service';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
@@ -46,11 +47,6 @@ export class LineOaPaymentController {
     private paymentLinkService: PaymentLinkService,
     private storageService: StorageService,
   ) {}
-
-  /** Mask name for public endpoints: "สมชาย จันทร์ดี" → "สม*** จั***" */
-  private maskName(name: string): string {
-    return name.split(' ').map((p) => (p.length <= 2 ? p + '***' : p.substring(0, 2) + '***')).join(' ');
-  }
 
   // ─── Slip Review API (Staff) ──────────────────────────
 
@@ -532,7 +528,7 @@ export class LineOaPaymentController {
       contract: {
         id: contract.id,
         contractNumber: contract.contractNumber,
-        customer: { name: this.maskName(contract.customer.name) },
+        customer: { name: maskThaiName(contract.customer.name) },
       },
       payment: {
         installmentNo: payment.installmentNo,

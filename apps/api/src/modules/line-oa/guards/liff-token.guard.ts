@@ -40,14 +40,6 @@ export class LiffTokenGuard implements CanActivate {
     const idToken = request.headers['x-liff-id-token'] as string | undefined;
 
     if (!idToken) {
-      // Fallback: allow lineId from query/body for backward compatibility during migration
-      // TODO: remove this fallback after all LIFF pages send ID token
-      const lineId = (request.query as Record<string, string>).lineId
-        || (request.body as Record<string, string>)?.lineId;
-      if (lineId) {
-        (request as unknown as LiffRequest).liffUserId = lineId;
-        return true;
-      }
       throw new UnauthorizedException('กรุณาเปิดผ่าน LINE');
     }
 

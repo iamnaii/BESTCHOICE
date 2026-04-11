@@ -13,6 +13,7 @@ import { FinanceAiService } from './finance-ai.service';
 import { HandoffService } from './handoff.service';
 import { SlipProcessingService } from './slip-processing.service';
 import { INTENTS } from '../constants/intents';
+import { buildBrowserUrl } from '../../../utils/line-login.util';
 
 const FALLBACK_REPLY =
   'ขออภัยค่ะ ระบบขัดข้องชั่วคราว 🙏\nรบกวนติดต่อเจ้าหน้าที่ 063-134-6356 ในเวลาทำการนะคะ';
@@ -57,16 +58,11 @@ export class ChatbotFinanceService {
     return `https://liff.line.me/${liffConfig.value}${VERIFY_PATH}`;
   }
 
-  /** Get browser-friendly URL that works outside LINE */
-  private getBrowserUrl(path: string): string {
-    const apiBase = process.env.API_BASE_URL || 'http://localhost:3000';
-    return `${apiBase}/api/line-oa/line-login/authorize?returnPath=${encodeURIComponent(path)}`;
-  }
 
   /** ข้อความให้ลูกค้าเปิด LIFF + fallback ถ้ายังไม่ได้ตั้งค่า */
   private async buildVerifyPrompt(): Promise<string> {
     const url = await this.getLiffVerifyUrl();
-    const browserUrl = this.getBrowserUrl('/liff/finance-verify');
+    const browserUrl = buildBrowserUrl('/liff/finance-verify');
     if (!url) {
       this.logger.warn('[Finance] LIFF ID not configured in SystemConfig');
       return (

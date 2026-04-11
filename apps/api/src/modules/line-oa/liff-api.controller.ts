@@ -17,6 +17,7 @@ import { Request, Response } from 'express';
 import { LiffApiService } from './liff-api.service';
 import { PaymentLinkService } from './payment-links/payment-link.service';
 import { ContractPaymentService } from '../contracts/contract-payment.service';
+import { toNum } from '../../utils/decimal.util';
 import { DocumentsService } from '../contracts/documents.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
@@ -342,7 +343,7 @@ export class LiffApiController {
       id: r.id,
       receiptNumber: r.receiptNumber,
       receiptType: r.receiptType,
-      amount: Number(r.amount),
+      amount: toNum(r.amount),
       paidDate: r.paidDate.toISOString(),
       paymentMethod: r.paymentMethod,
       installmentNo: r.installmentNo,

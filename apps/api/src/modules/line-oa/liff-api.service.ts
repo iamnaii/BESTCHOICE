@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { toNum, calcOutstanding } from '../../utils/decimal.util';
+import { maskThaiName } from '../../utils/mask-name.util';
 // Return types for LIFF API (mirrors packages/shared/src/liff-types.ts)
 interface LiffPaymentItem { installmentNo: number; dueDate: string; amountDue: number; amountPaid: number; lateFee: number; status: string; paidDate: string | null; paymentMethod: string | null; }
 interface LiffContractItem { id: string; contractNumber: string; status: string; product: string; sellingPrice: number; downPayment: number; monthlyPayment: number; totalMonths: number; paidInstallments: number; totalOutstanding: number; createdAt: string; payments: LiffPaymentItem[]; }
@@ -141,7 +142,7 @@ export class LiffApiService {
 
     return {
       customerId: customer.id,
-      maskedName: this.maskThaiName(customer.name),
+      maskedName: maskThaiName(customer.name),
     };
   }
 
@@ -373,15 +374,4 @@ export class LiffApiService {
     return { success: true };
   }
 
-  // ─── Utilities ──────────────────────────────────────
-
-  private maskThaiName(name: string): string {
-    return name
-      .split(' ')
-      .map((part) => {
-        if (part.length <= 2) return part + '***';
-        return part.substring(0, 2) + '***';
-      })
-      .join(' ');
-  }
 }

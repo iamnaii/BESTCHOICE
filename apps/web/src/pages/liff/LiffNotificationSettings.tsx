@@ -6,6 +6,7 @@ import { Bell, BellOff } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { LIFF_ERRORS } from '@/constants/liff-errors';
 
 interface NotifPrefs {
   paymentReminder: boolean;
@@ -83,8 +84,8 @@ export default function LiffNotificationSettings() {
         <Card className="max-w-md w-full">
           <CardContent className="text-center py-10">
             <div className="text-destructive text-5xl mb-4">!</div>
-            <h2 className="text-lg font-bold mb-2">ไม่สามารถโหลดข้อมูลได้</h2>
-            <p className="text-muted-foreground text-sm">{error || 'กรุณาลงทะเบียนก่อน'}</p>
+            <h2 className="text-lg font-bold mb-2">{LIFF_ERRORS.LOAD_FAILED}</h2>
+            <p className="text-muted-foreground text-sm">{error || LIFF_ERRORS.REGISTER_FIRST}</p>
           </CardContent>
         </Card>
       </div>
@@ -144,8 +145,13 @@ export default function LiffNotificationSettings() {
         </CardContent>
       </Card>
 
-      {/* Back */}
-      <div className="text-center mt-4">
+      {/* Navigation links */}
+      <div className="text-center mt-4 space-y-1 flex flex-col items-center">
+        <Button variant="ghost" mode="link" className="text-primary" asChild>
+          <a href={`/liff/contract${lineId ? `?lineId=${encodeURIComponent(lineId)}` : ''}`}>
+            ดูสัญญาของฉัน →
+          </a>
+        </Button>
         <Button variant="ghost" mode="link" className="text-primary" asChild>
           <a href={`/liff/profile${lineId ? `?lineId=${encodeURIComponent(lineId)}` : ''}`}>
             ← กลับไปโปรไฟล์

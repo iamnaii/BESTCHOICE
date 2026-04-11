@@ -7,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { LIFF_ERRORS } from '@/constants/liff-errors';
 
 import type { LiffProfileResponse as ProfileData } from '@installment/shared';
 
@@ -21,8 +22,8 @@ export default function LiffProfile() {
       const { data } = await liffApi
         .get(`/line-oa/liff/profile?lineId=${encodeURIComponent(lineId!)}`)
         .catch((err) => {
-          if (err.response?.status === 404) throw new Error('ยังไม่ได้ลงทะเบียน กรุณาลงทะเบียนก่อน');
-          throw new Error('ไม่สามารถโหลดข้อมูลได้ กรุณาลองใหม่');
+          if (err.response?.status === 404) throw new Error(LIFF_ERRORS.NOT_REGISTERED);
+          throw new Error(LIFF_ERRORS.LOAD_FAILED);
         });
       return data;
     },

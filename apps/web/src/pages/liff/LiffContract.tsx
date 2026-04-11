@@ -9,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { LIFF_ERRORS } from '@/constants/liff-errors';
 
 import type {
   LiffPayment as Payment,
@@ -103,8 +104,8 @@ export default function LiffContract() {
         return data;
       } catch (err: unknown) {
         const axiosErr = err as { response?: { status?: number } };
-        if (axiosErr.response?.status === 404) throw new Error('ยังไม่ได้ลงทะเบียน กรุณาลงทะเบียนก่อน');
-        throw new Error('ไม่สามารถโหลดข้อมูลได้ กรุณาลองใหม่');
+        if (axiosErr.response?.status === 404) throw new Error(LIFF_ERRORS.NOT_REGISTERED);
+        throw new Error(LIFF_ERRORS.LOAD_FAILED);
       }
     },
     enabled: !!lineId,

@@ -19,6 +19,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { liffApi } from '@/lib/api';
+import { LIFF_ERRORS, validateSlipFile } from '@/constants/liff-errors';
 
 import type { LiffPaymentLinkData as PaymentLinkData } from '@installment/shared';
 
@@ -62,16 +63,29 @@ export default function LiffPayment() {
   const queryLineId = new URLSearchParams(window.location.search).get('lineId') || '';
 
   // ─── Fetch payment link data ───
+  // Check expiresAt BEFORE mutating state so we never flash stale payment
+  // details to the user when the link has already lapsed on the clock.
   const { data } = useQuery<PaymentLinkData | null>({
     queryKey: ['liff-payment', token],
     queryFn: async () => {
       const { data: result } = await liffApi.get(`/line-oa/pay/${token}`);
+
+      // Early expiry check — before any other branch decides what to render
+      if (result?.expiresAt) {
+        const expiresMs = new Date(result.expiresAt).getTime();
+        if (Number.isFinite(expiresMs) && expiresMs <= Date.now()) {
+          setErrorMessage(LIFF_ERRORS.LINK_EXPIRED);
+          setView('error');
+          return null;
+        }
+      }
+
       if (!result || result.status === 'EXPIRED') {
-        setErrorMessage('ลิงก์ชำระเงินหมดอายุแล้ว กรุณาขอลิงก์ใหม่');
+        setErrorMessage(LIFF_ERRORS.LINK_EXPIRED);
         setView('error');
         return null;
       } else if (result.status === 'USED') {
-        setErrorMessage('ลิงก์นี้ถูกใช้งานแล้ว');
+        setErrorMessage(LIFF_ERRORS.LINK_USED);
         setView('error');
         return null;
       } else if (result.valid) {
@@ -81,7 +95,7 @@ export default function LiffPayment() {
         setView('select-method');
         return result;
       } else {
-        setErrorMessage('ลิงก์ไม่ถูกต้อง');
+        setErrorMessage(LIFF_ERRORS.LINK_INVALID);
         setView('error');
         return null;
       }
@@ -100,7 +114,7 @@ export default function LiffPayment() {
       const remaining = Math.max(0, Math.floor((expiresMs - Date.now()) / 1000));
       setExpirySeconds(remaining);
       if (remaining <= 0) {
-        setErrorMessage('ลิงก์ชำระเงินหมดอายุแล้ว กรุณาขอลิงก์ใหม่');
+        setErrorMessage(LIFF_ERRORS.LINK_EXPIRED);
         setView('error');
       }
     };
@@ -146,7 +160,7 @@ export default function LiffPayment() {
   // ─── Create payment intent mutation ───
   const createIntentMutation = useMutation({
     mutationFn: async () => {
-      if (!data) throw new Error('ไม่พบข้อมูลการชำระเงิน');
+      if (!data) throw new Error(LIFF_ERRORS.PAYMENT_DATA_NOT_FOUND);
       const payload = {
         contractId: data.contract.id,
         amount: Number(data.amount),
@@ -169,32 +183,72 @@ export default function LiffPayment() {
         setView('gateway-pending');
         window.location.href = result.paymentUrl;
       } else {
-        toast.error('ไม่ได้รับลิงก์ชำระเงิน กรุณาลองใหม่');
+        toast.error(LIFF_ERRORS.PAYMENT_LINK_MISSING);
       }
     },
     onError: (err: Error) => {
-      toast.error(err.message || 'ไม่สามารถสร้างรายการชำระเงินได้');
+      toast.error(err.message || LIFF_ERRORS.PAYMENT_CREATE_FAILED);
     },
   });
 
   // ─── Slip upload mutation (manual transfer) ───
+  // 30s client timeout — mobile LINE browsers sometimes hang indefinitely on
+  // bad networks; we want a deterministic "network timeout" message instead.
+  const SLIP_UPLOAD_TIMEOUT_MS = 30_000;
   const slipMutation = useMutation({
     mutationFn: async (file: File) => {
-      if (!data) throw new Error('ไม่พบข้อมูลการชำระเงิน');
+      if (!data) throw new Error(LIFF_ERRORS.PAYMENT_DATA_NOT_FOUND);
+
+      // Pre-validate locally so we surface specific messages before the upload
+      const validationError = validateSlipFile(file);
+      if (validationError) throw new Error(validationError);
+
       const formData = new FormData();
       formData.append('slip', file);
       formData.append('contractId', data.contract.contractNumber);
       formData.append('token', data.token);
 
-      const { data: result } = await liffApi
-        .post('/line-oa/slip-upload', formData, {
+      try {
+        const { data: result } = await liffApi.post('/line-oa/slip-upload', formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
-        })
-        .catch((err) => {
-          const errData = err.response?.data || {};
-          throw new Error(errData.error || errData.message || 'อัปโหลดสลิปไม่สำเร็จ');
+          timeout: SLIP_UPLOAD_TIMEOUT_MS,
         });
-      return result;
+        return result;
+      } catch (err: unknown) {
+        // Classify failure modes so the user sees the *actual* cause
+        const axiosErr = err as {
+          code?: string;
+          message?: string;
+          response?: { status?: number; data?: { error?: string; message?: string } };
+        };
+
+        // Network timeout / aborted request
+        if (
+          axiosErr.code === 'ECONNABORTED' ||
+          /timeout/i.test(axiosErr.message || '')
+        ) {
+          throw new Error(LIFF_ERRORS.SLIP_UPLOAD_TIMEOUT);
+        }
+
+        // No response at all — offline / DNS / CORS
+        if (!axiosErr.response) {
+          throw new Error(LIFF_ERRORS.SLIP_UPLOAD_TIMEOUT);
+        }
+
+        const status = axiosErr.response.status;
+        const serverMsg =
+          axiosErr.response.data?.error || axiosErr.response.data?.message;
+
+        // 413 — file too large (Cloudflare/ingress may rewrite this before NestJS)
+        if (status === 413) {
+          throw new Error(LIFF_ERRORS.SLIP_TOO_LARGE);
+        }
+        // 400 — backend validators (size/type) or link no longer active
+        if (status === 400 && serverMsg) {
+          throw new Error(serverMsg);
+        }
+        throw new Error(serverMsg || LIFF_ERRORS.SLIP_UPLOAD_FAILED);
+      }
     },
     onSuccess: () => {
       setView('slip-uploaded');
@@ -207,7 +261,7 @@ export default function LiffPayment() {
   // No token
   useEffect(() => {
     if (!token) {
-      setErrorMessage('ลิงก์ไม่ถูกต้อง');
+      setErrorMessage(LIFF_ERRORS.LINK_INVALID);
       setView('error');
     }
   }, [token]);
@@ -448,7 +502,7 @@ export default function LiffPayment() {
           </CardContent>
         </Card>
 
-        <div className="text-center space-y-2">
+        <div className="text-center space-y-2 flex flex-col items-center">
           {pollTimedOut && (
             <Button
               variant="outline"
@@ -465,6 +519,17 @@ export default function LiffPayment() {
             onClick={handleRetry}
           >
             ยกเลิกและเลือกวิธีอื่น
+          </Button>
+          <Button
+            variant="ghost"
+            className="text-muted-foreground"
+            asChild
+          >
+            <a
+              href={`/liff/contract${queryLineId ? `?lineId=${encodeURIComponent(queryLineId)}` : ''}`}
+            >
+              กลับไปหน้าสัญญา
+            </a>
           </Button>
         </div>
       </div>
@@ -649,9 +714,23 @@ export default function LiffPayment() {
                   <label className="block w-full border-2 border-dashed border-border rounded-lg p-5 text-center cursor-pointer hover:border-primary/40 transition-colors">
                     <input
                       type="file"
-                      accept="image/*"
+                      accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
                       className="hidden"
-                      onChange={(e) => setSlipFile(e.target.files?.[0] || null)}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0] || null;
+                        if (f) {
+                          // Pre-flight check so the user sees the specific problem
+                          // before tapping "แจ้งชำระเงิน"
+                          const err = validateSlipFile(f);
+                          if (err) {
+                            toast.error(err);
+                            e.target.value = '';
+                            setSlipFile(null);
+                            return;
+                          }
+                        }
+                        setSlipFile(f);
+                      }}
                     />
                     {slipFile ? (
                       <div className="flex items-center justify-center gap-2">

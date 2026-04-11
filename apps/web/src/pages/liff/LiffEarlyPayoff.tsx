@@ -5,8 +5,12 @@ import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { LIFF_ERRORS } from '@/constants/liff-errors';
 
-import type { LiffEarlyPayoffQuote as EarlyPayoffQuote } from '@installment/shared';
+import type {
+  LiffEarlyPayoffQuote as EarlyPayoffQuote,
+  LiffContractResponse,
+} from '@installment/shared';
 
 export default function LiffEarlyPayoff() {
   const { lineId, loading, error } = useLiffInit();
@@ -21,7 +25,7 @@ export default function LiffEarlyPayoff() {
   } = useQuery<EarlyPayoffQuote>({
     queryKey: ['liff-early-payoff-quote', lineId, contractId],
     queryFn: async () => {
-      if (!contractId) throw new Error('ไม่พบรหัสสัญญา');
+      if (!contractId) throw new Error(LIFF_ERRORS.CONTRACT_ID_MISSING);
       const { data: result } = await liffApi.get(
         `/line-oa/liff/early-payoff-quote?lineId=${encodeURIComponent(lineId!)}&contractId=${encodeURIComponent(contractId)}`,
       );
@@ -29,6 +33,21 @@ export default function LiffEarlyPayoff() {
     },
     enabled: !!lineId,
   });
+
+  // Shares the cache key with LiffContract — if user came from there, this
+  // hits the cache immediately without an extra network round-trip.
+  const { data: contractList } = useQuery<LiffContractResponse>({
+    queryKey: ['liff-contracts', lineId],
+    queryFn: async () => {
+      const { data: result } = await liffApi.get(
+        `/line-oa/liff/contracts?lineId=${encodeURIComponent(lineId!)}`,
+      );
+      return result;
+    },
+    enabled: !!lineId,
+    staleTime: 60_000,
+  });
+  const hasMultipleContracts = (contractList?.contracts?.length ?? 0) > 1;
 
   const payoffMutation = useMutation({
     mutationFn: async () => {
@@ -172,8 +191,15 @@ export default function LiffEarlyPayoff() {
         ชำระเพื่อปิดยอด {quote.totalPayoff.toLocaleString()} บาท
       </Button>
 
-      {/* Back link */}
-      <div className="text-center mt-4">
+      {/* Back link / Switch contract */}
+      <div className="text-center mt-4 space-y-1 flex flex-col items-center">
+        {hasMultipleContracts && (
+          <Button variant="outline" className="w-full max-w-xs" asChild>
+            <a href={`/liff/contract${lineId ? `?lineId=${encodeURIComponent(lineId)}` : ''}`}>
+              ดูสัญญาอื่น ({contractList?.contracts.length} สัญญา)
+            </a>
+          </Button>
+        )}
         <Button variant="ghost" className="text-muted-foreground" asChild>
           <a href={`/liff/contract${lineId ? `?lineId=${encodeURIComponent(lineId)}` : ''}`}>
             ← กลับไปดูสัญญา

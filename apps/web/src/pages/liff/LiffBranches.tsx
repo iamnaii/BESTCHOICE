@@ -2,10 +2,12 @@ import { useLiffInit } from '@/hooks/useLiffInit';
 import { liffApi } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
 import { MapPin, Phone } from 'lucide-react';
+import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
+import { LIFF_ERRORS } from '@/constants/liff-errors';
 
 interface BranchData {
   id: string;
@@ -43,7 +45,7 @@ export default function LiffBranches() {
         <Card className="max-w-md w-full">
           <CardContent className="text-center py-10">
             <div className="text-destructive text-5xl mb-4">!</div>
-            <h2 className="text-lg font-bold mb-2">ไม่สามารถโหลดข้อมูลได้</h2>
+            <h2 className="text-lg font-bold mb-2">{LIFF_ERRORS.LOAD_FAILED}</h2>
             <p className="text-muted-foreground text-sm">{error || (dataError as Error)?.message}</p>
           </CardContent>
         </Card>
@@ -91,7 +93,12 @@ export default function LiffBranches() {
               <div className="flex gap-2">
                 {branch.phone && (
                   <Button variant="primary" size="sm" className="flex-1" asChild>
-                    <a href={`tel:${branch.phone}`}>โทร</a>
+                    <a
+                      href={`tel:${branch.phone}`}
+                      onClick={() => toast.info(`กำลังโทรหา ${branch.name}...`)}
+                    >
+                      โทร
+                    </a>
                   </Button>
                 )}
                 {branch.location && (
@@ -100,6 +107,7 @@ export default function LiffBranches() {
                       href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(branch.name + ' ' + branch.location)}`}
                       target="_blank"
                       rel="noopener noreferrer"
+                      onClick={() => toast.info('กำลังเปิดแผนที่...')}
                     >
                       แผนที่
                     </a>

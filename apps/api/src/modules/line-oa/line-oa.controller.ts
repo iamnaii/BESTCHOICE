@@ -559,68 +559,57 @@ export class LineOaController {
     }
   }
 
-  private async getLiffBaseUrl(): Promise<string> {
-    const liffConfig = await this.prisma.systemConfig.findUnique({ where: { key: 'liff_id' } });
-    if (liffConfig?.value) {
-      return `https://liff.line.me/${liffConfig.value}`;
-    }
-    // Fallback: try to extract from payment_link_base_url
-    const config = await this.prisma.systemConfig.findUnique({ where: { key: 'payment_link_base_url' } });
-    if (config?.value) {
-      try {
-        const url = new URL(config.value);
-        return `${url.origin}${url.pathname.replace(/\/pay\/?.*$/, '')}`;
-      } catch (err) {
-        this.logger.warn('Invalid LIFF URL in config', err instanceof Error ? err.message : err);
-      }
-    }
-    return '';
+  /**
+   * Get browser-friendly URL that works outside LINE.
+   * Uses LINE Login OAuth → redirects back to LIFF page.
+   */
+  private getBrowserUrl(path: string): string {
+    const apiBase = process.env.API_BASE_URL || 'http://localhost:3000';
+    return `${apiBase}/api/line-oa/line-login/authorize?returnPath=${encodeURIComponent(path)}`;
   }
 
   private async handleContractLink(userId: string, replyToken: string): Promise<void> {
     const customer = await this.lineOaService.findCustomerByLineId(userId);
-    const liffBase = await this.getLiffBaseUrl();
 
     if (!customer) {
-      const registerUrl = liffBase ? `${liffBase}/liff/register` : '';
+      const registerUrl = this.getBrowserUrl('/liff/register');
       await this.lineOaService.replyMessage(replyToken, [
         {
           type: 'text',
-          text: `ยังไม่ได้เชื่อมบัญชีค่ะ กรุณาลงทะเบียนก่อนนะคะ${registerUrl ? `\n\n👉 ${registerUrl}` : '\n\nพิมพ์ "ลงทะเบียน" หรือพิมพ์เบอร์โทรเพื่อเชื่อมบัญชี'}`,
+          text: `ยังไม่ได้เชื่อมบัญชีค่ะ กรุณาลงทะเบียนก่อนนะคะ\n\n👉 ลงทะเบียน:\n${registerUrl}\n\nหรือพิมพ์เบอร์โทรที่ลงทะเบียนไว้เพื่อเชื่อมบัญชี`,
         },
       ]);
       return;
     }
 
-    const contractUrl = liffBase ? `${liffBase}/liff/contract` : '';
+    const contractUrl = this.getBrowserUrl('/liff/contract');
     await this.lineOaService.replyMessage(replyToken, [
       {
         type: 'text',
-        text: `คุณ${customer.name} สามารถดูข้อมูลสัญญาทั้งหมดได้ที่ลิงก์ด้านล่างค่ะ${contractUrl ? `\n\n📋 ดูสัญญา:\n${contractUrl}` : ''}`,
+        text: `คุณ${customer.name} สามารถดูข้อมูลสัญญาทั้งหมดได้ที่ลิงก์ด้านล่างค่ะ\n\n📋 ดูสัญญา:\n${contractUrl}`,
       },
     ]);
   }
 
   private async handleRegisterLink(userId: string, replyToken: string): Promise<void> {
     const customer = await this.lineOaService.findCustomerByLineId(userId);
-    const liffBase = await this.getLiffBaseUrl();
 
     if (customer) {
-      const contractUrl = liffBase ? `${liffBase}/liff/contract` : '';
+      const contractUrl = this.getBrowserUrl('/liff/contract');
       await this.lineOaService.replyMessage(replyToken, [
         {
           type: 'text',
-          text: `คุณ${customer.name} ลงทะเบียนแล้วค่ะ${contractUrl ? `\n\n📋 ดูสัญญา:\n${contractUrl}` : ''}`,
+          text: `คุณ${customer.name} ลงทะเบียนแล้วค่ะ\n\n📋 ดูสัญญา:\n${contractUrl}`,
         },
       ]);
       return;
     }
 
-    const registerUrl = liffBase ? `${liffBase}/liff/register` : '';
+    const registerUrl = this.getBrowserUrl('/liff/register');
     await this.lineOaService.replyMessage(replyToken, [
       {
         type: 'text',
-        text: `กรุณาลงทะเบียนเพื่อผูกบัญชี LINE กับระบบค่ะ${registerUrl ? `\n\n👉 ลงทะเบียน:\n${registerUrl}` : '\n\nหรือพิมพ์เบอร์โทรที่ลงทะเบียนไว้เพื่อเชื่อมบัญชี'}`,
+        text: `กรุณาลงทะเบียนเพื่อผูกบัญชี LINE กับระบบค่ะ\n\n👉 ลงทะเบียน:\n${registerUrl}\n\nหรือพิมพ์เบอร์โทรที่ลงทะเบียนไว้เพื่อเชื่อมบัญชี`,
       },
     ]);
   }

@@ -57,19 +57,28 @@ export class ChatbotFinanceService {
     return `https://liff.line.me/${liffConfig.value}${VERIFY_PATH}`;
   }
 
+  /** Get browser-friendly URL that works outside LINE */
+  private getBrowserUrl(path: string): string {
+    const apiBase = process.env.API_BASE_URL || 'http://localhost:3000';
+    return `${apiBase}/api/line-oa/line-login/authorize?returnPath=${encodeURIComponent(path)}`;
+  }
+
   /** ข้อความให้ลูกค้าเปิด LIFF + fallback ถ้ายังไม่ได้ตั้งค่า */
   private async buildVerifyPrompt(): Promise<string> {
     const url = await this.getLiffVerifyUrl();
+    const browserUrl = this.getBrowserUrl('/liff/finance-verify');
     if (!url) {
       this.logger.warn('[Finance] LIFF ID not configured in SystemConfig');
       return (
-        'ระบบยืนยันตัวตนยังไม่พร้อมใช้งานค่ะ 🙏\n' +
-        'รบกวนติดต่อเจ้าหน้าที่ 063-134-6356 นะคะ'
+        'รบกวนยืนยันตัวตนก่อนนะคะ เพื่อความปลอดภัยของข้อมูลค่ะ 🔐\n\n' +
+        `👉 ยืนยันตัวตน:\n${browserUrl}\n\n` +
+        'ใช้เวลาประมาณ 1 นาทีค่ะ'
       );
     }
     return (
       'รบกวนยืนยันตัวตนก่อนนะคะ เพื่อความปลอดภัยของข้อมูลค่ะ 🔐\n\n' +
       `👉 ${url}\n\n` +
+      `🌐 เปิดใน browser:\n${browserUrl}\n\n` +
       'ใช้เวลาประมาณ 1 นาทีค่ะ'
     );
   }

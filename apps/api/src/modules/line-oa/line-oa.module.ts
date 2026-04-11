@@ -3,6 +3,7 @@ import { LineOaController } from './line-oa.controller';
 import { LineOaPaymentController } from './line-oa-payment.controller';
 import { LineOaCampaignController } from './line-oa-campaign.controller';
 import { LiffApiController } from './liff-api.controller';
+import { LineLoginController } from './line-login.controller';
 import { LineOaService } from './line-oa.service';
 import { LiffApiService } from './liff-api.service';
 import { LineWebhookGuard } from './line-webhook.guard';
@@ -17,7 +18,7 @@ import { ChatbotFinanceModule } from '../chatbot-finance/chatbot-finance.module'
 
 @Module({
   imports: [ContractsModule, PDPAModule, ChatbotFinanceModule],
-  controllers: [LineOaController, LineOaPaymentController, LineOaCampaignController, LiffApiController],
+  controllers: [LineOaController, LineOaPaymentController, LineOaCampaignController, LiffApiController, LineLoginController],
   providers: [
     LineOaService,
     LiffApiService,

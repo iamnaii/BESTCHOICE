@@ -548,10 +548,14 @@ export class LineOaPaymentController {
   // ─── LIFF Slip Upload ───────────────────────────────
 
   // Rate limit: 5 slip uploads per minute per IP.
-  // Mitigates multer DoS (GHSA incomplete-cleanup) by capping how many
-  // multipart requests a single caller can fire at FileInterceptor before
-  // the bucket empties. Real customers upload 1 slip per payment — 5/min
-  // is generous for retry scenarios but chokes flooders.
+  // Defense in depth — serves two purposes:
+  //   1. Operational: prevents slip queue flooding if a buggy client or
+  //      retry storm fires multiple uploads. Real customers upload 1 slip
+  //      per payment — 5/min is generous for legitimate retries.
+  //   2. Security belt: @nestjs/platform-express@11 still transitively
+  //      pulls multer@1.4.5-lts.1 (GHSA incomplete-cleanup DoS). We pin
+  //      multer=2.1.1 via root package.json `overrides`, but this throttle
+  //      is a second layer in case the override is ever removed.
   @Post('slip-upload')
   @SkipCsrf()
   @Throttle({ short: { ttl: 60000, limit: 5 } })

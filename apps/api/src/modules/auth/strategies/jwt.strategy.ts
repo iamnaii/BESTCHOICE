@@ -35,7 +35,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: configService.get<string>('JWT_SECRET'),
+      // JWT_SECRET guaranteed by validateEnv() at startup
+      secretOrKey: configService.get<string>('JWT_SECRET')!,
     });
 
     // Clean expired cache entries every 60 seconds

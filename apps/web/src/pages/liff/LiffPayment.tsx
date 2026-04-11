@@ -437,9 +437,11 @@ export default function LiffPayment() {
             ) : (
               <div className="mt-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-sm text-amber-800 dark:text-amber-200">
                 <p className="font-medium mb-1">หมดเวลาตรวจสอบอัตโนมัติ</p>
+                <p className="text-xs mb-2">
+                  หากชำระเงินแล้ว ระบบจะยืนยันให้ภายใน 5 นาทีผ่าน LINE
+                </p>
                 <p className="text-xs">
-                  หากชำระเงินแล้ว ระบบจะอัปเดตสถานะภายหลัง
-                  หรือกด &quot;ลองใหม่&quot; เพื่อตรวจสอบอีกครั้ง
+                  หากยังไม่ได้รับการยืนยัน ติดต่อ 063-134-6356
                 </p>
               </div>
             )}

@@ -192,7 +192,11 @@ export default function LiffFinanceVerify() {
             <Button
               variant="primary"
               size="lg"
-              onClick={() => window.liff?.closeWindow?.()}
+              onClick={() => {
+                try { window.liff?.closeWindow?.(); } catch { /* ignore */ }
+                // Fallback if closeWindow doesn't work (browser mode)
+                setTimeout(() => { window.location.href = '/liff/contract'; }, 500);
+              }}
             >
               กลับไปแชท
             </Button>

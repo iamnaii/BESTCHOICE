@@ -374,21 +374,17 @@ export class LiffApiController {
     });
     if (!receipt) throw new NotFoundException('ไม่พบใบเสร็จ');
 
-    // Find matching eDocument
-    const doc = await this.prisma.eDocument.findFirst({
-      where: { contractId: { not: undefined }, documentType: 'RECEIPT' },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    // Fallback: try to serve fileUrl directly if it's a storage key
-    if (!doc && !receipt.fileUrl) {
-      throw new NotFoundException('ใบเสร็จนี้ยังไม่มีไฟล์ PDF');
+    if (!receipt.fileUrl) {
+      throw new NotFoundException('ใบเสร็จนี้ยังไม่มีไฟล์ PDF กรุณาติดต่อพนักงาน 063-134-6356');
     }
 
-    const docId = doc?.id;
-    if (!docId) throw new NotFoundException('ไม่พบไฟล์ใบเสร็จ');
+    // Find eDocument linked to this receipt's fileUrl
+    const doc = await this.prisma.eDocument.findFirst({
+      where: { fileUrl: receipt.fileUrl },
+    });
+    if (!doc) throw new NotFoundException('ไม่พบไฟล์ใบเสร็จ กรุณาติดต่อพนักงาน 063-134-6356');
 
-    const { stream, filename, contentType } = await this.documentsService.getDocumentStream(docId);
+    const { stream, filename, contentType } = await this.documentsService.getDocumentStream(doc.id);
     res.set({
       'Content-Type': contentType,
       'Content-Disposition': `inline; filename="${encodeURIComponent(filename)}"`,

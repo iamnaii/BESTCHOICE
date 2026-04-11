@@ -66,12 +66,12 @@ describe('VerificationService', () => {
       expect(notifications.sendSmsFromQueue).toHaveBeenCalled();
     });
 
-    it('returns same shape for unknown phone (anti-enumeration)', async () => {
+    it('throws for unknown phone with helpful message', async () => {
       prisma.customer.findFirst.mockResolvedValue(null);
 
-      const result = await service.requestOtp({ lineUserId: 'U123', phone: '0899999999' });
-
-      expect(result.maskedPhone).toBe('089-***-9999');
+      await expect(
+        service.requestOtp({ lineUserId: 'U123', phone: '0899999999' }),
+      ).rejects.toThrow('ไม่พบเบอร์โทรนี้ในระบบ');
       expect(notifications.sendSmsFromQueue).not.toHaveBeenCalled();
     });
 

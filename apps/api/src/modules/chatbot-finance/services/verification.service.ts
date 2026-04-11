@@ -78,9 +78,10 @@ export class VerificationService {
     };
 
     if (!customer) {
-      // ไม่ส่ง SMS แต่ตอบเหมือนเดิม (anti-enumeration)
-      this.logger.log(`[Verify] OTP requested for unknown phone (silent)`);
-      return responseShape;
+      this.logger.log(`[Verify] OTP requested for unknown phone`);
+      throw new BadRequestException(
+        'ไม่พบเบอร์โทรนี้ในระบบค่ะ กรุณาตรวจสอบเบอร์โทร หรือติดต่อสาขา 063-134-6356',
+      );
     }
 
     // Generate OTP + persist
@@ -124,7 +125,7 @@ export class VerificationService {
       await this.prisma.chatbotOtpRequest.delete({
         where: { lineUserId: params.lineUserId },
       });
-      throw new BadRequestException('ส่ง SMS ไม่สำเร็จ รบกวนลองใหม่');
+      throw new BadRequestException('ส่ง SMS ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง หรือติดต่อ 063-134-6356');
     }
 
     return {

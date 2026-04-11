@@ -121,7 +121,7 @@ export default function LiffContract() {
         description: `ชำระค่างวดที่ ${installmentNo}`,
       });
       if (!result.success || !result.paymentUrl) {
-        throw new Error('ไม่สามารถสร้าง QR ชำระเงินได้');
+        throw new Error(LIFF_ERRORS.PAYMENT_CREATE_FAILED);
       }
       return result as { paymentUrl: string; gatewayRef: string };
     },

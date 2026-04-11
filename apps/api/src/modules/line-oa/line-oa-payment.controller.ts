@@ -20,6 +20,7 @@ import {
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ParseFilePipe, MaxFileSizeValidator, FileTypeValidator } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { LineOaService } from './line-oa.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -546,8 +547,14 @@ export class LineOaPaymentController {
 
   // ─── LIFF Slip Upload ───────────────────────────────
 
+  // Rate limit: 5 slip uploads per minute per IP.
+  // Mitigates multer DoS (GHSA incomplete-cleanup) by capping how many
+  // multipart requests a single caller can fire at FileInterceptor before
+  // the bucket empties. Real customers upload 1 slip per payment — 5/min
+  // is generous for retry scenarios but chokes flooders.
   @Post('slip-upload')
   @SkipCsrf()
+  @Throttle({ short: { ttl: 60000, limit: 5 } })
   @UseInterceptors(FileInterceptor('slip'))
   async uploadSlipFromLiff(
     @UploadedFile(

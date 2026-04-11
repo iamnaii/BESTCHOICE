@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import liff from '@line/liff';
-import { LIFF_ID } from '@/lib/env';
+import { LIFF_ID, API_URL } from '@/lib/env';
 import { setLiffIdToken } from '@/lib/api';
 
 interface LiffProfile {
@@ -119,6 +119,8 @@ export function useLiffInit(): UseLiffInitResult {
  */
 function redirectToLineLogin(): void {
   const returnPath = window.location.pathname + window.location.search;
-  const loginUrl = `/api/line-oa/line-login/authorize?returnPath=${encodeURIComponent(returnPath)}`;
+  // API_URL may be relative (/api) in dev or absolute (https://api.bestchoicephone.app/api) in prod
+  const base = API_URL.startsWith('http') ? API_URL : `${window.location.origin}${API_URL}`;
+  const loginUrl = `${base}/line-oa/line-login/authorize?returnPath=${encodeURIComponent(returnPath)}`;
   window.location.href = loginUrl;
 }

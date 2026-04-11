@@ -28,10 +28,13 @@ export class LineLoginController {
   private readonly channelSecret: string;
   private readonly frontendBaseUrl: string;
 
+  private readonly apiBaseUrl: string;
+
   constructor(private config: ConfigService) {
     this.channelId = this.config.get<string>('LINE_LOGIN_CHANNEL_ID') || this.config.get<string>('LIFF_CHANNEL_ID') || '';
     this.channelSecret = this.config.get<string>('LINE_LOGIN_CHANNEL_SECRET') || '';
     this.frontendBaseUrl = this.config.get<string>('FRONTEND_URL') || 'http://localhost:5173';
+    this.apiBaseUrl = this.config.get<string>('API_BASE_URL') || 'http://localhost:3000';
   }
 
   /**
@@ -44,7 +47,7 @@ export class LineLoginController {
       throw new BadRequestException('LINE Login ยังไม่ได้ตั้งค่า');
     }
 
-    const callbackUrl = `${this.frontendBaseUrl}/api/line-oa/line-login/callback`;
+    const callbackUrl = `${this.apiBaseUrl}/api/line-oa/line-login/callback`;
     const state = encodeURIComponent(returnPath || '/liff/contract');
 
     const lineAuthUrl = new URL('https://access.line.me/oauth2/v2.1/authorize');
@@ -76,7 +79,7 @@ export class LineLoginController {
     }
 
     try {
-      const callbackUrl = `${this.frontendBaseUrl}/api/line-oa/line-login/callback`;
+      const callbackUrl = `${this.apiBaseUrl}/api/line-oa/line-login/callback`;
 
       // Exchange code for access token + ID token
       const tokenRes = await fetch('https://api.line.me/oauth2/v2.1/token', {

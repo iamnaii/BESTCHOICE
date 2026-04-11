@@ -45,12 +45,16 @@ async function bootstrap() {
   const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173')
     .split(',')
     .map((o) => o.trim());
+  // LIFF pages may be served from custom domain (bestchoicephone.app) or Firebase Hosting
+  if (!allowedOrigins.includes('https://bestchoicephone.app')) {
+    allowedOrigins.push('https://bestchoicephone.app');
+  }
 
   app.enableCors({
     origin: allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-CSRF-Token'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-CSRF-Token', 'X-Liff-Id-Token'],
     maxAge: 86400,
   });
 

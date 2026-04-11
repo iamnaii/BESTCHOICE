@@ -19,11 +19,11 @@
     "prisma:seed": "npx tsx prisma/seed.ts"
   },
   "dependencies": {
-    "@installment/shared": "*",
-    "@anthropic-ai/sdk": "^0.78.0",
+    "@anthropic-ai/sdk": "^0.88.0",
     "@aws-sdk/client-s3": "^3.1010.0",
     "@aws-sdk/s3-request-presigner": "^3.1010.0",
     "@google-cloud/storage": "^7.19.0",
+    "@installment/shared": "*",
     "@nestjs/bullmq": "^11.0.4",
     "@nestjs/cache-manager": "^3.1.0",
     "@nestjs/common": "^10.4.0",

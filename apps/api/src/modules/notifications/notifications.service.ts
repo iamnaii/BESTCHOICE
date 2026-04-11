@@ -556,6 +556,10 @@ export class NotificationsService implements OnModuleInit {
     const maxRetries = 5;
     if (retryCount >= maxRetries) {
       this.logger.warn(`Notification ${logId} exceeded max retries (${maxRetries}), marking as permanently failed`);
+      await this.prisma.notificationLog.update({
+        where: { id: logId },
+        data: { status: 'FAILED' },
+      });
       return;
     }
 

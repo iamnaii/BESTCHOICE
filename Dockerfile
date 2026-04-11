@@ -18,11 +18,14 @@ RUN npm ci --include=dev
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# @nestjs/cli is recorded in package-lock.json under apps/api/node_modules
-# (not hoisted to root node_modules) so we must copy it separately.
-# node_modules/.bin/nest lives at apps/api/node_modules/.bin/nest.
+# After Tier 1 npm update (commit 85598bd), the @nestjs/cli binary is
+# fully hoisted to root node_modules/.bin/nest. apps/api/node_modules
+# is no longer reliably created by `npm ci` in the deps stage — npm's
+# flat hoisting has no reason to keep it when there are no version
+# conflicts forcing local nested installs. Relying on root node_modules
+# alone is sufficient: `npm run build` in apps/api picks up `nest` via
+# the standard node_modules walk to the workspace root.
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
 COPY package.json ./
 COPY apps/api ./apps/api
 COPY packages ./packages
@@ -45,10 +48,11 @@ RUN addgroup --system --gid 1001 appgroup && \
     adduser --system --uid 1001 appuser
 
 # Copy API build artifacts (use --chown for correct permissions)
+# Runtime resolves all deps from root node_modules via workspace hoisting —
+# no apps/api/node_modules copy needed (see builder stage comment).
 COPY --from=builder --chown=appuser:appgroup /app/apps/api/dist ./apps/api/dist
 COPY --from=builder --chown=appuser:appgroup /app/apps/api/package.json ./apps/api/
 COPY --from=deps --chown=appuser:appgroup /app/node_modules ./node_modules
-COPY --from=deps --chown=appuser:appgroup /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=builder --chown=appuser:appgroup /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder --chown=appuser:appgroup /app/apps/api/prisma ./apps/api/prisma
 

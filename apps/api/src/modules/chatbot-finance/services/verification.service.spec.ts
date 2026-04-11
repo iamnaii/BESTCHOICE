@@ -87,7 +87,7 @@ describe('VerificationService', () => {
       await service.requestOtp({ lineUserId: 'U123', phone: '66891234567' });
 
       expect(prisma.customer.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { phone: '0891234567', deletedAt: null } }),
+        expect.objectContaining({ where: { phone: { in: ['0891234567', '089-123-4567', '089-1234567'] }, deletedAt: null } }),
       );
     });
 

@@ -60,8 +60,15 @@ export class VerificationService {
       throw new BadRequestException(`รบกวนรอ ${waitSeconds} วินาทีก่อนขอ OTP ใหม่`);
     }
 
+    // Search with multiple Thai phone formats (DB may store 0812345678 or 081-234-5678)
+    const digits = phone.replace(/\D/g, '');
+    const phoneVariants = [digits];
+    if (digits.length === 10) {
+      phoneVariants.push(`${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`);
+      phoneVariants.push(`${digits.slice(0, 3)}-${digits.slice(3)}`);
+    }
     const customer = await this.prisma.customer.findFirst({
-      where: { phone, deletedAt: null },
+      where: { phone: { in: phoneVariants }, deletedAt: null },
       select: { id: true, name: true, phone: true },
     });
 

@@ -29,12 +29,11 @@ import {
   LiffEarlyPayoffDto,
   LiffConsentDto,
 } from './dto/liff.dto';
-import type {
-  LiffContractResponse,
-  LiffHistoryResponse,
-  LiffProfileResponse,
-  LiffPaymentLinkResult,
-} from '@installment/shared';
+// Return types (mirrors packages/shared/src/liff-types.ts)
+interface LiffContractResponse { customer: { name: string }; contracts: unknown[]; }
+interface LiffHistoryResponse { customer: { name: string }; payments: unknown[]; }
+interface LiffProfileResponse { name: string; phone: string; lineDisplayName: string; contractCount: number; totalPoints: number; }
+interface LiffPaymentLinkResult { url: string; token: string; totalPayoff?: number; }
 
 @ApiTags('LIFF API')
 @Controller('line-oa')
@@ -71,7 +70,7 @@ export class LiffApiController {
   @SkipCsrf()
   @UseGuards(LiffTokenGuard)
   @Throttle({ short: { ttl: 60000, limit: 5 } })
-  async liffRegisterLookup(@Req() req: Request, @Body() dto: LiffRegisterLookupDto) {
+  async liffRegisterLookup(@Req() req: Request, @Body() dto: LiffRegisterLookupDto): Promise<{ customerId: string; maskedName: string }> {
     const lineId = (req as unknown as LiffRequest).liffUserId;
 
     const isLinked = await this.liffApiService.isLineIdLinked(lineId);

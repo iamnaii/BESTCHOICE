@@ -2,12 +2,14 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { toNum, calcOutstanding } from '../../utils/decimal.util';
-import type {
-  LiffContractResponse,
-  LiffHistoryResponse,
-  LiffProfileResponse,
-  LiffRegisterLookupResponse,
-} from '@installment/shared';
+// Return types for LIFF API (mirrors packages/shared/src/liff-types.ts)
+interface LiffPaymentItem { installmentNo: number; dueDate: string; amountDue: number; amountPaid: number; lateFee: number; status: string; paidDate: string | null; paymentMethod: string | null; }
+interface LiffContractItem { id: string; contractNumber: string; status: string; product: string; sellingPrice: number; downPayment: number; monthlyPayment: number; totalMonths: number; paidInstallments: number; totalOutstanding: number; createdAt: string; payments: LiffPaymentItem[]; }
+interface LiffContractResponse { customer: { name: string }; contracts: LiffContractItem[]; }
+interface LiffHistoryPayment { contractNumber: string; installmentNo: number; amountPaid: number; paidDate: string | null; paymentMethod: string | null; lateFee: number; }
+interface LiffHistoryResponse { customer: { name: string }; payments: LiffHistoryPayment[]; }
+interface LiffProfileResponse { name: string; phone: string; lineDisplayName: string; contractCount: number; totalPoints: number; }
+interface LiffRegisterLookupResponse { customerId: string; maskedName: string; }
 
 @Injectable()
 export class LiffApiService {

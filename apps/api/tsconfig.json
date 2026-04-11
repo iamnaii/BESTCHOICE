@@ -18,10 +18,7 @@
     "forceConsistentCasingInFileNames": false,
     "noFallthroughCasesInSwitch": false,
     "resolveJsonModule": true,
-    "esModuleInterop": true,
-    "paths": {
-      "@installment/shared": ["../../packages/shared/src"]
-    }
+    "esModuleInterop": true
   },
   "include": ["src/**/*", "prisma/**/*"],
   "exclude": ["node_modules", "dist"]

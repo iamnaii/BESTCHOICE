@@ -5,8 +5,8 @@
   "compilerOptions": {
     "deleteOutDir": true,
     "assets": [
-      { "include": "modules/documents/templates/**/*.html", "outDir": "dist/src", "watchAssets": true },
-      { "include": "modules/contracts/templates/**/*.html", "outDir": "dist/src", "watchAssets": true }
+      { "include": "modules/documents/templates/**/*.html", "outDir": "dist/src" },
+      { "include": "modules/contracts/templates/**/*.html", "outDir": "dist/src" }
     ]
   }
 }

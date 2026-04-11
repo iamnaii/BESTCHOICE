@@ -8,6 +8,17 @@ COPY apps/api/package.json apps/api/
 # apps/web/package.json must be present so npm workspaces correctly resolves
 # and hoists all workspace deps (including @nestjs/cli from apps/api devDeps)
 COPY apps/web/package.json apps/web/
+# apps/card-reader/package.json is required for `npm ci` to install the
+# card-reader workspace's transitive deps. Card-reader is a local-only
+# service not deployed to Cloud Run, but its `express: ^4.21.0` dependency
+# is load-bearing for the Docker build: after the NestJS 11 bump,
+# @nestjs/platform-express@11 pulls express@5 and npm nests it under
+# node_modules/@nestjs/platform-express/node_modules/express. Without
+# card-reader also present, there is no express at root node_modules,
+# and `require('express')` from apps/api/dist/src/main.js fails at runtime
+# with `Cannot find module 'express'`. Card-reader brings express@4.21.x
+# to root node_modules, which main.js resolves via the standard walk.
+COPY apps/card-reader/package.json apps/card-reader/
 COPY packages/ packages/
 # --include=dev: force devDeps even when NODE_ENV=production
 RUN npm ci --include=dev

@@ -4,7 +4,7 @@ import {
   BadRequestException,
   Logger,
 } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
+import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
@@ -96,8 +96,8 @@ export class AuthService {
     };
 
     const accessToken = this.jwtService.sign(payload, {
-      secret: this.configService.get<string>('JWT_SECRET'),
-      expiresIn: this.configService.get<string>('JWT_EXPIRATION', '15m'),
+      secret: this.configService.get<string>('JWT_SECRET')!,
+      expiresIn: this.configService.get<string>('JWT_EXPIRATION', '15m') as JwtSignOptions['expiresIn'],
     });
 
     const refreshToken = await this.createRefreshToken(user.id);
@@ -189,8 +189,8 @@ export class AuthService {
     };
 
     const accessToken = this.jwtService.sign(payload, {
-      secret: this.configService.get<string>('JWT_SECRET'),
-      expiresIn: this.configService.get<string>('JWT_EXPIRATION', '15m'),
+      secret: this.configService.get<string>('JWT_SECRET')!,
+      expiresIn: this.configService.get<string>('JWT_EXPIRATION', '15m') as JwtSignOptions['expiresIn'],
     });
 
     // Rotation: revoke old + create new ATOMICALLY in a transaction
@@ -411,8 +411,8 @@ export class AuthService {
       };
 
       const accessToken = this.jwtService.sign(newPayload, {
-        secret: this.configService.get<string>('JWT_SECRET'),
-        expiresIn: this.configService.get<string>('JWT_EXPIRATION', '15m'),
+        secret: this.configService.get<string>('JWT_SECRET')!,
+        expiresIn: this.configService.get<string>('JWT_EXPIRATION', '15m') as JwtSignOptions['expiresIn'],
       });
 
       // Migrate to DB-based token on next refresh

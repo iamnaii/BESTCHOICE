@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { LineOaController } from './line-oa.controller';
+import { LineOaChatbotController } from './line-oa-chatbot.controller';
 import { LineOaPaymentController } from './line-oa-payment.controller';
 import { LineOaCampaignController } from './line-oa-campaign.controller';
 import { LiffApiController } from './liff-api.controller';
@@ -18,7 +19,7 @@ import { ChatbotFinanceModule } from '../chatbot-finance/chatbot-finance.module'
 
 @Module({
   imports: [ContractsModule, PDPAModule, ChatbotFinanceModule],
-  controllers: [LineOaController, LineOaPaymentController, LineOaCampaignController, LiffApiController, LineLoginController],
+  controllers: [LineOaController, LineOaChatbotController, LineOaPaymentController, LineOaCampaignController, LiffApiController, LineLoginController],
   providers: [
     LineOaService,
     LiffApiService,

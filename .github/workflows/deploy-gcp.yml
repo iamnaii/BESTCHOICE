@@ -234,7 +234,8 @@ jobs:
           PAYSOLUTIONS_SECRET_KEY=PAYSOLUTIONS_SECRET_KEY:latest,\
           PAYSOLUTIONS_API_KEY=PAYSOLUTIONS_API_KEY:latest,\
           LINE_FINANCE_CHANNEL_SECRET=LINE_FINANCE_CHANNEL_SECRET:latest,\
-          LINE_FINANCE_CHANNEL_ACCESS_TOKEN=LINE_FINANCE_CHANNEL_ACCESS_TOKEN:latest" \
+          LINE_FINANCE_CHANNEL_ACCESS_TOKEN=LINE_FINANCE_CHANNEL_ACCESS_TOKEN:latest,\
+          LINE_LOGIN_CHANNEL_SECRET=LINE_LOGIN_CHANNEL_SECRET:latest" \
             --set-env-vars="\
           TZ=Asia/Bangkok,\
           NODE_ENV=production,\
@@ -254,7 +255,8 @@ jobs:
           PAYSOLUTIONS_RETURN_URL=https://liff.line.me/2009442540-d9XnzWwl/contract,\
           PAYSOLUTIONS_TERMINAL_ID=TID00001,\
           GCS_BUCKET=bestchoice-documents,\
-          API_BASE_URL=https://api.bestchoicephone.app" \
+          API_BASE_URL=https://api.bestchoicephone.app,\
+          LIFF_CHANNEL_ID=2009442540" \
             --set-cloudsql-instances=${{ secrets.CLOUD_SQL_CONNECTION_NAME }} \
             --allow-unauthenticated
 

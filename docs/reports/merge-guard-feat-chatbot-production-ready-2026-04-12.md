@@ -182,3 +182,31 @@ The System Prompt editor UI is fully implemented on the frontend but has no back
 **Minimum required fix**: Add 3 prompt endpoints to `chatbot-finance-admin.controller.ts` (see C-001 fix above). W-001 and W-002 are low-risk but should be addressed in the same PR to avoid future confusion.
 
 **Positive notes**: The feedback Quick Reply architecture is clean, the ChatconeModule removal is thorough, the KB seed is properly idempotent, and all security guards are correctly applied.
+
+---
+
+## Addendum (second pass — 2026-04-12)
+
+Two additional findings not in the initial review:
+
+#### A-001: Error fallback in `FinanceAiService.getSystemPromptText()` can re-throw
+
+**File**: `services/finance-ai.service.ts` (catch block, ~line 415)
+
+```typescript
+} catch (err) {
+  this.logger.warn(`...`);
+  return this.promptCache?.text || (await this.financeConfig.getSystemPrompt());
+  //                                          ^^^ same call that just failed
+}
+```
+
+On a cold start (no cache) with a DB error, the catch block calls `financeConfig.getSystemPrompt()` again — which throws the same error — causing an unhandled rejection instead of a graceful fallback. Fix: use the hardcoded constant directly in the catch:
+
+```typescript
+return this.promptCache?.text ?? this.financeConfig.getDefaultSystemPrompt();
+```
+
+#### A-002: Branch is 5 commits behind `origin/main`
+
+The branch diverged at `01c81195` (Merge PR #472). `origin/main` has 5 subsequent commits (Docker build fixes, `@nestjs/cli` hoisting, journal-auto test fix). Rebase onto main before merging.

@@ -11,13 +11,14 @@ export class BranchesService {
   async findAll(user: { role: string; branchId: string | null }) {
     if (hasCrossBranchAccess(user)) {
       return this.prisma.branch.findMany({
+        where: { deletedAt: null },
         orderBy: { name: 'asc' },
         include: { _count: { select: { users: true, products: true, contracts: true } } },
       });
     }
     if (!user.branchId) return [];
     return this.prisma.branch.findMany({
-      where: { id: user.branchId },
+      where: { id: user.branchId, deletedAt: null },
       include: { _count: { select: { users: true, products: true, contracts: true } } },
     });
   }

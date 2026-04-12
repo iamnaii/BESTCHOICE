@@ -150,7 +150,7 @@ export class TradeInController {
   }
 
   @Get(':id/voucher.pdf')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES', 'ACCOUNTANT')
   async downloadVoucher(@Param('id') id: string, @Res() res: Response) {
     const { buffer, voucherNumber } = await this.tradeInService.getVoucherPdf(id);
     res.setHeader('Content-Type', 'application/pdf');

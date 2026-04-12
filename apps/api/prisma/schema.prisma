@@ -3072,3 +3072,26 @@ model ProcessedWebhookEvent {
   @@index([processedAt])
   @@map("processed_webhook_events")
 }
+
+// ============================================================
+// DATA AUDIT — automated database health checks
+// ============================================================
+
+/// Stores results of each automated data audit check.
+/// Groups checks by runId so a full audit run can be queried together.
+model DataAuditLog {
+  id         String   @id @default(uuid())
+  runId      String   @map("run_id")
+  checkName  String   @map("check_name")
+  severity   String   // CRITICAL, HIGH, MEDIUM
+  status     String   // PASS, FAIL, WARN
+  count      Int      @default(0)
+  details    Json?
+  executedAt DateTime @default(now()) @map("executed_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([runId])
+  @@index([checkName, executedAt])
+  @@index([status])
+  @@map("data_audit_logs")
+}

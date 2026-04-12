@@ -226,7 +226,7 @@ export class ProductsService {
 
     // Find transfer history
     const transfers = await this.prisma.stockTransfer.findMany({
-      where: { productId },
+      where: { productId, deletedAt: null },
       select: {
         ...stockTransferSelect,
         fromBranch: { select: { id: true, name: true } },

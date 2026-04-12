@@ -29,7 +29,7 @@ export class OcrController {
   }
 
   @Post('payment-slip')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   @Throttle({ short: { limit: 10, ttl: 60000 } })
   extractPaymentSlip(@Body() dto: OcrPaymentSlipDto) {
     return this.ocrService.extractPaymentSlip(dto.imageBase64);

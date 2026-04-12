@@ -13,11 +13,12 @@ export class StickersService {
 
     const [data, total] = await Promise.all([
       this.prisma.stickerTemplate.findMany({
+        where: { deletedAt: null },
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
       }),
-      this.prisma.stickerTemplate.count(),
+      this.prisma.stickerTemplate.count({ where: { deletedAt: null } }),
     ]);
 
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };

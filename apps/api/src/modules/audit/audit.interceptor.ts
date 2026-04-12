@@ -12,9 +12,15 @@ const { tap } = require('rxjs');
 @Injectable()
 export class AuditInterceptor implements NestInterceptor {
   private static readonly SENSITIVE_FIELDS = [
+    // Auth credentials
     'password', 'token', 'secret', 'accessToken', 'refreshToken',
     'currentPassword', 'newPassword', 'confirmPassword',
-    'nationalId', 'vendorTaxId',
+    // PII — PDPA compliance
+    'nationalId', 'vendorTaxId', 'taxId',
+    'phone', 'mobilePhone', 'emergencyPhone',
+    'email', 'lineId', 'lineUserId',
+    'address', 'currentAddress', 'registeredAddress',
+    'bankAccount', 'bankAccountNumber', 'accountNumber',
   ];
 
   constructor(private auditService: AuditService) {}

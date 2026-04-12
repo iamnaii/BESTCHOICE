@@ -174,7 +174,7 @@ export class ReorderPointsService {
 
           // Notify Owner(s) via IN_APP
           const owners = await this.prisma.user.findMany({
-            where: { role: 'OWNER', isActive: true },
+            where: { role: 'OWNER', isActive: true, deletedAt: null },
             select: { email: true, name: true },
           });
           for (const owner of owners) {
@@ -190,7 +190,7 @@ export class ReorderPointsService {
 
           // Notify Branch Manager(s) via IN_APP + LINE
           const branchManagers = await this.prisma.user.findMany({
-            where: { role: 'BRANCH_MANAGER', branchId: rp.branchId, isActive: true },
+            where: { role: 'BRANCH_MANAGER', branchId: rp.branchId, isActive: true, deletedAt: null },
             select: { email: true, name: true },
           });
           for (const manager of branchManagers) {

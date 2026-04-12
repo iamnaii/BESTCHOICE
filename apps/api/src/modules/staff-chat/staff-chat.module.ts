@@ -5,6 +5,7 @@ import { StaffChatGateway } from './staff-chat.gateway';
 import { StaffChatController } from './staff-chat.controller';
 import { ChannelSettingsController } from './channel-settings.controller';
 import { StaffMessageService } from './services/staff-message.service';
+import { CannedResponseVariableService } from './services/canned-response-variable.service';
 import { PresenceService } from './services/presence.service';
 import { ChatEngineModule } from '../chat-engine/chat-engine.module';
 
@@ -28,7 +29,7 @@ import { ChatEngineModule } from '../chat-engine/chat-engine.module';
     }),
   ],
   controllers: [StaffChatController, ChannelSettingsController],
-  providers: [StaffChatGateway, StaffMessageService, PresenceService],
+  providers: [StaffChatGateway, StaffMessageService, CannedResponseVariableService, PresenceService],
   exports: [StaffChatGateway, PresenceService],
 })
 export class StaffChatModule {}

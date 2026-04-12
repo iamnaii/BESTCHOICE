@@ -1,5 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { CannedResponseVariableService } from './canned-response-variable.service';
 
 /**
  * StaffMessageService — manages staff notes and canned responses.
@@ -8,7 +9,10 @@ import { PrismaService } from '../../../prisma/prisma.service';
 export class StaffMessageService {
   private readonly logger = new Logger(StaffMessageService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private cannedResponseVariableService: CannedResponseVariableService,
+  ) {}
 
   /** Add an internal note to a session */
   async addNote(sessionId: string, staffId: string, content: string) {
@@ -68,5 +72,49 @@ export class StaffMessageService {
       where: { id },
       data: { deletedAt: new Date() },
     });
+  }
+
+  /** Get a canned response with variables expanded using session context */
+  async getCannedResponseExpanded(
+    id: string,
+    sessionId: string,
+  ): Promise<{
+    id: string;
+    shortcut: string;
+    title: string;
+    content: string;
+    expandedContent: string;
+  }> {
+    // 1. Find canned response by id
+    const cannedResponse = await this.prisma.cannedResponse.findFirst({
+      where: { id, deletedAt: null },
+    });
+
+    if (!cannedResponse) {
+      throw new NotFoundException('ไม่พบข้อความสำเร็จรูป');
+    }
+
+    // 2. Find session to get customerId
+    const session = await this.prisma.chatSession.findFirst({
+      where: { id: sessionId },
+      select: { id: true, customerId: true },
+    });
+
+    const customerId = session?.customerId ?? undefined;
+
+    // 3. Call expandVariables with context
+    const expandedContent = await this.cannedResponseVariableService.expandVariables(
+      cannedResponse.content,
+      { sessionId, customerId },
+    );
+
+    // 4. Return original + expanded
+    return {
+      id: cannedResponse.id,
+      shortcut: cannedResponse.shortcut,
+      title: cannedResponse.title,
+      content: cannedResponse.content,
+      expandedContent,
+    };
   }
 }

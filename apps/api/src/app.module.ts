@@ -62,8 +62,10 @@ import { ChatEngineModule } from './modules/chat-engine/chat-engine.module';
 import { ChatAdaptersModule } from './modules/chat-adapters/chat-adapters.module';
 import { StaffChatModule } from './modules/staff-chat/staff-chat.module';
 import { ChatAnalyticsModule } from './modules/chat-analytics/chat-analytics.module';
+import { CsatModule } from './modules/csat/csat.module';
 import { AdsTrackingModule } from './modules/ads-tracking/ads-tracking.module';
 import { CrmModule } from './modules/crm/crm.module';
+import { BroadcastModule } from './modules/broadcast/broadcast.module';
 import { HealthModule } from './modules/health/health.module';
 import { PeakModule } from './modules/peak/peak.module';
 import { MdmModule } from './modules/mdm/mdm.module';
@@ -177,10 +179,14 @@ import { AppCacheModule } from './cache/cache.module';
     StaffChatModule,
     // Chat Analytics — response time, resolution rate, channel volume
     ChatAnalyticsModule,
+    // CSAT — customer satisfaction survey after chat resolution
+    CsatModule,
     // Ads Attribution — campaign tracking + ROI
     AdsTrackingModule,
     // CRM Pipeline — lead tracking + customer scoring
     CrmModule,
+    // Broadcast — mass messaging to customers across chat channels
+    BroadcastModule,
     // Health check — liveness probe for Cloud Run / load balancers
     HealthModule,
     // External integrations (scaffold — activate when credentials are available)

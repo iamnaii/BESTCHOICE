@@ -19,6 +19,10 @@ export const CHAT_EVENTS = {
   RESOLVED: 'chat:resolved',
   /** New note added to session */
   NOTE_ADDED: 'chat:note:added',
+  /** Current viewers of a session */
+  VIEWERS: 'chat:viewers',
+  /** Collision warning — another staff is viewing the same session */
+  COLLISION_WARNING: 'chat:collision',
 } as const;
 
 // Client → Server events
@@ -35,6 +39,8 @@ export const CHAT_CLIENT_EVENTS = {
   LEAVE: 'chat:leave',
   /** Staff marks messages as read */
   READ: 'chat:read',
+  /** Staff opens/views a session (for collision detection) */
+  VIEW_SESSION: 'chat:view',
 } as const;
 
 // WebSocket room naming

@@ -7,6 +7,11 @@ import { ChannelSettingsController } from './channel-settings.controller';
 import { StaffMessageService } from './services/staff-message.service';
 import { CannedResponseVariableService } from './services/canned-response-variable.service';
 import { PresenceService } from './services/presence.service';
+import { CollisionDetectionService } from './services/collision-detection.service';
+import { AiAssistantService } from './services/ai-assistant.service';
+import { SnoozeService } from './services/snooze.service';
+import { SnoozeCronService } from './services/snooze-cron.service';
+import { SnoozeController } from './snooze.controller';
 import { ChatEngineModule } from '../chat-engine/chat-engine.module';
 
 /**
@@ -28,8 +33,8 @@ import { ChatEngineModule } from '../chat-engine/chat-engine.module';
       inject: [ConfigService],
     }),
   ],
-  controllers: [StaffChatController, ChannelSettingsController],
-  providers: [StaffChatGateway, StaffMessageService, CannedResponseVariableService, PresenceService],
-  exports: [StaffChatGateway, PresenceService],
+  controllers: [StaffChatController, ChannelSettingsController, SnoozeController],
+  providers: [StaffChatGateway, StaffMessageService, CannedResponseVariableService, PresenceService, CollisionDetectionService, AiAssistantService, SnoozeService, SnoozeCronService],
+  exports: [StaffChatGateway, PresenceService, CollisionDetectionService],
 })
 export class StaffChatModule {}

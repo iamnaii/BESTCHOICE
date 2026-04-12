@@ -406,6 +406,8 @@ model User {
   webhookSubscriptions   WebhookSubscription[]
   crmLeadsAssigned       CrmLead[]            @relation("CrmLeadAssignedTo")
   crmNotes               CrmNote[]            @relation("CrmNoteStaff")
+  chatSnoozes            ChatSnooze[]         @relation("ChatSnoozeStaff")
+  chatSideMessages       ChatSideMessage[]    @relation("ChatSideMessageStaff")
 
   @@index([branchId])
   @@map("users")
@@ -2892,10 +2894,12 @@ model ChatSession {
   totalMessages Int      @default(0) @map("total_messages")
   lastMessageAt DateTime @default(now()) @map("last_message_at")
 
-  messages  ChatMessage[]
-  feedbacks ChatFeedback[]
-  tags      ConversationTag[]
-  notes     ChatNote[]
+  messages      ChatMessage[]
+  feedbacks     ChatFeedback[]
+  tags          ConversationTag[]
+  notes         ChatNote[]
+  snoozes       ChatSnooze[]
+  sideMessages  ChatSideMessage[]
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -3152,8 +3156,10 @@ model CannedResponse {
   id        String  @id @default(uuid())
   shortcut  String  @unique // "/thanks", "/slip" — searchable command
   title     String  // "ขอบคุณค่ะ" — display label
-  content   String  @db.Text // full response text (may include placeholders)
-  category  String? // "greeting", "payment", "general"
+  content      String  @db.Text // full response text (may include placeholders)
+  mediaUrl     String? @map("media_url") // optional image/file URL
+  responseType String  @default("text") @map("response_type") // "text", "image", "flex"
+  category     String? // "greeting", "payment", "general"
   sortOrder Int     @default(0) @map("sort_order")
   isActive  Boolean @default(true) @map("is_active")
 
@@ -3198,6 +3204,38 @@ model ChatNote {
   @@index([staffId])
   @@index([deletedAt])
   @@map("chat_notes")
+}
+
+/// Snooze / follow-up reminder on a chat session
+model ChatSnooze {
+  id        String      @id @default(uuid())
+  sessionId String      @map("session_id")
+  session   ChatSession @relation(fields: [sessionId], references: [id])
+  staffId   String      @map("staff_id")
+  staff     User        @relation("ChatSnoozeStaff", fields: [staffId], references: [id])
+  remindAt  DateTime    @map("remind_at")
+  note      String?     @db.Text
+  completed Boolean     @default(false)
+  createdAt DateTime    @default(now()) @map("created_at")
+
+  @@index([remindAt, completed])
+  @@index([staffId])
+  @@map("chat_snoozes")
+}
+
+/// Internal staff-only side conversation on a chat session
+model ChatSideMessage {
+  id        String      @id @default(uuid())
+  sessionId String      @map("session_id")
+  session   ChatSession @relation(fields: [sessionId], references: [id])
+  staffId   String      @map("staff_id")
+  staff     User        @relation("ChatSideMessageStaff", fields: [staffId], references: [id])
+  text      String      @db.Text
+  createdAt DateTime    @default(now()) @map("created_at")
+  deletedAt DateTime?   @map("deleted_at")
+
+  @@index([sessionId])
+  @@map("chat_side_messages")
 }
 
 // ============================================================

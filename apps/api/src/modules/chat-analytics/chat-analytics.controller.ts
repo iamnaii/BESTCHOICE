@@ -31,6 +31,17 @@ export class ChatAnalyticsController {
     return this.analyticsService.getChannelVolume(start, end);
   }
 
+  @Get('staff-performance')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  async getStaffPerformance(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const start = startDate ? new Date(startDate) : new Date(Date.now() - 30 * 86400000);
+    const end = endDate ? new Date(endDate) : new Date();
+    return this.analyticsService.getStaffPerformance(start, end);
+  }
+
   @Get('response-time')
   @Roles('OWNER', 'FINANCE_MANAGER')
   async getResponseTime(

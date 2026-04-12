@@ -19,6 +19,7 @@ import { SessionOpsController } from './session-ops.controller';
 import { SessionOpsService } from './services/session-ops.service';
 import { ChatCommerceController } from './chat-commerce.controller';
 import { ChatCommerceService } from './services/chat-commerce.service';
+import { ChatToContractService } from './services/chat-to-contract.service';
 import { ChatEngineModule } from '../chat-engine/chat-engine.module';
 import { ChatbotFinanceModule } from '../chatbot-finance/chatbot-finance.module';
 import { PaySolutionsModule } from '../paysolutions/paysolutions.module';
@@ -45,7 +46,7 @@ import { PaySolutionsModule } from '../paysolutions/paysolutions.module';
     }),
   ],
   controllers: [StaffChatController, ChatCommerceController, ChannelSettingsController, SnoozeController, SessionOpsController, SideConversationController],
-  providers: [StaffChatGateway, StaffMessageService, ChatCommerceService, CannedResponseVariableService, PresenceService, CollisionDetectionService, AiAssistantService, MediaContentService, SideConversationService, SnoozeService, SnoozeCronService, SessionOpsService],
+  providers: [StaffChatGateway, StaffMessageService, ChatCommerceService, ChatToContractService, CannedResponseVariableService, PresenceService, CollisionDetectionService, AiAssistantService, MediaContentService, SideConversationService, SnoozeService, SnoozeCronService, SessionOpsService],
   exports: [StaffChatGateway, PresenceService, CollisionDetectionService],
 })
 export class StaffChatModule {}

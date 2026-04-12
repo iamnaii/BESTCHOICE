@@ -91,6 +91,62 @@ export class ChatAnalyticsService {
     }));
   }
 
+  /** Staff performance: resolved sessions & avg response time per staff */
+  async getStaffPerformance(startDate: Date, endDate: Date) {
+    const sessions = await this.prisma.chatSession.findMany({
+      where: {
+        createdAt: { gte: startDate, lte: endDate },
+        assignedToId: { not: null },
+        deletedAt: null,
+      },
+      select: {
+        assignedToId: true,
+        sessionStatus: true,
+        createdAt: true,
+        firstResponseAt: true,
+        assignedTo: { select: { id: true, name: true } },
+      },
+    });
+
+    const staffMap = new Map<
+      string,
+      { staffId: string; staffName: string; resolvedCount: number; responseTimes: number[] }
+    >();
+
+    for (const s of sessions) {
+      const staffId = s.assignedToId!;
+      if (!staffMap.has(staffId)) {
+        staffMap.set(staffId, {
+          staffId,
+          staffName: s.assignedTo?.name ?? 'ไม่ทราบชื่อ',
+          resolvedCount: 0,
+          responseTimes: [],
+        });
+      }
+      const entry = staffMap.get(staffId)!;
+
+      if (s.sessionStatus === ChatSessionStatus.RESOLVED) {
+        entry.resolvedCount++;
+      }
+      if (s.firstResponseAt) {
+        const mins = (s.firstResponseAt.getTime() - s.createdAt.getTime()) / 60000;
+        entry.responseTimes.push(mins);
+      }
+    }
+
+    return Array.from(staffMap.values()).map((entry) => ({
+      staffId: entry.staffId,
+      staffName: entry.staffName,
+      resolvedCount: entry.resolvedCount,
+      avgResponseMinutes:
+        entry.responseTimes.length > 0
+          ? Math.round(
+              entry.responseTimes.reduce((a, b) => a + b, 0) / entry.responseTimes.length,
+            )
+          : 0,
+    }));
+  }
+
   /** Average first response time (in minutes) */
   async getAvgFirstResponseTime(startDate: Date, endDate: Date) {
     const sessions = await this.prisma.chatSession.findMany({

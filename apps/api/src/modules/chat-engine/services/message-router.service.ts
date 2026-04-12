@@ -1,4 +1,4 @@
-import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
+import { Injectable, Logger, Inject, Optional, forwardRef } from '@nestjs/common';
 import { ChatChannel, ChatSessionStatus, MessageRole } from '@prisma/client';
 import {
   IChannelAdapter,
@@ -12,6 +12,7 @@ import {
 } from '../interfaces/domain-handler.interface';
 import { SessionManagerService } from './session-manager.service';
 import { HandoffManagerService } from './handoff-manager.service';
+import { AfterHoursService } from './after-hours.service';
 
 /**
  * MessageRouter — the central nerve of the chat engine.
@@ -30,6 +31,9 @@ export class MessageRouterService {
   constructor(
     private sessionManager: SessionManagerService,
     private handoffManager: HandoffManagerService,
+    @Optional()
+    @Inject(forwardRef(() => AfterHoursService))
+    private afterHoursService?: AfterHoursService,
     @Optional()
     @Inject(CHANNEL_ADAPTER_TOKEN)
     adapters?: IChannelAdapter[],
@@ -93,6 +97,38 @@ export class MessageRouterService {
       );
       // TODO Phase 2: emit WS event to staff chat room
       return;
+    }
+
+    // 3.5 After-hours auto-reply
+    if (this.afterHoursService?.isAfterHours() && !session.handoffMode) {
+      try {
+        const reply = await this.afterHoursService.getAutoReply(
+          message.text ?? '',
+        );
+        const adapter = this.adapterMap.get(message.channel);
+        if (adapter) {
+          await adapter.sendMessage({
+            externalUserId: message.externalUserId,
+            channel: message.channel,
+            type: 'TEXT' as any,
+            text: reply,
+          });
+          await this.sessionManager.saveMessage({
+            sessionId: session.id,
+            role: MessageRole.BOT,
+            text: reply,
+          });
+        }
+        this.logger.log(
+          `[AfterHours] Auto-replied to session ${session.id}`,
+        );
+        return;
+      } catch (err) {
+        this.logger.error(
+          `[AfterHours] Error: ${err instanceof Error ? err.message : err}`,
+        );
+        // Fall through to normal processing
+      }
     }
 
     // 4. Find domain handler

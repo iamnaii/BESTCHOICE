@@ -19,6 +19,7 @@ import { ConversationTagService } from '../chat-engine/services/conversation-tag
 import { HandoffManagerService } from '../chat-engine/services/handoff-manager.service';
 import { StaffMessageService } from './services/staff-message.service';
 import { AiAssistantService } from './services/ai-assistant.service';
+import { MediaContentService } from './services/media-content.service';
 import { SessionQueryDto } from '../chat-engine/dto/session-query.dto';
 import { ChatSessionStatus, ChatChannel, ChatPriority } from '@prisma/client';
 
@@ -32,6 +33,7 @@ export class StaffChatController {
     private handoff: HandoffManagerService,
     private staffMessage: StaffMessageService,
     private aiAssistant: AiAssistantService,
+    private mediaContent: MediaContentService,
   ) {}
 
   // ─── Sessions ──────────────────────────────────────────
@@ -220,5 +222,13 @@ export class StaffChatController {
   async adjustTone(@Body() body: { text: string; tone: 'formal' | 'casual' | 'friendly' }) {
     const adjusted = await this.aiAssistant.adjustTone(body.text, body.tone);
     return { text: adjusted };
+  }
+
+  // ─── Media Content ────────────────────────────────────
+
+  @Get('messages/:messageId/audio')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  async getAudioUrl(@Param('messageId') messageId: string) {
+    return this.mediaContent.getAudioUrl(messageId);
   }
 }

@@ -726,7 +726,7 @@ export default function StockTransfersPage() {
                     <div key={t.id} className="flex items-start gap-3">
                       <span className="text-xs text-muted-foreground mt-1 w-5">{idx + 1}.</span>
                       {t.product.photos?.[0] && (
-                        <img src={t.product.photos[0]} alt={`${t.product.brand} ${t.product.model}` || 'รูปสินค้า'} className="w-12 h-12 object-cover rounded-lg border" />
+                        <img src={t.product.photos[0]} alt={t.product.brand ? `${t.product.brand} ${t.product.model}` : 'รูปสินค้า'} className="w-12 h-12 object-cover rounded-lg border" />
                       )}
                       <div className="flex-1">
                         <div className="font-semibold text-foreground text-sm">{t.product.brand} {t.product.model}</div>

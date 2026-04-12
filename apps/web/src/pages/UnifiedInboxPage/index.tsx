@@ -58,7 +58,7 @@ export default function UnifiedInboxPage() {
   }, [activeSessionId]);
 
   // WebSocket for real-time updates
-  const { joinSession, leaveSession, sendMessage } = useChatSocket({
+  const { joinSession, leaveSession, sendMessage, viewSession } = useChatSocket({
     onNewMessage: (data) => {
       queryClient.invalidateQueries({ queryKey: ['chat-messages', data.sessionId] });
       queryClient.invalidateQueries({ queryKey: ['chat-sessions'] });
@@ -71,6 +71,10 @@ export default function UnifiedInboxPage() {
     onSessionUpdate: () => {
       queryClient.invalidateQueries({ queryKey: ['chat-sessions'] });
       queryClient.invalidateQueries({ queryKey: ['chat-unread-count'] });
+    },
+    onCollision: (data) => {
+      const viewerNames = data.viewers?.map((v: any) => v.userName).join(', ');
+      toast.warning(`⚠️ ${viewerNames} กำลังดูแชทนี้อยู่`);
     },
   });
 
@@ -140,6 +144,7 @@ export default function UnifiedInboxPage() {
       if (activeSessionId) leaveSession(activeSessionId);
       setActiveSessionId(sessionId);
       joinSession(sessionId);
+      viewSession(sessionId);
     },
     [activeSessionId, joinSession, leaveSession],
   );

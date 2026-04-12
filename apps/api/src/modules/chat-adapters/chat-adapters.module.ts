@@ -4,9 +4,11 @@ import { LineShopAdapter } from './line-shop.adapter';
 import { FacebookAdapter } from './facebook.adapter';
 import { TiktokAdapter } from './tiktok.adapter';
 import { WebWidgetAdapter } from './web-widget.adapter';
+import { FacebookWebhookController } from './facebook-webhook.controller';
 import { CHANNEL_ADAPTER_TOKEN } from '../chat-engine/interfaces/channel-adapter.interface';
 import { ChatbotFinanceModule } from '../chatbot-finance/chatbot-finance.module';
 import { LineOaModule } from '../line-oa/line-oa.module';
+import { ChatEngineModule } from '../chat-engine/chat-engine.module';
 
 /**
  * ChatAdaptersModule — provides IChannelAdapter implementations for all channels.
@@ -18,7 +20,8 @@ import { LineOaModule } from '../line-oa/line-oa.module';
  * can collect and route messages through them.
  */
 @Module({
-  imports: [ChatbotFinanceModule, LineOaModule],
+  imports: [ChatbotFinanceModule, LineOaModule, ChatEngineModule],
+  controllers: [FacebookWebhookController],
   providers: [
     LineFinanceAdapter,
     LineShopAdapter,

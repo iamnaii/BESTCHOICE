@@ -9,6 +9,8 @@ interface ChatSocketEvents {
   onSessionUpdate?: (data: any) => void;
   onTyping?: (data: any) => void;
   onPresence?: (data: any) => void;
+  onViewers?: (data: any) => void;
+  onCollision?: (data: any) => void;
 }
 
 // Resolve WebSocket base URL: in dev, API runs on port 3000
@@ -52,6 +54,8 @@ export function useChatSocket(events: ChatSocketEvents) {
     socket.on('chat:session:update', (data) => events.onSessionUpdate?.(data));
     socket.on('chat:typing', (data) => events.onTyping?.(data));
     socket.on('chat:presence', (data) => events.onPresence?.(data));
+    socket.on('chat:viewers', (data) => events.onViewers?.(data));
+    socket.on('chat:collision', (data) => events.onCollision?.(data));
     socket.on('connect_error', () => {
       // Silent — reconnection handles retry
     });
@@ -82,5 +86,9 @@ export function useChatSocket(events: ChatSocketEvents) {
     socketRef.current?.emit('chat:typing:stop', { sessionId });
   }, []);
 
-  return { joinSession, leaveSession, sendMessage, startTyping, stopTyping };
+  const viewSession = useCallback((sessionId: string) => {
+    socketRef.current?.emit('chat:view', { sessionId });
+  }, []);
+
+  return { joinSession, leaveSession, sendMessage, startTyping, stopTyping, viewSession };
 }

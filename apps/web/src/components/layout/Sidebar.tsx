@@ -179,6 +179,8 @@ const navSections: NavSection[] = [
       { label: 'CRM Pipeline', path: '/crm', icon: Kanban, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES'] },
       { label: 'Ads & ROI', path: '/ads', icon: Target, roles: ['OWNER'] },
       { label: 'เชื่อมต่อช่องทาง', path: '/settings/channels', icon: Plug, roles: ['OWNER'] },
+      { label: 'วิเคราะห์แชท', path: '/chat-analytics', icon: BarChart3, roles: ['OWNER', 'FINANCE_MANAGER'] },
+      { label: 'ข้อความสำเร็จรูป', path: '/canned-responses', icon: MessageSquareMore, roles: ['OWNER', 'BRANCH_MANAGER'] },
     ],
   },
   {

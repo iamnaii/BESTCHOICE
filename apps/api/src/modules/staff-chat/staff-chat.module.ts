@@ -2,7 +2,9 @@ import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { StaffChatGateway } from './staff-chat.gateway';
+import { WebWidgetGateway } from './web-widget.gateway';
 import { StaffChatController } from './staff-chat.controller';
+import { WebWidgetController } from './web-widget.controller';
 import { ChannelSettingsController } from './channel-settings.controller';
 import { SideConversationController } from './side-conversation.controller';
 import { StaffMessageService } from './services/staff-message.service';
@@ -45,8 +47,8 @@ import { PaySolutionsModule } from '../paysolutions/paysolutions.module';
       inject: [ConfigService],
     }),
   ],
-  controllers: [StaffChatController, ChatCommerceController, ChannelSettingsController, SnoozeController, SessionOpsController, SideConversationController],
-  providers: [StaffChatGateway, StaffMessageService, ChatCommerceService, ChatToContractService, CannedResponseVariableService, PresenceService, CollisionDetectionService, AiAssistantService, MediaContentService, SideConversationService, SnoozeService, SnoozeCronService, SessionOpsService],
-  exports: [StaffChatGateway, PresenceService, CollisionDetectionService],
+  controllers: [StaffChatController, WebWidgetController, ChatCommerceController, ChannelSettingsController, SnoozeController, SessionOpsController, SideConversationController],
+  providers: [StaffChatGateway, WebWidgetGateway, StaffMessageService, ChatCommerceService, ChatToContractService, CannedResponseVariableService, PresenceService, CollisionDetectionService, AiAssistantService, MediaContentService, SideConversationService, SnoozeService, SnoozeCronService, SessionOpsService],
+  exports: [StaffChatGateway, WebWidgetGateway, PresenceService, CollisionDetectionService],
 })
 export class StaffChatModule {}

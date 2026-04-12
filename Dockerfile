@@ -41,7 +41,7 @@ COPY package.json ./
 COPY apps/api ./apps/api
 COPY packages ./packages
 # Generate Prisma client + Build NestJS API
-RUN cd apps/api && npx prisma generate && npm run build
+RUN cd apps/api && npx prisma generate && ../node_modules/.bin/nest build && npm run verify:assets
 
 # ============================================
 # Stage 3: Production Runtime

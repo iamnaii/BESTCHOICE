@@ -4,7 +4,9 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  MaxLength,
   Min,
+  MinLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -33,6 +35,13 @@ export class CreateKbDto {
   @IsOptional() @IsArray() @IsString({ each: true }) requiresTools?: string[];
   @IsOptional() @IsBoolean() active?: boolean;
   @IsOptional() @IsInt() priority?: number;
+}
+
+export class UpdatePromptDto {
+  @IsString({ message: 'กรุณาระบุ prompt' })
+  @MinLength(100, { message: 'Prompt ต้องมีอย่างน้อย 100 ตัวอักษร' })
+  @MaxLength(10000, { message: 'Prompt ต้องไม่เกิน 10,000 ตัวอักษร' })
+  prompt!: string;
 }
 
 export class UpdateKbDto {

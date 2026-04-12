@@ -5,9 +5,21 @@ import * as Sentry from '@sentry/nestjs';
 interface LineTextMessage {
   type: 'text';
   text: string;
+  quickReply?: LineQuickReply;
 }
 
 type LineMessage = LineTextMessage;
+
+export interface LineQuickReplyItem {
+  type: 'action';
+  action:
+    | { type: 'postback'; label: string; data: string; displayText?: string }
+    | { type: 'message'; label: string; text: string };
+}
+
+export interface LineQuickReply {
+  items: LineQuickReplyItem[];
+}
 
 /**
  * LINE Messaging API client สำหรับ Finance OA โดยเฉพาะ
@@ -39,6 +51,14 @@ export class LineFinanceClientService {
 
   async replyText(replyToken: string, text: string): Promise<void> {
     return this.replyMessage(replyToken, [{ type: 'text', text }]);
+  }
+
+  async replyWithQuickReply(
+    replyToken: string,
+    text: string,
+    quickReply: LineQuickReply,
+  ): Promise<void> {
+    return this.replyMessage(replyToken, [{ type: 'text', text, quickReply }]);
   }
 
   async replyMessage(replyToken: string, messages: LineMessage[]): Promise<void> {

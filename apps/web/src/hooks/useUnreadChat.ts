@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -13,7 +13,7 @@ export function useUnreadChat() {
     queryKey: ['chat-unread-count'],
     queryFn: () => api.get('/staff-chat/unread-count').then((r: any) => r.data),
     enabled: !!user,
-    refetchInterval: 30000, // every 30 seconds
+    refetchInterval: 30000,
     staleTime: 10000,
   });
 

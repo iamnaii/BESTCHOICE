@@ -4,9 +4,7 @@ import api from '@/lib/api';
 import { toast } from 'sonner';
 import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';
-import { Plus, User, Phone, Calendar, ChevronRight } from 'lucide-react';
-import { format } from 'date-fns';
-import { th } from 'date-fns/locale';
+import { User, Phone, ChevronRight } from 'lucide-react';
 
 const STAGES = [
   { key: 'NEW_LEAD', label: 'Lead ใหม่', color: 'bg-blue-500' },

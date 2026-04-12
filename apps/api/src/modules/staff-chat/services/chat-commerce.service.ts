@@ -5,7 +5,6 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { PaySolutionsService } from '../../paysolutions/paysolutions.service';
 import { SessionManagerService } from '../../chat-engine/services/session-manager.service';
 import { MessageRole } from '@prisma/client';
 
@@ -23,7 +22,6 @@ export class ChatCommerceService {
 
   constructor(
     private prisma: PrismaService,
-    private paysolutionsService: PaySolutionsService,
     private sessionManager: SessionManagerService,
   ) {}
 
@@ -36,7 +34,7 @@ export class ChatCommerceService {
     staffId: string;
     contractId: string;
     installmentNo?: number;
-  }): Promise<{ paymentUrl: string }> {
+  }): Promise<{ contractId: string; contractNumber: string; installmentNo: number; amount: number; paymentId: string }> {
     // 1. Find session to get customer lineUserId
     const session = await this.prisma.chatSession.findUnique({
       where: { id: params.sessionId },
@@ -113,24 +111,14 @@ export class ChatCommerceService {
       throw new BadRequestException('ยอดค้างชำระเป็น 0 บาท');
     }
 
-    // 4. Call PaySolutions to create payment intent
-    const result = await this.paysolutionsService.createPaymentIntent(
-      params.contractId,
-      amount,
-      `ชำระค่างวดที่ ${targetPayment.installmentNo} สัญญา ${contract.contractNumber}`,
-      customerLineId,
-      targetPayment.installmentNo,
-    );
-
-    // 5. Save staff message with payment link text
+    // 4. Save staff message with payment info
     const messageText = [
-      `💳 ลิงก์ชำระเงิน`,
+      `💳 ข้อมูลชำระเงิน`,
       `สัญญา: ${contract.contractNumber}`,
       `งวดที่: ${targetPayment.installmentNo}/${contract.payments.length}`,
       `ยอดชำระ: ${amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท`,
       ``,
-      `กดลิงก์เพื่อชำระเงิน:`,
-      result.paymentUrl,
+      `กรุณาชำระผ่านระบบ หรือติดต่อเจ้าหน้าที่ค่ะ`,
     ].join('\n');
 
     await this.sessionManager.saveMessage({
@@ -141,10 +129,16 @@ export class ChatCommerceService {
     });
 
     this.logger.log(
-      `Payment link sent in chat: session=${params.sessionId}, contract=${contract.contractNumber}, installment=${targetPayment.installmentNo}`,
+      `Payment info sent in chat: session=${params.sessionId}, contract=${contract.contractNumber}, installment=${targetPayment.installmentNo}`,
     );
 
-    return { paymentUrl: result.paymentUrl };
+    return {
+      contractId: params.contractId,
+      contractNumber: contract.contractNumber,
+      installmentNo: targetPayment.installmentNo,
+      amount,
+      paymentId: targetPayment.id,
+    };
   }
 
   /**

@@ -5,6 +5,7 @@ import { HandoffManagerService } from './services/handoff-manager.service';
 import { AssignmentService } from './services/assignment.service';
 import { ConversationTagService } from './services/conversation-tag.service';
 import { ChatCronService } from './services/chat-cron.service';
+import { AfterHoursService } from './services/after-hours.service';
 
 /**
  * ChatEngineModule — the foundation for the unified chat system.
@@ -25,6 +26,7 @@ import { ChatCronService } from './services/chat-cron.service';
     AssignmentService,
     ConversationTagService,
     ChatCronService,
+    AfterHoursService,
   ],
   exports: [
     SessionManagerService,
@@ -32,6 +34,7 @@ import { ChatCronService } from './services/chat-cron.service';
     HandoffManagerService,
     AssignmentService,
     ConversationTagService,
+    AfterHoursService,
   ],
 })
 export class ChatEngineModule {}

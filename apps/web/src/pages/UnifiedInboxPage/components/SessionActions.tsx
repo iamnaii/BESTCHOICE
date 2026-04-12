@@ -1,4 +1,5 @@
-import { UserPlus, CheckCircle, Bot, X } from 'lucide-react';
+import { UserPlus, CheckCircle, Bot, X, FileSignature } from 'lucide-react';
+import { useNavigate } from 'react-router';
 
 interface SessionActionsProps {
   session: any;
@@ -15,6 +16,8 @@ export default function SessionActions({
   onReturnToAI,
   onClose,
 }: SessionActionsProps) {
+  const navigate = useNavigate();
+
   return (
     <div className="border-b border-gray-200 bg-gray-50 px-4 py-2">
       <div className="flex items-center gap-2 flex-wrap">
@@ -25,6 +28,18 @@ export default function SessionActions({
           <CheckCircle className="w-3.5 h-3.5" />
           ปิดการสนทนา
         </button>
+
+        {session.customerId && (
+          <button
+            onClick={() => {
+              navigate(`/contracts/create?customerId=${session.customerId}`);
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors"
+          >
+            <FileSignature className="w-3.5 h-3.5" />
+            สร้างสัญญา
+          </button>
+        )}
 
         {session.handoffMode && (
           <button

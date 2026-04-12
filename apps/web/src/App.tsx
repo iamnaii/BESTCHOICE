@@ -93,6 +93,8 @@ const ChatbotFinanceKnowledgePage = lazy(() => import('@/pages/ChatbotFinanceKno
 const ChatbotFinanceLearningPage = lazy(() => import('@/pages/ChatbotFinanceLearningPage'));
 const AnalyticsPage = lazy(() => import('@/pages/AnalyticsPage'));
 const WebhooksPage = lazy(() => import('@/pages/WebhooksPage'));
+const ChatAnalyticsPage = lazy(() => import('@/pages/ChatAnalyticsPage'));
+const CannedResponseAdminPage = lazy(() => import('@/pages/CannedResponseAdminPage'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -570,6 +572,22 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER']}>
                 <WebhooksPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/chat-analytics"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER']}>
+                <ChatAnalyticsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/canned-responses"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}>
+                <CannedResponseAdminPage />
               </ProtectedRoute>
             }
           />

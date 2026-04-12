@@ -20,6 +20,7 @@ import { HandoffManagerService } from '../chat-engine/services/handoff-manager.s
 import { StaffMessageService } from './services/staff-message.service';
 import { AiAssistantService } from './services/ai-assistant.service';
 import { MediaContentService } from './services/media-content.service';
+import { ChatToContractService } from './services/chat-to-contract.service';
 import { SessionQueryDto } from '../chat-engine/dto/session-query.dto';
 import { ChatSessionStatus, ChatChannel, ChatPriority } from '@prisma/client';
 
@@ -34,6 +35,7 @@ export class StaffChatController {
     private staffMessage: StaffMessageService,
     private aiAssistant: AiAssistantService,
     private mediaContent: MediaContentService,
+    private chatToContract: ChatToContractService,
   ) {}
 
   // ─── Sessions ──────────────────────────────────────────
@@ -230,5 +232,13 @@ export class StaffChatController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async getAudioUrl(@Param('messageId') messageId: string) {
     return this.mediaContent.getAudioUrl(messageId);
+  }
+
+  // ─── Contract Prefill ─────────────────────────────────
+
+  @Get('sessions/:id/contract-prefill')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  async getContractPrefill(@Param('id') id: string) {
+    return this.chatToContract.getContractPrefill(id);
   }
 }

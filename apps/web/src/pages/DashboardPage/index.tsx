@@ -141,6 +141,18 @@ export default function DashboardPage() {
   if (kpisLoading && !kpis) return <DashboardSkeleton />;
   if (kpisError) return <QueryBoundary isLoading={false} isError={true} error={null} onRetry={refetchKpis} errorTitle="ไม่สามารถโหลด Dashboard ได้">{null}</QueryBoundary>;
 
+  /* ─── Role-based subtitle & section visibility ─── */
+  const role = user?.role;
+  const subtitle: Record<string, string> = {
+    OWNER: 'ภาพรวมธุรกิจและการกำกับพนักงาน',
+    BRANCH_MANAGER: 'ภาพรวมสาขาของคุณ',
+    FINANCE_MANAGER: 'สถานะการเงินและติดตามหนี้',
+    ACCOUNTANT: 'รายรับ-รายจ่ายและงบการเงิน',
+    SALES: 'ยอดขายและค่าคอมมิชชันของคุณ',
+  };
+  const isFinanceRole = role === 'OWNER' || role === 'FINANCE_MANAGER' || role === 'ACCOUNTANT';
+  const isManagement = role === 'OWNER' || role === 'BRANCH_MANAGER';
+
   return (
     <div className="flex flex-col gap-5 lg:gap-7.5">
       {/* Page Header — Metronic style */}
@@ -148,7 +160,7 @@ export default function DashboardPage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground tracking-tight">แดชบอร์ด</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            สวัสดี <span className="font-medium text-foreground">{user?.name}</span> — ภาพรวมธุรกิจและการกำกับพนักงาน
+            สวัสดี <span className="font-medium text-foreground">{user?.name}</span> — {subtitle[role || ''] || 'ภาพรวมระบบ'}
           </p>
         </div>
         <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground bg-muted/60 border border-border/50 rounded-lg px-3 py-2">
@@ -157,66 +169,76 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Smart Alerts */}
+      {/* Smart Alerts — all roles */}
       <DashboardAlerts alerts={alerts} />
 
-      {/* Role-specific: Sales dashboard */}
-      {user?.role === 'SALES' && <DashboardMySales />}
+      {/* ═══ SALES: commission summary first ═══ */}
+      {role === 'SALES' && <DashboardMySales />}
 
-      {/* Role-specific: Finance Manager overview */}
-      {user?.role === 'FINANCE_MANAGER' && <DashboardFinanceOverview />}
+      {/* ═══ FINANCE_MANAGER: overdue pipeline first ═══ */}
+      {role === 'FINANCE_MANAGER' && <DashboardFinanceOverview />}
 
-      {/* KPI Stats */}
+      {/* KPI Stats — all roles */}
       {kpis && <DashboardKPIs kpis={kpis} comparativePL={comparativePL} />}
 
-      {/* Watch List + Upsell */}
-      <DashboardWatchList watchListData={watchListData} upsell={upsell} />
+      {/* Watch List + Upsell — management + finance roles */}
+      {role !== 'SALES' && (
+        <DashboardWatchList watchListData={watchListData} upsell={upsell} />
+      )}
 
-      {/* Shortcuts + Revenue + Financial Summary */}
-      <DashboardRevenue
-        userRole={user?.role}
-        kpis={kpis}
-        revenue={revenue}
-        revenueError={revenueError}
-        refetchRevenue={() => refetchRevenue()}
-        entityProfit={entityProfit}
-        entityProfitError={entityProfitError}
-      />
+      {/* Shortcuts + Revenue + Financial Summary — everyone except SALES */}
+      {role !== 'SALES' && (
+        <DashboardRevenue
+          userRole={role}
+          kpis={kpis}
+          revenue={revenue}
+          revenueError={revenueError}
+          refetchRevenue={() => refetchRevenue()}
+          entityProfit={entityProfit}
+          entityProfitError={entityProfitError}
+        />
+      )}
 
-      {/* Aging Buckets + Staff Performance */}
-      <DashboardStaff
-        userRole={user?.role}
-        aging={aging}
-        agingError={agingError}
-        refetchAging={() => refetchAging()}
-        staffPerf={staffPerf}
-        staffError={staffError}
-        refetchStaff={() => refetchStaff()}
-      />
+      {/* Aging Buckets + Staff Performance — management + finance */}
+      {(isManagement || isFinanceRole) && (
+        <DashboardStaff
+          userRole={role}
+          aging={aging}
+          agingError={agingError}
+          refetchAging={() => refetchAging()}
+          staffPerf={staffPerf}
+          staffError={staffError}
+          refetchStaff={() => refetchStaff()}
+        />
+      )}
 
-      {/* Charts: Trend + Status Distribution */}
-      <DashboardCharts
-        trend={trend}
-        trendError={trendError}
-        refetchTrend={() => refetchTrend()}
-        statusDist={statusDist}
-        statusDistError={statusDistError}
-        refetchStatusDist={() => refetchStatusDist()}
-      />
+      {/* Charts: Trend + Status Distribution — management + finance */}
+      {(isManagement || isFinanceRole) && (
+        <DashboardCharts
+          trend={trend}
+          trendError={trendError}
+          refetchTrend={() => refetchTrend()}
+          statusDist={statusDist}
+          statusDistError={statusDistError}
+          refetchStatusDist={() => refetchStatusDist()}
+        />
+      )}
 
-      {/* Top Overdue + Collection Pipeline + Branch Comparison */}
-      <DashboardTables
-        userRole={user?.role}
-        topOverdue={topOverdue}
-        topOverdueError={topOverdueError}
-        refetchTopOverdue={() => refetchTopOverdue()}
-        collectionPipeline={collectionPipeline}
-        pipelineError={pipelineError}
-        refetchPipeline={() => refetchPipeline()}
-        branchData={branchData}
-        branchError={branchError}
-        refetchBranch={() => refetchBranch()}
-      />
+      {/* Top Overdue + Collection Pipeline + Branch Comparison — management + finance */}
+      {(isManagement || isFinanceRole) && (
+        <DashboardTables
+          userRole={role}
+          topOverdue={topOverdue}
+          topOverdueError={topOverdueError}
+          refetchTopOverdue={() => refetchTopOverdue()}
+          collectionPipeline={collectionPipeline}
+          pipelineError={pipelineError}
+          refetchPipeline={() => refetchPipeline()}
+          branchData={branchData}
+          branchError={branchError}
+          refetchBranch={() => refetchBranch()}
+        />
+      )}
     </div>
   );
 }

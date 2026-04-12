@@ -1,0 +1,20 @@
+{
+  "name": "BESTCHOICE - ระบบผ่อนชำระ",
+  "short_name": "BESTCHOICE",
+  "description": "ระบบบริหารจัดการสัญญาผ่อนชำระ",
+  "theme_color": "#4f46e5",
+  "background_color": "#f9fafb",
+  "display": "standalone",
+  "orientation": "any",
+  "start_url": "/",
+  "scope": "/",
+  "lang": "th",
+  "icons": [
+    {
+      "src": "/logo-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

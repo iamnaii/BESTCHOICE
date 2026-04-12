@@ -49,6 +49,7 @@ import {
   MessageSquareMore,
   Target,
   Kanban,
+  Plug,
   ChevronRight,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -175,6 +176,7 @@ const navSections: NavSection[] = [
       { label: 'กล่องข้อความ', path: '/inbox', icon: MessageSquareMore, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES'] },
       { label: 'CRM Pipeline', path: '/crm', icon: Kanban, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES'] },
       { label: 'Ads & ROI', path: '/ads', icon: Target, roles: ['OWNER'] },
+      { label: 'เชื่อมต่อช่องทาง', path: '/settings/channels', icon: Plug, roles: ['OWNER'] },
     ],
   },
   {

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { exportToExcel, type ExcelColumn } from '@/utils/excel.util';
@@ -113,9 +113,8 @@ export default function CustomersPage() {
   const [sortBy, setSortBy] = useState('');
   const [sortOrder, setSortOrder] = useState('asc');
   const [isModalOpen, setIsModalOpen] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const form = useForm<CustomerFormData>({
-    resolver: zodResolver(customerSchema) as any,
+    resolver: standardSchemaResolver(customerSchema),
     defaultValues: emptyForm,
   });
   // Extra fields not in customerSchema (managed as separate state)

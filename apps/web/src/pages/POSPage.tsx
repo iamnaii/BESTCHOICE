@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -91,7 +91,7 @@ export default function POSPage() {
 
   // Sale form — replaces individual useState for sale detail fields
   const saleForm = useForm<PosSaleFormData>({
-    resolver: zodResolver(posSaleSchema),
+    resolver: standardSchemaResolver(posSaleSchema),
     defaultValues: {
       saleType: 'CASH',
       sellingPrice: 0,

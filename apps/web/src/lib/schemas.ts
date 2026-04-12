@@ -1,12 +1,12 @@
-import { z } from 'zod';
+import { z } from 'zod/v4';
 
 /**
  * Reusable Zod schemas สำหรับ validation ทั้งระบบ BESTCHOICE
- * ใช้คู่กับ React Hook Form + @hookform/resolvers/zod
+ * ใช้คู่กับ React Hook Form + @hookform/resolvers/standard-schema
  *
  * Usage:
  *   import { customerSchema } from '@/lib/schemas';
- *   const form = useForm({ resolver: zodResolver(customerSchema) });
+ *   const form = useForm({ resolver: standardSchemaResolver(customerSchema) });
  */
 
 /* ─── Thai National ID validation (13 digits + checksum) ─── */
@@ -44,7 +44,7 @@ export const customerSchema = z.object({
   lastName: z.string().min(1, 'กรุณากรอกนามสกุล'),
   nickname: z.string().optional(),
   nationalId: nationalIdSchema,
-  isForeigner: z.boolean().default(false),
+  isForeigner: z.boolean(),
   birthDate: z.string().optional(),
   phone: phoneSchema,
   phoneSecondary: z.string().optional(),
@@ -69,7 +69,7 @@ export const productSchema = z.object({
   imeiSerial: z.string().optional(),
   serialNumber: z.string().optional(),
   category: z.enum(['PHONE_NEW', 'PHONE_USED', 'TABLET_NEW', 'TABLET_USED', 'ACCESSORY'], {
-    required_error: 'กรุณาเลือกประเภทสินค้า',
+    error: 'กรุณาเลือกประเภทสินค้า',
   }),
   costPrice: z.string().min(1, 'กรุณากรอกราคาทุน').refine(
     (v) => !isNaN(Number(v)) && Number(v) > 0,

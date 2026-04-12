@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { JournalAutoService } from '../journal/journal-auto.service';
 
 // ── Types ───────────────────────────────────────────────────────
 
@@ -53,7 +54,10 @@ export interface ContractTraceResult {
 export class DataAuditService {
   private readonly logger = new Logger(DataAuditService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private journalAutoService: JournalAutoService,
+  ) {}
 
   // ═══════════════════════════════════════════════════════════════
   // 12 Database Audit Checks
@@ -164,7 +168,7 @@ export class DataAuditService {
       GROUP BY c.id, c.contract_number, c.selling_price, c.down_payment,
                c.interest_total, c.store_commission, c.vat_amount
       HAVING SUM(p.amount_paid) > (c.selling_price - c.down_payment + c.interest_total
-         + COALESCE(c.store_commission, 0) + COALESCE(c.vat_amount, 0)) + 0.01
+         + COALESCE(c.store_commission, 0) + COALESCE(c.vat_amount, 0)) + 1.00
       ORDER BY overpay DESC
       LIMIT 50
     `;
@@ -890,5 +894,192 @@ export class DataAuditService {
     });
 
     return logs;
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // Backfill — create missing journals for legacy contracts
+  // ═══════════════════════════════════════════════════════════════
+
+  async backfillJournals(options: { dryRun: boolean; limit?: number }): Promise<{
+    dryRun: boolean;
+    contracts: { total: number; backfilled: number; skipped: number; errors: number };
+    payments: { total: number; backfilled: number; skipped: number; errors: number };
+    details: { contractNumber: string; action: string; status: string; error?: string }[];
+  }> {
+    const details: { contractNumber: string; action: string; status: string; error?: string }[] = [];
+    const stats = {
+      contracts: { total: 0, backfilled: 0, skipped: 0, errors: 0 },
+      payments: { total: 0, backfilled: 0, skipped: 0, errors: 0 },
+    };
+
+    // Find OWNER user for createdById
+    const systemUser = await this.prisma.user.findFirst({
+      where: { role: 'OWNER', deletedAt: null },
+      select: { id: true },
+    });
+    if (!systemUser) {
+      throw new NotFoundException('ไม่พบผู้ใช้ OWNER สำหรับ backfill');
+    }
+
+    // 1. Find orphan contracts (any non-DRAFT status without CONTRACT journal)
+    const orphanContracts = await this.prisma.$queryRaw<{ id: string }[]>`
+      SELECT c.id
+      FROM contracts c
+      WHERE c.deleted_at IS NULL
+        AND c.status IN ('ACTIVE', 'OVERDUE', 'DEFAULT', 'COMPLETED', 'EARLY_PAYOFF', 'CLOSED_BAD_DEBT')
+        AND NOT EXISTS (
+          SELECT 1 FROM journal_entries je
+          WHERE je.reference_id = c.id
+            AND je.reference_type = 'CONTRACT'
+            AND je.deleted_at IS NULL
+            AND je.status = 'POSTED'
+        )
+      ORDER BY c.created_at ASC
+      LIMIT ${options.limit || 100}
+    `;
+
+    stats.contracts.total = orphanContracts.length;
+
+    for (const { id: contractId } of orphanContracts) {
+      const contract = await this.prisma.contract.findUnique({
+        where: { id: contractId },
+        include: {
+          product: { select: { costPrice: true, category: true } },
+          payments: {
+            where: {
+              deletedAt: null,
+              status: { in: ['PAID', 'PARTIALLY_PAID'] },
+              amountPaid: { gt: 0 },
+            },
+            orderBy: { installmentNo: 'asc' },
+          },
+        },
+      });
+      if (!contract) {
+        stats.contracts.skipped++;
+        continue;
+      }
+
+      // Backfill contract activation journal
+      if (options.dryRun) {
+        details.push({
+          contractNumber: contract.contractNumber,
+          action: 'CREATE_CONTRACT_JOURNAL',
+          status: 'DRY_RUN',
+        });
+        stats.contracts.backfilled++;
+      } else {
+        try {
+          await this.prisma.$transaction(async (tx) => {
+            await this.journalAutoService.createContractActivationJournal(tx, {
+              contract: {
+                id: contract.id,
+                contractNumber: contract.contractNumber,
+                sellingPrice: contract.sellingPrice,
+                downPayment: contract.downPayment,
+                financedAmount: contract.financedAmount,
+                interestTotal: contract.interestTotal,
+                storeCommission: contract.storeCommission ?? 0,
+                vatAmount: contract.vatAmount ?? 0,
+              },
+              product: {
+                costPrice: contract.product?.costPrice,
+                category: contract.product?.category,
+              },
+              userId: systemUser.id,
+            });
+          });
+          details.push({
+            contractNumber: contract.contractNumber,
+            action: 'CREATE_CONTRACT_JOURNAL',
+            status: 'OK',
+          });
+          stats.contracts.backfilled++;
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          details.push({
+            contractNumber: contract.contractNumber,
+            action: 'CREATE_CONTRACT_JOURNAL',
+            status: 'ERROR',
+            error: message,
+          });
+          stats.contracts.errors++;
+        }
+      }
+
+      // Backfill payment journals for this contract
+      for (const payment of contract.payments) {
+        // Check if payment journal already exists
+        const existing = await this.prisma.journalEntry.findFirst({
+          where: {
+            referenceId: payment.id,
+            referenceType: 'PAYMENT',
+            deletedAt: null,
+            status: 'POSTED',
+          },
+        });
+        if (existing) {
+          stats.payments.skipped++;
+          continue;
+        }
+
+        stats.payments.total++;
+
+        if (options.dryRun) {
+          details.push({
+            contractNumber: contract.contractNumber,
+            action: `CREATE_PAYMENT_JOURNAL #${payment.installmentNo}`,
+            status: 'DRY_RUN',
+          });
+          stats.payments.backfilled++;
+        } else {
+          try {
+            await this.prisma.$transaction(async (tx) => {
+              await this.journalAutoService.createPaymentJournal(tx, {
+                payment: {
+                  id: payment.id,
+                  installmentNo: payment.installmentNo,
+                  amountPaid: payment.amountPaid,
+                  monthlyPrincipal: payment.monthlyPrincipal,
+                  monthlyInterest: payment.monthlyInterest,
+                  monthlyCommission: payment.monthlyCommission,
+                  vatAmount: payment.vatAmount,
+                  lateFee: payment.lateFee,
+                  lateFeeWaived: payment.lateFeeWaived,
+                  paidDate: payment.paidDate,
+                },
+                contract: {
+                  contractNumber: contract.contractNumber,
+                  branchId: contract.branchId,
+                },
+                userId: systemUser.id,
+              });
+            });
+            details.push({
+              contractNumber: contract.contractNumber,
+              action: `CREATE_PAYMENT_JOURNAL #${payment.installmentNo}`,
+              status: 'OK',
+            });
+            stats.payments.backfilled++;
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            details.push({
+              contractNumber: contract.contractNumber,
+              action: `CREATE_PAYMENT_JOURNAL #${payment.installmentNo}`,
+              status: 'ERROR',
+              error: message,
+            });
+            stats.payments.errors++;
+          }
+        }
+      }
+    }
+
+    return {
+      dryRun: options.dryRun,
+      contracts: stats.contracts,
+      payments: stats.payments,
+      details,
+    };
   }
 }

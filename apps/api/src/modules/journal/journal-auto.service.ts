@@ -293,6 +293,8 @@ export class JournalAutoService {
 
     // Sales revenue = sellingPrice + commission only — interest is a separate revenue line
     const revenue = sellingPrice.add(commission);
+    // HP Receivable = total owed after down payment (principal + interest + commission + VAT)
+    const hpReceivable = financedAmount.add(interest).add(commission).add(vat);
     const isUsed = (params.product.category || '').toLowerCase().includes('used') ||
       (params.product.category || '').includes('มือสอง');
     const revenueAcc = isUsed ? JournalAutoService.ACC.REVENUE_USED : JournalAutoService.ACC.REVENUE_NEW;
@@ -309,7 +311,7 @@ export class JournalAutoService {
       createdById: params.userId,
       lines: [
         { accountCode: JournalAutoService.ACC.CASH, description: 'รับเงินดาวน์', debit: downPayment.toNumber(), credit: 0 },
-        { accountCode: JournalAutoService.ACC.HP_RECEIVABLE, description: 'ลูกหนี้เช่าซื้อ', debit: financedAmount.toNumber(), credit: 0 },
+        { accountCode: JournalAutoService.ACC.HP_RECEIVABLE, description: 'ลูกหนี้เช่าซื้อ', debit: hpReceivable.toNumber(), credit: 0 },
         { accountCode: revenueAcc, description: 'รายได้จากการขาย', debit: 0, credit: revenue.toNumber() },
         { accountCode: JournalAutoService.ACC.INTEREST_INCOME, description: 'รายได้ดอกเบี้ยเช่าซื้อ', debit: 0, credit: interest.toNumber() },
         { accountCode: JournalAutoService.ACC.VAT_OUTPUT, description: 'ภาษีขาย', debit: 0, credit: vat.toNumber() },

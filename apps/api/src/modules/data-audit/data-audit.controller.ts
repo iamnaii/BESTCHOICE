@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { DataAuditService } from './data-audit.service';
 import { AuditFilterDto, TraceFilterDto, AuditHistoryDto } from './dto/audit-filter.dto';
@@ -49,5 +49,23 @@ export class DataAuditController {
   @Get('history')
   async history(@Query() filters: AuditHistoryDto) {
     return this.dataAuditService.getHistory(filters);
+  }
+
+  /** Dry-run: preview what backfill would create (no DB changes) */
+  @Get('backfill/dry-run')
+  async backfillDryRun(@Query('limit') limit?: string) {
+    return this.dataAuditService.backfillJournals({
+      dryRun: true,
+      limit: limit ? parseInt(limit, 10) : 100,
+    });
+  }
+
+  /** Execute backfill: create missing journals for legacy contracts */
+  @Post('backfill/execute')
+  async backfillExecute(@Query('limit') limit?: string) {
+    return this.dataAuditService.backfillJournals({
+      dryRun: false,
+      limit: limit ? parseInt(limit, 10) : 50,
+    });
   }
 }

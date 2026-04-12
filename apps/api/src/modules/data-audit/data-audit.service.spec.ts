@@ -3,6 +3,7 @@ import { NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { DataAuditService } from './data-audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { JournalAutoService } from '../journal/journal-auto.service';
 
 /**
  * DataAuditService tests — validates all 12 database health checks
@@ -43,6 +44,13 @@ describe('DataAuditService', () => {
       providers: [
         DataAuditService,
         { provide: PrismaService, useValue: prisma },
+        {
+          provide: JournalAutoService,
+          useValue: {
+            createContractActivationJournal: jest.fn().mockResolvedValue('je-mock'),
+            createPaymentJournal: jest.fn().mockResolvedValue('je-mock'),
+          },
+        },
       ],
     }).compile();
 

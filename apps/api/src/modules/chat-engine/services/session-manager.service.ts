@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import {
   ChatChannel,
@@ -9,6 +9,7 @@ import {
   MessageType,
   Prisma,
 } from '@prisma/client';
+import { AssignmentService } from './assignment.service';
 
 /**
  * SessionManagerService — generalized from ChatSessionService.
@@ -21,7 +22,11 @@ import {
 export class SessionManagerService {
   private readonly logger = new Logger(SessionManagerService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Optional() @Inject(forwardRef(() => AssignmentService))
+    private assignmentService?: AssignmentService,
+  ) {}
 
   /**
    * Find or create a session for any channel.
@@ -74,7 +79,7 @@ export class SessionManagerService {
       customerId = link?.customerId;
     }
 
-    return this.prisma.chatSession.create({
+    const session = await this.prisma.chatSession.create({
       data: {
         lineUserId: isLineChannel ? params.externalUserId : '',
         externalUserId: isLineChannel ? undefined : params.externalUserId,
@@ -85,6 +90,15 @@ export class SessionManagerService {
         priority: ChatPriority.NORMAL,
       },
     });
+
+    // Auto-assign to least-busy staff (best-effort)
+    try {
+      await this.assignmentService?.autoAssign(session.id);
+    } catch {
+      // Assignment failure shouldn't block session creation
+    }
+
+    return session;
   }
 
   /** Save a message and update session stats */
@@ -241,6 +255,61 @@ export class SessionManagerService {
         verificationAttempts: 0,
       },
     });
+  }
+
+  /** Get unread session count for a staff member (or all if no staffId) */
+  async getUnreadCount(staffId?: string) {
+    const where: Prisma.ChatSessionWhereInput = {
+      deletedAt: null,
+      sessionStatus: { in: [ChatSessionStatus.OPEN, ChatSessionStatus.HANDOFF] },
+    };
+    if (staffId) {
+      where.OR = [{ assignedToId: staffId }, { assignedToId: null }];
+    }
+    const count = await this.prisma.chatSession.count({ where });
+    return { unread: count };
+  }
+
+  /** Search messages across all sessions */
+  async searchMessages(params: {
+    query: string;
+    channel?: ChatChannel;
+    page?: number;
+    limit?: number;
+  }) {
+    const page = params.page ?? 1;
+    const limit = params.limit ?? 20;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.ChatMessageWhereInput = {
+      deletedAt: null,
+      text: { contains: params.query, mode: 'insensitive' },
+    };
+    if (params.channel) {
+      where.session = { channel: params.channel, deletedAt: null };
+    }
+
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.chatMessage.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+        include: {
+          session: {
+            select: {
+              id: true,
+              channel: true,
+              customer: { select: { id: true, name: true } },
+            },
+          },
+          staff: { select: { id: true, name: true } },
+        },
+      }),
+      this.prisma.chatMessage.count({ where }),
+    ]);
+
+    return { data, total, page, limit };
   }
 
   /** Update session status */

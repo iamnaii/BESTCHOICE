@@ -64,6 +64,30 @@ export class StaffChatController {
     return this.sessionManager.getRecentMessages(id, limit ? parseInt(limit, 10) : 50);
   }
 
+  // ─── Unread + Search ────────────────────────────────────
+
+  @Get('unread-count')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  async getUnreadCount(@Req() req: any) {
+    return this.sessionManager.getUnreadCount(req.user.id);
+  }
+
+  @Get('search')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  async searchMessages(
+    @Query('q') query: string,
+    @Query('channel') channel?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.sessionManager.searchMessages({
+      query: query || '',
+      channel: channel as any,
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
+  }
+
   // ─── Assignment ────────────────────────────────────────
 
   @Patch('sessions/:id/assign')

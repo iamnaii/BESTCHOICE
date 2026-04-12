@@ -105,6 +105,44 @@ export class AssignmentService {
     // TODO Phase 2: emit WS chat:resolved event
   }
 
+  /**
+   * Auto-assign: round-robin to least-busy online staff.
+   * Falls back to any staff with OWNER/BRANCH_MANAGER/FINANCE_MANAGER/SALES role
+   * if no one is explicitly online.
+   */
+  async autoAssign(sessionId: string): Promise<string | null> {
+    // Get staff with open session counts
+    const counts = await this.getStaffSessionCounts();
+    const countMap = new Map(counts.map((c) => [c.staffId, c.openCount]));
+
+    // Get all eligible staff (active, not deleted)
+    const eligibleStaff = await this.prisma.user.findMany({
+      where: {
+        deletedAt: null,
+        isActive: true,
+        role: { in: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES'] },
+      },
+      select: { id: true },
+    });
+
+    if (eligibleStaff.length === 0) return null;
+
+    // Pick the one with fewest open sessions (round-robin / least-busy)
+    let bestStaffId = eligibleStaff[0].id;
+    let bestCount = countMap.get(bestStaffId) ?? 0;
+
+    for (const staff of eligibleStaff) {
+      const count = countMap.get(staff.id) ?? 0;
+      if (count < bestCount) {
+        bestCount = count;
+        bestStaffId = staff.id;
+      }
+    }
+
+    await this.assign(sessionId, bestStaffId);
+    return bestStaffId;
+  }
+
   /** Get session counts per staff (for load balancing) */
   async getStaffSessionCounts(): Promise<
     { staffId: string; openCount: number }[]

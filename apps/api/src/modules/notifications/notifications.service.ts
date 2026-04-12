@@ -516,7 +516,7 @@ export class NotificationsService implements OnModuleInit {
 
     // Batch load all contracts to avoid N+1 queries
     const contracts = await this.prisma.contract.findMany({
-      where: { id: { in: contractIds } },
+      where: { id: { in: contractIds }, deletedAt: null },
       include: { customer: { select: { name: true, phone: true, lineId: true } } },
     });
     const contractMap = new Map(contracts.map((c) => [c.id, c]));

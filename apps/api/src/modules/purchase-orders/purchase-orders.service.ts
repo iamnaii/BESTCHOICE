@@ -347,7 +347,7 @@ export class PurchaseOrdersService {
     if (filters.status) itemFilter.status = filters.status;
 
     // Build date filter
-    const where: Record<string, unknown> = { poId };
+    const where: Record<string, unknown> = { poId, deletedAt: null };
     if (filters.startDate || filters.endDate) {
       const dateFilter: Record<string, Date> = {};
       if (filters.startDate) dateFilter.gte = new Date(filters.startDate);

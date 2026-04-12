@@ -492,15 +492,15 @@ export class AccountingService {
       productCosts,
     ] = await Promise.all([
       this.prisma.sale.aggregate({
-        where: { saleType: 'CASH', createdAt: dateRange, ...branchFilter },
+        where: { saleType: 'CASH', createdAt: dateRange, deletedAt: null, ...branchFilter },
         _sum: { netAmount: true },
       }),
       this.prisma.sale.aggregate({
-        where: { saleType: 'INSTALLMENT', createdAt: dateRange, ...branchFilter },
+        where: { saleType: 'INSTALLMENT', createdAt: dateRange, deletedAt: null, ...branchFilter },
         _sum: { downPaymentAmount: true },
       }),
       this.prisma.sale.aggregate({
-        where: { saleType: 'EXTERNAL_FINANCE', createdAt: dateRange, ...branchFilter },
+        where: { saleType: 'EXTERNAL_FINANCE', createdAt: dateRange, deletedAt: null, ...branchFilter },
         _sum: { downPaymentAmount: true },
       }),
       this.prisma.payment.findMany({
@@ -534,7 +534,7 @@ export class AccountingService {
         select: { category: true, totalAmount: true },
       }),
       this.prisma.sale.findMany({
-        where: { createdAt: dateRange, ...branchFilter },
+        where: { createdAt: dateRange, deletedAt: null, ...branchFilter },
         select: { product: { select: { costPrice: true } }, bundleProductIds: true },
       }),
     ]);

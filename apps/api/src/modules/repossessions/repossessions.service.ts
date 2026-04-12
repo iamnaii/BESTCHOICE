@@ -445,7 +445,7 @@ export class RepossessionsService {
    */
   async getProfitLossSummary(page = 1, limit = 50) {
     const safeLimit = Math.min(limit, 100);
-    const where = { status: 'SOLD' as const };
+    const where = { status: 'SOLD' as const, deletedAt: null as Date | null };
 
     const [repos, total, aggregation] = await Promise.all([
       this.prisma.repossession.findMany({

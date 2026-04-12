@@ -223,7 +223,7 @@ export class DashboardService {
    */
   async getBranchComparison() {
     const branches = await this.prisma.branch.findMany({
-      where: { isActive: true },
+      where: { isActive: true, deletedAt: null },
       select: {
         id: true,
         name: true,

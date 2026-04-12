@@ -411,7 +411,7 @@ export class ProductsStockService {
    * Get transfers that are IN_TRANSIT (for branch to see incoming deliveries)
    */
   async getInTransitTransfers(branchId?: string) {
-    const where: Record<string, unknown> = { status: 'IN_TRANSIT' };
+    const where: Record<string, unknown> = { status: 'IN_TRANSIT', deletedAt: null };
     if (branchId) where.toBranchId = branchId;
 
     return this.prisma.stockTransfer.findMany({

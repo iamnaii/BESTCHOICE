@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ChatbotFinanceController } from './chatbot-finance.controller';
 import { ChatbotFinanceLiffController } from './chatbot-finance-liff.controller';
 import { ChatbotFinanceAdminController } from './chatbot-finance-admin.controller';
@@ -25,6 +25,7 @@ import { LineFinanceWebhookGuard } from './guards/line-finance-webhook.guard';
 import { WebhookDedupService } from './services/webhook-dedup.service';
 import { FinanceDomainHandler } from './finance-domain.handler';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { StaffChatModule } from '../staff-chat/staff-chat.module';
 
 /**
  * Finance Bot Module ("น้องเบส")
@@ -40,7 +41,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
  *   E  ✅ admin endpoints + analytics/sessions/KB UI
  */
 @Module({
-  imports: [NotificationsModule], // SMS for OTP
+  imports: [NotificationsModule, forwardRef(() => StaffChatModule)], // SMS for OTP + WS events to Unified Inbox
   controllers: [
     ChatbotFinanceController,
     ChatbotFinanceLiffController,

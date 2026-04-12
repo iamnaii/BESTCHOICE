@@ -145,6 +145,24 @@ export class StaffChatController {
     return this.staffMessage.getCannedResponses(category);
   }
 
+  @Post('canned-responses')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  async createCannedResponse(@Body() body: { shortcut: string; title: string; content: string; category?: string; sortOrder?: number }) {
+    return this.staffMessage.createCannedResponse(body);
+  }
+
+  @Patch('canned-responses/:id')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  async updateCannedResponse(@Param('id') id: string, @Body() body: any) {
+    return this.staffMessage.updateCannedResponse(id, body);
+  }
+
+  @Delete('canned-responses/:id')
+  @Roles('OWNER')
+  async deleteCannedResponse(@Param('id') id: string) {
+    return this.staffMessage.deleteCannedResponse(id);
+  }
+
   // ─── Handoff ───────────────────────────────────────────
 
   @Patch('sessions/:id/return-to-ai')

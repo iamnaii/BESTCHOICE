@@ -1,15 +1,21 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ChatChannel, ChatSession, MessageRole, MessageType, Prisma } from '@prisma/client';
+import { StaffChatGateway } from '../../staff-chat/staff-chat.gateway';
 
 /**
  * จัดการ ChatSession + ChatMessage สำหรับ Finance Bot
+ * + emits WebSocket events to Unified Inbox when messages are saved
  */
 @Injectable()
 export class ChatSessionService {
   private readonly logger = new Logger(ChatSessionService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Optional() @Inject(forwardRef(() => StaffChatGateway))
+    private staffChatGateway?: StaffChatGateway,
+  ) {}
 
   /** หา session เดิม หรือสร้างใหม่ */
   async getOrCreate(lineUserId: string): Promise<ChatSession> {
@@ -84,6 +90,19 @@ export class ChatSessionService {
         lastMessageAt: new Date(),
       },
     });
+
+    // Emit to Unified Inbox via WebSocket (best-effort)
+    try {
+      this.staffChatGateway?.emitNewMessage(params.sessionId, {
+        sessionId: params.sessionId,
+        messageId: msg.id,
+        role: params.role,
+        text: params.text,
+        createdAt: msg.createdAt.toISOString(),
+      });
+    } catch {
+      // WS not available — ignore
+    }
 
     return msg;
   }

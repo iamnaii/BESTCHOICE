@@ -42,4 +42,31 @@ export class StaffMessageService {
       orderBy: [{ sortOrder: 'asc' }, { title: 'asc' }],
     });
   }
+
+  /** Create a canned response */
+  async createCannedResponse(data: {
+    shortcut: string;
+    title: string;
+    content: string;
+    category?: string;
+    sortOrder?: number;
+  }) {
+    return this.prisma.cannedResponse.create({ data });
+  }
+
+  /** Update a canned response */
+  async updateCannedResponse(
+    id: string,
+    data: { title?: string; content?: string; category?: string; sortOrder?: number; isActive?: boolean },
+  ) {
+    return this.prisma.cannedResponse.update({ where: { id }, data });
+  }
+
+  /** Soft-delete a canned response */
+  async deleteCannedResponse(id: string) {
+    return this.prisma.cannedResponse.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+  }
 }

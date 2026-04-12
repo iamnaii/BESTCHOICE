@@ -1,7 +1,9 @@
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useMemo } from 'react';
 import { Send, MoreVertical, ArrowLeft, Paperclip, Smile } from 'lucide-react';
 import MessageBubble from './MessageBubble';
 import SessionActions from './SessionActions';
+import CommandPalette from './CommandPalette';
+import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 
 interface ChatPanelProps {
   session: any;
@@ -29,9 +31,21 @@ export default function ChatPanel({
   const [inputText, setInputText] = useState('');
   const [showActions, setShowActions] = useState(false);
   const [showEmoji, setShowEmoji] = useState(false);
+  const [showPalette, setShowPalette] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Keyboard shortcuts
+  const shortcutActions = useMemo(
+    () => ({
+      onOpenPalette: () => setShowPalette(true),
+      onResolve,
+      onEscape: () => setShowPalette(false),
+    }),
+    [onResolve],
+  );
+  useKeyboardShortcuts(shortcutActions);
 
   const QUICK_EMOJIS = ['😊', '👍', '🙏', '❤️', '😄', '👋', '✅', '📱', '💰', '🎉'];
 
@@ -67,6 +81,11 @@ export default function ChatPanel({
       e.preventDefault();
       handleSend();
     }
+  };
+
+  const handleCannedResponse = (content: string) => {
+    setInputText((prev) => (prev ? prev + ' ' + content : content));
+    inputRef.current?.focus();
   };
 
   if (!session) {
@@ -190,6 +209,15 @@ export default function ChatPanel({
           </div>
         </div>
       )}
+
+      {/* Command Palette */}
+      <CommandPalette
+        isOpen={showPalette}
+        onClose={() => setShowPalette(false)}
+        onSelectCannedResponse={handleCannedResponse}
+        onResolve={onResolve}
+        sessionId={session?.id ?? null}
+      />
     </div>
   );
 }

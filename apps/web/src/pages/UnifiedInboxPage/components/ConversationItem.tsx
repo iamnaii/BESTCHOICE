@@ -91,6 +91,11 @@ export default function ConversationItem({ session, isActive, onClick }: Convers
 
         {/* Tags + priority */}
         <div className="flex items-center gap-1 mt-1">
+          {session.tags?.some((t: any) => t.tag === 'overdue') && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-600 font-medium">
+              ค้างชำระ
+            </span>
+          )}
           {session.priority && PRIORITY_BADGE[session.priority] && (
             <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full', PRIORITY_BADGE[session.priority])}>
               {session.priority}

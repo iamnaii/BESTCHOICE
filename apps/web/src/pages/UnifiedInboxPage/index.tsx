@@ -41,7 +41,7 @@ export default function UnifiedInboxPage() {
     queryKey: ['chat-sessions', filters],
     queryFn: () =>
       api
-        .get('/api/staff-chat/sessions', { params: filters })
+        .get('/staff-chat/sessions', { params: filters })
         .then((r: any) => r.data),
   });
 
@@ -49,7 +49,7 @@ export default function UnifiedInboxPage() {
   const sessionQuery = useQuery({
     queryKey: ['chat-session', activeSessionId],
     queryFn: () =>
-      api.get(`/api/staff-chat/sessions/${activeSessionId}`).then((r: any) => r.data),
+      api.get(`/staff-chat/sessions/${activeSessionId}`).then((r: any) => r.data),
     enabled: !!activeSessionId,
   });
 
@@ -58,7 +58,7 @@ export default function UnifiedInboxPage() {
     queryKey: ['chat-messages', activeSessionId],
     queryFn: () =>
       api
-        .get(`/api/staff-chat/sessions/${activeSessionId}/messages`, {
+        .get(`/staff-chat/sessions/${activeSessionId}/messages`, {
           params: { limit: 100 },
         })
         .then((r: any) => r.data),
@@ -69,7 +69,7 @@ export default function UnifiedInboxPage() {
   // Mutations
   const assignMutation = useMutation({
     mutationFn: ({ sessionId, staffId }: { sessionId: string; staffId: string }) =>
-      api.patch(`/api/staff-chat/sessions/${sessionId}/assign`, { staffId }),
+      api.patch(`/staff-chat/sessions/${sessionId}/assign`, { staffId }),
     onSuccess: () => {
       toast.success('มอบหมายแล้ว');
       queryClient.invalidateQueries({ queryKey: ['chat-sessions'] });
@@ -79,7 +79,7 @@ export default function UnifiedInboxPage() {
 
   const resolveMutation = useMutation({
     mutationFn: (sessionId: string) =>
-      api.patch(`/api/staff-chat/sessions/${sessionId}/resolve`),
+      api.patch(`/staff-chat/sessions/${sessionId}/resolve`),
     onSuccess: () => {
       toast.success('ปิดการสนทนาแล้ว');
       queryClient.invalidateQueries({ queryKey: ['chat-sessions'] });
@@ -89,7 +89,7 @@ export default function UnifiedInboxPage() {
 
   const returnToAIMutation = useMutation({
     mutationFn: (sessionId: string) =>
-      api.patch(`/api/staff-chat/sessions/${sessionId}/return-to-ai`),
+      api.patch(`/staff-chat/sessions/${sessionId}/return-to-ai`),
     onSuccess: () => {
       toast.success('ส่งกลับ Bot แล้ว');
       queryClient.invalidateQueries({ queryKey: ['chat-sessions'] });

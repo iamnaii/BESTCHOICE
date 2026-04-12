@@ -10,7 +10,7 @@ interface Customer360PanelProps {
 export default function Customer360Panel({ customerId }: Customer360PanelProps) {
   const { data: customer, isLoading } = useQuery({
     queryKey: ['customer-360', customerId],
-    queryFn: () => api.get(`/api/customers/${customerId}`).then((r: any) => r.data),
+    queryFn: () => api.get(`/customers/${customerId}`).then((r: any) => r.data),
     enabled: !!customerId,
   });
 
@@ -18,7 +18,7 @@ export default function Customer360Panel({ customerId }: Customer360PanelProps) 
     queryKey: ['customer-contracts-360', customerId],
     queryFn: () =>
       api
-        .get(`/api/contracts`, { params: { customerId, limit: 5 } })
+        .get(`/contracts`, { params: { customerId, limit: 5 } })
         .then((r: any) => r.data),
     enabled: !!customerId,
   });

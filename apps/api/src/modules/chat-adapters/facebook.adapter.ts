@@ -9,33 +9,51 @@ import {
 } from '../chat-engine/interfaces/channel-adapter.interface';
 
 /**
- * Facebook Messenger adapter — scaffold for FB Graph API integration.
+ * Facebook Messenger adapter — uses FB Graph API Send API.
  *
- * Requires: FB_PAGE_ACCESS_TOKEN, FB_APP_SECRET (for webhook HMAC verification)
- * Webhook: POST /api/chat-adapters/facebook/webhook
+ * API reference: https://developers.facebook.com/docs/messenger-platform/reference/send-api/
+ * Endpoint: POST https://graph.facebook.com/v25.0/{PAGE_ID}/messages
+ *
+ * Required env:
+ * - FB_PAGE_ACCESS_TOKEN — Page access token with pages_messaging permission
+ * - FB_PAGE_ID — Facebook Page ID
+ * - FB_APP_SECRET — for webhook HMAC-SHA256 verification (inbound)
+ *
+ * Key constraints:
+ * - messaging_type is required (RESPONSE within 24h window, UPDATE, or MESSAGE_TAG)
+ * - text max 2,000 UTF-8 chars
+ * - attachment max 25 MB
+ * - As of April 27, 2026: message tags CONFIRMED_EVENT_UPDATE, ACCOUNT_UPDATE,
+ *   POST_PURCHASE_UPDATE are deprecated
  */
 @Injectable()
 export class FacebookAdapter implements IChannelAdapter {
   readonly channel = ChatChannel.FACEBOOK;
   private readonly logger = new Logger(FacebookAdapter.name);
   private readonly pageAccessToken?: string;
-  private readonly graphApiUrl = 'https://graph.facebook.com/v19.0/me/messages';
+  private readonly pageId?: string;
 
   constructor(private configService: ConfigService) {
     this.pageAccessToken = this.configService.get<string>('FB_PAGE_ACCESS_TOKEN');
+    this.pageId = this.configService.get<string>('FB_PAGE_ID');
   }
 
   get isConfigured(): boolean {
-    return !!this.pageAccessToken;
+    return !!this.pageAccessToken && !!this.pageId;
+  }
+
+  private get graphApiUrl(): string {
+    return `https://graph.facebook.com/v25.0/${this.pageId}/messages`;
   }
 
   async sendMessage(message: OutboundMessage): Promise<SendResult> {
-    if (!this.pageAccessToken) {
-      return { success: false, error: 'Facebook page access token not configured' };
+    if (!this.isConfigured) {
+      return { success: false, error: 'Facebook page access token or page ID not configured' };
     }
 
     try {
       const body: Record<string, unknown> = {
+        messaging_type: 'RESPONSE', // within 24h reply window
         recipient: { id: message.externalUserId },
         message: message.text
           ? { text: message.text }
@@ -64,7 +82,7 @@ export class FacebookAdapter implements IChannelAdapter {
   }
 
   async sendTypingIndicator(externalUserId: string): Promise<void> {
-    if (!this.pageAccessToken) return;
+    if (!this.isConfigured) return;
     try {
       await fetch(`${this.graphApiUrl}?access_token=${this.pageAccessToken}`, {
         method: 'POST',
@@ -83,7 +101,7 @@ export class FacebookAdapter implements IChannelAdapter {
     if (!this.pageAccessToken) return null;
     try {
       const res = await fetch(
-        `https://graph.facebook.com/v19.0/${externalUserId}?fields=first_name,last_name,profile_pic&access_token=${this.pageAccessToken}`,
+        `https://graph.facebook.com/v25.0/${externalUserId}?fields=first_name,last_name,profile_pic&access_token=${this.pageAccessToken}`,
       );
       if (!res.ok) return null;
       const data = (await res.json()) as {

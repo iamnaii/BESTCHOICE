@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import QueryBoundary from '@/components/QueryBoundary';
 
 interface AnalyticsOverview {

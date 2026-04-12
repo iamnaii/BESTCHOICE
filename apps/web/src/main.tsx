@@ -2,7 +2,7 @@ import '@/lib/env';
 import * as Sentry from '@sentry/react';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom';
+import { BrowserRouter } from 'react-router';
 import {
   QueryClient,
   QueryClientProvider,

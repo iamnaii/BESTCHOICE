@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { useTemplateStore } from '@/store/templateStore';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';

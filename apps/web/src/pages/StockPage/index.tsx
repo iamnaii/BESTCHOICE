@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/button';

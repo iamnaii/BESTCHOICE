@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { DashboardAlert } from '../types';

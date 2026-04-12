@@ -3,7 +3,7 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { exportToExcel, type ExcelColumn } from '@/utils/excel.util';
 import { formatDateShort } from '@/utils/formatters';
 import { toast } from 'sonner';

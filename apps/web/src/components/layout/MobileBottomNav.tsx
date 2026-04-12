@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router';
 import { Home, ShoppingCart, FileCheck, HandCoins, MoreHorizontal } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useLayout } from './LayoutContext';

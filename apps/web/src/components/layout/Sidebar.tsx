@@ -46,6 +46,9 @@ import {
   UserSearch,
   Coins,
   CheckSquare,
+  MessageSquareMore,
+  Target,
+  Kanban,
   ChevronRight,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -161,6 +164,17 @@ const navSections: NavSection[] = [
       { label: 'แจ้งเตือน', path: '/notifications', icon: Bell, roles: ['OWNER', 'BRANCH_MANAGER'] },
       { label: 'งาน / TODO', path: '/todos', icon: CheckSquare },
       { label: 'น้องเบส (Finance Bot)', path: '/chatbot-finance', icon: Bell, roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
+    ],
+  },
+  {
+    key: 'chat-crm',
+    label: 'แชท & CRM',
+    icon: MessageSquareMore,
+    group: 'general',
+    items: [
+      { label: 'กล่องข้อความ', path: '/inbox', icon: MessageSquareMore, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES'] },
+      { label: 'CRM Pipeline', path: '/crm', icon: Kanban, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES'] },
+      { label: 'Ads & ROI', path: '/ads', icon: Target, roles: ['OWNER'] },
     ],
   },
   {

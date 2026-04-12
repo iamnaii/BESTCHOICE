@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useAuth } from '@/contexts/AuthContext';
+import { getAccessToken } from '@/lib/api';
 
 interface ChatSocketEvents {
   onNewMessage?: (data: any) => void;
@@ -12,7 +13,7 @@ interface ChatSocketEvents {
 /**
  * useChatSocket — connects to the /chat WebSocket namespace.
  *
- * Handles connection lifecycle, room joining, and event dispatching.
+ * Sends JWT access token in handshake for server-side verification.
  * The socket is created once and reused across the inbox page.
  */
 export function useChatSocket(events: ChatSocketEvents) {
@@ -22,8 +23,11 @@ export function useChatSocket(events: ChatSocketEvents) {
   useEffect(() => {
     if (!user) return;
 
+    const token = getAccessToken();
+    if (!token) return;
+
     const socket = io('/chat', {
-      auth: { userId: user.id, userName: user.name },
+      auth: { token },
       transports: ['websocket', 'polling'],
     });
 

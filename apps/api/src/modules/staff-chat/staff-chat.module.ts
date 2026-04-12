@@ -4,6 +4,7 @@ import { StaffChatController } from './staff-chat.controller';
 import { StaffMessageService } from './services/staff-message.service';
 import { PresenceService } from './services/presence.service';
 import { ChatEngineModule } from '../chat-engine/chat-engine.module';
+import { AuthModule } from '../auth/auth.module';
 
 /**
  * StaffChatModule — real-time staff chat interface.
@@ -15,7 +16,7 @@ import { ChatEngineModule } from '../chat-engine/chat-engine.module';
  * - Canned response access
  */
 @Module({
-  imports: [ChatEngineModule],
+  imports: [ChatEngineModule, AuthModule],
   controllers: [StaffChatController],
   providers: [StaffChatGateway, StaffMessageService, PresenceService],
   exports: [StaffChatGateway, PresenceService],

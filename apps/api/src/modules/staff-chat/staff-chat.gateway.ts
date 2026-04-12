@@ -8,6 +8,8 @@ import {
   MessageBody,
 } from '@nestjs/websockets';
 import { Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
 import { CHAT_EVENTS, CHAT_CLIENT_EVENTS, CHAT_ROOMS } from '../chat-engine/constants/chat-events';
 import { MessageRouterService } from '../chat-engine/services/message-router.service';
@@ -41,15 +43,32 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
     private messageRouter: MessageRouterService,
     private sessionManager: SessionManagerService,
     private presenceService: PresenceService,
+    private jwtService: JwtService,
+    private configService: ConfigService,
   ) {}
 
   async handleConnection(client: Socket): Promise<void> {
-    // Extract user info from handshake (JWT validation deferred to middleware)
-    const userId = client.handshake.auth?.userId as string;
-    const userName = client.handshake.auth?.userName as string;
+    // Verify JWT from handshake auth.token (sent by frontend)
+    const token = client.handshake.auth?.token as string;
+    if (!token) {
+      this.logger.warn('[WS] Connection rejected — no token in handshake');
+      client.disconnect();
+      return;
+    }
 
-    if (!userId) {
-      this.logger.warn(`[WS] Connection rejected — no userId in handshake`);
+    let userId: string;
+    let userName: string;
+    try {
+      const payload = this.jwtService.verify(token, {
+        secret: this.configService.get<string>('JWT_SECRET'),
+      });
+      userId = payload.sub;
+      userName = payload.name ?? 'staff';
+      // Attach to socket data for later use
+      (client as any).userId = userId;
+      (client as any).userName = userName;
+    } catch {
+      this.logger.warn('[WS] Connection rejected — invalid JWT');
       client.disconnect();
       return;
     }
@@ -72,7 +91,7 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
   }
 
   async handleDisconnect(client: Socket): Promise<void> {
-    const userId = client.handshake.auth?.userId as string;
+    const userId = (client as any).userId as string;
     if (!userId) return;
 
     this.presenceService.setOffline(userId, client.id);
@@ -94,7 +113,7 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
     @MessageBody() data: { sessionId: string },
   ): void {
     client.join(CHAT_ROOMS.session(data.sessionId));
-    this.logger.debug(`[WS] ${client.handshake.auth?.userId} joined session ${data.sessionId}`);
+    this.logger.debug(`[WS] ${(client as any).userId} joined session ${data.sessionId}`);
   }
 
   @SubscribeMessage(CHAT_CLIENT_EVENTS.LEAVE)
@@ -110,7 +129,7 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { sessionId: string; text: string },
   ): Promise<void> {
-    const userId = client.handshake.auth?.userId as string;
+    const userId = (client as any).userId as string;
     if (!userId || !data.sessionId || !data.text) return;
 
     // Send through engine (saves message + sends to customer via adapter)
@@ -135,7 +154,7 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { sessionId: string },
   ): void {
-    const userId = client.handshake.auth?.userId as string;
+    const userId = (client as any).userId as string;
     client.to(CHAT_ROOMS.session(data.sessionId)).emit(CHAT_EVENTS.TYPING, {
       sessionId: data.sessionId,
       userId,
@@ -148,7 +167,7 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { sessionId: string },
   ): void {
-    const userId = client.handshake.auth?.userId as string;
+    const userId = (client as any).userId as string;
     client.to(CHAT_ROOMS.session(data.sessionId)).emit(CHAT_EVENTS.TYPING, {
       sessionId: data.sessionId,
       userId,
